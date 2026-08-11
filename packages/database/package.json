@@ -1,0 +1,27 @@
+{
+  "name": "@appbasis/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate --name appbasis_identity_foundation",
+    "db:check": "drizzle-kit check"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.4",
+    "@types/node": "24.13.3",
+    "drizzle-kit": "0.31.10",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

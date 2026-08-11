@@ -2,34 +2,83 @@
 
 ## Phase
 
-Bootstrap / Phase 1
+Phase 2A – Persistence + Identity Foundation
 
 ## Ziel
 
-Aufbau eines minimalen vollständigen Vertical Slice als technische Referenz
-für alle zukünftigen AppBasis-Anwendungen.
+Provider-entkoppeltes, lokal prüfbares Fundament für PostgreSQL-Persistenz und
+Benutzername-basierte Identity. Es existiert weiterhin weder ein Deployment
+noch eine produktive Datenbank- oder Auth-Konfiguration.
 
 ## Aktueller Stand
 
-- Node 24.19.0 und pnpm 11.21.0 sind als verbindliche Toolchain festgelegt.
-- Die Monorepo-Grundstruktur für `apps/*`, `packages/*` und `modules/*` ist vorhanden.
-- `apps/reference` enthält eine mobile-first React-/TypeScript-SPA mit Vite.
-- Das Frontend und ein Cloudflare Worker werden gemeinsam über das Cloudflare
-  Vite Plugin entwickelt und gebaut.
-- Hono stellt im Worker `GET /api/health` bereit.
-- Die Referenzseite ruft den Health-Endpunkt beim Laden auf und zeigt Laden,
-  Erreichbarkeit oder Fehler sichtbar an.
-- API-Logik, TypeScript-Prüfung und Production Build werden automatisiert geprüft.
+- `packages/database` enthält das fachneutrale PostgreSQL-Schema auf Basis von
+  Drizzle ORM sowie eine versionierte Ausgangsmigration.
+- Die unveränderten Better-Auth-Modelle `user`, `session`, `account` und
+  `verification` wurden mit der offiziellen Better-Auth-CLI 1.6.27 für Drizzle
+  erzeugt. Username- und technische Admin-Felder sind enthalten.
+- `appbasis_person` ist vom Login getrennt und darf ohne Auth-Identity
+  existieren.
+- `appbasis_identity_security_state` hält ausschließlich AppBasis-eigenen
+  Sicherheitszustand: `mustChangePassword`, Zeitstempel und die optionale
+  Zuordnung zu einer Person. Better Auths `banned`-Feld bleibt der autoritative
+  technische Aktivstatus; AppBasis dupliziert ihn nicht.
+- Passwörter oder Passwort-Hashes werden nicht in AppBasis-eigenen Tabellen
+  gespeichert. Better Auth hält Credential-Hashes ausschließlich in seiner
+  `account`-Tabelle.
+- `packages/identity` definiert provider-neutrale Services für initiale
+  Benutzeranlage, Username-Anmeldung, erzwungenen Passwortwechsel, aktuelle
+  Identity und Deaktivierung.
+- Eine einzige zentrale Funktion erzeugt aus dem normalisierten Benutzernamen
+  eine gehashte technische Adresse unter der reservierten Domain `.invalid`.
+  Diese Adresse ist kein Kontaktmerkmal und darf weder angezeigt noch für
+  Nachrichten verwendet werden.
+- Öffentliche Selbstregistrierung, E-Mail-Anmeldung und öffentliche
+  Username-Verfügbarkeitsprüfung sind in der gekapselten Better-Auth-
+  Konfiguration deaktiviert.
+- Better Auths Admin-Rolle ist ausschließlich technische Auth-Administration.
+  Sie ist keine AppBasis-Businessrolle und gewährt keine fachlichen Rechte.
+- Migrationen werden real gegen eine leere PGlite-Datenbank angewendet und
+  wiederholt ausgeführt. Fachcode enthält keine PGlite-Spezifika.
+
+## Erstlogin-Vertrag
+
+1. Ein administrativer Serverprozess legt Benutzername, Anzeigename und ein
+   temporäres Passwort an.
+2. Better Auth erhält intern die zentrale technische E-Mail; eine reale
+   Kontaktadresse ist nicht erforderlich.
+3. AppBasis erzeugt den Sicherheitszustand mit `mustChangePassword=true`.
+4. Nach erfolgreicher Username-Anmeldung sind nur Passwortwechsel und
+   Session-Ende zulässig.
+5. Der Passwortwechsel widerruft andere Sessions; erst danach setzt AppBasis
+   `mustChangePassword=false`.
+6. Eine Deaktivierung sperrt die Auth-Identity und erhält Personen- sowie
+   spätere Fach- und Historiendaten.
+
+## TypeScript-Prüfung
+
+Eigener App-, Worker-, Database-, Identity- und Testcode bleibt vollständig
+unter den strikten Root-Regeln geprüft. Nur in den beiden neuen Infrastruktur-
+Paketen ist `skipLibCheck=true` gesetzt, weil die aktuellen stabilen Drizzle-,
+PGlite- und Better-Auth-Pakete Deklarationen für optionale Treiber sowie
+Emscripten veröffentlichen, die ohne diese Library-only-Ausnahme nicht
+kompilieren. Die Ausnahme überspringt keinen AppBasis-Quell- oder Testcode.
 
 ## Bewusst noch nicht umgesetzt
 
-- kein Deployment und keine angelegten Cloudflare-Ressourcen
-- keine Datenbank- oder Neon-/PostgreSQL-Anbindung
-- keine Authentifizierung, Benutzerverwaltung oder Rollen-/Rechteverwaltung
-- keine Push-, Queue-, Durable-Object- oder R2-Funktionen
+- kein Neon-Projekt und keine externe PostgreSQL-Datenbank
+- kein Cloudflare-Deployment und keine Cloud-Secrets
+- kein Better-Auth-End-to-End-Lauf gegen echtes PostgreSQL; PGlite ist von
+  Drizzle offiziell unterstützt, wird von Better Auth aber nicht ausdrücklich
+  als Laufzeitdatenbank dokumentiert
+- keine Benutzerverwaltungs- oder Login-Oberfläche
+- keine produktive Adapter-Komposition in `apps/reference`
+- keine AppBasis-Rollen oder Berechtigungen; diese folgen separat und werden
+  serverseitig in `packages/permissions` erzwungen
 
 ## Nächster technischer Meilenstein
 
-Nach fachlicher und sicherheitstechnischer Entscheidung kann die Referenz-App
-kontrolliert um Persistenz und Authentifizierung erweitert werden. Deployment
-bleibt ein gesonderter, ausdrücklich freizugebender Schritt.
+Phase 2B soll eine ausdrücklich freigegebene PostgreSQL-/Neon-Testumgebung
+anbinden, die Better-Auth-Adapterintegration und den vollständigen
+Admin-Anlage-/Erstlogin-/Passwortwechsel-/Deaktivierungsfluss serverseitig
+End-to-End prüfen. Deployment bleibt ein eigener Freigabeschritt.

@@ -12,10 +12,21 @@ allowBuilds:
   esbuild: true
   workerd: true
 
-# Exact reviewed Cloudflare toolchain versions required by the pinned graph
-# and published within pnpm 11's default 24-hour minimum release age.
+# Exact reviewed stable toolchain versions required by the pinned dependency
+# graphs and published within pnpm 11's default 24-hour minimum release age.
+# Better Auth publishes its official adapter packages as one synchronized set;
+# pnpm resolves these transitive packages even though AppBasis activates only
+# the Drizzle adapter.
 minimumReleaseAgeExclude:
-  - '@cloudflare/vite-plugin@1.51.3'
-  - '@cloudflare/workers-types@5.20260811.1'
+  - "@cloudflare/vite-plugin@1.51.3"
+  - "@cloudflare/workers-types@5.20260811.1"
   - miniflare@5.20260804.1-alpha
   - wrangler@4.121.0
+  - "@better-auth/core@1.6.27"
+  - "@better-auth/drizzle-adapter@1.6.27"
+  - "@better-auth/kysely-adapter@1.6.27"
+  - "@better-auth/memory-adapter@1.6.27"
+  - "@better-auth/mongo-adapter@1.6.27"
+  - "@better-auth/prisma-adapter@1.6.27"
+  - "@better-auth/telemetry@1.6.27"
+  - better-auth@1.6.27
