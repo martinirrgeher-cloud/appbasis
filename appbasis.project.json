@@ -15,5 +15,15 @@
     "defaultOrganizationModel": "single-organization",
     "userExperience": "mobile-first-pwa",
     "coreUpdateModel": "versioned-controlled-updates"
+  },
+  "referenceApplication": {
+    "path": "apps/reference",
+    "status": "local-vertical-slice",
+    "frontend": ["React", "Vite"],
+    "backend": ["Cloudflare Worker", "Hono"],
+    "healthEndpoint": "/api/health",
+    "deployment": "not-configured",
+    "database": "not-configured",
+    "authentication": "not-configured"
   }
 }

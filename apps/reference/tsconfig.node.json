@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    // Cloudflare's tooling declarations reference optional tool-only packages.
+    // App, Worker, shared and test code keep the strict root default false.
+    "skipLibCheck": true
+  },
+  "include": ["vite.config.ts", "vitest.config.ts"]
+}

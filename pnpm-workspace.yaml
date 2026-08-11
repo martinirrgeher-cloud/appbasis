@@ -2,3 +2,20 @@ packages:
   - "apps/*"
   - "packages/*"
   - "modules/*"
+
+engineStrict: true
+saveExact: true
+sharedWorkspaceLockfile: true
+
+# Build-Skripte nur fuer bewusst freigegebene Toolchain-Abhaengigkeiten.
+allowBuilds:
+  esbuild: true
+  workerd: true
+
+# Exact reviewed Cloudflare toolchain versions required by the pinned graph
+# and published within pnpm 11's default 24-hour minimum release age.
+minimumReleaseAgeExclude:
+  - '@cloudflare/vite-plugin@1.51.3'
+  - '@cloudflare/workers-types@5.20260811.1'
+  - miniflare@5.20260804.1-alpha
+  - wrangler@4.121.0
