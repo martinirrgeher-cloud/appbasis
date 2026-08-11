@@ -1,0 +1,122 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #18243a;
+  background: #edf3f8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.page-shell {
+  display: grid;
+  min-height: 100vh;
+  padding: 1.25rem;
+  place-items: center;
+}
+
+.intro {
+  width: min(100%, 42rem);
+  padding: 1.5rem;
+  border: 1px solid #d6e0e9;
+  border-radius: 1.25rem;
+  background: #ffffff;
+  box-shadow: 0 1.25rem 3.5rem rgb(31 50 74 / 10%);
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  color: #49647e;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  color: #123d63;
+  font-size: clamp(2.5rem, 12vw, 4.75rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.summary {
+  max-width: 36rem;
+  margin: 1.25rem 0 2rem;
+  color: #43556a;
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.status-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.875rem;
+  align-items: start;
+  padding: 1rem;
+  border: 1px solid #dbe4ec;
+  border-radius: 0.875rem;
+  background: #f7fafc;
+}
+
+.status-indicator {
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-top: 0.35rem;
+  border-radius: 50%;
+  background: #cf8a1d;
+  box-shadow: 0 0 0 0.25rem rgb(207 138 29 / 15%);
+}
+
+.status-card--ready .status-indicator {
+  background: #198754;
+  box-shadow: 0 0 0 0.25rem rgb(25 135 84 / 15%);
+}
+
+.status-card--error .status-indicator {
+  background: #bd3e4a;
+  box-shadow: 0 0 0 0.25rem rgb(189 62 74 / 15%);
+}
+
+.status-card h2,
+.status-card p {
+  margin: 0;
+}
+
+.status-card h2 {
+  font-size: 1rem;
+}
+
+.status-card p {
+  margin-top: 0.25rem;
+  color: #5a6979;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+@media (min-width: 40rem) {
+  .page-shell {
+    padding: 2rem;
+  }
+
+  .intro {
+    padding: 3rem;
+  }
+}

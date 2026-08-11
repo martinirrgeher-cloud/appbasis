@@ -10,6 +10,10 @@
   },
   "scripts": {
     "verify:toolchain": "node ./tooling/verify-toolchain.mjs",
-    "verify:repo": "pnpm run verify:toolchain && git diff --check"
+    "verify:repo": "pnpm run verify:toolchain && git diff --check",
+    "build": "pnpm --filter @appbasis/reference build",
+    "typecheck": "pnpm --filter @appbasis/reference typecheck",
+    "test": "pnpm --filter @appbasis/reference test",
+    "reference:dev": "pnpm --filter @appbasis/reference dev"
   }
 }
