@@ -1,0 +1,15 @@
+{
+  "name": "appbasis",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AppBasis platform and application factory",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": "24.19.0",
+    "pnpm": "11.21.0"
+  },
+  "scripts": {
+    "verify:toolchain": "node ./tooling/verify-toolchain.mjs",
+    "verify:repo": "pnpm run verify:toolchain && git diff --check"
+  }
+}

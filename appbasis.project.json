@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "name": "AppBasis",
+    "kind": "platform",
+    "status": "bootstrap"
+  },
+  "toolchain": {
+    "node": "24.19.0",
+    "pnpm": "11.21.0"
+  },
+  "architecture": {
+    "repository": "modular-monorepo",
+    "connectivity": "resilient-online-first",
+    "defaultOrganizationModel": "single-organization",
+    "userExperience": "mobile-first-pwa",
+    "coreUpdateModel": "versioned-controlled-updates"
+  }
+}
