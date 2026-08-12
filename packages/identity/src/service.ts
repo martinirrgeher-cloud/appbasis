@@ -1,8 +1,8 @@
 import type {
   AuthSession,
+  AccountStatus,
   CurrentIdentity,
   IdentityAction,
-  IdentityAuthProvider,
   IdentityPersistenceState,
   IdentityState,
   IdentityStateStore,
@@ -18,6 +18,34 @@ export interface CreateInitialUserInput {
   temporaryPassword: string;
   displayName: string;
   contactEmail?: string;
+}
+
+interface BetterAuthIdentityBackend {
+  createUsernameAccount(input: {
+    operationId: string;
+    username: string;
+    displayName: string;
+    technicalEmail: string;
+    temporaryPassword: string;
+  }): Promise<{ identityId: string }>;
+  signInWithUsername(input: {
+    username: string;
+    password: string;
+  }): Promise<AuthSession>;
+  getSession(sessionToken: string): Promise<AuthSession | null>;
+  changePassword(input: {
+    operationId: string;
+    sessionToken: string;
+    currentPassword: string;
+    newPassword: string;
+    revokeOtherSessions: true;
+  }): Promise<void>;
+  getAccountStatus(identityId: string): Promise<AccountStatus>;
+  disableIdentity(input: {
+    identityId: string;
+    operationId: string;
+  }): Promise<void>;
+  endSession(sessionToken: string): Promise<void>;
 }
 
 export function assertIdentityActionAllowed(
@@ -38,7 +66,7 @@ export function assertIdentityActionAllowed(
 
 export class IdentityService {
   constructor(
-    private readonly authProvider: IdentityAuthProvider,
+    private readonly authProvider: BetterAuthIdentityBackend,
     private readonly stateStore: IdentityStateStore,
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -108,12 +136,6 @@ export class IdentityService {
     if (current === null) {
       throw new IdentityError("SESSION_INVALID", "The session is invalid.");
     }
-    if (!current.identity.mustChangePassword) {
-      throw new IdentityError(
-        "PASSWORD_CHANGE_NOT_REQUIRED",
-        "A required password change is not pending.",
-      );
-    }
 
     const operation = await this.stateStore.prepareOperation({
       operationKey: `required-password-change:${current.identity.identityId}`,
@@ -123,6 +145,12 @@ export class IdentityService {
     if (operation.completedAt !== null) {
       const existing = await this.stateStore.find(current.identity.identityId);
       if (existing !== null) return withAccountStatus(existing, "active");
+    }
+    if (!current.identity.mustChangePassword) {
+      throw new IdentityError(
+        "PASSWORD_CHANGE_NOT_REQUIRED",
+        "A required password change is not pending.",
+      );
     }
 
     try {
