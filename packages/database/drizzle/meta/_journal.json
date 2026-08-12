@@ -15,6 +15,13 @@
       "when": 1786542236252,
       "tag": "0001_appbasis_identity_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786545575245,
+      "tag": "0002_appbasis_identity_foundation",
+      "breakpoints": true
     }
   ]
 }
