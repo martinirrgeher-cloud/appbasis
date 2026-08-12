@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type {
   AuthSession,
   IdentityAuthProvider,
+  IdentityOperation,
+  IdentityOperationKind,
   IdentityPersistenceState,
   IdentityStateStore,
 } from "../src/contracts";
@@ -19,6 +21,12 @@ describe("technical username abstraction", () => {
     expect(first).toBe(second);
     expect(first).toMatch(/^[a-f0-9]{64}@identity\.invalid$/);
     expect(first).not.toContain("martin");
+  });
+
+  it("preserves dots in the AppBasis username contract", async () => {
+    await expect(technicalEmailForUsername("first.user")).resolves.toMatch(
+      /@identity\.invalid$/,
+    );
   });
 });
 
@@ -137,6 +145,69 @@ describe("IdentityService", () => {
       message: "The username or password is invalid.",
     });
   });
+
+  it("reconciles an ambiguous provisioning commit without creating twice", async () => {
+    const auth = new FakeAuthProvider();
+    const state = new FakeStateStore();
+    state.failAfterNextCompletion = true;
+    const service = new IdentityService(auth, state, () => fixedNow);
+    const input = {
+      username: "retry.user",
+      temporaryPassword: "temporary",
+      displayName: "Retry",
+    };
+
+    await expect(service.createInitialUser(input)).rejects.toThrow("ambiguous");
+    await expect(service.createInitialUser(input)).resolves.toMatchObject({
+      username: "retry.user",
+    });
+    expect(auth.createCalls).toBe(1);
+  });
+
+  it("reconciles an ambiguous password-provider result idempotently", async () => {
+    const auth = new FakeAuthProvider();
+    const state = new FakeStateStore();
+    const service = new IdentityService(auth, state, () => fixedNow);
+    await service.createInitialUser({
+      username: "password.retry",
+      temporaryPassword: "temporary",
+      displayName: "Retry",
+    });
+    auth.failAfterNextPasswordChange = true;
+    const input = {
+      sessionToken: "session-token",
+      currentPassword: "temporary",
+      newPassword: "changed",
+    };
+
+    await expect(service.changeRequiredPassword(input)).rejects.toMatchObject({
+      code: "PASSWORD_CHANGE_FAILED",
+    });
+    await expect(service.changeRequiredPassword(input)).resolves.toMatchObject({
+      mustChangePassword: false,
+    });
+    expect(auth.passwordChangeCalls).toBe(1);
+  });
+
+  it("reconciles an ambiguous disablement audit commit without disabling twice", async () => {
+    const auth = new FakeAuthProvider();
+    const state = new FakeStateStore();
+    const service = new IdentityService(auth, state, () => fixedNow);
+    const identity = await service.createInitialUser({
+      username: "disable.retry",
+      temporaryPassword: "temporary",
+      displayName: "Retry",
+    });
+    state.failAfterNextCompletion = true;
+
+    await expect(service.disableIdentity(identity.identityId)).rejects.toThrow(
+      "ambiguous",
+    );
+    await expect(
+      service.disableIdentity(identity.identityId),
+    ).resolves.toMatchObject({ accountStatus: "disabled" });
+    expect(auth.disableCalls).toBe(1);
+  });
 });
 
 class FakeAuthProvider implements IdentityAuthProvider {
@@ -145,16 +216,24 @@ class FakeAuthProvider implements IdentityAuthProvider {
   endedSessions: string[] = [];
   signInError: Error | null = null;
   accountStatus: "active" | "disabled" = "active";
+  createCalls = 0;
+  passwordChangeCalls = 0;
+  disableCalls = 0;
+  failAfterNextPasswordChange = false;
+  private completedOperations = new Set<string>();
   private identityId = "identity-1";
 
   async createUsernameAccount(input: {
+    operationId: string;
     technicalEmail: string;
   }): Promise<{ identityId: string }> {
+    if (!this.completedOperations.has(input.operationId)) {
+      this.createCalls += 1;
+      this.completedOperations.add(input.operationId);
+    }
     this.createdTechnicalEmail = input.technicalEmail;
     return { identityId: this.identityId };
   }
-
-  async discardUnactivatedIdentity(): Promise<void> {}
 
   async signInWithUsername(): Promise<AuthSession> {
     if (this.signInError !== null) {
@@ -167,15 +246,30 @@ class FakeAuthProvider implements IdentityAuthProvider {
     return { identityId: this.identityId, sessionToken };
   }
 
-  async changePassword(input: { revokeOtherSessions: true }): Promise<void> {
+  async changePassword(input: {
+    operationId: string;
+    revokeOtherSessions: true;
+  }): Promise<void> {
     this.passwordChangeRevokesOtherSessions = input.revokeOtherSessions;
+    if (!this.completedOperations.has(input.operationId)) {
+      this.passwordChangeCalls += 1;
+      this.completedOperations.add(input.operationId);
+    }
+    if (this.failAfterNextPasswordChange) {
+      this.failAfterNextPasswordChange = false;
+      throw new Error("ambiguous provider response");
+    }
   }
 
   async getAccountStatus(): Promise<"active" | "disabled"> {
     return this.accountStatus;
   }
 
-  async disableIdentity(): Promise<void> {
+  async disableIdentity(input: { operationId: string }): Promise<void> {
+    if (!this.completedOperations.has(input.operationId)) {
+      this.disableCalls += 1;
+      this.completedOperations.add(input.operationId);
+    }
     this.accountStatus = "disabled";
   }
 
@@ -186,6 +280,38 @@ class FakeAuthProvider implements IdentityAuthProvider {
 
 class FakeStateStore implements IdentityStateStore {
   private state: IdentityPersistenceState | null = null;
+  private operations = new Map<string, IdentityOperation>();
+  failAfterNextCompletion = false;
+
+  async prepareOperation(input: {
+    operationKey: string;
+    kind: IdentityOperationKind;
+    identityId: string | null;
+  }): Promise<IdentityOperation> {
+    const existing = this.operations.get(input.operationKey);
+    if (existing !== undefined) return existing;
+    const operation = {
+      ...input,
+      operationId: `operation-${this.operations.size + 1}`,
+      completedAt: null,
+    };
+    this.operations.set(input.operationKey, operation);
+    return operation;
+  }
+
+  async completeProvisioning(input: {
+    operationId: string;
+    identityId: string;
+    username: string;
+    displayName: string;
+    contactEmail: string | null;
+    completedAt: Date;
+  }): Promise<IdentityPersistenceState> {
+    const state = await this.create(input);
+    this.complete(input.operationId, input.identityId, input.completedAt);
+    this.maybeFailAfterCompletion();
+    return state;
+  }
 
   async create(input: {
     identityId: string;
@@ -212,6 +338,7 @@ class FakeStateStore implements IdentityStateStore {
   async markPasswordChanged(
     identityId: string,
     changedAt: Date,
+    operationId: string,
   ): Promise<IdentityPersistenceState> {
     const current = await this.require(identityId);
     this.state = {
@@ -220,12 +347,15 @@ class FakeStateStore implements IdentityStateStore {
       passwordChangedAt: changedAt,
       updatedAt: changedAt,
     };
+    this.complete(operationId, identityId, changedAt);
+    this.maybeFailAfterCompletion();
     return this.state;
   }
 
   async recordDisabled(
     identityId: string,
     disabledAt: Date,
+    operationId: string,
   ): Promise<IdentityPersistenceState> {
     const current = await this.require(identityId);
     this.state = {
@@ -233,6 +363,8 @@ class FakeStateStore implements IdentityStateStore {
       disabledAt,
       updatedAt: disabledAt,
     };
+    this.complete(operationId, identityId, disabledAt);
+    this.maybeFailAfterCompletion();
     return this.state;
   }
 
@@ -242,5 +374,23 @@ class FakeStateStore implements IdentityStateStore {
       throw new Error("Missing test state");
     }
     return current;
+  }
+
+  private complete(
+    operationId: string,
+    identityId: string,
+    completedAt: Date,
+  ): void {
+    for (const [key, operation] of this.operations) {
+      if (operation.operationId === operationId)
+        this.operations.set(key, { ...operation, identityId, completedAt });
+    }
+  }
+
+  private maybeFailAfterCompletion(): void {
+    if (this.failAfterNextCompletion) {
+      this.failAfterNextCompletion = false;
+      throw new Error("ambiguous committed response");
+    }
   }
 }
