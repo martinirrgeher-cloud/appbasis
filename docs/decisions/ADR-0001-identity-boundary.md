@@ -21,6 +21,9 @@ unterschiedliche Lebenszyklen.
 1. Fachmodule und Apps verwenden ausschließlich die öffentlichen Verträge aus
    `packages/identity`. Direkte Better-Auth-Aufrufe außerhalb dieser
    Infrastrukturgrenze sind nicht zulässig.
+   Phase 2A veröffentlicht keine allgemeine Auth-Provider-Abstraktion. Eine
+   solche Abstraktion wird erst bei einem zweiten realen Provider oder einem
+   konkreten Wechselbedarf aus den dann belegten Gemeinsamkeiten extrahiert.
 2. Der öffentliche Login-Begriff ist `username`. Anzeigename und optionale
    reale E-Mail gehören zum AppBasis-Profil beziehungsweise zur Person.
 3. Genau eine zentrale Funktion bildet den normalisierten Benutzernamen auf
@@ -29,7 +32,8 @@ unterschiedliche Lebenszyklen.
    für Benachrichtigungen verwendet.
 4. Better Auth behält seine offiziellen Tabellen- und Feldnamen. Das Schema
    wird mit dem offiziellen Drizzle-Adapter und versionierten Drizzle-
-   Migrationen verwaltet.
+   Migrationen innerhalb von `packages/identity` verwaltet. Das fachneutrale
+   `packages/database` stellt nur Datenbankprimitiven und -werkzeuge bereit.
 5. Better Auths Admin-Plugin dient nur der technischen Auth-Administration:
    Benutzer anlegen, sperren und Sessions widerrufen. Seine `role` ist keine
    AppBasis-Businessrolle.
@@ -37,13 +41,14 @@ unterschiedliche Lebenszyklen.
    `packages/permissions` modelliert und serverseitig erzwungen.
 7. `mustChangePassword`, Zuordnung und Audit-Zeitstempel liegen im
    AppBasis-eigenen Sicherheitszustand. Der technische Aktivstatus bleibt beim
-   Auth-Provider und wird über den provider-neutralen Vertrag gelesen.
-   Passwörter und Hashes liegen ausschließlich beim Auth-Provider.
+   Better-Auth-System. Passwörter und Hashes liegen ausschließlich dort.
 
 ## Konsequenzen
 
-- Ein Providerwechsel betrifft die Implementierung innerhalb von
-  `packages/identity`, nicht die Fachmodule.
+- Fachmodule bleiben von Better Auth entkoppelt, ohne dass AppBasis vor einem
+  belegten Bedarf einen allgemeinen Providervertrag festschreibt.
+- Identity-Schemaänderungen und ihre Migrationen bleiben im Besitz von
+  `packages/identity`; `packages/database` bleibt fachneutral nutzbar.
 - Personen- und Historiendaten überleben die Deaktivierung eines Logins.
 - Die technische E-Mail kann nicht versehentlich als echte Kontaktadresse
   interpretiert werden.
