@@ -5,6 +5,8 @@ export type {
   IdentityAccess,
   IdentityAction,
   IdentityAuthProvider,
+  IdentityOperation,
+  IdentityOperationKind,
   IdentityPersistenceState,
   IdentityState,
   IdentityStateStore,
