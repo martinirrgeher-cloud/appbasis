@@ -125,4 +125,4 @@ ChatGPT und Automatisierung sollen diese Zustände selbst lesen. Der Nutzer soll
 
 ## Nicht entschieden in diesem ADR
 
-Dieser ADR entscheidet nicht die aktuelle Phase-2A-Identity-Konsistenzlösung. Vor der Korrektur von PR #2 wird separat technisch geprüft, ob Better Auth und AppBasis-State sauber an einer gemeinsam kontrollierten PostgreSQL-Transaktion teilnehmen können. Nur wenn das nicht praktikabel ist, soll eine kleine Identity-spezifische durable Reconciliation eingesetzt werden. Eine allgemeine Saga-Engine ist dafür ausdrücklich nicht vorgesehen.
+Dieser ADR entscheidet nicht die konkrete Phase-2A-Identity-Konsistenzlösung. Vor dem Abschluss des Meilensteins **Phase 2A – Persistence + Identity Foundation** wird separat technisch geprüft, ob Better Auth und AppBasis-State sauber an einer gemeinsam kontrollierten PostgreSQL-Transaktion teilnehmen können. Nur wenn das nicht praktikabel ist, soll eine kleine Identity-spezifische durable Reconciliation eingesetzt werden. Eine allgemeine Saga-Engine ist dafür ausdrücklich nicht vorgesehen.
