@@ -51,9 +51,9 @@ input:focus, textarea:focus, button:focus-visible, a:focus-visible { outline: 3p
 .task-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-link span { color: #667085; font-size: .78rem; }
 .detail-backdrop { position: fixed; z-index: 20; inset: 0; display: flex; align-items: flex-end; background: rgb(15 23 42 / 45%); }
-.detail-card { position: relative; width: 100%; padding: 1.5rem; border-radius: 1.25rem 1.25rem 0 0; background: white; box-shadow: 0 -1rem 3rem rgb(15 23 42 / 18%); }
-.detail-card h2 { margin-bottom: .75rem; padding-right: 2rem; }
-.detail-card > p:not(.eyebrow) { margin: 1.25rem 0; color: #667085; line-height: 1.6; }
+.detail-card { position: relative; width: 100%; max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain; padding: 1.5rem; border-radius: 1.25rem 1.25rem 0 0; background: white; box-shadow: 0 -1rem 3rem rgb(15 23 42 / 18%); }
+.detail-card h2 { margin-bottom: .75rem; padding-right: 2rem; overflow-wrap: anywhere; }
+.detail-card > p:not(.eyebrow) { margin: 1.25rem 0; color: #667085; line-height: 1.6; overflow-wrap: anywhere; }
 .close-button { position: absolute; top: 1rem; right: 1rem; width: 2.5rem; height: 2.5rem; border: 0; border-radius: 50%; color: #475467; background: #f2f4f7; font-size: 1.5rem; cursor: pointer; }
 .status-label { display: inline-block; padding: .3rem .55rem; border-radius: 999px; color: #9a6700; background: #fff5d6; font-size: .75rem; font-weight: 750; }
 .status-label--completed { color: #176b4b; background: #dcf5e9; }
@@ -66,5 +66,5 @@ input:focus, textarea:focus, button:focus-visible, a:focus-visible { outline: 3p
   .task-panel { padding: 1.5rem; }
   .task-form { grid-template-columns: 1fr 1.4fr auto; align-items: end; }
   .detail-backdrop { align-items: stretch; justify-content: flex-end; }
-  .detail-card { width: min(28rem, 100%); padding: 2rem; border-radius: 0; }
+  .detail-card { width: min(28rem, 100%); max-height: 100dvh; padding: 2rem; border-radius: 0; }
 }
