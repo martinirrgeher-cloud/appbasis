@@ -1,4 +1,4 @@
-import { schema } from "@appbasis/database/schema";
+import { schema } from "./schema/index";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { admin, username } from "better-auth/plugins";

@@ -14,9 +14,8 @@
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
-    "db:generate": "pnpm --filter @appbasis/database db:generate",
-    "db:check": "pnpm --filter @appbasis/database db:check",
-    "test:database": "pnpm --filter @appbasis/database test",
+    "db:generate": "pnpm --filter @appbasis/identity db:generate",
+    "db:check": "pnpm --filter @appbasis/identity db:check",
     "test:identity": "pnpm --filter @appbasis/identity test",
     "reference:dev": "pnpm --filter @appbasis/reference dev"
   }
