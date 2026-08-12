@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import { InMemoryTaskRepository, type Task } from '../../../modules/tasks/src';
 
@@ -23,9 +23,62 @@ export function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string>();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [titleError, setTitleError] = useState('');
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const openerRef = useRef<HTMLButtonElement | null>(null);
 
   const selectedTask = selectedTaskId ? repository.findById(selectedTaskId) : undefined;
   const openCount = tasks.filter((task) => task.status === 'open').length;
+
+  useEffect(() => {
+    if (!selectedTaskId) {
+      return;
+    }
+
+    const dialog = dialogRef.current;
+    const opener = openerRef.current;
+    closeButtonRef.current?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setSelectedTaskId(undefined);
+        requestAnimationFrame(() => opener?.focus());
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialog) {
+        return;
+      }
+
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTaskId]);
 
   function refreshTasks() {
     setTasks(repository.list());
@@ -33,16 +86,30 @@ export function App() {
 
   function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (title.trim().length === 0) {
+      setTitleError('Bitte einen Titel eingeben.');
+      return;
+    }
+
     const task = repository.create({ title, description });
     setTitle('');
     setDescription('');
+    setTitleError('');
     setSelectedTaskId(task.id);
+    openerRef.current = null;
     refreshTasks();
   }
 
   function handleToggle(id: string) {
     repository.toggleStatus(id);
     refreshTasks();
+  }
+
+  function closeDetail() {
+    const opener = openerRef.current;
+    setSelectedTaskId(undefined);
+    requestAnimationFrame(() => opener?.focus());
   }
 
   return (
@@ -80,7 +147,21 @@ export function App() {
             </div>
 
             <form className="task-form" onSubmit={handleCreate}>
-              <label>Titel<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Neue Aufgabe" required /></label>
+              <label>
+                Titel
+                <input
+                  value={title}
+                  onChange={(event) => {
+                    setTitle(event.target.value);
+                    if (event.target.value.trim().length > 0) setTitleError('');
+                  }}
+                  placeholder="Neue Aufgabe"
+                  required
+                  aria-invalid={titleError ? true : undefined}
+                  aria-describedby={titleError ? 'task-title-error' : undefined}
+                />
+                {titleError && <small className="field-error" id="task-title-error" role="alert">{titleError}</small>}
+              </label>
               <label>Beschreibung <span>(optional)</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Kurze Notiz" rows={2} /></label>
               <button className="primary-button" type="submit">Aufgabe anlegen</button>
             </form>
@@ -91,7 +172,14 @@ export function App() {
                   <button className={`status-toggle status-toggle--${task.status}`} type="button" aria-label={`${task.title} als ${task.status === 'open' ? 'erledigt' : 'offen'} markieren`} onClick={() => handleToggle(task.id)}>
                     <span aria-hidden="true">{task.status === 'completed' ? '✓' : ''}</span>
                   </button>
-                  <button className="task-link" type="button" onClick={() => setSelectedTaskId(task.id)}>
+                  <button
+                    className="task-link"
+                    type="button"
+                    onClick={(event) => {
+                      openerRef.current = event.currentTarget;
+                      setSelectedTaskId(task.id);
+                    }}
+                  >
                     <strong>{task.title}</strong><span>{task.status === 'open' ? 'Offen' : 'Erledigt'}</span>
                   </button>
                 </li>
@@ -102,9 +190,17 @@ export function App() {
       </div>
 
       {selectedTask && (
-        <div className="detail-backdrop" role="presentation" onMouseDown={() => setSelectedTaskId(undefined)}>
-          <aside className="detail-card" role="dialog" aria-modal="true" aria-labelledby="detail-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="close-button" type="button" onClick={() => setSelectedTaskId(undefined)} aria-label="Detailansicht schließen">×</button>
+        <div className="detail-backdrop" role="presentation" onMouseDown={closeDetail}>
+          <aside
+            className="detail-card"
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="detail-title"
+            tabIndex={-1}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button ref={closeButtonRef} className="close-button" type="button" onClick={closeDetail} aria-label="Detailansicht schließen">×</button>
             <p className="eyebrow">Aufgabendetail</p>
             <h2 id="detail-title">{selectedTask.title}</h2>
             <span className={`status-label status-label--${selectedTask.status}`}>{selectedTask.status === 'open' ? 'Offen' : 'Erledigt'}</span>
