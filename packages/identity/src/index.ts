@@ -4,7 +4,6 @@ export type {
   CurrentIdentity,
   IdentityAccess,
   IdentityAction,
-  IdentityAuthProvider,
   IdentityOperation,
   IdentityOperationKind,
   IdentityPersistenceState,
