@@ -57,15 +57,9 @@ importers:
         specifier: 3.4.9
         version: 3.4.9
     devDependencies:
-      '@electric-sql/pglite':
-        specifier: 0.5.4
-        version: 0.5.4
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
-      drizzle-kit:
-        specifier: 0.31.10
-        version: 0.31.10
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -88,9 +82,15 @@ importers:
         specifier: 0.45.2
         version: 0.45.2(@cloudflare/workers-types@5.20260811.1)(@electric-sql/pglite@0.5.4)(kysely@0.29.5)(postgres@3.4.9)
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.4
+        version: 0.5.4
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
+      drizzle-kit:
+        specifier: 0.31.10
+        version: 0.31.10
       typescript:
         specifier: 5.9.3
         version: 5.9.3
