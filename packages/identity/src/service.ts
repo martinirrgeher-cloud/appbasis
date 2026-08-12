@@ -40,6 +40,7 @@ interface BetterAuthIdentityBackend {
     newPassword: string;
     revokeOtherSessions: true;
   }): Promise<AuthSession>;
+  getPasswordCredentialUpdatedAt?(identityId: string): Promise<Date | null>;
   getAccountStatus(identityId: string): Promise<AccountStatus>;
   disableIdentity(input: {
     identityId: string;
@@ -147,6 +148,34 @@ export class IdentityService {
       ) {
         const existing = await this.stateStore.find(pendingOrCompleted.identityId);
         if (existing !== null) {
+          if (pendingOrCompleted.completedAt === null) {
+            const operationCreatedAt = pendingOrCompleted.createdAt;
+            const readCredentialUpdatedAt =
+              this.authProvider.getPasswordCredentialUpdatedAt;
+            if (
+              operationCreatedAt === undefined ||
+              readCredentialUpdatedAt === undefined
+            ) {
+              throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+            }
+
+            let credentialUpdatedAt: Date | null;
+            try {
+              credentialUpdatedAt = await readCredentialUpdatedAt.call(
+                this.authProvider,
+                pendingOrCompleted.identityId,
+              );
+            } catch {
+              throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+            }
+            if (
+              credentialUpdatedAt === null ||
+              credentialUpdatedAt.getTime() <= operationCreatedAt.getTime()
+            ) {
+              throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+            }
+          }
+
           let recoveredSession: AuthSession;
           try {
             recoveredSession = await this.authProvider.signInWithUsername({
