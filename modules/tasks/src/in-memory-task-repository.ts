@@ -3,11 +3,10 @@ import type { TaskRepository } from './task-repository';
 
 export class InMemoryTaskRepository implements TaskRepository {
   readonly #tasks: Map<string, Task>;
-  #nextId: number;
+  #nextId = 1;
 
   constructor(initialTasks: readonly Task[] = []) {
     this.#tasks = new Map(initialTasks.map((task) => [task.id, task]));
-    this.#nextId = initialTasks.length + 1;
   }
 
   list(): readonly Task[] {
@@ -19,7 +18,12 @@ export class InMemoryTaskRepository implements TaskRepository {
   }
 
   create(input: CreateTaskInput): Task {
-    const task = createTask(input, String(this.#nextId++));
+    while (this.#tasks.has(String(this.#nextId))) {
+      this.#nextId += 1;
+    }
+
+    const task = createTask(input, String(this.#nextId));
+    this.#nextId += 1;
     this.#tasks.set(task.id, task);
     return task;
   }
