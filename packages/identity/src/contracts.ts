@@ -36,6 +36,7 @@ export interface IdentityOperation {
 }
 
 export interface IdentityStateStore {
+  findOperation(operationKey: string): Promise<IdentityOperation | null>;
   prepareOperation(input: {
     operationKey: string;
     kind: IdentityOperationKind;
