@@ -1,24 +1,22 @@
 name: Codex review notification
 
 on:
-  pull_request_review_comment:
+  pull_request_review:
     types:
-      - created
+      - submitted
   issue_comment:
     types:
       - created
 
 permissions:
-  contents: read
   pull-requests: write
 
 jobs:
   notify:
     name: Notify PR author
     if: >-
-      (github.event_name == 'pull_request_review_comment' &&
-       github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
-       github.event.comment.in_reply_to_id == null) ||
+      (github.event_name == 'pull_request_review' &&
+       github.event.review.user.login == 'chatgpt-codex-connector[bot]') ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != null &&
        github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
@@ -26,7 +24,7 @@ jobs:
     concurrency:
       group: >-
         codex-review-notify-${{ github.event.pull_request.number || github.event.issue.number }}-${{
-          github.event.comment.pull_request_review_id || github.event.comment.id
+          github.event.review.id || github.event.comment.id
         }}
       cancel-in-progress: false
     runs-on: ubuntu-24.04
@@ -40,31 +38,12 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login || github.event.issue.user.login }}
-          REVIEW_ID: ${{ github.event.comment.pull_request_review_id }}
+          REVIEW_ID: ${{ github.event.review.id }}
           CURRENT_COMMENT_ID: ${{ github.event.comment.id }}
         run: |
           set -euo pipefail
 
-          if [[ "${EVENT_NAME}" == "pull_request_review_comment" ]]; then
-            REVIEW_SUBMITTED_AT=""
-            for _ in $(seq 1 20); do
-              REVIEW="$(curl --fail-with-body --silent --show-error \
-                --header "Accept: application/vnd.github+json" \
-                --header "Authorization: Bearer ${GH_TOKEN}" \
-                --header "X-GitHub-Api-Version: 2022-11-28" \
-                "https://api.github.com/repos/${REPOSITORY}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}")"
-              REVIEW_SUBMITTED_AT="$(jq -r '.submitted_at // empty' <<<"${REVIEW}")"
-              if [[ -n "${REVIEW_SUBMITTED_AT}" ]]; then
-                break
-              fi
-              sleep 3
-            done
-
-            if [[ -z "${REVIEW_SUBMITTED_AT}" ]]; then
-              echo "Codex review ${REVIEW_ID} is not submitted yet; skip notification."
-              exit 0
-            fi
-
+          if [[ "${EVENT_NAME}" == "pull_request_review" ]]; then
             EVENT_KEY="review-${REVIEW_ID}"
           else
             EVENT_KEY="clean-${CURRENT_COMMENT_ID}"
