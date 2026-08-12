@@ -130,7 +130,9 @@ export class IdentityService {
     sessionToken: string;
     currentPassword: string;
     newPassword: string;
+    idempotencyKey: string;
   }): Promise<IdentityState> {
+    const idempotencyKey = requiredIdempotencyKey(input.idempotencyKey);
     const current = await this.getCurrentIdentity(input.sessionToken);
 
     if (current === null) {
@@ -138,7 +140,7 @@ export class IdentityService {
     }
 
     const operation = await this.stateStore.prepareOperation({
-      operationKey: `required-password-change:${current.identity.identityId}`,
+      operationKey: `required-password-change:${current.identity.identityId}:${idempotencyKey}`,
       kind: "required-password-change",
       identityId: current.identity.identityId,
     });
@@ -257,4 +259,12 @@ function optionalText(value: string | undefined): string | null {
     return null;
   }
   return requiredText(value, "contactEmail");
+}
+
+function requiredIdempotencyKey(value: string): string {
+  const normalized = requiredText(value, "idempotencyKey");
+  if (normalized.length > 128) {
+    throw new TypeError("idempotencyKey must not exceed 128 characters.");
+  }
+  return normalized;
 }
