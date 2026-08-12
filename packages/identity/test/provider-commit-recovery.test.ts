@@ -10,10 +10,13 @@ import type {
 import { IdentityService } from "../src/service";
 
 const now = new Date("2026-08-12T19:45:00.000Z");
+const credentialCreatedAt = new Date("2026-08-12T19:44:00.000Z");
+const credentialChangedAt = new Date("2026-08-12T19:45:01.000Z");
 const idempotencyKey = "88888888-8888-4888-8888-888888888888";
+const bypassIdempotencyKey = "99999999-9999-4999-8999-999999999999";
 
 describe("provider-committed password recovery", () => {
-  it("recovers only after the new password proves the identity", async () => {
+  it("recovers only after provider metadata proves a later credential update", async () => {
     const auth = new ProviderCommittedAuth();
     const state = new RecoveryStateStore();
     const service = new IdentityService(auth, state, () => now);
@@ -62,6 +65,45 @@ describe("provider-committed password recovery", () => {
     });
     expect(auth.passwordChangeCalls).toBe(1);
   });
+
+  it("does not complete a pending operation when the old temporary password still authenticates", async () => {
+    const auth = new ProviderCommittedAuth();
+    const state = new RecoveryStateStore();
+    const service = new IdentityService(auth, state, () => now);
+
+    const identity = await service.createInitialUser({
+      username: "provider.bypass",
+      temporaryPassword: "temporary",
+      displayName: "Provider Bypass",
+    });
+    const session = await service.signInWithUsername({
+      username: "provider.bypass",
+      password: "temporary",
+    });
+
+    await expect(
+      service.changeRequiredPassword({
+        sessionToken: session.sessionToken,
+        currentPassword: "wrong-current-password",
+        newPassword: "changed",
+        idempotencyKey: bypassIdempotencyKey,
+      }),
+    ).rejects.toMatchObject({ code: "PASSWORD_CHANGE_FAILED" });
+
+    await expect(
+      service.changeRequiredPassword({
+        sessionToken: "invalid-session",
+        currentPassword: "wrong-current-password",
+        newPassword: "temporary",
+        idempotencyKey: bypassIdempotencyKey,
+      }),
+    ).rejects.toMatchObject({ code: "SESSION_INVALID" });
+
+    await expect(state.find(identity.identityId)).resolves.toMatchObject({
+      mustChangePassword: true,
+    });
+    expect(auth.passwordChangeCalls).toBe(0);
+  });
 });
 
 class ProviderCommittedAuth {
@@ -70,6 +112,7 @@ class ProviderCommittedAuth {
 
   private readonly identityId = "identity-provider-commit";
   private password = "temporary";
+  private credentialUpdatedAt = credentialCreatedAt;
   private readonly sessions = new Set<string>();
   private completedPasswordOperation: string | null = null;
 
@@ -81,6 +124,7 @@ class ProviderCommittedAuth {
     temporaryPassword: string;
   }): Promise<{ identityId: string }> {
     this.password = input.temporaryPassword;
+    this.credentialUpdatedAt = credentialCreatedAt;
     return { identityId: this.identityId };
   }
 
@@ -113,6 +157,7 @@ class ProviderCommittedAuth {
       }
       this.passwordChangeCalls += 1;
       this.password = input.newPassword;
+      this.credentialUpdatedAt = credentialChangedAt;
       this.completedPasswordOperation = input.operationId;
       this.sessions.clear();
       this.sessions.add("replacement-session-token");
@@ -127,6 +172,10 @@ class ProviderCommittedAuth {
       identityId: this.identityId,
       sessionToken: "replacement-session-token",
     };
+  }
+
+  async getPasswordCredentialUpdatedAt(): Promise<Date> {
+    return this.credentialUpdatedAt;
   }
 
   async getAccountStatus(): Promise<"active"> {
@@ -161,6 +210,7 @@ class RecoveryStateStore implements IdentityStateStore {
       kind: input.kind,
       identityId: input.identityId,
       completedAt: null,
+      createdAt: now,
     };
     this.operations.set(input.operationKey, operation);
     return operation;
