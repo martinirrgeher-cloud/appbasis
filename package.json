@@ -17,6 +17,7 @@
     "db:generate": "pnpm --filter @appbasis/identity db:generate",
     "db:check": "pnpm --filter @appbasis/identity db:check",
     "test:identity": "pnpm --filter @appbasis/identity test",
+    "test:identity:e2e": "pnpm --filter @appbasis/identity test:e2e",
     "reference:dev": "pnpm --filter @appbasis/reference dev"
   }
 }
