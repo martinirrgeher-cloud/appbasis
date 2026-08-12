@@ -6,14 +6,16 @@ Phase 2A – Persistence + Identity Foundation
 
 ## Ziel
 
-Provider-entkoppeltes, lokal prüfbares Fundament für PostgreSQL-Persistenz und
+Von Fachmodulen entkoppeltes, lokal prüfbares Fundament für PostgreSQL-Persistenz und
 Benutzername-basierte Identity. Es existiert weiterhin weder ein Deployment
 noch eine produktive Datenbank- oder Auth-Konfiguration.
 
 ## Aktueller Stand
 
-- `packages/database` enthält das fachneutrale PostgreSQL-Schema auf Basis von
-  Drizzle ORM sowie eine versionierte Ausgangsmigration.
+- `packages/database` enthält ausschließlich fachneutrale PostgreSQL-Primitiven
+  auf Basis von Drizzle ORM.
+- `packages/identity` besitzt das Better-Auth- und AppBasis-Identity-Schema
+  sowie dessen versionierte Drizzle-Migrationen und reproduzierbare Snapshots.
 - Die unveränderten Better-Auth-Modelle `user`, `session`, `account` und
   `verification` wurden mit der offiziellen Better-Auth-CLI 1.6.27 für Drizzle
   erzeugt. Username- und technische Admin-Felder sind enthalten.
@@ -26,9 +28,11 @@ noch eine produktive Datenbank- oder Auth-Konfiguration.
 - Passwörter oder Passwort-Hashes werden nicht in AppBasis-eigenen Tabellen
   gespeichert. Better Auth hält Credential-Hashes ausschließlich in seiner
   `account`-Tabelle.
-- `packages/identity` definiert provider-neutrale Services für initiale
+- `packages/identity` definiert öffentliche AppBasis-Services für initiale
   Benutzeranlage, Username-Anmeldung, erzwungenen Passwortwechsel, aktuelle
-  Identity und Deaktivierung.
+  Identity und Deaktivierung. Better Auth bleibt eine interne Implementierung;
+  eine allgemeine Provider-Abstraktion wird ohne zweiten realen Provider oder
+  konkreten Wechselbedarf bewusst nicht veröffentlicht.
 - Eine einzige zentrale Funktion erzeugt aus dem normalisierten Benutzernamen
   eine gehashte technische Adresse unter der reservierten Domain `.invalid`.
   Diese Adresse ist kein Kontaktmerkmal und darf weder angezeigt noch für
