@@ -19,6 +19,8 @@ const describeWithPostgres = databaseUrl === undefined ? describe.skip : describ
 const baseURL = "http://localhost:3000";
 const temporaryPassword = "Temporary-password-42";
 const replacementPassword = "Replacement-password-84";
+const adminUsername = "phase2.admin";
+const adminPassword = "Phase2-admin-password-42";
 const idempotencyKeys = {
   firstPasswordChange: "66666666-6666-4666-8666-666666666666",
   durablePasswordChange: "77777777-7777-4777-8777-777777777777",
@@ -47,6 +49,7 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
         if (statement.trim() !== "") await client.unsafe(statement);
       }
     }
+    await backend.initializeAdmin();
   });
 
   afterAll(async () => {
@@ -69,7 +72,7 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     );
   });
 
-  it("validates username login, provisioning and the required first password change", async () => {
+  it("validates admin provisioning, username login and the required first password change", async () => {
     const identity = await service.createInitialUser({
       username: "phase.two_user",
       temporaryPassword,
@@ -97,8 +100,15 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
       newPassword: replacementPassword,
       idempotencyKey: idempotencyKeys.firstPasswordChange,
     });
-    expect(changed.mustChangePassword).toBe(false);
+    expect(changed.identity.mustChangePassword).toBe(false);
+    expect(changed.access).toBe("full");
+    expect(changed.sessionToken).not.toBe(first.sessionToken);
+    await expect(service.getCurrentIdentity(first.sessionToken)).resolves.toBeNull();
     await expect(service.getCurrentIdentity(other.sessionToken)).resolves.toBeNull();
+    await expect(service.getCurrentIdentity(changed.sessionToken)).resolves.toMatchObject({
+      access: "full",
+      identity: { identityId: identity.identityId, mustChangePassword: false },
+    });
     await expect(
       service.signInWithUsername({ username: "phase.two_user", password: temporaryPassword }),
     ).rejects.toMatchObject({ code: "AUTHENTICATION_FAILED" });
@@ -141,14 +151,19 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
       idempotencyKey: idempotencyKeys.durablePasswordChange,
     };
     await expect(service.changeRequiredPassword(passwordInput)).rejects.toThrow("ambiguous");
-    await expect(service.changeRequiredPassword(passwordInput)).resolves.toMatchObject({
-      identityId: identity.identityId,
-      mustChangePassword: false,
+    const recovered = await service.changeRequiredPassword(passwordInput);
+    expect(recovered).toMatchObject({
+      identity: { identityId: identity.identityId, mustChangePassword: false },
+      access: "full",
+    });
+    await expect(service.getCurrentIdentity(recovered.sessionToken)).resolves.toMatchObject({
+      access: "full",
+      identity: { identityId: identity.identityId },
     });
     expect(await backend.countPasswordChanges()).toBe(passwordChangesBeforeRetry + 1);
   });
 
-  it("disables accounts durably and terminates existing and future sessions", async () => {
+  it("disables accounts through Better Auth admin and terminates existing and future sessions", async () => {
     const identity = await service.createInitialUser({
       username: "disabled.user",
       temporaryPassword,
@@ -208,6 +223,7 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     const appBasisPayload = JSON.stringify({ operations, securityState });
     expect(appBasisPayload).not.toContain(temporaryPassword);
     expect(appBasisPayload).not.toContain(replacementPassword);
+    expect(appBasisPayload).not.toContain(adminPassword);
     expect(appBasisPayload).not.toContain("better-auth.session_token");
   });
 });
@@ -217,10 +233,33 @@ type AuthRuntime = ReturnType<typeof createBetterAuthRuntime>;
 
 class PostgresBetterAuthBackend {
   private completed = new Set<string>();
+  private passwordSessions = new Map<string, AuthSession>();
   private passwordChanges = 0;
   private disables = 0;
+  private adminCookie: string | null = null;
 
   constructor(private readonly auth: AuthRuntime, private readonly sql: SqlClient) {}
+
+  async initializeAdmin(): Promise<void> {
+    await this.auth.api.createUser({
+      body: {
+        email: "phase2-admin@identity.invalid",
+        password: adminPassword,
+        name: "Phase 2B Admin",
+        role: "admin",
+        data: {
+          username: adminUsername,
+          displayUsername: adminUsername,
+        },
+      },
+    });
+    const response = await this.request("/api/auth/sign-in/username", {
+      username: adminUsername,
+      password: adminPassword,
+    });
+    if (!response.ok) throw new Error("Better Auth admin sign-in failed");
+    this.adminCookie = sessionCookie(response);
+  }
 
   async createUsernameAccount(input: {
     operationId: string;
@@ -234,20 +273,23 @@ class PostgresBetterAuthBackend {
     `;
     if (existing[0] !== undefined) return { identityId: existing[0].id };
 
-    const identityId = randomUUID();
-    const context = await this.auth.$context;
-    const hash = await context.password.hash(input.temporaryPassword);
-    await this.sql.begin(async (transaction) => {
-      await transaction`
-        INSERT INTO "user" (id, name, email, username, display_username)
-        VALUES (${identityId}, ${input.displayName}, ${input.technicalEmail},
-                ${input.username}, ${input.username})
-      `;
-      await transaction`
-        INSERT INTO account (id, account_id, provider_id, user_id, password, updated_at)
-        VALUES (${randomUUID()}, ${identityId}, 'credential', ${identityId}, ${hash}, now())
-      `;
-    });
+    const response = await this.request(
+      "/api/auth/admin/create-user",
+      {
+        email: input.technicalEmail,
+        password: input.temporaryPassword,
+        name: input.displayName,
+        data: {
+          username: input.username,
+          displayUsername: input.username,
+        },
+      },
+      this.requireAdminCookie(),
+    );
+    if (!response.ok) throw new Error(`Better Auth admin create-user failed: ${response.status}`);
+    const body = (await response.json()) as { user?: { id?: string } };
+    const identityId = body.user?.id;
+    if (!identityId) throw new Error("Better Auth admin create-user returned no user id");
     this.completed.add(input.operationId);
     return { identityId };
   }
@@ -259,9 +301,7 @@ class PostgresBetterAuthBackend {
     });
     if (!response.ok) throw new Error("Better Auth sign-in failed");
     const body = (await response.json()) as { user: { id: string } };
-    const cookie = response.headers.get("set-cookie");
-    if (cookie === null) throw new Error("Better Auth did not create a session");
-    return { identityId: body.user.id, sessionToken: cookie.split(";", 1)[0] ?? cookie };
+    return { identityId: body.user.id, sessionToken: sessionCookie(response) };
   }
 
   async getSession(sessionToken: string): Promise<AuthSession | null> {
@@ -277,8 +317,10 @@ class PostgresBetterAuthBackend {
     currentPassword: string;
     newPassword: string;
     revokeOtherSessions: true;
-  }): Promise<void> {
-    if (this.completed.has(input.operationId)) return;
+  }): Promise<AuthSession> {
+    const completed = this.passwordSessions.get(input.operationId);
+    if (completed !== undefined) return completed;
+
     const response = await this.request(
       "/api/auth/change-password",
       {
@@ -289,8 +331,21 @@ class PostgresBetterAuthBackend {
       input.sessionToken,
     );
     if (!response.ok) throw new Error("Better Auth password change failed");
+    const body = (await response.json()) as {
+      token?: string | null;
+      user?: { id?: string };
+    };
+    if (!body.token || !body.user?.id) {
+      throw new Error("Better Auth password change returned no replacement session");
+    }
+    const replacement = {
+      identityId: body.user.id,
+      sessionToken: sessionCookie(response),
+    };
     this.completed.add(input.operationId);
+    this.passwordSessions.set(input.operationId, replacement);
     this.passwordChanges += 1;
+    return replacement;
   }
 
   async getAccountStatus(identityId: string): Promise<"active" | "disabled"> {
@@ -302,10 +357,12 @@ class PostgresBetterAuthBackend {
 
   async disableIdentity(input: { identityId: string; operationId: string }): Promise<void> {
     if (this.completed.has(input.operationId)) return;
-    await this.sql.begin(async (transaction) => {
-      await transaction`UPDATE "user" SET banned = true WHERE id = ${input.identityId}`;
-      await transaction`DELETE FROM session WHERE user_id = ${input.identityId}`;
-    });
+    const response = await this.request(
+      "/api/auth/admin/ban-user",
+      { userId: input.identityId, banReason: "AppBasis identity disabled" },
+      this.requireAdminCookie(),
+    );
+    if (!response.ok) throw new Error(`Better Auth admin ban-user failed: ${response.status}`);
     this.completed.add(input.operationId);
     this.disables += 1;
   }
@@ -327,6 +384,11 @@ class PostgresBetterAuthBackend {
 
   async countDisables(): Promise<number> {
     return this.disables;
+  }
+
+  private requireAdminCookie(): string {
+    if (this.adminCookie === null) throw new Error("Better Auth test admin is not initialized");
+    return this.adminCookie;
   }
 
   private request(
@@ -505,6 +567,12 @@ type StateRow = {
   disabled_at: Date | null;
   contact_email: string | null;
 };
+
+function sessionCookie(response: Response): string {
+  const cookie = response.headers.get("set-cookie");
+  if (cookie === null) throw new Error("Better Auth did not return a session cookie");
+  return cookie.split(";", 1)[0] ?? cookie;
+}
 
 function requiredRow<T>(rows: T[]): T {
   const row = rows[0];
