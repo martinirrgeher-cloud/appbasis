@@ -30,3 +30,14 @@ export const identitySecurityState = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
 );
+
+// Identity operations contain only stable reconciliation metadata. Provider
+// payloads and credentials remain exclusively within the auth provider.
+export const identityOperation = pgTable("appbasis_identity_operation", {
+  operationId: text("operation_id").primaryKey(),
+  operationKey: text("operation_key").notNull().unique(),
+  kind: text("kind").notNull(),
+  identityId: text("identity_id"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
