@@ -48,6 +48,9 @@ interface BetterAuthIdentityBackend {
   endSession(sessionToken: string): Promise<void>;
 }
 
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export function assertIdentityActionAllowed(
   current: CurrentIdentity,
   action: IdentityAction,
@@ -133,30 +136,42 @@ export class IdentityService {
     idempotencyKey: string;
   }): Promise<IdentityState> {
     const idempotencyKey = requiredIdempotencyKey(input.idempotencyKey);
-    const operationKey = await passwordChangeOperationKey(
-      input.sessionToken,
-      idempotencyKey,
-    );
-    const operation = await this.stateStore.prepareOperation({
-      operationKey,
-      kind: "required-password-change",
-      identityId: null,
-    });
-
-    if (operation.completedAt !== null && operation.identityId !== null) {
-      const existing = await this.stateStore.find(operation.identityId);
-      if (existing !== null) {
-        const accountStatus = await this.authProvider.getAccountStatus(
-          operation.identityId,
-        );
-        return withAccountStatus(existing, accountStatus);
-      }
-    }
-
+    const operationKey = `required-password-change:${idempotencyKey}`;
     const current = await this.getCurrentIdentity(input.sessionToken);
 
     if (current === null) {
+      const completed = await this.stateStore.findOperation(operationKey);
+      if (completed?.completedAt !== null && completed?.identityId !== null) {
+        const existing = await this.stateStore.find(completed.identityId);
+        if (existing !== null) {
+          const accountStatus = await this.authProvider.getAccountStatus(
+            completed.identityId,
+          );
+          return withAccountStatus(existing, accountStatus);
+        }
+      }
       throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+    }
+
+    const operation = await this.stateStore.prepareOperation({
+      operationKey,
+      kind: "required-password-change",
+      identityId: current.identity.identityId,
+    });
+    if (
+      operation.identityId !== null &&
+      operation.identityId !== current.identity.identityId
+    ) {
+      throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+    }
+    if (operation.completedAt !== null) {
+      const existing = await this.stateStore.find(current.identity.identityId);
+      if (existing !== null) {
+        const accountStatus = await this.authProvider.getAccountStatus(
+          current.identity.identityId,
+        );
+        return withAccountStatus(existing, accountStatus);
+      }
     }
     if (!current.identity.mustChangePassword) {
       throw new IdentityError(
@@ -272,24 +287,9 @@ function optionalText(value: string | undefined): string | null {
 }
 
 function requiredIdempotencyKey(value: string): string {
-  const normalized = requiredText(value, "idempotencyKey");
-  if (normalized.length > 128) {
-    throw new TypeError("idempotencyKey must not exceed 128 characters.");
+  const normalized = requiredText(value, "idempotencyKey").toLowerCase();
+  if (!UUID_V4_PATTERN.test(normalized)) {
+    throw new TypeError("idempotencyKey must be a UUID v4.");
   }
   return normalized;
-}
-
-async function passwordChangeOperationKey(
-  sessionToken: string,
-  idempotencyKey: string,
-): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(`appbasis-password-change-session\u0000${sessionToken}`),
-  );
-  const sessionFingerprint = Array.from(new Uint8Array(digest), (value) =>
-    value.toString(16).padStart(2, "0"),
-  ).join("");
-
-  return `required-password-change:${sessionFingerprint}:${idempotencyKey}`;
 }
