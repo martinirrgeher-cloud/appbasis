@@ -86,6 +86,7 @@ describe("IdentityService", () => {
       sessionToken: current.sessionToken,
       currentPassword: "temporary-value",
       newPassword: "new-value",
+      idempotencyKey: "first-login-password-change",
     });
 
     expect(auth.passwordChangeRevokesOtherSessions).toBe(true);
@@ -177,14 +178,18 @@ describe("IdentityService", () => {
       sessionToken: "session-token",
       currentPassword: "temporary",
       newPassword: "changed",
+      idempotencyKey: "  password-provider-retry  ",
     };
 
     await expect(service.changeRequiredPassword(input)).rejects.toMatchObject({
       code: "PASSWORD_CHANGE_FAILED",
     });
-    await expect(service.changeRequiredPassword(input)).resolves.toMatchObject({
-      mustChangePassword: false,
-    });
+    await expect(
+      service.changeRequiredPassword({
+        ...input,
+        idempotencyKey: "password-provider-retry",
+      }),
+    ).resolves.toMatchObject({ mustChangePassword: false });
     expect(auth.passwordChangeCalls).toBe(1);
   });
 
@@ -202,6 +207,7 @@ describe("IdentityService", () => {
       sessionToken: "session-token",
       currentPassword: "temporary",
       newPassword: "changed",
+      idempotencyKey: "password-state-commit",
     };
 
     await expect(service.changeRequiredPassword(input)).rejects.toThrow(
@@ -212,6 +218,56 @@ describe("IdentityService", () => {
     });
     expect(auth.passwordChangeCalls).toBe(1);
   });
+
+  it("does not reconcile a later password request with a different key", async () => {
+    const auth = new FakeAuthProvider();
+    const state = new FakeStateStore();
+    const service = new IdentityService(auth, state, () => fixedNow);
+    await service.createInitialUser({
+      username: "password.later",
+      temporaryPassword: "temporary",
+      displayName: "Retry",
+    });
+    const original = {
+      sessionToken: "session-token",
+      currentPassword: "temporary",
+      newPassword: "changed",
+      idempotencyKey: "original-request",
+    };
+
+    await expect(
+      service.changeRequiredPassword(original),
+    ).resolves.toMatchObject({ mustChangePassword: false });
+    await expect(
+      service.changeRequiredPassword({
+        ...original,
+        currentPassword: "changed",
+        newPassword: "changed-again",
+        idempotencyKey: "later-request",
+      }),
+    ).rejects.toMatchObject({ code: "PASSWORD_CHANGE_NOT_REQUIRED" });
+    expect(auth.passwordChangeCalls).toBe(1);
+  });
+
+  it.each(["", "   ", "x".repeat(129)])(
+    "rejects invalid password-change idempotency key %j",
+    async (idempotencyKey) => {
+      const service = new IdentityService(
+        new FakeAuthProvider(),
+        new FakeStateStore(),
+        () => fixedNow,
+      );
+
+      await expect(
+        service.changeRequiredPassword({
+          sessionToken: "session-token",
+          currentPassword: "temporary",
+          newPassword: "changed",
+          idempotencyKey,
+        }),
+      ).rejects.toBeInstanceOf(TypeError);
+    },
+  );
 
   it("reconciles an ambiguous disablement audit commit without disabling twice", async () => {
     const auth = new FakeAuthProvider();
