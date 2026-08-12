@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import type {
   AuthSession,
-  IdentityAuthProvider,
   IdentityOperation,
   IdentityOperationKind,
   IdentityPersistenceState,
@@ -189,6 +188,31 @@ describe("IdentityService", () => {
     expect(auth.passwordChangeCalls).toBe(1);
   });
 
+  it("reconciles an ambiguous password-state commit without changing twice", async () => {
+    const auth = new FakeAuthProvider();
+    const state = new FakeStateStore();
+    const service = new IdentityService(auth, state, () => fixedNow);
+    await service.createInitialUser({
+      username: "password.commit",
+      temporaryPassword: "temporary",
+      displayName: "Retry",
+    });
+    state.failAfterNextCompletion = true;
+    const input = {
+      sessionToken: "session-token",
+      currentPassword: "temporary",
+      newPassword: "changed",
+    };
+
+    await expect(service.changeRequiredPassword(input)).rejects.toThrow(
+      "ambiguous committed response",
+    );
+    await expect(service.changeRequiredPassword(input)).resolves.toMatchObject({
+      mustChangePassword: false,
+    });
+    expect(auth.passwordChangeCalls).toBe(1);
+  });
+
   it("reconciles an ambiguous disablement audit commit without disabling twice", async () => {
     const auth = new FakeAuthProvider();
     const state = new FakeStateStore();
@@ -210,7 +234,7 @@ describe("IdentityService", () => {
   });
 });
 
-class FakeAuthProvider implements IdentityAuthProvider {
+class FakeAuthProvider {
   createdTechnicalEmail: string | null = null;
   passwordChangeRevokesOtherSessions = false;
   endedSessions: string[] = [];
