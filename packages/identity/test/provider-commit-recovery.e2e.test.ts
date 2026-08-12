@@ -98,6 +98,46 @@ describeWithPostgres("provider-committed password recovery with real PostgreSQL"
     });
     expect(backend.passwordChanges).toBe(passwordChangesBefore + 1);
   });
+
+  it("rejects recovery when a failed provider change leaves the temporary password active", async () => {
+    const identity = await service.createInitialUser({
+      username: "provider.bypass",
+      temporaryPassword,
+      displayName: "Provider Bypass",
+    });
+    const session = await service.signInWithUsername({
+      username: "provider.bypass",
+      password: temporaryPassword,
+    });
+    const idempotencyKey = randomUUID();
+    const passwordChangesBefore = backend.passwordChanges;
+
+    await expect(
+      service.changeRequiredPassword({
+        sessionToken: session.sessionToken,
+        currentPassword: "wrong-current-password",
+        newPassword: replacementPassword,
+        idempotencyKey,
+      }),
+    ).rejects.toMatchObject({ code: "PASSWORD_CHANGE_FAILED" });
+
+    await expect(
+      service.changeRequiredPassword({
+        sessionToken: "invalid-session",
+        currentPassword: "wrong-current-password",
+        newPassword: temporaryPassword,
+        idempotencyKey,
+      }),
+    ).rejects.toMatchObject({ code: "SESSION_INVALID" });
+
+    await expect(state.find(identity.identityId)).resolves.toMatchObject({
+      mustChangePassword: true,
+    });
+    await expect(
+      service.signInWithUsername({ username: "provider.bypass", password: temporaryPassword }),
+    ).resolves.toMatchObject({ access: "password-change-required" });
+    expect(backend.passwordChanges).toBe(passwordChangesBefore);
+  });
 });
 
 type SqlClient = ReturnType<typeof createPostgresDatabase>["client"];
@@ -243,6 +283,16 @@ class ProviderCommitBetterAuthBackend {
     return replacement;
   }
 
+  async getPasswordCredentialUpdatedAt(identityId: string): Promise<Date | null> {
+    const rows = await this.sql<{ updated_at: Date }[]>`
+      SELECT updated_at
+      FROM account
+      WHERE user_id = ${identityId} AND provider_id = 'credential'
+      LIMIT 1
+    `;
+    return rows[0]?.updated_at ?? null;
+  }
+
   async getAccountStatus(identityId: string): Promise<"active" | "disabled"> {
     const rows = await this.sql<{ banned: boolean | null }[]>`
       SELECT banned FROM "user" WHERE id = ${identityId}
@@ -287,7 +337,7 @@ class ProviderCommitPostgresStateStore implements IdentityStateStore {
 
   async findOperation(operationKey: string): Promise<IdentityOperation | null> {
     const rows = await this.sql<OperationRow[]>`
-      SELECT operation_id, operation_key, kind, identity_id, completed_at
+      SELECT operation_id, operation_key, kind, identity_id, completed_at, created_at
       FROM appbasis_identity_operation
       WHERE operation_key = ${operationKey}
     `;
@@ -306,7 +356,7 @@ class ProviderCommitPostgresStateStore implements IdentityStateStore {
       VALUES (${operationId}, ${input.operationKey}, ${input.kind}, ${input.identityId})
       ON CONFLICT (operation_key) DO UPDATE
         SET operation_key = EXCLUDED.operation_key
-      RETURNING operation_id, operation_key, kind, identity_id, completed_at
+      RETURNING operation_id, operation_key, kind, identity_id, completed_at, created_at
     `;
     return operationFromRow(requiredRow(rows));
   }
@@ -417,6 +467,7 @@ type OperationRow = {
   kind: string;
   identity_id: string | null;
   completed_at: Date | null;
+  created_at: Date;
 };
 
 type StateRow = {
@@ -451,6 +502,7 @@ function operationFromRow(row: OperationRow): IdentityOperation {
     kind: row.kind as IdentityOperationKind,
     identityId: row.identity_id,
     completedAt: row.completed_at,
+    createdAt: row.created_at,
   };
 }
 
