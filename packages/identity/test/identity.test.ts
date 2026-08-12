@@ -97,11 +97,13 @@ describe("IdentityService", () => {
     });
 
     expect(auth.passwordChangeRevokesOtherSessions).toBe(true);
-    expect(changed.mustChangePassword).toBe(false);
-    expect(changed.passwordChangedAt).toEqual(fixedNow);
-
-    const afterChange = await service.getCurrentIdentity(current.sessionToken);
-    expect(afterChange?.access).toBe("full");
+    expect(changed.identity.mustChangePassword).toBe(false);
+    expect(changed.identity.passwordChangedAt).toEqual(fixedNow);
+    expect(changed.access).toBe("full");
+    expect(changed.sessionToken).toBe("replacement-session-token");
+    await expect(
+      service.getCurrentIdentity(changed.sessionToken),
+    ).resolves.toMatchObject({ access: "full" });
   });
 
   it("rejects a disabled identity and ends the newly created session", async () => {
@@ -196,7 +198,11 @@ describe("IdentityService", () => {
         ...input,
         idempotencyKey: idempotencyKeys.providerRetry,
       }),
-    ).resolves.toMatchObject({ mustChangePassword: false });
+    ).resolves.toMatchObject({
+      identity: { mustChangePassword: false },
+      access: "full",
+      sessionToken: "replacement-session-token",
+    });
     expect(auth.passwordChangeCalls).toBe(1);
   });
 
@@ -222,7 +228,8 @@ describe("IdentityService", () => {
     );
     auth.sessionValid = false;
     await expect(service.changeRequiredPassword(input)).resolves.toMatchObject({
-      mustChangePassword: false,
+      identity: { mustChangePassword: false },
+      access: "full",
     });
     expect(auth.passwordChangeCalls).toBe(1);
   });
@@ -245,10 +252,14 @@ describe("IdentityService", () => {
 
     await expect(
       service.changeRequiredPassword(original),
-    ).resolves.toMatchObject({ mustChangePassword: false });
+    ).resolves.toMatchObject({
+      identity: { mustChangePassword: false },
+      access: "full",
+    });
     await expect(
       service.changeRequiredPassword({
         ...original,
+        sessionToken: "replacement-session-token",
         currentPassword: "changed",
         newPassword: "changed-again",
         idempotencyKey: idempotencyKeys.later,
@@ -328,6 +339,7 @@ class FakeAuthProvider {
     if (this.signInError !== null) {
       throw this.signInError;
     }
+    this.sessionValid = true;
     return { identityId: this.identityId, sessionToken: "session-token" };
   }
 
@@ -340,7 +352,7 @@ class FakeAuthProvider {
   async changePassword(input: {
     operationId: string;
     revokeOtherSessions: true;
-  }): Promise<void> {
+  }): Promise<AuthSession> {
     this.passwordChangeRevokesOtherSessions = input.revokeOtherSessions;
     if (!this.completedOperations.has(input.operationId)) {
       this.passwordChangeCalls += 1;
@@ -350,6 +362,10 @@ class FakeAuthProvider {
       this.failAfterNextPasswordChange = false;
       throw new Error("ambiguous provider response");
     }
+    return {
+      identityId: this.identityId,
+      sessionToken: "replacement-session-token",
+    };
   }
 
   async getAccountStatus(): Promise<"active" | "disabled"> {
