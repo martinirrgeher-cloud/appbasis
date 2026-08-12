@@ -33,6 +33,7 @@ export interface IdentityOperation {
   kind: IdentityOperationKind;
   identityId: string | null;
   completedAt: Date | null;
+  createdAt?: Date;
 }
 
 export interface IdentityStateStore {
