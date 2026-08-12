@@ -39,7 +39,8 @@ interface BetterAuthIdentityBackend {
     currentPassword: string;
     newPassword: string;
     revokeOtherSessions: true;
-  }): Promise<void>;
+  }): Promise<AuthSession>;
+  getPasswordCredentialUpdatedAt?(identityId: string): Promise<Date | null>;
   getAccountStatus(identityId: string): Promise<AccountStatus>;
   disableIdentity(input: {
     identityId: string;
@@ -47,6 +48,9 @@ interface BetterAuthIdentityBackend {
   }): Promise<void>;
   endSession(sessionToken: string): Promise<void>;
 }
+
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function assertIdentityActionAllowed(
   current: CurrentIdentity,
@@ -131,22 +135,100 @@ export class IdentityService {
     currentPassword: string;
     newPassword: string;
     idempotencyKey: string;
-  }): Promise<IdentityState> {
+  }): Promise<CurrentIdentity> {
     const idempotencyKey = requiredIdempotencyKey(input.idempotencyKey);
+    const operationKey = `required-password-change:${idempotencyKey}`;
     const current = await this.getCurrentIdentity(input.sessionToken);
 
     if (current === null) {
+      const pendingOrCompleted = await this.stateStore.findOperation(operationKey);
+      if (
+        pendingOrCompleted !== null &&
+        pendingOrCompleted.identityId !== null
+      ) {
+        const existing = await this.stateStore.find(pendingOrCompleted.identityId);
+        if (existing !== null) {
+          if (pendingOrCompleted.completedAt === null) {
+            const operationCreatedAt = pendingOrCompleted.createdAt;
+            const readCredentialUpdatedAt =
+              this.authProvider.getPasswordCredentialUpdatedAt;
+            if (
+              operationCreatedAt === undefined ||
+              readCredentialUpdatedAt === undefined
+            ) {
+              throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+            }
+
+            let credentialUpdatedAt: Date | null;
+            try {
+              credentialUpdatedAt = await readCredentialUpdatedAt.call(
+                this.authProvider,
+                pendingOrCompleted.identityId,
+              );
+            } catch {
+              throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+            }
+            if (
+              credentialUpdatedAt === null ||
+              credentialUpdatedAt.getTime() <= operationCreatedAt.getTime()
+            ) {
+              throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+            }
+          }
+
+          let recoveredSession: AuthSession;
+          try {
+            recoveredSession = await this.authProvider.signInWithUsername({
+              username: existing.username,
+              password: input.newPassword,
+            });
+          } catch {
+            throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+          }
+          if (recoveredSession.identityId !== pendingOrCompleted.identityId) {
+            throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+          }
+          if (pendingOrCompleted.completedAt === null) {
+            await this.stateStore.markPasswordChanged(
+              pendingOrCompleted.identityId,
+              this.now(),
+              pendingOrCompleted.operationId,
+            );
+          } else if (existing.mustChangePassword) {
+            throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+          }
+          return this.resolveSession(
+            recoveredSession.sessionToken,
+            recoveredSession.identityId,
+          );
+        }
+      }
       throw new IdentityError("SESSION_INVALID", "The session is invalid.");
     }
 
     const operation = await this.stateStore.prepareOperation({
-      operationKey: `required-password-change:${current.identity.identityId}:${idempotencyKey}`,
+      operationKey,
       kind: "required-password-change",
       identityId: current.identity.identityId,
     });
+    if (
+      operation.identityId !== null &&
+      operation.identityId !== current.identity.identityId
+    ) {
+      throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+    }
     if (operation.completedAt !== null) {
       const existing = await this.stateStore.find(current.identity.identityId);
-      if (existing !== null) return withAccountStatus(existing, "active");
+      if (existing !== null) {
+        const accountStatus = await this.authProvider.getAccountStatus(
+          current.identity.identityId,
+        );
+        return {
+          identity: withAccountStatus(existing, accountStatus),
+          sessionToken: current.sessionToken,
+          access: existing.mustChangePassword ? "password-change-required" : "full",
+        };
+      }
     }
     if (!current.identity.mustChangePassword) {
       throw new IdentityError(
@@ -155,8 +237,9 @@ export class IdentityService {
       );
     }
 
+    let replacementSession: AuthSession;
     try {
-      await this.authProvider.changePassword({
+      replacementSession = await this.authProvider.changePassword({
         operationId: operation.operationId,
         sessionToken: input.sessionToken,
         currentPassword: input.currentPassword,
@@ -169,13 +252,22 @@ export class IdentityService {
         "The password could not be changed.",
       );
     }
+    if (replacementSession.identityId !== current.identity.identityId) {
+      throw new IdentityError(
+        "PASSWORD_CHANGE_FAILED",
+        "The password could not be changed.",
+      );
+    }
 
-    const state = await this.stateStore.markPasswordChanged(
+    await this.stateStore.markPasswordChanged(
       current.identity.identityId,
       this.now(),
       operation.operationId,
     );
-    return withAccountStatus(state, "active");
+    return this.resolveSession(
+      replacementSession.sessionToken,
+      replacementSession.identityId,
+    );
   }
 
   async getCurrentIdentity(
@@ -262,9 +354,9 @@ function optionalText(value: string | undefined): string | null {
 }
 
 function requiredIdempotencyKey(value: string): string {
-  const normalized = requiredText(value, "idempotencyKey");
-  if (normalized.length > 128) {
-    throw new TypeError("idempotencyKey must not exceed 128 characters.");
+  const normalized = requiredText(value, "idempotencyKey").toLowerCase();
+  if (!UUID_V4_PATTERN.test(normalized)) {
+    throw new TypeError("idempotencyKey must be a UUID v4.");
   }
   return normalized;
 }

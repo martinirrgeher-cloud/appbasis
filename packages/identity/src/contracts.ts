@@ -33,9 +33,11 @@ export interface IdentityOperation {
   kind: IdentityOperationKind;
   identityId: string | null;
   completedAt: Date | null;
+  createdAt?: Date;
 }
 
 export interface IdentityStateStore {
+  findOperation(operationKey: string): Promise<IdentityOperation | null>;
   prepareOperation(input: {
     operationKey: string;
     kind: IdentityOperationKind;
