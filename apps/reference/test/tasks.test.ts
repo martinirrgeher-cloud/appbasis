@@ -33,4 +33,19 @@ describe('InMemoryTaskRepository', () => {
     expect(() => repository.create({ title: '   ' })).toThrow('A task title is required.');
     expect(repository.list()).toHaveLength(0);
   });
+
+  it('does not overwrite seeded tasks when allocating numeric ids', () => {
+    const repository = new InMemoryTaskRepository([
+      { id: '1', title: 'Erste Aufgabe', description: '', status: 'open' },
+      { id: '3', title: 'Dritte Aufgabe', description: '', status: 'completed' },
+    ]);
+
+    const second = repository.create({ title: 'Zweite Aufgabe' });
+    const fourth = repository.create({ title: 'Vierte Aufgabe' });
+
+    expect(second.id).toBe('2');
+    expect(fourth.id).toBe('4');
+    expect(repository.findById('3')?.title).toBe('Dritte Aufgabe');
+    expect(repository.list()).toHaveLength(4);
+  });
 });
