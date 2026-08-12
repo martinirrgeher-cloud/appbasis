@@ -10,10 +10,13 @@
   },
   "scripts": {
     "verify:toolchain": "node ./tooling/verify-toolchain.mjs",
-    "verify:repo": "pnpm run verify:toolchain && git diff --check",
-    "build": "pnpm --filter @appbasis/reference build",
-    "typecheck": "pnpm --filter @appbasis/reference typecheck",
-    "test": "pnpm --filter @appbasis/reference test",
+    "verify:repo": "pnpm run verify:toolchain && pnpm run db:check && git diff --check",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "db:generate": "pnpm --filter @appbasis/identity db:generate",
+    "db:check": "pnpm --filter @appbasis/identity db:check",
+    "test:identity": "pnpm --filter @appbasis/identity test",
     "reference:dev": "pnpm --filter @appbasis/reference dev"
   }
 }
