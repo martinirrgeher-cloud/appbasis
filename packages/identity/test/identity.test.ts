@@ -11,6 +11,13 @@ import { assertIdentityActionAllowed, IdentityService } from "../src/service";
 import { technicalEmailForUsername } from "../src/technical-email";
 
 const fixedNow = new Date("2026-08-11T12:00:00.000Z");
+const idempotencyKeys = {
+  firstLogin: "11111111-1111-4111-8111-111111111111",
+  providerRetry: "22222222-2222-4222-8222-222222222222",
+  stateRetry: "33333333-3333-4333-8333-333333333333",
+  original: "44444444-4444-4444-8444-444444444444",
+  later: "55555555-5555-4555-8555-555555555555",
+} as const;
 
 describe("technical username abstraction", () => {
   it("creates a deterministic non-deliverable email without exposing the username", async () => {
@@ -86,7 +93,7 @@ describe("IdentityService", () => {
       sessionToken: current.sessionToken,
       currentPassword: "temporary-value",
       newPassword: "new-value",
-      idempotencyKey: "first-login-password-change",
+      idempotencyKey: idempotencyKeys.firstLogin,
     });
 
     expect(auth.passwordChangeRevokesOtherSessions).toBe(true);
@@ -178,7 +185,7 @@ describe("IdentityService", () => {
       sessionToken: "session-token",
       currentPassword: "temporary",
       newPassword: "changed",
-      idempotencyKey: "  password-provider-retry  ",
+      idempotencyKey: `  ${idempotencyKeys.providerRetry}  `,
     };
 
     await expect(service.changeRequiredPassword(input)).rejects.toMatchObject({
@@ -187,13 +194,13 @@ describe("IdentityService", () => {
     await expect(
       service.changeRequiredPassword({
         ...input,
-        idempotencyKey: "password-provider-retry",
+        idempotencyKey: idempotencyKeys.providerRetry,
       }),
     ).resolves.toMatchObject({ mustChangePassword: false });
     expect(auth.passwordChangeCalls).toBe(1);
   });
 
-  it("reconciles an ambiguous password-state commit without changing twice", async () => {
+  it("reconciles an ambiguous password-state commit after the session becomes invalid", async () => {
     const auth = new FakeAuthProvider();
     const state = new FakeStateStore();
     const service = new IdentityService(auth, state, () => fixedNow);
@@ -207,12 +214,13 @@ describe("IdentityService", () => {
       sessionToken: "session-token",
       currentPassword: "temporary",
       newPassword: "changed",
-      idempotencyKey: "password-state-commit",
+      idempotencyKey: idempotencyKeys.stateRetry,
     };
 
     await expect(service.changeRequiredPassword(input)).rejects.toThrow(
       "ambiguous committed response",
     );
+    auth.sessionValid = false;
     await expect(service.changeRequiredPassword(input)).resolves.toMatchObject({
       mustChangePassword: false,
     });
@@ -232,7 +240,7 @@ describe("IdentityService", () => {
       sessionToken: "session-token",
       currentPassword: "temporary",
       newPassword: "changed",
-      idempotencyKey: "original-request",
+      idempotencyKey: idempotencyKeys.original,
     };
 
     await expect(
@@ -243,13 +251,13 @@ describe("IdentityService", () => {
         ...original,
         currentPassword: "changed",
         newPassword: "changed-again",
-        idempotencyKey: "later-request",
+        idempotencyKey: idempotencyKeys.later,
       }),
     ).rejects.toMatchObject({ code: "PASSWORD_CHANGE_NOT_REQUIRED" });
     expect(auth.passwordChangeCalls).toBe(1);
   });
 
-  it.each(["", "   ", "x".repeat(129)])(
+  it.each(["", "   ", "predictable-key", "11111111-1111-1111-8111-111111111111"])(
     "rejects invalid password-change idempotency key %j",
     async (idempotencyKey) => {
       const service = new IdentityService(
@@ -296,6 +304,7 @@ class FakeAuthProvider {
   endedSessions: string[] = [];
   signInError: Error | null = null;
   accountStatus: "active" | "disabled" = "active";
+  sessionValid = true;
   createCalls = 0;
   passwordChangeCalls = 0;
   disableCalls = 0;
@@ -323,7 +332,9 @@ class FakeAuthProvider {
   }
 
   async getSession(sessionToken: string): Promise<AuthSession | null> {
-    return { identityId: this.identityId, sessionToken };
+    return this.sessionValid
+      ? { identityId: this.identityId, sessionToken }
+      : null;
   }
 
   async changePassword(input: {
@@ -362,6 +373,10 @@ class FakeStateStore implements IdentityStateStore {
   private state: IdentityPersistenceState | null = null;
   private operations = new Map<string, IdentityOperation>();
   failAfterNextCompletion = false;
+
+  async findOperation(operationKey: string): Promise<IdentityOperation | null> {
+    return this.operations.get(operationKey) ?? null;
+  }
 
   async prepareOperation(input: {
     operationKey: string;
