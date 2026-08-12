@@ -284,13 +284,14 @@ class ProviderCommitBetterAuthBackend {
   }
 
   async getPasswordCredentialUpdatedAt(identityId: string): Promise<Date | null> {
-    const rows = await this.sql<{ updated_at: Date }[]>`
+    const rows = await this.sql<{ updated_at: Date | string }[]>`
       SELECT updated_at
       FROM account
       WHERE user_id = ${identityId} AND provider_id = 'credential'
       LIMIT 1
     `;
-    return rows[0]?.updated_at ?? null;
+    const updatedAt = rows[0]?.updated_at;
+    return updatedAt === undefined ? null : toDate(updatedAt);
   }
 
   async getAccountStatus(identityId: string): Promise<"active" | "disabled"> {
@@ -467,7 +468,7 @@ type OperationRow = {
   kind: string;
   identity_id: string | null;
   completed_at: Date | null;
-  created_at: Date;
+  created_at: Date | string;
 };
 
 type StateRow = {
@@ -495,6 +496,10 @@ function requiredRow<T>(rows: T[]): T {
   return row;
 }
 
+function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
 function operationFromRow(row: OperationRow): IdentityOperation {
   return {
     operationId: row.operation_id,
@@ -502,7 +507,7 @@ function operationFromRow(row: OperationRow): IdentityOperation {
     kind: row.kind as IdentityOperationKind,
     identityId: row.identity_id,
     completedAt: row.completed_at,
-    createdAt: row.created_at,
+    createdAt: toDate(row.created_at),
   };
 }
 
