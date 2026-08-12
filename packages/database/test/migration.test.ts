@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  identityOperation,
   identitySecurityState,
   person,
   schema,
@@ -36,6 +37,7 @@ describe("versioned PostgreSQL migrations", () => {
 
     expect(result.rows.map(({ table_name }) => table_name)).toEqual([
       "account",
+      "appbasis_identity_operation",
       "appbasis_identity_security_state",
       "appbasis_person",
       "session",
@@ -52,7 +54,7 @@ describe("versioned PostgreSQL migrations", () => {
        from drizzle.__drizzle_migrations`,
     );
 
-    expect(result.rows).toEqual([{ migration_count: 1 }]);
+    expect(result.rows).toEqual([{ migration_count: 2 }]);
   });
 
   it("keeps a person independent from an authentication identity", async () => {
@@ -155,6 +157,41 @@ describe("versioned PostgreSQL migrations", () => {
         table_name: "appbasis_identity_security_state",
         column_name: "password_changed_at",
       },
+    ]);
+  });
+
+  it("stores only provider-neutral reconciliation metadata for identity operations", async () => {
+    await database.insert(identityOperation).values({
+      operationId: "operation-1",
+      operationKey: "provision:technical.user",
+      kind: "provision",
+      identityId: null,
+    });
+
+    const operations = await database.select().from(identityOperation);
+    expect(operations).toMatchObject([
+      {
+        operationId: "operation-1",
+        operationKey: "provision:technical.user",
+        kind: "provision",
+        identityId: null,
+        completedAt: null,
+      },
+    ]);
+
+    const columns = await client.query<{ column_name: string }>(
+      `select column_name
+       from information_schema.columns
+       where table_name = 'appbasis_identity_operation'
+       order by column_name`,
+    );
+    expect(columns.rows.map(({ column_name }) => column_name)).toEqual([
+      "completed_at",
+      "created_at",
+      "identity_id",
+      "kind",
+      "operation_id",
+      "operation_key",
     ]);
   });
 });
