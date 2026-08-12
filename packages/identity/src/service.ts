@@ -39,7 +39,7 @@ interface BetterAuthIdentityBackend {
     currentPassword: string;
     newPassword: string;
     revokeOtherSessions: true;
-  }): Promise<void>;
+  }): Promise<AuthSession>;
   getAccountStatus(identityId: string): Promise<AccountStatus>;
   disableIdentity(input: {
     identityId: string;
@@ -134,7 +134,7 @@ export class IdentityService {
     currentPassword: string;
     newPassword: string;
     idempotencyKey: string;
-  }): Promise<IdentityState> {
+  }): Promise<CurrentIdentity> {
     const idempotencyKey = requiredIdempotencyKey(input.idempotencyKey);
     const operationKey = `required-password-change:${idempotencyKey}`;
     const current = await this.getCurrentIdentity(input.sessionToken);
@@ -147,11 +147,23 @@ export class IdentityService {
         completed.identityId !== null
       ) {
         const existing = await this.stateStore.find(completed.identityId);
-        if (existing !== null) {
-          const accountStatus = await this.authProvider.getAccountStatus(
-            completed.identityId,
+        if (existing !== null && !existing.mustChangePassword) {
+          let recoveredSession: AuthSession;
+          try {
+            recoveredSession = await this.authProvider.signInWithUsername({
+              username: existing.username,
+              password: input.newPassword,
+            });
+          } catch {
+            throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+          }
+          if (recoveredSession.identityId !== completed.identityId) {
+            throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+          }
+          return this.resolveSession(
+            recoveredSession.sessionToken,
+            recoveredSession.identityId,
           );
-          return withAccountStatus(existing, accountStatus);
         }
       }
       throw new IdentityError("SESSION_INVALID", "The session is invalid.");
@@ -174,7 +186,11 @@ export class IdentityService {
         const accountStatus = await this.authProvider.getAccountStatus(
           current.identity.identityId,
         );
-        return withAccountStatus(existing, accountStatus);
+        return {
+          identity: withAccountStatus(existing, accountStatus),
+          sessionToken: current.sessionToken,
+          access: existing.mustChangePassword ? "password-change-required" : "full",
+        };
       }
     }
     if (!current.identity.mustChangePassword) {
@@ -184,8 +200,9 @@ export class IdentityService {
       );
     }
 
+    let replacementSession: AuthSession;
     try {
-      await this.authProvider.changePassword({
+      replacementSession = await this.authProvider.changePassword({
         operationId: operation.operationId,
         sessionToken: input.sessionToken,
         currentPassword: input.currentPassword,
@@ -198,13 +215,22 @@ export class IdentityService {
         "The password could not be changed.",
       );
     }
+    if (replacementSession.identityId !== current.identity.identityId) {
+      throw new IdentityError(
+        "PASSWORD_CHANGE_FAILED",
+        "The password could not be changed.",
+      );
+    }
 
-    const state = await this.stateStore.markPasswordChanged(
+    await this.stateStore.markPasswordChanged(
       current.identity.identityId,
       this.now(),
       operation.operationId,
     );
-    return withAccountStatus(state, "active");
+    return this.resolveSession(
+      replacementSession.sessionToken,
+      replacementSession.identityId,
+    );
   }
 
   async getCurrentIdentity(
