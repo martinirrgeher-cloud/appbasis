@@ -22,35 +22,6 @@ export interface AuthSession {
   sessionToken: string;
 }
 
-export interface IdentityAuthProvider {
-  createUsernameAccount(input: {
-    operationId: string;
-    username: string;
-    displayName: string;
-    technicalEmail: string;
-    temporaryPassword: string;
-  }): Promise<{ identityId: string }>;
-  signInWithUsername(input: {
-    username: string;
-    password: string;
-  }): Promise<AuthSession>;
-  getSession(sessionToken: string): Promise<AuthSession | null>;
-  changePassword(input: {
-    operationId: string;
-    sessionToken: string;
-    currentPassword: string;
-    newPassword: string;
-    revokeOtherSessions: true;
-  }): Promise<void>;
-  getAccountStatus(identityId: string): Promise<AccountStatus>;
-  // Must reject future sign-ins and revoke all active provider sessions.
-  disableIdentity(input: {
-    identityId: string;
-    operationId: string;
-  }): Promise<void>;
-  endSession(sessionToken: string): Promise<void>;
-}
-
 export type IdentityOperationKind =
   | "provision"
   | "required-password-change"
