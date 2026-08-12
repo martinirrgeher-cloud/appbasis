@@ -140,14 +140,13 @@ export class IdentityService {
     const current = await this.getCurrentIdentity(input.sessionToken);
 
     if (current === null) {
-      const completed = await this.stateStore.findOperation(operationKey);
+      const pendingOrCompleted = await this.stateStore.findOperation(operationKey);
       if (
-        completed !== null &&
-        completed.completedAt !== null &&
-        completed.identityId !== null
+        pendingOrCompleted !== null &&
+        pendingOrCompleted.identityId !== null
       ) {
-        const existing = await this.stateStore.find(completed.identityId);
-        if (existing !== null && !existing.mustChangePassword) {
+        const existing = await this.stateStore.find(pendingOrCompleted.identityId);
+        if (existing !== null) {
           let recoveredSession: AuthSession;
           try {
             recoveredSession = await this.authProvider.signInWithUsername({
@@ -157,7 +156,16 @@ export class IdentityService {
           } catch {
             throw new IdentityError("SESSION_INVALID", "The session is invalid.");
           }
-          if (recoveredSession.identityId !== completed.identityId) {
+          if (recoveredSession.identityId !== pendingOrCompleted.identityId) {
+            throw new IdentityError("SESSION_INVALID", "The session is invalid.");
+          }
+          if (pendingOrCompleted.completedAt === null) {
+            await this.stateStore.markPasswordChanged(
+              pendingOrCompleted.identityId,
+              this.now(),
+              pendingOrCompleted.operationId,
+            );
+          } else if (existing.mustChangePassword) {
             throw new IdentityError("SESSION_INVALID", "The session is invalid.");
           }
           return this.resolveSession(
