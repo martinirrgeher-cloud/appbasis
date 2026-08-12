@@ -50,25 +50,32 @@ export class IdentityService {
     const displayName = requiredText(input.displayName, "displayName");
     const contactEmail = optionalText(input.contactEmail);
     const technicalEmail = await technicalEmailForUsername(username);
+    const operation = await this.stateStore.prepareOperation({
+      operationKey: `provision:${username}`,
+      kind: "provision",
+      identityId: null,
+    });
+    if (operation.completedAt !== null && operation.identityId !== null) {
+      const existing = await this.stateStore.find(operation.identityId);
+      if (existing !== null) return withAccountStatus(existing, "active");
+    }
     const created = await this.authProvider.createUsernameAccount({
+      operationId: operation.operationId,
       username,
       displayName,
       technicalEmail,
       temporaryPassword: input.temporaryPassword,
     });
 
-    try {
-      const state = await this.stateStore.create({
-        identityId: created.identityId,
-        username,
-        displayName,
-        contactEmail,
-      });
-      return withAccountStatus(state, "active");
-    } catch (error) {
-      await this.authProvider.discardUnactivatedIdentity(created.identityId);
-      throw error;
-    }
+    const state = await this.stateStore.completeProvisioning({
+      operationId: operation.operationId,
+      identityId: created.identityId,
+      username,
+      displayName,
+      contactEmail,
+      completedAt: this.now(),
+    });
+    return withAccountStatus(state, "active");
   }
 
   async signInWithUsername(input: {
@@ -108,8 +115,19 @@ export class IdentityService {
       );
     }
 
+    const operation = await this.stateStore.prepareOperation({
+      operationKey: `required-password-change:${current.identity.identityId}`,
+      kind: "required-password-change",
+      identityId: current.identity.identityId,
+    });
+    if (operation.completedAt !== null) {
+      const existing = await this.stateStore.find(current.identity.identityId);
+      if (existing !== null) return withAccountStatus(existing, "active");
+    }
+
     try {
       await this.authProvider.changePassword({
+        operationId: operation.operationId,
         sessionToken: input.sessionToken,
         currentPassword: input.currentPassword,
         newPassword: input.newPassword,
@@ -125,6 +143,7 @@ export class IdentityService {
     const state = await this.stateStore.markPasswordChanged(
       current.identity.identityId,
       this.now(),
+      operation.operationId,
     );
     return withAccountStatus(state, "active");
   }
@@ -142,8 +161,24 @@ export class IdentityService {
   }
 
   async disableIdentity(identityId: string): Promise<IdentityState> {
-    await this.authProvider.disableIdentity(identityId);
-    const state = await this.stateStore.recordDisabled(identityId, this.now());
+    const operation = await this.stateStore.prepareOperation({
+      operationKey: `disable:${identityId}`,
+      kind: "disable",
+      identityId,
+    });
+    if (operation.completedAt !== null) {
+      const existing = await this.stateStore.find(identityId);
+      if (existing !== null) return withAccountStatus(existing, "disabled");
+    }
+    await this.authProvider.disableIdentity({
+      identityId,
+      operationId: operation.operationId,
+    });
+    const state = await this.stateStore.recordDisabled(
+      identityId,
+      this.now(),
+      operation.operationId,
+    );
     return withAccountStatus(state, "disabled");
   }
 
