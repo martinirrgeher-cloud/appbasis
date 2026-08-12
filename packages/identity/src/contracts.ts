@@ -24,20 +24,19 @@ export interface AuthSession {
 
 export interface IdentityAuthProvider {
   createUsernameAccount(input: {
+    operationId: string;
     username: string;
     displayName: string;
     technicalEmail: string;
     temporaryPassword: string;
   }): Promise<{ identityId: string }>;
-  // Compensation is permitted only while initial provisioning has not created
-  // an AppBasis identity state or any historical business relationship.
-  discardUnactivatedIdentity(identityId: string): Promise<void>;
   signInWithUsername(input: {
     username: string;
     password: string;
   }): Promise<AuthSession>;
   getSession(sessionToken: string): Promise<AuthSession | null>;
   changePassword(input: {
+    operationId: string;
     sessionToken: string;
     currentPassword: string;
     newPassword: string;
@@ -45,11 +44,40 @@ export interface IdentityAuthProvider {
   }): Promise<void>;
   getAccountStatus(identityId: string): Promise<AccountStatus>;
   // Must reject future sign-ins and revoke all active provider sessions.
-  disableIdentity(identityId: string): Promise<void>;
+  disableIdentity(input: {
+    identityId: string;
+    operationId: string;
+  }): Promise<void>;
   endSession(sessionToken: string): Promise<void>;
 }
 
+export type IdentityOperationKind =
+  | "provision"
+  | "required-password-change"
+  | "disable";
+
+export interface IdentityOperation {
+  operationId: string;
+  operationKey: string;
+  kind: IdentityOperationKind;
+  identityId: string | null;
+  completedAt: Date | null;
+}
+
 export interface IdentityStateStore {
+  prepareOperation(input: {
+    operationKey: string;
+    kind: IdentityOperationKind;
+    identityId: string | null;
+  }): Promise<IdentityOperation>;
+  completeProvisioning(input: {
+    operationId: string;
+    identityId: string;
+    username: string;
+    displayName: string;
+    contactEmail: string | null;
+    completedAt: Date;
+  }): Promise<IdentityPersistenceState>;
   create(input: {
     identityId: string;
     username: string;
@@ -60,10 +88,12 @@ export interface IdentityStateStore {
   markPasswordChanged(
     identityId: string,
     changedAt: Date,
+    operationId: string,
   ): Promise<IdentityPersistenceState>;
   recordDisabled(
     identityId: string,
     disabledAt: Date,
+    operationId: string,
   ): Promise<IdentityPersistenceState>;
 }
 
