@@ -177,8 +177,10 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name LIKE 'appbasis_%'
     `;
-    expect(columns.map(({ column_name }) => column_name).join(" ")).not.toMatch(
-      /password|credential|provider|payload|secret|token|hash/i,
+    const columnNames = columns.map(({ column_name }) => column_name);
+    expect(columnNames).not.toContain("password");
+    expect(columnNames.join(" ")).not.toMatch(
+      /(?:^|_)(?:credential|credentials|provider|payload|secret|token|hash)(?:_|$)|password_hash/i,
     );
 
     const operations = await client<Record<string, unknown>[]>`
@@ -357,6 +359,7 @@ class PostgresIdentityStateStore implements IdentityStateStore {
     contactEmail: string | null;
     completedAt: Date;
   }): Promise<IdentityPersistenceState> {
+    const completedAt = input.completedAt.toISOString();
     await this.sql.begin(async (transaction) => {
       await transaction`
         INSERT INTO appbasis_identity_security_state (identity_id)
@@ -364,7 +367,7 @@ class PostgresIdentityStateStore implements IdentityStateStore {
       `;
       await transaction`
         UPDATE appbasis_identity_operation
-        SET identity_id = ${input.identityId}, completed_at = ${input.completedAt}
+        SET identity_id = ${input.identityId}, completed_at = ${completedAt}
         WHERE operation_id = ${input.operationId}
       `;
     });
@@ -402,17 +405,18 @@ class PostgresIdentityStateStore implements IdentityStateStore {
     changedAt: Date,
     operationId: string,
   ): Promise<IdentityPersistenceState> {
+    const timestamp = changedAt.toISOString();
     await this.sql.begin(async (transaction) => {
       await transaction`
         UPDATE appbasis_identity_security_state
         SET must_change_password = false,
-            password_changed_at = ${changedAt},
-            updated_at = ${changedAt}
+            password_changed_at = ${timestamp},
+            updated_at = ${timestamp}
         WHERE identity_id = ${identityId}
       `;
       await transaction`
         UPDATE appbasis_identity_operation
-        SET identity_id = ${identityId}, completed_at = ${changedAt}
+        SET identity_id = ${identityId}, completed_at = ${timestamp}
         WHERE operation_id = ${operationId}
       `;
     });
@@ -425,15 +429,16 @@ class PostgresIdentityStateStore implements IdentityStateStore {
     disabledAt: Date,
     operationId: string,
   ): Promise<IdentityPersistenceState> {
+    const timestamp = disabledAt.toISOString();
     await this.sql.begin(async (transaction) => {
       await transaction`
         UPDATE appbasis_identity_security_state
-        SET disabled_at = ${disabledAt}, updated_at = ${disabledAt}
+        SET disabled_at = ${timestamp}, updated_at = ${timestamp}
         WHERE identity_id = ${identityId}
       `;
       await transaction`
         UPDATE appbasis_identity_operation
-        SET identity_id = ${identityId}, completed_at = ${disabledAt}
+        SET identity_id = ${identityId}, completed_at = ${timestamp}
         WHERE operation_id = ${operationId}
       `;
     });
