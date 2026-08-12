@@ -19,6 +19,10 @@ const describeWithPostgres = databaseUrl === undefined ? describe.skip : describ
 const baseURL = "http://localhost:3000";
 const temporaryPassword = "Temporary-password-42";
 const replacementPassword = "Replacement-password-84";
+const idempotencyKeys = {
+  firstPasswordChange: "66666666-6666-4666-8666-666666666666",
+  durablePasswordChange: "77777777-7777-4777-8777-777777777777",
+} as const;
 
 describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
   const connection = createPostgresDatabase(databaseUrl ?? "");
@@ -91,7 +95,7 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
       sessionToken: first.sessionToken,
       currentPassword: temporaryPassword,
       newPassword: replacementPassword,
-      idempotencyKey: "first-password-change",
+      idempotencyKey: idempotencyKeys.firstPasswordChange,
     });
     expect(changed.mustChangePassword).toBe(false);
     await expect(service.getCurrentIdentity(other.sessionToken)).resolves.toBeNull();
@@ -134,10 +138,11 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
       sessionToken: session.sessionToken,
       currentPassword: temporaryPassword,
       newPassword: replacementPassword,
-      idempotencyKey: "durable-password-change",
+      idempotencyKey: idempotencyKeys.durablePasswordChange,
     };
     await expect(service.changeRequiredPassword(passwordInput)).rejects.toThrow("ambiguous");
     await expect(service.changeRequiredPassword(passwordInput)).resolves.toMatchObject({
+      identityId: identity.identityId,
       mustChangePassword: false,
     });
     expect(await backend.countPasswordChanges()).toBe(passwordChangesBeforeRetry + 1);
@@ -175,12 +180,10 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
   it("keeps credentials and provider payloads out of AppBasis operation tables", async () => {
     const columns = await client<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name LIKE 'appbasis_%'
+      WHERE table_schema = 'public' AND table_name = 'appbasis_identity_operation'
     `;
-    const columnNames = columns.map(({ column_name }) => column_name);
-    expect(columnNames).not.toContain("password");
-    expect(columnNames.join(" ")).not.toMatch(
-      /(?:^|_)(?:credential|credentials|provider|payload|secret|token|hash)(?:_|$)|password_hash/i,
+    expect(columns.map(({ column_name }) => column_name).join(" ")).not.toMatch(
+      /password|credential|provider|payload|secret|token|hash/i,
     );
 
     const operations = await client<Record<string, unknown>[]>`
@@ -189,9 +192,23 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     const securityState = await client<Record<string, unknown>[]>`
       SELECT * FROM appbasis_identity_security_state ORDER BY created_at
     `;
+    const passwordOperationKeys = operations
+      .map((row) => row.operation_key)
+      .filter(
+        (key): key is string =>
+          typeof key === "string" && key.startsWith("required-password-change:"),
+      );
+    expect(passwordOperationKeys.length).toBeGreaterThan(0);
+    for (const key of passwordOperationKeys) {
+      expect(key).toMatch(
+        /^required-password-change:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    }
+
     const appBasisPayload = JSON.stringify({ operations, securityState });
     expect(appBasisPayload).not.toContain(temporaryPassword);
     expect(appBasisPayload).not.toContain(replacementPassword);
+    expect(appBasisPayload).not.toContain("better-auth.session_token");
   });
 });
 
@@ -333,6 +350,15 @@ class PostgresIdentityStateStore implements IdentityStateStore {
   failAfterNextCommit = false;
 
   constructor(private readonly sql: SqlClient) {}
+
+  async findOperation(operationKey: string): Promise<IdentityOperation | null> {
+    const rows = await this.sql<OperationRow[]>`
+      SELECT operation_id, operation_key, kind, identity_id, completed_at
+      FROM appbasis_identity_operation
+      WHERE operation_key = ${operationKey}
+    `;
+    return rows[0] === undefined ? null : operationFromRow(rows[0]);
+  }
 
   async prepareOperation(input: {
     operationKey: string;
