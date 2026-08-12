@@ -1,9 +1,9 @@
 name: Codex review notification
 
 on:
-  pull_request_review:
+  pull_request_review_comment:
     types:
-      - submitted
+      - created
   issue_comment:
     types:
       - created
@@ -16,8 +16,8 @@ jobs:
   notify:
     name: Notify PR author
     if: >-
-      (github.event_name == 'pull_request_review' &&
-       github.event.review.user.login == 'chatgpt-codex-connector[bot]') ||
+      (github.event_name == 'pull_request_review_comment' &&
+       github.event.comment.user.login == 'chatgpt-codex-connector[bot]') ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != null &&
        github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
@@ -29,13 +29,44 @@ jobs:
       - name: Mention PR author
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login || github.event.issue.user.login }}
+          REVIEW_ID: ${{ github.event.comment.pull_request_review_id }}
+          CURRENT_COMMENT_ID: ${{ github.event.comment.id }}
         run: |
           set -euo pipefail
 
-          BODY="@${PR_AUTHOR} Codex-Code-Review fertig. Du kannst jetzt in ChatGPT **fertig** schreiben."
+          if [[ "${EVENT_NAME}" == "pull_request_review_comment" ]]; then
+            REVIEW_COMMENTS="$(curl --fail-with-body --silent --show-error \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPOSITORY}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}/comments?per_page=100")"
+            FIRST_COMMENT_ID="$(jq -r 'map(.id) | min' <<<"${REVIEW_COMMENTS}")"
+            if [[ "${CURRENT_COMMENT_ID}" != "${FIRST_COMMENT_ID}" ]]; then
+              echo "A notification for this Codex review is handled by its first review comment."
+              exit 0
+            fi
+            EVENT_KEY="review-${REVIEW_ID}"
+          else
+            EVENT_KEY="clean-${CURRENT_COMMENT_ID}"
+          fi
+
+          MARKER="<!-- codex-review-notify:${EVENT_KEY} -->"
+          EXISTING_COMMENTS="$(curl --fail-with-body --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100")"
+
+          if jq -e --arg marker "${MARKER}" 'any(.[]; ((.body // "") | contains($marker)))' <<<"${EXISTING_COMMENTS}" >/dev/null; then
+            echo "Notification already exists for ${EVENT_KEY}."
+            exit 0
+          fi
+
+          BODY="@${PR_AUTHOR} Codex-Code-Review fertig. Du kannst jetzt in ChatGPT **fertig** schreiben.\n\n${MARKER}"
           PAYLOAD="$(jq -n --arg body "$BODY" '{body: $body}')"
 
           curl --fail-with-body --silent --show-error \
