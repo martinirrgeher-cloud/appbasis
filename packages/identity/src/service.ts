@@ -141,7 +141,11 @@ export class IdentityService {
 
     if (current === null) {
       const completed = await this.stateStore.findOperation(operationKey);
-      if (completed?.completedAt !== null && completed?.identityId !== null) {
+      if (
+        completed !== null &&
+        completed.completedAt !== null &&
+        completed.identityId !== null
+      ) {
         const existing = await this.stateStore.find(completed.identityId);
         if (existing !== null) {
           const accountStatus = await this.authProvider.getAccountStatus(
