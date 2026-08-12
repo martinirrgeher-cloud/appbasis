@@ -34,7 +34,14 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       "/sign-in/email",
       "/is-username-available",
     ],
-    plugins: [username(), admin()],
+    plugins: [
+      username({
+        minUsernameLength: 3,
+        maxUsernameLength: 30,
+        usernameValidator: (value) => /^[a-z0-9._]+$/.test(value),
+      }),
+      admin(),
+    ],
     telemetry: {
       enabled: false,
     },
