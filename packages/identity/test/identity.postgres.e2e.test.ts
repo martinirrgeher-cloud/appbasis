@@ -17,6 +17,7 @@ const describeWithPostgres = databaseUrl === undefined ? describe.skip : describ
 const baseURL = "http://localhost:3000";
 const temporaryPassword = "Temporary-password-42";
 const replacementPassword = "Replacement-password-84";
+const contactEmail = "phase.two@example.test";
 const adminUsername = "phase2.admin";
 const adminPassword = "Phase2-admin-password-42";
 const idempotencyKeys = {
@@ -82,15 +83,18 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     );
   });
 
-  it("validates admin provisioning, username login and the required first password change through the production runtime", async () => {
+  it("validates admin provisioning, contact profile persistence, username login and the required first password change through the production runtime", async () => {
     const service = runtime.service;
     const identity = await service.createInitialUser({
       username: "phase.two_user",
       temporaryPassword,
       displayName: "Phase Two User",
+      contactEmail,
     });
     expect(identity).toMatchObject({
       username: "phase.two_user",
+      contactEmail,
+      personId: expect.any(String),
       mustChangePassword: true,
       accountStatus: "active",
     });
@@ -104,6 +108,11 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
       password: temporaryPassword,
     });
     expect(first.access).toBe("password-change-required");
+    expect(first.identity).toMatchObject({
+      identityId: identity.identityId,
+      contactEmail,
+      personId: identity.personId,
+    });
 
     const changed = await service.changeRequiredPassword({
       sessionToken: first.sessionToken,
@@ -112,20 +121,32 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
       idempotencyKey: idempotencyKeys.firstPasswordChange,
     });
     expect(changed.identity.mustChangePassword).toBe(false);
+    expect(changed.identity).toMatchObject({
+      contactEmail,
+      personId: identity.personId,
+    });
     expect(changed.access).toBe("full");
     expect(changed.sessionToken).not.toBe(first.sessionToken);
     await expect(service.getCurrentIdentity(first.sessionToken)).resolves.toBeNull();
     await expect(service.getCurrentIdentity(other.sessionToken)).resolves.toBeNull();
     await expect(service.getCurrentIdentity(changed.sessionToken)).resolves.toMatchObject({
       access: "full",
-      identity: { identityId: identity.identityId, mustChangePassword: false },
+      identity: {
+        identityId: identity.identityId,
+        contactEmail,
+        personId: identity.personId,
+        mustChangePassword: false,
+      },
     });
     await expect(
       service.signInWithUsername({ username: "phase.two_user", password: temporaryPassword }),
     ).rejects.toMatchObject({ code: "AUTHENTICATION_FAILED" });
     await expect(
       service.signInWithUsername({ username: "phase.two_user", password: replacementPassword }),
-    ).resolves.toMatchObject({ access: "full" });
+    ).resolves.toMatchObject({
+      access: "full",
+      identity: { contactEmail, personId: identity.personId },
+    });
   });
 
   it.each(["ab", "contains-dash", "contains space", "x".repeat(31)])(
@@ -146,17 +167,30 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     });
     const state = new AmbiguousCommitStateStore(client);
     const service = new IdentityService(backend, state);
+    const durableContactEmail = "durable.retry@example.test";
 
     state.failAfterNextCommit = true;
     const input = {
       username: "durable.retry",
       temporaryPassword,
       displayName: "Durable Retry",
+      contactEmail: durableContactEmail,
     };
     await expect(service.createInitialUser(input)).rejects.toThrow("ambiguous");
     const identity = await service.createInitialUser(input);
-    expect(identity).toMatchObject({ username: "durable.retry", mustChangePassword: true });
+    expect(identity).toMatchObject({
+      username: "durable.retry",
+      contactEmail: durableContactEmail,
+      personId: expect.any(String),
+      mustChangePassword: true,
+    });
     expect(await backend.countUsers("durable.retry")).toBe(1);
+    const personRows = await client<{ count: number }[]>`
+      SELECT count(*)::int AS count
+      FROM appbasis_person
+      WHERE contact_email = ${durableContactEmail}
+    `;
+    expect(personRows[0]?.count).toBe(1);
 
     const session = await service.signInWithUsername({
       username: "durable.retry",
@@ -173,12 +207,21 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     await expect(service.changeRequiredPassword(passwordInput)).rejects.toThrow("ambiguous");
     const recovered = await service.changeRequiredPassword(passwordInput);
     expect(recovered).toMatchObject({
-      identity: { identityId: identity.identityId, mustChangePassword: false },
+      identity: {
+        identityId: identity.identityId,
+        contactEmail: durableContactEmail,
+        personId: identity.personId,
+        mustChangePassword: false,
+      },
       access: "full",
     });
     await expect(service.getCurrentIdentity(recovered.sessionToken)).resolves.toMatchObject({
       access: "full",
-      identity: { identityId: identity.identityId },
+      identity: {
+        identityId: identity.identityId,
+        contactEmail: durableContactEmail,
+        personId: identity.personId,
+      },
     });
     expect(backend.passwordChanges).toBe(passwordChangesBeforeRetry + 1);
   });
