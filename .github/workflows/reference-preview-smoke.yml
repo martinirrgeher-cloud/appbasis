@@ -8,6 +8,13 @@ on:
         required: true
         default: false
         type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/reference-preview-smoke.yml
+      - .github/workflows/reference-preview-deploy.yml
+      - tooling/reference-preview-smoke.mjs
 
 permissions:
   contents: read
@@ -24,7 +31,6 @@ jobs:
       APPBASIS_SMOKE_USERNAME: ${{ secrets.APPBASIS_SMOKE_USERNAME }}
       APPBASIS_SMOKE_PASSWORD: ${{ secrets.APPBASIS_SMOKE_PASSWORD }}
       APPBASIS_SMOKE_NEW_PASSWORD: ${{ secrets.APPBASIS_SMOKE_NEW_PASSWORD }}
-      APPBASIS_SMOKE_MUTATE: ${{ inputs.mutate && '1' || '0' }}
 
     steps:
       - name: Check out repository
@@ -37,5 +43,25 @@ jobs:
         with:
           node-version: 24.19.0
 
-      - name: Run Reference preview smoke
+      - name: Validate automated Demo v0.1 smoke identity
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          test "$APPBASIS_SMOKE_USERNAME" = 'demo.user' || { echo 'Automated Demo v0.1 smoke requires demo.user.' >&2; exit 1; }
+          test -n "$APPBASIS_SMOKE_PASSWORD" || { echo 'Missing protected Demo v0.1 smoke credential.' >&2; exit 1; }
+          echo "::add-mask::$APPBASIS_SMOKE_PASSWORD"
+          if [ -n "$APPBASIS_SMOKE_NEW_PASSWORD" ]; then
+            echo "::add-mask::$APPBASIS_SMOKE_NEW_PASSWORD"
+          fi
+
+      - name: Run manual Reference preview smoke
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          APPBASIS_SMOKE_MUTATE: ${{ inputs.mutate && '1' || '0' }}
+        run: node ./tooling/reference-preview-smoke.mjs
+
+      - name: Run automated Demo v0.1 smoke after smoke-contract changes
+        if: github.event_name == 'push'
+        env:
+          APPBASIS_SMOKE_MUTATE: '1'
         run: node ./tooling/reference-preview-smoke.mjs

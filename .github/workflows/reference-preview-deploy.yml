@@ -99,6 +99,28 @@ jobs:
           APPBASIS_SMOKE_MUTATE: '0'
         run: node ./tooling/reference-preview-smoke.mjs
 
+      - name: Validate protected demo smoke credential
+        shell: bash
+        env:
+          APPBASIS_SMOKE_PASSWORD: ${{ secrets.APPBASIS_SMOKE_PASSWORD }}
+          APPBASIS_SMOKE_NEW_PASSWORD: ${{ secrets.APPBASIS_SMOKE_NEW_PASSWORD }}
+        run: |
+          test -n "$APPBASIS_SMOKE_PASSWORD" || { echo 'Missing protected demo smoke credential.' >&2; exit 1; }
+          echo "::add-mask::$APPBASIS_SMOKE_PASSWORD"
+          if [ -n "$APPBASIS_SMOKE_NEW_PASSWORD" ]; then
+            echo "::add-mask::$APPBASIS_SMOKE_NEW_PASSWORD"
+          fi
+
+      - name: Run automated Demo v0.1 acceptance smoke
+        env:
+          APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
+          APPBASIS_TRUSTED_PREVIEW_ORIGIN: ${{ vars.APPBASIS_PREVIEW_URL }}
+          APPBASIS_SMOKE_USERNAME: demo.user
+          APPBASIS_SMOKE_PASSWORD: ${{ secrets.APPBASIS_SMOKE_PASSWORD }}
+          APPBASIS_SMOKE_NEW_PASSWORD: ${{ secrets.APPBASIS_SMOKE_NEW_PASSWORD }}
+          APPBASIS_SMOKE_MUTATE: '1'
+        run: node ./tooling/reference-preview-smoke.mjs
+
       - name: Remove generated deployment config
         if: always()
         shell: bash
