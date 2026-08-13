@@ -47,10 +47,12 @@ jobs:
         with:
           node-version: 24.19.0
 
-      - name: Validate protected smoke credential
+      - name: Validate automated Demo v0.1 smoke identity
+        if: github.event_name == 'push'
         shell: bash
         run: |
-          test -n "$APPBASIS_SMOKE_PASSWORD" || { echo 'Missing protected smoke credential.' >&2; exit 1; }
+          test "$APPBASIS_SMOKE_USERNAME" = 'demo.user' || { echo 'Automated Demo v0.1 smoke requires demo.user.' >&2; exit 1; }
+          test -n "$APPBASIS_SMOKE_PASSWORD" || { echo 'Missing protected Demo v0.1 smoke credential.' >&2; exit 1; }
           echo "::add-mask::$APPBASIS_SMOKE_PASSWORD"
           if [ -n "$APPBASIS_SMOKE_NEW_PASSWORD" ]; then
             echo "::add-mask::$APPBASIS_SMOKE_NEW_PASSWORD"
@@ -65,6 +67,5 @@ jobs:
       - name: Run automated Demo v0.1 smoke after smoke-contract changes
         if: github.event_name == 'push'
         env:
-          APPBASIS_SMOKE_USERNAME: demo.user
           APPBASIS_SMOKE_MUTATE: '1'
         run: node ./tooling/reference-preview-smoke.mjs
