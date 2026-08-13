@@ -77,6 +77,14 @@ describe('Reference demo user bootstrap configuration', () => {
       label: 'blank temporary password',
       mutate: { temporaryPassword: '   ' },
     },
+    {
+      label: 'too-short temporary password',
+      mutate: { temporaryPassword: '1234567' },
+    },
+    {
+      label: 'too-long temporary password',
+      mutate: { temporaryPassword: 'x'.repeat(129) },
+    },
   ])('rejects $label without reflecting credentials in the error', ({ mutate }) => {
     const secret = 'this-secret-must-never-appear-in-errors';
     const temporaryPassword = 'this-password-must-never-appear-in-errors';
