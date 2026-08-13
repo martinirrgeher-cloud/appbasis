@@ -60,8 +60,17 @@ jobs:
           echo "::add-mask::$APPBASIS_HYPERDRIVE_ID"
           echo "::add-mask::$APPBASIS_PREVIEW_URL"
 
-      - name: Render ephemeral deployment config
+      - name: Render and validate ephemeral deployment config
         run: node ./tooling/reference-preview-deploy-config.mjs
+
+      - name: Require existing Reference Worker
+        working-directory: apps/reference
+        shell: bash
+        run: |
+          if ! pnpm exec wrangler deployments list --name appbasis-reference --json >/dev/null 2>&1; then
+            echo 'Expected pre-created Reference Worker was not found or is not readable.' >&2
+            exit 1
+          fi
 
       - name: Build Reference preview
         working-directory: apps/reference
@@ -69,9 +78,13 @@ jobs:
           CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: ./wrangler.preview.generated.json
         run: pnpm run build
 
-      - name: Deploy Reference preview
+      - name: Deploy Reference preview without provisioning or remote conflicts
         working-directory: apps/reference
-        run: pnpm exec wrangler deploy
+        run: >-
+          pnpm exec wrangler deploy
+          --strict
+          --experimental-provision=false
+          --experimental-auto-create=false
 
       - name: Verify deployed health
         run: node ./tooling/reference-preview-smoke.mjs
