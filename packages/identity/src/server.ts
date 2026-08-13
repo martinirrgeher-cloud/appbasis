@@ -170,6 +170,10 @@ export class BetterAuthIdentityBackend {
     await this.request("/api/auth/sign-out", {}, sessionToken);
   }
 
+  async assertProvisioningAuthorized(): Promise<void> {
+    await this.requireAuthorizedAdministrativeSessionToken();
+  }
+
   private requireAdministrativeSessionToken(): string {
     const token = this.options.administrativeSessionToken;
     if (token === undefined || token.trim().length === 0) {
@@ -434,9 +438,12 @@ export interface IdentityRuntimeOptions extends BetterAuthIdentityBackendOptions
 export function createIdentityRuntime(options: IdentityRuntimeOptions) {
   const backend = new BetterAuthIdentityBackend(options);
   const stateStore = new PostgresIdentityStateStore(options.sql);
-  const service = options.now === undefined
-    ? new IdentityService(backend, stateStore)
-    : new IdentityService(backend, stateStore, options.now);
+  const service = new IdentityService(
+    backend,
+    stateStore,
+    options.now ?? (() => new Date()),
+    () => backend.assertProvisioningAuthorized(),
+  );
 
   return { backend, stateStore, service };
 }
