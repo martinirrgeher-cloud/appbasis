@@ -1,7 +1,7 @@
 {
   "name": "@appbasis/reference",
   "version": "0.0.0",
-  "description": "Mobile-first AppBasis reference application vertical slice.",
+  "description": "AppBasis mobile-first reference application vertical slice.",
   "private": true,
   "type": "module",
   "scripts": {
