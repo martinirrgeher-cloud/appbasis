@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createPostgresDatabase } from '@appbasis/database';
+import { createPostgresDatabase } from '@appbasis/database/node-runtime';
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const manifestPath = path.join(repositoryRoot, 'apps', 'reference', 'appbasis.database.json');
