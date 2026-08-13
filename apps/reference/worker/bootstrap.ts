@@ -6,6 +6,7 @@ export interface ReferenceDemoUserBootstrapOptions {
   readonly connectionString: string;
   readonly secret: string;
   readonly baseURL: string;
+  readonly administrativeSessionToken: string;
   readonly username: string;
   readonly displayName: string;
   readonly temporaryPassword: string;
@@ -24,6 +25,7 @@ interface NormalizedReferenceDemoUserBootstrapOptions
   readonly connectionString: string;
   readonly secret: string;
   readonly baseURL: string;
+  readonly administrativeSessionToken: string;
   readonly username: string;
   readonly displayName: string;
   readonly temporaryPassword: string;
@@ -53,6 +55,7 @@ export async function bootstrapReferenceDemoUser(
       auth,
       sql: connection.client,
       baseURL: normalized.baseURL,
+      administrativeSessionToken: normalized.administrativeSessionToken,
     });
     const state = await identity.service.createInitialUser({
       username: normalized.username,
@@ -88,6 +91,10 @@ export function normalizeReferenceDemoUserBootstrapOptions(
   }
 
   const baseURL = normalizeBaseURL(options.baseURL);
+  const administrativeSessionToken = requiredTrimmed(
+    options.administrativeSessionToken,
+    'administrativeSessionToken',
+  );
   const displayName = requiredTrimmed(options.displayName, 'displayName');
   const temporaryPassword = requiredUntrimmed(options.temporaryPassword, 'temporaryPassword');
   const contactEmail = optionalTrimmed(options.contactEmail);
@@ -103,6 +110,7 @@ export function normalizeReferenceDemoUserBootstrapOptions(
     connectionString,
     secret,
     baseURL,
+    administrativeSessionToken,
     username,
     displayName,
     temporaryPassword,
