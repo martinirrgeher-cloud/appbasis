@@ -167,7 +167,10 @@ export class BetterAuthIdentityBackend {
   }
 
   async endSession(sessionToken: string): Promise<void> {
-    await this.request("/api/auth/sign-out", {}, sessionToken);
+    const response = await this.request("/api/auth/sign-out", {}, sessionToken);
+    if (!response.ok) {
+      throw new Error(`Better Auth sign-out failed: ${response.status}`);
+    }
   }
 
   async assertProvisioningAuthorized(): Promise<void> {
@@ -228,6 +231,9 @@ export class BetterAuthIdentityBackend {
     const headers = new Headers();
     if (body !== undefined) headers.set("content-type", "application/json");
     if (cookie !== undefined) headers.set("cookie", cookie);
+    if (method !== "GET") {
+      headers.set("origin", new URL(this.options.baseURL).origin);
+    }
     return this.options.auth.handler(
       new Request(`${this.options.baseURL}${path}`, {
         method,
