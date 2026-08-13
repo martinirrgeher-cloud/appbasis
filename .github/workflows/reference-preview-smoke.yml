@@ -3,10 +3,6 @@ name: Reference Preview Smoke
 on:
   workflow_dispatch:
     inputs:
-      target_url:
-        description: Deployed Reference preview base URL
-        required: true
-        type: string
       mutate:
         description: Create and toggle a persistent smoke task
         required: true
@@ -23,7 +19,8 @@ jobs:
     timeout-minutes: 10
     environment: reference-preview
     env:
-      APPBASIS_PREVIEW_URL: ${{ inputs.target_url }}
+      APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
+      APPBASIS_TRUSTED_PREVIEW_ORIGIN: ${{ vars.APPBASIS_PREVIEW_URL }}
       APPBASIS_SMOKE_USERNAME: ${{ secrets.APPBASIS_SMOKE_USERNAME }}
       APPBASIS_SMOKE_PASSWORD: ${{ secrets.APPBASIS_SMOKE_PASSWORD }}
       APPBASIS_SMOKE_NEW_PASSWORD: ${{ secrets.APPBASIS_SMOKE_NEW_PASSWORD }}
