@@ -54,6 +54,18 @@ describe('Reference demo user bootstrap configuration', () => {
       mutate: { connectionString: 'https://example.test/database' },
     },
     {
+      label: 'opaque PostgreSQL URL',
+      mutate: { connectionString: 'postgres:demo-database' },
+    },
+    {
+      label: 'single-slash PostgreSQL URL',
+      mutate: { connectionString: 'postgres:/demo-database' },
+    },
+    {
+      label: 'PostgreSQL URL without hostname',
+      mutate: { connectionString: 'postgres:///demo-database' },
+    },
+    {
       label: 'short Better Auth secret',
       mutate: { secret: 'too-short' },
     },
