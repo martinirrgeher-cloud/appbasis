@@ -32,17 +32,21 @@ describe("Reference preview smoke workflows", () => {
   });
 
   it("preserves the configurable identity for manual smoke", () => {
-    expect(smokeWorkflow).toMatch(/APPBASIS_SMOKE_USERNAME:\s+\$\{\{\s*secrets\.APPBASIS_SMOKE_USERNAME\s*\}\}/);
+    expect(smokeWorkflow).toMatch(
+      /APPBASIS_SMOKE_USERNAME:\s+\$\{\{\s*secrets\.APPBASIS_SMOKE_USERNAME\s*\}\}/,
+    );
     expect(smokeWorkflow).toContain("inputs.mutate && '1' || '0'");
   });
 
-  it("pins demo.user only for automated Demo v0.1 smoke", () => {
-    const automatedIndex = smokeWorkflow.indexOf(
-      "Run automated Demo v0.1 smoke after smoke-contract changes",
+  it("fails closed unless automated smoke uses demo.user", () => {
+    const automatedValidationIndex = smokeWorkflow.indexOf(
+      "Validate automated Demo v0.1 smoke identity",
     );
-    expect(automatedIndex).toBeGreaterThanOrEqual(0);
-    expect(smokeWorkflow.slice(automatedIndex)).toContain("APPBASIS_SMOKE_USERNAME: demo.user");
-    expect(smokeWorkflow.slice(automatedIndex)).toContain("APPBASIS_SMOKE_MUTATE: '1'");
+    expect(automatedValidationIndex).toBeGreaterThanOrEqual(0);
+    expect(smokeWorkflow.slice(automatedValidationIndex)).toContain(
+      `test "$APPBASIS_SMOKE_USERNAME" = 'demo.user'`,
+    );
+    expect(smokeWorkflow).toContain("APPBASIS_SMOKE_MUTATE: '1'");
   });
 
   it("self-validates smoke-contract changes on main", () => {
