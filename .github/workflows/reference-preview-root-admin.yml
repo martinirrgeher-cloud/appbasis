@@ -1,0 +1,79 @@
+name: Reference Preview Root Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Create the one-time technical root administrator
+        required: true
+        default: false
+        type: boolean
+      username:
+        description: Technical root username
+        required: true
+        type: string
+      display_name:
+        description: Technical root display name
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reference-preview-root-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Reference preview root bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: reference-preview
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Create one-time technical root administrator
+        shell: bash
+        env:
+          APPBASIS_ROOT_ADMIN_TARGET: reference-preview
+          APPBASIS_ROOT_ADMIN_APPLY: ${{ inputs.apply && '1' || '0' }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
+          APPBASIS_ROOT_ADMIN_USERNAME: ${{ inputs.username }}
+          APPBASIS_ROOT_ADMIN_DISPLAY_NAME: ${{ inputs.display_name }}
+          APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
+        run: |
+          test "$APPBASIS_ROOT_ADMIN_APPLY" = '1' || { echo 'Reference root bootstrap was not explicitly confirmed.' >&2; exit 1; }
+          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing protected preview database connection.' >&2; exit 1; }
+          test -n "$APPBASIS_BETTER_AUTH_SECRET" || { echo 'Missing protected Better Auth secret.' >&2; exit 1; }
+          test -n "$APPBASIS_ROOT_ADMIN_PASSWORD" || { echo 'Missing protected root credential.' >&2; exit 1; }
+          test -n "$APPBASIS_PREVIEW_URL" || { echo 'Missing Reference preview origin.' >&2; exit 1; }
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+          echo "::add-mask::$APPBASIS_BETTER_AUTH_SECRET"
+          echo "::add-mask::$APPBASIS_ROOT_ADMIN_PASSWORD"
+          node ./apps/reference/tooling/bootstrap-reference-root-admin.mjs
