@@ -1,1 +1,1 @@
-export { createPostgresDatabase } from "./client";
+export { createPostgresDatabase } from "./client.ts";
