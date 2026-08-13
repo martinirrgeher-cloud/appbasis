@@ -12,11 +12,18 @@ export interface CreateTaskInput {
   readonly description?: string;
 }
 
+export class TaskValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TaskValidationError';
+  }
+}
+
 export function createTask(input: CreateTaskInput, id: string): Task {
   const title = input.title.trim();
 
   if (title.length === 0) {
-    throw new Error('A task title is required.');
+    throw new TaskValidationError('A task title is required.');
   }
 
   return {
