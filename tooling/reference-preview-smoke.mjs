@@ -41,101 +41,83 @@ const signedIn = await request('/api/auth/sign-in', {
 let sessionCookie = requireSessionCookie(signedIn.cookie);
 let session = signedIn.payload;
 const signedInIdentity = assertSignedInSession(session, expectedUsername);
-let smokeFailure = null;
 
-try {
-  if (session.access === 'password-change-required') {
-    if (newPassword === null) {
-      throw new Error(
-        'APPBASIS_SMOKE_NEW_PASSWORD is required when the smoke identity must change its password.',
-      );
-    }
-    const changed = await request('/api/auth/change-required-password', {
-      method: 'POST',
-      cookie: sessionCookie,
-      body: {
-        currentPassword: password,
-        newPassword,
-        idempotencyKey: crypto.randomUUID(),
-      },
-    });
-    sessionCookie = requireSessionCookie(changed.cookie);
-    session = changed.payload;
-  }
-
-  assertFullSession(session, expectedUsername, signedInIdentity.identityId);
-  const current = await request('/api/auth/session', { cookie: sessionCookie });
-  assertFullSession(current.payload, expectedUsername, signedInIdentity.identityId);
-
-  const before = await request('/api/tasks', { cookie: sessionCookie });
-  const beforeTasks = assertTaskList(before.payload);
-
-  if (mutate) {
-    const marker = crypto.randomUUID();
-    const requestedTitle = `Preview smoke ${marker}`;
-    const requestedDescription = `Automated Demo v0.1 acceptance smoke ${marker}.`;
-    const beforeIds = new Set(beforeTasks.map((task) => task.id));
-
-    const createdResponse = await request('/api/tasks', {
-      method: 'POST',
-      cookie: sessionCookie,
-      body: {
-        title: requestedTitle,
-        description: requestedDescription,
-      },
-    });
-    const created = assertTask(createdResponse.payload?.task);
-    if (
-      beforeIds.has(created.id) ||
-      created.title !== requestedTitle ||
-      created.description !== requestedDescription ||
-      created.status !== 'open'
-    ) {
-      throw new Error('Task creation did not return the requested new smoke task.');
-    }
-
-    const persisted = await request('/api/tasks', { cookie: sessionCookie });
-    const persistedTasks = assertTaskList(persisted.payload);
-    if (!persistedTasks.some((task) => sameTask(task, created, 'open'))) {
-      throw new Error('Created smoke task was not persisted across requests.');
-    }
-
-    const toggledResponse = await request(
-      `/api/tasks/${encodeURIComponent(created.id)}/toggle`,
-      { method: 'POST', cookie: sessionCookie },
+if (session.access === 'password-change-required') {
+  if (newPassword === null) {
+    throw new Error(
+      'APPBASIS_SMOKE_NEW_PASSWORD is required when the smoke identity must change its password.',
     );
-    const toggled = assertTask(toggledResponse.payload?.task);
-    if (!sameTask(toggled, created, 'completed')) {
-      throw new Error('Smoke task did not toggle to the expected completed state.');
-    }
-
-    const finalList = await request('/api/tasks', { cookie: sessionCookie });
-    const finalTasks = assertTaskList(finalList.payload);
-    if (!finalTasks.some((task) => sameTask(task, created, 'completed'))) {
-      throw new Error('Toggled smoke task status was not persisted.');
-    }
   }
-} catch (error) {
-  smokeFailure = error;
-}
-
-try {
-  await request('/api/auth/sign-out', {
+  const changed = await request('/api/auth/change-required-password', {
     method: 'POST',
     cookie: sessionCookie,
+    body: {
+      currentPassword: password,
+      newPassword,
+      idempotencyKey: crypto.randomUUID(),
+    },
   });
-} catch {
-  if (smokeFailure === null) {
-    smokeFailure = new Error('Reference preview smoke session cleanup failed.');
-  }
+  sessionCookie = requireSessionCookie(changed.cookie);
+  session = changed.payload;
 }
 
-if (smokeFailure !== null) throw smokeFailure;
+assertFullSession(session, expectedUsername, signedInIdentity.identityId);
+const current = await request('/api/auth/session', { cookie: sessionCookie });
+assertFullSession(current.payload, expectedUsername, signedInIdentity.identityId);
+
+const before = await request('/api/tasks', { cookie: sessionCookie });
+const beforeTasks = assertTaskList(before.payload);
+
+if (mutate) {
+  const marker = crypto.randomUUID();
+  const requestedTitle = `Preview smoke ${marker}`;
+  const requestedDescription = `Automated Demo v0.1 acceptance smoke ${marker}.`;
+  const beforeIds = new Set(beforeTasks.map((task) => task.id));
+
+  const createdResponse = await request('/api/tasks', {
+    method: 'POST',
+    cookie: sessionCookie,
+    body: {
+      title: requestedTitle,
+      description: requestedDescription,
+    },
+  });
+  const created = assertTask(createdResponse.payload?.task);
+  if (
+    beforeIds.has(created.id) ||
+    created.title !== requestedTitle ||
+    created.description !== requestedDescription ||
+    created.status !== 'open'
+  ) {
+    throw new Error('Task creation did not return the requested new smoke task.');
+  }
+
+  const persisted = await request('/api/tasks', { cookie: sessionCookie });
+  const persistedTasks = assertTaskList(persisted.payload);
+  if (!persistedTasks.some((task) => sameTask(task, created, 'open'))) {
+    throw new Error('Created smoke task was not persisted across requests.');
+  }
+
+  const toggledResponse = await request(
+    `/api/tasks/${encodeURIComponent(created.id)}/toggle`,
+    { method: 'POST', cookie: sessionCookie },
+  );
+  const toggled = assertTask(toggledResponse.payload?.task);
+  if (!sameTask(toggled, created, 'completed')) {
+    throw new Error('Smoke task did not toggle to the expected completed state.');
+  }
+
+  const finalList = await request('/api/tasks', { cookie: sessionCookie });
+  const finalTasks = assertTaskList(finalList.payload);
+  if (!finalTasks.some((task) => sameTask(task, created, 'completed'))) {
+    throw new Error('Toggled smoke task status was not persisted.');
+  }
+}
 
 console.log(
   mutate
-    ? 'Reference preview smoke PASS: health, auth, session, tasks persistence, toggle and session cleanup.'
-    : 'Reference preview smoke PASS: health, auth, session, task read and session cleanup.',
+    ? 'Reference preview smoke PASS: health, auth, session, tasks persistence and toggle.'
+    : 'Reference preview smoke PASS: health, auth, session and task read.',
 );
 
 async function assertHealth() {
