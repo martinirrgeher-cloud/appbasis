@@ -29,20 +29,32 @@ describe("Reference preview smoke workflows", () => {
 
   it("does not detach deploy acceptance into a workflow_run", () => {
     expect(smokeWorkflow).not.toContain("workflow_run:");
-    expect(smokeWorkflow).toContain("APPBASIS_SMOKE_USERNAME: demo.user");
   });
 
-  it("preserves manual smoke and self-validates smoke-contract changes on main", () => {
+  it("preserves the configurable identity for manual smoke", () => {
+    expect(smokeWorkflow).toMatch(/APPBASIS_SMOKE_USERNAME:\s+\$\{\{\s*secrets\.APPBASIS_SMOKE_USERNAME\s*\}\}/);
+    expect(smokeWorkflow).toContain("inputs.mutate && '1' || '0'");
+  });
+
+  it("pins demo.user only for automated Demo v0.1 smoke", () => {
+    const automatedIndex = smokeWorkflow.indexOf(
+      "Run automated Demo v0.1 smoke after smoke-contract changes",
+    );
+    expect(automatedIndex).toBeGreaterThanOrEqual(0);
+    expect(smokeWorkflow.slice(automatedIndex)).toContain("APPBASIS_SMOKE_USERNAME: demo.user");
+    expect(smokeWorkflow.slice(automatedIndex)).toContain("APPBASIS_SMOKE_MUTATE: '1'");
+  });
+
+  it("self-validates smoke-contract changes on main", () => {
     expect(smokeWorkflow).toContain("workflow_dispatch:");
     expect(smokeWorkflow).toMatch(/push:\n\s+branches:\n\s+- main\n\s+paths:/);
     expect(smokeWorkflow).toContain(".github/workflows/reference-preview-smoke.yml");
     expect(smokeWorkflow).toContain(".github/workflows/reference-preview-deploy.yml");
     expect(smokeWorkflow).toContain("tooling/reference-preview-smoke.mjs");
-    expect(smokeWorkflow).toContain("inputs.mutate && '1' || '0'");
   });
 
-  it("serializes standalone mutating preview smoke runs", () => {
-    expect(smokeWorkflow).toContain("group: reference-preview-smoke");
+  it("serializes standalone smoke with preview deploys", () => {
+    expect(smokeWorkflow).toContain("group: reference-preview-deploy");
     expect(smokeWorkflow).toContain("cancel-in-progress: false");
   });
 });
