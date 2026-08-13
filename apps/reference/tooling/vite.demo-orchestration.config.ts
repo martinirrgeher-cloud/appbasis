@@ -8,7 +8,7 @@ const toolingDirectory = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   build: {
     ssr: path.join(toolingDirectory, 'bootstrap-reference-demo-orchestration.ts'),
-    outDir: path.join(toolingDirectory, '.demo-orchestration-dist'),
+    outDir: path.join(toolingDirectory, '.demo-bootstrap-dist'),
     emptyOutDir: true,
     rollupOptions: {
       output: {
