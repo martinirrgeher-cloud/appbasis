@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { renderReferencePreviewWranglerConfig } from './reference-preview-deploy-config.mjs';
+import {
+  renderReferencePreviewWranglerConfig,
+  validateReferencePreviewOrigin,
+} from './reference-preview-deploy-config.mjs';
 
 const baseConfig = JSON.stringify({
   name: 'appbasis-reference',
@@ -30,6 +33,34 @@ test('injects only the runtime Hyperdrive binding into the deployment config', (
   assert.equal(rendered.keep_vars, true);
   assert.equal(rendered.name, 'appbasis-reference');
   assert.equal(rendered.main, './worker/index.ts');
+});
+
+test('accepts only a credential-free canonical HTTPS preview origin', () => {
+  assert.equal(
+    validateReferencePreviewOrigin('  https://preview.example.test  '),
+    'https://preview.example.test',
+  );
+  assert.equal(
+    validateReferencePreviewOrigin('https://preview.example.test/'),
+    'https://preview.example.test',
+  );
+
+  for (const value of [
+    undefined,
+    '',
+    'http://preview.example.test',
+    'ftp://preview.example.test',
+    'https://user:password@preview.example.test',
+    'https://preview.example.test/path',
+    'https://preview.example.test?query=yes',
+    'https://preview.example.test#fragment',
+    'not-a-url',
+  ]) {
+    assert.throws(
+      () => validateReferencePreviewOrigin(value),
+      /APPBASIS_PREVIEW_URL/,
+    );
+  }
 });
 
 test('rejects missing or unsafe provider identifiers', () => {
