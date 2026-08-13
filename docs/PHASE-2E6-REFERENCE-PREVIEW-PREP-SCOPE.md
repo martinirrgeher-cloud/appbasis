@@ -33,7 +33,9 @@ Diese Entscheidung ersetzt die frühere Phase-2E6-Annahme, dass noch keine echte
 - der automatische Demo-v0.1-Akzeptanz-Smoke ist bewusst mutierend und darf nur mit der geschützten Demo-Identity `demo.user` laufen
 - ein automatischer Lauf scheitert, wenn die konfigurierte Smoke-Identity nicht `demo.user` ist
 - ein authentifizierter Smoke darf niemals Zugangsdaten über unverschlüsseltes HTTP oder an eine frei gewählte Ziel-Origin senden
-- Deploy und zugehöriger Akzeptanz-Smoke bleiben in derselben serialisierten Deploy-Kette; Standalone-Smoke und Deploy dürfen sich am Live-Preview nicht überlappen
+- Deploy und zugehöriger Akzeptanz-Smoke bleiben in derselben serialisierten Deploy-Kette
+- der unabhängige Standalone-Smoke teilt bewusst keinen GitHub-Concurrency-Lock mit Preview-Deployments, weil GitHub pro Concurrency-Gruppe nur einen wartenden Lauf erhält und sonst ein wartender Deployment-Auftrag verdrängt werden könnte
+- ein Standalone-Smoke ist daher eine unabhängige Live-Prüfung und niemals der Beleg für die Revision eines gleichzeitig laufenden Deployments; die revisionsgebundene Deployment-Abnahme erfolgt ausschließlich innerhalb von `Reference Preview Deploy`
 
 ## Externe Preview-Konfiguration
 
@@ -103,14 +105,15 @@ Hinweis: Die aktuelle Demo-API besitzt keinen Delete-Endpunkt für Tasks. Ein mu
 - zusätzlich enger `push`-Trigger auf `main` ausschließlich bei Änderungen an Smoke-/Deploy-Workflow oder Smoke-Runner
 - automatische Läufe verlangen fail-closed die konfigurierte Identity `demo.user`
 - Preview-Origin und Trusted-Origin stammen ausschließlich aus dem geschützten GitHub-Environment
-- Standalone-Smoke verwendet denselben Concurrency-Lock wie Preview-Deployments
+- Standalone-Smoke verwendet bewusst keinen gemeinsamen Concurrency-Lock mit Preview-Deployments, damit ein Smoke keinen wartenden manuellen Deploy verdrängen kann
+- Standalone-Smoke ist eine unabhängige Prüfung der aktuell live erreichbaren Preview und keine revisionsgebundene Deployment-Abnahme
 
 ### `Reference Preview Deploy`
 
 - Deployment bleibt ausschließlich manuell ausgelöst
 - nach Deployment und Health-Prüfung läuft der vollständige mutierende Demo-v0.1-Akzeptanz-Smoke
 - der Akzeptanz-Smoke bleibt bis zum Ende innerhalb derselben `reference-preview-deploy`-Concurrency-Kette
-- dadurch kann kein zweites Preview-Deployment die Zielrevision während der laufenden Abnahme ersetzen
+- dadurch kann kein zweites Preview-Deployment die Zielrevision während der laufenden revisionsgebundenen Abnahme ersetzen
 
 ## Abnahmekriterien dieses Slices
 
@@ -127,6 +130,7 @@ Hinweis: Die aktuelle Demo-API besitzt keinen Delete-Endpunkt für Tasks. Ein mu
 - manueller mutierender Smoke bleibt opt-in
 - automatischer mutierender Smoke läuft nur auf `main` für den definierten Demo-v0.1-Abnahmepfad, niemals auf PRs
 - mutierender Smoke beweist eine tatsächlich neue Task und deren Persistenz/Toggle
-- Deploy und Akzeptanz-Smoke sind als eine serialisierte Kette geschützt
+- Deploy und Akzeptanz-Smoke sind als eine serialisierte revisionsgebundene Kette geschützt
+- Standalone-Smoke kann keinen wartenden `Reference Preview Deploy` über eine gemeinsame Concurrency-Gruppe verdrängen
 - Repo-Tests prüfen den Workflow-Vertrag
 - bestehende CI bleibt grün
