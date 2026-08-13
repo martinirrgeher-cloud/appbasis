@@ -1,0 +1,61 @@
+name: Reference Preview Migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply all Reference manifest migrations to the empty preview database
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reference-preview-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Reference preview migrate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: reference-preview
+    env:
+      APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+      APPBASIS_MIGRATION_TARGET: reference-preview
+      APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository and explicit migration confirmation
+        shell: bash
+        run: |
+          pnpm run verify:repo
+          test "$APPBASIS_APPLY_MIGRATIONS" = '1' || { echo 'Reference preview migration was not explicitly confirmed.' >&2; exit 1; }
+          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing protected Reference preview database connection.' >&2; exit 1; }
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+
+      - name: Apply Reference manifest transaction
+        run: pnpm --filter @appbasis/reference migrate:reference
