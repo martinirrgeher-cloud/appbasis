@@ -17,6 +17,13 @@ export {
   type CreateInitialUserInput,
 } from "./service";
 export {
+  BetterAuthIdentityBackend,
+  createIdentityRuntime,
+  PostgresIdentityStateStore,
+  type BetterAuthIdentityBackendOptions,
+  type IdentityRuntimeOptions,
+} from "./server";
+export {
   normalizeUsername,
   technicalEmailForUsername,
 } from "./technical-email";
