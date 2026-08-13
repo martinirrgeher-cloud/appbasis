@@ -42,6 +42,34 @@ export async function runReferenceDemoBootstrap(env: NodeJS.ProcessEnv = process
   );
 }
 
+export function safeReferenceDemoBootstrapDiagnostic(error: unknown): string {
+  if (!(error instanceof Error)) return 'unknown';
+
+  const createUserMatch = /^Better Auth admin create-user failed: ([1-5][0-9]{2})$/.exec(
+    error.message,
+  );
+  if (createUserMatch?.[1] !== undefined) {
+    return `better-auth-admin-create-user-http-${createUserMatch[1]}`;
+  }
+
+  switch (error.name) {
+    case 'ReferenceDemoUserBootstrapAuthenticationError':
+      return 'administrator-authentication';
+    case 'ReferenceDemoUserBootstrapCleanupError':
+      return 'administrator-session-cleanup';
+    case 'ReferenceDemoBootstrapEnvironmentError':
+      return 'environment-configuration';
+    case 'ReferenceDemoUserBootstrapConfigurationError':
+      return 'bootstrap-configuration';
+    case 'IdentityError':
+      return 'identity-operation';
+    case 'TypeError':
+      return 'input-validation';
+    default:
+      return 'unknown';
+  }
+}
+
 function required(value: string | undefined, label: string): string {
   const normalized = value?.trim() ?? '';
   if (normalized.length === 0) {
@@ -67,8 +95,10 @@ if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).
   try {
     const result = await runReferenceDemoBootstrap();
     console.log(`Reference demo bootstrap completed for username ${result.username}.`);
-  } catch {
-    console.error('Reference demo bootstrap failed.');
+  } catch (error) {
+    console.error(
+      `Reference demo bootstrap failed: ${safeReferenceDemoBootstrapDiagnostic(error)}.`,
+    );
     process.exitCode = 1;
   }
 }
