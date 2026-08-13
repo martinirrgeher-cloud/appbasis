@@ -7,7 +7,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresDatabase } from '@appbasis/database';
 import { createIdentityRuntime } from '@appbasis/identity';
 import { createBetterAuthRuntime } from '@appbasis/identity/better-auth';
-import { bootstrapReferenceDemoUser } from '../worker/bootstrap';
+import {
+  bootstrapReferenceDemoUser,
+  ReferenceDemoUserBootstrapAuthorizationError,
+} from '../worker/bootstrap';
 
 interface MigrationOwner {
   readonly migrations: readonly string[];
@@ -30,6 +33,8 @@ const secret = 'reference-bootstrap-e2e-secret-at-least-32-characters';
 const baseURL = 'http://localhost:8787';
 const adminUsername = 'bootstrap.admin';
 const adminPassword = 'Bootstrap-technical-admin-42!';
+const preexistingUsername = 'preexisting.user';
+const preexistingPassword = 'Preexisting-user-password-42!';
 const username = 'demo.bootstrap';
 const originalTemporaryPassword = 'Temporary-Reference-123!';
 const replacementTemporaryPassword = 'Must-Not-Replace-456!';
@@ -38,6 +43,7 @@ const manifestPath = path.join(repositoryRoot, 'apps', 'reference', 'appbasis.da
 const adminConnection = createPostgresDatabase(databaseUrl);
 let migrationConnection: ReturnType<typeof createPostgresDatabase> | undefined;
 let administrativeSessionToken = '';
+let nonAdministrativeSessionToken = '';
 
 describe('Reference demo user bootstrap PostgreSQL E2E', () => {
   beforeAll(async () => {
@@ -79,15 +85,25 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
         },
       },
     });
-    const adminSignIn = await auth.handler(
-      new Request(`${baseURL}/api/auth/sign-in/username`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ username: adminUsername, password: adminPassword }),
-      }),
+    await auth.api.createUser({
+      body: {
+        email: 'preexisting-user@identity.invalid',
+        password: preexistingPassword,
+        name: 'Preexisting Better Auth User',
+        role: 'user',
+        data: {
+          username: preexistingUsername,
+          displayUsername: preexistingUsername,
+        },
+      },
+    });
+
+    administrativeSessionToken = await signInSession(auth, adminUsername, adminPassword);
+    nonAdministrativeSessionToken = await signInSession(
+      auth,
+      preexistingUsername,
+      preexistingPassword,
     );
-    if (!adminSignIn.ok) throw new Error('Technical admin sign-in failed.');
-    administrativeSessionToken = sessionCookie(adminSignIn);
 
     await migrationConnection.client.end();
     migrationConnection = undefined;
@@ -101,6 +117,65 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
       `DROP DATABASE IF EXISTS ${bootstrapDatabaseName} WITH (FORCE)`,
     );
     await adminConnection.client.end();
+  });
+
+  it('authenticates technical admin authority before reconciling an existing Better Auth user', async () => {
+    for (const invalidAdministrativeSessionToken of [
+      'better-auth.session_token=forged-session',
+      nonAdministrativeSessionToken,
+    ]) {
+      await expect(
+        bootstrapReferenceDemoUser({
+          connectionString: bootstrapDatabaseUrl.toString(),
+          secret,
+          baseURL,
+          administrativeSessionToken: invalidAdministrativeSessionToken,
+          username: preexistingUsername,
+          displayName: 'Preexisting Better Auth User',
+          temporaryPassword: 'Unused-Temporary-123!',
+        }),
+      ).rejects.toBeInstanceOf(ReferenceDemoUserBootstrapAuthorizationError);
+    }
+
+    const connection = createPostgresDatabase(bootstrapDatabaseUrl.toString());
+    try {
+      const rows = await connection.client<{ count: number }[]>`
+        SELECT count(*)::int AS count
+        FROM appbasis_identity_security_state state
+        JOIN "user" auth_user ON auth_user.id = state.identity_id
+        WHERE auth_user.username = ${preexistingUsername}
+      `;
+      expect(rows[0]?.count).toBe(0);
+    } finally {
+      await connection.client.end();
+    }
+  });
+
+  it('refuses to adopt the technical Better Auth administrator as an AppBasis identity', async () => {
+    await expect(
+      bootstrapReferenceDemoUser({
+        connectionString: bootstrapDatabaseUrl.toString(),
+        secret,
+        baseURL,
+        administrativeSessionToken,
+        username: adminUsername,
+        displayName: 'Reference Technical Admin',
+        temporaryPassword: 'Unused-Temporary-456!',
+      }),
+    ).rejects.toBeInstanceOf(ReferenceDemoUserBootstrapAuthorizationError);
+
+    const connection = createPostgresDatabase(bootstrapDatabaseUrl.toString());
+    try {
+      const rows = await connection.client<{ count: number }[]>`
+        SELECT count(*)::int AS count
+        FROM appbasis_identity_security_state state
+        JOIN "user" auth_user ON auth_user.id = state.identity_id
+        WHERE auth_user.username = ${adminUsername}
+      `;
+      expect(rows[0]?.count).toBe(0);
+    } finally {
+      await connection.client.end();
+    }
   });
 
   it('provisions one password-change-required identity and keeps retry idempotent', async () => {
@@ -177,13 +252,29 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
       const identityRows = await verificationConnection.client<{ count: number }[]>`
         SELECT count(*)::int AS count FROM appbasis_identity_security_state
       `;
-      expect(userRows[0]?.count).toBe(2);
+      expect(userRows[0]?.count).toBe(3);
       expect(identityRows[0]?.count).toBe(1);
     } finally {
       await verificationConnection.client.end();
     }
   });
 });
+
+async function signInSession(
+  auth: ReturnType<typeof createBetterAuthRuntime>,
+  signInUsername: string,
+  password: string,
+): Promise<string> {
+  const response = await auth.handler(
+    new Request(`${baseURL}/api/auth/sign-in/username`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: signInUsername, password }),
+    }),
+  );
+  if (!response.ok) throw new Error('Better Auth test sign-in failed.');
+  return sessionCookie(response);
+}
 
 function sessionCookie(response: Response): string {
   const cookie = response.headers.get('set-cookie');
