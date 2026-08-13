@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -28,7 +30,8 @@ const migrationDatabaseUrl = new URL(databaseUrl);
 migrationDatabaseUrl.pathname = `/${migrationDatabaseName}`;
 
 const adminConnection = createPostgresDatabase(databaseUrl);
-const repositoryRoot = new URL('../../../', import.meta.url);
+const repositoryRoot = path.resolve(fileURLToPath(new URL('../../../', import.meta.url)));
+const manifestPath = path.join(repositoryRoot, 'apps', 'reference', 'appbasis.database.json');
 let migrationConnection: ReturnType<typeof createPostgresDatabase> | undefined;
 let manifest!: DatabaseManifest;
 
@@ -40,13 +43,12 @@ describe('Reference database migration contract', () => {
     await adminConnection.client.unsafe(`CREATE DATABASE ${migrationDatabaseName}`);
     migrationConnection = createPostgresDatabase(migrationDatabaseUrl.toString());
 
-    manifest = JSON.parse(
-      await readFile(new URL('apps/reference/appbasis.database.json', repositoryRoot), 'utf8'),
-    ) as DatabaseManifest;
+    manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as DatabaseManifest;
 
     for (const owner of manifest.owners) {
       for (const migration of owner.migrations) {
-        const sql = await readFile(new URL(migration, repositoryRoot), 'utf8');
+        const migrationPath = path.resolve(repositoryRoot, ...migration.split('/'));
+        const sql = await readFile(migrationPath, 'utf8');
         for (const statement of sql.split('--> statement-breakpoint')) {
           if (statement.trim() !== '') {
             await migrationConnection.client.unsafe(statement);
