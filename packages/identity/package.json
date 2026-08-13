@@ -6,10 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./better-auth": "./src/better-auth.ts",
-    "./root-admin": {
-      "types": "./src/root-admin.d.mts",
-      "default": "./src/root-admin.mjs"
-    },
+    "./root-admin": "./src/root-admin.ts",
     "./schema": "./src/schema/index.ts",
     "./server": "./src/server.ts"
   },
