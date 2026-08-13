@@ -8,13 +8,13 @@ Die Reference-App erhält vor dem ersten echten Cloud-Deployment einen reproduzi
 
 - `tooling/reference-preview-smoke.mjs` als Node-24-Smoke-Runner gegen eine bereits deployte Reference-URL
 - Health-only-Modus ohne Benutzer-Secrets; hierfür bleibt lokales HTTP zulässig
-- authentifizierter Modus ausschließlich über HTTPS für Login, erforderlichen Erstpasswortwechsel, Session und Task-Lesen
+- authentifizierter Modus ausschließlich über HTTPS und nur gegen eine separat konfigurierte, vertrauenswürdige Preview-Origin
 - Identitätskorrelation über Username und Identity-ID vor und nach einem Pflichtpasswortwechsel
 - explizit aktivierbarer Mutationsmodus für echte Task-Neuanlage, Persistenz über getrennte Requests und Statuswechsel
 - mutierender Modus scheitert fail-closed, wenn Auth-Konfiguration fehlt
 - Netzwerk- und HTTP-Fehler werden in Actions nur mit festen, nicht vom Ziel kontrollierten Meldungen ausgegeben
 - manueller GitHub-Actions-Workflow `Reference Preview Smoke`
-- GitHub-Environment `reference-preview` als spätere Secret-Grenze
+- GitHub-Environment `reference-preview` als Grenze für die vertrauenswürdige Preview-Origin und die späteren Secrets
 - Repo-Verify prüft mindestens die Syntax des Smoke-Runners
 
 ## Harte Grenzen
@@ -26,7 +26,7 @@ Die Reference-App erhält vor dem ersten echten Cloud-Deployment einen reproduzi
 - keine neue Dependency und keine Lockfile-Änderung
 - kein automatischer Smoke auf PRs oder `main`, solange keine echte Preview-Umgebung existiert
 - der mutierende Smoke ist nur nach expliziter Auswahl aktiv
-- ein authentifizierter Smoke darf niemals Zugangsdaten über unverschlüsseltes HTTP senden
+- ein authentifizierter Smoke darf niemals Zugangsdaten über unverschlüsseltes HTTP oder an eine frei gewählte Ziel-Origin senden
 
 ## Später benötigte externe Preview-Konfiguration
 
@@ -39,9 +39,10 @@ Für das echte Demo-v0.1-Preview werden außerhalb des Repositories benötigt:
 5. Variable `APPBASIS_BASE_URL` auf die tatsächlich deployte HTTPS-Origin
 6. mindestens eine provisionierte AppBasis-Demo-Identity
 7. für den Smoke im GitHub-Environment `reference-preview`:
-   - `APPBASIS_SMOKE_USERNAME`
-   - `APPBASIS_SMOKE_PASSWORD`
-   - `APPBASIS_SMOKE_NEW_PASSWORD` nur solange der Smoke-Benutzer noch einen Pflichtpasswortwechsel benötigt
+   - Environment-Variable `APPBASIS_PREVIEW_URL` mit der vertrauenswürdigen HTTPS-Origin
+   - Secret `APPBASIS_SMOKE_USERNAME`
+   - Secret `APPBASIS_SMOKE_PASSWORD`
+   - Secret `APPBASIS_SMOKE_NEW_PASSWORD` nur solange der Smoke-Benutzer noch einen Pflichtpasswortwechsel benötigt
 
 Business-Permissions bleiben eine getrennte, explizite Konfiguration und werden durch den Smoke nicht erzeugt.
 
@@ -49,24 +50,27 @@ Business-Permissions bleiben eine getrennte, explizite Konfiguration und werden 
 
 ### 1. Health-only
 
+Für einen lokalen bzw. bewusst unauthentifizierten Aufruf genügt:
+
 ```text
 APPBASIS_PREVIEW_URL=https://<preview-origin> pnpm reference:smoke
 ```
 
-Erwartet: `/api/health` meldet `appbasis-reference`, API-Version 1 und Status `ok`.
+Erwartet: `/api/health` meldet `appbasis-reference`, API-Version 1 und Status `ok`. Ohne Username werden keine Auth-Secrets gesendet und keine Trusted-Origin-Konfiguration benötigt.
 
 ### 2. Authentifizierter Read-only-Smoke
 
 Environment setzen:
 
 - `APPBASIS_PREVIEW_URL` als HTTPS-Origin
+- `APPBASIS_TRUSTED_PREVIEW_ORIGIN` auf exakt dieselbe vertrauenswürdige HTTPS-Origin
 - `APPBASIS_SMOKE_USERNAME`
 - `APPBASIS_SMOKE_PASSWORD`
 - optional `APPBASIS_SMOKE_NEW_PASSWORD`, falls der Benutzer noch im Pflichtpasswortwechsel steht
 
 Dann `pnpm reference:smoke` ausführen.
 
-Erwartet: Login liefert exakt die erwartete Identity, gegebenenfalls Pflichtpasswortwechsel bleibt auf derselben Identity-ID, erneute Sessionauflösung und Task-Lesen funktionieren.
+Erwartet: Vor dem ersten Credential-Request wird die tatsächliche Origin gegen die Trusted-Origin geprüft. Login liefert exakt die erwartete Identity, gegebenenfalls Pflichtpasswortwechsel bleibt auf derselben Identity-ID, erneute Sessionauflösung und Task-Lesen funktionieren.
 
 ### 3. Einmalige Demo-v0.1-Abnahme mit Persistenz
 
@@ -87,7 +91,8 @@ Hinweis: Die aktuelle Demo-API besitzt bewusst keinen Delete-Endpunkt. Ein mutie
 
 Der Workflow `Reference Preview Smoke` ist ausschließlich `workflow_dispatch`.
 
-- Eingabe `target_url`: Preview-Origin; für Auth-Smokes zwingend HTTPS
+- Es gibt bewusst keine frei eingebbare Ziel-URL für den Secret-tragenden Workflow.
+- `APPBASIS_PREVIEW_URL` und `APPBASIS_TRUSTED_PREVIEW_ORIGIN` werden beide aus der Environment-Variable `reference-preview / APPBASIS_PREVIEW_URL` gesetzt.
 - Eingabe `mutate=false`: Read-only-Abnahme
 - Eingabe `mutate=true`: einmalige Persistenz-/Toggle-Abnahme; fehlende Auth-Secrets führen zu FAIL statt Health-only-PASS
 - Secrets kommen ausschließlich aus dem GitHub-Environment `reference-preview`
@@ -97,6 +102,8 @@ Der Workflow `Reference Preview Smoke` ist ausschließlich `workflow_dispatch`.
 - Smoke-Runner enthält keine hart codierten Secrets oder Preview-Adressen
 - Health-only funktioniert ohne Auth-Secrets
 - authentifizierte Requests werden ausschließlich über HTTPS gesendet
+- vor jedem authentifizierten Lauf entspricht die Ziel-Origin exakt einer separat konfigurierten Trusted-Origin
+- der manuelle Secret-tragende Workflow bezieht die Preview-Origin ausschließlich aus dem geschützten GitHub-Environment, nicht aus Dispatcher-Eingaben
 - Sign-in, Passwortwechsel und Sessionauflösung werden auf denselben User und dieselbe Identity-ID korreliert
 - Auth-/Mutationspfade geben keine Passwörter, Session-Cookies, Zieladressen oder response-kontrollierten Fehlercodes aus
 - Netzwerkfehler werden durch feste, nicht-sensitive Meldungen ersetzt
