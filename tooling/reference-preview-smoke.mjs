@@ -4,8 +4,8 @@ const trustedPreviewOrigin = optionalURL(
   'APPBASIS_TRUSTED_PREVIEW_ORIGIN',
 );
 const username = optionalText(process.env.APPBASIS_SMOKE_USERNAME);
-const password = optionalText(process.env.APPBASIS_SMOKE_PASSWORD);
-const newPassword = optionalText(process.env.APPBASIS_SMOKE_NEW_PASSWORD);
+const password = optionalCredential(process.env.APPBASIS_SMOKE_PASSWORD);
+const newPassword = optionalCredential(process.env.APPBASIS_SMOKE_NEW_PASSWORD);
 const mutate = process.env.APPBASIS_SMOKE_MUTATE === '1';
 
 if (mutate && username === null) {
@@ -156,7 +156,10 @@ async function request(path, options = {}) {
 
   const payload = await readJson(response);
   if (!response.ok) {
-    throw new Error('Reference preview request returned a non-success status.');
+    const errorCode = safeErrorCode(payload);
+    throw new Error(
+      `Reference preview request ${path} returned HTTP ${response.status} (${errorCode}).`,
+    );
   }
   return { payload, cookie: cookiePair(response.headers.get('set-cookie')) };
 }
@@ -170,6 +173,20 @@ async function readJson(response) {
   } catch {
     throw new Error('Reference preview returned invalid JSON.');
   }
+}
+
+function safeErrorCode(payload) {
+  if (
+    payload !== null &&
+    typeof payload === 'object' &&
+    payload.error !== null &&
+    typeof payload.error === 'object' &&
+    typeof payload.error.code === 'string' &&
+    payload.error.code.length > 0
+  ) {
+    return payload.error.code;
+  }
+  return 'UNKNOWN_ERROR';
 }
 
 function cookiePair(value) {
@@ -278,4 +295,9 @@ function optionalText(value) {
   if (value === undefined) return null;
   const normalized = value.trim();
   return normalized.length === 0 ? null : normalized;
+}
+
+function optionalCredential(value) {
+  if (value === undefined || value.trim().length === 0) return null;
+  return value;
 }
