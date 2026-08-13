@@ -2,6 +2,9 @@ import { createPostgresDatabase } from '@appbasis/database';
 import { createIdentityRuntime, normalizeUsername } from '@appbasis/identity';
 import { createBetterAuthRuntime } from '@appbasis/identity/better-auth';
 
+const MINIMUM_PASSWORD_LENGTH = 8;
+const MAXIMUM_PASSWORD_LENGTH = 128;
+
 export interface ReferenceDemoUserBootstrapOptions {
   readonly connectionString: string;
   readonly secret: string;
@@ -32,10 +35,20 @@ interface NormalizedReferenceDemoUserBootstrapOptions
   readonly contactEmail?: string;
 }
 
+type BetterAuthRuntime = ReturnType<typeof createBetterAuthRuntime>;
+type PostgresConnection = ReturnType<typeof createPostgresDatabase>;
+
 export class ReferenceDemoUserBootstrapConfigurationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ReferenceDemoUserBootstrapConfigurationError';
+  }
+}
+
+export class ReferenceDemoUserBootstrapAuthorizationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ReferenceDemoUserBootstrapAuthorizationError';
   }
 }
 
@@ -51,6 +64,14 @@ export async function bootstrapReferenceDemoUser(
       baseURL: normalized.baseURL,
       secret: normalized.secret,
     });
+    await assertAdministrativeBootstrapAuthorization(
+      auth,
+      connection,
+      normalized.baseURL,
+      normalized.administrativeSessionToken,
+      normalized.username,
+    );
+
     const identity = createIdentityRuntime({
       auth,
       sql: connection.client,
@@ -97,6 +118,14 @@ export function normalizeReferenceDemoUserBootstrapOptions(
   );
   const displayName = requiredTrimmed(options.displayName, 'displayName');
   const temporaryPassword = requiredUntrimmed(options.temporaryPassword, 'temporaryPassword');
+  if (
+    temporaryPassword.length < MINIMUM_PASSWORD_LENGTH ||
+    temporaryPassword.length > MAXIMUM_PASSWORD_LENGTH
+  ) {
+    throw new ReferenceDemoUserBootstrapConfigurationError(
+      `temporaryPassword must contain ${MINIMUM_PASSWORD_LENGTH}-${MAXIMUM_PASSWORD_LENGTH} characters.`,
+    );
+  }
   const contactEmail = optionalTrimmed(options.contactEmail);
 
   let username: string;
@@ -116,6 +145,66 @@ export function normalizeReferenceDemoUserBootstrapOptions(
     temporaryPassword,
     ...(contactEmail === undefined ? {} : { contactEmail }),
   };
+}
+
+async function assertAdministrativeBootstrapAuthorization(
+  auth: BetterAuthRuntime,
+  connection: PostgresConnection,
+  baseURL: string,
+  administrativeSessionToken: string,
+  targetUsername: string,
+): Promise<void> {
+  const response = await auth.handler(
+    new Request(`${baseURL}/api/auth/get-session`, {
+      method: 'GET',
+      headers: { cookie: administrativeSessionToken },
+    }),
+  );
+  if (!response.ok) {
+    throw new ReferenceDemoUserBootstrapAuthorizationError(
+      'A valid technical administrator session is required.',
+    );
+  }
+
+  const body = (await response.json()) as { user?: { id?: string } } | null;
+  const administratorId = body?.user?.id;
+  if (administratorId === undefined || administratorId.length === 0) {
+    throw new ReferenceDemoUserBootstrapAuthorizationError(
+      'A valid technical administrator session is required.',
+    );
+  }
+
+  const administrators = await connection.client<
+    { username: string | null; role: string | null; banned: boolean | null }[]
+  >`
+    SELECT username, role, banned
+    FROM "user"
+    WHERE id = ${administratorId}
+    LIMIT 1
+  `;
+  const administrator = administrators[0];
+  if (
+    administrator === undefined ||
+    administrator.banned === true ||
+    !hasTechnicalAdminRole(administrator.role)
+  ) {
+    throw new ReferenceDemoUserBootstrapAuthorizationError(
+      'A valid technical administrator session is required.',
+    );
+  }
+
+  if (administrator.username === targetUsername) {
+    throw new ReferenceDemoUserBootstrapAuthorizationError(
+      'The technical administrator cannot be adopted as an AppBasis bootstrap identity.',
+    );
+  }
+}
+
+function hasTechnicalAdminRole(role: string | null): boolean {
+  return role
+    ?.split(',')
+    .map((value) => value.trim())
+    .includes('admin') === true;
 }
 
 function requiredTrimmed(value: string, field: string): string {
