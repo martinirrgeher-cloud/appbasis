@@ -3,31 +3,46 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const workflowPath = fileURLToPath(
-  new URL("../../../.github/workflows/reference-preview-smoke.yml", import.meta.url),
-);
-const workflow = readFileSync(workflowPath, "utf8");
+function readWorkflow(relativePath: string) {
+  return readFileSync(
+    fileURLToPath(new URL(`../../../.github/workflows/${relativePath}`, import.meta.url)),
+    "utf8",
+  );
+}
 
-describe("Reference preview smoke workflow", () => {
-  it("automates the full demo.user smoke after successful main preview deploys", () => {
-    expect(workflow).toMatch(/workflow_run:\n\s+workflows:\n\s+- Reference Preview Deploy/);
-    expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
-    expect(workflow).toContain("github.event.workflow_run.head_branch == 'main'");
-    expect(workflow).toContain("APPBASIS_SMOKE_USERNAME: demo.user");
-    expect(workflow).toContain("Run automated Demo v0.1 acceptance smoke");
-    expect(workflow).toContain("APPBASIS_SMOKE_MUTATE: '1'");
+const smokeWorkflow = readWorkflow("reference-preview-smoke.yml");
+const deployWorkflow = readWorkflow("reference-preview-deploy.yml");
+
+describe("Reference preview smoke workflows", () => {
+  it("keeps deploy and automated acceptance smoke in one serialized chain", () => {
+    expect(deployWorkflow).toContain("group: reference-preview-deploy");
+    expect(deployWorkflow).toContain("cancel-in-progress: false");
+    expect(deployWorkflow).toContain("Run automated Demo v0.1 acceptance smoke");
+    expect(deployWorkflow).toContain("APPBASIS_SMOKE_USERNAME: demo.user");
+    expect(deployWorkflow).toContain("APPBASIS_SMOKE_MUTATE: '1'");
+
+    const deployIndex = deployWorkflow.indexOf("Deploy Reference preview without provisioning");
+    const acceptanceIndex = deployWorkflow.indexOf("Run automated Demo v0.1 acceptance smoke");
+    expect(deployIndex).toBeGreaterThanOrEqual(0);
+    expect(acceptanceIndex).toBeGreaterThan(deployIndex);
   });
 
-  it("self-validates smoke changes on main and preserves manual dispatch", () => {
-    expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).toMatch(/push:\n\s+branches:\n\s+- main\n\s+paths:/);
-    expect(workflow).toContain(".github/workflows/reference-preview-smoke.yml");
-    expect(workflow).toContain("tooling/reference-preview-smoke.mjs");
-    expect(workflow).toContain("inputs.mutate && '1' || '0'");
+  it("does not detach deploy acceptance into a workflow_run", () => {
+    expect(smokeWorkflow).not.toContain("workflow_run:");
+    expect(smokeWorkflow).toContain("APPBASIS_SMOKE_USERNAME: demo.user");
   });
 
-  it("serializes mutating preview smoke runs", () => {
-    expect(workflow).toContain("group: reference-preview-smoke");
-    expect(workflow).toContain("cancel-in-progress: false");
+  it("preserves manual smoke and self-validates smoke-contract changes on main", () => {
+    expect(smokeWorkflow).toContain("workflow_dispatch:");
+    expect(smokeWorkflow).toMatch(/push:\n\s+branches:\n\s+- main\n\s+paths:/);
+    expect(smokeWorkflow).toContain(".github/workflows/reference-preview-smoke.yml");
+    expect(smokeWorkflow).toContain(".github/workflows/reference-preview-deploy.yml");
+    expect(smokeWorkflow).toContain("tooling/reference-preview-smoke.mjs");
+    expect(smokeWorkflow).toContain("inputs.mutate && '1' || '0'");
+  });
+
+  it("serializes standalone mutating preview smoke runs", () => {
+    expect(smokeWorkflow).toContain("group: reference-preview-smoke");
+    expect(smokeWorkflow).toContain("cancel-in-progress: false");
   });
 });
