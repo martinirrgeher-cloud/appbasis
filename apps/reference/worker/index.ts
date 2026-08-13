@@ -59,7 +59,6 @@ export const worker = {
       });
       const app = createReferenceApp({
         identity: identity.service,
-        endSession: (sessionCookie) => identity.backend.endSession(sessionCookie),
         permissions,
         tasks,
         secureCookies: url.protocol === 'https:',
