@@ -1,0 +1,86 @@
+name: Reference Preview Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reference-preview-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Reference preview deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: reference-preview
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      APPBASIS_HYPERDRIVE_ID: ${{ secrets.APPBASIS_HYPERDRIVE_ID }}
+      APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository and deployment inputs
+        shell: bash
+        run: |
+          pnpm run verify:repo
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
+          test -n "$APPBASIS_HYPERDRIVE_ID" || { echo 'Missing required Reference deployment binding.' >&2; exit 1; }
+          test -n "$APPBASIS_PREVIEW_URL" || { echo 'Missing required Reference preview origin.' >&2; exit 1; }
+
+      - name: Mask provider identifiers
+        shell: bash
+        run: |
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$APPBASIS_HYPERDRIVE_ID"
+
+      - name: Render ephemeral deployment config
+        run: node ./tooling/reference-preview-deploy-config.mjs
+
+      - name: Build Reference preview
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: ./wrangler.preview.generated.json
+        run: pnpm run build
+
+      - name: Deploy Reference preview
+        working-directory: apps/reference
+        run: pnpm exec wrangler deploy
+
+      - name: Verify deployed health
+        run: node ./tooling/reference-preview-smoke.mjs
+        env:
+          APPBASIS_SMOKE_USERNAME: ''
+          APPBASIS_SMOKE_PASSWORD: ''
+          APPBASIS_SMOKE_NEW_PASSWORD: ''
+          APPBASIS_SMOKE_MUTATE: '0'
+
+      - name: Remove generated deployment config
+        if: always()
+        shell: bash
+        run: rm -f ./apps/reference/wrangler.preview.generated.json
