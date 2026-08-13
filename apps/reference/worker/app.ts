@@ -1,19 +1,19 @@
 import { Hono, type Context } from 'hono';
 
 import type { TaskRepository } from '../../../modules/tasks/src/task-repository';
-import type { CurrentIdentity } from '../../../packages/identity/src/contracts';
-import { IdentityError } from '../../../packages/identity/src/errors';
 import {
   assertIdentityActionAllowed,
+  IdentityError,
+  type CurrentIdentity,
   type IdentityService,
-} from '../../../packages/identity/src/service';
+} from '@appbasis/identity';
 import {
+  assert as assertPermission,
+  DEMO_CAPABILITIES,
+  PermissionDeniedError,
   principalId,
   type PermissionStore,
-} from '../../../packages/permissions/src/contracts';
-import { DEMO_CAPABILITIES } from '../../../packages/permissions/src/demo-bundles';
-import { PermissionDeniedError } from '../../../packages/permissions/src/errors';
-import { assert as assertPermission } from '../../../packages/permissions/src/permissions';
+} from '@appbasis/permissions';
 import { HEALTH_RESPONSE } from '../shared/health';
 
 type ReferenceIdentityService = Pick<
@@ -40,6 +40,9 @@ type ErrorCode =
   | 'REFERENCE_RUNTIME_NOT_CONFIGURED'
   | 'SESSION_INVALID'
   | 'TASK_NOT_FOUND';
+
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
   const referenceApp = new Hono();
@@ -91,7 +94,12 @@ export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
     const currentPassword = stringField(body, 'currentPassword');
     const newPassword = stringField(body, 'newPassword');
     const idempotencyKey = stringField(body, 'idempotencyKey');
-    if (currentPassword === null || newPassword === null || idempotencyKey === null) {
+    if (
+      currentPassword === null ||
+      newPassword === null ||
+      idempotencyKey === null ||
+      !UUID_V4_PATTERN.test(idempotencyKey.trim())
+    ) {
       return invalidRequest(context);
     }
 
