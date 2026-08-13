@@ -102,14 +102,7 @@ export async function applyReferenceMigrations({ connectionString }) {
   try {
     let statementCount = 0;
     await connection.client.begin(async (transaction) => {
-      const existing = await transaction`
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_type = 'BASE TABLE'
-        LIMIT 1
-      `;
-      if (existing.length !== 0) {
+      if (await publicSchemaHasUserObjects(transaction)) {
         throw new ReferenceMigrationExecutionError(
           'Reference migrations require an empty public schema.',
         );
@@ -164,6 +157,104 @@ export function validatePostgresConnectionString(value) {
     );
   }
   return normalized;
+}
+
+async function publicSchemaHasUserObjects(sql) {
+  const rows = await sql`
+    SELECT object_oid
+    FROM (
+      SELECT c.oid AS object_oid
+      FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT p.oid
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT t.oid
+      FROM pg_catalog.pg_type t
+      JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT c.oid
+      FROM pg_catalog.pg_collation c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.collnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT c.oid
+      FROM pg_catalog.pg_conversion c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.connamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT o.oid
+      FROM pg_catalog.pg_operator o
+      JOIN pg_catalog.pg_namespace n ON n.oid = o.oprnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT o.oid
+      FROM pg_catalog.pg_opclass o
+      JOIN pg_catalog.pg_namespace n ON n.oid = o.opcnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT o.oid
+      FROM pg_catalog.pg_opfamily o
+      JOIN pg_catalog.pg_namespace n ON n.oid = o.opfnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT s.oid
+      FROM pg_catalog.pg_statistic_ext s
+      JOIN pg_catalog.pg_namespace n ON n.oid = s.stxnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT c.oid
+      FROM pg_catalog.pg_ts_config c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.cfgnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT d.oid
+      FROM pg_catalog.pg_ts_dict d
+      JOIN pg_catalog.pg_namespace n ON n.oid = d.dictnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT p.oid
+      FROM pg_catalog.pg_ts_parser p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.prsnamespace
+      WHERE n.nspname = 'public'
+
+      UNION ALL
+
+      SELECT t.oid
+      FROM pg_catalog.pg_ts_template t
+      JOIN pg_catalog.pg_namespace n ON n.oid = t.tmplnamespace
+      WHERE n.nspname = 'public'
+    ) public_objects
+    LIMIT 1
+  `;
+  return rows.length !== 0;
 }
 
 function isWithinRepository(absolutePath) {
