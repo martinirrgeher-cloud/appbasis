@@ -22,10 +22,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: reference-preview
-    env:
-      APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-      APPBASIS_MIGRATION_TARGET: reference-preview
-      APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
 
     steps:
       - name: Check out repository
@@ -51,11 +47,19 @@ jobs:
 
       - name: Verify repository and explicit migration confirmation
         shell: bash
+        env:
+          APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
         run: |
           pnpm run verify:repo
           test "$APPBASIS_APPLY_MIGRATIONS" = '1' || { echo 'Reference preview migration was not explicitly confirmed.' >&2; exit 1; }
-          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing protected Reference preview database connection.' >&2; exit 1; }
-          echo "::add-mask::$APPBASIS_DATABASE_URL"
 
       - name: Apply Reference manifest transaction
-        run: pnpm --filter @appbasis/reference migrate:reference
+        shell: bash
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_MIGRATION_TARGET: reference-preview
+          APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing protected Reference preview database connection.' >&2; exit 1; }
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+          pnpm --filter @appbasis/reference migrate:reference
