@@ -256,13 +256,19 @@ function normalizeBaseURL(value: string): string {
 
 function validatePostgresConnectionString(value: string): void {
   try {
+    if (!/^postgres(?:ql)?:\/\//i.test(value)) {
+      throw new Error('invalid');
+    }
     const url = new URL(value);
-    if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') {
+    if (
+      (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') ||
+      url.hostname.length === 0
+    ) {
       throw new Error('invalid');
     }
   } catch {
     throw new ReferenceDemoUserBootstrapConfigurationError(
-      'connectionString must be an absolute PostgreSQL URL.',
+      'connectionString must be an absolute PostgreSQL URL with an authority and hostname.',
     );
   }
 }
