@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: reference-preview-smoke
+  group: reference-preview-deploy
   cancel-in-progress: false
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
     env:
       APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
       APPBASIS_TRUSTED_PREVIEW_ORIGIN: ${{ vars.APPBASIS_PREVIEW_URL }}
-      APPBASIS_SMOKE_USERNAME: demo.user
+      APPBASIS_SMOKE_USERNAME: ${{ secrets.APPBASIS_SMOKE_USERNAME }}
       APPBASIS_SMOKE_PASSWORD: ${{ secrets.APPBASIS_SMOKE_PASSWORD }}
       APPBASIS_SMOKE_NEW_PASSWORD: ${{ secrets.APPBASIS_SMOKE_NEW_PASSWORD }}
 
@@ -47,10 +47,10 @@ jobs:
         with:
           node-version: 24.19.0
 
-      - name: Validate protected demo smoke credential
+      - name: Validate protected smoke credential
         shell: bash
         run: |
-          test -n "$APPBASIS_SMOKE_PASSWORD" || { echo 'Missing protected demo smoke credential.' >&2; exit 1; }
+          test -n "$APPBASIS_SMOKE_PASSWORD" || { echo 'Missing protected smoke credential.' >&2; exit 1; }
           echo "::add-mask::$APPBASIS_SMOKE_PASSWORD"
           if [ -n "$APPBASIS_SMOKE_NEW_PASSWORD" ]; then
             echo "::add-mask::$APPBASIS_SMOKE_NEW_PASSWORD"
@@ -65,5 +65,6 @@ jobs:
       - name: Run automated Demo v0.1 smoke after smoke-contract changes
         if: github.event_name == 'push'
         env:
+          APPBASIS_SMOKE_USERNAME: demo.user
           APPBASIS_SMOKE_MUTATE: '1'
         run: node ./tooling/reference-preview-smoke.mjs
