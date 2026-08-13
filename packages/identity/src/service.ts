@@ -89,7 +89,12 @@ export class IdentityService {
     });
     if (operation.completedAt !== null && operation.identityId !== null) {
       const existing = await this.stateStore.find(operation.identityId);
-      if (existing !== null) return withAccountStatus(existing, "active");
+      if (existing !== null) {
+        const accountStatus = await this.authProvider.getAccountStatus(
+          operation.identityId,
+        );
+        return withAccountStatus(existing, accountStatus);
+      }
     }
     const created = await this.authProvider.createUsernameAccount({
       operationId: operation.operationId,
@@ -107,7 +112,10 @@ export class IdentityService {
       contactEmail,
       completedAt: this.now(),
     });
-    return withAccountStatus(state, "active");
+    const accountStatus = await this.authProvider.getAccountStatus(
+      created.identityId,
+    );
+    return withAccountStatus(state, accountStatus);
   }
 
   async signInWithUsername(input: {
