@@ -103,6 +103,9 @@ jobs:
       - name: Test
         run: pnpm run test
 
+      - name: Test preview bootstrap contract
+        run: node --test ./apps/reference/tooling/preview-bootstrap-contract.test.mjs
+
       - name: Build
         run: pnpm run build
 

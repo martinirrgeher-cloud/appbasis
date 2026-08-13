@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./node-runtime": "./src/node-runtime.mjs"
+    "./node-runtime": {
+      "types": "./src/client.ts",
+      "default": "./src/node-runtime.mjs"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
