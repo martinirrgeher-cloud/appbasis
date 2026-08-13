@@ -1,8 +1,8 @@
 import type { CreateTaskInput, Task } from './domain/task';
 
 export interface TaskRepository {
-  list(): readonly Task[];
-  findById(id: string): Task | undefined;
-  create(input: CreateTaskInput): Task;
-  toggleStatus(id: string): Task | undefined;
+  list(): Promise<readonly Task[]>;
+  findById(id: string): Promise<Task | undefined>;
+  create(input: CreateTaskInput): Promise<Task>;
+  toggleStatus(id: string): Promise<Task | undefined>;
 }
