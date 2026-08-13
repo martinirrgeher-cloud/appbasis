@@ -1,0 +1,41 @@
+name: Reference Preview Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      mutate:
+        description: Create and toggle a persistent smoke task
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Reference preview smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: reference-preview
+    env:
+      APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
+      APPBASIS_TRUSTED_PREVIEW_ORIGIN: ${{ vars.APPBASIS_PREVIEW_URL }}
+      APPBASIS_SMOKE_USERNAME: ${{ secrets.APPBASIS_SMOKE_USERNAME }}
+      APPBASIS_SMOKE_PASSWORD: ${{ secrets.APPBASIS_SMOKE_PASSWORD }}
+      APPBASIS_SMOKE_NEW_PASSWORD: ${{ secrets.APPBASIS_SMOKE_NEW_PASSWORD }}
+      APPBASIS_SMOKE_MUTATE: ${{ inputs.mutate && '1' || '0' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Run Reference preview smoke
+        run: node ./tooling/reference-preview-smoke.mjs

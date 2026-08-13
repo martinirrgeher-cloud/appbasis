@@ -11,7 +11,8 @@
   "scripts": {
     "verify:toolchain": "node ./tooling/verify-toolchain.mjs",
     "verify:migrations": "node ./tooling/verify-migration-contract.mjs",
-    "verify:repo": "pnpm run verify:toolchain && pnpm run verify:migrations && pnpm run db:check && git diff --check",
+    "verify:preview-smoke": "node --check ./tooling/reference-preview-smoke.mjs",
+    "verify:repo": "pnpm run verify:toolchain && pnpm run verify:migrations && pnpm run verify:preview-smoke && pnpm run db:check && git diff --check",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
@@ -19,6 +20,7 @@
     "db:check": "pnpm --filter @appbasis/identity db:check",
     "test:identity": "pnpm --filter @appbasis/identity test",
     "test:identity:e2e": "pnpm --filter @appbasis/identity test:e2e",
-    "reference:dev": "pnpm --filter @appbasis/reference dev"
+    "reference:dev": "pnpm --filter @appbasis/reference dev",
+    "reference:smoke": "node ./tooling/reference-preview-smoke.mjs"
   }
 }
