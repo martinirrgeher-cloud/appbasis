@@ -11,7 +11,7 @@
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.postgres.config.ts",
-    "tooling/bootstrap-reference-demo-user.ts",
-    "tooling/vite.demo-bootstrap.config.ts"
+    "tooling/bootstrap-reference-demo-orchestration.ts",
+    "tooling/vite.demo-orchestration.config.ts"
   ]
 }
