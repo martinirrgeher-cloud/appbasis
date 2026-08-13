@@ -226,6 +226,58 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     expect(backend.passwordChanges).toBe(passwordChangesBeforeRetry + 1);
   });
 
+  it("serializes concurrent contact-profile completion without creating an orphan person", async () => {
+    const concurrentContactEmail = "concurrent.profile@example.test";
+    const operationId = "concurrent-profile-operation";
+    const created = await runtime.backend.createUsernameAccount({
+      operationId: "concurrent-profile-provider",
+      username: "concurrent.profile",
+      displayName: "Concurrent Profile",
+      technicalEmail: "concurrent-profile@identity.invalid",
+      temporaryPassword,
+    });
+    await client`
+      INSERT INTO appbasis_identity_operation
+        (operation_id, operation_key, kind, identity_id)
+      VALUES (
+        ${operationId},
+        'provision:concurrent.profile',
+        'provision',
+        NULL
+      )
+    `;
+    const input = {
+      operationId,
+      identityId: created.identityId,
+      username: "concurrent.profile",
+      displayName: "Concurrent Profile",
+      contactEmail: concurrentContactEmail,
+      completedAt: new Date(),
+    };
+
+    const [first, second] = await Promise.all([
+      new PostgresIdentityStateStore(client).completeProvisioning(input),
+      new PostgresIdentityStateStore(client).completeProvisioning(input),
+    ]);
+
+    expect(first).toMatchObject({
+      identityId: created.identityId,
+      contactEmail: concurrentContactEmail,
+      personId: expect.any(String),
+    });
+    expect(second).toMatchObject({
+      identityId: created.identityId,
+      contactEmail: concurrentContactEmail,
+      personId: first.personId,
+    });
+    const personRows = await client<{ count: number }[]>`
+      SELECT count(*)::int AS count
+      FROM appbasis_person
+      WHERE contact_email = ${concurrentContactEmail}
+    `;
+    expect(personRows[0]?.count).toBe(1);
+  });
+
   it("disables accounts through the production Better Auth backend and terminates existing and future sessions", async () => {
     const backend = new CountingBetterAuthIdentityBackend({
       auth,
