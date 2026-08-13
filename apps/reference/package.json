@@ -1,6 +1,7 @@
 {
   "name": "@appbasis/reference",
   "version": "0.0.0",
+  "description": "AppBasis mobile-first reference application vertical slice.",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,6 +12,9 @@
     "cf-typegen": "wrangler types --include-runtime false"
   },
   "dependencies": {
+    "@appbasis/database": "workspace:*",
+    "@appbasis/identity": "workspace:*",
+    "@appbasis/permissions": "workspace:*",
     "hono": "4.13.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
