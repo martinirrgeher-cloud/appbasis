@@ -19,10 +19,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: reference-preview-deploy
-  cancel-in-progress: false
-
 jobs:
   smoke:
     name: Reference preview smoke
