@@ -1,4 +1,8 @@
-const baseURL = requiredURL(process.env.APPBASIS_PREVIEW_URL);
+const baseURL = requiredURL(process.env.APPBASIS_PREVIEW_URL, 'APPBASIS_PREVIEW_URL');
+const trustedPreviewOrigin = optionalURL(
+  process.env.APPBASIS_TRUSTED_PREVIEW_ORIGIN,
+  'APPBASIS_TRUSTED_PREVIEW_ORIGIN',
+);
 const username = optionalText(process.env.APPBASIS_SMOKE_USERNAME);
 const password = optionalText(process.env.APPBASIS_SMOKE_PASSWORD);
 const newPassword = optionalText(process.env.APPBASIS_SMOKE_NEW_PASSWORD);
@@ -10,6 +14,12 @@ if (mutate && username === null) {
 if (username !== null) {
   if (baseURL.protocol !== 'https:') {
     throw new Error('Authenticated Reference preview smoke requires HTTPS.');
+  }
+  if (trustedPreviewOrigin === null || trustedPreviewOrigin.protocol !== 'https:') {
+    throw new Error('Authenticated Reference preview smoke requires a trusted HTTPS origin.');
+  }
+  if (baseURL.origin !== trustedPreviewOrigin.origin) {
+    throw new Error('Authenticated Reference preview target does not match the trusted origin.');
   }
   if (password === null) {
     throw new Error('APPBASIS_SMOKE_PASSWORD is required when APPBASIS_SMOKE_USERNAME is set.');
@@ -236,21 +246,27 @@ function sameTask(candidate, expected, status) {
   );
 }
 
-function requiredURL(value) {
+function requiredURL(value, field) {
+  const url = optionalURL(value, field);
+  if (url === null) throw new Error(`${field} is required.`);
+  return url;
+}
+
+function optionalURL(value, field) {
   const normalized = optionalText(value);
-  if (normalized === null) throw new Error('APPBASIS_PREVIEW_URL is required.');
+  if (normalized === null) return null;
   let url;
   try {
     url = new URL(normalized);
   } catch {
-    throw new Error('APPBASIS_PREVIEW_URL must be a valid absolute URL.');
+    throw new Error(`${field} must be a valid absolute URL.`);
   }
   if (
     (url.protocol !== 'https:' && url.protocol !== 'http:') ||
     url.username.length > 0 ||
     url.password.length > 0
   ) {
-    throw new Error('APPBASIS_PREVIEW_URL must be a credential-free HTTP(S) URL.');
+    throw new Error(`${field} must be a credential-free HTTP(S) URL.`);
   }
   url.pathname = '/';
   url.search = '';
