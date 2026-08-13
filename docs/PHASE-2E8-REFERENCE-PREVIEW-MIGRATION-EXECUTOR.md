@@ -4,7 +4,7 @@
 
 Die gemergte, maschinenlesbare Reference-Migrationsreihenfolge erhält einen kleinen, reproduzierbaren Executor für die **erstmalige Einrichtung einer leeren Preview-PostgreSQL-Datenbank**.
 
-Dieser Slice verändert noch keine externe Datenbank. Er stellt ausschließlich den Repository-seitigen, manuell ausgelösten Ausführungspfad bereit.
+Dieser Slice verändert noch keine externe Datenbank. Er stellt ausschließlich den Repository-seitigen, manuell ausgelösten Ausführungspfad bereit. Der zuvor gemergte Phase-2E7-Deployment-Vertrag bleibt eine getrennte Grenze; die Migration läuft vor dem späteren Worker-Deployment.
 
 ## Scope
 
@@ -17,7 +17,8 @@ Dieser Slice verändert noch keine externe Datenbank. Er stellt ausschließlich 
 - bei jedem Ausführungsfehler wird die gesamte Transaktion zurückgerollt und nur eine feste, nicht-sensitive Fehlermeldung ausgegeben
 - die PostgreSQL-Verbindungs-URL wird strukturell validiert und nie ausgegeben
 - manueller GitHub-Actions-Workflow `Reference Preview Migrate` nutzt ausschließlich das geschützte Environment `reference-preview`
-- die echte Verbindungs-URL kommt ausschließlich aus dem Environment-Secret `APPBASIS_DATABASE_URL`
+- die echte Verbindungs-URL kommt ausschließlich aus dem Environment-Secret `APPBASIS_DATABASE_URL` und ist nur im finalen Migrationsschritt sichtbar
+- Checkout, Toolchain-Setup, Dependency-Install und `verify:repo` erhalten keine Datenbank-Zugangsdaten
 - Workflow erfordert zusätzlich eine explizite boolesche `apply=true`-Bestätigung
 - reale PostgreSQL-E2E-Prüfung des Executors in der bestehenden CI
 
@@ -47,6 +48,7 @@ Die Connection wird in jedem Fall geschlossen.
 
 - nur `postgres://` bzw. `postgresql://` mit Authority/Hostname werden akzeptiert
 - Connection-String, Passwort, Host und andere Datenbank-Zugangsdaten werden nie aktiv geloggt
+- `APPBASIS_DATABASE_URL` wird nicht jobweit gesetzt; sie wird erst dem finalen Migrationsschritt als Secret-Environment übergeben, dort auf Vorhandensein geprüft und unmittelbar für Actions-Logs maskiert
 - unerwartete Driver-/SQL-Fehler werden am CLI-Rand auf eine feste Meldung reduziert
 - jede erkannte Fremdbelegung des `public`-Schemas beendet den Lauf vor dem ersten AppBasis-DDL-Statement
 - Migrationen können über den CLI-Einstieg nur laufen, wenn zugleich gilt:
@@ -54,7 +56,7 @@ Die Connection wird in jedem Fall geschlossen.
   - `APPBASIS_APPLY_MIGRATIONS=1`
 - GitHub-Workflow ist ausschließlich `workflow_dispatch`
 - Environment `reference-preview` bleibt die Secret-/Freigabegrenze
-- der Workflow führt vor der Migration das vollständige `verify:repo` aus
+- der Workflow führt vor der Migration das vollständige `verify:repo` **ohne Datenbank-Credential** aus
 
 ## Tests
 
@@ -85,6 +87,7 @@ Der bestehende `Reference PostgreSQL E2E`-Lauf erstellt isolierte Datenbanken un
 - kein Upgrade-/Downgrade-Mechanismus für bestehende AppBasis-Datenbanken
 - keine Cloud-Ressourcenerstellung
 - keine technische Admin-/Benutzererstellung
+- keine job-weite Exposition der Preview-Datenbank-Zugangsdaten
 - keine Identity-/Permission-/Task-/HTTP-Semantikänderung
 - keine neue Dependency und keine Lockfile-Änderung
 - kein automatischer Lauf auf PR oder `main`
@@ -98,13 +101,14 @@ Nach Freigabe der echten externen Preview-Ressourcen:
 3. `Reference Preview Migrate` einmalig mit `apply=true` auslösen
 4. Hyperdrive an dieselbe Datenbank anbinden
 5. technischen Root-of-Trust und Demo-User getrennt provisionieren
-6. Reference Worker deployen
+6. den bereits getrennt abgesicherten Phase-2E7-Reference-Worker-Deploy auslösen
 7. Health- und anschließend authentifizierten/mutierenden Smoke ausführen
 
 ## Abnahmekriterien
 
-- Exact-Head-CI grün
+- CI auf dem aktuellen PR-Head gegen den aktuellen `main` grün
 - realer PostgreSQL-E2E des Executors grün, einschließlich Fremdobjekt-Abweisung
+- Datenbank-Credential nur im finalen Migrationsschritt sichtbar
 - keine Secrets oder externe IDs im Repository
 - keine externe Datenbank wurde durch den PR verändert
 - finaler Codex-Re-Review ohne major/actionable Finding
