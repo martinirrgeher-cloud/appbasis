@@ -1,10 +1,11 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+const repositoryRealRoot = await realpath(repositoryRoot);
 const manifestRelativePath = 'apps/reference/appbasis.database.json';
-const manifestPath = path.join(repositoryRoot, manifestRelativePath);
+const manifestPath = path.join(repositoryRoot, ...manifestRelativePath.split('/'));
 
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 const errors = [];
@@ -51,6 +52,28 @@ for (const [ownerIndex, owner] of (manifest.owners ?? []).entries()) {
     ownerRoots.add(owner.root);
   }
 
+  const absoluteOwnerRoot = repositoryPath(owner.root);
+  let ownerRealRoot;
+  try {
+    const ownerRootStat = await lstat(absoluteOwnerRoot);
+    if (ownerRootStat.isSymbolicLink()) {
+      errors.push(`${label}.root must not be a symbolic link: ${owner.root}`);
+      continue;
+    }
+    if (!ownerRootStat.isDirectory()) {
+      errors.push(`${label}.root must point to a directory: ${owner.root}`);
+      continue;
+    }
+    ownerRealRoot = await realpath(absoluteOwnerRoot);
+    if (!isWithinFilesystemPath(repositoryRealRoot, ownerRealRoot)) {
+      errors.push(`${label}.root resolves outside the repository: ${owner.root}`);
+      continue;
+    }
+  } catch {
+    errors.push(`${label}.root does not exist: ${owner.root}`);
+    continue;
+  }
+
   if (!Number.isInteger(owner.schemaVersion) || owner.schemaVersion < 1) {
     errors.push(`${label}.schemaVersion must be a positive integer.`);
   }
@@ -60,13 +83,19 @@ for (const [ownerIndex, owner] of (manifest.owners ?? []).entries()) {
     continue;
   }
 
-  const sortedMigrations = [...owner.migrations].sort((left, right) => left.localeCompare(right));
-  if (!owner.migrations.every((migration, index) => migration === sortedMigrations[index])) {
-    errors.push(`${label}.migrations must be lexicographically sorted.`);
+  const stringMigrations = owner.migrations.filter((migration) => typeof migration === 'string');
+  if (stringMigrations.length !== owner.migrations.length) {
+    errors.push(`${label}.migrations must contain only repository-relative strings.`);
+  } else {
+    const sortedMigrations = [...stringMigrations].sort((left, right) =>
+      left.localeCompare(right),
+    );
+    if (!stringMigrations.every((migration, index) => migration === sortedMigrations[index])) {
+      errors.push(`${label}.migrations must be lexicographically sorted.`);
+    }
   }
 
   const directories = new Set();
-  const expectedByDirectory = new Map();
 
   for (const [migrationIndex, migration] of owner.migrations.entries()) {
     const migrationLabel = `${label}.migrations[${migrationIndex}]`;
@@ -77,7 +106,7 @@ for (const [ownerIndex, owner] of (manifest.owners ?? []).entries()) {
     if (!migration.endsWith('.sql')) {
       errors.push(`${migrationLabel} must reference a .sql file.`);
     }
-    if (!isWithin(owner.root, migration)) {
+    if (!isWithinRepositoryPath(owner.root, migration)) {
       errors.push(`${migrationLabel} must stay within owner root "${owner.root}".`);
     }
     if (migrationPaths.has(migration)) {
@@ -86,41 +115,62 @@ for (const [ownerIndex, owner] of (manifest.owners ?? []).entries()) {
       migrationPaths.add(migration);
     }
 
-    const absoluteMigrationPath = path.join(repositoryRoot, ...migration.split('/'));
+    const absoluteMigrationPath = repositoryPath(migration);
     try {
-      const migrationStat = await stat(absoluteMigrationPath);
-      if (!migrationStat.isFile()) {
+      const migrationStat = await lstat(absoluteMigrationPath);
+      if (migrationStat.isSymbolicLink()) {
+        errors.push(`${migrationLabel} must not be a symbolic link: ${migration}`);
+      } else if (!migrationStat.isFile()) {
         errors.push(`${migrationLabel} does not point to a file.`);
+      } else {
+        const migrationRealPath = await realpath(absoluteMigrationPath);
+        if (!isWithinFilesystemPath(ownerRealRoot, migrationRealPath)) {
+          errors.push(`${migrationLabel} resolves outside owner root "${owner.root}".`);
+        }
       }
     } catch {
       errors.push(`${migrationLabel} does not exist: ${migration}`);
     }
 
-    const directory = path.posix.dirname(migration);
-    directories.add(directory);
-    const expected = expectedByDirectory.get(directory) ?? new Set();
-    expected.add(path.posix.basename(migration));
-    expectedByDirectory.set(directory, expected);
+    directories.add(path.posix.dirname(migration));
   }
 
   for (const directory of directories) {
-    const absoluteDirectory = path.join(repositoryRoot, ...directory.split('/'));
+    const absoluteDirectory = repositoryPath(directory);
     let actualSqlFiles;
     try {
-      actualSqlFiles = (await readdir(absoluteDirectory))
-        .filter((entry) => entry.endsWith('.sql'))
-        .sort((left, right) => left.localeCompare(right));
+      const directoryStat = await lstat(absoluteDirectory);
+      if (directoryStat.isSymbolicLink()) {
+        errors.push(`${label} migration directory must not be a symbolic link: ${directory}`);
+        continue;
+      }
+      if (!directoryStat.isDirectory()) {
+        errors.push(`${label} migration directory is not a directory: ${directory}`);
+        continue;
+      }
+      const directoryRealPath = await realpath(absoluteDirectory);
+      if (!isWithinFilesystemPath(ownerRealRoot, directoryRealPath)) {
+        errors.push(`${label} migration directory resolves outside owner root: ${directory}`);
+        continue;
+      }
+      actualSqlFiles = await collectSqlFiles(directory, absoluteDirectory, label);
     } catch {
       errors.push(`${label} migration directory does not exist: ${directory}`);
       continue;
     }
 
-    const expectedSqlFiles = [...(expectedByDirectory.get(directory) ?? [])].sort((left, right) =>
-      left.localeCompare(right),
-    );
+    const expectedSqlFiles = owner.migrations
+      .filter(
+        (migration) =>
+          typeof migration === 'string' &&
+          migration.endsWith('.sql') &&
+          isAtOrWithinRepositoryPath(directory, migration),
+      )
+      .sort((left, right) => left.localeCompare(right));
+
     if (JSON.stringify(actualSqlFiles) !== JSON.stringify(expectedSqlFiles)) {
       errors.push(
-        `${label} manifest must list every .sql migration in ${directory}. ` +
+        `${label} manifest must list every .sql migration below ${directory}. ` +
           `Expected [${actualSqlFiles.join(', ')}], manifest has [${expectedSqlFiles.join(', ')}].`,
       );
     }
@@ -137,13 +187,63 @@ if (errors.length > 0) {
   );
 }
 
-function isSafeRepositoryPath(value) {
-  if (typeof value !== 'string' || value.length === 0 || value.includes('\\')) return false;
-  const normalized = path.posix.normalize(value);
-  return normalized === value && !path.posix.isAbsolute(value) && value !== '..' && !value.startsWith('../');
+async function collectSqlFiles(relativeDirectory, absoluteDirectory, label) {
+  const sqlFiles = [];
+  const entries = await readdir(absoluteDirectory, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const relativeEntry = path.posix.join(relativeDirectory, entry.name);
+    const absoluteEntry = path.join(absoluteDirectory, entry.name);
+
+    if (entry.isSymbolicLink()) {
+      errors.push(`${label} migration tree must not contain symbolic links: ${relativeEntry}`);
+      continue;
+    }
+    if (entry.isDirectory()) {
+      sqlFiles.push(...(await collectSqlFiles(relativeEntry, absoluteEntry, label)));
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith('.sql')) {
+      sqlFiles.push(relativeEntry);
+    }
+  }
+
+  return sqlFiles.sort((left, right) => left.localeCompare(right));
 }
 
-function isWithin(root, candidate) {
+function repositoryPath(value) {
+  return path.resolve(repositoryRoot, ...value.split('/'));
+}
+
+function isSafeRepositoryPath(value) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.includes('\\') ||
+    value.includes('\0')
+  ) {
+    return false;
+  }
+  const normalized = path.posix.normalize(value);
+  return (
+    normalized === value &&
+    !path.posix.isAbsolute(value) &&
+    value !== '..' &&
+    !value.startsWith('../')
+  );
+}
+
+function isWithinRepositoryPath(root, candidate) {
   const relative = path.posix.relative(root, candidate);
   return relative !== '' && relative !== '..' && !relative.startsWith('../');
+}
+
+function isAtOrWithinRepositoryPath(root, candidate) {
+  const relative = path.posix.relative(root, candidate);
+  return relative !== '..' && !relative.startsWith('../');
+}
+
+function isWithinFilesystemPath(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
