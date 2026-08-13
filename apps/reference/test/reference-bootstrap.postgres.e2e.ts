@@ -28,6 +28,8 @@ bootstrapDatabaseUrl.pathname = `/${bootstrapDatabaseName}`;
 
 const secret = 'reference-bootstrap-e2e-secret-at-least-32-characters';
 const baseURL = 'http://localhost:8787';
+const adminUsername = 'bootstrap.admin';
+const adminPassword = 'Bootstrap-technical-admin-42!';
 const username = 'demo.bootstrap';
 const originalTemporaryPassword = 'Temporary-Reference-123!';
 const replacementTemporaryPassword = 'Must-Not-Replace-456!';
@@ -35,6 +37,7 @@ const repositoryRoot = path.resolve(fileURLToPath(new URL('../../../', import.me
 const manifestPath = path.join(repositoryRoot, 'apps', 'reference', 'appbasis.database.json');
 const adminConnection = createPostgresDatabase(databaseUrl);
 let migrationConnection: ReturnType<typeof createPostgresDatabase> | undefined;
+let administrativeSessionToken = '';
 
 describe('Reference demo user bootstrap PostgreSQL E2E', () => {
   beforeAll(async () => {
@@ -59,6 +62,33 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
       }
     }
 
+    const auth = createBetterAuthRuntime({
+      database: migrationConnection.database,
+      baseURL,
+      secret,
+    });
+    await auth.api.createUser({
+      body: {
+        email: 'bootstrap-admin@identity.invalid',
+        password: adminPassword,
+        name: 'Reference Technical Admin',
+        role: 'admin',
+        data: {
+          username: adminUsername,
+          displayUsername: adminUsername,
+        },
+      },
+    });
+    const adminSignIn = await auth.handler(
+      new Request(`${baseURL}/api/auth/sign-in/username`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: adminUsername, password: adminPassword }),
+      }),
+    );
+    if (!adminSignIn.ok) throw new Error('Technical admin sign-in failed.');
+    administrativeSessionToken = sessionCookie(adminSignIn);
+
     await migrationConnection.client.end();
     migrationConnection = undefined;
   });
@@ -78,6 +108,7 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
       connectionString: bootstrapDatabaseUrl.toString(),
       secret,
       baseURL,
+      administrativeSessionToken,
       username: '  Demo.Bootstrap  ',
       displayName: ' Bootstrap Demo ',
       temporaryPassword: originalTemporaryPassword,
@@ -93,16 +124,19 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
     expect(Object.keys(first).sort()).toEqual(
       ['accountStatus', 'identityId', 'mustChangePassword', 'username'].sort(),
     );
-    expect(JSON.stringify(first)).not.toContain(originalTemporaryPassword);
-    expect(JSON.stringify(first)).not.toContain(secret);
-    expect(JSON.stringify(first)).not.toContain('bootstrap@example.test');
-    expect(JSON.stringify(first)).not.toContain('@identity.invalid');
-    expect(JSON.stringify(first)).not.toContain('sessionToken');
+    const serializedFirst = JSON.stringify(first);
+    expect(serializedFirst).not.toContain(originalTemporaryPassword);
+    expect(serializedFirst).not.toContain(secret);
+    expect(serializedFirst).not.toContain(administrativeSessionToken);
+    expect(serializedFirst).not.toContain('bootstrap@example.test');
+    expect(serializedFirst).not.toContain('@identity.invalid');
+    expect(serializedFirst).not.toContain('sessionToken');
 
     const second = await bootstrapReferenceDemoUser({
       connectionString: bootstrapDatabaseUrl.toString(),
       secret,
       baseURL,
+      administrativeSessionToken,
       username,
       displayName: 'Bootstrap Demo',
       temporaryPassword: replacementTemporaryPassword,
@@ -143,10 +177,16 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
       const identityRows = await verificationConnection.client<{ count: number }[]>`
         SELECT count(*)::int AS count FROM appbasis_identity_security_state
       `;
-      expect(userRows[0]?.count).toBe(1);
+      expect(userRows[0]?.count).toBe(2);
       expect(identityRows[0]?.count).toBe(1);
     } finally {
       await verificationConnection.client.end();
     }
   });
 });
+
+function sessionCookie(response: Response): string {
+  const cookie = response.headers.get('set-cookie');
+  if (cookie === null) throw new Error('Better Auth did not return a session cookie.');
+  return cookie.split(';', 1)[0] ?? cookie;
+}
