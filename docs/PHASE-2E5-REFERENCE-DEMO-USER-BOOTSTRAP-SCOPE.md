@@ -16,7 +16,7 @@ Der Slice stellt bewusst noch keinen öffentlichen HTTP-Endpunkt und keinen Depl
   - `createIdentityRuntime`
   - `IdentityService.createInitialUser`
 - Eingaben: direkte PostgreSQL-Verbindung, Better-Auth-Secret, Base-URL, bereits authentifizierte technische Better-Auth-Admin-Session, Benutzername, Anzeigename, temporäres Passwort und optionale Kontaktadresse
-- strikte strukturelle Konfigurationsvalidierung vor dem ersten Datenbankzugriff, einschließlich der aktuell konfigurierten Better-Auth-Passwortgrenzen 8–128 Zeichen
+- strikte strukturelle Konfigurationsvalidierung vor dem ersten Datenbankzugriff, einschließlich einer echten `postgres://`-/`postgresql://`-URL mit Authority und Host sowie der aktuell konfigurierten Better-Auth-Passwortgrenzen 8–128 Zeichen
 - nach Verbindungsaufbau wird die angegebene Session über Better Auth validiert und der zugehörige technische Benutzer serverseitig als aktiver Better-Auth-Admin geprüft, bevor `createInitialUser` aufgerufen wird
 - kein Better-Auth-Account mit technischer Adminrolle darf Ziel des AppBasis-Bootstrap werden, unabhängig davon, welcher technische Admin den Bootstrap ausführt
 - Ergebnis enthält nur sichere Bootstrap-Metadaten wie Identity-ID, Username, Account-Status und Pflichtpasswortwechsel-Status
@@ -44,6 +44,7 @@ Der Slice stellt bewusst noch keinen öffentlichen HTTP-Endpunkt und keinen Depl
 ## Sicherheitsverhalten
 
 - fehlen erforderliche Werte, ist das temporäre Passwort außerhalb 8–128 Zeichen oder sind Secret/Base-URL/Connection-String strukturell ungültig, wird vor dem Datenbankzugriff abgebrochen
+- opaque oder hostlose PostgreSQL-URLs wie `postgres:foo`, `postgres:/foo` oder `postgres:///db` werden vor Erstellung der Datenbankverbindung abgewiesen
 - eine nicht vorhandene, abgelaufene, gefälschte, deaktivierte oder nicht-administrative Better-Auth-Session wird vor jeder Provisionierungs-/Reconciliation-Operation abgewiesen
 - die technische Admin-Session wird ausschließlich für diese Verifikation und anschließend an die bestehende produktive Identity-Runtime weitergereicht
 - besitzt der Ziel-Username bereits einen Better-Auth-Account mit technischer Adminrolle, wird der Bootstrap unabhängig vom aufrufenden Admin abgewiesen
@@ -60,7 +61,7 @@ Der Slice stellt bewusst noch keinen öffentlichen HTTP-Endpunkt und keinen Depl
 - Anmeldung mit dem temporären Passwort liefert anschließend `password-change-required`
 - ein zweiter Bootstrap desselben Usernames liefert dieselbe Identity-ID und erzeugt keinen zweiten AppBasis-Benutzer bzw. ersetzt das temporäre Passwort nicht
 - sichere Rückgabe enthält weder Passwort noch technische E-Mail noch Admin-/Benutzer-Session
-- strukturell ungültige Bootstrap-Konfiguration wird vor Erstellung der PostgreSQL-Verbindung abgewiesen
+- strukturell ungültige Bootstrap-Konfiguration einschließlich opaque oder hostloser PostgreSQL-URLs wird vor Erstellung der PostgreSQL-Verbindung abgewiesen
 - technische Better-Auth-Admins erhalten durch diesen Slice keine AppBasis-Identity-State- oder Business-Permission-Zuordnung
 - bestehende Reference-/Identity-/Tasks-Funktionen bleiben unverändert
 - frozen install, Repo-Verify, Typecheck, Unit-Tests, reale PostgreSQL-E2Es, Build und `git diff --check` bleiben grün
