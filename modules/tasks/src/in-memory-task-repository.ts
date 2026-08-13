@@ -9,15 +9,15 @@ export class InMemoryTaskRepository implements TaskRepository {
     this.#tasks = new Map(initialTasks.map((task) => [task.id, task]));
   }
 
-  list(): readonly Task[] {
+  async list(): Promise<readonly Task[]> {
     return [...this.#tasks.values()];
   }
 
-  findById(id: string): Task | undefined {
+  async findById(id: string): Promise<Task | undefined> {
     return this.#tasks.get(id);
   }
 
-  create(input: CreateTaskInput): Task {
+  async create(input: CreateTaskInput): Promise<Task> {
     while (this.#tasks.has(String(this.#nextId))) {
       this.#nextId += 1;
     }
@@ -28,7 +28,7 @@ export class InMemoryTaskRepository implements TaskRepository {
     return task;
   }
 
-  toggleStatus(id: string): Task | undefined {
+  async toggleStatus(id: string): Promise<Task | undefined> {
     const task = this.#tasks.get(id);
 
     if (!task) {
