@@ -19,6 +19,7 @@
     "db:check": "pnpm --filter @appbasis/identity db:check",
     "test:identity": "pnpm --filter @appbasis/identity test",
     "test:identity:e2e": "pnpm --filter @appbasis/identity test:e2e",
-    "reference:dev": "pnpm --filter @appbasis/reference dev"
+    "reference:dev": "pnpm --filter @appbasis/reference dev",
+    "reference:smoke": "node ./tooling/reference-preview-smoke.mjs"
   }
 }
