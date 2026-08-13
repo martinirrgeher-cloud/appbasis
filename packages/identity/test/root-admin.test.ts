@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeTechnicalRootAdminOptions,
   TechnicalRootAdminConfigurationError,
-} from "../src/root-admin.mjs";
+} from "../src/root-admin";
 
 const valid = {
   connectionString: "postgres://postgres:postgres@localhost:5432/appbasis",
