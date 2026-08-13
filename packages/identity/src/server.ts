@@ -233,10 +233,26 @@ export class PostgresIdentityStateStore implements IdentityStateStore {
     completedAt: Date;
   }): Promise<IdentityPersistenceState> {
     const completedAt = input.completedAt.toISOString();
+    const personId = input.contactEmail === null ? null : randomUUID();
     await this.sql.begin(async (transaction) => {
+      if (personId !== null) {
+        await transaction`
+          INSERT INTO appbasis_person (id, display_name, contact_email)
+          SELECT ${personId}, ${input.displayName}, ${input.contactEmail}
+          WHERE NOT EXISTS (
+            SELECT 1 FROM appbasis_identity_security_state
+            WHERE identity_id = ${input.identityId} AND person_id IS NOT NULL
+          )
+        `;
+      }
       await transaction`
-        INSERT INTO appbasis_identity_security_state (identity_id)
-        VALUES (${input.identityId}) ON CONFLICT (identity_id) DO NOTHING
+        INSERT INTO appbasis_identity_security_state (identity_id, person_id)
+        VALUES (${input.identityId}, ${personId})
+        ON CONFLICT (identity_id) DO UPDATE
+          SET person_id = COALESCE(
+            appbasis_identity_security_state.person_id,
+            EXCLUDED.person_id
+          )
       `;
       await transaction`
         UPDATE appbasis_identity_operation
@@ -253,10 +269,28 @@ export class PostgresIdentityStateStore implements IdentityStateStore {
     displayName: string;
     contactEmail: string | null;
   }): Promise<IdentityPersistenceState> {
-    await this.sql`
-      INSERT INTO appbasis_identity_security_state (identity_id)
-      VALUES (${input.identityId})
-    `;
+    const personId = input.contactEmail === null ? null : randomUUID();
+    await this.sql.begin(async (transaction) => {
+      if (personId !== null) {
+        await transaction`
+          INSERT INTO appbasis_person (id, display_name, contact_email)
+          SELECT ${personId}, ${input.displayName}, ${input.contactEmail}
+          WHERE NOT EXISTS (
+            SELECT 1 FROM appbasis_identity_security_state
+            WHERE identity_id = ${input.identityId} AND person_id IS NOT NULL
+          )
+        `;
+      }
+      await transaction`
+        INSERT INTO appbasis_identity_security_state (identity_id, person_id)
+        VALUES (${input.identityId}, ${personId})
+        ON CONFLICT (identity_id) DO UPDATE
+          SET person_id = COALESCE(
+            appbasis_identity_security_state.person_id,
+            EXCLUDED.person_id
+          )
+      `;
+    });
     return this.require(input.identityId);
   }
 
