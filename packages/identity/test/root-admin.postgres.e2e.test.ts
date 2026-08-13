@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createRootForTest } from "./root-admin-test-bootstrap";
-import { withRootAdminDatabase } from "./root-admin-postgres-helpers";
+import { createInitialTechnicalAdmin } from "../src/root-admin.mjs";
+import {
+  rootAdminBaseURL,
+  rootAdminSecret,
+  withRootAdminDatabase,
+} from "./root-admin-postgres-helpers";
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeWithPostgres = databaseUrl === undefined ? describe.skip : describe;
@@ -12,7 +16,14 @@ describeWithPostgres("root bootstrap PostgreSQL", () => {
       databaseUrl ?? "",
       "root_bootstrap_single",
       async (isolatedUrl, connection) => {
-        const result = await createRootForTest(isolatedUrl, "preview.root");
+        const result = await createInitialTechnicalAdmin({
+          connectionString: isolatedUrl,
+          secret: rootAdminSecret,
+          baseURL: rootAdminBaseURL,
+          username: "preview.root",
+          displayName: "Preview Root Test",
+          password: `test-${"x".repeat(24)}-42!`,
+        });
         const userCount = await connection.client<{ count: number }[]>`
           SELECT count(*)::int AS count FROM "user"
         `;
