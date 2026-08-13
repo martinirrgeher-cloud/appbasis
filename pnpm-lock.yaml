@@ -10,6 +10,15 @@ importers:
 
   apps/reference:
     dependencies:
+      '@appbasis/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@appbasis/identity':
+        specifier: workspace:*
+        version: link:../../packages/identity
+      '@appbasis/permissions':
+        specifier: workspace:*
+        version: link:../../packages/permissions
       hono:
         specifier: 4.13.1
         version: 4.13.1
