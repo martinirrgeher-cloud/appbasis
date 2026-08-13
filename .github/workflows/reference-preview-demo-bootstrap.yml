@@ -1,0 +1,101 @@
+name: Reference Preview Demo Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Provision the Reference preview demo user
+        required: true
+        default: false
+        type: boolean
+      administrator_username:
+        description: Existing technical Better Auth administrator username
+        required: true
+        type: string
+      demo_username:
+        description: Demo user username
+        required: true
+        default: demo.user
+        type: string
+      demo_display_name:
+        description: Demo user display name
+        required: true
+        default: Demo User
+        type: string
+      demo_contact_email:
+        description: Optional demo contact email
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reference-preview-demo-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Reference preview demo bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: reference-preview
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Build demo bootstrap operational runner without secrets
+        run: pnpm --filter @appbasis/reference build:demo-bootstrap
+
+      - name: Provision demo user with transient administrator session
+        shell: bash
+        env:
+          APPBASIS_DEMO_BOOTSTRAP_TARGET: reference-preview
+          APPBASIS_DEMO_BOOTSTRAP_APPLY: ${{ inputs.apply && '1' || '0' }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
+          APPBASIS_ROOT_ADMIN_USERNAME: ${{ inputs.administrator_username }}
+          APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
+          APPBASIS_DEMO_USER_USERNAME: ${{ inputs.demo_username }}
+          APPBASIS_DEMO_USER_DISPLAY_NAME: ${{ inputs.demo_display_name }}
+          APPBASIS_DEMO_USER_CONTACT_EMAIL: ${{ inputs.demo_contact_email }}
+          APPBASIS_DEMO_USER_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_DEMO_USER_TEMPORARY_PASSWORD }}
+        run: |
+          test "$APPBASIS_DEMO_BOOTSTRAP_APPLY" = '1' || { echo 'Reference demo bootstrap was not explicitly confirmed.' >&2; exit 1; }
+          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing protected preview database connection.' >&2; exit 1; }
+          test -n "$APPBASIS_BETTER_AUTH_SECRET" || { echo 'Missing protected Better Auth secret.' >&2; exit 1; }
+          test -n "$APPBASIS_ROOT_ADMIN_PASSWORD" || { echo 'Missing protected technical administrator credential.' >&2; exit 1; }
+          test -n "$APPBASIS_DEMO_USER_TEMPORARY_PASSWORD" || { echo 'Missing protected demo temporary credential.' >&2; exit 1; }
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+          echo "::add-mask::$APPBASIS_BETTER_AUTH_SECRET"
+          echo "::add-mask::$APPBASIS_ROOT_ADMIN_PASSWORD"
+          echo "::add-mask::$APPBASIS_DEMO_USER_TEMPORARY_PASSWORD"
+          node ./apps/reference/tooling/.demo-bootstrap-dist/bootstrap-reference-demo-user.mjs
+
+      - name: Remove demo bootstrap operational artifact
+        if: always()
+        run: rm -rf ./apps/reference/tooling/.demo-bootstrap-dist
