@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createInitialTechnicalAdmin,
   TechnicalRootAdminStateError,
-} from "../src/root-admin.mjs";
+} from "../src/root-admin";
 import {
   rootAdminBaseURL,
   rootAdminSecret,
