@@ -73,6 +73,7 @@ export class IdentityService {
     private readonly authProvider: BetterAuthIdentityBackend,
     private readonly stateStore: IdentityStateStore,
     private readonly now: () => Date = () => new Date(),
+    private readonly authorizeProvisioning: () => Promise<void> = async () => {},
   ) {}
 
   async createInitialUser(
@@ -82,6 +83,12 @@ export class IdentityService {
     const displayName = requiredText(input.displayName, "displayName");
     const contactEmail = optionalText(input.contactEmail);
     const technicalEmail = await technicalEmailForUsername(username);
+
+    // Production runtimes provide an authorization callback here so every
+    // provisioning invocation is authorized before any reconciliation state
+    // is read, including already-completed idempotent retries.
+    await this.authorizeProvisioning();
+
     const operation = await this.stateStore.prepareOperation({
       operationKey: `provision:${username}`,
       kind: "provision",
