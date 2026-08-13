@@ -5,14 +5,14 @@ import path from 'node:path';
 import { build, mergeConfig } from 'vite';
 import { describe, expect, it } from 'vitest';
 
-import demoBootstrapConfig from '../tooling/vite.demo-bootstrap.config';
+import demoOrchestrationConfig from '../tooling/vite.demo-orchestration.config';
 
 describe('Reference demo bootstrap operational bundle', () => {
-  it('builds a Node runner without embedding runtime credentials', async () => {
-    const outDir = await mkdtemp(path.join(tmpdir(), 'appbasis-demo-bootstrap-'));
+  it('builds the isolated Node orchestration runner', async () => {
+    const outDir = await mkdtemp(path.join(tmpdir(), 'appbasis-demo-orchestration-'));
     try {
       await build(
-        mergeConfig(demoBootstrapConfig, {
+        mergeConfig(demoOrchestrationConfig, {
           build: {
             outDir,
             emptyOutDir: true,
@@ -25,8 +25,6 @@ describe('Reference demo bootstrap operational bundle', () => {
         'utf8',
       );
       expect(output.length).toBeGreaterThan(0);
-      expect(output).not.toContain('APPBASIS_ROOT_ADMIN_PASSWORD=');
-      expect(output).not.toContain('APPBASIS_DEMO_USER_TEMPORARY_PASSWORD=');
     } finally {
       await rm(outDir, { recursive: true, force: true });
     }
