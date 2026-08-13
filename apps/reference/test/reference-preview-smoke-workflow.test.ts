@@ -57,8 +57,8 @@ describe("Reference preview smoke workflows", () => {
     expect(smokeWorkflow).toContain("tooling/reference-preview-smoke.mjs");
   });
 
-  it("serializes standalone smoke with preview deploys", () => {
-    expect(smokeWorkflow).toContain("group: reference-preview-deploy");
-    expect(smokeWorkflow).toContain("cancel-in-progress: false");
+  it("does not share deploy concurrency with standalone smoke runs", () => {
+    expect(smokeWorkflow).not.toContain("group: reference-preview-deploy");
+    expect(deployWorkflow).toContain("group: reference-preview-deploy");
   });
 });
