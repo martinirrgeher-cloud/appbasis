@@ -35,6 +35,8 @@ export class BetterAuthIdentityBackend {
     technicalEmail: string;
     temporaryPassword: string;
   }): Promise<{ identityId: string }> {
+    const administrativeSessionToken =
+      await this.requireAuthorizedAdministrativeSessionToken();
     const existing = await this.options.sql<{ id: string }[]>`
       SELECT id FROM "user" WHERE username = ${input.username}
     `;
@@ -51,7 +53,7 @@ export class BetterAuthIdentityBackend {
           displayUsername: input.username,
         },
       },
-      this.requireAdministrativeSessionToken(),
+      administrativeSessionToken,
     );
     if (!response.ok) {
       throw new Error(`Better Auth admin create-user failed: ${response.status}`);
@@ -176,6 +178,43 @@ export class BetterAuthIdentityBackend {
     return token;
   }
 
+  private async requireAuthorizedAdministrativeSessionToken(): Promise<string> {
+    const token = this.requireAdministrativeSessionToken();
+    const response = await this.request(
+      "/api/auth/get-session",
+      undefined,
+      token,
+      "GET",
+    );
+    if (!response.ok) {
+      throw new Error("A valid administrative Better Auth session is required.");
+    }
+
+    const body = (await response.json()) as { user?: { id?: string } } | null;
+    const identityId = body?.user?.id;
+    if (identityId === undefined || identityId.length === 0) {
+      throw new Error("A valid administrative Better Auth session is required.");
+    }
+
+    const rows = await this.options.sql<
+      { role: string | null; banned: boolean | null }[]
+    >`
+      SELECT role, banned
+      FROM "user"
+      WHERE id = ${identityId}
+      LIMIT 1
+    `;
+    const administrator = rows[0];
+    if (
+      administrator === undefined ||
+      administrator.banned === true ||
+      !hasTechnicalAdminRole(administrator.role)
+    ) {
+      throw new Error("A valid administrative Better Auth session is required.");
+    }
+    return token;
+  }
+
   private request(
     path: string,
     body?: object,
@@ -234,6 +273,17 @@ export class PostgresIdentityStateStore implements IdentityStateStore {
   }): Promise<IdentityPersistenceState> {
     const completedAt = input.completedAt.toISOString();
     await this.sql.begin(async (transaction) => {
+      const targetRows = await transaction<{ role: string | null }[]>`
+        SELECT role
+        FROM "user"
+        WHERE id = ${input.identityId}
+        FOR UPDATE
+      `;
+      const target = requiredRow(targetRows);
+      if (hasTechnicalAdminRole(target.role)) {
+        throw new Error("Technical Better Auth administrators cannot be AppBasis identities.");
+      }
+
       await transaction`
         INSERT INTO appbasis_identity_security_state (identity_id)
         VALUES (${input.identityId})
@@ -274,6 +324,17 @@ export class PostgresIdentityStateStore implements IdentityStateStore {
     contactEmail: string | null;
   }): Promise<IdentityPersistenceState> {
     await this.sql.begin(async (transaction) => {
+      const targetRows = await transaction<{ role: string | null }[]>`
+        SELECT role
+        FROM "user"
+        WHERE id = ${input.identityId}
+        FOR UPDATE
+      `;
+      const target = requiredRow(targetRows);
+      if (hasTechnicalAdminRole(target.role)) {
+        throw new Error("Technical Better Auth administrators cannot be AppBasis identities.");
+      }
+
       await transaction`
         INSERT INTO appbasis_identity_security_state (identity_id)
         VALUES (${input.identityId})
@@ -401,6 +462,13 @@ type StateRow = {
   disabled_at: Date | string | null;
   contact_email: string | null;
 };
+
+function hasTechnicalAdminRole(role: string | null): boolean {
+  return role
+    ?.split(",")
+    .map((value) => value.trim())
+    .includes("admin") === true;
+}
 
 function sessionCookie(response: Response): string {
   const cookie = response.headers.get("set-cookie");
