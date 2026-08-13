@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 
-import type { TaskRepository } from '../../../modules/tasks/src/task-repository';
+import { TaskValidationError, type TaskRepository } from '../../../modules/tasks/src';
 import {
   assertIdentityActionAllowed,
   IdentityError,
@@ -120,7 +120,7 @@ export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
   referenceApp.get('/api/tasks', async (context) => {
     const denied = await authorizeTasks(context, dependencies);
     if (denied !== null) return denied;
-    return context.json({ tasks: dependencies.tasks.list() });
+    return context.json({ tasks: await dependencies.tasks.list() });
   });
 
   referenceApp.post('/api/tasks', async (context) => {
@@ -133,20 +133,23 @@ export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
     if (title === null || description === undefined) return invalidRequest(context);
 
     try {
-      const task = dependencies.tasks.create({
+      const task = await dependencies.tasks.create({
         title,
         ...(description === null ? {} : { description }),
       });
       return context.json({ task }, 201);
-    } catch {
-      return errorResponse(context, 400, 'INVALID_TASK', 'The task input is invalid.');
+    } catch (error) {
+      if (error instanceof TaskValidationError) {
+        return errorResponse(context, 400, 'INVALID_TASK', 'The task input is invalid.');
+      }
+      throw error;
     }
   });
 
   referenceApp.post('/api/tasks/:id/toggle', async (context) => {
     const denied = await authorizeTasks(context, dependencies);
     if (denied !== null) return denied;
-    const task = dependencies.tasks.toggleStatus(context.req.param('id'));
+    const task = await dependencies.tasks.toggleStatus(context.req.param('id'));
     if (task === undefined) {
       return errorResponse(context, 404, 'TASK_NOT_FOUND', 'The task was not found.');
     }

@@ -62,6 +62,9 @@ jobs:
       - name: Run real PostgreSQL identity E2E tests
         run: pnpm run test:identity:e2e
 
+      - name: Run real PostgreSQL tasks E2E tests
+        run: pnpm --filter @appbasis/reference test:postgres
+
   quality-gate:
     name: Quality gate
     runs-on: ubuntu-24.04

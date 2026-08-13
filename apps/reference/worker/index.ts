@@ -10,7 +10,7 @@ import {
   type PrincipalPermissions,
 } from '@appbasis/permissions';
 
-import { InMemoryTaskRepository } from '../../../modules/tasks/src';
+import { PostgresTaskRepository } from '../../../modules/tasks/src';
 import { createReferenceApp } from './app';
 
 interface HyperdriveBinding {
@@ -26,7 +26,6 @@ export interface ReferenceWorkerEnv {
 }
 
 const fallbackApp = createReferenceApp();
-const tasks = new InMemoryTaskRepository();
 
 export const worker = {
   async fetch(request: Request, env: ReferenceWorkerEnv): Promise<Response> {
@@ -53,6 +52,11 @@ export const worker = {
         baseURL: configuration.baseURL,
       });
       const permissions = createReferencePermissionStore(env);
+      const tasks = new PostgresTaskRepository({
+        unsafe(query, parameters) {
+          return connection.client.unsafe(query, parameters);
+        },
+      });
       const app = createReferenceApp({
         identity: identity.service,
         permissions,
