@@ -13,8 +13,8 @@ Dieser Slice erstellt oder verändert noch keine externe Cloud-Ressource. Er def
 - gepinnte Node-/pnpm-/GitHub-Action-Versionen entsprechend der normalen CI
 - frozen install und vollständiges `verify:repo` vor jedem Deployment
 - ephemere Wrangler-Input-Konfiguration für die echte `HYPERDRIVE`-Binding
-- Hyperdrive-ID ausschließlich aus dem geschützten GitHub-Environment
-- Cloudflare-Account-ID und API-Token ausschließlich aus dem geschützten GitHub-Environment
+- Hyperdrive-ID ausschließlich aus dem geschützten GitHub-Environment und nur in den lokalen Validierungs-/Renderer-Schritten
+- Cloudflare-Account-ID und API-Token ausschließlich aus dem geschützten GitHub-Environment und nur in den Remote-Guard-/Deploy-Schritten
 - kanonische Preview-Origin ausschließlich als credential-freie HTTPS-Origin
 - `keep_vars: true`, damit bereits kontrolliert im Cloudflare-Environment gesetzte Runtime-Variablen beim Code-Deployment erhalten bleiben
 - explizite Read-only-Prüfung, dass der erwartete Worker `appbasis-reference` bereits existiert
@@ -41,7 +41,13 @@ Der Cloudflare-Vite-Plugin verwendet diese temporäre Input-Konfiguration beim B
 - `CLOUDFLARE_API_TOKEN`
 - `APPBASIS_HYPERDRIVE_ID`
 
-Die Werte werden nicht in das Repository geschrieben. Provider-Identifikatoren werden vor Build/Deploy zusätzlich für Actions-Logs maskiert.
+Die Werte werden nicht in das Repository geschrieben. Sie werden außerdem nicht als Job-weite Environment-Variablen gesetzt:
+
+- `APPBASIS_HYPERDRIVE_ID` ist nur für lokale Validierung/Maskierung und das Rendern der ephemeren Wrangler-Konfiguration sichtbar.
+- `CLOUDFLARE_ACCOUNT_ID` und `CLOUDFLARE_API_TOKEN` sind ausschließlich für den read-only Worker-Existenzcheck und den tatsächlichen Deploy-Schritt sichtbar.
+- Checkout, Toolchain-Setup, `pnpm install`, `verify:repo`, Build und Health-Smoke erhalten keine Cloudflare-Remote-Credentials.
+
+Provider-Identifikatoren werden unmittelbar im ersten Schritt, der sie benötigt, zusätzlich für nachfolgende Actions-Logs maskiert.
 
 ### Variable
 
@@ -96,14 +102,14 @@ Ablauf:
 
 1. Repository auschecken, ohne Git-Credentials zu persistieren.
 2. Node 24.19.0 und pnpm 11.21.0 einrichten.
-3. Frozen install.
-4. Repository und erforderliche Environment-Eingaben fail-closed prüfen.
-5. Provider-Identifikatoren/Preview-Origin für Logs maskieren.
+3. Frozen install ohne Cloudflare-Remote-Credentials.
+4. `verify:repo` ohne Cloudflare-Remote-Credentials ausführen.
+5. Hyperdrive-ID und Preview-Origin lokal fail-closed prüfen und maskieren.
 6. kanonische HTTPS-Origin validieren und ephemere Wrangler-Konfiguration mit `HYPERDRIVE`-Binding rendern.
-7. read-only bestätigen, dass `appbasis-reference` bereits existiert.
-8. Reference-App mit der ephemeren Input-Konfiguration bauen.
-9. den vom Cloudflare-Vite-Plugin erzeugten Build per lokaler Wrangler-Version mit Strict-/No-Provisioning-Grenzen deployen.
-10. Öffentlichen Health-Vertrag gegen die vertrauenswürdige Preview-Origin prüfen.
+7. Cloudflare-Account-ID/API-Token erst jetzt in den read-only Schritt einblenden und bestätigen, dass `appbasis-reference` bereits existiert.
+8. Reference-App ohne Cloudflare-Remote-Credentials mit der ephemeren Input-Konfiguration bauen.
+9. Cloudflare-Account-ID/API-Token nur für den lokalen Wrangler-Deploy erneut einblenden und den Build mit Strict-/No-Provisioning-Grenzen deployen.
+10. Öffentlichen Health-Vertrag ausschließlich mit der vertrauenswürdigen Preview-Origin prüfen.
 11. Ephemere Input-Konfiguration immer entfernen.
 
 Ein authentifizierter oder mutierender Demo-Smoke bleibt ein separater expliziter Schritt im Workflow `Reference Preview Smoke`.
@@ -116,6 +122,7 @@ Ein authentifizierter oder mutierender Demo-Smoke bleibt ein separater explizite
 - keine Erstellung technischer Admins oder Demo-User
 - keine Runtime-Secrets im Repository
 - keine Cloudflare-/Hyperdrive-IDs im Repository
+- keine job-weite Exposition von Cloudflare-Remote-Credentials
 - kein Passwort, Session-Cookie oder Datenbank-Zugang in Workflow-Logs
 - kein Deploy bei fehlendem Worker
 - kein Deploy bei erkannter konkurrierender Remote-Konfiguration
@@ -134,7 +141,7 @@ Ein authentifizierter oder mutierender Demo-Smoke bleibt ein separater explizite
 - Renderer-Tests laufen als Bestandteil von `verify:repo`
 - generierte Deployment-Datei ist gitignored
 - Deployment-Workflow ist ausschließlich manuell
-- Deployment-Credentials kommen ausschließlich aus `reference-preview`
+- Deployment-Credentials kommen ausschließlich aus `reference-preview` und sind auf die minimal nötigen Schritte beschränkt
 - fehlender/nicht lesbarer Worker beendet den Workflow vor dem Upload
 - Deployment läuft mit Strict-Mode und deaktiviertem Auto-Provisioning/Auto-Create
 - Build verwendet die ephemere Input-Konfiguration
