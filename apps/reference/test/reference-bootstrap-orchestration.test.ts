@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { safeReferenceDemoBootstrapDiagnostic } from '../tooling/bootstrap-reference-demo-orchestration';
 import { normalizeReferenceDemoUserCredentialBootstrapOptions } from '../worker/bootstrap-credentials';
 
 const adminValue = `a-${'x'.repeat(20)}`;
@@ -58,5 +59,19 @@ describe('Reference transient administrator bootstrap configuration', () => {
         username: 'preview.admin',
       }),
     ).toThrow('must refer to different identities');
+  });
+
+  it('reports only allowlisted operational diagnostics', () => {
+    expect(
+      safeReferenceDemoBootstrapDiagnostic(
+        new Error('Better Auth admin create-user failed: 403'),
+      ),
+    ).toBe('better-auth-admin-create-user-http-403');
+
+    const secretBearingError = new Error(
+      'database password=super-secret-value token=also-secret',
+    );
+    expect(safeReferenceDemoBootstrapDiagnostic(secretBearingError)).toBe('unknown');
+    expect(safeReferenceDemoBootstrapDiagnostic('raw secret')).toBe('unknown');
   });
 });
