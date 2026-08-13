@@ -13,12 +13,8 @@ on:
       - main
     paths:
       - .github/workflows/reference-preview-smoke.yml
+      - .github/workflows/reference-preview-deploy.yml
       - tooling/reference-preview-smoke.mjs
-  workflow_run:
-    workflows:
-      - Reference Preview Deploy
-    types:
-      - completed
 
 permissions:
   contents: read
@@ -30,7 +26,6 @@ concurrency:
 jobs:
   smoke:
     name: Reference preview smoke
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: reference-preview
@@ -46,7 +41,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -68,8 +62,8 @@ jobs:
           APPBASIS_SMOKE_MUTATE: ${{ inputs.mutate && '1' || '0' }}
         run: node ./tooling/reference-preview-smoke.mjs
 
-      - name: Run automated Demo v0.1 acceptance smoke
-        if: github.event_name != 'workflow_dispatch'
+      - name: Run automated Demo v0.1 smoke after smoke-contract changes
+        if: github.event_name == 'push'
         env:
           APPBASIS_SMOKE_MUTATE: '1'
         run: node ./tooling/reference-preview-smoke.mjs
