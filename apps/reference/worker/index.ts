@@ -57,7 +57,7 @@ export const worker = {
         identity: identity.service,
         permissions,
         tasks,
-        secureCookies: new URL(configuration.baseURL).protocol === 'https:',
+        secureCookies: url.protocol === 'https:',
       });
       return await app.fetch(request);
     } finally {
