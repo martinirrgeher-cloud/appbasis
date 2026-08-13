@@ -1,20 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
 import { InMemoryTaskRepository } from '../../../modules/tasks/src';
-import type { CurrentIdentity } from '../../../packages/identity/src/contracts';
-import { IdentityError } from '../../../packages/identity/src/errors';
-import type { IdentityService } from '../../../packages/identity/src/service';
 import {
-  principalId,
-  type PrincipalPermissions,
-} from '../../../packages/permissions/src/contracts';
+  IdentityError,
+  type CurrentIdentity,
+  type IdentityService,
+} from '@appbasis/identity';
 import {
   DEMO_CAPABILITIES,
   DEMO_KNOWN_CAPABILITIES,
   DEMO_ROLE_BUNDLES,
   DEMO_ROLES,
-} from '../../../packages/permissions/src/demo-bundles';
-import { InMemoryPermissionStore } from '../../../packages/permissions/src/in-memory-permission-store';
+  InMemoryPermissionStore,
+  principalId,
+  type PrincipalPermissions,
+} from '@appbasis/permissions';
 import { createReferenceApp } from '../worker/app';
 
 const identityId = 'reference-user-1';
@@ -112,6 +112,30 @@ describe('Reference Identity/Permissions/Tasks API', () => {
       headers: { cookie: afterCookie },
     });
     expect(after.status).toBe(200);
+  });
+
+  it('weist einen nicht-UUID-v4 Idempotency-Key bereits am HTTP-Rand als 400 zurück', async () => {
+    const identity = new StubIdentityService(true);
+    const app = configuredApp(identity);
+
+    const response = await app.request('/api/auth/change-required-password', {
+      method: 'POST',
+      headers: {
+        cookie: beforeCookie,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        currentPassword: 'temporary',
+        newPassword: 'replacement',
+        idempotencyKey: 'not-a-uuid',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'INVALID_REQUEST' },
+    });
+    expect(identity.passwordChangeCalls).toBe(0);
   });
 
   it('verweigert Tasks deny-by-default, wenn der Identity-Principal keine Berechtigungen besitzt', async () => {
@@ -256,6 +280,7 @@ class StubIdentityService implements Pick<
   IdentityService,
   'signInWithUsername' | 'getCurrentIdentity' | 'changeRequiredPassword'
 > {
+  passwordChangeCalls = 0;
   private requiresPasswordChange: boolean;
   private activeCookie = beforeCookie;
 
@@ -281,6 +306,7 @@ class StubIdentityService implements Pick<
     newPassword: string;
     idempotencyKey: string;
   }): Promise<CurrentIdentity> {
+    this.passwordChangeCalls += 1;
     if (input.sessionToken !== this.activeCookie) {
       throw new IdentityError('SESSION_INVALID', 'invalid');
     }
