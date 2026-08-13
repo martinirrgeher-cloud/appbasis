@@ -175,9 +175,9 @@ async function assertAdministrativeBootstrapAuthorization(
   }
 
   const administrators = await connection.client<
-    { username: string | null; role: string | null; banned: boolean | null }[]
+    { role: string | null; banned: boolean | null }[]
   >`
-    SELECT username, role, banned
+    SELECT role, banned
     FROM "user"
     WHERE id = ${administratorId}
     LIMIT 1
@@ -193,9 +193,16 @@ async function assertAdministrativeBootstrapAuthorization(
     );
   }
 
-  if (administrator.username === targetUsername) {
+  const targets = await connection.client<{ role: string | null }[]>`
+    SELECT role
+    FROM "user"
+    WHERE username = ${targetUsername}
+    LIMIT 1
+  `;
+  const target = targets[0];
+  if (target !== undefined && hasTechnicalAdminRole(target.role)) {
     throw new ReferenceDemoUserBootstrapAuthorizationError(
-      'The technical administrator cannot be adopted as an AppBasis bootstrap identity.',
+      'A technical administrator cannot be adopted as an AppBasis bootstrap identity.',
     );
   }
 }
