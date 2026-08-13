@@ -80,14 +80,13 @@ jobs:
           CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: ./wrangler.preview.generated.json
         run: pnpm run build
 
-      - name: Deploy Reference preview without provisioning or remote conflicts
+      - name: Deploy Reference preview without provisioning while preserving dashboard variables
         working-directory: apps/reference
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: >-
           pnpm exec wrangler deploy
-          --strict
           --experimental-provision=false
           --experimental-auto-create=false
 
