@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialTechnicalAdmin } from "../src/root-admin.mjs";
+import { createInitialTechnicalAdmin } from "../src/root-admin";
 import {
   rootAdminBaseURL,
   rootAdminSecret,
@@ -11,7 +11,7 @@ const databaseUrl = process.env.DATABASE_URL;
 const describeWithPostgres = databaseUrl === undefined ? describe.skip : describe;
 
 describeWithPostgres("root bootstrap PostgreSQL", () => {
-  it("persists one root identity without AppBasis identity state", async () => {
+  it("persists exactly one technical admin credential without AppBasis identity state or session", async () => {
     await withRootAdminDatabase(
       databaseUrl ?? "",
       "root_bootstrap_single",
@@ -24,15 +24,32 @@ describeWithPostgres("root bootstrap PostgreSQL", () => {
           displayName: "Preview Root Test",
           password: `test-${"x".repeat(24)}-42!`,
         });
-        const userCount = await connection.client<{ count: number }[]>`
-          SELECT count(*)::int AS count FROM "user"
+        const users = await connection.client<
+          { id: string; username: string | null; role: string | null }[]
+        >`SELECT id, username, role FROM "user"`;
+        expect(users).toEqual([
+          { id: result.identityId, username: "preview.root", role: "admin" },
+        ]);
+
+        const credentialRows = await connection.client<{ count: number }[]>`
+          SELECT count(*)::int AS count
+          FROM account
+          WHERE user_id = ${result.identityId}
+            AND provider_id = 'credential'
+            AND password IS NOT NULL
         `;
-        const stateCount = await connection.client<{ count: number }[]>`
-          SELECT count(*)::int AS count FROM appbasis_identity_security_state
+        const stateRows = await connection.client<{ count: number }[]>`
+          SELECT count(*)::int AS count
+          FROM appbasis_identity_security_state
+          WHERE identity_id = ${result.identityId}
         `;
-        expect(userCount[0]?.count).toBe(1);
-        expect(stateCount[0]?.count).toBe(0);
-        expect(result.role).toBe("admin");
+        const sessionRows = await connection.client<{ count: number }[]>`
+          SELECT count(*)::int AS count FROM session
+          WHERE user_id = ${result.identityId}
+        `;
+        expect(credentialRows[0]?.count).toBe(1);
+        expect(stateRows[0]?.count).toBe(0);
+        expect(sessionRows[0]?.count).toBe(0);
       },
     );
   });
