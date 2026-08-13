@@ -33,6 +33,8 @@ const secret = 'reference-bootstrap-e2e-secret-at-least-32-characters';
 const baseURL = 'http://localhost:8787';
 const adminUsername = 'bootstrap.admin';
 const adminPassword = 'Bootstrap-technical-admin-42!';
+const otherAdminUsername = 'bootstrap.other-admin';
+const otherAdminPassword = 'Bootstrap-other-admin-42!';
 const preexistingUsername = 'preexisting.user';
 const preexistingPassword = 'Preexisting-user-password-42!';
 const username = 'demo.bootstrap';
@@ -82,6 +84,18 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
         data: {
           username: adminUsername,
           displayUsername: adminUsername,
+        },
+      },
+    });
+    await auth.api.createUser({
+      body: {
+        email: 'bootstrap-other-admin@identity.invalid',
+        password: otherAdminPassword,
+        name: 'Reference Other Technical Admin',
+        role: 'admin',
+        data: {
+          username: otherAdminUsername,
+          displayUsername: otherAdminUsername,
         },
       },
     });
@@ -151,18 +165,20 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
     }
   });
 
-  it('refuses to adopt the technical Better Auth administrator as an AppBasis identity', async () => {
-    await expect(
-      bootstrapReferenceDemoUser({
-        connectionString: bootstrapDatabaseUrl.toString(),
-        secret,
-        baseURL,
-        administrativeSessionToken,
-        username: adminUsername,
-        displayName: 'Reference Technical Admin',
-        temporaryPassword: 'Unused-Temporary-456!',
-      }),
-    ).rejects.toBeInstanceOf(ReferenceDemoUserBootstrapAuthorizationError);
+  it('refuses to adopt any technical Better Auth administrator as an AppBasis identity', async () => {
+    for (const technicalAdminUsername of [adminUsername, otherAdminUsername]) {
+      await expect(
+        bootstrapReferenceDemoUser({
+          connectionString: bootstrapDatabaseUrl.toString(),
+          secret,
+          baseURL,
+          administrativeSessionToken,
+          username: technicalAdminUsername,
+          displayName: 'Reference Technical Admin',
+          temporaryPassword: 'Unused-Temporary-456!',
+        }),
+      ).rejects.toBeInstanceOf(ReferenceDemoUserBootstrapAuthorizationError);
+    }
 
     const connection = createPostgresDatabase(bootstrapDatabaseUrl.toString());
     try {
@@ -170,7 +186,7 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
         SELECT count(*)::int AS count
         FROM appbasis_identity_security_state state
         JOIN "user" auth_user ON auth_user.id = state.identity_id
-        WHERE auth_user.username = ${adminUsername}
+        WHERE auth_user.username IN (${adminUsername}, ${otherAdminUsername})
       `;
       expect(rows[0]?.count).toBe(0);
     } finally {
@@ -252,7 +268,7 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
       const identityRows = await verificationConnection.client<{ count: number }[]>`
         SELECT count(*)::int AS count FROM appbasis_identity_security_state
       `;
-      expect(userRows[0]?.count).toBe(3);
+      expect(userRows[0]?.count).toBe(4);
       expect(identityRows[0]?.count).toBe(1);
     } finally {
       await verificationConnection.client.end();
