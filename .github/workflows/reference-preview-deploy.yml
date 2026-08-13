@@ -53,11 +53,12 @@ jobs:
           test -n "$APPBASIS_HYPERDRIVE_ID" || { echo 'Missing required Reference deployment binding.' >&2; exit 1; }
           test -n "$APPBASIS_PREVIEW_URL" || { echo 'Missing required Reference preview origin.' >&2; exit 1; }
 
-      - name: Mask provider identifiers
+      - name: Mask deployment metadata
         shell: bash
         run: |
           echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
           echo "::add-mask::$APPBASIS_HYPERDRIVE_ID"
+          echo "::add-mask::$APPBASIS_PREVIEW_URL"
 
       - name: Render ephemeral deployment config
         run: node ./tooling/reference-preview-deploy-config.mjs
