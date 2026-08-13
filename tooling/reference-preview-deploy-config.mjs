@@ -42,10 +42,37 @@ export function renderReferencePreviewWranglerConfig(sourceText, hyperdriveId) {
   };
 }
 
+export function validateReferencePreviewOrigin(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error('APPBASIS_PREVIEW_URL is required.');
+  }
+  const normalized = value.trim();
+  let url;
+  try {
+    url = new URL(normalized);
+  } catch {
+    throw new Error('APPBASIS_PREVIEW_URL must be a canonical HTTPS origin.');
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname.length === 0 ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
+    (url.pathname !== '' && url.pathname !== '/') ||
+    url.search.length > 0 ||
+    url.hash.length > 0
+  ) {
+    throw new Error('APPBASIS_PREVIEW_URL must be a canonical HTTPS origin.');
+  }
+  return url.origin;
+}
+
 export async function writeReferencePreviewWranglerConfig({
   hyperdriveId,
+  previewURL,
   outputPath = defaultOutputPath,
 } = {}) {
+  validateReferencePreviewOrigin(previewURL);
   const sourceText = await readFile(sourceConfigPath, 'utf8');
   const rendered = renderReferencePreviewWranglerConfig(sourceText, hyperdriveId);
   await writeFile(outputPath, `${JSON.stringify(rendered, null, 2)}\n`, {
@@ -73,6 +100,7 @@ function requiredProviderId(value) {
 async function main() {
   await writeReferencePreviewWranglerConfig({
     hyperdriveId: process.env.APPBASIS_HYPERDRIVE_ID,
+    previewURL: process.env.APPBASIS_PREVIEW_URL,
   });
   console.log('Reference preview deployment config rendered.');
 }
