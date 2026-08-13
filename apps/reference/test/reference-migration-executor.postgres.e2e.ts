@@ -12,13 +12,19 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
 }
 
 const databaseName = 'appbasis_reference_migration_executor_e2e';
+const foreignObjectDatabaseName = 'appbasis_reference_migration_foreign_object_e2e';
 const targetUrl = new URL(databaseUrl);
 targetUrl.pathname = `/${databaseName}`;
+const foreignObjectUrl = new URL(databaseUrl);
+foreignObjectUrl.pathname = `/${foreignObjectDatabaseName}`;
 const adminConnection = createPostgresDatabase(databaseUrl);
 
 describe('Reference migration executor PostgreSQL E2E', () => {
   afterAll(async () => {
     await adminConnection.client.unsafe(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`);
+    await adminConnection.client.unsafe(
+      `DROP DATABASE IF EXISTS ${foreignObjectDatabaseName} WITH (FORCE)`,
+    );
     await adminConnection.client.end();
   });
 
@@ -59,18 +65,41 @@ describe('Reference migration executor PostgreSQL E2E', () => {
     await expect(
       applyReferenceMigrations({ connectionString: targetUrl.toString() }),
     ).rejects.toBeInstanceOf(ReferenceMigrationExecutionError);
+  });
 
-    const postRetry = createPostgresDatabase(targetUrl.toString());
+  it('refuses a public schema that contains only non-table user objects', async () => {
+    await adminConnection.client.unsafe(
+      `DROP DATABASE IF EXISTS ${foreignObjectDatabaseName} WITH (FORCE)`,
+    );
+    await adminConnection.client.unsafe(`CREATE DATABASE ${foreignObjectDatabaseName}`);
+
+    const foreign = createPostgresDatabase(foreignObjectUrl.toString());
     try {
-      const count = await postRetry.client<{ count: number }[]>`
+      await foreign.client.unsafe(`CREATE FUNCTION public.foreign_marker() RETURNS integer LANGUAGE SQL AS 'SELECT 1'`);
+      await foreign.client.unsafe(`CREATE TYPE public.foreign_state AS ENUM ('existing')`);
+    } finally {
+      await foreign.client.end();
+    }
+
+    await expect(
+      applyReferenceMigrations({ connectionString: foreignObjectUrl.toString() }),
+    ).rejects.toThrow('Reference migrations require an empty public schema.');
+
+    const verification = createPostgresDatabase(foreignObjectUrl.toString());
+    try {
+      const appbasisTables = await verification.client<{ count: number }[]>`
         SELECT count(*)::int AS count
         FROM information_schema.tables
         WHERE table_schema = 'public'
-          AND table_type = 'BASE TABLE'
+          AND table_name LIKE 'appbasis_%'
       `;
-      expect(count[0]?.count).toBeGreaterThan(0);
+      const marker = await verification.client<{ value: number }[]>`
+        SELECT public.foreign_marker() AS value
+      `;
+      expect(appbasisTables[0]?.count).toBe(0);
+      expect(marker[0]?.value).toBe(1);
     } finally {
-      await postRetry.client.end();
+      await verification.client.end();
     }
   });
 });
