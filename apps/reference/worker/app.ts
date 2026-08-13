@@ -23,6 +23,7 @@ type ReferenceIdentityService = Pick<
 
 export interface ReferenceAppDependencies {
   identity: ReferenceIdentityService;
+  endSession(sessionToken: string): Promise<void>;
   permissions: PermissionStore;
   tasks: TaskRepository;
   secureCookies?: boolean;
@@ -84,6 +85,23 @@ export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
     const current = await resolveCurrentIdentity(context, dependencies.identity);
     if (current instanceof Response) return current;
     return context.json(currentIdentityPayload(current));
+  });
+
+  referenceApp.post('/api/auth/sign-out', async (context) => {
+    const sessionToken = requestCookie(context);
+    if (sessionToken === null) return sessionInvalid(context);
+
+    try {
+      await dependencies.endSession(sessionToken);
+      return context.json({ signedOut: true });
+    } catch {
+      return errorResponse(
+        context,
+        500,
+        'AUTHENTICATION_FAILED',
+        'The identity request failed.',
+      );
+    }
   });
 
   referenceApp.post('/api/auth/change-required-password', async (context) => {
