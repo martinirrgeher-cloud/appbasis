@@ -11,6 +11,7 @@ test-results/
 !.dev.vars.example
 
 .wrangler/
+apps/reference/wrangler.preview.generated.json
 .appbasis/handoff/
 *.log
 
