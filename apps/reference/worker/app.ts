@@ -23,7 +23,7 @@ type ReferenceIdentityService = Pick<
 
 export interface ReferenceAppDependencies {
   identity: ReferenceIdentityService;
-  endSession(sessionToken: string): Promise<void>;
+  endSession?: (sessionToken: string) => Promise<void>;
   permissions: PermissionStore;
   tasks: TaskRepository;
   secureCookies?: boolean;
@@ -90,6 +90,14 @@ export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
   referenceApp.post('/api/auth/sign-out', async (context) => {
     const sessionToken = requestCookie(context);
     if (sessionToken === null) return sessionInvalid(context);
+    if (dependencies.endSession === undefined) {
+      return errorResponse(
+        context,
+        503,
+        'REFERENCE_RUNTIME_NOT_CONFIGURED',
+        'The Reference API runtime is not configured.',
+      );
+    }
 
     try {
       await dependencies.endSession(sessionToken);
