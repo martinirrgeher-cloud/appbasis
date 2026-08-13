@@ -38,6 +38,7 @@ export function App() {
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
+  const restoreGenerationRef = useRef(0);
 
   const selectedTask = selectedTaskId
     ? tasks.find((task) => task.id === selectedTaskId)
@@ -45,7 +46,13 @@ export function App() {
   const openCount = tasks.filter((task) => task.status === 'open').length;
 
   useEffect(() => {
-    void restoreSession();
+    const generation = ++restoreGenerationRef.current;
+    void restoreSession(generation);
+    return () => {
+      if (restoreGenerationRef.current === generation) {
+        restoreGenerationRef.current += 1;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -93,14 +100,17 @@ export function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [phase, selectedTaskId]);
 
-  async function restoreSession() {
+  async function restoreSession(requestGeneration?: number) {
+    const generation = requestGeneration ?? ++restoreGenerationRef.current;
     setPhase('loading');
     setSystemMessage('');
     setActionError('');
     try {
       const restored = await referenceApi.getSession();
+      if (generation !== restoreGenerationRef.current) return;
       await enterSession(restored);
     } catch (error) {
+      if (generation !== restoreGenerationRef.current) return;
       if (error instanceof ReferenceApiError && error.status === 401) {
         resetToLogin();
         return;
@@ -121,14 +131,11 @@ export function App() {
       return;
     }
 
-    setPhase('app');
-    await refreshTasks();
-  }
-
-  async function refreshTasks() {
+    setPhase('loading');
     try {
       const nextTasks = await referenceApi.listTasks();
       setTasks(nextTasks);
+      setPhase('app');
     } catch (error) {
       applyGlobalError(error);
     }
@@ -136,6 +143,7 @@ export function App() {
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    restoreGenerationRef.current += 1;
     setBusy(true);
     setSystemMessage('');
     try {
@@ -278,7 +286,7 @@ export function App() {
       <GateLayout>
         <p className="eyebrow">AppBasis</p>
         <h1>Demo wird geladen.</h1>
-        <p className="summary" role="status">Sitzung und Zugriff werden geprüft …</p>
+        <p className="summary" role="status">Sitzung, Zugriff und Aufgaben werden geprüft …</p>
       </GateLayout>
     );
   }
