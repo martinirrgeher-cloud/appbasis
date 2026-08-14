@@ -265,6 +265,8 @@ async function verifyAuthenticationIdentityBoundary(
   const rows = await client.unsafe(
     `SELECT
        identity_user.id AS principal_id,
+       identity_user.role AS auth_role,
+       security.identity_id,
        EXISTS(
          SELECT 1 FROM appbasis_permission_principal
          WHERE principal_id = identity_user.id
@@ -283,15 +285,42 @@ async function verifyAuthenticationIdentityBoundary(
        ) AS revoke_exists
      FROM "user" identity_user
      LEFT JOIN appbasis_identity_security_state security
-       ON security.identity_id = identity_user.id
-     WHERE security.identity_id IS NULL`,
+       ON security.identity_id = identity_user.id`,
   );
   for (const row of rows) {
-    if (
+    const principalId = textColumn(row, 'principal_id');
+    const hasPermissionState =
       row.principal_exists === true ||
       row.role_exists === true ||
       row.grant_exists === true ||
-      row.revoke_exists === true
+      row.revoke_exists === true;
+
+    if (hasTechnicalAdminRole(row.auth_role)) {
+      if (row.identity_id !== null && row.identity_id !== undefined) {
+        throw new ReferencePermissionAuthorityStateError(
+          'A technical Better Auth administrator has AppBasis application identity state.',
+        );
+      }
+      if (hasPermissionState) {
+        throw new ReferencePermissionAuthorityStateError(
+          'A technical Better Auth administrator has persisted AppBasis permission state.',
+        );
+      }
+      continue;
+    }
+
+    if (
+      row.identity_id !== principalId &&
+      row.identity_id !== null &&
+      row.identity_id !== undefined
+    ) {
+      throw new ReferencePermissionAuthorityStateError(
+        'An authentication identity resolved to invalid AppBasis application state.',
+      );
+    }
+    if (
+      (row.identity_id === null || row.identity_id === undefined) &&
+      hasPermissionState
     ) {
       throw new ReferencePermissionAuthorityStateError(
         'An authentication-only identity has persisted AppBasis permission state.',
@@ -340,6 +369,16 @@ async function requireFeature(
       `Reference permission authority contains a partial ${tableName} schema.`,
     );
   }
+}
+
+function hasTechnicalAdminRole(role: unknown): boolean {
+  return (
+    typeof role === 'string' &&
+    role
+      .split(',')
+      .map((value) => value.trim())
+      .includes('admin')
+  );
 }
 
 function postgresArray(values: readonly string[]): string {
