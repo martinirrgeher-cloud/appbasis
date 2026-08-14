@@ -114,7 +114,7 @@ function RoleTableRow({ role }: { readonly role: RoleOverviewItem }) {
       <div className="roles-role-cell" role="cell">
         <span className="roles-role-icon"><Icon name="shield" /></span>
         <div>
-          <a className="roles-role-link" href={`#roles/${encodeURIComponent(role.id)}`}>{role.label}</a>
+          <a className="roles-role-link" href={`#roles/${role.id}`}>{role.label}</a>
           <code>{role.id}</code>
         </div>
       </div>
@@ -128,7 +128,7 @@ function RoleTableRow({ role }: { readonly role: RoleOverviewItem }) {
 
 function RoleCard({ role }: { readonly role: RoleOverviewItem }) {
   return (
-    <a className="roles-card roles-card--link" href={`#roles/${encodeURIComponent(role.id)}`}>
+    <a className="roles-card roles-card--link" href={`#roles/${role.id}`}>
       <div className="roles-card__topline">
         <span className="roles-role-icon"><Icon name="shield" /></span>
         <span className="ab-badge ab-badge--info">{role.capabilities.length} Rechte</span>
