@@ -18,25 +18,29 @@ Der V2-Vertrag ersetzt V1 fail-closed. Alte V1-Manifeste werden nicht stillschwe
 
 ## Bewiesene Plattformdienste
 
-V2 akzeptiert zunächst ausschließlich:
+V2 akzeptiert aktuell ausschließlich:
 
 - `identity`
+- `permissions`
 
 `identity` steht für die bereits bewiesene Identity-Fähigkeit einschließlich des öffentlichen HTTP-Adapters `@appbasis/identity/http`.
+
+`permissions` steht für die bereits bewiesene serverseitige deny-by-default Capability-Fähigkeit aus `@appbasis/permissions`. Die spätere Zulassung dieses zweiten Service erweitert den ursprünglichen Phase-3D-Vertrag bewusst, ohne Rollen-, Grant-/Revoke- oder Permission-Semantik zu verändern.
 
 Andere vorhandene Paketverzeichnisse werden dadurch nicht automatisch zu Manifest-Plattformdiensten. Eine neue Service-ID wird erst zugelassen, wenn ein konkreter App-Slice ihren wiederverwendbaren Vertrag belegt.
 
 ## Generatorvertrag
 
-`appbasis:create` akzeptiert zusätzlich den wiederholbaren Parameter:
+`appbasis:create` akzeptiert den wiederholbaren Parameter:
 
 ```text
 --platform-service identity
+--platform-service permissions
 ```
 
 Plattformdienste werden nie implizit aktiviert. Ohne Parameter entsteht `platformServices: []`.
 
-Der Generator bleibt in diesem Slice ein sicherer deklarativer Publisher. Die Runtime-Erzeugung wird als separater, unabhängig geprüfter Template-Baustein entwickelt und erst nach dessen eigener Abnahme integriert.
+Der Generator bleibt fail-closed: Die Freigabe einer Service-ID im Manifest bedeutet nicht automatisch, dass fachliche HTTP-Routen erzeugt werden. Solche Routen entstehen erst in einem separat geprüften Runtime-Slice, der alle dafür benötigten Plattformdienste serverseitig zusammensetzt.
 
 ## Sicherheitsgrenzen
 
@@ -51,14 +55,14 @@ Unverändert bleiben:
 
 ## Reference-App
 
-Die Reference-App wird auf V2 migriert und deklariert explizit:
+Die Reference-App wurde auf V2 migriert und deklariert zunächst explizit:
 
 ```json
 "platformServices": ["identity"]
 ```
 
-Das ändert keine bestehende Runtime-, Session-, Permission-, Datenbank- oder Deployment-Semantik.
+Die spätere Manifest-Zulassung von `permissions` ändert diesen bestehenden App-Manifest-Eintrag nicht automatisch. Eine Reference-Umstellung erfolgt erst gemeinsam mit der separat geprüften Permission-Runtime-Komposition, damit deklarierter Vertrag und tatsächliche Laufzeit übereinstimmen.
 
 ## Nächster Schritt
 
-Nach unabhängiger Abnahme des Generated-Runtime-Templates werden Manifest V2 und Runtime-Template im Generator verbunden. Eine zweite lauffähige Mini-App muss anschließend `@appbasis/identity/http` als zweiten realen Consumer verwenden.
+Nach der Zulassung von `permissions` als zweitem V2-Plattformdienst wird die autorisierte generierte Fachmodul-Runtime separat integriert. Für Tasks gilt dabei: Identity auflösen, bestehende deny-by-default Permission-Engine serverseitig prüfen und erst danach fachliche HTTP-Aktionen ausführen.
