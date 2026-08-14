@@ -237,6 +237,9 @@ async function applyMigration(
 }
 
 function databaseUrlForName(name: string) {
+  if (databaseUrl === undefined) {
+    throw new Error('DATABASE_URL unexpectedly became unavailable.');
+  }
   const url = new URL(databaseUrl);
   url.pathname = `/${name}`;
   return url;
