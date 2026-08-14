@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./better-auth": "./src/better-auth.ts",
+    "./http": "./src/http.ts",
     "./root-admin": "./src/root-admin.ts",
     "./schema": "./src/schema/index.ts",
     "./server": "./src/server.ts"
