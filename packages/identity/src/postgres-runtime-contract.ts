@@ -27,4 +27,4 @@ export interface PostgresIdentityApplicationRuntimeOptions {
 
 export declare function createPostgresIdentityApplicationRuntime(
   options: PostgresIdentityApplicationRuntimeOptions,
-): PostgresIdentityApplicationRuntime;
+): Promise<PostgresIdentityApplicationRuntime>;
