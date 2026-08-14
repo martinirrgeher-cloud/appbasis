@@ -31,7 +31,7 @@ Demo v0.1 gilt als technisch abgeschlossen. Der produktive Preview-Pfad hat den 
 
 Jede App unter `apps/` besitzt `appbasis.app.json`. Der V2-Vertrag beschreibt Schema-Version, App-ID, sichtbaren App-Namen, explizit aktivierte Fachmodule und explizit aktivierte Plattformdienste. `verify:apps` prüft Manifestform, Verzeichnisbindung, vorhandene Modul-IDs und zugelassene Plattformdienste fail-closed als Bestandteil von `verify:repo`.
 
-Als erster Manifest-Plattformdienst ist ausschließlich `identity` zugelassen. Andere Paketverzeichnisse werden nicht vorsorglich als Plattformdienste freigegeben. Die Reference-App deklariert `platformServices: ["identity"]` explizit.
+Als Manifest-Plattformdienste sind `identity` und `permissions` ausdrücklich zugelassen. Andere Paketverzeichnisse werden nicht vorsorglich als Plattformdienste freigegeben. Die Zulassung von `permissions` erweitert nur den deklarativen V2-Vertrag; Permission-Semantik, Rollen, Grants/Revokes und bestehende Runtime-Verhalten bleiben unverändert. Die Reference-App deklariert bis zur separaten Runtime-Integration weiterhin `platformServices: ["identity"]`.
 
 `pnpm appbasis:create` erzeugt deterministische Apps ohne Reference-Copy/Paste. Staging, atomare Zielreservierung und `verify:apps` sind gegen konkurrierende Publikation gehärtet; vorhandene Apps werden niemals ersetzt. Plattformdienste werden nur über explizite Generator-Eingaben aktiviert.
 
@@ -77,4 +77,4 @@ Dieser Slice erzeugt **keine** ungeschützten Tasks-HTTP-Routen. Der generierte 
 
 ## Nächster technischer Meilenstein
 
-Der nächste Factory-Slice ist die autorisierte Runtime-Komposition eines generierten Fachmoduls. Vor generierten Tasks-HTTP-Routen muss der Permission-Vertrag explizit in die App-Fabrik eingebunden werden. Falls dafür `permissions` als neuer Manifest-V2-Plattformdienst freigegeben werden soll, ist das eine bewusste Architektur-Erweiterung und wird nicht stillschweigend vorgenommen.
+Der nächste Factory-Slice ist die autorisierte Runtime-Komposition eines generierten Fachmoduls. `permissions` ist dafür nun als zweiter Manifest-V2-Plattformdienst ausdrücklich freigegeben. Der folgende Integrationsschritt muss die bestehende deny-by-default Permission-Engine serverseitig mit Identity und dem Tasks-Modul verbinden; erst dann dürfen generierte Tasks-HTTP-Routen entstehen.
