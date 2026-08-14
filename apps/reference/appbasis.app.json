@@ -3,5 +3,5 @@
   "appId": "reference",
   "displayName": "AppBasis Reference",
   "modules": ["tasks"],
-  "platformServices": ["identity"]
+  "platformServices": ["identity", "permissions"]
 }
