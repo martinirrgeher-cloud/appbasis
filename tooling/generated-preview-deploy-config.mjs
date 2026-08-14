@@ -1,8 +1,11 @@
-import { writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { rename, rm, writeFile } from "node:fs/promises";
 
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const REQUIRED_SECRET_NAMES = Object.freeze(["BETTER_AUTH_SECRET"]);
+const WORKER_NAME_PREFIX = "appbasis-";
+const WORKER_NAME_MAX_LENGTH = 63;
 
 export function renderGeneratedPreviewWranglerConfig({
   appId,
@@ -11,13 +14,14 @@ export function renderGeneratedPreviewWranglerConfig({
   compatibilityDate = "2026-08-14",
 } = {}) {
   const normalizedAppId = requiredIdentifier(appId, "appId");
+  const workerName = requiredWorkerName(normalizedAppId);
   const normalizedHyperdriveId = requiredProviderId(hyperdriveId);
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
   const normalizedCompatibilityDate = requiredCompatibilityDate(compatibilityDate);
 
   return Object.freeze({
     $schema: "./node_modules/wrangler/config-schema.json",
-    name: `appbasis-${normalizedAppId}`,
+    name: workerName,
     main: "./worker/index.ts",
     compatibility_date: normalizedCompatibilityDate,
     compatibility_flags: Object.freeze(["nodejs_compat"]),
@@ -45,10 +49,17 @@ export async function writeGeneratedPreviewWranglerConfig({
     throw new Error("outputPath is required.");
   }
   const config = renderGeneratedPreviewWranglerConfig(input);
-  await writeFile(outputPath, `${JSON.stringify(config, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  const temporaryPath = `${outputPath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    await rename(temporaryPath, outputPath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
   return outputPath;
 }
 
@@ -57,6 +68,17 @@ function requiredIdentifier(value, field) {
     throw new Error(`${field} must match ${IDENTIFIER_PATTERN.source}.`);
   }
   return value;
+}
+
+function requiredWorkerName(appId) {
+  const workerName = `${WORKER_NAME_PREFIX}${appId}`;
+  if (
+    workerName.length > WORKER_NAME_MAX_LENGTH ||
+    workerName.endsWith("-")
+  ) {
+    throw new Error("Derived Cloudflare Worker name is invalid.");
+  }
+  return workerName;
 }
 
 function requiredProviderId(value) {
