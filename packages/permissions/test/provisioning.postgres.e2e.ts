@@ -138,6 +138,42 @@ describe("PostgreSQL permission provisioning", () => {
     });
   });
 
+  it("replays identical role bundles independently of PostgreSQL collation ordering", async () => {
+    const dashCapability = capabilityId("a-b");
+    const underscoreCapability = capabilityId("a_b");
+    const collationRole = roleId("collation:role");
+    const collationBundle: PermissionProvisioningBundle = {
+      knownCapabilities: [dashCapability, underscoreCapability],
+      roles: [
+        {
+          roleId: collationRole,
+          capabilities: [dashCapability, underscoreCapability],
+        },
+      ],
+      principalRoleAssignments: [],
+    };
+
+    await expect(
+      provisionPostgresPermissions(provisioningClient(), collationBundle),
+    ).resolves.toEqual({
+      capabilitiesCreated: 2,
+      rolesCreated: 1,
+      roleCapabilitiesCreated: 2,
+      principalsCreated: 0,
+      principalRolesCreated: 0,
+    });
+
+    await expect(
+      provisionPostgresPermissions(provisioningClient(), collationBundle),
+    ).resolves.toEqual({
+      capabilitiesCreated: 0,
+      rolesCreated: 0,
+      roleCapabilitiesCreated: 0,
+      principalsCreated: 0,
+      principalRolesCreated: 0,
+    });
+  });
+
   it("preserves additional principal roles outside the initial bootstrap assignment", async () => {
     const connection = requiredIsolatedConnection();
     await connection.client.unsafe(
