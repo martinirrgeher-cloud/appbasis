@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { createAppSkeleton } from "./create-app.mjs";
 import {
   createGeneratedDatabaseManifest,
   renderGeneratedDatabaseManifest,
@@ -21,6 +30,33 @@ test("renders deterministic migration ownership from the declared app compositio
   assert.equal(
     rendered,
     '{\n  "manifestVersion": 1,\n  "application": "checklist",\n  "dialect": "postgresql",\n  "owners": [\n    {\n      "id": "identity",\n      "root": "packages/identity",\n      "schemaVersion": 2,\n      "migrations": [\n        "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",\n        "packages/identity/drizzle/0001_appbasis_identity_foundation.sql"\n      ]\n    },\n    {\n      "id": "permissions",\n      "root": "packages/permissions",\n      "schemaVersion": 1,\n      "migrations": [\n        "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql"\n      ]\n    },\n    {\n      "id": "tasks",\n      "root": "modules/tasks",\n      "schemaVersion": 1,\n      "migrations": [\n        "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql"\n      ]\n    }\n  ]\n}\n',
+  );
+});
+
+test("createAppSkeleton publishes the generated database manifest before the app definition", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "appbasis-database-manifest-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "apps"), { recursive: true });
+  await mkdir(join(root, "modules", "tasks"), { recursive: true });
+  await writeFile(
+    join(root, "pnpm-lock.yaml"),
+    "lockfileVersion: '9.0'\n\nimporters:\n  .: {}\n",
+  );
+
+  const input = {
+    appId: "checklist",
+    displayName: "Checklist",
+    platformServices: ["identity", "permissions"],
+    modules: ["tasks"],
+  };
+  await createAppSkeleton(input, {
+    repositoryRoot: root,
+    testingHooks: { lockfileFinalizer: async () => {} },
+  });
+
+  assert.equal(
+    await readFile(join(root, "apps", "checklist", "appbasis.database.json"), "utf8"),
+    renderGeneratedDatabaseManifest(input),
   );
 });
 
@@ -53,6 +89,15 @@ test("fails closed when migration ownership for a selected component is undeclar
         modules: ["inventory"],
       }),
     /ownership is not declared for module inventory/,
+  );
+  assert.throws(
+    () =>
+      createGeneratedDatabaseManifest({
+        appId: "prototype-key",
+        platformServices: [],
+        modules: ["constructor"],
+      }),
+    /ownership is not declared for module constructor/,
   );
 });
 

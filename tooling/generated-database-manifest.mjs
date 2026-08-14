@@ -48,7 +48,7 @@ export function createGeneratedDatabaseManifest(definition) {
     owners.push(cloneOwner(PLATFORM_SERVICE_DATABASE_OWNERS[platformService]));
   }
   for (const platformService of platformServices) {
-    if (!(platformService in PLATFORM_SERVICE_DATABASE_OWNERS)) {
+    if (!Object.hasOwn(PLATFORM_SERVICE_DATABASE_OWNERS, platformService)) {
       throw new Error(
         `Generated database ownership is not declared for platform service ${platformService}.`,
       );
@@ -58,13 +58,12 @@ export function createGeneratedDatabaseManifest(definition) {
   for (const moduleName of [...modules].sort((left, right) =>
     left.localeCompare(right),
   )) {
-    const owner = MODULE_DATABASE_OWNERS[moduleName];
-    if (owner === undefined) {
+    if (!Object.hasOwn(MODULE_DATABASE_OWNERS, moduleName)) {
       throw new Error(
         `Generated database ownership is not declared for module ${moduleName}.`,
       );
     }
-    owners.push(cloneOwner(owner));
+    owners.push(cloneOwner(MODULE_DATABASE_OWNERS[moduleName]));
   }
 
   if (owners.length === 0) return null;
