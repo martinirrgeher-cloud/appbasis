@@ -76,3 +76,41 @@ test('rejects a PostgreSQL connection that points at a different logical databas
     GeneratedPreviewMigrationConfigurationError,
   );
 });
+
+test('checks the database actually selected by the driver before any migration DDL', async () => {
+  const overrideDatabaseName = 'appbasis_wrong_preview';
+  const adminConnection = createPostgresDatabase(databaseUrl);
+  const overrideUrl = new URL(targetUrl);
+  overrideUrl.searchParams.set('database', overrideDatabaseName);
+
+  try {
+    await adminConnection.client.unsafe(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`);
+    await adminConnection.client.unsafe(`DROP DATABASE IF EXISTS ${overrideDatabaseName} WITH (FORCE)`);
+    await adminConnection.client.unsafe(`CREATE DATABASE ${databaseName}`);
+    await adminConnection.client.unsafe(`CREATE DATABASE ${overrideDatabaseName}`);
+
+    await assert.rejects(
+      applyGeneratedPreviewMigrations({ connectionString: overrideUrl.toString() }),
+      GeneratedPreviewMigrationExecutionError,
+    );
+
+    const overrideVerificationUrl = new URL(databaseUrl);
+    overrideVerificationUrl.pathname = `/${overrideDatabaseName}`;
+    const verification = createPostgresDatabase(overrideVerificationUrl.toString());
+    try {
+      const rows = await verification.client`
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+        ORDER BY table_name
+      `;
+      assert.deepEqual(rows, []);
+    } finally {
+      await verification.client.end();
+    }
+  } finally {
+    await adminConnection.client.unsafe(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`);
+    await adminConnection.client.unsafe(`DROP DATABASE IF EXISTS ${overrideDatabaseName} WITH (FORCE)`);
+    await adminConnection.client.end();
+  }
+});
