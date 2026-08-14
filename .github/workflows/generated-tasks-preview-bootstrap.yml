@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: generated-tasks-preview-bootstrap
+  group: generated-tasks-preview-worker-appbasis-tasks-minimal
   cancel-in-progress: false
 
 jobs:
@@ -62,6 +62,19 @@ jobs:
           echo "::add-mask::$CLOUDFLARE_API_TOKEN"
           echo "::add-mask::$APPBASIS_HYPERDRIVE_ID"
           echo "::add-mask::$APPBASIS_BETTER_AUTH_SECRET"
+          node --input-type=module <<'NODE' || {
+          const secret = process.env.APPBASIS_BETTER_AUTH_SECRET;
+          if (
+            typeof secret !== "string" ||
+            secret.trim() !== secret ||
+            secret.length < 32
+          ) {
+            process.exit(1);
+          }
+          NODE
+            echo 'Protected Better Auth secret does not satisfy the generated runtime contract.' >&2
+            exit 1
+          }
 
       - name: Resolve generated workers.dev origin
         shell: bash
@@ -94,7 +107,7 @@ jobs:
           });
           NODE
 
-      - name: Create generated Worker only when absent
+      - name: Create generated Worker only when confirmed absent
         working-directory: apps/reference
         shell: bash
         env:
@@ -102,15 +115,36 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          if pnpm exec wrangler deployments list --name "$APPBASIS_GENERATED_WORKER_NAME" --json >/dev/null 2>&1; then
-            echo 'Generated preview Worker already exists; bootstrap deploy skipped.'
-          else
-            pnpm exec wrangler deploy \
-              --cwd ../tasks-minimal \
-              --config wrangler.bootstrap.generated.json \
-              --experimental-provision=false \
-              --experimental-auto-create=false
+          set +e
+          HTTP_STATUS="$(curl --silent --show-error \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${APPBASIS_GENERATED_WORKER_NAME}")"
+          CURL_STATUS=$?
+          set -e
+
+          if (( CURL_STATUS != 0 )); then
+            echo 'Unable to determine whether the generated preview Worker exists.' >&2
+            exit 1
           fi
+
+          case "$HTTP_STATUS" in
+            200)
+              echo 'Generated preview Worker already exists; bootstrap deploy skipped.'
+              ;;
+            404)
+              pnpm exec wrangler deploy \
+                --cwd ../tasks-minimal \
+                --config wrangler.bootstrap.generated.json \
+                --experimental-provision=false \
+                --experimental-auto-create=false
+              ;;
+            *)
+              echo 'Unable to determine whether the generated preview Worker exists.' >&2
+              exit 1
+              ;;
+          esac
 
       - name: Install required Worker secret outside the Worker runtime
         working-directory: apps/reference
