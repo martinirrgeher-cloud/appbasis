@@ -48,22 +48,29 @@ Die aktuelle Generated-App verwendet dieselbe Datenbankverbindung für Session-/
 
 Der Hyperdrive-Bootstrap erstellt ausschließlich `caching.disabled = true`; ein vorhandener Target mit aktivem Cache wird nicht stillschweigend korrigiert, sondern abgewiesen.
 
-## Runtime-Beweis ohne Seed-Daten
+## Preview-spezifischer Datenbankbeweis ohne Seed-Daten
 
-Der bestehende Phase-3O-Smoke bleibt erhalten. Zusätzlich führt der Deploy-Workflow einen Database-Binding-Smoke aus:
+Der bestehende Phase-3O-Smoke und `/api/health` bleiben unverändert. Insbesondere bleibt `/api/health` weiterhin ohne Datenbank- oder Secret-Bindings erreichbar.
 
-1. Der Smoke erzeugt einen neuen, nicht provisionierten Session-Token und signiert ihn mit dem geschützten `APPBASIS_BETTER_AUTH_SECRET`.
-2. Cookie-Name und Signaturformat entsprechen den im Repository gepinnten Better-Auth-/better-call-Versionen: für die HTTPS-Base-URL `__Secure-better-auth.session_token`, HMAC-SHA-256, Standard-Base64-Signatur und URL-Encoding des vollständigen `token.signature`-Werts.
-3. Vor dem normalen Worker-Deploy synchronisiert der manuell gestartete Deploy-Workflow genau dieses Environment-Secret über `wrangler secret put` in die bereits existierende Worker-Bindung `BETTER_AUTH_SECRET`. Der Worker muss vorher bereits existieren; diese Aktion darf keinen Worker oder Hyperdrive provisionieren.
-4. Erst nach erfolgreicher Secret-Synchronisierung und normalem Worker-Deploy sendet der Smoke den korrekt signierten, aber nicht vorhandenen Session-Token an `/api/tasks`.
-5. Better Auth kann den Token deshalb weder wegen einer falschen Signatur noch wegen eines veralteten Worker-Secrets vorzeitig verwerfen und muss `internalAdapter.findSession(token)` ausführen. Dadurch wird der Worker→Hyperdrive→PostgreSQL-Pfad tatsächlich benötigt.
-6. Erwartet wird exakt `401 SESSION_INVALID` ohne neu aufgebautes Session-Cookie.
+Für Phase 3R erhält ausschließlich der konkrete Preview-Deployment-Pfad von `tasks-minimal` einen schmalen Adapter `worker/preview.ts`. Der Generated-Worker selbst (`worker/index.ts`) und der Generator bleiben unverändert. Die temporär gerenderte Preview-Wrangler-Konfiguration wählt explizit `./worker/preview.ts` als Entry-Point; alle Requests außer `GET /api/health/database` werden unverändert an den generierten Worker delegiert.
 
-Die aktuelle Identity-Konfiguration aktiviert keinen Session-Cookie-Cache. Der Smoke erzeugt daher keine Session-Daten im Cookie, die den DB-Lookup umgehen könnten.
+`GET /api/health/database` ist ein bewusst enger Infrastruktur-Smoke:
 
-Bootstrap installiert den Better-Auth-Secret bei der erstmaligen Worker-Erstellung. Jeder spätere manuelle Generated-Preview-Deploy synchronisiert ihn erneut aus demselben geschützten Environment, bevor der DB-Smoke läuft. Damit ist eine Secret-Rotation explizit und reproduzierbar, ohne Secret-Werte auszulesen oder in ein Manifest zu schreiben.
+1. Der Preview-Adapter liest ausschließlich die bereits gebundene `HYPERDRIVE.connectionString`.
+2. Er öffnet über den bestehenden PostgreSQL-Runtime-Treiber eine Verbindung und führt exakt eine read-only Abfrage `SELECT 1` aus.
+3. Nur bei erfolgreicher Abfrage und sauberem Schließen der Verbindung liefert der Endpoint exakt `200` mit `{ status: "ok", appId: "tasks-minimal", database: "reachable" }`.
+4. Fehlende Hyperdrive-Bindings, Verbindungs-, Query- oder Close-Fehler liefern `503` mit generischem Fehlercode und ohne Provider- oder Secret-Daten.
+5. Der externe Database-Binding-Smoke akzeptiert ausschließlich diesen exakten Erfolgsvertrag.
 
-Damit wird der Worker→Hyperdrive→PostgreSQL-Pfad geprüft, ohne einen echten Benutzer, eine Rolle, einen Permission-Grant oder einen Task anzulegen.
+Damit ist ein Datenbankausfall strukturell von einer fehlenden Session unterscheidbar. Der Beweis benötigt weder Benutzer noch Rollen, Permission-Grants, Sessions oder Tasks und mutiert keine fachlichen Daten.
+
+Dieser Datenbank-Health-Adapter wird in Phase 3R bewusst **nicht** in den allgemeinen Generator übernommen. Er ist zunächst der kleinste vollständige Preview-Vertical-Slice. Eine spätere Verallgemeinerung ist erst sinnvoll, wenn ein zweiter konkreter Generated-App-/Deployment-Fall denselben Vertrag benötigt.
+
+## Worker-Secret-Synchronisierung
+
+Bootstrap installiert `BETTER_AUTH_SECRET` bei der erstmaligen Worker-Erstellung. Jeder spätere manuelle Generated-Preview-Deploy synchronisiert das Secret erneut aus demselben geschützten `generated-tasks-preview`-Environment, bevor der Worker deployed wird.
+
+Diese Synchronisierung gehört zur reproduzierbaren Deployment-Konfiguration und ist unabhängig vom Datenbank-Health-Probe. Sie unterstützt Secret-Rotation, ohne Secret-Werte auszulesen oder in App-/Database-Manifeste zu schreiben.
 
 ## Fail-closed-Grenzen
 
@@ -95,6 +102,7 @@ API-Fehler werden ohne Response-Body weitergegeben, damit Providerdaten oder Zug
 - keine Provider-ID in App- oder Database-Manifesten
 - keine automatische Übernahme oder Mutation des Reference-Hyperdrive
 - keine Änderung an der fachlichen Tasks-/Identity-/Permission-Semantik
+- keine allgemeine Generator- oder Core-Erweiterung für Datenbank-Health-Probes
 
 ## Abnahmekriterien
 
@@ -104,9 +112,10 @@ Phase 3R gilt als abgeschlossen, wenn:
 2. eine getrennte, explizit bestätigte und idempotente Hyperdrive-Erstellung existiert,
 3. normale Deployments den dedizierten Hyperdrive ausschließlich read-only auflösen und vollständig gegen den DB-Target-Vertrag validieren,
 4. Query-Caching fail-closed deaktiviert sein muss,
-5. der manuelle Deploy den Worker-`BETTER_AUTH_SECRET` vor dem Smoke aus dem geschützten Generated-Environment synchronisiert,
-6. der Database-Binding-Smoke mit einem Better-Auth-kompatibel signierten, nicht vorhandenen Session-Token den echten geschützten Runtime-/DB-Pfad ohne Seed-Daten bestätigt,
-7. PR-CI und realer PostgreSQL-E2E vollständig grün sind,
-8. Codex den exakten finalen PR-Head ohne Blocking-Finding freigibt,
-9. nach Squash-Merge der Post-Merge-CI auf `main` grün ist,
-10. der dedizierte Hyperdrive erstellt und der Worker anschließend erfolgreich gegen diesen Target deployed und gesmoked wurde.
+5. der manuelle Deploy den Worker-`BETTER_AUTH_SECRET` aus dem geschützten Generated-Environment synchronisiert,
+6. der Preview-Adapter alle normalen Requests an den unveränderten Generated-Worker delegiert und ausschließlich `/api/health/database` ergänzt,
+7. der Database-Binding-Smoke durch eine echte read-only PostgreSQL-Abfrage Worker→Hyperdrive→PostgreSQL beweist und DB-Fehler eindeutig als Nicht-Erfolg behandelt,
+8. PR-CI und realer PostgreSQL-E2E vollständig grün sind,
+9. Codex den exakten finalen PR-Head ohne Blocking-Finding freigibt,
+10. nach Squash-Merge der Post-Merge-CI auf `main` grün ist,
+11. der dedizierte Hyperdrive erstellt und der Worker anschließend erfolgreich gegen diesen Target deployed und gesmoked wurde.
