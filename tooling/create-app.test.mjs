@@ -57,7 +57,7 @@ test("creates a deterministic identity app that passes the app manifest contract
       modules: ["tasks"],
       platformServices: ["identity"],
     },
-    { repositoryRoot: root },
+    testGeneratorOptions(root),
   );
 
   assert.equal(result.relativeDestination, join("apps", "checklist"));
@@ -97,6 +97,81 @@ test("creates a deterministic identity app that passes the app manifest contract
   assert.deepEqual(definitions[0]?.platformServices, ["identity"]);
 });
 
+test("finalizes the workspace lockfile before publishing the manifest", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const lockfilePath = join(root, "pnpm-lock.yaml");
+  const originalLockfile = await readFile(lockfilePath, "utf8");
+  let finalized = false;
+
+  await createAppSkeleton(
+    {
+      appId: "checklist",
+      displayName: "Checklist",
+      modules: [],
+      platformServices: ["identity"],
+    },
+    testGeneratorOptions(root, {
+      lockfileFinalizer: async ({ lockfilePath: actualLockfilePath, destination }) => {
+        finalized = true;
+        assert.equal(actualLockfilePath, lockfilePath);
+        assert.match(
+          await readFile(join(destination, "package.json"), "utf8"),
+          /@appbasis\/app-checklist/,
+        );
+        await assert.rejects(
+          () => readFile(join(destination, "appbasis.app.json"), "utf8"),
+          { code: "ENOENT" },
+        );
+        await writeFile(lockfilePath, `${originalLockfile}# finalized\n`);
+      },
+    }),
+  );
+
+  assert.equal(finalized, true);
+  assert.equal(
+    await readFile(lockfilePath, "utf8"),
+    `${originalLockfile}# finalized\n`,
+  );
+  assert.match(
+    await readFile(join(root, "apps", "checklist", "appbasis.app.json"), "utf8"),
+    /"appId": "checklist"/,
+  );
+});
+
+test("rolls back app and lockfile when workspace finalization fails", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const lockfilePath = join(root, "pnpm-lock.yaml");
+  const originalLockfile = await readFile(lockfilePath, "utf8");
+
+  await assert.rejects(
+    () =>
+      createAppSkeleton(
+        {
+          appId: "checklist",
+          displayName: "Checklist",
+          modules: [],
+          platformServices: ["identity"],
+        },
+        testGeneratorOptions(root, {
+          lockfileFinalizer: async ({ lockfilePath: actualLockfilePath }) => {
+            assert.equal(actualLockfilePath, lockfilePath);
+            await writeFile(lockfilePath, "mutated lockfile\n");
+            throw new Error("synthetic lockfile finalization failure");
+          },
+        }),
+      ),
+    /synthetic lockfile finalization failure/,
+  );
+
+  assert.equal(await readFile(lockfilePath, "utf8"), originalLockfile);
+  assert.deepEqual(await readdir(join(root, "apps")), []);
+  const rootEntries = await readdir(root);
+  assert.equal(
+    rootEntries.some((entry) => entry.startsWith(".appbasis-create-checklist-")),
+    false,
+  );
+});
+
 test("does not generate runtime files when no platform service is selected", async (t) => {
   const root = await createRepositoryFixture(t);
 
@@ -107,7 +182,7 @@ test("does not generate runtime files when no platform service is selected", asy
       modules: [],
       platformServices: [],
     },
-    { repositoryRoot: root },
+    testGeneratorOptions(root),
   );
 
   assert.deepEqual((await readdir(join(root, "apps", "plain"))).sort(), [
@@ -129,7 +204,7 @@ test("an interrupted root staging directory never enters app discovery", async (
       modules: ["tasks"],
       platformServices: ["identity"],
     },
-    { repositoryRoot: root },
+    testGeneratorOptions(root),
   );
 
   await mkdir(join(root, ".appbasis-create-other-interrupted"));
@@ -160,26 +235,23 @@ test("serializes verification until a live publication is complete", async (t) =
       modules: ["tasks"],
       platformServices: ["identity"],
     },
-    {
-      repositoryRoot: root,
-      testingHooks: {
-        afterReserve: async () => {
-          assert.deepEqual(await readdir(join(root, "apps")), [
-            "checklist",
-            "reference",
-          ]);
-          assert.deepEqual(await readdir(join(root, "apps", "checklist")), []);
-          verificationOutcome = verifyAppDefinitions(root)
-            .then((definitions) => ({ ok: true, definitions }))
-            .catch((error) => ({ ok: false, error }))
-            .finally(() => {
-              verificationSettled = true;
-            });
-          await delay(60);
-          assert.equal(verificationSettled, false);
-        },
+    testGeneratorOptions(root, {
+      afterReserve: async () => {
+        assert.deepEqual(await readdir(join(root, "apps")), [
+          "checklist",
+          "reference",
+        ]);
+        assert.deepEqual(await readdir(join(root, "apps", "checklist")), []);
+        verificationOutcome = verifyAppDefinitions(root)
+          .then((definitions) => ({ ok: true, definitions }))
+          .catch((error) => ({ ok: false, error }))
+          .finally(() => {
+            verificationSettled = true;
+          });
+        await delay(60);
+        assert.equal(verificationSettled, false);
       },
-    },
+    }),
   );
 
   assert.notEqual(verificationOutcome, undefined);
@@ -204,12 +276,9 @@ test("does not replace a destination created after staging", async (t) => {
           modules: ["tasks"],
           platformServices: ["identity"],
         },
-        {
-          repositoryRoot: root,
-          testingHooks: {
-            afterStage: async () => mkdir(destination),
-          },
-        },
+        testGeneratorOptions(root, {
+          afterStage: async () => mkdir(destination),
+        }),
       ),
     /App destination already exists/,
   );
@@ -241,7 +310,7 @@ test("fails before writing when a module is unknown", async (t) => {
           modules: ["unknown"],
           platformServices: ["identity"],
         },
-        { repositoryRoot: root },
+        testGeneratorOptions(root),
       ),
     /Unknown AppBasis module: unknown/,
   );
@@ -261,7 +330,7 @@ test("fails before writing when a platform service is unsupported", async (t) =>
           modules: [],
           platformServices: ["notifications"],
         },
-        { repositoryRoot: root },
+        testGeneratorOptions(root),
       ),
     /references unsupported platform service notifications/,
   );
@@ -278,22 +347,36 @@ test("never overwrites an existing app directory", async (t) => {
     platformServices: ["identity"],
   };
 
-  await createAppSkeleton(input, { repositoryRoot: root });
+  await createAppSkeleton(input, testGeneratorOptions(root));
   const manifestPath = join(root, "apps", "checklist", "appbasis.app.json");
   const firstManifest = await readFile(manifestPath, "utf8");
 
   await assert.rejects(
-    () => createAppSkeleton(input, { repositoryRoot: root }),
+    () => createAppSkeleton(input, testGeneratorOptions(root)),
     /App destination already exists/,
   );
   assert.equal(await readFile(manifestPath, "utf8"), firstManifest);
 });
+
+function testGeneratorOptions(root, hooks = {}) {
+  return {
+    repositoryRoot: root,
+    testingHooks: {
+      lockfileFinalizer: async () => {},
+      ...hooks,
+    },
+  };
+}
 
 async function createRepositoryFixture(t) {
   const root = await mkdtemp(join(tmpdir(), "appbasis-create-app-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "apps"), { recursive: true });
   await mkdir(join(root, "modules", "tasks"), { recursive: true });
+  await writeFile(
+    join(root, "pnpm-lock.yaml"),
+    "lockfileVersion: '9.0'\n\nimporters:\n  .: {}\n",
+  );
   return root;
 }
 
