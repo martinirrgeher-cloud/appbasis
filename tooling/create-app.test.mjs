@@ -47,7 +47,7 @@ test("parses the explicit generator CLI contract", () => {
   );
 });
 
-test("creates a deterministic skeleton that passes the app manifest contract", async (t) => {
+test("creates a deterministic identity app that passes the app manifest contract", async (t) => {
   const root = await createRepositoryFixture(t);
 
   const result = await createAppSkeleton(
@@ -65,19 +65,59 @@ test("creates a deterministic skeleton that passes the app manifest contract", a
     await readFile(join(root, "apps", "checklist", "appbasis.app.json"), "utf8"),
     '{\n  "schemaVersion": 2,\n  "appId": "checklist",\n  "displayName": "Checklist",\n  "modules": [\n    "tasks"\n  ],\n  "platformServices": [\n    "identity"\n  ]\n}\n',
   );
-  assert.match(
-    await readFile(join(root, "apps", "checklist", "README.md"), "utf8"),
-    /Platform services: identity/,
+
+  const readme = await readFile(
+    join(root, "apps", "checklist", "README.md"),
+    "utf8",
   );
-  assert.match(
-    await readFile(join(root, "apps", "checklist", "README.md"), "utf8"),
-    /separately verified generated-runtime template/,
+  assert.match(readme, /Platform services: identity/);
+  assert.match(readme, /generated identity runtime/);
+  assert.match(readme, /@appbasis\/identity\/http/);
+
+  const packageJson = JSON.parse(
+    await readFile(join(root, "apps", "checklist", "package.json"), "utf8"),
   );
+  assert.equal(packageJson.name, "@appbasis/app-checklist");
+  assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/identity": "workspace:*",
+    hono: "4.13.1",
+  });
+
+  const worker = await readFile(
+    join(root, "apps", "checklist", "worker", "app.ts"),
+    "utf8",
+  );
+  assert.match(worker, /from "@appbasis\/identity\/http"/);
+  assert.match(worker, /\/api\/auth\/session/);
+  assert.doesNotMatch(worker, /reference/i);
 
   const definitions = await verifyAppDefinitions(root);
   assert.equal(definitions.length, 1);
   assert.equal(definitions[0]?.appId, "checklist");
   assert.deepEqual(definitions[0]?.platformServices, ["identity"]);
+});
+
+test("does not generate runtime files when no platform service is selected", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  await createAppSkeleton(
+    {
+      appId: "plain",
+      displayName: "Plain",
+      modules: [],
+      platformServices: [],
+    },
+    { repositoryRoot: root },
+  );
+
+  assert.deepEqual((await readdir(join(root, "apps", "plain"))).sort(), [
+    "README.md",
+    "appbasis.app.json",
+  ]);
+  assert.doesNotMatch(
+    await readFile(join(root, "apps", "plain", "README.md"), "utf8"),
+    /identity runtime/,
+  );
 });
 
 test("an interrupted root staging directory never enters app discovery", async (t) => {
@@ -128,6 +168,7 @@ test("serializes verification until a live publication is complete", async (t) =
             "checklist",
             "reference",
           ]);
+          assert.deepEqual(await readdir(join(root, "apps", "checklist")), []);
           verificationOutcome = verifyAppDefinitions(root)
             .then((definitions) => ({ ok: true, definitions }))
             .catch((error) => ({ ok: false, error }))
