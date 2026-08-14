@@ -13,6 +13,14 @@
       ]
     },
     {
+      "id": "permissions",
+      "root": "packages/permissions",
+      "schemaVersion": 1,
+      "migrations": [
+        "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql"
+      ]
+    },
+    {
       "id": "tasks",
       "root": "modules/tasks",
       "schemaVersion": 1,
