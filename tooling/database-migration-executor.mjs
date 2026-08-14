@@ -167,6 +167,14 @@ export async function applyRepositoryMigrationPlan({
   try {
     let statementCount = 0;
     await connection.client.begin(async (transaction) => {
+      if (expectedDatabase !== undefined) {
+        const selectedDatabase = await currentDatabase(transaction);
+        if (selectedDatabase !== expectedDatabase) {
+          throw new ExecutionError(
+            'Migration database connection did not select the required target database.',
+          );
+        }
+      }
       if (await publicSchemaHasUserObjects(transaction)) {
         throw new ExecutionError(emptySchemaMessage);
       }
@@ -240,6 +248,14 @@ export function validatePostgresConnectionString(
   }
 
   return normalized;
+}
+
+async function currentDatabase(sql) {
+  const rows = await sql`SELECT current_database() AS database_name`;
+  if (rows.length !== 1 || typeof rows[0]?.database_name !== 'string') {
+    throw new MigrationExecutionError('Migration database target could not be verified.');
+  }
+  return rows[0].database_name;
 }
 
 async function publicSchemaHasUserObjects(sql) {
