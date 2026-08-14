@@ -6,16 +6,18 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
 
 import {
-  PermissionProvisioningStateError,
   PostgresPermissionStore,
   can,
   capabilityId,
   principalId,
-  provisionPostgresPermissions,
   roleId,
+} from "../src";
+import {
+  PermissionProvisioningStateError,
+  provisionPostgresPermissions,
   type PermissionProvisioningBundle,
   type PermissionProvisioningPostgresClient,
-} from "../src";
+} from "../src/provisioning";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
