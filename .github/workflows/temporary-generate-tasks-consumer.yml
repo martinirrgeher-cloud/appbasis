@@ -49,7 +49,7 @@ jobs:
           PY
 
       - name: Generate tasks consumer with production generator
-        run: pnpm appbasis:create -- --app-id tasks-minimal --display-name "AppBasis Tasks Minimal" --module tasks --platform-service identity
+        run: node ./tooling/create-app.mjs --app-id tasks-minimal --display-name "AppBasis Tasks Minimal" --module tasks --platform-service identity
 
       - name: Verify generated consumer
         run: |
