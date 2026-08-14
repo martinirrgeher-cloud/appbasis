@@ -137,22 +137,27 @@ export async function ensureGeneratedTasksPreviewHyperdrive({
     );
   }
 
-  const payload = await cloudflareJson(deployment.fetchImpl, deployment.configsUrl, {
-    method: "POST",
-    headers: cloudflareHeaders(deployment.apiToken, true),
-    body: JSON.stringify({
-      name: GENERATED_TASKS_PREVIEW_HYPERDRIVE.name,
-      origin: {
-        scheme: deployment.origin.scheme,
-        host: deployment.origin.host,
-        port: deployment.origin.port,
-        database: deployment.origin.database,
-        user: deployment.origin.user,
-        password: deployment.origin.password,
-      },
-      caching: { disabled: true },
-    }),
-  });
+  const payload = await cloudflareJson(
+    deployment.fetchImpl,
+    deployment.configsUrl,
+    {
+      method: "POST",
+      headers: cloudflareHeaders(deployment.apiToken, true),
+      body: JSON.stringify({
+        name: GENERATED_TASKS_PREVIEW_HYPERDRIVE.name,
+        origin: {
+          scheme: deployment.origin.scheme,
+          host: deployment.origin.host,
+          port: deployment.origin.port,
+          database: deployment.origin.database,
+          user: deployment.origin.user,
+          password: deployment.origin.password,
+        },
+        caching: { disabled: true },
+      }),
+    },
+    "create",
+  );
 
   if (!isRecord(payload.result)) {
     throw new Error("Cloudflare Hyperdrive creation returned an invalid target.");
@@ -195,10 +200,15 @@ async function listHyperdrives(deployment) {
     url.searchParams.set("page", String(page));
     url.searchParams.set("per_page", String(PER_PAGE));
 
-    const payload = await cloudflareJson(deployment.fetchImpl, url.href, {
-      method: "GET",
-      headers: cloudflareHeaders(deployment.apiToken, false),
-    });
+    const payload = await cloudflareJson(
+      deployment.fetchImpl,
+      url.href,
+      {
+        method: "GET",
+        headers: cloudflareHeaders(deployment.apiToken, false),
+      },
+      "list",
+    );
     if (!Array.isArray(payload.result)) {
       throw new Error("Cloudflare Hyperdrive list returned an invalid result.");
     }
@@ -250,27 +260,55 @@ function normalizePostgresScheme(value) {
   return value === "postgres" || value === "postgresql" ? "postgres" : value;
 }
 
-async function cloudflareJson(fetchImpl, url, options) {
+async function cloudflareJson(fetchImpl, url, options, operation) {
   let response;
   try {
     response = await fetchImpl(url, options);
   } catch {
-    throw new Error("Cloudflare Hyperdrive API request failed.");
+    throw new Error(`Cloudflare Hyperdrive ${operation} API request failed.`);
   }
   if (!(response instanceof Response)) {
-    throw new Error("Cloudflare Hyperdrive API returned an invalid response.");
+    throw new Error(`Cloudflare Hyperdrive ${operation} API returned an invalid response.`);
   }
 
   let payload;
   try {
     payload = await response.json();
   } catch {
-    throw new Error("Cloudflare Hyperdrive API returned invalid JSON.");
+    throw new Error(`Cloudflare Hyperdrive ${operation} API returned invalid JSON.`);
   }
   if (!response.ok || !isRecord(payload) || payload.success !== true) {
-    throw new Error("Cloudflare Hyperdrive API rejected the request.");
+    throw new Error(cloudflareRejectionMessage(operation, response, payload));
   }
   return payload;
+}
+
+function cloudflareRejectionMessage(operation, response, payload) {
+  const diagnostics = [];
+  if (Number.isInteger(response.status) && response.status >= 100 && response.status <= 599) {
+    diagnostics.push(`status ${response.status}`);
+  }
+
+  const errorCodes = Array.isArray(payload?.errors)
+    ? [
+        ...new Set(
+          payload.errors
+            .map((error) => error?.code)
+            .filter(
+              (code) =>
+                Number.isInteger(code) &&
+                code >= 0 &&
+                code <= 999_999_999,
+            ),
+        ),
+      ].slice(0, 3)
+    : [];
+  if (errorCodes.length > 0) {
+    diagnostics.push(`codes ${errorCodes.join(",")}`);
+  }
+
+  const suffix = diagnostics.length > 0 ? ` (${diagnostics.join("; ")})` : "";
+  return `Cloudflare Hyperdrive ${operation} rejected the request${suffix}.`;
 }
 
 function cloudflareHeaders(apiToken, includeContentType) {
