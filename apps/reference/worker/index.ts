@@ -89,9 +89,10 @@ function roleAdministrationClient(
       return client.unsafe(query, parameters);
     },
     async begin(callback) {
-      return client.begin(async (transaction) =>
-        callback(permissionClient(transaction)),
-      );
+      const [result] = await client.begin(async (transaction) => [
+        await callback(permissionClient(transaction)),
+      ]);
+      return result;
     },
   };
 }
