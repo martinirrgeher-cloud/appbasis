@@ -67,7 +67,7 @@ test("wires the declared tasks module through its public workspace contract with
   assert.equal(template.files.some((entry) => entry.path === "worker/postgres.ts"), false);
 });
 
-test("generates tasks HTTP routes and PostgreSQL infrastructure only with explicit permissions composition", () => {
+test("generates tasks HTTP routes and complete PostgreSQL application composition only with explicit permissions", () => {
   const template = createIdentityRuntimeTemplate({
     ...input,
     modules: ["tasks"],
@@ -106,16 +106,30 @@ test("generates tasks HTTP routes and PostgreSQL infrastructure only with explic
   assert.match(generatedTest, /denied\.status\)\.toBe\(403\)/);
   assert.match(generatedTest, /Generated HTTP task/);
 
-  assert.match(postgresRuntime, /from "@appbasis\/database\/postgres-runtime"/);
+  assert.match(postgresRuntime, /from "@appbasis\/database"/);
+  assert.match(postgresRuntime, /createIdentityRuntime/);
+  assert.match(postgresRuntime, /from "@appbasis\/identity\/better-auth"/);
+  assert.match(postgresRuntime, /createBetterAuthRuntime/);
+  assert.match(postgresRuntime, /IdentityHttpService/);
   assert.match(postgresRuntime, /PostgresPermissionStore/);
   assert.match(postgresRuntime, /PostgresTaskRepository/);
   assert.match(postgresRuntime, /permissions: PermissionStore/);
   assert.match(postgresRuntime, /createGeneratedPostgresRuntime/);
+  assert.match(postgresRuntime, /createGeneratedPostgresApplicationRuntime/);
+  assert.match(postgresRuntime, /identity: IdentityHttpService/);
+  assert.match(postgresRuntime, /requiredIdentitySecret/);
+  assert.match(postgresRuntime, /requiredBaseURL/);
 
   assert.match(postgresTest, /Persistent generated task/);
   assert.match(postgresTest, /@appbasis\/permissions\/provisioning/);
   assert.match(postgresTest, /provisionPostgresPermissions/);
   assert.match(postgresTest, /0000_appbasis_permissions_foundation\.sql/);
+  assert.match(postgresTest, /0000_appbasis_identity_foundation\.sql/);
+  assert.match(postgresTest, /0001_appbasis_identity_foundation\.sql/);
+  assert.match(postgresTest, /createGeneratedPostgresApplicationRuntime/);
+  assert.match(postgresTest, /runtime\.identity\.getCurrentIdentity/);
+  assert.match(postgresTest, /generated-runtime-test-secret/);
+  assert.match(postgresTest, /SESSION_INVALID/);
   assert.match(postgresTest, /permissions: firstRuntime\.permissions/);
   assert.match(postgresTest, /identity-postgres-denied/);
   assert.match(postgresTest, /PERMISSION_DENIED/);
