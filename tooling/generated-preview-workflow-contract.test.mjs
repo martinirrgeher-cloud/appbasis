@@ -72,13 +72,14 @@ test("bootstrap is limited to confirmed first Worker creation and valid secret i
   assert.doesNotMatch(bootstrap, /reference-preview-migrate|migrate:reference|permission.*provision/i);
 });
 
-test("normal deploy requires bootstrap, validates the bundle and runs only health smoke", async () => {
+test("normal deploy requires bootstrap, validates the bundle and proves the protected runtime boundary", async () => {
   const deploy = await readFile(deployPath, "utf8");
 
   assert.match(deploy, /writeGeneratedPreviewWranglerConfig/);
   assert.match(deploy, /Generated preview Worker is not bootstrapped/);
   assert.match(deploy, /Generated preview Worker is missing BETTER_AUTH_SECRET/);
   assert.match(deploy, /--dry-run/);
+  assert.match(deploy, /Verify deployed generated runtime boundary/);
   assert.match(deploy, /node \.\/tooling\/generated-preview-smoke\.mjs/);
   assert.doesNotMatch(deploy, /reference-preview-smoke|APPBASIS_SMOKE_|migrate:reference|permission.*provision/i);
 });
