@@ -104,12 +104,11 @@ test("Worker bootstrap remains limited to first Worker creation and secret insta
   );
 });
 
-test("normal deploy validates the dedicated binding and proves the database-backed boundary", async () => {
+test("normal deploy synchronizes the runtime secret and proves the database-backed boundary", async () => {
   const deploy = await readFile(deployPath, "utf8");
 
   assert.match(deploy, /writeGeneratedPreviewWranglerConfig/);
   assert.match(deploy, /Generated preview Worker is not bootstrapped/);
-  assert.match(deploy, /Generated preview Worker is missing BETTER_AUTH_SECRET/);
   assert.match(
     deploy,
     /APPBASIS_BETTER_AUTH_SECRET: \$\{\{ secrets\.APPBASIS_BETTER_AUTH_SECRET \}\}/,
@@ -118,11 +117,24 @@ test("normal deploy validates the dedicated binding and proves the database-back
     deploy,
     /Protected Better Auth secret does not satisfy the generated runtime contract/,
   );
+  assert.match(deploy, /Validate generated Worker bundle without provisioning/);
   assert.match(deploy, /--dry-run/);
+  assert.match(deploy, /Synchronize required Worker secret/);
+  assert.match(deploy, /wrangler secret put BETTER_AUTH_SECRET/);
+  assert.match(deploy, /wrangler secret list/);
+  assert.match(
+    deploy,
+    /Generated preview Worker is missing BETTER_AUTH_SECRET after synchronization/,
+  );
+  assert.match(deploy, /Deploy generated Worker without provisioning/);
   assert.match(deploy, /Verify deployed generated runtime boundary/);
   assert.match(deploy, /node \.\/tooling\/generated-preview-smoke\.mjs/);
   assert.match(deploy, /Verify deployed generated database binding/);
   assert.match(deploy, /node \.\/tooling\/generated-preview-database-smoke\.mjs/);
+  assert.ok(
+    deploy.indexOf("Synchronize required Worker secret") <
+      deploy.indexOf("Verify deployed generated database binding"),
+  );
   assert.doesNotMatch(
     deploy,
     /reference-preview-smoke|APPBASIS_SMOKE_|migrate:reference|permission.*provision/i,
