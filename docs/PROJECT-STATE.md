@@ -39,7 +39,8 @@ Der Generator:
 - verwendet denselben Manifest-Vertrag wie CI,
 - lehnt unbekannte Module vor dem Schreiben ab,
 - überschreibt niemals eine vorhandene App,
-- erzeugt Dateien zunächst in einem temporären Verzeichnis und benennt dieses erst nach vollständigem Schreiben auf den Zielpfad um,
+- erzeugt Dateien zunächst außerhalb von `apps/`, reserviert den endgültigen App-Pfad atomar ohne Ersetzen und veröffentlicht das Manifest erst nach erfolgreicher Reservierung,
+- hält parallele App-Prüfung während der kurzen Publikationsphase über einen expliziten lebenden Claim konsistent und behandelt verwaiste Claims fail-closed,
 - erzeugt ausschließlich deterministischen Manifest-/README-Inhalt ohne Secrets oder Provider-Daten,
 - kopiert bewusst keine Reference-Runtime.
 
