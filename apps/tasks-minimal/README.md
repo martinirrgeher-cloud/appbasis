@@ -4,6 +4,6 @@ Generated AppBasis app skeleton.
 
 - App ID: `tasks-minimal`
 - Modules: tasks
-- Platform services: identity
+- Platform services: identity, permissions
 
-This app includes the independently verified generated identity runtime and consumes `@appbasis/identity/http` without copying the Reference app.
+This app includes the independently verified generated runtime and consumes declared AppBasis platform and module contracts without copying the Reference app.

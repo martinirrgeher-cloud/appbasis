@@ -84,6 +84,9 @@ importers:
       '@appbasis/identity':
         specifier: workspace:*
         version: link:../../packages/identity
+      '@appbasis/permissions':
+        specifier: workspace:*
+        version: link:../../packages/permissions
       '@appbasis/tasks':
         specifier: workspace:*
         version: link:../../modules/tasks
