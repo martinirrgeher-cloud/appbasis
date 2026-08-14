@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
 const ACCOUNT_ID_PATTERN = /^[a-f0-9]{32}$/i;
+const DIRECT_NEON_HOST_PATTERN = /^ep-[a-z0-9-]+(?:\.[a-z0-9-]+)*\.neon\.tech$/i;
 const MAX_API_PAGES = 100;
 const PER_PAGE = 100;
 
@@ -33,6 +34,12 @@ export function parseGeneratedTasksPreviewDatabaseUrl(value) {
     url.hash.length > 0
   ) {
     throw new Error("APPBASIS_DATABASE_URL must be a direct authenticated PostgreSQL URL.");
+  }
+
+  if (!DIRECT_NEON_HOST_PATTERN.test(url.hostname)) {
+    throw new Error(
+      "APPBASIS_DATABASE_URL must use a direct Neon database origin.",
+    );
   }
 
   if (/-pooler(?:\.|$)/i.test(url.hostname)) {
