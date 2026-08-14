@@ -1,0 +1,68 @@
+name: Generated Tasks Preview Migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply the generated tasks database manifest to its dedicated empty preview database
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-tasks-preview-migrate-appbasis-tasks-minimal
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Generated tasks preview migrate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: generated-tasks-preview
+    env:
+      APPBASIS_GENERATED_APP_ID: tasks-minimal
+      APPBASIS_MIGRATION_TARGET: generated-tasks-preview
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository and explicit migration confirmation
+        shell: bash
+        env:
+          APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          pnpm run verify:repo
+          test "$APPBASIS_APPLY_MIGRATIONS" = '1' || { echo 'Generated tasks preview migration was not explicitly confirmed.' >&2; exit 1; }
+
+      - name: Apply generated database manifest transaction
+        shell: bash
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing protected Generated tasks preview database connection.' >&2; exit 1; }
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+          pnpm --filter @appbasis/app-tasks-minimal migrate:preview
