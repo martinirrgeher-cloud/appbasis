@@ -74,6 +74,20 @@ Diese Muster werden erst dann in `packages/ui` weiter verallgemeinert, wenn ein 
 
 Weitere Komponenten wie Selects, Dialoge, Bottom Sheets, Skeletons und Toasts werden in den nächsten realen Fachslices ergänzt.
 
+## Zweiter realer Verbraucher – Tasks
+
+Das bestehende Tasks-Vertical-Slice der Reference-App ist der zweite reale Verbraucher der Design-System-Foundation. Seine fachliche Logik, API und Berechtigungen bleiben unverändert; ausschließlich die Darstellungsschicht wird an die gemeinsamen semantischen Tokens und Responsive-Regeln gebunden.
+
+Damit werden außerhalb der Rollenadministration erstmals dieselben Grundlagen praktisch bestätigt:
+
+- gemeinsame Surface-, Text-, Border-, State-, Action-, Spacing- und Radius-Tokens,
+- Mobile Bottom Navigation und Desktop-Sidebar-Wechsel erst ab `1024 px`,
+- mindestens `44 px` große interaktive Task-, Navigations- und Dialog-Ziele,
+- dieselben Focus-, Success-, Warning- und Danger-Semantiken,
+- keine fachmodulspezifischen Branding-Farben.
+
+Der Slice extrahiert bewusst noch keine React-AppShell oder andere allgemeine React-Komponenten nach `packages/ui`. Erst Rollen und Tasks gemeinsam liefern die zwei realen Verbraucher, aus denen im folgenden Slice eine belastbare gemeinsame Komponenten-API abgeleitet werden kann.
+
 ## Rollenmodul – bestehendes Permission-Modell bleibt Source of Truth
 
 Das bestehende Permission-Modell wird nicht ersetzt oder parallel implementiert.
