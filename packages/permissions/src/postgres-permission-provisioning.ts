@@ -25,8 +25,7 @@ export interface PermissionProvisioningResult {
   readonly principalRolesCreated: number;
 }
 
-export interface PermissionProvisioningPostgresClient
-  extends PermissionPostgresClient {
+export interface PermissionProvisioningPostgresClient {
   begin<T>(
     callback: (transaction: PermissionPostgresClient) => Promise<T>,
   ): Promise<T>;
@@ -66,10 +65,6 @@ export async function provisionPostgresPermissions(
     );
 
     await assertExistingRoleDefinitionsMatch(transaction, normalized.roles);
-    await assertExistingPrincipalAssignmentsMatch(
-      transaction,
-      normalized.principalRoleAssignments,
-    );
 
     let capabilitiesCreated = 0;
     let rolesCreated = 0;
@@ -181,43 +176,6 @@ async function assertExistingRoleDefinitionsMatch(
   }
 }
 
-async function assertExistingPrincipalAssignmentsMatch(
-  transaction: PermissionPostgresClient,
-  assignments: readonly PrincipalRoleAssignment[],
-): Promise<void> {
-  for (const assignment of assignments) {
-    const principalRows = await transaction.unsafe(
-      `SELECT principal_id
-       FROM appbasis_permission_principal
-       WHERE principal_id = $1`,
-      [assignment.principalId],
-    );
-    if (principalRows.length === 0) continue;
-    if (
-      principalRows.length !== 1 ||
-      textColumn(principalRows[0], "principal_id") !== assignment.principalId
-    ) {
-      throw new PermissionProvisioningStateError(
-        "Existing permission principal state is invalid.",
-      );
-    }
-
-    const roleRows = await transaction.unsafe(
-      `SELECT role_id
-       FROM appbasis_permission_principal_role
-       WHERE principal_id = $1
-       ORDER BY role_id ASC`,
-      [assignment.principalId],
-    );
-    const existingRoleIds = roleRows.map((row) => textColumn(row, "role_id"));
-    if (!sameStrings(existingRoleIds, assignment.roleIds)) {
-      throw new PermissionProvisioningStateError(
-        "Existing principal role assignments conflict with the provisioning bundle.",
-      );
-    }
-  }
-}
-
 function normalizeBundle(
   bundle: PermissionProvisioningBundle,
 ): PermissionProvisioningBundle {
@@ -252,16 +210,10 @@ function normalizeBundle(
     })
     .sort((left, right) => left.roleId.localeCompare(right.roleId));
 
-  const principalIds = sortedUniqueIds(
+  sortedUniqueIds(
     bundle.principalRoleAssignments.map((assignment) => assignment.principalId),
     "principalRoleAssignments",
   );
-  const principalSet = new Set<string>(principalIds);
-  if (principalSet.size !== bundle.principalRoleAssignments.length) {
-    throw new PermissionProvisioningConfigurationError(
-      "principalRoleAssignments contains duplicate principals.",
-    );
-  }
 
   const principalRoleAssignments = [...bundle.principalRoleAssignments]
     .map((assignment) => {
