@@ -44,7 +44,10 @@ Die Ausführung schlägt vor jeder Mutation fehl bei:
 - fehlender oder leerer Migration,
 - nicht kanonischem oder aus dem Owner-/Repository-Baum ausbrechendem Pfad,
 - Symlinks im konsumierten Manifest-, Owner- oder Migrationspfad,
+- Transaktionssteuerung wie `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `START TRANSACTION` oder `PREPARE TRANSACTION` im ausführbaren SQL, auch innerhalb eines mehrere Kommandos enthaltenden Manifest-Statements,
 - nicht leerem `public`-Schema.
+
+Transaktionssteuerung wird bereits beim Erstellen beziehungsweise Validieren des Plans abgewiesen, bevor eine Ziel-Datenbankverbindung geöffnet wird. SQL-Schlüsselwörter innerhalb von Strings, Kommentaren, quoted identifiers oder Dollar-quoted Bodies werden dabei nicht als Top-Level-Kommandos behandelt.
 
 Alle Manifest-Migrationen werden in einer PostgreSQL-Transaktion ausgeführt. Ein Fehler rollt den gesamten Lauf zurück.
 
@@ -70,10 +73,11 @@ Der Generated-Worker und das neue Generated-Migration-Target bleiben in diesem S
 
 Phase 3Q gilt technisch als bewiesen, wenn:
 
-1. der generische Planner alle Target- und Pfadgrenzen fail-closed testet,
-2. der bestehende Reference-Executor über denselben Kern ohne Verhaltensbruch funktioniert,
-3. ein realer PostgreSQL-E2E-Lauf eine leere Datenbank `appbasis_tasks_preview` erstellt, exakt die vier Migrationen des Generated-Manifests anwendet und die erwarteten Identity-/Permissions-/Tasks-Tabellen nachweist,
-4. ein zweiter Lauf auf derselben bereits migrierten Datenbank abgewiesen wird,
-5. ein realer PostgreSQL-E2E-Lauf beweist, dass ein treiberseitiges `?database=...`-Override vor jeder Migration erkannt wird und das falsche Ziel unverändert bleibt,
-6. der dedizierte GitHub-Workflow ausschließlich das geschützte Generated-Preview-Environment und `APPBASIS_DATABASE_URL` konsumiert,
-7. CI und Review auf demselben exakten Head vollständig grün sind.
+1. der generische Planner alle Target-, Pfad- und Transaktionsgrenzen fail-closed testet,
+2. ein unsicherer direkt übergebener Plan bereits vor dem Öffnen einer Datenbankverbindung abgewiesen wird,
+3. der bestehende Reference-Executor über denselben Kern ohne Verhaltensbruch funktioniert,
+4. ein realer PostgreSQL-E2E-Lauf eine leere Datenbank `appbasis_tasks_preview` erstellt, exakt die vier Migrationen des Generated-Manifests anwendet und die erwarteten Identity-/Permissions-/Tasks-Tabellen nachweist,
+5. ein zweiter Lauf auf derselben bereits migrierten Datenbank abgewiesen wird,
+6. ein realer PostgreSQL-E2E-Lauf beweist, dass ein treiberseitiges `?database=...`-Override vor jeder Migration erkannt wird und das falsche Ziel unverändert bleibt,
+7. der dedizierte GitHub-Workflow ausschließlich das geschützte Generated-Preview-Environment und `APPBASIS_DATABASE_URL` konsumiert,
+8. CI und Review auf demselben exakten Head vollständig grün sind.
