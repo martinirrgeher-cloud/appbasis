@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 
-import { TaskValidationError, type TaskRepository } from '../../../modules/tasks/src';
+import { TaskValidationError, type TaskRepository } from '@appbasis/tasks';
 import { assertIdentityActionAllowed } from '@appbasis/identity';
 import {
   createIdentityHttpHandlers,

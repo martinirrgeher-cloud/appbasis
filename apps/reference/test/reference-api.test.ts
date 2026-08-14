@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { InMemoryTaskRepository } from '../../../modules/tasks/src';
+import { InMemoryTaskRepository } from '@appbasis/tasks';
 import {
   IdentityError,
   type CurrentIdentity,

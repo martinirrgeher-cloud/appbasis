@@ -9,8 +9,8 @@ import {
   principalId,
   type PrincipalPermissions,
 } from '@appbasis/permissions';
+import { PostgresTaskRepository } from '@appbasis/tasks';
 
-import { PostgresTaskRepository } from '../../../modules/tasks/src';
 import { createReferenceApp } from './app';
 
 interface HyperdriveBinding {
