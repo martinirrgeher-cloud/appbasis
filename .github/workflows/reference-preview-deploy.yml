@@ -74,37 +74,19 @@ jobs:
             exit 1
           fi
 
-      - name: Snapshot existing Reference Worker permission bindings
-        shell: bash
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare deployment account.' >&2; exit 1; }
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
-          umask 077
-          curl --fail --silent --show-error --connect-timeout 15 --max-time 30 \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/appbasis-reference/settings" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --output ./apps/reference/tooling/.reference-worker-settings.json
-          test -s ./apps/reference/tooling/.reference-worker-settings.json || { echo 'Reference Worker settings snapshot is empty.' >&2; exit 1; }
+      - name: Build isolated persistent permission authority verifier
+        run: pnpm --filter @appbasis/reference build:permission-authority
 
-      - name: Build isolated permission cutover verifier
-        run: pnpm --filter @appbasis/reference build:permission-cutover
-
-      - name: Verify persistent permission authority cutover before deploy
+      - name: Verify persistent permission authority before deploy
         shell: bash
         env:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-          APPBASIS_PERMISSION_CUTOVER_TARGET: reference-preview
-          APPBASIS_PERMISSION_CUTOVER_MODE: verify
-          APPBASIS_REFERENCE_WORKER_SETTINGS_PATH: ${{ github.workspace }}/apps/reference/tooling/.reference-worker-settings.json
+          APPBASIS_PERMISSION_AUTHORITY_TARGET: reference-preview
         run: |
           set -euo pipefail
           test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing protected Reference preview database connection.' >&2; exit 1; }
           echo "::add-mask::$APPBASIS_DATABASE_URL"
-          node ./apps/reference/tooling/.permission-cutover-dist/reference-preview-permission-cutover.mjs
+          node ./apps/reference/tooling/.permission-authority-dist/reference-preview-permission-authority.mjs
 
       - name: Disable Reference Hyperdrive query caching for fresh reads
         working-directory: apps/reference
@@ -171,10 +153,9 @@ jobs:
           APPBASIS_SMOKE_MUTATE: '1'
         run: node ./tooling/reference-preview-smoke.mjs
 
-      - name: Remove generated and permission cutover artifacts
+      - name: Remove generated permission authority artifacts
         if: always()
         shell: bash
         run: |
           rm -f ./apps/reference/wrangler.preview.generated.json
-          rm -f ./apps/reference/tooling/.reference-worker-settings.json
-          rm -rf ./apps/reference/tooling/.permission-cutover-dist
+          rm -rf ./apps/reference/tooling/.permission-authority-dist
