@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -20,6 +21,11 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
 }
 
 const administrativeConnection = createPostgresDatabase(databaseUrl);
+const isolatedDatabaseName =
+  "appbasis_generated_" + randomUUID().replaceAll("-", "").slice(0, 24);
+const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
+let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
+let isolatedDatabaseCreated = false;
 const migrationUrl = new URL(
   "../../../modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
   import.meta.url,
@@ -57,24 +63,37 @@ const identity: IdentityHttpService = {
 
 beforeAll(async () => {
   await administrativeConnection.client.unsafe(
-    "DROP TABLE IF EXISTS appbasis_task CASCADE",
+    "CREATE DATABASE " + isolatedDatabaseName,
   );
+  isolatedDatabaseCreated = true;
+  isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);
   const migration = await readFile(migrationUrl, "utf8");
-  await administrativeConnection.client.unsafe(migration);
+  await isolatedConnection.client.unsafe(migration);
 });
 
 beforeEach(async () => {
-  await administrativeConnection.client.unsafe("TRUNCATE TABLE appbasis_task");
+  await requiredIsolatedConnection().client.unsafe(
+    "TRUNCATE TABLE appbasis_task",
+  );
 });
 
 afterAll(async () => {
+  if (isolatedConnection !== null) {
+    await isolatedConnection.client.end();
+    isolatedConnection = null;
+  }
+  if (isolatedDatabaseCreated) {
+    await administrativeConnection.client.unsafe(
+      "DROP DATABASE " + isolatedDatabaseName + " WITH (FORCE)",
+    );
+  }
   await administrativeConnection.client.end();
 });
 
 describe("generated PostgreSQL tasks runtime", () => {
   it("persists authorized HTTP task mutations across runtime instances", async () => {
     let taskId: string;
-    const firstRuntime = createGeneratedPostgresRuntime(databaseUrl);
+    const firstRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
     try {
       const firstApp = createGeneratedApp({
         identity,
@@ -100,7 +119,7 @@ describe("generated PostgreSQL tasks runtime", () => {
       await firstRuntime.close();
     }
 
-    const secondRuntime = createGeneratedPostgresRuntime(databaseUrl);
+    const secondRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
     try {
       const secondApp = createGeneratedApp({
         identity,
@@ -137,7 +156,7 @@ describe("generated PostgreSQL tasks runtime", () => {
       await secondRuntime.close();
     }
 
-    const thirdRuntime = createGeneratedPostgresRuntime(databaseUrl);
+    const thirdRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
     try {
       const thirdApp = createGeneratedApp({
         identity,
@@ -156,6 +175,19 @@ describe("generated PostgreSQL tasks runtime", () => {
     }
   });
 });
+
+function databaseUrlForName(connectionString: string, databaseName: string) {
+  const url = new URL(connectionString);
+  url.pathname = "/" + databaseName;
+  return url.toString();
+}
+
+function requiredIsolatedConnection() {
+  if (isolatedConnection === null) {
+    throw new Error("The isolated PostgreSQL test database is not ready.");
+  }
+  return isolatedConnection;
+}
 
 function permissionStore() {
   const capability = capabilityId(TASK_CAPABILITIES.manage);

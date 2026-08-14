@@ -110,7 +110,11 @@ test("generates tasks HTTP routes and PostgreSQL infrastructure only with explic
   assert.match(postgresRuntime, /PostgresTaskRepository/);
   assert.match(postgresRuntime, /createGeneratedPostgresRuntime/);
   assert.match(postgresTest, /Persistent generated task/);
-  assert.match(postgresTest, /DROP TABLE IF EXISTS appbasis_task CASCADE/);
+  assert.match(postgresTest, /randomUUID/);
+  assert.match(postgresTest, /CREATE DATABASE/);
+  assert.match(postgresTest, /DROP DATABASE/);
+  assert.match(postgresTest, /isolatedDatabaseUrl/);
+  assert.doesNotMatch(postgresTest, /DROP TABLE/);
   assert.match(postgresTest, /DATABASE_URL/);
   assert.deepEqual(
     template.files.map((entry) => entry.path),
