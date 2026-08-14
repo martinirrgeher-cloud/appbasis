@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 
 import { parseAppDefinition } from "./app-definition.mjs";
 import { acquireAppRegistryLock } from "./app-publication.mjs";
+import { renderGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-";
@@ -42,6 +43,7 @@ export async function createAppSkeleton(input, options = {}) {
     }
   }
 
+  const databaseManifest = renderGeneratedDatabaseManifest(definition);
   const runtimeFiles = generatedRuntimeFiles(definition);
   const publishesWorkspacePackage = runtimeFiles.some(
     (runtimeFile) => runtimeFile.path === "package.json",
@@ -72,6 +74,13 @@ export async function createAppSkeleton(input, options = {}) {
       `${JSON.stringify(definition, null, 2)}\n`,
       { flag: "wx" },
     );
+    if (databaseManifest !== null) {
+      await writeFile(
+        join(stagingDirectory, "appbasis.database.json"),
+        databaseManifest,
+        { flag: "wx" },
+      );
+    }
     await writeFile(
       join(stagingDirectory, "README.md"),
       generatedReadme(definition, runtimeFiles),
@@ -113,6 +122,12 @@ export async function createAppSkeleton(input, options = {}) {
       join(stagingDirectory, "README.md"),
       join(destination, "README.md"),
     );
+    if (databaseManifest !== null) {
+      await rename(
+        join(stagingDirectory, "appbasis.database.json"),
+        join(destination, "appbasis.database.json"),
+      );
+    }
     for (const runtimeFile of runtimeFiles) {
       await publishGeneratedFile(stagingDirectory, destination, runtimeFile);
     }
@@ -130,9 +145,9 @@ export async function createAppSkeleton(input, options = {}) {
       });
     }
 
-    // Publish the manifest last. App discovery therefore never observes an
-    // app definition before every generated runtime file, workspace lockfile
-    // importer and local workspace dependency link are fully in place.
+    // Publish the app definition last. App discovery therefore never observes
+    // an app before every generated runtime and database-contract artifact,
+    // workspace lockfile importer and local dependency link are fully in place.
     await rename(
       join(stagingDirectory, "appbasis.app.json"),
       join(destination, "appbasis.app.json"),
