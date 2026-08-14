@@ -10,10 +10,11 @@
   },
   "scripts": {
     "verify:toolchain": "node ./tooling/verify-toolchain.mjs",
+    "verify:apps": "node --test ./tooling/app-definition.test.mjs && node ./tooling/verify-app-definitions.mjs",
     "verify:migrations": "node ./tooling/verify-migration-contract.mjs",
     "verify:preview-smoke": "node --check ./tooling/reference-preview-smoke.mjs",
     "verify:preview-deploy": "node --test ./tooling/reference-preview-deploy-config.test.mjs",
-    "verify:repo": "pnpm run verify:toolchain && pnpm run verify:migrations && pnpm run verify:preview-smoke && pnpm run verify:preview-deploy && pnpm run db:check && git diff --check",
+    "verify:repo": "pnpm run verify:toolchain && pnpm run verify:apps && pnpm run verify:migrations && pnpm run verify:preview-smoke && pnpm run verify:preview-deploy && pnpm run db:check && git diff --check",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
