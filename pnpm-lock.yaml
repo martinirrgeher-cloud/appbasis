@@ -81,6 +81,9 @@ importers:
 
   apps/tasks-minimal:
     dependencies:
+      '@appbasis/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@appbasis/identity':
         specifier: workspace:*
         version: link:../../packages/identity
