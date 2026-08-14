@@ -131,10 +131,15 @@ test("normal deploy synchronizes the runtime secret and proves the database-back
   assert.match(deploy, /node \.\/tooling\/generated-preview-smoke\.mjs/);
   assert.match(deploy, /Verify deployed generated database binding/);
   assert.match(deploy, /node \.\/tooling\/generated-preview-database-smoke\.mjs/);
-  assert.ok(
-    deploy.indexOf("Synchronize required Worker secret") <
-      deploy.indexOf("Verify deployed generated database binding"),
-  );
+
+  const dryRun = deploy.indexOf("Validate generated Worker bundle without provisioning");
+  const synchronize = deploy.indexOf("Synchronize required Worker secret");
+  const deployWorker = deploy.indexOf("Deploy generated Worker without provisioning");
+  const databaseSmoke = deploy.indexOf("Verify deployed generated database binding");
+  assert.ok(dryRun >= 0 && dryRun < synchronize);
+  assert.ok(synchronize < deployWorker);
+  assert.ok(deployWorker < databaseSmoke);
+
   assert.doesNotMatch(
     deploy,
     /reference-preview-smoke|APPBASIS_SMOKE_|migrate:reference|permission.*provision/i,
