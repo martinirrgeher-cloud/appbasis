@@ -122,11 +122,355 @@ function generatedTasksWorkerApp(appId) {
 }
 
 function generatedPostgresRuntime() {
-  return `import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";\nimport { PostgresTaskRepository, type TaskRepository } from "@appbasis/tasks";\n\nexport interface GeneratedPostgresRuntime {\n  tasks: TaskRepository;\n  close(): Promise<void>;\n}\n\nexport function createGeneratedPostgresRuntime(\n  connectionString: string,\n): GeneratedPostgresRuntime {\n  const connection = createPostgresDatabase(\n    requiredPostgresConnectionString(connectionString),\n  );\n  const tasks = new PostgresTaskRepository({\n    unsafe(query, parameters) {\n      return connection.client.unsafe(query, parameters);\n    },\n  });\n\n  return Object.freeze({\n    tasks,\n    async close() {\n      await connection.client.end();\n    },\n  });\n}\n\nfunction requiredPostgresConnectionString(value: string): string {\n  const normalized = value.trim();\n  try {\n    const url = new URL(normalized);\n    if (\n      (url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||\n      url.hostname.length === 0\n    ) {\n      throw new Error("invalid");\n    }\n    return normalized;\n  } catch {\n    throw new Error("A valid PostgreSQL connection string is required.");\n  }\n}\n`;
+  return `import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import {
+  PostgresPermissionStore,
+  type PermissionStore,
+} from "@appbasis/permissions";
+import { PostgresTaskRepository, type TaskRepository } from "@appbasis/tasks";
+
+export interface GeneratedPostgresRuntime {
+  permissions: PermissionStore;
+  tasks: TaskRepository;
+  close(): Promise<void>;
+}
+
+export function createGeneratedPostgresRuntime(
+  connectionString: string,
+): GeneratedPostgresRuntime {
+  const connection = createPostgresDatabase(
+    requiredPostgresConnectionString(connectionString),
+  );
+  const sql = {
+    unsafe(query: string, parameters?: (string | number | boolean | null)[]) {
+      return connection.client.unsafe(query, parameters);
+    },
+  };
+  const permissions = new PostgresPermissionStore(sql);
+  const tasks = new PostgresTaskRepository(sql);
+
+  return Object.freeze({
+    permissions,
+    tasks,
+    async close() {
+      await connection.client.end();
+    },
+  });
+}
+
+function requiredPostgresConnectionString(value: string): string {
+  const normalized = value.trim();
+  try {
+    const url = new URL(normalized);
+    if (
+      (url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||
+      url.hostname.length === 0
+    ) {
+      throw new Error("invalid");
+    }
+    return normalized;
+  } catch {
+    throw new Error("A valid PostgreSQL connection string is required.");
+  }
+}
+`;
 }
 
 function generatedPostgresE2ETest() {
-  return `import { randomUUID } from "node:crypto";\nimport { readFile } from "node:fs/promises";\n\nimport { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";\n\nimport { createPostgresDatabase } from "@appbasis/database/postgres-runtime";\nimport type { IdentityHttpService } from "@appbasis/identity/http";\nimport {\n  InMemoryPermissionStore,\n  capabilityId,\n  principalId,\n} from "@appbasis/permissions";\nimport { TASK_CAPABILITIES } from "@appbasis/tasks";\n\nimport { createGeneratedApp } from "../worker/app";\nimport { createGeneratedPostgresRuntime } from "../worker/postgres";\n\nconst databaseUrl = process.env.DATABASE_URL;\nif (databaseUrl === undefined || databaseUrl.trim().length === 0) {\n  throw new Error("DATABASE_URL is required for generated PostgreSQL E2E tests.");\n}\n\nconst administrativeConnection = createPostgresDatabase(databaseUrl);\nconst isolatedDatabaseName =\n  "appbasis_generated_" + randomUUID().replaceAll("-", "").slice(0, 24);\nconst isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);\nlet isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;\nlet isolatedDatabaseCreated = false;\nconst migrationUrl = new URL(\n  "../../../modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",\n  import.meta.url,\n);\n\nconst currentIdentity = {\n  identity: {\n    identityId: "identity-postgres-1",\n    username: "postgres.user",\n    displayName: "PostgreSQL User",\n    contactEmail: null,\n    personId: null,\n    mustChangePassword: false,\n    createdAt: new Date("2026-01-01T00:00:00.000Z"),\n    updatedAt: new Date("2026-01-01T00:00:00.000Z"),\n    passwordChangedAt: new Date("2026-01-01T00:00:00.000Z"),\n    disabledAt: null,\n    accountStatus: "active" as const,\n  },\n  sessionToken: "appbasis.session=postgres-test-token",\n  access: "full" as const,\n};\n\nconst identity: IdentityHttpService = {\n  async signInWithUsername() {\n    return currentIdentity;\n  },\n  async getCurrentIdentity(sessionToken) {\n    return sessionToken === currentIdentity.sessionToken ? currentIdentity : null;\n  },\n  async changeRequiredPassword() {\n    return currentIdentity;\n  },\n};\n\nbeforeAll(async () => {\n  await administrativeConnection.client.unsafe(\n    "CREATE DATABASE " + isolatedDatabaseName,\n  );\n  isolatedDatabaseCreated = true;\n  isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);\n  const migration = await readFile(migrationUrl, "utf8");\n  await isolatedConnection.client.unsafe(migration);\n});\n\nbeforeEach(async () => {\n  await requiredIsolatedConnection().client.unsafe(\n    "TRUNCATE TABLE appbasis_task",\n  );\n});\n\nafterAll(async () => {\n  if (isolatedConnection !== null) {\n    await isolatedConnection.client.end();\n    isolatedConnection = null;\n  }\n  if (isolatedDatabaseCreated) {\n    await administrativeConnection.client.unsafe(\n      "DROP DATABASE " + isolatedDatabaseName + " WITH (FORCE)",\n    );\n  }\n  await administrativeConnection.client.end();\n});\n\ndescribe("generated PostgreSQL tasks runtime", () => {\n  it("persists authorized HTTP task mutations across runtime instances", async () => {\n    let taskId: string;\n    const firstRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);\n    try {\n      const firstApp = createGeneratedApp({\n        identity,\n        permissions: permissionStore(),\n        tasks: firstRuntime.tasks,\n        secureCookies: false,\n      });\n      const created = await firstApp.request("/api/tasks", {\n        method: "POST",\n        headers: {\n          cookie: currentIdentity.sessionToken,\n          "content-type": "application/json",\n        },\n        body: JSON.stringify({ title: "Persistent generated task" }),\n      });\n      expect(created.status).toBe(201);\n      const body = (await created.json()) as {\n        task: { id: string; status: string };\n      };\n      taskId = body.task.id;\n      expect(body.task.status).toBe("open");\n    } finally {\n      await firstRuntime.close();\n    }\n\n    const secondRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);\n    try {\n      const secondApp = createGeneratedApp({\n        identity,\n        permissions: permissionStore(),\n        tasks: secondRuntime.tasks,\n        secureCookies: false,\n      });\n      const listed = await secondApp.request("/api/tasks", {\n        headers: { cookie: currentIdentity.sessionToken },\n      });\n      expect(listed.status).toBe(200);\n      await expect(listed.json()).resolves.toMatchObject({\n        tasks: [\n          {\n            id: taskId,\n            title: "Persistent generated task",\n            status: "open",\n          },\n        ],\n      });\n\n      const toggled = await secondApp.request(\n        "/api/tasks/" + taskId + "/toggle",\n        {\n          method: "POST",\n          headers: { cookie: currentIdentity.sessionToken },\n        },\n      );\n      expect(toggled.status).toBe(200);\n      await expect(toggled.json()).resolves.toMatchObject({\n        task: { id: taskId, status: "completed" },\n      });\n    } finally {\n      await secondRuntime.close();\n    }\n\n    const thirdRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);\n    try {\n      const thirdApp = createGeneratedApp({\n        identity,\n        permissions: permissionStore(),\n        tasks: thirdRuntime.tasks,\n        secureCookies: false,\n      });\n      const listed = await thirdApp.request("/api/tasks", {\n        headers: { cookie: currentIdentity.sessionToken },\n      });\n      await expect(listed.json()).resolves.toMatchObject({\n        tasks: [{ id: taskId, status: "completed" }],\n      });\n    } finally {\n      await thirdRuntime.close();\n    }\n  });\n});\n\nfunction databaseUrlForName(connectionString: string, databaseName: string) {\n  const url = new URL(connectionString);\n  url.pathname = "/" + databaseName;\n  return url.toString();\n}\n\nfunction requiredIsolatedConnection() {\n  if (isolatedConnection === null) {\n    throw new Error("The isolated PostgreSQL test database is not ready.");\n  }\n  return isolatedConnection;\n}\n\nfunction permissionStore() {\n  const capability = capabilityId(TASK_CAPABILITIES.manage);\n  return new InMemoryPermissionStore({\n    knownCapabilities: [capability],\n    roles: [],\n    principals: [\n      {\n        principalId: principalId(currentIdentity.identity.identityId),\n        roleIds: [],\n        grants: [capability],\n        revokes: [],\n      },\n    ],\n  });\n}\n`;
+  return `import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import { createPostgresDatabase as createPostgresProvisioningDatabase } from "@appbasis/database/postgres-provisioning";
+import type { IdentityHttpService } from "@appbasis/identity/http";
+import { capabilityId, principalId, roleId } from "@appbasis/permissions";
+import {
+  provisionPostgresPermissions,
+  type PermissionProvisioningPostgresClient,
+} from "@appbasis/permissions/provisioning";
+import { TASK_CAPABILITIES } from "@appbasis/tasks";
+
+import { createGeneratedApp } from "../worker/app";
+import { createGeneratedPostgresRuntime } from "../worker/postgres";
+
+const databaseUrl = process.env.DATABASE_URL;
+if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
+  throw new Error("DATABASE_URL is required for generated PostgreSQL E2E tests.");
+}
+
+const administrativeConnection = createPostgresDatabase(databaseUrl);
+const isolatedDatabaseName =
+  "appbasis_generated_" + randomUUID().replaceAll("-", "").slice(0, 24);
+const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
+let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
+let isolatedDatabaseCreated = false;
+const permissionMigrationUrl = new URL(
+  "../../../packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
+  import.meta.url,
+);
+const taskMigrationUrl = new URL(
+  "../../../modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+  import.meta.url,
+);
+
+const currentIdentity = {
+  identity: {
+    identityId: "identity-postgres-1",
+    username: "postgres.user",
+    displayName: "PostgreSQL User",
+    contactEmail: null,
+    personId: null,
+    mustChangePassword: false,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    passwordChangedAt: new Date("2026-01-01T00:00:00.000Z"),
+    disabledAt: null,
+    accountStatus: "active" as const,
+  },
+  sessionToken: "appbasis.session=postgres-test-token",
+  access: "full" as const,
+};
+
+const deniedIdentity = {
+  identity: {
+    ...currentIdentity.identity,
+    identityId: "identity-postgres-denied",
+    username: "postgres.denied",
+    displayName: "PostgreSQL Denied User",
+  },
+  sessionToken: "appbasis.session=postgres-denied-token",
+  access: "full" as const,
+};
+
+const identity: IdentityHttpService = {
+  async signInWithUsername() {
+    return currentIdentity;
+  },
+  async getCurrentIdentity(sessionToken) {
+    if (sessionToken === currentIdentity.sessionToken) return currentIdentity;
+    if (sessionToken === deniedIdentity.sessionToken) return deniedIdentity;
+    return null;
+  },
+  async changeRequiredPassword() {
+    return currentIdentity;
+  },
+};
+
+beforeAll(async () => {
+  await administrativeConnection.client.unsafe(
+    "CREATE DATABASE " + isolatedDatabaseName,
+  );
+  isolatedDatabaseCreated = true;
+  isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);
+  const permissionMigration = await readFile(permissionMigrationUrl, "utf8");
+  const taskMigration = await readFile(taskMigrationUrl, "utf8");
+  await isolatedConnection.client.unsafe(permissionMigration);
+  await isolatedConnection.client.unsafe(taskMigration);
+  await provisionGeneratedPermissions();
+});
+
+beforeEach(async () => {
+  await requiredIsolatedConnection().client.unsafe(
+    "TRUNCATE TABLE appbasis_task",
+  );
+});
+
+afterAll(async () => {
+  if (isolatedConnection !== null) {
+    await isolatedConnection.client.end();
+    isolatedConnection = null;
+  }
+  if (isolatedDatabaseCreated) {
+    await administrativeConnection.client.unsafe(
+      "DROP DATABASE " + isolatedDatabaseName + " WITH (FORCE)",
+    );
+  }
+  await administrativeConnection.client.end();
+});
+
+describe("generated PostgreSQL tasks runtime", () => {
+  it("persists authorized HTTP task mutations and permission decisions across runtime instances", async () => {
+    let taskId: string;
+    const firstRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
+    try {
+      const firstApp = createGeneratedApp({
+        identity,
+        permissions: firstRuntime.permissions,
+        tasks: firstRuntime.tasks,
+        secureCookies: false,
+      });
+      const created = await firstApp.request("/api/tasks", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ title: "Persistent generated task" }),
+      });
+      expect(created.status).toBe(201);
+      const body = (await created.json()) as {
+        task: { id: string; status: string };
+      };
+      taskId = body.task.id;
+      expect(body.task.status).toBe("open");
+    } finally {
+      await firstRuntime.close();
+    }
+
+    const secondRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
+    try {
+      const secondApp = createGeneratedApp({
+        identity,
+        permissions: secondRuntime.permissions,
+        tasks: secondRuntime.tasks,
+        secureCookies: false,
+      });
+      const listed = await secondApp.request("/api/tasks", {
+        headers: { cookie: currentIdentity.sessionToken },
+      });
+      expect(listed.status).toBe(200);
+      await expect(listed.json()).resolves.toMatchObject({
+        tasks: [
+          {
+            id: taskId,
+            title: "Persistent generated task",
+            status: "open",
+          },
+        ],
+      });
+
+      const toggled = await secondApp.request(
+        "/api/tasks/" + taskId + "/toggle",
+        {
+          method: "POST",
+          headers: { cookie: currentIdentity.sessionToken },
+        },
+      );
+      expect(toggled.status).toBe(200);
+      await expect(toggled.json()).resolves.toMatchObject({
+        task: { id: taskId, status: "completed" },
+      });
+    } finally {
+      await secondRuntime.close();
+    }
+
+    const thirdRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
+    try {
+      const thirdApp = createGeneratedApp({
+        identity,
+        permissions: thirdRuntime.permissions,
+        tasks: thirdRuntime.tasks,
+        secureCookies: false,
+      });
+      const listed = await thirdApp.request("/api/tasks", {
+        headers: { cookie: currentIdentity.sessionToken },
+      });
+      expect(listed.status).toBe(200);
+      await expect(listed.json()).resolves.toMatchObject({
+        tasks: [{ id: taskId, status: "completed" }],
+      });
+    } finally {
+      await thirdRuntime.close();
+    }
+  });
+
+  it("denies an authenticated principal that was not provisioned", async () => {
+    const runtime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
+    try {
+      const app = createGeneratedApp({
+        identity,
+        permissions: runtime.permissions,
+        tasks: runtime.tasks,
+        secureCookies: false,
+      });
+      const denied = await app.request("/api/tasks", {
+        headers: { cookie: deniedIdentity.sessionToken },
+      });
+      expect(denied.status).toBe(403);
+      await expect(denied.json()).resolves.toMatchObject({
+        error: { code: "PERMISSION_DENIED" },
+      });
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+async function provisionGeneratedPermissions() {
+  const connection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+  const capability = capabilityId(TASK_CAPABILITIES.manage);
+  const managerRole = roleId("tasks:manager");
+  const bundle = {
+    knownCapabilities: [capability],
+    roles: [
+      {
+        roleId: managerRole,
+        capabilities: [capability],
+      },
+    ],
+    principalRoleAssignments: [
+      {
+        principalId: principalId(currentIdentity.identity.identityId),
+        roleIds: [managerRole],
+      },
+    ],
+  };
+
+  try {
+    await expect(
+      provisionPostgresPermissions(provisioningClient(connection.client), bundle),
+    ).resolves.toEqual({
+      capabilitiesCreated: 1,
+      rolesCreated: 1,
+      roleCapabilitiesCreated: 1,
+      principalsCreated: 1,
+      principalRolesCreated: 1,
+    });
+    await expect(
+      provisionPostgresPermissions(provisioningClient(connection.client), bundle),
+    ).resolves.toEqual({
+      capabilitiesCreated: 0,
+      rolesCreated: 0,
+      roleCapabilitiesCreated: 0,
+      principalsCreated: 0,
+      principalRolesCreated: 0,
+    });
+  } finally {
+    await connection.client.end();
+  }
+}
+
+function provisioningClient(
+  client: ReturnType<typeof createPostgresProvisioningDatabase>["client"],
+): PermissionProvisioningPostgresClient {
+  return {
+    async begin(callback) {
+      return client.begin(async (transaction) =>
+        callback({
+          unsafe(query, parameters) {
+            return transaction.unsafe(query, parameters);
+          },
+        }),
+      );
+    },
+  };
+}
+
+function databaseUrlForName(connectionString: string, databaseName: string) {
+  const url = new URL(connectionString);
+  url.pathname = "/" + databaseName;
+  return url.toString();
+}
+
+function requiredIsolatedConnection() {
+  if (isolatedConnection === null) {
+    throw new Error("The isolated PostgreSQL test database is not ready.");
+  }
+  return isolatedConnection;
+}
+`;
 }
 
 function generatedAppTest(modules, platformServices) {

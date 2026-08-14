@@ -107,9 +107,19 @@ test("generates tasks HTTP routes and PostgreSQL infrastructure only with explic
   assert.match(generatedTest, /Generated HTTP task/);
 
   assert.match(postgresRuntime, /from "@appbasis\/database\/postgres-runtime"/);
+  assert.match(postgresRuntime, /PostgresPermissionStore/);
   assert.match(postgresRuntime, /PostgresTaskRepository/);
+  assert.match(postgresRuntime, /permissions: PermissionStore/);
   assert.match(postgresRuntime, /createGeneratedPostgresRuntime/);
+
   assert.match(postgresTest, /Persistent generated task/);
+  assert.match(postgresTest, /@appbasis\/permissions\/provisioning/);
+  assert.match(postgresTest, /provisionPostgresPermissions/);
+  assert.match(postgresTest, /0000_appbasis_permissions_foundation\.sql/);
+  assert.match(postgresTest, /permissions: firstRuntime\.permissions/);
+  assert.match(postgresTest, /identity-postgres-denied/);
+  assert.match(postgresTest, /PERMISSION_DENIED/);
+  assert.doesNotMatch(postgresTest, /InMemoryPermissionStore/);
   assert.match(postgresTest, /randomUUID/);
   assert.match(postgresTest, /CREATE DATABASE/);
   assert.match(postgresTest, /DROP DATABASE/);

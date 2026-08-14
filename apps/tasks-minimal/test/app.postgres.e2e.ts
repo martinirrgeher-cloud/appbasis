@@ -4,12 +4,13 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import { createPostgresDatabase as createPostgresProvisioningDatabase } from "@appbasis/database/postgres-provisioning";
 import type { IdentityHttpService } from "@appbasis/identity/http";
+import { capabilityId, principalId, roleId } from "@appbasis/permissions";
 import {
-  InMemoryPermissionStore,
-  capabilityId,
-  principalId,
-} from "@appbasis/permissions";
+  provisionPostgresPermissions,
+  type PermissionProvisioningPostgresClient,
+} from "@appbasis/permissions/provisioning";
 import { TASK_CAPABILITIES } from "@appbasis/tasks";
 
 import { createGeneratedApp } from "../worker/app";
@@ -26,7 +27,11 @@ const isolatedDatabaseName =
 const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
 let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
 let isolatedDatabaseCreated = false;
-const migrationUrl = new URL(
+const permissionMigrationUrl = new URL(
+  "../../../packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
+  import.meta.url,
+);
+const taskMigrationUrl = new URL(
   "../../../modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
   import.meta.url,
 );
@@ -49,12 +54,25 @@ const currentIdentity = {
   access: "full" as const,
 };
 
+const deniedIdentity = {
+  identity: {
+    ...currentIdentity.identity,
+    identityId: "identity-postgres-denied",
+    username: "postgres.denied",
+    displayName: "PostgreSQL Denied User",
+  },
+  sessionToken: "appbasis.session=postgres-denied-token",
+  access: "full" as const,
+};
+
 const identity: IdentityHttpService = {
   async signInWithUsername() {
     return currentIdentity;
   },
   async getCurrentIdentity(sessionToken) {
-    return sessionToken === currentIdentity.sessionToken ? currentIdentity : null;
+    if (sessionToken === currentIdentity.sessionToken) return currentIdentity;
+    if (sessionToken === deniedIdentity.sessionToken) return deniedIdentity;
+    return null;
   },
   async changeRequiredPassword() {
     return currentIdentity;
@@ -67,8 +85,11 @@ beforeAll(async () => {
   );
   isolatedDatabaseCreated = true;
   isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);
-  const migration = await readFile(migrationUrl, "utf8");
-  await isolatedConnection.client.unsafe(migration);
+  const permissionMigration = await readFile(permissionMigrationUrl, "utf8");
+  const taskMigration = await readFile(taskMigrationUrl, "utf8");
+  await isolatedConnection.client.unsafe(permissionMigration);
+  await isolatedConnection.client.unsafe(taskMigration);
+  await provisionGeneratedPermissions();
 });
 
 beforeEach(async () => {
@@ -91,13 +112,13 @@ afterAll(async () => {
 });
 
 describe("generated PostgreSQL tasks runtime", () => {
-  it("persists authorized HTTP task mutations across runtime instances", async () => {
+  it("persists authorized HTTP task mutations and permission decisions across runtime instances", async () => {
     let taskId: string;
     const firstRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
     try {
       const firstApp = createGeneratedApp({
         identity,
-        permissions: permissionStore(),
+        permissions: firstRuntime.permissions,
         tasks: firstRuntime.tasks,
         secureCookies: false,
       });
@@ -123,7 +144,7 @@ describe("generated PostgreSQL tasks runtime", () => {
     try {
       const secondApp = createGeneratedApp({
         identity,
-        permissions: permissionStore(),
+        permissions: secondRuntime.permissions,
         tasks: secondRuntime.tasks,
         secureCookies: false,
       });
@@ -160,13 +181,14 @@ describe("generated PostgreSQL tasks runtime", () => {
     try {
       const thirdApp = createGeneratedApp({
         identity,
-        permissions: permissionStore(),
+        permissions: thirdRuntime.permissions,
         tasks: thirdRuntime.tasks,
         secureCookies: false,
       });
       const listed = await thirdApp.request("/api/tasks", {
         headers: { cookie: currentIdentity.sessionToken },
       });
+      expect(listed.status).toBe(200);
       await expect(listed.json()).resolves.toMatchObject({
         tasks: [{ id: taskId, status: "completed" }],
       });
@@ -174,7 +196,88 @@ describe("generated PostgreSQL tasks runtime", () => {
       await thirdRuntime.close();
     }
   });
+
+  it("denies an authenticated principal that was not provisioned", async () => {
+    const runtime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
+    try {
+      const app = createGeneratedApp({
+        identity,
+        permissions: runtime.permissions,
+        tasks: runtime.tasks,
+        secureCookies: false,
+      });
+      const denied = await app.request("/api/tasks", {
+        headers: { cookie: deniedIdentity.sessionToken },
+      });
+      expect(denied.status).toBe(403);
+      await expect(denied.json()).resolves.toMatchObject({
+        error: { code: "PERMISSION_DENIED" },
+      });
+    } finally {
+      await runtime.close();
+    }
+  });
 });
+
+async function provisionGeneratedPermissions() {
+  const connection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+  const capability = capabilityId(TASK_CAPABILITIES.manage);
+  const managerRole = roleId("tasks:manager");
+  const bundle = {
+    knownCapabilities: [capability],
+    roles: [
+      {
+        roleId: managerRole,
+        capabilities: [capability],
+      },
+    ],
+    principalRoleAssignments: [
+      {
+        principalId: principalId(currentIdentity.identity.identityId),
+        roleIds: [managerRole],
+      },
+    ],
+  };
+
+  try {
+    await expect(
+      provisionPostgresPermissions(provisioningClient(connection.client), bundle),
+    ).resolves.toEqual({
+      capabilitiesCreated: 1,
+      rolesCreated: 1,
+      roleCapabilitiesCreated: 1,
+      principalsCreated: 1,
+      principalRolesCreated: 1,
+    });
+    await expect(
+      provisionPostgresPermissions(provisioningClient(connection.client), bundle),
+    ).resolves.toEqual({
+      capabilitiesCreated: 0,
+      rolesCreated: 0,
+      roleCapabilitiesCreated: 0,
+      principalsCreated: 0,
+      principalRolesCreated: 0,
+    });
+  } finally {
+    await connection.client.end();
+  }
+}
+
+function provisioningClient(
+  client: ReturnType<typeof createPostgresProvisioningDatabase>["client"],
+): PermissionProvisioningPostgresClient {
+  return {
+    async begin(callback) {
+      return client.begin(async (transaction) =>
+        callback({
+          unsafe(query, parameters) {
+            return transaction.unsafe(query, parameters);
+          },
+        }),
+      );
+    },
+  };
+}
 
 function databaseUrlForName(connectionString: string, databaseName: string) {
   const url = new URL(connectionString);
@@ -187,20 +290,4 @@ function requiredIsolatedConnection() {
     throw new Error("The isolated PostgreSQL test database is not ready.");
   }
   return isolatedConnection;
-}
-
-function permissionStore() {
-  const capability = capabilityId(TASK_CAPABILITIES.manage);
-  return new InMemoryPermissionStore({
-    knownCapabilities: [capability],
-    roles: [],
-    principals: [
-      {
-        principalId: principalId(currentIdentity.identity.identityId),
-        roleIds: [],
-        grants: [capability],
-        revokes: [],
-      },
-    ],
-  });
 }
