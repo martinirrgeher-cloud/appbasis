@@ -28,12 +28,18 @@ export function createIdentityRuntimeTemplate(input) {
     ...(guardedTasks
       ? [file("test/app.postgres.e2e.ts", generatedPostgresE2ETest())]
       : []),
+    ...(guardedTasks
+      ? [file("test/worker.test.ts", generatedWorkerTest(appId))]
+      : []),
     file("tsconfig.json", generatedTsconfig()),
     file("vitest.config.ts", generatedVitestConfig()),
     ...(guardedTasks
       ? [file("vitest.postgres.config.ts", generatedPostgresVitestConfig())]
       : []),
     file("worker/app.ts", generatedWorkerApp(appId, modules, platformServices)),
+    ...(guardedTasks
+      ? [file("worker/index.ts", generatedWorkerEntrypoint(appId))]
+      : []),
     ...(guardedTasks
       ? [file("worker/postgres.ts", generatedPostgresRuntime())]
       : []),
@@ -67,7 +73,9 @@ function generatedPackageJson(packageName, displayName, modules, platformService
       type: "module",
       scripts: {
         typecheck: "tsc --noEmit -p tsconfig.json",
-        test: guardedTasks ? "vitest run ./test/app.test.ts" : "vitest run",
+        test: guardedTasks
+          ? "vitest run ./test/app.test.ts ./test/worker.test.ts"
+          : "vitest run",
         ...(guardedTasks
           ? { "test:postgres": "vitest run --config vitest.postgres.config.ts" }
           : {}),
@@ -167,19 +175,28 @@ export function createGeneratedPostgresRuntime(
   });
 }
 
-export function createGeneratedPostgresApplicationRuntime(
+export async function createGeneratedPostgresApplicationRuntime(
   options: GeneratedPostgresApplicationRuntimeOptions,
-): GeneratedPostgresApplicationRuntime {
-  const identityRuntime = createPostgresIdentityApplicationRuntime(options);
-  const repositories = createPersistentRepositories(identityRuntime.sql);
+): Promise<GeneratedPostgresApplicationRuntime> {
+  const identityRuntime = await createPostgresIdentityApplicationRuntime(options);
 
-  return Object.freeze({
-    identity: identityRuntime.identity,
-    ...repositories,
-    async close() {
+  try {
+    const repositories = createPersistentRepositories(identityRuntime.sql);
+    return Object.freeze({
+      identity: identityRuntime.identity,
+      ...repositories,
+      async close() {
+        await identityRuntime.close();
+      },
+    });
+  } catch (error) {
+    try {
       await identityRuntime.close();
-    },
-  });
+    } catch {
+      // Preserve the construction failure; cleanup errors must not replace it.
+    }
+    throw error;
+  }
 }
 
 function createPersistentRepositories(client: IdentityPostgresRuntimeSqlClient) {
@@ -208,6 +225,168 @@ function requiredPostgresConnectionString(value: string): string {
   } catch {
     throw new Error("A valid PostgreSQL connection string is required.");
   }
+}
+`;
+}
+
+function generatedWorkerEntrypoint(appId) {
+  return `import { createGeneratedApp } from "./app";
+import {
+  createGeneratedPostgresApplicationRuntime,
+  type GeneratedPostgresApplicationRuntime,
+  type GeneratedPostgresApplicationRuntimeOptions,
+} from "./postgres";
+
+type GeneratedRuntimeFactory = (
+  options: GeneratedPostgresApplicationRuntimeOptions,
+) =>
+  | GeneratedPostgresApplicationRuntime
+  | PromiseLike<GeneratedPostgresApplicationRuntime>;
+
+type WorkerErrorKind = "UNEXPECTED_RUNTIME_ERROR" | "RUNTIME_CLOSE_ERROR";
+
+export function createGeneratedWorker(
+  runtimeFactory: GeneratedRuntimeFactory =
+    createGeneratedPostgresApplicationRuntime,
+) {
+  return Object.freeze({
+    async fetch(request: Request, env: unknown): Promise<Response> {
+      const url = new URL(request.url);
+      if (url.pathname === "/api/health") {
+        return Response.json({ status: "ok", appId: "${appId}" });
+      }
+
+      const runtimeOptions = runtimeConfiguration(env);
+      if (runtimeOptions === null) {
+        return Response.json(
+          {
+            error: {
+              code: "RUNTIME_NOT_CONFIGURED",
+              message: "The generated application runtime is not configured.",
+            },
+          },
+          { status: 503 },
+        );
+      }
+
+      let runtime: GeneratedPostgresApplicationRuntime | null = null;
+      let response: Response;
+      try {
+        runtime = await runtimeFactory(runtimeOptions);
+        const app = createGeneratedApp({
+          identity: runtime.identity,
+          permissions: runtime.permissions,
+          tasks: runtime.tasks,
+          secureCookies: url.protocol === "https:",
+        });
+        response = await app.fetch(request);
+      } catch {
+        logWorkerError("generated_worker_request_failed", "UNEXPECTED_RUNTIME_ERROR");
+        response = Response.json(
+          {
+            error: {
+              code: "INTERNAL_ERROR",
+              message: "The generated application request failed.",
+            },
+          },
+          { status: 500 },
+        );
+      }
+
+      if (runtime !== null) {
+        await closeRuntimeSafely(runtime);
+      }
+      return response;
+    },
+  });
+}
+
+export default createGeneratedWorker();
+
+function runtimeConfiguration(
+  env: unknown,
+): GeneratedPostgresApplicationRuntimeOptions | null {
+  if (!isRecord(env)) return null;
+  const hyperdrive = env.HYPERDRIVE;
+  if (!isRecord(hyperdrive)) return null;
+
+  const connectionString = normalizedPostgresConnectionString(
+    hyperdrive.connectionString,
+  );
+  const baseURL = normalizedHttpsOrigin(env.APPBASIS_BASE_URL);
+  const secret = normalizedSecret(env.BETTER_AUTH_SECRET);
+  if (connectionString === null || baseURL === null || secret === null) {
+    return null;
+  }
+
+  return Object.freeze({ connectionString, baseURL, secret });
+}
+
+async function closeRuntimeSafely(
+  runtime: GeneratedPostgresApplicationRuntime,
+): Promise<void> {
+  try {
+    await runtime.close();
+  } catch {
+    logWorkerError("generated_worker_runtime_close_failed", "RUNTIME_CLOSE_ERROR");
+  }
+}
+
+function logWorkerError(event: string, errorKind: WorkerErrorKind): void {
+  try {
+    console.error(JSON.stringify({ event, errorKind }));
+  } catch {
+    // Logging must never replace an application response.
+  }
+}
+
+function normalizedPostgresConnectionString(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim() !== value) return null;
+  try {
+    const url = new URL(value);
+    if (
+      (url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||
+      url.hostname.length === 0
+    ) {
+      return null;
+    }
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function normalizedHttpsOrigin(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim() !== value) return null;
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname.length === 0 ||
+      url.username.length > 0 ||
+      url.password.length > 0 ||
+      (url.pathname !== "" && url.pathname !== "/") ||
+      url.search.length > 0 ||
+      url.hash.length > 0
+    ) {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function normalizedSecret(value: unknown): string | null {
+  return typeof value === "string" &&
+    value.trim() === value &&
+    value.length >= 32
+    ? value
+    : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 `;
 }
@@ -339,7 +518,7 @@ afterAll(async () => {
 
 describe("generated PostgreSQL tasks runtime", () => {
   it("composes the real identity runtime with persistent permissions and tasks", async () => {
-    const runtime = createGeneratedPostgresApplicationRuntime({
+    const runtime = await createGeneratedPostgresApplicationRuntime({
       connectionString: isolatedDatabaseUrl,
       baseURL: "https://generated.example.test",
       secret: "generated-runtime-test-secret-000000000000",
@@ -559,6 +738,293 @@ function requiredIsolatedConnection() {
   }
   return isolatedConnection;
 }
+`;
+}
+
+function generatedWorkerTest(appId) {
+  return `import { describe, expect, it } from "vitest";
+
+import type { IdentityHttpService } from "@appbasis/identity/http";
+import {
+  InMemoryPermissionStore,
+  capabilityId,
+  principalId,
+} from "@appbasis/permissions";
+import { InMemoryTaskRepository, TASK_CAPABILITIES } from "@appbasis/tasks";
+
+import { createGeneratedWorker } from "../worker/index";
+import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
+
+const currentIdentity = {
+  identity: {
+    identityId: "identity-worker-1",
+    username: "worker.user",
+    displayName: "Worker User",
+    contactEmail: null,
+    personId: null,
+    mustChangePassword: false,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    passwordChangedAt: new Date("2026-01-01T00:00:00.000Z"),
+    disabledAt: null,
+    accountStatus: "active" as const,
+  },
+  sessionToken: "appbasis.session=worker-test-token",
+  access: "full" as const,
+};
+
+const identity: IdentityHttpService = {
+  async signInWithUsername() {
+    return currentIdentity;
+  },
+  async getCurrentIdentity(sessionToken) {
+    return sessionToken === currentIdentity.sessionToken ? currentIdentity : null;
+  },
+  async changeRequiredPassword() {
+    return currentIdentity;
+  },
+};
+
+const validEnv = Object.freeze({
+  HYPERDRIVE: Object.freeze({
+    connectionString: "postgresql://user:password@database.example.test/appbasis",
+  }),
+  APPBASIS_BASE_URL: "https://tasks-preview.example.test",
+  BETTER_AUTH_SECRET: "worker-runtime-test-secret-00000000000000",
+});
+
+describe("generated Worker entrypoint", () => {
+  it("keeps liveness available without database or secret bindings", async () => {
+    let runtimeCalls = 0;
+    const worker = createGeneratedWorker(() => {
+      runtimeCalls += 1;
+      throw new Error("runtime must not be created for liveness");
+    });
+
+    const response = await worker.fetch(
+      new Request("https://tasks-preview.example.test/api/health"),
+      undefined,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "ok",
+      appId: "${appId}",
+    });
+    expect(runtimeCalls).toBe(0);
+  });
+
+  it("fails closed before runtime creation when required deployment bindings are missing", async () => {
+    let runtimeCalls = 0;
+    const worker = createGeneratedWorker(() => {
+      runtimeCalls += 1;
+      throw new Error("runtime must not be created for invalid bindings");
+    });
+
+    const response = await worker.fetch(
+      new Request("https://tasks-preview.example.test/api/tasks"),
+      {
+        HYPERDRIVE: { connectionString: validEnv.HYPERDRIVE.connectionString },
+        APPBASIS_BASE_URL: validEnv.APPBASIS_BASE_URL,
+      },
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "RUNTIME_NOT_CONFIGURED" },
+    });
+    expect(runtimeCalls).toBe(0);
+  });
+
+  it("maps validated bindings into one request-scoped runtime and always closes it", async () => {
+    const tasks = new InMemoryTaskRepository();
+    const capability = capabilityId(TASK_CAPABILITIES.manage);
+    const permissions = new InMemoryPermissionStore({
+      knownCapabilities: [capability],
+      roles: [],
+      principals: [
+        {
+          principalId: principalId(currentIdentity.identity.identityId),
+          roleIds: [],
+          grants: [capability],
+          revokes: [],
+        },
+      ],
+    });
+    let closeCalls = 0;
+    let receivedOptions: unknown = null;
+    const runtime: GeneratedPostgresApplicationRuntime = {
+      identity,
+      permissions,
+      tasks,
+      async close() {
+        closeCalls += 1;
+      },
+    };
+    const worker = createGeneratedWorker(async (options) => {
+      receivedOptions = options;
+      return runtime;
+    });
+
+    const response = await worker.fetch(
+      new Request("https://tasks-preview.example.test/api/tasks", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ tasks: [] });
+    expect(receivedOptions).toEqual({
+      connectionString: validEnv.HYPERDRIVE.connectionString,
+      baseURL: validEnv.APPBASIS_BASE_URL,
+      secret: validEnv.BETTER_AUTH_SECRET,
+    });
+    expect(closeCalls).toBe(1);
+  });
+
+  it("returns a generic 500 without leaking runtime error names or messages", async () => {
+    let closeCalls = 0;
+    const leakingError = new Error("postgresql://message-secret-host/internal");
+    leakingError.name = "postgresql://name-secret-host/internal";
+    const runtime: GeneratedPostgresApplicationRuntime = {
+      identity,
+      permissions: {
+        async findPrincipal() {
+          throw leakingError;
+        },
+        async findRole() {
+          return null;
+        },
+        async isKnownCapability() {
+          return true;
+        },
+      },
+      tasks: new InMemoryTaskRepository(),
+      async close() {
+        closeCalls += 1;
+      },
+    };
+    const originalError = console.error;
+    const logged: string[] = [];
+    console.error = (...values: unknown[]) => {
+      logged.push(values.map(String).join(" "));
+    };
+    try {
+      const response = await createGeneratedWorker(() => runtime).fetch(
+        new Request("https://tasks-preview.example.test/api/tasks", {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+
+      expect(response.status).toBe(500);
+      const body = JSON.stringify(await response.json());
+      expect(body).toContain("INTERNAL_ERROR");
+      expect(body).not.toContain("message-secret-host");
+      expect(body).not.toContain("name-secret-host");
+      expect(logged.join("\n")).toContain("UNEXPECTED_RUNTIME_ERROR");
+      expect(logged.join("\n")).not.toContain("message-secret-host");
+      expect(logged.join("\n")).not.toContain("name-secret-host");
+      expect(closeCalls).toBe(1);
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("keeps a successful response when runtime close fails and sanitizes the close log", async () => {
+    const permissions = new InMemoryPermissionStore({
+      knownCapabilities: [capabilityId(TASK_CAPABILITIES.manage)],
+      roles: [],
+      principals: [
+        {
+          principalId: principalId(currentIdentity.identity.identityId),
+          roleIds: [],
+          grants: [capabilityId(TASK_CAPABILITIES.manage)],
+          revokes: [],
+        },
+      ],
+    });
+    let closeCalls = 0;
+    const runtime: GeneratedPostgresApplicationRuntime = {
+      identity,
+      permissions,
+      tasks: new InMemoryTaskRepository(),
+      async close() {
+        closeCalls += 1;
+        const error = new Error("postgresql://close-secret-host/internal");
+        error.name = "postgresql://close-name-secret-host/internal";
+        throw error;
+      },
+    };
+    const originalError = console.error;
+    const logged: string[] = [];
+    console.error = (...values: unknown[]) => {
+      logged.push(values.map(String).join(" "));
+    };
+    try {
+      const response = await createGeneratedWorker(() => runtime).fetch(
+        new Request("https://tasks-preview.example.test/api/tasks", {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ tasks: [] });
+      expect(closeCalls).toBe(1);
+      expect(logged.join("\n")).toContain("RUNTIME_CLOSE_ERROR");
+      expect(logged.join("\n")).not.toContain("close-secret-host");
+      expect(logged.join("\n")).not.toContain("close-name-secret-host");
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("keeps the sanitized request error when runtime close also fails", async () => {
+    const runtime: GeneratedPostgresApplicationRuntime = {
+      identity,
+      permissions: {
+        async findPrincipal() {
+          throw new Error("postgresql://request-secret-host/internal");
+        },
+        async findRole() {
+          return null;
+        },
+        async isKnownCapability() {
+          return true;
+        },
+      },
+      tasks: new InMemoryTaskRepository(),
+      async close() {
+        throw new Error("postgresql://close-secret-host/internal");
+      },
+    };
+    const originalError = console.error;
+    const logged: string[] = [];
+    console.error = (...values: unknown[]) => {
+      logged.push(values.map(String).join(" "));
+    };
+    try {
+      const response = await createGeneratedWorker(() => runtime).fetch(
+        new Request("https://tasks-preview.example.test/api/tasks", {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+
+      expect(response.status).toBe(500);
+      const body = JSON.stringify(await response.json());
+      expect(body).toContain("INTERNAL_ERROR");
+      expect(body).not.toContain("request-secret-host");
+      expect(body).not.toContain("close-secret-host");
+      expect(logged.join("\n")).not.toContain("request-secret-host");
+      expect(logged.join("\n")).not.toContain("close-secret-host");
+    } finally {
+      console.error = originalError;
+    }
+  });
+});
 `;
 }
 
