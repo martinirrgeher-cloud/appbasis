@@ -3,7 +3,7 @@ const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 export function createIdentityRuntimeTemplate(input) {
   const appId = requiredIdentifier(input?.appId, "appId");
   const displayName = requiredDisplayName(input?.displayName);
-  const packageName = `@appbasis/${appId}`;
+  const packageName = `@appbasis/app-${appId}`;
 
   const files = [
     file("package.json", generatedPackageJson(packageName, displayName)),
