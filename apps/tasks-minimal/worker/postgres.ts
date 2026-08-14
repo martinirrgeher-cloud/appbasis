@@ -1,5 +1,10 @@
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
 import {
+  createPostgresIdentityApplicationRuntime,
+  type IdentityPostgresRuntimeSqlClient,
+} from "@appbasis/identity/postgres-runtime";
+import type { IdentityHttpService } from "@appbasis/identity/http";
+import {
   PostgresPermissionStore,
   type PermissionStore,
 } from "@appbasis/permissions";
@@ -11,26 +16,57 @@ export interface GeneratedPostgresRuntime {
   close(): Promise<void>;
 }
 
+export interface GeneratedPostgresApplicationRuntime
+  extends GeneratedPostgresRuntime {
+  identity: IdentityHttpService;
+}
+
+export interface GeneratedPostgresApplicationRuntimeOptions {
+  connectionString: string;
+  baseURL: string;
+  secret: string;
+}
+
 export function createGeneratedPostgresRuntime(
   connectionString: string,
 ): GeneratedPostgresRuntime {
   const connection = createPostgresDatabase(
     requiredPostgresConnectionString(connectionString),
   );
-  const sql = {
-    unsafe(query: string, parameters?: (string | number | boolean | null)[]) {
-      return connection.client.unsafe(query, parameters);
-    },
-  };
-  const permissions = new PostgresPermissionStore(sql);
-  const tasks = new PostgresTaskRepository(sql);
+  const repositories = createPersistentRepositories(connection.client);
 
   return Object.freeze({
-    permissions,
-    tasks,
+    ...repositories,
     async close() {
       await connection.client.end();
     },
+  });
+}
+
+export function createGeneratedPostgresApplicationRuntime(
+  options: GeneratedPostgresApplicationRuntimeOptions,
+): GeneratedPostgresApplicationRuntime {
+  const identityRuntime = createPostgresIdentityApplicationRuntime(options);
+  const repositories = createPersistentRepositories(identityRuntime.sql);
+
+  return Object.freeze({
+    identity: identityRuntime.identity,
+    ...repositories,
+    async close() {
+      await identityRuntime.close();
+    },
+  });
+}
+
+function createPersistentRepositories(client: IdentityPostgresRuntimeSqlClient) {
+  const sql = {
+    unsafe(query: string, parameters?: (string | number | boolean | null)[]) {
+      return client.unsafe(query, parameters);
+    },
+  };
+  return Object.freeze({
+    permissions: new PostgresPermissionStore(sql),
+    tasks: new PostgresTaskRepository(sql),
   });
 }
 

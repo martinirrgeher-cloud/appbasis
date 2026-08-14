@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
@@ -67,7 +68,7 @@ test("wires the declared tasks module through its public workspace contract with
   assert.equal(template.files.some((entry) => entry.path === "worker/postgres.ts"), false);
 });
 
-test("generates tasks HTTP routes and PostgreSQL infrastructure only with explicit permissions composition", () => {
+test("generates tasks HTTP routes and complete PostgreSQL application composition only with explicit permissions", () => {
   const template = createIdentityRuntimeTemplate({
     ...input,
     modules: ["tasks"],
@@ -107,15 +108,30 @@ test("generates tasks HTTP routes and PostgreSQL infrastructure only with explic
   assert.match(generatedTest, /Generated HTTP task/);
 
   assert.match(postgresRuntime, /from "@appbasis\/database\/postgres-runtime"/);
+  assert.match(postgresRuntime, /from "@appbasis\/identity\/postgres-runtime"/);
+  assert.match(postgresRuntime, /createPostgresIdentityApplicationRuntime/);
+  assert.match(postgresRuntime, /IdentityPostgresRuntimeSqlClient/);
+  assert.match(postgresRuntime, /IdentityHttpService/);
   assert.match(postgresRuntime, /PostgresPermissionStore/);
   assert.match(postgresRuntime, /PostgresTaskRepository/);
   assert.match(postgresRuntime, /permissions: PermissionStore/);
   assert.match(postgresRuntime, /createGeneratedPostgresRuntime/);
+  assert.match(postgresRuntime, /createGeneratedPostgresApplicationRuntime/);
+  assert.match(postgresRuntime, /identity: IdentityHttpService/);
+  assert.doesNotMatch(postgresRuntime, /@appbasis\/identity\/better-auth/);
+  assert.doesNotMatch(postgresRuntime, /createBetterAuthRuntime/);
+  assert.doesNotMatch(postgresRuntime, /from "@appbasis\/database";/);
 
   assert.match(postgresTest, /Persistent generated task/);
   assert.match(postgresTest, /@appbasis\/permissions\/provisioning/);
   assert.match(postgresTest, /provisionPostgresPermissions/);
   assert.match(postgresTest, /0000_appbasis_permissions_foundation\.sql/);
+  assert.match(postgresTest, /0000_appbasis_identity_foundation\.sql/);
+  assert.match(postgresTest, /0001_appbasis_identity_foundation\.sql/);
+  assert.match(postgresTest, /createGeneratedPostgresApplicationRuntime/);
+  assert.match(postgresTest, /runtime\.identity\.getCurrentIdentity/);
+  assert.match(postgresTest, /generated-runtime-test-secret/);
+  assert.match(postgresTest, /SESSION_INVALID/);
   assert.match(postgresTest, /permissions: firstRuntime\.permissions/);
   assert.match(postgresTest, /identity-postgres-denied/);
   assert.match(postgresTest, /PERMISSION_DENIED/);
@@ -138,6 +154,30 @@ test("generates tasks HTTP routes and PostgreSQL infrastructure only with explic
       "worker/app.ts",
       "worker/postgres.ts",
     ],
+  );
+});
+
+test("keeps checked generated PostgreSQL output byte-identical to the generator", () => {
+  const template = createIdentityRuntimeTemplate({
+    appId: "tasks-minimal",
+    displayName: "AppBasis Tasks Minimal",
+    modules: ["tasks"],
+    platformServices: ["identity", "permissions"],
+  });
+
+  assert.equal(
+    content(template, "worker/postgres.ts"),
+    readFileSync(
+      new URL("../apps/tasks-minimal/worker/postgres.ts", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    content(template, "test/app.postgres.e2e.ts"),
+    readFileSync(
+      new URL("../apps/tasks-minimal/test/app.postgres.e2e.ts", import.meta.url),
+      "utf8",
+    ),
   );
 });
 
