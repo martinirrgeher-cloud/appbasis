@@ -75,7 +75,7 @@ jobs:
             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
           SUBDOMAIN="$(jq -r 'if .success == true then (.result.subdomain // "") else "" end' <<<"$RESPONSE")"
-          [[ "$SUBDOMAIN" =~ ^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$ ]] || { echo 'Cloudflare Workers account subdomain is unavailable or invalid.' >&2; exit 1; }
+          [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || { echo 'Cloudflare Workers account subdomain is unavailable or invalid.' >&2; exit 1; }
           ORIGIN="https://${APPBASIS_GENERATED_WORKER_NAME}.${SUBDOMAIN}.workers.dev"
           echo "APPBASIS_GENERATED_PREVIEW_URL=$ORIGIN" >> "$GITHUB_ENV"
 
