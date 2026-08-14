@@ -82,9 +82,6 @@ function clientThatMustNotRun(
   onBegin: () => void,
 ): PermissionProvisioningPostgresClient {
   return {
-    unsafe() {
-      throw new Error("unexpected PostgreSQL access");
-    },
     async begin() {
       onBegin();
       throw new Error("unexpected PostgreSQL transaction");
