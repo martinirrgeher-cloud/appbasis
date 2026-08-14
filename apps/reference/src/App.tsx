@@ -6,6 +6,12 @@ import {
   type ApiTask,
   type ReferenceSession,
 } from './api';
+import { ReferenceBrand } from './shell/ReferenceBrand';
+
+const taskBrandClasses = {
+  root: 'brand',
+  mark: 'brand-mark',
+} as const;
 
 type AppPhase =
   | 'loading'
@@ -556,10 +562,7 @@ export function App() {
 function ReferenceHeader() {
   return (
     <header className="topbar">
-      <a className="brand" href="#dashboard" aria-label="AppBasis Startseite">
-        <span className="brand-mark" aria-hidden="true">A</span>
-        <span>AppBasis</span>
-      </a>
+      <ReferenceBrand classes={taskBrandClasses} />
       <span className="ab-badge ab-badge--info">Demo v0.1</span>
     </header>
   );
