@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  applyRepositoryMigrationPlan,
   loadRepositoryMigrationPlan,
   MigrationConfigurationError,
   migrationStatements,
@@ -131,6 +132,67 @@ test('fails closed for missing, escaping and symlinked migration files', async (
     }),
     MigrationConfigurationError,
   );
+});
+
+test('rejects transaction control even when embedded in one manifest statement', async (t) => {
+  const unsafe = await fixture(validManifest, {
+    'owners/alpha/migrations/0000.sql':
+      "CREATE TABLE safe_before(id integer); SELECT 'COMMIT;'; /* ROLLBACK; */ COMMIT; CREATE TABLE unsafe_after(id integer);",
+  });
+  t.after(() => rm(unsafe.root, { recursive: true, force: true }));
+
+  await assert.rejects(
+    loadRepositoryMigrationPlan({
+      repositoryRoot: unsafe.root,
+      manifestPath: unsafe.manifestPath,
+      expectedApplication: 'demo',
+      expectedOwners: { alpha: 'owners/alpha' },
+    }),
+    MigrationConfigurationError,
+  );
+});
+
+test('allows transaction keywords inside quoted SQL data and dollar-quoted bodies', async (t) => {
+  const safe = await fixture(validManifest, {
+    'owners/alpha/migrations/0000.sql': [
+      "SELECT 'COMMIT; ROLLBACK;';",
+      '-- COMMIT;',
+      '/* ROLLBACK; */',
+      "DO $body$ BEGIN RAISE NOTICE 'COMMIT;'; END $body$;",
+    ].join('\n'),
+  });
+  t.after(() => rm(safe.root, { recursive: true, force: true }));
+
+  const plan = await loadRepositoryMigrationPlan({
+    repositoryRoot: safe.root,
+    manifestPath: safe.manifestPath,
+    expectedApplication: 'demo',
+    expectedOwners: { alpha: 'owners/alpha' },
+  });
+  assert.equal(plan.length, 1);
+});
+
+test('rejects unsafe direct plans before opening a database connection', async () => {
+  let databaseFactoryCalled = false;
+  await assert.rejects(
+    applyRepositoryMigrationPlan({
+      connectionString: 'postgres://user:secret@db.example/appbasis_tasks_preview',
+      expectedDatabase: 'appbasis_tasks_preview',
+      plan: [
+        {
+          ownerId: 'alpha',
+          relativePath: 'owners/alpha/migrations/0000.sql',
+          statements: ['CREATE TABLE before_commit(id integer); COMMIT; SELECT 1;'],
+        },
+      ],
+      createDatabase: () => {
+        databaseFactoryCalled = true;
+        throw new Error('must not open');
+      },
+    }),
+    MigrationConfigurationError,
+  );
+  assert.equal(databaseFactoryCalled, false);
 });
 
 test('requires a direct PostgreSQL URL and can pin the logical database target', () => {
