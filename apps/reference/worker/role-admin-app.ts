@@ -12,23 +12,18 @@ import {
   PermissionDeniedError,
   principalId,
   roleId,
-  type CapabilityId,
   type PermissionStore,
-  type RoleDetails,
-  type RoleId,
+  type PostgresRoleAdministration,
 } from '@appbasis/permissions';
 import { HEALTH_RESPONSE } from '../shared/health';
-
-export interface ReferenceRoleAdministration {
-  listRoles(): Promise<readonly RoleDetails[]>;
-  findRole(requestedRoleId: RoleId): Promise<RoleDetails | null>;
-  listKnownCapabilities(): Promise<readonly CapabilityId[]>;
-}
 
 export interface ReferenceRoleAdminDependencies {
   identity: IdentityHttpService;
   permissions: PermissionStore;
-  roleAdministration: ReferenceRoleAdministration;
+  roleAdministration: Pick<
+    PostgresRoleAdministration,
+    'listRoles' | 'findRole' | 'listKnownCapabilities'
+  >;
   secureCookies?: boolean;
 }
 
