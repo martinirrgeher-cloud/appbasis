@@ -35,6 +35,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Use the narrow identity access boundary in generated runtimes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tooling/generated-runtime-template.mjs")
+          text = path.read_text()
+          old = 'import { assertIdentityActionAllowed } from "@appbasis/identity";'
+          new = 'import { assertIdentityActionAllowed } from "@appbasis/identity/access";'
+          if text.count(old) != 1:
+              raise SystemExit("Expected exactly one generated identity root import.")
+          path.write_text(text.replace(old, new))
+          PY
+
       - name: Regenerate tasks-minimal through production generator
         run: |
           rm -rf apps/tasks-minimal
@@ -56,7 +70,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/tasks-minimal pnpm-lock.yaml
+          git add tooling/generated-runtime-template.mjs apps/tasks-minimal pnpm-lock.yaml
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
           else
