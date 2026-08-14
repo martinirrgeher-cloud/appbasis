@@ -2,6 +2,15 @@ import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 
 const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
+const DIRECT_TRANSACTION_COMMANDS = new Set([
+  'ABORT',
+  'BEGIN',
+  'COMMIT',
+  'END',
+  'RELEASE',
+  'ROLLBACK',
+  'SAVEPOINT',
+]);
 
 export class MigrationConfigurationError extends Error {
   constructor(message) {
@@ -132,6 +141,7 @@ export async function loadRepositoryMigrationPlan({
     fail('Migration manifest does not contain the complete target owner set.');
   }
 
+  assertMigrationPlanSafety(migrations, fail);
   return migrations;
 }
 
@@ -149,9 +159,10 @@ export async function applyRepositoryMigrationPlan({
     expectedDatabase,
     ConfigurationError,
   });
-  if (!Array.isArray(plan) || plan.length === 0) {
-    throw new ConfigurationError('Migration plan is empty or invalid.');
-  }
+  const fail = (message) => {
+    throw new ConfigurationError(message);
+  };
+  assertMigrationPlanSafety(plan, fail);
   if (typeof createDatabase !== 'function') {
     throw new ConfigurationError('Migration database factory is unavailable.');
   }
@@ -248,6 +259,170 @@ export function validatePostgresConnectionString(
   }
 
   return normalized;
+}
+
+function assertMigrationPlanSafety(plan, fail) {
+  if (!Array.isArray(plan) || plan.length === 0) {
+    fail('Migration plan is empty or invalid.');
+  }
+
+  for (const migration of plan) {
+    if (
+      !isPlainObject(migration) ||
+      !Array.isArray(migration.statements) ||
+      migration.statements.length === 0
+    ) {
+      fail('Migration plan contains an invalid migration entry.');
+    }
+    for (const statement of migration.statements) {
+      if (typeof statement !== 'string' || statement.trim().length === 0) {
+        fail('Migration plan contains an invalid SQL statement.');
+      }
+      if (containsTransactionControlStatement(statement)) {
+        fail('Migration SQL must not contain transaction-control statements.');
+      }
+    }
+  }
+}
+
+function containsTransactionControlStatement(sql) {
+  return sqlCommandKeywords(sql).some((tokens) => {
+    const [first, second, third, fourth, fifth] = tokens;
+    if (DIRECT_TRANSACTION_COMMANDS.has(first)) return true;
+    if (first === 'START' && second === 'TRANSACTION') return true;
+    if (first === 'PREPARE' && second === 'TRANSACTION') return true;
+    if (first === 'SET' && second === 'TRANSACTION') return true;
+    return (
+      first === 'SET' &&
+      second === 'SESSION' &&
+      third === 'CHARACTERISTICS' &&
+      fourth === 'AS' &&
+      fifth === 'TRANSACTION'
+    );
+  });
+}
+
+function sqlCommandKeywords(sql) {
+  const commands = [];
+  let command = [];
+  let index = 0;
+
+  const finishCommand = () => {
+    if (command.length > 0) commands.push(command);
+    command = [];
+  };
+
+  while (index < sql.length) {
+    const char = sql[index];
+    const next = sql[index + 1];
+
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
+    }
+
+    if (char === '-' && next === '-') {
+      index += 2;
+      while (index < sql.length && sql[index] !== '\n') index += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      index = skipBlockComment(sql, index);
+      continue;
+    }
+
+    if (char === "'") {
+      index = skipSingleQuotedString(sql, index);
+      continue;
+    }
+
+    if (char === '"') {
+      index = skipDoubleQuotedIdentifier(sql, index);
+      continue;
+    }
+
+    if (char === '$') {
+      const marker = sql.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)?.[0];
+      if (marker !== undefined) {
+        const closingIndex = sql.indexOf(marker, index + marker.length);
+        index = closingIndex === -1 ? sql.length : closingIndex + marker.length;
+        continue;
+      }
+    }
+
+    if (char === ';') {
+      finishCommand();
+      index += 1;
+      continue;
+    }
+
+    if (/[A-Za-z_]/.test(char)) {
+      let end = index + 1;
+      while (end < sql.length && /[A-Za-z0-9_$]/.test(sql[end])) end += 1;
+      if (command.length < 5) command.push(sql.slice(index, end).toUpperCase());
+      index = end;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  finishCommand();
+  return commands;
+}
+
+function skipSingleQuotedString(sql, start) {
+  const escapeBackslash =
+    start > 0 &&
+    (sql[start - 1] === 'E' || sql[start - 1] === 'e') &&
+    (start < 2 || !/[A-Za-z0-9_$]/.test(sql[start - 2]));
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql[index] === "'" && sql[index + 1] === "'") {
+      index += 2;
+      continue;
+    }
+    if (escapeBackslash && sql[index] === '\\' && index + 1 < sql.length) {
+      index += 2;
+      continue;
+    }
+    if (sql[index] === "'") return index + 1;
+    index += 1;
+  }
+  return sql.length;
+}
+
+function skipDoubleQuotedIdentifier(sql, start) {
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql[index] === '"' && sql[index + 1] === '"') {
+      index += 2;
+      continue;
+    }
+    if (sql[index] === '"') return index + 1;
+    index += 1;
+  }
+  return sql.length;
+}
+
+function skipBlockComment(sql, start) {
+  let depth = 1;
+  let index = start + 2;
+  while (index < sql.length && depth > 0) {
+    if (sql[index] === '/' && sql[index + 1] === '*') {
+      depth += 1;
+      index += 2;
+      continue;
+    }
+    if (sql[index] === '*' && sql[index + 1] === '/') {
+      depth -= 1;
+      index += 2;
+      continue;
+    }
+    index += 1;
+  }
+  return index;
 }
 
 async function currentDatabase(sql) {
