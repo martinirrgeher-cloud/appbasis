@@ -122,7 +122,10 @@ function generatedTasksWorkerApp(appId) {
 }
 
 function generatedPostgresRuntime() {
-  return `import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+  return `import { createPostgresDatabase } from "@appbasis/database";
+import { createIdentityRuntime } from "@appbasis/identity";
+import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
+import type { IdentityHttpService } from "@appbasis/identity/http";
 import {
   PostgresPermissionStore,
   type PermissionStore,
@@ -135,26 +138,77 @@ export interface GeneratedPostgresRuntime {
   close(): Promise<void>;
 }
 
+export interface GeneratedPostgresApplicationRuntime
+  extends GeneratedPostgresRuntime {
+  identity: IdentityHttpService;
+}
+
+export interface GeneratedPostgresApplicationRuntimeOptions {
+  connectionString: string;
+  baseURL: string;
+  secret: string;
+}
+
 export function createGeneratedPostgresRuntime(
   connectionString: string,
 ): GeneratedPostgresRuntime {
   const connection = createPostgresDatabase(
     requiredPostgresConnectionString(connectionString),
   );
-  const sql = {
-    unsafe(query: string, parameters?: (string | number | boolean | null)[]) {
-      return connection.client.unsafe(query, parameters);
-    },
-  };
-  const permissions = new PostgresPermissionStore(sql);
-  const tasks = new PostgresTaskRepository(sql);
+  const repositories = createPersistentRepositories(connection.client);
 
   return Object.freeze({
-    permissions,
-    tasks,
+    ...repositories,
     async close() {
       await connection.client.end();
     },
+  });
+}
+
+export function createGeneratedPostgresApplicationRuntime(
+  options: GeneratedPostgresApplicationRuntimeOptions,
+): GeneratedPostgresApplicationRuntime {
+  const connectionString = requiredPostgresConnectionString(
+    options.connectionString,
+  );
+  const baseURL = requiredBaseURL(options.baseURL);
+  const secret = requiredIdentitySecret(options.secret);
+  const connection = createPostgresDatabase(connectionString);
+  const auth = createBetterAuthRuntime({
+    database: connection.database,
+    baseURL,
+    secret,
+  });
+  const identity = createIdentityRuntime({
+    auth,
+    sql: connection.client,
+    baseURL,
+  });
+  const repositories = createPersistentRepositories(connection.client);
+
+  return Object.freeze({
+    identity: identity.service,
+    ...repositories,
+    async close() {
+      await connection.client.end();
+    },
+  });
+}
+
+function createPersistentRepositories(client: {
+  unsafe(
+    query: string,
+    parameters?: (string | number | boolean | null)[],
+  ): PromiseLike<readonly Record<string, unknown>[]>;
+}) {
+  const sql = {
+    unsafe(query: string, parameters?: (string | number | boolean | null)[]) {
+      return client.unsafe(query, parameters);
+    },
+  };
+  return Object.freeze({
+    permissions: new PostgresPermissionStore(sql),
+    tasks: new PostgresTaskRepository(sql),
   });
 }
 
@@ -172,6 +226,34 @@ function requiredPostgresConnectionString(value: string): string {
   } catch {
     throw new Error("A valid PostgreSQL connection string is required.");
   }
+}
+
+function requiredBaseURL(value: string): string {
+  const normalized = value.trim();
+  try {
+    const url = new URL(normalized);
+    if (
+      (url.protocol !== "https:" && url.protocol !== "http:") ||
+      url.hostname.length === 0 ||
+      url.username.length > 0 ||
+      url.password.length > 0 ||
+      (url.pathname !== "" && url.pathname !== "/") ||
+      url.search.length > 0 ||
+      url.hash.length > 0
+    ) {
+      throw new Error("invalid");
+    }
+    return url.origin;
+  } catch {
+    throw new Error("A canonical HTTP(S) base URL is required.");
+  }
+}
+
+function requiredIdentitySecret(value: string): string {
+  if (typeof value !== "string" || value.trim() !== value || value.length < 32) {
+    throw new Error("An identity secret with at least 32 characters is required.");
+  }
+  return value;
 }
 `;
 }
@@ -193,7 +275,10 @@ import {
 import { TASK_CAPABILITIES } from "@appbasis/tasks";
 
 import { createGeneratedApp } from "../worker/app";
-import { createGeneratedPostgresRuntime } from "../worker/postgres";
+import {
+  createGeneratedPostgresApplicationRuntime,
+  createGeneratedPostgresRuntime,
+} from "../worker/postgres";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
@@ -206,6 +291,14 @@ const isolatedDatabaseName =
 const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
 let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
 let isolatedDatabaseCreated = false;
+const identityFoundationMigrationUrl = new URL(
+  "../../../packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
+  import.meta.url,
+);
+const identityOperationMigrationUrl = new URL(
+  "../../../packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+  import.meta.url,
+);
 const permissionMigrationUrl = new URL(
   "../../../packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
   import.meta.url,
@@ -264,10 +357,10 @@ beforeAll(async () => {
   );
   isolatedDatabaseCreated = true;
   isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);
-  const permissionMigration = await readFile(permissionMigrationUrl, "utf8");
-  const taskMigration = await readFile(taskMigrationUrl, "utf8");
-  await isolatedConnection.client.unsafe(permissionMigration);
-  await isolatedConnection.client.unsafe(taskMigration);
+  await applyMigration(identityFoundationMigrationUrl);
+  await applyMigration(identityOperationMigrationUrl);
+  await applyMigration(permissionMigrationUrl);
+  await applyMigration(taskMigrationUrl);
   await provisionGeneratedPermissions();
 });
 
@@ -291,6 +384,38 @@ afterAll(async () => {
 });
 
 describe("generated PostgreSQL tasks runtime", () => {
+  it("composes the real identity runtime with persistent permissions and tasks", async () => {
+    const runtime = createGeneratedPostgresApplicationRuntime({
+      connectionString: isolatedDatabaseUrl,
+      baseURL: "https://generated.example.test",
+      secret: "generated-runtime-test-secret-000000000000",
+    });
+    try {
+      await expect(
+        runtime.identity.getCurrentIdentity("appbasis.session=missing-session"),
+      ).resolves.toBeNull();
+
+      const app = createGeneratedApp({
+        identity: runtime.identity,
+        permissions: runtime.permissions,
+        tasks: runtime.tasks,
+        secureCookies: true,
+      });
+      const health = await app.request("/api/health");
+      expect(health.status).toBe(200);
+
+      const unauthenticated = await app.request("/api/tasks", {
+        headers: { cookie: "appbasis.session=missing-session" },
+      });
+      expect(unauthenticated.status).toBe(401);
+      await expect(unauthenticated.json()).resolves.toMatchObject({
+        error: { code: "SESSION_INVALID" },
+      });
+    } finally {
+      await runtime.close();
+    }
+  });
+
   it("persists authorized HTTP task mutations and permission decisions across runtime instances", async () => {
     let taskId: string;
     const firstRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
@@ -397,6 +522,16 @@ describe("generated PostgreSQL tasks runtime", () => {
     }
   });
 });
+
+async function applyMigration(url: URL) {
+  const migration = await readFile(url, "utf8");
+  for (const statement of migration
+    .split("--> statement-breakpoint")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)) {
+    await requiredIsolatedConnection().client.unsafe(statement);
+  }
+}
 
 async function provisionGeneratedPermissions() {
   const connection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
