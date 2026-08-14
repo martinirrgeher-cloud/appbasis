@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run ./test/app.test.ts",
+    "test": "vitest run ./test/app.test.ts ./test/worker.test.ts",
     "test:postgres": "vitest run --config vitest.postgres.config.ts"
   },
   "dependencies": {
