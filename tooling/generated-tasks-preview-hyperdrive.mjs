@@ -73,7 +73,7 @@ export function parseGeneratedTasksPreviewDatabaseUrl(value) {
   }
 
   return Object.freeze({
-    scheme: url.protocol === "postgresql:" ? "postgresql" : "postgres",
+    scheme: "postgres",
     host: url.hostname.toLowerCase(),
     port,
     database,
@@ -214,9 +214,7 @@ function validateTargetConfiguration(config, expectedOrigin) {
 
   const id = config.id;
   const origin = config.origin;
-  const normalizedScheme = origin.scheme === "postgresql" ? "postgresql" : origin.scheme;
-  const expectedScheme =
-    expectedOrigin.scheme === "postgresql" ? "postgresql" : expectedOrigin.scheme;
+  const normalizedScheme = normalizePostgresScheme(origin.scheme);
 
   if (
     typeof id !== "string" ||
@@ -229,7 +227,7 @@ function validateTargetConfiguration(config, expectedOrigin) {
     Number(origin.port ?? 5432) !== expectedOrigin.port ||
     origin.database !== expectedOrigin.database ||
     origin.user !== expectedOrigin.user ||
-    normalizedScheme !== expectedScheme ||
+    normalizedScheme !== expectedOrigin.scheme ||
     !isRecord(config.caching) ||
     config.caching.disabled !== true
   ) {
@@ -239,6 +237,10 @@ function validateTargetConfiguration(config, expectedOrigin) {
   }
 
   return Object.freeze({ id, name: GENERATED_TASKS_PREVIEW_HYPERDRIVE.name });
+}
+
+function normalizePostgresScheme(value) {
+  return value === "postgres" || value === "postgresql" ? "postgres" : value;
 }
 
 async function cloudflareJson(fetchImpl, url, options) {
