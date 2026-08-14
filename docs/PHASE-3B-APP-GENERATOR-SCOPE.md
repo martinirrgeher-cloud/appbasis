@@ -27,10 +27,11 @@ Vor jeder Schreiboperation werden App-ID, Anzeigename und Modul-IDs durch densel
 
 - unbekannte Module werden vor dem Schreiben abgelehnt,
 - ein vorhandenes Zielverzeichnis wird niemals überschrieben,
-- Dateien werden zuerst in einem temporären Verzeichnis unter `apps/` vollständig erzeugt,
-- erst danach wird das Verzeichnis atomar auf den endgültigen App-Pfad umbenannt,
+- Dateien werden zuerst in einem temporären Verzeichnis im Repository, aber bewusst **außerhalb von `apps/`**, vollständig erzeugt,
+- dadurch kann ein paralleler `verify:apps`-Lauf oder ein nach Prozessabbruch verbleibendes Staging-Verzeichnis niemals als App entdeckt werden,
+- erst nach vollständigem Schreiben wird das Staging-Verzeichnis auf den endgültigen App-Pfad umbenannt,
 - bei einem normalen Fehler wird das temporäre Verzeichnis entfernt,
-- der bestehende `verify:apps`-Vertrag akzeptiert das Ergebnis unmittelbar.
+- der bestehende fail-closed `verify:apps`-Vertrag bleibt unverändert streng und akzeptiert das fertige Ergebnis unmittelbar.
 
 Der Generator erzeugt keine Datenbank, keine Migration, keine Cloud-Ressource, keinen Benutzer und keine Berechtigung.
 
@@ -47,8 +48,9 @@ Automatisierte Tests beweisen:
 1. den expliziten CLI-Vertrag,
 2. deterministischen Manifest-Inhalt,
 3. Kompatibilität mit `verifyAppDefinitions`,
-4. fail-closed Verhalten bei unbekannten Modulen,
-5. Schutz vor Überschreiben vorhandener Apps.
+4. dass ein unterbrochenes Staging-Verzeichnis außerhalb von `apps/` die App-Erkennung nicht beeinflusst,
+5. fail-closed Verhalten bei unbekannten Modulen,
+6. Schutz vor Überschreiben vorhandener Apps.
 
 Die Generator-Tests laufen als Bestandteil von `verify:apps` und damit von `verify:repo`.
 
