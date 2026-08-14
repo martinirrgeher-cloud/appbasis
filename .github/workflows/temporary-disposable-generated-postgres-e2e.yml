@@ -1,0 +1,140 @@
+name: Temporary Disposable Generated PostgreSQL E2E
+
+on:
+  push:
+    branches:
+      - agent/generated-postgres-worker-runtime
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: true
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/appbasis_generated_admin
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: appbasis_generated_admin
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d appbasis_generated_admin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate a disposable PostgreSQL database per E2E run
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}")
+              file.write_text(text.replace(old, new, 1))
+
+          path = "tooling/generated-runtime-template.mjs"
+
+          replace_once(
+              path,
+              'return `import { readFile } from "node:fs/promises";\\n\\nimport { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";',
+              'return `import { randomUUID } from "node:crypto";\\nimport { readFile } from "node:fs/promises";\\n\\nimport { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";',
+          )
+
+          replace_once(
+              path,
+              'const administrativeConnection = createPostgresDatabase(databaseUrl);\\nconst migrationUrl = new URL(',
+              'const administrativeConnection = createPostgresDatabase(databaseUrl);\\nconst isolatedDatabaseName =\\n  "appbasis_generated_" + randomUUID().replaceAll("-", "").slice(0, 24);\\nconst isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);\\nlet isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;\\nlet isolatedDatabaseCreated = false;\\nconst migrationUrl = new URL(',
+          )
+
+          replace_once(
+              path,
+              'beforeAll(async () => {\\n  await administrativeConnection.client.unsafe(\\n    "DROP TABLE IF EXISTS appbasis_task CASCADE",\\n  );\\n  const migration = await readFile(migrationUrl, "utf8");\\n  await administrativeConnection.client.unsafe(migration);\\n});\\n\\nbeforeEach(async () => {\\n  await administrativeConnection.client.unsafe("TRUNCATE TABLE appbasis_task");\\n});\\n\\nafterAll(async () => {\\n  await administrativeConnection.client.end();\\n});',
+              'beforeAll(async () => {\\n  await administrativeConnection.client.unsafe(\\n    "CREATE DATABASE " + isolatedDatabaseName,\\n  );\\n  isolatedDatabaseCreated = true;\\n  isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);\\n  const migration = await readFile(migrationUrl, "utf8");\\n  await isolatedConnection.client.unsafe(migration);\\n});\\n\\nbeforeEach(async () => {\\n  await requiredIsolatedConnection().client.unsafe(\\n    "TRUNCATE TABLE appbasis_task",\\n  );\\n});\\n\\nafterAll(async () => {\\n  if (isolatedConnection !== null) {\\n    await isolatedConnection.client.end();\\n    isolatedConnection = null;\\n  }\\n  if (isolatedDatabaseCreated) {\\n    await administrativeConnection.client.unsafe(\\n      "DROP DATABASE " + isolatedDatabaseName + " WITH (FORCE)",\\n    );\\n  }\\n  await administrativeConnection.client.end();\\n});',
+          )
+
+          file = Path(path)
+          text = file.read_text()
+          count = text.count('createGeneratedPostgresRuntime(databaseUrl)')
+          if count != 3:
+              raise SystemExit(f"{path}: expected three generated runtime URLs, found {count}")
+          file.write_text(text.replace(
+              'createGeneratedPostgresRuntime(databaseUrl)',
+              'createGeneratedPostgresRuntime(isolatedDatabaseUrl)',
+          ))
+
+          replace_once(
+              path,
+              'function permissionStore() {\\n  const capability = capabilityId(TASK_CAPABILITIES.manage);',
+              'function databaseUrlForName(connectionString: string, databaseName: string) {\\n  const url = new URL(connectionString);\\n  url.pathname = "/" + databaseName;\\n  return url.toString();\\n}\\n\\nfunction requiredIsolatedConnection() {\\n  if (isolatedConnection === null) {\\n    throw new Error("The isolated PostgreSQL test database is not ready.");\\n  }\\n  return isolatedConnection;\\n}\\n\\nfunction permissionStore() {\\n  const capability = capabilityId(TASK_CAPABILITIES.manage);',
+          )
+
+          test_path = "tooling/generated-runtime-template.test.mjs"
+          replace_once(
+              test_path,
+              '  assert.match(postgresTest, /Persistent generated task/);\n  assert.match(postgresTest, /DROP TABLE IF EXISTS appbasis_task CASCADE/);\n  assert.match(postgresTest, /DATABASE_URL/);',
+              '  assert.match(postgresTest, /Persistent generated task/);\n  assert.match(postgresTest, /randomUUID/);\n  assert.match(postgresTest, /CREATE DATABASE/);\n  assert.match(postgresTest, /DROP DATABASE/);\n  assert.match(postgresTest, /isolatedDatabaseUrl/);\n  assert.doesNotMatch(postgresTest, /DROP TABLE/);\n  assert.match(postgresTest, /DATABASE_URL/);',
+          )
+          PY
+
+      - name: Regenerate tasks-minimal through production generator
+        run: |
+          rm -rf apps/tasks-minimal
+          node ./tooling/create-app.mjs \
+            --app-id tasks-minimal \
+            --display-name "AppBasis Tasks Minimal" \
+            --module tasks \
+            --platform-service identity \
+            --platform-service permissions
+
+      - name: Verify disposable generated PostgreSQL flow
+        run: |
+          pnpm verify:apps
+          pnpm typecheck
+          pnpm --filter @appbasis/app-tasks-minimal test
+          pnpm --filter @appbasis/app-tasks-minimal test:postgres
+          git diff --check
+
+      - name: Commit generated fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tooling/generated-runtime-template.mjs tooling/generated-runtime-template.test.mjs apps/tasks-minimal pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+          else
+            git commit -m "test: isolate generated PostgreSQL E2E database"
+            git push origin HEAD:agent/generated-postgres-worker-runtime
+          fi
