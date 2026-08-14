@@ -6,7 +6,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { SUPPORTED_PLATFORM_SERVICES } from "../app-definition.mjs";
+import {
+  SUPPORTED_PLATFORM_SERVICES,
+  verifyAppDefinitions,
+} from "../app-definition.mjs";
 import { acquireAppRegistryLock } from "../app-publication.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
 import { startFactoryServer } from "./server.mjs";
@@ -27,9 +30,10 @@ test("factory snapshot reads the real app registry and supported catalog", async
   });
 });
 
-test("factory snapshot reads do not contend for the app registry publication lock", async () => {
+test("factory snapshot ignores unpublished app directories without weakening strict verification", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "appbasis-factory-readonly-"));
   await mkdir(join(fixtureRoot, "apps", "demo"), { recursive: true });
+  await mkdir(join(fixtureRoot, "apps", "publishing"), { recursive: true });
   await mkdir(join(fixtureRoot, "modules", "tasks"), { recursive: true });
   await writeFile(
     join(fixtureRoot, "apps", "demo", "appbasis.app.json"),
@@ -47,21 +51,29 @@ test("factory snapshot reads do not contend for the app registry publication loc
     "utf8",
   );
 
-  const lock = await acquireAppRegistryLock(fixtureRoot, "publish");
   try {
-    const snapshot = await Promise.race([
-      loadFactorySnapshot(fixtureRoot),
-      delay(250).then(() => {
-        throw new Error("Factory snapshot unexpectedly waited for the registry lock.");
-      }),
-    ]);
-    assert.deepEqual(
-      snapshot.apps.map((app) => app.appId),
-      ["demo"],
+    const lock = await acquireAppRegistryLock(fixtureRoot, "publish");
+    try {
+      const snapshot = await Promise.race([
+        loadFactorySnapshot(fixtureRoot),
+        delay(250).then(() => {
+          throw new Error("Factory snapshot unexpectedly waited for the registry lock.");
+        }),
+      ]);
+      assert.deepEqual(
+        snapshot.apps.map((app) => app.appId),
+        ["demo"],
+      );
+      assert.deepEqual(snapshot.catalog.modules, ["tasks"]);
+    } finally {
+      await lock.release();
+    }
+
+    await assert.rejects(
+      verifyAppDefinitions(fixtureRoot),
+      /apps\/publishing is missing appbasis\.app\.json/,
     );
-    assert.deepEqual(snapshot.catalog.modules, ["tasks"]);
   } finally {
-    await lock.release();
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 });
