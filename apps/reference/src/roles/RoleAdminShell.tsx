@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react';
 
+import { ReferenceBrand } from '../shell/ReferenceBrand';
 import './role-overview.css';
+
+const roleBrandClasses = {
+  root: 'roles-brand',
+  mark: 'roles-brand__mark',
+} as const;
 
 export function RoleAdminShell({ children }: { readonly children: ReactNode }) {
   return (
@@ -53,12 +59,7 @@ function MobileNavigation() {
 }
 
 function Brand() {
-  return (
-    <a className="roles-brand" href="#dashboard" aria-label="AppBasis Startseite">
-      <span className="roles-brand__mark" aria-hidden="true">A</span>
-      <span>AppBasis</span>
-    </a>
-  );
+  return <ReferenceBrand classes={roleBrandClasses} />;
 }
 
 function NavItem({
