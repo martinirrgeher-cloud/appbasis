@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 2,
+  "appId": "minimal",
+  "displayName": "AppBasis Minimal",
+  "modules": [],
+  "platformServices": [
+    "identity"
+  ]
+}

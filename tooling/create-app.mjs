@@ -1,19 +1,24 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   access,
   mkdir,
+  readFile,
   readdir,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseAppDefinition } from "./app-definition.mjs";
 import { acquireAppRegistryLock } from "./app-publication.mjs";
+import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-";
+const WORKSPACE_FINALIZATION_TIMEOUT_MS = 90_000;
+const WORKSPACE_FINALIZATION_KILL_GRACE_MS = 5_000;
 
 export async function createAppSkeleton(input, options = {}) {
   const repositoryRoot = resolve(options.repositoryRoot ?? process.cwd());
@@ -37,7 +42,12 @@ export async function createAppSkeleton(input, options = {}) {
     }
   }
 
+  const runtimeFiles = generatedRuntimeFiles(definition);
+  const publishesWorkspacePackage = runtimeFiles.some(
+    (runtimeFile) => runtimeFile.path === "package.json",
+  );
   const appsDirectory = join(repositoryRoot, "apps");
+  const lockfilePath = join(repositoryRoot, "pnpm-lock.yaml");
   await mkdir(appsDirectory, { recursive: true });
   const destination = join(appsDirectory, definition.appId);
   if (await pathExists(destination)) {
@@ -53,6 +63,8 @@ export async function createAppSkeleton(input, options = {}) {
   let registryLock;
   let destinationReserved = false;
   let published = false;
+  let lockfileSnapshot;
+  let workspaceFinalizationStarted = false;
 
   try {
     await writeFile(
@@ -62,18 +74,25 @@ export async function createAppSkeleton(input, options = {}) {
     );
     await writeFile(
       join(stagingDirectory, "README.md"),
-      generatedReadme(definition),
+      generatedReadme(definition, runtimeFiles),
       { flag: "wx" },
     );
+    for (const runtimeFile of runtimeFiles) {
+      await stageGeneratedFile(stagingDirectory, runtimeFile);
+    }
 
     await options.testingHooks?.afterStage?.({
       destination,
       stagingDirectory,
     });
 
-    // Only the short publish phase is serialized. Staging stays concurrent and
-    // outside app discovery; verify:apps uses the same lock before scanning.
+    // Publication and workspace finalization are serialized. Staging stays
+    // concurrent and outside app discovery; verify:apps uses the same lock.
     registryLock = await acquireAppRegistryLock(repositoryRoot, "publish");
+
+    if (publishesWorkspacePackage) {
+      lockfileSnapshot = await readFile(lockfilePath, "utf8");
+    }
 
     try {
       await mkdir(destination);
@@ -94,6 +113,26 @@ export async function createAppSkeleton(input, options = {}) {
       join(stagingDirectory, "README.md"),
       join(destination, "README.md"),
     );
+    for (const runtimeFile of runtimeFiles) {
+      await publishGeneratedFile(stagingDirectory, destination, runtimeFile);
+    }
+
+    if (publishesWorkspacePackage) {
+      const workspaceFinalizer =
+        options.testingHooks?.workspaceFinalizer ??
+        options.testingHooks?.lockfileFinalizer ??
+        finalizeGeneratedWorkspace;
+      workspaceFinalizationStarted = true;
+      await workspaceFinalizer({
+        repositoryRoot,
+        lockfilePath,
+        destination,
+      });
+    }
+
+    // Publish the manifest last. App discovery therefore never observes an
+    // app definition before every generated runtime file, workspace lockfile
+    // importer and local workspace dependency link are fully in place.
     await rename(
       join(stagingDirectory, "appbasis.app.json"),
       join(destination, "appbasis.app.json"),
@@ -101,10 +140,34 @@ export async function createAppSkeleton(input, options = {}) {
     await rm(stagingDirectory, { recursive: true, force: true });
     published = true;
   } catch (error) {
-    if (destinationReserved && !published) {
-      await rm(destination, { recursive: true, force: true });
+    const rollbackErrors = [];
+
+    if (workspaceFinalizationStarted && lockfileSnapshot !== undefined) {
+      try {
+        await writeFile(lockfilePath, lockfileSnapshot);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
     }
-    await rm(stagingDirectory, { recursive: true, force: true });
+    if (destinationReserved && !published) {
+      try {
+        await rm(destination, { recursive: true, force: true });
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    try {
+      await rm(stagingDirectory, { recursive: true, force: true });
+    } catch (rollbackError) {
+      rollbackErrors.push(rollbackError);
+    }
+
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        "App generation failed and rollback was incomplete.",
+      );
+    }
     throw error;
   } finally {
     await registryLock?.release();
@@ -163,14 +226,98 @@ async function runCli() {
   console.log(`Created AppBasis app skeleton: ${result.relativeDestination}.`);
 }
 
-function generatedReadme(definition) {
+function generatedRuntimeFiles(definition) {
+  if (!definition.platformServices.includes("identity")) return Object.freeze([]);
+  return createIdentityRuntimeTemplate({
+    appId: definition.appId,
+    displayName: definition.displayName,
+  }).files;
+}
+
+function generatedReadme(definition, runtimeFiles) {
   const modules =
     definition.modules.length === 0 ? "none" : definition.modules.join(", ");
   const platformServices =
     definition.platformServices.length === 0
       ? "none"
       : definition.platformServices.join(", ");
-  return `# ${definition.displayName}\n\nGenerated AppBasis app skeleton.\n\n- App ID: \`${definition.appId}\`\n- Modules: ${modules}\n- Platform services: ${platformServices}\n\nThis skeleton contains the versioned app definition only. Runtime composition is added by a separately verified generated-runtime template rather than copied from another app.\n`;
+  const runtimeDescription =
+    runtimeFiles.length === 0
+      ? "This skeleton contains the versioned app definition only."
+      : "This app includes the independently verified generated identity runtime and consumes `@appbasis/identity/http` without copying the Reference app.";
+  return `# ${definition.displayName}\n\nGenerated AppBasis app skeleton.\n\n- App ID: \`${definition.appId}\`\n- Modules: ${modules}\n- Platform services: ${platformServices}\n\n${runtimeDescription}\n`;
+}
+
+async function stageGeneratedFile(stagingDirectory, runtimeFile) {
+  const target = join(stagingDirectory, runtimeFile.path);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, runtimeFile.content, { flag: "wx" });
+}
+
+async function publishGeneratedFile(stagingDirectory, destination, runtimeFile) {
+  const source = join(stagingDirectory, runtimeFile.path);
+  const target = join(destination, runtimeFile.path);
+  await mkdir(dirname(target), { recursive: true });
+  await rename(source, target);
+}
+
+async function finalizeGeneratedWorkspace({ repositoryRoot }) {
+  const corepack = process.platform === "win32" ? "corepack.cmd" : "corepack";
+  const args = [
+    "pnpm",
+    "install",
+    "--no-frozen-lockfile",
+    "--ignore-scripts",
+  ];
+
+  await new Promise((resolvePromise, reject) => {
+    const child = spawn(corepack, args, {
+      cwd: repositoryRoot,
+      stdio: "inherit",
+    });
+    let settled = false;
+    let timedOut = false;
+    let killEscalation;
+
+    const finalizationTimeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      killEscalation = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+      }, WORKSPACE_FINALIZATION_KILL_GRACE_MS);
+    }, WORKSPACE_FINALIZATION_TIMEOUT_MS);
+
+    const finish = (operation) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(finalizationTimeout);
+      if (killEscalation !== undefined) clearTimeout(killEscalation);
+      operation();
+    };
+
+    child.once("error", (error) => finish(() => reject(error)));
+    child.once("exit", (code, signal) => {
+      finish(() => {
+        if (timedOut) {
+          reject(
+            new Error(
+              `Generated workspace finalization exceeded ${WORKSPACE_FINALIZATION_TIMEOUT_MS} ms.`,
+            ),
+          );
+          return;
+        }
+        if (code === 0) {
+          resolvePromise();
+          return;
+        }
+        const detail =
+          signal === null ? `exit code ${String(code)}` : `signal ${signal}`;
+        reject(new Error(`Generated workspace finalization failed (${detail}).`));
+      });
+    });
+  });
 }
 
 async function directoryNames(path) {
