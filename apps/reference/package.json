@@ -10,6 +10,7 @@
     "build:demo-bootstrap": "vite build --config tooling/vite.demo-orchestration.config.ts",
     "build:permission-foundation": "vite build --config tooling/vite.permission-foundation.config.ts",
     "build:permission-cutover": "vite build --config tooling/vite.permission-cutover.config.ts",
+    "build:permission-authority": "vite build --config tooling/vite.permission-authority.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run && node --test ./tooling/apply-reference-migrations.test.mjs",
     "test:postgres": "vitest run --config vitest.postgres.config.ts",
