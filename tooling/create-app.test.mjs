@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -82,6 +89,77 @@ test("an interrupted root staging directory never enters app discovery", async (
   assert.equal(definitions[0]?.appId, "checklist");
 });
 
+test("keeps live publication invisible until its manifest is published", async (t) => {
+  const root = await createRepositoryFixture(t);
+  await writeExistingApp(root, {
+    schemaVersion: 1,
+    appId: "reference",
+    displayName: "Reference",
+    modules: ["tasks"],
+  });
+
+  await createAppSkeleton(
+    {
+      appId: "checklist",
+      displayName: "Checklist",
+      modules: ["tasks"],
+    },
+    {
+      repositoryRoot: root,
+      testingHooks: {
+        afterReserve: async () => {
+          assert.deepEqual(await readdir(join(root, "apps")), [
+            "checklist",
+            "reference",
+          ]);
+          const inFlightDefinitions = await verifyAppDefinitions(root);
+          assert.deepEqual(
+            inFlightDefinitions.map((definition) => definition.appId),
+            ["reference"],
+          );
+        },
+      },
+    },
+  );
+
+  const definitions = await verifyAppDefinitions(root);
+  assert.deepEqual(
+    definitions.map((definition) => definition.appId),
+    ["checklist", "reference"],
+  );
+});
+
+test("does not replace a destination created after staging", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const destination = join(root, "apps", "checklist");
+
+  await assert.rejects(
+    () =>
+      createAppSkeleton(
+        {
+          appId: "checklist",
+          displayName: "Checklist",
+          modules: ["tasks"],
+        },
+        {
+          repositoryRoot: root,
+          testingHooks: {
+            afterStage: async () => mkdir(destination),
+          },
+        },
+      ),
+    /App destination already exists/,
+  );
+
+  assert.deepEqual(await readdir(destination), []);
+  const rootEntries = await readdir(root);
+  assert.equal(
+    rootEntries.some((entry) => entry.startsWith(".appbasis-create-checklist-")),
+    false,
+  );
+  assert.equal(rootEntries.includes(".appbasis-publishing-checklist.json"), false);
+});
+
 test("fails before writing when a module is unknown", async (t) => {
   const root = await createRepositoryFixture(t);
 
@@ -126,4 +204,13 @@ async function createRepositoryFixture(t) {
   await mkdir(join(root, "apps"), { recursive: true });
   await mkdir(join(root, "modules", "tasks"), { recursive: true });
   return root;
+}
+
+async function writeExistingApp(root, definition) {
+  const directory = join(root, "apps", definition.appId);
+  await mkdir(directory);
+  await writeFile(
+    join(directory, "appbasis.app.json"),
+    `${JSON.stringify(definition, null, 2)}\n`,
+  );
 }
