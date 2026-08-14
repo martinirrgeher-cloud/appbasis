@@ -2,7 +2,7 @@
 
 ## Phase
 
-Phase 3B – Deterministic App Skeleton Generator
+Phase 3C – Shared Identity HTTP Adapter
 
 ## Ziel
 
@@ -26,30 +26,29 @@ Der vollständige Reference-Vertical-Slice ist als Demo v0.1 bewiesen. Der Fokus
 
 Demo v0.1 gilt als technisch abgeschlossen. Der produktive Preview-Pfad hat den vollständigen User-to-Database-Vertical-Slice gegen reales Neon/PostgreSQL erfolgreich bewiesen. Alte technische Root-Admin-Sessions wurden nach erfolgreicher Demo-Abnahme bereinigt; der Demo-User bleibt aktiv.
 
-## App-Manifest V1
+## App-Fabrik – bewiesene Grundlagen
 
-Jede App unter `apps/` besitzt `appbasis.app.json`. Der Vertrag beschreibt aktuell ausschließlich Schema-Version, App-ID, sichtbaren App-Namen und explizit aktivierte Module. `verify:apps` prüft Manifestform, Verzeichnisbindung und vorhandene Modul-IDs fail-closed als Bestandteil von `verify:repo`.
+Jede App unter `apps/` besitzt `appbasis.app.json`. Der V1-Vertrag beschreibt Schema-Version, App-ID, sichtbaren App-Namen und explizit aktivierte Module. `verify:apps` prüft Manifestform, Verzeichnisbindung und vorhandene Modul-IDs fail-closed als Bestandteil von `verify:repo`.
+
+`pnpm appbasis:create` erzeugt deterministische App-Skelette ohne Reference-Copy/Paste. Staging, atomare Zielreservierung und `verify:apps` sind gegen konkurrierende Publikation gehärtet; vorhandene Apps werden niemals ersetzt.
 
 ## Aktueller Factory-Slice
 
-`pnpm appbasis:create` erzeugt aus expliziten CLI-Eingaben ein neues App-Skelett unter `apps/<appId>/`.
+Der erste tatsächlich app-übergreifend neutrale Teil des Reference-Runtimes wird in die bereits zuständige Plattformfähigkeit verschoben: `@appbasis/identity/http`.
 
-Der Generator:
+Der Adapter:
 
-- verwendet denselben Manifest-Vertrag wie CI,
-- lehnt unbekannte Module vor dem Schreiben ab,
-- überschreibt niemals eine vorhandene App,
-- erzeugt Dateien zunächst außerhalb von `apps/`, reserviert den endgültigen App-Pfad atomar ohne Ersetzen und veröffentlicht das Manifest erst nach erfolgreicher Reservierung,
-- serialisiert ausschließlich die kurze Publikationsphase mit `verify:apps` über einen gemeinsamen exklusiven App-Registry-Lock,
-- lässt `verify:apps` niemals Manifest-Prüfungen überspringen; die Verifikation wartet bei einer aktiven Veröffentlichung begrenzt und prüft danach wieder vollständig fail-closed,
-- behandelt verwaiste oder ungültige Registry-Locks fail-closed statt sie stillschweigend zu ignorieren,
-- erzeugt ausschließlich deterministischen Manifest-/README-Inhalt ohne Secrets oder Provider-Daten,
-- kopiert bewusst keine Reference-Runtime.
+- verwendet ausschließlich Web-Standardtypen `Request` und `Response`,
+- kapselt Username-Login, Session-Auflösung und den erzwungenen Passwortwechsel,
+- bewahrt den bestehenden Identity-Payload, Cookie-Vertrag sowie die bewiesene HTTP-Fehlerabbildung,
+- bleibt unabhängig von Hono, Cloudflare, fachlichen Modulen und App-Permissions,
+- wird von der Reference-App als erstem realen Consumer verwendet,
+- benötigt keine neue Dependency und keine neue Workspace-Package-Grenze.
 
-Das Ergebnis ist in Phase 3B noch kein lauffähiges zweites Frontend, sondern die sichere deklarative und technische Erzeugungsgrenze für den nächsten Factory-Schritt.
+Die Reference-App behält weiterhin ihre fachlichen Tasks-Routen, Task-Berechtigungen, Health-/Fallback-Semantik und Hono-Komposition. Damit wird nur ein bereits belegter neutraler Vertrag extrahiert, nicht vorsorglich ein allgemeines Runtime-Framework gebaut.
 
 ## Nächster technischer Meilenstein
 
-Phase 3C – kleinste wiederverwendbare Runtime-Komposition und erste zweite lauffähige Mini-App.
+Erste zweite lauffähige Mini-App aus dem Generator.
 
-Dafür werden nur diejenigen neutralen Teile aus dem bewiesenen Reference-Vertical-Slice extrahiert, die die zweite App tatsächlich wiederverwenden kann. Erst danach wird der Generator um lauffähige Runtime-Ausgabe erweitert. Damit entsteht keine zweite handkopierte Implementierung von Identity, Datenbank, Permissions, CI oder Deployment.
+Der nächste Slice soll `appbasis:create` von einem deklarativen Skelett zur kleinsten ausführbaren zweiten App erweitern und den neuen Identity-HTTP-Adapter erstmals mit einem zweiten Consumer beweisen. Weitere gemeinsame Runtime-Bausteine werden ausschließlich dann extrahiert, wenn dieser zweite Consumer den Bedarf konkret belegt.
