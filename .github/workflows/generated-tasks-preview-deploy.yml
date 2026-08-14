@@ -117,6 +117,7 @@ jobs:
             appId: process.env.APPBASIS_GENERATED_APP_ID,
             hyperdriveId: process.env.APPBASIS_HYPERDRIVE_ID,
             baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
+            entrypoint: "./worker/preview.ts",
             outputPath: "./apps/tasks-minimal/wrangler.preview.generated.json",
           });
           NODE
@@ -184,8 +185,6 @@ jobs:
         run: node ./tooling/generated-preview-smoke.mjs
 
       - name: Verify deployed generated database binding
-        env:
-          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
         run: node ./tooling/generated-preview-database-smoke.mjs
 
       - name: Remove generated deployment config
