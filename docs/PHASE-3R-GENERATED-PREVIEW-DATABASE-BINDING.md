@@ -52,15 +52,16 @@ Der Hyperdrive-Bootstrap erstellt ausschließlich `caching.disabled = true`; ein
 
 Der bestehende Phase-3O-Smoke bleibt erhalten. Zusätzlich führt der Deploy-Workflow einen Database-Binding-Smoke aus:
 
-1. Der Smoke erzeugt einen neuen, nicht provisionierten Session-Token und signiert ihn mit demselben geschützten `APPBASIS_BETTER_AUTH_SECRET`, das der Worker als `BETTER_AUTH_SECRET` verwendet.
+1. Der Smoke erzeugt einen neuen, nicht provisionierten Session-Token und signiert ihn mit dem geschützten `APPBASIS_BETTER_AUTH_SECRET`.
 2. Cookie-Name und Signaturformat entsprechen den im Repository gepinnten Better-Auth-/better-call-Versionen: für die HTTPS-Base-URL `__Secure-better-auth.session_token`, HMAC-SHA-256, Standard-Base64-Signatur und URL-Encoding des vollständigen `token.signature`-Werts.
-3. Request auf `/api/tasks` mit diesem korrekt signierten, aber nicht vorhandenen Session-Token.
-4. Better Auth kann den Token deshalb nicht bereits bei der Cookie-Prüfung verwerfen und muss `internalAdapter.findSession(token)` ausführen. Dadurch wird der Worker→Hyperdrive→PostgreSQL-Pfad tatsächlich benötigt.
-5. Erwartet wird exakt `401 SESSION_INVALID` ohne neu aufgebautes Session-Cookie.
+3. Vor dem normalen Worker-Deploy synchronisiert der manuell gestartete Deploy-Workflow genau dieses Environment-Secret über `wrangler secret put` in die bereits existierende Worker-Bindung `BETTER_AUTH_SECRET`. Der Worker muss vorher bereits existieren; diese Aktion darf keinen Worker oder Hyperdrive provisionieren.
+4. Erst nach erfolgreicher Secret-Synchronisierung und normalem Worker-Deploy sendet der Smoke den korrekt signierten, aber nicht vorhandenen Session-Token an `/api/tasks`.
+5. Better Auth kann den Token deshalb weder wegen einer falschen Signatur noch wegen eines veralteten Worker-Secrets vorzeitig verwerfen und muss `internalAdapter.findSession(token)` ausführen. Dadurch wird der Worker→Hyperdrive→PostgreSQL-Pfad tatsächlich benötigt.
+6. Erwartet wird exakt `401 SESSION_INVALID` ohne neu aufgebautes Session-Cookie.
 
 Die aktuelle Identity-Konfiguration aktiviert keinen Session-Cookie-Cache. Der Smoke erzeugt daher keine Session-Daten im Cookie, die den DB-Lookup umgehen könnten.
 
-Der Deploy-Workflow verlangt den Better-Auth-Secret zusätzlich als geschütztes Environment-Secret, damit der Smoke exakt denselben Schlüssel verwenden kann. Bootstrap und Deploy validieren denselben Mindestvertrag; Secret-Werte werden weder ausgegeben noch in ein Manifest geschrieben.
+Bootstrap installiert den Better-Auth-Secret bei der erstmaligen Worker-Erstellung. Jeder spätere manuelle Generated-Preview-Deploy synchronisiert ihn erneut aus demselben geschützten Environment, bevor der DB-Smoke läuft. Damit ist eine Secret-Rotation explizit und reproduzierbar, ohne Secret-Werte auszulesen oder in ein Manifest zu schreiben.
 
 Damit wird der Worker→Hyperdrive→PostgreSQL-Pfad geprüft, ohne einen echten Benutzer, eine Rolle, einen Permission-Grant oder einen Task anzulegen.
 
@@ -77,8 +78,9 @@ Der Binding-/Deploy-Pfad schlägt fehl bei:
 - fehlendem oder mehrfach vorhandenem deterministischen Hyperdrive-Namen,
 - abweichendem Hyperdrive-Origin, Port, Benutzer oder Datenbanknamen,
 - aktivem Hyperdrive Query-Cache,
-- fehlendem bestehenden Worker oder `BETTER_AUTH_SECRET`,
-- fehlendem/ungültigem `APPBASIS_BETTER_AUTH_SECRET` für den signierten DB-Smoke,
+- fehlendem bestehenden Worker,
+- fehlendem/ungültigem `APPBASIS_BETTER_AUTH_SECRET`,
+- fehlgeschlagener Worker-Secret-Synchronisierung,
 - fehlgeschlagenem Health-, Runtime- oder Database-Binding-Smoke.
 
 API-Fehler werden ohne Response-Body weitergegeben, damit Providerdaten oder Zugangsinformationen nicht in Logs gespiegelt werden.
@@ -102,8 +104,9 @@ Phase 3R gilt als abgeschlossen, wenn:
 2. eine getrennte, explizit bestätigte und idempotente Hyperdrive-Erstellung existiert,
 3. normale Deployments den dedizierten Hyperdrive ausschließlich read-only auflösen und vollständig gegen den DB-Target-Vertrag validieren,
 4. Query-Caching fail-closed deaktiviert sein muss,
-5. der Database-Binding-Smoke mit einem Better-Auth-kompatibel signierten, nicht vorhandenen Session-Token den echten geschützten Runtime-/DB-Pfad ohne Seed-Daten bestätigt,
-6. PR-CI und realer PostgreSQL-E2E vollständig grün sind,
-7. Codex den exakten finalen PR-Head ohne Blocking-Finding freigibt,
-8. nach Squash-Merge der Post-Merge-CI auf `main` grün ist,
-9. der dedizierte Hyperdrive erstellt und der Worker anschließend erfolgreich gegen diesen Target deployed und gesmoked wurde.
+5. der manuelle Deploy den Worker-`BETTER_AUTH_SECRET` vor dem Smoke aus dem geschützten Generated-Environment synchronisiert,
+6. der Database-Binding-Smoke mit einem Better-Auth-kompatibel signierten, nicht vorhandenen Session-Token den echten geschützten Runtime-/DB-Pfad ohne Seed-Daten bestätigt,
+7. PR-CI und realer PostgreSQL-E2E vollständig grün sind,
+8. Codex den exakten finalen PR-Head ohne Blocking-Finding freigibt,
+9. nach Squash-Merge der Post-Merge-CI auf `main` grün ist,
+10. der dedizierte Hyperdrive erstellt und der Worker anschließend erfolgreich gegen diesen Target deployed und gesmoked wurde.
