@@ -53,11 +53,29 @@ test("renders deployment-only Cloudflare bindings without secret values", () => 
   assert.doesNotMatch(serialized, /secret-value|postgres(?:ql)?:\/\//i);
 });
 
+test("supports an explicit repository-local preview entrypoint without changing the default", () => {
+  const config = renderGeneratedPreviewWranglerConfig({
+    appId: "tasks-minimal",
+    hyperdriveId: "provider-hyperdrive-id",
+    baseURL: "https://tasks-preview.example.test",
+    entrypoint: "./worker/preview.ts",
+  });
+  assert.equal(config.main, "./worker/preview.ts");
+
+  const defaultConfig = renderGeneratedPreviewWranglerConfig({
+    appId: "tasks-minimal",
+    hyperdriveId: "provider-hyperdrive-id",
+    baseURL: "https://tasks-preview.example.test",
+  });
+  assert.equal(defaultConfig.main, "./worker/index.ts");
+});
+
 test("renders a secretless bootstrap config without weakening the normal deploy config", () => {
   const input = {
     appId: "tasks-minimal",
     hyperdriveId: "provider-hyperdrive-id",
     baseURL: "https://tasks-preview.example.test",
+    entrypoint: "./worker/preview.ts",
   };
   const deployConfig = renderGeneratedPreviewWranglerConfig(input);
   const bootstrapConfig = renderGeneratedPreviewBootstrapWranglerConfig(input);
@@ -66,7 +84,7 @@ test("renders a secretless bootstrap config without weakening the normal deploy 
   assert.deepEqual(bootstrapConfig, {
     $schema: deployConfig.$schema,
     name: deployConfig.name,
-    main: deployConfig.main,
+    main: "./worker/preview.ts",
     compatibility_date: deployConfig.compatibility_date,
     compatibility_flags: deployConfig.compatibility_flags,
     workers_dev: true,
@@ -78,7 +96,7 @@ test("renders a secretless bootstrap config without weakening the normal deploy 
   assert.deepEqual(deployConfig.secrets.required, ["BETTER_AUTH_SECRET"]);
 });
 
-test("fails closed on invalid provider, Worker-name or public-origin deployment inputs", () => {
+test("fails closed on invalid provider, Worker-name, entrypoint or public-origin deployment inputs", () => {
   assert.throws(
     () =>
       renderGeneratedPreviewWranglerConfig({
@@ -96,6 +114,26 @@ test("fails closed on invalid provider, Worker-name or public-origin deployment 
         baseURL: "http://tasks-preview.example.test",
       }),
     /canonical HTTPS origin/,
+  );
+  assert.throws(
+    () =>
+      renderGeneratedPreviewWranglerConfig({
+        appId: "tasks-minimal",
+        hyperdriveId: "provider-id",
+        baseURL: "https://tasks-preview.example.test",
+        entrypoint: "../worker/preview.ts",
+      }),
+    /canonical relative TypeScript path/,
+  );
+  assert.throws(
+    () =>
+      renderGeneratedPreviewWranglerConfig({
+        appId: "tasks-minimal",
+        hyperdriveId: "provider-id",
+        baseURL: "https://tasks-preview.example.test",
+        entrypoint: "./worker/../preview.ts",
+      }),
+    /canonical relative TypeScript path/,
   );
   assert.throws(
     () =>
@@ -134,10 +172,12 @@ test("writes only the rendered deployment artifact with owner-only permissions",
       appId: "tasks-minimal",
       hyperdriveId: "provider-id",
       baseURL: "https://tasks-preview.example.test",
+      entrypoint: "./worker/preview.ts",
       outputPath,
     });
     const written = JSON.parse(await readFile(outputPath, "utf8"));
     assert.equal(written.hyperdrive[0].id, "provider-id");
+    assert.equal(written.main, "./worker/preview.ts");
     assert.deepEqual(written.secrets.required, ["BETTER_AUTH_SECRET"]);
     assert.equal((await stat(outputPath)).mode & 0o777, 0o600);
   } finally {
@@ -153,10 +193,12 @@ test("writes the bootstrap artifact owner-only and without secret declarations",
       appId: "tasks-minimal",
       hyperdriveId: "provider-id",
       baseURL: "https://tasks-preview.example.test",
+      entrypoint: "./worker/preview.ts",
       outputPath,
     });
     const written = JSON.parse(await readFile(outputPath, "utf8"));
     assert.equal("secrets" in written, false);
+    assert.equal(written.main, "./worker/preview.ts");
     assert.equal(written.workers_dev, true);
     assert.equal(written.preview_urls, false);
     assert.equal((await stat(outputPath)).mode & 0o777, 0o600);
