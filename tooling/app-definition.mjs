@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { getAppPublicationState } from "./app-publication.mjs";
+import { withAppRegistryLock } from "./app-publication.mjs";
 
 const APP_DEFINITION_FILE = "appbasis.app.json";
 const APP_DEFINITION_KEYS = new Set([
@@ -66,6 +66,12 @@ export function parseAppDefinition(value, options = {}) {
 }
 
 export async function verifyAppDefinitions(repositoryRoot = process.cwd()) {
+  return withAppRegistryLock(repositoryRoot, "verify", () =>
+    verifyAppDefinitionsUnlocked(repositoryRoot),
+  );
+}
+
+async function verifyAppDefinitionsUnlocked(repositoryRoot) {
   const appsDirectory = join(repositoryRoot, "apps");
   const modulesDirectory = join(repositoryRoot, "modules");
   const appEntries = await directoryNames(appsDirectory);
@@ -85,21 +91,6 @@ export async function verifyAppDefinitions(repositoryRoot = process.cwd()) {
       parsed = JSON.parse(await readFile(manifestPath, "utf8"));
     } catch (error) {
       if (error?.code === "ENOENT") {
-        const publication = await getAppPublicationState(
-          repositoryRoot,
-          directoryName,
-        );
-        if (publication.kind === "active") continue;
-        if (publication.kind === "stale") {
-          throw new Error(
-            `apps/${directoryName} is incomplete after interrupted app publication.`,
-          );
-        }
-        if (publication.kind === "invalid") {
-          throw new Error(
-            `apps/${directoryName} has an invalid app publication claim.`,
-          );
-        }
         throw new Error(`apps/${directoryName} is missing ${APP_DEFINITION_FILE}.`);
       }
       if (error instanceof SyntaxError) {
