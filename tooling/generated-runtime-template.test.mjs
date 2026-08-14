@@ -106,10 +106,10 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
   assert.match(generatedTest, /denied\.status\)\.toBe\(403\)/);
   assert.match(generatedTest, /Generated HTTP task/);
 
-  assert.match(postgresRuntime, /from "@appbasis\/database"/);
-  assert.match(postgresRuntime, /createIdentityRuntime/);
-  assert.match(postgresRuntime, /from "@appbasis\/identity\/better-auth"/);
-  assert.match(postgresRuntime, /createBetterAuthRuntime/);
+  assert.match(postgresRuntime, /from "@appbasis\/database\/postgres-runtime"/);
+  assert.match(postgresRuntime, /from "@appbasis\/identity\/postgres-runtime"/);
+  assert.match(postgresRuntime, /createPostgresIdentityApplicationRuntime/);
+  assert.match(postgresRuntime, /IdentityPostgresRuntimeSqlClient/);
   assert.match(postgresRuntime, /IdentityHttpService/);
   assert.match(postgresRuntime, /PostgresPermissionStore/);
   assert.match(postgresRuntime, /PostgresTaskRepository/);
@@ -117,8 +117,9 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
   assert.match(postgresRuntime, /createGeneratedPostgresRuntime/);
   assert.match(postgresRuntime, /createGeneratedPostgresApplicationRuntime/);
   assert.match(postgresRuntime, /identity: IdentityHttpService/);
-  assert.match(postgresRuntime, /requiredIdentitySecret/);
-  assert.match(postgresRuntime, /requiredBaseURL/);
+  assert.doesNotMatch(postgresRuntime, /@appbasis\/identity\/better-auth/);
+  assert.doesNotMatch(postgresRuntime, /createBetterAuthRuntime/);
+  assert.doesNotMatch(postgresRuntime, /from "@appbasis\/database";/);
 
   assert.match(postgresTest, /Persistent generated task/);
   assert.match(postgresTest, /@appbasis\/permissions\/provisioning/);
