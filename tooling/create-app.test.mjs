@@ -80,6 +80,7 @@ test("creates a deterministic identity app that passes the app manifest contract
   assert.equal(packageJson.name, "@appbasis/app-checklist");
   assert.deepEqual(packageJson.dependencies, {
     "@appbasis/identity": "workspace:*",
+    "@appbasis/tasks": "workspace:*",
     hono: "4.13.1",
   });
 

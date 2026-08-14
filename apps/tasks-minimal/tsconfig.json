@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "worker/**/*.ts",
+    "test/**/*.ts",
+    "vitest.config.ts"
+  ]
+}

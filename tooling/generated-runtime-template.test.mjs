@@ -48,6 +48,24 @@ test("uses a collision-resistant app package namespace and shared identity HTTP 
   });
 });
 
+test("wires the declared tasks module through its public workspace contract", () => {
+  const template = createIdentityRuntimeTemplate({ ...input, modules: ["tasks"] });
+  const worker = content(template, "worker/app.ts");
+  const packageJson = JSON.parse(content(template, "package.json"));
+  const generatedTest = content(template, "test/app.test.ts");
+
+  assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/identity": "workspace:*",
+    "@appbasis/tasks": "workspace:*",
+    hono: "4.13.1",
+  });
+  assert.match(generatedTest, /from "@appbasis\/tasks"/);
+  assert.match(generatedTest, /InMemoryTaskRepository/);
+  assert.match(generatedTest, /status: "completed"/);
+  assert.doesNotMatch(worker, /\/api\/tasks/);
+  assert.doesNotMatch(worker, /@appbasis\/permissions/);
+});
+
 test("generates a self-test that exercises the second consumer contract", () => {
   const generatedTest = content(
     createIdentityRuntimeTemplate(input),
@@ -60,7 +78,7 @@ test("generates a self-test that exercises the second consumer contract", () => 
   assert.match(generatedTest, /appbasis\.session=test-token/);
 });
 
-test("fails closed on invalid runtime identity", () => {
+test("fails closed on invalid or unsupported runtime inputs", () => {
   assert.throws(
     () => createIdentityRuntimeTemplate({ ...input, appId: "Not Valid" }),
     /appId must match/,
@@ -68,6 +86,10 @@ test("fails closed on invalid runtime identity", () => {
   assert.throws(
     () => createIdentityRuntimeTemplate({ ...input, displayName: " Checklist" }),
     /displayName must be a non-empty trimmed string/,
+  );
+  assert.throws(
+    () => createIdentityRuntimeTemplate({ ...input, modules: ["future"] }),
+    /does not support module future/,
   );
 });
 

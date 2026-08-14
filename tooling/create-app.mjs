@@ -231,6 +231,7 @@ function generatedRuntimeFiles(definition) {
   return createIdentityRuntimeTemplate({
     appId: definition.appId,
     displayName: definition.displayName,
+    modules: definition.modules,
   }).files;
 }
 

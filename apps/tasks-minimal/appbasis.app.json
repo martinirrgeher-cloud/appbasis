@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "appId": "tasks-minimal",
+  "displayName": "AppBasis Tasks Minimal",
+  "modules": [
+    "tasks"
+  ],
+  "platformServices": [
+    "identity"
+  ]
+}
