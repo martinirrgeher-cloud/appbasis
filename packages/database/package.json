@@ -6,7 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./node-runtime": {
-      "types": "./src/client.ts",
+      "types": "./src/node-runtime-contract.ts",
       "default": "./src/node-runtime.mjs"
     }
   },
