@@ -39,6 +39,7 @@ const reportsWrite = capabilityId("reports:write");
 const reportsDelete = capabilityId("reports:delete");
 const viewer = roleId("reports:viewer");
 const editor = roleId("reports:editor");
+const auditor = roleId("reports:auditor");
 const viewerPrincipal = principalId("principal-viewer");
 const editorPrincipal = principalId("principal-editor");
 const rejectedPrincipal = principalId("principal-rejected");
@@ -135,6 +136,41 @@ describe("PostgreSQL permission provisioning", () => {
     });
   });
 
+  it("preserves additional principal roles outside the initial bootstrap assignment", async () => {
+    const connection = requiredIsolatedConnection();
+    await connection.client.unsafe(
+      `INSERT INTO appbasis_permission_role (role_id) VALUES ($1)`,
+      [auditor],
+    );
+    await connection.client.unsafe(
+      `INSERT INTO appbasis_permission_role_capability (role_id, capability_id)
+       VALUES ($1, $2)`,
+      [auditor, reportsRead],
+    );
+    await connection.client.unsafe(
+      `INSERT INTO appbasis_permission_principal_role (principal_id, role_id)
+       VALUES ($1, $2)`,
+      [viewerPrincipal, auditor],
+    );
+
+    await expect(
+      provisionPostgresPermissions(provisioningClient(), initialBundle),
+    ).resolves.toEqual({
+      capabilitiesCreated: 0,
+      rolesCreated: 0,
+      roleCapabilitiesCreated: 0,
+      principalsCreated: 0,
+      principalRolesCreated: 0,
+    });
+
+    await expect(permissionStore().findPrincipal(viewerPrincipal)).resolves.toEqual({
+      principalId: viewerPrincipal,
+      roleIds: [auditor, viewer],
+      grants: [],
+      revokes: [],
+    });
+  });
+
   it("rolls back the complete bundle when existing role state conflicts", async () => {
     const connection = requiredIsolatedConnection();
     await connection.client.unsafe(
@@ -186,9 +222,6 @@ function permissionStore() {
 function provisioningClient(): PermissionProvisioningPostgresClient {
   const client = requiredIsolatedConnection().client;
   return {
-    unsafe(query, parameters) {
-      return client.unsafe(query, parameters);
-    },
     async begin(callback) {
       return client.begin(async (transaction) =>
         callback({
