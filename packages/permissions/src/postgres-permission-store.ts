@@ -3,6 +3,7 @@ import {
   principalId,
   roleId,
   type CapabilityId,
+  type PermissionRequest,
   type PermissionStore,
   type PrincipalId,
   type PrincipalPermissions,
@@ -24,6 +25,50 @@ export class PostgresPermissionStore implements PermissionStore {
 
   constructor(client: PermissionPostgresClient) {
     this.#client = client;
+  }
+
+  async evaluatePermission(request: PermissionRequest): Promise<boolean> {
+    const rows = await this.#client.unsafe(
+      `SELECT (
+         EXISTS (
+           SELECT 1
+           FROM appbasis_permission_capability
+           WHERE capability_id = $2
+         )
+         AND EXISTS (
+           SELECT 1
+           FROM appbasis_permission_principal
+           WHERE principal_id = $1
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM appbasis_permission_principal_revoke
+           WHERE principal_id = $1 AND capability_id = $2
+         )
+         AND (
+           EXISTS (
+             SELECT 1
+             FROM appbasis_permission_principal_grant
+             WHERE principal_id = $1 AND capability_id = $2
+           )
+           OR EXISTS (
+             SELECT 1
+             FROM appbasis_permission_principal_role principal_role
+             INNER JOIN appbasis_permission_role_capability role_capability
+               ON role_capability.role_id = principal_role.role_id
+             WHERE principal_role.principal_id = $1
+               AND role_capability.capability_id = $2
+           )
+         )
+       ) AS allowed`,
+      [request.principalId, request.capability],
+    );
+
+    const allowed = rows[0]?.allowed;
+    if (typeof allowed !== "boolean") {
+      throw new Error("Permission decision row has an invalid allowed value.");
+    }
+    return allowed;
   }
 
   async findPrincipal(
