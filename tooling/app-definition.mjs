@@ -74,13 +74,17 @@ export function parseAppDefinition(value, options = {}) {
   });
 }
 
+export async function readAppDefinitions(repositoryRoot = process.cwd()) {
+  return readAndValidateAppDefinitions(repositoryRoot);
+}
+
 export async function verifyAppDefinitions(repositoryRoot = process.cwd()) {
   return withAppRegistryLock(repositoryRoot, "verify", () =>
-    verifyAppDefinitionsUnlocked(repositoryRoot),
+    readAndValidateAppDefinitions(repositoryRoot),
   );
 }
 
-async function verifyAppDefinitionsUnlocked(repositoryRoot) {
+async function readAndValidateAppDefinitions(repositoryRoot) {
   const appsDirectory = join(repositoryRoot, "apps");
   const modulesDirectory = join(repositoryRoot, "modules");
   const appEntries = await directoryNames(appsDirectory);
