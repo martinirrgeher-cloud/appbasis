@@ -125,7 +125,10 @@ test("creates permission-guarded tasks runtime only from explicit platform compo
     "@appbasis/tasks": "workspace:*",
     hono: "4.13.1",
   });
-  assert.equal(packageJson.scripts.test, "vitest run ./test/app.test.ts");
+  assert.equal(
+    packageJson.scripts.test,
+    "vitest run ./test/app.test.ts ./test/worker.test.ts",
+  );
   assert.equal(
     packageJson.scripts["test:postgres"],
     "vitest run --config vitest.postgres.config.ts",

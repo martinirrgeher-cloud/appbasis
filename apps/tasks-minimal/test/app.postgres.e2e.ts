@@ -124,7 +124,7 @@ afterAll(async () => {
 
 describe("generated PostgreSQL tasks runtime", () => {
   it("composes the real identity runtime with persistent permissions and tasks", async () => {
-    const runtime = createGeneratedPostgresApplicationRuntime({
+    const runtime = await createGeneratedPostgresApplicationRuntime({
       connectionString: isolatedDatabaseUrl,
       baseURL: "https://generated.example.test",
       secret: "generated-runtime-test-secret-000000000000",

@@ -43,19 +43,28 @@ export function createGeneratedPostgresRuntime(
   });
 }
 
-export function createGeneratedPostgresApplicationRuntime(
+export async function createGeneratedPostgresApplicationRuntime(
   options: GeneratedPostgresApplicationRuntimeOptions,
-): GeneratedPostgresApplicationRuntime {
-  const identityRuntime = createPostgresIdentityApplicationRuntime(options);
-  const repositories = createPersistentRepositories(identityRuntime.sql);
+): Promise<GeneratedPostgresApplicationRuntime> {
+  const identityRuntime = await createPostgresIdentityApplicationRuntime(options);
 
-  return Object.freeze({
-    identity: identityRuntime.identity,
-    ...repositories,
-    async close() {
+  try {
+    const repositories = createPersistentRepositories(identityRuntime.sql);
+    return Object.freeze({
+      identity: identityRuntime.identity,
+      ...repositories,
+      async close() {
+        await identityRuntime.close();
+      },
+    });
+  } catch (error) {
+    try {
       await identityRuntime.close();
-    },
-  });
+    } catch {
+      // Preserve the construction failure; cleanup errors must not replace it.
+    }
+    throw error;
+  }
 }
 
 function createPersistentRepositories(client: IdentityPostgresRuntimeSqlClient) {

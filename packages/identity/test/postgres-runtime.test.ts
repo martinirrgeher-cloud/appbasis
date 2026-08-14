@@ -1,4 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  createPostgresDatabase: vi.fn(),
+  createBetterAuthRuntime: vi.fn(),
+  end: vi.fn(),
+}));
+
+vi.mock("@appbasis/database", () => ({
+  createPostgresDatabase: mocks.createPostgresDatabase,
+}));
+
+vi.mock("../src/better-auth", () => ({
+  createBetterAuthRuntime: mocks.createBetterAuthRuntime,
+}));
 
 import { createPostgresIdentityApplicationRuntime } from "../src/postgres-runtime";
 
@@ -9,30 +23,59 @@ const validInput = {
 };
 
 describe("PostgreSQL identity application runtime", () => {
-  it("fails before opening PostgreSQL when the connection string is invalid", () => {
-    expect(() =>
+  beforeEach(() => {
+    mocks.createPostgresDatabase.mockReset();
+    mocks.createBetterAuthRuntime.mockReset();
+    mocks.end.mockReset();
+    mocks.end.mockResolvedValue(undefined);
+  });
+
+  it("fails before opening PostgreSQL when the connection string is invalid", async () => {
+    await expect(
       createPostgresIdentityApplicationRuntime({
         ...validInput,
         connectionString: "not-postgresql",
       }),
-    ).toThrow(/valid PostgreSQL connection string/);
+    ).rejects.toThrow(/valid PostgreSQL connection string/);
+    expect(mocks.createPostgresDatabase).not.toHaveBeenCalled();
   });
 
-  it("fails before opening PostgreSQL when the public base URL is not canonical", () => {
-    expect(() =>
+  it("fails before opening PostgreSQL when the public base URL is not canonical", async () => {
+    await expect(
       createPostgresIdentityApplicationRuntime({
         ...validInput,
         baseURL: "https://generated.example.test/path",
       }),
-    ).toThrow(/canonical HTTP\(S\) base URL/);
+    ).rejects.toThrow(/canonical HTTP\(S\) base URL/);
+    expect(mocks.createPostgresDatabase).not.toHaveBeenCalled();
   });
 
-  it("fails before opening PostgreSQL when the identity secret is too short", () => {
-    expect(() =>
+  it("fails before opening PostgreSQL when the identity secret is too short", async () => {
+    await expect(
       createPostgresIdentityApplicationRuntime({
         ...validInput,
         secret: "too-short",
       }),
-    ).toThrow(/identity secret with at least 32 characters/);
+    ).rejects.toThrow(/identity secret with at least 32 characters/);
+    expect(mocks.createPostgresDatabase).not.toHaveBeenCalled();
+  });
+
+  it("closes PostgreSQL when identity runtime construction fails after opening it", async () => {
+    mocks.createPostgresDatabase.mockReturnValue({
+      database: {},
+      client: {
+        unsafe: vi.fn(),
+        end: mocks.end,
+      },
+    });
+    mocks.createBetterAuthRuntime.mockImplementation(() => {
+      throw new Error("identity runtime construction failed");
+    });
+
+    await expect(createPostgresIdentityApplicationRuntime(validInput)).rejects.toThrow(
+      /identity runtime construction failed/,
+    );
+    expect(mocks.createPostgresDatabase).toHaveBeenCalledTimes(1);
+    expect(mocks.end).toHaveBeenCalledTimes(1);
   });
 });

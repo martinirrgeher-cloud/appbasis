@@ -7,41 +7,51 @@ import type {
   PostgresIdentityApplicationRuntimeOptions,
 } from "./postgres-runtime-contract";
 
-export function createPostgresIdentityApplicationRuntime(
+export async function createPostgresIdentityApplicationRuntime(
   options: PostgresIdentityApplicationRuntimeOptions,
-): PostgresIdentityApplicationRuntime {
+): Promise<PostgresIdentityApplicationRuntime> {
   const connectionString = requiredPostgresConnectionString(
     options.connectionString,
   );
   const baseURL = requiredBaseURL(options.baseURL);
   const secret = requiredIdentitySecret(options.secret);
   const connection = createPostgresDatabase(connectionString);
-  const auth = createBetterAuthRuntime({
-    database: connection.database,
-    baseURL,
-    secret,
-  });
-  const identity = createIdentityRuntime({
-    auth,
-    sql: connection.client,
-    baseURL,
-  });
-  const sql = Object.freeze({
-    unsafe(
-      query: string,
-      parameters?: (string | number | boolean | null)[],
-    ) {
-      return connection.client.unsafe(query, parameters);
-    },
-  });
 
-  return Object.freeze({
-    identity: identity.service,
-    sql,
-    async close() {
+  try {
+    const auth = createBetterAuthRuntime({
+      database: connection.database,
+      baseURL,
+      secret,
+    });
+    const identity = createIdentityRuntime({
+      auth,
+      sql: connection.client,
+      baseURL,
+    });
+    const sql = Object.freeze({
+      unsafe(
+        query: string,
+        parameters?: (string | number | boolean | null)[],
+      ) {
+        return connection.client.unsafe(query, parameters);
+      },
+    });
+
+    return Object.freeze({
+      identity: identity.service,
+      sql,
+      async close() {
+        await connection.client.end();
+      },
+    });
+  } catch (error) {
+    try {
       await connection.client.end();
-    },
-  });
+    } catch {
+      // Preserve the construction failure; cleanup errors must not replace it.
+    }
+    throw error;
+  }
 }
 
 function requiredPostgresConnectionString(value: string): string {
