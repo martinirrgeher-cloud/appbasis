@@ -8,7 +8,7 @@ import {
   validatePostgresConnectionString,
 } from './apply-reference-migrations.mjs';
 
-test('loads the deterministic Reference manifest in Identity then Tasks order', async () => {
+test('loads the deterministic Reference manifest in Identity, Permissions then Tasks order', async () => {
   const plan = await loadReferenceMigrationPlan();
 
   assert.deepEqual(
@@ -21,6 +21,10 @@ test('loads the deterministic Reference manifest in Identity then Tasks order', 
       {
         ownerId: 'identity',
         relativePath: 'packages/identity/drizzle/0001_appbasis_identity_foundation.sql',
+      },
+      {
+        ownerId: 'permissions',
+        relativePath: 'packages/permissions/migrations/0000_appbasis_permissions_foundation.sql',
       },
       {
         ownerId: 'tasks',

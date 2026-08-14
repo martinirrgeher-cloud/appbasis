@@ -31,4 +31,5 @@ export interface PermissionStore {
   findPrincipal(principalId: PrincipalId): Promise<PrincipalPermissions | null>;
   findRole(roleId: RoleId): Promise<RoleBundle | null>;
   isKnownCapability(capability: CapabilityId): Promise<boolean>;
+  evaluatePermission?(request: PermissionRequest): Promise<boolean>;
 }

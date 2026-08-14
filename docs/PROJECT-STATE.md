@@ -2,7 +2,7 @@
 
 ## Phase
 
-Phase 3H – Generated PostgreSQL Runtime
+Phase 3I – Persistent Permissions Runtime
 
 ## Ziel
 
@@ -89,6 +89,16 @@ Der Generator erzeugt außerdem einen eigenen PostgreSQL-E2E-Vertrag für `tasks
 
 Damit ist der persistente Factory-Pfad Manifest → Generator → autorisierte Tasks-HTTP-Runtime → echtes PostgreSQL reproduzierbar geprüft, ohne die Datenbank zum deklarativen App-Plattformdienst zu machen.
 
+## Persistente Permission-Runtime
+
+`@appbasis/permissions` besitzt zusätzlich zum bestehenden `InMemoryPermissionStore` einen `PostgresPermissionStore`, der exakt denselben read-only `PermissionStore`-Vertrag implementiert. Die bestehende Auswertungslogik `can`/`assert` bleibt unverändert: unbekannte Capabilities und unbekannte Principals werden abgelehnt, direkte Grants erlauben, Revokes haben Vorrang und Rollen liefern ihre zugeordneten Capabilities.
+
+Die Permission-Persistenz besitzt einen eigenen migrationsverantwortlichen Bereich unter `packages/permissions/migrations`. Der zentrale Migrationsvertrag registriert damit drei getrennte Owner (`identity`, `permissions`, `tasks`) und vier Migrationen. Die Permission-Tabellen speichern bekannte Capabilities, Rollen, Rollen-Capabilities, Principals, Principal-Rollen sowie individuelle Grants und Revokes.
+
+Ein realer PostgreSQL-E2E erzeugt pro Lauf eine zufällige disposable Testdatenbank, migriert dort das Permission-Schema und beweist Rolle, Direkt-Grant, Revoke-Priorität sowie deny-by-default gegen den echten `PostgresPermissionStore`. Die verpflichtende PostgreSQL-CI führt diesen Test zusätzlich zu Identity, Reference-Tasks und dem generierten Tasks-Runtime-E2E aus.
+
+Dieser Slice führt bewusst **keinen** neuen Manifest-Plattformdienst und keine neue Permission-Semantik ein. Ebenso bleibt die bestehende Reference-Laufzeit vorerst unverändert; der PostgreSQL-Store schafft die persistente Runtime-Grenze, die eine unabhängig deploybare generierte App im nächsten Schritt benötigt.
+
 ## Nächster technischer Meilenstein
 
-Der nächste Factory-Slice ist die reproduzierbare Deployment-Komposition für eine unabhängig deploybare generierte App: Runtime-Infrastruktur aus der Deployment-Umgebung binden, Health und geschützte Tasks-Routen in einer echten generierten Worker-Entrypoint-Komposition starten und anschließend einen automatisierten Smoke gegen eine isolierte Preview-Umgebung beweisen. Dabei sollen keine Provider-IDs, Secrets oder Infrastrukturdetails in das App-Manifest verschoben werden.
+Der nächste Factory-Slice ist die reproduzierbare Deployment-Komposition für eine unabhängig deploybare generierte App: Identity-Runtime, persistente Permissions und Tasks-Persistenz aus der Deployment-Umgebung binden, Health und geschützte Tasks-Routen in einer echten generierten Worker-Entrypoint-Komposition starten und anschließend einen automatisierten Smoke gegen eine isolierte Preview-Umgebung beweisen. Dabei sollen keine Provider-IDs, Secrets oder Infrastrukturdetails in das App-Manifest verschoben werden.

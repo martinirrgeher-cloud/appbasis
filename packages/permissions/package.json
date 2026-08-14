@@ -8,9 +8,12 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "devDependencies": {
+    "@appbasis/database": "workspace:*",
+    "@types/node": "24.13.3",
     "typescript": "5.9.3",
     "vitest": "4.1.10"
   }
