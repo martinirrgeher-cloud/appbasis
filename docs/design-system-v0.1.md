@@ -4,7 +4,7 @@
 
 AppBasis verwendet appübergreifend dieselben Layout- und Komponentenprinzipien. Kunden- und App-Unterschiede werden primär über semantische Theme-Tokens abgebildet, nicht über unabhängige Fachmodul-Designsysteme.
 
-Dieser Stand ist der erste ausführbare Vertical Slice. Er wird in der Reference-App anhand der Rollenübersicht bewiesen, bevor weitere UI-Abstraktionen verallgemeinert werden.
+Dieser Stand ist der erste ausführbare Vertical Slice. Er wird in der Reference-App anhand der Rollenübersicht und des Rolleneditors bewiesen, bevor weitere UI-Abstraktionen verallgemeinert werden.
 
 ## Verbindliche Gestaltungsentscheidungen
 
@@ -15,7 +15,7 @@ Dieser Stand ist der erste ausführbare Vertical Slice. Er wird in der Reference
 - Fachmodule nutzen dieselbe AppShell, denselben PageHeader und dieselben Interaktionsmuster.
 - Rollenbearbeitung wird als Detailseite mit Tabs `Allgemein | Berechtigungen | Benutzer` aufgebaut.
 - Listenaktionen liegen im PageHeader.
-- Längere Editoren verwenden einen sticky Editor-Header. Primäre Aktionen wie `Speichern` bleiben direkt sichtbar; `Schließen` liegt rechts daneben. Kritische Primäraktionen werden nicht in einem Overflow-Menü versteckt.
+- Längere Editoren verwenden einen sticky Editor-Header. `Speichern` bleibt direkt sichtbar; `Schließen` liegt als X rechts daneben. Die primäre Speicheraktion wird nicht in einem Overflow-Menü versteckt.
 - Auf langen mobilen Formularen darf zusätzlich eine sticky Action-Bar unten verwendet werden. Sie ergänzt den Editor-Header, ersetzt ihn aber nicht zwingend.
 - Pro sichtbarem Bereich gibt es möglichst nur eine dominante Primary Action.
 - Mobile Touch-Ziele sind mindestens 44 × 44 px.
@@ -49,7 +49,7 @@ Fachmodule verwenden keine eigenen festen Branding-Farben. Kundenbranding wird �
 
 ## Komponenten v0.1
 
-Der erste ausführbare Slice enthält nur die für die Rollenübersicht benötigten allgemeinen Grundlagen:
+Die gemeinsame Foundation enthält derzeit die für den ersten Rollen-Slice benötigten allgemeinen Grundlagen:
 
 - AppShell-Grundlayout
 - Desktop Sidebar
@@ -62,13 +62,23 @@ Der erste ausführbare Slice enthält nur die für die Rollenübersicht benötig
 - Badge
 - Empty State
 
-Weitere Komponenten wie Tabs, Selects, Dialoge, Bottom Sheets, Tabelleninteraktion, Skeletons, Toasts und Editor-ActionHeader werden in den nächsten realen Fachslices ergänzt und danach verallgemeinert.
+Der Rolleneditor beweist zusätzlich verbindliche Interaktionsmuster für:
 
-## Rollenmodul – Architekturgrenze im ersten Slice
+- sticky Editor-Header mit `Speichern` und X
+- Tabs
+- Checkbox-/Capability-Listen
+- Aktiv/Inaktiv-Switch
+- geschützte Systemzustände
+
+Diese Muster werden erst dann in `packages/ui` weiter verallgemeinert, wenn ein zweiter realer Anwendungsfall ihre gemeinsame API bestätigt. Dadurch bleibt das UI-Paket bewusst klein und folgt derselben Vertical-Slice-Regel wie die übrige Plattform.
+
+Weitere Komponenten wie Selects, Dialoge, Bottom Sheets, Skeletons und Toasts werden in den nächsten realen Fachslices ergänzt.
+
+## Rollenmodul – bestehendes Permission-Modell bleibt Source of Truth
 
 Das bestehende Permission-Modell wird nicht ersetzt oder parallel implementiert.
 
-Bereits vorhanden:
+Bereits vorhanden und weiterhin gültig:
 
 - `RoleBundle` mit technischer `roleId` und Capabilities
 - `PrincipalPermissions.roleIds[]`
@@ -76,13 +86,27 @@ Bereits vorhanden:
 - deny-by-default
 - individuelle Grants/Revokes
 
-Noch nicht im Rollenvertrag vorhanden:
+Permissions Schema v2 ergänzt innerhalb des Permission-Owned Schemas:
 
-- Anzeigename
-- Beschreibung
-- Aktiv/Inaktiv-Status
-- Verwaltungsmetadaten für einen sicheren Lifecycle
+- `display_name`
+- `description`
+- `state` mit `active | inactive`
+- `kind` mit `system | managed`
 
-Der erste Rollen-Slice zeigt deshalb ausschließlich echte Daten aus den vorhandenen RoleBundles. Eine menschenlesbare UI-Bezeichnung wird nur aus der technischen Role-ID abgeleitet und nicht persistiert.
+Lifecycle-Regeln:
 
-Bevor `Rolle anlegen`, `Rolle bearbeiten` oder `Rolle deaktivieren` produktiv werden, muss entschieden werden, wie diese Metadaten innerhalb des bestehenden Permission-Owned Schemas ergänzt werden. Eine parallele Rollen-Metadatenlogik in einer Fachapp ist ausdrücklich nicht vorgesehen.
+- bestehende Rollen bleiben durch die Migration kompatibel und werden als `system` behandelt,
+- nur `managed` Rollen dürfen über die Managed-Rollenverwaltung verändert werden,
+- deaktivierte Rollen behalten ihre Principal-Zuordnungen, erteilen aber keine rollenbasierten Rechte,
+- Reaktivieren stellt die rollenbasierte Wirkung wieder her,
+- Hard-Delete ist nur für inaktive, nicht zugewiesene `managed` Rollen zulässig,
+- neue oder geänderte Rollen dürfen nur bereits bekannte Capability-IDs referenzieren,
+- mehrere aktive Rollen pro Principal bleiben unterstützt.
+
+## Bewusste Runtime-Grenze der Reference-App
+
+Die persistente Rollenverwaltung und die PostgreSQL-Permission-Auswertung existieren jetzt im Permission-Paket. Die aktuelle Reference-App verwendet für ihre Laufzeit-Autorisierung jedoch weiterhin den bestehenden `InMemoryPermissionStore` und dessen Demo-Konfiguration.
+
+Deshalb ist der Rolleneditor in der Reference-App zunächst die verbindliche UI- und Interaktionsreferenz. `Speichern` ist dort bewusst deaktiviert. Es wird keine scheinbare Persistenz gegen PostgreSQL eingebaut, solange die Reference-Runtime ihre effektiven Berechtigungsentscheidungen noch aus einer anderen PermissionStore-Implementierung bezieht.
+
+Die spätere Aktivierung von produktivem Speichern benötigt eine ausdrückliche Architekturentscheidung, die Reference-Runtime und ihre Bootstrap-/Principal-Zuweisungen auf dieselbe persistente PostgreSQL-Permission-Authority zu stellen. Erst danach dürfen Rollenänderungen aus der UI unmittelbar die effektiven Runtime-Rechte beeinflussen.
