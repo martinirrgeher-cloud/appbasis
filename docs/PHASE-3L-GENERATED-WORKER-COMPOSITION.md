@@ -12,6 +12,8 @@ Eine generierte App mit `identity`, `permissions` und `tasks` kann damit aus Dep
 
 ## Runtime-Vertrag
 
+Die Better-Auth-/Drizzle-Details bleiben innerhalb von `@appbasis/identity`. Der neue Subpath `@appbasis/identity/postgres-runtime` veröffentlicht für generierte Apps nur einen schmalen Vertrag aus Identity-Service, minimalem SQL-Client und `close()`. Dadurch ziehen generierte Apps weder Better-Auth- noch breite Drizzle-/Fremdtreiber-Typen in ihren eigenen Typecheck.
+
 `createGeneratedPostgresApplicationRuntime` erhält ausschließlich Runtime-/Deployment-Eingaben:
 
 - PostgreSQL connection string,
@@ -24,11 +26,13 @@ Die bestehende `createGeneratedPostgresRuntime(connectionString)` bleibt als sch
 
 ## Fail-closed
 
-Die vollständige Runtime wird nicht erzeugt, wenn:
+Die vollständige Identity-Runtime wird nicht erzeugt, wenn:
 
 - der PostgreSQL-Connection-String ungültig ist,
 - die Basis-URL keine kanonische HTTP(S)-Origin ist,
 - das Identity-Secret kürzer als 32 Zeichen, ungetrimmt oder nicht vorhanden ist.
+
+Diese Validierung gehört zum gekapselten Identity-Infrastrukturadapter und wird nicht in jede generierte App dupliziert.
 
 ## PostgreSQL-E2E
 
@@ -36,7 +40,7 @@ Der bestehende disposable PostgreSQL-E2E wird erweitert und wendet die bereits v
 
 1. die reale Better-Auth-/Identity-Komposition lässt sich gegen dieselbe PostgreSQL-Datenbank erzeugen,
 2. eine unbekannte Session wird über die reale Identity-Runtime fail-closed als ungültig behandelt,
-3. die normale generierte Hono-App kann dieselben persistenten Permission-/Tasks-Repositories verwenden,
+3. die normale generierte Hono-App verwendet den vom Identity-Adapter bereitgestellten schmalen SQL-Client auch für persistente Permissions und Tasks,
 4. die bereits bestehenden Persistenz-, Idempotenz- und deny-by-default-Beweise bleiben erhalten.
 
 ## Nicht-Ziele
