@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 
-import { TaskValidationError, type TaskRepository } from '../../../modules/tasks/src';
+import { TaskValidationError, type TaskRepository } from '@appbasis/tasks';
 import { assertIdentityActionAllowed } from '@appbasis/identity';
 import {
   createIdentityHttpHandlers,
@@ -40,7 +40,7 @@ export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
         context,
         503,
         'REFERENCE_RUNTIME_NOT_CONFIGURED',
-        'The Reference API runtime is not configured.',
+        'Reference runtime is not configured.',
       );
     referenceApp.all('/api/auth/*', unavailable);
     referenceApp.all('/api/tasks', unavailable);
@@ -52,6 +52,7 @@ export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
     identity: dependencies.identity,
     secureCookies: dependencies.secureCookies ?? true,
   });
+
   referenceApp.post('/api/auth/sign-in', (context) =>
     identityHttp.signIn(context.req.raw),
   );
@@ -63,113 +64,127 @@ export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
   );
 
   referenceApp.get('/api/tasks', async (context) => {
-    const denied = await authorizeTasks(context, dependencies, identityHttp);
-    if (denied !== null) return denied;
-    return context.json({ tasks: await dependencies.tasks.list() });
+    const access = await requireCapability(
+      context,
+      identityHttp,
+      dependencies.permissions,
+      DEMO_CAPABILITIES.tasksRead,
+    );
+    if (access instanceof Response) return access;
+
+    const tasks = await dependencies.tasks.list();
+    return context.json({ tasks });
   });
 
   referenceApp.post('/api/tasks', async (context) => {
-    const denied = await authorizeTasks(context, dependencies, identityHttp);
-    if (denied !== null) return denied;
-    const body = await readObjectBody(context);
-    if (body === null) return invalidRequest(context);
-    const title = stringField(body, 'title');
-    const description = optionalStringField(body, 'description');
-    if (title === null || description === undefined) return invalidRequest(context);
+    const access = await requireCapability(
+      context,
+      identityHttp,
+      dependencies.permissions,
+      DEMO_CAPABILITIES.tasksCreate,
+    );
+    if (access instanceof Response) return access;
+
+    const body = await parseJsonObject(context);
+    if (body instanceof Response) return body;
+
+    const title = body.title;
+    if (typeof title !== 'string') {
+      return errorResponse(
+        context,
+        400,
+        'INVALID_TASK',
+        'Task title must be a string.',
+      );
+    }
 
     try {
-      const task = await dependencies.tasks.create({
-        title,
-        ...(description === null ? {} : { description }),
-      });
+      const task = await dependencies.tasks.create({ title });
       return context.json({ task }, 201);
     } catch (error) {
       if (error instanceof TaskValidationError) {
-        return errorResponse(context, 400, 'INVALID_TASK', 'The task input is invalid.');
+        return errorResponse(context, 400, 'INVALID_TASK', error.message);
       }
       throw error;
     }
   });
 
-  referenceApp.post('/api/tasks/:id/toggle', async (context) => {
-    const denied = await authorizeTasks(context, dependencies, identityHttp);
-    if (denied !== null) return denied;
-    const task = await dependencies.tasks.toggleStatus(context.req.param('id'));
+  referenceApp.post('/api/tasks/:taskId/toggle-status', async (context) => {
+    const access = await requireCapability(
+      context,
+      identityHttp,
+      dependencies.permissions,
+      DEMO_CAPABILITIES.tasksUpdate,
+    );
+    if (access instanceof Response) return access;
+
+    const taskId = context.req.param('taskId');
+    const task = await dependencies.tasks.toggleStatus(taskId);
     if (task === undefined) {
-      return errorResponse(context, 404, 'TASK_NOT_FOUND', 'The task was not found.');
+      return errorResponse(context, 404, 'TASK_NOT_FOUND', 'Task not found.');
     }
+
     return context.json({ task });
   });
 
   return referenceApp;
 }
 
-export const app = createReferenceApp();
+interface CapabilityAccess {
+  readonly identityId: string;
+}
 
-async function authorizeTasks(
+async function requireCapability(
   context: Context,
-  dependencies: ReferenceAppDependencies,
   identityHttp: IdentityHttpHandlers,
-): Promise<Response | null> {
-  const current = await identityHttp.resolveCurrentIdentity(context.req.raw);
-  if (current instanceof Response) return current;
-
+  permissions: PermissionStore,
+  capability: string,
+): Promise<CapabilityAccess | Response> {
   try {
-    assertIdentityActionAllowed(current, 'application');
-    const request = { principalId: principalId(current.identity.identityId) };
-    await assertPermission(dependencies.permissions, {
-      ...request,
-      capability: DEMO_CAPABILITIES.appUse,
-    });
-    await assertPermission(dependencies.permissions, {
-      ...request,
-      capability: DEMO_CAPABILITIES.tasksManage,
-    });
-    return null;
+    const currentIdentity = await identityHttp.currentIdentity(context.req.raw);
+    const principal = principalId(currentIdentity.identity.identityId);
+    const principalPermissions = await permissions.getPrincipalPermissions(principal);
+    assertIdentityActionAllowed(currentIdentity, `perform ${capability}`);
+    assertPermission(principalPermissions, capability);
+    return { identityId: currentIdentity.identity.identityId };
   } catch (error) {
     if (error instanceof PermissionDeniedError) {
       return errorResponse(
         context,
         403,
         'PERMISSION_DENIED',
-        'The current identity is not allowed to manage tasks.',
+        'Permission denied.',
       );
     }
     return identityHttp.identityErrorResponse(error);
   }
 }
 
-async function readObjectBody(context: Context): Promise<Record<string, unknown> | null> {
+async function parseJsonObject(
+  context: Context,
+): Promise<Record<string, unknown> | Response> {
+  let body: unknown;
   try {
-    const body: unknown = await context.req.json();
-    if (body === null || typeof body !== 'object' || Array.isArray(body)) return null;
-    return body as Record<string, unknown>;
+    body = await context.req.json();
   } catch {
-    return null;
+    return errorResponse(context, 400, 'INVALID_REQUEST', 'Invalid JSON body.');
   }
-}
 
-function stringField(body: Record<string, unknown>, field: string): string | null {
-  const value = body[field];
-  return typeof value === 'string' ? value : null;
-}
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return errorResponse(
+      context,
+      400,
+      'INVALID_REQUEST',
+      'JSON body must be an object.',
+    );
+  }
 
-function optionalStringField(
-  body: Record<string, unknown>,
-  field: string,
-): string | null | undefined {
-  const value = body[field];
-  if (value === undefined) return null;
-  return typeof value === 'string' ? value : undefined;
-}
-
-function invalidRequest(context: Context) {
-  return errorResponse(context, 400, 'INVALID_REQUEST', 'The request body is invalid.');
+  return body as Record<string, unknown>;
 }
 
 function errorResponse(
   context: Context,
-  status: 400 | 403 | 404 | 503,
+  status: 400 | 401 | 403 | 404 | 409 | 423 | 428 | 503,
   code: ErrorCode,
   message: string,
 ): Response {
