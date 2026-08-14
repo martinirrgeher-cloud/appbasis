@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { capabilityId, principalId, roleId } from "../src";
 import {
   PermissionProvisioningConfigurationError,
-  capabilityId,
-  principalId,
   provisionPostgresPermissions,
-  roleId,
   type PermissionProvisioningPostgresClient,
-} from "../src";
+} from "../src/provisioning";
 
 describe("permission provisioning contract", () => {
   it("rejects role capabilities outside the declared capability set before PostgreSQL access", async () => {
