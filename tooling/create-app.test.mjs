@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
 import { verifyAppDefinitions } from "./app-definition.mjs";
@@ -89,7 +90,7 @@ test("an interrupted root staging directory never enters app discovery", async (
   assert.equal(definitions[0]?.appId, "checklist");
 });
 
-test("keeps live publication invisible until its manifest is published", async (t) => {
+test("serializes verification until a live publication is complete", async (t) => {
   const root = await createRepositoryFixture(t);
   await writeExistingApp(root, {
     schemaVersion: 1,
@@ -97,6 +98,9 @@ test("keeps live publication invisible until its manifest is published", async (
     displayName: "Reference",
     modules: ["tasks"],
   });
+
+  let verificationOutcome;
+  let verificationSettled = false;
 
   await createAppSkeleton(
     {
@@ -112,19 +116,24 @@ test("keeps live publication invisible until its manifest is published", async (
             "checklist",
             "reference",
           ]);
-          const inFlightDefinitions = await verifyAppDefinitions(root);
-          assert.deepEqual(
-            inFlightDefinitions.map((definition) => definition.appId),
-            ["reference"],
-          );
+          verificationOutcome = verifyAppDefinitions(root)
+            .then((definitions) => ({ ok: true, definitions }))
+            .catch((error) => ({ ok: false, error }))
+            .finally(() => {
+              verificationSettled = true;
+            });
+          await delay(60);
+          assert.equal(verificationSettled, false);
         },
       },
     },
   );
 
-  const definitions = await verifyAppDefinitions(root);
+  assert.notEqual(verificationOutcome, undefined);
+  const outcome = await verificationOutcome;
+  assert.equal(outcome.ok, true);
   assert.deepEqual(
-    definitions.map((definition) => definition.appId),
+    outcome.definitions.map((definition) => definition.appId),
     ["checklist", "reference"],
   );
 });
@@ -157,7 +166,13 @@ test("does not replace a destination created after staging", async (t) => {
     rootEntries.some((entry) => entry.startsWith(".appbasis-create-checklist-")),
     false,
   );
-  assert.equal(rootEntries.includes(".appbasis-publishing-checklist.json"), false);
+  assert.equal(rootEntries.includes(".appbasis-app-registry.lock"), false);
+  assert.equal(
+    rootEntries.some((entry) =>
+      entry.startsWith(".appbasis-app-registry-candidate-"),
+    ),
+    false,
+  );
 });
 
 test("fails before writing when a module is unknown", async (t) => {
