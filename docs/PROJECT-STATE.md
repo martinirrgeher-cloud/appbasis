@@ -2,87 +2,45 @@
 
 ## Phase
 
-Phase 2A – Persistence + Identity Foundation
+Phase 3A – App Manifest Foundation
 
 ## Ziel
 
-Von Fachmodulen entkoppeltes, lokal prüfbares Fundament für PostgreSQL-Persistenz und
-Benutzername-basierte Identity. Es existiert weiterhin weder ein Deployment
-noch eine produktive Datenbank- oder Auth-Konfiguration.
+Der vollständige Reference-Vertical-Slice ist als Demo v0.1 bewiesen. Der Fokus wechselt damit vom Nachweis einzelner Plattformfähigkeiten zur eigentlichen App-Fabrik: konkrete Apps sollen künftig aus kleinen, maschinenlesbaren Definitionen reproduzierbar aufgebaut werden, ohne Auth, Datenbank, Berechtigungen, CI und Deployment jeweils neu zu implementieren.
 
-## Aktueller Stand
+## Bewiesenes Fundament
 
-- `packages/database` enthält ausschließlich fachneutrale PostgreSQL-Primitiven
-  auf Basis von Drizzle ORM.
-- `packages/identity` besitzt das Better-Auth- und AppBasis-Identity-Schema
-  sowie dessen versionierte Drizzle-Migrationen und reproduzierbare Snapshots.
-- Die unveränderten Better-Auth-Modelle `user`, `session`, `account` und
-  `verification` wurden mit der offiziellen Better-Auth-CLI 1.6.27 für Drizzle
-  erzeugt. Username- und technische Admin-Felder sind enthalten.
-- `appbasis_person` ist vom Login getrennt und darf ohne Auth-Identity
-  existieren.
-- `appbasis_identity_security_state` hält ausschließlich AppBasis-eigenen
-  Sicherheitszustand: `mustChangePassword`, Zeitstempel und die optionale
-  Zuordnung zu einer Person. Better Auths `banned`-Feld bleibt der autoritative
-  technische Aktivstatus; AppBasis dupliziert ihn nicht.
-- Passwörter oder Passwort-Hashes werden nicht in AppBasis-eigenen Tabellen
-  gespeichert. Better Auth hält Credential-Hashes ausschließlich in seiner
-  `account`-Tabelle.
-- `packages/identity` definiert öffentliche AppBasis-Services für initiale
-  Benutzeranlage, Username-Anmeldung, erzwungenen Passwortwechsel, aktuelle
-  Identity und Deaktivierung. Better Auth bleibt eine interne Implementierung;
-  eine allgemeine Provider-Abstraktion wird ohne zweiten realen Provider oder
-  konkreten Wechselbedarf bewusst nicht veröffentlicht.
-- Eine einzige zentrale Funktion erzeugt aus dem normalisierten Benutzernamen
-  eine gehashte technische Adresse unter der reservierten Domain `.invalid`.
-  Diese Adresse ist kein Kontaktmerkmal und darf weder angezeigt noch für
-  Nachrichten verwendet werden.
-- Öffentliche Selbstregistrierung, E-Mail-Anmeldung und öffentliche
-  Username-Verfügbarkeitsprüfung sind in der gekapselten Better-Auth-
-  Konfiguration deaktiviert.
-- Better Auths Admin-Rolle ist ausschließlich technische Auth-Administration.
-  Sie ist keine AppBasis-Businessrolle und gewährt keine fachlichen Rechte.
-- Migrationen werden real gegen eine leere PGlite-Datenbank angewendet und
-  wiederholt ausgeführt. Fachcode enthält keine PGlite-Spezifika.
+- Monorepo mit gepinnter Node-/pnpm-Toolchain, striktem TypeScript, CI und ausführbaren Repository-Verträgen.
+- PostgreSQL-Persistenz mit versionierten, eigentümergetrennten Migrationen.
+- Better-Auth-basierte Username-Identity mit technischer `.invalid`-Adresse, erzwungenem Erstpasswortwechsel, Sessions und Deaktivierung.
+- technischer Root-Admin als getrennte Auth-Administration; keine Vermischung mit fachlichen AppBasis-Rollen.
+- serverseitige deny-by-default Permissions mit Capability-IDs, Rollenbundles und individuellen Grants/Revokes.
+- erstes reales Standardmodul `tasks` mit PostgreSQL-Repository und vollständigem Create/List/Status-Vertical-Slice.
+- mobile-first React-Reference-App und Cloudflare-Worker-API.
+- Neon/PostgreSQL-Preview hinter Cloudflare Hyperdrive.
+- Hyperdrive-Query-Caching ist für die Reference-Konfiguration bewusst deaktiviert, damit Auth-, Session-, Permission- und Read-after-write-Pfade frische Daten sehen.
+- reproduzierbarer manueller Reference-Preview-Deploy mit Health- und authentifiziertem, mutierendem Demo-Smoke.
+- Demo-User-Bootstrap und vollständiger automatisierter Demo-v0.1-Akzeptanzpfad: Login, Session, Berechtigung, Task anlegen, direkt wieder lesen, Status ändern und erneut lesen.
 
-## Erstlogin-Vertrag
+## Demo v0.1 – abgeschlossen
 
-1. Ein administrativer Serverprozess legt Benutzername, Anzeigename und ein
-   temporäres Passwort an.
-2. Better Auth erhält intern die zentrale technische E-Mail; eine reale
-   Kontaktadresse ist nicht erforderlich.
-3. AppBasis erzeugt den Sicherheitszustand mit `mustChangePassword=true`.
-4. Nach erfolgreicher Username-Anmeldung sind nur Passwortwechsel und
-   Session-Ende zulässig.
-5. Der Passwortwechsel widerruft andere Sessions; erst danach setzt AppBasis
-   `mustChangePassword=false`.
-6. Eine Deaktivierung sperrt die Auth-Identity und erhält Personen- sowie
-   spätere Fach- und Historiendaten.
+Demo v0.1 gilt als technisch abgeschlossen. Der produktive Preview-Pfad hat den vollständigen User-to-Database-Vertical-Slice gegen reales Neon/PostgreSQL erfolgreich bewiesen. Alte technische Root-Admin-Sessions wurden nach erfolgreicher Demo-Abnahme bereinigt; der Demo-User bleibt aktiv.
 
-## TypeScript-Prüfung
+## Aktueller Factory-Slice
 
-Eigener App-, Worker-, Database-, Identity- und Testcode bleibt vollständig
-unter den strikten Root-Regeln geprüft. Nur in den beiden neuen Infrastruktur-
-Paketen ist `skipLibCheck=true` gesetzt, weil die aktuellen stabilen Drizzle-,
-PGlite- und Better-Auth-Pakete Deklarationen für optionale Treiber sowie
-Emscripten veröffentlichen, die ohne diese Library-only-Ausnahme nicht
-kompilieren. Die Ausnahme überspringt keinen AppBasis-Quell- oder Testcode.
+Jede ausführbare App erhält eine kleine Datei `appbasis.app.json`. Der V1-Vertrag beschreibt zunächst ausschließlich:
 
-## Bewusst noch nicht umgesetzt
+- Schema-Version,
+- stabile App-ID,
+- sichtbaren App-Namen,
+- explizit aktivierte Module.
 
-- kein Neon-Projekt und keine externe PostgreSQL-Datenbank
-- kein Cloudflare-Deployment und keine Cloud-Secrets
-- kein Better-Auth-End-to-End-Lauf gegen echtes PostgreSQL; PGlite ist von
-  Drizzle offiziell unterstützt, wird von Better Auth aber nicht ausdrücklich
-  als Laufzeitdatenbank dokumentiert
-- keine Benutzerverwaltungs- oder Login-Oberfläche
-- keine produktive Adapter-Komposition in `apps/reference`
-- keine AppBasis-Rollen oder Berechtigungen; diese folgen separat und werden
-  serverseitig in `packages/permissions` erzwungen
+`verify:apps` prüft diesen Vertrag fail-closed und ist Bestandteil von `verify:repo`. Die Reference-App deklariert aktuell nur das bereits bewiesene Modul `tasks`.
+
+Provider-IDs, Secrets, Deployment-Ziele, Benutzer, Berechtigungen, Navigation und frei definierbare Konfiguration gehören bewusst noch nicht in den Manifest-Vertrag. Solche Felder werden erst bei belegtem Generator- oder Zweit-App-Bedarf ergänzt.
 
 ## Nächster technischer Meilenstein
 
-Phase 2B soll eine ausdrücklich freigegebene PostgreSQL-/Neon-Testumgebung
-anbinden, die Better-Auth-Adapterintegration und den vollständigen
-Admin-Anlage-/Erstlogin-/Passwortwechsel-/Deaktivierungsfluss serverseitig
-End-to-End prüfen. Deployment bleibt ein eigener Freigabeschritt.
+Phase 3B – erster deterministischer App-Generator.
+
+Ziel ist eine zweite minimale App, die aus dem AppBasis-Manifest bzw. einer kleinen Generator-Eingabe erzeugt wird. Der Erfolg ist nicht eine zweite handgebaute Demo, sondern der Nachweis, dass die bestehende Plattform wiederverwendet wird und keine parallelen Implementierungen von Identity, Datenbank, Permissions, CI oder Deployment entstehen.
