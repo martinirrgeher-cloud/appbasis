@@ -14,6 +14,8 @@ Provisioniert werden ausschließlich:
 
 Der schreibende Vertrag liegt getrennt vom normalen Runtime-Export unter `@appbasis/permissions/provisioning`. Die normale App-Runtime verwendet weiterhin nur den read-only `PermissionStore` und `can`/`assert` über `@appbasis/permissions`.
 
+Die dafür nötige transaktionale PostgreSQL-Anbindung liegt als schmaler Infrastrukturvertrag unter `@appbasis/database/postgres-provisioning`. Der Subpath exportiert nur die für Bootstrap-Transaktionen benötigten PostgreSQL-Typen und verwendet denselben PostgreSQL-Runtime-Adapter; `database` bleibt reine Infrastruktur und wird ausdrücklich nicht zum Manifest-Plattformdienst.
+
 `PermissionProvisioningBundle` enthält keine Infrastruktur- oder Providerdaten. Insbesondere gehören PostgreSQL-Verbindungsadressen, Secrets, Provider-IDs und konkrete Principal-IDs weiterhin nicht in `appbasis.app.json`. Konkrete initiale Principal-IDs werden dem separaten Provisioning-Schritt aus seiner Deployment-/Bootstrap-Umgebung übergeben.
 
 ## Idempotenz und Konflikte
