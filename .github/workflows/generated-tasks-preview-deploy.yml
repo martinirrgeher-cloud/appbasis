@@ -121,7 +121,7 @@ jobs:
           });
           NODE
 
-      - name: Require bootstrapped Worker and required secret
+      - name: Require bootstrapped Worker
         working-directory: apps/reference
         shell: bash
         env:
@@ -131,11 +131,6 @@ jobs:
           set -euo pipefail
           pnpm exec wrangler deployments list --name "$APPBASIS_GENERATED_WORKER_NAME" --json >/dev/null 2>&1 || {
             echo 'Generated preview Worker is not bootstrapped.' >&2
-            exit 1
-          }
-          SECRET_LIST="$(pnpm exec wrangler secret list --name "$APPBASIS_GENERATED_WORKER_NAME" --format json)"
-          jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' <<<"$SECRET_LIST" >/dev/null || {
-            echo 'Generated preview Worker is missing BETTER_AUTH_SECRET.' >&2
             exit 1
           }
 
@@ -151,6 +146,25 @@ jobs:
           --dry-run
           --experimental-provision=false
           --experimental-auto-create=false
+
+      - name: Synchronize required Worker secret
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$APPBASIS_BETTER_AUTH_SECRET" | pnpm exec wrangler secret put BETTER_AUTH_SECRET \
+            --name "$APPBASIS_GENERATED_WORKER_NAME" \
+            --experimental-provision=false \
+            --experimental-auto-create=false >/dev/null
+          SECRET_LIST="$(pnpm exec wrangler secret list --name "$APPBASIS_GENERATED_WORKER_NAME" --format json)"
+          jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' <<<"$SECRET_LIST" >/dev/null || {
+            echo 'Generated preview Worker is missing BETTER_AUTH_SECRET after synchronization.' >&2
+            exit 1
+          }
 
       - name: Deploy generated Worker without provisioning
         working-directory: apps/reference
