@@ -86,17 +86,20 @@ Bereits vorhanden und weiterhin gültig:
 - deny-by-default
 - individuelle Grants/Revokes
 
-Permissions Schema v2 ergänzt innerhalb des Permission-Owned Schemas:
+Permissions Schema v3 ergänzt innerhalb des Permission-Owned Schemas:
 
 - `display_name`
 - `description`
 - `state` mit `active | inactive`
 - `kind` mit `system | managed`
+- append-only Administrations-Audit mit Actor, Reason sowie Vorher-/Nachher-Zustand für jede rollenbezogene Mutation
 
 Lifecycle-Regeln:
 
 - bestehende Rollen bleiben durch die Migration kompatibel und werden als `system` behandelt,
+- provisionierte Systemrollen dürfen nicht aus bereits vorhandenen `managed` Rollen mit gleicher ID übernommen werden,
 - nur `managed` Rollen dürfen über die Managed-Rollenverwaltung verändert werden,
+- jede erfolgreiche Rollenmutation und Principal-Rollen-Neuzuordnung benötigt Actor und Reason und schreibt das Audit innerhalb derselben PostgreSQL-Transaktion,
 - deaktivierte Rollen behalten ihre Principal-Zuordnungen, erteilen aber keine rollenbasierten Rechte,
 - Reaktivieren stellt die rollenbasierte Wirkung wieder her,
 - Hard-Delete ist nur für inaktive, nicht zugewiesene `managed` Rollen zulässig,

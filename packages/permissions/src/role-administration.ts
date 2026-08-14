@@ -14,8 +14,10 @@ import type { PermissionPostgresClient } from "./postgres-permission-store";
 const ROLE_ID_PATTERN = /^[a-z0-9][a-z0-9:_-]{0,119}$/;
 const MAX_DISPLAY_NAME_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 500;
+const MAX_AUDIT_REASON_LENGTH = 500;
 
 export type RoleAdministrationErrorCode =
+  | "INVALID_AUDIT_CONTEXT"
   | "INVALID_ROLE"
   | "PRINCIPAL_NOT_FOUND"
   | "ROLE_ACTIVE"
@@ -32,6 +34,11 @@ export class RoleAdministrationError extends Error {
     this.name = "RoleAdministrationError";
     this.code = code;
   }
+}
+
+export interface RoleAdministrationAuditContext {
+  readonly actorPrincipalId: PrincipalId;
+  readonly reason: string;
 }
 
 export interface CreateManagedRoleInput {
@@ -52,6 +59,20 @@ export interface RoleAdministrationPostgresClient extends PermissionPostgresClie
     callback: (transaction: PermissionPostgresClient) => Promise<T>,
   ): Promise<T>;
 }
+
+interface NormalizedAuditContext {
+  readonly actorPrincipalId: PrincipalId;
+  readonly reason: string;
+}
+
+type AuditEventType =
+  | "role.create"
+  | "role.update"
+  | "role.state"
+  | "role.delete"
+  | "principal.roles.replace";
+
+type AuditTargetType = "role" | "principal";
 
 export class PostgresRoleAdministration {
   readonly #client: RoleAdministrationPostgresClient;
@@ -97,8 +118,12 @@ export class PostgresRoleAdministration {
     return rows.map((row) => capabilityId(requiredString(row, "capability_id")));
   }
 
-  async createRole(input: CreateManagedRoleInput): Promise<RoleDetails> {
+  async createRole(
+    input: CreateManagedRoleInput,
+    auditContext: RoleAdministrationAuditContext,
+  ): Promise<RoleDetails> {
     const normalized = normalizeManagedRoleInput(input.roleId, input);
+    const audit = normalizeAuditContext(auditContext);
 
     return this.#client.begin(async (transaction) => {
       const existing = await transaction.unsafe(
@@ -133,19 +158,31 @@ export class PostgresRoleAdministration {
         normalized.capabilities,
       );
 
-      return requiredRoleDetails(transaction, normalized.roleId);
+      const created = await requiredRoleDetails(transaction, normalized.roleId);
+      await recordAdministrationAudit(transaction, {
+        eventType: "role.create",
+        targetType: "role",
+        targetId: normalized.roleId,
+        audit,
+        previousValue: null,
+        newValue: created,
+      });
+      return created;
     });
   }
 
   async updateRole(
     requestedRoleId: RoleId,
     input: UpdateManagedRoleInput,
+    auditContext: RoleAdministrationAuditContext,
   ): Promise<RoleDetails> {
     const normalizedRoleId = validatedRoleId(requestedRoleId);
     const normalized = normalizeManagedRoleInput(normalizedRoleId, input);
+    const audit = normalizeAuditContext(auditContext);
 
     return this.#client.begin(async (transaction) => {
       await requireManagedRoleForUpdate(transaction, normalizedRoleId);
+      const previous = await requiredRoleDetails(transaction, normalizedRoleId);
       await assertKnownCapabilities(transaction, normalized.capabilities);
 
       await transaction.unsafe(
@@ -161,33 +198,58 @@ export class PostgresRoleAdministration {
         normalized.capabilities,
       );
 
-      return requiredRoleDetails(transaction, normalizedRoleId);
+      const updated = await requiredRoleDetails(transaction, normalizedRoleId);
+      await recordAdministrationAudit(transaction, {
+        eventType: "role.update",
+        targetType: "role",
+        targetId: normalizedRoleId,
+        audit,
+        previousValue: previous,
+        newValue: updated,
+      });
+      return updated;
     });
   }
 
   async setRoleState(
     requestedRoleId: RoleId,
     state: RoleState,
+    auditContext: RoleAdministrationAuditContext,
   ): Promise<RoleDetails> {
     const normalizedRoleId = validatedRoleId(requestedRoleId);
+    const audit = normalizeAuditContext(auditContext);
     if (state !== "active" && state !== "inactive") {
       throw new RoleAdministrationError("INVALID_ROLE", "Role state is invalid.");
     }
 
     return this.#client.begin(async (transaction) => {
       await requireManagedRoleForUpdate(transaction, normalizedRoleId);
+      const previous = await requiredRoleDetails(transaction, normalizedRoleId);
       await transaction.unsafe(
         `UPDATE appbasis_permission_role
          SET state = $2
          WHERE role_id = $1`,
         [normalizedRoleId, state],
       );
-      return requiredRoleDetails(transaction, normalizedRoleId);
+      const updated = await requiredRoleDetails(transaction, normalizedRoleId);
+      await recordAdministrationAudit(transaction, {
+        eventType: "role.state",
+        targetType: "role",
+        targetId: normalizedRoleId,
+        audit,
+        previousValue: previous,
+        newValue: updated,
+      });
+      return updated;
     });
   }
 
-  async deleteRole(requestedRoleId: RoleId): Promise<void> {
+  async deleteRole(
+    requestedRoleId: RoleId,
+    auditContext: RoleAdministrationAuditContext,
+  ): Promise<void> {
     const normalizedRoleId = validatedRoleId(requestedRoleId);
+    const audit = normalizeAuditContext(auditContext);
 
     await this.#client.begin(async (transaction) => {
       const role = await requireManagedRoleForUpdate(transaction, normalizedRoleId);
@@ -198,6 +260,7 @@ export class PostgresRoleAdministration {
         );
       }
 
+      const previous = await requiredRoleDetails(transaction, normalizedRoleId);
       const assignments = await transaction.unsafe(
         `SELECT COUNT(*)::int AS assignment_count
          FROM appbasis_permission_principal_role
@@ -216,15 +279,25 @@ export class PostgresRoleAdministration {
          WHERE role_id = $1`,
         [normalizedRoleId],
       );
+      await recordAdministrationAudit(transaction, {
+        eventType: "role.delete",
+        targetType: "role",
+        targetId: normalizedRoleId,
+        audit,
+        previousValue: previous,
+        newValue: null,
+      });
     });
   }
 
   async replacePrincipalRoles(
     requestedPrincipalId: PrincipalId,
     requestedRoleIds: readonly RoleId[],
+    auditContext: RoleAdministrationAuditContext,
   ): Promise<readonly RoleId[]> {
     const normalizedPrincipalId = validatedPrincipalId(requestedPrincipalId);
     const normalizedRoleIds = sortedUniqueRoleIds(requestedRoleIds);
+    const audit = normalizeAuditContext(auditContext);
 
     return this.#client.begin(async (transaction) => {
       const principals = await transaction.unsafe(
@@ -240,6 +313,17 @@ export class PostgresRoleAdministration {
           "Permission principal does not exist.",
         );
       }
+
+      const previousRoleRows = await transaction.unsafe(
+        `SELECT role_id
+         FROM appbasis_permission_principal_role
+         WHERE principal_id = $1
+         ORDER BY role_id ASC`,
+        [normalizedPrincipalId],
+      );
+      const previousRoleIds = previousRoleRows.map((row) =>
+        roleId(requiredString(row, "role_id")),
+      );
 
       for (const assignedRoleId of normalizedRoleIds) {
         const roles = await transaction.unsafe(
@@ -270,9 +354,84 @@ export class PostgresRoleAdministration {
         );
       }
 
+      await recordAdministrationAudit(transaction, {
+        eventType: "principal.roles.replace",
+        targetType: "principal",
+        targetId: normalizedPrincipalId,
+        audit,
+        previousValue: { roleIds: previousRoleIds },
+        newValue: { roleIds: normalizedRoleIds },
+      });
       return normalizedRoleIds;
     });
   }
+}
+
+async function recordAdministrationAudit(
+  client: PermissionPostgresClient,
+  input: {
+    readonly eventType: AuditEventType;
+    readonly targetType: AuditTargetType;
+    readonly targetId: string;
+    readonly audit: NormalizedAuditContext;
+    readonly previousValue: unknown | null;
+    readonly newValue: unknown | null;
+  },
+): Promise<void> {
+  await client.unsafe(
+    `INSERT INTO appbasis_permission_administration_audit (
+       event_type,
+       actor_principal_id,
+       reason,
+       target_type,
+       target_id,
+       previous_value,
+       new_value
+     )
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)`,
+    [
+      input.eventType,
+      input.audit.actorPrincipalId,
+      input.audit.reason,
+      input.targetType,
+      input.targetId,
+      jsonValue(input.previousValue),
+      jsonValue(input.newValue),
+    ],
+  );
+}
+
+function jsonValue(value: unknown | null): string | null {
+  return value === null ? null : JSON.stringify(value);
+}
+
+function normalizeAuditContext(
+  context: RoleAdministrationAuditContext,
+): NormalizedAuditContext {
+  const actorPrincipalId = validatedAuditPrincipalId(context.actorPrincipalId);
+  const reason = context.reason.trim();
+  if (
+    reason.length === 0 ||
+    reason.length > MAX_AUDIT_REASON_LENGTH ||
+    reason !== context.reason
+  ) {
+    throw new RoleAdministrationError(
+      "INVALID_AUDIT_CONTEXT",
+      `Audit reason must be trimmed and contain 1-${MAX_AUDIT_REASON_LENGTH} characters.`,
+    );
+  }
+  return { actorPrincipalId, reason };
+}
+
+function validatedAuditPrincipalId(value: PrincipalId): PrincipalId {
+  const raw = String(value);
+  if (raw.length === 0 || raw.length > 200 || raw !== raw.trim()) {
+    throw new RoleAdministrationError(
+      "INVALID_AUDIT_CONTEXT",
+      "Audit actor principal ID is invalid.",
+    );
+  }
+  return principalId(raw);
 }
 
 async function requireManagedRoleForUpdate(

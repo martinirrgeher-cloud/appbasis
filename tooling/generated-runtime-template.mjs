@@ -9,9 +9,15 @@ const PERMISSION_LIFECYCLE_BLOCK = `const permissionRoleLifecycleMigrationUrl = 
   "../../../packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
   import.meta.url,
 );`;
+const PERMISSION_AUDIT_BLOCK = `const permissionAdministrationAuditMigrationUrl = new URL(
+  "../../../packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+  import.meta.url,
+);`;
 const APPLY_PERMISSION_FOUNDATION = "  await applyMigration(permissionMigrationUrl);";
 const APPLY_PERMISSION_LIFECYCLE =
   "  await applyMigration(permissionRoleLifecycleMigrationUrl);";
+const APPLY_PERMISSION_AUDIT =
+  "  await applyMigration(permissionAdministrationAuditMigrationUrl);";
 
 export function createIdentityRuntimeTemplate(input) {
   const generated = createCoreIdentityRuntimeTemplate(input);
@@ -19,7 +25,7 @@ export function createIdentityRuntimeTemplate(input) {
     if (entry.path !== POSTGRES_E2E_PATH) return entry;
     return Object.freeze({
       ...entry,
-      content: withPermissionRoleLifecycleMigration(entry.content),
+      content: withPermissionMigrations(entry.content),
     });
   });
 
@@ -29,28 +35,52 @@ export function createIdentityRuntimeTemplate(input) {
   });
 }
 
-function withPermissionRoleLifecycleMigration(content) {
-  if (content.includes("0001_appbasis_permission_role_lifecycle.sql")) {
-    return content;
-  }
-  if (!content.includes(PERMISSION_FOUNDATION_BLOCK)) {
-    throw new Error(
-      "Generated PostgreSQL E2E template is missing the permission foundation migration block.",
-    );
-  }
-  if (!content.includes(APPLY_PERMISSION_FOUNDATION)) {
-    throw new Error(
-      "Generated PostgreSQL E2E template is missing the permission foundation migration application.",
-    );
+function withPermissionMigrations(content) {
+  let next = content;
+
+  if (!next.includes("0001_appbasis_permission_role_lifecycle.sql")) {
+    if (!next.includes(PERMISSION_FOUNDATION_BLOCK)) {
+      throw new Error(
+        "Generated PostgreSQL E2E template is missing the permission foundation migration block.",
+      );
+    }
+    if (!next.includes(APPLY_PERMISSION_FOUNDATION)) {
+      throw new Error(
+        "Generated PostgreSQL E2E template is missing the permission foundation migration application.",
+      );
+    }
+    next = next
+      .replace(
+        PERMISSION_FOUNDATION_BLOCK,
+        `${PERMISSION_FOUNDATION_BLOCK}\n${PERMISSION_LIFECYCLE_BLOCK}`,
+      )
+      .replace(
+        APPLY_PERMISSION_FOUNDATION,
+        `${APPLY_PERMISSION_FOUNDATION}\n${APPLY_PERMISSION_LIFECYCLE}`,
+      );
   }
 
-  return content
-    .replace(
-      PERMISSION_FOUNDATION_BLOCK,
-      `${PERMISSION_FOUNDATION_BLOCK}\n${PERMISSION_LIFECYCLE_BLOCK}`,
-    )
-    .replace(
-      APPLY_PERMISSION_FOUNDATION,
-      `${APPLY_PERMISSION_FOUNDATION}\n${APPLY_PERMISSION_LIFECYCLE}`,
-    );
+  if (!next.includes("0002_appbasis_permission_administration_audit.sql")) {
+    if (!next.includes(PERMISSION_LIFECYCLE_BLOCK)) {
+      throw new Error(
+        "Generated PostgreSQL E2E template is missing the permission lifecycle migration block.",
+      );
+    }
+    if (!next.includes(APPLY_PERMISSION_LIFECYCLE)) {
+      throw new Error(
+        "Generated PostgreSQL E2E template is missing the permission lifecycle migration application.",
+      );
+    }
+    next = next
+      .replace(
+        PERMISSION_LIFECYCLE_BLOCK,
+        `${PERMISSION_LIFECYCLE_BLOCK}\n${PERMISSION_AUDIT_BLOCK}`,
+      )
+      .replace(
+        APPLY_PERMISSION_LIFECYCLE,
+        `${APPLY_PERMISSION_LIFECYCLE}\n${APPLY_PERMISSION_AUDIT}`,
+      );
+  }
+
+  return next;
 }

@@ -85,8 +85,8 @@ export async function provisionPostgresPermissions(
 
     for (const role of normalized.roles) {
       const roleRows = await transaction.unsafe(
-        `INSERT INTO appbasis_permission_role (role_id)
-         VALUES ($1)
+        `INSERT INTO appbasis_permission_role (role_id, kind)
+         VALUES ($1, 'system')
          ON CONFLICT (role_id) DO NOTHING
          RETURNING role_id`,
         [role.roleId],
@@ -143,7 +143,7 @@ async function assertExistingRoleDefinitionsMatch(
 ): Promise<void> {
   for (const role of roles) {
     const existingRoleRows = await transaction.unsafe(
-      `SELECT role_id
+      `SELECT role_id, kind
        FROM appbasis_permission_role
        WHERE role_id = $1`,
       [role.roleId],
@@ -155,6 +155,11 @@ async function assertExistingRoleDefinitionsMatch(
     ) {
       throw new PermissionProvisioningStateError(
         "Existing permission role state is invalid.",
+      );
+    }
+    if (textColumn(existingRoleRows[0], "kind") !== "system") {
+      throw new PermissionProvisioningStateError(
+        `Existing permission role ${role.roleId} is not a protected system role.`,
       );
     }
 
