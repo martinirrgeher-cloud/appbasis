@@ -106,7 +106,7 @@ test("generates tasks HTTP routes and PostgreSQL infrastructure only with explic
   assert.match(generatedTest, /denied\.status\)\.toBe\(403\)/);
   assert.match(generatedTest, /Generated HTTP task/);
 
-  assert.match(postgresRuntime, /from "@appbasis\/database\/node-runtime"/);
+  assert.match(postgresRuntime, /from "@appbasis\/database\/postgres-runtime"/);
   assert.match(postgresRuntime, /PostgresTaskRepository/);
   assert.match(postgresRuntime, /createGeneratedPostgresRuntime/);
   assert.match(postgresTest, /Persistent generated task/);

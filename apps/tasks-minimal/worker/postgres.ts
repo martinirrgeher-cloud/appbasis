@@ -1,4 +1,4 @@
-import { createPostgresDatabase } from "@appbasis/database/node-runtime";
+import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
 import { PostgresTaskRepository, type TaskRepository } from "@appbasis/tasks";
 
 export interface GeneratedPostgresRuntime {

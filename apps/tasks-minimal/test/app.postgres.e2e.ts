@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createPostgresDatabase } from "@appbasis/database/node-runtime";
+import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import {
   InMemoryPermissionStore,
