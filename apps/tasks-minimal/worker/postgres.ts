@@ -1,7 +1,12 @@
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import {
+  PostgresPermissionStore,
+  type PermissionStore,
+} from "@appbasis/permissions";
 import { PostgresTaskRepository, type TaskRepository } from "@appbasis/tasks";
 
 export interface GeneratedPostgresRuntime {
+  permissions: PermissionStore;
   tasks: TaskRepository;
   close(): Promise<void>;
 }
@@ -12,13 +17,16 @@ export function createGeneratedPostgresRuntime(
   const connection = createPostgresDatabase(
     requiredPostgresConnectionString(connectionString),
   );
-  const tasks = new PostgresTaskRepository({
-    unsafe(query, parameters) {
+  const sql = {
+    unsafe(query: string, parameters?: (string | number | boolean | null)[]) {
       return connection.client.unsafe(query, parameters);
     },
-  });
+  };
+  const permissions = new PostgresPermissionStore(sql);
+  const tasks = new PostgresTaskRepository(sql);
 
   return Object.freeze({
+    permissions,
     tasks,
     async close() {
       await connection.client.end();
