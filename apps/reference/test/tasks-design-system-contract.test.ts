@@ -19,6 +19,15 @@ describe('Reference tasks design-system contract', () => {
     expect(styles).toContain('height: var(--ab-touch-target);');
   });
 
+  it('keeps task form and heading rules scoped away from the roles route', () => {
+    expect(styles).toContain('.app-shell h1');
+    expect(styles).toContain('.app-shell input,');
+    expect(styles).toContain('.app-shell textarea');
+    expect(styles).toContain('.app-shell button:focus-visible');
+    expect(styles).not.toMatch(/(^|\n)h1\s*\{/u);
+    expect(styles).not.toMatch(/(^|\n)input,\s*\ntextarea\s*\{/u);
+  });
+
   it('keeps mobile navigation primary and switches to the desktop sidebar only at 1024px', () => {
     expect(styles).toContain('position: fixed;');
     expect(styles).toContain('@media (min-width: 40rem)');
