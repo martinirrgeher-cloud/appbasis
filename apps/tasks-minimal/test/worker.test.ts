@@ -117,7 +117,7 @@ describe("generated Worker entrypoint", () => {
         closeCalls += 1;
       },
     };
-    const worker = createGeneratedWorker((options) => {
+    const worker = createGeneratedWorker(async (options) => {
       receivedOptions = options;
       return runtime;
     });
@@ -139,13 +139,15 @@ describe("generated Worker entrypoint", () => {
     expect(closeCalls).toBe(1);
   });
 
-  it("returns a generic 500 without leaking runtime errors and still closes the runtime", async () => {
+  it("returns a generic 500 without leaking runtime error names or messages", async () => {
     let closeCalls = 0;
+    const leakingError = new Error("postgresql://message-secret-host/internal");
+    leakingError.name = "postgresql://name-secret-host/internal";
     const runtime: GeneratedPostgresApplicationRuntime = {
       identity,
       permissions: {
         async findPrincipal() {
-          throw new Error("postgresql://secret-host/internal");
+          throw leakingError;
         },
         async findRole() {
           return null;
@@ -175,9 +177,105 @@ describe("generated Worker entrypoint", () => {
       expect(response.status).toBe(500);
       const body = JSON.stringify(await response.json());
       expect(body).toContain("INTERNAL_ERROR");
-      expect(body).not.toContain("secret-host");
-      expect(logged.join("\n")).not.toContain("secret-host");
+      expect(body).not.toContain("message-secret-host");
+      expect(body).not.toContain("name-secret-host");
+      expect(logged.join("\n")).toContain("UNEXPECTED_RUNTIME_ERROR");
+      expect(logged.join("\n")).not.toContain("message-secret-host");
+      expect(logged.join("\n")).not.toContain("name-secret-host");
       expect(closeCalls).toBe(1);
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("keeps a successful response when runtime close fails and sanitizes the close log", async () => {
+    const permissions = new InMemoryPermissionStore({
+      knownCapabilities: [capabilityId(TASK_CAPABILITIES.manage)],
+      roles: [],
+      principals: [
+        {
+          principalId: principalId(currentIdentity.identity.identityId),
+          roleIds: [],
+          grants: [capabilityId(TASK_CAPABILITIES.manage)],
+          revokes: [],
+        },
+      ],
+    });
+    let closeCalls = 0;
+    const runtime: GeneratedPostgresApplicationRuntime = {
+      identity,
+      permissions,
+      tasks: new InMemoryTaskRepository(),
+      async close() {
+        closeCalls += 1;
+        const error = new Error("postgresql://close-secret-host/internal");
+        error.name = "postgresql://close-name-secret-host/internal";
+        throw error;
+      },
+    };
+    const originalError = console.error;
+    const logged: string[] = [];
+    console.error = (...values: unknown[]) => {
+      logged.push(values.map(String).join(" "));
+    };
+    try {
+      const response = await createGeneratedWorker(() => runtime).fetch(
+        new Request("https://tasks-preview.example.test/api/tasks", {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ tasks: [] });
+      expect(closeCalls).toBe(1);
+      expect(logged.join("\n")).toContain("RUNTIME_CLOSE_ERROR");
+      expect(logged.join("\n")).not.toContain("close-secret-host");
+      expect(logged.join("\n")).not.toContain("close-name-secret-host");
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("keeps the sanitized request error when runtime close also fails", async () => {
+    const runtime: GeneratedPostgresApplicationRuntime = {
+      identity,
+      permissions: {
+        async findPrincipal() {
+          throw new Error("postgresql://request-secret-host/internal");
+        },
+        async findRole() {
+          return null;
+        },
+        async isKnownCapability() {
+          return true;
+        },
+      },
+      tasks: new InMemoryTaskRepository(),
+      async close() {
+        throw new Error("postgresql://close-secret-host/internal");
+      },
+    };
+    const originalError = console.error;
+    const logged: string[] = [];
+    console.error = (...values: unknown[]) => {
+      logged.push(values.map(String).join(" "));
+    };
+    try {
+      const response = await createGeneratedWorker(() => runtime).fetch(
+        new Request("https://tasks-preview.example.test/api/tasks", {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+
+      expect(response.status).toBe(500);
+      const body = JSON.stringify(await response.json());
+      expect(body).toContain("INTERNAL_ERROR");
+      expect(body).not.toContain("request-secret-host");
+      expect(body).not.toContain("close-secret-host");
+      expect(logged.join("\n")).not.toContain("request-secret-host");
+      expect(logged.join("\n")).not.toContain("close-secret-host");
     } finally {
       console.error = originalError;
     }
