@@ -88,13 +88,22 @@ function roleAdministrationClient(
     unsafe(query, parameters) {
       return client.unsafe(query, parameters);
     },
-    async begin(callback) {
-      const [result] = await client.begin(async (transaction) => [
-        await callback(permissionClient(transaction)),
-      ]);
-      return result;
+    begin<T>(callback: (transaction: PermissionPostgresClient) => Promise<T>): Promise<T> {
+      return beginRoleAdministrationTransaction(client, callback);
     },
   };
+}
+
+async function beginRoleAdministrationTransaction<T>(
+  client: ReturnType<typeof createPostgresDatabase>['client'],
+  callback: (transaction: PermissionPostgresClient) => Promise<T>,
+): Promise<T> {
+  const result = await client.begin(async (transaction) =>
+    callback(permissionClient(transaction)),
+  );
+  // postgres-js unwraps arrays in its generic return type even though the
+  // transaction callback value is returned unchanged after awaiting it.
+  return result as unknown as T;
 }
 
 function permissionClient(client: {
