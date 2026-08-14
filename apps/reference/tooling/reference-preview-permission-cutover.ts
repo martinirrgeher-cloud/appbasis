@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { createPostgresDatabase } from '@appbasis/database/postgres-provisioning';
@@ -19,14 +20,10 @@ import {
 const MEMBER_BINDING = 'APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS';
 const ADMIN_BINDING = 'APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS';
 const TARGET = 'reference-preview';
-const lifecycleMigrationUrl = new URL(
-  '../../../packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql',
-  import.meta.url,
-);
-const auditMigrationUrl = new URL(
-  '../../../packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql',
-  import.meta.url,
-);
+const LIFECYCLE_MIGRATION_PATH =
+  'packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql';
+const AUDIT_MIGRATION_PATH =
+  'packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql';
 const lifecycleColumns = [
   'display_name',
   'description',
@@ -134,7 +131,7 @@ export async function applyReferencePreviewPermissionCutover(
     await assertLegacyIdentitiesExist(connection.client, assignments);
     let version = await detectReferencePermissionSchemaVersion(connection.client);
     if (version === 1) {
-      await applyVersionedMigration(connection, lifecycleMigrationUrl);
+      await applyVersionedMigration(connection, LIFECYCLE_MIGRATION_PATH);
       version = await detectReferencePermissionSchemaVersion(connection.client);
       if (version !== 2) {
         throw new ReferencePermissionCutoverStateError(
@@ -143,7 +140,7 @@ export async function applyReferencePreviewPermissionCutover(
       }
     }
     if (version === 2) {
-      await applyVersionedMigration(connection, auditMigrationUrl);
+      await applyVersionedMigration(connection, AUDIT_MIGRATION_PATH);
       version = await detectReferencePermissionSchemaVersion(connection.client);
       if (version !== 3) {
         throw new ReferencePermissionCutoverStateError(
@@ -237,6 +234,40 @@ export async function detectReferencePermissionSchemaVersion(
   return 3;
 }
 
+export async function resolveReferencePermissionMigrationPath(
+  relativePath: string,
+  startDirectory = process.cwd(),
+): Promise<string> {
+  if (
+    relativePath.length === 0 ||
+    relativePath.startsWith('/') ||
+    relativePath.includes('..') ||
+    !relativePath.endsWith('.sql')
+  ) {
+    throw new ReferencePermissionCutoverStateError(
+      'Reference permission migration path is invalid.',
+    );
+  }
+
+  let current = resolve(startDirectory);
+  for (let depth = 0; depth < 10; depth += 1) {
+    try {
+      await access(join(current, 'pnpm-workspace.yaml'));
+      const candidate = join(current, ...relativePath.split('/'));
+      await access(candidate);
+      return candidate;
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  }
+
+  throw new ReferencePermissionCutoverStateError(
+    'Reference permission migration source could not be located.',
+  );
+}
+
 export function safeReferencePermissionCutoverDiagnostic(error: unknown): string {
   if (!(error instanceof Error)) return 'unknown';
   switch (error.name) {
@@ -308,7 +339,12 @@ async function verifyCutoverState(
        WHERE role_id = $1`,
       [bundle.roleId],
     );
-    if (!sameStringSet(capabilityRows.map((row) => textColumn(row, 'capability_id')), bundle.capabilities)) {
+    if (
+      !sameStringSet(
+        capabilityRows.map((row) => textColumn(row, 'capability_id')),
+        bundle.capabilities,
+      )
+    ) {
       throw new ReferencePermissionCutoverStateError(
         'Reference demo role capabilities do not match the declared bundle.',
       );
@@ -395,9 +431,10 @@ async function featurePresent(
 
 async function applyVersionedMigration(
   connection: ReturnType<typeof createPostgresDatabase>,
-  migrationUrl: URL,
+  relativePath: string,
 ): Promise<void> {
-  const sql = await readFile(migrationUrl, 'utf8');
+  const migrationPath = await resolveReferencePermissionMigrationPath(relativePath);
+  const sql = await readFile(migrationPath, 'utf8');
   const statements = sql
     .split('--> statement-breakpoint')
     .map((statement) => statement.trim())
@@ -458,12 +495,23 @@ function identityIdsFromBinding(
 ): readonly string[] {
   const matches = bindings.filter((binding) => binding.name === name);
   if (matches.length === 0) return [];
-  if (matches.length !== 1 || matches[0]?.type !== 'plain_text' || typeof matches[0]?.text !== 'string') {
+  if (
+    matches.length !== 1 ||
+    matches[0]?.type !== 'plain_text' ||
+    typeof matches[0]?.text !== 'string'
+  ) {
     throw new ReferencePermissionCutoverConfigurationError(
       `Legacy Reference binding ${name} is not one plain-text binding.`,
     );
   }
-  const ids = [...new Set(matches[0].text.split(',').map((value) => value.trim()).filter(Boolean))];
+  const ids = [
+    ...new Set(
+      matches[0].text
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
   if (ids.length > 1000) {
     throw new ReferencePermissionCutoverConfigurationError(
       `Legacy Reference binding ${name} contains too many identities.`,
@@ -480,7 +528,9 @@ function identityIdsFromBinding(
 }
 
 function postgresArray(values: readonly string[]): string {
-  return `{${values.map((value) => `"${value.replaceAll('"', '\\"')}"`).join(',')}}`;
+  return `{${values
+    .map((value) => `"${value.replaceAll('"', '\\"')}"`)
+    .join(',')}}`;
 }
 
 function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
