@@ -62,6 +62,7 @@ export async function createAppSkeleton(input, options = {}) {
   let destinationReserved = false;
   let published = false;
   let lockfileSnapshot;
+  let lockfileFinalizationStarted = false;
 
   try {
     await writeFile(
@@ -116,7 +117,8 @@ export async function createAppSkeleton(input, options = {}) {
 
     if (publishesWorkspacePackage) {
       const lockfileFinalizer =
-        options.lockfileFinalizer ?? synchronizeWorkspaceLockfile;
+        options.testingHooks?.lockfileFinalizer ?? synchronizeWorkspaceLockfile;
+      lockfileFinalizationStarted = true;
       await lockfileFinalizer({
         repositoryRoot,
         lockfilePath,
@@ -136,7 +138,7 @@ export async function createAppSkeleton(input, options = {}) {
   } catch (error) {
     const rollbackErrors = [];
 
-    if (lockfileSnapshot !== undefined) {
+    if (lockfileFinalizationStarted && lockfileSnapshot !== undefined) {
       try {
         await writeFile(lockfilePath, lockfileSnapshot);
       } catch (rollbackError) {
