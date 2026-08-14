@@ -1,7 +1,9 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   access,
   mkdir,
+  readFile,
   readdir,
   rename,
   rm,
@@ -39,7 +41,11 @@ export async function createAppSkeleton(input, options = {}) {
   }
 
   const runtimeFiles = generatedRuntimeFiles(definition);
+  const publishesWorkspacePackage = runtimeFiles.some(
+    (runtimeFile) => runtimeFile.path === "package.json",
+  );
   const appsDirectory = join(repositoryRoot, "apps");
+  const lockfilePath = join(repositoryRoot, "pnpm-lock.yaml");
   await mkdir(appsDirectory, { recursive: true });
   const destination = join(appsDirectory, definition.appId);
   if (await pathExists(destination)) {
@@ -55,6 +61,7 @@ export async function createAppSkeleton(input, options = {}) {
   let registryLock;
   let destinationReserved = false;
   let published = false;
+  let lockfileSnapshot;
 
   try {
     await writeFile(
@@ -76,9 +83,13 @@ export async function createAppSkeleton(input, options = {}) {
       stagingDirectory,
     });
 
-    // Only the short publish phase is serialized. Staging stays concurrent and
-    // outside app discovery; verify:apps uses the same lock before scanning.
+    // Only the publish/finalization phase is serialized. Staging stays
+    // concurrent and outside app discovery; verify:apps uses the same lock.
     registryLock = await acquireAppRegistryLock(repositoryRoot, "publish");
+
+    if (publishesWorkspacePackage) {
+      lockfileSnapshot = await readFile(lockfilePath, "utf8");
+    }
 
     try {
       await mkdir(destination);
@@ -102,8 +113,20 @@ export async function createAppSkeleton(input, options = {}) {
     for (const runtimeFile of runtimeFiles) {
       await publishGeneratedFile(stagingDirectory, destination, runtimeFile);
     }
+
+    if (publishesWorkspacePackage) {
+      const lockfileFinalizer =
+        options.lockfileFinalizer ?? synchronizeWorkspaceLockfile;
+      await lockfileFinalizer({
+        repositoryRoot,
+        lockfilePath,
+        destination,
+      });
+    }
+
     // Publish the manifest last. App discovery therefore never observes an
-    // app definition before every generated runtime file is in place.
+    // app definition before every generated runtime file and its workspace
+    // lockfile importer are fully in place.
     await rename(
       join(stagingDirectory, "appbasis.app.json"),
       join(destination, "appbasis.app.json"),
@@ -111,10 +134,34 @@ export async function createAppSkeleton(input, options = {}) {
     await rm(stagingDirectory, { recursive: true, force: true });
     published = true;
   } catch (error) {
-    if (destinationReserved && !published) {
-      await rm(destination, { recursive: true, force: true });
+    const rollbackErrors = [];
+
+    if (lockfileSnapshot !== undefined) {
+      try {
+        await writeFile(lockfilePath, lockfileSnapshot);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
     }
-    await rm(stagingDirectory, { recursive: true, force: true });
+    if (destinationReserved && !published) {
+      try {
+        await rm(destination, { recursive: true, force: true });
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    try {
+      await rm(stagingDirectory, { recursive: true, force: true });
+    } catch (rollbackError) {
+      rollbackErrors.push(rollbackError);
+    }
+
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        "App generation failed and rollback was incomplete.",
+      );
+    }
     throw error;
   } finally {
     await registryLock?.release();
@@ -206,6 +253,34 @@ async function publishGeneratedFile(stagingDirectory, destination, runtimeFile) 
   const target = join(destination, runtimeFile.path);
   await mkdir(dirname(target), { recursive: true });
   await rename(source, target);
+}
+
+async function synchronizeWorkspaceLockfile({ repositoryRoot }) {
+  const corepack = process.platform === "win32" ? "corepack.cmd" : "corepack";
+  const args = [
+    "pnpm",
+    "install",
+    "--lockfile-only",
+    "--no-frozen-lockfile",
+    "--ignore-scripts",
+  ];
+
+  await new Promise((resolvePromise, reject) => {
+    const child = spawn(corepack, args, {
+      cwd: repositoryRoot,
+      stdio: "inherit",
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolvePromise();
+        return;
+      }
+      const detail =
+        signal === null ? `exit code ${String(code)}` : `signal ${signal}`;
+      reject(new Error(`Workspace lockfile synchronization failed (${detail}).`));
+    });
+  });
 }
 
 async function directoryNames(path) {
