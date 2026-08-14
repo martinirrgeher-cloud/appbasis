@@ -44,6 +44,8 @@ describe('Reference shared shell contract', () => {
       expect(navigation).toContain('position: fixed;');
       expect(navigation).toContain('bottom: 0;');
     }
+
+    expect(cssBlock(rolesStyles, '.roles-sidebar')).toContain('display: none;');
   });
 
   it('switches both real consumers to a sticky desktop sidebar at the documented 1024px boundary', () => {
@@ -57,6 +59,9 @@ describe('Reference shared shell contract', () => {
 
     expect(cssBlock(roleDesktop, '.roles-app')).toContain(
       'grid-template-columns: 244px minmax(0, 1fr);',
+    );
+    expect(cssBlock(roleDesktop, '.roles-mobile-header,\n  .roles-mobile-nav')).toContain(
+      'display: none;',
     );
     const roleSidebar = cssBlock(roleDesktop, '.roles-sidebar');
     expect(roleSidebar).toContain('display: flex;');
