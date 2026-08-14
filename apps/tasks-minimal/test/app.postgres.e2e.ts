@@ -56,6 +56,9 @@ const identity: IdentityHttpService = {
 };
 
 beforeAll(async () => {
+  await administrativeConnection.client.unsafe(
+    "DROP TABLE IF EXISTS appbasis_task CASCADE",
+  );
   const migration = await readFile(migrationUrl, "utf8");
   await administrativeConnection.client.unsafe(migration);
 });
