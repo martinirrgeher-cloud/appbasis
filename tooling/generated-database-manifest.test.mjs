@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import {
-  access,
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -101,7 +101,7 @@ test("fails closed when migration ownership for a selected component is undeclar
   );
 });
 
-test("checked generated tasks database manifest is byte-identical and repository-local", async () => {
+test("checked generated tasks database manifest is byte-identical and migration-complete", async () => {
   const definitionPath = join(
     repositoryRoot,
     "apps",
@@ -124,8 +124,52 @@ test("checked generated tasks database manifest is byte-identical and repository
 
   const parsed = JSON.parse(checked);
   for (const owner of parsed.owners) {
-    for (const migration of owner.migrations) {
-      await access(join(repositoryRoot, ...migration.split("/")));
+    const migrationDirectories = new Set(
+      owner.migrations.map((migration) => posix.dirname(migration)),
+    );
+    for (const migrationDirectory of migrationDirectories) {
+      const actualSqlFiles = await collectSqlFiles(
+        migrationDirectory,
+        join(repositoryRoot, ...migrationDirectory.split("/")),
+      );
+      const expectedSqlFiles = owner.migrations
+        .filter((migration) => isAtOrWithinPath(migrationDirectory, migration))
+        .sort((left, right) => left.localeCompare(right));
+
+      assert.deepEqual(
+        actualSqlFiles,
+        expectedSqlFiles,
+        `${owner.id} must list every SQL migration below ${migrationDirectory}`,
+      );
     }
   }
 });
+
+async function collectSqlFiles(relativeDirectory, absoluteDirectory) {
+  const sqlFiles = [];
+  const entries = await readdir(absoluteDirectory, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const relativeEntry = posix.join(relativeDirectory, entry.name);
+    const absoluteEntry = join(absoluteDirectory, entry.name);
+    if (entry.isSymbolicLink()) {
+      throw new Error(
+        `Generated database migration tree must not contain symbolic links: ${relativeEntry}.`,
+      );
+    }
+    if (entry.isDirectory()) {
+      sqlFiles.push(...(await collectSqlFiles(relativeEntry, absoluteEntry)));
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith(".sql")) {
+      sqlFiles.push(relativeEntry);
+    }
+  }
+
+  return sqlFiles.sort((left, right) => left.localeCompare(right));
+}
+
+function isAtOrWithinPath(root, candidate) {
+  const relative = posix.relative(root, candidate);
+  return relative !== ".." && !relative.startsWith("../");
+}
