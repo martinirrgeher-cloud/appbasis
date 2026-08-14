@@ -29,13 +29,13 @@ Vor jeder Schreiboperation werden App-ID, Anzeigename und Modul-IDs durch densel
 - ein vorhandenes Zielverzeichnis wird niemals überschrieben,
 - Dateien werden zuerst in einem temporären Verzeichnis im Repository, aber bewusst **außerhalb von `apps/`**, vollständig erzeugt,
 - dadurch kann ein nach Prozessabbruch verbleibendes Staging-Verzeichnis niemals als App entdeckt werden,
-- vor der Veröffentlichung wird pro App-ID ein exklusiver Publikations-Claim außerhalb von `apps/` angelegt,
-- der endgültige Pfad `apps/<appId>` wird anschließend mit einem atomaren `mkdir` ohne Ersetzen reserviert; entsteht das Ziel während des Stagings durch einen anderen Prozess, bricht der Generator ab und lässt dieses Ziel unverändert,
-- während der kurzen Reservierungsphase erkennt `verify:apps` den **aktiven** Publikations-Claim und behandelt das noch manifestlose Ziel nicht als fertige App,
-- `README.md` und zuletzt das bereits vollständig erzeugte `appbasis.app.json` werden erst nach erfolgreicher Zielreservierung veröffentlicht,
+- nur die kurze Veröffentlichungsphase und `verify:apps` teilen denselben exklusiven App-Registry-Lock,
+- ein aktiver Lock wird von der Gegenoperation nur begrenzt abgewartet; ein verwaister oder ungültiger Lock führt fail-closed zum Abbruch,
+- `verify:apps` überspringt **niemals** eine Manifest-Prüfung: Es wartet gegebenenfalls auf eine laufende Veröffentlichung und scannt danach wieder vollständig den normalen strengen Zustand,
+- der endgültige Pfad `apps/<appId>` wird unter dem Lock mit einem atomaren `mkdir` ohne Ersetzen reserviert; entsteht das Ziel während des Stagings durch einen anderen Prozess, bricht der Generator ab und lässt dieses Ziel unverändert,
+- erst nach erfolgreicher Zielreservierung werden `README.md` und zuletzt das bereits vollständig erzeugte `appbasis.app.json` veröffentlicht,
 - bei einem normalen Fehler werden nur die vom laufenden Generator selbst reservierten unvollständigen Ausgaben sowie sein Staging entfernt,
-- ein verwaister oder ungültiger Publikations-Claim wird nicht automatisch gelöscht, sondern fail-closed gemeldet,
-- nach abgeschlossener Veröffentlichung greift der normale strenge App-Manifest-Vertrag ohne Ausnahme.
+- nach erfolgreicher Veröffentlichung wird der Registry-Lock freigegeben und jede nachfolgende Verifikation sieht ausschließlich den vollständigen App-Zustand.
 
 Der Generator erzeugt keine Datenbank, keine Migration, keine Cloud-Ressource, keinen Benutzer und keine Berechtigung.
 
@@ -53,7 +53,7 @@ Automatisierte Tests beweisen:
 2. deterministischen Manifest-Inhalt,
 3. Kompatibilität mit `verifyAppDefinitions`,
 4. dass ein unterbrochenes Staging-Verzeichnis außerhalb von `apps/` die App-Erkennung nicht beeinflusst,
-5. dass ein paralleler `verify:apps`-Lauf eine aktive Veröffentlichung nicht als defekte App wertet,
+5. dass ein paralleler `verify:apps`-Lauf während einer Veröffentlichung blockiert und erst nach Abschluss den vollständigen Zustand streng prüft,
 6. dass ein nach dem Staging entstandenes Zielverzeichnis nicht ersetzt oder gelöscht wird,
 7. fail-closed Verhalten bei unbekannten Modulen,
 8. Schutz vor Überschreiben bereits vorhandener Apps.
