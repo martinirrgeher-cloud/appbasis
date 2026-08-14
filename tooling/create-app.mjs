@@ -11,6 +11,7 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseAppDefinition } from "./app-definition.mjs";
+import { acquireAppPublicationClaim } from "./app-publication.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-";
 
@@ -42,14 +43,15 @@ export async function createAppSkeleton(input, options = {}) {
     throw new Error(`App destination already exists: apps/${definition.appId}.`);
   }
 
-  // Stage beside apps/, not inside it. This keeps interrupted or concurrent
-  // generation invisible to the fail-closed app discovery contract while the
-  // final rename remains on the same repository filesystem.
   const stagingDirectory = join(
     repositoryRoot,
     `${STAGING_PREFIX}${definition.appId}-${randomUUID()}`,
   );
   await mkdir(stagingDirectory);
+
+  let publicationClaim;
+  let destinationReserved = false;
+  let published = false;
 
   try {
     await writeFile(
@@ -62,10 +64,53 @@ export async function createAppSkeleton(input, options = {}) {
       generatedReadme(definition),
       { flag: "wx" },
     );
-    await rename(stagingDirectory, destination);
+
+    await options.testingHooks?.afterStage?.({
+      destination,
+      stagingDirectory,
+    });
+
+    publicationClaim = await acquireAppPublicationClaim(
+      repositoryRoot,
+      definition.appId,
+    );
+
+    try {
+      await mkdir(destination);
+      destinationReserved = true;
+    } catch (error) {
+      if (error?.code === "EEXIST") {
+        throw new Error(`App destination already exists: apps/${definition.appId}.`);
+      }
+      throw error;
+    }
+
+    await options.testingHooks?.afterReserve?.({
+      destination,
+      stagingDirectory,
+    });
+
+    // Publish the manifest last. While the destination is reserved but the
+    // manifest is absent, verify:apps recognizes the live publication claim
+    // and does not mistake the in-flight directory for a completed app.
+    await rename(
+      join(stagingDirectory, "README.md"),
+      join(destination, "README.md"),
+    );
+    await rename(
+      join(stagingDirectory, "appbasis.app.json"),
+      join(destination, "appbasis.app.json"),
+    );
+    await rm(stagingDirectory, { recursive: true, force: true });
+    published = true;
   } catch (error) {
+    if (destinationReserved && !published) {
+      await rm(destination, { recursive: true, force: true });
+    }
     await rm(stagingDirectory, { recursive: true, force: true });
     throw error;
+  } finally {
+    await publicationClaim?.release();
   }
 
   return Object.freeze({
