@@ -75,7 +75,7 @@ beforeAll(async () => {
   );
   await requiredConnection().client.unsafe(
     `INSERT INTO "user" (id, name, email, username, display_username, role)
-     VALUES ('technical-root', 'root_admin', 'root_admin@identity.invalid', 'root_admin', 'root_admin', 'admin')`,
+     VALUES ('technical-root', 'root_admin', 'root_admin@identity.invalid', 'root_admin', 'root_admin', 'user, admin')`,
   );
   await applyReferencePreviewPermissionCutover({
     connectionString: targetUrl.toString(),
@@ -137,6 +137,24 @@ describe.sequential('Reference persistent permission authority verifier', () => 
       await rm(outDir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  it('fails closed if a technical administrator acquires AppBasis application identity state', async () => {
+    await requiredConnection().client.unsafe(
+      `INSERT INTO appbasis_identity_security_state (identity_id)
+       VALUES ('technical-root')`,
+    );
+
+    await expect(
+      verifyReferencePreviewPermissionAuthority({
+        connectionString: targetUrl.toString(),
+      }),
+    ).rejects.toBeInstanceOf(ReferencePermissionAuthorityStateError);
+
+    await requiredConnection().client.unsafe(
+      `DELETE FROM appbasis_identity_security_state
+       WHERE identity_id = 'technical-root'`,
+    );
+  });
 
   it('fails closed if an authentication-only technical administrator gains AppBasis permission state', async () => {
     await requiredConnection().client.unsafe(
