@@ -28,10 +28,17 @@ describe('Reference tasks design-system contract', () => {
     expect(styles).not.toMatch(/(^|\n)input,\s*\ntextarea\s*\{/u);
   });
 
-  it('keeps mobile navigation primary and switches to the desktop sidebar only at 1024px', () => {
-    expect(styles).toContain('position: fixed;');
-    expect(styles).toContain('@media (min-width: 40rem)');
-    expect(styles).toContain('@media (min-width: 64rem)');
-    expect(styles).not.toContain('@media (min-width: 48rem)');
+  it('keeps mobile navigation primary and switches that navigation to the sidebar only at 1024px', () => {
+    const desktopMarker = '@media (min-width: 64rem)';
+    const desktopMarkerIndex = styles.indexOf(desktopMarker);
+
+    expect(desktopMarkerIndex).toBeGreaterThan(0);
+    const beforeDesktop = styles.slice(0, desktopMarkerIndex);
+    const desktop = styles.slice(desktopMarkerIndex);
+
+    expect(beforeDesktop).toContain('.navigation {\n  position: fixed;');
+    expect(beforeDesktop).not.toContain('.navigation {\n    position: sticky;');
+    expect(desktop).toContain('.navigation {\n    position: sticky;');
+    expect(beforeDesktop).toContain('@media (min-width: 40rem)');
   });
 });
