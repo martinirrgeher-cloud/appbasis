@@ -31,10 +31,11 @@ const isolatedDatabaseName =
 const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
 let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
 let isolatedDatabaseCreated = false;
-const migrationUrl = new URL(
-  "../migrations/0000_appbasis_permissions_foundation.sql",
-  import.meta.url,
-);
+const migrationUrls = [
+  new URL("../migrations/0000_appbasis_permissions_foundation.sql", import.meta.url),
+  new URL("../migrations/0001_appbasis_permission_role_lifecycle.sql", import.meta.url),
+  new URL("../migrations/0002_appbasis_permission_administration_audit.sql", import.meta.url),
+];
 
 const reportsRead = capabilityId("reports:read");
 const reportsWrite = capabilityId("reports:write");
@@ -42,6 +43,7 @@ const reportsDelete = capabilityId("reports:delete");
 const viewer = roleId("reports:viewer");
 const editor = roleId("reports:editor");
 const auditor = roleId("reports:auditor");
+const managedCollision = roleId("reports:managed-collision");
 const viewerPrincipal = principalId("principal-viewer");
 const editorPrincipal = principalId("principal-editor");
 const rejectedPrincipal = principalId("principal-rejected");
@@ -76,8 +78,10 @@ beforeAll(async () => {
   );
   isolatedDatabaseCreated = true;
   isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);
-  const migration = await readFile(migrationUrl, "utf8");
-  await requiredIsolatedConnection().client.unsafe(migration);
+  for (const migrationUrl of migrationUrls) {
+    const migration = await readFile(migrationUrl, "utf8");
+    await requiredIsolatedConnection().client.unsafe(migration);
+  }
 });
 
 afterAll(async () => {
@@ -207,6 +211,36 @@ describe("PostgreSQL permission provisioning", () => {
       grants: [],
       revokes: [],
     });
+  });
+
+  it("rejects a managed role that collides with a provisioned system role", async () => {
+    const connection = requiredIsolatedConnection();
+    await connection.client.unsafe(
+      `INSERT INTO appbasis_permission_role (role_id, kind)
+       VALUES ($1, 'managed')`,
+      [managedCollision],
+    );
+    await connection.client.unsafe(
+      `INSERT INTO appbasis_permission_role_capability (role_id, capability_id)
+       VALUES ($1, $2)`,
+      [managedCollision, reportsRead],
+    );
+
+    await expect(
+      provisionPostgresPermissions(provisioningClient(), {
+        knownCapabilities: [reportsRead],
+        roles: [{ roleId: managedCollision, capabilities: [reportsRead] }],
+        principalRoleAssignments: [],
+      }),
+    ).rejects.toBeInstanceOf(PermissionProvisioningStateError);
+
+    const rows = await connection.client.unsafe(
+      `SELECT kind
+       FROM appbasis_permission_role
+       WHERE role_id = $1`,
+      [managedCollision],
+    );
+    expect(rows).toEqual([{ kind: "managed" }]);
   });
 
   it("rolls back the complete bundle when existing role state conflicts", async () => {

@@ -28,6 +28,14 @@ test('loads the generated tasks manifest in its declared owner and migration ord
         relativePath: 'packages/permissions/migrations/0000_appbasis_permissions_foundation.sql',
       },
       {
+        ownerId: 'permissions',
+        relativePath: 'packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql',
+      },
+      {
+        ownerId: 'permissions',
+        relativePath: 'packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql',
+      },
+      {
         ownerId: 'tasks',
         relativePath: 'modules/tasks/migrations/0000_appbasis_tasks_foundation.sql',
       },

@@ -54,8 +54,11 @@ export class PostgresPermissionStore implements PermissionStore {
            OR EXISTS (
              SELECT 1
              FROM appbasis_permission_principal_role principal_role
+             INNER JOIN appbasis_permission_role role
+               ON role.role_id = principal_role.role_id
+              AND role.state = 'active'
              INNER JOIN appbasis_permission_role_capability role_capability
-               ON role_capability.role_id = principal_role.role_id
+               ON role_capability.role_id = role.role_id
              WHERE principal_role.principal_id = $1
                AND role_capability.capability_id = $2
            )
@@ -124,6 +127,7 @@ export class PostgresPermissionStore implements PermissionStore {
       `SELECT role_id
        FROM appbasis_permission_role
        WHERE role_id = $1
+         AND state = 'active'
        LIMIT 1`,
       [requestedRoleId],
     );

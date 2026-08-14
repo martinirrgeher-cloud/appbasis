@@ -75,7 +75,7 @@ describe('Reference database migration contract', () => {
       dialect: 'postgresql',
       owners: [
         { id: 'identity', schemaVersion: 2 },
-        { id: 'permissions', schemaVersion: 1 },
+        { id: 'permissions', schemaVersion: 3 },
         { id: 'tasks', schemaVersion: 1 },
       ],
     });
@@ -98,6 +98,7 @@ describe('Reference database migration contract', () => {
         'account',
         'appbasis_identity_operation',
         'appbasis_identity_security_state',
+        'appbasis_permission_administration_audit',
         'appbasis_permission_capability',
         'appbasis_permission_principal',
         'appbasis_permission_principal_grant',

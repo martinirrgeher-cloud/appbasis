@@ -42,6 +42,14 @@ const permissionMigrationUrl = new URL(
   "../../../packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
   import.meta.url,
 );
+const permissionRoleLifecycleMigrationUrl = new URL(
+  "../../../packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
+  import.meta.url,
+);
+const permissionAdministrationAuditMigrationUrl = new URL(
+  "../../../packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+  import.meta.url,
+);
 const taskMigrationUrl = new URL(
   "../../../modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
   import.meta.url,
@@ -99,6 +107,8 @@ beforeAll(async () => {
   await applyMigration(identityFoundationMigrationUrl);
   await applyMigration(identityOperationMigrationUrl);
   await applyMigration(permissionMigrationUrl);
+  await applyMigration(permissionRoleLifecycleMigrationUrl);
+  await applyMigration(permissionAdministrationAuditMigrationUrl);
   await applyMigration(taskMigrationUrl);
   await provisionGeneratedPermissions();
 });

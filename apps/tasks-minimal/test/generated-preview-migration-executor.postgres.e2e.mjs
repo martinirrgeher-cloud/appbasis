@@ -26,7 +26,7 @@ test('applies only the generated manifest to its named empty database and refuse
     const result = await applyGeneratedPreviewMigrations({
       connectionString: targetUrl.toString(),
     });
-    assert.equal(result.migrationCount, 4);
+    assert.equal(result.migrationCount, 6);
     assert.ok(result.statementCount > 0);
 
     const verification = createPostgresDatabase(targetUrl.toString());
@@ -41,6 +41,7 @@ test('applies only the generated manifest to its named empty database and refuse
             'appbasis_identity_operation',
             'appbasis_permission_capability',
             'appbasis_permission_principal',
+            'appbasis_permission_administration_audit',
             'appbasis_task'
           )
         ORDER BY table_name
@@ -50,6 +51,7 @@ test('applies only the generated manifest to its named empty database and refuse
         [
           'appbasis_identity_operation',
           'appbasis_identity_security_state',
+          'appbasis_permission_administration_audit',
           'appbasis_permission_capability',
           'appbasis_permission_principal',
           'appbasis_task',

@@ -4,3 +4,4 @@ export * from "./errors";
 export * from "./in-memory-permission-store";
 export * from "./permissions";
 export * from "./postgres-permission-store";
+export * from "./role-administration";

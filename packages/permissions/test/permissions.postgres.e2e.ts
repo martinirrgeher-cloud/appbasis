@@ -24,10 +24,10 @@ const isolatedDatabaseName =
 const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
 let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
 let isolatedDatabaseCreated = false;
-const migrationUrl = new URL(
-  "../migrations/0000_appbasis_permissions_foundation.sql",
-  import.meta.url,
-);
+const migrationUrls = [
+  new URL("../migrations/0000_appbasis_permissions_foundation.sql", import.meta.url),
+  new URL("../migrations/0001_appbasis_permission_role_lifecycle.sql", import.meta.url),
+];
 
 const reportsRead = capabilityId("reports:read");
 const reportsWrite = capabilityId("reports:write");
@@ -43,8 +43,10 @@ beforeAll(async () => {
   isolatedDatabaseCreated = true;
   isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);
   const connection = requiredIsolatedConnection();
-  const migration = await readFile(migrationUrl, "utf8");
-  await connection.client.unsafe(migration);
+  for (const migrationUrl of migrationUrls) {
+    const migration = await readFile(migrationUrl, "utf8");
+    await connection.client.unsafe(migration);
+  }
 
   await connection.client.unsafe(
     `INSERT INTO appbasis_permission_capability (capability_id)
@@ -97,7 +99,7 @@ afterAll(async () => {
 });
 
 describe("PostgresPermissionStore", () => {
-  it("loads known capabilities, role bundles and principal assignments", async () => {
+  it("loads known capabilities, active role bundles and principal assignments", async () => {
     const store = permissionStore();
 
     await expect(store.isKnownCapability(reportsRead)).resolves.toBe(true);
@@ -137,6 +139,36 @@ describe("PostgresPermissionStore", () => {
         capability: reportsRead,
       }),
     ).resolves.toBe(false);
+  });
+
+  it("keeps inactive role assignments but removes their effective permissions", async () => {
+    const connection = requiredIsolatedConnection();
+    const store = permissionStore();
+
+    await connection.client.unsafe(
+      `UPDATE appbasis_permission_role
+       SET state = 'inactive'
+       WHERE role_id = $1`,
+      [viewer],
+    );
+
+    await expect(store.findRole(viewer)).resolves.toBeNull();
+    await expect(store.findPrincipal(rolePrincipal)).resolves.toMatchObject({
+      roleIds: [viewer],
+    });
+    await expect(
+      can(store, { principalId: rolePrincipal, capability: reportsRead }),
+    ).resolves.toBe(false);
+
+    await connection.client.unsafe(
+      `UPDATE appbasis_permission_role
+       SET state = 'active'
+       WHERE role_id = $1`,
+      [viewer],
+    );
+    await expect(
+      can(store, { principalId: rolePrincipal, capability: reportsRead }),
+    ).resolves.toBe(true);
   });
 });
 
