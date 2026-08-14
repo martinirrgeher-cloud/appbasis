@@ -7,6 +7,7 @@ const rolesStyles = readFileSync(
   new URL('../src/roles/role-overview.css', import.meta.url),
   'utf8',
 );
+const tokens = readFileSync(new URL('../../../packages/ui/tokens.css', import.meta.url), 'utf8');
 
 function cssBlock(source: string, selector: string): string {
   const marker = `${selector} {`;
@@ -80,7 +81,8 @@ describe('Reference shared shell contract', () => {
     }
   });
 
-  it('keeps primary navigation targets on the shared touch-target token', () => {
+  it('keeps primary navigation targets on the shared 44px touch-target contract', () => {
+    expect(cssBlock(tokens, ':root')).toContain('--ab-touch-target: 44px;');
     expect(cssBlock(tasksStyles, '.nav-link')).toContain(
       'min-height: var(--ab-touch-target);',
     );
