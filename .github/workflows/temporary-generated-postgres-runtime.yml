@@ -1,0 +1,350 @@
+name: Temporary Generated PostgreSQL Runtime
+
+on:
+  push:
+    branches:
+      - agent/generated-postgres-worker-runtime
+
+permissions:
+  contents: write
+
+jobs:
+  build-slice:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Add generated PostgreSQL infrastructure contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              text = Path(path).read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}")
+              Path(path).write_text(text.replace(old, new, 1))
+
+          path = "tooling/generated-runtime-template.mjs"
+
+          replace_once(
+              path,
+              '  const packageName = `@appbasis/app-${appId}`;\n\n  const files = [',
+              '  const packageName = `@appbasis/app-${appId}`;\n  const guardedTasks =\n    modules.includes("tasks") && platformServices.includes("permissions");\n\n  const files = [',
+          )
+
+          replace_once(
+              path,
+              '    file("test/app.test.ts", generatedAppTest(modules, platformServices)),\n    file("tsconfig.json", generatedTsconfig()),\n    file("vitest.config.ts", generatedVitestConfig()),\n    file("worker/app.ts", generatedWorkerApp(appId, modules, platformServices)),',
+              '    file("test/app.test.ts", generatedAppTest(modules, platformServices)),\n    ...(guardedTasks\n      ? [file("test/app.postgres.e2e.ts", generatedPostgresE2ETest())]\n      : []),\n    file("tsconfig.json", generatedTsconfig()),\n    file("vitest.config.ts", generatedVitestConfig()),\n    ...(guardedTasks\n      ? [file("vitest.postgres.config.ts", generatedPostgresVitestConfig())]\n      : []),\n    file("worker/app.ts", generatedWorkerApp(appId, modules, platformServices)),\n    ...(guardedTasks\n      ? [file("worker/postgres.ts", generatedPostgresRuntime())]\n      : []),',
+          )
+
+          replace_once(
+              path,
+              'function generatedPackageJson(packageName, displayName, modules, platformServices) {\n  const dependencies = {\n    "@appbasis/identity": "workspace:*",',
+              'function generatedPackageJson(packageName, displayName, modules, platformServices) {\n  const guardedTasks =\n    modules.includes("tasks") && platformServices.includes("permissions");\n  const dependencies = {\n    ...(guardedTasks ? { "@appbasis/database": "workspace:*" } : {}),\n    "@appbasis/identity": "workspace:*",',
+          )
+
+          replace_once(
+              path,
+              '      scripts: {\n        typecheck: "tsc --noEmit -p tsconfig.json",\n        test: "vitest run",\n      },',
+              '      scripts: {\n        typecheck: "tsc --noEmit -p tsconfig.json",\n        test: guardedTasks ? "vitest run ./test/app.test.ts" : "vitest run",\n        ...(guardedTasks\n          ? { "test:postgres": "vitest run --config vitest.postgres.config.ts" }\n          : {}),\n      },',
+          )
+
+          replace_once(
+              path,
+              '      include: ["worker/**/*.ts", "test/**/*.ts", "vitest.config.ts"],',
+              '      include: ["worker/**/*.ts", "test/**/*.ts", "vitest*.config.ts"],',
+          )
+
+          marker = 'function generatedWorkerApp(appId, modules, platformServices) {'
+          insertion = r'''function generatedPostgresVitestConfig() {
+  return `import { defineConfig } from "vitest/config";\n\nexport default defineConfig({\n  test: {\n    environment: "node",\n    include: ["test/**/*.postgres.e2e.ts"],\n  },\n});\n`;
+}
+
+function generatedPostgresRuntime() {
+  return `import { createPostgresDatabase } from "@appbasis/database";
+import { PostgresTaskRepository, type TaskRepository } from "@appbasis/tasks";
+
+export interface GeneratedPostgresRuntime {
+  tasks: TaskRepository;
+  close(): Promise<void>;
+}
+
+export function createGeneratedPostgresRuntime(
+  connectionString: string,
+): GeneratedPostgresRuntime {
+  const connection = createPostgresDatabase(
+    requiredPostgresConnectionString(connectionString),
+  );
+  const tasks = new PostgresTaskRepository({
+    unsafe(query, parameters) {
+      return connection.client.unsafe(query, parameters);
+    },
+  });
+
+  return Object.freeze({
+    tasks,
+    async close() {
+      await connection.client.end();
+    },
+  });
+}
+
+function requiredPostgresConnectionString(value: string): string {
+  const normalized = value.trim();
+  try {
+    const url = new URL(normalized);
+    if (
+      (url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||
+      url.hostname.length === 0
+    ) {
+      throw new Error("invalid");
+    }
+    return normalized;
+  } catch {
+    throw new Error("A valid PostgreSQL connection string is required.");
+  }
+}
+`;
+}
+
+function generatedPostgresE2ETest() {
+  return `import { readFile } from "node:fs/promises";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { createPostgresDatabase } from "@appbasis/database";
+import type { IdentityHttpService } from "@appbasis/identity/http";
+import {
+  InMemoryPermissionStore,
+  capabilityId,
+  principalId,
+} from "@appbasis/permissions";
+import { TASK_CAPABILITIES } from "@appbasis/tasks";
+
+import { createGeneratedApp } from "../worker/app";
+import { createGeneratedPostgresRuntime } from "../worker/postgres";
+
+const databaseUrl = process.env.DATABASE_URL;
+if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
+  throw new Error("DATABASE_URL is required for generated PostgreSQL E2E tests.");
+}
+
+const administrativeConnection = createPostgresDatabase(databaseUrl);
+const migrationUrl = new URL(
+  "../../../modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+  import.meta.url,
+);
+
+const currentIdentity = {
+  identity: {
+    identityId: "identity-postgres-1",
+    username: "postgres.user",
+    displayName: "PostgreSQL User",
+    contactEmail: null,
+    personId: null,
+    mustChangePassword: false,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    passwordChangedAt: new Date("2026-01-01T00:00:00.000Z"),
+    disabledAt: null,
+    accountStatus: "active" as const,
+  },
+  sessionToken: "appbasis.session=postgres-test-token",
+  access: "full" as const,
+};
+
+const identity: IdentityHttpService = {
+  async signInWithUsername() {
+    return currentIdentity;
+  },
+  async getCurrentIdentity(sessionToken) {
+    return sessionToken === currentIdentity.sessionToken ? currentIdentity : null;
+  },
+  async changeRequiredPassword() {
+    return currentIdentity;
+  },
+};
+
+beforeAll(async () => {
+  const migration = await readFile(migrationUrl, "utf8");
+  await administrativeConnection.client.unsafe(migration);
+});
+
+beforeEach(async () => {
+  await administrativeConnection.client.unsafe("TRUNCATE TABLE appbasis_task");
+});
+
+afterAll(async () => {
+  await administrativeConnection.client.end();
+});
+
+describe("generated PostgreSQL tasks runtime", () => {
+  it("persists authorized HTTP task mutations across runtime instances", async () => {
+    let taskId: string;
+    const firstRuntime = createGeneratedPostgresRuntime(databaseUrl);
+    try {
+      const firstApp = createGeneratedApp({
+        identity,
+        permissions: permissionStore(),
+        tasks: firstRuntime.tasks,
+        secureCookies: false,
+      });
+      const created = await firstApp.request("/api/tasks", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ title: "Persistent generated task" }),
+      });
+      expect(created.status).toBe(201);
+      const body = (await created.json()) as { task: { id: string; status: string } };
+      taskId = body.task.id;
+      expect(body.task.status).toBe("open");
+    } finally {
+      await firstRuntime.close();
+    }
+
+    const secondRuntime = createGeneratedPostgresRuntime(databaseUrl);
+    try {
+      const secondApp = createGeneratedApp({
+        identity,
+        permissions: permissionStore(),
+        tasks: secondRuntime.tasks,
+        secureCookies: false,
+      });
+      const listed = await secondApp.request("/api/tasks", {
+        headers: { cookie: currentIdentity.sessionToken },
+      });
+      expect(listed.status).toBe(200);
+      await expect(listed.json()).resolves.toMatchObject({
+        tasks: [{ id: taskId, title: "Persistent generated task", status: "open" }],
+      });
+
+      const toggled = await secondApp.request(`/api/tasks/${taskId}/toggle`, {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken },
+      });
+      expect(toggled.status).toBe(200);
+      await expect(toggled.json()).resolves.toMatchObject({
+        task: { id: taskId, status: "completed" },
+      });
+    } finally {
+      await secondRuntime.close();
+    }
+
+    const thirdRuntime = createGeneratedPostgresRuntime(databaseUrl);
+    try {
+      const thirdApp = createGeneratedApp({
+        identity,
+        permissions: permissionStore(),
+        tasks: thirdRuntime.tasks,
+        secureCookies: false,
+      });
+      const listed = await thirdApp.request("/api/tasks", {
+        headers: { cookie: currentIdentity.sessionToken },
+      });
+      await expect(listed.json()).resolves.toMatchObject({
+        tasks: [{ id: taskId, status: "completed" }],
+      });
+    } finally {
+      await thirdRuntime.close();
+    }
+  });
+});
+
+function permissionStore() {
+  const capability = capabilityId(TASK_CAPABILITIES.manage);
+  return new InMemoryPermissionStore({
+    knownCapabilities: [capability],
+    roles: [],
+    principals: [
+      {
+        principalId: principalId(currentIdentity.identity.identityId),
+        roleIds: [],
+        grants: [capability],
+        revokes: [],
+      },
+    ],
+  });
+}
+`;
+}
+
+'''
+          text = Path(path).read_text()
+          if text.count(marker) != 1:
+              raise SystemExit(f"{path}: worker marker count != 1")
+          Path(path).write_text(text.replace(marker, insertion + marker, 1))
+
+          replace_once(
+              "tooling/generated-runtime-template.test.mjs",
+              '  const generatedTest = content(template, "test/app.test.ts");\n\n  assert.deepEqual(packageJson.dependencies, {\n    "@appbasis/identity": "workspace:*",\n    "@appbasis/permissions": "workspace:*",\n    "@appbasis/tasks": "workspace:*",\n    hono: "4.13.1",\n  });',
+              '  const generatedTest = content(template, "test/app.test.ts");\n  const postgresRuntime = content(template, "worker/postgres.ts");\n  const postgresTest = content(template, "test/app.postgres.e2e.ts");\n\n  assert.deepEqual(packageJson.dependencies, {\n    "@appbasis/database": "workspace:*",\n    "@appbasis/identity": "workspace:*",\n    "@appbasis/permissions": "workspace:*",\n    "@appbasis/tasks": "workspace:*",\n    hono: "4.13.1",\n  });\n  assert.equal(packageJson.scripts.test, "vitest run ./test/app.test.ts");\n  assert.equal(\n    packageJson.scripts["test:postgres"],\n    "vitest run --config vitest.postgres.config.ts",\n  );',
+          )
+
+          replace_once(
+              "tooling/generated-runtime-template.test.mjs",
+              '  assert.match(generatedTest, /Generated HTTP task/);\n});',
+              '  assert.match(generatedTest, /Generated HTTP task/);\n  assert.match(postgresRuntime, /from "@appbasis\\/database"/);\n  assert.match(postgresRuntime, /PostgresTaskRepository/);\n  assert.match(postgresRuntime, /createGeneratedPostgresRuntime/);\n  assert.match(postgresTest, /Persistent generated task/);\n  assert.match(postgresTest, /DATABASE_URL/);\n});',
+          )
+
+          replace_once(
+              "tooling/create-app.test.mjs",
+              '  assert.deepEqual(packageJson.dependencies, {\n    "@appbasis/identity": "workspace:*",\n    "@appbasis/permissions": "workspace:*",\n    "@appbasis/tasks": "workspace:*",\n    hono: "4.13.1",\n  });\n\n  const worker = await readFile(',
+              '  assert.deepEqual(packageJson.dependencies, {\n    "@appbasis/database": "workspace:*",\n    "@appbasis/identity": "workspace:*",\n    "@appbasis/permissions": "workspace:*",\n    "@appbasis/tasks": "workspace:*",\n    hono: "4.13.1",\n  });\n  assert.equal(packageJson.scripts.test, "vitest run ./test/app.test.ts");\n  assert.equal(\n    packageJson.scripts["test:postgres"],\n    "vitest run --config vitest.postgres.config.ts",\n  );\n\n  const postgresRuntime = await readFile(\n    join(root, "apps", "checklist", "worker", "postgres.ts"),\n    "utf8",\n  );\n  assert.match(postgresRuntime, /createPostgresDatabase/);\n  assert.match(postgresRuntime, /PostgresTaskRepository/);\n\n  const worker = await readFile(',
+          )
+          PY
+
+      - name: Regenerate tasks-minimal through production generator
+        run: |
+          rm -rf apps/tasks-minimal
+          node ./tooling/create-app.mjs \
+            --app-id tasks-minimal \
+            --display-name "AppBasis Tasks Minimal" \
+            --module tasks \
+            --platform-service identity \
+            --platform-service permissions
+
+      - name: Verify generated PostgreSQL runtime slice
+        run: |
+          pnpm verify:apps
+          pnpm --filter @appbasis/app-tasks-minimal typecheck
+          pnpm --filter @appbasis/app-tasks-minimal test
+          git diff --check
+
+      - name: Commit generated slice
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tooling/generated-runtime-template.mjs tooling/generated-runtime-template.test.mjs tooling/create-app.test.mjs apps/tasks-minimal pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+          else
+            git commit -m "feat: generate PostgreSQL tasks runtime infrastructure"
+            git push origin HEAD:agent/generated-postgres-worker-runtime
+          fi
