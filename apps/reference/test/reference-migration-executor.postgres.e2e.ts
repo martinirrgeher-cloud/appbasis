@@ -35,7 +35,7 @@ describe('Reference migration executor PostgreSQL E2E', () => {
     const result = await applyReferenceMigrations({
       connectionString: targetUrl.toString(),
     });
-    expect(result.migrationCount).toBe(3);
+    expect(result.migrationCount).toBe(4);
     expect(result.statementCount).toBeGreaterThan(0);
 
     const verification = createPostgresDatabase(targetUrl.toString());
@@ -48,6 +48,8 @@ describe('Reference migration executor PostgreSQL E2E', () => {
             'user',
             'appbasis_identity_security_state',
             'appbasis_identity_operation',
+            'appbasis_permission_capability',
+            'appbasis_permission_principal',
             'appbasis_task'
           )
         ORDER BY table_name
@@ -55,6 +57,8 @@ describe('Reference migration executor PostgreSQL E2E', () => {
       expect(rows.map((row) => row.table_name)).toEqual([
         'appbasis_identity_operation',
         'appbasis_identity_security_state',
+        'appbasis_permission_capability',
+        'appbasis_permission_principal',
         'appbasis_task',
         'user',
       ]);
