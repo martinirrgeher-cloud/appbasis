@@ -2,7 +2,7 @@
 
 ## Phase
 
-Phase 3D – App Manifest V2 Platform Services
+Phase 3E – Second Generated App
 
 ## Ziel
 
@@ -32,11 +32,13 @@ Jede App unter `apps/` besitzt `appbasis.app.json`. Der V2-Vertrag beschreibt Sc
 
 Als erster Manifest-Plattformdienst ist ausschließlich `identity` zugelassen. Andere Paketverzeichnisse werden nicht vorsorglich als Plattformdienste freigegeben. Die Reference-App deklariert `platformServices: ["identity"]` explizit.
 
-`pnpm appbasis:create` erzeugt deterministische App-Skelette ohne Reference-Copy/Paste. Staging, atomare Zielreservierung und `verify:apps` sind gegen konkurrierende Publikation gehärtet; vorhandene Apps werden niemals ersetzt. Plattformdienste werden nur über explizite Generator-Eingaben aktiviert.
+`pnpm appbasis:create` erzeugt deterministische Apps ohne Reference-Copy/Paste. Staging, atomare Zielreservierung und `verify:apps` sind gegen konkurrierende Publikation gehärtet; vorhandene Apps werden niemals ersetzt. Plattformdienste werden nur über explizite Generator-Eingaben aktiviert.
+
+Für `identity` konsumiert der Generator den separat geprüften Generated-Runtime-Template-Baustein. Alle Runtime-Dateien werden vor dem Manifest publiziert; `appbasis.app.json` wird bewusst zuletzt sichtbar. Ohne gewählten Identity-Dienst bleibt das erzeugte App-Skelett deklarativ.
 
 ## Bewiesener gemeinsamer Identity-Runtime-Vertrag
 
-Der erste tatsächlich app-übergreifend neutrale Teil des Reference-Runtimes liegt in der bereits zuständigen Plattformfähigkeit: `@appbasis/identity/http`.
+Der erste tatsächlich app-übergreifend neutrale Teil des Runtimes liegt in der bereits zuständigen Plattformfähigkeit: `@appbasis/identity/http`.
 
 Der Adapter:
 
@@ -45,12 +47,17 @@ Der Adapter:
 - bewahrt den bestehenden Identity-Payload, Cookie-Vertrag sowie die bewiesene HTTP-Fehlerabbildung,
 - bleibt unabhängig von Hono, Cloudflare, fachlichen Modulen und App-Permissions,
 - wird von der Reference-App als erstem realen Consumer verwendet,
-- benötigt keine neue Dependency und keine neue Workspace-Package-Grenze.
+- wird von `apps/minimal` als unabhängigem zweiten realen Consumer verwendet,
+- benötigt keine neue Dependency und keine allgemeine Runtime-Package-Grenze.
 
-Die Reference-App behält weiterhin ihre fachlichen Tasks-Routen, Task-Berechtigungen, Health-/Fallback-Semantik und Hono-Komposition. Damit wurde nur ein bereits belegter neutraler Vertrag extrahiert, nicht vorsorglich ein allgemeines Runtime-Framework gebaut.
+Die Reference-App behält weiterhin ihre fachlichen Tasks-Routen, Task-Berechtigungen, Health-/Fallback-Semantik und Hono-Komposition. `apps/minimal` besitzt bewusst keine Fachmodule und keine Permission-Abhängigkeit. Damit ist die Wiederverwendbarkeit des Identity-HTTP-Vertrags nun durch zwei unterschiedliche Apps belegt, ohne vorsorglich ein allgemeines Runtime-Framework zu bauen.
+
+## Zweite generierte Mini-App
+
+`apps/minimal` ist eine eigenständige Workspace-App mit `modules: []` und `platformServices: ["identity"]`. Sie enthält die vom Generator erzeugte Hono-Komposition und eigene Runtime-Tests für Health und Sign-in über den gemeinsamen Identity-HTTP-Adapter.
+
+Dieser Slice beweist erstmals die Kette Manifest V2 → Generator → Generated Runtime → zweiter ausführbarer App-Consumer.
 
 ## Nächster technischer Meilenstein
 
-Erste zweite lauffähige Mini-App aus dem Generator.
-
-Der nächste Integrations-Slice verbindet Manifest V2 mit dem unabhängig geprüften Generated-Runtime-Template. Die zweite Mini-App muss den Identity-HTTP-Adapter erstmals mit einem zweiten realen Consumer beweisen. Weitere gemeinsame Runtime-Bausteine werden ausschließlich dann extrahiert, wenn dieser zweite Consumer den Bedarf konkret belegt.
+Der nächste Factory-Slice soll eine weitere konkret benötigte Fähigkeit durch reale Doppelverwendung belegen. Naheliegend ist ein erster generierter Fachmodul-Consumer; weitere Shared-Runtime-Abstraktionen oder Plattformdienste werden erst ergänzt, wenn ein zweiter konkreter Consumer ihren Bedarf zeigt.
