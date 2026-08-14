@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import { createPostgresDatabase } from "@appbasis/database/node-runtime";
 
 import {
   PostgresPermissionStore,
