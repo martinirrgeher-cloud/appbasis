@@ -1,13 +1,15 @@
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
+const SUPPORTED_GENERATED_MODULES = new Set(["tasks"]);
 
 export function createIdentityRuntimeTemplate(input) {
   const appId = requiredIdentifier(input?.appId, "appId");
   const displayName = requiredDisplayName(input?.displayName);
+  const modules = requiredGeneratedModules(input?.modules ?? []);
   const packageName = `@appbasis/app-${appId}`;
 
   const files = [
-    file("package.json", generatedPackageJson(packageName, displayName)),
-    file("test/app.test.ts", generatedAppTest()),
+    file("package.json", generatedPackageJson(packageName, displayName, modules)),
+    file("test/app.test.ts", generatedAppTest(modules)),
     file("tsconfig.json", generatedTsconfig()),
     file("vitest.config.ts", generatedVitestConfig()),
     file("worker/app.ts", generatedWorkerApp(appId)),
@@ -19,7 +21,13 @@ export function createIdentityRuntimeTemplate(input) {
   });
 }
 
-function generatedPackageJson(packageName, displayName) {
+function generatedPackageJson(packageName, displayName, modules) {
+  const dependencies = {
+    "@appbasis/identity": "workspace:*",
+    ...(modules.includes("tasks") ? { "@appbasis/tasks": "workspace:*" } : {}),
+    hono: "4.13.1",
+  };
+
   return `${JSON.stringify(
     {
       name: packageName,
@@ -31,10 +39,7 @@ function generatedPackageJson(packageName, displayName) {
         typecheck: "tsc --noEmit -p tsconfig.json",
         test: "vitest run",
       },
-      dependencies: {
-        "@appbasis/identity": "workspace:*",
-        hono: "4.13.1",
-      },
+      dependencies,
       devDependencies: {
         "@types/node": "24.13.3",
         typescript: "5.9.3",
@@ -68,8 +73,36 @@ function generatedWorkerApp(appId) {
   return `import { Hono } from "hono";\n\nimport {\n  createIdentityHttpHandlers,\n  type IdentityHttpService,\n} from "@appbasis/identity/http";\n\nexport interface GeneratedAppDependencies {\n  identity: IdentityHttpService;\n  secureCookies?: boolean;\n}\n\nexport function createGeneratedApp(dependencies: GeneratedAppDependencies) {\n  const app = new Hono();\n  const identityHttp = createIdentityHttpHandlers({\n    identity: dependencies.identity,\n    secureCookies: dependencies.secureCookies ?? true,\n  });\n\n  app.get("/api/health", (context) =>\n    context.json({ status: "ok", appId: "${appId}" }),\n  );\n  app.post("/api/auth/sign-in", (context) =>\n    identityHttp.signIn(context.req.raw),\n  );\n  app.get("/api/auth/session", (context) =>\n    identityHttp.session(context.req.raw),\n  );\n  app.post("/api/auth/change-required-password", (context) =>\n    identityHttp.changeRequiredPassword(context.req.raw),\n  );\n\n  return app;\n}\n`;
 }
 
-function generatedAppTest() {
-  return `import { describe, expect, it } from "vitest";\n\nimport type { IdentityHttpService } from "@appbasis/identity/http";\nimport { createGeneratedApp } from "../worker/app";\n\nconst currentIdentity = {\n  identity: {\n    identityId: "identity-1",\n    username: "mini.user",\n    displayName: "Mini User",\n    contactEmail: null,\n    personId: null,\n    mustChangePassword: false,\n    createdAt: new Date("2026-01-01T00:00:00.000Z"),\n    updatedAt: new Date("2026-01-01T00:00:00.000Z"),\n    passwordChangedAt: new Date("2026-01-01T00:00:00.000Z"),\n    disabledAt: null,\n    accountStatus: "active" as const,\n  },\n  sessionToken: "appbasis.session=test-token",\n  access: "full" as const,\n};\n\nconst identity: IdentityHttpService = {\n  async signInWithUsername() {\n    return currentIdentity;\n  },\n  async getCurrentIdentity() {\n    return currentIdentity;\n  },\n  async changeRequiredPassword() {\n    return currentIdentity;\n  },\n};\n\ndescribe("generated AppBasis identity runtime", () => {\n  it("is runnable and exposes health", async () => {\n    const response = await createGeneratedApp({ identity }).request("/api/health");\n    expect(response.status).toBe(200);\n    expect(await response.json()).toMatchObject({ status: "ok" });\n  });\n\n  it("uses the shared identity HTTP contract", async () => {\n    const response = await createGeneratedApp({\n      identity,\n      secureCookies: false,\n    }).request("/api/auth/sign-in", {\n      method: "POST",\n      headers: { "content-type": "application/json" },\n      body: JSON.stringify({ username: "mini.user", password: "secret" }),\n    });\n\n    expect(response.status).toBe(200);\n    expect(response.headers.get("set-cookie")).toContain("appbasis.session=test-token");\n    expect(await response.json()).toMatchObject({\n      identity: { username: "mini.user" },\n      access: "full",\n    });\n  });\n});\n`;
+function generatedAppTest(modules) {
+  const moduleImports = modules.includes("tasks")
+    ? `import { InMemoryTaskRepository } from "@appbasis/tasks";\n`
+    : "";
+  const moduleTests = modules.includes("tasks")
+    ? `\n  it("consumes the declared tasks module contract", async () => {\n    const tasks = new InMemoryTaskRepository();\n    const created = await tasks.create({ title: "Generated task" });\n\n    expect(created).toMatchObject({\n      title: "Generated task",\n      status: "open",\n    });\n    await expect(tasks.toggleStatus(created.id)).resolves.toMatchObject({\n      id: created.id,\n      status: "completed",\n    });\n  });\n`
+    : "";
+
+  return `import { describe, expect, it } from "vitest";\n\n${moduleImports}import type { IdentityHttpService } from "@appbasis/identity/http";\nimport { createGeneratedApp } from "../worker/app";\n\nconst currentIdentity = {\n  identity: {\n    identityId: "identity-1",\n    username: "mini.user",\n    displayName: "Mini User",\n    contactEmail: null,\n    personId: null,\n    mustChangePassword: false,\n    createdAt: new Date("2026-01-01T00:00:00.000Z"),\n    updatedAt: new Date("2026-01-01T00:00:00.000Z"),\n    passwordChangedAt: new Date("2026-01-01T00:00:00.000Z"),\n    disabledAt: null,\n    accountStatus: "active" as const,\n  },\n  sessionToken: "appbasis.session=test-token",\n  access: "full" as const,\n};\n\nconst identity: IdentityHttpService = {\n  async signInWithUsername() {\n    return currentIdentity;\n  },\n  async getCurrentIdentity() {\n    return currentIdentity;\n  },\n  async changeRequiredPassword() {\n    return currentIdentity;\n  },\n};\n\ndescribe("generated AppBasis identity runtime", () => {\n  it("is runnable and exposes health", async () => {\n    const response = await createGeneratedApp({ identity }).request("/api/health");\n    expect(response.status).toBe(200);\n    expect(await response.json()).toMatchObject({ status: "ok" });\n  });\n\n  it("uses the shared identity HTTP contract", async () => {\n    const response = await createGeneratedApp({\n      identity,\n      secureCookies: false,\n    }).request("/api/auth/sign-in", {\n      method: "POST",\n      headers: { "content-type": "application/json" },\n      body: JSON.stringify({ username: "mini.user", password: "secret" }),\n    });\n\n    expect(response.status).toBe(200);\n    expect(response.headers.get("set-cookie")).toContain("appbasis.session=test-token");\n    expect(await response.json()).toMatchObject({\n      identity: { username: "mini.user" },\n      access: "full",\n    });\n  });\n${moduleTests}});\n`;
+}
+
+function requiredGeneratedModules(value) {
+  if (!Array.isArray(value)) {
+    throw new Error("Generated runtime modules must be an array.");
+  }
+
+  const modules = [];
+  const seen = new Set();
+  for (const valueEntry of value) {
+    const moduleName = requiredIdentifier(valueEntry, "module");
+    if (seen.has(moduleName)) {
+      throw new Error(`Generated runtime module is duplicated: ${moduleName}.`);
+    }
+    if (!SUPPORTED_GENERATED_MODULES.has(moduleName)) {
+      throw new Error(`Generated runtime does not support module ${moduleName}.`);
+    }
+    seen.add(moduleName);
+    modules.push(moduleName);
+  }
+  return Object.freeze(modules);
 }
 
 function file(path, content) {
