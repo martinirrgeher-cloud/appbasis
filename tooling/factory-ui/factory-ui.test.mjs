@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { once } from "node:events";
-import { dirname, resolve } from "node:path";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -24,12 +25,48 @@ test("factory snapshot reads the real app registry and supported catalog", async
   });
 });
 
+test("factory snapshot remains readable when the repository root is not writable", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "appbasis-factory-readonly-"));
+  await mkdir(join(fixtureRoot, "apps", "demo"), { recursive: true });
+  await mkdir(join(fixtureRoot, "modules", "tasks"), { recursive: true });
+  await writeFile(
+    join(fixtureRoot, "apps", "demo", "appbasis.app.json"),
+    `${JSON.stringify(
+      {
+        schemaVersion: 2,
+        appId: "demo",
+        displayName: "Demo",
+        modules: ["tasks"],
+        platformServices: ["identity"],
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  await chmod(fixtureRoot, 0o555);
+  try {
+    const snapshot = await loadFactorySnapshot(fixtureRoot);
+    assert.deepEqual(
+      snapshot.apps.map((app) => app.appId),
+      ["demo"],
+    );
+    assert.deepEqual(snapshot.catalog.modules, ["tasks"]);
+  } finally {
+    await chmod(fixtureRoot, 0o755);
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test("factory console serves repository state but exposes no write endpoint", async (t) => {
   const server = await startFactoryServer({ repositoryRoot, port: 0 });
-  t.after(async () => {
-    server.close();
-    await once(server, "close");
-  });
+  t.after(
+    () =>
+      new Promise((resolveClose, rejectClose) => {
+        server.close((error) => (error ? rejectClose(error) : resolveClose()));
+      }),
+  );
 
   const address = server.address();
   assert.ok(address && typeof address === "object");
