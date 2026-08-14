@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_TIMEOUT_MS = 30_000;
+const SESSION_INVALID_MESSAGE = "A valid session is required.";
 
 export async function verifyGeneratedPreviewHealth({
   baseURL,
@@ -13,6 +14,115 @@ export async function verifyGeneratedPreviewHealth({
 } = {}) {
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
   const normalizedAppId = requiredIdentifier(appId);
+  validateTransport(fetchImpl, timeoutMs);
+
+  return withTimedResponse(
+    fetchImpl,
+    `${normalizedBaseURL}/api/health`,
+    {
+      method: "GET",
+      headers: { accept: "application/json" },
+      redirect: "error",
+    },
+    timeoutMs,
+    async (response) => {
+      if (response.status !== 200) {
+        throw new Error("Generated preview health returned an unexpected status.");
+      }
+
+      const payload = await readJson(
+        response,
+        "Generated preview health returned invalid JSON.",
+      );
+      if (
+        !isRecord(payload) ||
+        payload.status !== "ok" ||
+        payload.appId !== normalizedAppId
+      ) {
+        throw new Error("Generated preview health payload did not match the app.");
+      }
+
+      return Object.freeze({ status: "ok", appId: normalizedAppId });
+    },
+  );
+}
+
+export async function verifyGeneratedPreviewRuntimeBoundary({
+  baseURL,
+  fetchImpl = globalThis.fetch,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+} = {}) {
+  const normalizedBaseURL = requiredHttpsOrigin(baseURL);
+  validateTransport(fetchImpl, timeoutMs);
+
+  return withTimedResponse(
+    fetchImpl,
+    `${normalizedBaseURL}/api/tasks`,
+    {
+      method: "GET",
+      headers: { accept: "application/json" },
+      redirect: "error",
+    },
+    timeoutMs,
+    async (response) => {
+      if (response.status !== 401) {
+        throw new Error(
+          "Generated preview protected runtime returned an unexpected status.",
+        );
+      }
+      if (response.headers.has("set-cookie")) {
+        throw new Error(
+          "Generated preview protected runtime unexpectedly established a session.",
+        );
+      }
+
+      const payload = await readJson(
+        response,
+        "Generated preview protected runtime returned invalid JSON.",
+      );
+      if (!isExactSessionInvalidPayload(payload)) {
+        throw new Error(
+          "Generated preview protected runtime did not fail closed at the session boundary.",
+        );
+      }
+
+      return Object.freeze({ status: "session-required" });
+    },
+  );
+}
+
+async function withTimedResponse(
+  fetchImpl,
+  url,
+  options,
+  timeoutMs,
+  consumeResponse,
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    if (!(response instanceof Response)) {
+      throw new Error("Generated preview smoke returned an invalid response.");
+    }
+    return await consumeResponse(response);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readJson(response, invalidMessage) {
+  try {
+    return await response.json();
+  } catch {
+    throw new Error(invalidMessage);
+  }
+}
+
+function validateTransport(fetchImpl, timeoutMs) {
   if (typeof fetchImpl !== "function") {
     throw new Error("fetchImpl must be a function.");
   }
@@ -23,41 +133,17 @@ export async function verifyGeneratedPreviewHealth({
   ) {
     throw new Error("timeoutMs must be an integer between 1 and 30000.");
   }
+}
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(`${normalizedBaseURL}/api/health`, {
-      method: "GET",
-      headers: { accept: "application/json" },
-      redirect: "error",
-      signal: controller.signal,
-    });
-    if (!(response instanceof Response)) {
-      throw new Error("Generated preview health returned an invalid response.");
-    }
-    if (response.status !== 200) {
-      throw new Error("Generated preview health returned an unexpected status.");
-    }
-
-    let payload;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new Error("Generated preview health returned invalid JSON.");
-    }
-    if (
-      !isRecord(payload) ||
-      payload.status !== "ok" ||
-      payload.appId !== normalizedAppId
-    ) {
-      throw new Error("Generated preview health payload did not match the app.");
-    }
-
-    return Object.freeze({ status: "ok", appId: normalizedAppId });
-  } finally {
-    clearTimeout(timeout);
-  }
+function isExactSessionInvalidPayload(payload) {
+  if (!isRecord(payload) || Object.keys(payload).length !== 1) return false;
+  const error = payload.error;
+  return (
+    isRecord(error) &&
+    Object.keys(error).length === 2 &&
+    error.code === "SESSION_INVALID" &&
+    error.message === SESSION_INVALID_MESSAGE
+  );
 }
 
 function requiredIdentifier(value) {
@@ -102,13 +188,15 @@ function isMainModule() {
 
 if (isMainModule()) {
   try {
-    await verifyGeneratedPreviewHealth({
+    const options = {
       baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
       appId: process.env.APPBASIS_GENERATED_APP_ID,
-    });
-    console.log("Generated preview health smoke passed.");
+    };
+    await verifyGeneratedPreviewHealth(options);
+    await verifyGeneratedPreviewRuntimeBoundary(options);
+    console.log("Generated preview runtime smoke passed.");
   } catch {
-    console.error("Generated preview health smoke failed.");
+    console.error("Generated preview runtime smoke failed.");
     process.exitCode = 1;
   }
 }

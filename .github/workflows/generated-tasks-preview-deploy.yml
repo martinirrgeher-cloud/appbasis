@@ -134,7 +134,7 @@ jobs:
           --experimental-provision=false
           --experimental-auto-create=false
 
-      - name: Verify deployed generated health
+      - name: Verify deployed generated runtime boundary
         env:
           APPBASIS_GENERATED_APP_ID: tasks-minimal
         run: node ./tooling/generated-preview-smoke.mjs
