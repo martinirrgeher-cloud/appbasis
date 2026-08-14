@@ -301,6 +301,7 @@ export function App() {
           <label>
             Benutzername
             <input
+              className="ab-input"
               autoComplete="username"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
@@ -310,6 +311,7 @@ export function App() {
           <label>
             Passwort
             <input
+              className="ab-input"
               type="password"
               autoComplete="current-password"
               value={loginPassword}
@@ -318,7 +320,7 @@ export function App() {
             />
           </label>
           {systemMessage && <p className="access-message" role="alert">{systemMessage}</p>}
-          <button className="primary-button" type="submit" disabled={busy}>
+          <button className="ab-button ab-button--primary" type="submit" disabled={busy}>
             {busy ? 'Anmeldung läuft …' : 'Anmelden'}
           </button>
         </form>
@@ -339,6 +341,7 @@ export function App() {
           <label>
             Aktuelles Passwort
             <input
+              className="ab-input"
               type="password"
               autoComplete="current-password"
               value={currentPassword}
@@ -349,6 +352,7 @@ export function App() {
           <label>
             Neues Passwort
             <input
+              className="ab-input"
               type="password"
               autoComplete="new-password"
               value={newPassword}
@@ -359,6 +363,7 @@ export function App() {
           <label>
             Neues Passwort wiederholen
             <input
+              className="ab-input"
               type="password"
               autoComplete="new-password"
               value={confirmPassword}
@@ -367,7 +372,7 @@ export function App() {
             />
           </label>
           {systemMessage && <p className="access-message" role="alert">{systemMessage}</p>}
-          <button className="primary-button" type="submit" disabled={busy}>
+          <button className="ab-button ab-button--primary" type="submit" disabled={busy}>
             {busy ? 'Passwort wird geändert …' : 'Passwort ändern'}
           </button>
         </form>
@@ -381,7 +386,7 @@ export function App() {
         <p className="eyebrow">Kein Zugriff</p>
         <h1>Berechtigung fehlt.</h1>
         <p className="summary" role="alert">{systemMessage}</p>
-        <button className="primary-button" type="button" onClick={() => void restoreSession()}>
+        <button className="ab-button ab-button--primary" type="button" onClick={() => void restoreSession()}>
           Zugriff erneut prüfen
         </button>
       </GateLayout>
@@ -394,7 +399,7 @@ export function App() {
         <p className="eyebrow">Demo-Backend</p>
         <h1>Noch nicht konfiguriert.</h1>
         <p className="summary" role="status">{systemMessage}</p>
-        <button className="primary-button" type="button" onClick={() => void restoreSession()}>
+        <button className="ab-button ab-button--primary" type="button" onClick={() => void restoreSession()}>
           Erneut versuchen
         </button>
       </GateLayout>
@@ -407,7 +412,7 @@ export function App() {
         <p className="eyebrow">Verbindungsfehler</p>
         <h1>Die App konnte nicht geladen werden.</h1>
         <p className="summary" role="alert">{systemMessage}</p>
-        <button className="primary-button" type="button" onClick={() => void restoreSession()}>
+        <button className="ab-button ab-button--primary" type="button" onClick={() => void restoreSession()}>
           Erneut versuchen
         </button>
       </GateLayout>
@@ -432,11 +437,11 @@ export function App() {
           </section>
 
           <section className="metrics" aria-label="Aufgabenübersicht">
-            <article className="metric-card"><span>Offen</span><strong>{openCount}</strong></article>
-            <article className="metric-card"><span>Erledigt</span><strong>{tasks.length - openCount}</strong></article>
+            <article className="ab-surface metric-card"><span>Offen</span><strong>{openCount}</strong></article>
+            <article className="ab-surface metric-card"><span>Erledigt</span><strong>{tasks.length - openCount}</strong></article>
           </section>
 
-          <section className="task-panel" id="tasks" aria-labelledby="tasks-title">
+          <section className="ab-surface task-panel" id="tasks" aria-labelledby="tasks-title">
             <div className="section-heading">
               <div><p className="eyebrow">Aufgaben</p><h2 id="tasks-title">Nächste Schritte</h2></div>
               <span>{tasks.length} gesamt</span>
@@ -446,6 +451,7 @@ export function App() {
               <label>
                 Titel
                 <input
+                  className="ab-input"
                   value={title}
                   onChange={(event) => {
                     setTitle(event.target.value);
@@ -462,6 +468,7 @@ export function App() {
               <label>
                 Beschreibung <span>(optional)</span>
                 <textarea
+                  className="ab-textarea"
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   placeholder="Kurze Notiz"
@@ -469,7 +476,7 @@ export function App() {
                   disabled={busy}
                 />
               </label>
-              <button className="primary-button" type="submit" disabled={busy}>Aufgabe anlegen</button>
+              <button className="ab-button ab-button--primary" type="submit" disabled={busy}>Aufgabe anlegen</button>
             </form>
 
             {actionError && <p className="action-error" role="alert">{actionError}</p>}
@@ -520,7 +527,7 @@ export function App() {
           >
             <button
               ref={closeButtonRef}
-              className="close-button"
+              className="ab-icon-button ab-icon-button--ghost close-button"
               type="button"
               onClick={closeDetail}
               aria-label="Detailansicht schließen"
@@ -532,7 +539,7 @@ export function App() {
             </span>
             <p>{selectedTask.description || 'Keine Beschreibung vorhanden.'}</p>
             <button
-              className="primary-button"
+              className="ab-button ab-button--primary"
               type="button"
               disabled={busy}
               onClick={() => void handleToggle(selectedTask.id)}
@@ -553,7 +560,7 @@ function ReferenceHeader() {
         <span className="brand-mark" aria-hidden="true">A</span>
         <span>AppBasis</span>
       </a>
-      <span className="demo-badge">Demo v0.1</span>
+      <span className="ab-badge ab-badge--info">Demo v0.1</span>
     </header>
   );
 }
@@ -563,7 +570,7 @@ function GateLayout({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <ReferenceHeader />
       <main className="gate-content">
-        <section className="gate-card">{children}</section>
+        <section className="ab-surface gate-card">{children}</section>
       </main>
     </div>
   );
