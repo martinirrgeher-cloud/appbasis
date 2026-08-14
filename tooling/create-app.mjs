@@ -12,6 +12,8 @@ import { fileURLToPath } from "node:url";
 
 import { parseAppDefinition } from "./app-definition.mjs";
 
+const STAGING_PREFIX = ".appbasis-create-";
+
 export async function createAppSkeleton(input, options = {}) {
   const repositoryRoot = resolve(options.repositoryRoot ?? process.cwd());
   const definition = parseAppDefinition(
@@ -40,9 +42,12 @@ export async function createAppSkeleton(input, options = {}) {
     throw new Error(`App destination already exists: apps/${definition.appId}.`);
   }
 
+  // Stage beside apps/, not inside it. This keeps interrupted or concurrent
+  // generation invisible to the fail-closed app discovery contract while the
+  // final rename remains on the same repository filesystem.
   const stagingDirectory = join(
-    appsDirectory,
-    `.appbasis-create-${definition.appId}-${randomUUID()}`,
+    repositoryRoot,
+    `${STAGING_PREFIX}${definition.appId}-${randomUUID()}`,
   );
   await mkdir(stagingDirectory);
 
