@@ -7,7 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run ./test/app.test.ts ./test/worker.test.ts && node --test ./tooling/apply-generated-preview-migrations.test.mjs",
-    "test:postgres": "vitest run --config vitest.postgres.config.ts",
+    "test:postgres": "vitest run --config vitest.postgres.config.ts && node --test ./test/generated-preview-migration-executor.postgres.e2e.mjs",
     "migrate:preview": "node ./tooling/apply-generated-preview-migrations.mjs"
   },
   "dependencies": {
