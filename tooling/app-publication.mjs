@@ -6,45 +6,41 @@ const PUBLICATION_LOCK_PREFIX = ".appbasis-publishing-";
 
 export async function acquireAppPublicationClaim(repositoryRoot, appId) {
   const lockPath = publicationLockPath(repositoryRoot, appId);
+  const token = randomUUID();
+  let handle;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const token = randomUUID();
-    let handle;
-    try {
-      handle = await open(lockPath, "wx");
-      await handle.writeFile(
-        `${JSON.stringify({ schemaVersion: 1, appId, pid: process.pid, token })}\n`,
-        "utf8",
-      );
-      await handle.close();
-      handle = undefined;
+  try {
+    handle = await open(lockPath, "wx");
+    await handle.writeFile(
+      `${JSON.stringify({ schemaVersion: 1, appId, pid: process.pid, token })}\n`,
+      "utf8",
+    );
+    await handle.close();
+    handle = undefined;
+  } catch (error) {
+    if (handle !== undefined) {
+      await handle.close().catch(() => undefined);
+      await unlink(lockPath).catch(() => undefined);
+    }
 
-      return Object.freeze({
-        lockPath,
-        token,
-        release: () => releaseClaim(lockPath, token),
-      });
-    } catch (error) {
-      if (handle !== undefined) {
-        await handle.close().catch(() => undefined);
-        await unlink(lockPath).catch(() => undefined);
-      }
-
-      if (error?.code !== "EEXIST") throw error;
-
+    if (error?.code === "EEXIST") {
       const state = await getAppPublicationState(repositoryRoot, appId);
       if (state.kind === "stale") {
-        await unlink(lockPath).catch((unlinkError) => {
-          if (unlinkError?.code !== "ENOENT") throw unlinkError;
-        });
-        continue;
+        throw new Error(`Stale app publication claim requires cleanup: ${appId}.`);
       }
-
+      if (state.kind === "invalid") {
+        throw new Error(`Invalid app publication claim requires cleanup: ${appId}.`);
+      }
       throw new Error(`App publication already in progress: ${appId}.`);
     }
+    throw error;
   }
 
-  throw new Error(`Unable to acquire app publication claim: ${appId}.`);
+  return Object.freeze({
+    lockPath,
+    token,
+    release: () => releaseClaim(lockPath, token),
+  });
 }
 
 export async function getAppPublicationState(repositoryRoot, appId) {
