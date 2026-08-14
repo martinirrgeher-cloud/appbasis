@@ -49,7 +49,7 @@ Fachmodule verwenden keine eigenen festen Branding-Farben. Kundenbranding wird �
 
 ## Komponenten v0.1
 
-Die gemeinsame Foundation enthält derzeit die für den ersten Rollen-Slice benötigten allgemeinen Grundlagen:
+Die gemeinsame Foundation enthält derzeit die für die realen Reference-Slices benötigten allgemeinen Grundlagen:
 
 - AppShell-Grundlayout
 - Desktop Sidebar
@@ -57,7 +57,7 @@ Die gemeinsame Foundation enthält derzeit die für den ersten Rollen-Slice ben�
 - Mobile Bottom Navigation
 - PageHeader
 - Primary-/Secondary-/Ghost-/Danger-/Icon-Button-Basis
-- Input/Search
+- Input/Search und Textarea
 - Card/Surface
 - Badge
 - Empty State
@@ -70,7 +70,7 @@ Der Rolleneditor beweist zusätzlich verbindliche Interaktionsmuster für:
 - Aktiv/Inaktiv-Switch
 - geschützte Systemzustände
 
-Diese Muster werden erst dann in `packages/ui` weiter verallgemeinert, wenn ein zweiter realer Anwendungsfall ihre gemeinsame API bestätigt. Dadurch bleibt das UI-Paket bewusst klein und folgt derselben Vertical-Slice-Regel wie die übrige Plattform.
+Die Foundation wird nur aus realen Verbrauchern erweitert. Dadurch bleibt das UI-Paket bewusst klein und folgt derselben Vertical-Slice-Regel wie die übrige Plattform.
 
 Weitere Komponenten wie Selects, Dialoge, Bottom Sheets, Skeletons und Toasts werden in den nächsten realen Fachslices ergänzt.
 
@@ -86,7 +86,9 @@ Damit werden außerhalb der Rollenadministration erstmals dieselben Grundlagen p
 - dieselben Focus-, Success-, Warning- und Danger-Semantiken,
 - keine fachmodulspezifischen Branding-Farben.
 
-Der Slice extrahiert bewusst noch keine React-AppShell oder andere allgemeine React-Komponenten nach `packages/ui`. Erst Rollen und Tasks gemeinsam liefern die zwei realen Verbraucher, aus denen im folgenden Slice eine belastbare gemeinsame Komponenten-API abgeleitet werden kann.
+Nach dem zweiten realen Verbraucher verwendet Tasks die bestehenden Foundation-Klassen für Primary-Buttons, Inputs, Surfaces, Icon-Button und Info-Badge direkt. Das erstmals real benötigte mehrzeilige Eingabefeld erweitert die fachneutrale Foundation um `ab-textarea`; lokale Duplikate für diese Komponenten werden aus der Reference-App entfernt.
+
+Eine React-AppShell oder andere allgemeine React-Komponenten werden weiterhin nicht vorschnell nach `packages/ui` verschoben. Erst die stabilen Rollen- und Tasks-Verbraucher liefern die Grundlage, aus der eine belastbare gemeinsame Komponenten-API abgeleitet werden kann.
 
 ## Rollenmodul – bestehendes Permission-Modell bleibt Source of Truth
 
