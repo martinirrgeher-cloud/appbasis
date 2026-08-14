@@ -44,7 +44,7 @@ function apiResponse(result, resultInfo) {
 
 test("parses only the dedicated direct PostgreSQL target", () => {
   assert.deepEqual(parseGeneratedTasksPreviewDatabaseUrl(DATABASE_URL), {
-    scheme: "postgresql",
+    scheme: "postgres",
     host: "ep-direct.example.neon.tech",
     port: 5432,
     database: "appbasis_tasks_preview",
@@ -107,7 +107,30 @@ test("resolves the exact cache-disabled target across paginated Cloudflare resul
   assert.equal(observed[0].options.headers.authorization, `Bearer ${API_TOKEN}`);
 });
 
-test("fails closed for duplicate or mismatched existing targets", async () => {
+test("normalizes postgres and postgresql schemes while rejecting mismatched targets", () => {
+  assert.equal(
+    validateGeneratedTasksPreviewHyperdrive(
+      targetConfig({ origin: { scheme: "postgres" } }),
+      DATABASE_URL,
+    ).id,
+    TARGET_ID,
+  );
+
+  for (const config of [
+    targetConfig({ origin: { database: "neondb" } }),
+    targetConfig({ origin: { host: "wrong.example.neon.tech" } }),
+    targetConfig({ origin: { user: "wrong-user" } }),
+    targetConfig({ origin: { scheme: "mysql" } }),
+    targetConfig({ caching: { disabled: false } }),
+  ]) {
+    assert.throws(
+      () => validateGeneratedTasksPreviewHyperdrive(config, DATABASE_URL),
+      /does not match the database binding contract/,
+    );
+  }
+});
+
+test("fails closed for a duplicate existing target", async () => {
   await assert.rejects(
     resolveGeneratedTasksPreviewHyperdrive({
       accountId: ACCOUNT_ID,
@@ -117,18 +140,6 @@ test("fails closed for duplicate or mismatched existing targets", async () => {
     }),
     /not unique/,
   );
-
-  for (const config of [
-    targetConfig({ origin: { database: "neondb" } }),
-    targetConfig({ origin: { host: "wrong.example.neon.tech" } }),
-    targetConfig({ origin: { user: "wrong-user" } }),
-    targetConfig({ caching: { disabled: false } }),
-  ]) {
-    assert.throws(
-      () => validateGeneratedTasksPreviewHyperdrive(config, DATABASE_URL),
-      /does not match the database binding contract/,
-    );
-  }
 });
 
 test("does not create a missing target without explicit confirmation", async () => {
@@ -173,7 +184,7 @@ test("creates only the dedicated cache-disabled target when explicitly confirmed
   assert.deepEqual(body, {
     name: GENERATED_TASKS_PREVIEW_HYPERDRIVE.name,
     origin: {
-      scheme: "postgresql",
+      scheme: "postgres",
       host: "ep-direct.example.neon.tech",
       port: 5432,
       database: "appbasis_tasks_preview",
