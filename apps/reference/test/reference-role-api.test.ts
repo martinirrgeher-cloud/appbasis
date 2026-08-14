@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -18,13 +20,18 @@ import {
   type RoleId,
 } from '@appbasis/permissions';
 import { InMemoryTaskRepository } from '@appbasis/tasks';
+import { createReferenceApp } from '../worker/app';
 import {
-  createReferenceApp,
+  createReferenceRoleAdminApp,
   type ReferenceRoleAdministration,
-} from '../worker/app';
+} from '../worker/role-admin-app';
 
 const identityId = 'reference-role-admin';
 const sessionCookie = 'better-auth.session_token=role-admin-session';
+const normalWorkerSource = readFileSync(
+  new URL('../worker/index.ts', import.meta.url),
+  'utf8',
+);
 const managedRole: RoleDetails = {
   roleId: roleId('managed:trainer'),
   displayName: 'Trainer',
@@ -36,12 +43,24 @@ const managedRole: RoleDetails = {
 };
 
 describe('Reference role administration API', () => {
-  it('bleibt ohne gebundene Rollenadministration fail-closed', async () => {
-    const app = createReferenceApp({
+  it('bleibt vollständig außerhalb des normalen Reference-App-Workers', async () => {
+    const normalApp = createReferenceApp({
       identity: new StubIdentityService(),
       permissions: adminPermissionStore(),
       tasks: new InMemoryTaskRepository(),
     });
+
+    const response = await normalApp.request('/api/roles', {
+      headers: { cookie: sessionCookie },
+    });
+
+    expect(response.status).toBe(404);
+    expect(normalWorkerSource).not.toContain('PostgresRoleAdministration');
+    expect(normalWorkerSource).not.toContain('roleAdministration');
+  });
+
+  it('bleibt ohne gebundene Admin-Runtime fail-closed', async () => {
+    const app = createReferenceRoleAdminApp();
 
     const response = await app.request('/api/roles', {
       headers: { cookie: sessionCookie },
@@ -49,17 +68,16 @@ describe('Reference role administration API', () => {
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
-      error: { code: 'REFERENCE_RUNTIME_NOT_CONFIGURED' },
+      error: { code: 'REFERENCE_ROLE_ADMIN_NOT_CONFIGURED' },
     });
   });
 
   it('verweigert Rollenlesezugriffe ohne users:manage deny-by-default', async () => {
     const roleAdministration = new StubRoleAdministration();
-    const app = createReferenceApp({
+    const app = createReferenceRoleAdminApp({
       identity: new StubIdentityService(),
       permissions: memberPermissionStore(),
       roleAdministration,
-      tasks: new InMemoryTaskRepository(),
     });
 
     const response = await app.request('/api/roles', {
@@ -72,7 +90,7 @@ describe('Reference role administration API', () => {
 
   it('listet Rollen und Capabilities nur für berechtigte Administratoren', async () => {
     const roleAdministration = new StubRoleAdministration();
-    const app = configuredApp(roleAdministration);
+    const app = configuredAdminApp(roleAdministration);
 
     const roles = await app.request('/api/roles', {
       headers: { cookie: sessionCookie },
@@ -90,7 +108,7 @@ describe('Reference role administration API', () => {
   });
 
   it('liefert einzelne Rollen und 404 für unbekannte Role-IDs', async () => {
-    const app = configuredApp(new StubRoleAdministration());
+    const app = configuredAdminApp(new StubRoleAdministration());
 
     const found = await app.request('/api/roles/managed%3Atrainer', {
       headers: { cookie: sessionCookie },
@@ -108,12 +126,11 @@ describe('Reference role administration API', () => {
   });
 });
 
-function configuredApp(roleAdministration: ReferenceRoleAdministration) {
-  return createReferenceApp({
+function configuredAdminApp(roleAdministration: ReferenceRoleAdministration) {
+  return createReferenceRoleAdminApp({
     identity: new StubIdentityService(),
     permissions: adminPermissionStore(),
     roleAdministration,
-    tasks: new InMemoryTaskRepository(),
   });
 }
 
