@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./access": "./src/access.ts",
     "./better-auth": "./src/better-auth.ts",
     "./http": "./src/http.ts",
     "./root-admin": "./src/root-admin.ts",
