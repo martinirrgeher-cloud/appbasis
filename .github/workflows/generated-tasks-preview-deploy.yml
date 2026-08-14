@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: generated-tasks-preview-deploy
+  group: generated-tasks-preview-worker-appbasis-tasks-minimal
   cancel-in-progress: false
 
 jobs:
