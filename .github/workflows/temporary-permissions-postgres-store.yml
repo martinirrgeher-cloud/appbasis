@@ -1,0 +1,73 @@
+name: Temporary Permissions PostgreSQL Store
+
+on:
+  push:
+    branches:
+      - agent/permissions-postgres-store
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: true
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/appbasis_permissions_admin
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: appbasis_permissions_admin
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d appbasis_permissions_admin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Update workspace lockfile and install
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify permission store and real PostgreSQL semantics
+        run: |
+          pnpm verify:repo
+          pnpm --filter @appbasis/permissions typecheck
+          pnpm --filter @appbasis/permissions test
+          pnpm --filter @appbasis/permissions test:e2e
+          git diff --check
+
+      - name: Commit lockfile update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo "No lockfile change to commit."
+          else
+            git commit -m "chore: update permissions workspace lockfile"
+            git push origin HEAD:agent/permissions-postgres-store
+          fi
