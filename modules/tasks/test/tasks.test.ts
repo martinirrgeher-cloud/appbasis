@@ -18,7 +18,7 @@ describe("tasks module public contract", () => {
     expect(toggled).toMatchObject({
       id: created.id,
       title: "First task",
-      status: "done",
+      status: "completed",
     });
   });
 
