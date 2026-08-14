@@ -180,9 +180,16 @@ function renderCheckboxes(container, ids, groupName, labelFor) {
 }
 
 function enforceServiceDependencies(changedInput) {
-  if (changedInput.value !== "permissions" || !changedInput.checked) return;
   const identity = elements.serviceOptions?.querySelector("input[value='identity']");
-  if (identity) identity.checked = true;
+  const permissions = elements.serviceOptions?.querySelector("input[value='permissions']");
+  if (!identity || !permissions) return;
+
+  if (changedInput === permissions && permissions.checked) {
+    identity.checked = true;
+  }
+  if (changedInput === identity && !identity.checked && permissions.checked) {
+    permissions.checked = false;
+  }
 }
 
 function renderDraftPreview() {
