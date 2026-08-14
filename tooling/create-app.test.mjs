@@ -29,12 +29,14 @@ test("parses the explicit generator CLI contract", () => {
       "tasks",
       "--platform-service",
       "identity",
+      "--platform-service",
+      "permissions",
     ]),
     {
       appId: "checklist",
       displayName: "Checklist",
       modules: ["tasks"],
-      platformServices: ["identity"],
+      platformServices: ["identity", "permissions"],
     },
   );
   assert.throws(
@@ -71,8 +73,8 @@ test("creates a deterministic identity app that passes the app manifest contract
     "utf8",
   );
   assert.match(readme, /Platform services: identity/);
-  assert.match(readme, /generated identity runtime/);
-  assert.match(readme, /@appbasis\/identity\/http/);
+  assert.match(readme, /generated runtime/);
+  assert.match(readme, /declared AppBasis platform and module contracts/);
 
   const packageJson = JSON.parse(
     await readFile(join(root, "apps", "checklist", "package.json"), "utf8"),
@@ -90,12 +92,50 @@ test("creates a deterministic identity app that passes the app manifest contract
   );
   assert.match(worker, /from "@appbasis\/identity\/http"/);
   assert.match(worker, /\/api\/auth\/session/);
+  assert.doesNotMatch(worker, /\/api\/tasks/);
+  assert.doesNotMatch(worker, /@appbasis\/permissions/);
   assert.doesNotMatch(worker, /reference/i);
 
   const definitions = await verifyAppDefinitions(root);
   assert.equal(definitions.length, 1);
   assert.equal(definitions[0]?.appId, "checklist");
   assert.deepEqual(definitions[0]?.platformServices, ["identity"]);
+});
+
+test("creates permission-guarded tasks runtime only from explicit platform composition", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  await createAppSkeleton(
+    {
+      appId: "checklist",
+      displayName: "Checklist",
+      modules: ["tasks"],
+      platformServices: ["identity", "permissions"],
+    },
+    testGeneratorOptions(root),
+  );
+
+  const packageJson = JSON.parse(
+    await readFile(join(root, "apps", "checklist", "package.json"), "utf8"),
+  );
+  assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/identity": "workspace:*",
+    "@appbasis/permissions": "workspace:*",
+    "@appbasis/tasks": "workspace:*",
+    hono: "4.13.1",
+  });
+
+  const worker = await readFile(
+    join(root, "apps", "checklist", "worker", "app.ts"),
+    "utf8",
+  );
+  assert.match(worker, /from "@appbasis\/permissions"/);
+  assert.match(worker, /TASK_CAPABILITIES/);
+  assert.match(worker, /assertPermission/);
+  assert.match(worker, /\/api\/tasks/);
+
+  const definitions = await verifyAppDefinitions(root);
+  assert.deepEqual(definitions[0]?.platformServices, ["identity", "permissions"]);
 });
 
 test("finalizes the workspace lockfile before publishing the manifest", async (t) => {
@@ -192,7 +232,7 @@ test("does not generate runtime files when no platform service is selected", asy
   ]);
   assert.doesNotMatch(
     await readFile(join(root, "apps", "plain", "README.md"), "utf8"),
-    /identity runtime/,
+    /generated runtime/,
   );
 });
 
@@ -334,6 +374,26 @@ test("fails before writing when a platform service is unsupported", async (t) =>
         testGeneratorOptions(root),
       ),
     /references unsupported platform service notifications/,
+  );
+
+  assert.deepEqual(await readdir(join(root, "apps")), []);
+});
+
+test("fails before writing when permissions are selected without identity", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  await assert.rejects(
+    () =>
+      createAppSkeleton(
+        {
+          appId: "checklist",
+          displayName: "Checklist",
+          modules: ["tasks"],
+          platformServices: ["permissions"],
+        },
+        testGeneratorOptions(root),
+      ),
+    /permissions runtime requires the identity platform service/,
   );
 
   assert.deepEqual(await readdir(join(root, "apps")), []);

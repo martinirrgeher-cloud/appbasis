@@ -1,6 +1,10 @@
 import { Hono, type Context } from 'hono';
 
-import { TaskValidationError, type TaskRepository } from '@appbasis/tasks';
+import {
+  TASK_CAPABILITIES,
+  TaskValidationError,
+  type TaskRepository,
+} from '@appbasis/tasks';
 import { assertIdentityActionAllowed } from '@appbasis/identity';
 import {
   createIdentityHttpHandlers,
@@ -9,6 +13,7 @@ import {
 } from '@appbasis/identity/http';
 import {
   assert as assertPermission,
+  capabilityId,
   DEMO_CAPABILITIES,
   PermissionDeniedError,
   principalId,
@@ -123,7 +128,7 @@ async function authorizeTasks(
     });
     await assertPermission(dependencies.permissions, {
       ...request,
-      capability: DEMO_CAPABILITIES.tasksManage,
+      capability: capabilityId(TASK_CAPABILITIES.manage),
     });
     return null;
   } catch (error) {
