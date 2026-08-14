@@ -35,17 +35,37 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Align create-app contract expectation
+      - name: Align generator contract expectations
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path("tooling/create-app.test.mjs")
-          text = path.read_text()
+
+          create_app_test = Path("tooling/create-app.test.mjs")
+          text = create_app_test.read_text()
           old = '  assert.deepEqual(packageJson.dependencies, {\n    "@appbasis/identity": "workspace:*",\n    "@appbasis/permissions": "workspace:*",\n    "@appbasis/tasks": "workspace:*",\n    hono: "4.13.1",\n  });\n\n  const worker = await readFile('
           new = '  assert.deepEqual(packageJson.dependencies, {\n    "@appbasis/database": "workspace:*",\n    "@appbasis/identity": "workspace:*",\n    "@appbasis/permissions": "workspace:*",\n    "@appbasis/tasks": "workspace:*",\n    hono: "4.13.1",\n  });\n  assert.equal(packageJson.scripts.test, "vitest run ./test/app.test.ts");\n  assert.equal(\n    packageJson.scripts["test:postgres"],\n    "vitest run --config vitest.postgres.config.ts",\n  );\n\n  const postgresRuntime = await readFile(\n    join(root, "apps", "checklist", "worker", "postgres.ts"),\n    "utf8",\n  );\n  assert.match(postgresRuntime, /createPostgresDatabase/);\n  assert.match(postgresRuntime, /PostgresTaskRepository/);\n\n  const worker = await readFile('
-          if text.count(old) != 1:
-              raise SystemExit(f"expected one create-app test match, found {text.count(old)}")
-          path.write_text(text.replace(old, new, 1))
+          if text.count(old) == 1:
+              create_app_test.write_text(text.replace(old, new, 1))
+          elif '"@appbasis/database": "workspace:*"' not in text:
+              raise SystemExit("create-app test expectation could not be aligned")
+
+          template = Path("tooling/generated-runtime-template.mjs")
+          text = template.read_text()
+          old_import = 'from "@appbasis/database"'
+          new_import = 'from "@appbasis/database/node-runtime"'
+          if text.count(old_import) == 2:
+              template.write_text(text.replace(old_import, new_import))
+          elif text.count(new_import) != 2:
+              raise SystemExit("database runtime imports could not be narrowed")
+
+          template_test = Path("tooling/generated-runtime-template.test.mjs")
+          text = template_test.read_text()
+          old_match = 'assert.match(postgresRuntime, /from "@appbasis\\/database"/);'
+          new_match = 'assert.match(postgresRuntime, /from "@appbasis\\/database\\/node-runtime"/);'
+          if text.count(old_match) == 1:
+              template_test.write_text(text.replace(old_match, new_match, 1))
+          elif new_match not in text:
+              raise SystemExit("generated runtime test boundary could not be aligned")
           PY
 
       - name: Regenerate tasks-minimal through production generator
@@ -61,6 +81,7 @@ jobs:
       - name: Verify generated runtime
         run: |
           pnpm verify:apps
+          pnpm --filter @appbasis/database typecheck
           pnpm --filter @appbasis/app-tasks-minimal typecheck
           pnpm --filter @appbasis/app-tasks-minimal test
           git diff --check
@@ -69,7 +90,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tooling/create-app.test.mjs apps/tasks-minimal pnpm-lock.yaml
+          git add tooling/create-app.test.mjs tooling/generated-runtime-template.mjs tooling/generated-runtime-template.test.mjs apps/tasks-minimal pnpm-lock.yaml
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
           else
