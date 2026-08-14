@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPostgresDatabase } from '@appbasis/database';
-import { PostgresTaskRepository } from '../../../modules/tasks/src';
+import { PostgresTaskRepository } from '@appbasis/tasks';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
