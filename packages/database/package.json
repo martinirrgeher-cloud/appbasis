@@ -12,6 +12,10 @@
     "./postgres-runtime": {
       "types": "./src/node-runtime-contract.ts",
       "default": "./src/node-runtime.mjs"
+    },
+    "./postgres-provisioning": {
+      "types": "./src/postgres-provisioning-contract.ts",
+      "default": "./src/node-runtime.mjs"
     }
   },
   "scripts": {
