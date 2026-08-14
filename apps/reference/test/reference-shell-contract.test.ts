@@ -7,6 +7,11 @@ const rolesStyles = readFileSync(
   new URL('../src/roles/role-overview.css', import.meta.url),
   'utf8',
 );
+const tasksConsumer = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const rolesConsumer = readFileSync(
+  new URL('../src/roles/RoleAdminShell.tsx', import.meta.url),
+  'utf8',
+);
 const tokens = readFileSync(new URL('../../../packages/ui/tokens.css', import.meta.url), 'utf8');
 
 function cssBlock(source: string, selector: string): string {
@@ -36,6 +41,19 @@ function cssBlock(source: string, selector: string): string {
 }
 
 describe('Reference shared shell contract', () => {
+  it('wires the contracted shell classes into both real React consumers', () => {
+    expect(tasksConsumer).toContain('<div className="app-shell">');
+    expect(tasksConsumer).toContain('<nav className="navigation" aria-label="Hauptnavigation">');
+
+    expect(rolesConsumer).toContain('<div className="roles-app">');
+    expect(rolesConsumer).toContain('<DesktopSidebar />');
+    expect(rolesConsumer).toContain('<MobileNavigation />');
+    expect(rolesConsumer).toContain('<aside className="roles-sidebar">');
+    expect(rolesConsumer).toContain(
+      '<nav className="roles-mobile-nav" aria-label="Mobile Hauptnavigation">',
+    );
+  });
+
   it('keeps both real consumers mobile-first with bottom navigation', () => {
     const taskNavigation = cssBlock(tasksStyles, '.navigation');
     const roleNavigation = cssBlock(rolesStyles, '.roles-mobile-nav');
@@ -55,7 +73,9 @@ describe('Reference shared shell contract', () => {
     expect(cssBlock(taskDesktop, '.shell-body')).toContain(
       'grid-template-columns: 14rem minmax(0, 1fr);',
     );
-    expect(cssBlock(taskDesktop, '.navigation')).toContain('position: sticky;');
+    const taskNavigation = cssBlock(taskDesktop, '.navigation');
+    expect(taskNavigation).toContain('position: sticky;');
+    expect(taskNavigation).toContain('top: 4rem;');
 
     expect(cssBlock(roleDesktop, '.roles-app')).toContain(
       'grid-template-columns: 244px minmax(0, 1fr);',
@@ -66,6 +86,7 @@ describe('Reference shared shell contract', () => {
     const roleSidebar = cssBlock(roleDesktop, '.roles-sidebar');
     expect(roleSidebar).toContain('display: flex;');
     expect(roleSidebar).toContain('position: sticky;');
+    expect(roleSidebar).toContain('top: 0;');
   });
 
   it('uses the same semantic shell and brand tokens in both consumers', () => {
