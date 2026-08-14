@@ -44,6 +44,7 @@ test("generated Worker workflows bind only through the dedicated generated previ
       workflow,
       /generated-tasks-preview-hyperdrive\.mjs resolve/,
     );
+    assert.match(workflow, /entrypoint: "\.\/worker\/preview\.ts"/);
     assert.doesNotMatch(workflow, /secrets\.APPBASIS_HYPERDRIVE_ID/);
     assert.doesNotMatch(workflow, /generated-tasks-preview-hyperdrive\.mjs ensure/);
     assert.match(workflow, /--experimental-provision=false/);
@@ -80,6 +81,7 @@ test("Worker bootstrap remains limited to first Worker creation and secret insta
   const bootstrap = await readFile(bootstrapPath, "utf8");
 
   assert.match(bootstrap, /writeGeneratedPreviewBootstrapWranglerConfig/);
+  assert.match(bootstrap, /entrypoint: "\.\/worker\/preview\.ts"/);
   assert.match(
     bootstrap,
     /workers\/scripts\/\$\{APPBASIS_GENERATED_WORKER_NAME\}/,
@@ -108,6 +110,7 @@ test("normal deploy synchronizes the runtime secret and proves the database-back
   const deploy = await readFile(deployPath, "utf8");
 
   assert.match(deploy, /writeGeneratedPreviewWranglerConfig/);
+  assert.match(deploy, /entrypoint: "\.\/worker\/preview\.ts"/);
   assert.match(deploy, /Generated preview Worker is not bootstrapped/);
   assert.match(
     deploy,
@@ -131,6 +134,10 @@ test("normal deploy synchronizes the runtime secret and proves the database-back
   assert.match(deploy, /node \.\/tooling\/generated-preview-smoke\.mjs/);
   assert.match(deploy, /Verify deployed generated database binding/);
   assert.match(deploy, /node \.\/tooling\/generated-preview-database-smoke\.mjs/);
+  assert.doesNotMatch(
+    deploy,
+    /Verify deployed generated database binding\n\s+env:/,
+  );
 
   const dryRun = deploy.indexOf("Validate generated Worker bundle without provisioning");
   const synchronize = deploy.indexOf("Synchronize required Worker secret");
