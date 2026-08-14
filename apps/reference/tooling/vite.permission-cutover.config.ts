@@ -7,16 +7,16 @@ const toolingDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   build: {
-    ssr: path.join(toolingDirectory, 'bootstrap-reference-demo-orchestration.ts'),
-    outDir: path.join(toolingDirectory, '.demo-bootstrap-dist'),
+    ssr: path.join(toolingDirectory, 'reference-preview-permission-cutover.ts'),
+    outDir: path.join(toolingDirectory, '.permission-cutover-dist'),
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        entryFileNames: 'bootstrap-reference-demo-user.mjs',
+        entryFileNames: 'reference-preview-permission-cutover.mjs',
       },
     },
   },
   ssr: {
-    noExternal: ['@appbasis/database', '@appbasis/identity', '@appbasis/permissions'],
+    noExternal: ['@appbasis/database', '@appbasis/permissions'],
   },
 });

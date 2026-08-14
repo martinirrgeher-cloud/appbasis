@@ -108,8 +108,10 @@ Lifecycle-Regeln:
 
 ## Bewusste Runtime-Grenze der Reference-App
 
-Die persistente Rollenverwaltung und die PostgreSQL-Permission-Auswertung existieren jetzt im Permission-Paket. Die aktuelle Reference-App verwendet für ihre Laufzeit-Autorisierung jedoch weiterhin den bestehenden `InMemoryPermissionStore` und dessen Demo-Konfiguration.
+Die Reference-App verwendet für normale Laufzeit-Berechtigungsentscheidungen denselben persistenten PostgreSQL-PermissionStore wie die Permission-Infrastruktur. Die früheren Environment-Allowlisten und der In-Memory-PermissionStore gehören nicht mehr zur normalen Reference-Runtime.
 
-Deshalb ist der Rolleneditor in der Reference-App zunächst die verbindliche UI- und Interaktionsreferenz. `Speichern` ist dort bewusst deaktiviert. Es wird keine scheinbare Persistenz gegen PostgreSQL eingebaut, solange die Reference-Runtime ihre effektiven Berechtigungsentscheidungen noch aus einer anderen PermissionStore-Implementierung bezieht.
+Für die bereits bestehende Reference-Preview gibt es vor dem ersten Deploy mit PostgreSQL-Authority einen separaten, explizit bestätigten `Reference Preview Permission Cutover`. Dieser liest die bisherigen Member-/Admin-Zuordnungen read-only aus den noch laufenden Cloudflare-Worker-Bindings, wendet ausschließlich die fehlenden versionierten Permission-Migrationen `0001` und `0002` an und persistiert beide bisherigen Rollenklassen. Ein normaler Reference-Deploy verändert diesen Zustand nicht; er prüft vor Build/Deploy lediglich fail-closed, dass Permissions Schema v3 und alle Legacy-Zuordnungen persistent vorhanden sind. Die alten Allowlist-Bindings bleiben während dieser Übergangsphase nur als Cutover-Nachweis erhalten und werden von der Runtime nicht mehr ausgewertet.
 
-Die spätere Aktivierung von produktivem Speichern benötigt eine ausdrückliche Architekturentscheidung, die Reference-Runtime und ihre Bootstrap-/Principal-Zuweisungen auf dieselbe persistente PostgreSQL-Permission-Authority zu stellen. Erst danach dürfen Rollenänderungen aus der UI unmittelbar die effektiven Runtime-Rechte beeinflussen.
+Der separate Demo-Bootstrap provisioniert die bekannten Demo-Rollen und ordnet dem Demo-Benutzer idempotent `demo:member` zu. Provisioning und Migrationen bleiben damit weiterhin strikt außerhalb des normalen Worker-Request-Pfads.
+
+Der Rolleneditor bleibt dennoch zunächst ohne persistentes `Speichern`: Rollenadministration ist eine privilegierte Control-Plane-Funktion und wird nicht in den normalen App-Worker eingebaut. Die spätere Aktivierung des Editors benötigt einen getrennten, authentisierten Admin-Weg, der den bestehenden `PostgresRoleAdministration`-Vertrag mit verpflichtendem Actor/Reason und transaktionalem Audit verwendet.

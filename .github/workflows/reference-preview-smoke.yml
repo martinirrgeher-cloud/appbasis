@@ -14,6 +14,9 @@ on:
     paths:
       - .github/workflows/reference-preview-smoke.yml
       - .github/workflows/reference-preview-deploy.yml
+      - .github/workflows/reference-preview-permission-cutover.yml
+      - apps/reference/tooling/reference-preview-permission-cutover.ts
+      - apps/reference/tooling/vite.permission-cutover.config.ts
       - tooling/reference-preview-smoke.mjs
 
 permissions:
