@@ -3,10 +3,8 @@ import { createIdentityRuntime } from '@appbasis/identity';
 import { createBetterAuthRuntime } from '@appbasis/identity/better-auth';
 import {
   PostgresPermissionStore,
-  PostgresRoleAdministration,
   type PermissionPostgresClient,
   type PermissionStore,
-  type RoleAdministrationPostgresClient,
 } from '@appbasis/permissions';
 import { PostgresTaskRepository } from '@appbasis/tasks';
 
@@ -48,12 +46,11 @@ export const worker = {
         sql: connection.client,
         baseURL: configuration.baseURL,
       });
-      const permissions = createReferencePermissionStore(
-        permissionClient(connection.client),
-      );
-      const roleAdministration = new PostgresRoleAdministration(
-        roleAdministrationClient(connection.client),
-      );
+      const permissions = createReferencePermissionStore({
+        unsafe(query, parameters) {
+          return connection.client.unsafe(query, parameters);
+        },
+      });
       const tasks = new PostgresTaskRepository({
         unsafe(query, parameters) {
           return connection.client.unsafe(query, parameters);
@@ -62,7 +59,6 @@ export const worker = {
       const app = createReferenceApp({
         identity: identity.service,
         permissions,
-        roleAdministration,
         tasks,
         secureCookies: url.protocol === 'https:',
       });
@@ -79,44 +75,6 @@ export function createReferencePermissionStore(
   client: PermissionPostgresClient,
 ): PermissionStore {
   return new PostgresPermissionStore(client);
-}
-
-function roleAdministrationClient(
-  client: ReturnType<typeof createPostgresDatabase>['client'],
-): RoleAdministrationPostgresClient {
-  return {
-    unsafe(query, parameters) {
-      return client.unsafe(query, parameters);
-    },
-    begin<T>(callback: (transaction: PermissionPostgresClient) => Promise<T>): Promise<T> {
-      return beginRoleAdministrationTransaction(client, callback);
-    },
-  };
-}
-
-async function beginRoleAdministrationTransaction<T>(
-  client: ReturnType<typeof createPostgresDatabase>['client'],
-  callback: (transaction: PermissionPostgresClient) => Promise<T>,
-): Promise<T> {
-  const result = await client.begin(async (transaction) =>
-    callback(permissionClient(transaction)),
-  );
-  // postgres-js unwraps arrays in its generic return type even though the
-  // transaction callback value is returned unchanged after awaiting it.
-  return result as unknown as T;
-}
-
-function permissionClient(client: {
-  unsafe(
-    query: string,
-    parameters?: (string | number | boolean | null)[],
-  ): PromiseLike<readonly Record<string, unknown>[]>;
-}): PermissionPostgresClient {
-  return {
-    unsafe(query, parameters) {
-      return client.unsafe(query, parameters);
-    },
-  };
 }
 
 function runtimeConfiguration(env: ReferenceWorkerEnv): {
