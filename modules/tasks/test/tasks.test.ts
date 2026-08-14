@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { InMemoryTaskRepository, TaskValidationError } from "../src";
+import {
+  InMemoryTaskRepository,
+  TASK_CAPABILITIES,
+  TaskValidationError,
+} from "../src";
 
 describe("tasks module public contract", () => {
+  it("owns its stable permission capability identifiers", () => {
+    expect(TASK_CAPABILITIES).toEqual({ manage: "tasks:manage" });
+  });
+
   it("creates, lists and toggles tasks through the repository contract", async () => {
     const repository = new InMemoryTaskRepository();
 
