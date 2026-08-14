@@ -17,6 +17,8 @@ import { acquireAppRegistryLock } from "./app-publication.mjs";
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-";
+const WORKSPACE_FINALIZATION_TIMEOUT_MS = 90_000;
+const WORKSPACE_FINALIZATION_KILL_GRACE_MS = 5_000;
 
 export async function createAppSkeleton(input, options = {}) {
   const repositoryRoot = resolve(options.repositoryRoot ?? process.cwd());
@@ -273,15 +275,47 @@ async function finalizeGeneratedWorkspace({ repositoryRoot }) {
       cwd: repositoryRoot,
       stdio: "inherit",
     });
-    child.once("error", reject);
+    let settled = false;
+    let timedOut = false;
+    let killEscalation;
+
+    const finalizationTimeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      killEscalation = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+      }, WORKSPACE_FINALIZATION_KILL_GRACE_MS);
+    }, WORKSPACE_FINALIZATION_TIMEOUT_MS);
+
+    const finish = (operation) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(finalizationTimeout);
+      if (killEscalation !== undefined) clearTimeout(killEscalation);
+      operation();
+    };
+
+    child.once("error", (error) => finish(() => reject(error)));
     child.once("exit", (code, signal) => {
-      if (code === 0) {
-        resolvePromise();
-        return;
-      }
-      const detail =
-        signal === null ? `exit code ${String(code)}` : `signal ${signal}`;
-      reject(new Error(`Generated workspace finalization failed (${detail}).`));
+      finish(() => {
+        if (timedOut) {
+          reject(
+            new Error(
+              `Generated workspace finalization exceeded ${WORKSPACE_FINALIZATION_TIMEOUT_MS} ms.`,
+            ),
+          );
+          return;
+        }
+        if (code === 0) {
+          resolvePromise();
+          return;
+        }
+        const detail =
+          signal === null ? `exit code ${String(code)}` : `signal ${signal}`;
+        reject(new Error(`Generated workspace finalization failed (${detail}).`));
+      });
     });
   });
 }
