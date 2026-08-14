@@ -6,23 +6,26 @@ const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const REQUIRED_SECRET_NAMES = Object.freeze(["BETTER_AUTH_SECRET"]);
 const WORKER_NAME_PREFIX = "appbasis-";
 const WORKER_NAME_MAX_LENGTH = 63;
+const DEFAULT_ENTRYPOINT = "./worker/index.ts";
 
 export function renderGeneratedPreviewWranglerConfig({
   appId,
   hyperdriveId,
   baseURL,
+  entrypoint = DEFAULT_ENTRYPOINT,
   compatibilityDate = "2026-08-14",
 } = {}) {
   const normalizedAppId = requiredIdentifier(appId, "appId");
   const workerName = requiredWorkerName(normalizedAppId);
   const normalizedHyperdriveId = requiredProviderId(hyperdriveId);
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
+  const normalizedEntrypoint = requiredEntrypoint(entrypoint);
   const normalizedCompatibilityDate = requiredCompatibilityDate(compatibilityDate);
 
   return Object.freeze({
     $schema: "./node_modules/wrangler/config-schema.json",
     name: workerName,
-    main: "./worker/index.ts",
+    main: normalizedEntrypoint,
     compatibility_date: normalizedCompatibilityDate,
     compatibility_flags: Object.freeze(["nodejs_compat"]),
     workers_dev: true,
@@ -143,6 +146,33 @@ function requiredHttpsOrigin(value) {
     throw new Error("baseURL must be a canonical HTTPS origin.");
   }
   return url.origin;
+}
+
+function requiredEntrypoint(value) {
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    !value.startsWith("./") ||
+    !value.endsWith(".ts") ||
+    value.includes("\\") ||
+    /[\u0000-\u001f\u007f\s]/u.test(value)
+  ) {
+    throw new Error("entrypoint must be a canonical relative TypeScript path.");
+  }
+  const segments = value.slice(2).split("/");
+  if (
+    segments.length === 0 ||
+    segments.some(
+      (segment) =>
+        segment.length === 0 ||
+        segment === "." ||
+        segment === ".." ||
+        !/^[A-Za-z0-9._-]+$/.test(segment),
+    )
+  ) {
+    throw new Error("entrypoint must be a canonical relative TypeScript path.");
+  }
+  return value;
 }
 
 function requiredCompatibilityDate(value) {
