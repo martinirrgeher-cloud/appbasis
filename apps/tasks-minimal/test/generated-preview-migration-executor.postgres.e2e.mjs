@@ -104,7 +104,7 @@ test('checks the database actually selected by the driver before any migration D
         WHERE table_schema = 'public'
         ORDER BY table_name
       `;
-      assert.deepEqual(rows, []);
+      assert.equal(rows.length, 0);
     } finally {
       await verification.client.end();
     }
