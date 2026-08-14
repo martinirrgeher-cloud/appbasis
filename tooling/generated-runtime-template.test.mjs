@@ -64,24 +64,34 @@ test("wires the declared tasks module through its public workspace contract with
   assert.match(generatedTest, /status: "completed"/);
   assert.doesNotMatch(worker, /\/api\/tasks/);
   assert.doesNotMatch(worker, /@appbasis\/permissions/);
+  assert.equal(template.files.some((entry) => entry.path === "worker/postgres.ts"), false);
 });
 
-test("generates tasks HTTP routes only with explicit permissions composition", () => {
+test("generates tasks HTTP routes and PostgreSQL infrastructure only with explicit permissions composition", () => {
   const template = createIdentityRuntimeTemplate({
     ...input,
     modules: ["tasks"],
     platformServices: ["identity", "permissions"],
   });
   const worker = content(template, "worker/app.ts");
+  const postgresRuntime = content(template, "worker/postgres.ts");
+  const postgresTest = content(template, "test/app.postgres.e2e.ts");
   const packageJson = JSON.parse(content(template, "package.json"));
   const generatedTest = content(template, "test/app.test.ts");
 
   assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/database": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",
     "@appbasis/tasks": "workspace:*",
     hono: "4.13.1",
   });
+  assert.equal(packageJson.scripts.test, "vitest run ./test/app.test.ts");
+  assert.equal(
+    packageJson.scripts["test:postgres"],
+    "vitest run --config vitest.postgres.config.ts",
+  );
+
   assert.match(worker, /from "@appbasis\/permissions"/);
   assert.match(worker, /TASK_CAPABILITIES/);
   assert.match(worker, /capabilityId\(TASK_CAPABILITIES\.manage\)/);
@@ -95,6 +105,30 @@ test("generates tasks HTTP routes only with explicit permissions composition", (
   assert.match(generatedTest, /unauthenticated\.status\)\.toBe\(401\)/);
   assert.match(generatedTest, /denied\.status\)\.toBe\(403\)/);
   assert.match(generatedTest, /Generated HTTP task/);
+
+  assert.match(postgresRuntime, /from "@appbasis\/database\/postgres-runtime"/);
+  assert.match(postgresRuntime, /PostgresTaskRepository/);
+  assert.match(postgresRuntime, /createGeneratedPostgresRuntime/);
+  assert.match(postgresTest, /Persistent generated task/);
+  assert.match(postgresTest, /randomUUID/);
+  assert.match(postgresTest, /CREATE DATABASE/);
+  assert.match(postgresTest, /DROP DATABASE/);
+  assert.match(postgresTest, /isolatedDatabaseUrl/);
+  assert.doesNotMatch(postgresTest, /DROP TABLE/);
+  assert.match(postgresTest, /DATABASE_URL/);
+  assert.deepEqual(
+    template.files.map((entry) => entry.path),
+    [
+      "package.json",
+      "test/app.test.ts",
+      "test/app.postgres.e2e.ts",
+      "tsconfig.json",
+      "vitest.config.ts",
+      "vitest.postgres.config.ts",
+      "worker/app.ts",
+      "worker/postgres.ts",
+    ],
+  );
 });
 
 test("generates a self-test that exercises the second consumer contract", () => {

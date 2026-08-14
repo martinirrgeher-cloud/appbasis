@@ -119,11 +119,24 @@ test("creates permission-guarded tasks runtime only from explicit platform compo
     await readFile(join(root, "apps", "checklist", "package.json"), "utf8"),
   );
   assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/database": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",
     "@appbasis/tasks": "workspace:*",
     hono: "4.13.1",
   });
+  assert.equal(packageJson.scripts.test, "vitest run ./test/app.test.ts");
+  assert.equal(
+    packageJson.scripts["test:postgres"],
+    "vitest run --config vitest.postgres.config.ts",
+  );
+
+  const postgresRuntime = await readFile(
+    join(root, "apps", "checklist", "worker", "postgres.ts"),
+    "utf8",
+  );
+  assert.match(postgresRuntime, /createPostgresDatabase/);
+  assert.match(postgresRuntime, /PostgresTaskRepository/);
 
   const worker = await readFile(
     join(root, "apps", "checklist", "worker", "app.ts"),

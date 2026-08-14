@@ -8,6 +8,10 @@
     "./node-runtime": {
       "types": "./src/client.ts",
       "default": "./src/node-runtime.mjs"
+    },
+    "./postgres-runtime": {
+      "types": "./src/node-runtime-contract.ts",
+      "default": "./src/node-runtime.mjs"
     }
   },
   "scripts": {
