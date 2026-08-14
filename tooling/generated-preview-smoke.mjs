@@ -16,7 +16,7 @@ export async function verifyGeneratedPreviewHealth({
   const normalizedAppId = requiredIdentifier(appId);
   validateTransport(fetchImpl, timeoutMs);
 
-  const response = await fetchWithTimeout(
+  return withTimedResponse(
     fetchImpl,
     `${normalizedBaseURL}/api/health`,
     {
@@ -25,24 +25,26 @@ export async function verifyGeneratedPreviewHealth({
       redirect: "error",
     },
     timeoutMs,
-  );
-  if (response.status !== 200) {
-    throw new Error("Generated preview health returned an unexpected status.");
-  }
+    async (response) => {
+      if (response.status !== 200) {
+        throw new Error("Generated preview health returned an unexpected status.");
+      }
 
-  const payload = await readJson(
-    response,
-    "Generated preview health returned invalid JSON.",
-  );
-  if (
-    !isRecord(payload) ||
-    payload.status !== "ok" ||
-    payload.appId !== normalizedAppId
-  ) {
-    throw new Error("Generated preview health payload did not match the app.");
-  }
+      const payload = await readJson(
+        response,
+        "Generated preview health returned invalid JSON.",
+      );
+      if (
+        !isRecord(payload) ||
+        payload.status !== "ok" ||
+        payload.appId !== normalizedAppId
+      ) {
+        throw new Error("Generated preview health payload did not match the app.");
+      }
 
-  return Object.freeze({ status: "ok", appId: normalizedAppId });
+      return Object.freeze({ status: "ok", appId: normalizedAppId });
+    },
+  );
 }
 
 export async function verifyGeneratedPreviewRuntimeBoundary({
@@ -53,7 +55,7 @@ export async function verifyGeneratedPreviewRuntimeBoundary({
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
   validateTransport(fetchImpl, timeoutMs);
 
-  const response = await fetchWithTimeout(
+  return withTimedResponse(
     fetchImpl,
     `${normalizedBaseURL}/api/tasks`,
     {
@@ -62,32 +64,40 @@ export async function verifyGeneratedPreviewRuntimeBoundary({
       redirect: "error",
     },
     timeoutMs,
-  );
-  if (response.status !== 401) {
-    throw new Error(
-      "Generated preview protected runtime returned an unexpected status.",
-    );
-  }
-  if (response.headers.has("set-cookie")) {
-    throw new Error(
-      "Generated preview protected runtime unexpectedly established a session.",
-    );
-  }
+    async (response) => {
+      if (response.status !== 401) {
+        throw new Error(
+          "Generated preview protected runtime returned an unexpected status.",
+        );
+      }
+      if (response.headers.has("set-cookie")) {
+        throw new Error(
+          "Generated preview protected runtime unexpectedly established a session.",
+        );
+      }
 
-  const payload = await readJson(
-    response,
-    "Generated preview protected runtime returned invalid JSON.",
-  );
-  if (!isExactSessionInvalidPayload(payload)) {
-    throw new Error(
-      "Generated preview protected runtime did not fail closed at the session boundary.",
-    );
-  }
+      const payload = await readJson(
+        response,
+        "Generated preview protected runtime returned invalid JSON.",
+      );
+      if (!isExactSessionInvalidPayload(payload)) {
+        throw new Error(
+          "Generated preview protected runtime did not fail closed at the session boundary.",
+        );
+      }
 
-  return Object.freeze({ status: "session-required" });
+      return Object.freeze({ status: "session-required" });
+    },
+  );
 }
 
-async function fetchWithTimeout(fetchImpl, url, options, timeoutMs) {
+async function withTimedResponse(
+  fetchImpl,
+  url,
+  options,
+  timeoutMs,
+  consumeResponse,
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -98,7 +108,7 @@ async function fetchWithTimeout(fetchImpl, url, options, timeoutMs) {
     if (!(response instanceof Response)) {
       throw new Error("Generated preview smoke returned an invalid response.");
     }
-    return response;
+    return await consumeResponse(response);
   } finally {
     clearTimeout(timeout);
   }

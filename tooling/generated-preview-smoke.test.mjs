@@ -159,6 +159,36 @@ test("protected runtime smoke rejects a response that establishes a session", as
   );
 });
 
+test("smoke timeout remains active while the response body is consumed", async () => {
+  const verification = verifyGeneratedPreviewRuntimeBoundary({
+    baseURL: BASE_URL,
+    timeoutMs: 10,
+    fetchImpl: async (_url, options) => {
+      const body = new ReadableStream({
+        start(controller) {
+          options.signal.addEventListener(
+            "abort",
+            () => controller.error(new Error("aborted")),
+            { once: true },
+          );
+        },
+      });
+      return new Response(body, {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+  const watchdog = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error("smoke timeout watchdog expired")), 250);
+  });
+
+  await assert.rejects(
+    Promise.race([verification, watchdog]),
+    /protected runtime returned invalid JSON/,
+  );
+});
+
 test("rejects non-canonical origins, invalid app ids and excessive timeouts", async () => {
   await assert.rejects(
     verifyGeneratedPreviewHealth({
