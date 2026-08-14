@@ -15,7 +15,7 @@ jobs:
     name: Generated tasks preview bootstrap
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    environment: reference-preview
+    environment: generated-tasks-preview
     env:
       APPBASIS_GENERATED_APP_ID: tasks-minimal
       APPBASIS_GENERATED_WORKER_NAME: appbasis-tasks-minimal
@@ -50,17 +50,17 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          APPBASIS_HYPERDRIVE_ID: ${{ secrets.APPBASIS_HYPERDRIVE_ID }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
         run: |
           set -euo pipefail
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare deployment account.' >&2; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
-          test -n "$APPBASIS_HYPERDRIVE_ID" || { echo 'Missing required generated preview Hyperdrive binding.' >&2; exit 1; }
+          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing dedicated generated preview database connection.' >&2; exit 1; }
           test -n "$APPBASIS_BETTER_AUTH_SECRET" || { echo 'Missing protected Better Auth secret.' >&2; exit 1; }
           echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
           echo "::add-mask::$CLOUDFLARE_API_TOKEN"
-          echo "::add-mask::$APPBASIS_HYPERDRIVE_ID"
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
           echo "::add-mask::$APPBASIS_BETTER_AUTH_SECRET"
           node --input-type=module <<'NODE' || {
           const secret = process.env.APPBASIS_BETTER_AUTH_SECRET;
@@ -92,9 +92,23 @@ jobs:
           ORIGIN="https://${APPBASIS_GENERATED_WORKER_NAME}.${SUBDOMAIN}.workers.dev"
           echo "APPBASIS_GENERATED_PREVIEW_URL=$ORIGIN" >> "$GITHUB_ENV"
 
+      - name: Resolve and verify dedicated generated preview Hyperdrive
+        id: hyperdrive
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          HYPERDRIVE_ID="$(node ./tooling/generated-tasks-preview-hyperdrive.mjs resolve)"
+          test -n "$HYPERDRIVE_ID" || { echo 'Dedicated generated preview Hyperdrive was not resolved.' >&2; exit 1; }
+          echo "::add-mask::$HYPERDRIVE_ID"
+          printf 'id=%s\n' "$HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
+
       - name: Render secretless bootstrap config
         env:
-          APPBASIS_HYPERDRIVE_ID: ${{ secrets.APPBASIS_HYPERDRIVE_ID }}
+          APPBASIS_HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
         run: |
           node --input-type=module <<'NODE'
           import { writeGeneratedPreviewBootstrapWranglerConfig } from "./tooling/generated-preview-deploy-config.mjs";
