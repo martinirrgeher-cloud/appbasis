@@ -168,18 +168,18 @@ class StubIdentityService implements Pick<
     if (input.username !== 'role.admin' || input.password !== 'secret') {
       throw new IdentityError('AUTHENTICATION_FAILED', 'invalid');
     }
-    return this.current();
+    return this.current(sessionCookie);
   }
 
   async getCurrentIdentity(sessionToken: string): Promise<CurrentIdentity | null> {
-    return sessionToken === 'role-admin-session' ? this.current() : null;
+    return sessionToken === sessionCookie ? this.current(sessionToken) : null;
   }
 
   async changeRequiredPassword(): Promise<CurrentIdentity> {
     throw new IdentityError('PASSWORD_CHANGE_NOT_REQUIRED', 'not required');
   }
 
-  private current(): CurrentIdentity {
+  private current(sessionToken: string): CurrentIdentity {
     const now = new Date('2026-08-14T00:00:00.000Z');
     return {
       identity: {
@@ -195,7 +195,7 @@ class StubIdentityService implements Pick<
         disabledAt: null,
         accountStatus: 'active',
       },
-      sessionToken: 'role-admin-session',
+      sessionToken,
       access: 'full',
     };
   }
