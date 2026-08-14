@@ -48,7 +48,7 @@ test("uses a collision-resistant app package namespace and shared identity HTTP 
   });
 });
 
-test("wires the declared tasks module through its public workspace contract", () => {
+test("wires the declared tasks module through its public workspace contract without exposing business routes", () => {
   const template = createIdentityRuntimeTemplate({ ...input, modules: ["tasks"] });
   const worker = content(template, "worker/app.ts");
   const packageJson = JSON.parse(content(template, "package.json"));
@@ -64,6 +64,37 @@ test("wires the declared tasks module through its public workspace contract", ()
   assert.match(generatedTest, /status: "completed"/);
   assert.doesNotMatch(worker, /\/api\/tasks/);
   assert.doesNotMatch(worker, /@appbasis\/permissions/);
+});
+
+test("generates tasks HTTP routes only with explicit permissions composition", () => {
+  const template = createIdentityRuntimeTemplate({
+    ...input,
+    modules: ["tasks"],
+    platformServices: ["identity", "permissions"],
+  });
+  const worker = content(template, "worker/app.ts");
+  const packageJson = JSON.parse(content(template, "package.json"));
+  const generatedTest = content(template, "test/app.test.ts");
+
+  assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/identity": "workspace:*",
+    "@appbasis/permissions": "workspace:*",
+    "@appbasis/tasks": "workspace:*",
+    hono: "4.13.1",
+  });
+  assert.match(worker, /from "@appbasis\/permissions"/);
+  assert.match(worker, /TASK_CAPABILITIES/);
+  assert.match(worker, /capabilityId\(TASK_CAPABILITIES\.manage\)/);
+  assert.match(worker, /assertIdentityActionAllowed/);
+  assert.match(worker, /assertPermission/);
+  assert.match(worker, /app\.get\("\/api\/tasks"/);
+  assert.match(worker, /app\.post\("\/api\/tasks"/);
+  assert.match(worker, /app\.post\("\/api\/tasks\/:id\/toggle"/);
+
+  assert.match(generatedTest, /InMemoryPermissionStore/);
+  assert.match(generatedTest, /unauthenticated\.status\)\.toBe\(401\)/);
+  assert.match(generatedTest, /denied\.status\)\.toBe\(403\)/);
+  assert.match(generatedTest, /Generated HTTP task/);
 });
 
 test("generates a self-test that exercises the second consumer contract", () => {
@@ -90,6 +121,30 @@ test("fails closed on invalid or unsupported runtime inputs", () => {
   assert.throws(
     () => createIdentityRuntimeTemplate({ ...input, modules: ["future"] }),
     /does not support module future/,
+  );
+  assert.throws(
+    () =>
+      createIdentityRuntimeTemplate({
+        ...input,
+        platformServices: ["identity", "notifications"],
+      }),
+    /does not support platform service notifications/,
+  );
+  assert.throws(
+    () =>
+      createIdentityRuntimeTemplate({
+        ...input,
+        platformServices: ["identity", "identity"],
+      }),
+    /platform service is duplicated: identity/,
+  );
+  assert.throws(
+    () =>
+      createIdentityRuntimeTemplate({
+        ...input,
+        platformServices: ["permissions"],
+      }),
+    /requires the identity platform service/,
   );
 });
 
