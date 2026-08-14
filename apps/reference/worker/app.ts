@@ -3,17 +3,17 @@ import { Hono, type Context } from 'hono';
 import { TaskValidationError, type TaskRepository } from '../../../modules/tasks/src';
 import { assertIdentityActionAllowed } from '@appbasis/identity';
 import {
+  createIdentityHttpHandlers,
+  type IdentityHttpHandlers,
+  type IdentityHttpService,
+} from '@appbasis/identity/http';
+import {
   assert as assertPermission,
   DEMO_CAPABILITIES,
   PermissionDeniedError,
   principalId,
   type PermissionStore,
 } from '@appbasis/permissions';
-import {
-  mountIdentityHttpRoutes,
-  type IdentityHttpRuntime,
-  type IdentityHttpService,
-} from '@appbasis/runtime';
 import { HEALTH_RESPONSE } from '../shared/health';
 
 export interface ReferenceAppDependencies {
@@ -48,10 +48,19 @@ export function createReferenceApp(dependencies?: ReferenceAppDependencies) {
     return referenceApp;
   }
 
-  const identityHttp = mountIdentityHttpRoutes(referenceApp, {
+  const identityHttp = createIdentityHttpHandlers({
     identity: dependencies.identity,
     secureCookies: dependencies.secureCookies ?? true,
   });
+  referenceApp.post('/api/auth/sign-in', (context) =>
+    identityHttp.signIn(context.req.raw),
+  );
+  referenceApp.get('/api/auth/session', (context) =>
+    identityHttp.session(context.req.raw),
+  );
+  referenceApp.post('/api/auth/change-required-password', (context) =>
+    identityHttp.changeRequiredPassword(context.req.raw),
+  );
 
   referenceApp.get('/api/tasks', async (context) => {
     const denied = await authorizeTasks(context, dependencies, identityHttp);
@@ -100,9 +109,9 @@ export const app = createReferenceApp();
 async function authorizeTasks(
   context: Context,
   dependencies: ReferenceAppDependencies,
-  identityHttp: IdentityHttpRuntime,
+  identityHttp: IdentityHttpHandlers,
 ): Promise<Response | null> {
-  const current = await identityHttp.resolveCurrentIdentity(context);
+  const current = await identityHttp.resolveCurrentIdentity(context.req.raw);
   if (current instanceof Response) return current;
 
   try {
@@ -126,7 +135,7 @@ async function authorizeTasks(
         'The current identity is not allowed to manage tasks.',
       );
     }
-    return identityHttp.identityErrorResponse(context, error);
+    return identityHttp.identityErrorResponse(error);
   }
 }
 
