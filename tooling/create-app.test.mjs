@@ -63,6 +63,25 @@ test("creates a deterministic skeleton that passes the app manifest contract", a
   assert.equal(definitions[0]?.appId, "checklist");
 });
 
+test("an interrupted root staging directory never enters app discovery", async (t) => {
+  const root = await createRepositoryFixture(t);
+  await createAppSkeleton(
+    {
+      appId: "checklist",
+      displayName: "Checklist",
+      modules: ["tasks"],
+    },
+    { repositoryRoot: root },
+  );
+
+  await mkdir(join(root, ".appbasis-create-other-interrupted"));
+
+  assert.deepEqual(await readdir(join(root, "apps")), ["checklist"]);
+  const definitions = await verifyAppDefinitions(root);
+  assert.equal(definitions.length, 1);
+  assert.equal(definitions[0]?.appId, "checklist");
+});
+
 test("fails before writing when a module is unknown", async (t) => {
   const root = await createRepositoryFixture(t);
 
