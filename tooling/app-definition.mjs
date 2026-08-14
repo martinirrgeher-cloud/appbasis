@@ -11,7 +11,7 @@ const APP_DEFINITION_KEYS = new Set([
   "modules",
   "platformServices",
 ]);
-const SUPPORTED_PLATFORM_SERVICES = new Set(["identity"]);
+const SUPPORTED_PLATFORM_SERVICES = new Set(["identity", "permissions"]);
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 export function parseAppDefinition(value, options = {}) {

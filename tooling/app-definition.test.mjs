@@ -23,6 +23,17 @@ test("accepts the versioned app definition with explicit platform services", () 
   assert.equal(Object.isFrozen(definition), true);
   assert.equal(Object.isFrozen(definition.modules), true);
   assert.equal(Object.isFrozen(definition.platformServices), true);
+
+  assert.deepEqual(
+    parseAppDefinition({
+      ...validDefinition,
+      platformServices: ["identity", "permissions"],
+    }),
+    {
+      ...validDefinition,
+      platformServices: ["identity", "permissions"],
+    },
+  );
 });
 
 test("fails closed on unknown fields, old schemas and structural drift", () => {
