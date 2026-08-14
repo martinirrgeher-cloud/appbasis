@@ -51,7 +51,7 @@ const workerSettings = {
       {
         name: 'APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS',
         type: 'plain_text',
-        text: 'legacy-admin,legacy-shared',
+        text: 'legacy-admin,legacy-shared,legacy-technical-admin',
       },
     ],
   },
@@ -70,7 +70,7 @@ afterAll(async () => {
 });
 
 describe.sequential('Reference preview permission authority cutover', () => {
-  it('upgrades the existing permission foundation and persists both legacy role classes before deployment', async () => {
+  it('upgrades the existing permission foundation and persists only effective legacy application role assignments before deployment', async () => {
     await expect(
       detectReferencePermissionSchemaVersion(requiredConnection().client),
     ).resolves.toBe(1);
@@ -98,6 +98,7 @@ describe.sequential('Reference preview permission authority cutover', () => {
     ).resolves.toEqual({ schemaVersion: 3, assignmentCount: 3 });
 
     await expectLegacyAssignments(requiredConnection());
+    await expectTechnicalAdminNotAssigned(requiredConnection());
 
     const roleRows = await requiredConnection().client.unsafe(
       `SELECT role_id, state, kind
@@ -124,6 +125,7 @@ describe.sequential('Reference preview permission authority cutover', () => {
         workerSettings,
       }),
     ).resolves.toEqual({ schemaVersion: 3, assignmentCount: 3 });
+    await expectTechnicalAdminNotAssigned(requiredConnection());
   });
 
   it('executes the built operational runner from repository root and resolves versioned migrations correctly', async () => {
@@ -174,6 +176,7 @@ describe.sequential('Reference preview permission authority cutover', () => {
         detectReferencePermissionSchemaVersion(bundledConnection.client),
       ).resolves.toBe(3);
       await expectLegacyAssignments(bundledConnection);
+      await expectTechnicalAdminNotAssigned(bundledConnection);
     } finally {
       if (bundledConnection !== undefined) await bundledConnection.client.end();
       await adminConnection.client.unsafe(
@@ -205,6 +208,10 @@ async function prepareLegacyPermissionDatabase(
       [id],
     );
   }
+  await target.client.unsafe(
+    `INSERT INTO "user" (id, name, email, username, display_username, role)
+     VALUES ('legacy-technical-admin', 'technical.root', 'technical.root@identity.invalid', 'technical.root', 'technical.root', 'admin')`,
+  );
 }
 
 async function expectLegacyAssignments(
@@ -221,6 +228,17 @@ async function expectLegacyAssignments(
     { principal_id: 'legacy-member', role_id: DEMO_ROLES.member },
     { principal_id: 'legacy-shared', role_id: DEMO_ROLES.admin },
   ]);
+}
+
+async function expectTechnicalAdminNotAssigned(
+  target: ReturnType<typeof createPostgresDatabase>,
+) {
+  const assignments = await target.client.unsafe(
+    `SELECT role_id
+     FROM appbasis_permission_principal_role
+     WHERE principal_id = 'legacy-technical-admin'`,
+  );
+  expect(assignments).toEqual([]);
 }
 
 async function applyMigration(
