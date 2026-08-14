@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { PermissionProvisioningStateError } from '@appbasis/permissions/provisioning';
+
 import { safeReferenceDemoBootstrapDiagnostic } from '../tooling/bootstrap-reference-demo-orchestration';
 import { normalizeReferenceDemoUserCredentialBootstrapOptions } from '../worker/bootstrap-credentials';
 
@@ -67,6 +69,11 @@ describe('Reference transient administrator bootstrap configuration', () => {
         new Error('Better Auth admin create-user failed: 403'),
       ),
     ).toBe('better-auth-admin-create-user-http-403');
+    expect(
+      safeReferenceDemoBootstrapDiagnostic(
+        new PermissionProvisioningStateError('conflicting permission role state'),
+      ),
+    ).toBe('permission-provisioning');
 
     const secretBearingError = new Error(
       'database password=super-secret-value token=also-secret',

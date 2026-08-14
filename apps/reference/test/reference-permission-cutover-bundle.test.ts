@@ -5,14 +5,14 @@ import path from 'node:path';
 import { build, mergeConfig } from 'vite';
 import { describe, expect, it } from 'vitest';
 
-import demoOrchestrationConfig from '../tooling/vite.demo-orchestration.config';
+import permissionCutoverConfig from '../tooling/vite.permission-cutover.config';
 
-describe('Reference demo bootstrap operational bundle', () => {
-  it('builds the isolated Node orchestration runner', async () => {
-    const outDir = await mkdtemp(path.join(tmpdir(), 'appbasis-demo-orchestration-'));
+describe('Reference permission cutover operational bundle', () => {
+  it('builds the isolated Node cutover runner', async () => {
+    const outDir = await mkdtemp(path.join(tmpdir(), 'appbasis-permission-cutover-'));
     try {
       await build(
-        mergeConfig(demoOrchestrationConfig, {
+        mergeConfig(permissionCutoverConfig, {
           build: {
             outDir,
             emptyOutDir: true,
@@ -21,7 +21,7 @@ describe('Reference demo bootstrap operational bundle', () => {
       );
 
       const output = await readFile(
-        path.join(outDir, 'bootstrap-reference-demo-user.mjs'),
+        path.join(outDir, 'reference-preview-permission-cutover.mjs'),
         'utf8',
       );
       expect(output.length).toBeGreaterThan(0);

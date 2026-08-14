@@ -1,5 +1,17 @@
 import { pathToFileURL } from 'node:url';
 
+import { createPostgresDatabase } from '@appbasis/database/postgres-provisioning';
+import {
+  DEMO_KNOWN_CAPABILITIES,
+  DEMO_ROLE_BUNDLES,
+  DEMO_ROLES,
+  principalId,
+} from '@appbasis/permissions';
+import {
+  provisionPostgresPermissions,
+  type PermissionProvisioningPostgresClient,
+} from '@appbasis/permissions/provisioning';
+
 import {
   bootstrapReferenceDemoUserWithAdministratorCredentials,
   type ReferenceDemoUserCredentialBootstrapOptions,
@@ -37,9 +49,34 @@ export function readReferenceDemoBootstrapEnvironment(
 }
 
 export async function runReferenceDemoBootstrap(env: NodeJS.ProcessEnv = process.env) {
-  return bootstrapReferenceDemoUserWithAdministratorCredentials(
-    readReferenceDemoBootstrapEnvironment(env),
-  );
+  const options = readReferenceDemoBootstrapEnvironment(env);
+  const result = await bootstrapReferenceDemoUserWithAdministratorCredentials(options);
+  await provisionReferenceDemoPermissions({
+    connectionString: options.connectionString,
+    identityId: result.identityId,
+  });
+  return result;
+}
+
+export async function provisionReferenceDemoPermissions(input: {
+  readonly connectionString: string;
+  readonly identityId: string;
+}) {
+  const connection = createPostgresDatabase(input.connectionString);
+  try {
+    return await provisionPostgresPermissions(provisioningClient(connection.client), {
+      knownCapabilities: DEMO_KNOWN_CAPABILITIES,
+      roles: DEMO_ROLE_BUNDLES,
+      principalRoleAssignments: [
+        {
+          principalId: principalId(input.identityId),
+          roleIds: [DEMO_ROLES.member],
+        },
+      ],
+    });
+  } finally {
+    await connection.client.end();
+  }
 }
 
 export function safeReferenceDemoBootstrapDiagnostic(error: unknown): string {
@@ -61,6 +98,9 @@ export function safeReferenceDemoBootstrapDiagnostic(error: unknown): string {
       return 'environment-configuration';
     case 'ReferenceDemoUserBootstrapConfigurationError':
       return 'bootstrap-configuration';
+    case 'PermissionProvisioningConfigurationError':
+    case 'PermissionProvisioningStateError':
+      return 'permission-provisioning';
     case 'IdentityError':
       return 'identity-operation';
     case 'TypeError':
@@ -68,6 +108,22 @@ export function safeReferenceDemoBootstrapDiagnostic(error: unknown): string {
     default:
       return 'unknown';
   }
+}
+
+function provisioningClient(
+  client: ReturnType<typeof createPostgresDatabase>['client'],
+): PermissionProvisioningPostgresClient {
+  return {
+    async begin(callback) {
+      return client.begin(async (transaction) =>
+        callback({
+          unsafe(query, parameters) {
+            return transaction.unsafe(query, parameters);
+          },
+        }),
+      );
+    },
+  };
 }
 
 function required(value: string | undefined, label: string): string {

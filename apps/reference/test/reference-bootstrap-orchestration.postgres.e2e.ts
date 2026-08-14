@@ -4,8 +4,15 @@ import { fileURLToPath } from 'node:url';
 
 import { createPostgresDatabase } from '@appbasis/database';
 import { createBetterAuthRuntime } from '@appbasis/identity/better-auth';
+import {
+  DEMO_CAPABILITIES,
+  DEMO_ROLES,
+  PostgresPermissionStore,
+  principalId,
+} from '@appbasis/permissions';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { runReferenceDemoBootstrap } from '../tooling/bootstrap-reference-demo-orchestration';
 import {
   bootstrapReferenceDemoUserWithAdministratorCredentials,
   ReferenceDemoUserBootstrapAuthenticationError,
@@ -87,22 +94,12 @@ describe('Reference transient demo bootstrap PostgreSQL E2E', () => {
     await adminConnection.client.end();
   });
 
-  it('provisions and retries without retaining administrator sessions', async () => {
+  it('provisions identity and persistent member permissions idempotently without retaining administrator sessions', async () => {
     const before = await countSessions(adminUsername);
-    const common = {
-      connectionString: isolatedUrl.toString(),
-      secret,
-      baseURL,
-      administratorUsername: adminUsername,
-      administratorCredential: adminCredential,
-      username: demoUsername,
-      displayName: 'Orchestration Demo',
-    };
 
-    const first = await bootstrapReferenceDemoUserWithAdministratorCredentials({
-      ...common,
-      temporaryPassword: demoCredential,
-    });
+    const first = await runReferenceDemoBootstrap(
+      bootstrapEnvironment(demoCredential),
+    );
     expect(first).toMatchObject({
       username: demoUsername,
       accountStatus: 'active',
@@ -110,12 +107,41 @@ describe('Reference transient demo bootstrap PostgreSQL E2E', () => {
     });
     expect(await countSessions(adminUsername)).toBe(before);
 
-    const retry = await bootstrapReferenceDemoUserWithAdministratorCredentials({
-      ...common,
-      temporaryPassword: credential('different'),
+    const permissionStore = new PostgresPermissionStore(requiredConnection().client);
+    const demoPrincipalId = principalId(first.identityId);
+    await expect(permissionStore.findPrincipal(demoPrincipalId)).resolves.toEqual({
+      principalId: demoPrincipalId,
+      roleIds: [DEMO_ROLES.member],
+      grants: [],
+      revokes: [],
     });
+    await expect(
+      permissionStore.evaluatePermission({
+        principalId: demoPrincipalId,
+        capability: DEMO_CAPABILITIES.appUse,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      permissionStore.evaluatePermission({
+        principalId: demoPrincipalId,
+        capability: DEMO_CAPABILITIES.tasksManage,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      permissionStore.evaluatePermission({
+        principalId: demoPrincipalId,
+        capability: DEMO_CAPABILITIES.usersManage,
+      }),
+    ).resolves.toBe(false);
+
+    const retry = await runReferenceDemoBootstrap(
+      bootstrapEnvironment(credential('different')),
+    );
     expect(retry.identityId).toBe(first.identityId);
     expect(await countSessions(adminUsername)).toBe(before);
+    await expect(permissionStore.findPrincipal(demoPrincipalId)).resolves.toMatchObject({
+      roleIds: [DEMO_ROLES.member],
+    });
 
     const states = await requiredConnection().client<{ count: number }[]>`
       SELECT count(*)::int AS count
@@ -124,6 +150,17 @@ describe('Reference transient demo bootstrap PostgreSQL E2E', () => {
       WHERE u.username = ${demoUsername}
     `;
     expect(states[0]?.count).toBe(1);
+
+    const roles = await requiredConnection().client<{ role_id: string; kind: string }[]>`
+      SELECT role_id, kind
+      FROM appbasis_permission_role
+      WHERE role_id IN (${DEMO_ROLES.member}, ${DEMO_ROLES.admin})
+      ORDER BY role_id ASC
+    `;
+    expect(roles).toEqual([
+      { role_id: DEMO_ROLES.admin, kind: 'system' },
+      { role_id: DEMO_ROLES.member, kind: 'system' },
+    ]);
   });
 
   it('rejects an invalid administrator credential without creating a target or session', async () => {
@@ -162,6 +199,21 @@ describe('Reference transient demo bootstrap PostgreSQL E2E', () => {
     expect(await countUsers('orchestration.unauthorized')).toBe(0);
   });
 });
+
+function bootstrapEnvironment(temporaryPassword: string): NodeJS.ProcessEnv {
+  return {
+    APPBASIS_DEMO_BOOTSTRAP_TARGET: 'reference-preview',
+    APPBASIS_DEMO_BOOTSTRAP_APPLY: '1',
+    APPBASIS_DATABASE_URL: isolatedUrl.toString(),
+    APPBASIS_BETTER_AUTH_SECRET: secret,
+    APPBASIS_PREVIEW_URL: baseURL,
+    APPBASIS_ROOT_ADMIN_USERNAME: adminUsername,
+    APPBASIS_ROOT_ADMIN_PASSWORD: adminCredential,
+    APPBASIS_DEMO_USER_USERNAME: demoUsername,
+    APPBASIS_DEMO_USER_DISPLAY_NAME: 'Orchestration Demo',
+    APPBASIS_DEMO_USER_TEMPORARY_PASSWORD: temporaryPassword,
+  };
+}
 
 function requiredConnection(): ReturnType<typeof createPostgresDatabase> {
   if (connection === undefined) throw new Error('Expected orchestration database connection');

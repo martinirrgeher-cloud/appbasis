@@ -2,12 +2,9 @@ import { createPostgresDatabase } from '@appbasis/database';
 import { createIdentityRuntime } from '@appbasis/identity';
 import { createBetterAuthRuntime } from '@appbasis/identity/better-auth';
 import {
-  DEMO_KNOWN_CAPABILITIES,
-  DEMO_ROLE_BUNDLES,
-  DEMO_ROLES,
-  InMemoryPermissionStore,
-  principalId,
-  type PrincipalPermissions,
+  PostgresPermissionStore,
+  type PermissionPostgresClient,
+  type PermissionStore,
 } from '@appbasis/permissions';
 import { PostgresTaskRepository } from '@appbasis/tasks';
 
@@ -21,8 +18,6 @@ export interface ReferenceWorkerEnv {
   HYPERDRIVE?: HyperdriveBinding;
   BETTER_AUTH_SECRET?: string;
   APPBASIS_BASE_URL?: string;
-  APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS?: string;
-  APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS?: string;
 }
 
 const fallbackApp = createReferenceApp();
@@ -51,7 +46,11 @@ export const worker = {
         sql: connection.client,
         baseURL: configuration.baseURL,
       });
-      const permissions = createReferencePermissionStore(env);
+      const permissions = createReferencePermissionStore({
+        unsafe(query, parameters) {
+          return connection.client.unsafe(query, parameters);
+        },
+      });
       const tasks = new PostgresTaskRepository({
         unsafe(query, parameters) {
           return connection.client.unsafe(query, parameters);
@@ -71,6 +70,12 @@ export const worker = {
 };
 
 export default worker;
+
+export function createReferencePermissionStore(
+  client: PermissionPostgresClient,
+): PermissionStore {
+  return new PostgresPermissionStore(client);
+}
 
 function runtimeConfiguration(env: ReferenceWorkerEnv): {
   connectionString: string;
@@ -104,36 +109,4 @@ function normalizedBaseURL(value: string | undefined): string | null {
   } catch {
     return null;
   }
-}
-
-function createReferencePermissionStore(env: ReferenceWorkerEnv) {
-  const principals = new Map<string, PrincipalPermissions>();
-
-  for (const id of identityIds(env.APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS)) {
-    principals.set(id, {
-      principalId: principalId(id),
-      roleIds: [DEMO_ROLES.member],
-      grants: [],
-      revokes: [],
-    });
-  }
-  for (const id of identityIds(env.APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS)) {
-    principals.set(id, {
-      principalId: principalId(id),
-      roleIds: [DEMO_ROLES.admin],
-      grants: [],
-      revokes: [],
-    });
-  }
-
-  return new InMemoryPermissionStore({
-    knownCapabilities: DEMO_KNOWN_CAPABILITIES,
-    roles: DEMO_ROLE_BUNDLES,
-    principals: [...principals.values()],
-  });
-}
-
-function identityIds(value: string | undefined): string[] {
-  if (value === undefined) return [];
-  return [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
 }
