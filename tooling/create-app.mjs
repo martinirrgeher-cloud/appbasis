@@ -11,7 +11,7 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseAppDefinition } from "./app-definition.mjs";
-import { acquireAppPublicationClaim } from "./app-publication.mjs";
+import { acquireAppRegistryLock } from "./app-publication.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-";
 
@@ -49,7 +49,7 @@ export async function createAppSkeleton(input, options = {}) {
   );
   await mkdir(stagingDirectory);
 
-  let publicationClaim;
+  let registryLock;
   let destinationReserved = false;
   let published = false;
 
@@ -70,10 +70,9 @@ export async function createAppSkeleton(input, options = {}) {
       stagingDirectory,
     });
 
-    publicationClaim = await acquireAppPublicationClaim(
-      repositoryRoot,
-      definition.appId,
-    );
+    // Only the short publish phase is serialized. Staging stays concurrent and
+    // outside app discovery; verify:apps uses the same lock before scanning.
+    registryLock = await acquireAppRegistryLock(repositoryRoot, "publish");
 
     try {
       await mkdir(destination);
@@ -90,9 +89,6 @@ export async function createAppSkeleton(input, options = {}) {
       stagingDirectory,
     });
 
-    // Publish the manifest last. While the destination is reserved but the
-    // manifest is absent, verify:apps recognizes the live publication claim
-    // and does not mistake the in-flight directory for a completed app.
     await rename(
       join(stagingDirectory, "README.md"),
       join(destination, "README.md"),
@@ -110,7 +106,7 @@ export async function createAppSkeleton(input, options = {}) {
     await rm(stagingDirectory, { recursive: true, force: true });
     throw error;
   } finally {
-    await publicationClaim?.release();
+    await registryLock?.release();
   }
 
   return Object.freeze({
