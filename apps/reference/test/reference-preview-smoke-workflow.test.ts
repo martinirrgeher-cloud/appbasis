@@ -79,6 +79,19 @@ describe("Reference preview smoke workflows", () => {
     expect(smokeWorkflow).toMatch(/push:\n\s+branches:\n\s+- main\n\s+paths:/);
     expect(smokeWorkflow).toContain(".github/workflows/reference-preview-smoke.yml");
     expect(smokeWorkflow).toContain(".github/workflows/reference-preview-deploy.yml");
+    expect(smokeWorkflow).toContain(".github/workflows/reference-preview-permission-cutover.yml");
+    expect(smokeWorkflow).toContain(
+      "apps/reference/tooling/reference-preview-permission-foundation.ts",
+    );
+    expect(smokeWorkflow).toContain(
+      "apps/reference/tooling/vite.permission-foundation.config.ts",
+    );
+    expect(smokeWorkflow).toContain(
+      "apps/reference/tooling/reference-preview-permission-cutover.ts",
+    );
+    expect(smokeWorkflow).toContain(
+      "apps/reference/tooling/vite.permission-cutover.config.ts",
+    );
     expect(smokeWorkflow).toContain("tooling/reference-preview-smoke.mjs");
   });
 
