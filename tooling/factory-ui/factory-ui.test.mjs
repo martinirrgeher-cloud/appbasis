@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { SUPPORTED_PLATFORM_SERVICES } from "../app-definition.mjs";
+import { acquireAppRegistryLock } from "../app-publication.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
 import { startFactoryServer } from "./server.mjs";
 
@@ -25,7 +27,7 @@ test("factory snapshot reads the real app registry and supported catalog", async
   });
 });
 
-test("factory snapshot remains readable when the repository root is not writable", async () => {
+test("factory snapshot reads do not contend for the app registry publication lock", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "appbasis-factory-readonly-"));
   await mkdir(join(fixtureRoot, "apps", "demo"), { recursive: true });
   await mkdir(join(fixtureRoot, "modules", "tasks"), { recursive: true });
@@ -45,16 +47,21 @@ test("factory snapshot remains readable when the repository root is not writable
     "utf8",
   );
 
-  await chmod(fixtureRoot, 0o555);
+  const lock = await acquireAppRegistryLock(fixtureRoot, "publish");
   try {
-    const snapshot = await loadFactorySnapshot(fixtureRoot);
+    const snapshot = await Promise.race([
+      loadFactorySnapshot(fixtureRoot),
+      delay(250).then(() => {
+        throw new Error("Factory snapshot unexpectedly waited for the registry lock.");
+      }),
+    ]);
     assert.deepEqual(
       snapshot.apps.map((app) => app.appId),
       ["demo"],
     );
     assert.deepEqual(snapshot.catalog.modules, ["tasks"]);
   } finally {
-    await chmod(fixtureRoot, 0o755);
+    await lock.release();
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 });
