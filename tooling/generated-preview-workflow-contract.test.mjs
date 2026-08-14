@@ -110,6 +110,14 @@ test("normal deploy validates the dedicated binding and proves the database-back
   assert.match(deploy, /writeGeneratedPreviewWranglerConfig/);
   assert.match(deploy, /Generated preview Worker is not bootstrapped/);
   assert.match(deploy, /Generated preview Worker is missing BETTER_AUTH_SECRET/);
+  assert.match(
+    deploy,
+    /APPBASIS_BETTER_AUTH_SECRET: \$\{\{ secrets\.APPBASIS_BETTER_AUTH_SECRET \}\}/,
+  );
+  assert.match(
+    deploy,
+    /Protected Better Auth secret does not satisfy the generated runtime contract/,
+  );
   assert.match(deploy, /--dry-run/);
   assert.match(deploy, /Verify deployed generated runtime boundary/);
   assert.match(deploy, /node \.\/tooling\/generated-preview-smoke\.mjs/);
