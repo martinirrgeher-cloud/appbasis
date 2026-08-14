@@ -62,7 +62,7 @@ export async function createAppSkeleton(input, options = {}) {
   let destinationReserved = false;
   let published = false;
   let lockfileSnapshot;
-  let lockfileFinalizationStarted = false;
+  let workspaceFinalizationStarted = false;
 
   try {
     await writeFile(
@@ -84,7 +84,7 @@ export async function createAppSkeleton(input, options = {}) {
       stagingDirectory,
     });
 
-    // Only the publish/finalization phase is serialized. Staging stays
+    // Publication and workspace finalization are serialized. Staging stays
     // concurrent and outside app discovery; verify:apps uses the same lock.
     registryLock = await acquireAppRegistryLock(repositoryRoot, "publish");
 
@@ -116,10 +116,10 @@ export async function createAppSkeleton(input, options = {}) {
     }
 
     if (publishesWorkspacePackage) {
-      const lockfileFinalizer =
-        options.testingHooks?.lockfileFinalizer ?? synchronizeWorkspaceLockfile;
-      lockfileFinalizationStarted = true;
-      await lockfileFinalizer({
+      const workspaceFinalizer =
+        options.testingHooks?.workspaceFinalizer ?? finalizeGeneratedWorkspace;
+      workspaceFinalizationStarted = true;
+      await workspaceFinalizer({
         repositoryRoot,
         lockfilePath,
         destination,
@@ -127,8 +127,8 @@ export async function createAppSkeleton(input, options = {}) {
     }
 
     // Publish the manifest last. App discovery therefore never observes an
-    // app definition before every generated runtime file and its workspace
-    // lockfile importer are fully in place.
+    // app definition before every generated runtime file, workspace lockfile
+    // importer and local workspace dependency link are fully in place.
     await rename(
       join(stagingDirectory, "appbasis.app.json"),
       join(destination, "appbasis.app.json"),
@@ -138,7 +138,7 @@ export async function createAppSkeleton(input, options = {}) {
   } catch (error) {
     const rollbackErrors = [];
 
-    if (lockfileFinalizationStarted && lockfileSnapshot !== undefined) {
+    if (workspaceFinalizationStarted && lockfileSnapshot !== undefined) {
       try {
         await writeFile(lockfilePath, lockfileSnapshot);
       } catch (rollbackError) {
@@ -257,12 +257,11 @@ async function publishGeneratedFile(stagingDirectory, destination, runtimeFile) 
   await rename(source, target);
 }
 
-async function synchronizeWorkspaceLockfile({ repositoryRoot }) {
+async function finalizeGeneratedWorkspace({ repositoryRoot }) {
   const corepack = process.platform === "win32" ? "corepack.cmd" : "corepack";
   const args = [
     "pnpm",
     "install",
-    "--lockfile-only",
     "--no-frozen-lockfile",
     "--ignore-scripts",
   ];
@@ -280,7 +279,7 @@ async function synchronizeWorkspaceLockfile({ repositoryRoot }) {
       }
       const detail =
         signal === null ? `exit code ${String(code)}` : `signal ${signal}`;
-      reject(new Error(`Workspace lockfile synchronization failed (${detail}).`));
+      reject(new Error(`Generated workspace finalization failed (${detail}).`));
     });
   });
 }
