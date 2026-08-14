@@ -93,7 +93,7 @@
 }
 
 .ab-textarea {
-  min-height: calc(var(--ab-touch-target) * 2);
+  min-height: calc(var(--ab-touch-target) + var(--ab-touch-target));
   padding: var(--ab-space-3);
   resize: vertical;
 }
