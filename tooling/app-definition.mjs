@@ -9,7 +9,9 @@ const APP_DEFINITION_KEYS = new Set([
   "appId",
   "displayName",
   "modules",
+  "platformServices",
 ]);
+const SUPPORTED_PLATFORM_SERVICES = new Set(["identity"]);
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 export function parseAppDefinition(value, options = {}) {
@@ -24,8 +26,8 @@ export function parseAppDefinition(value, options = {}) {
     }
   }
 
-  if (value.schemaVersion !== 1) {
-    throw new Error("App definition schemaVersion must be 1.");
+  if (value.schemaVersion !== 2) {
+    throw new Error("App definition schemaVersion must be 2.");
   }
 
   const appId = requiredIdentifier(value.appId, "appId");
@@ -46,22 +48,25 @@ export function parseAppDefinition(value, options = {}) {
     );
   }
 
-  if (!Array.isArray(value.modules)) {
-    throw new Error("App definition modules must be an array.");
-  }
-
-  const modules = value.modules.map((moduleName, index) =>
-    requiredIdentifier(moduleName, `modules[${index}]`),
+  const modules = identifierList(value.modules, "modules");
+  const platformServices = identifierList(
+    value.platformServices,
+    "platformServices",
   );
-  if (new Set(modules).size !== modules.length) {
-    throw new Error("App definition modules must not contain duplicates.");
+  for (const platformService of platformServices) {
+    if (!SUPPORTED_PLATFORM_SERVICES.has(platformService)) {
+      throw new Error(
+        `App ${appId} references unsupported platform service ${platformService}.`,
+      );
+    }
   }
 
   return Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     appId,
     displayName: value.displayName,
     modules: Object.freeze([...modules]),
+    platformServices: Object.freeze([...platformServices]),
   });
 }
 
@@ -125,6 +130,21 @@ async function directoryNames(path) {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
+}
+
+function identifierList(value, field) {
+  if (!Array.isArray(value)) {
+    throw new Error(`App definition ${field} must be an array.`);
+  }
+
+  const identifiers = value.map((identifier, index) =>
+    requiredIdentifier(identifier, `${field}[${index}]`),
+  );
+  if (new Set(identifiers).size !== identifiers.length) {
+    throw new Error(`App definition ${field} must not contain duplicates.`);
+  }
+
+  return identifiers;
 }
 
 function requiredIdentifier(value, field) {
