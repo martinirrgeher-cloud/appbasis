@@ -7,11 +7,12 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseAppDefinition } from "./app-definition.mjs";
 import { acquireAppRegistryLock } from "./app-publication.mjs";
+import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-";
 
@@ -37,6 +38,7 @@ export async function createAppSkeleton(input, options = {}) {
     }
   }
 
+  const runtimeFiles = generatedRuntimeFiles(definition);
   const appsDirectory = join(repositoryRoot, "apps");
   await mkdir(appsDirectory, { recursive: true });
   const destination = join(appsDirectory, definition.appId);
@@ -62,9 +64,12 @@ export async function createAppSkeleton(input, options = {}) {
     );
     await writeFile(
       join(stagingDirectory, "README.md"),
-      generatedReadme(definition),
+      generatedReadme(definition, runtimeFiles),
       { flag: "wx" },
     );
+    for (const runtimeFile of runtimeFiles) {
+      await stageGeneratedFile(stagingDirectory, runtimeFile);
+    }
 
     await options.testingHooks?.afterStage?.({
       destination,
@@ -94,6 +99,11 @@ export async function createAppSkeleton(input, options = {}) {
       join(stagingDirectory, "README.md"),
       join(destination, "README.md"),
     );
+    for (const runtimeFile of runtimeFiles) {
+      await publishGeneratedFile(stagingDirectory, destination, runtimeFile);
+    }
+    // Publish the manifest last. App discovery therefore never observes an
+    // app definition before every generated runtime file is in place.
     await rename(
       join(stagingDirectory, "appbasis.app.json"),
       join(destination, "appbasis.app.json"),
@@ -163,14 +173,39 @@ async function runCli() {
   console.log(`Created AppBasis app skeleton: ${result.relativeDestination}.`);
 }
 
-function generatedReadme(definition) {
+function generatedRuntimeFiles(definition) {
+  if (!definition.platformServices.includes("identity")) return Object.freeze([]);
+  return createIdentityRuntimeTemplate({
+    appId: definition.appId,
+    displayName: definition.displayName,
+  }).files;
+}
+
+function generatedReadme(definition, runtimeFiles) {
   const modules =
     definition.modules.length === 0 ? "none" : definition.modules.join(", ");
   const platformServices =
     definition.platformServices.length === 0
       ? "none"
       : definition.platformServices.join(", ");
-  return `# ${definition.displayName}\n\nGenerated AppBasis app skeleton.\n\n- App ID: \`${definition.appId}\`\n- Modules: ${modules}\n- Platform services: ${platformServices}\n\nThis skeleton contains the versioned app definition only. Runtime composition is added by a separately verified generated-runtime template rather than copied from another app.\n`;
+  const runtimeDescription =
+    runtimeFiles.length === 0
+      ? "This skeleton contains the versioned app definition only."
+      : "This app includes the independently verified generated identity runtime and consumes `@appbasis/identity/http` without copying the Reference app.";
+  return `# ${definition.displayName}\n\nGenerated AppBasis app skeleton.\n\n- App ID: \`${definition.appId}\`\n- Modules: ${modules}\n- Platform services: ${platformServices}\n\n${runtimeDescription}\n`;
+}
+
+async function stageGeneratedFile(stagingDirectory, runtimeFile) {
+  const target = join(stagingDirectory, runtimeFile.path);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, runtimeFile.content, { flag: "wx" });
+}
+
+async function publishGeneratedFile(stagingDirectory, destination, runtimeFile) {
+  const source = join(stagingDirectory, runtimeFile.path);
+  const target = join(destination, runtimeFile.path);
+  await mkdir(dirname(target), { recursive: true });
+  await rename(source, target);
 }
 
 async function directoryNames(path) {
