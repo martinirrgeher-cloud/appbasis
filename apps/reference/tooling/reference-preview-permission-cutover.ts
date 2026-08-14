@@ -125,10 +125,13 @@ export function legacyPermissionAssignmentsFromWorkerSettings(
 export async function applyReferencePreviewPermissionCutover(
   input: ReferencePermissionCutoverInput,
 ) {
-  const assignments = legacyPermissionAssignmentsFromWorkerSettings(input.workerSettings);
+  const legacyAssignments = legacyPermissionAssignmentsFromWorkerSettings(input.workerSettings);
   const connection = createPostgresDatabase(input.connectionString);
   try {
-    await assertLegacyIdentitiesExist(connection.client, assignments);
+    const assignments = await effectiveLegacyPermissionAssignments(
+      connection.client,
+      legacyAssignments,
+    );
     let version = await detectReferencePermissionSchemaVersion(connection.client);
     if (version === 1) {
       await applyVersionedMigration(connection, LIFECYCLE_MIGRATION_PATH);
@@ -173,10 +176,13 @@ export async function applyReferencePreviewPermissionCutover(
 export async function verifyReferencePreviewPermissionCutover(
   input: ReferencePermissionCutoverInput,
 ) {
-  const assignments = legacyPermissionAssignmentsFromWorkerSettings(input.workerSettings);
+  const legacyAssignments = legacyPermissionAssignmentsFromWorkerSettings(input.workerSettings);
   const connection = createPostgresDatabase(input.connectionString);
   try {
-    await assertLegacyIdentitiesExist(connection.client, assignments);
+    const assignments = await effectiveLegacyPermissionAssignments(
+      connection.client,
+      legacyAssignments,
+    );
     const version = await detectReferencePermissionSchemaVersion(connection.client);
     if (version !== 3) {
       throw new ReferencePermissionCutoverStateError(
@@ -367,24 +373,54 @@ async function verifyCutoverState(
   }
 }
 
-async function assertLegacyIdentitiesExist(
+async function effectiveLegacyPermissionAssignments(
   client: PermissionPostgresClient,
   assignments: readonly LegacyPermissionAssignment[],
-): Promise<void> {
+): Promise<readonly LegacyPermissionAssignment[]> {
+  const effective: LegacyPermissionAssignment[] = [];
+
   for (const assignment of assignments) {
     const rows = await client.unsafe(
-      `SELECT security.identity_id
-       FROM appbasis_identity_security_state security
-       JOIN "user" identity_user ON identity_user.id = security.identity_id
-       WHERE security.identity_id = $1`,
+      `SELECT identity_user.role AS auth_role, security.identity_id
+       FROM "user" identity_user
+       LEFT JOIN appbasis_identity_security_state security
+         ON security.identity_id = identity_user.id
+       WHERE identity_user.id = $1`,
       [assignment.principalId],
     );
     if (rows.length !== 1) {
       throw new ReferencePermissionCutoverStateError(
-        'A legacy Reference permission assignment references an unknown application identity.',
+        'A legacy Reference permission assignment references an unknown authentication identity.',
       );
     }
+
+    const identityId = rows[0]?.identity_id;
+    if (identityId === assignment.principalId) {
+      effective.push(assignment);
+      continue;
+    }
+    if (identityId !== null && identityId !== undefined) {
+      throw new ReferencePermissionCutoverStateError(
+        'A legacy Reference permission assignment resolved to invalid AppBasis identity state.',
+      );
+    }
+
+    if (rows[0]?.auth_role === 'admin') {
+      continue;
+    }
+
+    throw new ReferencePermissionCutoverStateError(
+      'A legacy Reference permission assignment references an authentication identity without AppBasis application state.',
+    );
   }
+
+  if (effective.length === 0) {
+    throw new ReferencePermissionCutoverStateError(
+      'Existing Reference Worker contains no effective legacy application permission assignments.',
+    );
+  }
+
+  return Object.freeze(effective);
 }
 
 async function featurePresent(
