@@ -69,6 +69,20 @@ jobs:
             --output ./apps/reference/tooling/.reference-worker-settings.json
           test -s ./apps/reference/tooling/.reference-worker-settings.json || { echo 'Reference Worker settings snapshot is empty.' >&2; exit 1; }
 
+      - name: Build isolated permission foundation runner
+        run: pnpm --filter @appbasis/reference build:permission-foundation
+
+      - name: Ensure versioned permission foundation exists
+        shell: bash
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_PERMISSION_FOUNDATION_TARGET: reference-preview
+        run: |
+          set -euo pipefail
+          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing protected Reference preview database connection.' >&2; exit 1; }
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+          node ./apps/reference/tooling/.permission-foundation-dist/reference-preview-permission-foundation.mjs
+
       - name: Build isolated permission cutover runner
         run: pnpm --filter @appbasis/reference build:permission-cutover
 
@@ -90,4 +104,5 @@ jobs:
         shell: bash
         run: |
           rm -f ./apps/reference/tooling/.reference-worker-settings.json
+          rm -rf ./apps/reference/tooling/.permission-foundation-dist
           rm -rf ./apps/reference/tooling/.permission-cutover-dist
