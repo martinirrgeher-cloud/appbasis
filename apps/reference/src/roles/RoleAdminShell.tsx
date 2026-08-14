@@ -1,11 +1,17 @@
 import type { ReactNode } from 'react';
 
 import { ReferenceBrand } from '../shell/ReferenceBrand';
+import { ReferenceNavigationLink } from '../shell/ReferenceNavigationLink';
 import './role-overview.css';
 
 const roleBrandClasses = {
   root: 'roles-brand',
   mark: 'roles-brand__mark',
+} as const;
+
+const roleNavigationLinkClasses = {
+  root: 'roles-nav-item',
+  active: 'roles-nav-item--active',
 } as const;
 
 export function RoleAdminShell({ children }: { readonly children: ReactNode }) {
@@ -74,10 +80,10 @@ function NavItem({
   readonly children: ReactNode;
 }) {
   return (
-    <a className={`roles-nav-item${active ? ' roles-nav-item--active' : ''}`} href={href} aria-current={active ? 'page' : undefined}>
+    <ReferenceNavigationLink classes={roleNavigationLinkClasses} href={href} active={active}>
       <Icon name={icon} />
       <span>{children}</span>
-    </a>
+    </ReferenceNavigationLink>
   );
 }
 
