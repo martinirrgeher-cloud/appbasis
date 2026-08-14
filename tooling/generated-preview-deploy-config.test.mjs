@@ -12,7 +12,9 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  renderGeneratedPreviewBootstrapWranglerConfig,
   renderGeneratedPreviewWranglerConfig,
+  writeGeneratedPreviewBootstrapWranglerConfig,
   writeGeneratedPreviewWranglerConfig,
 } from "./generated-preview-deploy-config.mjs";
 
@@ -29,6 +31,8 @@ test("renders deployment-only Cloudflare bindings without secret values", () => 
     main: "./worker/index.ts",
     compatibility_date: "2026-08-14",
     compatibility_flags: ["nodejs_compat"],
+    workers_dev: true,
+    preview_urls: false,
     keep_vars: true,
     vars: {
       APPBASIS_BASE_URL: "https://tasks-preview.example.test",
@@ -47,6 +51,31 @@ test("renders deployment-only Cloudflare bindings without secret values", () => 
   const serialized = JSON.stringify(config);
   assert.match(serialized, /BETTER_AUTH_SECRET/);
   assert.doesNotMatch(serialized, /secret-value|postgres(?:ql)?:\/\//i);
+});
+
+test("renders a secretless bootstrap config without weakening the normal deploy config", () => {
+  const input = {
+    appId: "tasks-minimal",
+    hyperdriveId: "provider-hyperdrive-id",
+    baseURL: "https://tasks-preview.example.test",
+  };
+  const deployConfig = renderGeneratedPreviewWranglerConfig(input);
+  const bootstrapConfig = renderGeneratedPreviewBootstrapWranglerConfig(input);
+
+  assert.equal("secrets" in bootstrapConfig, false);
+  assert.deepEqual(bootstrapConfig, {
+    $schema: deployConfig.$schema,
+    name: deployConfig.name,
+    main: deployConfig.main,
+    compatibility_date: deployConfig.compatibility_date,
+    compatibility_flags: deployConfig.compatibility_flags,
+    workers_dev: true,
+    preview_urls: false,
+    keep_vars: true,
+    vars: deployConfig.vars,
+    hyperdrive: deployConfig.hyperdrive,
+  });
+  assert.deepEqual(deployConfig.secrets.required, ["BETTER_AUTH_SECRET"]);
 });
 
 test("fails closed on invalid provider, Worker-name or public-origin deployment inputs", () => {
@@ -110,6 +139,26 @@ test("writes only the rendered deployment artifact with owner-only permissions",
     const written = JSON.parse(await readFile(outputPath, "utf8"));
     assert.equal(written.hyperdrive[0].id, "provider-id");
     assert.deepEqual(written.secrets.required, ["BETTER_AUTH_SECRET"]);
+    assert.equal((await stat(outputPath)).mode & 0o777, 0o600);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("writes the bootstrap artifact owner-only and without secret declarations", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "appbasis-generated-preview-"));
+  const outputPath = path.join(directory, "wrangler.bootstrap.generated.json");
+  try {
+    await writeGeneratedPreviewBootstrapWranglerConfig({
+      appId: "tasks-minimal",
+      hyperdriveId: "provider-id",
+      baseURL: "https://tasks-preview.example.test",
+      outputPath,
+    });
+    const written = JSON.parse(await readFile(outputPath, "utf8"));
+    assert.equal("secrets" in written, false);
+    assert.equal(written.workers_dev, true);
+    assert.equal(written.preview_urls, false);
     assert.equal((await stat(outputPath)).mode & 0o777, 0o600);
   } finally {
     await rm(directory, { recursive: true, force: true });

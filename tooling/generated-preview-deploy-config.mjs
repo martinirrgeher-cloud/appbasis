@@ -25,6 +25,8 @@ export function renderGeneratedPreviewWranglerConfig({
     main: "./worker/index.ts",
     compatibility_date: normalizedCompatibilityDate,
     compatibility_flags: Object.freeze(["nodejs_compat"]),
+    workers_dev: true,
+    preview_urls: false,
     keep_vars: true,
     vars: Object.freeze({
       APPBASIS_BASE_URL: normalizedBaseURL,
@@ -41,14 +43,37 @@ export function renderGeneratedPreviewWranglerConfig({
   });
 }
 
+export function renderGeneratedPreviewBootstrapWranglerConfig(input = {}) {
+  const config = renderGeneratedPreviewWranglerConfig(input);
+  const bootstrapConfig = { ...config };
+  delete bootstrapConfig.secrets;
+  return Object.freeze(bootstrapConfig);
+}
+
 export async function writeGeneratedPreviewWranglerConfig({
   outputPath,
   ...input
 } = {}) {
+  return writeGeneratedConfig(
+    outputPath,
+    renderGeneratedPreviewWranglerConfig(input),
+  );
+}
+
+export async function writeGeneratedPreviewBootstrapWranglerConfig({
+  outputPath,
+  ...input
+} = {}) {
+  return writeGeneratedConfig(
+    outputPath,
+    renderGeneratedPreviewBootstrapWranglerConfig(input),
+  );
+}
+
+async function writeGeneratedConfig(outputPath, config) {
   if (typeof outputPath !== "string" || outputPath.trim().length === 0) {
     throw new Error("outputPath is required.");
   }
-  const config = renderGeneratedPreviewWranglerConfig(input);
   const temporaryPath = `${outputPath}.${randomUUID()}.tmp`;
   try {
     await writeFile(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, {
