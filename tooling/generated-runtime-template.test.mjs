@@ -27,11 +27,12 @@ test("renders the deterministic runnable identity runtime", () => {
   );
 });
 
-test("uses the shared identity HTTP adapter without Reference coupling", () => {
+test("uses a collision-resistant app package namespace and shared identity HTTP adapter", () => {
   const template = createIdentityRuntimeTemplate(input);
   const worker = content(template, "worker/app.ts");
   const packageJson = JSON.parse(content(template, "package.json"));
 
+  assert.equal(packageJson.name, "@appbasis/app-checklist");
   assert.match(worker, /from "@appbasis\/identity\/http"/);
   assert.match(worker, /createIdentityHttpHandlers/);
   assert.match(worker, /\/api\/auth\/sign-in/);
