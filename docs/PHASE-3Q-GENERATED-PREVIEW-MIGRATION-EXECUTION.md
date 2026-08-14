@@ -16,7 +16,7 @@ Für diesen Slice gilt:
 - logischer PostgreSQL-Datenbankname: `appbasis_tasks_preview`
 - Connection String: ausschließlich Deployment-/Environment-Konfiguration über `APPBASIS_DATABASE_URL`
 
-Die bestehende Reference-Preview-Datenbank ist ausdrücklich kein gültiges Generated-App-Migrationsziel. Eine Connection URL, die nicht exakt `appbasis_tasks_preview` auswählt, wird vor der Datenbankausführung abgewiesen.
+Die bestehende Reference-Preview-Datenbank ist ausdrücklich kein gültiges Generated-App-Migrationsziel. Der URL-Pfad muss `appbasis_tasks_preview` auswählen; zusätzlich prüft der Executor innerhalb der Transaktion mit `current_database()` die vom PostgreSQL-Treiber tatsächlich ausgewählte Datenbank, bevor Schema-Prüfung oder DDL ausgeführt werden.
 
 ## Source of Truth und Reihenfolge
 
@@ -37,7 +37,8 @@ Die Ausführung schlägt vor jeder Mutation fehl bei:
 - falscher App-ID,
 - falschem Migration-Target,
 - fehlender expliziter Apply-Bestätigung,
-- falschem logischen Datenbanknamen,
+- falschem logischen Datenbanknamen im URL-Pfad,
+- Abweichung zwischen vereinbartem Datenbanknamen und `current_database()`, auch bei treiberseitiger Query-Parameter-Übersteuerung,
 - unbekanntem, doppeltem oder fehlendem Owner,
 - abweichendem Owner-Root,
 - fehlender oder leerer Migration,
@@ -73,5 +74,6 @@ Phase 3Q gilt technisch als bewiesen, wenn:
 2. der bestehende Reference-Executor über denselben Kern ohne Verhaltensbruch funktioniert,
 3. ein realer PostgreSQL-E2E-Lauf eine leere Datenbank `appbasis_tasks_preview` erstellt, exakt die vier Migrationen des Generated-Manifests anwendet und die erwarteten Identity-/Permissions-/Tasks-Tabellen nachweist,
 4. ein zweiter Lauf auf derselben bereits migrierten Datenbank abgewiesen wird,
-5. der dedizierte GitHub-Workflow ausschließlich das geschützte Generated-Preview-Environment und `APPBASIS_DATABASE_URL` konsumiert,
-6. CI und Review auf demselben exakten Head vollständig grün sind.
+5. ein realer PostgreSQL-E2E-Lauf beweist, dass ein treiberseitiges `?database=...`-Override vor jeder Migration erkannt wird und das falsche Ziel unverändert bleibt,
+6. der dedizierte GitHub-Workflow ausschließlich das geschützte Generated-Preview-Environment und `APPBASIS_DATABASE_URL` konsumiert,
+7. CI und Review auf demselben exakten Head vollständig grün sind.
