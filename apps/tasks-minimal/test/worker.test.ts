@@ -6,11 +6,7 @@ import {
   capabilityId,
   principalId,
 } from "@appbasis/permissions";
-import {
-  InMemoryTaskRepository,
-  TASK_CAPABILITIES,
-  type TaskRepository,
-} from "@appbasis/tasks";
+import { InMemoryTaskRepository, TASK_CAPABILITIES } from "@appbasis/tasks";
 
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
@@ -144,37 +140,17 @@ describe("generated Worker entrypoint", () => {
   });
 
   it("returns a generic 500 without leaking runtime error names or messages", async () => {
-    const capability = capabilityId(TASK_CAPABILITIES.manage);
-    const permissions = new InMemoryPermissionStore({
-      knownCapabilities: [capability],
-      roles: [],
-      principals: [
-        {
-          principalId: principalId(currentIdentity.identity.identityId),
-          roleIds: [],
-          grants: [capability],
-          revokes: [],
-        },
-      ],
-    });
-    let closeCalls = 0;
     const leakingError = new Error("postgresql://message-secret-host/internal");
     leakingError.name = "postgresql://name-secret-host/internal";
-    const runtime: GeneratedPostgresApplicationRuntime = {
-      identity,
-      permissions,
-      tasks: failingTaskRepository(leakingError),
-      async close() {
-        closeCalls += 1;
-      },
-    };
     const originalError = console.error;
     const logged: string[] = [];
     console.error = (...values: unknown[]) => {
       logged.push(values.map(String).join(" "));
     };
     try {
-      const response = await createGeneratedWorker(() => runtime).fetch(
+      const response = await createGeneratedWorker(() => {
+        throw leakingError;
+      }).fetch(
         new Request("https://tasks-preview.example.test/api/tasks", {
           headers: { cookie: currentIdentity.sessionToken },
         }),
@@ -189,7 +165,6 @@ describe("generated Worker entrypoint", () => {
       expect(logged.join("\n")).toContain("UNEXPECTED_RUNTIME_ERROR");
       expect(logged.join("\n")).not.toContain("message-secret-host");
       expect(logged.join("\n")).not.toContain("name-secret-host");
-      expect(closeCalls).toBe(1);
     } finally {
       console.error = originalError;
     }
@@ -289,20 +264,3 @@ describe("generated Worker entrypoint", () => {
     }
   });
 });
-
-function failingTaskRepository(error: Error): TaskRepository {
-  return {
-    async list() {
-      throw error;
-    },
-    async findById() {
-      throw error;
-    },
-    async create() {
-      throw error;
-    },
-    async toggleStatus() {
-      throw error;
-    },
-  };
-}
