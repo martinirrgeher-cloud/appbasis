@@ -117,7 +117,9 @@ export async function createAppSkeleton(input, options = {}) {
 
     if (publishesWorkspacePackage) {
       const workspaceFinalizer =
-        options.testingHooks?.workspaceFinalizer ?? finalizeGeneratedWorkspace;
+        options.testingHooks?.workspaceFinalizer ??
+        options.testingHooks?.lockfileFinalizer ??
+        finalizeGeneratedWorkspace;
       workspaceFinalizationStarted = true;
       await workspaceFinalizer({
         repositoryRoot,
