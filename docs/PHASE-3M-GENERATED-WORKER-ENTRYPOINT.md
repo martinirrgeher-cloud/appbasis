@@ -22,8 +22,9 @@ Der Entrypoint akzeptiert `env` zunächst als `unknown` und validiert die tatsä
 - Jede andere Route verlangt vollständig gültige Runtime-Bindings; fehlende oder ungültige Konfiguration liefert `503 RUNTIME_NOT_CONFIGURED`.
 - Pro Request wird genau eine vollständige PostgreSQL-Anwendungskomposition erzeugt.
 - Dieselbe Hyperdrive-Verbindung trägt Identity, Permissions und Tasks.
-- Die Runtime wird in `finally` geschlossen.
-- Unerwartete Runtime-Fehler liefern eine generische `500 INTERNAL_ERROR`-Antwort. Weder Antwort noch strukturierter Fehlerlog enthalten den ursprünglichen Fehlermeldungstext und damit keine versehentlich eingebettete Datenbankadresse oder Secret-Information.
+- Die Runtime-Konstruktion ist exception-safe: Wird der PostgreSQL-Client bereits geöffnet und schlägt ein nachgelagerter Konstruktionsschritt fehl, wird der Client vor dem Weiterwerfen des ursprünglichen Fehlers best-effort geschlossen.
+- Nach der Request-Verarbeitung wird die request-scoped Runtime best-effort geschlossen. Ein `close()`-Fehler darf weder eine erfolgreiche Antwort noch eine bereits sanitierte Fehlerantwort ersetzen.
+- Unerwartete Runtime- und Cleanup-Fehler liefern beziehungsweise protokollieren ausschließlich feste Fehlerkategorien. Weder Antwort noch strukturierter Fehlerlog übernehmen `Error.name`, Fehlermeldungstext, Datenbankadressen oder Secret-Informationen aus dem ursprünglichen Fehler.
 
 Cloudflare empfiehlt für externe PostgreSQL-Verbindungen Hyperdrive und das Erzeugen eines Datenbankclients je Request; Hyperdrive verwaltet den zugrunde liegenden Pool.
 
@@ -38,13 +39,15 @@ Der checked generated Consumer `apps/tasks-minimal` und der Generator werden byt
 
 ## Tests
 
-Der Worker-Test beweist ohne Cloud-Ressourcen:
+Der Worker- und Runtime-Test beweisen ohne Cloud-Ressourcen:
 
 1. Liveness ohne Runtime-Erzeugung,
 2. fail-closed bei fehlenden Bindings,
 3. korrekte Übergabe validierter Bindings an die request-scoped Runtime,
-4. `close()` nach einem erfolgreichen Request,
-5. generische Fehlerantwort und Log-Ausgabe ohne Leakage des ursprünglichen Runtime-Fehlers.
+4. Cleanup einer teilweise konstruierten PostgreSQL-Runtime,
+5. `close()` nach einem erfolgreichen Request,
+6. Erhalt erfolgreicher und bereits sanitierter Fehlerantworten auch bei fehlschlagendem `close()`,
+7. generische Fehlerantwort und feste Log-Kategorien ohne Leakage von Fehlermeldung, manipuliertem `Error.name`, Datenbankadresse oder Secret-Information.
 
 ## Nicht-Ziele
 
