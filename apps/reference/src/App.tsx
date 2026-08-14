@@ -7,10 +7,16 @@ import {
   type ReferenceSession,
 } from './api';
 import { ReferenceBrand } from './shell/ReferenceBrand';
+import { ReferenceNavigationLink } from './shell/ReferenceNavigationLink';
 
 const taskBrandClasses = {
   root: 'brand',
   mark: 'brand-mark',
+} as const;
+
+const taskNavigationLinkClasses = {
+  root: 'nav-link',
+  active: 'nav-link--active',
 } as const;
 
 type AppPhase =
@@ -431,8 +437,12 @@ export function App() {
 
       <div className="shell-body">
         <nav className="navigation" aria-label="Hauptnavigation">
-          <a className="nav-link nav-link--active" href="#dashboard">Übersicht</a>
-          <a className="nav-link" href="#tasks">Aufgaben</a>
+          <ReferenceNavigationLink classes={taskNavigationLinkClasses} href="#dashboard" active>
+            Übersicht
+          </ReferenceNavigationLink>
+          <ReferenceNavigationLink classes={taskNavigationLinkClasses} href="#tasks">
+            Aufgaben
+          </ReferenceNavigationLink>
         </nav>
 
         <main className="content" id="dashboard">
