@@ -5,7 +5,11 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const REGISTRY_LOCK_FILE = ".appbasis-app-registry.lock";
 const LOCK_CANDIDATE_PREFIX = ".appbasis-app-registry-candidate-";
-const DEFAULT_WAIT_TIMEOUT_MS = 5_000;
+// App publication may finalize a generated workspace with pnpm while holding
+// this lock. Verification and concurrent generators must wait through that
+// bounded package-manager phase instead of failing after the old file-only
+// publication timeout.
+const DEFAULT_WAIT_TIMEOUT_MS = 120_000;
 const RETRY_DELAY_MS = 20;
 
 export async function acquireAppRegistryLock(
