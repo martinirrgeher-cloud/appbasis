@@ -161,14 +161,13 @@ async function assertExistingRoleDefinitionsMatch(
     const capabilityRows = await transaction.unsafe(
       `SELECT capability_id
        FROM appbasis_permission_role_capability
-       WHERE role_id = $1
-       ORDER BY capability_id ASC`,
+       WHERE role_id = $1`,
       [role.roleId],
     );
     const existingCapabilities = capabilityRows.map((row) =>
       textColumn(row, "capability_id"),
     );
-    if (!sameStrings(existingCapabilities, role.capabilities)) {
+    if (!sameStringSet(existingCapabilities, role.capabilities)) {
       throw new PermissionProvisioningStateError(
         `Existing permission role ${role.roleId} conflicts with the provisioning bundle.`,
       );
@@ -265,12 +264,13 @@ function sortedUniqueIds<T extends string>(
   return Object.freeze(normalized);
 }
 
-function sameStrings(
+function sameStringSet(
   existing: readonly string[],
   expected: readonly string[],
 ): boolean {
   if (existing.length !== expected.length) return false;
-  return existing.every((value, index) => value === expected[index]);
+  const expectedSet = new Set(expected);
+  return existing.every((value) => expectedSet.has(value));
 }
 
 function textColumn(
