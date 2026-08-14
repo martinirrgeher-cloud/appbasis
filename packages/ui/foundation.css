@@ -33,7 +33,8 @@
 
 .ab-button:focus-visible,
 .ab-icon-button:focus-visible,
-.ab-input:focus-visible {
+.ab-input:focus-visible,
+.ab-textarea:focus-visible {
   box-shadow: 0 0 0 3px var(--ab-focus-ring);
   outline: none;
 }
@@ -76,19 +77,35 @@
   color: var(--ab-text-inverse);
 }
 
-.ab-input {
+.ab-input,
+.ab-textarea {
   background: var(--ab-surface-card);
   border: 1px solid var(--ab-border-strong);
   border-radius: var(--ab-radius-control);
   color: var(--ab-text-primary);
   font: inherit;
-  min-height: var(--ab-touch-target);
-  padding: 0 var(--ab-space-3);
   width: 100%;
 }
 
-.ab-input::placeholder {
+.ab-input {
+  min-height: var(--ab-touch-target);
+  padding: 0 var(--ab-space-3);
+}
+
+.ab-textarea {
+  min-height: calc(var(--ab-touch-target) + var(--ab-touch-target));
+  padding: var(--ab-space-3);
+  resize: vertical;
+}
+
+.ab-input::placeholder,
+.ab-textarea::placeholder {
   color: var(--ab-text-muted);
+}
+
+.ab-input[aria-invalid='true'],
+.ab-textarea[aria-invalid='true'] {
+  border-color: var(--ab-state-danger);
 }
 
 .ab-badge {

@@ -53,15 +53,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
   background: var(--ab-brand-primary);
 }
 
-.demo-badge {
-  padding: 0.35rem 0.6rem;
-  border-radius: var(--ab-radius-pill);
-  color: var(--ab-state-info);
-  background: var(--ab-state-info-surface);
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
 .navigation {
   position: fixed;
   right: 0;
@@ -138,15 +129,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
   margin-bottom: var(--ab-space-4);
 }
 
-.metric-card,
-.task-panel,
-.gate-card {
-  border: 1px solid var(--ab-border-default);
-  border-radius: var(--ab-radius-card);
-  background: var(--ab-surface-card);
-  box-shadow: var(--ab-shadow-card);
-}
-
 .metric-card {
   display: flex;
   flex-direction: column;
@@ -189,40 +171,14 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .task-form label span { color: var(--ab-text-muted); font-weight: 500; }
 .field-error { color: var(--ab-state-danger); font-size: 0.78rem; font-weight: 650; }
 
-.app-shell input,
-.app-shell textarea {
-  width: 100%;
-  min-height: var(--ab-touch-target);
-  padding: var(--ab-space-3);
-  border: 1px solid var(--ab-border-strong);
-  border-radius: var(--ab-radius-control);
-  color: var(--ab-text-primary);
-  background: var(--ab-surface-card);
-  resize: vertical;
-}
-
-.app-shell input[aria-invalid='true'] { border-color: var(--ab-state-danger); }
-.app-shell input:focus-visible,
-.app-shell textarea:focus-visible,
-.app-shell button:focus-visible,
-.app-shell a:focus-visible {
+.app-shell a:focus-visible,
+.status-toggle:focus-visible,
+.task-link:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--ab-focus-ring);
 }
 
-.primary-button {
-  min-height: var(--ab-touch-target);
-  padding: 0 var(--ab-space-4);
-  border: 1px solid transparent;
-  border-radius: var(--ab-radius-control);
-  color: var(--ab-text-inverse);
-  background: var(--ab-action-primary);
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.primary-button:not(:disabled):hover { background: var(--ab-action-primary-hover); }
-.primary-button:disabled,
+.app-shell .ab-button:disabled,
 .status-toggle:disabled,
 .task-link:disabled { opacity: 0.55; cursor: wait; }
 
@@ -319,14 +275,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
   position: absolute;
   top: var(--ab-space-4);
   right: var(--ab-space-4);
-  width: var(--ab-touch-target);
-  height: var(--ab-touch-target);
-  border: 0;
   border-radius: 50%;
-  color: var(--ab-text-secondary);
   background: var(--ab-surface-muted);
   font-size: 1.5rem;
-  cursor: pointer;
 }
 
 .status-label {
