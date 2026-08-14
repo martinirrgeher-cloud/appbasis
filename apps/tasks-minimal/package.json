@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@appbasis/identity": "workspace:*",
+    "@appbasis/permissions": "workspace:*",
     "@appbasis/tasks": "workspace:*",
     "hono": "4.13.1"
   },

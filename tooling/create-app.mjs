@@ -227,11 +227,20 @@ async function runCli() {
 }
 
 function generatedRuntimeFiles(definition) {
+  if (
+    definition.platformServices.includes("permissions") &&
+    !definition.platformServices.includes("identity")
+  ) {
+    throw new Error(
+      "Generated permissions runtime requires the identity platform service.",
+    );
+  }
   if (!definition.platformServices.includes("identity")) return Object.freeze([]);
   return createIdentityRuntimeTemplate({
     appId: definition.appId,
     displayName: definition.displayName,
     modules: definition.modules,
+    platformServices: definition.platformServices,
   }).files;
 }
 
@@ -245,7 +254,7 @@ function generatedReadme(definition, runtimeFiles) {
   const runtimeDescription =
     runtimeFiles.length === 0
       ? "This skeleton contains the versioned app definition only."
-      : "This app includes the independently verified generated identity runtime and consumes `@appbasis/identity/http` without copying the Reference app.";
+      : "This app includes the independently verified generated runtime and consumes declared AppBasis platform and module contracts without copying the Reference app.";
   return `# ${definition.displayName}\n\nGenerated AppBasis app skeleton.\n\n- App ID: \`${definition.appId}\`\n- Modules: ${modules}\n- Platform services: ${platformServices}\n\n${runtimeDescription}\n`;
 }
 
@@ -347,11 +356,8 @@ function requiredFlagValue(args, index, flag) {
   return value;
 }
 
-const invokedPath = process.argv[1];
-if (
-  invokedPath !== undefined &&
-  resolve(invokedPath) === resolve(fileURLToPath(import.meta.url))
-) {
+const invokedPath = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
+if (invokedPath === fileURLToPath(import.meta.url)) {
   runCli().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

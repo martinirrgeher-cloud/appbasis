@@ -1,0 +1,1 @@
+export { assertIdentityActionAllowed } from "./service";

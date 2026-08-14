@@ -6,6 +6,7 @@
     "tasks"
   ],
   "platformServices": [
-    "identity"
+    "identity",
+    "permissions"
   ]
 }

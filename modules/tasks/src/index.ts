@@ -1,3 +1,7 @@
+export const TASK_CAPABILITIES = {
+  manage: 'tasks:manage',
+} as const;
+
 export { InMemoryTaskRepository } from './in-memory-task-repository';
 export { PostgresTaskRepository } from './postgres-task-repository';
 export { TaskValidationError } from './domain/task';
