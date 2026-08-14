@@ -23,7 +23,7 @@ import { InMemoryTaskRepository } from '@appbasis/tasks';
 import { createReferenceApp } from '../worker/app';
 import {
   createReferenceRoleAdminApp,
-  type ReferenceRoleAdministration,
+  type ReferenceRoleAdminDependencies,
 } from '../worker/role-admin-app';
 
 const identityId = 'reference-role-admin';
@@ -126,7 +126,9 @@ describe('Reference role administration API', () => {
   });
 });
 
-function configuredAdminApp(roleAdministration: ReferenceRoleAdministration) {
+function configuredAdminApp(
+  roleAdministration: ReferenceRoleAdminDependencies['roleAdministration'],
+) {
   return createReferenceRoleAdminApp({
     identity: new StubIdentityService(),
     permissions: adminPermissionStore(),
@@ -157,7 +159,7 @@ function permissionStore(assignedRoleId: RoleId) {
   });
 }
 
-class StubRoleAdministration implements ReferenceRoleAdministration {
+class StubRoleAdministration {
   listCalls = 0;
 
   async listRoles(): Promise<readonly RoleDetails[]> {
