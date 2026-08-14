@@ -27,6 +27,31 @@ describe("Reference preview smoke workflows", () => {
     expect(acceptanceIndex).toBeGreaterThan(deployIndex);
   });
 
+  it("disables query caching on the existing Hyperdrive before build and acceptance", () => {
+    const workerGuardIndex = deployWorkflow.indexOf("Require existing Reference Worker");
+    const cachePolicyIndex = deployWorkflow.indexOf(
+      "Disable Reference Hyperdrive query caching for fresh reads",
+    );
+    const buildIndex = deployWorkflow.indexOf("Build Reference preview");
+    const acceptanceIndex = deployWorkflow.indexOf("Run automated Demo v0.1 acceptance smoke");
+
+    expect(workerGuardIndex).toBeGreaterThanOrEqual(0);
+    expect(cachePolicyIndex).toBeGreaterThan(workerGuardIndex);
+    expect(buildIndex).toBeGreaterThan(cachePolicyIndex);
+    expect(acceptanceIndex).toBeGreaterThan(buildIndex);
+
+    const cachePolicyStep = deployWorkflow.slice(cachePolicyIndex, buildIndex);
+    expect(cachePolicyStep).toContain(
+      'pnpm exec wrangler hyperdrive update "$APPBASIS_HYPERDRIVE_ID"',
+    );
+    expect(cachePolicyStep).toContain("--caching-disabled");
+    expect(cachePolicyStep).toContain("--experimental-provision=false");
+    expect(cachePolicyStep).toContain("--experimental-auto-create=false");
+    expect(cachePolicyStep).toContain("APPBASIS_HYPERDRIVE_ID: ${{ secrets.APPBASIS_HYPERDRIVE_ID }}");
+    expect(cachePolicyStep).toContain("CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}");
+    expect(cachePolicyStep).toContain("--experimental-auto-create=false >/dev/null");
+  });
+
   it("does not detach deploy acceptance into a workflow_run", () => {
     expect(smokeWorkflow).not.toContain("workflow_run:");
   });

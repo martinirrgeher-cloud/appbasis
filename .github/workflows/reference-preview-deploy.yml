@@ -74,6 +74,24 @@ jobs:
             exit 1
           fi
 
+      - name: Disable Reference Hyperdrive query caching for fresh reads
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_HYPERDRIVE_ID: ${{ secrets.APPBASIS_HYPERDRIVE_ID }}
+        run: |
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare deployment account.' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
+          test -n "$APPBASIS_HYPERDRIVE_ID" || { echo 'Missing required Reference deployment binding.' >&2; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$APPBASIS_HYPERDRIVE_ID"
+          pnpm exec wrangler hyperdrive update "$APPBASIS_HYPERDRIVE_ID" \
+            --caching-disabled \
+            --experimental-provision=false \
+            --experimental-auto-create=false >/dev/null
+
       - name: Build Reference preview
         working-directory: apps/reference
         env:
