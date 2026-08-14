@@ -62,6 +62,27 @@ test("parses only the dedicated direct PostgreSQL target", () => {
   assert.throws(
     () =>
       parseGeneratedTasksPreviewDatabaseUrl(
+        "postgresql://runtime.user:secret@database.example.com/appbasis_tasks_preview",
+      ),
+    /direct Neon database origin/,
+  );
+  assert.throws(
+    () =>
+      parseGeneratedTasksPreviewDatabaseUrl(
+        "postgresql://runtime.user:secret@ep-direct.example.neon.tech.evil.example/appbasis_tasks_preview",
+      ),
+    /direct Neon database origin/,
+  );
+  assert.throws(
+    () =>
+      parseGeneratedTasksPreviewDatabaseUrl(
+        "postgresql://runtime.user:secret@database.neon.tech/appbasis_tasks_preview",
+      ),
+    /direct Neon database origin/,
+  );
+  assert.throws(
+    () =>
+      parseGeneratedTasksPreviewDatabaseUrl(
         "postgresql://runtime.user:secret@ep-direct.example.neon.tech/neondb",
       ),
     /dedicated generated preview database/,
