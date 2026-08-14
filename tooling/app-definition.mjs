@@ -75,16 +75,23 @@ export function parseAppDefinition(value, options = {}) {
 }
 
 export async function readAppDefinitions(repositoryRoot = process.cwd()) {
-  return readAndValidateAppDefinitions(repositoryRoot);
+  return readAndValidateAppDefinitions(repositoryRoot, {
+    skipUnpublishedDirectories: true,
+  });
 }
 
 export async function verifyAppDefinitions(repositoryRoot = process.cwd()) {
   return withAppRegistryLock(repositoryRoot, "verify", () =>
-    readAndValidateAppDefinitions(repositoryRoot),
+    readAndValidateAppDefinitions(repositoryRoot, {
+      skipUnpublishedDirectories: false,
+    }),
   );
 }
 
-async function readAndValidateAppDefinitions(repositoryRoot) {
+async function readAndValidateAppDefinitions(
+  repositoryRoot,
+  { skipUnpublishedDirectories },
+) {
   const appsDirectory = join(repositoryRoot, "apps");
   const modulesDirectory = join(repositoryRoot, "modules");
   const appEntries = await directoryNames(appsDirectory);
@@ -104,6 +111,7 @@ async function readAndValidateAppDefinitions(repositoryRoot) {
       parsed = JSON.parse(await readFile(manifestPath, "utf8"));
     } catch (error) {
       if (error?.code === "ENOENT") {
+        if (skipUnpublishedDirectories) continue;
         throw new Error(`apps/${directoryName} is missing ${APP_DEFINITION_FILE}.`);
       }
       if (error instanceof SyntaxError) {
