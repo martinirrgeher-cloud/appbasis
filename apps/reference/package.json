@@ -18,6 +18,7 @@
     "@appbasis/database": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",
+    "@appbasis/tasks": "workspace:*",
     "hono": "4.13.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
