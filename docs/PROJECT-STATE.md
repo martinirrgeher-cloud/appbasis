@@ -2,7 +2,7 @@
 
 ## Phase
 
-Phase 3G – Generated Authorized Tasks Runtime
+Phase 3H – Generated PostgreSQL Runtime
 
 ## Ziel
 
@@ -31,7 +31,9 @@ Demo v0.1 gilt als technisch abgeschlossen. Der produktive Preview-Pfad hat den 
 
 Jede App unter `apps/` besitzt `appbasis.app.json`. Der V2-Vertrag beschreibt Schema-Version, App-ID, sichtbaren App-Namen, explizit aktivierte Fachmodule und explizit aktivierte Plattformdienste. `verify:apps` prüft Manifestform, Verzeichnisbindung, vorhandene Modul-IDs und zugelassene Plattformdienste fail-closed als Bestandteil von `verify:repo`.
 
-Als Manifest-Plattformdienste sind `identity` und `permissions` ausdrücklich zugelassen. Andere Paketverzeichnisse werden nicht vorsorglich als Plattformdienste freigegeben. Die Zulassung von `permissions` erweitert nur den deklarativen V2-Vertrag; Permission-Semantik, Rollen, Grants/Revokes und bestehende deny-by-default Regeln bleiben unverändert. Die Reference-App deklariert jetzt passend zu ihrer bereits bestehenden Laufzeit `platformServices: ["identity", "permissions"]`.
+Als Manifest-Plattformdienste sind `identity` und `permissions` ausdrücklich zugelassen. Andere Paketverzeichnisse werden nicht vorsorglich als Plattformdienste freigegeben. Die Zulassung von `permissions` erweitert nur den deklarativen V2-Vertrag; Permission-Semantik, Rollen, Grants/Revokes und bestehende deny-by-default Regeln bleiben unverändert. Die Reference-App deklariert passend zu ihrer Laufzeit `platformServices: ["identity", "permissions"]`.
+
+**Datenbank ist bewusst kein dritter Manifest-Plattformdienst.** PostgreSQL bleibt Infrastruktur. Der Generator leitet persistente Infrastruktur aus der bereits ausdrücklich gewählten Fach-/Plattform-Komposition ab und fügt sie nur dort hinzu, wo die erzeugte Laufzeit sie tatsächlich benötigt. Damit bleiben App-Manifeste fachlich und plattformbezogen, ohne Provider- oder Persistenzdetails in jede App-Definition zu tragen.
 
 `pnpm appbasis:create` erzeugt deterministische Apps ohne Reference-Copy/Paste. Staging, atomare Zielreservierung und `verify:apps` sind gegen konkurrierende Publikation gehärtet; vorhandene Apps werden niemals ersetzt. Plattformdienste werden nur über explizite Generator-Eingaben aktiviert.
 
@@ -75,8 +77,18 @@ Der Generator erzeugt fachliche Tasks-HTTP-Routen nur dann, wenn sowohl das Fach
 
 Die generierten Tasks-Routen lösen die aktuelle Identity serverseitig auf, blockieren eingeschränkte Identity-Zustände und prüfen danach deny-by-default die Capability `tasks:manage`. Der generierte App-Test beweist mindestens die drei Sicherheitszustände: keine Session → 401, Session ohne Capability → 403 und berechtigter Principal → Task anlegen und lesen. Das Tasks-Modul selbst beweist weiterhin den Statuswechsel über seinen öffentlichen Repository-Vertrag.
 
-Die Reference-App behält ihre bestehenden fachlichen HTTP-Semantiken und prüft weiterhin sowohl die allgemeine Demo-App-Nutzung als auch `tasks:manage`; lediglich die stabile Tasks-Capability wird jetzt aus dem Tasks-Modulvertrag bezogen. Damit ändert sich die bestehende Reference-Berechtigungswirkung nicht.
+Die Reference-App behält ihre bestehenden fachlichen HTTP-Semantiken und prüft weiterhin sowohl die allgemeine Demo-App-Nutzung als auch `tasks:manage`; lediglich die stabile Tasks-Capability wird aus dem Tasks-Modulvertrag bezogen. Damit ändert sich die bestehende Reference-Berechtigungswirkung nicht.
+
+## Generierte PostgreSQL-Infrastruktur
+
+Für die persistente autorisierte Tasks-Komposition fügt der Produktionsgenerator automatisch `@appbasis/database` als Runtime-Infrastruktur hinzu, ohne `database` in `platformServices` einzutragen. Die generierte Datei `worker/postgres.ts` erstellt aus einer PostgreSQL-Verbindungsadresse einen echten `PostgresTaskRepository` und besitzt einen expliziten Close-Lifecycle.
+
+Generierte Consumer verwenden dafür den schmalen Subpath `@appbasis/database/postgres-runtime`. Der bestehende breitere `@appbasis/database/node-runtime`-Vertrag für interne Identity-/Administrationspfade bleibt unverändert. Damit zieht der isolierte Typecheck einer generierten App nicht die optionalen Drizzle-Adaptertypen für fremde Datenbanksysteme mit hinein; die strikte TypeScript-Prüfung bleibt vollständig aktiv und `skipLibCheck` bleibt aus.
+
+Der Generator erzeugt außerdem einen eigenen PostgreSQL-E2E-Vertrag für `tasks-minimal`. Dieser migriert das Tasks-Schema, führt eine berechtigte Task-Erstellung über die generierte HTTP-Route aus, schließt die Runtime, öffnet eine neue Runtime gegen dieselbe Datenbank und beweist anschließend Lesen, Statusänderung und erneutes Lesen über eine weitere Runtime-Instanz. Die verpflichtende PostgreSQL-CI führt diesen generierten E2E zusätzlich zu den bestehenden Identity- und Reference-PostgreSQL-Tests aus.
+
+Damit ist der persistente Factory-Pfad Manifest → Generator → autorisierte Tasks-HTTP-Runtime → echtes PostgreSQL reproduzierbar geprüft, ohne die Datenbank zum deklarativen App-Plattformdienst zu machen.
 
 ## Nächster technischer Meilenstein
 
-Der nächste Factory-Slice ist nicht eine weitere vorsorgliche Abstraktion, sondern ein persistenter generierter Vertical-Slice: die generierte Tasks-App soll mit derselben autorisierten Runtime-Komposition gegen echtes PostgreSQL laufen. Zielbeweis ist Manifest → Generator → Identity → Permission → Tasks → PostgreSQL mit Create/List/Statusänderung. Danach folgt die reproduzierbare Deployment-Komposition für eine unabhängig deploybare generierte App.
+Der nächste Factory-Slice ist die reproduzierbare Deployment-Komposition für eine unabhängig deploybare generierte App: Runtime-Infrastruktur aus der Deployment-Umgebung binden, Health und geschützte Tasks-Routen in einer echten generierten Worker-Entrypoint-Komposition starten und anschließend einen automatisierten Smoke gegen eine isolierte Preview-Umgebung beweisen. Dabei sollen keine Provider-IDs, Secrets oder Infrastrukturdetails in das App-Manifest verschoben werden.
