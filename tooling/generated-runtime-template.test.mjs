@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
@@ -153,6 +154,30 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
       "worker/app.ts",
       "worker/postgres.ts",
     ],
+  );
+});
+
+test("keeps checked generated PostgreSQL output byte-identical to the generator", () => {
+  const template = createIdentityRuntimeTemplate({
+    appId: "tasks-minimal",
+    displayName: "AppBasis Tasks Minimal",
+    modules: ["tasks"],
+    platformServices: ["identity", "permissions"],
+  });
+
+  assert.equal(
+    content(template, "worker/postgres.ts"),
+    readFileSync(
+      new URL("../apps/tasks-minimal/worker/postgres.ts", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    content(template, "test/app.postgres.e2e.ts"),
+    readFileSync(
+      new URL("../apps/tasks-minimal/test/app.postgres.e2e.ts", import.meta.url),
+      "utf8",
+    ),
   );
 });
 
