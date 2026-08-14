@@ -2,7 +2,7 @@
 
 ## Phase
 
-Phase 3F – First Generated Module Consumer
+Phase 3G – Generated Authorized Tasks Runtime
 
 ## Ziel
 
@@ -31,7 +31,7 @@ Demo v0.1 gilt als technisch abgeschlossen. Der produktive Preview-Pfad hat den 
 
 Jede App unter `apps/` besitzt `appbasis.app.json`. Der V2-Vertrag beschreibt Schema-Version, App-ID, sichtbaren App-Namen, explizit aktivierte Fachmodule und explizit aktivierte Plattformdienste. `verify:apps` prüft Manifestform, Verzeichnisbindung, vorhandene Modul-IDs und zugelassene Plattformdienste fail-closed als Bestandteil von `verify:repo`.
 
-Als Manifest-Plattformdienste sind `identity` und `permissions` ausdrücklich zugelassen. Andere Paketverzeichnisse werden nicht vorsorglich als Plattformdienste freigegeben. Die Zulassung von `permissions` erweitert nur den deklarativen V2-Vertrag; Permission-Semantik, Rollen, Grants/Revokes und bestehende Runtime-Verhalten bleiben unverändert. Die Reference-App deklariert bis zur separaten Runtime-Integration weiterhin `platformServices: ["identity"]`.
+Als Manifest-Plattformdienste sind `identity` und `permissions` ausdrücklich zugelassen. Andere Paketverzeichnisse werden nicht vorsorglich als Plattformdienste freigegeben. Die Zulassung von `permissions` erweitert nur den deklarativen V2-Vertrag; Permission-Semantik, Rollen, Grants/Revokes und bestehende deny-by-default Regeln bleiben unverändert. Die Reference-App deklariert jetzt passend zu ihrer bereits bestehenden Laufzeit `platformServices: ["identity", "permissions"]`.
 
 `pnpm appbasis:create` erzeugt deterministische Apps ohne Reference-Copy/Paste. Staging, atomare Zielreservierung und `verify:apps` sind gegen konkurrierende Publikation gehärtet; vorhandene Apps werden niemals ersetzt. Plattformdienste werden nur über explizite Generator-Eingaben aktiviert.
 
@@ -51,9 +51,9 @@ Der Adapter:
 - bleibt unabhängig von Hono, Cloudflare, fachlichen Modulen und App-Permissions,
 - wird von der Reference-App als erstem realen Consumer verwendet,
 - wird von `apps/minimal` als unabhängigem zweiten realen Consumer verwendet,
-- benötigt keine neue Dependency und keine allgemeine Runtime-Package-Grenze.
+- benötigt keine allgemeine Runtime-Package-Grenze.
 
-Die Reference-App behält weiterhin ihre fachlichen Tasks-Routen, Task-Berechtigungen, Health-/Fallback-Semantik und Hono-Komposition. `apps/minimal` besitzt bewusst keine Fachmodule und keine Permission-Abhängigkeit. Damit ist die Wiederverwendbarkeit des Identity-HTTP-Vertrags durch zwei unterschiedliche Apps belegt, ohne vorsorglich ein allgemeines Runtime-Framework zu bauen.
+Für den reinen serverseitigen Zugriffsschutz gibt es zusätzlich den schmalen öffentlichen Subpath `@appbasis/identity/access`. Er stellt `assertIdentityActionAllowed` bereit, ohne dass generierte Apps den breiten Identity-Root-Export und dessen serverseitige Better-Auth-/Drizzle-Abhängigkeiten in ihren isolierten Typecheck ziehen müssen.
 
 ## Zweite generierte Mini-App
 
@@ -65,16 +65,18 @@ Dieser Slice beweist die Kette Manifest V2 → Generator → Generated Runtime �
 
 `modules/tasks` ist als `@appbasis/tasks` ein echtes Workspace-Paket mit öffentlichem Root-Export. Domain, In-Memory-Repository, PostgreSQL-Repository, bestehende Migrationen und fachliches Verhalten bleiben unverändert. Die Reference-App verwendet ausschließlich diesen öffentlichen Paketvertrag; direkte Imports aus `modules/tasks/src` wurden entfernt.
 
-Damit besitzt das erste Fachmodul eine belastbare Consumer-Grenze, ohne seine Logik in Core, Identity oder ein allgemeines Runtime-Paket zu verschieben.
+Das Tasks-Modul veröffentlicht außerdem seine stabile fachliche Capability-ID über `TASK_CAPABILITIES.manage = "tasks:manage"`. Die Permission-Engine bleibt generisch und kennt keine Tasks-Semantik; die fachliche Capability wird erst bei der App-Komposition in eine Permission-Capability überführt.
 
-## Erster generierter Fachmodul-Workspace-Consumer
+## Generierte autorisierte Tasks-Laufzeit
 
-`apps/tasks-minimal` wird durch denselben Produktionsgenerator aus `modules: ["tasks"]` und `platformServices: ["identity"]` erzeugt. Das generierte Workspace-Paket enthält `@appbasis/tasks` als echte Workspace-Dependency und beweist den Modulvertrag in seinem eigenen App-Test gemeinsam mit dem bestehenden Identity-Runtime-Vertrag.
+`apps/tasks-minimal` wird durch den Produktionsgenerator aus `modules: ["tasks"]` und `platformServices: ["identity", "permissions"]` erzeugt. Das generierte Workspace-Paket konsumiert `@appbasis/identity`, `@appbasis/permissions` und `@appbasis/tasks` als echte Workspace-Dependencies.
 
-Der Generated-Runtime-Template-Baustein unterstützt dabei bewusst nur das bereits bewiesene Modul `tasks`; unbekannte Runtime-Modulverdrahtungen werden fail-closed abgewiesen.
+Der Generator erzeugt fachliche Tasks-HTTP-Routen nur dann, wenn sowohl das Fachmodul `tasks` als auch die Plattformdienste `identity` und `permissions` ausdrücklich deklariert sind. `tasks` zusammen mit `identity` ohne `permissions` bleibt weiterhin bei Health- und Identity-Routen; unbekannte Runtime-Module und Plattformdienste werden fail-closed abgewiesen.
 
-Dieser Slice erzeugt **keine** ungeschützten Tasks-HTTP-Routen. Der generierte Worker bleibt auf Health und Identity beschränkt, solange für fachliche HTTP-Aktionen kein ausdrücklich freigegebener serverseitiger Permission-Vertrag in der generierten App-Komposition vorhanden ist. Damit ist die Factory-Abhängigkeit und der unabhängige App-Consumer bewiesen, aber noch nicht die autorisierte generierte Tasks-HTTP-Laufzeit.
+Die generierten Tasks-Routen lösen die aktuelle Identity serverseitig auf, blockieren eingeschränkte Identity-Zustände und prüfen danach deny-by-default die Capability `tasks:manage`. Der generierte App-Test beweist mindestens die drei Sicherheitszustände: keine Session → 401, Session ohne Capability → 403 und berechtigter Principal → Task anlegen und lesen. Das Tasks-Modul selbst beweist weiterhin den Statuswechsel über seinen öffentlichen Repository-Vertrag.
+
+Die Reference-App behält ihre bestehenden fachlichen HTTP-Semantiken und prüft weiterhin sowohl die allgemeine Demo-App-Nutzung als auch `tasks:manage`; lediglich die stabile Tasks-Capability wird jetzt aus dem Tasks-Modulvertrag bezogen. Damit ändert sich die bestehende Reference-Berechtigungswirkung nicht.
 
 ## Nächster technischer Meilenstein
 
-Der nächste Factory-Slice ist die autorisierte Runtime-Komposition eines generierten Fachmoduls. `permissions` ist dafür nun als zweiter Manifest-V2-Plattformdienst ausdrücklich freigegeben. Der folgende Integrationsschritt muss die bestehende deny-by-default Permission-Engine serverseitig mit Identity und dem Tasks-Modul verbinden; erst dann dürfen generierte Tasks-HTTP-Routen entstehen.
+Der nächste Factory-Slice ist nicht eine weitere vorsorgliche Abstraktion, sondern ein persistenter generierter Vertical-Slice: die generierte Tasks-App soll mit derselben autorisierten Runtime-Komposition gegen echtes PostgreSQL laufen. Zielbeweis ist Manifest → Generator → Identity → Permission → Tasks → PostgreSQL mit Create/List/Statusänderung. Danach folgt die reproduzierbare Deployment-Komposition für eine unabhängig deploybare generierte App.
