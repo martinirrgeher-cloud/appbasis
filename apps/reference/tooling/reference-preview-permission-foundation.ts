@@ -248,18 +248,18 @@ async function assertFoundationTableShape(
 
   const constraintRows = await client.unsafe(
     `SELECT
-       constraint.contype,
-       constraint.convalidated,
-       pg_catalog.pg_get_constraintdef(constraint.oid, true) AS definition
-     FROM pg_catalog.pg_constraint constraint
+       schema_constraint.contype,
+       schema_constraint.convalidated,
+       pg_catalog.pg_get_constraintdef(schema_constraint.oid, true) AS definition
+     FROM pg_catalog.pg_constraint schema_constraint
      JOIN pg_catalog.pg_class relation
-       ON relation.oid = constraint.conrelid
+       ON relation.oid = schema_constraint.conrelid
      JOIN pg_catalog.pg_namespace namespace
        ON namespace.oid = relation.relnamespace
      WHERE namespace.nspname = 'public'
        AND relation.relname = $1
-       AND constraint.contype IN ('p', 'f')
-     ORDER BY constraint.contype, definition`,
+       AND schema_constraint.contype IN ('p', 'f')
+     ORDER BY schema_constraint.contype, definition`,
     [table.name],
   );
   const primaryKeys = constraintRows.filter((row) => row.contype === 'p');
