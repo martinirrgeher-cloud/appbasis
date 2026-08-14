@@ -117,6 +117,7 @@ jobs:
             appId: process.env.APPBASIS_GENERATED_APP_ID,
             hyperdriveId: process.env.APPBASIS_HYPERDRIVE_ID,
             baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
+            entrypoint: "./worker/preview.ts",
             outputPath: "./apps/tasks-minimal/wrangler.bootstrap.generated.json",
           });
           NODE
