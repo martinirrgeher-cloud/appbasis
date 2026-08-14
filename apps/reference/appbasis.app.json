@@ -1,6 +1,7 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "appId": "reference",
   "displayName": "AppBasis Reference",
-  "modules": ["tasks"]
+  "modules": ["tasks"],
+  "platformServices": ["identity"]
 }
