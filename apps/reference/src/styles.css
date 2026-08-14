@@ -111,8 +111,11 @@ button, a { -webkit-tap-highlight-color: transparent; }
   text-transform: uppercase;
 }
 
-h1, h2, p { margin-top: 0; }
-h1 {
+.app-shell h1,
+.app-shell h2,
+.app-shell p { margin-top: 0; }
+
+.app-shell h1 {
   max-width: 15ch;
   margin-bottom: var(--ab-space-3);
   color: var(--ab-text-primary);
@@ -186,8 +189,8 @@ h1 {
 .task-form label span { color: var(--ab-text-muted); font-weight: 500; }
 .field-error { color: var(--ab-state-danger); font-size: 0.78rem; font-weight: 650; }
 
-input,
-textarea {
+.app-shell input,
+.app-shell textarea {
   width: 100%;
   min-height: var(--ab-touch-target);
   padding: var(--ab-space-3);
@@ -198,11 +201,11 @@ textarea {
   resize: vertical;
 }
 
-input[aria-invalid='true'] { border-color: var(--ab-state-danger); }
-input:focus-visible,
-textarea:focus-visible,
-button:focus-visible,
-a:focus-visible {
+.app-shell input[aria-invalid='true'] { border-color: var(--ab-state-danger); }
+.app-shell input:focus-visible,
+.app-shell textarea:focus-visible,
+.app-shell button:focus-visible,
+.app-shell a:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--ab-focus-ring);
 }
