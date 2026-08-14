@@ -87,7 +87,10 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
     "@appbasis/tasks": "workspace:*",
     hono: "4.13.1",
   });
-  assert.equal(packageJson.scripts.test, "vitest run ./test/app.test.ts");
+  assert.equal(
+    packageJson.scripts.test,
+    "vitest run ./test/app.test.ts ./test/worker.test.ts",
+  );
   assert.equal(
     packageJson.scripts["test:postgres"],
     "vitest run --config vitest.postgres.config.ts",
@@ -148,10 +151,12 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
       "package.json",
       "test/app.test.ts",
       "test/app.postgres.e2e.ts",
+      "test/worker.test.ts",
       "tsconfig.json",
       "vitest.config.ts",
       "vitest.postgres.config.ts",
       "worker/app.ts",
+      "worker/index.ts",
       "worker/postgres.ts",
     ],
   );
