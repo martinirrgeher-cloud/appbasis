@@ -25,7 +25,9 @@ describe('Reference tasks design-system contract', () => {
     expect(foundation).toContain('.ab-input,\n.ab-textarea {');
     expect(foundation).toContain('.ab-textarea:focus-visible');
     expect(foundation).toContain(".ab-textarea[aria-invalid='true']");
-    expect(foundation).toContain('min-height: calc(var(--ab-touch-target) * 2);');
+    expect(foundation).toContain(
+      'min-height: calc(var(--ab-touch-target) + var(--ab-touch-target));',
+    );
     expect(foundation).toContain('resize: vertical;');
   });
 
