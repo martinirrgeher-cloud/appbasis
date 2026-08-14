@@ -19,6 +19,8 @@ const forbiddenOperationalInputs = [
   "APPBASIS_ROOT_ADMIN_PASSWORD",
   "APPBASIS_DEMO_USER_TEMPORARY_PASSWORD",
 ];
+const sharedWorkerConcurrencyGroup =
+  "group: generated-tasks-preview-worker-appbasis-tasks-minimal";
 
 test("generated preview workflows keep deployment inputs outside the app manifest", async () => {
   const [bootstrap, deploy] = await Promise.all([
@@ -33,6 +35,7 @@ test("generated preview workflows keep deployment inputs outside the app manifes
     assert.match(workflow, /APPBASIS_HYPERDRIVE_ID: \$\{\{ secrets\.APPBASIS_HYPERDRIVE_ID \}\}/);
     assert.match(workflow, /--experimental-provision=false/);
     assert.match(workflow, /--experimental-auto-create=false/);
+    assert.match(workflow, new RegExp(sharedWorkerConcurrencyGroup));
     assert.doesNotMatch(workflow, /appbasis\.app\.json/);
     for (const forbidden of forbiddenOperationalInputs) {
       assert.equal(workflow.includes(forbidden), false);
@@ -40,11 +43,30 @@ test("generated preview workflows keep deployment inputs outside the app manifes
   }
 });
 
-test("bootstrap is limited to first Worker creation and secret installation", async () => {
+test("bootstrap is limited to confirmed first Worker creation and valid secret installation", async () => {
   const bootstrap = await readFile(bootstrapPath, "utf8");
 
   assert.match(bootstrap, /writeGeneratedPreviewBootstrapWranglerConfig/);
-  assert.match(bootstrap, /deployments list --name/);
+  assert.match(
+    bootstrap,
+    /workers\/scripts\/\$\{APPBASIS_GENERATED_WORKER_NAME\}/,
+  );
+  assert.match(bootstrap, /--write-out '%\{http_code\}'/);
+  assert.match(bootstrap, /case "\$HTTP_STATUS" in/);
+  assert.match(bootstrap, /200\)/);
+  assert.match(bootstrap, /404\)/);
+  assert.match(
+    bootstrap,
+    /Unable to determine whether the generated preview Worker exists/,
+  );
+  assert.doesNotMatch(
+    bootstrap,
+    /if pnpm exec wrangler deployments list[\s\S]*bootstrap deploy skipped/,
+  );
+  assert.match(
+    bootstrap,
+    /secret\.trim\(\) !== secret[\s\S]*secret\.length < 32/,
+  );
   assert.match(bootstrap, /wrangler secret put BETTER_AUTH_SECRET/);
   assert.match(bootstrap, /wrangler secret list/);
   assert.doesNotMatch(bootstrap, /reference-preview-migrate|migrate:reference|permission.*provision/i);
