@@ -2,14 +2,14 @@ import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import {
+  readAppDefinitions,
   SUPPORTED_PLATFORM_SERVICES,
-  verifyAppDefinitions,
 } from "../app-definition.mjs";
 
 export async function loadFactorySnapshot(repositoryRoot = process.cwd()) {
   const root = resolve(repositoryRoot);
   const [apps, modules] = await Promise.all([
-    verifyAppDefinitions(root),
+    readAppDefinitions(root),
     directoryNames(join(root, "modules")),
   ]);
 
