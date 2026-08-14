@@ -3,16 +3,20 @@ import { pathToFileURL } from "node:url";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_TIMEOUT_MS = 30_000;
-const INVALID_SESSION_COOKIE = "appbasis.session=generated-preview-database-binding-missing-session";
+const SESSION_COOKIE_NAME = "__Secure-better-auth.session_token";
 const SESSION_INVALID_MESSAGE = "A valid session is required.";
+const SESSION_TOKEN_PREFIX = "generated-preview-database-binding-missing-session";
 
 export async function verifyGeneratedPreviewDatabaseBinding({
   baseURL,
+  secret,
   fetchImpl = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
+  const normalizedSecret = requiredBetterAuthSecret(secret);
   validateTransport(fetchImpl, timeoutMs);
+  const cookie = await createSignedMissingSessionCookie(normalizedSecret);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -21,7 +25,7 @@ export async function verifyGeneratedPreviewDatabaseBinding({
       method: "GET",
       headers: {
         accept: "application/json",
-        cookie: INVALID_SESSION_COOKIE,
+        cookie,
       },
       redirect: "error",
       signal: controller.signal,
@@ -52,6 +56,52 @@ export async function verifyGeneratedPreviewDatabaseBinding({
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function createSignedMissingSessionCookie(
+  secret,
+  { token = `${SESSION_TOKEN_PREFIX}-${crypto.randomUUID()}` } = {},
+) {
+  const normalizedSecret = requiredBetterAuthSecret(secret);
+  if (
+    typeof token !== "string" ||
+    token.length === 0 ||
+    token.trim() !== token ||
+    !token.startsWith(`${SESSION_TOKEN_PREFIX}-`) ||
+    /[;\r\n]/u.test(token)
+  ) {
+    throw new Error("Generated preview database smoke session token is invalid.");
+  }
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(normalizedSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(token),
+  );
+  const base64Signature = btoa(
+    String.fromCharCode(...new Uint8Array(signature)),
+  );
+  const signedValue = encodeURIComponent(`${token}.${base64Signature}`);
+  return `${SESSION_COOKIE_NAME}=${signedValue}`;
+}
+
+function requiredBetterAuthSecret(value) {
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    value.length < 32 ||
+    /[\r\n]/u.test(value)
+  ) {
+    throw new Error("APPBASIS_BETTER_AUTH_SECRET does not satisfy the runtime contract.");
+  }
+  return value;
 }
 
 function validateTransport(fetchImpl, timeoutMs) {
@@ -115,6 +165,7 @@ if (isMainModule()) {
   try {
     await verifyGeneratedPreviewDatabaseBinding({
       baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
+      secret: process.env.APPBASIS_BETTER_AUTH_SECRET,
     });
     console.log("Generated preview database binding smoke passed.");
   } catch {
