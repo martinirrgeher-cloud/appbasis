@@ -7,7 +7,11 @@ import {
 
 type GeneratedRuntimeFactory = (
   options: GeneratedPostgresApplicationRuntimeOptions,
-) => GeneratedPostgresApplicationRuntime;
+) =>
+  | GeneratedPostgresApplicationRuntime
+  | PromiseLike<GeneratedPostgresApplicationRuntime>;
+
+type WorkerErrorKind = "UNEXPECTED_RUNTIME_ERROR" | "RUNTIME_CLOSE_ERROR";
 
 export function createGeneratedWorker(
   runtimeFactory: GeneratedRuntimeFactory =
@@ -34,23 +38,19 @@ export function createGeneratedWorker(
       }
 
       let runtime: GeneratedPostgresApplicationRuntime | null = null;
+      let response: Response;
       try {
-        runtime = runtimeFactory(runtimeOptions);
+        runtime = await runtimeFactory(runtimeOptions);
         const app = createGeneratedApp({
           identity: runtime.identity,
           permissions: runtime.permissions,
           tasks: runtime.tasks,
           secureCookies: url.protocol === "https:",
         });
-        return await app.fetch(request);
-      } catch (error) {
-        console.error(
-          JSON.stringify({
-            event: "generated_worker_request_failed",
-            errorKind: errorKind(error),
-          }),
-        );
-        return Response.json(
+        response = await app.fetch(request);
+      } catch {
+        logWorkerError("generated_worker_request_failed", "UNEXPECTED_RUNTIME_ERROR");
+        response = Response.json(
           {
             error: {
               code: "INTERNAL_ERROR",
@@ -59,9 +59,12 @@ export function createGeneratedWorker(
           },
           { status: 500 },
         );
-      } finally {
-        if (runtime !== null) await runtime.close();
       }
+
+      if (runtime !== null) {
+        await closeRuntimeSafely(runtime);
+      }
+      return response;
     },
   });
 }
@@ -85,6 +88,24 @@ function runtimeConfiguration(
   }
 
   return Object.freeze({ connectionString, baseURL, secret });
+}
+
+async function closeRuntimeSafely(
+  runtime: GeneratedPostgresApplicationRuntime,
+): Promise<void> {
+  try {
+    await runtime.close();
+  } catch {
+    logWorkerError("generated_worker_runtime_close_failed", "RUNTIME_CLOSE_ERROR");
+  }
+}
+
+function logWorkerError(event: string, errorKind: WorkerErrorKind): void {
+  try {
+    console.error(JSON.stringify({ event, errorKind }));
+  } catch {
+    // Logging must never replace an application response.
+  }
 }
 
 function normalizedPostgresConnectionString(value: unknown): string | null {
@@ -134,8 +155,4 @@ function normalizedSecret(value: unknown): string | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function errorKind(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
 }
