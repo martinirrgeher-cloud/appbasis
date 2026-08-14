@@ -30,7 +30,11 @@ export function ReferenceEntry() {
 
   if (view.kind === 'roles') return <RoleOverview />;
   if (view.kind === 'role-editor') {
-    return <RoleEditor key={view.roleId ?? 'new'} roleId={view.roleId} />;
+    return view.roleId === undefined ? (
+      <RoleEditor key="new" />
+    ) : (
+      <RoleEditor key={view.roleId} roleId={view.roleId} />
+    );
   }
   return <App />;
 }
