@@ -12,7 +12,7 @@ const VALID_ENV = Object.freeze({
 });
 
 function databaseFactory(result: unknown, closeError?: Error) {
-  const unsafe = vi.fn(async () => result);
+  const unsafe = vi.fn(async (_query: string) => result);
   const end = vi.fn(async () => {
     if (closeError !== undefined) throw closeError;
   });
@@ -82,7 +82,7 @@ describe("generated preview database health adapter", () => {
     const delegate = { fetch: vi.fn() };
     const failingFactory = vi.fn(() => ({
       client: {
-        async unsafe() {
+        async unsafe(_query: string) {
           throw new Error("postgresql://secret-host/internal");
         },
         async end() {},
