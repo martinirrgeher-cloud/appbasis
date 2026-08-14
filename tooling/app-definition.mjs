@@ -11,7 +11,11 @@ const APP_DEFINITION_KEYS = new Set([
   "modules",
   "platformServices",
 ]);
-const SUPPORTED_PLATFORM_SERVICES = new Set(["identity", "permissions"]);
+export const SUPPORTED_PLATFORM_SERVICES = Object.freeze([
+  "identity",
+  "permissions",
+]);
+const SUPPORTED_PLATFORM_SERVICE_IDS = new Set(SUPPORTED_PLATFORM_SERVICES);
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 export function parseAppDefinition(value, options = {}) {
@@ -54,7 +58,7 @@ export function parseAppDefinition(value, options = {}) {
     "platformServices",
   );
   for (const platformService of platformServices) {
-    if (!SUPPORTED_PLATFORM_SERVICES.has(platformService)) {
+    if (!SUPPORTED_PLATFORM_SERVICE_IDS.has(platformService)) {
       throw new Error(
         `App ${appId} references unsupported platform service ${platformService}.`,
       );
