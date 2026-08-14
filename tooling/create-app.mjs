@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
   access,
   mkdir,
-  readFile,
   readdir,
   rename,
   rm,
