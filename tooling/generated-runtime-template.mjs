@@ -923,9 +923,9 @@ describe("generated Worker entrypoint", () => {
       expect(body).toContain("INTERNAL_ERROR");
       expect(body).not.toContain("message-secret-host");
       expect(body).not.toContain("name-secret-host");
-      expect(logged.join("\n")).toContain("UNEXPECTED_RUNTIME_ERROR");
-      expect(logged.join("\n")).not.toContain("message-secret-host");
-      expect(logged.join("\n")).not.toContain("name-secret-host");
+      expect(logged.join("\\n")).toContain("UNEXPECTED_RUNTIME_ERROR");
+      expect(logged.join("\\n")).not.toContain("message-secret-host");
+      expect(logged.join("\\n")).not.toContain("name-secret-host");
       expect(closeCalls).toBe(1);
     } finally {
       console.error = originalError;
@@ -973,9 +973,9 @@ describe("generated Worker entrypoint", () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ tasks: [] });
       expect(closeCalls).toBe(1);
-      expect(logged.join("\n")).toContain("RUNTIME_CLOSE_ERROR");
-      expect(logged.join("\n")).not.toContain("close-secret-host");
-      expect(logged.join("\n")).not.toContain("close-name-secret-host");
+      expect(logged.join("\\n")).toContain("RUNTIME_CLOSE_ERROR");
+      expect(logged.join("\\n")).not.toContain("close-secret-host");
+      expect(logged.join("\\n")).not.toContain("close-name-secret-host");
     } finally {
       console.error = originalError;
     }
@@ -1018,8 +1018,8 @@ describe("generated Worker entrypoint", () => {
       expect(body).toContain("INTERNAL_ERROR");
       expect(body).not.toContain("request-secret-host");
       expect(body).not.toContain("close-secret-host");
-      expect(logged.join("\n")).not.toContain("request-secret-host");
-      expect(logged.join("\n")).not.toContain("close-secret-host");
+      expect(logged.join("\\n")).not.toContain("request-secret-host");
+      expect(logged.join("\\n")).not.toContain("close-secret-host");
     } finally {
       console.error = originalError;
     }
