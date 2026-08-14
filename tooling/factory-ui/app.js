@@ -44,7 +44,7 @@ elements.appId?.addEventListener("input", () => {
   renderDraftPreview();
 });
 
-await loadSnapshot();
+loadSnapshot();
 
 async function loadSnapshot() {
   showError("");
