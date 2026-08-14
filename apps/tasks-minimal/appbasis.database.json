@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "application": "tasks-minimal",
+  "dialect": "postgresql",
+  "owners": [
+    {
+      "id": "identity",
+      "root": "packages/identity",
+      "schemaVersion": 2,
+      "migrations": [
+        "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
+        "packages/identity/drizzle/0001_appbasis_identity_foundation.sql"
+      ]
+    },
+    {
+      "id": "permissions",
+      "root": "packages/permissions",
+      "schemaVersion": 1,
+      "migrations": [
+        "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql"
+      ]
+    },
+    {
+      "id": "tasks",
+      "root": "modules/tasks",
+      "schemaVersion": 1,
+      "migrations": [
+        "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql"
+      ]
+    }
+  ]
+}
