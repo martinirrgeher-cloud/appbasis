@@ -5,6 +5,8 @@ declare const roleIdBrand: unique symbol;
 export type PrincipalId = string & { readonly [principalIdBrand]: "PrincipalId" };
 export type CapabilityId = string & { readonly [capabilityIdBrand]: "CapabilityId" };
 export type RoleId = string & { readonly [roleIdBrand]: "RoleId" };
+export type RoleState = "active" | "inactive";
+export type RoleKind = "system" | "managed";
 
 export const principalId = (value: string): PrincipalId => value as PrincipalId;
 export const capabilityId = (value: string): CapabilityId => value as CapabilityId;
@@ -13,6 +15,14 @@ export const roleId = (value: string): RoleId => value as RoleId;
 export interface RoleBundle {
   roleId: RoleId;
   capabilities: readonly CapabilityId[];
+}
+
+export interface RoleDetails extends RoleBundle {
+  displayName: string;
+  description: string | null;
+  state: RoleState;
+  kind: RoleKind;
+  assignedPrincipalCount: number;
 }
 
 export interface PrincipalPermissions {

@@ -31,10 +31,10 @@ const isolatedDatabaseName =
 const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
 let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
 let isolatedDatabaseCreated = false;
-const migrationUrl = new URL(
-  "../migrations/0000_appbasis_permissions_foundation.sql",
-  import.meta.url,
-);
+const migrationUrls = [
+  new URL("../migrations/0000_appbasis_permissions_foundation.sql", import.meta.url),
+  new URL("../migrations/0001_appbasis_permission_role_lifecycle.sql", import.meta.url),
+];
 
 const reportsRead = capabilityId("reports:read");
 const reportsWrite = capabilityId("reports:write");
@@ -76,8 +76,10 @@ beforeAll(async () => {
   );
   isolatedDatabaseCreated = true;
   isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);
-  const migration = await readFile(migrationUrl, "utf8");
-  await requiredIsolatedConnection().client.unsafe(migration);
+  for (const migrationUrl of migrationUrls) {
+    const migration = await readFile(migrationUrl, "utf8");
+    await requiredIsolatedConnection().client.unsafe(migration);
+  }
 });
 
 afterAll(async () => {
