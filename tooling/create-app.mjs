@@ -19,10 +19,11 @@ export async function createAppSkeleton(input, options = {}) {
   const repositoryRoot = resolve(options.repositoryRoot ?? process.cwd());
   const definition = parseAppDefinition(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       appId: input.appId,
       displayName: input.displayName,
       modules: input.modules ?? [],
+      platformServices: input.platformServices ?? [],
     },
     { directoryName: input.appId },
   );
@@ -120,6 +121,7 @@ export function parseCreateAppArguments(args) {
   let appId;
   let displayName;
   const modules = [];
+  const platformServices = [];
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -135,6 +137,10 @@ export function parseCreateAppArguments(args) {
       modules.push(requiredFlagValue(args, ++index, argument));
       continue;
     }
+    if (argument === "--platform-service") {
+      platformServices.push(requiredFlagValue(args, ++index, argument));
+      continue;
+    }
     throw new Error(`Unknown app generator argument: ${argument}.`);
   }
 
@@ -147,6 +153,7 @@ export function parseCreateAppArguments(args) {
     appId,
     displayName,
     modules: Object.freeze(modules),
+    platformServices: Object.freeze(platformServices),
   });
 }
 
@@ -159,7 +166,11 @@ async function runCli() {
 function generatedReadme(definition) {
   const modules =
     definition.modules.length === 0 ? "none" : definition.modules.join(", ");
-  return `# ${definition.displayName}\n\nGenerated AppBasis app skeleton.\n\n- App ID: \`${definition.appId}\`\n- Modules: ${modules}\n\nThis Phase 3B skeleton intentionally contains only the versioned app definition. Runtime composition is added by later factory slices rather than copied from another app.\n`;
+  const platformServices =
+    definition.platformServices.length === 0
+      ? "none"
+      : definition.platformServices.join(", ");
+  return `# ${definition.displayName}\n\nGenerated AppBasis app skeleton.\n\n- App ID: \`${definition.appId}\`\n- Modules: ${modules}\n- Platform services: ${platformServices}\n\nThis skeleton contains the versioned app definition only. Runtime composition is added by a separately verified generated-runtime template rather than copied from another app.\n`;
 }
 
 async function directoryNames(path) {

@@ -27,11 +27,14 @@ test("parses the explicit generator CLI contract", () => {
       "Checklist",
       "--module",
       "tasks",
+      "--platform-service",
+      "identity",
     ]),
     {
       appId: "checklist",
       displayName: "Checklist",
       modules: ["tasks"],
+      platformServices: ["identity"],
     },
   );
   assert.throws(
@@ -52,6 +55,7 @@ test("creates a deterministic skeleton that passes the app manifest contract", a
       appId: "checklist",
       displayName: "Checklist",
       modules: ["tasks"],
+      platformServices: ["identity"],
     },
     { repositoryRoot: root },
   );
@@ -59,16 +63,21 @@ test("creates a deterministic skeleton that passes the app manifest contract", a
   assert.equal(result.relativeDestination, join("apps", "checklist"));
   assert.equal(
     await readFile(join(root, "apps", "checklist", "appbasis.app.json"), "utf8"),
-    '{\n  "schemaVersion": 1,\n  "appId": "checklist",\n  "displayName": "Checklist",\n  "modules": [\n    "tasks"\n  ]\n}\n',
+    '{\n  "schemaVersion": 2,\n  "appId": "checklist",\n  "displayName": "Checklist",\n  "modules": [\n    "tasks"\n  ],\n  "platformServices": [\n    "identity"\n  ]\n}\n',
   );
   assert.match(
     await readFile(join(root, "apps", "checklist", "README.md"), "utf8"),
-    /intentionally contains only the versioned app definition/,
+    /Platform services: identity/,
+  );
+  assert.match(
+    await readFile(join(root, "apps", "checklist", "README.md"), "utf8"),
+    /separately verified generated-runtime template/,
   );
 
   const definitions = await verifyAppDefinitions(root);
   assert.equal(definitions.length, 1);
   assert.equal(definitions[0]?.appId, "checklist");
+  assert.deepEqual(definitions[0]?.platformServices, ["identity"]);
 });
 
 test("an interrupted root staging directory never enters app discovery", async (t) => {
@@ -78,6 +87,7 @@ test("an interrupted root staging directory never enters app discovery", async (
       appId: "checklist",
       displayName: "Checklist",
       modules: ["tasks"],
+      platformServices: ["identity"],
     },
     { repositoryRoot: root },
   );
@@ -93,10 +103,11 @@ test("an interrupted root staging directory never enters app discovery", async (
 test("serializes verification until a live publication is complete", async (t) => {
   const root = await createRepositoryFixture(t);
   await writeExistingApp(root, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     appId: "reference",
     displayName: "Reference",
     modules: ["tasks"],
+    platformServices: ["identity"],
   });
 
   let verificationOutcome;
@@ -107,6 +118,7 @@ test("serializes verification until a live publication is complete", async (t) =
       appId: "checklist",
       displayName: "Checklist",
       modules: ["tasks"],
+      platformServices: ["identity"],
     },
     {
       repositoryRoot: root,
@@ -149,6 +161,7 @@ test("does not replace a destination created after staging", async (t) => {
           appId: "checklist",
           displayName: "Checklist",
           modules: ["tasks"],
+          platformServices: ["identity"],
         },
         {
           repositoryRoot: root,
@@ -185,10 +198,31 @@ test("fails before writing when a module is unknown", async (t) => {
           appId: "checklist",
           displayName: "Checklist",
           modules: ["unknown"],
+          platformServices: ["identity"],
         },
         { repositoryRoot: root },
       ),
     /Unknown AppBasis module: unknown/,
+  );
+
+  assert.deepEqual(await readdir(join(root, "apps")), []);
+});
+
+test("fails before writing when a platform service is unsupported", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  await assert.rejects(
+    () =>
+      createAppSkeleton(
+        {
+          appId: "checklist",
+          displayName: "Checklist",
+          modules: [],
+          platformServices: ["notifications"],
+        },
+        { repositoryRoot: root },
+      ),
+    /references unsupported platform service notifications/,
   );
 
   assert.deepEqual(await readdir(join(root, "apps")), []);
@@ -200,6 +234,7 @@ test("never overwrites an existing app directory", async (t) => {
     appId: "checklist",
     displayName: "Checklist",
     modules: ["tasks"],
+    platformServices: ["identity"],
   };
 
   await createAppSkeleton(input, { repositoryRoot: root });

@@ -2,7 +2,7 @@
 
 ## Phase
 
-Phase 3C – Shared Identity HTTP Adapter
+Phase 3D – App Manifest V2 Platform Services
 
 ## Ziel
 
@@ -28,13 +28,15 @@ Demo v0.1 gilt als technisch abgeschlossen. Der produktive Preview-Pfad hat den 
 
 ## App-Fabrik – bewiesene Grundlagen
 
-Jede App unter `apps/` besitzt `appbasis.app.json`. Der V1-Vertrag beschreibt Schema-Version, App-ID, sichtbaren App-Namen und explizit aktivierte Module. `verify:apps` prüft Manifestform, Verzeichnisbindung und vorhandene Modul-IDs fail-closed als Bestandteil von `verify:repo`.
+Jede App unter `apps/` besitzt `appbasis.app.json`. Der V2-Vertrag beschreibt Schema-Version, App-ID, sichtbaren App-Namen, explizit aktivierte Fachmodule und explizit aktivierte Plattformdienste. `verify:apps` prüft Manifestform, Verzeichnisbindung, vorhandene Modul-IDs und zugelassene Plattformdienste fail-closed als Bestandteil von `verify:repo`.
 
-`pnpm appbasis:create` erzeugt deterministische App-Skelette ohne Reference-Copy/Paste. Staging, atomare Zielreservierung und `verify:apps` sind gegen konkurrierende Publikation gehärtet; vorhandene Apps werden niemals ersetzt.
+Als erster Manifest-Plattformdienst ist ausschließlich `identity` zugelassen. Andere Paketverzeichnisse werden nicht vorsorglich als Plattformdienste freigegeben. Die Reference-App deklariert `platformServices: ["identity"]` explizit.
 
-## Aktueller Factory-Slice
+`pnpm appbasis:create` erzeugt deterministische App-Skelette ohne Reference-Copy/Paste. Staging, atomare Zielreservierung und `verify:apps` sind gegen konkurrierende Publikation gehärtet; vorhandene Apps werden niemals ersetzt. Plattformdienste werden nur über explizite Generator-Eingaben aktiviert.
 
-Der erste tatsächlich app-übergreifend neutrale Teil des Reference-Runtimes wird in die bereits zuständige Plattformfähigkeit verschoben: `@appbasis/identity/http`.
+## Bewiesener gemeinsamer Identity-Runtime-Vertrag
+
+Der erste tatsächlich app-übergreifend neutrale Teil des Reference-Runtimes liegt in der bereits zuständigen Plattformfähigkeit: `@appbasis/identity/http`.
 
 Der Adapter:
 
@@ -45,10 +47,10 @@ Der Adapter:
 - wird von der Reference-App als erstem realen Consumer verwendet,
 - benötigt keine neue Dependency und keine neue Workspace-Package-Grenze.
 
-Die Reference-App behält weiterhin ihre fachlichen Tasks-Routen, Task-Berechtigungen, Health-/Fallback-Semantik und Hono-Komposition. Damit wird nur ein bereits belegter neutraler Vertrag extrahiert, nicht vorsorglich ein allgemeines Runtime-Framework gebaut.
+Die Reference-App behält weiterhin ihre fachlichen Tasks-Routen, Task-Berechtigungen, Health-/Fallback-Semantik und Hono-Komposition. Damit wurde nur ein bereits belegter neutraler Vertrag extrahiert, nicht vorsorglich ein allgemeines Runtime-Framework gebaut.
 
 ## Nächster technischer Meilenstein
 
 Erste zweite lauffähige Mini-App aus dem Generator.
 
-Der nächste Slice soll `appbasis:create` von einem deklarativen Skelett zur kleinsten ausführbaren zweiten App erweitern und den neuen Identity-HTTP-Adapter erstmals mit einem zweiten Consumer beweisen. Weitere gemeinsame Runtime-Bausteine werden ausschließlich dann extrahiert, wenn dieser zweite Consumer den Bedarf konkret belegt.
+Der nächste Integrations-Slice verbindet Manifest V2 mit dem unabhängig geprüften Generated-Runtime-Template. Die zweite Mini-App muss den Identity-HTTP-Adapter erstmals mit einem zweiten realen Consumer beweisen. Weitere gemeinsame Runtime-Bausteine werden ausschließlich dann extrahiert, wenn dieser zweite Consumer den Bedarf konkret belegt.

@@ -7,13 +7,14 @@ import test from "node:test";
 import { parseAppDefinition, verifyAppDefinitions } from "./app-definition.mjs";
 
 const validDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   appId: "reference",
   displayName: "AppBasis Reference",
   modules: ["tasks"],
+  platformServices: ["identity"],
 };
 
-test("accepts the minimal versioned app definition", () => {
+test("accepts the versioned app definition with explicit platform services", () => {
   const definition = parseAppDefinition(validDefinition, {
     directoryName: "reference",
   });
@@ -21,12 +22,17 @@ test("accepts the minimal versioned app definition", () => {
   assert.deepEqual(definition, validDefinition);
   assert.equal(Object.isFrozen(definition), true);
   assert.equal(Object.isFrozen(definition.modules), true);
+  assert.equal(Object.isFrozen(definition.platformServices), true);
 });
 
-test("fails closed on unknown fields and structural drift", () => {
+test("fails closed on unknown fields, old schemas and structural drift", () => {
   assert.throws(
     () => parseAppDefinition({ ...validDefinition, deployment: {} }),
     /Unknown app definition field: deployment/,
+  );
+  assert.throws(
+    () => parseAppDefinition({ ...validDefinition, schemaVersion: 1 }),
+    /schemaVersion must be 2/,
   );
   assert.throws(
     () =>
@@ -41,7 +47,34 @@ test("fails closed on unknown fields and structural drift", () => {
         ...validDefinition,
         modules: ["tasks", "tasks"],
       }),
-    /must not contain duplicates/,
+    /modules must not contain duplicates/,
+  );
+  assert.throws(
+    () =>
+      parseAppDefinition({
+        ...validDefinition,
+        platformServices: ["identity", "identity"],
+      }),
+    /platformServices must not contain duplicates/,
+  );
+});
+
+test("supports only proven platform services", () => {
+  assert.throws(
+    () =>
+      parseAppDefinition({
+        ...validDefinition,
+        platformServices: ["notifications"],
+      }),
+    /references unsupported platform service notifications/,
+  );
+  assert.throws(
+    () => {
+      const { platformServices: _platformServices, ...missingPlatformServices } =
+        validDefinition;
+      return parseAppDefinition(missingPlatformServices);
+    },
+    /platformServices must be an array/,
   );
 });
 
