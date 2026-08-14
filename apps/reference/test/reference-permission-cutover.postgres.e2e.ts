@@ -51,7 +51,7 @@ const workerSettings = {
       {
         name: 'APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS',
         type: 'plain_text',
-        text: 'legacy-admin,legacy-shared',
+        text: 'legacy-admin,legacy-shared,legacy-technical-admin',
       },
     ],
   },
@@ -70,7 +70,7 @@ afterAll(async () => {
 });
 
 describe.sequential('Reference preview permission authority cutover', () => {
-  it('upgrades the existing permission foundation and persists both legacy role classes before deployment', async () => {
+  it('upgrades the existing permission foundation and persists only effective legacy application role assignments before deployment', async () => {
     await expect(
       detectReferencePermissionSchemaVersion(requiredConnection().client),
     ).resolves.toBe(1);
@@ -98,6 +98,7 @@ describe.sequential('Reference preview permission authority cutover', () => {
     ).resolves.toEqual({ schemaVersion: 3, assignmentCount: 3 });
 
     await expectLegacyAssignments(requiredConnection());
+    await expectTechnicalAdminNotAssigned(requiredConnection());
 
     const roleRows = await requiredConnection().client.unsafe(
       `SELECT role_id, state, kind
@@ -120,6 +121,41 @@ describe.sequential('Reference preview permission authority cutover', () => {
 
     await expect(
       applyReferencePreviewPermissionCutover({
+        connectionString: targetUrl.toString(),
+        workerSettings,
+      }),
+    ).resolves.toEqual({ schemaVersion: 3, assignmentCount: 3 });
+    await expectTechnicalAdminNotAssigned(requiredConnection());
+
+    await requiredConnection().client.unsafe(
+      `INSERT INTO appbasis_permission_principal (principal_id)
+       VALUES ('legacy-technical-admin')`,
+    );
+    await requiredConnection().client.unsafe(
+      `INSERT INTO appbasis_permission_principal_role (principal_id, role_id)
+       VALUES ('legacy-technical-admin', $1)`,
+      [DEMO_ROLES.admin],
+    );
+
+    await expect(
+      verifyReferencePreviewPermissionCutover({
+        connectionString: targetUrl.toString(),
+        workerSettings,
+      }),
+    ).rejects.toBeInstanceOf(ReferencePermissionCutoverStateError);
+    await expect(
+      applyReferencePreviewPermissionCutover({
+        connectionString: targetUrl.toString(),
+        workerSettings,
+      }),
+    ).rejects.toBeInstanceOf(ReferencePermissionCutoverStateError);
+
+    await requiredConnection().client.unsafe(
+      `DELETE FROM appbasis_permission_principal
+       WHERE principal_id = 'legacy-technical-admin'`,
+    );
+    await expect(
+      verifyReferencePreviewPermissionCutover({
         connectionString: targetUrl.toString(),
         workerSettings,
       }),
@@ -174,6 +210,7 @@ describe.sequential('Reference preview permission authority cutover', () => {
         detectReferencePermissionSchemaVersion(bundledConnection.client),
       ).resolves.toBe(3);
       await expectLegacyAssignments(bundledConnection);
+      await expectTechnicalAdminNotAssigned(bundledConnection);
     } finally {
       if (bundledConnection !== undefined) await bundledConnection.client.end();
       await adminConnection.client.unsafe(
@@ -205,6 +242,10 @@ async function prepareLegacyPermissionDatabase(
       [id],
     );
   }
+  await target.client.unsafe(
+    `INSERT INTO "user" (id, name, email, username, display_username, role)
+     VALUES ('legacy-technical-admin', 'technical.root', 'technical.root@identity.invalid', 'technical.root', 'technical.root', 'user, admin')`,
+  );
 }
 
 async function expectLegacyAssignments(
@@ -221,6 +262,24 @@ async function expectLegacyAssignments(
     { principal_id: 'legacy-member', role_id: DEMO_ROLES.member },
     { principal_id: 'legacy-shared', role_id: DEMO_ROLES.admin },
   ]);
+}
+
+async function expectTechnicalAdminNotAssigned(
+  target: ReturnType<typeof createPostgresDatabase>,
+) {
+  const principalRows = await target.client.unsafe(
+    `SELECT principal_id
+     FROM appbasis_permission_principal
+     WHERE principal_id = 'legacy-technical-admin'`,
+  );
+  expect(principalRows).toEqual([]);
+
+  const assignments = await target.client.unsafe(
+    `SELECT role_id
+     FROM appbasis_permission_principal_role
+     WHERE principal_id = 'legacy-technical-admin'`,
+  );
+  expect(assignments).toEqual([]);
 }
 
 async function applyMigration(

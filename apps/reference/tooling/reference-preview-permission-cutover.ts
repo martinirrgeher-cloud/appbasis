@@ -83,6 +83,11 @@ export interface LegacyPermissionAssignment {
   readonly roleId: RoleId;
 }
 
+interface EffectiveLegacyPermissionAssignments {
+  readonly assignments: readonly LegacyPermissionAssignment[];
+  readonly skippedTechnicalAdminPrincipalIds: readonly PrincipalId[];
+}
+
 export interface ReferencePermissionCutoverInput {
   readonly connectionString: string;
   readonly workerSettings: unknown;
@@ -125,10 +130,18 @@ export function legacyPermissionAssignmentsFromWorkerSettings(
 export async function applyReferencePreviewPermissionCutover(
   input: ReferencePermissionCutoverInput,
 ) {
-  const assignments = legacyPermissionAssignmentsFromWorkerSettings(input.workerSettings);
+  const legacyAssignments = legacyPermissionAssignmentsFromWorkerSettings(input.workerSettings);
   const connection = createPostgresDatabase(input.connectionString);
   try {
-    await assertLegacyIdentitiesExist(connection.client, assignments);
+    const resolved = await effectiveLegacyPermissionAssignments(
+      connection.client,
+      legacyAssignments,
+    );
+    await assertNoTechnicalAdminPermissionState(
+      connection.client,
+      resolved.skippedTechnicalAdminPrincipalIds,
+    );
+    const assignments = resolved.assignments;
     let version = await detectReferencePermissionSchemaVersion(connection.client);
     if (version === 1) {
       await applyVersionedMigration(connection, LIFECYCLE_MIGRATION_PATH);
@@ -163,7 +176,11 @@ export async function applyReferencePreviewPermissionCutover(
       })),
     });
 
-    await verifyCutoverState(connection.client, assignments);
+    await verifyCutoverState(
+      connection.client,
+      assignments,
+      resolved.skippedTechnicalAdminPrincipalIds,
+    );
     return Object.freeze({ schemaVersion: 3, assignmentCount: assignments.length });
   } finally {
     await connection.client.end();
@@ -173,18 +190,28 @@ export async function applyReferencePreviewPermissionCutover(
 export async function verifyReferencePreviewPermissionCutover(
   input: ReferencePermissionCutoverInput,
 ) {
-  const assignments = legacyPermissionAssignmentsFromWorkerSettings(input.workerSettings);
+  const legacyAssignments = legacyPermissionAssignmentsFromWorkerSettings(input.workerSettings);
   const connection = createPostgresDatabase(input.connectionString);
   try {
-    await assertLegacyIdentitiesExist(connection.client, assignments);
+    const resolved = await effectiveLegacyPermissionAssignments(
+      connection.client,
+      legacyAssignments,
+    );
     const version = await detectReferencePermissionSchemaVersion(connection.client);
     if (version !== 3) {
       throw new ReferencePermissionCutoverStateError(
         'Reference permission cutover requires schema version 3 before deployment.',
       );
     }
-    await verifyCutoverState(connection.client, assignments);
-    return Object.freeze({ schemaVersion: version, assignmentCount: assignments.length });
+    await verifyCutoverState(
+      connection.client,
+      resolved.assignments,
+      resolved.skippedTechnicalAdminPrincipalIds,
+    );
+    return Object.freeze({
+      schemaVersion: version,
+      assignmentCount: resolved.assignments.length,
+    });
   } finally {
     await connection.client.end();
   }
@@ -316,6 +343,7 @@ async function runFromEnvironment(env: NodeJS.ProcessEnv = process.env) {
 async function verifyCutoverState(
   client: PermissionPostgresClient,
   assignments: readonly LegacyPermissionAssignment[],
+  skippedTechnicalAdminPrincipalIds: readonly PrincipalId[],
 ): Promise<void> {
   for (const bundle of DEMO_ROLE_BUNDLES) {
     const roleRows = await client.unsafe(
@@ -365,23 +393,98 @@ async function verifyCutoverState(
       );
     }
   }
+
+  await assertNoTechnicalAdminPermissionState(
+    client,
+    skippedTechnicalAdminPrincipalIds,
+  );
 }
 
-async function assertLegacyIdentitiesExist(
+async function effectiveLegacyPermissionAssignments(
   client: PermissionPostgresClient,
   assignments: readonly LegacyPermissionAssignment[],
-): Promise<void> {
+): Promise<EffectiveLegacyPermissionAssignments> {
+  const effective: LegacyPermissionAssignment[] = [];
+  const skippedTechnicalAdminPrincipalIds: PrincipalId[] = [];
+
   for (const assignment of assignments) {
     const rows = await client.unsafe(
-      `SELECT security.identity_id
-       FROM appbasis_identity_security_state security
-       JOIN "user" identity_user ON identity_user.id = security.identity_id
-       WHERE security.identity_id = $1`,
+      `SELECT identity_user.role AS auth_role, security.identity_id
+       FROM "user" identity_user
+       LEFT JOIN appbasis_identity_security_state security
+         ON security.identity_id = identity_user.id
+       WHERE identity_user.id = $1`,
       [assignment.principalId],
     );
     if (rows.length !== 1) {
       throw new ReferencePermissionCutoverStateError(
-        'A legacy Reference permission assignment references an unknown application identity.',
+        'A legacy Reference permission assignment references an unknown authentication identity.',
+      );
+    }
+
+    const identityId = rows[0]?.identity_id;
+    if (identityId === assignment.principalId) {
+      effective.push(assignment);
+      continue;
+    }
+    if (identityId !== null && identityId !== undefined) {
+      throw new ReferencePermissionCutoverStateError(
+        'A legacy Reference permission assignment resolved to invalid AppBasis identity state.',
+      );
+    }
+
+    if (hasTechnicalAdminRole(rows[0]?.auth_role)) {
+      skippedTechnicalAdminPrincipalIds.push(assignment.principalId);
+      continue;
+    }
+
+    throw new ReferencePermissionCutoverStateError(
+      'A legacy Reference permission assignment references an authentication identity without AppBasis application state.',
+    );
+  }
+
+  if (effective.length === 0) {
+    throw new ReferencePermissionCutoverStateError(
+      'Existing Reference Worker contains no effective legacy application permission assignments.',
+    );
+  }
+
+  return Object.freeze({
+    assignments: Object.freeze(effective),
+    skippedTechnicalAdminPrincipalIds: Object.freeze(skippedTechnicalAdminPrincipalIds),
+  });
+}
+
+async function assertNoTechnicalAdminPermissionState(
+  client: PermissionPostgresClient,
+  principalIds: readonly PrincipalId[],
+): Promise<void> {
+  for (const id of principalIds) {
+    const rows = await client.unsafe(
+      `SELECT
+         EXISTS(
+           SELECT 1 FROM appbasis_permission_principal WHERE principal_id = $1
+         ) AS principal_exists,
+         EXISTS(
+           SELECT 1 FROM appbasis_permission_principal_role WHERE principal_id = $1
+         ) AS role_exists,
+         EXISTS(
+           SELECT 1 FROM appbasis_permission_principal_grant WHERE principal_id = $1
+         ) AS grant_exists,
+         EXISTS(
+           SELECT 1 FROM appbasis_permission_principal_revoke WHERE principal_id = $1
+         ) AS revoke_exists`,
+      [id],
+    );
+    const state = rows[0];
+    if (
+      state?.principal_exists === true ||
+      state?.role_exists === true ||
+      state?.grant_exists === true ||
+      state?.revoke_exists === true
+    ) {
+      throw new ReferencePermissionCutoverStateError(
+        'A technical Better Auth administrator has persisted AppBasis permission state.',
       );
     }
   }
@@ -525,6 +628,16 @@ function identityIdsFromBinding(
     }
   }
   return ids;
+}
+
+function hasTechnicalAdminRole(role: unknown): boolean {
+  return (
+    typeof role === 'string' &&
+    role
+      .split(',')
+      .map((value) => value.trim())
+      .includes('admin')
+  );
 }
 
 function postgresArray(values: readonly string[]): string {

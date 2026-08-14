@@ -53,7 +53,7 @@ const workerSettings = {
       {
         name: 'APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS',
         type: 'plain_text',
-        text: 'legacy-admin,legacy-shared',
+        text: 'legacy-admin,legacy-shared,legacy-technical-admin',
       },
     ],
   },
@@ -98,7 +98,7 @@ describe.sequential('Reference preview permission authority cutover from schema 
     ).resolves.toBe(0);
   });
 
-  it('runs the built foundation and cutover runners from zero permission tables to persistent v3 assignments', async () => {
+  it('runs the built foundation and cutover runners from zero permission tables to persistent v3 effective assignments', async () => {
     await expect(
       detectReferencePermissionFoundationState(requiredConnection().client),
     ).resolves.toBe(0);
@@ -205,6 +205,13 @@ describe.sequential('Reference preview permission authority cutover from schema 
         { principal_id: 'legacy-shared', role_id: DEMO_ROLES.admin },
       ]);
 
+      const technicalAdminAssignments = await requiredConnection().client.unsafe(
+        `SELECT role_id
+         FROM appbasis_permission_principal_role
+         WHERE principal_id = 'legacy-technical-admin'`,
+      );
+      expect(technicalAdminAssignments).toEqual([]);
+
       const secondFoundationResult = await execFileAsync(
         process.execPath,
         [foundationBundle],
@@ -249,6 +256,10 @@ async function insertLegacyIdentities(
       [id],
     );
   }
+  await target.client.unsafe(
+    `INSERT INTO "user" (id, name, email, username, display_username, role)
+     VALUES ('legacy-technical-admin', 'technical.root', 'technical.root@identity.invalid', 'technical.root', 'technical.root', 'admin')`,
+  );
 }
 
 async function applyMigration(
