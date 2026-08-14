@@ -54,6 +54,20 @@ describe('Reference shared shell contract', () => {
     );
   });
 
+  it('shares the Reference brand identity while preserving consumer-owned presentation classes', () => {
+    expect(tasksConsumer).toContain("import { ReferenceBrand } from './shell/ReferenceBrand';");
+    expect(tasksConsumer).toContain("root: 'brand'");
+    expect(tasksConsumer).toContain("mark: 'brand-mark'");
+    expect(tasksConsumer).toContain('<ReferenceBrand classes={taskBrandClasses} />');
+    expect(tasksConsumer).not.toContain('<a className="brand" href="#dashboard"');
+
+    expect(rolesConsumer).toContain("import { ReferenceBrand } from '../shell/ReferenceBrand';");
+    expect(rolesConsumer).toContain("root: 'roles-brand'");
+    expect(rolesConsumer).toContain("mark: 'roles-brand__mark'");
+    expect(rolesConsumer).toContain('<ReferenceBrand classes={roleBrandClasses} />');
+    expect(rolesConsumer).not.toContain('<a className="roles-brand" href="#dashboard"');
+  });
+
   it('keeps both real consumers mobile-first with bottom navigation', () => {
     const taskNavigation = cssBlock(tasksStyles, '.navigation');
     const roleNavigation = cssBlock(rolesStyles, '.roles-mobile-nav');
