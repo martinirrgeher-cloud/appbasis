@@ -12,6 +12,7 @@ import { build, mergeConfig } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  ReferencePermissionFoundationStateError,
   detectReferencePermissionFoundationState,
 } from '../tooling/reference-preview-permission-foundation';
 import {
@@ -34,6 +35,10 @@ const targetUrl = databaseUrlForName(databaseName);
 let connection: ReturnType<typeof createPostgresDatabase> | undefined;
 const identityMigrationUrl = new URL(
   '../../../packages/identity/drizzle/0000_appbasis_identity_foundation.sql',
+  import.meta.url,
+);
+const permissionFoundationMigrationUrl = new URL(
+  '../../../packages/permissions/migrations/0000_appbasis_permissions_foundation.sql',
   import.meta.url,
 );
 const workerSettings = {
@@ -68,6 +73,31 @@ afterAll(async () => {
 });
 
 describe.sequential('Reference preview permission authority cutover from schema v0', () => {
+  it('fails closed when all foundation relations exist but required integrity constraints are malformed', async () => {
+    await applyMigration(requiredConnection(), permissionFoundationMigrationUrl);
+    await requiredConnection().client.unsafe(
+      `ALTER TABLE appbasis_permission_principal_role
+       DROP CONSTRAINT appbasis_permission_principal_role_role_id_fkey`,
+    );
+
+    const permissionTables = await requiredConnection().client.unsafe(
+      `SELECT tablename
+       FROM pg_tables
+       WHERE schemaname = 'public'
+         AND tablename LIKE 'appbasis_permission_%'
+       ORDER BY tablename`,
+    );
+    expect(permissionTables).toHaveLength(7);
+    await expect(
+      detectReferencePermissionFoundationState(requiredConnection().client),
+    ).rejects.toBeInstanceOf(ReferencePermissionFoundationStateError);
+
+    await removePermissionFoundation(requiredConnection());
+    await expect(
+      detectReferencePermissionFoundationState(requiredConnection().client),
+    ).resolves.toBe(0);
+  });
+
   it('runs the built foundation and cutover runners from zero permission tables to persistent v3 assignments', async () => {
     await expect(
       detectReferencePermissionFoundationState(requiredConnection().client),
@@ -232,6 +262,22 @@ async function applyMigration(
     .filter(Boolean)) {
     await target.client.unsafe(statement);
   }
+}
+
+async function removePermissionFoundation(
+  target: ReturnType<typeof createPostgresDatabase>,
+) {
+  await target.client.unsafe(
+    `DROP TABLE IF EXISTS
+       appbasis_permission_principal_revoke,
+       appbasis_permission_principal_grant,
+       appbasis_permission_principal_role,
+       appbasis_permission_role_capability,
+       appbasis_permission_principal,
+       appbasis_permission_role,
+       appbasis_permission_capability
+     CASCADE`,
+  );
 }
 
 function databaseUrlForName(name: string) {
