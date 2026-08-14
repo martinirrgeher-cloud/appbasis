@@ -40,7 +40,9 @@ Der Generator:
 - lehnt unbekannte Module vor dem Schreiben ab,
 - überschreibt niemals eine vorhandene App,
 - erzeugt Dateien zunächst außerhalb von `apps/`, reserviert den endgültigen App-Pfad atomar ohne Ersetzen und veröffentlicht das Manifest erst nach erfolgreicher Reservierung,
-- hält parallele App-Prüfung während der kurzen Publikationsphase über einen expliziten lebenden Claim konsistent und behandelt verwaiste Claims fail-closed,
+- serialisiert ausschließlich die kurze Publikationsphase mit `verify:apps` über einen gemeinsamen exklusiven App-Registry-Lock,
+- lässt `verify:apps` niemals Manifest-Prüfungen überspringen; die Verifikation wartet bei einer aktiven Veröffentlichung begrenzt und prüft danach wieder vollständig fail-closed,
+- behandelt verwaiste oder ungültige Registry-Locks fail-closed statt sie stillschweigend zu ignorieren,
 - erzeugt ausschließlich deterministischen Manifest-/README-Inhalt ohne Secrets oder Provider-Daten,
 - kopiert bewusst keine Reference-Runtime.
 
