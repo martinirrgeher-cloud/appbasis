@@ -7,15 +7,108 @@ import { createPostgresDatabase } from '@appbasis/database/postgres-provisioning
 const TARGET = 'reference-preview';
 const FOUNDATION_MIGRATION_PATH =
   'packages/permissions/migrations/0000_appbasis_permissions_foundation.sql';
-const FOUNDATION_RELATIONS = [
-  'appbasis_permission_capability',
-  'appbasis_permission_role',
-  'appbasis_permission_role_capability',
-  'appbasis_permission_principal',
-  'appbasis_permission_principal_role',
-  'appbasis_permission_principal_grant',
-  'appbasis_permission_principal_revoke',
-] as const;
+
+interface FoundationForeignKeySpec {
+  readonly column: string;
+  readonly referencedTable: string;
+  readonly referencedColumn: string;
+}
+
+interface FoundationTableSpec {
+  readonly name: string;
+  readonly columns: readonly string[];
+  readonly primaryKey: readonly string[];
+  readonly foreignKeys: readonly FoundationForeignKeySpec[];
+}
+
+const FOUNDATION_TABLES = [
+  {
+    name: 'appbasis_permission_capability',
+    columns: ['capability_id'],
+    primaryKey: ['capability_id'],
+    foreignKeys: [],
+  },
+  {
+    name: 'appbasis_permission_role',
+    columns: ['role_id'],
+    primaryKey: ['role_id'],
+    foreignKeys: [],
+  },
+  {
+    name: 'appbasis_permission_role_capability',
+    columns: ['role_id', 'capability_id'],
+    primaryKey: ['role_id', 'capability_id'],
+    foreignKeys: [
+      {
+        column: 'capability_id',
+        referencedTable: 'appbasis_permission_capability',
+        referencedColumn: 'capability_id',
+      },
+      {
+        column: 'role_id',
+        referencedTable: 'appbasis_permission_role',
+        referencedColumn: 'role_id',
+      },
+    ],
+  },
+  {
+    name: 'appbasis_permission_principal',
+    columns: ['principal_id'],
+    primaryKey: ['principal_id'],
+    foreignKeys: [],
+  },
+  {
+    name: 'appbasis_permission_principal_role',
+    columns: ['principal_id', 'role_id'],
+    primaryKey: ['principal_id', 'role_id'],
+    foreignKeys: [
+      {
+        column: 'principal_id',
+        referencedTable: 'appbasis_permission_principal',
+        referencedColumn: 'principal_id',
+      },
+      {
+        column: 'role_id',
+        referencedTable: 'appbasis_permission_role',
+        referencedColumn: 'role_id',
+      },
+    ],
+  },
+  {
+    name: 'appbasis_permission_principal_grant',
+    columns: ['principal_id', 'capability_id'],
+    primaryKey: ['principal_id', 'capability_id'],
+    foreignKeys: [
+      {
+        column: 'capability_id',
+        referencedTable: 'appbasis_permission_capability',
+        referencedColumn: 'capability_id',
+      },
+      {
+        column: 'principal_id',
+        referencedTable: 'appbasis_permission_principal',
+        referencedColumn: 'principal_id',
+      },
+    ],
+  },
+  {
+    name: 'appbasis_permission_principal_revoke',
+    columns: ['principal_id', 'capability_id'],
+    primaryKey: ['principal_id', 'capability_id'],
+    foreignKeys: [
+      {
+        column: 'capability_id',
+        referencedTable: 'appbasis_permission_capability',
+        referencedColumn: 'capability_id',
+      },
+      {
+        column: 'principal_id',
+        referencedTable: 'appbasis_permission_principal',
+        referencedColumn: 'principal_id',
+      },
+    ],
+  },
+] as const satisfies readonly FoundationTableSpec[];
 
 type PermissionFoundationClient = ReturnType<
   typeof createPostgresDatabase
@@ -54,10 +147,14 @@ export async function detectReferencePermissionFoundationState(
   );
 
   if (present.length === 0) return 0;
-  if (present.length !== FOUNDATION_RELATIONS.length) {
+  if (present.length !== FOUNDATION_TABLES.length) {
     throw new ReferencePermissionFoundationStateError(
       'Reference permission foundation schema is partial.',
     );
+  }
+
+  for (const table of FOUNDATION_TABLES) {
+    await assertFoundationTableShape(client, table);
   }
   return 1;
 }
@@ -132,6 +229,136 @@ export function safeReferencePermissionFoundationDiagnostic(
     default:
       return 'unknown';
   }
+}
+
+async function assertFoundationTableShape(
+  client: PermissionFoundationClient,
+  table: FoundationTableSpec,
+): Promise<void> {
+  const relationRows = await client.unsafe(
+    `SELECT table_type
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = $1`,
+    [table.name],
+  );
+  if (
+    relationRows.length !== 1 ||
+    relationRows[0]?.table_type !== 'BASE TABLE'
+  ) {
+    throwMalformedFoundation();
+  }
+
+  const columnRows = await client.unsafe(
+    `SELECT column_name, data_type, is_nullable, column_default
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = $1
+     ORDER BY ordinal_position`,
+    [table.name],
+  );
+  if (columnRows.length !== table.columns.length) {
+    throwMalformedFoundation();
+  }
+  for (let index = 0; index < table.columns.length; index += 1) {
+    const row = columnRows[index];
+    if (
+      row?.column_name !== table.columns[index] ||
+      row?.data_type !== 'text' ||
+      row?.is_nullable !== 'NO' ||
+      row?.column_default !== null
+    ) {
+      throwMalformedFoundation();
+    }
+  }
+
+  const primaryKeyRows = await client.unsafe(
+    `SELECT kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON kcu.constraint_catalog = tc.constraint_catalog
+      AND kcu.constraint_schema = tc.constraint_schema
+      AND kcu.constraint_name = tc.constraint_name
+      AND kcu.table_schema = tc.table_schema
+      AND kcu.table_name = tc.table_name
+     WHERE tc.table_schema = 'public'
+       AND tc.table_name = $1
+       AND tc.constraint_type = 'PRIMARY KEY'
+     ORDER BY kcu.ordinal_position`,
+    [table.name],
+  );
+  if (
+    !sameStrings(
+      primaryKeyRows.map((row) => row.column_name),
+      table.primaryKey,
+    )
+  ) {
+    throwMalformedFoundation();
+  }
+
+  const foreignKeyRows = await client.unsafe(
+    `SELECT
+       kcu.column_name,
+       ccu.table_name AS referenced_table,
+       ccu.column_name AS referenced_column,
+       rc.update_rule,
+       rc.delete_rule
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON kcu.constraint_catalog = tc.constraint_catalog
+      AND kcu.constraint_schema = tc.constraint_schema
+      AND kcu.constraint_name = tc.constraint_name
+      AND kcu.table_schema = tc.table_schema
+      AND kcu.table_name = tc.table_name
+     JOIN information_schema.referential_constraints rc
+       ON rc.constraint_catalog = tc.constraint_catalog
+      AND rc.constraint_schema = tc.constraint_schema
+      AND rc.constraint_name = tc.constraint_name
+     JOIN information_schema.constraint_column_usage ccu
+       ON ccu.constraint_catalog = rc.unique_constraint_catalog
+      AND ccu.constraint_schema = rc.unique_constraint_schema
+      AND ccu.constraint_name = rc.unique_constraint_name
+     WHERE tc.table_schema = 'public'
+       AND tc.table_name = $1
+       AND tc.constraint_type = 'FOREIGN KEY'
+     ORDER BY kcu.column_name`,
+    [table.name],
+  );
+  const expectedForeignKeys = [...table.foreignKeys].sort((left, right) =>
+    left.column.localeCompare(right.column),
+  );
+  if (foreignKeyRows.length !== expectedForeignKeys.length) {
+    throwMalformedFoundation();
+  }
+  for (let index = 0; index < expectedForeignKeys.length; index += 1) {
+    const row = foreignKeyRows[index];
+    const expected = expectedForeignKeys[index];
+    if (
+      row?.column_name !== expected?.column ||
+      row?.referenced_table !== expected?.referencedTable ||
+      row?.referenced_column !== expected?.referencedColumn ||
+      row?.update_rule !== 'NO ACTION' ||
+      row?.delete_rule !== 'CASCADE'
+    ) {
+      throwMalformedFoundation();
+    }
+  }
+}
+
+function sameStrings(
+  actual: readonly unknown[],
+  expected: readonly string[],
+): boolean {
+  return (
+    actual.length === expected.length &&
+    actual.every((value, index) => value === expected[index])
+  );
+}
+
+function throwMalformedFoundation(): never {
+  throw new ReferencePermissionFoundationStateError(
+    'Reference permission foundation schema is malformed.',
+  );
 }
 
 async function applyFoundationMigration(
