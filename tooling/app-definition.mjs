@@ -1,6 +1,8 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { withAppRegistryLock } from "./app-publication.mjs";
+
 const APP_DEFINITION_FILE = "appbasis.app.json";
 const APP_DEFINITION_KEYS = new Set([
   "schemaVersion",
@@ -64,6 +66,12 @@ export function parseAppDefinition(value, options = {}) {
 }
 
 export async function verifyAppDefinitions(repositoryRoot = process.cwd()) {
+  return withAppRegistryLock(repositoryRoot, "verify", () =>
+    verifyAppDefinitionsUnlocked(repositoryRoot),
+  );
+}
+
+async function verifyAppDefinitionsUnlocked(repositoryRoot) {
   const appsDirectory = join(repositoryRoot, "apps");
   const modulesDirectory = join(repositoryRoot, "modules");
   const appEntries = await directoryNames(appsDirectory);

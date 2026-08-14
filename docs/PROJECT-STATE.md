@@ -2,11 +2,11 @@
 
 ## Phase
 
-Phase 3A – App Manifest Foundation
+Phase 3B – Deterministic App Skeleton Generator
 
 ## Ziel
 
-Der vollständige Reference-Vertical-Slice ist als Demo v0.1 bewiesen. Der Fokus wechselt damit vom Nachweis einzelner Plattformfähigkeiten zur eigentlichen App-Fabrik: konkrete Apps sollen künftig aus kleinen, maschinenlesbaren Definitionen reproduzierbar aufgebaut werden, ohne Auth, Datenbank, Berechtigungen, CI und Deployment jeweils neu zu implementieren.
+Der vollständige Reference-Vertical-Slice ist als Demo v0.1 bewiesen. Der Fokus liegt jetzt auf der eigentlichen App-Fabrik: konkrete Apps sollen aus kleinen, maschinenlesbaren Definitionen reproduzierbar aufgebaut werden, ohne Auth, Datenbank, Berechtigungen, CI und Deployment jeweils neu zu implementieren.
 
 ## Bewiesenes Fundament
 
@@ -26,21 +26,30 @@ Der vollständige Reference-Vertical-Slice ist als Demo v0.1 bewiesen. Der Fokus
 
 Demo v0.1 gilt als technisch abgeschlossen. Der produktive Preview-Pfad hat den vollständigen User-to-Database-Vertical-Slice gegen reales Neon/PostgreSQL erfolgreich bewiesen. Alte technische Root-Admin-Sessions wurden nach erfolgreicher Demo-Abnahme bereinigt; der Demo-User bleibt aktiv.
 
+## App-Manifest V1
+
+Jede App unter `apps/` besitzt `appbasis.app.json`. Der Vertrag beschreibt aktuell ausschließlich Schema-Version, App-ID, sichtbaren App-Namen und explizit aktivierte Module. `verify:apps` prüft Manifestform, Verzeichnisbindung und vorhandene Modul-IDs fail-closed als Bestandteil von `verify:repo`.
+
 ## Aktueller Factory-Slice
 
-Jede ausführbare App erhält eine kleine Datei `appbasis.app.json`. Der V1-Vertrag beschreibt zunächst ausschließlich:
+`pnpm appbasis:create` erzeugt aus expliziten CLI-Eingaben ein neues App-Skelett unter `apps/<appId>/`.
 
-- Schema-Version,
-- stabile App-ID,
-- sichtbaren App-Namen,
-- explizit aktivierte Module.
+Der Generator:
 
-`verify:apps` prüft diesen Vertrag fail-closed und ist Bestandteil von `verify:repo`. Die Reference-App deklariert aktuell nur das bereits bewiesene Modul `tasks`.
+- verwendet denselben Manifest-Vertrag wie CI,
+- lehnt unbekannte Module vor dem Schreiben ab,
+- überschreibt niemals eine vorhandene App,
+- erzeugt Dateien zunächst außerhalb von `apps/`, reserviert den endgültigen App-Pfad atomar ohne Ersetzen und veröffentlicht das Manifest erst nach erfolgreicher Reservierung,
+- serialisiert ausschließlich die kurze Publikationsphase mit `verify:apps` über einen gemeinsamen exklusiven App-Registry-Lock,
+- lässt `verify:apps` niemals Manifest-Prüfungen überspringen; die Verifikation wartet bei einer aktiven Veröffentlichung begrenzt und prüft danach wieder vollständig fail-closed,
+- behandelt verwaiste oder ungültige Registry-Locks fail-closed statt sie stillschweigend zu ignorieren,
+- erzeugt ausschließlich deterministischen Manifest-/README-Inhalt ohne Secrets oder Provider-Daten,
+- kopiert bewusst keine Reference-Runtime.
 
-Provider-IDs, Secrets, Deployment-Ziele, Benutzer, Berechtigungen, Navigation und frei definierbare Konfiguration gehören bewusst noch nicht in den Manifest-Vertrag. Solche Felder werden erst bei belegtem Generator- oder Zweit-App-Bedarf ergänzt.
+Das Ergebnis ist in Phase 3B noch kein lauffähiges zweites Frontend, sondern die sichere deklarative und technische Erzeugungsgrenze für den nächsten Factory-Schritt.
 
 ## Nächster technischer Meilenstein
 
-Phase 3B – erster deterministischer App-Generator.
+Phase 3C – kleinste wiederverwendbare Runtime-Komposition und erste zweite lauffähige Mini-App.
 
-Ziel ist eine zweite minimale App, die aus dem AppBasis-Manifest bzw. einer kleinen Generator-Eingabe erzeugt wird. Der Erfolg ist nicht eine zweite handgebaute Demo, sondern der Nachweis, dass die bestehende Plattform wiederverwendet wird und keine parallelen Implementierungen von Identity, Datenbank, Permissions, CI oder Deployment entstehen.
+Dafür werden nur diejenigen neutralen Teile aus dem bewiesenen Reference-Vertical-Slice extrahiert, die die zweite App tatsächlich wiederverwenden kann. Erst danach wird der Generator um lauffähige Runtime-Ausgabe erweitert. Damit entsteht keine zweite handkopierte Implementierung von Identity, Datenbank, Permissions, CI oder Deployment.

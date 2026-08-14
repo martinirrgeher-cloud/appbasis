@@ -13,6 +13,9 @@ test-results/
 .wrangler/
 apps/reference/wrangler.preview.generated.json
 .appbasis/handoff/
+.appbasis-create-*/
+.appbasis-app-registry.lock
+.appbasis-app-registry-candidate-*.json
 *.log
 
 .DS_Store
