@@ -5,6 +5,10 @@ export async function can(
   store: PermissionStore,
   request: PermissionRequest,
 ): Promise<boolean> {
+  if (store.evaluatePermission !== undefined) {
+    return store.evaluatePermission(request);
+  }
+
   if (!(await store.isKnownCapability(request.capability))) return false;
 
   const principal = await store.findPrincipal(request.principalId);
