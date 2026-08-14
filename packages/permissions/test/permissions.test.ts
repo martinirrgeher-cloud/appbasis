@@ -12,6 +12,7 @@ import {
   capabilityId,
   principalId,
   roleId,
+  type PermissionStore,
   type PrincipalPermissions,
 } from "../src";
 
@@ -110,6 +111,30 @@ describe("minimal permissions core", () => {
     await expect(
       can(store, { principalId: adminId, capability: DEMO_CAPABILITIES.usersManage }),
     ).resolves.toBe(false);
+  });
+
+  it("prefers an atomic store evaluator over split permission reads", async () => {
+    const request = {
+      principalId: memberId,
+      capability: DEMO_CAPABILITIES.tasksManage,
+    };
+    let evaluated = 0;
+    const splitRead = async (): Promise<never> => {
+      throw new Error("split permission read must not run");
+    };
+    const store: PermissionStore = {
+      async evaluatePermission(received) {
+        evaluated += 1;
+        expect(received).toEqual(request);
+        return true;
+      },
+      findPrincipal: splitRead,
+      findRole: splitRead,
+      isKnownCapability: splitRead,
+    };
+
+    await expect(can(store, request)).resolves.toBe(true);
+    expect(evaluated).toBe(1);
   });
 
   it("assert throws a focused PermissionDeniedError", async () => {
