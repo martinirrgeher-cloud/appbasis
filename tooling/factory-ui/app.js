@@ -89,11 +89,13 @@ async function loadSnapshot() {
     });
     if (!response.ok) throw new Error("Snapshot konnte nicht geladen werden.");
 
+    const focusedAppIdBeforeRender = focusedAppButtonId();
     state.snapshot = await response.json();
     renderApps();
     renderCatalog();
     renderDraftPreview();
     restoreSelectedAppDetail();
+    restoreListFocusAfterRender(focusedAppIdBeforeRender);
   } catch {
     const detailWasVisible = isPanelVisible("detail");
     state.snapshot = null;
@@ -210,10 +212,24 @@ function returnToApps(appIdToRestore = state.selectedAppId) {
   state.selectedAppId = null;
   setActiveTab("apps");
   showPanel("apps");
+  scheduleAppsFocus(appIdToRestore);
+}
+
+function restoreListFocusAfterRender(appId) {
+  if (appId === null || !isPanelVisible("apps")) return;
+  scheduleAppsFocus(appId);
+}
+
+function scheduleAppsFocus(appId) {
   requestAnimationFrame(() => {
-    if (appIdToRestore !== null && focusAppOpenButton(appIdToRestore)) return;
+    if (appId !== null && focusAppOpenButton(appId)) return;
     focusAppsTab();
   });
+}
+
+function focusedAppButtonId() {
+  const appId = document.activeElement?.dataset?.appId;
+  return typeof appId === "string" && appId.length > 0 ? appId : null;
 }
 
 function focusAppOpenButton(appId) {
