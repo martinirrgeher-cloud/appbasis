@@ -163,7 +163,7 @@ function renderApps() {
     const footer = document.createElement("div");
     footer.className = "factory-app-card__footer";
     const preview = document.createElement("span");
-    preview.textContent = "Details verfügbar";
+    preview.textContent = previewReadinessLabel(app.previewReadiness);
     const button = document.createElement("button");
     button.className = "ab-button ab-button--ghost";
     button.type = "button";
@@ -217,6 +217,41 @@ function renderAppDetail(app) {
   if (elements.detailSchema) elements.detailSchema.textContent = `Schema v${app.schemaVersion}`;
   replaceWithValueChips(elements.detailModules, app.modules, moduleLabel);
   replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
+  renderPreviewReadiness(app.previewReadiness);
+}
+
+function renderPreviewReadiness(readiness) {
+  const previewGate = document.querySelector(
+    ".factory-detail-gates .factory-detail-gate:nth-child(3)",
+  );
+  const heading = previewGate?.querySelector("strong");
+  const detail = previewGate?.querySelector("small");
+  if (!heading || !detail) return;
+
+  if (readiness?.status === "repository-ready") {
+    heading.textContent = "Repository-Voraussetzungen erfüllt";
+    detail.textContent =
+      "Worker, Paket- und erforderliche Datenbank-Artefakte sind vorhanden. Provider-, Secret- und Preview-Datenbank-Status werden noch nicht geprüft; Preview bleibt gesperrt.";
+    return;
+  }
+
+  const missing = [];
+  if (!readiness?.workerEntrypointPresent) missing.push("Worker-Einstieg");
+  if (!readiness?.packageManifestPresent) missing.push("Paket-Manifest");
+  if (readiness?.databaseManifestRequired && !readiness?.databaseManifestPresent) {
+    missing.push("Datenbank-Manifest");
+  }
+  heading.textContent = "Repository-Voraussetzungen unvollständig";
+  detail.textContent =
+    missing.length > 0
+      ? `Fehlt: ${missing.join(", ")}. Preview bleibt gesperrt.`
+      : "Die Repository-Voraussetzungen konnten nicht vollständig bestätigt werden. Preview bleibt gesperrt.";
+}
+
+function previewReadinessLabel(readiness) {
+  return readiness?.status === "repository-ready"
+    ? "Preview-Repo bereit"
+    : "Preview-Repo unvollständig";
 }
 
 function returnToApps(appIdToRestore = state.selectedAppId) {
