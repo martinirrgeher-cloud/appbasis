@@ -127,7 +127,7 @@
         <div class="factory-section-heading">
           <div>
             <h2 id="create-heading">Neue App</h2>
-            <p>Zielablauf der Factory – heute als lokaler, garantiert schreibfreier Entwurf.</p>
+            <p>Der lokale Generator kann jetzt ein geprüftes App-Skelett im Repository anlegen. Preview und Produktion bleiben getrennte spätere Gates.</p>
           </div>
           <span class="ab-badge">Entwurf</span>
         </div>
@@ -158,7 +158,7 @@
 
             <fieldset>
               <legend>2. Gestaltung</legend>
-              <p class="factory-hint">Nur Entwurf: Diese Werte verändern aktuell ausschließlich die Vorschau und werden nirgends gespeichert.</p>
+              <p class="factory-hint">Nur Entwurf: Diese Werte verändern aktuell ausschließlich die Vorschau und werden noch nicht in das App-Skelett geschrieben.</p>
               <div class="factory-branding-grid">
                 <label class="factory-field">
                   <span>App-Zeichen</span>
@@ -206,7 +206,7 @@
             <fieldset>
               <legend>5. Preview & Tests</legend>
               <div class="factory-readiness-list" aria-label="Preview Bereitschaft">
-                <div><span>App-Entwurf</span><strong>Bereit zur Vorschau</strong></div>
+                <div><span>App-Entwurf</span><strong>Bereit zum lokalen Anlegen</strong></div>
                 <div><span>Preview-Deployment</span><strong>Noch nicht verbunden</strong></div>
                 <div><span>Automatische Tests</span><strong>Vor Freigabe verpflichtend</strong></div>
               </div>
@@ -221,10 +221,11 @@
             </fieldset>
 
             <div class="factory-actions">
-              <button class="ab-button ab-button--primary" type="button" disabled aria-describedby="create-disabled-reason">
+              <button class="ab-button ab-button--primary" id="create-app-button" type="submit" disabled aria-describedby="create-disabled-reason">
                 App anlegen
               </button>
-              <p id="create-disabled-reason">Noch read-only: Die sichere Generator-Anbindung folgt als eigener Slice.</p>
+              <p id="create-disabled-reason">Bitte zuerst einen App-Namen eingeben.</p>
+              <div id="factory-status" class="factory-status" role="status" aria-live="polite" hidden></div>
             </div>
           </form>
 
@@ -258,7 +259,7 @@
             </dl>
             <div class="factory-gate-note">
               <strong>Fail-closed</strong>
-              <span>Diese Oberfläche kann aktuell weder Apps schreiben noch Deployments oder Produktionsressourcen auslösen.</span>
+              <span>Das Anlegen schreibt nur das lokale App-Skelett. Deployments, Provider-Ressourcen und Produktionsfreigaben werden dadurch nicht ausgelöst.</span>
             </div>
           </aside>
         </div>
@@ -267,5 +268,6 @@
       <div id="factory-error" class="factory-error" role="alert" hidden></div>
     </main>
     <script type="module" src="/app.js"></script>
+    <script type="module" src="/create-app.js"></script>
   </body>
 </html>

@@ -20,7 +20,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd()) {
       platformServices: SUPPORTED_PLATFORM_SERVICES,
     }),
     capabilities: Object.freeze({
-      createApp: false,
+      createApp: true,
       deployPreview: false,
       releaseProduction: false,
     }),
