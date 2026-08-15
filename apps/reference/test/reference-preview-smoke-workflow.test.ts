@@ -21,7 +21,9 @@ describe("Reference preview smoke workflows", () => {
     expect(deployWorkflow).toContain("APPBASIS_SMOKE_USERNAME: demo.user");
     expect(deployWorkflow).toContain("APPBASIS_SMOKE_MUTATE: '1'");
 
-    const deployIndex = deployWorkflow.indexOf("Deploy Reference preview without provisioning");
+    const deployIndex = deployWorkflow.indexOf(
+      "Deploy Reference preview with repository-owned plaintext variables",
+    );
     const acceptanceIndex = deployWorkflow.indexOf("Run automated Demo v0.1 acceptance smoke");
     expect(deployIndex).toBeGreaterThanOrEqual(0);
     expect(acceptanceIndex).toBeGreaterThan(deployIndex);
