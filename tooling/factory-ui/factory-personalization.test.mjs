@@ -32,3 +32,80 @@ test("Factory draft offers curated design presets and configurable bottom naviga
     /Gestaltung und Navigation sind aktuell Entwurfswerte; Preview und Produktion bleiben getrennt gesperrt/,
   );
 });
+
+test("Factory navigation keeps explicit hidden choices and only defaults newly introduced areas", async () => {
+  const previousDocument = globalThis.document;
+  const previousMutationObserver = globalThis.MutationObserver;
+  globalThis.document = {
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+  };
+  globalThis.MutationObserver = class {
+    observe() {}
+  };
+
+  try {
+    const { reconcileNavigationDraftState } = await import(
+      `./create-app.js?navigation-state-test=${Date.now()}`
+    );
+
+    const initial = reconcileNavigationDraftState({
+      candidateIds: ["overview", "module:tasks"],
+      currentOrder: ["overview"],
+      directIds: ["overview"],
+    });
+    assert.deepEqual(initial.navigationOrder, ["overview", "module:tasks"]);
+    assert.deepEqual(initial.directNavigationItems, ["overview", "module:tasks"]);
+
+    const hiddenTasks = reconcileNavigationDraftState({
+      candidateIds: ["overview", "module:tasks"],
+      currentOrder: initial.navigationOrder,
+      directIds: ["overview"],
+    });
+    assert.deepEqual(hiddenTasks.directNavigationItems, ["overview"]);
+
+    const newRoles = reconcileNavigationDraftState({
+      candidateIds: ["overview", "module:tasks", "roles"],
+      currentOrder: hiddenTasks.navigationOrder,
+      directIds: hiddenTasks.directNavigationItems,
+    });
+    assert.deepEqual(newRoles.navigationOrder, ["overview", "module:tasks", "roles"]);
+    assert.deepEqual(newRoles.directNavigationItems, ["overview", "roles"]);
+
+    const candidates = ["overview", "one", "two", "three", "four", "five"];
+    const freedSlot = reconcileNavigationDraftState({
+      candidateIds: candidates,
+      currentOrder: candidates,
+      directIds: ["overview", "one", "two", "three"],
+    });
+    assert.deepEqual(freedSlot.directNavigationItems, [
+      "overview",
+      "one",
+      "two",
+      "three",
+    ]);
+
+    const swapped = reconcileNavigationDraftState({
+      candidateIds: candidates,
+      currentOrder: freedSlot.navigationOrder,
+      directIds: [...freedSlot.directNavigationItems, "five"],
+    });
+    assert.deepEqual(swapped.directNavigationItems, [
+      "overview",
+      "one",
+      "two",
+      "three",
+      "five",
+    ]);
+    assert.equal(swapped.directNavigationItems.includes("four"), false);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousMutationObserver === undefined) delete globalThis.MutationObserver;
+    else globalThis.MutationObserver = previousMutationObserver;
+  }
+});
