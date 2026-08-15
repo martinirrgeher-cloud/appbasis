@@ -18,6 +18,10 @@ const CREATE_APP_KEYS = new Set([
   "modules",
   "platformServices",
 ]);
+const FACTORY_DOCUMENT_SECURITY_HEADERS = Object.freeze({
+  "content-security-policy": "frame-ancestors 'none'",
+  "x-frame-options": "DENY",
+});
 
 const STATIC_ROUTES = new Map([
   ["/", { path: join(FACTORY_UI_DIRECTORY, "index.html"), contentType: "text/html; charset=utf-8" }],
@@ -64,6 +68,7 @@ export function createFactoryServer(options = {}) {
         "cache-control": "no-store",
         "content-type": staticRoute.contentType,
         "x-content-type-options": "nosniff",
+        ...FACTORY_DOCUMENT_SECURITY_HEADERS,
       });
       response.end(request.method === "HEAD" ? undefined : body);
     } catch {
@@ -263,6 +268,7 @@ function mapCreateAppError(error) {
   if (
     message.startsWith("App definition ") ||
     message.startsWith("Unknown AppBasis module:") ||
+    message.includes(" references unsupported platform service ") ||
     message === "Generated permissions runtime requires the identity platform service."
   ) {
     return {
