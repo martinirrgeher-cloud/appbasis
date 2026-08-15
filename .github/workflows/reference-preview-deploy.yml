@@ -53,26 +53,29 @@ jobs:
           echo "::add-mask::$APPBASIS_HYPERDRIVE_ID"
           echo "::add-mask::$APPBASIS_PREVIEW_URL"
 
-      - name: Render and validate ephemeral deployment config
+      - name: Render and validate ephemeral deployment configs
         env:
           APPBASIS_HYPERDRIVE_ID: ${{ secrets.APPBASIS_HYPERDRIVE_ID }}
           APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
         run: node ./tooling/reference-preview-deploy-config.mjs
 
-      - name: Require existing Reference Worker
+      - name: Require existing Reference Workers
         working-directory: apps/reference
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
+          set -euo pipefail
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare deployment account.' >&2; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
           echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
-          if ! pnpm exec wrangler deployments list --name appbasis-reference --json >/dev/null 2>&1; then
-            echo 'Expected pre-created Reference Worker was not found or is not readable.' >&2
-            exit 1
-          fi
+          for worker in appbasis-reference appbasis-reference-role-admin; do
+            if ! pnpm exec wrangler deployments list --name "$worker" --json >/dev/null 2>&1; then
+              echo "Expected pre-created Worker $worker was not found or is not readable." >&2
+              exit 1
+            fi
+          done
 
       - name: Build isolated persistent permission authority verifier
         run: pnpm --filter @appbasis/reference build:permission-authority
@@ -112,6 +115,40 @@ jobs:
           CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: ./wrangler.preview.generated.json
         run: pnpm run build
 
+      - name: Deploy internal Reference role administration Worker
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --config ./wrangler.role-admin.preview.generated.json
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Snapshot deployed role administration Worker bindings
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare deployment account.' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          umask 077
+          curl --fail --silent --show-error --connect-timeout 15 --max-time 30 \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/appbasis-reference-role-admin/settings" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --output ./apps/reference/tooling/.reference-role-admin-worker-settings-after-deploy.json
+          test -s ./apps/reference/tooling/.reference-role-admin-worker-settings-after-deploy.json || { echo 'Deployed role administration Worker settings snapshot is empty.' >&2; exit 1; }
+
+      - name: Verify internal role administration Worker authority
+        env:
+          APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
+          APPBASIS_REFERENCE_ROLE_ADMIN_DEPLOYED_WORKER_SETTINGS_PATH: ${{ github.workspace }}/apps/reference/tooling/.reference-role-admin-worker-settings-after-deploy.json
+        run: node ./tooling/reference-preview-worker-settings.mjs
+
       - name: Deploy Reference preview with repository-owned plaintext variables
         working-directory: apps/reference
         env:
@@ -139,7 +176,7 @@ jobs:
             --output ./apps/reference/tooling/.reference-worker-settings-after-deploy.json
           test -s ./apps/reference/tooling/.reference-worker-settings-after-deploy.json || { echo 'Deployed Reference Worker settings snapshot is empty.' >&2; exit 1; }
 
-      - name: Verify deployed Reference Worker plaintext binding authority
+      - name: Verify deployed Reference Worker binding authority
         env:
           APPBASIS_PREVIEW_URL: ${{ vars.APPBASIS_PREVIEW_URL }}
           APPBASIS_REFERENCE_DEPLOYED_WORKER_SETTINGS_PATH: ${{ github.workspace }}/apps/reference/tooling/.reference-worker-settings-after-deploy.json
@@ -181,5 +218,7 @@ jobs:
         shell: bash
         run: |
           rm -f ./apps/reference/wrangler.preview.generated.json
+          rm -f ./apps/reference/wrangler.role-admin.preview.generated.json
           rm -f ./apps/reference/tooling/.reference-worker-settings-after-deploy.json
+          rm -f ./apps/reference/tooling/.reference-role-admin-worker-settings-after-deploy.json
           rm -rf ./apps/reference/tooling/.permission-authority-dist

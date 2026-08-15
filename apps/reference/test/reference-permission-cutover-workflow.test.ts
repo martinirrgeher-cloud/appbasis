@@ -25,19 +25,28 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(cutoverWorkflow).toContain('workflow_dispatch:');
     expect(cutoverWorkflow).toContain('inputs:');
     expect(cutoverWorkflow).toContain('apply:');
-    expect(cutoverWorkflow).toContain("APPBASIS_PERMISSION_CUTOVER_MODE: apply");
+    expect(cutoverWorkflow).toContain('APPBASIS_PERMISSION_CUTOVER_MODE: apply');
     expect(cutoverWorkflow).toContain('APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}');
     expect(cutoverWorkflow).toContain('build:permission-cutover');
     expect(cutoverWorkflow).toContain('/workers/scripts/appbasis-reference/settings');
     expect(cutoverWorkflow).toContain('group: reference-preview-deploy');
   });
 
-  it('makes normal deploy verify PostgreSQL authority first and deployed plaintext binding authority before health', () => {
+  it('deploys and verifies the isolated role-admin service before the public Reference gateway', () => {
     const verifyIndex = deployWorkflow.indexOf(
       'Verify persistent permission authority before deploy',
     );
     const cacheIndex = deployWorkflow.indexOf(
       'Disable Reference Hyperdrive query caching for fresh reads',
+    );
+    const roleAdminDeployIndex = deployWorkflow.indexOf(
+      'Deploy internal Reference role administration Worker',
+    );
+    const roleAdminSnapshotIndex = deployWorkflow.indexOf(
+      'Snapshot deployed role administration Worker bindings',
+    );
+    const roleAdminVerifyIndex = deployWorkflow.indexOf(
+      'Verify internal role administration Worker authority',
     );
     const deployIndex = deployWorkflow.indexOf(
       'Deploy Reference preview with repository-owned plaintext variables',
@@ -46,19 +55,27 @@ describe('Reference preview permission authority cutover workflow', () => {
       'Snapshot deployed Reference Worker bindings',
     );
     const bindingVerifyIndex = deployWorkflow.indexOf(
-      'Verify deployed Reference Worker plaintext binding authority',
+      'Verify deployed Reference Worker binding authority',
     );
     const healthIndex = deployWorkflow.indexOf('Verify deployed health');
 
     expect(verifyIndex).toBeGreaterThanOrEqual(0);
     expect(cacheIndex).toBeGreaterThan(verifyIndex);
-    expect(deployIndex).toBeGreaterThan(cacheIndex);
+    expect(roleAdminDeployIndex).toBeGreaterThan(cacheIndex);
+    expect(roleAdminSnapshotIndex).toBeGreaterThan(roleAdminDeployIndex);
+    expect(roleAdminVerifyIndex).toBeGreaterThan(roleAdminSnapshotIndex);
+    expect(deployIndex).toBeGreaterThan(roleAdminVerifyIndex);
     expect(snapshotIndex).toBeGreaterThan(deployIndex);
     expect(bindingVerifyIndex).toBeGreaterThan(snapshotIndex);
     expect(healthIndex).toBeGreaterThan(bindingVerifyIndex);
     expect(deployWorkflow).toContain('build:permission-authority');
     expect(deployWorkflow).toContain(
       'APPBASIS_PERMISSION_AUTHORITY_TARGET: reference-preview',
+    );
+    expect(deployWorkflow).toContain('appbasis-reference-role-admin');
+    expect(deployWorkflow).toContain('wrangler.role-admin.preview.generated.json');
+    expect(deployWorkflow).toContain(
+      'APPBASIS_REFERENCE_ROLE_ADMIN_DEPLOYED_WORKER_SETTINGS_PATH',
     );
     expect(deployWorkflow).toContain('APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}');
     expect(deployWorkflow).not.toContain('Snapshot existing Reference Worker permission bindings');
@@ -74,16 +91,23 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(cutoverWorkflow).not.toContain('.reference-worker-settings-after-deploy.json');
 
     expect(deployWorkflow).toContain('/workers/scripts/appbasis-reference/settings');
+    expect(deployWorkflow).toContain(
+      '/workers/scripts/appbasis-reference-role-admin/settings',
+    );
     expect(deployWorkflow).toContain('.reference-worker-settings-after-deploy.json');
+    expect(deployWorkflow).toContain('.reference-role-admin-worker-settings-after-deploy.json');
     expect(deployWorkflow).toContain('APPBASIS_REFERENCE_DEPLOYED_WORKER_SETTINGS_PATH');
     expect(deployWorkflow).toContain('node ./tooling/reference-preview-worker-settings.mjs');
     expect(deployWorkflow).toContain(
       'rm -f ./apps/reference/tooling/.reference-worker-settings-after-deploy.json',
     );
+    expect(deployWorkflow).toContain(
+      'rm -f ./apps/reference/tooling/.reference-role-admin-worker-settings-after-deploy.json',
+    );
     expect(deployWorkflow).toContain('rm -rf ./apps/reference/tooling/.permission-authority-dist');
   });
 
-  it('pins repository ownership of Reference unencrypted variable bindings in the deployment contract', () => {
+  it('pins repository ownership of plaintext variables and the internal role-admin service contract', () => {
     expect(deploymentContract).toContain('`keep_vars: false`');
     expect(deploymentContract).not.toContain('`keep_vars: true`');
     expect(deploymentContract).toContain(
@@ -95,6 +119,10 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(deploymentContract).toContain(
       'Worker-Secrets werden durch einen normalen Deploy unabhängig von `keep_vars` nicht gelöscht.',
     );
+    expect(deploymentContract).toContain('`ROLE_ADMIN`');
+    expect(deploymentContract).toContain('`appbasis-reference-role-admin`');
+    expect(deploymentContract).toContain('`workers_dev: false`');
+    expect(deploymentContract).toContain('`preview_urls: false`');
     expect(deploymentContract).toContain('tooling/reference-preview-worker-settings.mjs');
   });
 

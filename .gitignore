@@ -12,6 +12,7 @@ test-results/
 
 .wrangler/
 apps/reference/wrangler.preview.generated.json
+apps/reference/wrangler.role-admin.preview.generated.json
 .appbasis/handoff/
 .appbasis-create-*/
 .appbasis-app-registry.lock

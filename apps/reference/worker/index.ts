@@ -14,19 +14,30 @@ interface HyperdriveBinding {
   connectionString: string;
 }
 
+export interface ReferenceRoleAdminServiceBinding {
+  fetch(request: Request): Promise<Response>;
+}
+
 export interface ReferenceWorkerEnv {
   HYPERDRIVE?: HyperdriveBinding;
   BETTER_AUTH_SECRET?: string;
   APPBASIS_BASE_URL?: string;
+  ROLE_ADMIN?: ReferenceRoleAdminServiceBinding;
 }
 
 const fallbackApp = createReferenceApp();
+const ROLE_ADMIN_GATEWAY_PATH = '/api/admin/roles';
+const ROLE_ADMIN_INTERNAL_PATH = '/api/roles';
 
 export const worker = {
   async fetch(request: Request, env: ReferenceWorkerEnv): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/api/health') {
       return fallbackApp.fetch(request);
+    }
+
+    if (isRoleAdminGatewayPath(url.pathname)) {
+      return forwardRoleAdminRequest(request, env.ROLE_ADMIN);
     }
 
     const configuration = runtimeConfiguration(env);
@@ -75,6 +86,38 @@ export function createReferencePermissionStore(
   client: PermissionPostgresClient,
 ): PermissionStore {
   return new PostgresPermissionStore(client);
+}
+
+export function isRoleAdminGatewayPath(pathname: string): boolean {
+  return pathname === ROLE_ADMIN_GATEWAY_PATH || pathname.startsWith(`${ROLE_ADMIN_GATEWAY_PATH}/`);
+}
+
+export async function forwardRoleAdminRequest(
+  request: Request,
+  binding: ReferenceRoleAdminServiceBinding | undefined,
+): Promise<Response> {
+  if (binding === undefined) {
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: 'REFERENCE_ROLE_ADMIN_NOT_CONFIGURED',
+          message: 'The Reference role administration service is not configured.',
+        },
+      }),
+      {
+        status: 503,
+        headers: { 'content-type': 'application/json; charset=UTF-8' },
+      },
+    );
+  }
+
+  const url = new URL(request.url);
+  if (!isRoleAdminGatewayPath(url.pathname)) {
+    return new Response('Not Found', { status: 404 });
+  }
+  const suffix = url.pathname.slice(ROLE_ADMIN_GATEWAY_PATH.length);
+  url.pathname = `${ROLE_ADMIN_INTERNAL_PATH}${suffix}`;
+  return binding.fetch(new Request(url, request));
 }
 
 function runtimeConfiguration(env: ReferenceWorkerEnv): {
