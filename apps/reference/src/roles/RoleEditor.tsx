@@ -21,6 +21,8 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [savePending, setSavePending] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deletePending, setDeletePending] = useState(false);
   const [knownCapabilities, setKnownCapabilities] = useState<readonly CapabilityId[]>([]);
   const [persistedRole, setPersistedRole] = useState<RoleDetails | null>(null);
   const [effectiveRoleId, setEffectiveRoleId] = useState<string | undefined>(roleId);
@@ -45,6 +47,7 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
     setLoadError('');
     setSaveError('');
     setSaveMessage('');
+    setDeleteError('');
     try {
       const [capabilities, loadedRole] = await Promise.all([
         referenceApi.listRoleCapabilities(),
@@ -75,6 +78,7 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
 
   const isNew = effectiveRoleId === undefined;
   const protectedSystemRole = persistedRole?.kind === 'system';
+  const writePending = savePending || deletePending;
   const title = isNew ? 'Neue Rolle' : displayName || roleLabel(effectiveRoleId);
   const subtitle = isNew
     ? 'Managed Rolle anlegen'
@@ -98,17 +102,20 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
       (roleUpdateChanged(persistedRole, updateInput) || persistedRole.state !== requestedState));
   const canSave =
     loadState === 'ready' &&
-    !savePending &&
+    !writePending &&
     !protectedSystemRole &&
     validationMessage === null &&
     hasChanges;
   const saveTitle = protectedSystemRole
     ? 'Systemrollen sind geschützt.'
     : validationMessage ?? (hasChanges ? undefined : 'Keine Änderungen zum Speichern.');
+  const deleteReason = roleDeleteReason(persistedRole, isNew, hasChanges);
+  const canDelete = loadState === 'ready' && !writePending && deleteReason === null;
 
   function clearFeedback() {
     setSaveError('');
     setSaveMessage('');
+    setDeleteError('');
   }
 
   function revealFeedback() {
@@ -118,7 +125,7 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
   }
 
   function toggleCapability(capability: CapabilityId) {
-    if (protectedSystemRole || savePending) return;
+    if (protectedSystemRole || writePending) return;
     clearFeedback();
     setSelectedCapabilities((current) =>
       current.includes(capability)
@@ -166,6 +173,32 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
       revealFeedback();
     } finally {
       setSavePending(false);
+    }
+  }
+
+  async function deleteRole() {
+    if (!canDelete || persistedRole === null || effectiveRoleId === undefined) return;
+    const confirmed = window.confirm(
+      `Rolle „${persistedRole.displayName}“ endgültig löschen?\n\nDieser Hard Delete kann nicht rückgängig gemacht werden.`,
+    );
+    if (!confirmed) return;
+
+    setDeletePending(true);
+    clearFeedback();
+    try {
+      await referenceApi.deleteRole(effectiveRoleId);
+      window.location.hash = '#roles';
+    } catch (error) {
+      try {
+        const authoritativeRole = await referenceApi.getRole(effectiveRoleId);
+        applyRole(authoritativeRole);
+      } catch {
+        // Preserve the explicit delete failure below; the next load remains authoritative.
+      }
+      setDeleteError(roleAdminErrorMessage(error, 'Die Rolle konnte nicht gelöscht werden.'));
+      revealFeedback();
+    } finally {
+      setDeletePending(false);
     }
   }
 
@@ -258,12 +291,18 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
             </div>
           </aside>
 
-          {(saveError.length > 0 || saveMessage.length > 0) && (
+          {(saveError.length > 0 || saveMessage.length > 0 || deleteError.length > 0) && (
             <div ref={feedbackRef}>
               {saveError.length > 0 && (
                 <aside className="role-editor-notice role-editor-notice--protected" role="alert">
                   <Icon name="shield" />
                   <div><strong>Speichern fehlgeschlagen</strong><p>{saveError}</p></div>
+                </aside>
+              )}
+              {deleteError.length > 0 && (
+                <aside className="role-editor-notice role-editor-notice--protected" role="alert">
+                  <Icon name="shield" />
+                  <div><strong>Löschen fehlgeschlagen</strong><p>{deleteError}</p></div>
                 </aside>
               )}
               {saveMessage.length > 0 && (
@@ -279,22 +318,26 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
             <GeneralTab
               isNew={isNew}
               protectedSystemRole={protectedSystemRole}
-              fieldsDisabled={protectedSystemRole || savePending}
-              statusDisabled={isNew || protectedSystemRole || savePending}
+              fieldsDisabled={protectedSystemRole || writePending}
+              statusDisabled={isNew || protectedSystemRole || writePending}
               displayName={displayName}
               technicalId={technicalId}
               description={description}
               active={active}
+              deletePending={deletePending}
+              deleteDisabled={!canDelete}
+              deleteReason={deleteReason}
               onDisplayNameChange={(value) => { setDisplayName(value); clearFeedback(); }}
               onTechnicalIdChange={(value) => { setTechnicalId(value); clearFeedback(); }}
               onDescriptionChange={(value) => { setDescription(value); clearFeedback(); }}
               onActiveChange={(value) => { setActive(value); clearFeedback(); }}
+              onDelete={() => void deleteRole()}
             />
           )}
 
           {activeTab === 'permissions' && (
             <PermissionsTab
-              protectedSystemRole={protectedSystemRole || savePending}
+              protectedSystemRole={protectedSystemRole || writePending}
               knownCapabilities={knownCapabilities}
               selectedCapabilities={selectedCapabilities}
               onToggleCapability={toggleCapability}
@@ -324,7 +367,8 @@ function EditorTab({ id, activeTab, onSelect, children }: {
 
 function GeneralTab({
   isNew, protectedSystemRole, fieldsDisabled, statusDisabled, displayName, technicalId, description, active,
-  onDisplayNameChange, onTechnicalIdChange, onDescriptionChange, onActiveChange,
+  deletePending, deleteDisabled, deleteReason,
+  onDisplayNameChange, onTechnicalIdChange, onDescriptionChange, onActiveChange, onDelete,
 }: {
   readonly isNew: boolean;
   readonly protectedSystemRole: boolean;
@@ -334,10 +378,14 @@ function GeneralTab({
   readonly technicalId: string;
   readonly description: string;
   readonly active: boolean;
+  readonly deletePending: boolean;
+  readonly deleteDisabled: boolean;
+  readonly deleteReason: string | null;
   readonly onDisplayNameChange: (value: string) => void;
   readonly onTechnicalIdChange: (value: string) => void;
   readonly onDescriptionChange: (value: string) => void;
   readonly onActiveChange: (value: boolean) => void;
+  readonly onDelete: () => void;
 }) {
   return (
     <section className="role-editor-panel ab-surface" aria-labelledby="role-general-title">
@@ -373,6 +421,24 @@ function GeneralTab({
             <strong>{active ? 'Aktiv' : 'Inaktiv'}</strong>
           </label>
         </div>
+        {!isNew && (
+          <div className="role-editor-status role-editor-field--wide">
+            <div>
+              <strong>Rolle löschen</strong>
+              <span>{deleteReason ?? 'Diese inaktive und unzugewiesene Managed Rolle kann endgültig gelöscht werden.'}</span>
+            </div>
+            <button
+              className="ab-button ab-button--secondary"
+              type="button"
+              disabled={deleteDisabled}
+              onClick={onDelete}
+              title={deleteReason ?? undefined}
+              aria-label={deletePending ? 'Rolle wird gelöscht' : 'Rolle endgültig löschen'}
+            >
+              {deletePending ? 'Löscht …' : 'Löschen'}
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -486,6 +552,18 @@ function roleUpdateChanged(role: RoleDetails, input: ReferenceRoleUpdateInput): 
   );
 }
 
+function roleDeleteReason(role: RoleDetails | null, isNew: boolean, hasChanges: boolean): string | null {
+  if (isNew || role === null) return 'Neue Rollen können nicht gelöscht werden.';
+  if (role.kind === 'system') return 'Systemrollen sind geschützt und können nicht gelöscht werden.';
+  if (hasChanges) return 'Speichere oder verwirf die offenen Änderungen vor dem Löschen.';
+  if (role.state !== 'inactive') return 'Die Rolle muss vor dem Löschen deaktiviert und gespeichert werden.';
+  if (role.assignedPrincipalCount > 0) {
+    const assignmentLabel = role.assignedPrincipalCount === 1 ? 'Benutzerzuweisung' : 'Benutzerzuweisungen';
+    return `Die Rolle besitzt noch ${role.assignedPrincipalCount} ${assignmentLabel}. Entferne zuerst alle Zuweisungen.`;
+  }
+  return null;
+}
+
 function sameCapabilities(left: readonly CapabilityId[], right: readonly CapabilityId[]): boolean {
   if (left.length !== right.length) return false;
   const leftValues = left.map(String).sort();
@@ -499,7 +577,9 @@ function roleAdminErrorMessage(error: unknown, fallback: string): string {
   if (error.status === 401) return 'Die Anmeldung ist nicht mehr gültig. Bitte erneut anmelden.';
   if (error.status === 403) return 'Für diese Rollenänderung fehlt die erforderliche Berechtigung.';
   if (error.code === 'ROLE_NOT_FOUND') return 'Die angeforderte Rolle wurde nicht gefunden.';
-  if (error.code === 'ROLE_PROTECTED') return 'Diese Systemrolle ist geschützt und kann nicht verändert werden.';
+  if (error.code === 'ROLE_ACTIVE') return 'Die Rolle muss vor dem Löschen deaktiviert und gespeichert werden.';
+  if (error.code === 'ROLE_IN_USE') return 'Die Rolle ist noch Benutzern zugewiesen. Entferne zuerst alle Zuweisungen.';
+  if (error.code === 'ROLE_PROTECTED') return 'Diese Systemrolle ist geschützt und kann nicht verändert oder gelöscht werden.';
   if (error.code === 'UNKNOWN_CAPABILITY') return 'Mindestens eine ausgewählte Berechtigung ist nicht mehr verfügbar. Der aktuelle Serverstand wurde neu geladen.';
   if (error.code === 'INVALID_ROLE') return 'Die Rollendaten sind ungültig oder die Role-ID ist bereits vergeben.';
   if (error.status === 503 || error.code === 'REFERENCE_ROLE_ADMIN_NOT_CONFIGURED') return 'Die persistente Rollenverwaltung ist in dieser Umgebung derzeit nicht verfügbar.';

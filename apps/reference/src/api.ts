@@ -164,6 +164,29 @@ export const referenceApi = {
     );
     return payload.role;
   },
+
+  async deleteRole(id: string): Promise<void> {
+    try {
+      await requestJson<unknown>(`/api/admin/roles/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      if (!(error instanceof ReferenceApiError) || error.status !== 0) throw error;
+
+      try {
+        await referenceApi.getRole(id);
+      } catch (reconciliationError) {
+        if (
+          reconciliationError instanceof ReferenceApiError &&
+          reconciliationError.code === 'ROLE_NOT_FOUND'
+        ) {
+          return;
+        }
+      }
+
+      throw error;
+    }
+  },
 };
 
 async function reconcileRoleCreate(

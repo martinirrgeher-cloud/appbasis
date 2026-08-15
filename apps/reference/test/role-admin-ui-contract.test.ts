@@ -28,6 +28,7 @@ describe('Reference persistent role UI contract', () => {
     expect(editorSource).toContain('referenceApi.createRole({');
     expect(editorSource).toContain('referenceApi.updateRole(effectiveRoleId, updateInput)');
     expect(editorSource).toContain('referenceApi.setRoleState(effectiveRoleId, requestedState)');
+    expect(editorSource).toContain('referenceApi.deleteRole(effectiveRoleId)');
     expect(editorSource).not.toContain('DEMO_ROLE_BUNDLES');
     expect(editorSource).not.toContain('DEMO_KNOWN_CAPABILITIES');
   });
@@ -56,8 +57,17 @@ describe('Reference persistent role UI contract', () => {
     expect(editorSource).toContain("window.history.replaceState(null, '', roleEditorHash(String(created.roleId)))");
   });
 
-  it('locks all editable role fields while a save is pending', () => {
-    expect(editorSource).toContain('fieldsDisabled={protectedSystemRole || savePending}');
+  it('permits hard delete only for persisted inactive unassigned managed roles', () => {
+    expect(editorSource).toContain("if (role.kind === 'system')");
+    expect(editorSource).toContain("if (role.state !== 'inactive')");
+    expect(editorSource).toContain('if (role.assignedPrincipalCount > 0)');
+    expect(editorSource).toContain('window.confirm(');
+    expect(editorSource).toContain("window.location.hash = '#roles'");
+  });
+
+  it('locks all editable role controls while any role write is pending', () => {
+    expect(editorSource).toContain('const writePending = savePending || deletePending;');
+    expect(editorSource).toContain('fieldsDisabled={protectedSystemRole || writePending}');
     expect(editorSource).toContain('disabled={fieldsDisabled}');
     expect(editorSource).toContain('disabled={!isNew || fieldsDisabled}');
   });
