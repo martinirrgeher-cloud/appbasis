@@ -121,11 +121,24 @@ export const referenceApi = {
   },
 
   async createRole(input: ReferenceRoleCreateInput): Promise<RoleDetails> {
-    const payload = await requestJson<{ role: RoleDetails }>('/api/admin/roles', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-    return payload.role;
+    try {
+      const payload = await requestJson<{ role: RoleDetails }>('/api/admin/roles', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return payload.role;
+    } catch (error) {
+      if (!(error instanceof ReferenceApiError) || error.status !== 0) throw error;
+
+      try {
+        const reconciled = await referenceApi.getRole(input.roleId);
+        if (roleMatchesCreateInput(reconciled, input)) return reconciled;
+      } catch {
+        // Preserve the ambiguous write failure unless the authoritative role exactly matches the request.
+      }
+
+      throw error;
+    }
   },
 
   async updateRole(id: string, input: ReferenceRoleUpdateInput): Promise<RoleDetails> {
@@ -150,6 +163,24 @@ export const referenceApi = {
     return payload.role;
   },
 };
+
+function roleMatchesCreateInput(role: RoleDetails, input: ReferenceRoleCreateInput): boolean {
+  return (
+    String(role.roleId) === input.roleId &&
+    role.kind === 'managed' &&
+    role.state === 'active' &&
+    role.displayName === input.displayName &&
+    role.description === input.description &&
+    sameCapabilitySet(role.capabilities, input.capabilities)
+  );
+}
+
+function sameCapabilitySet(left: readonly CapabilityId[], right: readonly CapabilityId[]): boolean {
+  if (left.length !== right.length) return false;
+  const leftValues = left.map(String).sort();
+  const rightValues = right.map(String).sort();
+  return leftValues.every((value, index) => value === rightValues[index]);
+}
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
