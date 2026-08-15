@@ -26,7 +26,7 @@ test("factory snapshot reports repository preview prerequisites without enabling
       recursive: true,
     });
     await writeFile(
-      join(fixtureRoot, "apps", "ready-app", "worker", "preview.ts"),
+      join(fixtureRoot, "apps", "ready-app", "worker", "index.ts"),
       "export default {};\n",
       "utf8",
     );
@@ -48,14 +48,6 @@ test("factory snapshot reports repository preview prerequisites without enabling
       modules: ["tasks"],
       platformServices: ["identity"],
     });
-    await mkdir(join(fixtureRoot, "apps", "missing-worker", "worker"), {
-      recursive: true,
-    });
-    await writeFile(
-      join(fixtureRoot, "apps", "missing-worker", "worker", "index.ts"),
-      "export default {};\n",
-      "utf8",
-    );
     await writeFile(
       join(fixtureRoot, "apps", "missing-worker", "package.json"),
       "{}\n",
