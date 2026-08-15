@@ -24,6 +24,29 @@ export interface ApiTask {
   readonly status: ApiTaskStatus;
 }
 
+export type ApiRoleState = 'active' | 'inactive';
+export type ApiRoleKind = 'system' | 'managed';
+
+export interface ApiRole {
+  readonly roleId: string;
+  readonly displayName: string;
+  readonly description: string | null;
+  readonly state: ApiRoleState;
+  readonly kind: ApiRoleKind;
+  readonly assignedPrincipalCount: number;
+  readonly capabilities: readonly string[];
+}
+
+export interface ApiRoleWriteInput {
+  readonly displayName: string;
+  readonly description?: string | null;
+  readonly capabilities: readonly string[];
+}
+
+export interface ApiCreateRoleInput extends ApiRoleWriteInput {
+  readonly roleId: string;
+}
+
 interface ErrorPayload {
   error?: {
     code?: string;
@@ -87,6 +110,61 @@ export const referenceApi = {
       { method: 'POST' },
     );
     return payload.task;
+  },
+
+  async listRoles(): Promise<readonly ApiRole[]> {
+    const payload = await requestJson<{ roles: readonly ApiRole[] }>('/api/roles');
+    return payload.roles;
+  },
+
+  async getRole(id: string): Promise<ApiRole> {
+    const payload = await requestJson<{ role: ApiRole }>(
+      `/api/roles/${encodeURIComponent(id)}`,
+    );
+    return payload.role;
+  },
+
+  async listRoleCapabilities(): Promise<readonly string[]> {
+    const payload = await requestJson<{ capabilities: readonly string[] }>(
+      '/api/roles/capabilities',
+    );
+    return payload.capabilities;
+  },
+
+  async createRole(input: ApiCreateRoleInput): Promise<ApiRole> {
+    const payload = await requestJson<{ role: ApiRole }>('/api/roles', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return payload.role;
+  },
+
+  async updateRole(id: string, input: ApiRoleWriteInput): Promise<ApiRole> {
+    const payload = await requestJson<{ role: ApiRole }>(
+      `/api/roles/${encodeURIComponent(id)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      },
+    );
+    return payload.role;
+  },
+
+  async setRoleState(id: string, state: ApiRoleState): Promise<ApiRole> {
+    const payload = await requestJson<{ role: ApiRole }>(
+      `/api/roles/${encodeURIComponent(id)}/state`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ state }),
+      },
+    );
+    return payload.role;
+  },
+
+  async deleteRole(id: string): Promise<void> {
+    await requestJson<unknown>(`/api/roles/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 };
 
