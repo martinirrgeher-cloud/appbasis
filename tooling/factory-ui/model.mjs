@@ -37,7 +37,7 @@ async function withPreviewReadiness(repositoryRoot, definition) {
     createGeneratedDatabaseManifest(definition) !== null;
   const [workerEntrypointPresent, packageManifestPresent, databaseManifestPresent] =
     await Promise.all([
-      pathExists(join(appRoot, "worker", "preview.ts")),
+      pathExists(join(appRoot, "worker", "index.ts")),
       pathExists(join(appRoot, "package.json")),
       databaseManifestRequired
         ? pathExists(join(appRoot, "appbasis.database.json"))
