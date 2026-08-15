@@ -121,24 +121,26 @@ export const referenceApi = {
   },
 
   async createRole(input: ReferenceRoleCreateInput): Promise<RoleDetails> {
+    let payload: { role?: RoleDetails } | null;
     try {
-      const payload = await requestJson<{ role: RoleDetails }>('/api/admin/roles', {
+      payload = await requestJson<{ role?: RoleDetails } | null>('/api/admin/roles', {
         method: 'POST',
         body: JSON.stringify(input),
       });
-      return payload.role;
     } catch (error) {
       if (!(error instanceof ReferenceApiError) || error.status !== 0) throw error;
-
-      try {
-        const reconciled = await referenceApi.getRole(input.roleId);
-        if (roleMatchesCreateInput(reconciled, input)) return reconciled;
-      } catch {
-        // Preserve the ambiguous write failure unless the authoritative role exactly matches the request.
-      }
-
-      throw error;
+      return reconcileRoleCreate(input, error);
     }
+
+    if (payload?.role) return payload.role;
+    return reconcileRoleCreate(
+      input,
+      new ReferenceApiError(
+        0,
+        'INVALID_RESPONSE',
+        'Das Backend hat keine lesbare Antwort auf das Anlegen der Rolle geliefert.',
+      ),
+    );
   },
 
   async updateRole(id: string, input: ReferenceRoleUpdateInput): Promise<RoleDetails> {
@@ -163,6 +165,20 @@ export const referenceApi = {
     return payload.role;
   },
 };
+
+async function reconcileRoleCreate(
+  input: ReferenceRoleCreateInput,
+  ambiguousError: ReferenceApiError,
+): Promise<RoleDetails> {
+  try {
+    const reconciled = await referenceApi.getRole(input.roleId);
+    if (roleMatchesCreateInput(reconciled, input)) return reconciled;
+  } catch {
+    // Preserve the ambiguous write failure unless the authoritative role exactly matches the request.
+  }
+
+  throw ambiguousError;
+}
 
 function roleMatchesCreateInput(role: RoleDetails, input: ReferenceRoleCreateInput): boolean {
   return (
