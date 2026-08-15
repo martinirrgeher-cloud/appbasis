@@ -26,31 +26,34 @@ test('accepts only the repository-owned plaintext binding while allowing runtime
   );
 });
 
-test('rejects either historical permission allowlist binding', () => {
+test('rejects either historical permission allowlist binding as plaintext or JSON', () => {
   for (const name of [
     'APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS',
     'APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS',
   ]) {
-    assert.throws(
-      () =>
-        verifyReferencePreviewWorkerSettings(
-          settingsWith({ name, type: 'plain_text', text: 'legacy-principal' }),
-          previewOrigin,
-        ),
-      /legacy plaintext permission bindings/,
-    );
+    for (const binding of [
+      { name, type: 'plain_text', text: 'legacy-principal' },
+      { name, type: 'json', json: ['legacy-principal'] },
+    ]) {
+      assert.throws(
+        () => verifyReferencePreviewWorkerSettings(settingsWith(binding), previewOrigin),
+        /legacy unencrypted permission bindings/,
+      );
+    }
   }
 });
 
-test('rejects any unexpected plaintext binding', () => {
-  assert.throws(
-    () =>
-      verifyReferencePreviewWorkerSettings(
-        settingsWith({ name: 'UNEXPECTED', type: 'plain_text', text: 'value' }),
-        previewOrigin,
-      ),
-    /unexpected plaintext bindings/,
-  );
+test('rejects any unexpected plaintext or JSON variable binding', () => {
+  for (const binding of [
+    { name: 'UNEXPECTED_TEXT', type: 'plain_text', text: 'value' },
+    { name: 'UNEXPECTED_JSON', type: 'json', json: { enabled: true } },
+    { name: 'APPBASIS_BASE_URL', type: 'json', json: previewOrigin },
+  ]) {
+    assert.throws(
+      () => verifyReferencePreviewWorkerSettings(settingsWith(binding), previewOrigin),
+      /unexpected unencrypted variable bindings/,
+    );
+  }
 });
 
 test('rejects missing, duplicate or mismatched APPBASIS_BASE_URL bindings', () => {
