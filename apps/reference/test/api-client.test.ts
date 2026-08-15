@@ -156,6 +156,19 @@ describe('referenceApi', () => {
     }
   });
 
+  it('deletes a managed role through the existing same-origin gateway contract', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(referenceApi.deleteRole('managed:trainer')).resolves.toBeUndefined();
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/admin/roles/managed%3Atrainer');
+    expect(init.method).toBe('DELETE');
+    expect(init.credentials).toBe('same-origin');
+    expect(new Headers(init.headers).get('content-type')).toBeNull();
+  });
+
   it('reconciles an ambiguous role create only when the authoritative role matches the submitted data', async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new Error('response lost'))
@@ -206,6 +219,34 @@ describe('referenceApi', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const error = await referenceApi.createRole(managedRoleCreateInput).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ReferenceApiError);
+    expect(error).toMatchObject({ status: 0, code: 'NETWORK_ERROR' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats an ambiguous role delete as successful only when the authoritative role is gone', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('response lost'))
+      .mockResolvedValueOnce(jsonResponse(
+        { error: { code: 'ROLE_NOT_FOUND', message: 'missing' } },
+        { status: 404 },
+      ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(referenceApi.deleteRole('managed:trainer')).resolves.toBeUndefined();
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/admin/roles/managed%3Atrainer',
+      '/api/admin/roles/managed%3Atrainer/details',
+    ]);
+  });
+
+  it('fails closed when ambiguous role-delete reconciliation still finds the role', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('response lost'))
+      .mockResolvedValueOnce(jsonResponse({ role: managedRole }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const error = await referenceApi.deleteRole('managed:trainer').catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ReferenceApiError);
     expect(error).toMatchObject({ status: 0, code: 'NETWORK_ERROR' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
