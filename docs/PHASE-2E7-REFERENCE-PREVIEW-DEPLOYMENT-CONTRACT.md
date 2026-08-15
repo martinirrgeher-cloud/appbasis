@@ -14,7 +14,7 @@ Der öffentliche Worker `appbasis-reference` ist der einzige öffentliche Einsti
 - Der normale Worker enthält keinen `PostgresRoleAdministration`.
 - Externer Admin-Gateway ausschließlich `/api/admin/roles` und `/api/admin/roles/...`.
 - Der Gateway schreibt nur auf den internen Vertrag `/api/roles...` um und leitet Request, Cookie, HTTP-Methode, Query und Body über `ROLE_ADMIN.fetch(...)` weiter.
-- Fehlt das Service Binding, antwortet der Gateway fail-closed mit `503`.
+- Fehlt das Service Binding oder die konfigurierte `APPBASIS_BASE_URL`, antwortet der Gateway fail-closed mit `503`.
 - `/api/roles` bleibt im normalen App-Worker kein öffentlicher Rollenendpunkt.
 - Das Service Binding ist exakt `ROLE_ADMIN` → `appbasis-reference-role-admin`.
 
@@ -35,6 +35,19 @@ Der öffentliche Worker `appbasis-reference` ist der einzige öffentliche Einsti
 - Actor und Audit-Reason werden serverseitig bestimmt und nicht aus Browserfeldern vertraut übernommen.
 - erfolgreiche Mutationen bleiben im bestehenden PostgreSQL-Vertrag transaktional auditiert.
 - `/api/health` bleibt DB- und Secret-unabhängig; Rollenendpunkte bleiben ohne vollständige Runtime-Konfiguration fail-closed.
+
+## Mutationsschutz / CSRF
+
+`SameSite` allein ist für die privilegierte Control Plane kein ausreichender Mutationsschutz, weil Browser-Cookies auch in Same-Site-/Cross-Origin-Konstellationen relevant sein können. Deshalb verwendet Gateway **und** interner Admin-Worker denselben serverseitigen Mutationsschutz aus `apps/reference/worker/role-admin-request-security.ts`.
+
+Für `POST`, `PUT` und `DELETE` gilt:
+
+- ein gültiger `Origin`-Header ist verpflichtend;
+- dessen normalisierte Origin muss exakt der konfigurierten `APPBASIS_BASE_URL` entsprechen;
+- fehlende, `null`-, fremde oder ungültige Origins werden mit `403 INVALID_REQUEST_ORIGIN` abgewiesen;
+- `POST` und `PUT` akzeptieren ausschließlich den Medientyp `application/json`; CORS-safelisted `text/plain` wird mit `415 UNSUPPORTED_MEDIA_TYPE` vor jedem Service-Binding-/Datenbankzugriff abgewiesen.
+
+Read-only `GET` benötigt keinen `Origin`. Der Schutz läuft im öffentlichen Gateway **vor dem Forwarding** und zusätzlich im internen Admin-Worker **vor dem Öffnen der Datenbankverbindung**. Damit bleibt die Mutation auch dann geschützt, falls eine Provider-Ingress-Grenze später versehentlich aufweicht.
 
 ## Repository-Owned Worker-Variablen
 
@@ -115,6 +128,8 @@ Eine unlesbare, erfolglose oder strukturell unerwartete Cloudflare-Antwort block
 
 Damit benötigt der Deployment-Token keine zonenbasierte Vollständigkeitsannahme für diesen Nachweis. Er muss die verwendeten accountweiten Workers-Script-, Subdomain- und Custom-Domain-Leseoperationen ausführen können; fehlende Rechte führen zu einem fail-closed Abbruch.
 
+Der Security-Verifier selbst ist Teil des verpflichtenden `verify:preview-deploy`-Tests und damit Bestandteil von `verify:repo`/CI. Seine Fail-closed Fälle dürfen nicht als unentdeckte Root-Level-Testdatei außerhalb der CI-Discovery liegen.
+
 ## Gemeinsamer Session-Vertrag als Live-Gate
 
 Nach erfolgreichem Deploy nutzt der Demo-v0.1-Acceptance-Smoke dieselbe `demo.user`-Session zusätzlich gegen `/api/admin/roles`.
@@ -157,6 +172,8 @@ Ein abweichender Session-Secret-Vertrag würde nicht den erwarteten autorisierte
 - keine Secrets, Datenbankadressen oder Provider-IDs im Repository;
 - keine direkte Rollenadministration im normalen öffentlichen Reference Worker;
 - keine öffentliche `workers.dev`-URL, Preview URL, Custom Domain oder Worker Route für `appbasis-reference-role-admin`;
+- keine Role-Admin-Mutation ohne exakte Same-Origin-Prüfung;
+- keine POST-/PUT-Role-Admin-Mutation mit CORS-safelisted `text/plain`;
 - kein Browser-vertrauenswürdiger Audit-Actor;
 - keine historischen Permission-Allowlist-Bindings;
 - kein öffentlicher Gateway-Deploy, solange Admin-Bindings oder Admin-Ingress nicht vollständig sauber verifiziert sind;
@@ -167,7 +184,9 @@ Ein abweichender Session-Secret-Vertrag würde nicht den erwarteten autorisierte
 Ein Slice ist erst mergefähig, wenn:
 
 - normale Exact-Head-CI vollständig grün ist;
+- `verify:preview-deploy` den Ingress-Verifier-Test tatsächlich ausführt;
 - die getrennte Admin-Runtime und der enge Gateway vertraglich/testseitig gepinnt sind;
+- Same-Origin-/JSON-Mutationsschutz am Gateway und internen Worker gepinnt ist;
 - der Ingress-Verifier sowohl vor als auch nach dem Admin-Deploy aufgerufen wird;
 - die Route-Prüfung aus der accountweiten Worker-Script-Autorität kommt und nicht aus token-sichtbaren Zonen;
 - der bestehende Rollen-Autorisierungs- und Audit-Vertrag unverändert bleibt;

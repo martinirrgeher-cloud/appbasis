@@ -9,6 +9,7 @@ import {
 } from '@appbasis/permissions';
 
 import { createReferenceRoleAdminApp } from './role-admin-app';
+import { roleAdminMutationProtectionResponse } from './role-admin-request-security';
 
 interface HyperdriveBinding {
   connectionString: string;
@@ -33,6 +34,9 @@ export const roleAdminWorker = {
     if (configuration === null) {
       return fallbackApp.fetch(request);
     }
+
+    const mutationDenied = roleAdminMutationProtectionResponse(request, configuration.baseURL);
+    if (mutationDenied !== null) return mutationDenied;
 
     const connection = createPostgresDatabase(configuration.connectionString);
     try {

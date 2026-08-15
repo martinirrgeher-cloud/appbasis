@@ -9,6 +9,7 @@ import {
 import { PostgresTaskRepository } from '@appbasis/tasks';
 
 import { createReferenceApp } from './app';
+import { roleAdminMutationProtectionResponse } from './role-admin-request-security';
 
 interface HyperdriveBinding {
   connectionString: string;
@@ -37,7 +38,11 @@ export const worker = {
     }
 
     if (isRoleAdminGatewayPath(url.pathname)) {
-      return forwardRoleAdminRequest(request, env.ROLE_ADMIN);
+      return forwardRoleAdminRequest(
+        request,
+        env.ROLE_ADMIN,
+        normalizedBaseURL(env.APPBASIS_BASE_URL),
+      );
     }
 
     const configuration = runtimeConfiguration(env);
@@ -95,29 +100,41 @@ export function isRoleAdminGatewayPath(pathname: string): boolean {
 export async function forwardRoleAdminRequest(
   request: Request,
   binding: ReferenceRoleAdminServiceBinding | undefined,
+  expectedOrigin: string | null,
 ): Promise<Response> {
-  if (binding === undefined) {
-    return new Response(
-      JSON.stringify({
-        error: {
-          code: 'REFERENCE_ROLE_ADMIN_NOT_CONFIGURED',
-          message: 'The Reference role administration service is not configured.',
-        },
-      }),
-      {
-        status: 503,
-        headers: { 'content-type': 'application/json; charset=UTF-8' },
-      },
-    );
-  }
-
   const url = new URL(request.url);
   if (!isRoleAdminGatewayPath(url.pathname)) {
     return new Response('Not Found', { status: 404 });
   }
+
+  if (binding === undefined || expectedOrigin === null) {
+    return roleAdminUnavailableResponse();
+  }
+
+  const mutationDenied = roleAdminMutationProtectionResponse(request, expectedOrigin);
+  if (mutationDenied !== null) return mutationDenied;
+
   const suffix = url.pathname.slice(ROLE_ADMIN_GATEWAY_PATH.length);
   url.pathname = `${ROLE_ADMIN_INTERNAL_PATH}${suffix}`;
   return binding.fetch(new Request(url, request));
+}
+
+function roleAdminUnavailableResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      error: {
+        code: 'REFERENCE_ROLE_ADMIN_NOT_CONFIGURED',
+        message: 'The Reference role administration service is not configured.',
+      },
+    }),
+    {
+      status: 503,
+      headers: {
+        'content-type': 'application/json; charset=UTF-8',
+        'cache-control': 'no-store',
+      },
+    },
+  );
 }
 
 function runtimeConfiguration(env: ReferenceWorkerEnv): {
