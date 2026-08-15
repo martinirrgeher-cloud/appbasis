@@ -23,10 +23,26 @@ test("Factory draft offers curated design presets and configurable bottom naviga
   assert.match(source, /Weitere Bereiche landen unter „Mehr“/);
   assert.match(source, /\$\{item\.label\} nach links verschieben/);
   assert.match(source, /\$\{item\.label\} nach rechts verschieben/);
+  assert.match(source, /title\.id = "style-preset-group-label"/);
+  assert.match(source, /options\.setAttribute\("role", "radiogroup"\)/);
+  assert.match(source, /options\.setAttribute\("aria-labelledby", title\.id\)/);
+  assert.match(source, /directControl = document\.createElement\("label"\)/);
+  assert.match(source, /directControl\.style\.minHeight = "44px"/);
+  assert.match(source, /button\.dataset\.navigationAction = action/);
+  assert.match(source, /button\.dataset\.navigationId = id/);
+  assert.match(source, /focusNavigationControl\(id, action\)/);
+  assert.match(source, /control\.focus\(\)/);
   assert.match(
     targetFlowCss,
     /@media \(min-width: 920px\)[\s\S]*?grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/,
   );
+
+  const directChangeHandler = source.match(
+    /direct\.addEventListener\("change", \(event\) => \{[\s\S]*?\n    \}\);/,
+  )?.[0] ?? "";
+  assert.match(directChangeHandler, /event\.stopPropagation\(\)/);
+  assert.match(directChangeHandler, /renderNavigationPreview\(candidates\)/);
+  assert.doesNotMatch(directChangeHandler, /renderNavigationOptions\(candidates\)/);
 
   const createInput = source.match(/function currentCreateInput\(\) \{[\s\S]*?\n\}/)?.[0] ?? "";
   assert.match(createInput, /appId:/);
