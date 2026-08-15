@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 2,
+  "appId": "m3-preview",
+  "displayName": "AppBasis M3 Preview",
+  "modules": [
+    "tasks"
+  ],
+  "platformServices": [
+    "identity",
+    "permissions"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@appbasis/app-m3-preview",
+  "version": "0.0.0",
+  "description": "AppBasis M3 Preview generated AppBasis mini application.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run ./test/app.test.ts ./test/worker.test.ts",
+    "test:postgres": "vitest run --config vitest.postgres.config.ts"
+  },
+  "dependencies": {
+    "@appbasis/database": "workspace:*",
+    "@appbasis/identity": "workspace:*",
+    "@appbasis/permissions": "workspace:*",
+    "@appbasis/tasks": "workspace:*",
+    "hono": "4.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}
