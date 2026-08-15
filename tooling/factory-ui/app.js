@@ -2,6 +2,7 @@ import { previewAccentForeground } from "./preview-theme.mjs";
 
 const state = {
   snapshot: null,
+  selectedAppId: null,
   appIdEdited: false,
   brandMarkEdited: false,
 };
@@ -10,6 +11,12 @@ const elements = {
   appsList: document.querySelector("#apps-list"),
   appsSummary: document.querySelector("#apps-summary"),
   error: document.querySelector("#factory-error"),
+  detailMark: document.querySelector("#detail-mark"),
+  detailName: document.querySelector("#detail-name"),
+  detailId: document.querySelector("#detail-id"),
+  detailSchema: document.querySelector("#detail-schema"),
+  detailModules: document.querySelector("#detail-modules"),
+  detailServices: document.querySelector("#detail-services"),
   displayName: document.querySelector("#display-name"),
   appId: document.querySelector("#app-id"),
   brandMark: document.querySelector("#brand-mark"),
@@ -33,6 +40,10 @@ for (const button of document.querySelectorAll("[data-tab]")) {
 document.querySelector("[data-action='show-create']")?.addEventListener("click", () => {
   selectTab("create");
   elements.displayName?.focus();
+});
+
+document.querySelector("[data-action='back-to-apps']")?.addEventListener("click", () => {
+  selectTab("apps");
 });
 
 document.querySelector("[data-action='refresh']")?.addEventListener("click", () => {
@@ -82,10 +93,13 @@ async function loadSnapshot() {
     renderApps();
     renderCatalog();
     renderDraftPreview();
+    restoreSelectedAppDetail();
   } catch {
     state.snapshot = null;
+    state.selectedAppId = null;
     if (elements.appsSummary) elements.appsSummary.textContent = "Repository nicht verfügbar.";
     if (elements.appsList) elements.appsList.replaceChildren(emptyState("Keine App-Daten verfügbar."));
+    selectTab("apps");
     showError("Die Factory-Daten konnten nicht gelesen werden. Es wurden keine Änderungen ausgeführt.");
   }
 }
@@ -137,18 +151,54 @@ function renderApps() {
     const footer = document.createElement("div");
     footer.className = "factory-app-card__footer";
     const preview = document.createElement("span");
-    preview.textContent = "Preview-Status folgt";
+    preview.textContent = "Details verfügbar";
     const button = document.createElement("button");
     button.className = "ab-button ab-button--ghost";
     button.type = "button";
-    button.disabled = true;
     button.textContent = "Öffnen";
-    button.title = "App-Detailansicht folgt in einem weiteren Factory-Slice.";
+    button.setAttribute("aria-label", `${app.displayName} öffnen`);
+    button.addEventListener("click", () => openAppDetail(app.appId));
     footer.append(preview, button);
 
     card.append(header, details, footer);
     elements.appsList.append(card);
   }
+}
+
+function openAppDetail(appId) {
+  const app = state.snapshot?.apps.find((candidate) => candidate.appId === appId);
+  if (app === undefined) {
+    showError("Die gewählte App ist im aktuellen Repository-Snapshot nicht mehr vorhanden.");
+    state.selectedAppId = null;
+    selectTab("apps");
+    return;
+  }
+
+  state.selectedAppId = appId;
+  renderAppDetail(app);
+  setActiveTab("apps");
+  showPanel("detail");
+  document.querySelector("[data-action='back-to-apps']")?.focus();
+}
+
+function restoreSelectedAppDetail() {
+  if (state.selectedAppId === null) return;
+  const app = state.snapshot?.apps.find((candidate) => candidate.appId === state.selectedAppId);
+  if (app === undefined) {
+    state.selectedAppId = null;
+    selectTab("apps");
+    return;
+  }
+  renderAppDetail(app);
+}
+
+function renderAppDetail(app) {
+  if (elements.detailMark) elements.detailMark.textContent = firstLetter(app.displayName);
+  if (elements.detailName) elements.detailName.textContent = app.displayName;
+  if (elements.detailId) elements.detailId.textContent = app.appId;
+  if (elements.detailSchema) elements.detailSchema.textContent = `Schema v${app.schemaVersion}`;
+  replaceWithValueChips(elements.detailModules, app.modules, moduleLabel);
+  replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
 }
 
 function renderCatalog() {
@@ -254,13 +304,22 @@ function validateAppId() {
 }
 
 function selectTab(tab) {
+  state.selectedAppId = null;
+  setActiveTab(tab);
+  showPanel(tab);
+}
+
+function setActiveTab(tab) {
   for (const button of document.querySelectorAll("[data-tab]")) {
     const active = button.dataset.tab === tab;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-selected", String(active));
   }
+}
+
+function showPanel(panelName) {
   for (const panel of document.querySelectorAll("[data-panel]")) {
-    panel.hidden = panel.dataset.panel !== tab;
+    panel.hidden = panel.dataset.panel !== panelName;
   }
 }
 
@@ -270,23 +329,32 @@ function detailRow(labelText, values, labelFor) {
   label.textContent = labelText;
   const value = document.createElement("div");
   value.className = "factory-chip-list";
+  appendValueChips(value, values, labelFor);
+  row.append(label, value);
+  return row;
+}
 
+function replaceWithValueChips(container, values, labelFor) {
+  if (!container) return;
+  container.replaceChildren();
+  appendValueChips(container, values, labelFor);
+}
+
+function appendValueChips(container, values, labelFor) {
   if (values.length === 0) {
     const empty = document.createElement("span");
     empty.className = "factory-muted";
     empty.textContent = "Keine";
-    value.append(empty);
-  } else {
-    for (const id of values) {
-      const chip = document.createElement("span");
-      chip.className = "ab-badge";
-      chip.textContent = labelFor(id);
-      value.append(chip);
-    }
+    container.append(empty);
+    return;
   }
 
-  row.append(label, value);
-  return row;
+  for (const id of values) {
+    const chip = document.createElement("span");
+    chip.className = "ab-badge";
+    chip.textContent = labelFor(id);
+    container.append(chip);
+  }
 }
 
 function emptyState(message) {
