@@ -18,6 +18,8 @@ test("Factory draft offers curated design presets and configurable bottom naviga
   assert.match(source, /Bottom-Menü/);
   assert.match(source, /preview-bottom-nav/);
   assert.match(source, /Weitere Bereiche landen unter „Mehr“/);
+  assert.match(source, /\$\{item\.label\} nach links verschieben/);
+  assert.match(source, /\$\{item\.label\} nach rechts verschieben/);
 
   const createInput = source.match(/function currentCreateInput\(\) \{[\s\S]*?\n\}/)?.[0] ?? "";
   assert.match(createInput, /appId:/);
@@ -33,7 +35,7 @@ test("Factory draft offers curated design presets and configurable bottom naviga
   );
 });
 
-test("Factory navigation keeps explicit hidden choices and only defaults newly introduced areas", async () => {
+test("Factory navigation keeps explicit hidden choices, reserves Mehr, and only defaults new areas", async () => {
   const previousDocument = globalThis.document;
   const previousMutationObserver = globalThis.MutationObserver;
   globalThis.document = {
@@ -49,9 +51,12 @@ test("Factory navigation keeps explicit hidden choices and only defaults newly i
   };
 
   try {
-    const { reconcileNavigationDraftState } = await import(
+    const { directNavigationCapacity, reconcileNavigationDraftState } = await import(
       `./create-app.js?navigation-state-test=${Date.now()}`
     );
+
+    assert.equal(directNavigationCapacity(5), 5);
+    assert.equal(directNavigationCapacity(6), 4);
 
     const initial = reconcileNavigationDraftState({
       candidateIds: ["overview", "module:tasks"],
@@ -77,12 +82,14 @@ test("Factory navigation keeps explicit hidden choices and only defaults newly i
     assert.deepEqual(newRoles.directNavigationItems, ["overview", "roles"]);
 
     const candidates = ["overview", "one", "two", "three", "four", "five"];
-    const freedSlot = reconcileNavigationDraftState({
+    const overflowCapacity = directNavigationCapacity(candidates.length);
+    const overflow = reconcileNavigationDraftState({
       candidateIds: candidates,
       currentOrder: candidates,
-      directIds: ["overview", "one", "two", "three"],
+      directIds: ["overview", "one", "two", "three", "four"],
+      maxDirectItems: overflowCapacity,
     });
-    assert.deepEqual(freedSlot.directNavigationItems, [
+    assert.deepEqual(overflow.directNavigationItems, [
       "overview",
       "one",
       "two",
@@ -91,16 +98,17 @@ test("Factory navigation keeps explicit hidden choices and only defaults newly i
 
     const swapped = reconcileNavigationDraftState({
       candidateIds: candidates,
-      currentOrder: freedSlot.navigationOrder,
-      directIds: [...freedSlot.directNavigationItems, "five"],
+      currentOrder: overflow.navigationOrder,
+      directIds: ["overview", "one", "two", "five"],
+      maxDirectItems: overflowCapacity,
     });
     assert.deepEqual(swapped.directNavigationItems, [
       "overview",
       "one",
       "two",
-      "three",
       "five",
     ]);
+    assert.equal(swapped.directNavigationItems.includes("three"), false);
     assert.equal(swapped.directNavigationItems.includes("four"), false);
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
