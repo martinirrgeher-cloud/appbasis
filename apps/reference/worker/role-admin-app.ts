@@ -250,7 +250,9 @@ async function roleDetailsResponse(
   context: Context,
   roleAdministration: ReferenceRoleAdminDependencies['roleAdministration'],
 ): Promise<Response> {
-  const role = await roleAdministration.findRole(roleId(context.req.param('id')));
+  const requestedRoleId = context.req.param('id');
+  if (requestedRoleId === undefined) return invalidRequest(context);
+  const role = await roleAdministration.findRole(roleId(requestedRoleId));
   if (role === null) {
     return errorResponse(context, 404, 'ROLE_NOT_FOUND', 'The role was not found.');
   }
