@@ -126,8 +126,13 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(deploymentContract).toContain('tooling/reference-preview-worker-settings.mjs');
   });
 
-  it('self-validates permission and binding authority changes through the existing main smoke trigger', () => {
+  it('self-validates permission and role-admin runtime changes through the existing main smoke trigger', () => {
     expect(smokeWorkflow).toContain('.github/workflows/reference-preview-permission-cutover.yml');
+    expect(smokeWorkflow).toContain('apps/reference/wrangler.jsonc');
+    expect(smokeWorkflow).toContain('apps/reference/wrangler.role-admin.jsonc');
+    expect(smokeWorkflow).toContain('apps/reference/worker/index.ts');
+    expect(smokeWorkflow).toContain('apps/reference/worker/role-admin.ts');
+    expect(smokeWorkflow).toContain('apps/reference/worker/role-admin-app.ts');
     expect(smokeWorkflow).toContain('apps/reference/tooling/reference-preview-permission-cutover.ts');
     expect(smokeWorkflow).toContain('apps/reference/tooling/vite.permission-cutover.config.ts');
     expect(smokeWorkflow).toContain('apps/reference/tooling/reference-preview-permission-authority.ts');
