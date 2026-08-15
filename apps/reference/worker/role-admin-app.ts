@@ -30,7 +30,7 @@ export interface ReferenceRolePrincipalIdentity {
 }
 
 export interface ReferenceRolePrincipalDirectory {
-  list(): Promise<readonly ReferenceRolePrincipalIdentity[]>;
+  listAssignments(): Promise<readonly ReferenceRolePrincipalAssignment[]>;
   find(identityId: string): Promise<ReferenceRolePrincipalIdentity | null>;
 }
 
@@ -177,16 +177,9 @@ export function createReferenceRoleAdminApp(
     );
     if (authorization instanceof Response) return authorization;
 
-    const identities = await dependencies.principalDirectory.list();
-    const principals: ReferenceRolePrincipalAssignment[] = [];
-    for (const identity of identities) {
-      const assignment = await principalAssignment(
-        dependencies.permissions,
-        identity,
-      );
-      if (assignment !== null) principals.push(assignment);
-    }
-    return context.json({ principals });
+    return context.json({
+      principals: await dependencies.principalDirectory.listAssignments(),
+    });
   });
 
   app.get('/api/roles/principal-assignments/:id', async (context) => {
@@ -223,7 +216,10 @@ export function createReferenceRoleAdminApp(
     const body = await readObjectBody(context);
     if (body === null) return invalidRequest(context);
     const requestedRoleIds = stringList(body, 'roleIds');
-    if (requestedRoleIds === null) return invalidRequest(context);
+    const expectedRoleIds = stringList(body, 'expectedRoleIds');
+    if (requestedRoleIds === null || expectedRoleIds === null) {
+      return invalidRequest(context);
+    }
 
     const identity = await dependencies.principalDirectory.find(context.req.param('id'));
     if (identity === null) {
@@ -253,6 +249,10 @@ export function createReferenceRoleAdminApp(
         {
           actorPrincipalId: authorization.actorPrincipalId,
           reason: 'Reference Admin API: Benutzerrollen ersetzen',
+        },
+        {
+          expectedRoleIds: expectedRoleIds.map(roleId),
+          requiredRemainingCapability: DEMO_CAPABILITIES.usersManage,
         },
       );
       return context.json({
@@ -495,9 +495,11 @@ function roleAdministrationErrorResponse(context: Context, error: unknown): Resp
     case 'PRINCIPAL_NOT_FOUND':
     case 'ROLE_NOT_FOUND':
       return errorResponse(context, 404, error.code, 'The requested role target was not found.');
+    case 'LAST_CAPABILITY_HOLDER':
     case 'ROLE_ACTIVE':
     case 'ROLE_IN_USE':
     case 'ROLE_PROTECTED':
+    case 'STALE_PRINCIPAL_ROLES':
       return errorResponse(context, 409, error.code, 'The role cannot be changed in its current state.');
   }
 }
