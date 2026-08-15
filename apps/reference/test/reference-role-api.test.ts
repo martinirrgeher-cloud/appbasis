@@ -195,7 +195,7 @@ describe('Reference role administration API', () => {
     expect(directory.listAssignmentsCalls).toBe(1);
   });
 
-  it('ersetzt Principal-Rollen mit Expected-State, Audit Actor und users:manage-Schutz', async () => {
+  it('ersetzt Principal-Rollen mit Expected-State, Audit Actor und vollständigem Role-Admin-Schutz', async () => {
     const roleAdministration = new StubRoleAdministration();
     const app = configuredAdminApp(roleAdministration);
 
@@ -225,7 +225,10 @@ describe('Reference role administration API', () => {
         },
         constraints: {
           expectedRoleIds: [managedRole.roleId],
-          requiredRemainingCapability: DEMO_CAPABILITIES.usersManage,
+          requiredRemainingCapabilities: [
+            DEMO_CAPABILITIES.appUse,
+            DEMO_CAPABILITIES.usersManage,
+          ],
         },
       },
     ]);
