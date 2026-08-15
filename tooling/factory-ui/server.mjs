@@ -12,6 +12,12 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 4174;
 const MAX_CREATE_REQUEST_BYTES = 64 * 1024;
 const LOOPBACK_ORIGIN_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const CREATE_APP_KEYS = new Set([
+  "appId",
+  "displayName",
+  "modules",
+  "platformServices",
+]);
 
 const STATIC_ROUTES = new Map([
   ["/", { path: join(FACTORY_UI_DIRECTORY, "index.html"), contentType: "text/html; charset=utf-8" }],
@@ -118,7 +124,25 @@ async function handleCreateAppRequest(request, response, repositoryRoot) {
       });
       return;
     }
-    throw error;
+    respondJson(response, 500, {
+      error: {
+        code: "APP_CREATION_FAILED",
+        message: "The app creation request could not be processed. No deployment was started.",
+      },
+    });
+    return;
+  }
+
+  try {
+    await loadFactorySnapshot(repositoryRoot);
+  } catch {
+    respondJson(response, 503, {
+      error: {
+        code: "FACTORY_STATE_UNAVAILABLE",
+        message: "The current repository state could not be read safely. No app was created.",
+      },
+    });
+    return;
   }
 
   try {
@@ -212,14 +236,8 @@ async function readCreateAppInput(request) {
     );
   }
 
-  const allowedKeys = new Set([
-    "appId",
-    "displayName",
-    "modules",
-    "platformServices",
-  ]);
   for (const key of Object.keys(value)) {
-    if (!allowedKeys.has(key)) {
+    if (!CREATE_APP_KEYS.has(key)) {
       throw new FactoryRequestError(
         400,
         "INVALID_APP_REQUEST",
