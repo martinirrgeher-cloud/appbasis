@@ -169,6 +169,35 @@ describe('referenceApi', () => {
     ]);
   });
 
+  it('reconciles a committed role create when the successful response body is invalid JSON', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('{"role":', {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(jsonResponse({ role: managedRole }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(referenceApi.createRole(managedRoleCreateInput)).resolves.toEqual(managedRole);
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/admin/roles',
+      '/api/admin/roles/managed%3Atrainer/details',
+    ]);
+  });
+
+  it('reconciles a committed role create when the successful response has no JSON content type', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ role: managedRole }), { status: 201 }))
+      .mockResolvedValueOnce(jsonResponse({ role: managedRole }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(referenceApi.createRole(managedRoleCreateInput)).resolves.toEqual(managedRole);
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/admin/roles',
+      '/api/admin/roles/managed%3Atrainer/details',
+    ]);
+  });
+
   it('fails closed when ambiguous role-create reconciliation does not exactly match the request', async () => {
     const mismatchedRole = { ...managedRole, displayName: 'Andere Rolle' };
     const fetchMock = vi.fn()
