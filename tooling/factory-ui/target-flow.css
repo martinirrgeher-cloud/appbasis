@@ -1,0 +1,308 @@
+.factory-flow {
+  display: grid;
+  gap: var(--ab-space-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  list-style: none;
+  margin: 0 0 var(--ab-space-5);
+  padding: 0;
+}
+
+.factory-flow li {
+  align-items: center;
+  background: var(--ab-surface-card);
+  border: 1px solid var(--ab-border-default);
+  border-radius: var(--ab-radius-control);
+  display: grid;
+  gap: 0 var(--ab-space-2);
+  grid-template-columns: 30px minmax(0, 1fr);
+  min-width: 0;
+  padding: var(--ab-space-2) var(--ab-space-3);
+}
+
+.factory-flow li > span {
+  align-items: center;
+  background: var(--ab-surface-muted);
+  border-radius: 999px;
+  color: var(--ab-text-secondary);
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 800;
+  grid-row: 1 / span 2;
+  block-size: 28px;
+  inline-size: 28px;
+  justify-content: center;
+}
+
+.factory-flow li.is-current {
+  border-color: var(--ab-brand-primary);
+}
+
+.factory-flow li.is-current > span {
+  background: var(--ab-brand-primary);
+  color: var(--ab-text-inverse);
+}
+
+.factory-flow strong {
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factory-flow small {
+  color: var(--ab-text-muted);
+  font-size: 0.68rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factory-branding-grid {
+  display: grid;
+  gap: var(--ab-space-3);
+}
+
+.factory-mark-input {
+  max-width: 8rem;
+  text-transform: uppercase;
+}
+
+.factory-color-control {
+  align-items: center;
+  border: 1px solid var(--ab-border-default);
+  border-radius: var(--ab-radius-control);
+  display: flex;
+  gap: var(--ab-space-3);
+  min-height: var(--ab-touch-target);
+  padding: var(--ab-space-2) var(--ab-space-3);
+}
+
+.factory-color-control input[type='color'] {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  height: 34px;
+  padding: 0;
+  width: 46px;
+}
+
+.factory-color-control input[type='color']:focus-visible {
+  outline: 3px solid var(--ab-focus-ring);
+  outline-offset: 2px;
+}
+
+.factory-color-control code {
+  color: var(--ab-text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.factory-advanced {
+  background: var(--ab-surface-muted);
+  border-radius: var(--ab-radius-control) !important;
+  padding: var(--ab-space-3) !important;
+}
+
+.factory-role-plan,
+.factory-readiness-list {
+  display: grid;
+  gap: var(--ab-space-2);
+}
+
+.factory-role-plan article {
+  align-items: center;
+  border: 1px solid var(--ab-border-default);
+  border-radius: var(--ab-radius-control);
+  display: grid;
+  gap: var(--ab-space-3);
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: var(--ab-space-3);
+}
+
+.factory-role-plan article > .ab-badge {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.factory-role-plan__icon {
+  align-items: center;
+  background: var(--ab-state-info-surface);
+  border-radius: 999px;
+  color: var(--ab-state-info);
+  display: inline-flex;
+  font-weight: 800;
+  grid-row: 1 / span 2;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.factory-role-plan article > div {
+  display: grid;
+  gap: 2px;
+}
+
+.factory-role-plan strong {
+  font-size: 0.86rem;
+}
+
+.factory-role-plan small {
+  color: var(--ab-text-muted);
+  font-size: 0.74rem;
+}
+
+.factory-readiness-list {
+  border: 1px solid var(--ab-border-default);
+  border-radius: var(--ab-radius-control);
+  overflow: hidden;
+}
+
+.factory-readiness-list > div {
+  align-items: center;
+  display: grid;
+  gap: var(--ab-space-1);
+  padding: var(--ab-space-3);
+}
+
+.factory-readiness-list > div + div {
+  border-top: 1px solid var(--ab-border-default);
+}
+
+.factory-readiness-list span {
+  color: var(--ab-text-secondary);
+  font-size: 0.76rem;
+}
+
+.factory-readiness-list strong {
+  font-size: 0.84rem;
+}
+
+.factory-release-gate {
+  background: var(--ab-state-info-surface);
+  border-radius: var(--ab-radius-control);
+  color: var(--ab-state-info);
+  display: grid;
+  gap: var(--ab-space-1);
+  padding: var(--ab-space-3);
+}
+
+.factory-release-gate span {
+  font-size: 0.78rem;
+}
+
+.factory-preview-window {
+  background: var(--ab-surface-muted);
+  border: 1px solid var(--ab-border-default);
+  border-radius: var(--ab-radius-card);
+  overflow: hidden;
+}
+
+.factory-preview-window__bar {
+  align-items: center;
+  border-bottom: 1px solid var(--ab-border-default);
+  display: flex;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 var(--ab-space-3);
+}
+
+.factory-preview-window__bar span {
+  background: var(--ab-border-strong);
+  border-radius: 999px;
+  height: 7px;
+  width: 7px;
+}
+
+.factory-preview-window__body {
+  background: var(--ab-surface-card);
+  display: grid;
+  gap: var(--ab-space-3);
+  padding: var(--ab-space-4);
+}
+
+.factory-preview-nav {
+  border-bottom: 1px solid var(--ab-border-default);
+  display: flex;
+  gap: var(--ab-space-3);
+  overflow: hidden;
+}
+
+.factory-preview-nav span {
+  color: var(--ab-text-muted);
+  font-size: 0.7rem;
+  padding-bottom: var(--ab-space-2);
+  white-space: nowrap;
+}
+
+.factory-preview-nav span.is-active {
+  border-bottom: 2px solid var(--ab-brand-primary);
+  color: var(--ab-text-primary);
+  font-weight: 700;
+}
+
+.factory-preview-card {
+  align-items: center;
+  border: 1px solid var(--ab-border-default);
+  border-radius: var(--ab-radius-control);
+  display: flex;
+  gap: var(--ab-space-3);
+  overflow: hidden;
+  padding: var(--ab-space-3);
+  position: relative;
+}
+
+.factory-preview-card__accent {
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 4px;
+}
+
+.factory-preview-card > div {
+  display: grid;
+  gap: 2px;
+  padding-left: var(--ab-space-1);
+}
+
+.factory-preview-card strong {
+  font-size: 0.84rem;
+}
+
+.factory-preview-card small {
+  color: var(--ab-text-muted);
+  font-size: 0.7rem;
+}
+
+@media (min-width: 640px) {
+  .factory-flow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .factory-branding-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .factory-role-plan article {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .factory-role-plan article > .ab-badge {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .factory-role-plan__icon {
+    grid-row: 1;
+  }
+
+  .factory-readiness-list > div {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+}
+
+@media (min-width: 920px) {
+  .factory-flow {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
