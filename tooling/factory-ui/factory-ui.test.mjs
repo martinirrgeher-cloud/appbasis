@@ -145,12 +145,21 @@ test("factory console exposes app details and target creation flow without enabl
   assert.match(appScriptBody, /button\.dataset\.appId = app\.appId/);
   assert.match(appScriptBody, /openAppDetail\(app\.appId\)/);
   assert.match(appScriptBody, /showPanel\("detail"\)/);
-  assert.match(appScriptBody, /const appIdToRestore = state\.selectedAppId/);
   assert.match(
     appScriptBody,
-    /requestAnimationFrame\(\(\) => focusAppOpenButton\(appIdToRestore\)\)/,
+    /function returnToApps\(appIdToRestore = state\.selectedAppId\)/,
   );
-  assert.match(appScriptBody, /button\?\.focus\(\)/);
+  assert.match(
+    appScriptBody,
+    /if \(appIdToRestore !== null && focusAppOpenButton\(appIdToRestore\)\) return;/,
+  );
+  assert.match(appScriptBody, /focusAppsTab\(\);/);
+  assert.match(
+    appScriptBody,
+    /document\.querySelector\("button\[data-tab='apps'\]"\)\?\.focus\(\)/,
+  );
+  assert.match(appScriptBody, /const detailWasVisible = isPanelVisible\("detail"\)/);
+  assert.match(appScriptBody, /returnToApps\(null\);/);
 
   const targetStyles = await fetch(`${baseUrl}/target-flow.css`);
   assert.equal(targetStyles.status, 200);
