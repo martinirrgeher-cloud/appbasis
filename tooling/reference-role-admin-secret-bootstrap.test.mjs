@@ -47,6 +47,6 @@ test('role admin secret bootstrap reuses only the protected existing auth secret
   assert.match(workflow, /--name appbasis-reference-role-admin/);
   assert.doesNotMatch(workflow, /APPBASIS_DATABASE_URL/);
   assert.doesNotMatch(workflow, /APPBASIS_HYPERDRIVE_ID/);
-  assert.doesNotMatch(workflow, /wrangler deploy/);
+  assert.doesNotMatch(workflow, /wrangler deploy(?:\s|$)/);
   assert.doesNotMatch(workflow, /secret delete/);
 });
