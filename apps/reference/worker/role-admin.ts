@@ -4,12 +4,15 @@ import { createBetterAuthRuntime } from '@appbasis/identity/better-auth';
 import {
   PostgresPermissionStore,
   PostgresRoleAdministration,
+  roleId,
   type PermissionPostgresClient,
   type RoleAdministrationPostgresClient,
+  type RoleId,
 } from '@appbasis/permissions';
 
 import {
   createReferenceRoleAdminApp,
+  type ReferenceRolePrincipalAssignment,
   type ReferenceRolePrincipalDirectory,
   type ReferenceRolePrincipalIdentity,
 } from './role-admin-app';
@@ -81,17 +84,65 @@ function referenceRolePrincipalDirectory(client: {
     parameters?: (string | number | boolean | null)[],
   ): PromiseLike<readonly Record<string, unknown>[]>;
 }): ReferenceRolePrincipalDirectory {
-  async function list(): Promise<readonly ReferenceRolePrincipalIdentity[]> {
+  async function listAssignments(): Promise<readonly ReferenceRolePrincipalAssignment[]> {
     const rows = await client.unsafe(
       `SELECT
          identity_state.identity_id,
          auth_user.username,
-         auth_user.name AS display_name
+         auth_user.name AS display_name,
+         permission_principal.principal_id,
+         principal_role.role_id
        FROM appbasis_identity_security_state identity_state
-       JOIN "user" auth_user ON auth_user.id = identity_state.identity_id
-       ORDER BY lower(auth_user.name) ASC, lower(auth_user.username) ASC, auth_user.id ASC`,
+       JOIN "user" auth_user
+         ON auth_user.id = identity_state.identity_id
+       JOIN appbasis_permission_principal permission_principal
+         ON permission_principal.principal_id = identity_state.identity_id
+       LEFT JOIN appbasis_permission_principal_role principal_role
+         ON principal_role.principal_id = permission_principal.principal_id
+       ORDER BY
+         lower(auth_user.name) ASC,
+         lower(auth_user.username) ASC,
+         auth_user.id ASC,
+         principal_role.role_id ASC`,
     );
-    return rows.map(principalIdentityFromRow);
+
+    const assignments = new Map<string, {
+      identity: ReferenceRolePrincipalIdentity;
+      principalId: string;
+      roleIds: RoleId[];
+    }>();
+    for (const row of rows) {
+      const identity = principalIdentityFromRow(row);
+      const resolvedPrincipalId = requiredDatabaseString(row, 'principal_id');
+      if (resolvedPrincipalId !== identity.identityId) {
+        throw new Error('Reference role principal directory returned mismatched identity and principal IDs.');
+      }
+      const existing = assignments.get(resolvedPrincipalId);
+      if (existing === undefined) {
+        assignments.set(resolvedPrincipalId, {
+          identity,
+          principalId: resolvedPrincipalId,
+          roleIds: [],
+        });
+      } else if (
+        existing.identity.username !== identity.username ||
+        existing.identity.displayName !== identity.displayName ||
+        existing.identity.identityId !== identity.identityId
+      ) {
+        throw new Error('Reference role principal directory returned inconsistent identity data.');
+      }
+
+      const storedRoleId = nullableDatabaseString(row, 'role_id');
+      if (storedRoleId !== null) {
+        assignments.get(resolvedPrincipalId)?.roleIds.push(roleId(storedRoleId));
+      }
+    }
+
+    return [...assignments.values()].map(({ identity, principalId, roleIds }) => ({
+      ...identity,
+      principalId,
+      roleIds,
+    }));
   }
 
   async function find(identityId: string): Promise<ReferenceRolePrincipalIdentity | null> {
@@ -109,7 +160,7 @@ function referenceRolePrincipalDirectory(client: {
     return rows[0] === undefined ? null : principalIdentityFromRow(rows[0]);
   }
 
-  return Object.freeze({ list, find });
+  return Object.freeze({ listAssignments, find });
 }
 
 function principalIdentityFromRow(row: Record<string, unknown>): ReferenceRolePrincipalIdentity {
@@ -122,6 +173,15 @@ function principalIdentityFromRow(row: Record<string, unknown>): ReferenceRolePr
 
 function requiredDatabaseString(row: Record<string, unknown>, field: string): string {
   const value = row[field];
+  if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
+    throw new Error(`Reference role principal directory returned invalid ${field}.`);
+  }
+  return value;
+}
+
+function nullableDatabaseString(row: Record<string, unknown>, field: string): string | null {
+  const value = row[field];
+  if (value === null || value === undefined) return null;
   if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
     throw new Error(`Reference role principal directory returned invalid ${field}.`);
   }
