@@ -160,8 +160,30 @@ test("factory console exposes app details and target creation flow without enabl
     appScriptBody,
     /document\.querySelector\("button\[data-tab='apps'\]"\)\?\.focus\(\)/,
   );
-  assert.match(appScriptBody, /const detailWasVisible = isPanelVisible\("detail"\)/);
-  assert.match(appScriptBody, /returnToApps\(null\);/);
+
+  assert.match(appScriptBody, /snapshotGeneration: 0/);
+  assert.match(appScriptBody, /const generation = \+\+state\.snapshotGeneration;/);
+  assert.match(appScriptBody, /const nextSnapshot = await response\.json\(\);/);
+  assert.ok(
+    (appScriptBody.match(/if \(generation !== state\.snapshotGeneration\) return;/g) ?? [])
+      .length >= 2,
+  );
+  assert.match(appScriptBody, /const draftCatalogState = captureDraftCatalogState\(\);/);
+  assert.match(appScriptBody, /renderCatalog\(draftCatalogState\);/);
+  assert.match(appScriptBody, /restoreDraftCatalogFocus\(draftCatalogState\.focus\);/);
+  assert.match(appScriptBody, /input\.checked = selectedIds\.includes\(id\);/);
+  assert.match(appScriptBody, /function focusedDraftOption\(\)/);
+  assert.match(
+    appScriptBody,
+    /document\.querySelector\("button\[data-tab='create'\]"\)\?\.focus\(\)/,
+  );
+  assert.match(appScriptBody, /if \(state\.snapshot !== null\) \{/);
+  assert.match(appScriptBody, /Aktualisierung fehlgeschlagen/);
+  assert.match(appScriptBody, /Der zuletzt geladene Stand bleibt sichtbar/);
+  assert.doesNotMatch(
+    appScriptBody,
+    /catch \{[\s\S]*?selectTab\("apps"\)[\s\S]*?showError\("Die Factory-Daten konnten nicht gelesen werden/,
+  );
 
   const targetStyles = await fetch(`${baseUrl}/target-flow.css`);
   assert.equal(targetStyles.status, 200);
