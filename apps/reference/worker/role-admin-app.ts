@@ -157,6 +157,18 @@ export function createReferenceRoleAdminApp(
     });
   });
 
+  // Keep the canonical collision-free role detail route ahead of fixed admin subresources.
+  // Backend-valid role IDs such as `principal-assignments` must remain readable as roles.
+  app.get('/api/roles/:id/details', async (context) => {
+    const authorization = await authorizeRoleAdministration(
+      context,
+      dependencies.permissions,
+      identityHttp,
+    );
+    if (authorization instanceof Response) return authorization;
+    return roleDetailsResponse(context, dependencies.roleAdministration);
+  });
+
   app.get('/api/roles/principal-assignments', async (context) => {
     const authorization = await authorizeRoleAdministration(
       context,
@@ -249,16 +261,6 @@ export function createReferenceRoleAdminApp(
     } catch (error) {
       return roleAdministrationErrorResponse(context, error);
     }
-  });
-
-  app.get('/api/roles/:id/details', async (context) => {
-    const authorization = await authorizeRoleAdministration(
-      context,
-      dependencies.permissions,
-      identityHttp,
-    );
-    if (authorization instanceof Response) return authorization;
-    return roleDetailsResponse(context, dependencies.roleAdministration);
   });
 
   app.put('/api/roles/:id/state', async (context) => {
