@@ -4,7 +4,34 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { startFactoryServer } from "./server.mjs";
+import { isValidFactoryOrigin, startFactoryServer } from "./server.mjs";
+
+test("factory origin validation normalizes the default HTTP port", () => {
+  assert.equal(
+    isValidFactoryOrigin({
+      localAddress: "127.0.0.1",
+      localPort: 80,
+      originHeader: "http://127.0.0.1",
+    }),
+    true,
+  );
+  assert.equal(
+    isValidFactoryOrigin({
+      localAddress: "127.0.0.1",
+      localPort: 81,
+      originHeader: "http://127.0.0.1",
+    }),
+    false,
+  );
+  assert.equal(
+    isValidFactoryOrigin({
+      localAddress: "127.0.0.1",
+      localPort: 80,
+      originHeader: "http://127.0.0.1:81",
+    }),
+    false,
+  );
+});
 
 test("factory write UI blocks framing and rejects unsafe creation input", async (t) => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "appbasis-factory-write-review-"));
