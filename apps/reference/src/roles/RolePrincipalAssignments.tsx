@@ -332,7 +332,7 @@ function principalAssignmentErrorMessage(error: unknown, fallback: string): stri
   if (error.code === 'PRINCIPAL_NOT_FOUND') return 'Der Benutzer ist nicht mehr für Rollenzuweisungen verfügbar. Bitte neu laden.';
   if (error.code === 'ROLE_NOT_FOUND') return 'Mindestens eine ausgewählte Rolle ist nicht mehr aktiv oder verfügbar. Der aktuelle Serverstand wurde neu geladen.';
   if (error.code === 'STALE_PRINCIPAL_ROLES') return 'Die Rollenzuweisungen wurden zwischenzeitlich geändert. Der aktuelle Serverstand wurde neu geladen; bitte die Änderung erneut prüfen.';
-  if (error.code === 'LAST_CAPABILITY_HOLDER') return 'Mindestens ein Rollenadministrator mit „Benutzer verwalten“ muss erhalten bleiben.';
+  if (error.code === 'LAST_CAPABILITY_HOLDER') return 'Der angemeldete Rollenadministrator muss weiterhin vollständigen Zugriff auf die Rollenverwaltung behalten.';
   if (error.status === 503 || error.code === 'REFERENCE_ROLE_ADMIN_NOT_CONFIGURED') return 'Die persistente Rollenverwaltung ist in dieser Umgebung derzeit nicht verfügbar.';
   return fallback;
 }
