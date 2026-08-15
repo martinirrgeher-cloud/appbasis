@@ -252,7 +252,10 @@ export function createReferenceRoleAdminApp(
         },
         {
           expectedRoleIds: expectedRoleIds.map(roleId),
-          requiredRemainingCapability: DEMO_CAPABILITIES.usersManage,
+          requiredRemainingCapabilities: [
+            DEMO_CAPABILITIES.appUse,
+            DEMO_CAPABILITIES.usersManage,
+          ],
         },
       );
       return context.json({

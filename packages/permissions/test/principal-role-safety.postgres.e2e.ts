@@ -33,6 +33,7 @@ const migrationUrls = [
   new URL("../migrations/0002_appbasis_permission_administration_audit.sql", import.meta.url),
 ];
 
+const appUse = capabilityId("app:use");
 const usersManage = capabilityId("users:manage");
 const roleAdmin = roleId("managed:role-admin");
 const memberRole = roleId("managed:member");
@@ -54,8 +55,8 @@ beforeAll(async () => {
 
   await connection.client.unsafe(
     `INSERT INTO appbasis_permission_capability (capability_id)
-     VALUES ($1)`,
-    [usersManage],
+     VALUES ($1), ($2)`,
+    [appUse, usersManage],
   );
   await connection.client.unsafe(
     `INSERT INTO appbasis_permission_role (
@@ -68,8 +69,8 @@ beforeAll(async () => {
   );
   await connection.client.unsafe(
     `INSERT INTO appbasis_permission_role_capability (role_id, capability_id)
-     VALUES ($1, $2)`,
-    [roleAdmin, usersManage],
+     VALUES ($1, $2), ($1, $3)`,
+    [roleAdmin, appUse, usersManage],
   );
   await connection.client.unsafe(
     `INSERT INTO appbasis_permission_principal (principal_id)
@@ -97,9 +98,10 @@ afterAll(async () => {
 });
 
 describe("PostgresRoleAdministration principal role safety", () => {
-  it("rejects stale complete replacements and preserves the final effective capability holder", async () => {
+  it("rejects stale complete replacements and preserves complete role-admin authorization", async () => {
     const administration = roleAdministration();
     const permissions = new PostgresPermissionStore(requiredIsolatedConnection().client);
+    const requiredRoleAdminCapabilities = [appUse, usersManage] as const;
 
     await expect(
       administration.replacePrincipalRoles(
@@ -108,7 +110,7 @@ describe("PostgresRoleAdministration principal role safety", () => {
         audit("Zweiten Administrator freischalten"),
         {
           expectedRoleIds: [memberRole],
-          requiredRemainingCapability: usersManage,
+          requiredRemainingCapabilities: requiredRoleAdminCapabilities,
         },
       ),
     ).resolves.toEqual([roleAdmin]);
@@ -120,7 +122,7 @@ describe("PostgresRoleAdministration principal role safety", () => {
         audit("Veraltete Zuweisung ablehnen"),
         {
           expectedRoleIds: [memberRole],
-          requiredRemainingCapability: usersManage,
+          requiredRemainingCapabilities: requiredRoleAdminCapabilities,
         },
       ),
     ).rejects.toMatchObject({ code: "STALE_PRINCIPAL_ROLES" });
@@ -135,28 +137,40 @@ describe("PostgresRoleAdministration principal role safety", () => {
         audit("Ersten Administrator zurückstufen"),
         {
           expectedRoleIds: [roleAdmin],
-          requiredRemainingCapability: usersManage,
+          requiredRemainingCapabilities: requiredRoleAdminCapabilities,
         },
       ),
     ).resolves.toEqual([memberRole]);
     await expect(
+      can(permissions, { principalId: secondAdmin, capability: appUse }),
+    ).resolves.toBe(true);
+    await expect(
       can(permissions, { principalId: secondAdmin, capability: usersManage }),
     ).resolves.toBe(true);
+
+    await requiredIsolatedConnection().client.unsafe(
+      `INSERT INTO appbasis_permission_principal_grant (principal_id, capability_id)
+       VALUES ($1, $2)`,
+      [secondAdmin, usersManage],
+    );
 
     await expect(
       administration.replacePrincipalRoles(
         secondAdmin,
         [memberRole],
-        audit("Letzten Administrator nicht entfernen"),
+        audit("Letzte vollständige Admin-Berechtigung nicht entfernen"),
         {
           expectedRoleIds: [roleAdmin],
-          requiredRemainingCapability: usersManage,
+          requiredRemainingCapabilities: requiredRoleAdminCapabilities,
         },
       ),
     ).rejects.toMatchObject({ code: "LAST_CAPABILITY_HOLDER" });
     await expect(permissions.findPrincipal(secondAdmin)).resolves.toMatchObject({
       roleIds: [roleAdmin],
     });
+    await expect(
+      can(permissions, { principalId: secondAdmin, capability: appUse }),
+    ).resolves.toBe(true);
     await expect(
       can(permissions, { principalId: secondAdmin, capability: usersManage }),
     ).resolves.toBe(true);
