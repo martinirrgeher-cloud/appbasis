@@ -13,6 +13,12 @@ function readWorkflow(relativePath: string) {
 const cutoverWorkflow = readWorkflow('reference-preview-permission-cutover.yml');
 const deployWorkflow = readWorkflow('reference-preview-deploy.yml');
 const smokeWorkflow = readWorkflow('reference-preview-smoke.yml');
+const deploymentContract = readFileSync(
+  fileURLToPath(
+    new URL('../../../docs/PHASE-2E7-REFERENCE-PREVIEW-DEPLOYMENT-CONTRACT.md', import.meta.url),
+  ),
+  'utf8',
+);
 
 describe('Reference preview permission authority cutover workflow', () => {
   it('keeps schema upgrade and legacy assignment migration in an explicit separate control-plane workflow', () => {
@@ -75,6 +81,18 @@ describe('Reference preview permission authority cutover workflow', () => {
       'rm -f ./apps/reference/tooling/.reference-worker-settings-after-deploy.json',
     );
     expect(deployWorkflow).toContain('rm -rf ./apps/reference/tooling/.permission-authority-dist');
+  });
+
+  it('pins repository ownership of Reference plaintext bindings in the deployment contract', () => {
+    expect(deploymentContract).toContain('`keep_vars: false`');
+    expect(deploymentContract).not.toContain('`keep_vars: true`');
+    expect(deploymentContract).toContain(
+      '`APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS` und `APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS` sind verboten',
+    );
+    expect(deploymentContract).toContain(
+      'Worker-Secrets werden durch einen normalen Deploy unabhängig von `keep_vars` nicht gelöscht.',
+    );
+    expect(deploymentContract).toContain('tooling/reference-preview-worker-settings.mjs');
   });
 
   it('self-validates permission and binding authority changes through the existing main smoke trigger', () => {
