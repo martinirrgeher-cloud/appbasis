@@ -43,7 +43,11 @@ document.querySelector("[data-action='show-create']")?.addEventListener("click",
 });
 
 document.querySelector("[data-action='back-to-apps']")?.addEventListener("click", () => {
+  const appIdToRestore = state.selectedAppId;
   selectTab("apps");
+  if (appIdToRestore !== null) {
+    requestAnimationFrame(() => focusAppOpenButton(appIdToRestore));
+  }
 });
 
 document.querySelector("[data-action='refresh']")?.addEventListener("click", () => {
@@ -156,6 +160,7 @@ function renderApps() {
     button.className = "ab-button ab-button--ghost";
     button.type = "button";
     button.textContent = "Öffnen";
+    button.dataset.appId = app.appId;
     button.setAttribute("aria-label", `${app.displayName} öffnen`);
     button.addEventListener("click", () => openAppDetail(app.appId));
     footer.append(preview, button);
@@ -199,6 +204,13 @@ function renderAppDetail(app) {
   if (elements.detailSchema) elements.detailSchema.textContent = `Schema v${app.schemaVersion}`;
   replaceWithValueChips(elements.detailModules, app.modules, moduleLabel);
   replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
+}
+
+function focusAppOpenButton(appId) {
+  const button = [...document.querySelectorAll("button[data-app-id]")].find(
+    (candidate) => candidate.dataset.appId === appId,
+  );
+  button?.focus();
 }
 
 function renderCatalog() {
