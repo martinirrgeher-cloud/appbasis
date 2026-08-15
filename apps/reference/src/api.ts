@@ -1,4 +1,4 @@
-import type { CapabilityId, RoleDetails, RoleState } from '@appbasis/permissions';
+import type { CapabilityId, RoleDetails, RoleId, RoleState } from '@appbasis/permissions';
 
 export type ReferenceAccess = 'password-change-required' | 'full';
 
@@ -34,6 +34,14 @@ export interface ReferenceRoleUpdateInput {
 
 export interface ReferenceRoleCreateInput extends ReferenceRoleUpdateInput {
   readonly roleId: string;
+}
+
+export interface ReferenceRolePrincipal {
+  readonly identityId: string;
+  readonly principalId: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly roleIds: readonly RoleId[];
 }
 
 interface ErrorPayload {
@@ -120,6 +128,50 @@ export const referenceApi = {
     return payload.capabilities;
   },
 
+  async listRolePrincipals(): Promise<readonly ReferenceRolePrincipal[]> {
+    const payload = await requestJson<{ principals: readonly ReferenceRolePrincipal[] }>(
+      '/api/admin/roles/principal-assignments',
+    );
+    return payload.principals;
+  },
+
+  async getRolePrincipal(id: string): Promise<ReferenceRolePrincipal> {
+    const payload = await requestJson<{ principal: ReferenceRolePrincipal }>(
+      `/api/admin/roles/principal-assignments/${encodeURIComponent(id)}`,
+    );
+    return payload.principal;
+  },
+
+  async replacePrincipalRoles(
+    id: string,
+    roleIds: readonly RoleId[],
+  ): Promise<ReferenceRolePrincipal> {
+    let payload: { principal?: ReferenceRolePrincipal } | null;
+    try {
+      payload = await requestJson<{ principal?: ReferenceRolePrincipal } | null>(
+        `/api/admin/roles/principal-assignments/${encodeURIComponent(id)}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ roleIds }),
+        },
+      );
+    } catch (error) {
+      if (!(error instanceof ReferenceApiError) || error.status !== 0) throw error;
+      return reconcilePrincipalRoles(id, roleIds, error);
+    }
+
+    if (payload?.principal) return payload.principal;
+    return reconcilePrincipalRoles(
+      id,
+      roleIds,
+      new ReferenceApiError(
+        0,
+        'INVALID_RESPONSE',
+        'Das Backend hat keine lesbare Antwort auf die Rollenzuweisung geliefert.',
+      ),
+    );
+  },
+
   async createRole(input: ReferenceRoleCreateInput): Promise<RoleDetails> {
     let payload: { role?: RoleDetails } | null;
     try {
@@ -189,6 +241,26 @@ export const referenceApi = {
   },
 };
 
+async function reconcilePrincipalRoles(
+  principalId: string,
+  requestedRoleIds: readonly RoleId[],
+  ambiguousError: ReferenceApiError,
+): Promise<ReferenceRolePrincipal> {
+  try {
+    const reconciled = await referenceApi.getRolePrincipal(principalId);
+    if (
+      reconciled.principalId === principalId &&
+      sameRoleSet(reconciled.roleIds, requestedRoleIds)
+    ) {
+      return reconciled;
+    }
+  } catch {
+    // Preserve the ambiguous write failure unless the authoritative role set exactly matches the request.
+  }
+
+  throw ambiguousError;
+}
+
 async function reconcileRoleCreate(
   input: ReferenceRoleCreateInput,
   ambiguousError: ReferenceApiError,
@@ -212,6 +284,13 @@ function roleMatchesCreateInput(role: RoleDetails, input: ReferenceRoleCreateInp
     role.description === input.description &&
     sameCapabilitySet(role.capabilities, input.capabilities)
   );
+}
+
+function sameRoleSet(left: readonly RoleId[], right: readonly RoleId[]): boolean {
+  if (left.length !== right.length) return false;
+  const leftValues = left.map(String).sort();
+  const rightValues = right.map(String).sort();
+  return leftValues.every((value, index) => value === rightValues[index]);
 }
 
 function sameCapabilitySet(left: readonly CapabilityId[], right: readonly CapabilityId[]): boolean {
