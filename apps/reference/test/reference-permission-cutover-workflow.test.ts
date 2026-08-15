@@ -32,12 +32,15 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(cutoverWorkflow).toContain('group: reference-preview-deploy');
   });
 
-  it('deploys and verifies the isolated role-admin service before the public Reference gateway', () => {
+  it('checks admin ingress before upload and again after deploy before the public gateway', () => {
     const verifyIndex = deployWorkflow.indexOf(
       'Verify persistent permission authority before deploy',
     );
     const cacheIndex = deployWorkflow.indexOf(
       'Disable Reference Hyperdrive query caching for fresh reads',
+    );
+    const preIngressIndex = deployWorkflow.indexOf(
+      'Verify existing role administration Worker has no public ingress',
     );
     const roleAdminDeployIndex = deployWorkflow.indexOf(
       'Deploy internal Reference role administration Worker',
@@ -48,8 +51,8 @@ describe('Reference preview permission authority cutover workflow', () => {
     const roleAdminVerifyIndex = deployWorkflow.indexOf(
       'Verify internal role administration Worker authority',
     );
-    const roleAdminIngressIndex = deployWorkflow.indexOf(
-      'Verify role administration Worker has no public ingress',
+    const postIngressIndex = deployWorkflow.indexOf(
+      'Verify deployed role administration Worker has no public ingress',
     );
     const deployIndex = deployWorkflow.indexOf(
       'Deploy Reference preview with repository-owned plaintext variables',
@@ -64,14 +67,20 @@ describe('Reference preview permission authority cutover workflow', () => {
 
     expect(verifyIndex).toBeGreaterThanOrEqual(0);
     expect(cacheIndex).toBeGreaterThan(verifyIndex);
-    expect(roleAdminDeployIndex).toBeGreaterThan(cacheIndex);
+    expect(preIngressIndex).toBeGreaterThan(cacheIndex);
+    expect(roleAdminDeployIndex).toBeGreaterThan(preIngressIndex);
     expect(roleAdminSnapshotIndex).toBeGreaterThan(roleAdminDeployIndex);
     expect(roleAdminVerifyIndex).toBeGreaterThan(roleAdminSnapshotIndex);
-    expect(roleAdminIngressIndex).toBeGreaterThan(roleAdminVerifyIndex);
-    expect(deployIndex).toBeGreaterThan(roleAdminIngressIndex);
+    expect(postIngressIndex).toBeGreaterThan(roleAdminVerifyIndex);
+    expect(deployIndex).toBeGreaterThan(postIngressIndex);
     expect(snapshotIndex).toBeGreaterThan(deployIndex);
     expect(bindingVerifyIndex).toBeGreaterThan(snapshotIndex);
     expect(healthIndex).toBeGreaterThan(bindingVerifyIndex);
+
+    expect(
+      deployWorkflow.match(/node \.\/tooling\/reference-role-admin-ingress\.mjs/g),
+    ).toHaveLength(2);
+    expect(deployWorkflow).not.toContain('/zones');
     expect(deployWorkflow).toContain('build:permission-authority');
     expect(deployWorkflow).toContain(
       'APPBASIS_PERMISSION_AUTHORITY_TARGET: reference-preview',
@@ -81,9 +90,6 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(deployWorkflow).toContain(
       'APPBASIS_REFERENCE_ROLE_ADMIN_DEPLOYED_WORKER_SETTINGS_PATH',
     );
-    expect(deployWorkflow).toContain('/workers/scripts/${worker}/subdomain');
-    expect(deployWorkflow).toContain('/workers/domains');
-    expect(deployWorkflow).toContain('/workers/routes');
     expect(deployWorkflow).toContain("APPBASIS_SMOKE_ROLE_ADMIN_GATEWAY: '1'");
     expect(deployWorkflow).toContain('APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}');
     expect(deployWorkflow).not.toContain('Snapshot existing Reference Worker permission bindings');
@@ -132,6 +138,7 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(deploymentContract).toContain('`workers_dev: false`');
     expect(deploymentContract).toContain('`preview_urls: false`');
     expect(deploymentContract).toContain('tooling/reference-preview-worker-settings.mjs');
+    expect(deploymentContract).toContain('tooling/reference-role-admin-ingress.mjs');
   });
 
   it('self-validates permission and role-admin runtime changes through the existing main smoke trigger', () => {
@@ -147,5 +154,6 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(smokeWorkflow).toContain('apps/reference/tooling/vite.permission-authority.config.ts');
     expect(smokeWorkflow).toContain('tooling/reference-preview-deploy-config.mjs');
     expect(smokeWorkflow).toContain('tooling/reference-preview-worker-settings.mjs');
+    expect(smokeWorkflow).toContain('tooling/reference-role-admin-ingress.mjs');
   });
 });

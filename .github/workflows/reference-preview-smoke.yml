@@ -28,6 +28,7 @@ on:
       - apps/reference/tooling/vite.permission-authority.config.ts
       - tooling/reference-preview-deploy-config.mjs
       - tooling/reference-preview-worker-settings.mjs
+      - tooling/reference-role-admin-ingress.mjs
       - tooling/reference-preview-smoke.mjs
 
 permissions:
