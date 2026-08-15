@@ -1,11 +1,33 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { verifyReferencePreviewWorkerSettings } from './reference-preview-worker-settings.mjs';
+import {
+  verifyReferencePreviewWorkerSettings,
+  verifyReferenceRoleAdminWorkerSettings,
+} from './reference-preview-worker-settings.mjs';
 
 const previewOrigin = 'https://preview.example.test';
 
-function settingsWith(...bindings) {
+function referenceSettingsWith(...bindings) {
+  return {
+    success: true,
+    result: {
+      bindings: [
+        { name: 'HYPERDRIVE', type: 'hyperdrive', id: 'provider-id' },
+        { name: 'BETTER_AUTH_SECRET', type: 'secret_text' },
+        { name: 'APPBASIS_BASE_URL', type: 'plain_text', text: previewOrigin },
+        {
+          name: 'ROLE_ADMIN',
+          type: 'service',
+          service: 'appbasis-reference-role-admin',
+        },
+        ...bindings,
+      ],
+    },
+  };
+}
+
+function roleAdminSettingsWith(...bindings) {
   return {
     success: true,
     result: {
@@ -19,10 +41,76 @@ function settingsWith(...bindings) {
   };
 }
 
-test('accepts only the repository-owned plaintext binding while allowing runtime resources and secrets', () => {
+test('accepts the Reference runtime authority and exact internal role-admin service binding', () => {
   assert.deepEqual(
-    verifyReferencePreviewWorkerSettings(settingsWith(), `${previewOrigin}/`),
-    { plainTextBindingCount: 1 },
+    verifyReferencePreviewWorkerSettings(referenceSettingsWith(), `${previewOrigin}/`),
+    { plainTextBindingCount: 1, roleAdminServiceBindingCount: 1 },
+  );
+});
+
+test('rejects a missing, duplicate or retargeted ROLE_ADMIN service binding', () => {
+  const missing = referenceSettingsWith();
+  missing.result.bindings = missing.result.bindings.filter(
+    (binding) => binding.name !== 'ROLE_ADMIN',
+  );
+  assert.throws(
+    () => verifyReferencePreviewWorkerSettings(missing, previewOrigin),
+    /ROLE_ADMIN service binding/,
+  );
+
+  assert.throws(
+    () =>
+      verifyReferencePreviewWorkerSettings(
+        referenceSettingsWith({
+          name: 'ROLE_ADMIN_DUPLICATE',
+          type: 'service',
+          service: 'appbasis-reference-role-admin',
+        }),
+        previewOrigin,
+      ),
+    /ROLE_ADMIN service binding/,
+  );
+
+  const retargeted = referenceSettingsWith();
+  const roleAdmin = retargeted.result.bindings.find((binding) => binding.name === 'ROLE_ADMIN');
+  roleAdmin.service = 'unexpected-worker';
+  assert.throws(
+    () => verifyReferencePreviewWorkerSettings(retargeted, previewOrigin),
+    /ROLE_ADMIN service binding/,
+  );
+});
+
+test('accepts the isolated role-admin runtime only with auth secret and Hyperdrive', () => {
+  assert.deepEqual(
+    verifyReferenceRoleAdminWorkerSettings(roleAdminSettingsWith(), previewOrigin),
+    {
+      plainTextBindingCount: 1,
+      secretBindingCount: 1,
+      hyperdriveBindingCount: 1,
+    },
+  );
+});
+
+test('rejects role-admin runtime settings without its required secret or Hyperdrive', () => {
+  for (const name of ['BETTER_AUTH_SECRET', 'HYPERDRIVE']) {
+    const settings = roleAdminSettingsWith();
+    settings.result.bindings = settings.result.bindings.filter((binding) => binding.name !== name);
+    assert.throws(
+      () => verifyReferenceRoleAdminWorkerSettings(settings, previewOrigin),
+      name === 'BETTER_AUTH_SECRET' ? /retain BETTER_AUTH_SECRET/ : /exactly one HYPERDRIVE/,
+    );
+  }
+  assert.throws(
+    () =>
+      verifyReferenceRoleAdminWorkerSettings(
+        roleAdminSettingsWith({
+          name: 'OUTBOUND',
+          type: 'service',
+          service: 'unexpected-worker',
+        }),
+        previewOrigin,
+      ),
+    /must not expose outbound service bindings/,
   );
 });
 
@@ -36,7 +124,11 @@ test('rejects either historical permission allowlist binding as plaintext or JSO
       { name, type: 'json', json: ['legacy-principal'] },
     ]) {
       assert.throws(
-        () => verifyReferencePreviewWorkerSettings(settingsWith(binding), previewOrigin),
+        () => verifyReferencePreviewWorkerSettings(referenceSettingsWith(binding), previewOrigin),
+        /legacy unencrypted permission bindings/,
+      );
+      assert.throws(
+        () => verifyReferenceRoleAdminWorkerSettings(roleAdminSettingsWith(binding), previewOrigin),
         /legacy unencrypted permission bindings/,
       );
     }
@@ -50,14 +142,14 @@ test('rejects any unexpected plaintext or JSON variable binding', () => {
     { name: 'APPBASIS_BASE_URL', type: 'json', json: previewOrigin },
   ]) {
     assert.throws(
-      () => verifyReferencePreviewWorkerSettings(settingsWith(binding), previewOrigin),
+      () => verifyReferencePreviewWorkerSettings(referenceSettingsWith(binding), previewOrigin),
       /unexpected unencrypted variable bindings/,
     );
   }
 });
 
 test('rejects missing, duplicate or mismatched APPBASIS_BASE_URL bindings', () => {
-  const missing = settingsWith();
+  const missing = referenceSettingsWith();
   missing.result.bindings = missing.result.bindings.filter(
     (binding) => binding.name !== 'APPBASIS_BASE_URL',
   );
@@ -69,7 +161,7 @@ test('rejects missing, duplicate or mismatched APPBASIS_BASE_URL bindings', () =
   assert.throws(
     () =>
       verifyReferencePreviewWorkerSettings(
-        settingsWith({
+        referenceSettingsWith({
           name: 'APPBASIS_BASE_URL',
           type: 'plain_text',
           text: previewOrigin,
@@ -79,7 +171,7 @@ test('rejects missing, duplicate or mismatched APPBASIS_BASE_URL bindings', () =
     /APPBASIS_BASE_URL binding does not match/,
   );
 
-  const mismatched = settingsWith();
+  const mismatched = referenceSettingsWith();
   const base = mismatched.result.bindings.find(
     (binding) => binding.name === 'APPBASIS_BASE_URL',
   );

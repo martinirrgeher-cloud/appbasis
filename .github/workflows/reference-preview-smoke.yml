@@ -15,6 +15,11 @@ on:
       - .github/workflows/reference-preview-smoke.yml
       - .github/workflows/reference-preview-deploy.yml
       - .github/workflows/reference-preview-permission-cutover.yml
+      - apps/reference/wrangler.jsonc
+      - apps/reference/wrangler.role-admin.jsonc
+      - apps/reference/worker/index.ts
+      - apps/reference/worker/role-admin.ts
+      - apps/reference/worker/role-admin-app.ts
       - apps/reference/tooling/reference-preview-permission-foundation.ts
       - apps/reference/tooling/vite.permission-foundation.config.ts
       - apps/reference/tooling/reference-preview-permission-cutover.ts
@@ -23,6 +28,7 @@ on:
       - apps/reference/tooling/vite.permission-authority.config.ts
       - tooling/reference-preview-deploy-config.mjs
       - tooling/reference-preview-worker-settings.mjs
+      - tooling/reference-role-admin-ingress.mjs
       - tooling/reference-preview-smoke.mjs
 
 permissions:

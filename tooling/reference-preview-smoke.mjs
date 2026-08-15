@@ -7,9 +7,13 @@ const username = optionalText(process.env.APPBASIS_SMOKE_USERNAME);
 const password = optionalCredential(process.env.APPBASIS_SMOKE_PASSWORD);
 const newPassword = optionalCredential(process.env.APPBASIS_SMOKE_NEW_PASSWORD);
 const mutate = process.env.APPBASIS_SMOKE_MUTATE === '1';
+const verifyRoleAdminGateway = process.env.APPBASIS_SMOKE_ROLE_ADMIN_GATEWAY === '1';
 
 if (mutate && username === null) {
   throw new Error('Mutation smoke requires configured authentication credentials.');
+}
+if (verifyRoleAdminGateway && username === null) {
+  throw new Error('Role-admin gateway smoke requires configured authentication credentials.');
 }
 if (username !== null) {
   if (baseURL.protocol !== 'https:') {
@@ -65,6 +69,10 @@ assertFullSession(session, expectedUsername, signedInIdentity.identityId);
 const current = await request('/api/auth/session', { cookie: sessionCookie });
 assertFullSession(current.payload, expectedUsername, signedInIdentity.identityId);
 
+if (verifyRoleAdminGateway) {
+  await assertRoleAdminGatewayDenied(sessionCookie);
+}
+
 const before = await request('/api/tasks', { cookie: sessionCookie });
 const beforeTasks = assertTaskList(before.payload);
 
@@ -114,10 +122,11 @@ if (mutate) {
   }
 }
 
+const roleAdminSummary = verifyRoleAdminGateway ? ', role-admin session/permission boundary' : '';
 console.log(
   mutate
-    ? 'Reference preview smoke PASS: health, auth, session, tasks persistence and toggle.'
-    : 'Reference preview smoke PASS: health, auth, session and task read.',
+    ? `Reference preview smoke PASS: health, auth, session, tasks persistence and toggle${roleAdminSummary}.`
+    : `Reference preview smoke PASS: health, auth, session and task read${roleAdminSummary}.`,
 );
 
 async function assertHealth() {
@@ -129,6 +138,31 @@ async function assertHealth() {
     health?.apiVersion !== 1
   ) {
     throw new Error('Reference health response does not match the Demo v0.1 contract.');
+  }
+}
+
+async function assertRoleAdminGatewayDenied(cookie) {
+  const headers = new Headers({
+    accept: 'application/json',
+    cookie,
+  });
+  let response;
+  try {
+    response = await fetch(new URL('/api/admin/roles', baseURL), {
+      method: 'GET',
+      headers,
+      redirect: 'error',
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new Error('Reference role-admin gateway smoke failed before receiving a response.');
+  }
+
+  const payload = await readJson(response);
+  if (response.status !== 403 || safeErrorCode(payload) !== 'PERMISSION_DENIED') {
+    throw new Error(
+      'Reference role-admin gateway did not preserve the authenticated deny-by-default boundary.',
+    );
   }
 }
 

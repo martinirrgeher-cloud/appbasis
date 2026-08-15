@@ -2,181 +2,192 @@
 
 ## Ziel
 
-Die Reference-App besitzt einen reproduzierbaren, ausschließlich manuell ausgelösten Deployment-Pfad für den nicht-produktiven Cloud-Vertical-Slice auf Cloudflare mit Neon/PostgreSQL und Hyperdrive.
+Die Reference-App besitzt einen reproduzierbaren, ausschließlich manuell ausgelösten Preview-Deployment-Pfad auf Cloudflare mit Neon/PostgreSQL und Hyperdrive. PostgreSQL ist die einzige Business-Permission-Authority. Die privilegierte Rollenadministration bleibt eine getrennte Control Plane und wird nicht in den normalen öffentlichen App-Worker eingebaut.
 
-Der Vertrag wurde nach dem PostgreSQL-Permission-Cutover aktualisiert. Der normale Reference-Deploy ist jetzt die Source of Truth für unverschlüsselte Worker-Variablen; die historischen Cloudflare-Permission-Allowlists sind kein zulässiger Runtime- oder Deployment-Vertrag mehr.
+Der öffentliche Worker `appbasis-reference` ist der einzige öffentliche Einstiegspunkt. Er leitet ausschließlich `/api/admin/roles...` über das interne Service Binding `ROLE_ADMIN` an `appbasis-reference-role-admin` weiter. Der interne Worker implementiert den bereits vorhandenen `PostgresRoleAdministration`-Vertrag und bleibt ohne eigene öffentliche Ingress-Fläche.
 
-## Verbindlicher aktueller Zustand
+## Verbindliche Runtime-Grenzen
 
-- PostgreSQL ist die einzige Runtime-Authority für AppBasis-Business-Permissions.
-- Der normale Reference-Deploy verifiziert die persistente PostgreSQL-Permission-Authority vor Build und Deployment.
-- `apps/reference/wrangler.jsonc` verwendet bewusst `keep_vars: false`.
-- Die ephemere Deployment-Konfiguration besitzt genau eine unverschlüsselte Worker-Variable: `APPBASIS_BASE_URL` als `plain_text`.
-- `APPBASIS_BASE_URL` wird aus der geschützten GitHub-Environment-Variable `APPBASIS_PREVIEW_URL` abgeleitet und als kanonische HTTPS-Origin validiert.
-- `APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS` und `APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS` dürfen nach dem normalen Deploy weder als `plain_text`- noch als `json`-Binding existieren.
-- Andere unerwartete `plain_text`- oder `json`-Variablen sind ebenfalls unzulässig.
-- Secrets bleiben außerhalb des Repositories. Ein normaler Wrangler-Deploy löscht vorhandene Worker-Secrets nicht; `BETTER_AUTH_SECRET` bleibt daher als Secret erhalten.
-- Die historische Permission-Cutover-Workflow-Datei bleibt als expliziter, auditierbarer Migrationspfad erhalten. Nur dieser historische Cutover-Pfad darf Legacy-Worker-Settings als Migrationsinput lesen; der normale Deploy wertet sie nicht als Permission-Authority aus.
+### Öffentlicher Reference Worker
 
-## Scope
+- Name: `appbasis-reference`.
+- Der normale Worker enthält keinen `PostgresRoleAdministration`.
+- Externer Admin-Gateway ausschließlich `/api/admin/roles` und `/api/admin/roles/...`.
+- Der Gateway schreibt nur auf den internen Vertrag `/api/roles...` um und leitet Request, Cookie, HTTP-Methode, Query und Body über `ROLE_ADMIN.fetch(...)` weiter.
+- Fehlt das Service Binding oder die konfigurierte `APPBASIS_BASE_URL`, antwortet der Gateway fail-closed mit `503`.
+- `/api/roles` bleibt im normalen App-Worker kein öffentlicher Rollenendpunkt.
+- Das Service Binding ist exakt `ROLE_ADMIN` → `appbasis-reference-role-admin`.
 
-- manueller GitHub-Actions-Workflow `Reference Preview Deploy`
-- GitHub-Environment `reference-preview` als Deployment-Grenze
-- gepinnte Node-/pnpm-/GitHub-Action-Versionen entsprechend der normalen CI
-- frozen install und vollständiges `verify:repo` vor jedem Deployment
-- ephemere Wrangler-Input-Konfiguration für die echte `HYPERDRIVE`-Binding und die repository-eigene unverschlüsselte Variablenkonfiguration
-- Hyperdrive-ID ausschließlich aus dem geschützten GitHub-Environment
-- Cloudflare-Account-ID und API-Token ausschließlich aus dem geschützten GitHub-Environment und nur in den Remote-Guard-, Hyperdrive-, Deploy- und Remote-Verifikationsschritten
-- Query-Caching der bereits vorhandenen Reference-Hyperdrive-Konfiguration wird vor Build/Deploy idempotent deaktiviert
-- kanonische Preview-Origin ausschließlich als credential-freie HTTPS-Origin
-- `keep_vars: false`, damit Wrangler die generierte Konfiguration als Source of Truth für unverschlüsselte `plain_text`-/`json`-Variablen verwendet
-- explizite Read-only-Prüfung, dass der erwartete Worker `appbasis-reference` bereits existiert
-- explizit deaktiviertes Wrangler Auto-Provisioning/Auto-Create beim Deployment
-- Build über den vorhandenen Cloudflare-Vite-Plugin-Pfad
-- Deployment über die bereits gepinnte lokale Wrangler-Version
-- Remote-Snapshot der Worker-Settings unmittelbar nach dem Deployment
-- fail-closed Verifikation der tatsächlich deployten unverschlüsselten Variablen-Bindings vor Health und Acceptance-Smoke
-- Health-Smoke und authentifizierter Demo-v0.1-Acceptance-Smoke unmittelbar nach erfolgreicher Binding-Verifikation
+### Interner Role-Admin-Worker
 
-## Warum eine ephemere Wrangler-Konfiguration
+- Name: `appbasis-reference-role-admin`.
+- Entrypoint: `./worker/role-admin.ts`.
+- `workers_dev: false`.
+- `preview_urls: false`.
+- keine `route` oder `routes` in der Repository-Konfiguration.
+- keine ausgehenden Service Bindings.
+- `keep_vars: false`.
+- eigener `HYPERDRIVE`-Binding auf dieselbe persistente Reference-Datenbank.
+- dieselbe kanonische `APPBASIS_BASE_URL` wie der öffentliche Worker.
+- `BETTER_AUTH_SECRET` bleibt extern verwaltetes Cloudflare-Secret.
+- der Worker authentifiziert die weitergeleitete Session selbst.
+- der bestehende Admin-Vertrag verlangt weiterhin serverseitig `app:use` plus `users:manage`.
+- Actor und Audit-Reason werden serverseitig bestimmt und nicht aus Browserfeldern vertraut übernommen.
+- erfolgreiche Mutationen bleiben im bestehenden PostgreSQL-Vertrag transaktional auditiert.
+- `/api/health` bleibt DB- und Secret-unabhängig; Rollenendpunkte bleiben ohne vollständige Runtime-Konfiguration fail-closed.
 
-Die `HYPERDRIVE`-Binding benötigt eine reale Cloudflare-Hyperdrive-ID. Diese ID ist Environment-spezifisch und gehört nicht in die wiederverwendbare Repository-Konfiguration. Ebenso ist die konkrete Preview-Origin Environment-spezifisch.
+## Mutationsschutz / CSRF
 
-Darum bleibt `apps/reference/wrangler.jsonc` frei von Provider-IDs und Environment-spezifischen `vars`. Vor dem Build erzeugt `tooling/reference-preview-deploy-config.mjs` eine ignorierte temporäre Datei `apps/reference/wrangler.preview.generated.json`. Diese ergänzt ausschließlich:
+`SameSite` allein ist für die privilegierte Control Plane kein ausreichender Mutationsschutz, weil Browser-Cookies auch in Same-Site-/Cross-Origin-Konstellationen relevant sein können. Deshalb verwendet Gateway **und** interner Admin-Worker denselben serverseitigen Mutationsschutz aus `apps/reference/worker/role-admin-request-security.ts`.
 
-- `HYPERDRIVE` mit der geschützten Provider-ID
-- `vars.APPBASIS_BASE_URL` mit der normalisierten `APPBASIS_PREVIEW_URL`
+Für `POST`, `PUT` und `DELETE` gilt:
 
-Der Renderer verweigert persistierte Hyperdrive-Bindings, persistierte `vars`, ungültige Provider-IDs, nicht-kanonische Preview-Origins und jede Repository-Konfiguration, die `keep_vars` wieder aktiviert.
+- ein gültiger `Origin`-Header ist verpflichtend;
+- dessen normalisierte Origin muss exakt der konfigurierten `APPBASIS_BASE_URL` entsprechen;
+- fehlende, `null`-, fremde oder ungültige Origins werden mit `403 INVALID_REQUEST_ORIGIN` abgewiesen;
+- `POST` und `PUT` akzeptieren ausschließlich den Medientyp `application/json`; CORS-safelisted `text/plain` wird mit `415 UNSUPPORTED_MEDIA_TYPE` vor jedem Service-Binding-/Datenbankzugriff abgewiesen.
 
-Der Cloudflare-Vite-Plugin verwendet diese temporäre Input-Konfiguration beim Build. Nach dem Workflow wird die temporäre Datei unabhängig vom Erfolg entfernt.
+Read-only `GET` benötigt keinen `Origin`. Der Schutz läuft im öffentlichen Gateway **vor dem Forwarding** und zusätzlich im internen Admin-Worker **vor dem Öffnen der Datenbankverbindung**. Damit bleibt die Mutation auch dann geschützt, falls eine Provider-Ingress-Grenze später versehentlich aufweicht.
 
-## GitHub-Environment `reference-preview`
+## Repository-Owned Worker-Variablen
 
-### Secrets für Deployment
+Beide Source-Wrangler-Konfigurationen enthalten keine reale Provider-ID und keine Environment-spezifischen `vars`.
 
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
-- `APPBASIS_HYPERDRIVE_ID`
-- `APPBASIS_DATABASE_URL`
-- `APPBASIS_SMOKE_PASSWORD`
-- optional `APPBASIS_SMOKE_NEW_PASSWORD`
+`tooling/reference-preview-deploy-config.mjs` rendert temporär:
 
-Die Werte werden nicht in das Repository geschrieben und nur den Schritten bereitgestellt, die sie benötigen.
+- `apps/reference/wrangler.preview.generated.json`
+- `apps/reference/wrangler.role-admin.preview.generated.json`
 
-- `APPBASIS_DATABASE_URL` ist nur für den PostgreSQL-Permission-Authority-Verifier sichtbar.
-- `APPBASIS_HYPERDRIVE_ID` ist nur für Validierung, ephemeres Rendering und die Cache-Policy-Anpassung sichtbar.
-- `CLOUDFLARE_ACCOUNT_ID` und `CLOUDFLARE_API_TOKEN` sind auf Worker-Existenzcheck, Hyperdrive-Cache-Policy, Deploy und den nachgelagerten Worker-Settings-Snapshot begrenzt.
-- Demo-Smoke-Credentials sind ausschließlich im Acceptance-Schritt verfügbar.
-- Provider-Identifikatoren und geschützte Werte werden in Actions-Logs maskiert; Provider-Antworten mit unnötigen Metadaten werden nicht ausgegeben.
+Die generierten Konfigurationen ergänzen ausschließlich:
 
-### Variable
+- `HYPERDRIVE` mit der geschützten bestehenden Provider-ID.
+- `APPBASIS_BASE_URL` als kanonische HTTPS-Origin aus `APPBASIS_PREVIEW_URL`.
 
-- `APPBASIS_PREVIEW_URL` – kanonische, credential-freie HTTPS-Origin des Reference-Previews; Pfad, Query und Fragment sind nicht zulässig
+Für beide Worker gilt `keep_vars: false`. Exakt `APPBASIS_BASE_URL` darf als unverschlüsseltes `plain_text` vorhanden sein. `APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS` und `APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS` sind sowohl als `plain_text` als auch als `json` verboten. Jedes `json`-Binding blockiert den Deploy-Abschluss. Auch jede andere unerwartete unverschlüsselte Variable blockiert den Deploy-Abschluss.
 
-Diese Variable ist zugleich die Vertrauensgrenze für Smoke und die Quelle für die deployte Worker-Variable `APPBASIS_BASE_URL`.
+Worker-Secrets werden durch einen normalen Deploy unabhängig von `keep_vars` nicht gelöscht. `BETTER_AUTH_SECRET` wird im Workflow weder gelesen noch kopiert noch geloggt.
 
-## Pre-existing Worker und Hyperdrive als harte Voraussetzung
+## Pre-existing Ressourcen
 
-Der Deployment-Workflow darf weder den Worker noch die Hyperdrive-Konfiguration selbst anlegen. Vor Build/Upload wird mit dem read-only Wrangler-Pfad geprüft, dass `appbasis-reference` im ausgewählten Cloudflare-Account bereits existiert und lesbar ist. Die Hyperdrive-ID muss bereits als geschütztes Environment-Secret vorhanden sein.
+Der Workflow erstellt keine Cloudflare-, Hyperdrive- oder Datenbankressourcen. Vor einem echten Deploy müssen bereits existieren:
 
-Fehlt der Worker oder kann er mit den bereitgestellten Credentials nicht gelesen werden, endet der Workflow vor jeder externen Änderung. Deploy und Hyperdrive-Update laufen mit explizit deaktiviertem Auto-Provisioning/Auto-Create.
+- `appbasis-reference`
+- `appbasis-reference-role-admin`
+- die bestehende Reference-Hyperdrive-Konfiguration
+- die bestehende Reference-Preview-Datenbank
 
-## PostgreSQL-Permission-Authority-Gate
+Für `appbasis-reference-role-admin` muss vor dem ersten echten Deploy derselbe `BETTER_AUTH_SECRET`-Sessionvertrag wie beim öffentlichen Reference Worker eingerichtet sein. Der Wert darf nie in Chat, Repository oder Workflow-Logs übertragen werden.
 
-Vor der Hyperdrive-Änderung, dem Build und dem Deploy wird der isolierte Permission-Authority-Verifier ausgeführt. Er muss den persistenten Schema-v3-Endzustand und die Reference-Systemzuordnungen bestätigen.
+Deploy und Hyperdrive-Update laufen mit deaktiviertem Auto-Provisioning/Auto-Create. Fehlt eine erwartete Ressource, endet der Workflow vor dem Deployment.
 
-Die technische Better-Auth-Admin-Grenze ist fail-closed: Ein technischer Admin darf weder AppBasis-Identity-State noch Permission-Principal, Rollenbindung, direkten Grant oder direkten Revoke besitzen.
+## Persistente Permission-Authority vor Deployment
 
-Der normale Deploy liest keine historischen Allowlist-Werte, um Berechtigungen abzuleiten oder zu verifizieren.
+Vor jeder externen Deploy-Änderung wird der isolierte PostgreSQL-Permission-Authority-Verifier ausgeführt. Er muss den Schema-v3-Endzustand und die Reference-Systemzuordnungen bestätigen. Der historische Permission-Cutover bleibt ein separater expliziter Workflow und ist der einzige Pfad, der alte Allowlist-Bindings als Migrationsinput lesen darf.
 
-## Hyperdrive-Freshness-Policy
+Der technische Better-Auth-Admin bleibt fail-closed von AppBasis-Permissions getrennt.
 
-Die Reference-App verwendet dieselbe PostgreSQL-Verbindung für Authentifizierung, Sessions, Identity-State, Berechtigungsentscheidungen und den Demo-Tasks-Vertical-Slice. Sicherheitskritische Reads und Read-after-write-Pfade müssen frisch sein.
+## Remote-Binding-Authority
 
-Deshalb wird Query-Caching für die bereits vorhandene Reference-Hyperdrive-Konfiguration vor jedem manuellen Deployment idempotent deaktiviert. Erlaubt ist ausschließlich diese Cache-Policy-Anpassung auf der bereits gebundenen Hyperdrive-ID; Erstellung, Austausch, Löschung sowie Änderungen an Origin, Zugangsdaten, Verbindungslimit oder TLS/mTLS bleiben verboten.
+Nach dem Deploy des internen Workers liest der Workflow dessen reale Cloudflare-Settings. `tooling/reference-preview-worker-settings.mjs` akzeptiert ihn nur, wenn:
 
-## Worker-Konfigurations-Authority
+- exakt `APPBASIS_BASE_URL` als zulässiges `plain_text` vorhanden ist,
+- kein `json`-Binding vorhanden ist,
+- `BETTER_AUTH_SECRET` als `secret_text` vorhanden ist,
+- exakt ein `HYPERDRIVE`-Binding namens `HYPERDRIVE` vorhanden ist,
+- kein Service Binding vorhanden ist.
 
-Nach dem PostgreSQL-Cutover gilt für den normalen Reference-Worker:
+Nach dem Deploy des öffentlichen Workers akzeptiert derselbe Verifier diesen nur, wenn:
 
-- `BETTER_AUTH_SECRET` bleibt ein extern verwaltetes Cloudflare-Secret.
-- `APPBASIS_BASE_URL` ist die einzige zulässige unverschlüsselte Variable und muss als `plain_text` durch die generierte Deployment-Konfiguration gesetzt werden.
-- `HYPERDRIVE` wird durch den Deployment-Pfad gebunden.
-- die historischen Bindings `APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS` und `APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS` sind sowohl als `plain_text` als auch als `json` verboten.
-- jede weitere unerwartete `plain_text`- oder `json`-Variable ist verboten.
+- exakt `APPBASIS_BASE_URL` als zulässiges `plain_text` vorhanden ist,
+- kein `json`-Binding vorhanden ist,
+- exakt ein Service Binding `ROLE_ADMIN` auf `appbasis-reference-role-admin` zeigt.
 
-`keep_vars: false` ist absichtlich Teil dieses Vertrags: Wrangler ersetzt dashboardseitig verwaltete unverschlüsselte Variablen beim Deploy durch die deklarierte `vars`-Konfiguration. Worker-Secrets werden durch einen normalen Deploy unabhängig von `keep_vars` nicht gelöscht.
+Damit gehört der tatsächlich deployte Remote-Zustand zum Gate.
 
-Unmittelbar nach dem Deploy lädt der Workflow die echten Remote-Worker-Settings in eine owner-only temporäre Datei. `tooling/reference-preview-worker-settings.mjs` akzeptiert den Deploy nur, wenn exakt ein unverschlüsseltes Variablen-Binding existiert: `APPBASIS_BASE_URL` vom Typ `plain_text` mit der geschützten Preview-Origin. Jedes `json`-Binding blockiert den Deploy-Abschluss. Erst danach dürfen Health und Acceptance-Smoke laufen.
+## Remote-Ingress-Authority des Admin-Workers
 
-## Neon/PostgreSQL-Zustand
+Nur eine route-freie Repository-Konfiguration reicht nicht aus, weil Cloudflare-Ingress auch außerhalb der aktuellen Wrangler-Datei existieren kann. Deshalb prüft `tooling/reference-role-admin-ingress.mjs` den echten Cloudflare-Zustand **zweimal**:
 
-Der normale Deployment-Slice führt keine Schema-Migration und keine ad-hoc Datenbankadministration aus. Datenbankschema und Permission-Cutover bleiben getrennte, versionierte Control-Plane-Pfade.
+1. **vor dem Upload des privilegierten Admin-Codes**, damit ein bereits öffentlich gerouteter Platzhalter-Worker nicht kurzzeitig den neuen Admin-Handler öffentlich erhält;
+2. **nach dem Admin-Deploy**, damit deploymentseitige Änderungen ebenfalls erkannt werden.
 
-Der Demo-User erhält seine Business-Berechtigung ausschließlich über die persistente PostgreSQL-Permission-Authority, derzeit über die Rolle `demo:member`. Technische Better-Auth-Admins bleiben vollständig außerhalb dieser Business-Permission-Grenze.
+Der Verifier verwendet ausschließlich accountweite Workers-APIs und hängt nicht von einer Liste token-sichtbarer Zonen ab:
 
-## Workflow-Verhalten
+- Worker-Subdomain-Status für `workers.dev` und Preview URLs;
+- accountweite Worker-Custom-Domains gefiltert nach `service=appbasis-reference-role-admin`;
+- accountweite Workers-Script-Liste, deren Script-Datensatz die dem Worker zugeordneten `routes` enthält.
 
-`Reference Preview Deploy` läuft ausschließlich über `workflow_dispatch` und verwendet die gemeinsame Concurrency-Gruppe `reference-preview-deploy`.
+Der Gate akzeptiert nur:
 
-Ablauf:
+- `workers.dev` deaktiviert;
+- Preview URLs deaktiviert;
+- keine Custom Domain für `appbasis-reference-role-admin`;
+- keine dem Worker zugeordnete Worker Route.
 
-1. Repository auschecken, ohne Git-Credentials zu persistieren.
-2. Node und pnpm in den gepinnten Versionen einrichten.
-3. Frozen install ausführen.
-4. `verify:repo` ausführen.
-5. Hyperdrive-ID und Preview-Origin fail-closed prüfen und maskieren.
-6. Ephemere Wrangler-Konfiguration mit `APPBASIS_BASE_URL` und `HYPERDRIVE` rendern.
-7. Bestätigen, dass der bestehende Reference Worker lesbar ist.
-8. Isolierten PostgreSQL-Permission-Authority-Verifier bauen und ausführen.
-9. Query-Caching der bestehenden Hyperdrive-Konfiguration deaktivieren.
-10. Reference-App mit der ephemeren Input-Konfiguration bauen.
-11. Ohne Provisioning oder Auto-Create deployen; die generierte Konfiguration ersetzt Remote-Plaintext-/JSON-Variablen.
-12. Die tatsächlich deployten Worker-Settings über die Cloudflare-API in eine temporäre owner-only Datei lesen.
-13. Fail-closed prüfen, dass ausschließlich `APPBASIS_BASE_URL` als `plain_text`-Binding existiert, kein `json`-Binding vorhanden ist und die Base-URL der geschützten Preview-Origin entspricht.
-14. Öffentlichen Health-Vertrag prüfen.
-15. Geschützte Demo-Smoke-Credentials validieren und den authentifizierten, mutierenden Demo-v0.1-Acceptance-Smoke ausführen.
-16. Generierte Deployment-, Permission-Authority- und Worker-Settings-Artefakte immer entfernen.
+Eine unlesbare, erfolglose oder strukturell unerwartete Cloudflare-Antwort blockiert den Deploy fail-closed. Erst wenn der **post-deploy** Ingress-Check sauber ist, darf `appbasis-reference` mit dem neuen Gateway deployt werden.
 
-Der separate Workflow `Reference Preview Smoke` bleibt für explizite manuelle Checks und die Selbstvalidierung relevanter Vertragsänderungen bestehen.
+Damit benötigt der Deployment-Token keine zonenbasierte Vollständigkeitsannahme für diesen Nachweis. Er muss die verwendeten accountweiten Workers-Script-, Subdomain- und Custom-Domain-Leseoperationen ausführen können; fehlende Rechte führen zu einem fail-closed Abbruch.
+
+Der Security-Verifier selbst ist Teil des verpflichtenden `verify:preview-deploy`-Tests und damit Bestandteil von `verify:repo`/CI. Seine Fail-closed Fälle dürfen nicht als unentdeckte Root-Level-Testdatei außerhalb der CI-Discovery liegen.
+
+## Gemeinsamer Session-Vertrag als Live-Gate
+
+Nach erfolgreichem Deploy nutzt der Demo-v0.1-Acceptance-Smoke dieselbe `demo.user`-Session zusätzlich gegen `/api/admin/roles`.
+
+`demo.user` besitzt persistent die Member-Rolle und kein `users:manage`. Daher muss der Admin-Gateway mit exakt `403 PERMISSION_DENIED` antworten. Das beweist gleichzeitig:
+
+- Service Binding und Pfad-Weiterleitung funktionieren;
+- derselbe Session-Cookie wird vom Admin-Worker verstanden;
+- der interne Worker authentifiziert selbst;
+- die Rollen-Control-Plane bleibt deny-by-default geschützt.
+
+Ein abweichender Session-Secret-Vertrag würde nicht den erwarteten autorisierten 403-Pfad erreichen und lässt den Deploy fehlschlagen.
+
+## Manueller Deployment-Ablauf
+
+`Reference Preview Deploy` läuft nur über `workflow_dispatch` und die Concurrency-Gruppe `reference-preview-deploy`.
+
+1. Repository auschecken, frozen install und vollständiges `verify:repo`.
+2. Hyperdrive-ID und Preview-Origin validieren und maskieren.
+3. beide ephemeren Wrangler-Konfigurationen rendern und fail-closed prüfen.
+4. bestätigen, dass beide Worker bereits existieren.
+5. persistente PostgreSQL-Permission-Authority prüfen.
+6. Query-Caching der bestehenden Hyperdrive-Konfiguration deaktivieren.
+7. Reference-App bauen.
+8. **vor dem Admin-Upload** mit `tooling/reference-role-admin-ingress.mjs` jeden öffentlichen Admin-Ingress ausschließen.
+9. internen `appbasis-reference-role-admin` deployen.
+10. Remote-Bindings des internen Workers prüfen.
+11. **nach dem Admin-Deploy** erneut jeden öffentlichen Admin-Ingress ausschließen.
+12. erst jetzt den öffentlichen `appbasis-reference` mit `ROLE_ADMIN`-Binding deployen.
+13. dessen Remote-Binding-Authority prüfen.
+14. öffentlichen Health-Vertrag prüfen.
+15. authentifizierten mutierenden Demo-v0.1-Smoke inklusive Admin-Gateway-403-Gate ausführen.
+16. generierte Deployment-, Permission-Authority- und Settings-Artefakte immer entfernen.
 
 ## Harte Grenzen
 
-- kein automatischer Deploy auf PR oder `main`
-- keine Erstellung oder Löschung von Neon-, Hyperdrive- oder Worker-Ressourcen
-- keine Änderung der vorhandenen Hyperdrive-Konfiguration außer dem explizit freigegebenen Deaktivieren des Query-Caches
-- keine Migration gegen eine externe Datenbank im normalen Deploy
-- keine Erstellung technischer Admins oder Demo-User
-- keine Runtime-Secrets im Repository
-- keine Cloudflare-/Hyperdrive-IDs im Repository
-- keine Environment-spezifischen `vars` in `apps/reference/wrangler.jsonc`
-- keine historischen Permission-Allowlist-Bindings als `plain_text` oder `json` im normal deployten Worker
-- keine unerwarteten unverschlüsselten `plain_text`-/`json`-Variablen im normal deployten Worker
-- keine job-weite Exposition von Cloudflare-Remote-Credentials
-- kein Passwort, Session-Cookie oder Datenbank-Zugang in Workflow-Logs
-- kein Deploy bei fehlendem Worker
-- kein Deploy bei ungültiger persistenter PostgreSQL-Permission-Authority
-- kein erfolgreicher Deploy-Abschluss bei unerwarteten Remote-Variablen-Bindings
-- kein Wrangler Auto-Provisioning oder Auto-Create
-- keine Änderung der Identity-, Permission-, Task- oder HTTP-Semantik durch diesen Deploymentvertrag
+- kein automatischer Deployment-Trigger auf PR oder `main`;
+- keine automatische Erstellung oder Löschung von Cloudflare-, Hyperdrive- oder Datenbankressourcen;
+- keine Runtime-Migration oder ad-hoc Datenbankadministration;
+- keine Secrets, Datenbankadressen oder Provider-IDs im Repository;
+- keine direkte Rollenadministration im normalen öffentlichen Reference Worker;
+- keine öffentliche `workers.dev`-URL, Preview URL, Custom Domain oder Worker Route für `appbasis-reference-role-admin`;
+- keine Role-Admin-Mutation ohne exakte Same-Origin-Prüfung;
+- keine POST-/PUT-Role-Admin-Mutation mit CORS-safelisted `text/plain`;
+- kein Browser-vertrauenswürdiger Audit-Actor;
+- keine historischen Permission-Allowlist-Bindings;
+- kein öffentlicher Gateway-Deploy, solange Admin-Bindings oder Admin-Ingress nicht vollständig sauber verifiziert sind;
+- kein Wrangler Auto-Provisioning oder Auto-Create.
 
-## Abnahmekriterien
+## Abnahme
 
-- Repository-Wrangler-Konfiguration enthält keine reale Hyperdrive-ID und keine Environment-spezifischen `vars`.
-- `keep_vars` ist explizit `false`.
-- Renderer bindet exakt `HYPERDRIVE` und `APPBASIS_BASE_URL` aus geschützten Deployment-Metadaten.
-- Renderer verweigert fehlende/unsichere IDs, persistierte Hyperdrive-Bindings, persistierte `vars`, aktiviertes `keep_vars` und nicht-kanonische Preview-Origins.
-- PostgreSQL-Permission-Authority wird vor jeder externen Deploy-Änderung fail-closed verifiziert.
-- Query-Caching wird auf der vorhandenen Hyperdrive-ID vor Build/Deploy explizit deaktiviert.
-- Deploy kann keine neue Cloud-Ressource provisionieren oder automatisch anlegen.
-- nach dem Deploy wird der echte Remote-Worker-Zustand geprüft.
-- `APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS` und `APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS` fehlen als `plain_text` und `json` im deployten Worker.
-- exakt ein unverschlüsseltes Variablen-Binding `APPBASIS_BASE_URL` vom Typ `plain_text` bleibt bestehen und entspricht `APPBASIS_PREVIEW_URL`.
-- kein `json`-Variablen-Binding bleibt bestehen.
-- `BETTER_AUTH_SECRET` bleibt als Secret erhalten und wird nicht als unverschlüsselte Variable materialisiert.
-- Health wird erst nach erfolgreicher Remote-Binding-Verifikation geprüft.
-- der mutierende Demo-v0.1-Acceptance-Smoke bestätigt Auth, Session, Task-Persistenz und Status-Toggle.
-- normale CI bleibt vollständig grün.
+Ein Slice ist erst mergefähig, wenn:
 
-Nicht mergen, bevor Exact-Head-CI und finaler Codex-Re-Review sauber sind.
+- normale Exact-Head-CI vollständig grün ist;
+- `verify:preview-deploy` den Ingress-Verifier-Test tatsächlich ausführt;
+- die getrennte Admin-Runtime und der enge Gateway vertraglich/testseitig gepinnt sind;
+- Same-Origin-/JSON-Mutationsschutz am Gateway und internen Worker gepinnt ist;
+- der Ingress-Verifier sowohl vor als auch nach dem Admin-Deploy aufgerufen wird;
+- die Route-Prüfung aus der accountweiten Worker-Script-Autorität kommt und nicht aus token-sichtbaren Zonen;
+- der bestehende Rollen-Autorisierungs- und Audit-Vertrag unverändert bleibt;
+- der finale Codex-Review exakt den finalen Head ohne Blocking-Finding geprüft hat.
