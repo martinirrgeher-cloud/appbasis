@@ -3,16 +3,20 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { createAppSkeleton } from "../create-app.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
 
 const FACTORY_UI_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPOSITORY_ROOT = resolve(FACTORY_UI_DIRECTORY, "../..");
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 4174;
+const MAX_CREATE_REQUEST_BYTES = 64 * 1024;
+const LOOPBACK_ORIGIN_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 const STATIC_ROUTES = new Map([
   ["/", { path: join(FACTORY_UI_DIRECTORY, "index.html"), contentType: "text/html; charset=utf-8" }],
   ["/app.js", { path: join(FACTORY_UI_DIRECTORY, "app.js"), contentType: "text/javascript; charset=utf-8" }],
+  ["/create-app.js", { path: join(FACTORY_UI_DIRECTORY, "create-app.js"), contentType: "text/javascript; charset=utf-8" }],
   ["/preview-theme.mjs", { path: join(FACTORY_UI_DIRECTORY, "preview-theme.mjs"), contentType: "text/javascript; charset=utf-8" }],
   ["/styles.css", { path: join(FACTORY_UI_DIRECTORY, "styles.css"), contentType: "text/css; charset=utf-8" }],
   ["/target-flow.css", { path: join(FACTORY_UI_DIRECTORY, "target-flow.css"), contentType: "text/css; charset=utf-8" }],
@@ -26,6 +30,12 @@ export function createFactoryServer(options = {}) {
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", `http://${request.headers.host ?? DEFAULT_HOST}`);
+
+      if (url.pathname === "/api/factory/apps" && request.method === "POST") {
+        await handleCreateAppRequest(request, response, repositoryRoot);
+        return;
+      }
+
       if (request.method !== "GET" && request.method !== "HEAD") {
         respondJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED" } }, request.method === "HEAD");
         return;
@@ -75,6 +85,197 @@ export async function startFactoryServer(options = {}) {
   });
 
   return server;
+}
+
+async function handleCreateAppRequest(request, response, repositoryRoot) {
+  if (!hasValidFactoryOrigin(request)) {
+    respondJson(response, 403, {
+      error: {
+        code: "INVALID_REQUEST_ORIGIN",
+        message: "App creation is only accepted from this local Factory page.",
+      },
+    });
+    return;
+  }
+
+  if (!hasJsonContentType(request)) {
+    respondJson(response, 415, {
+      error: {
+        code: "UNSUPPORTED_MEDIA_TYPE",
+        message: "App creation requires application/json.",
+      },
+    });
+    return;
+  }
+
+  let input;
+  try {
+    input = await readCreateAppInput(request);
+  } catch (error) {
+    if (error instanceof FactoryRequestError) {
+      respondJson(response, error.status, {
+        error: { code: error.code, message: error.message },
+      });
+      return;
+    }
+    throw error;
+  }
+
+  try {
+    const result = await createAppSkeleton(input, { repositoryRoot });
+    respondJson(response, 201, {
+      app: result.definition,
+      relativeDestination: result.relativeDestination,
+    });
+  } catch (error) {
+    const mapped = mapCreateAppError(error);
+    respondJson(response, mapped.status, {
+      error: { code: mapped.code, message: mapped.message },
+    });
+  }
+}
+
+function hasValidFactoryOrigin(request) {
+  if (!isLoopbackAddress(request.socket.localAddress)) return false;
+
+  const originHeader = request.headers.origin;
+  if (typeof originHeader !== "string") return false;
+
+  let origin;
+  try {
+    origin = new URL(originHeader);
+  } catch {
+    return false;
+  }
+
+  return (
+    origin.protocol === "http:" &&
+    LOOPBACK_ORIGIN_HOSTS.has(origin.hostname) &&
+    origin.port === String(request.socket.localPort ?? "") &&
+    origin.origin === originHeader
+  );
+}
+
+function isLoopbackAddress(address) {
+  return (
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "::ffff:127.0.0.1"
+  );
+}
+
+function hasJsonContentType(request) {
+  const contentType = request.headers["content-type"];
+  if (typeof contentType !== "string") return false;
+  return contentType.split(";", 1)[0].trim().toLowerCase() === "application/json";
+}
+
+async function readCreateAppInput(request) {
+  const chunks = [];
+  let bytes = 0;
+  let tooLarge = false;
+
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > MAX_CREATE_REQUEST_BYTES) {
+      tooLarge = true;
+      continue;
+    }
+    chunks.push(buffer);
+  }
+
+  if (tooLarge) {
+    throw new FactoryRequestError(
+      413,
+      "REQUEST_TOO_LARGE",
+      "App creation request is too large.",
+    );
+  }
+
+  let value;
+  try {
+    value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new FactoryRequestError(
+      400,
+      "INVALID_JSON",
+      "App creation request must contain valid JSON.",
+    );
+  }
+
+  if (!isPlainObject(value)) {
+    throw new FactoryRequestError(
+      400,
+      "INVALID_APP_REQUEST",
+      "App creation request must be a JSON object.",
+    );
+  }
+
+  const allowedKeys = new Set([
+    "appId",
+    "displayName",
+    "modules",
+    "platformServices",
+  ]);
+  for (const key of Object.keys(value)) {
+    if (!allowedKeys.has(key)) {
+      throw new FactoryRequestError(
+        400,
+        "INVALID_APP_REQUEST",
+        `Unknown app creation field: ${key}.`,
+      );
+    }
+  }
+
+  return value;
+}
+
+function mapCreateAppError(error) {
+  const message = error instanceof Error ? error.message : "";
+
+  if (message.startsWith("App destination already exists:")) {
+    return {
+      status: 409,
+      code: "APP_ALREADY_EXISTS",
+      message: "An app with this App-ID already exists.",
+    };
+  }
+
+  if (
+    message.startsWith("App definition ") ||
+    message.startsWith("Unknown AppBasis module:") ||
+    message === "Generated permissions runtime requires the identity platform service."
+  ) {
+    return {
+      status: 400,
+      code: "INVALID_APP_REQUEST",
+      message,
+    };
+  }
+
+  return {
+    status: 500,
+    code: "APP_CREATION_FAILED",
+    message: "The app skeleton could not be created. No deployment was started.",
+  };
+}
+
+function isPlainObject(value) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
+class FactoryRequestError extends Error {
+  constructor(status, code, message) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
 }
 
 function respondJson(response, status, value, headOnly = false) {
