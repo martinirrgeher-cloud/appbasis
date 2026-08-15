@@ -1,3 +1,5 @@
+import { previewAccentForeground } from "./preview-theme.mjs";
+
 const state = {
   snapshot: null,
   appIdEdited: false,
@@ -225,6 +227,7 @@ function renderDraftPreview() {
   if (elements.previewMark) {
     elements.previewMark.textContent = mark;
     elements.previewMark.style.backgroundColor = accent;
+    elements.previewMark.style.color = previewAccentForeground(accent);
   }
   if (elements.previewAccent) elements.previewAccent.style.backgroundColor = accent;
   if (elements.accentColorValue) elements.accentColorValue.textContent = accentLabel;
