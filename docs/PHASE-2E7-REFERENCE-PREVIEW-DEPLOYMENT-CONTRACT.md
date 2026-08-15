@@ -21,6 +21,8 @@ Nach dem PostgreSQL-Permission-Cutover ist PostgreSQL die einzige Business-Permi
 - `appbasis-reference-role-admin` verwendet `workers_dev: false` und `preview_urls: false`, deklariert keine öffentliche Route und ist nur über das Service Binding erreichbar.
 - Der Role-Admin-Worker besitzt seinen eigenen `HYPERDRIVE`-Binding, dieselbe kanonische `APPBASIS_BASE_URL` und den bestehenden `PostgresRoleAdministration`-Vertrag.
 - Der Role-Admin-Worker authentifiziert den unveränderten Session-Cookie selbst und verlangt serverseitig weiterhin `app:use` plus `users:manage`; Actor und Audit-Reason werden nicht vom Browser vertraut übernommen.
+- Der echte Deploy prüft zusätzlich den Cloudflare-Remote-Zustand fail-closed: `workers.dev` und Preview URLs müssen deaktiviert sein, es darf keine Custom Domain und in keiner zugänglichen Account-Zone eine Worker-Route auf `appbasis-reference-role-admin` zeigen.
+- Der authentifizierte Deploy-Smoke verwendet den verifizierten `demo.user`, der persistent ausschließlich `demo:member` besitzt. Derselbe Session-Cookie muss den Admin-Worker erreichen und dort mit `403 PERMISSION_DENIED` abgewiesen werden; damit werden gemeinsamer Session-Vertrag, Service Binding und deny-by-default live bewiesen, ohne einen Secret-Wert auszulesen.
 - Die historische Permission-Cutover-Workflow-Datei bleibt als expliziter, auditierbarer Migrationspfad erhalten. Nur dieser historische Cutover-Pfad darf Legacy-Worker-Settings als Migrationsinput lesen.
 
 ## Zwei Worker, eine öffentliche Origin
@@ -61,8 +63,10 @@ Die Laufzeit erstellt aus der vorhandenen PostgreSQL-Verbindung den bestehenden 
 - explizit deaktiviertes Wrangler Auto-Provisioning/Auto-Create
 - Deployment des internen Role-Admin-Workers **vor** dem öffentlichen Reference Worker
 - Remote-Snapshot und fail-closed Binding-Verifikation des Role-Admin-Workers vor Änderung des öffentlichen Gateway-Workers
+- fail-closed Remote-Ingress-Prüfung für `workers.dev`, Preview URLs, Custom Domains und Zone-Routes vor Änderung des öffentlichen Gateway-Workers
 - Remote-Snapshot und fail-closed Binding-Verifikation des Reference Workers vor Health und Acceptance-Smoke
 - Health-Smoke und authentifizierter Demo-v0.1-Acceptance-Smoke nach erfolgreicher Remote-Verifikation
+- der authentifizierte Acceptance-Smoke muss zusätzlich die gemeinsame Role-Admin-Session und die erwartete `users:manage`-Verweigerung des Member-Benutzers bestätigen
 
 ## Warum ephemere Wrangler-Konfigurationen
 
@@ -100,6 +104,8 @@ Die Werte werden nicht in das Repository geschrieben und nur den benötigten Sch
 
 `BETTER_AUTH_SECRET` ist bewusst **kein** GitHub-Deployment-Secret dieses Workflows. Es bleibt als Cloudflare-Worker-Secret vorhanden. Vor dem ersten echten Role-Admin-Deploy muss `appbasis-reference-role-admin` bereits existieren und mit dem für dieselbe Reference-Session notwendigen `BETTER_AUTH_SECRET` ausgestattet sein. Der Workflow liest oder kopiert den Secret-Wert niemals.
 
+Für die Remote-Ingress-Prüfung muss der vorhandene Cloudflare-API-Token neben dem bereits notwendigen Workers-Scripts-Zugriff auch die betroffenen Zonen lesen und deren Worker-Routes lesen können. Fehlen diese Leserechte, endet der Deploy fail-closed vor der Änderung des öffentlichen Reference Workers.
+
 ### Variable
 
 - `APPBASIS_PREVIEW_URL` – kanonische, credential-freie HTTPS-Origin des Reference-Previews; Pfad, Query und Fragment sind nicht zulässig
@@ -133,6 +139,8 @@ Nach dem Deploy von `appbasis-reference-role-admin` lädt der Workflow dessen ec
 - exakt ein `HYPERDRIVE`-Binding namens `HYPERDRIVE` vorhanden ist,
 - kein Service Binding vorhanden ist.
 
+Zusätzlich liest der Workflow den Worker-Subdomain-Status, die accountweiten Worker-Custom-Domains und die Worker-Routes aller über den Token zugänglichen Zonen. `workers.dev` und Preview URLs müssen deaktiviert sein; Custom Domains und Zone-Routes für `appbasis-reference-role-admin` müssen leer sein. Jede nicht prüfbare oder positive Exposition blockiert den öffentlichen Deploy.
+
 Erst danach darf der öffentliche Reference Worker deployt werden.
 
 Nach dessen Deploy akzeptiert derselbe Verifier den öffentlichen Worker nur, wenn:
@@ -159,11 +167,12 @@ Ablauf:
 8. Reference-App mit der ephemeren öffentlichen Worker-Konfiguration bauen.
 9. `appbasis-reference-role-admin` ohne Provisioning/Auto-Create deployen.
 10. Role-Admin-Remote-Settings lesen und Secret/Hyperdrive/Plaintext-Authority fail-closed verifizieren.
-11. `appbasis-reference` ohne Provisioning/Auto-Create deployen.
-12. Reference-Remote-Settings lesen und Plaintext-/Service-Binding-Authority fail-closed verifizieren.
-13. Öffentlichen Health-Vertrag prüfen.
-14. Geschützte Demo-Smoke-Credentials validieren und den authentifizierten, mutierenden Demo-v0.1-Acceptance-Smoke ausführen.
-15. Alle generierten Deployment-, Permission-Authority- und Worker-Settings-Artefakte immer entfernen.
+11. Role-Admin-Remote-Ingress für `workers.dev`, Preview URLs, Custom Domains und alle lesbaren Zone-Routes fail-closed ausschließen.
+12. `appbasis-reference` ohne Provisioning/Auto-Create deployen.
+13. Reference-Remote-Settings lesen und Plaintext-/Service-Binding-Authority fail-closed verifizieren.
+14. Öffentlichen Health-Vertrag prüfen.
+15. Geschützte Demo-Smoke-Credentials validieren und den authentifizierten, mutierenden Demo-v0.1-Acceptance-Smoke ausführen; derselbe Smoke muss mit dem bestehenden Member-Session-Cookie am Role-Admin-Gateway exakt `403 PERMISSION_DENIED` erhalten.
+16. Alle generierten Deployment-, Permission-Authority- und Worker-Settings-Artefakte immer entfernen.
 
 ## Harte Grenzen
 
@@ -173,7 +182,7 @@ Ablauf:
 - keine Runtime-Secrets im Repository
 - keine Cloudflare-/Hyperdrive-IDs im Repository
 - keine Environment-spezifischen `vars` in den Source-Wrangler-Konfigurationen
-- kein öffentliches `workers.dev`, keine Preview URL und keine Route für `appbasis-reference-role-admin`
+- kein öffentliches `workers.dev`, keine Preview URL, keine Custom Domain und keine Zone-Route für `appbasis-reference-role-admin`
 - keine direkte Rollenadministration im normalen Reference-App-Worker
 - kein Browser-vertrauenswürdiger Actor- oder Audit-Kontext
 - keine historischen Permission-Allowlist-Bindings als `plain_text` oder `json`
@@ -181,7 +190,7 @@ Ablauf:
 - kein Passwort, Session-Cookie oder Datenbank-Zugang in Workflow-Logs
 - kein Deploy bei fehlendem Worker
 - kein Deploy bei ungültiger persistenter PostgreSQL-Permission-Authority
-- kein öffentlicher Reference-Deploy, wenn der interne Admin-Worker seine Remote-Authority-Prüfung nicht besteht
+- kein öffentlicher Reference-Deploy, wenn der interne Admin-Worker seine Remote-Authority- oder Remote-Ingress-Prüfung nicht besteht
 - kein erfolgreicher Deploy-Abschluss bei falschem oder fehlendem `ROLE_ADMIN`-Service-Binding
 - kein Wrangler Auto-Provisioning oder Auto-Create
 
@@ -195,9 +204,11 @@ Ablauf:
 - PostgreSQL-Permission-Authority wird vor jeder externen Deploy-Änderung fail-closed verifiziert.
 - der interne Worker wird vor dem öffentlichen Gateway deployt und remote geprüft.
 - `BETTER_AUTH_SECRET` bleibt im Admin-Worker als Secret erhalten und wird nie materialisiert oder geloggt.
+- `workers.dev`, Preview URLs, Custom Domains und Zone-Routes des Admin-Workers werden vor dem öffentlichen Deploy remote fail-closed ausgeschlossen.
 - der öffentliche Remote-Worker besitzt exakt das erwartete interne Service Binding.
 - Health wird erst nach erfolgreicher Remote-Binding-Verifikation geprüft.
 - der mutierende Demo-v0.1-Acceptance-Smoke bestätigt weiterhin Auth, Session, Task-Persistenz und Status-Toggle.
+- derselbe Smoke bestätigt, dass die bestehende `demo.user`-Session den Admin-Worker erreicht und dort wegen fehlendem `users:manage` exakt deny-by-default abgewiesen wird.
 - normale CI bleibt vollständig grün.
 
 Nicht mergen, bevor Exact-Head-CI und finaler Codex-Re-Review sauber sind.

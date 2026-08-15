@@ -149,6 +149,61 @@ jobs:
           APPBASIS_REFERENCE_ROLE_ADMIN_DEPLOYED_WORKER_SETTINGS_PATH: ${{ github.workspace }}/apps/reference/tooling/.reference-role-admin-worker-settings-after-deploy.json
         run: node ./tooling/reference-preview-worker-settings.mjs
 
+      - name: Verify role administration Worker has no public ingress
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare deployment account.' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
+          command -v jq >/dev/null || { echo 'jq is required for the role administration ingress gate.' >&2; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          worker='appbasis-reference-role-admin'
+          api='https://api.cloudflare.com/client/v4'
+          authorization="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
+
+          subdomain_json="$(curl --fail --silent --show-error --connect-timeout 15 --max-time 30 \
+            "${api}/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${worker}/subdomain" \
+            -H "$authorization")"
+          test "$(jq -r '.success' <<<"$subdomain_json")" = 'true' || { echo 'Role administration Worker subdomain state could not be verified.' >&2; exit 1; }
+          test "$(jq -r '.result.enabled' <<<"$subdomain_json")" = 'false' || { echo 'Role administration Worker is exposed through workers.dev.' >&2; exit 1; }
+          test "$(jq -r '.result.previews_enabled' <<<"$subdomain_json")" = 'false' || { echo 'Role administration Worker exposes Preview URLs.' >&2; exit 1; }
+
+          domains_json="$(curl --fail --silent --show-error --connect-timeout 15 --max-time 30 --get \
+            "${api}/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -H "$authorization" \
+            --data-urlencode "service=${worker}" \
+            --data-urlencode 'per_page=100')"
+          test "$(jq -r '.success' <<<"$domains_json")" = 'true' || { echo 'Role administration Worker custom domains could not be verified.' >&2; exit 1; }
+          test "$(jq '.result | length' <<<"$domains_json")" -eq 0 || { echo 'Role administration Worker has a public custom domain.' >&2; exit 1; }
+
+          page=1
+          while :; do
+            zones_json="$(curl --fail --silent --show-error --connect-timeout 15 --max-time 30 --get \
+              "${api}/zones" \
+              -H "$authorization" \
+              --data-urlencode "account.id=${CLOUDFLARE_ACCOUNT_ID}" \
+              --data-urlencode 'per_page=50' \
+              --data-urlencode "page=${page}")"
+            test "$(jq -r '.success' <<<"$zones_json")" = 'true' || { echo 'Cloudflare zones could not be enumerated for the role administration route gate.' >&2; exit 1; }
+            while IFS= read -r zone_id; do
+              test -n "$zone_id" || continue
+              routes_json="$(curl --fail --silent --show-error --connect-timeout 15 --max-time 30 \
+                "${api}/zones/${zone_id}/workers/routes" \
+                -H "$authorization")"
+              test "$(jq -r '.success' <<<"$routes_json")" = 'true' || { echo 'Worker routes could not be verified for a Cloudflare zone.' >&2; exit 1; }
+              if jq -e --arg worker "$worker" '.result[] | select(.script == $worker)' <<<"$routes_json" >/dev/null; then
+                echo 'Role administration Worker has a public zone route.' >&2
+                exit 1
+              fi
+            done < <(jq -r '.result[].id' <<<"$zones_json")
+            total_pages="$(jq -r '.result_info.total_pages // 1' <<<"$zones_json")"
+            test "$page" -lt "$total_pages" || break
+            page=$((page + 1))
+          done
+
       - name: Deploy Reference preview with repository-owned plaintext variables
         working-directory: apps/reference
         env:

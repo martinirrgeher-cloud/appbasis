@@ -48,6 +48,9 @@ describe('Reference preview permission authority cutover workflow', () => {
     const roleAdminVerifyIndex = deployWorkflow.indexOf(
       'Verify internal role administration Worker authority',
     );
+    const roleAdminIngressIndex = deployWorkflow.indexOf(
+      'Verify role administration Worker has no public ingress',
+    );
     const deployIndex = deployWorkflow.indexOf(
       'Deploy Reference preview with repository-owned plaintext variables',
     );
@@ -64,7 +67,8 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(roleAdminDeployIndex).toBeGreaterThan(cacheIndex);
     expect(roleAdminSnapshotIndex).toBeGreaterThan(roleAdminDeployIndex);
     expect(roleAdminVerifyIndex).toBeGreaterThan(roleAdminSnapshotIndex);
-    expect(deployIndex).toBeGreaterThan(roleAdminVerifyIndex);
+    expect(roleAdminIngressIndex).toBeGreaterThan(roleAdminVerifyIndex);
+    expect(deployIndex).toBeGreaterThan(roleAdminIngressIndex);
     expect(snapshotIndex).toBeGreaterThan(deployIndex);
     expect(bindingVerifyIndex).toBeGreaterThan(snapshotIndex);
     expect(healthIndex).toBeGreaterThan(bindingVerifyIndex);
@@ -77,6 +81,9 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(deployWorkflow).toContain(
       'APPBASIS_REFERENCE_ROLE_ADMIN_DEPLOYED_WORKER_SETTINGS_PATH',
     );
+    expect(deployWorkflow).toContain('/workers/scripts/${worker}/subdomain');
+    expect(deployWorkflow).toContain('/workers/domains');
+    expect(deployWorkflow).toContain('/workers/routes');
     expect(deployWorkflow).toContain("APPBASIS_SMOKE_ROLE_ADMIN_GATEWAY: '1'");
     expect(deployWorkflow).toContain('APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}');
     expect(deployWorkflow).not.toContain('Snapshot existing Reference Worker permission bindings');
