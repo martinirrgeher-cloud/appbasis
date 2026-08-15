@@ -55,15 +55,24 @@
         <div class="factory-section-heading">
           <div>
             <h2 id="create-heading">Neue App</h2>
-            <p>Entwurf auf Basis der aktuell unterstützten Factory-Verträge.</p>
+            <p>Zielablauf der Factory – heute als lokaler, garantiert schreibfreier Entwurf.</p>
           </div>
           <span class="ab-badge">Entwurf</span>
         </div>
 
+        <ol class="factory-flow" aria-label="Ablauf der App-Erstellung">
+          <li class="is-current" data-flow-step="identity"><span>1</span><strong>Name</strong><small>Identität</small></li>
+          <li data-flow-step="branding"><span>2</span><strong>Gestaltung</strong><small>Logo & Farben</small></li>
+          <li data-flow-step="modules"><span>3</span><strong>Module</strong><small>Funktionen</small></li>
+          <li data-flow-step="roles"><span>4</span><strong>Rollen</strong><small>Rechte</small></li>
+          <li data-flow-step="preview"><span>5</span><strong>Preview</strong><small>Prüfen</small></li>
+          <li data-flow-step="release"><span>6</span><strong>Freigabe</strong><small>Produktion</small></li>
+        </ol>
+
         <div class="factory-create-layout">
           <form id="create-form" class="factory-form ab-surface" novalidate>
             <fieldset>
-              <legend>1. Identität</legend>
+              <legend>1. Name & Identität</legend>
               <label class="factory-field">
                 <span>Name</span>
                 <input class="ab-input" id="display-name" name="displayName" maxlength="80" placeholder="z. B. Sportverein Linz" autocomplete="off" />
@@ -71,32 +80,71 @@
               <label class="factory-field">
                 <span>App-ID</span>
                 <input class="ab-input" id="app-id" name="appId" placeholder="sportverein-linz" autocomplete="off" spellcheck="false" />
-                <small>Kleinbuchstaben, Zahlen und Bindestriche.</small>
+                <small>Kleinbuchstaben, Zahlen und Bindestriche. Später wird diese technische ID weitgehend verborgen.</small>
               </label>
             </fieldset>
 
             <fieldset>
-              <legend>2. Module</legend>
-              <div id="module-options" class="factory-options"></div>
+              <legend>2. Gestaltung</legend>
+              <p class="factory-hint">Nur Entwurf: Diese Werte verändern aktuell ausschließlich die Vorschau und werden nirgends gespeichert.</p>
+              <div class="factory-branding-grid">
+                <label class="factory-field">
+                  <span>App-Zeichen</span>
+                  <input class="ab-input factory-mark-input" id="brand-mark" name="brandMark" maxlength="2" placeholder="S" autocomplete="off" />
+                  <small>Platzhalter für das spätere Logo. Ein echter Logo-Upload folgt separat.</small>
+                </label>
+                <label class="factory-field">
+                  <span>Akzentfarbe</span>
+                  <span class="factory-color-control">
+                    <input id="accent-color" name="accentColor" type="color" value="#2457e6" aria-label="Akzentfarbe wählen" />
+                    <code id="accent-color-value">#2457e6</code>
+                  </span>
+                  <small>Lokale Theme-Vorschau; noch kein Manifest-Vertrag.</small>
+                </label>
+              </div>
             </fieldset>
 
             <fieldset>
-              <legend>3. Plattformdienste</legend>
-              <div id="service-options" class="factory-options"></div>
-              <p class="factory-hint">Berechtigungen benötigen Identity und aktivieren Identity automatisch mit.</p>
+              <legend>3. Module</legend>
+              <div id="module-options" class="factory-options"></div>
             </fieldset>
 
-            <fieldset class="factory-upcoming">
-              <legend>4. Gestaltung</legend>
-              <div class="factory-upcoming-grid">
-                <div>
-                  <strong>Logo</strong>
-                  <span>Nächster Vertrag</span>
-                </div>
-                <div>
-                  <strong>Theme & Farben</strong>
-                  <span>Nächster Vertrag</span>
-                </div>
+            <fieldset class="factory-advanced">
+              <legend>Technische Basis</legend>
+              <div id="service-options" class="factory-options"></div>
+              <p class="factory-hint">Diese technischen Abhängigkeiten sollen später weitgehend automatisch aus Modulen und Rollen abgeleitet werden.</p>
+            </fieldset>
+
+            <fieldset>
+              <legend>4. Rollen & Rechte</legend>
+              <div class="factory-role-plan">
+                <article>
+                  <span class="factory-role-plan__icon" aria-hidden="true">✓</span>
+                  <div><strong>Rollenmodell vorbereiten</strong><small>Die Factory übernimmt später die Rollen aus der getrennten Rollenverwaltung.</small></div>
+                  <span class="ab-badge">Vorbereitet</span>
+                </article>
+                <article>
+                  <span class="factory-role-plan__icon" aria-hidden="true">→</span>
+                  <div><strong>Rollen zuweisen</strong><small>Benutzer- und Gruppen-Zuweisungen folgen nach dem Rollen-Control-Plane-Slice.</small></div>
+                  <span class="ab-badge ab-badge--info">Folgt</span>
+                </article>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>5. Preview & Tests</legend>
+              <div class="factory-readiness-list" aria-label="Preview Bereitschaft">
+                <div><span>App-Entwurf</span><strong>Bereit zur Vorschau</strong></div>
+                <div><span>Preview-Deployment</span><strong>Noch nicht verbunden</strong></div>
+                <div><span>Automatische Tests</span><strong>Vor Freigabe verpflichtend</strong></div>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>6. Produktion freigeben</legend>
+              <div class="factory-release-gate">
+                <strong>Produktion bleibt fail-closed.</strong>
+                <span>Freigabe wird erst möglich, wenn Preview, Tests sowie Backup-, Security- und Privacy-Gates erfüllt sind.</span>
               </div>
             </fieldset>
 
@@ -109,18 +157,30 @@
           </form>
 
           <aside class="factory-preview ab-surface" aria-labelledby="preview-heading">
-            <p class="factory-eyebrow">Vorschau</p>
-            <h3 id="preview-heading">App-Entwurf</h3>
-            <div class="factory-preview-brand">
-              <span id="preview-mark" aria-hidden="true">A</span>
-              <div>
-                <strong id="preview-name">Neue App</strong>
-                <code id="preview-id">app-id</code>
+            <p class="factory-eyebrow">Live-Entwurf</p>
+            <h3 id="preview-heading">So könnte deine App starten</h3>
+            <div class="factory-preview-window">
+              <div class="factory-preview-window__bar"><span></span><span></span><span></span></div>
+              <div class="factory-preview-window__body">
+                <div class="factory-preview-brand">
+                  <span id="preview-mark" aria-hidden="true">A</span>
+                  <div>
+                    <strong id="preview-name">Neue App</strong>
+                    <code id="preview-id">app-id</code>
+                  </div>
+                </div>
+                <div class="factory-preview-nav" aria-hidden="true"><span class="is-active">Übersicht</span><span>Module</span><span>Administration</span></div>
+                <div class="factory-preview-card" aria-hidden="true">
+                  <span class="factory-preview-card__accent" id="preview-accent"></span>
+                  <div><strong>Willkommen</strong><small>Deine AppBasis-Anwendung</small></div>
+                </div>
               </div>
             </div>
             <dl class="factory-preview-list">
+              <div><dt>Gestaltung</dt><dd id="preview-theme">Akzent #2457e6</dd></div>
               <div><dt>Module</dt><dd id="preview-modules">Keine</dd></div>
               <div><dt>Dienste</dt><dd id="preview-services">Keine</dd></div>
+              <div><dt>Rollen</dt><dd>Control Plane wird angebunden</dd></div>
               <div><dt>Preview</dt><dd>Noch nicht erstellt</dd></div>
               <div><dt>Produktion</dt><dd>Gesperrt</dd></div>
             </dl>
