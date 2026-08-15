@@ -301,25 +301,51 @@ function syncPersonalizationDraft() {
 
 function syncNavigationCandidates() {
   const candidates = availableNavigationCandidates();
-  const availableIds = new Set(candidates.map((item) => item.id));
-  navigationOrder = navigationOrder.filter((id) => availableIds.has(id));
-  for (const candidate of candidates) {
-    if (!navigationOrder.includes(candidate.id)) navigationOrder.push(candidate.id);
-  }
+  const next = reconcileNavigationDraftState({
+    candidateIds: candidates.map((item) => item.id),
+    currentOrder: navigationOrder,
+    directIds: [...directNavigationItems],
+  });
 
-  for (const id of [...directNavigationItems]) {
-    if (!availableIds.has(id)) directNavigationItems.delete(id);
-  }
-  for (const candidate of candidates) {
-    if (directNavigationItems.size >= MAX_DIRECT_NAVIGATION_ITEMS) break;
-    if (!directNavigationItems.has(candidate.id)) directNavigationItems.add(candidate.id);
-  }
-  if (directNavigationItems.size === 0 && candidates[0]) {
-    directNavigationItems.add(candidates[0].id);
-  }
+  navigationOrder = [...next.navigationOrder];
+  directNavigationItems.clear();
+  for (const id of next.directNavigationItems) directNavigationItems.add(id);
 
   renderNavigationOptions(candidates);
   renderNavigationPreview(candidates);
+}
+
+export function reconcileNavigationDraftState({
+  candidateIds,
+  currentOrder,
+  directIds,
+  maxDirectItems = MAX_DIRECT_NAVIGATION_ITEMS,
+}) {
+  const availableIds = new Set(candidateIds);
+  const nextOrder = currentOrder.filter((id) => availableIds.has(id));
+  const introducedIds = [];
+
+  for (const candidateId of candidateIds) {
+    if (nextOrder.includes(candidateId)) continue;
+    nextOrder.push(candidateId);
+    introducedIds.push(candidateId);
+  }
+
+  const nextDirect = new Set(
+    directIds.filter((id) => availableIds.has(id)),
+  );
+  for (const candidateId of introducedIds) {
+    if (nextDirect.size >= maxDirectItems) break;
+    nextDirect.add(candidateId);
+  }
+  if (nextDirect.size === 0 && candidateIds[0] !== undefined) {
+    nextDirect.add(candidateIds[0]);
+  }
+
+  return Object.freeze({
+    navigationOrder: Object.freeze([...nextOrder]),
+    directNavigationItems: Object.freeze([...nextDirect]),
+  });
 }
 
 function availableNavigationCandidates() {
