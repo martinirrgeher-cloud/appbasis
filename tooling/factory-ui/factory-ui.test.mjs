@@ -142,8 +142,15 @@ test("factory console exposes app details and target creation flow without enabl
   const appScript = await fetch(`${baseUrl}/app.js`);
   assert.equal(appScript.status, 200);
   const appScriptBody = await appScript.text();
+  assert.match(appScriptBody, /button\.dataset\.appId = app\.appId/);
   assert.match(appScriptBody, /openAppDetail\(app\.appId\)/);
   assert.match(appScriptBody, /showPanel\("detail"\)/);
+  assert.match(appScriptBody, /const appIdToRestore = state\.selectedAppId/);
+  assert.match(
+    appScriptBody,
+    /requestAnimationFrame\(\(\) => focusAppOpenButton\(appIdToRestore\)\)/,
+  );
+  assert.match(appScriptBody, /button\?\.focus\(\)/);
 
   const targetStyles = await fetch(`${baseUrl}/target-flow.css`);
   assert.equal(targetStyles.status, 200);
