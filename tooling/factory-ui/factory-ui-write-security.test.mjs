@@ -84,6 +84,17 @@ test("factory write UI blocks framing and rejects unsafe creation input", async 
   assert.ok(status < formEnd);
   assert.ok(preview > formEnd);
 
+  const createScript = await fetch(`${baseUrl}/create-app.js`);
+  assert.equal(createScript.status, 200);
+  const createScriptBody = await createScript.text();
+  const successMessage = createScriptBody.indexOf("Es wurde kein Deployment gestartet.");
+  const refreshSnapshot = createScriptBody.indexOf(
+    "document.querySelector(\"[data-action='refresh']\")?.click();",
+  );
+  assert.ok(successMessage >= 0);
+  assert.ok(refreshSnapshot > successMessage);
+  assert.doesNotMatch(createScriptBody, /button\[data-tab='apps'\]/);
+
   const unsupportedService = await fetch(`${baseUrl}/api/factory/apps`, {
     method: "POST",
     headers: {

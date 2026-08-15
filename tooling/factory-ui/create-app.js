@@ -50,10 +50,7 @@ async function handleCreateApp(event) {
       "success",
     );
 
-    const appsTab = document.querySelector("button[data-tab='apps']");
-    appsTab?.click();
     document.querySelector("[data-action='refresh']")?.click();
-    appsTab?.focus();
   } catch (error) {
     const code = error instanceof FactoryCreateError
       ? error.code
