@@ -77,11 +77,13 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(deployWorkflow).toContain('rm -rf ./apps/reference/tooling/.permission-authority-dist');
   });
 
-  it('self-validates permission authority changes through the existing main smoke trigger', () => {
+  it('self-validates permission and binding authority changes through the existing main smoke trigger', () => {
     expect(smokeWorkflow).toContain('.github/workflows/reference-preview-permission-cutover.yml');
     expect(smokeWorkflow).toContain('apps/reference/tooling/reference-preview-permission-cutover.ts');
     expect(smokeWorkflow).toContain('apps/reference/tooling/vite.permission-cutover.config.ts');
     expect(smokeWorkflow).toContain('apps/reference/tooling/reference-preview-permission-authority.ts');
     expect(smokeWorkflow).toContain('apps/reference/tooling/vite.permission-authority.config.ts');
+    expect(smokeWorkflow).toContain('tooling/reference-preview-deploy-config.mjs');
+    expect(smokeWorkflow).toContain('tooling/reference-preview-worker-settings.mjs');
   });
 });
