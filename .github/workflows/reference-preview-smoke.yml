@@ -21,6 +21,8 @@ on:
       - apps/reference/tooling/vite.permission-cutover.config.ts
       - apps/reference/tooling/reference-preview-permission-authority.ts
       - apps/reference/tooling/vite.permission-authority.config.ts
+      - tooling/reference-preview-deploy-config.mjs
+      - tooling/reference-preview-worker-settings.mjs
       - tooling/reference-preview-smoke.mjs
 
 permissions:
