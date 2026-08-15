@@ -149,11 +149,13 @@ test("factory console exposes app details and target creation flow without enabl
     appScriptBody,
     /function returnToApps\(appIdToRestore = state\.selectedAppId\)/,
   );
+  assert.match(appScriptBody, /scheduleAppsFocus\(appIdToRestore\);/);
+  assert.match(appScriptBody, /const focusedAppIdBeforeRender = focusedAppButtonId\(\);/);
+  assert.match(appScriptBody, /restoreListFocusAfterRender\(focusedAppIdBeforeRender\);/);
   assert.match(
     appScriptBody,
-    /if \(appIdToRestore !== null && focusAppOpenButton\(appIdToRestore\)\) return;/,
+    /if \(appId !== null && focusAppOpenButton\(appId\)\) return;/,
   );
-  assert.match(appScriptBody, /focusAppsTab\(\);/);
   assert.match(
     appScriptBody,
     /document\.querySelector\("button\[data-tab='apps'\]"\)\?\.focus\(\)/,
