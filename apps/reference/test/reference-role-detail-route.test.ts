@@ -37,13 +37,19 @@ const capabilitiesRole: RoleDetails = {
   assignedPrincipalCount: 0,
   capabilities: [DEMO_CAPABILITIES.appUse],
 };
+const principalAssignmentsRole: RoleDetails = {
+  ...capabilitiesRole,
+  roleId: roleId('principal-assignments'),
+  displayName: 'Principal Assignments Rolle',
+  description: 'Backend-gültige Role-ID mit Principal-Subresource-Namenskollision.',
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe('Reference collision-free role detail route', () => {
-  it('keeps the capability catalog and a role named capabilities independently readable', async () => {
+  it('keeps fixed admin subresources and same-named roles independently readable', async () => {
     const app = createReferenceRoleAdminApp({
       identity: new StubIdentityService(),
       principalDirectory: {
@@ -66,11 +72,20 @@ describe('Reference collision-free role detail route', () => {
       capabilities: DEMO_KNOWN_CAPABILITIES,
     });
 
-    const detail = await app.request('/api/roles/capabilities/details', {
+    const capabilitiesDetail = await app.request('/api/roles/capabilities/details', {
       headers: { cookie: sessionCookie },
     });
-    expect(detail.status).toBe(200);
-    await expect(detail.json()).resolves.toEqual({ role: capabilitiesRole });
+    expect(capabilitiesDetail.status).toBe(200);
+    await expect(capabilitiesDetail.json()).resolves.toEqual({ role: capabilitiesRole });
+
+    const principalAssignmentsDetail = await app.request(
+      '/api/roles/principal-assignments/details',
+      { headers: { cookie: sessionCookie } },
+    );
+    expect(principalAssignmentsDetail.status).toBe(200);
+    await expect(principalAssignmentsDetail.json()).resolves.toEqual({
+      role: principalAssignmentsRole,
+    });
 
     const unauthorized = await app.request('/api/roles/capabilities/details');
     expect(unauthorized.status).toBe(401);
@@ -135,10 +150,12 @@ function adminPermissionStore() {
 function roleAdministration(): ReferenceRoleAdminDependencies['roleAdministration'] {
   return {
     async listRoles() {
-      return [capabilitiesRole];
+      return [capabilitiesRole, principalAssignmentsRole];
     },
     async findRole(requestedRoleId) {
-      return requestedRoleId === capabilitiesRole.roleId ? capabilitiesRole : null;
+      if (requestedRoleId === capabilitiesRole.roleId) return capabilitiesRole;
+      if (requestedRoleId === principalAssignmentsRole.roleId) return principalAssignmentsRole;
+      return null;
     },
     async listKnownCapabilities() {
       return DEMO_KNOWN_CAPABILITIES;
