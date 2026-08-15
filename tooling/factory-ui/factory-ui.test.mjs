@@ -82,14 +82,28 @@ test("factory snapshot ignores unpublished app directories without weakening str
   }
 });
 
-test("factory accent preview chooses readable foregrounds", () => {
-  assert.equal(previewAccentForeground("#ffffff"), "#0f172a");
+test("factory accent preview guarantees readable black-or-white foregrounds", () => {
+  assert.equal(previewAccentForeground("#ffffff"), "#000000");
   assert.equal(previewAccentForeground("#000000"), "#ffffff");
 
-  for (const accent of ["#ffffff", "#000000", "#fef08a", "#2563eb"]) {
-    const foreground = previewAccentForeground(accent);
-    const ratio = contrastRatioForHex(accent, foreground);
-    assert.ok(ratio !== null && ratio >= 4.5, `${accent} contrast was ${String(ratio)}`);
+  const regressionColors = ["#777777", "#7c7c7c", "#fef08a", "#2563eb"];
+  for (const accent of regressionColors) {
+    assertAccessibleAccent(accent);
+  }
+
+  for (let channel = 0; channel <= 255; channel += 1) {
+    const component = channel.toString(16).padStart(2, "0");
+    assertAccessibleAccent(`#${component}${component}${component}`);
+  }
+
+  for (let red = 0; red <= 255; red += 17) {
+    for (let green = 0; green <= 255; green += 17) {
+      for (let blue = 0; blue <= 255; blue += 17) {
+        assertAccessibleAccent(
+          `#${hexChannel(red)}${hexChannel(green)}${hexChannel(blue)}`,
+        );
+      }
+    }
   }
 });
 
@@ -147,3 +161,13 @@ test("factory console exposes the target creation flow without enabling writes",
   const unknown = await fetch(`${baseUrl}/api/factory/apps`);
   assert.equal(unknown.status, 404);
 });
+
+function assertAccessibleAccent(accent) {
+  const foreground = previewAccentForeground(accent);
+  const ratio = contrastRatioForHex(accent, foreground);
+  assert.ok(ratio !== null && ratio >= 4.5, `${accent} contrast was ${String(ratio)}`);
+}
+
+function hexChannel(value) {
+  return value.toString(16).padStart(2, "0");
+}
