@@ -1,3 +1,5 @@
+import type { CapabilityId, RoleDetails, RoleState } from '@appbasis/permissions';
+
 export type ReferenceAccess = 'password-change-required' | 'full';
 
 export interface ReferenceIdentity {
@@ -22,6 +24,16 @@ export interface ApiTask {
   readonly title: string;
   readonly description: string;
   readonly status: ApiTaskStatus;
+}
+
+export interface ReferenceRoleUpdateInput {
+  readonly displayName: string;
+  readonly description: string | null;
+  readonly capabilities: readonly CapabilityId[];
+}
+
+export interface ReferenceRoleCreateInput extends ReferenceRoleUpdateInput {
+  readonly roleId: string;
 }
 
 interface ErrorPayload {
@@ -87,6 +99,55 @@ export const referenceApi = {
       { method: 'POST' },
     );
     return payload.task;
+  },
+
+  async listRoles(): Promise<readonly RoleDetails[]> {
+    const payload = await requestJson<{ roles: readonly RoleDetails[] }>('/api/admin/roles');
+    return payload.roles;
+  },
+
+  async getRole(id: string): Promise<RoleDetails> {
+    const payload = await requestJson<{ role: RoleDetails }>(
+      `/api/admin/roles/${encodeURIComponent(id)}`,
+    );
+    return payload.role;
+  },
+
+  async listRoleCapabilities(): Promise<readonly CapabilityId[]> {
+    const payload = await requestJson<{ capabilities: readonly CapabilityId[] }>(
+      '/api/admin/roles/capabilities',
+    );
+    return payload.capabilities;
+  },
+
+  async createRole(input: ReferenceRoleCreateInput): Promise<RoleDetails> {
+    const payload = await requestJson<{ role: RoleDetails }>('/api/admin/roles', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return payload.role;
+  },
+
+  async updateRole(id: string, input: ReferenceRoleUpdateInput): Promise<RoleDetails> {
+    const payload = await requestJson<{ role: RoleDetails }>(
+      `/api/admin/roles/${encodeURIComponent(id)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      },
+    );
+    return payload.role;
+  },
+
+  async setRoleState(id: string, state: RoleState): Promise<RoleDetails> {
+    const payload = await requestJson<{ role: RoleDetails }>(
+      `/api/admin/roles/${encodeURIComponent(id)}/state`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ state }),
+      },
+    );
+    return payload.role;
   },
 };
 

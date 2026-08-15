@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { DEMO_KNOWN_CAPABILITIES, DEMO_ROLE_BUNDLES } from '@appbasis/permissions';
-
+import { ReferenceApiError, referenceApi } from '../api';
 import { Icon, RoleAdminShell, type IconName } from './RoleAdminShell';
 import {
   filterRoleOverviewItems,
@@ -10,11 +9,40 @@ import {
 } from './role-overview-model';
 import './role-overview.css';
 
-const roles = toRoleOverviewItems(DEMO_ROLE_BUNDLES);
+type LoadState = 'loading' | 'ready' | 'error';
 
 export function RoleOverview() {
   const [query, setQuery] = useState('');
-  const visibleRoles = useMemo(() => filterRoleOverviewItems(roles, query), [query]);
+  const [roles, setRoles] = useState<readonly RoleOverviewItem[]>([]);
+  const [knownCapabilityCount, setKnownCapabilityCount] = useState(0);
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [loadError, setLoadError] = useState('');
+
+  const loadRoles = useCallback(async () => {
+    setLoadState('loading');
+    setLoadError('');
+    try {
+      const [roleDetails, capabilities] = await Promise.all([
+        referenceApi.listRoles(),
+        referenceApi.listRoleCapabilities(),
+      ]);
+      setRoles(toRoleOverviewItems(roleDetails));
+      setKnownCapabilityCount(capabilities.length);
+      setLoadState('ready');
+    } catch (error) {
+      setLoadError(roleAdminErrorMessage(error, 'Die Rollen konnten nicht geladen werden.'));
+      setLoadState('error');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRoles();
+  }, [loadRoles]);
+
+  const visibleRoles = useMemo(
+    () => filterRoleOverviewItems(roles, query),
+    [query, roles],
+  );
 
   return (
     <RoleAdminShell>
@@ -23,7 +51,7 @@ export function RoleOverview() {
           <div className="ab-page-header__copy">
             <p className="roles-eyebrow">Administration</p>
             <h1 className="ab-page-title">Rollen</h1>
-            <p className="ab-page-summary">Rollen und ihre vorhandenen Berechtigungen verwalten.</p>
+            <p className="ab-page-summary">Persistente Rollen und ihre Berechtigungen verwalten.</p>
           </div>
           <a className="ab-button ab-button--primary roles-create-button" href="#roles/new">
             <Icon name="plus" />
@@ -41,27 +69,43 @@ export function RoleOverview() {
               placeholder="Rollen oder Berechtigungen durchsuchen …"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              disabled={loadState !== 'ready'}
             />
           </label>
           <span className="roles-result-count" aria-live="polite">
-            {visibleRoles.length} von {roles.length} Rollen
+            {loadState === 'ready' ? `${visibleRoles.length} von ${roles.length} Rollen` : 'Rollen werden geladen'}
           </span>
         </section>
 
         <section className="roles-list-surface ab-surface" aria-labelledby="role-list-title">
           <div className="roles-section-heading">
             <div>
-              <p className="roles-eyebrow">Permission-Modell</p>
-              <h2 id="role-list-title">Vorhandene RoleBundles</h2>
+              <p className="roles-eyebrow">Permission-Authority</p>
+              <h2 id="role-list-title">Persistente Rollen</h2>
             </div>
             <span className="ab-badge ab-badge--info">deny-by-default</span>
           </div>
 
-          {visibleRoles.length === 0 ? (
+          {loadState === 'loading' ? (
+            <div className="ab-empty-state" role="status">
+              <Icon name="roles" />
+              <strong>Rollen werden geladen</strong>
+              <span>Die persistente Rollenverwaltung wird abgefragt.</span>
+            </div>
+          ) : loadState === 'error' ? (
+            <div className="ab-empty-state" role="alert">
+              <Icon name="shield" />
+              <strong>Rollenverwaltung nicht verfügbar</strong>
+              <span>{loadError}</span>
+              <button className="ab-button ab-button--secondary" type="button" onClick={() => void loadRoles()}>
+                Erneut versuchen
+              </button>
+            </div>
+          ) : visibleRoles.length === 0 ? (
             <div className="ab-empty-state">
               <Icon name="search" />
-              <strong>Keine Rolle gefunden</strong>
-              <span>Ändere den Suchbegriff oder suche nach einer Capability-ID.</span>
+              <strong>{roles.length === 0 ? 'Noch keine Rolle vorhanden' : 'Keine Rolle gefunden'}</strong>
+              <span>{roles.length === 0 ? 'Lege die erste verwaltete Rolle an.' : 'Ändere den Suchbegriff oder suche nach einer Capability-ID.'}</span>
             </div>
           ) : (
             <>
@@ -82,24 +126,18 @@ export function RoleOverview() {
         </section>
 
         <section className="roles-metrics" aria-label="Permission-Übersicht">
-          <MetricCard icon="roles" value={String(roles.length)} label="Rollen" note="aus dem bestehenden Permission-Modell" />
-          <MetricCard
-            icon="shield"
-            value={String(DEMO_KNOWN_CAPABILITIES.length)}
-            label="Capabilities"
-            note="bekannte Berechtigungen der Referenz-App"
-          />
+          <MetricCard icon="roles" value={String(roles.length)} label="Rollen" note="aus der persistenten Permission-Authority" />
+          <MetricCard icon="shield" value={String(knownCapabilityCount)} label="Capabilities" note="vom Rollenservice freigegeben" />
           <MetricCard icon="layers" value="Ja" label="Mehrfachrollen" note="PrincipalPermissions.roleIds[]" />
         </section>
 
         <aside className="roles-boundary-note" role="note">
           <Icon name="info" />
           <div>
-            <strong>Persistenter Lifecycle, bewusst getrennte Reference-Runtime</strong>
+            <strong>Persistente Rollenverwaltung über den internen Admin-Gateway</strong>
             <p>
-              Das Permission-Paket besitzt jetzt Anzeigename, Beschreibung, Status und Managed/System-Lifecycle.
-              Die Reference-App verwendet für ihre aktuellen Laufzeit-Rechte weiterhin den bestehenden In-Memory-Store;
-              der Editor ist deshalb zunächst die verbindliche UI-Referenz und täuscht keine Persistenz vor.
+              Liste, Details und Änderungen verwenden den bestehenden geschützten Rollenservice. Systemrollen bleiben
+              geschützt; Benutzerzuordnungen werden als eigener Lifecycle-Slice angebunden.
             </p>
           </div>
         </aside>
@@ -120,6 +158,8 @@ function RoleTableRow({ role }: { readonly role: RoleOverviewItem }) {
       </div>
       <div role="cell"><strong>{role.capabilities.length}</strong></div>
       <div className="roles-capabilities" role="cell">
+        {role.state !== undefined && <span className="ab-badge">{role.state === 'active' ? 'Aktiv' : 'Inaktiv'}</span>}
+        {role.kind !== undefined && <span className="ab-badge">{role.kind === 'system' ? 'System' : 'Managed'}</span>}
         {role.capabilities.map((capability) => <span className="ab-badge" key={capability}>{capability}</span>)}
       </div>
     </div>
@@ -131,11 +171,12 @@ function RoleCard({ role }: { readonly role: RoleOverviewItem }) {
     <a className="roles-card roles-card--link" href={`#roles/${role.id}`}>
       <div className="roles-card__topline">
         <span className="roles-role-icon"><Icon name="shield" /></span>
-        <span className="ab-badge ab-badge--info">{role.capabilities.length} Rechte</span>
+        <span className="ab-badge ab-badge--info">{role.state === 'inactive' ? 'Inaktiv' : `${role.capabilities.length} Rechte`}</span>
       </div>
       <h3>{role.label}</h3>
       <code>{role.id}</code>
       <div className="roles-capabilities roles-capabilities--mobile">
+        {role.kind !== undefined && <span className="ab-badge">{role.kind === 'system' ? 'System' : 'Managed'}</span>}
         {role.capabilities.map((capability) => <span className="ab-badge" key={capability}>{capability}</span>)}
       </div>
     </a>
@@ -163,4 +204,15 @@ function MetricCard({
       </div>
     </article>
   );
+}
+
+function roleAdminErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof ReferenceApiError)) return fallback;
+  if (error.status === 0) return 'Das Backend ist derzeit nicht erreichbar. Bitte Verbindung prüfen und erneut versuchen.';
+  if (error.status === 401) return 'Die Anmeldung ist nicht mehr gültig. Bitte erneut anmelden.';
+  if (error.status === 403) return 'Für die Rollenverwaltung fehlt die erforderliche Berechtigung.';
+  if (error.status === 503 || error.code === 'REFERENCE_ROLE_ADMIN_NOT_CONFIGURED') {
+    return 'Die persistente Rollenverwaltung ist in dieser Umgebung derzeit nicht verfügbar.';
+  }
+  return fallback;
 }

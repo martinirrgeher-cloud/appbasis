@@ -15,6 +15,16 @@ const sessionPayload = {
   access: 'full' as const,
 };
 
+const managedRole = {
+  roleId: 'managed:trainer',
+  displayName: 'Trainer',
+  description: 'Training verwalten',
+  state: 'active' as const,
+  kind: 'managed' as const,
+  assignedPrincipalCount: 1,
+  capabilities: ['app:use'],
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -110,6 +120,66 @@ describe('referenceApi', () => {
     await expect(referenceApi.toggleTask('7')).resolves.toEqual(toggledTask);
 
     expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/tasks/7/toggle');
+  });
+
+  it('reads persistent role details and capabilities through the admin gateway', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ roles: [managedRole] }))
+      .mockResolvedValueOnce(jsonResponse({ role: managedRole }))
+      .mockResolvedValueOnce(jsonResponse({ capabilities: ['app:use', 'users:manage'] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(referenceApi.listRoles()).resolves.toEqual([managedRole]);
+    await expect(referenceApi.getRole('managed:trainer')).resolves.toEqual(managedRole);
+    await expect(referenceApi.listRoleCapabilities()).resolves.toEqual(['app:use', 'users:manage']);
+
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/admin/roles',
+      '/api/admin/roles/managed%3Atrainer',
+      '/api/admin/roles/capabilities',
+    ]);
+    for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
+      expect(init.credentials).toBe('same-origin');
+    }
+  });
+
+  it('routes managed role create, update and state writes through the existing gateway contract', async () => {
+    const updatedRole = { ...managedRole, displayName: 'Trainer Plus' };
+    const inactiveRole = { ...updatedRole, state: 'inactive' as const };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ role: managedRole }, { status: 201 }))
+      .mockResolvedValueOnce(jsonResponse({ role: updatedRole }))
+      .mockResolvedValueOnce(jsonResponse({ role: inactiveRole }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await referenceApi.createRole({
+      roleId: 'managed:trainer',
+      displayName: 'Trainer',
+      description: 'Training verwalten',
+      capabilities: ['app:use'] as never,
+    });
+    await referenceApi.updateRole('managed:trainer', {
+      displayName: 'Trainer Plus',
+      description: null,
+      capabilities: [] as never,
+    });
+    await referenceApi.setRoleState('managed:trainer', 'inactive');
+
+    const calls = fetchMock.mock.calls as Array<[string, RequestInit]>;
+    expect(calls.map(([path]) => path)).toEqual([
+      '/api/admin/roles',
+      '/api/admin/roles/managed%3Atrainer',
+      '/api/admin/roles/managed%3Atrainer/state',
+    ]);
+    expect(calls.map(([, init]) => init.method)).toEqual(['POST', 'PUT', 'PUT']);
+    expect(JSON.parse(String(calls[0]?.[1].body))).toMatchObject({ roleId: 'managed:trainer' });
+    expect(JSON.parse(String(calls[2]?.[1].body))).toEqual({ state: 'inactive' });
+    for (const [, init] of calls) {
+      expect(new Headers(init.headers).get('content-type')).toBe('application/json');
+      expect(init.credentials).toBe('same-origin');
+    }
   });
 });
 
