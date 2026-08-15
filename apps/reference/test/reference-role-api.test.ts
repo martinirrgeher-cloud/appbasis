@@ -15,9 +15,14 @@ import {
   InMemoryPermissionStore,
   principalId,
   roleId,
+  RoleAdministrationError,
   type CapabilityId,
+  type CreateManagedRoleInput,
+  type RoleAdministrationAuditContext,
   type RoleDetails,
   type RoleId,
+  type RoleState,
+  type UpdateManagedRoleInput,
 } from '@appbasis/permissions';
 import { InMemoryTaskRepository } from '@appbasis/tasks';
 import { createReferenceApp } from '../worker/app';
@@ -72,7 +77,7 @@ describe('Reference role administration API', () => {
     });
   });
 
-  it('verweigert Rollenlesezugriffe ohne users:manage deny-by-default', async () => {
+  it('verweigert Rollenlese- und Schreibzugriffe ohne users:manage deny-by-default', async () => {
     const roleAdministration = new StubRoleAdministration();
     const app = createReferenceRoleAdminApp({
       identity: new StubIdentityService(),
@@ -80,12 +85,26 @@ describe('Reference role administration API', () => {
       roleAdministration,
     });
 
-    const response = await app.request('/api/roles', {
+    const readResponse = await app.request('/api/roles', {
       headers: { cookie: sessionCookie },
     });
+    expect(readResponse.status).toBe(403);
 
-    expect(response.status).toBe(403);
+    const writeResponse = await app.request('/api/roles', {
+      method: 'POST',
+      headers: {
+        cookie: sessionCookie,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        roleId: 'managed:editor',
+        displayName: 'Editor',
+        capabilities: [],
+      }),
+    });
+    expect(writeResponse.status).toBe(403);
     expect(roleAdministration.listCalls).toBe(0);
+    expect(roleAdministration.createCalls).toHaveLength(0);
   });
 
   it('listet Rollen und Capabilities nur für berechtigte Administratoren', async () => {
@@ -122,6 +141,145 @@ describe('Reference role administration API', () => {
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toMatchObject({
       error: { code: 'ROLE_NOT_FOUND' },
+    });
+  });
+
+  it('legt verwaltete Rollen mit dem authentisierten Akteur auditierbar an', async () => {
+    const roleAdministration = new StubRoleAdministration();
+    const app = configuredAdminApp(roleAdministration);
+
+    const response = await app.request('/api/roles', {
+      method: 'POST',
+      headers: {
+        cookie: sessionCookie,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        roleId: 'managed:editor',
+        displayName: 'Editor',
+        description: 'Darf Inhalte bearbeiten.',
+        capabilities: [DEMO_CAPABILITIES.appUse],
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(roleAdministration.createCalls).toHaveLength(1);
+    expect(roleAdministration.createCalls[0]).toEqual({
+      input: {
+        roleId: 'managed:editor',
+        displayName: 'Editor',
+        description: 'Darf Inhalte bearbeiten.',
+        capabilities: [DEMO_CAPABILITIES.appUse],
+      },
+      audit: {
+        actorPrincipalId: identityId,
+        reason: 'Reference Admin API: Rolle anlegen',
+      },
+    });
+  });
+
+  it('aktualisiert, deaktiviert und löscht Rollen ausschließlich mit Audit-Kontext', async () => {
+    const roleAdministration = new StubRoleAdministration();
+    const app = configuredAdminApp(roleAdministration);
+
+    const update = await app.request('/api/roles/managed%3Atrainer', {
+      method: 'PUT',
+      headers: {
+        cookie: sessionCookie,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        displayName: 'Trainer Plus',
+        description: null,
+        capabilities: [],
+      }),
+    });
+    expect(update.status).toBe(200);
+
+    const state = await app.request('/api/roles/managed%3Atrainer/state', {
+      method: 'PUT',
+      headers: {
+        cookie: sessionCookie,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ state: 'inactive' }),
+    });
+    expect(state.status).toBe(200);
+
+    const remove = await app.request('/api/roles/managed%3Atrainer', {
+      method: 'DELETE',
+      headers: { cookie: sessionCookie },
+    });
+    expect(remove.status).toBe(204);
+
+    expect(roleAdministration.updateCalls).toEqual([
+      {
+        roleId: 'managed:trainer',
+        input: {
+          displayName: 'Trainer Plus',
+          description: null,
+          capabilities: [],
+        },
+        audit: {
+          actorPrincipalId: identityId,
+          reason: 'Reference Admin API: Rolle aktualisieren',
+        },
+      },
+    ]);
+    expect(roleAdministration.stateCalls).toEqual([
+      {
+        roleId: 'managed:trainer',
+        state: 'inactive',
+        audit: {
+          actorPrincipalId: identityId,
+          reason: 'Reference Admin API: Rolle deaktivieren',
+        },
+      },
+    ]);
+    expect(roleAdministration.deleteCalls).toEqual([
+      {
+        roleId: 'managed:trainer',
+        audit: {
+          actorPrincipalId: identityId,
+          reason: 'Reference Admin API: Rolle löschen',
+        },
+      },
+    ]);
+  });
+
+  it('weist ungültige Bodies vor dem Provider zurück und sanitisiert Provider-Konflikte', async () => {
+    const roleAdministration = new StubRoleAdministration();
+    const app = configuredAdminApp(roleAdministration);
+
+    const invalid = await app.request('/api/roles', {
+      method: 'POST',
+      headers: {
+        cookie: sessionCookie,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        roleId: 'managed:editor',
+        displayName: 'Editor',
+        capabilities: 'app:use',
+      }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(roleAdministration.createCalls).toHaveLength(0);
+
+    roleAdministration.deleteError = new RoleAdministrationError(
+      'ROLE_PROTECTED',
+      'internal provider detail that must not escape',
+    );
+    const conflict = await app.request('/api/roles/system%3Aadmin', {
+      method: 'DELETE',
+      headers: { cookie: sessionCookie },
+    });
+    expect(conflict.status).toBe(409);
+    await expect(conflict.json()).resolves.toEqual({
+      error: {
+        code: 'ROLE_PROTECTED',
+        message: 'The role cannot be changed in its current state.',
+      },
     });
   });
 });
@@ -161,6 +319,25 @@ function permissionStore(assignedRoleId: RoleId) {
 
 class StubRoleAdministration {
   listCalls = 0;
+  readonly createCalls: Array<{
+    input: CreateManagedRoleInput;
+    audit: RoleAdministrationAuditContext;
+  }> = [];
+  readonly updateCalls: Array<{
+    roleId: RoleId;
+    input: UpdateManagedRoleInput;
+    audit: RoleAdministrationAuditContext;
+  }> = [];
+  readonly stateCalls: Array<{
+    roleId: RoleId;
+    state: RoleState;
+    audit: RoleAdministrationAuditContext;
+  }> = [];
+  readonly deleteCalls: Array<{
+    roleId: RoleId;
+    audit: RoleAdministrationAuditContext;
+  }> = [];
+  deleteError: Error | null = null;
 
   async listRoles(): Promise<readonly RoleDetails[]> {
     this.listCalls += 1;
@@ -173,6 +350,54 @@ class StubRoleAdministration {
 
   async listKnownCapabilities(): Promise<readonly CapabilityId[]> {
     return DEMO_KNOWN_CAPABILITIES;
+  }
+
+  async createRole(
+    input: CreateManagedRoleInput,
+    audit: RoleAdministrationAuditContext,
+  ): Promise<RoleDetails> {
+    this.createCalls.push({ input, audit });
+    return {
+      roleId: input.roleId,
+      displayName: input.displayName,
+      description: input.description ?? null,
+      state: 'active',
+      kind: 'managed',
+      assignedPrincipalCount: 0,
+      capabilities: input.capabilities,
+    };
+  }
+
+  async updateRole(
+    requestedRoleId: RoleId,
+    input: UpdateManagedRoleInput,
+    audit: RoleAdministrationAuditContext,
+  ): Promise<RoleDetails> {
+    this.updateCalls.push({ roleId: requestedRoleId, input, audit });
+    return {
+      ...managedRole,
+      roleId: requestedRoleId,
+      displayName: input.displayName,
+      description: input.description ?? null,
+      capabilities: input.capabilities,
+    };
+  }
+
+  async setRoleState(
+    requestedRoleId: RoleId,
+    state: RoleState,
+    audit: RoleAdministrationAuditContext,
+  ): Promise<RoleDetails> {
+    this.stateCalls.push({ roleId: requestedRoleId, state, audit });
+    return { ...managedRole, roleId: requestedRoleId, state };
+  }
+
+  async deleteRole(
+    requestedRoleId: RoleId,
+    audit: RoleAdministrationAuditContext,
+  ): Promise<void> {
+    this.deleteCalls.push({ roleId: requestedRoleId, audit });
+    if (this.deleteError !== null) throw this.deleteError;
   }
 }
 
