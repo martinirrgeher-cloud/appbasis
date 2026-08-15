@@ -43,11 +43,7 @@ document.querySelector("[data-action='show-create']")?.addEventListener("click",
 });
 
 document.querySelector("[data-action='back-to-apps']")?.addEventListener("click", () => {
-  const appIdToRestore = state.selectedAppId;
-  selectTab("apps");
-  if (appIdToRestore !== null) {
-    requestAnimationFrame(() => focusAppOpenButton(appIdToRestore));
-  }
+  returnToApps();
 });
 
 document.querySelector("[data-action='refresh']")?.addEventListener("click", () => {
@@ -99,11 +95,16 @@ async function loadSnapshot() {
     renderDraftPreview();
     restoreSelectedAppDetail();
   } catch {
+    const detailWasVisible = isPanelVisible("detail");
     state.snapshot = null;
     state.selectedAppId = null;
     if (elements.appsSummary) elements.appsSummary.textContent = "Repository nicht verfügbar.";
     if (elements.appsList) elements.appsList.replaceChildren(emptyState("Keine App-Daten verfügbar."));
-    selectTab("apps");
+    if (detailWasVisible) {
+      returnToApps(null);
+    } else {
+      selectTab("apps");
+    }
     showError("Die Factory-Daten konnten nicht gelesen werden. Es wurden keine Änderungen ausgeführt.");
   }
 }
@@ -190,8 +191,7 @@ function restoreSelectedAppDetail() {
   if (state.selectedAppId === null) return;
   const app = state.snapshot?.apps.find((candidate) => candidate.appId === state.selectedAppId);
   if (app === undefined) {
-    state.selectedAppId = null;
-    selectTab("apps");
+    returnToApps();
     return;
   }
   renderAppDetail(app);
@@ -206,11 +206,32 @@ function renderAppDetail(app) {
   replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
 }
 
+function returnToApps(appIdToRestore = state.selectedAppId) {
+  state.selectedAppId = null;
+  setActiveTab("apps");
+  showPanel("apps");
+  requestAnimationFrame(() => {
+    if (appIdToRestore !== null && focusAppOpenButton(appIdToRestore)) return;
+    focusAppsTab();
+  });
+}
+
 function focusAppOpenButton(appId) {
   const button = [...document.querySelectorAll("button[data-app-id]")].find(
     (candidate) => candidate.dataset.appId === appId,
   );
-  button?.focus();
+  if (button === undefined) return false;
+  button.focus();
+  return true;
+}
+
+function focusAppsTab() {
+  document.querySelector("button[data-tab='apps']")?.focus();
+}
+
+function isPanelVisible(panelName) {
+  const panel = document.querySelector(`[data-panel='${panelName}']`);
+  return panel !== null && !panel.hidden;
 }
 
 function renderCatalog() {
