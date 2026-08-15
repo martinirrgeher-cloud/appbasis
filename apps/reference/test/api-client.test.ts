@@ -134,7 +134,7 @@ describe('referenceApi', () => {
     }
   });
 
-  it('reads and replaces principal role assignments through the same admin gateway', async () => {
+  it('reads and replaces principal role assignments through the same admin gateway with expected state', async () => {
     const updatedPrincipal = { ...rolePrincipal, roleIds: [systemAdminRoleId, managedRoleId] };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ principals: [rolePrincipal] }))
@@ -145,7 +145,11 @@ describe('referenceApi', () => {
     await expect(referenceApi.listRolePrincipals()).resolves.toEqual([rolePrincipal]);
     await expect(referenceApi.getRolePrincipal('identity-1')).resolves.toEqual(rolePrincipal);
     await expect(
-      referenceApi.replacePrincipalRoles('identity-1', [systemAdminRoleId, managedRoleId]),
+      referenceApi.replacePrincipalRoles(
+        'identity-1',
+        [systemAdminRoleId, managedRoleId],
+        rolePrincipal.roleIds,
+      ),
     ).resolves.toEqual(updatedPrincipal);
 
     const calls = fetchMock.mock.calls as Array<[string, RequestInit]>;
@@ -157,6 +161,7 @@ describe('referenceApi', () => {
     expect(calls[2]?.[1].method).toBe('PUT');
     expect(JSON.parse(String(calls[2]?.[1].body))).toEqual({
       roleIds: [systemAdminRoleId, managedRoleId],
+      expectedRoleIds: [managedRoleId],
     });
     expect(calls[2]?.[1].credentials).toBe('same-origin');
   });
@@ -170,7 +175,7 @@ describe('referenceApi', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      referenceApi.replacePrincipalRoles('identity-1', requestedRoleIds),
+      referenceApi.replacePrincipalRoles('identity-1', requestedRoleIds, rolePrincipal.roleIds),
     ).resolves.toEqual(reconciled);
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
       '/api/admin/roles/principal-assignments/identity-1',
@@ -185,7 +190,11 @@ describe('referenceApi', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const error = await referenceApi
-      .replacePrincipalRoles('identity-1', [systemAdminRoleId, managedRoleId])
+      .replacePrincipalRoles(
+        'identity-1',
+        [systemAdminRoleId, managedRoleId],
+        rolePrincipal.roleIds,
+      )
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ReferenceApiError);
     expect(error).toMatchObject({ status: 0, code: 'NETWORK_ERROR' });
@@ -204,7 +213,7 @@ describe('referenceApi', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      referenceApi.replacePrincipalRoles('identity-1', requestedRoleIds),
+      referenceApi.replacePrincipalRoles('identity-1', requestedRoleIds, rolePrincipal.roleIds),
     ).resolves.toEqual(reconciled);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
