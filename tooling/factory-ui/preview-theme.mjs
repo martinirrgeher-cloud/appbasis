@@ -1,21 +1,18 @@
-const DARK_FOREGROUND = "#0f172a";
+const DARK_FOREGROUND = "#000000";
 const LIGHT_FOREGROUND = "#ffffff";
+const MINIMUM_TEXT_CONTRAST = 4.5;
 
 export function previewAccentForeground(accent) {
   const background = parseHexColor(accent);
   if (background === null) return DARK_FOREGROUND;
 
   const backgroundLuminance = relativeLuminance(background);
-  const darkContrast = contrastRatio(
-    backgroundLuminance,
-    relativeLuminance(parseHexColor(DARK_FOREGROUND)),
-  );
-  const lightContrast = contrastRatio(
-    backgroundLuminance,
-    relativeLuminance(parseHexColor(LIGHT_FOREGROUND)),
-  );
+  const darkContrast = contrastRatio(backgroundLuminance, 0);
 
-  return darkContrast >= lightContrast ? DARK_FOREGROUND : LIGHT_FOREGROUND;
+  // WCAG contrast against pure black and white has no gap below 4.5:1:
+  // if black is below the threshold, the same background necessarily has
+  // sufficient contrast against white. Prefer black whenever it already passes.
+  return darkContrast >= MINIMUM_TEXT_CONTRAST ? DARK_FOREGROUND : LIGHT_FOREGROUND;
 }
 
 export function contrastRatioForHex(first, second) {
