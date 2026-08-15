@@ -26,7 +26,7 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(cutoverWorkflow).toContain('group: reference-preview-deploy');
   });
 
-  it('makes normal deploy verify only the persistent PostgreSQL authority before touching Hyperdrive or deploying the Worker', () => {
+  it('makes normal deploy verify PostgreSQL authority first and deployed plaintext binding authority before health', () => {
     const verifyIndex = deployWorkflow.indexOf(
       'Verify persistent permission authority before deploy',
     );
@@ -34,30 +34,46 @@ describe('Reference preview permission authority cutover workflow', () => {
       'Disable Reference Hyperdrive query caching for fresh reads',
     );
     const deployIndex = deployWorkflow.indexOf(
-      'Deploy Reference preview without provisioning while preserving dashboard variables',
+      'Deploy Reference preview with repository-owned plaintext variables',
     );
+    const snapshotIndex = deployWorkflow.indexOf(
+      'Snapshot deployed Reference Worker bindings',
+    );
+    const bindingVerifyIndex = deployWorkflow.indexOf(
+      'Verify deployed Reference Worker plaintext binding authority',
+    );
+    const healthIndex = deployWorkflow.indexOf('Verify deployed health');
 
     expect(verifyIndex).toBeGreaterThanOrEqual(0);
     expect(cacheIndex).toBeGreaterThan(verifyIndex);
     expect(deployIndex).toBeGreaterThan(cacheIndex);
+    expect(snapshotIndex).toBeGreaterThan(deployIndex);
+    expect(bindingVerifyIndex).toBeGreaterThan(snapshotIndex);
+    expect(healthIndex).toBeGreaterThan(bindingVerifyIndex);
     expect(deployWorkflow).toContain('build:permission-authority');
     expect(deployWorkflow).toContain(
       'APPBASIS_PERMISSION_AUTHORITY_TARGET: reference-preview',
     );
     expect(deployWorkflow).toContain('APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}');
     expect(deployWorkflow).not.toContain('Snapshot existing Reference Worker permission bindings');
-    expect(deployWorkflow).not.toContain('/workers/scripts/appbasis-reference/settings');
     expect(deployWorkflow).not.toContain('APPBASIS_REFERENCE_WORKER_SETTINGS_PATH');
     expect(deployWorkflow).not.toContain('APPBASIS_PERMISSION_CUTOVER_MODE');
   });
 
-  it('keeps the historical Cloudflare binding snapshot only in the explicit cutover workflow', () => {
+  it('keeps historical pre-cutover settings separate from post-deploy binding verification', () => {
     expect(cutoverWorkflow).toContain('umask 077');
     expect(cutoverWorkflow).toContain('--output ./apps/reference/tooling/.reference-worker-settings.json');
     expect(cutoverWorkflow).toContain('rm -f ./apps/reference/tooling/.reference-worker-settings.json');
     expect(cutoverWorkflow).toContain('rm -rf ./apps/reference/tooling/.permission-cutover-dist');
+    expect(cutoverWorkflow).not.toContain('.reference-worker-settings-after-deploy.json');
 
-    expect(deployWorkflow).not.toContain('.reference-worker-settings.json');
+    expect(deployWorkflow).toContain('/workers/scripts/appbasis-reference/settings');
+    expect(deployWorkflow).toContain('.reference-worker-settings-after-deploy.json');
+    expect(deployWorkflow).toContain('APPBASIS_REFERENCE_DEPLOYED_WORKER_SETTINGS_PATH');
+    expect(deployWorkflow).toContain('node ./tooling/reference-preview-worker-settings.mjs');
+    expect(deployWorkflow).toContain(
+      'rm -f ./apps/reference/tooling/.reference-worker-settings-after-deploy.json',
+    );
     expect(deployWorkflow).toContain('rm -rf ./apps/reference/tooling/.permission-authority-dist');
   });
 
