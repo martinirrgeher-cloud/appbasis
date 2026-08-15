@@ -137,6 +137,16 @@ export function createReferenceRoleAdminApp(
     });
   });
 
+  app.get('/api/roles/:id/details', async (context) => {
+    const authorization = await authorizeRoleAdministration(
+      context,
+      dependencies.permissions,
+      identityHttp,
+    );
+    if (authorization instanceof Response) return authorization;
+    return roleDetailsResponse(context, dependencies.roleAdministration);
+  });
+
   app.put('/api/roles/:id/state', async (context) => {
     const authorization = await authorizeRoleAdministration(
       context,
@@ -230,16 +240,23 @@ export function createReferenceRoleAdminApp(
       identityHttp,
     );
     if (authorization instanceof Response) return authorization;
-    const role = await dependencies.roleAdministration.findRole(
-      roleId(context.req.param('id')),
-    );
-    if (role === null) {
-      return errorResponse(context, 404, 'ROLE_NOT_FOUND', 'The role was not found.');
-    }
-    return context.json({ role });
+    return roleDetailsResponse(context, dependencies.roleAdministration);
   });
 
   return app;
+}
+
+async function roleDetailsResponse(
+  context: Context,
+  roleAdministration: ReferenceRoleAdminDependencies['roleAdministration'],
+): Promise<Response> {
+  const requestedRoleId = context.req.param('id');
+  if (requestedRoleId === undefined) return invalidRequest(context);
+  const role = await roleAdministration.findRole(roleId(requestedRoleId));
+  if (role === null) {
+    return errorResponse(context, 404, 'ROLE_NOT_FOUND', 'The role was not found.');
+  }
+  return context.json({ role });
 }
 
 async function authorizeRoleAdministration(

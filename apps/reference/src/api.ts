@@ -1,3 +1,5 @@
+import type { CapabilityId, RoleDetails, RoleState } from '@appbasis/permissions';
+
 export type ReferenceAccess = 'password-change-required' | 'full';
 
 export interface ReferenceIdentity {
@@ -22,6 +24,16 @@ export interface ApiTask {
   readonly title: string;
   readonly description: string;
   readonly status: ApiTaskStatus;
+}
+
+export interface ReferenceRoleUpdateInput {
+  readonly displayName: string;
+  readonly description: string | null;
+  readonly capabilities: readonly CapabilityId[];
+}
+
+export interface ReferenceRoleCreateInput extends ReferenceRoleUpdateInput {
+  readonly roleId: string;
 }
 
 interface ErrorPayload {
@@ -88,7 +100,103 @@ export const referenceApi = {
     );
     return payload.task;
   },
+
+  async listRoles(): Promise<readonly RoleDetails[]> {
+    const payload = await requestJson<{ roles: readonly RoleDetails[] }>('/api/admin/roles');
+    return payload.roles;
+  },
+
+  async getRole(id: string): Promise<RoleDetails> {
+    const payload = await requestJson<{ role: RoleDetails }>(
+      `/api/admin/roles/${encodeURIComponent(id)}/details`,
+    );
+    return payload.role;
+  },
+
+  async listRoleCapabilities(): Promise<readonly CapabilityId[]> {
+    const payload = await requestJson<{ capabilities: readonly CapabilityId[] }>(
+      '/api/admin/roles/capabilities',
+    );
+    return payload.capabilities;
+  },
+
+  async createRole(input: ReferenceRoleCreateInput): Promise<RoleDetails> {
+    let payload: { role?: RoleDetails } | null;
+    try {
+      payload = await requestJson<{ role?: RoleDetails } | null>('/api/admin/roles', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    } catch (error) {
+      if (!(error instanceof ReferenceApiError) || error.status !== 0) throw error;
+      return reconcileRoleCreate(input, error);
+    }
+
+    if (payload?.role) return payload.role;
+    return reconcileRoleCreate(
+      input,
+      new ReferenceApiError(
+        0,
+        'INVALID_RESPONSE',
+        'Das Backend hat keine lesbare Antwort auf das Anlegen der Rolle geliefert.',
+      ),
+    );
+  },
+
+  async updateRole(id: string, input: ReferenceRoleUpdateInput): Promise<RoleDetails> {
+    const payload = await requestJson<{ role: RoleDetails }>(
+      `/api/admin/roles/${encodeURIComponent(id)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      },
+    );
+    return payload.role;
+  },
+
+  async setRoleState(id: string, state: RoleState): Promise<RoleDetails> {
+    const payload = await requestJson<{ role: RoleDetails }>(
+      `/api/admin/roles/${encodeURIComponent(id)}/state`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ state }),
+      },
+    );
+    return payload.role;
+  },
 };
+
+async function reconcileRoleCreate(
+  input: ReferenceRoleCreateInput,
+  ambiguousError: ReferenceApiError,
+): Promise<RoleDetails> {
+  try {
+    const reconciled = await referenceApi.getRole(input.roleId);
+    if (roleMatchesCreateInput(reconciled, input)) return reconciled;
+  } catch {
+    // Preserve the ambiguous write failure unless the authoritative role exactly matches the request.
+  }
+
+  throw ambiguousError;
+}
+
+function roleMatchesCreateInput(role: RoleDetails, input: ReferenceRoleCreateInput): boolean {
+  return (
+    String(role.roleId) === input.roleId &&
+    role.kind === 'managed' &&
+    role.state === 'active' &&
+    role.displayName === input.displayName &&
+    role.description === input.description &&
+    sameCapabilitySet(role.capabilities, input.capabilities)
+  );
+}
+
+function sameCapabilitySet(left: readonly CapabilityId[], right: readonly CapabilityId[]): boolean {
+  if (left.length !== right.length) return false;
+  const leftValues = left.map(String).sort();
+  const rightValues = right.map(String).sort();
+  return leftValues.every((value, index) => value === rightValues[index]);
+}
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
