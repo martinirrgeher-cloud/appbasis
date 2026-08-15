@@ -13,7 +13,9 @@ const DEFAULT_PORT = 4174;
 const STATIC_ROUTES = new Map([
   ["/", { path: join(FACTORY_UI_DIRECTORY, "index.html"), contentType: "text/html; charset=utf-8" }],
   ["/app.js", { path: join(FACTORY_UI_DIRECTORY, "app.js"), contentType: "text/javascript; charset=utf-8" }],
+  ["/preview-theme.mjs", { path: join(FACTORY_UI_DIRECTORY, "preview-theme.mjs"), contentType: "text/javascript; charset=utf-8" }],
   ["/styles.css", { path: join(FACTORY_UI_DIRECTORY, "styles.css"), contentType: "text/css; charset=utf-8" }],
+  ["/target-flow.css", { path: join(FACTORY_UI_DIRECTORY, "target-flow.css"), contentType: "text/css; charset=utf-8" }],
   ["/foundation.css", { path: join(DEFAULT_REPOSITORY_ROOT, "packages/ui/foundation.css"), contentType: "text/css; charset=utf-8" }],
   ["/tokens.css", { path: join(DEFAULT_REPOSITORY_ROOT, "packages/ui/tokens.css"), contentType: "text/css; charset=utf-8" }],
 ]);
