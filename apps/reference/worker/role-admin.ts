@@ -2,10 +2,16 @@ import { createPostgresDatabase } from '@appbasis/database';
 import { createIdentityRuntime } from '@appbasis/identity';
 import { createBetterAuthRuntime } from '@appbasis/identity/better-auth';
 import {
+  can,
+  DEMO_CAPABILITIES,
   PostgresPermissionStore,
   PostgresRoleAdministration,
+  RoleAdministrationError,
   roleId,
   type PermissionPostgresClient,
+  type PrincipalId,
+  type ReplacePrincipalRolesConstraints,
+  type RoleAdministrationAuditContext,
   type RoleAdministrationPostgresClient,
   type RoleId,
 } from '@appbasis/permissions';
@@ -20,6 +26,19 @@ import { roleAdminMutationProtectionResponse } from './role-admin-request-securi
 
 interface HyperdriveBinding {
   connectionString: string;
+}
+
+interface ReferenceRoleAdministrationTransaction {
+  unsafe(
+    query: string,
+    parameters?: (string | number | boolean | null)[],
+  ): PromiseLike<readonly Record<string, unknown>[]>;
+}
+
+interface ReferenceRoleAdministrationSqlClient extends ReferenceRoleAdministrationTransaction {
+  begin<T>(
+    callback: (transaction: ReferenceRoleAdministrationTransaction) => Promise<T>,
+  ): Promise<T>;
 }
 
 export interface ReferenceRoleAdminWorkerEnv {
@@ -58,9 +77,7 @@ export const roleAdminWorker = {
         baseURL: configuration.baseURL,
       });
       const permissions = new PostgresPermissionStore(permissionClient(connection.client));
-      const roleAdministration = new PostgresRoleAdministration(
-        roleAdministrationClient(connection.client),
-      );
+      const roleAdministration = createReferenceRoleAdministration(connection.client);
       const principalDirectory = referenceRolePrincipalDirectory(connection.client);
       const app = createReferenceRoleAdminApp({
         identity: identity.service,
@@ -77,6 +94,56 @@ export const roleAdminWorker = {
 };
 
 export default roleAdminWorker;
+
+export function createReferenceRoleAdministration(
+  client: ReferenceRoleAdministrationSqlClient,
+): PostgresRoleAdministration {
+  return new ReferenceRoleAdministration(client);
+}
+
+class ReferenceRoleAdministration extends PostgresRoleAdministration {
+  constructor(private readonly referenceClient: ReferenceRoleAdministrationSqlClient) {
+    super(roleAdministrationClient(referenceClient));
+  }
+
+  override async replacePrincipalRoles(
+    requestedPrincipalId: PrincipalId,
+    requestedRoleIds: readonly RoleId[],
+    auditContext: RoleAdministrationAuditContext,
+    constraints: ReplacePrincipalRolesConstraints = {},
+  ): Promise<readonly RoleId[]> {
+    return this.referenceClient.begin(async (transaction) => {
+      const permissionTransaction = permissionClient(transaction);
+      const transactionalAdministration = new PostgresRoleAdministration(
+        transactionRoleAdministrationClient(permissionTransaction),
+      );
+      const roleIds = await transactionalAdministration.replacePrincipalRoles(
+        requestedPrincipalId,
+        requestedRoleIds,
+        auditContext,
+        constraints,
+      );
+
+      const permissions = new PostgresPermissionStore(permissionTransaction);
+      const actorRequest = { principalId: auditContext.actorPrincipalId };
+      const actorCanUseApp = await can(permissions, {
+        ...actorRequest,
+        capability: DEMO_CAPABILITIES.appUse,
+      });
+      const actorCanManageUsers = await can(permissions, {
+        ...actorRequest,
+        capability: DEMO_CAPABILITIES.usersManage,
+      });
+      if (!actorCanUseApp || !actorCanManageUsers) {
+        throw new RoleAdministrationError(
+          'LAST_CAPABILITY_HOLDER',
+          'The authenticated role administrator must retain complete role administration authorization.',
+        );
+      }
+      return roleIds;
+    });
+  }
+}
 
 function referenceRolePrincipalDirectory(client: {
   unsafe(
@@ -188,12 +255,7 @@ function nullableDatabaseString(row: Record<string, unknown>, field: string): st
   return value;
 }
 
-function permissionClient(client: {
-  unsafe(
-    query: string,
-    parameters?: (string | number | boolean | null)[],
-  ): PromiseLike<readonly Record<string, unknown>[]>;
-}): PermissionPostgresClient {
+function permissionClient(client: ReferenceRoleAdministrationTransaction): PermissionPostgresClient {
   return {
     unsafe(query, parameters) {
       return client.unsafe(query, parameters);
@@ -201,26 +263,28 @@ function permissionClient(client: {
   };
 }
 
-function roleAdministrationClient(client: {
-  unsafe(
-    query: string,
-    parameters?: (string | number | boolean | null)[],
-  ): PromiseLike<readonly Record<string, unknown>[]>;
-  begin<T>(
-    callback: (transaction: {
-      unsafe(
-        query: string,
-        parameters?: (string | number | boolean | null)[],
-      ): PromiseLike<readonly Record<string, unknown>[]>;
-    }) => Promise<T>,
-  ): Promise<T>;
-}): RoleAdministrationPostgresClient {
+function roleAdministrationClient(
+  client: ReferenceRoleAdministrationSqlClient,
+): RoleAdministrationPostgresClient {
   return {
     unsafe(query, parameters) {
       return client.unsafe(query, parameters);
     },
     async begin(callback) {
       return client.begin(async (transaction) => callback(permissionClient(transaction)));
+    },
+  };
+}
+
+function transactionRoleAdministrationClient(
+  client: PermissionPostgresClient,
+): RoleAdministrationPostgresClient {
+  return {
+    unsafe(query, parameters) {
+      return client.unsafe(query, parameters);
+    },
+    async begin(callback) {
+      return callback(client);
     },
   };
 }
