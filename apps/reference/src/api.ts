@@ -145,6 +145,7 @@ export const referenceApi = {
   async replacePrincipalRoles(
     id: string,
     roleIds: readonly RoleId[],
+    expectedRoleIds: readonly RoleId[],
   ): Promise<ReferenceRolePrincipal> {
     let payload: { principal?: ReferenceRolePrincipal } | null;
     try {
@@ -152,7 +153,7 @@ export const referenceApi = {
         `/api/admin/roles/principal-assignments/${encodeURIComponent(id)}`,
         {
           method: 'PUT',
-          body: JSON.stringify({ roleIds }),
+          body: JSON.stringify({ roleIds, expectedRoleIds }),
         },
       );
     } catch (error) {
