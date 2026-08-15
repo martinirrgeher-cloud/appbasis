@@ -12,6 +12,10 @@ import {
 } from "../app-definition.mjs";
 import { acquireAppRegistryLock } from "../app-publication.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
+import {
+  contrastRatioForHex,
+  previewAccentForeground,
+} from "./preview-theme.mjs";
 import { startFactoryServer } from "./server.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -78,6 +82,17 @@ test("factory snapshot ignores unpublished app directories without weakening str
   }
 });
 
+test("factory accent preview chooses readable foregrounds", () => {
+  assert.equal(previewAccentForeground("#ffffff"), "#0f172a");
+  assert.equal(previewAccentForeground("#000000"), "#ffffff");
+
+  for (const accent of ["#ffffff", "#000000", "#fef08a", "#2563eb"]) {
+    const foreground = previewAccentForeground(accent);
+    const ratio = contrastRatioForHex(accent, foreground);
+    assert.ok(ratio !== null && ratio >= 4.5, `${accent} contrast was ${String(ratio)}`);
+  }
+});
+
 test("factory console exposes the target creation flow without enabling writes", async (t) => {
   const server = await startFactoryServer({ repositoryRoot, port: 0 });
   t.after(
@@ -108,6 +123,11 @@ test("factory console exposes the target creation flow without enabling writes",
   assert.equal(targetStyles.status, 200);
   assert.match(targetStyles.headers.get("content-type") ?? "", /^text\/css/);
   assert.match(await targetStyles.text(), /\.factory-flow/);
+
+  const previewTheme = await fetch(`${baseUrl}/preview-theme.mjs`);
+  assert.equal(previewTheme.status, 200);
+  assert.match(previewTheme.headers.get("content-type") ?? "", /^text\/javascript/);
+  assert.match(await previewTheme.text(), /previewAccentForeground/);
 
   const snapshotResponse = await fetch(`${baseUrl}/api/factory/snapshot`);
   assert.equal(snapshotResponse.status, 200);
