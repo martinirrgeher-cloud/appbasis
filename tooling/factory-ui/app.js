@@ -1,6 +1,7 @@
 const state = {
   snapshot: null,
   appIdEdited: false,
+  brandMarkEdited: false,
 };
 
 const elements = {
@@ -9,11 +10,16 @@ const elements = {
   error: document.querySelector("#factory-error"),
   displayName: document.querySelector("#display-name"),
   appId: document.querySelector("#app-id"),
+  brandMark: document.querySelector("#brand-mark"),
+  accentColor: document.querySelector("#accent-color"),
+  accentColorValue: document.querySelector("#accent-color-value"),
   moduleOptions: document.querySelector("#module-options"),
   serviceOptions: document.querySelector("#service-options"),
   previewName: document.querySelector("#preview-name"),
   previewId: document.querySelector("#preview-id"),
   previewMark: document.querySelector("#preview-mark"),
+  previewAccent: document.querySelector("#preview-accent"),
+  previewTheme: document.querySelector("#preview-theme"),
   previewModules: document.querySelector("#preview-modules"),
   previewServices: document.querySelector("#preview-services"),
 };
@@ -35,6 +41,11 @@ elements.displayName?.addEventListener("input", () => {
   if (!state.appIdEdited && elements.appId) {
     elements.appId.value = appIdFromName(elements.displayName.value);
   }
+  if (!state.brandMarkEdited && elements.brandMark) {
+    elements.brandMark.value = elements.displayName.value.trim().length > 0
+      ? firstLetter(elements.displayName.value)
+      : "";
+  }
   renderDraftPreview();
 });
 
@@ -43,6 +54,14 @@ elements.appId?.addEventListener("input", () => {
   validateAppId();
   renderDraftPreview();
 });
+
+elements.brandMark?.addEventListener("input", () => {
+  state.brandMarkEdited = elements.brandMark.value.length > 0;
+  elements.brandMark.value = elements.brandMark.value.slice(0, 2).toLocaleUpperCase("de-DE");
+  renderDraftPreview();
+});
+
+elements.accentColor?.addEventListener("input", renderDraftPreview);
 
 loadSnapshot();
 
@@ -195,12 +214,21 @@ function enforceServiceDependencies(changedInput) {
 function renderDraftPreview() {
   const name = elements.displayName?.value.trim() || "Neue App";
   const appId = elements.appId?.value.trim() || "app-id";
+  const mark = elements.brandMark?.value.trim() || firstLetter(name);
+  const accent = elements.accentColor?.value || "#2457e6";
+  const accentLabel = accent.toLocaleUpperCase("de-DE");
   const modules = checkedValues("module");
   const services = checkedValues("service");
 
   if (elements.previewName) elements.previewName.textContent = name;
   if (elements.previewId) elements.previewId.textContent = appId;
-  if (elements.previewMark) elements.previewMark.textContent = firstLetter(name);
+  if (elements.previewMark) {
+    elements.previewMark.textContent = mark;
+    elements.previewMark.style.backgroundColor = accent;
+  }
+  if (elements.previewAccent) elements.previewAccent.style.backgroundColor = accent;
+  if (elements.accentColorValue) elements.accentColorValue.textContent = accentLabel;
+  if (elements.previewTheme) elements.previewTheme.textContent = `Akzent ${accentLabel}`;
   if (elements.previewModules) {
     elements.previewModules.textContent = listLabels(modules, moduleLabel);
   }
