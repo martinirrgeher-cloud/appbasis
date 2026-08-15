@@ -11,8 +11,13 @@ const defaultOutputPath = path.join(
   'wrangler.preview.generated.json',
 );
 
-export function renderReferencePreviewWranglerConfig(sourceText, hyperdriveId) {
+export function renderReferencePreviewWranglerConfig(
+  sourceText,
+  hyperdriveId,
+  previewURL,
+) {
   const normalizedHyperdriveId = requiredProviderId(hyperdriveId);
+  const normalizedPreviewOrigin = validateReferencePreviewOrigin(previewURL);
 
   let parsed;
   try {
@@ -27,12 +32,20 @@ export function renderReferencePreviewWranglerConfig(sourceText, hyperdriveId) {
   if (Object.hasOwn(parsed, 'hyperdrive')) {
     throw new Error('Reference Wrangler config must not persist a Hyperdrive binding.');
   }
-  if (parsed.keep_vars !== true) {
-    throw new Error('Reference Wrangler config must preserve dashboard variables on deploy.');
+  if (Object.hasOwn(parsed, 'vars')) {
+    throw new Error('Reference Wrangler config must not persist environment-specific variables.');
+  }
+  if (parsed.keep_vars !== false) {
+    throw new Error(
+      'Reference Wrangler config must replace remote plaintext variables from the generated deployment config.',
+    );
   }
 
   return {
     ...parsed,
+    vars: {
+      APPBASIS_BASE_URL: normalizedPreviewOrigin,
+    },
     hyperdrive: [
       {
         binding: 'HYPERDRIVE',
@@ -72,9 +85,12 @@ export async function writeReferencePreviewWranglerConfig({
   previewURL,
   outputPath = defaultOutputPath,
 } = {}) {
-  validateReferencePreviewOrigin(previewURL);
   const sourceText = await readFile(sourceConfigPath, 'utf8');
-  const rendered = renderReferencePreviewWranglerConfig(sourceText, hyperdriveId);
+  const rendered = renderReferencePreviewWranglerConfig(
+    sourceText,
+    hyperdriveId,
+    previewURL,
+  );
   await writeFile(outputPath, `${JSON.stringify(rendered, null, 2)}\n`, {
     encoding: 'utf8',
     mode: 0o600,
