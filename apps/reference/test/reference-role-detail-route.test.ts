@@ -53,7 +53,7 @@ describe('Reference collision-free role detail route', () => {
     const app = createReferenceRoleAdminApp({
       identity: new StubIdentityService(),
       principalDirectory: {
-        async list() {
+        async listAssignments() {
           return [];
         },
         async find() {
