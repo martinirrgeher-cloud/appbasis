@@ -18,6 +18,8 @@ import {
   RoleAdministrationError,
   type CapabilityId,
   type CreateManagedRoleInput,
+  type PrincipalId,
+  type ReplacePrincipalRolesConstraints,
   type RoleAdministrationAuditContext,
   type RoleDetails,
   type RoleId,
@@ -29,9 +31,13 @@ import { createReferenceApp } from '../worker/app';
 import {
   createReferenceRoleAdminApp,
   type ReferenceRoleAdminDependencies,
+  type ReferenceRolePrincipalAssignment,
+  type ReferenceRolePrincipalDirectory,
+  type ReferenceRolePrincipalIdentity,
 } from '../worker/role-admin-app';
 
 const identityId = 'reference-role-admin';
+const targetIdentityId = 'reference-user';
 const sessionCookie = 'better-auth.session_token=role-admin-session';
 const normalWorkerSource = readFileSync(
   new URL('../worker/index.ts', import.meta.url),
@@ -45,6 +51,26 @@ const managedRole: RoleDetails = {
   kind: 'managed',
   assignedPrincipalCount: 2,
   capabilities: [DEMO_CAPABILITIES.appUse],
+};
+const adminIdentity: ReferenceRolePrincipalIdentity = {
+  identityId,
+  username: 'role.admin',
+  displayName: 'Role Admin',
+};
+const targetIdentity: ReferenceRolePrincipalIdentity = {
+  identityId: targetIdentityId,
+  username: 'demo.user',
+  displayName: 'Demo User',
+};
+const adminAssignment: ReferenceRolePrincipalAssignment = {
+  ...adminIdentity,
+  principalId: identityId,
+  roleIds: [DEMO_ROLES.admin],
+};
+const targetAssignment: ReferenceRolePrincipalAssignment = {
+  ...targetIdentity,
+  principalId: targetIdentityId,
+  roleIds: [managedRole.roleId],
 };
 
 describe('Reference role administration API', () => {
@@ -79,8 +105,10 @@ describe('Reference role administration API', () => {
 
   it('verweigert Rollenlese- und Schreibzugriffe ohne users:manage deny-by-default', async () => {
     const roleAdministration = new StubRoleAdministration();
+    const principalDirectory = new StubPrincipalDirectory();
     const app = createReferenceRoleAdminApp({
       identity: new StubIdentityService(),
+      principalDirectory,
       permissions: memberPermissionStore(),
       roleAdministration,
     });
@@ -89,6 +117,11 @@ describe('Reference role administration API', () => {
       headers: { cookie: sessionCookie },
     });
     expect(readResponse.status).toBe(403);
+
+    const principalReadResponse = await app.request('/api/roles/principal-assignments', {
+      headers: { cookie: sessionCookie },
+    });
+    expect(principalReadResponse.status).toBe(403);
 
     const writeResponse = await app.request('/api/roles', {
       method: 'POST',
@@ -105,6 +138,8 @@ describe('Reference role administration API', () => {
     expect(writeResponse.status).toBe(403);
     expect(roleAdministration.listCalls).toBe(0);
     expect(roleAdministration.createCalls).toHaveLength(0);
+    expect(roleAdministration.replaceCalls).toHaveLength(0);
+    expect(principalDirectory.listAssignmentsCalls).toBe(0);
   });
 
   it('listet Rollen und Capabilities nur für berechtigte Administratoren', async () => {
@@ -141,6 +176,145 @@ describe('Reference role administration API', () => {
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toMatchObject({
       error: { code: 'ROLE_NOT_FOUND' },
+    });
+  });
+
+  it('liefert Principal-Rollensätze über die bereits batch-projizierte Directory', async () => {
+    const roleAdministration = new StubRoleAdministration();
+    const directory = new StubPrincipalDirectory([adminAssignment, targetAssignment]);
+    const app = configuredAdminApp(roleAdministration, directory);
+
+    const response = await app.request('/api/roles/principal-assignments', {
+      headers: { cookie: sessionCookie },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      principals: [adminAssignment, targetAssignment],
+    });
+    expect(directory.listAssignmentsCalls).toBe(1);
+  });
+
+  it('ersetzt Principal-Rollen mit Expected-State, Audit Actor und vollständigem Role-Admin-Schutz', async () => {
+    const roleAdministration = new StubRoleAdministration();
+    const app = configuredAdminApp(roleAdministration);
+
+    const response = await app.request(
+      `/api/roles/principal-assignments/${encodeURIComponent(targetIdentityId)}`,
+      {
+        method: 'PUT',
+        headers: {
+          cookie: sessionCookie,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          roleIds: [DEMO_ROLES.admin, managedRole.roleId],
+          expectedRoleIds: [managedRole.roleId],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(roleAdministration.replaceCalls).toEqual([
+      {
+        principalId: targetIdentityId,
+        roleIds: [DEMO_ROLES.admin, managedRole.roleId],
+        audit: {
+          actorPrincipalId: identityId,
+          reason: 'Reference Admin API: Benutzerrollen ersetzen',
+        },
+        constraints: {
+          expectedRoleIds: [managedRole.roleId],
+          requiredRemainingCapabilities: [
+            DEMO_CAPABILITIES.appUse,
+            DEMO_CAPABILITIES.usersManage,
+          ],
+        },
+      },
+    ]);
+    await expect(response.json()).resolves.toEqual({
+      principal: {
+        ...targetIdentity,
+        principalId: targetIdentityId,
+        roleIds: [DEMO_ROLES.admin, managedRole.roleId],
+      },
+    });
+  });
+
+  it('weist unbekannte Principals und unvollständige Expected-State-Bodies vor der Mutation zurück', async () => {
+    const roleAdministration = new StubRoleAdministration();
+    const app = configuredAdminApp(roleAdministration);
+
+    const missing = await app.request('/api/roles/principal-assignments/missing', {
+      method: 'PUT',
+      headers: {
+        cookie: sessionCookie,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ roleIds: [], expectedRoleIds: [] }),
+    });
+    expect(missing.status).toBe(404);
+
+    const invalid = await app.request(
+      `/api/roles/principal-assignments/${encodeURIComponent(targetIdentityId)}`,
+      {
+        method: 'PUT',
+        headers: {
+          cookie: sessionCookie,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ roleIds: [managedRole.roleId] }),
+      },
+    );
+    expect(invalid.status).toBe(400);
+    expect(roleAdministration.replaceCalls).toHaveLength(0);
+  });
+
+  it('sanitisiert stale-write- und last-admin-Konflikte als 409', async () => {
+    const roleAdministration = new StubRoleAdministration();
+    const app = configuredAdminApp(roleAdministration);
+    const requestInit: RequestInit = {
+      method: 'PUT',
+      headers: {
+        cookie: sessionCookie,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        roleIds: [managedRole.roleId],
+        expectedRoleIds: [managedRole.roleId],
+      }),
+    };
+
+    roleAdministration.replaceError = new RoleAdministrationError(
+      'STALE_PRINCIPAL_ROLES',
+      'internal stale detail',
+    );
+    const stale = await app.request(
+      `/api/roles/principal-assignments/${encodeURIComponent(targetIdentityId)}`,
+      requestInit,
+    );
+    expect(stale.status).toBe(409);
+    await expect(stale.json()).resolves.toEqual({
+      error: {
+        code: 'STALE_PRINCIPAL_ROLES',
+        message: 'The role cannot be changed in its current state.',
+      },
+    });
+
+    roleAdministration.replaceError = new RoleAdministrationError(
+      'LAST_CAPABILITY_HOLDER',
+      'internal holder detail',
+    );
+    const lastHolder = await app.request(
+      `/api/roles/principal-assignments/${encodeURIComponent(targetIdentityId)}`,
+      requestInit,
+    );
+    expect(lastHolder.status).toBe(409);
+    await expect(lastHolder.json()).resolves.toEqual({
+      error: {
+        code: 'LAST_CAPABILITY_HOLDER',
+        message: 'The role cannot be changed in its current state.',
+      },
     });
   });
 
@@ -286,9 +460,11 @@ describe('Reference role administration API', () => {
 
 function configuredAdminApp(
   roleAdministration: ReferenceRoleAdminDependencies['roleAdministration'],
+  principalDirectory: ReferenceRolePrincipalDirectory = new StubPrincipalDirectory(),
 ) {
   return createReferenceRoleAdminApp({
     identity: new StubIdentityService(),
+    principalDirectory,
     permissions: adminPermissionStore(),
     roleAdministration,
   });
@@ -305,7 +481,7 @@ function memberPermissionStore() {
 function permissionStore(assignedRoleId: RoleId) {
   return new InMemoryPermissionStore({
     knownCapabilities: DEMO_KNOWN_CAPABILITIES,
-    roles: DEMO_ROLE_BUNDLES,
+    roles: [...DEMO_ROLE_BUNDLES, managedRole],
     principals: [
       {
         principalId: principalId(identityId),
@@ -313,8 +489,45 @@ function permissionStore(assignedRoleId: RoleId) {
         grants: [],
         revokes: [],
       },
+      {
+        principalId: principalId(targetIdentityId),
+        roleIds: [managedRole.roleId],
+        grants: [],
+        revokes: [],
+      },
     ],
   });
+}
+
+class StubPrincipalDirectory implements ReferenceRolePrincipalDirectory {
+  listAssignmentsCalls = 0;
+  findCalls = 0;
+
+  constructor(
+    private readonly assignments: readonly ReferenceRolePrincipalAssignment[] = [
+      adminAssignment,
+      targetAssignment,
+    ],
+  ) {}
+
+  async listAssignments(): Promise<readonly ReferenceRolePrincipalAssignment[]> {
+    this.listAssignmentsCalls += 1;
+    return this.assignments;
+  }
+
+  async find(requestedIdentityId: string): Promise<ReferenceRolePrincipalIdentity | null> {
+    this.findCalls += 1;
+    const assignment = this.assignments.find(
+      (candidate) => candidate.identityId === requestedIdentityId,
+    );
+    return assignment === undefined
+      ? null
+      : {
+          identityId: assignment.identityId,
+          username: assignment.username,
+          displayName: assignment.displayName,
+        };
+  }
 }
 
 class StubRoleAdministration {
@@ -337,7 +550,14 @@ class StubRoleAdministration {
     roleId: RoleId;
     audit: RoleAdministrationAuditContext;
   }> = [];
+  readonly replaceCalls: Array<{
+    principalId: PrincipalId;
+    roleIds: readonly RoleId[];
+    audit: RoleAdministrationAuditContext;
+    constraints: ReplacePrincipalRolesConstraints;
+  }> = [];
   deleteError: Error | null = null;
+  replaceError: Error | null = null;
 
   async listRoles(): Promise<readonly RoleDetails[]> {
     this.listCalls += 1;
@@ -398,6 +618,22 @@ class StubRoleAdministration {
   ): Promise<void> {
     this.deleteCalls.push({ roleId: requestedRoleId, audit });
     if (this.deleteError !== null) throw this.deleteError;
+  }
+
+  async replacePrincipalRoles(
+    requestedPrincipalId: PrincipalId,
+    roleIds: readonly RoleId[],
+    audit: RoleAdministrationAuditContext,
+    constraints: ReplacePrincipalRolesConstraints = {},
+  ): Promise<readonly RoleId[]> {
+    this.replaceCalls.push({
+      principalId: requestedPrincipalId,
+      roleIds,
+      audit,
+      constraints,
+    });
+    if (this.replaceError !== null) throw this.replaceError;
+    return roleIds;
   }
 }
 

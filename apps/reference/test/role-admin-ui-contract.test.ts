@@ -14,6 +14,10 @@ const editorSource = readFileSync(
   new URL('../src/roles/RoleEditor.tsx', import.meta.url),
   'utf8',
 );
+const assignmentsSource = readFileSync(
+  new URL('../src/roles/RolePrincipalAssignments.tsx', import.meta.url),
+  'utf8',
+);
 
 describe('Reference persistent role UI contract', () => {
   it('reads roles and capabilities through the existing admin gateway client instead of demo bundles', () => {
@@ -33,10 +37,10 @@ describe('Reference persistent role UI contract', () => {
     expect(editorSource).not.toContain('DEMO_KNOWN_CAPABILITIES');
   });
 
-  it('keeps system roles protected and principal assignment outside this slice', () => {
+  it('keeps system role definitions protected while allowing separate principal assignment', () => {
     expect(editorSource).toContain("persistedRole?.kind === 'system'");
     expect(editorSource).toContain('Systemrollen bleiben absichtlich außerhalb der Managed-Rollenänderungen.');
-    expect(editorSource).toContain('Benutzerzuordnung bleibt ein eigener Lifecycle-Slice');
+    expect(editorSource).toContain('<RolePrincipalAssignments currentRoleId={effectiveRoleId} isNew={isNew} />');
   });
 
   it('keeps save feedback visible and the mobile icon action accessible', () => {
@@ -70,5 +74,25 @@ describe('Reference persistent role UI contract', () => {
     expect(editorSource).toContain('fieldsDisabled={protectedSystemRole || writePending}');
     expect(editorSource).toContain('disabled={fieldsDisabled}');
     expect(editorSource).toContain('disabled={!isNew || fieldsDisabled}');
+  });
+
+  it('edits complete principal role sets through the persistent admin client', () => {
+    expect(assignmentsSource).toContain('referenceApi.listRolePrincipals()');
+    expect(assignmentsSource).toContain('referenceApi.listRoles()');
+    expect(assignmentsSource).toContain('referenceApi.replacePrincipalRoles(');
+    expect(assignmentsSource).toContain('referenceApi.getRolePrincipal(principal.principalId)');
+    expect(assignmentsSource).not.toContain('DEMO_ROLE_BUNDLES');
+  });
+
+  it('never silently retains or adds inactive roles during a principal replace', () => {
+    expect(assignmentsSource).toContain("role.state === 'inactive' && !currentlySelected");
+    expect(assignmentsSource).toContain('selectedInactiveRole(requestedRoleIds, roleById) !== null');
+    expect(assignmentsSource).toContain('Diese bestehende Zuweisung kann entfernt, aber nicht erneut vergeben werden.');
+  });
+
+  it('serializes principal assignment writes per editor and blocks no-op saves', () => {
+    expect(assignmentsSource).toContain('pendingPrincipalId !== null');
+    expect(assignmentsSource).toContain('sameRoleSet(requestedRoleIds, principal.roleIds)');
+    expect(assignmentsSource).toContain('pendingPrincipalId === principal.principalId');
   });
 });

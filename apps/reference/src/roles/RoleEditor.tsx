@@ -4,6 +4,7 @@ import type { CapabilityId, RoleDetails } from '@appbasis/permissions';
 
 import { ReferenceApiError, referenceApi, type ReferenceRoleUpdateInput } from '../api';
 import { Icon, RoleAdminShell } from './RoleAdminShell';
+import { RolePrincipalAssignments } from './RolePrincipalAssignments';
 import { roleLabel } from './role-overview-model';
 import { roleEditorHash } from './role-route';
 import './role-editor.css';
@@ -344,7 +345,9 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
             />
           )}
 
-          {activeTab === 'users' && <UsersTab protectedSystemRole={protectedSystemRole} />}
+          {activeTab === 'users' && (
+            <RolePrincipalAssignments currentRoleId={effectiveRoleId} isNew={isNew} />
+          )}
         </div>
       </div>
     </RoleAdminShell>
@@ -480,29 +483,6 @@ function PermissionsTab({ protectedSystemRole, knownCapabilities, selectedCapabi
           ))}
         </div>
       )}
-    </section>
-  );
-}
-
-function UsersTab({ protectedSystemRole }: { readonly protectedSystemRole: boolean }) {
-  return (
-    <section className="role-editor-panel ab-surface" aria-labelledby="role-users-title">
-      <div className="role-editor-section-heading">
-        <div><h2 id="role-users-title">Benutzer</h2><p>Eine Person kann mehrere Rollen gleichzeitig erhalten.</p></div>
-        <span className="ab-badge">Mehrfachrollen</span>
-      </div>
-      <div className="role-users-summary">
-        <span className="roles-role-icon"><Icon name="users" /></span>
-        <div>
-          <strong>Benutzerzuordnung bleibt ein eigener Lifecycle-Slice</strong>
-          <p>`PrincipalPermissions.roleIds[]` und die persistente Principal-Role-Tabelle unterstützen mehrere Rollen. Dieser Editor verändert bis zur dedizierten Benutzerzuordnung ausschließlich die Rolle selbst.</p>
-        </div>
-      </div>
-      <div className="ab-empty-state role-users-empty">
-        <Icon name="users" />
-        <strong>Noch keine Benutzerzuordnung in diesem Editor</strong>
-        <span>{protectedSystemRole ? 'Systemrollenzuweisungen bleiben geschützt.' : 'Zuweisungen werden erst mit dem separaten Principal-Role-UI-Vertrag freigeschaltet.'}</span>
-      </div>
     </section>
   );
 }
