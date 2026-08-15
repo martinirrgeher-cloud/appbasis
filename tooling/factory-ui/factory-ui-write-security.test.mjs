@@ -45,6 +45,17 @@ test("factory write UI blocks framing and rejects unsafe creation input", async 
     page.headers.get("content-security-policy"),
     "frame-ancestors 'none'",
   );
+  const pageBody = await page.text();
+  const formStart = pageBody.indexOf('<form id="create-form"');
+  const createButton = pageBody.indexOf('id="create-app-button"', formStart);
+  const status = pageBody.indexOf('id="factory-status"', createButton);
+  const formEnd = pageBody.indexOf("</form>", formStart);
+  const preview = pageBody.indexOf('class="factory-preview ab-surface"', formEnd);
+  assert.ok(formStart >= 0);
+  assert.ok(createButton > formStart);
+  assert.ok(status > createButton);
+  assert.ok(status < formEnd);
+  assert.ok(preview > formEnd);
 
   const unsupportedService = await fetch(`${baseUrl}/api/factory/apps`, {
     method: "POST",
