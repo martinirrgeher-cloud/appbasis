@@ -2,6 +2,7 @@ import { previewAccentForeground } from "./preview-theme.mjs";
 
 const state = {
   snapshot: null,
+  snapshotGeneration: 0,
   selectedAppId: null,
   appIdEdited: false,
   brandMarkEdited: false,
@@ -79,6 +80,7 @@ elements.accentColor?.addEventListener("input", renderDraftPreview);
 loadSnapshot();
 
 async function loadSnapshot() {
+  const generation = ++state.snapshotGeneration;
   showError("");
   if (elements.appsSummary) elements.appsSummary.textContent = "Repository wird gelesen …";
 
@@ -89,33 +91,36 @@ async function loadSnapshot() {
     });
     if (!response.ok) throw new Error("Snapshot konnte nicht geladen werden.");
 
+    const nextSnapshot = await response.json();
+    if (generation !== state.snapshotGeneration) return;
+
     const focusedAppIdBeforeRender = focusedAppButtonId();
-    state.snapshot = await response.json();
+    const draftCatalogState = captureDraftCatalogState();
+    state.snapshot = nextSnapshot;
     renderApps();
-    renderCatalog();
+    renderCatalog(draftCatalogState);
     renderDraftPreview();
     restoreSelectedAppDetail();
     restoreListFocusAfterRender(focusedAppIdBeforeRender);
+    restoreDraftCatalogFocus(draftCatalogState.focus);
   } catch {
-    const detailWasVisible = isPanelVisible("detail");
-    state.snapshot = null;
-    state.selectedAppId = null;
+    if (generation !== state.snapshotGeneration) return;
+
+    if (state.snapshot !== null) {
+      renderAppsSummary(state.snapshot.apps, "Aktualisierung fehlgeschlagen");
+      showError("Die Factory-Daten konnten nicht aktualisiert werden. Der zuletzt geladene Stand bleibt sichtbar.");
+      return;
+    }
+
     if (elements.appsSummary) elements.appsSummary.textContent = "Repository nicht verfügbar.";
     if (elements.appsList) elements.appsList.replaceChildren(emptyState("Keine App-Daten verfügbar."));
-    if (detailWasVisible) {
-      returnToApps(null);
-    } else {
-      selectTab("apps");
-    }
     showError("Die Factory-Daten konnten nicht gelesen werden. Es wurden keine Änderungen ausgeführt.");
   }
 }
 
 function renderApps() {
   const apps = state.snapshot?.apps ?? [];
-  if (elements.appsSummary) {
-    elements.appsSummary.textContent = `${apps.length} ${apps.length === 1 ? "App" : "Apps"} im aktuellen Repository`;
-  }
+  renderAppsSummary(apps);
   if (!elements.appsList) return;
 
   elements.appsList.replaceChildren();
@@ -171,6 +176,12 @@ function renderApps() {
     card.append(header, details, footer);
     elements.appsList.append(card);
   }
+}
+
+function renderAppsSummary(apps, suffix = "") {
+  if (!elements.appsSummary) return;
+  const base = `${apps.length} ${apps.length === 1 ? "App" : "Apps"} im aktuellen Repository`;
+  elements.appsSummary.textContent = suffix.length > 0 ? `${base} · ${suffix}` : base;
 }
 
 function openAppDetail(appId) {
@@ -245,27 +256,61 @@ function focusAppsTab() {
   document.querySelector("button[data-tab='apps']")?.focus();
 }
 
+function captureDraftCatalogState() {
+  return {
+    modules: checkedValues("module"),
+    services: checkedValues("service"),
+    focus: focusedDraftOption(),
+  };
+}
+
+function focusedDraftOption() {
+  const active = document.activeElement;
+  const name = active?.getAttribute?.("name");
+  const value = active?.value;
+  if ((name === "module" || name === "service") && typeof value === "string") {
+    return { name, value };
+  }
+  return null;
+}
+
+function restoreDraftCatalogFocus(focus) {
+  if (focus === null || !isPanelVisible("create")) return;
+  requestAnimationFrame(() => {
+    const input = [...document.querySelectorAll(`input[name='${focus.name}']`)].find(
+      (candidate) => candidate.value === focus.value,
+    );
+    if (input !== undefined) {
+      input.focus();
+      return;
+    }
+    document.querySelector("button[data-tab='create']")?.focus();
+  });
+}
+
 function isPanelVisible(panelName) {
   const panel = document.querySelector(`[data-panel='${panelName}']`);
   return panel !== null && !panel.hidden;
 }
 
-function renderCatalog() {
+function renderCatalog(draftState = { modules: [], services: [], focus: null }) {
   renderCheckboxes(
     elements.moduleOptions,
     state.snapshot?.catalog?.modules ?? [],
     "module",
     moduleLabel,
+    draftState.modules,
   );
   renderCheckboxes(
     elements.serviceOptions,
     state.snapshot?.catalog?.platformServices ?? [],
     "service",
     serviceLabel,
+    draftState.services,
   );
 }
 
-function renderCheckboxes(container, ids, groupName, labelFor) {
+function renderCheckboxes(container, ids, groupName, labelFor, selectedIds = []) {
   if (!container) return;
   container.replaceChildren();
 
@@ -282,6 +327,7 @@ function renderCheckboxes(container, ids, groupName, labelFor) {
     input.type = "checkbox";
     input.name = groupName;
     input.value = id;
+    input.checked = selectedIds.includes(id);
     input.addEventListener("change", () => {
       if (groupName === "service") enforceServiceDependencies(input);
       renderDraftPreview();
