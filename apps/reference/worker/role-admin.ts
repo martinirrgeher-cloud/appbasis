@@ -8,7 +8,11 @@ import {
   type RoleAdministrationPostgresClient,
 } from '@appbasis/permissions';
 
-import { createReferenceRoleAdminApp } from './role-admin-app';
+import {
+  createReferenceRoleAdminApp,
+  type ReferenceRolePrincipalDirectory,
+  type ReferenceRolePrincipalIdentity,
+} from './role-admin-app';
 import { roleAdminMutationProtectionResponse } from './role-admin-request-security';
 
 interface HyperdriveBinding {
@@ -54,8 +58,10 @@ export const roleAdminWorker = {
       const roleAdministration = new PostgresRoleAdministration(
         roleAdministrationClient(connection.client),
       );
+      const principalDirectory = referenceRolePrincipalDirectory(connection.client);
       const app = createReferenceRoleAdminApp({
         identity: identity.service,
+        principalDirectory,
         permissions,
         roleAdministration,
         secureCookies: url.protocol === 'https:',
@@ -68,6 +74,59 @@ export const roleAdminWorker = {
 };
 
 export default roleAdminWorker;
+
+function referenceRolePrincipalDirectory(client: {
+  unsafe(
+    query: string,
+    parameters?: (string | number | boolean | null)[],
+  ): PromiseLike<readonly Record<string, unknown>[]>;
+}): ReferenceRolePrincipalDirectory {
+  async function list(): Promise<readonly ReferenceRolePrincipalIdentity[]> {
+    const rows = await client.unsafe(
+      `SELECT
+         identity_state.identity_id,
+         auth_user.username,
+         auth_user.name AS display_name
+       FROM appbasis_identity_security_state identity_state
+       JOIN "user" auth_user ON auth_user.id = identity_state.identity_id
+       ORDER BY lower(auth_user.name) ASC, lower(auth_user.username) ASC, auth_user.id ASC`,
+    );
+    return rows.map(principalIdentityFromRow);
+  }
+
+  async function find(identityId: string): Promise<ReferenceRolePrincipalIdentity | null> {
+    const rows = await client.unsafe(
+      `SELECT
+         identity_state.identity_id,
+         auth_user.username,
+         auth_user.name AS display_name
+       FROM appbasis_identity_security_state identity_state
+       JOIN "user" auth_user ON auth_user.id = identity_state.identity_id
+       WHERE identity_state.identity_id = $1
+       LIMIT 1`,
+      [identityId],
+    );
+    return rows[0] === undefined ? null : principalIdentityFromRow(rows[0]);
+  }
+
+  return Object.freeze({ list, find });
+}
+
+function principalIdentityFromRow(row: Record<string, unknown>): ReferenceRolePrincipalIdentity {
+  return {
+    identityId: requiredDatabaseString(row, 'identity_id'),
+    username: requiredDatabaseString(row, 'username'),
+    displayName: requiredDatabaseString(row, 'display_name'),
+  };
+}
+
+function requiredDatabaseString(row: Record<string, unknown>, field: string): string {
+  const value = row[field];
+  if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
+    throw new Error(`Reference role principal directory returned invalid ${field}.`);
+  }
+  return value;
+}
 
 function permissionClient(client: {
   unsafe(
