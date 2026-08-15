@@ -104,7 +104,7 @@ test("factory snapshot reports repository preview prerequisites without enabling
   }
 });
 
-test("factory UI surfaces repository readiness while keeping provider state and preview actions separate", async () => {
+test("factory UI surfaces repository readiness while keeping external preview actions separate", async () => {
   const appScript = await readFile(
     join(repositoryRoot, "tooling", "factory-ui", "app.js"),
     "utf8",
@@ -112,8 +112,8 @@ test("factory UI surfaces repository readiness while keeping provider state and 
 
   assert.match(appScript, /previewReadinessLabel\(app\.previewReadiness\)/);
   assert.match(appScript, /renderPreviewReadiness\(app\.previewReadiness\)/);
-  assert.match(appScript, /Repository-Voraussetzungen erfüllt/);
-  assert.match(appScript, /Provider-, Secret- und Preview-Datenbank-Status/);
+  assert.match(appScript, /Lokale Preview-Voraussetzungen erfüllt/);
+  assert.match(appScript, /Externe Preview-Voraussetzungen werden noch nicht geprüft/);
   assert.match(appScript, /Preview bleibt gesperrt/);
   assert.doesNotMatch(appScript, /\/api\/factory\/preview/);
 });
