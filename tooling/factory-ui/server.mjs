@@ -166,9 +166,16 @@ async function handleCreateAppRequest(request, response, repositoryRoot) {
 }
 
 function hasValidFactoryOrigin(request) {
-  if (!isLoopbackAddress(request.socket.localAddress)) return false;
+  return isValidFactoryOrigin({
+    localAddress: request.socket.localAddress,
+    localPort: request.socket.localPort,
+    originHeader: request.headers.origin,
+  });
+}
 
-  const originHeader = request.headers.origin;
+export function isValidFactoryOrigin({ localAddress, localPort, originHeader }) {
+  if (!isLoopbackAddress(localAddress)) return false;
+  if (!Number.isInteger(localPort)) return false;
   if (typeof originHeader !== "string") return false;
 
   let origin;
@@ -178,10 +185,14 @@ function hasValidFactoryOrigin(request) {
     return false;
   }
 
+  const originPort = origin.port === "" && origin.protocol === "http:"
+    ? 80
+    : Number(origin.port);
+
   return (
     origin.protocol === "http:" &&
     LOOPBACK_ORIGIN_HOSTS.has(origin.hostname) &&
-    origin.port === String(request.socket.localPort ?? "") &&
+    originPort === localPort &&
     origin.origin === originHeader
   );
 }
