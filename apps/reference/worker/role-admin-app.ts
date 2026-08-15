@@ -18,12 +18,30 @@ import {
   type PostgresRoleAdministration,
   type PrincipalId,
   type RoleAdministrationErrorCode,
+  type RoleId,
   type RoleState,
 } from '@appbasis/permissions';
 import { HEALTH_RESPONSE } from '../shared/health';
 
+export interface ReferenceRolePrincipalIdentity {
+  readonly identityId: string;
+  readonly username: string;
+  readonly displayName: string;
+}
+
+export interface ReferenceRolePrincipalDirectory {
+  list(): Promise<readonly ReferenceRolePrincipalIdentity[]>;
+  find(identityId: string): Promise<ReferenceRolePrincipalIdentity | null>;
+}
+
+export interface ReferenceRolePrincipalAssignment extends ReferenceRolePrincipalIdentity {
+  readonly principalId: string;
+  readonly roleIds: readonly RoleId[];
+}
+
 export interface ReferenceRoleAdminDependencies {
   identity: IdentityHttpService;
+  principalDirectory: ReferenceRolePrincipalDirectory;
   permissions: PermissionStore;
   roleAdministration: Pick<
     PostgresRoleAdministration,
@@ -34,6 +52,7 @@ export interface ReferenceRoleAdminDependencies {
     | 'updateRole'
     | 'setRoleState'
     | 'deleteRole'
+    | 'replacePrincipalRoles'
   >;
   secureCookies?: boolean;
 }
@@ -42,6 +61,7 @@ type ErrorCode =
   | 'INVALID_REQUEST'
   | 'PERMISSION_DENIED'
   | 'REFERENCE_ROLE_ADMIN_NOT_CONFIGURED'
+  | 'PRINCIPAL_NOT_FOUND'
   | 'ROLE_NOT_FOUND'
   | RoleAdministrationErrorCode;
 
@@ -135,6 +155,100 @@ export function createReferenceRoleAdminApp(
     return context.json({
       capabilities: await dependencies.roleAdministration.listKnownCapabilities(),
     });
+  });
+
+  app.get('/api/roles/principal-assignments', async (context) => {
+    const authorization = await authorizeRoleAdministration(
+      context,
+      dependencies.permissions,
+      identityHttp,
+    );
+    if (authorization instanceof Response) return authorization;
+
+    const identities = await dependencies.principalDirectory.list();
+    const principals: ReferenceRolePrincipalAssignment[] = [];
+    for (const identity of identities) {
+      const assignment = await principalAssignment(
+        dependencies.permissions,
+        identity,
+      );
+      if (assignment !== null) principals.push(assignment);
+    }
+    return context.json({ principals });
+  });
+
+  app.get('/api/roles/principal-assignments/:id', async (context) => {
+    const authorization = await authorizeRoleAdministration(
+      context,
+      dependencies.permissions,
+      identityHttp,
+    );
+    if (authorization instanceof Response) return authorization;
+
+    const assignment = await loadPrincipalAssignment(
+      dependencies,
+      context.req.param('id'),
+    );
+    if (assignment === null) {
+      return errorResponse(
+        context,
+        404,
+        'PRINCIPAL_NOT_FOUND',
+        'The role principal was not found.',
+      );
+    }
+    return context.json({ principal: assignment });
+  });
+
+  app.put('/api/roles/principal-assignments/:id', async (context) => {
+    const authorization = await authorizeRoleAdministration(
+      context,
+      dependencies.permissions,
+      identityHttp,
+    );
+    if (authorization instanceof Response) return authorization;
+
+    const body = await readObjectBody(context);
+    if (body === null) return invalidRequest(context);
+    const requestedRoleIds = stringList(body, 'roleIds');
+    if (requestedRoleIds === null) return invalidRequest(context);
+
+    const identity = await dependencies.principalDirectory.find(context.req.param('id'));
+    if (identity === null) {
+      return errorResponse(
+        context,
+        404,
+        'PRINCIPAL_NOT_FOUND',
+        'The role principal was not found.',
+      );
+    }
+
+    const targetPrincipalId = principalId(identity.identityId);
+    const existingPrincipal = await dependencies.permissions.findPrincipal(targetPrincipalId);
+    if (existingPrincipal === null) {
+      return errorResponse(
+        context,
+        404,
+        'PRINCIPAL_NOT_FOUND',
+        'The role principal was not found.',
+      );
+    }
+
+    try {
+      const roleIds = await dependencies.roleAdministration.replacePrincipalRoles(
+        targetPrincipalId,
+        requestedRoleIds.map(roleId),
+        {
+          actorPrincipalId: authorization.actorPrincipalId,
+          reason: 'Reference Admin API: Benutzerrollen ersetzen',
+        },
+      );
+      return context.json({
+        principal: principalAssignmentPayload(identity, targetPrincipalId, roleIds),
+      });
+    } catch (error) {
+      return roleAdministrationErrorResponse(context, error);
+    }
   });
 
   app.get('/api/roles/:id/details', async (context) => {
@@ -244,6 +358,40 @@ export function createReferenceRoleAdminApp(
   });
 
   return app;
+}
+
+async function loadPrincipalAssignment(
+  dependencies: ReferenceRoleAdminDependencies,
+  identityId: string,
+): Promise<ReferenceRolePrincipalAssignment | null> {
+  const identity = await dependencies.principalDirectory.find(identityId);
+  if (identity === null) return null;
+  return principalAssignment(dependencies.permissions, identity);
+}
+
+async function principalAssignment(
+  permissions: PermissionStore,
+  identity: ReferenceRolePrincipalIdentity,
+): Promise<ReferenceRolePrincipalAssignment | null> {
+  const resolvedPrincipalId = principalId(identity.identityId);
+  const stored = await permissions.findPrincipal(resolvedPrincipalId);
+  return stored === null
+    ? null
+    : principalAssignmentPayload(identity, resolvedPrincipalId, stored.roleIds);
+}
+
+function principalAssignmentPayload(
+  identity: ReferenceRolePrincipalIdentity,
+  resolvedPrincipalId: PrincipalId,
+  roleIds: readonly RoleId[],
+): ReferenceRolePrincipalAssignment {
+  return {
+    identityId: identity.identityId,
+    principalId: String(resolvedPrincipalId),
+    username: identity.username,
+    displayName: identity.displayName,
+    roleIds,
+  };
 }
 
 async function roleDetailsResponse(
