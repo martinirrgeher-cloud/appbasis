@@ -26,6 +26,13 @@ const managedRole = {
   capabilities: [capabilityId('app:use')],
 };
 
+const managedRoleCreateInput = {
+  roleId: 'managed:trainer',
+  displayName: 'Trainer',
+  description: 'Training verwalten',
+  capabilities: [capabilityId('app:use')],
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -126,12 +133,7 @@ describe('referenceApi', () => {
       .mockResolvedValueOnce(jsonResponse({ role: inactiveRole }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await referenceApi.createRole({
-      roleId: 'managed:trainer',
-      displayName: 'Trainer',
-      description: 'Training verwalten',
-      capabilities: [capabilityId('app:use')],
-    });
+    await referenceApi.createRole(managedRoleCreateInput);
     await referenceApi.updateRole('managed:trainer', {
       displayName: 'Trainer Plus',
       description: null,
@@ -152,6 +154,32 @@ describe('referenceApi', () => {
       expect(new Headers(init.headers).get('content-type')).toBe('application/json');
       expect(init.credentials).toBe('same-origin');
     }
+  });
+
+  it('reconciles an ambiguous role create only when the authoritative role matches the submitted data', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('response lost'))
+      .mockResolvedValueOnce(jsonResponse({ role: managedRole }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(referenceApi.createRole(managedRoleCreateInput)).resolves.toEqual(managedRole);
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/admin/roles',
+      '/api/admin/roles/managed%3Atrainer/details',
+    ]);
+  });
+
+  it('fails closed when ambiguous role-create reconciliation does not exactly match the request', async () => {
+    const mismatchedRole = { ...managedRole, displayName: 'Andere Rolle' };
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('response lost'))
+      .mockResolvedValueOnce(jsonResponse({ role: mismatchedRole }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const error = await referenceApi.createRole(managedRoleCreateInput).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ReferenceApiError);
+    expect(error).toMatchObject({ status: 0, code: 'NETWORK_ERROR' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
