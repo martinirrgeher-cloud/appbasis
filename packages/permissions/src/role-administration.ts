@@ -58,7 +58,7 @@ export interface UpdateManagedRoleInput {
 
 export interface ReplacePrincipalRolesConstraints {
   readonly expectedRoleIds?: readonly RoleId[];
-  readonly requiredRemainingCapability?: CapabilityId;
+  readonly requiredRemainingCapabilities?: readonly CapabilityId[];
 }
 
 export interface RoleAdministrationPostgresClient extends PermissionPostgresClient {
@@ -308,7 +308,9 @@ export class PostgresRoleAdministration {
     const expectedRoleIds = constraints.expectedRoleIds === undefined
       ? null
       : sortedUniqueRoleIds(constraints.expectedRoleIds);
-    const requiredRemainingCapability = constraints.requiredRemainingCapability;
+    const requiredRemainingCapabilities = constraints.requiredRemainingCapabilities === undefined
+      ? []
+      : sortedUniqueCapabilities(constraints.requiredRemainingCapabilities);
     const audit = normalizeAuditContext(auditContext);
 
     return this.#client.begin(async (transaction) => {
@@ -360,12 +362,12 @@ export class PostgresRoleAdministration {
         }
       }
 
-      if (requiredRemainingCapability !== undefined) {
-        await assertRequiredCapabilityHolderRemains(
+      if (requiredRemainingCapabilities.length !== 0) {
+        await assertRequiredCapabilitySetHolderRemains(
           transaction,
           normalizedPrincipalId,
           normalizedRoleIds,
-          requiredRemainingCapability,
+          requiredRemainingCapabilities,
         );
       }
 
@@ -395,73 +397,115 @@ export class PostgresRoleAdministration {
   }
 }
 
-async function assertRequiredCapabilityHolderRemains(
+async function assertRequiredCapabilitySetHolderRemains(
   client: PermissionPostgresClient,
   targetPrincipalId: PrincipalId,
   requestedRoleIds: readonly RoleId[],
-  capability: CapabilityId,
+  capabilities: readonly CapabilityId[],
 ): Promise<void> {
+  const capabilityPlaceholders = capabilities
+    .map((_, index) => `$${index + 1}`)
+    .join(", ");
   const capabilityRows = await client.unsafe(
     `SELECT capability_id
      FROM appbasis_permission_capability
-     WHERE capability_id = $1
+     WHERE capability_id IN (${capabilityPlaceholders})
+     ORDER BY capability_id ASC
      FOR UPDATE`,
-    [capability],
+    [...capabilities],
   );
-  if (capabilityRows.length !== 1) {
+  if (capabilityRows.length !== capabilities.length) {
     throw new RoleAdministrationError(
       "UNKNOWN_CAPABILITY",
-      `Unknown capability ${capability}.`,
+      "At least one required capability is unknown.",
+    );
+  }
+  const lockedCapabilities = capabilityRows.map((row) =>
+    capabilityId(requiredString(row, "capability_id")),
+  );
+  if (!sameCapabilities(lockedCapabilities, capabilities)) {
+    throw new RoleAdministrationError(
+      "UNKNOWN_CAPABILITY",
+      "At least one required capability is unknown.",
     );
   }
 
-  const targetRetainsCapability = await principalWouldHaveCapability(
+  const targetRetainsAuthorization = await principalWouldHaveCapabilities(
     client,
     targetPrincipalId,
     requestedRoleIds,
-    capability,
+    capabilities,
   );
-  if (targetRetainsCapability) return;
+  if (targetRetainsAuthorization) return;
 
+  const requiredCapabilityValues = capabilities
+    .map((_, index) => `($${index + 2})`)
+    .join(", ");
   const otherHolderRows = await client.unsafe(
-    `SELECT EXISTS (
+    `WITH required_capability(capability_id) AS (
+       VALUES ${requiredCapabilityValues}
+     )
+     SELECT EXISTS (
        SELECT 1
        FROM appbasis_permission_principal principal
        WHERE principal.principal_id <> $1
          AND NOT EXISTS (
            SELECT 1
-           FROM appbasis_permission_principal_revoke revoke
-           WHERE revoke.principal_id = principal.principal_id
-             AND revoke.capability_id = $2
-         )
-         AND (
-           EXISTS (
+           FROM required_capability required
+           WHERE EXISTS (
              SELECT 1
-             FROM appbasis_permission_principal_grant grant_row
-             WHERE grant_row.principal_id = principal.principal_id
-               AND grant_row.capability_id = $2
+             FROM appbasis_permission_principal_revoke revoke
+             WHERE revoke.principal_id = principal.principal_id
+               AND revoke.capability_id = required.capability_id
            )
-           OR EXISTS (
-             SELECT 1
-             FROM appbasis_permission_principal_role principal_role
-             JOIN appbasis_permission_role role
-               ON role.role_id = principal_role.role_id
-              AND role.state = 'active'
-             JOIN appbasis_permission_role_capability role_capability
-               ON role_capability.role_id = role.role_id
-              AND role_capability.capability_id = $2
-             WHERE principal_role.principal_id = principal.principal_id
+           OR NOT (
+             EXISTS (
+               SELECT 1
+               FROM appbasis_permission_principal_grant grant_row
+               WHERE grant_row.principal_id = principal.principal_id
+                 AND grant_row.capability_id = required.capability_id
+             )
+             OR EXISTS (
+               SELECT 1
+               FROM appbasis_permission_principal_role principal_role
+               JOIN appbasis_permission_role role
+                 ON role.role_id = principal_role.role_id
+                AND role.state = 'active'
+               JOIN appbasis_permission_role_capability role_capability
+                 ON role_capability.role_id = role.role_id
+                AND role_capability.capability_id = required.capability_id
+               WHERE principal_role.principal_id = principal.principal_id
+             )
            )
          )
      ) AS exists`,
-    [targetPrincipalId, capability],
+    [targetPrincipalId, ...capabilities],
   );
   if (!requiredBoolean(otherHolderRows[0], "exists")) {
     throw new RoleAdministrationError(
       "LAST_CAPABILITY_HOLDER",
-      `At least one principal must retain capability ${capability}.`,
+      `At least one principal must retain all required capabilities: ${capabilities.join(", ")}.`,
     );
   }
+}
+
+async function principalWouldHaveCapabilities(
+  client: PermissionPostgresClient,
+  principal: PrincipalId,
+  requestedRoleIds: readonly RoleId[],
+  capabilities: readonly CapabilityId[],
+): Promise<boolean> {
+  for (const capability of capabilities) {
+    if (!await principalWouldHaveCapability(
+      client,
+      principal,
+      requestedRoleIds,
+      capability,
+    )) {
+      return false;
+    }
+  }
+  return true;
 }
 
 async function principalWouldHaveCapability(
@@ -785,6 +829,14 @@ function sortedUniqueRoleIds(values: readonly RoleId[]): readonly RoleId[] {
 }
 
 function sameRoleIds(left: readonly RoleId[], right: readonly RoleId[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function sameCapabilities(
+  left: readonly CapabilityId[],
+  right: readonly CapabilityId[],
+): boolean {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
 }
