@@ -33,4 +33,14 @@ describe('Reference persistent role UI contract', () => {
     expect(editorSource).toContain('Systemrollen bleiben absichtlich außerhalb der Managed-Rollenänderungen.');
     expect(editorSource).toContain('Benutzerzuordnung bleibt ein eigener Lifecycle-Slice');
   });
+
+  it('keeps save feedback visible and the mobile icon action accessible', () => {
+    expect(editorSource).toContain("aria-label={savePending ? 'Rolle wird gespeichert' : 'Rolle speichern'}");
+    expect(editorSource).toContain("feedbackRef.current?.scrollIntoView({ block: 'nearest' });");
+  });
+
+  it('does not emit an update audit write for a status-only change or a no-op save', () => {
+    expect(editorSource).toContain('roleUpdateChanged(saved, updateInput)');
+    expect(editorSource).toContain('hasChanges;');
+  });
 });

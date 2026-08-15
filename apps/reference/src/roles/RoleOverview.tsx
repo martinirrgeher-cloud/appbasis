@@ -43,6 +43,11 @@ export function RoleOverview() {
     () => filterRoleOverviewItems(roles, query),
     [query, roles],
   );
+  const resultStatus = loadState === 'ready'
+    ? `${visibleRoles.length} von ${roles.length} Rollen`
+    : loadState === 'error'
+      ? 'Rollen nicht verfügbar'
+      : 'Rollen werden geladen';
 
   return (
     <RoleAdminShell>
@@ -72,9 +77,7 @@ export function RoleOverview() {
               disabled={loadState !== 'ready'}
             />
           </label>
-          <span className="roles-result-count" aria-live="polite">
-            {loadState === 'ready' ? `${visibleRoles.length} von ${roles.length} Rollen` : 'Rollen werden geladen'}
-          </span>
+          <span className="roles-result-count" aria-live="polite">{resultStatus}</span>
         </section>
 
         <section className="roles-list-surface ab-surface" aria-labelledby="role-list-title">
@@ -117,7 +120,6 @@ export function RoleOverview() {
                 </div>
                 {visibleRoles.map((role) => <RoleTableRow key={role.id} role={role} />)}
               </div>
-
               <div className="roles-cards">
                 {visibleRoles.map((role) => <RoleCard key={role.id} role={role} />)}
               </div>
@@ -126,8 +128,8 @@ export function RoleOverview() {
         </section>
 
         <section className="roles-metrics" aria-label="Permission-Übersicht">
-          <MetricCard icon="roles" value={String(roles.length)} label="Rollen" note="aus der persistenten Permission-Authority" />
-          <MetricCard icon="shield" value={String(knownCapabilityCount)} label="Capabilities" note="vom Rollenservice freigegeben" />
+          <MetricCard icon="roles" value={loadState === 'ready' ? String(roles.length) : '–'} label="Rollen" note="aus der persistenten Permission-Authority" />
+          <MetricCard icon="shield" value={loadState === 'ready' ? String(knownCapabilityCount) : '–'} label="Capabilities" note="vom Rollenservice freigegeben" />
           <MetricCard icon="layers" value="Ja" label="Mehrfachrollen" note="PrincipalPermissions.roleIds[]" />
         </section>
 
@@ -183,12 +185,7 @@ function RoleCard({ role }: { readonly role: RoleOverviewItem }) {
   );
 }
 
-function MetricCard({
-  icon,
-  value,
-  label,
-  note,
-}: {
+function MetricCard({ icon, value, label, note }: {
   readonly icon: IconName;
   readonly value: string;
   readonly label: string;
@@ -197,11 +194,7 @@ function MetricCard({
   return (
     <article className="roles-metric ab-surface">
       <span className="roles-metric__icon"><Icon name={icon} /></span>
-      <div>
-        <strong>{value}</strong>
-        <span>{label}</span>
-        <small>{note}</small>
-      </div>
+      <div><strong>{value}</strong><span>{label}</span><small>{note}</small></div>
     </article>
   );
 }

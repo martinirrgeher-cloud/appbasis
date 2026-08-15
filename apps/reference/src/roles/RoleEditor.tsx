@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CapabilityId, RoleDetails } from '@appbasis/permissions';
 
-import { ReferenceApiError, referenceApi } from '../api';
+import { ReferenceApiError, referenceApi, type ReferenceRoleUpdateInput } from '../api';
 import { Icon, RoleAdminShell } from './RoleAdminShell';
 import { roleLabel } from './role-overview-model';
 import './role-editor.css';
@@ -13,6 +13,7 @@ type LoadState = 'loading' | 'ready' | 'error';
 const ROLE_ID_PATTERN = /^[a-z0-9][a-z0-9:_-]{0,119}$/;
 
 export function RoleEditor({ roleId }: { readonly roleId?: string }) {
+  const feedbackRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<RoleEditorTab>('general');
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [loadError, setLoadError] = useState('');
@@ -81,16 +82,43 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
     () => roleValidationMessage(displayName, technicalId, isNew),
     [displayName, technicalId, isNew],
   );
+  const updateInput = useMemo<ReferenceRoleUpdateInput>(
+    () => ({
+      displayName: displayName.trim(),
+      description: normalizedDescription(description),
+      capabilities: selectedCapabilities,
+    }),
+    [description, displayName, selectedCapabilities],
+  );
+  const requestedState = active ? 'active' : 'inactive';
+  const hasChanges =
+    isNew ||
+    (persistedRole !== null &&
+      (roleUpdateChanged(persistedRole, updateInput) || persistedRole.state !== requestedState));
   const canSave =
     loadState === 'ready' &&
     !savePending &&
     !protectedSystemRole &&
-    validationMessage === null;
+    validationMessage === null &&
+    hasChanges;
+  const saveTitle = protectedSystemRole
+    ? 'Systemrollen sind geschützt.'
+    : validationMessage ?? (hasChanges ? undefined : 'Keine Änderungen zum Speichern.');
+
+  function clearFeedback() {
+    setSaveError('');
+    setSaveMessage('');
+  }
+
+  function revealFeedback() {
+    window.requestAnimationFrame(() => {
+      feedbackRef.current?.scrollIntoView({ block: 'nearest' });
+    });
+  }
 
   function toggleCapability(capability: CapabilityId) {
     if (protectedSystemRole || savePending) return;
-    setSaveError('');
-    setSaveMessage('');
+    clearFeedback();
     setSelectedCapabilities((current) =>
       current.includes(capability)
         ? current.filter((candidate) => candidate !== capability)
@@ -101,14 +129,7 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
   async function saveRole() {
     if (!canSave) return;
     setSavePending(true);
-    setSaveError('');
-    setSaveMessage('');
-
-    const updateInput = {
-      displayName: displayName.trim(),
-      description: normalizedDescription(description),
-      capabilities: selectedCapabilities,
-    };
+    clearFeedback();
 
     try {
       if (isNew) {
@@ -119,15 +140,18 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
         applyRole(created);
         window.history.replaceState(null, '', `#roles/${String(created.roleId)}`);
         setSaveMessage('Die Rolle wurde persistent angelegt.');
-      } else {
-        let saved = await referenceApi.updateRole(effectiveRoleId, updateInput);
-        const requestedState = active ? 'active' : 'inactive';
+      } else if (persistedRole !== null) {
+        let saved = persistedRole;
+        if (roleUpdateChanged(saved, updateInput)) {
+          saved = await referenceApi.updateRole(effectiveRoleId, updateInput);
+        }
         if (saved.state !== requestedState) {
           saved = await referenceApi.setRoleState(effectiveRoleId, requestedState);
         }
         applyRole(saved);
         setSaveMessage('Die Rolle wurde persistent gespeichert.');
       }
+      revealFeedback();
     } catch (error) {
       if (!isNew && effectiveRoleId !== undefined) {
         try {
@@ -138,6 +162,7 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
         }
       }
       setSaveError(roleAdminErrorMessage(error, 'Die Rolle konnte nicht gespeichert werden.'));
+      revealFeedback();
     } finally {
       setSavePending(false);
     }
@@ -197,7 +222,8 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
                   type="button"
                   disabled={!canSave}
                   onClick={() => void saveRole()}
-                  title={protectedSystemRole ? 'Systemrollen sind geschützt.' : validationMessage ?? undefined}
+                  title={saveTitle}
+                  aria-label={savePending ? 'Rolle wird gespeichert' : 'Rolle speichern'}
                 >
                   <Icon name="save" />
                   <span>{savePending ? 'Speichert …' : 'Speichern'}</span>
@@ -231,17 +257,21 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
             </div>
           </aside>
 
-          {saveError.length > 0 && (
-            <aside className="role-editor-notice role-editor-notice--protected" role="alert">
-              <Icon name="shield" />
-              <div><strong>Speichern fehlgeschlagen</strong><p>{saveError}</p></div>
-            </aside>
-          )}
-          {saveMessage.length > 0 && (
-            <aside className="role-editor-notice" role="status" aria-live="polite">
-              <Icon name="check" />
-              <div><strong>Gespeichert</strong><p>{saveMessage}</p></div>
-            </aside>
+          {(saveError.length > 0 || saveMessage.length > 0) && (
+            <div ref={feedbackRef}>
+              {saveError.length > 0 && (
+                <aside className="role-editor-notice role-editor-notice--protected" role="alert">
+                  <Icon name="shield" />
+                  <div><strong>Speichern fehlgeschlagen</strong><p>{saveError}</p></div>
+                </aside>
+              )}
+              {saveMessage.length > 0 && (
+                <aside className="role-editor-notice" role="status" aria-live="polite">
+                  <Icon name="check" />
+                  <div><strong>Gespeichert</strong><p>{saveMessage}</p></div>
+                </aside>
+              )}
+            </div>
           )}
 
           {activeTab === 'general' && (
@@ -253,10 +283,10 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
               technicalId={technicalId}
               description={description}
               active={active}
-              onDisplayNameChange={(value) => { setDisplayName(value); setSaveMessage(''); setSaveError(''); }}
-              onTechnicalIdChange={(value) => { setTechnicalId(value); setSaveMessage(''); setSaveError(''); }}
-              onDescriptionChange={(value) => { setDescription(value); setSaveMessage(''); setSaveError(''); }}
-              onActiveChange={(value) => { setActive(value); setSaveMessage(''); setSaveError(''); }}
+              onDisplayNameChange={(value) => { setDisplayName(value); clearFeedback(); }}
+              onTechnicalIdChange={(value) => { setTechnicalId(value); clearFeedback(); }}
+              onDescriptionChange={(value) => { setDescription(value); clearFeedback(); }}
+              onActiveChange={(value) => { setActive(value); clearFeedback(); }}
             />
           )}
 
@@ -276,12 +306,7 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
   );
 }
 
-function EditorTab({
-  id,
-  activeTab,
-  onSelect,
-  children,
-}: {
+function EditorTab({ id, activeTab, onSelect, children }: {
   readonly id: RoleEditorTab;
   readonly activeTab: RoleEditorTab;
   readonly onSelect: (tab: RoleEditorTab) => void;
@@ -289,30 +314,15 @@ function EditorTab({
 }) {
   const active = activeTab === id;
   return (
-    <button
-      className={`role-editor-tab${active ? ' role-editor-tab--active' : ''}`}
-      type="button"
-      aria-selected={active}
-      role="tab"
-      onClick={() => onSelect(id)}
-    >
+    <button className={`role-editor-tab${active ? ' role-editor-tab--active' : ''}`} type="button" aria-selected={active} role="tab" onClick={() => onSelect(id)}>
       {children}
     </button>
   );
 }
 
 function GeneralTab({
-  isNew,
-  protectedSystemRole,
-  statusDisabled,
-  displayName,
-  technicalId,
-  description,
-  active,
-  onDisplayNameChange,
-  onTechnicalIdChange,
-  onDescriptionChange,
-  onActiveChange,
+  isNew, protectedSystemRole, statusDisabled, displayName, technicalId, description, active,
+  onDisplayNameChange, onTechnicalIdChange, onDescriptionChange, onActiveChange,
 }: {
   readonly isNew: boolean;
   readonly protectedSystemRole: boolean;
@@ -332,26 +342,22 @@ function GeneralTab({
         <div><h2 id="role-general-title">Allgemeine Informationen</h2><p>Name, Beschreibung und Lifecycle der Rolle.</p></div>
         <span className="ab-badge ab-badge--info">{protectedSystemRole ? 'System' : 'Managed'}</span>
       </div>
-
       <div className="role-editor-form-grid">
         <label className="role-editor-field">
           <span>Anzeigename</span>
           <input className="ab-input" value={displayName} onChange={(event) => onDisplayNameChange(event.target.value)} placeholder="z. B. Trainer" disabled={protectedSystemRole} maxLength={120} />
           <small>Dieser Name wird Administratoren und Benutzern angezeigt.</small>
         </label>
-
         <label className="role-editor-field">
           <span>Technische Role-ID</span>
           <input className="ab-input" value={technicalId} onChange={(event) => onTechnicalIdChange(event.target.value)} placeholder="z. B. training:trainer" disabled={!isNew || protectedSystemRole} maxLength={120} autoCapitalize="none" spellCheck={false} />
           <small>Nach dem Anlegen stabil und nicht mehr änderbar.</small>
         </label>
-
         <label className="role-editor-field role-editor-field--wide">
           <span>Beschreibung</span>
           <textarea className="role-editor-textarea" value={description} onChange={(event) => onDescriptionChange(event.target.value)} placeholder="Kurz erklären, wofür diese Rolle gedacht ist …" rows={4} disabled={protectedSystemRole} maxLength={500} />
           <small>Maximal 500 Zeichen.</small>
         </label>
-
         <div className="role-editor-status role-editor-field--wide">
           <div>
             <strong>Status</strong>
@@ -369,19 +375,13 @@ function GeneralTab({
   );
 }
 
-function PermissionsTab({
-  protectedSystemRole,
-  knownCapabilities,
-  selectedCapabilities,
-  onToggleCapability,
-}: {
+function PermissionsTab({ protectedSystemRole, knownCapabilities, selectedCapabilities, onToggleCapability }: {
   readonly protectedSystemRole: boolean;
   readonly knownCapabilities: readonly CapabilityId[];
   readonly selectedCapabilities: readonly CapabilityId[];
   readonly onToggleCapability: (capability: CapabilityId) => void;
 }) {
   const groups = groupCapabilities(knownCapabilities);
-
   return (
     <section className="role-editor-panel ab-surface" aria-labelledby="role-permissions-title">
       <div className="role-editor-section-heading">
@@ -473,6 +473,21 @@ function roleValidationMessage(displayName: string, technicalId: string, isNew: 
     return 'Die Role-ID muss mit Kleinbuchstabe oder Zahl beginnen und darf nur Kleinbuchstaben, Zahlen, Doppelpunkt, Unterstrich und Bindestrich enthalten.';
   }
   return null;
+}
+
+function roleUpdateChanged(role: RoleDetails, input: ReferenceRoleUpdateInput): boolean {
+  return (
+    role.displayName !== input.displayName ||
+    role.description !== input.description ||
+    !sameCapabilities(role.capabilities, input.capabilities)
+  );
+}
+
+function sameCapabilities(left: readonly CapabilityId[], right: readonly CapabilityId[]): boolean {
+  if (left.length !== right.length) return false;
+  const leftValues = left.map(String).sort();
+  const rightValues = right.map(String).sort();
+  return leftValues.every((value, index) => value === rightValues[index]);
 }
 
 function roleAdminErrorMessage(error: unknown, fallback: string): string {
