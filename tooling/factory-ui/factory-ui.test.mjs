@@ -196,6 +196,7 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(createScriptBody, /"content-type": "application\/json"/);
   assert.match(createScriptBody, /credentials: "same-origin"/);
   assert.match(createScriptBody, /Es wurde kein Deployment gestartet/);
+  assert.match(createScriptBody, /FACTORY_STATE_UNAVAILABLE/);
   assert.doesNotMatch(createScriptBody, /brandMark:/);
   assert.doesNotMatch(createScriptBody, /accentColor:/);
 
@@ -391,6 +392,34 @@ test("factory local app creation is origin-locked, JSON-only and uses the existi
   });
   assert.equal(duplicate.status, 409);
   assert.equal((await duplicate.json()).error.code, "APP_ALREADY_EXISTS");
+
+  await writeFile(
+    join(fixtureRoot, "apps", "demo", "appbasis.app.json"),
+    "{ invalid-json\n",
+    "utf8",
+  );
+  const blockedByInvalidRepository = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      origin: baseUrl,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      appId: "must-stay-blocked",
+      displayName: "Must Stay Blocked",
+      modules: [],
+      platformServices: [],
+    }),
+  });
+  assert.equal(blockedByInvalidRepository.status, 503);
+  assert.equal(
+    (await blockedByInvalidRepository.json()).error.code,
+    "FACTORY_STATE_UNAVAILABLE",
+  );
+  await assert.rejects(
+    readFile(join(fixtureRoot, "apps", "must-stay-blocked", "appbasis.app.json"), "utf8"),
+    (error) => error?.code === "ENOENT",
+  );
 });
 
 function assertAccessibleAccent(accent) {
