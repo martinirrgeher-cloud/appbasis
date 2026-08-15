@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { startFactoryServer } from "./server.mjs";
 
-test("factory write UI cannot be framed and unsupported services are client errors", async (t) => {
+test("factory write UI blocks framing and rejects unsafe creation input", async (t) => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "appbasis-factory-write-review-"));
   await mkdir(join(fixtureRoot, "apps", "demo"), { recursive: true });
   await mkdir(join(fixtureRoot, "modules", "tasks"), { recursive: true });
@@ -67,6 +67,31 @@ test("factory write UI cannot be framed and unsupported services are client erro
   await assert.rejects(
     readFile(
       join(fixtureRoot, "apps", "unsupported-service", "appbasis.app.json"),
+      "utf8",
+    ),
+    (error) => error?.code === "ENOENT",
+  );
+
+  const overlongAppId = `a${"b".repeat(63)}`;
+  assert.equal(overlongAppId.length, 64);
+  const overlong = await fetch(`${baseUrl}/api/factory/apps`, {
+    method: "POST",
+    headers: {
+      origin: baseUrl,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      appId: overlongAppId,
+      displayName: "Too Long",
+      modules: [],
+      platformServices: [],
+    }),
+  });
+  assert.equal(overlong.status, 400);
+  assert.equal((await overlong.json()).error.code, "INVALID_APP_REQUEST");
+  await assert.rejects(
+    readFile(
+      join(fixtureRoot, "apps", overlongAppId, "appbasis.app.json"),
       "utf8",
     ),
     (error) => error?.code === "ENOENT",

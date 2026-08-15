@@ -11,6 +11,7 @@ const DEFAULT_REPOSITORY_ROOT = resolve(FACTORY_UI_DIRECTORY, "../..");
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 4174;
 const MAX_CREATE_REQUEST_BYTES = 64 * 1024;
+const MAX_FACTORY_APP_ID_LENGTH = 63;
 const LOOPBACK_ORIGIN_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const CREATE_APP_KEYS = new Set([
   "appId",
@@ -249,6 +250,17 @@ async function readCreateAppInput(request) {
         `Unknown app creation field: ${key}.`,
       );
     }
+  }
+
+  if (
+    typeof value.appId === "string" &&
+    value.appId.length > MAX_FACTORY_APP_ID_LENGTH
+  ) {
+    throw new FactoryRequestError(
+      400,
+      "INVALID_APP_REQUEST",
+      `App-ID must contain at most ${MAX_FACTORY_APP_ID_LENGTH} characters.`,
+    );
   }
 
   return value;

@@ -5,6 +5,7 @@ const status = document.querySelector("#factory-status");
 const displayName = document.querySelector("#display-name");
 const appId = document.querySelector("#app-id");
 const createdAppIds = new Set();
+const MAX_APP_ID_LENGTH = 63;
 
 let createPending = false;
 
@@ -78,7 +79,9 @@ function syncCreateAvailability() {
 
   const input = currentCreateInput();
   const validName = input.displayName.length > 0 && input.displayName.length <= 80;
-  const validAppId = /^[a-z][a-z0-9-]*$/.test(input.appId);
+  const validAppIdLength = input.appId.length <= MAX_APP_ID_LENGTH;
+  const validAppIdSyntax = /^[a-z][a-z0-9-]*$/.test(input.appId);
+  const validAppId = validAppIdLength && validAppIdSyntax;
   const duplicate = validAppId && appIdAlreadyExists(input.appId);
 
   createButton.disabled = createPending || !validName || !validAppId || duplicate;
@@ -87,7 +90,9 @@ function syncCreateAvailability() {
     createReason.textContent = "Die App wird gerade lokal erzeugt.";
   } else if (!validName) {
     createReason.textContent = "Bitte zuerst einen App-Namen eingeben.";
-  } else if (!validAppId) {
+  } else if (!validAppIdLength) {
+    createReason.textContent = `Die App-ID darf höchstens ${MAX_APP_ID_LENGTH} Zeichen enthalten.`;
+  } else if (!validAppIdSyntax) {
     createReason.textContent = "Die App-ID muss mit einem Kleinbuchstaben beginnen und darf nur Kleinbuchstaben, Zahlen und Bindestriche enthalten.";
   } else if (duplicate) {
     createReason.textContent = "Diese App-ID ist bereits im Repository vorhanden.";
