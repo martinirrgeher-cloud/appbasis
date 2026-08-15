@@ -305,6 +305,7 @@ function syncNavigationCandidates() {
     candidateIds: candidates.map((item) => item.id),
     currentOrder: navigationOrder,
     directIds: [...directNavigationItems],
+    maxDirectItems: directNavigationCapacity(candidates.length),
   });
 
   navigationOrder = [...next.navigationOrder];
@@ -313,6 +314,12 @@ function syncNavigationCandidates() {
 
   renderNavigationOptions(candidates);
   renderNavigationPreview(candidates);
+}
+
+export function directNavigationCapacity(candidateCount) {
+  return candidateCount > MAX_DIRECT_NAVIGATION_ITEMS
+    ? MAX_DIRECT_NAVIGATION_ITEMS - 1
+    : MAX_DIRECT_NAVIGATION_ITEMS;
 }
 
 export function reconcileNavigationDraftState({
@@ -331,8 +338,13 @@ export function reconcileNavigationDraftState({
     introducedIds.push(candidateId);
   }
 
-  const nextDirect = new Set(
+  const requestedDirectIds = new Set(
     directIds.filter((id) => availableIds.has(id)),
+  );
+  const nextDirect = new Set(
+    nextOrder
+      .filter((id) => requestedDirectIds.has(id))
+      .slice(0, maxDirectItems),
   );
   for (const candidateId of introducedIds) {
     if (nextDirect.size >= maxDirectItems) break;
@@ -365,6 +377,7 @@ function renderNavigationOptions(candidates) {
   container.replaceChildren();
 
   const byId = new Map(candidates.map((item) => [item.id, item]));
+  const maxDirectItems = directNavigationCapacity(candidates.length);
   for (const id of navigationOrder) {
     const item = byId.get(id);
     if (!item) continue;
@@ -378,7 +391,7 @@ function renderNavigationOptions(candidates) {
     direct.checked = directNavigationItems.has(id);
     direct.setAttribute("aria-label", `${item.label} direkt im Bottom-Menü anzeigen`);
     direct.addEventListener("change", () => {
-      if (direct.checked && directNavigationItems.size >= MAX_DIRECT_NAVIGATION_ITEMS) {
+      if (direct.checked && directNavigationItems.size >= maxDirectItems) {
         direct.checked = false;
         return;
       }
@@ -406,8 +419,16 @@ function renderNavigationOptions(candidates) {
     controls.style.gap = "4px";
     controls.style.marginLeft = "auto";
     controls.append(
-      navigationMoveButton(id, -1, "Nach links"),
-      navigationMoveButton(id, 1, "Nach rechts"),
+      navigationMoveButton(
+        id,
+        -1,
+        `${item.label} nach links verschieben`,
+      ),
+      navigationMoveButton(
+        id,
+        1,
+        `${item.label} nach rechts verschieben`,
+      ),
     );
 
     row.append(direct, copy, controls);
