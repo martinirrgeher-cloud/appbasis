@@ -109,7 +109,7 @@ describe('referenceApi', () => {
     await expect(referenceApi.listRoleCapabilities()).resolves.toEqual(['app:use', 'users:manage']);
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
       '/api/admin/roles',
-      '/api/admin/roles/managed%3Atrainer',
+      '/api/admin/roles/managed%3Atrainer/details',
       '/api/admin/roles/capabilities',
     ]);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {

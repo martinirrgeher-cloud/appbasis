@@ -108,7 +108,7 @@ export const referenceApi = {
 
   async getRole(id: string): Promise<RoleDetails> {
     const payload = await requestJson<{ role: RoleDetails }>(
-      `/api/admin/roles/${encodeURIComponent(id)}`,
+      `/api/admin/roles/${encodeURIComponent(id)}/details`,
     );
     return payload.role;
   },
