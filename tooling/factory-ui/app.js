@@ -229,29 +229,30 @@ function renderPreviewReadiness(readiness) {
   if (!heading || !detail) return;
 
   if (readiness?.status === "repository-ready") {
-    heading.textContent = "Repository-Voraussetzungen erfüllt";
+    heading.textContent = "Lokale Preview-Voraussetzungen erfüllt";
     detail.textContent =
-      "Worker, Paket- und erforderliche Datenbank-Artefakte sind vorhanden. Provider-, Secret- und Preview-Datenbank-Status werden noch nicht geprüft; Preview bleibt gesperrt.";
+      "Die benötigten lokalen App-Artefakte sind vorhanden. Externe Preview-Voraussetzungen werden noch nicht geprüft; Preview bleibt gesperrt.";
     return;
   }
 
   const missing = [];
-  if (!readiness?.workerEntrypointPresent) missing.push("Worker-Einstieg");
-  if (!readiness?.packageManifestPresent) missing.push("Paket-Manifest");
-  if (readiness?.databaseManifestRequired && !readiness?.databaseManifestPresent) {
-    missing.push("Datenbank-Manifest");
+  if (!readiness?.workerEntrypointPresent || !readiness?.packageManifestPresent) {
+    missing.push("App-Laufzeit");
   }
-  heading.textContent = "Repository-Voraussetzungen unvollständig";
+  if (readiness?.databaseManifestRequired && !readiness?.databaseManifestPresent) {
+    missing.push("Datenbank-Vorbereitung");
+  }
+  heading.textContent = "Lokale Preview-Voraussetzungen unvollständig";
   detail.textContent =
     missing.length > 0
       ? `Fehlt: ${missing.join(", ")}. Preview bleibt gesperrt.`
-      : "Die Repository-Voraussetzungen konnten nicht vollständig bestätigt werden. Preview bleibt gesperrt.";
+      : "Die lokalen Preview-Voraussetzungen konnten nicht vollständig bestätigt werden. Preview bleibt gesperrt.";
 }
 
 function previewReadinessLabel(readiness) {
   return readiness?.status === "repository-ready"
-    ? "Preview-Repo bereit"
-    : "Preview-Repo unvollständig";
+    ? "Preview lokal vorbereitet"
+    : "Preview-Voraussetzungen fehlen";
 }
 
 function returnToApps(appIdToRestore = state.selectedAppId) {
