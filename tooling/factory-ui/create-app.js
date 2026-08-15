@@ -131,6 +131,9 @@ function createErrorMessage(code) {
   if (code === "INVALID_APP_REQUEST" || code === "INVALID_JSON") {
     return "Der App-Entwurf ist noch nicht gültig. Bitte Name, App-ID, Module und Dienste prüfen.";
   }
+  if (code === "FACTORY_STATE_UNAVAILABLE") {
+    return "Der aktuelle Repository-Stand konnte nicht sicher gelesen werden. Deshalb wurde keine App angelegt.";
+  }
   if (code === "INVALID_REQUEST_ORIGIN") {
     return "Die Factory hat den Schreibversuch aus Sicherheitsgründen abgelehnt. Bitte die lokale Factory-Seite direkt verwenden.";
   }
