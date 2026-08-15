@@ -78,7 +78,7 @@ test("factory snapshot ignores unpublished app directories without weakening str
   }
 });
 
-test("factory console serves repository state but exposes no write endpoint", async (t) => {
+test("factory console exposes the target creation flow without enabling writes", async (t) => {
   const server = await startFactoryServer({ repositoryRoot, port: 0 });
   t.after(
     () =>
@@ -93,13 +93,29 @@ test("factory console serves repository state but exposes no write endpoint", as
 
   const page = await fetch(`${baseUrl}/`);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /AppBasis Factory/);
+  const pageBody = await page.text();
+  assert.match(pageBody, /AppBasis Factory/);
+  assert.match(pageBody, /data-flow-step="branding"/);
+  assert.match(pageBody, /data-flow-step="roles"/);
+  assert.match(pageBody, /data-flow-step="preview"/);
+  assert.match(pageBody, /data-flow-step="release"/);
+  assert.match(pageBody, /id="brand-mark"/);
+  assert.match(pageBody, /id="accent-color"/);
+  assert.match(pageBody, /Produktion bleibt fail-closed/);
+  assert.match(pageBody, /type="button" disabled aria-describedby="create-disabled-reason"/);
+
+  const targetStyles = await fetch(`${baseUrl}/target-flow.css`);
+  assert.equal(targetStyles.status, 200);
+  assert.match(targetStyles.headers.get("content-type") ?? "", /^text\/css/);
+  assert.match(await targetStyles.text(), /\.factory-flow/);
 
   const snapshotResponse = await fetch(`${baseUrl}/api/factory/snapshot`);
   assert.equal(snapshotResponse.status, 200);
   const snapshot = await snapshotResponse.json();
   assert.ok(Array.isArray(snapshot.apps));
   assert.equal(snapshot.capabilities.createApp, false);
+  assert.equal(snapshot.capabilities.deployPreview, false);
+  assert.equal(snapshot.capabilities.releaseProduction, false);
 
   const writeAttempt = await fetch(`${baseUrl}/api/factory/apps`, {
     method: "POST",
