@@ -46,6 +46,14 @@ describe('Reference collision-free role detail route', () => {
   it('keeps the capability catalog and a role named capabilities independently readable', async () => {
     const app = createReferenceRoleAdminApp({
       identity: new StubIdentityService(),
+      principalDirectory: {
+        async list() {
+          return [];
+        },
+        async find() {
+          return null;
+        },
+      },
       permissions: adminPermissionStore(),
       roleAdministration: roleAdministration(),
     });
@@ -145,6 +153,9 @@ function roleAdministration(): ReferenceRoleAdminDependencies['roleAdministratio
       throw new Error('not expected');
     },
     async deleteRole() {
+      throw new Error('not expected');
+    },
+    async replacePrincipalRoles() {
       throw new Error('not expected');
     },
   };
