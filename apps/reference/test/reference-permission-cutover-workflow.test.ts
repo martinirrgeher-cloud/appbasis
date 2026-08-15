@@ -83,11 +83,14 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(deployWorkflow).toContain('rm -rf ./apps/reference/tooling/.permission-authority-dist');
   });
 
-  it('pins repository ownership of Reference plaintext bindings in the deployment contract', () => {
+  it('pins repository ownership of Reference unencrypted variable bindings in the deployment contract', () => {
     expect(deploymentContract).toContain('`keep_vars: false`');
     expect(deploymentContract).not.toContain('`keep_vars: true`');
     expect(deploymentContract).toContain(
-      '`APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS` und `APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS` sind verboten',
+      '`APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS` und `APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS` sind sowohl als `plain_text` als auch als `json` verboten',
+    );
+    expect(deploymentContract).toContain(
+      'Jedes `json`-Binding blockiert den Deploy-Abschluss.',
     );
     expect(deploymentContract).toContain(
       'Worker-Secrets werden durch einen normalen Deploy unabhängig von `keep_vars` nicht gelöscht.',
