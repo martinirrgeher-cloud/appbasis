@@ -107,7 +107,7 @@ test("factory accent preview guarantees readable black-or-white foregrounds", ()
   }
 });
 
-test("factory console exposes the target creation flow without enabling writes", async (t) => {
+test("factory console exposes app details and target creation flow without enabling writes", async (t) => {
   const server = await startFactoryServer({ repositoryRoot, port: 0 });
   t.after(
     () =>
@@ -124,6 +124,12 @@ test("factory console exposes the target creation flow without enabling writes",
   assert.equal(page.status, 200);
   const pageBody = await page.text();
   assert.match(pageBody, /AppBasis Factory/);
+  assert.match(pageBody, /data-panel="detail"/);
+  assert.match(pageBody, /data-action="back-to-apps"/);
+  assert.match(pageBody, /id="detail-name"/);
+  assert.match(pageBody, /id="detail-modules"/);
+  assert.match(pageBody, /id="detail-services"/);
+  assert.match(pageBody, /Read-only Detailansicht/);
   assert.match(pageBody, /data-flow-step="branding"/);
   assert.match(pageBody, /data-flow-step="roles"/);
   assert.match(pageBody, /data-flow-step="preview"/);
@@ -133,10 +139,18 @@ test("factory console exposes the target creation flow without enabling writes",
   assert.match(pageBody, /Produktion bleibt fail-closed/);
   assert.match(pageBody, /type="button" disabled aria-describedby="create-disabled-reason"/);
 
+  const appScript = await fetch(`${baseUrl}/app.js`);
+  assert.equal(appScript.status, 200);
+  const appScriptBody = await appScript.text();
+  assert.match(appScriptBody, /openAppDetail\(app\.appId\)/);
+  assert.match(appScriptBody, /showPanel\("detail"\)/);
+
   const targetStyles = await fetch(`${baseUrl}/target-flow.css`);
   assert.equal(targetStyles.status, 200);
   assert.match(targetStyles.headers.get("content-type") ?? "", /^text\/css/);
-  assert.match(await targetStyles.text(), /\.factory-flow/);
+  const targetStylesBody = await targetStyles.text();
+  assert.match(targetStylesBody, /\.factory-flow/);
+  assert.match(targetStylesBody, /\.factory-detail-header/);
 
   const previewTheme = await fetch(`${baseUrl}/preview-theme.mjs`);
   assert.equal(previewTheme.status, 200);
