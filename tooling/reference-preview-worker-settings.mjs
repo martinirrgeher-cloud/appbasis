@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { validateReferencePreviewOrigin } from './reference-preview-deploy-config.mjs';
 
 const EXPECTED_PLAINTEXT_BINDING = 'APPBASIS_BASE_URL';
+const UNENCRYPTED_VARIABLE_TYPES = new Set(['plain_text', 'json']);
 const LEGACY_PERMISSION_BINDINGS = new Set([
   'APPBASIS_REFERENCE_MEMBER_IDENTITY_IDS',
   'APPBASIS_REFERENCE_ADMIN_IDENTITY_IDS',
@@ -25,25 +26,29 @@ export function verifyReferencePreviewWorkerSettings(settings, previewURL) {
     }
     return binding;
   });
-  const plaintextBindings = bindings.filter((binding) => binding.type === 'plain_text');
+  const unencryptedVariableBindings = bindings.filter(
+    (binding) =>
+      typeof binding.type === 'string' && UNENCRYPTED_VARIABLE_TYPES.has(binding.type),
+  );
 
   if (
-    plaintextBindings.some(
+    unencryptedVariableBindings.some(
       (binding) =>
         typeof binding.name === 'string' && LEGACY_PERMISSION_BINDINGS.has(binding.name),
     )
   ) {
-    throw new Error('Reference Worker still contains legacy plaintext permission bindings.');
+    throw new Error('Reference Worker still contains legacy unencrypted permission bindings.');
   }
 
-  const unexpected = plaintextBindings.filter(
-    (binding) => binding.name !== EXPECTED_PLAINTEXT_BINDING,
+  const unexpected = unencryptedVariableBindings.filter(
+    (binding) =>
+      binding.type !== 'plain_text' || binding.name !== EXPECTED_PLAINTEXT_BINDING,
   );
   if (unexpected.length > 0) {
-    throw new Error('Reference Worker contains unexpected plaintext bindings.');
+    throw new Error('Reference Worker contains unexpected unencrypted variable bindings.');
   }
 
-  const baseURLBindings = plaintextBindings.filter(
+  const baseURLBindings = unencryptedVariableBindings.filter(
     (binding) => binding.name === EXPECTED_PLAINTEXT_BINDING,
   );
   if (
@@ -56,7 +61,7 @@ export function verifyReferencePreviewWorkerSettings(settings, previewURL) {
     );
   }
 
-  return Object.freeze({ plainTextBindingCount: plaintextBindings.length });
+  return Object.freeze({ plainTextBindingCount: baseURLBindings.length });
 }
 
 async function main(env = process.env) {
@@ -74,7 +79,7 @@ async function main(env = process.env) {
     env.APPBASIS_PREVIEW_URL,
   );
   console.log(
-    `Reference preview Worker plaintext authority verified: ${result.plainTextBindingCount} repository-owned binding.`,
+    `Reference preview Worker plaintext authority verified: ${result.plainTextBindingCount} repository-owned binding and no JSON variables.`,
   );
 }
 
