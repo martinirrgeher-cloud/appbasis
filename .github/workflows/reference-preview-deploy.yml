@@ -211,6 +211,7 @@ jobs:
           APPBASIS_SMOKE_PASSWORD: ${{ secrets.APPBASIS_SMOKE_PASSWORD }}
           APPBASIS_SMOKE_NEW_PASSWORD: ${{ secrets.APPBASIS_SMOKE_NEW_PASSWORD }}
           APPBASIS_SMOKE_MUTATE: '1'
+          APPBASIS_SMOKE_ROLE_ADMIN_GATEWAY: '1'
         run: node ./tooling/reference-preview-smoke.mjs
 
       - name: Remove generated permission authority and Worker settings artifacts

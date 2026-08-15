@@ -77,6 +77,7 @@ describe('Reference preview permission authority cutover workflow', () => {
     expect(deployWorkflow).toContain(
       'APPBASIS_REFERENCE_ROLE_ADMIN_DEPLOYED_WORKER_SETTINGS_PATH',
     );
+    expect(deployWorkflow).toContain("APPBASIS_SMOKE_ROLE_ADMIN_GATEWAY: '1'");
     expect(deployWorkflow).toContain('APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}');
     expect(deployWorkflow).not.toContain('Snapshot existing Reference Worker permission bindings');
     expect(deployWorkflow).not.toContain('APPBASIS_REFERENCE_WORKER_SETTINGS_PATH');
