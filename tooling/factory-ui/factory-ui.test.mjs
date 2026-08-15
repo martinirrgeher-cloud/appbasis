@@ -107,7 +107,7 @@ test("factory accent preview guarantees readable black-or-white foregrounds", ()
   }
 });
 
-test("factory console exposes the target creation flow without enabling writes", async (t) => {
+test("factory console exposes app details and target creation flow without enabling writes", async (t) => {
   const server = await startFactoryServer({ repositoryRoot, port: 0 });
   t.after(
     () =>
@@ -124,6 +124,12 @@ test("factory console exposes the target creation flow without enabling writes",
   assert.equal(page.status, 200);
   const pageBody = await page.text();
   assert.match(pageBody, /AppBasis Factory/);
+  assert.match(pageBody, /data-panel="detail"/);
+  assert.match(pageBody, /data-action="back-to-apps"/);
+  assert.match(pageBody, /id="detail-name"/);
+  assert.match(pageBody, /id="detail-modules"/);
+  assert.match(pageBody, /id="detail-services"/);
+  assert.match(pageBody, /Read-only Detailansicht/);
   assert.match(pageBody, /data-flow-step="branding"/);
   assert.match(pageBody, /data-flow-step="roles"/);
   assert.match(pageBody, /data-flow-step="preview"/);
@@ -133,10 +139,58 @@ test("factory console exposes the target creation flow without enabling writes",
   assert.match(pageBody, /Produktion bleibt fail-closed/);
   assert.match(pageBody, /type="button" disabled aria-describedby="create-disabled-reason"/);
 
+  const appScript = await fetch(`${baseUrl}/app.js`);
+  assert.equal(appScript.status, 200);
+  const appScriptBody = await appScript.text();
+  assert.match(appScriptBody, /button\.dataset\.appId = app\.appId/);
+  assert.match(appScriptBody, /openAppDetail\(app\.appId\)/);
+  assert.match(appScriptBody, /showPanel\("detail"\)/);
+  assert.match(
+    appScriptBody,
+    /function returnToApps\(appIdToRestore = state\.selectedAppId\)/,
+  );
+  assert.match(appScriptBody, /scheduleAppsFocus\(appIdToRestore\);/);
+  assert.match(appScriptBody, /const focusedAppIdBeforeRender = focusedAppButtonId\(\);/);
+  assert.match(appScriptBody, /restoreListFocusAfterRender\(focusedAppIdBeforeRender\);/);
+  assert.match(
+    appScriptBody,
+    /if \(appId !== null && focusAppOpenButton\(appId\)\) return;/,
+  );
+  assert.match(
+    appScriptBody,
+    /document\.querySelector\("button\[data-tab='apps'\]"\)\?\.focus\(\)/,
+  );
+
+  assert.match(appScriptBody, /snapshotGeneration: 0/);
+  assert.match(appScriptBody, /const generation = \+\+state\.snapshotGeneration;/);
+  assert.match(appScriptBody, /const nextSnapshot = await response\.json\(\);/);
+  assert.ok(
+    (appScriptBody.match(/if \(generation !== state\.snapshotGeneration\) return;/g) ?? [])
+      .length >= 2,
+  );
+  assert.match(appScriptBody, /const draftCatalogState = captureDraftCatalogState\(\);/);
+  assert.match(appScriptBody, /renderCatalog\(draftCatalogState\);/);
+  assert.match(appScriptBody, /restoreDraftCatalogFocus\(draftCatalogState\.focus\);/);
+  assert.match(appScriptBody, /input\.checked = selectedIds\.includes\(id\);/);
+  assert.match(appScriptBody, /function focusedDraftOption\(\)/);
+  assert.match(
+    appScriptBody,
+    /document\.querySelector\("button\[data-tab='create'\]"\)\?\.focus\(\)/,
+  );
+  assert.match(appScriptBody, /if \(state\.snapshot !== null\) \{/);
+  assert.match(appScriptBody, /Aktualisierung fehlgeschlagen/);
+  assert.match(appScriptBody, /Der zuletzt geladene Stand bleibt sichtbar/);
+  assert.doesNotMatch(
+    appScriptBody,
+    /catch \{[\s\S]*?selectTab\("apps"\)[\s\S]*?showError\("Die Factory-Daten konnten nicht gelesen werden/,
+  );
+
   const targetStyles = await fetch(`${baseUrl}/target-flow.css`);
   assert.equal(targetStyles.status, 200);
   assert.match(targetStyles.headers.get("content-type") ?? "", /^text\/css/);
-  assert.match(await targetStyles.text(), /\.factory-flow/);
+  const targetStylesBody = await targetStyles.text();
+  assert.match(targetStylesBody, /\.factory-flow/);
+  assert.match(targetStylesBody, /\.factory-detail-header/);
 
   const previewTheme = await fetch(`${baseUrl}/preview-theme.mjs`);
   assert.equal(previewTheme.status, 200);

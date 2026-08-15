@@ -52,6 +52,77 @@
         <div id="apps-list" class="factory-app-grid" aria-live="polite"></div>
       </section>
 
+      <section data-panel="detail" hidden aria-labelledby="detail-name">
+        <button class="factory-detail-back" type="button" data-action="back-to-apps">
+          <span aria-hidden="true">‹</span>
+          <span>Zur App-Liste</span>
+        </button>
+
+        <header class="factory-detail-header ab-surface">
+          <div class="factory-detail-identity">
+            <span class="factory-app-mark factory-detail-mark" id="detail-mark" aria-hidden="true">A</span>
+            <div>
+              <p class="factory-eyebrow">App im Repository</p>
+              <h2 id="detail-name">App</h2>
+              <code id="detail-id">app-id</code>
+            </div>
+          </div>
+          <span class="ab-badge ab-badge--info" id="detail-schema">Schema v2</span>
+        </header>
+
+        <div class="factory-detail-grid">
+          <section class="factory-detail-section ab-surface" aria-labelledby="detail-modules-heading">
+            <div>
+              <p class="factory-eyebrow">Fachlicher Umfang</p>
+              <h3 id="detail-modules-heading">Module</h3>
+            </div>
+            <div class="factory-chip-list factory-detail-chips" id="detail-modules"></div>
+          </section>
+
+          <section class="factory-detail-section ab-surface" aria-labelledby="detail-services-heading">
+            <div>
+              <p class="factory-eyebrow">Technische Basis</p>
+              <h3 id="detail-services-heading">Plattformdienste</h3>
+            </div>
+            <div class="factory-chip-list factory-detail-chips" id="detail-services"></div>
+          </section>
+        </div>
+
+        <section class="factory-detail-section ab-surface" aria-labelledby="detail-readiness-heading">
+          <div>
+            <p class="factory-eyebrow">Factory-Status</p>
+            <h3 id="detail-readiness-heading">Bereitschaft & nächste Gates</h3>
+          </div>
+          <div class="factory-detail-gates">
+            <div class="factory-detail-gate">
+              <span>Repository</span>
+              <strong>App-Definition geladen</strong>
+              <small>Die Factory liest den veröffentlichten Repository-Stand.</small>
+            </div>
+            <div class="factory-detail-gate">
+              <span>Rollen & Rechte</span>
+              <strong>Separat verwaltet</strong>
+              <small>Der privilegierte Rollenpfad bleibt außerhalb der normalen Factory-Leseansicht.</small>
+            </div>
+            <div class="factory-detail-gate">
+              <span>Preview</span>
+              <strong>Noch nicht im Factory-Snapshot</strong>
+              <small>Ein echter Deployment-Status wird erst nach einer eigenen, geprüften Anbindung angezeigt.</small>
+            </div>
+            <div class="factory-detail-gate factory-detail-gate--locked">
+              <span>Produktion</span>
+              <strong>Gesperrt</strong>
+              <small>Freigabe bleibt fail-closed, solange Production-Gates nicht explizit erfüllt sind.</small>
+            </div>
+          </div>
+        </section>
+
+        <aside class="factory-gate-note" role="note">
+          <strong>Read-only Detailansicht</strong>
+          <span>Diese Ansicht zeigt ausschließlich den vorhandenen Repository-Stand und löst keine Änderung, Migration oder Bereitstellung aus.</span>
+        </aside>
+      </section>
+
       <section data-panel="create" hidden aria-labelledby="create-heading">
         <div class="factory-section-heading">
           <div>
