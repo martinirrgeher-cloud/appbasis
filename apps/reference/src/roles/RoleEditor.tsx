@@ -5,6 +5,7 @@ import type { CapabilityId, RoleDetails } from '@appbasis/permissions';
 import { ReferenceApiError, referenceApi, type ReferenceRoleUpdateInput } from '../api';
 import { Icon, RoleAdminShell } from './RoleAdminShell';
 import { roleLabel } from './role-overview-model';
+import { roleEditorHash } from './role-route';
 import './role-editor.css';
 
 type RoleEditorTab = 'general' | 'permissions' | 'users';
@@ -138,7 +139,7 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
           ...updateInput,
         });
         applyRole(created);
-        window.history.replaceState(null, '', `#roles/${String(created.roleId)}`);
+        window.history.replaceState(null, '', roleEditorHash(String(created.roleId)));
         setSaveMessage('Die Rolle wurde persistent angelegt.');
       } else if (persistedRole !== null) {
         let saved = persistedRole;
@@ -278,6 +279,7 @@ export function RoleEditor({ roleId }: { readonly roleId?: string }) {
             <GeneralTab
               isNew={isNew}
               protectedSystemRole={protectedSystemRole}
+              fieldsDisabled={protectedSystemRole || savePending}
               statusDisabled={isNew || protectedSystemRole || savePending}
               displayName={displayName}
               technicalId={technicalId}
@@ -321,11 +323,12 @@ function EditorTab({ id, activeTab, onSelect, children }: {
 }
 
 function GeneralTab({
-  isNew, protectedSystemRole, statusDisabled, displayName, technicalId, description, active,
+  isNew, protectedSystemRole, fieldsDisabled, statusDisabled, displayName, technicalId, description, active,
   onDisplayNameChange, onTechnicalIdChange, onDescriptionChange, onActiveChange,
 }: {
   readonly isNew: boolean;
   readonly protectedSystemRole: boolean;
+  readonly fieldsDisabled: boolean;
   readonly statusDisabled: boolean;
   readonly displayName: string;
   readonly technicalId: string;
@@ -345,17 +348,17 @@ function GeneralTab({
       <div className="role-editor-form-grid">
         <label className="role-editor-field">
           <span>Anzeigename</span>
-          <input className="ab-input" value={displayName} onChange={(event) => onDisplayNameChange(event.target.value)} placeholder="z. B. Trainer" disabled={protectedSystemRole} maxLength={120} />
+          <input className="ab-input" value={displayName} onChange={(event) => onDisplayNameChange(event.target.value)} placeholder="z. B. Trainer" disabled={fieldsDisabled} maxLength={120} />
           <small>Dieser Name wird Administratoren und Benutzern angezeigt.</small>
         </label>
         <label className="role-editor-field">
           <span>Technische Role-ID</span>
-          <input className="ab-input" value={technicalId} onChange={(event) => onTechnicalIdChange(event.target.value)} placeholder="z. B. training:trainer" disabled={!isNew || protectedSystemRole} maxLength={120} autoCapitalize="none" spellCheck={false} />
+          <input className="ab-input" value={technicalId} onChange={(event) => onTechnicalIdChange(event.target.value)} placeholder="z. B. training:trainer" disabled={!isNew || fieldsDisabled} maxLength={120} autoCapitalize="none" spellCheck={false} />
           <small>Nach dem Anlegen stabil und nicht mehr änderbar.</small>
         </label>
         <label className="role-editor-field role-editor-field--wide">
           <span>Beschreibung</span>
-          <textarea className="role-editor-textarea" value={description} onChange={(event) => onDescriptionChange(event.target.value)} placeholder="Kurz erklären, wofür diese Rolle gedacht ist …" rows={4} disabled={protectedSystemRole} maxLength={500} />
+          <textarea className="role-editor-textarea" value={description} onChange={(event) => onDescriptionChange(event.target.value)} placeholder="Kurz erklären, wofür diese Rolle gedacht ist …" rows={4} disabled={fieldsDisabled} maxLength={500} />
           <small>Maximal 500 Zeichen.</small>
         </label>
         <div className="role-editor-status role-editor-field--wide">

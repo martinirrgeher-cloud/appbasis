@@ -2,6 +2,10 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+const entrySource = readFileSync(
+  new URL('../src/ReferenceEntry.tsx', import.meta.url),
+  'utf8',
+);
 const overviewSource = readFileSync(
   new URL('../src/roles/RoleOverview.tsx', import.meta.url),
   'utf8',
@@ -42,5 +46,19 @@ describe('Reference persistent role UI contract', () => {
   it('does not emit an update audit write for a status-only change or a no-op save', () => {
     expect(editorSource).toContain('roleUpdateChanged(saved, updateInput)');
     expect(editorSource).toContain('hasChanges;');
+  });
+
+  it('uses an unambiguous detail route so backend-valid role IDs cannot collide with the create route', () => {
+    expect(entrySource).toContain("if (hash === '#roles/new') return { kind: 'role-editor' };");
+    expect(entrySource).toContain("if (hash.startsWith('#roles/view/'))");
+    expect(entrySource).toContain('roleIdFromEditorHash(hash)');
+    expect(overviewSource).toContain('href={roleEditorHash(role.id)}');
+    expect(editorSource).toContain("window.history.replaceState(null, '', roleEditorHash(String(created.roleId)))");
+  });
+
+  it('locks all editable role fields while a save is pending', () => {
+    expect(editorSource).toContain('fieldsDisabled={protectedSystemRole || savePending}');
+    expect(editorSource).toContain('disabled={fieldsDisabled}');
+    expect(editorSource).toContain('disabled={!isNew || fieldsDisabled}');
   });
 });
