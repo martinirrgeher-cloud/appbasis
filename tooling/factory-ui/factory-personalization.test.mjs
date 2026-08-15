@@ -7,7 +7,10 @@ import { fileURLToPath } from "node:url";
 const directory = dirname(fileURLToPath(import.meta.url));
 
 test("Factory draft offers curated design presets and configurable bottom navigation without extending the generator request", async () => {
-  const source = await readFile(join(directory, "create-app.js"), "utf8");
+  const [source, targetFlowCss] = await Promise.all([
+    readFile(join(directory, "create-app.js"), "utf8"),
+    readFile(join(directory, "target-flow.css"), "utf8"),
+  ]);
 
   assert.match(source, /STYLE_PRESETS/);
   assert.match(source, /id: "clear", label: "Klar"/);
@@ -20,6 +23,10 @@ test("Factory draft offers curated design presets and configurable bottom naviga
   assert.match(source, /Weitere Bereiche landen unter „Mehr“/);
   assert.match(source, /\$\{item\.label\} nach links verschieben/);
   assert.match(source, /\$\{item\.label\} nach rechts verschieben/);
+  assert.match(
+    targetFlowCss,
+    /@media \(min-width: 920px\)[\s\S]*?grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/,
+  );
 
   const createInput = source.match(/function currentCreateInput\(\) \{[\s\S]*?\n\}/)?.[0] ?? "";
   assert.match(createInput, /appId:/);
