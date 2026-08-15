@@ -66,6 +66,7 @@ test("wires the declared tasks module through its public workspace contract with
   assert.doesNotMatch(worker, /\/api\/tasks/);
   assert.doesNotMatch(worker, /@appbasis\/permissions/);
   assert.equal(template.files.some((entry) => entry.path === "worker/postgres.ts"), false);
+  assert.equal(template.files.some((entry) => entry.path === "worker/preview.ts"), false);
 });
 
 test("generates tasks HTTP routes and complete PostgreSQL application composition only with explicit permissions", () => {
@@ -75,6 +76,7 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
     platformServices: ["identity", "permissions"],
   });
   const worker = content(template, "worker/app.ts");
+  const previewEntrypoint = content(template, "worker/preview.ts");
   const postgresRuntime = content(template, "worker/postgres.ts");
   const postgresTest = content(template, "test/app.postgres.e2e.ts");
   const packageJson = JSON.parse(content(template, "package.json"));
@@ -104,6 +106,13 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
   assert.match(worker, /app\.get\("\/api\/tasks"/);
   assert.match(worker, /app\.post\("\/api\/tasks"/);
   assert.match(worker, /app\.post\("\/api\/tasks\/:id\/toggle"/);
+
+  assert.match(previewEntrypoint, /import generatedWorker from "\.\/index"/);
+  assert.match(previewEntrypoint, /DATABASE_HEALTH_PATH = "\/api\/health\/database"/);
+  assert.match(previewEntrypoint, /appId: "checklist"/);
+  assert.match(previewEntrypoint, /DATABASE_NOT_CONFIGURED/);
+  assert.match(previewEntrypoint, /DATABASE_UNAVAILABLE/);
+  assert.match(previewEntrypoint, /HYPERDRIVE/);
 
   assert.match(generatedTest, /InMemoryPermissionStore/);
   assert.match(generatedTest, /unauthenticated\.status\)\.toBe\(401\)/);
@@ -157,6 +166,7 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
       "vitest.postgres.config.ts",
       "worker/app.ts",
       "worker/index.ts",
+      "worker/preview.ts",
       "worker/postgres.ts",
     ],
   );
@@ -174,6 +184,13 @@ test("keeps checked generated PostgreSQL output byte-identical to the generator"
     content(template, "worker/postgres.ts"),
     readFileSync(
       new URL("../apps/tasks-minimal/worker/postgres.ts", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    content(template, "worker/preview.ts"),
+    readFileSync(
+      new URL("../apps/tasks-minimal/worker/preview.ts", import.meta.url),
       "utf8",
     ),
   );
