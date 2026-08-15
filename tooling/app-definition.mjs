@@ -11,7 +11,11 @@ const APP_DEFINITION_KEYS = new Set([
   "modules",
   "platformServices",
 ]);
-const SUPPORTED_PLATFORM_SERVICES = new Set(["identity", "permissions"]);
+export const SUPPORTED_PLATFORM_SERVICES = Object.freeze([
+  "identity",
+  "permissions",
+]);
+const SUPPORTED_PLATFORM_SERVICE_IDS = new Set(SUPPORTED_PLATFORM_SERVICES);
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 export function parseAppDefinition(value, options = {}) {
@@ -54,7 +58,7 @@ export function parseAppDefinition(value, options = {}) {
     "platformServices",
   );
   for (const platformService of platformServices) {
-    if (!SUPPORTED_PLATFORM_SERVICES.has(platformService)) {
+    if (!SUPPORTED_PLATFORM_SERVICE_IDS.has(platformService)) {
       throw new Error(
         `App ${appId} references unsupported platform service ${platformService}.`,
       );
@@ -70,13 +74,24 @@ export function parseAppDefinition(value, options = {}) {
   });
 }
 
+export async function readAppDefinitions(repositoryRoot = process.cwd()) {
+  return readAndValidateAppDefinitions(repositoryRoot, {
+    skipUnpublishedDirectories: true,
+  });
+}
+
 export async function verifyAppDefinitions(repositoryRoot = process.cwd()) {
   return withAppRegistryLock(repositoryRoot, "verify", () =>
-    verifyAppDefinitionsUnlocked(repositoryRoot),
+    readAndValidateAppDefinitions(repositoryRoot, {
+      skipUnpublishedDirectories: false,
+    }),
   );
 }
 
-async function verifyAppDefinitionsUnlocked(repositoryRoot) {
+async function readAndValidateAppDefinitions(
+  repositoryRoot,
+  { skipUnpublishedDirectories },
+) {
   const appsDirectory = join(repositoryRoot, "apps");
   const modulesDirectory = join(repositoryRoot, "modules");
   const appEntries = await directoryNames(appsDirectory);
@@ -96,6 +111,7 @@ async function verifyAppDefinitionsUnlocked(repositoryRoot) {
       parsed = JSON.parse(await readFile(manifestPath, "utf8"));
     } catch (error) {
       if (error?.code === "ENOENT") {
+        if (skipUnpublishedDirectories) continue;
         throw new Error(`apps/${directoryName} is missing ${APP_DEFINITION_FILE}.`);
       }
       if (error instanceof SyntaxError) {
