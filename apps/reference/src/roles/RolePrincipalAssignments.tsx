@@ -10,7 +10,7 @@ import {
 import { Icon } from './RoleAdminShell';
 
 interface RolePrincipalAssignmentsProps {
-  readonly currentRoleId?: string;
+  readonly currentRoleId: string | undefined;
   readonly isNew: boolean;
 }
 
