@@ -119,6 +119,7 @@ function setupPersonalizationDraft() {
     field.style.gridColumn = "1 / -1";
 
     const title = document.createElement("span");
+    title.id = "style-preset-group-label";
     title.textContent = "Designstil";
 
     const hint = document.createElement("small");
@@ -127,6 +128,8 @@ function setupPersonalizationDraft() {
     const options = document.createElement("div");
     options.id = "style-preset-options";
     options.className = "factory-options";
+    options.setAttribute("role", "radiogroup");
+    options.setAttribute("aria-labelledby", title.id);
     options.style.gridTemplateColumns = "repeat(auto-fit, minmax(145px, 1fr))";
 
     for (const preset of STYLE_PRESETS) {
@@ -386,11 +389,30 @@ function renderNavigationOptions(candidates) {
     row.className = "factory-option";
     row.style.cursor = "default";
 
+    const directControl = document.createElement("label");
+    directControl.style.alignItems = "center";
+    directControl.style.cursor = "pointer";
+    directControl.style.display = "flex";
+    directControl.style.flex = "1 1 auto";
+    directControl.style.gap = "var(--ab-space-3)";
+    directControl.style.minHeight = "44px";
+    directControl.style.minWidth = "0";
+
     const direct = document.createElement("input");
     direct.type = "checkbox";
     direct.checked = directNavigationItems.has(id);
     direct.setAttribute("aria-label", `${item.label} direkt im Bottom-Menü anzeigen`);
-    direct.addEventListener("change", () => {
+
+    const copy = document.createElement("span");
+    const strong = document.createElement("strong");
+    strong.textContent = item.label;
+    const small = document.createElement("small");
+    small.textContent = direct.checked ? "Direkt sichtbar" : "Unter Mehr";
+    small.style.color = "var(--ab-text-muted)";
+    copy.append(strong, small);
+
+    direct.addEventListener("change", (event) => {
+      event.stopPropagation();
       if (direct.checked && directNavigationItems.size >= maxDirectItems) {
         direct.checked = false;
         return;
@@ -401,17 +423,11 @@ function renderNavigationOptions(candidates) {
         directNavigationItems.add(id);
         direct.checked = true;
       }
-      renderNavigationOptions(candidates);
+      small.textContent = direct.checked ? "Direkt sichtbar" : "Unter Mehr";
       renderNavigationPreview(candidates);
     });
 
-    const copy = document.createElement("span");
-    const strong = document.createElement("strong");
-    strong.textContent = item.label;
-    const small = document.createElement("small");
-    small.textContent = direct.checked ? "Direkt sichtbar" : "Unter Mehr";
-    small.style.color = "var(--ab-text-muted)";
-    copy.append(strong, small);
+    directControl.append(direct, copy);
 
     const controls = document.createElement("span");
     controls.style.display = "flex";
@@ -431,15 +447,18 @@ function renderNavigationOptions(candidates) {
       ),
     );
 
-    row.append(direct, copy, controls);
+    row.append(directControl, controls);
     container.append(row);
   }
 }
 
 function navigationMoveButton(id, direction, label) {
   const button = document.createElement("button");
+  const action = direction < 0 ? "left" : "right";
   button.type = "button";
   button.className = "ab-button ab-button--ghost";
+  button.dataset.navigationAction = action;
+  button.dataset.navigationId = id;
   button.textContent = direction < 0 ? "←" : "→";
   button.setAttribute("aria-label", label);
   button.style.minWidth = "44px";
@@ -454,8 +473,23 @@ function navigationMoveButton(id, direction, label) {
     const candidates = availableNavigationCandidates();
     renderNavigationOptions(candidates);
     renderNavigationPreview(candidates);
+    focusNavigationControl(id, action);
   });
   return button;
+}
+
+function focusNavigationControl(id, action) {
+  const container = document.querySelector("#navigation-options");
+  if (!container) return;
+  for (const control of container.querySelectorAll("button[data-navigation-id]")) {
+    if (
+      control.dataset.navigationId === id &&
+      control.dataset.navigationAction === action
+    ) {
+      control.focus();
+      return;
+    }
+  }
 }
 
 function renderNavigationPreview(candidates) {
