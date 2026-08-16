@@ -79,28 +79,32 @@ test("preflight is read-only and reports when the explicit policy is missing", a
     status: "schedule-update-required",
     writeOutcome: "not-requested",
     frequency: "daily",
-    retentionSeconds: 1_209_600,
+    minimumRetentionSeconds: 1_209_600,
   });
   assert.deepEqual(calls.map((call) => call.options.method), ["GET", "GET"]);
 });
 
-test("an exact existing policy makes apply idempotent without PUT", async () => {
-  const { fetchImpl, calls } = makeFetch({
-    scheduleReads: [matchingSchedule()],
-  });
-  const result = await ensureM4NeonBackupSchedule({
-    ...input,
-    apply: true,
-    fetchImpl,
-  });
+test("an exact or stronger existing retention satisfies policy without PUT", async () => {
+  for (const schedule of [
+    matchingSchedule(),
+    matchingSchedule({ retention_seconds: 2_592_000 }),
+  ]) {
+    const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
+    const result = await ensureM4NeonBackupSchedule({
+      ...input,
+      apply: true,
+      fetchImpl,
+    });
 
-  assert.deepEqual(result, {
-    status: "schedule-ready",
-    writeOutcome: "not-needed",
-    frequency: "daily",
-    retentionSeconds: 1_209_600,
-  });
-  assert.deepEqual(calls.map((call) => call.options.method), ["GET", "GET"]);
+    assert.deepEqual(result, {
+      status: "schedule-ready",
+      writeOutcome: "not-needed",
+      frequency: "daily",
+      minimumRetentionSeconds: 1_209_600,
+      configuredRetentionSeconds: schedule[0].retention_seconds,
+    });
+    assert.deepEqual(calls.map((call) => call.options.method), ["GET", "GET"]);
+  }
 });
 
 test("apply sends exactly one PUT and requires authoritative readback", async () => {
@@ -117,7 +121,8 @@ test("apply sends exactly one PUT and requires authoritative readback", async ()
     status: "schedule-ready",
     writeOutcome: "confirmed",
     frequency: "daily",
-    retentionSeconds: 1_209_600,
+    minimumRetentionSeconds: 1_209_600,
+    configuredRetentionSeconds: 1_209_600,
   });
   assert.deepEqual(calls.map((call) => call.options.method), ["GET", "GET", "PUT", "GET"]);
   const put = calls[2];
@@ -131,6 +136,63 @@ test("apply sends exactly one PUT and requires authoritative readback", async ()
       },
     ],
   });
+});
+
+test("changing frequency preserves stronger existing retention", async () => {
+  const strongerRetention = 2_592_000;
+  const current = [
+    {
+      frequency: "weekly",
+      retention_seconds: strongerRetention,
+    },
+  ];
+  const confirmed = [
+    {
+      frequency: "daily",
+      retention_seconds: strongerRetention,
+    },
+  ];
+  const { fetchImpl, calls } = makeFetch({
+    scheduleReads: [current, confirmed],
+  });
+
+  const result = await ensureM4NeonBackupSchedule({
+    ...input,
+    apply: true,
+    fetchImpl,
+  });
+  assert.equal(result.configuredRetentionSeconds, strongerRetention);
+  assert.deepEqual(JSON.parse(calls[2].options.body), {
+    schedule: [
+      {
+        frequency: "daily",
+        retention_seconds: strongerRetention,
+      },
+    ],
+  });
+});
+
+test("multiple or malformed current schedules are refused before any PUT", async () => {
+  const cases = [
+    [
+      [
+        ...matchingSchedule(),
+        { frequency: "weekly", retention_seconds: 604_800 },
+      ],
+      /multiple entries; automatic replacement is refused/,
+    ],
+    [[{ frequency: "hourly", retention_seconds: 604_800 }], /invalid entry/],
+    [[{ frequency: "daily" }], /invalid entry/],
+  ];
+
+  for (const [schedule, pattern] of cases) {
+    const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
+    await assert.rejects(
+      ensureM4NeonBackupSchedule({ ...input, apply: true, fetchImpl }),
+      pattern,
+    );
+    assert.equal(calls.filter((call) => call.options.method === "PUT").length, 0);
+  }
 });
 
 test("timeout or invalid response reconciles once and never blindly repeats PUT", async () => {
@@ -168,7 +230,7 @@ test("timeout or invalid response reconciles once and never blindly repeats PUT"
   assert.equal(calls.filter((call) => call.options.method === "PUT").length, 1);
 });
 
-test("unknown write outcome without exact readback fails closed", async () => {
+test("unknown write outcome without policy-compliant readback fails closed", async () => {
   const { fetchImpl, calls } = makeFetch({
     scheduleReads: [[], []],
     putThrows: true,
@@ -180,7 +242,7 @@ test("unknown write outcome without exact readback fails closed", async () => {
   assert.equal(calls.filter((call) => call.options.method === "PUT").length, 1);
 });
 
-test("provider rejection is sanitized and may only be accepted after exact readback", async () => {
+test("provider rejection is sanitized and may only be accepted after policy-compliant readback", async () => {
   const rejected = makeFetch({
     scheduleReads: [[], []],
     putStatus: 403,
@@ -196,7 +258,7 @@ test("provider rejection is sanitized and may only be accepted after exact readb
   assert.equal(rejected.calls.filter((call) => call.options.method === "PUT").length, 1);
 
   const reconciled = makeFetch({
-    scheduleReads: [[], matchingSchedule()],
+    scheduleReads: [[], matchingSchedule({ retention_seconds: 2_592_000 })],
     putStatus: 503,
   });
   const result = await ensureM4NeonBackupSchedule({
@@ -205,18 +267,19 @@ test("provider rejection is sanitized and may only be accepted after exact readb
     fetchImpl: reconciled.fetchImpl,
   });
   assert.equal(result.writeOutcome, "reconciled");
+  assert.equal(result.configuredRetentionSeconds, 2_592_000);
 });
 
-test("successful PUT without exact readback does not trigger another write", async () => {
+test("successful PUT without policy-compliant readback does not trigger another write", async () => {
   const { fetchImpl, calls } = makeFetch({ scheduleReads: [[], []] });
   await assert.rejects(
     ensureM4NeonBackupSchedule({ ...input, apply: true, fetchImpl }),
-    /authoritative readback is not exact; do not write again automatically/,
+    /authoritative readback does not meet the M4 policy; do not write again automatically/,
   );
   assert.equal(calls.filter((call) => call.options.method === "PUT").length, 1);
 });
 
-test("requires a ready root branch and an exact single-entry schedule", async () => {
+test("requires a ready root branch", async () => {
   await assert.rejects(
     ensureM4NeonBackupSchedule({
       ...input,
@@ -233,16 +296,6 @@ test("requires a ready root branch and an exact single-entry schedule", async ()
     }),
     /missing, mismatched, or not ready/,
   );
-
-  const extraEntry = makeFetch({
-    scheduleReads: [[...matchingSchedule(), { frequency: "weekly", retention_seconds: 604800 }]],
-  });
-  const result = await ensureM4NeonBackupSchedule({
-    ...input,
-    apply: false,
-    fetchImpl: extraEntry.fetchImpl,
-  });
-  assert.equal(result.status, "schedule-update-required");
 });
 
 test("validates policy inputs before provider calls", async () => {

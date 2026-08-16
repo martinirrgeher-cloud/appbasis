@@ -38,9 +38,9 @@ export async function ensureM4NeonBackupSchedule({
   );
   requireReadyRootBranch(branch, input);
 
-  const current = await readSchedule({ input, headers });
-  if (scheduleMatches(current, input)) {
-    return readyResult(input, "not-needed");
+  const current = await readManagedSchedule({ input, headers });
+  if (scheduleMeetsPolicy(current, input)) {
+    return readyResult(input, current, "not-needed");
   }
 
   if (!input.apply) {
@@ -48,10 +48,14 @@ export async function ensureM4NeonBackupSchedule({
       status: "schedule-update-required",
       writeOutcome: "not-requested",
       frequency: input.requiredFrequency,
-      retentionSeconds: input.retentionSeconds,
+      minimumRetentionSeconds: input.minRetentionSeconds,
     });
   }
 
+  const desiredRetentionSeconds =
+    current.length === 1
+      ? Math.max(current[0].retention_seconds, input.minRetentionSeconds)
+      : input.minRetentionSeconds;
   const url = `${NEON_API_BASE}/projects/${encodeURIComponent(input.projectId)}/branches/${encodeURIComponent(input.branchId)}/backup_schedule`;
   let response;
   try {
@@ -62,7 +66,7 @@ export async function ensureM4NeonBackupSchedule({
         schedule: [
           {
             frequency: input.requiredFrequency,
-            retention_seconds: input.retentionSeconds,
+            retention_seconds: desiredRetentionSeconds,
           },
         ],
       }),
@@ -75,9 +79,9 @@ export async function ensureM4NeonBackupSchedule({
     return reconcileUnknownWrite({ input, headers });
   }
   if (!response.ok) {
-    const reconciled = await readSchedule({ input, headers });
-    if (scheduleMatches(reconciled, input)) {
-      return readyResult(input, "reconciled");
+    const reconciled = await readManagedSchedule({ input, headers });
+    if (scheduleMeetsPolicy(reconciled, input)) {
+      return readyResult(input, reconciled, "reconciled");
     }
     const status =
       Number.isInteger(response.status) && response.status >= 100 && response.status <= 599
@@ -88,35 +92,36 @@ export async function ensureM4NeonBackupSchedule({
     );
   }
 
-  const confirmed = await readSchedule({ input, headers });
-  if (!scheduleMatches(confirmed, input)) {
+  const confirmed = await readManagedSchedule({ input, headers });
+  if (!scheduleMeetsPolicy(confirmed, input)) {
     throw new Error(
-      "Neon backup schedule update returned success but authoritative readback is not exact; do not write again automatically.",
+      "Neon backup schedule update returned success but authoritative readback does not meet the M4 policy; do not write again automatically.",
     );
   }
-  return readyResult(input, "confirmed");
+  return readyResult(input, confirmed, "confirmed");
 }
 
 async function reconcileUnknownWrite({ input, headers }) {
-  const reconciled = await readSchedule({ input, headers });
-  if (scheduleMatches(reconciled, input)) {
-    return readyResult(input, "reconciled");
+  const reconciled = await readManagedSchedule({ input, headers });
+  if (scheduleMeetsPolicy(reconciled, input)) {
+    return readyResult(input, reconciled, "reconciled");
   }
   throw new Error(
     "Neon backup schedule update outcome is unknown; do not retry blindly. Re-run read-only preflight after provider state settles.",
   );
 }
 
-function readyResult(input, writeOutcome) {
+function readyResult(input, schedule, writeOutcome) {
   return Object.freeze({
     status: "schedule-ready",
     writeOutcome,
     frequency: input.requiredFrequency,
-    retentionSeconds: input.retentionSeconds,
+    minimumRetentionSeconds: input.minRetentionSeconds,
+    configuredRetentionSeconds: schedule[0].retention_seconds,
   });
 }
 
-async function readSchedule({ input, headers }) {
+async function readManagedSchedule({ input, headers }) {
   const payload = await neonGetJson(
     input.fetchImpl,
     `${NEON_API_BASE}/projects/${encodeURIComponent(input.projectId)}/branches/${encodeURIComponent(input.branchId)}/backup_schedule`,
@@ -126,17 +131,38 @@ async function readSchedule({ input, headers }) {
   if (!Array.isArray(payload?.schedule)) {
     throw new Error("Neon backup schedule inspection returned an invalid payload.");
   }
+  validateManagedSchedule(payload.schedule);
   return payload.schedule;
 }
 
-function scheduleMatches(schedule, input) {
-  if (!Array.isArray(schedule) || schedule.length !== 1) return false;
+function validateManagedSchedule(schedule) {
+  if (schedule.length > 1) {
+    throw new Error(
+      "Neon backup schedule has multiple entries; automatic replacement is refused.",
+    );
+  }
+  if (schedule.length === 0) return;
+
+  const entry = schedule[0];
+  if (
+    !isRecord(entry) ||
+    !ALLOWED_FREQUENCIES.has(entry.frequency) ||
+    !Number.isInteger(entry.retention_seconds) ||
+    entry.retention_seconds < MIN_RETENTION_SECONDS ||
+    entry.retention_seconds > MAX_RETENTION_SECONDS
+  ) {
+    throw new Error(
+      "Neon backup schedule contains an invalid entry; automatic replacement is refused.",
+    );
+  }
+}
+
+function scheduleMeetsPolicy(schedule, input) {
+  if (schedule.length !== 1) return false;
   const entry = schedule[0];
   return (
-    isRecord(entry) &&
     entry.frequency === input.requiredFrequency &&
-    Number.isInteger(entry.retention_seconds) &&
-    entry.retention_seconds === input.retentionSeconds
+    entry.retention_seconds >= input.minRetentionSeconds
   );
 }
 
@@ -169,7 +195,7 @@ function validateInputs({
     branchId: requiredProviderId(branchId, "NEON_BRANCH_ID"),
     apiKey: requiredApiKey(apiKey),
     requiredFrequency: requiredFrequencyValue(requiredFrequency),
-    retentionSeconds: requiredInteger(
+    minRetentionSeconds: requiredInteger(
       retentionSeconds,
       "APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS",
       MIN_RETENTION_SECONDS,
