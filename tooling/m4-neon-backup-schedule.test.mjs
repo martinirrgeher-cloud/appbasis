@@ -85,6 +85,20 @@ test("preflight is read-only and reports when the explicit policy is missing", a
   assert.deepEqual(calls.map((call) => call.options.method), ["GET", "GET"]);
 });
 
+test("canonical numeric strings from the protected workflow remain valid", async () => {
+  const { fetchImpl, calls } = makeFetch();
+  const result = await ensureM4NeonBackupSchedule({
+    ...input,
+    retentionSeconds: String(input.retentionSeconds),
+    scheduleHour: String(input.scheduleHour),
+    apply: false,
+    fetchImpl,
+  });
+
+  assert.equal(result.status, "schedule-update-required");
+  assert.deepEqual(calls.map((call) => call.options.method), ["GET", "GET"]);
+});
+
 test("an exact or stronger existing retention satisfies policy without PUT", async () => {
   for (const schedule of [
     matchingSchedule(),
@@ -373,6 +387,10 @@ test("validates policy and provider timing inputs before provider calls", async 
     [{ requiredFrequency: "hourly" }, /REQUIRED_BACKUP_FREQUENCY is invalid/],
     [{ retentionSeconds: 3599 }, /MIN_SNAPSHOT_RETENTION_SECONDS is invalid/],
     [{ retentionSeconds: 3_024_001 }, /MIN_SNAPSHOT_RETENTION_SECONDS is invalid/],
+    [{ scheduleHour: "" }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: null }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: "   " }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: "03" }, /BACKUP_SCHEDULE_HOUR is invalid/],
     [{ scheduleHour: -1 }, /BACKUP_SCHEDULE_HOUR is invalid/],
     [{ scheduleHour: 24 }, /BACKUP_SCHEDULE_HOUR is invalid/],
     [{ scheduleDay: 1 }, /BACKUP_SCHEDULE_DAY must be empty for daily backups/],
