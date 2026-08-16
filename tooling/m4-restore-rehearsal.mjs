@@ -201,21 +201,36 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
       matchingOperations.push(operation);
     }
 
+    const pageIsShort = payload.operations.length < RESTORE_OPERATION_PAGE_LIMIT;
     if (payload.pagination === undefined || payload.pagination === null) {
-      return classifyRestoreOperations(matchingOperations);
+      if (pageIsShort) {
+        return classifyRestoreOperations(matchingOperations);
+      }
+      throw new Error(
+        "Neon restore operations inspection omitted pagination for a full page.",
+      );
     }
     if (!isRecord(payload.pagination)) {
       throw new Error("Neon restore operations inspection returned invalid pagination.");
     }
-    if (!Object.hasOwn(payload.pagination, "cursor") || payload.pagination.cursor === null) {
-      return classifyRestoreOperations(matchingOperations);
-    }
 
+    const hasCursor = Object.hasOwn(payload.pagination, "cursor");
     const nextCursor = payload.pagination.cursor;
     if (
+      !hasCursor ||
+      nextCursor === null ||
+      nextCursor === undefined ||
+      nextCursor === ""
+    ) {
+      if (pageIsShort) {
+        return classifyRestoreOperations(matchingOperations);
+      }
+      throw new Error("Neon restore operations inspection returned an invalid cursor.");
+    }
+    if (
       typeof nextCursor !== "string" ||
-      nextCursor.length === 0 ||
       nextCursor.length > 2048 ||
+      nextCursor.trim() !== nextCursor ||
       seenCursors.has(nextCursor)
     ) {
       throw new Error("Neon restore operations inspection returned an invalid cursor.");
