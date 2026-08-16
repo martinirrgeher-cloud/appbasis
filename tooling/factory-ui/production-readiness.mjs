@@ -19,7 +19,7 @@ export function evaluateProductionReadiness(evidence = {}) {
   }
 
   const criteria = REQUIRED_PRODUCTION_READINESS_CRITERIA.map(({ id, label }) => {
-    const verified = evidence[id] === true;
+    const verified = Object.hasOwn(evidence, id) && evidence[id] === true;
     return Object.freeze({
       id,
       label,
