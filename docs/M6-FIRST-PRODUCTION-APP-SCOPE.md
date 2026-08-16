@@ -29,7 +29,7 @@ Diese Liste definiert die erforderlichen Nachweise, aber noch **keine allgemeine
 
 Nur der exakte boolesche Wert `true` gilt für einen Nachweis als verifiziert. Fehlende, falsche, truthy oder geerbte Werte bleiben offen. Unbekannte zusätzliche Felder können kein Pflichtkriterium ersetzen.
 
-Erst wenn alle zehn Nachweise verifiziert sind, ist `productionVerified=true`.
+Erst wenn alle zehn Nachweise verifiziert sind, ist `technicalEvidenceVerified=true`. Dieser Zustand bestätigt ausschließlich die gesammelte technische Evidenz und ist ausdrücklich **keine** Produktionsfreigabe.
 
 ## Ausdrückliche Freigabe bleibt separat
 
