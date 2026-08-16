@@ -29,41 +29,11 @@ export async function verifyReferenceRoleAdminPublicIngress({
     throw new Error('Role administration Worker exposes Preview URLs.');
   }
 
-  const domainsURL = new URL(`${accountPath}/workers/domains`);
-  domainsURL.searchParams.set('service', ROLE_ADMIN_WORKER);
-  const domains = await cloudflareJson(
-    domainsURL,
-    normalizedApiToken,
+  await verifyNoReferenceRoleAdminCustomDomains({
+    accountPath,
+    apiToken: normalizedApiToken,
     fetchImpl,
-    'Role administration Worker custom domains',
-  );
-  const domainResults = requiredArray(domains.result, 'Role administration Worker custom domains');
-  if (
-    domainResults.some(
-      (candidate) =>
-        !isRecord(candidate) ||
-        candidate.service !== ROLE_ADMIN_WORKER,
-    )
-  ) {
-    throw new Error('Role administration Worker custom-domain inventory is invalid.');
-  }
-  if (domainResults.length !== 0) {
-    throw new Error('Role administration Worker has a public custom domain.');
-  }
-
-  const scripts = await cloudflareJson(
-    `${accountPath}/workers/scripts`,
-    normalizedApiToken,
-    fetchImpl,
-    'Role administration Worker inventory',
-  );
-  const scriptResults = requiredArray(scripts.result, 'Role administration Worker inventory');
-  const matchingScripts = scriptResults.filter(
-    (candidate) => isRecord(candidate) && candidate.id === ROLE_ADMIN_WORKER,
-  );
-  if (matchingScripts.length !== 1) {
-    throw new Error('Role administration Worker inventory could not identify the internal Worker exactly once.');
-  }
+  });
 
   const zones = await listAccountZones({
     accountId: normalizedAccountId,
@@ -100,6 +70,49 @@ export async function verifyReferenceRoleAdminPublicIngress({
     routeCount: 0,
     checkedZoneCount: zones.length,
   });
+}
+
+async function verifyNoReferenceRoleAdminCustomDomains({ accountPath, apiToken, fetchImpl }) {
+  const domainsURL = new URL(`${accountPath}/workers/domains`);
+  domainsURL.searchParams.set('service', ROLE_ADMIN_WORKER);
+  const payload = await cloudflareJson(
+    domainsURL,
+    apiToken,
+    fetchImpl,
+    'Role administration Worker custom domains',
+  );
+  const domainResults = requiredArray(payload.result, 'Role administration Worker custom domains');
+  const resultInfo = requiredRecord(
+    payload.result_info,
+    'Role administration Worker custom-domain pagination',
+  );
+  const page = requiredPositiveInteger(
+    resultInfo.page,
+    'Role administration Worker custom-domain pagination',
+  );
+  const count = requiredNonNegativeInteger(
+    resultInfo.count,
+    'Role administration Worker custom-domain pagination',
+  );
+  const totalPages = requiredNonNegativeInteger(
+    resultInfo.total_pages,
+    'Role administration Worker custom-domain pagination',
+  );
+  if (page !== 1 || count !== domainResults.length || totalPages > 1) {
+    throw new Error('Role administration Worker custom-domain pagination is incomplete.');
+  }
+  if (
+    domainResults.some(
+      (candidate) =>
+        !isRecord(candidate) ||
+        candidate.service !== ROLE_ADMIN_WORKER,
+    )
+  ) {
+    throw new Error('Role administration Worker custom-domain inventory is invalid.');
+  }
+  if (domainResults.length !== 0) {
+    throw new Error('Role administration Worker has a public custom domain.');
+  }
 }
 
 async function listAccountZones({ accountId, apiToken, fetchImpl }) {
@@ -194,6 +207,13 @@ function requiredValue(value, field) {
 
 function requiredPositiveInteger(value, label) {
   if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${label} is invalid.`);
+  }
+  return value;
+}
+
+function requiredNonNegativeInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} is invalid.`);
   }
   return value;
