@@ -201,18 +201,20 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
       matchingOperations.push(operation);
     }
 
-    const pageIsShort = payload.operations.length < RESTORE_OPERATION_PAGE_LIMIT;
-    if (pageIsShort) {
-      return classifyRestoreOperations(matchingOperations);
-    }
-
+    const pageKind =
+      payload.operations.length < RESTORE_OPERATION_PAGE_LIMIT ? "short" : "full";
     if (payload.pagination === undefined || payload.pagination === null) {
+      if (pageKind === "short") {
+        return classifyRestoreOperations(matchingOperations);
+      }
       throw new Error(
-        "Neon restore operations inspection omitted pagination for a full page.",
+        "Neon restore operations inspection omitted pagination on a full page.",
       );
     }
     if (!isRecord(payload.pagination)) {
-      throw new Error("Neon restore operations inspection returned invalid pagination for a full page.");
+      throw new Error(
+        `Neon restore operations inspection returned invalid pagination on a ${pageKind} page.`,
+      );
     }
 
     const hasCursor = Object.hasOwn(payload.pagination, "cursor");
@@ -223,13 +225,32 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
       nextCursor === undefined ||
       nextCursor === ""
     ) {
-      throw new Error("Neon restore operations inspection returned no usable cursor for a full page.");
+      if (pageKind === "short") {
+        return classifyRestoreOperations(matchingOperations);
+      }
+      throw new Error(
+        "Neon restore operations inspection returned no cursor on a full page.",
+      );
     }
-    if (typeof nextCursor !== "string" || nextCursor.length > 2048 || nextCursor.trim() !== nextCursor) {
-      throw new Error("Neon restore operations inspection returned an invalid full-page cursor.");
+    if (typeof nextCursor !== "string") {
+      throw new Error(
+        `Neon restore operations inspection returned a non-string cursor on a ${pageKind} page.`,
+      );
+    }
+    if (nextCursor.length > 2048) {
+      throw new Error(
+        `Neon restore operations inspection returned an oversized cursor on a ${pageKind} page.`,
+      );
+    }
+    if (nextCursor.trim() !== nextCursor) {
+      throw new Error(
+        `Neon restore operations inspection returned a non-canonical cursor on a ${pageKind} page.`,
+      );
     }
     if (seenCursors.has(nextCursor)) {
-      throw new Error("Neon restore operations inspection returned a non-advancing full-page cursor.");
+      throw new Error(
+        `Neon restore operations inspection returned a non-advancing cursor on a ${pageKind} page.`,
+      );
     }
     seenCursors.add(nextCursor);
     cursor = nextCursor;
