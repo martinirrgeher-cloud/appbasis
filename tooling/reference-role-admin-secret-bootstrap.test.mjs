@@ -27,8 +27,6 @@ test('role admin secret bootstrap is explicit, pre-created and ingress-guarded',
     (workflow.match(/node \.\/tooling\/reference-role-admin-ingress\.mjs/g) ?? []).length,
     2,
   );
-  assert.match(workflow, /--experimental-provision=false/);
-  assert.match(workflow, /--experimental-auto-create=false/);
 });
 
 test('role admin secret bootstrap reuses only the protected existing auth secret', () => {
@@ -42,9 +40,19 @@ test('role admin secret bootstrap reuses only the protected existing auth secret
   );
   assert.match(
     workflow,
-    /printf '%s' "\$APPBASIS_BETTER_AUTH_SECRET" \| pnpm exec wrangler secret put BETTER_AUTH_SECRET/,
+    /JSON\.stringify\(\{ name: "BETTER_AUTH_SECRET", text: process\.env\.APPBASIS_BETTER_AUTH_SECRET, type: "secret_text" \}\)/,
   );
-  assert.match(workflow, /--name appbasis-reference-role-admin/);
+  assert.match(
+    workflow,
+    /https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\/\$CLOUDFLARE_ACCOUNT_ID\/workers\/scripts\/appbasis-reference-role-admin\/secrets/,
+  );
+  assert.match(workflow, /curl --fail-with-body --silent --show-error/);
+  assert.match(workflow, /--request PUT/);
+  assert.match(workflow, /--data-binary @-/);
+  assert.match(workflow, /response\?\.success !== true/);
+  assert.match(workflow, /response\?\.result\?\.name !== 'BETTER_AUTH_SECRET'/);
+  assert.match(workflow, /response\?\.result\?\.type !== 'secret_text'/);
+  assert.doesNotMatch(workflow, /wrangler secret put/);
   assert.doesNotMatch(workflow, /APPBASIS_DATABASE_URL/);
   assert.doesNotMatch(workflow, /APPBASIS_HYPERDRIVE_ID/);
   assert.doesNotMatch(workflow, /wrangler deploy(?:\s|$)/);
