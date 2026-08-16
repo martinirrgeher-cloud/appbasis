@@ -20,6 +20,7 @@ function mockCloudflare({
   subdomain = { enabled: false, previews_enabled: false },
   domains = [],
   domainResultInfo,
+  includeDomainResultInfo = true,
   zonePages = [
     {
       zones: [{ id: 'zone-1', account: { id: accountId } }],
@@ -42,7 +43,9 @@ function mockCloudflare({
     if (url.pathname.endsWith('/workers/domains')) {
       return successResponse(
         domains,
-        domainResultInfo ?? { page: 1, count: domains.length, total_pages: 1 },
+        includeDomainResultInfo
+          ? (domainResultInfo ?? { page: 1, count: domains.length, total_pages: 1 })
+          : undefined,
       );
     }
     if (url.pathname === '/client/v4/zones') {
@@ -87,16 +90,13 @@ test('verifies public ingress with complete domain and authoritative zone-route 
 });
 
 test('fails closed when filtered custom-domain pagination cannot prove completeness', async () => {
-  for (const domainResultInfo of [
-    undefined,
-    { page: 2, count: 0, total_pages: 2 },
-    { page: 1, count: 1, total_pages: 1 },
-    { page: 1, count: 0, total_pages: 2 },
+  for (const options of [
+    { includeDomainResultInfo: false },
+    { domainResultInfo: { page: 2, count: 0, total_pages: 2 } },
+    { domainResultInfo: { page: 1, count: 1, total_pages: 1 } },
+    { domainResultInfo: { page: 1, count: 0, total_pages: 2 } },
   ]) {
-    const { fetchImpl } = mockCloudflare({
-      domainResultInfo,
-      ...(domainResultInfo === undefined ? { domainResultInfo: null } : {}),
-    });
+    const { fetchImpl } = mockCloudflare(options);
     await assert.rejects(
       verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
       /custom-domain pagination/,
