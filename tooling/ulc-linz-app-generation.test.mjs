@@ -91,7 +91,7 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     readiness.criteria.map((criterion) => [criterion.id, criterion.status]),
   );
   assert.equal(readinessById.dataRegion, "open");
-  assert.equal(readinessById.rolesRights, "open");
+  assert.equal(readinessById.rolesAndPermissions, "open");
   assert.equal(readinessById.highPrivacyProfile, "open");
   assert.equal(readinessById.secretsOutsideAppManifests, "verified");
 
