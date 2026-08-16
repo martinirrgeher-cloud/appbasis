@@ -22,6 +22,17 @@ test("pins ULC source roles and individual permission mapping", () => {
     athlete: "ulc-linz:athlete",
     parent: "ulc-linz:parent",
   });
+  assert.deepEqual(policy.adminAuthorization, {
+    sourceRole: "admin",
+    runtimeRoleId: "ulc-linz:admin",
+    mode: "own-organization-admin",
+    moduleAccess: "all-known-modules-view-edit",
+    individualModulePermissionsRequired: false,
+    memberAdministration: "own-organization",
+    auditVisibility: "own-organization",
+    crossOrganization: "deny",
+    unknownModule: "deny",
+  });
   assert.deepEqual(policy.permissionTemplates.kindertrainer, {
     sourceRole: "trainer",
     semantics: "defaults-only",
@@ -81,6 +92,7 @@ test("pins ULC source roles and individual permission mapping", () => {
 
   const runtimeRoleIds = Object.values(policy.runtimeRoleIds);
   assert.equal(new Set(runtimeRoleIds).size, runtimeRoleIds.length);
+  assert.equal(policy.adminAuthorization.runtimeRoleId, policy.runtimeRoleIds.admin);
   assert.equal(policy.permissionTemplates.kindertrainer.sourceRole, "trainer");
   assert.equal(policy.permissionTemplates.leistungstrainer.sourceRole, "trainer");
   assert.equal(policy.permissionTemplates.kindertrainer.semantics, "defaults-only");
@@ -108,6 +120,20 @@ test("pins ULC source roles and individual permission mapping", () => {
   assert.equal(Object.isFrozen(policy), true);
   assert.equal(Object.isFrozen(policy.permissionTemplates.leistungstrainer.view), true);
   assert.equal(Object.isFrozen(policy.dataScopes.parentLink), true);
+});
+
+test("rejects weakened admin authorization", () => {
+  const candidate = clonePolicy();
+  candidate.adminAuthorization.moduleAccess = "principal-permissions-only";
+  assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(candidate), false);
+
+  const crossOrganization = clonePolicy();
+  crossOrganization.adminAuthorization.crossOrganization = "allow";
+  assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(crossOrganization), false);
+
+  const mismatchedRole = clonePolicy();
+  mismatchedRole.adminAuthorization.runtimeRoleId = mismatchedRole.runtimeRoleIds.trainer;
+  assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(mismatchedRole), false);
 });
 
 test("rejects broadened parent template permissions", () => {
