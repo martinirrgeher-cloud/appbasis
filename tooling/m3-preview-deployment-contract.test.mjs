@@ -37,11 +37,15 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   const schemaGate = workflow.indexOf(
     "Verify m3-preview database schema before provider changes",
   );
-  const secretMutation = workflow.indexOf(
-    "Synchronize required Worker secret without Worker creation",
+  const versionUpload = workflow.indexOf(
+    "Upload m3-preview Worker version without deployment",
+  );
+  const versionDeploy = workflow.indexOf(
+    "Deploy uploaded m3-preview Worker version",
   );
   assert.ok(schemaGate >= 0);
-  assert.ok(secretMutation > schemaGate);
+  assert.ok(versionUpload > schemaGate);
+  assert.ok(versionDeploy > versionUpload);
 
   assert.match(workflow, /node \.\/tooling\/m3-preview-hyperdrive\.mjs resolve/);
   assert.doesNotMatch(workflow, /m3-preview-hyperdrive\.mjs ensure/);
@@ -50,17 +54,23 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   assert.match(workflow, /apps\/m3-preview\/wrangler\.preview\.generated\.json/);
   assert.match(workflow, /--cwd \.\.\/m3-preview/);
   assert.match(workflow, /deployments list --name "\$APPBASIS_GENERATED_WORKER_NAME"/);
+  assert.match(workflow, /wrangler secret list --name "\$APPBASIS_GENERATED_WORKER_NAME"/);
+  assert.match(workflow, /missing the pre-provisioned BETTER_AUTH_SECRET/);
   assert.match(workflow, /--experimental-provision=false/);
   assert.match(workflow, /--experimental-auto-create=false/);
 
+  assert.doesNotMatch(workflow, /APPBASIS_BETTER_AUTH_SECRET/);
   assert.doesNotMatch(workflow, /wrangler secret put/);
-  assert.match(
-    workflow,
-    /workers\/scripts\/\$APPBASIS_GENERATED_WORKER_NAME\/secrets/,
-  );
-  assert.match(workflow, /response\?\.result\?\.name !== 'BETTER_AUTH_SECRET'/);
-  assert.match(workflow, /secret\.trim\(\) !== secret/);
-  assert.match(workflow, /secret\.length < 32/);
+  assert.doesNotMatch(workflow, /--request PUT/);
+  assert.doesNotMatch(workflow, /workers\/scripts\/.*\/secrets/);
+
+  assert.match(workflow, /WRANGLER_OUTPUT_FILE_PATH/);
+  assert.match(workflow, /wrangler versions upload/);
+  assert.match(workflow, /select\(\.type == "version-upload"\)/);
+  assert.match(workflow, /\.version_id \/\/ empty/);
+  assert.match(workflow, /wrangler versions deploy/);
+  assert.match(workflow, /\$\{APPBASIS_VERSION_ID\}@100%/);
+  assert.match(workflow, /-y/);
 
   assert.match(workflow, /generated-preview-smoke\.mjs/);
   assert.match(workflow, /generated-preview-database-smoke\.mjs/);
@@ -82,7 +92,7 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   assert.doesNotMatch(hyperdrive, /ensureGeneratedPreviewHyperdrive/);
 });
 
-test("keeps m3-preview resource creation outside the deployment workflow", async () => {
+test("keeps m3-preview provisioning outside the deployment workflow", async () => {
   const workflow = await readFile(workflowUrl, "utf8");
 
   assert.doesNotMatch(workflow, /APPBASIS_APPLY_HYPERDRIVE/);
@@ -90,4 +100,6 @@ test("keeps m3-preview resource creation outside the deployment workflow", async
   assert.doesNotMatch(workflow, /create.*database/i);
   assert.doesNotMatch(workflow, /hyperdrive.*create/i);
   assert.doesNotMatch(workflow, /workers\/workers.*POST/i);
+  assert.doesNotMatch(workflow, /APPBASIS_BETTER_AUTH_SECRET/);
+  assert.doesNotMatch(workflow, /--request PUT/);
 });
