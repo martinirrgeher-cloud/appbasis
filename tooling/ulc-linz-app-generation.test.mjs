@@ -14,10 +14,7 @@ import { verifyAppDefinitions } from "./app-definition.mjs";
 import { createAppSkeleton } from "./create-app.mjs";
 import { evaluateProductionReadiness } from "./factory-ui/production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./factory-ui/repository-production-readiness-evidence.mjs";
-import {
-  bindUlcLinzM5TargetPolicy,
-  ULC_LINZ_M5_TARGET_POLICY,
-} from "./ulc-linz-m5-target-policy.mjs";
+import { ULC_LINZ_M5_TARGET_POLICY } from "./ulc-linz-m5-target-policy.mjs";
 
 test("generates the first ULC Linz AppBasis target through createAppSkeleton", async (t) => {
   const root = await createRepositoryFixture(t);
@@ -55,9 +52,7 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     platformServices: ["identity", "permissions"],
   });
 
-  const targetPolicy = bindUlcLinzM5TargetPolicy(result.definition);
-  assert.deepEqual(targetPolicy, ULC_LINZ_M5_TARGET_POLICY);
-  assert.deepEqual(targetPolicy, {
+  assert.deepEqual(ULC_LINZ_M5_TARGET_POLICY, {
     appId: "ulc-linz",
     operatorProfile: "Verein",
     highPrivacyProfileId: "appbasis-high-privacy-v0.1",
@@ -153,6 +148,54 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
   assert.equal(definitions[0]?.appId, "ulc-linz");
   assert.deepEqual(definitions[0]?.modules, []);
   assert.deepEqual(definitions[0]?.platformServices, ["identity", "permissions"]);
+});
+
+test("rejects creating ULC Linz without the required permissions service", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  await assert.rejects(
+    () =>
+      createAppSkeleton(
+        {
+          appId: "ulc-linz",
+          displayName: "ULC Linz",
+          modules: [],
+          platformServices: ["identity"],
+        },
+        { repositoryRoot: root },
+      ),
+    /requires platform service permissions/,
+  );
+
+  await assert.rejects(
+    () => readFile(join(root, "apps", "ulc-linz", "appbasis.app.json"), "utf8"),
+    { code: "ENOENT" },
+  );
+});
+
+test("rejects a persisted ULC Linz definition that drops required permissions", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const appDirectory = join(root, "apps", "ulc-linz");
+  await mkdir(appDirectory, { recursive: true });
+  await writeFile(
+    join(appDirectory, "appbasis.app.json"),
+    `${JSON.stringify(
+      {
+        schemaVersion: 2,
+        appId: "ulc-linz",
+        displayName: "ULC Linz",
+        modules: [],
+        platformServices: ["identity"],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  await assert.rejects(
+    () => verifyAppDefinitions(root),
+    /requires platform service permissions/,
+  );
 });
 
 async function createRepositoryFixture(t) {
