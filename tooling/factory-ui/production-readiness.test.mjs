@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
+import { dirname, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
+import { loadFactorySnapshot } from "./model.mjs";
 import {
   evaluateProductionReadiness,
   REQUIRED_PRODUCTION_READINESS_CRITERIA,
 } from "./production-readiness.mjs";
 
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const expectedIds = [
   "dataRegion",
   "dpa",
@@ -83,4 +87,21 @@ test("truthy strings, unknown keys and malformed evidence cannot unlock M5", () 
     () => evaluateProductionReadiness(null),
     /Production readiness evidence must be a plain object/,
   );
+});
+
+test("Factory snapshot exposes M5 per app without enabling production release", async () => {
+  const snapshot = await loadFactorySnapshot(repositoryRoot);
+
+  assert.ok(snapshot.apps.length > 0);
+  for (const app of snapshot.apps) {
+    assert.equal(app.productionReadiness.status, "blocked");
+    assert.equal(app.productionReadiness.productionReady, false);
+    assert.equal(app.productionReadiness.verifiedCount, 0);
+    assert.equal(app.productionReadiness.requiredCount, expectedIds.length);
+    assert.deepEqual(
+      app.productionReadiness.criteria.map((criterion) => criterion.id),
+      expectedIds,
+    );
+  }
+  assert.equal(snapshot.capabilities.releaseProduction, false);
 });
