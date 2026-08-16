@@ -8,6 +8,7 @@ import {
   assertM3PreviewInitialVersionPreconditions,
   M3_PREVIEW_INITIAL_VERSION,
   resolveM3PreviewInitialVersionForDeploy,
+  verifyCurrentM3PreviewInitialVersionDeployment,
   verifyM3PreviewInitialVersionDeployment,
   verifyM3PreviewInitialVersionUpload,
   writeM3PreviewInitialSecretsFile,
@@ -65,11 +66,12 @@ function providerFetch({ versions = [], deployedOn = null, deployments = [] } = 
   };
 }
 
-function initialVersion(id = VERSION_ID) {
+function initialVersion(id = VERSION_ID, sourceSha = M3_PREVIEW_INITIAL_VERSION.sourceSha) {
   return {
     id,
     annotations: {
       "workers/tag": M3_PREVIEW_INITIAL_VERSION.tag,
+      "workers/message": `AppBasis m3-preview initial version ${sourceSha}`,
     },
   };
 }
@@ -85,6 +87,7 @@ test("pins the one-time m3-preview initial version contract", () => {
   assert.deepEqual(M3_PREVIEW_INITIAL_VERSION, {
     workerName: "appbasis-m3-preview",
     tag: "m3-preview-initial-v1",
+    sourceSha: "a359d6e6c39771e9d0dae3f73ba9918290356580",
     secretName: "BETTER_AUTH_SECRET",
   });
   assert.equal(Object.isFrozen(M3_PREVIEW_INITIAL_VERSION), true);
@@ -190,7 +193,10 @@ test("resolves only the exact pristine initial version for first deployment", as
         versions: [
           {
             id: VERSION_ID,
-            annotations: { "workers/tag": "unexpected" },
+            annotations: {
+              "workers/tag": "unexpected",
+              "workers/message": `AppBasis m3-preview initial version ${M3_PREVIEW_INITIAL_VERSION.sourceSha}`,
+            },
           },
         ],
       }),
@@ -277,6 +283,59 @@ test("verifies exactly one 100 percent deployment of the initial version", async
       /exactly 100 percent/,
     );
   }
+});
+
+test("recovery verifies the unique deployed version and original source SHA", async () => {
+  const validProvider = {
+    versions: [initialVersion()],
+    deployedOn: "2026-08-16T06:00:00.000Z",
+    deployments: [initialDeployment()],
+  };
+  const result = await verifyCurrentM3PreviewInitialVersionDeployment({
+    accountId: ACCOUNT_ID,
+    apiToken: API_TOKEN,
+    fetchImpl: providerFetch(validProvider),
+  });
+  assert.deepEqual(result, {
+    status: "initial-version-deployed",
+    versionId: VERSION_ID,
+  });
+
+  await assert.rejects(
+    verifyCurrentM3PreviewInitialVersionDeployment({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      fetchImpl: providerFetch({
+        ...validProvider,
+        versions: [initialVersion(VERSION_ID, "0000000000000000000000000000000000000000")],
+      }),
+    }),
+    /exact expected initial version/,
+  );
+
+  await assert.rejects(
+    verifyCurrentM3PreviewInitialVersionDeployment({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      fetchImpl: providerFetch({
+        ...validProvider,
+        versions: [initialVersion(), initialVersion(OTHER_VERSION_ID)],
+      }),
+    }),
+    /exactly one Worker version/,
+  );
+
+  await assert.rejects(
+    verifyCurrentM3PreviewInitialVersionDeployment({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      fetchImpl: providerFetch({
+        ...validProvider,
+        deployments: [initialDeployment({ percentage: 50 })],
+      }),
+    }),
+    /exactly 100 percent/,
+  );
 });
 
 test("writes only the required secret to a new owner-only file", async () => {
