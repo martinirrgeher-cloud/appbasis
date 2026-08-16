@@ -16,6 +16,26 @@ export function parseM4BackupEncryptionKey(value) {
   return Buffer.from(value, "hex");
 }
 
+export async function writeM4FileFully(file, value) {
+  if (!file || typeof file.write !== "function" || !Buffer.isBuffer(value)) {
+    throw new Error("M4 backup output write is invalid.");
+  }
+
+  let offset = 0;
+  while (offset < value.length) {
+    const result = await file.write(value, offset, value.length - offset, null);
+    if (
+      !result ||
+      !Number.isInteger(result.bytesWritten) ||
+      result.bytesWritten <= 0 ||
+      result.bytesWritten > value.length - offset
+    ) {
+      throw new Error("M4 backup output write did not advance.");
+    }
+    offset += result.bytesWritten;
+  }
+}
+
 export async function encryptM4BackupFile({
   inputPath,
   outputPath,
@@ -40,8 +60,8 @@ export async function encryptM4BackupFile({
     input = await open(inputPath, "r");
     output = await open(outputPath, "wx", 0o600);
     outputCreated = true;
-    await output.write(MAGIC);
-    await output.write(iv);
+    await writeM4FileFully(output, MAGIC);
+    await writeM4FileFully(output, iv);
 
     const cipher = createCipheriv("aes-256-gcm", key, iv);
     const buffer = Buffer.allocUnsafe(CHUNK_BYTES);
@@ -51,11 +71,11 @@ export async function encryptM4BackupFile({
       if (bytesRead === 0) break;
       position += bytesRead;
       const encrypted = cipher.update(buffer.subarray(0, bytesRead));
-      if (encrypted.length > 0) await output.write(encrypted);
+      if (encrypted.length > 0) await writeM4FileFully(output, encrypted);
     }
     const final = cipher.final();
-    if (final.length > 0) await output.write(final);
-    await output.write(cipher.getAuthTag());
+    if (final.length > 0) await writeM4FileFully(output, final);
+    await writeM4FileFully(output, cipher.getAuthTag());
     await output.sync();
     return Object.freeze({ algorithm: "AES-256-GCM", bytesRead: position });
   } catch (error) {
@@ -121,10 +141,10 @@ export async function decryptM4BackupFile({ inputPath, outputPath, keyHex } = {}
       if (bytesRead === 0) throw new Error("encrypted backup ended unexpectedly");
       consumed += bytesRead;
       const decrypted = decipher.update(buffer.subarray(0, bytesRead));
-      if (decrypted.length > 0) await output.write(decrypted);
+      if (decrypted.length > 0) await writeM4FileFully(output, decrypted);
     }
     const final = decipher.final();
-    if (final.length > 0) await output.write(final);
+    if (final.length > 0) await writeM4FileFully(output, final);
     await output.sync();
     return Object.freeze({ algorithm: "AES-256-GCM", bytesWritten: ciphertextBytes });
   } catch (error) {
