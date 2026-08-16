@@ -200,7 +200,7 @@ test("short-page cursor anomalies stay fail closed but report a safe diagnostic 
   }
 });
 
-test("non-advancing short-page cursors stay fail closed with a safe diagnostic", async () => {
+test("unchanged short-page cursor is accepted as Neon's observed terminal behavior", async () => {
   const fullPage = Array.from({ length: 1000 }, (_, index) =>
     operation("finished", {
       id: `operation-unrelated-${index}`,
@@ -218,18 +218,75 @@ test("non-advancing short-page cursors stay fail closed with a safe diagnostic",
     },
   ]);
 
+  const result = await ensureM4RestoreRehearsal({
+    ...input,
+    apply: false,
+    fetchImpl,
+  });
+
+  assert.equal(result.restoreOperationsState, "complete");
+  assert.equal(result.verificationReady, true);
+  const operationCalls = calls.filter((call) =>
+    new URL(call.url).pathname.endsWith("/operations"),
+  );
+  assert.equal(operationCalls.length, 2);
+  assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
+});
+
+test("older short-page cursor cycles remain fail closed", async () => {
+  const fullPage = Array.from({ length: 1000 }, (_, index) =>
+    operation("finished", {
+      id: `operation-unrelated-${index}`,
+      branch_id: "br-unrelated-12345678",
+    }),
+  );
+  const { fetchImpl, calls } = makeExistingRestoreFetch([
+    { operations: fullPage, pagination: { cursor: "cursor-a" } },
+    { operations: fullPage, pagination: { cursor: "cursor-b" } },
+    { operations: [operation("finished")], pagination: { cursor: "cursor-a" } },
+  ]);
+
   await assert.rejects(
     ensureM4RestoreRehearsal({
       ...input,
       apply: false,
       fetchImpl,
     }),
-    /non-advancing cursor on a short page/,
+    /cursor cycle on a short page/,
   );
   const operationCalls = calls.filter((call) =>
     new URL(call.url).pathname.endsWith("/operations"),
   );
-  assert.equal(operationCalls.length, 2);
+  assert.equal(operationCalls.length, 3);
+  assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
+});
+
+test("non-advancing full-page cursor remains fail closed", async () => {
+  const fullPage = Array.from({ length: 1000 }, (_, index) =>
+    operation("finished", {
+      id: `operation-unrelated-${index}`,
+      branch_id: "br-unrelated-12345678",
+    }),
+  );
+  const { fetchImpl, calls } = makeExistingRestoreFetch([
+    {
+      operations: fullPage,
+      pagination: { cursor: "next-page-token" },
+    },
+    {
+      operations: fullPage,
+      pagination: { cursor: "next-page-token" },
+    },
+  ]);
+
+  await assert.rejects(
+    ensureM4RestoreRehearsal({
+      ...input,
+      apply: false,
+      fetchImpl,
+    }),
+    /cursor cycle on a full page/,
+  );
   assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
 });
 
