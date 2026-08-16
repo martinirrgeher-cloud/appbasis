@@ -77,9 +77,10 @@ test("pins the one-time m3-preview initial version workflow boundary", async () 
   assert.doesNotMatch(workflow, /APPBASIS_APPLY_WORKER: "1"/);
 
   assert.match(contract, /no existing versions/);
-  assert.match(contract, /no existing deployments/);
-  assert.match(contract, /unexpectedly created a deployment/);
+  assert.match(contract, /never been deployed/);
+  assert.match(contract, /unexpectedly created deployed traffic/);
   assert.match(contract, /workers\/tag/);
+  assert.match(contract, /deployed_on/);
   assert.match(contract, /mode: 0o600/);
   assert.match(contract, /flag: "wx"/);
   assert.match(contract, /secret\.length < 32/);
