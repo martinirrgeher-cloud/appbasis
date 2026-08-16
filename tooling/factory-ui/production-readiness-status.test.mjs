@@ -1,19 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
 import { productionReadinessCopy } from "./production-readiness-status.js";
 import { startFactoryServer } from "./server.mjs";
 
-function readiness({ verifiedCount, requiredCount = 12, ready = false }) {
-  const criteria = Array.from({ length: requiredCount }, (_, index) => ({
-    id: `criterion-${index + 1}`,
+function readiness({ verifiedCount, ready = false }) {
+  const criteria = REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion, index) => ({
+    id: criterion.id,
     status: index < verifiedCount ? "verified" : "open",
   }));
   return {
     status: ready ? "ready" : "blocked",
     productionReady: ready,
     verifiedCount,
-    requiredCount,
+    requiredCount: REQUIRED_PRODUCTION_READINESS_CRITERIA.length,
     criteria,
   };
 }
@@ -35,7 +36,13 @@ test("Factory M5 copy keeps production separate even when M5 is fully verified",
   );
 });
 
-test("Factory M5 copy fails closed for inconsistent readiness payloads", () => {
+test("Factory M5 copy fails closed for inconsistent or non-canonical readiness payloads", () => {
+  const reordered = readiness({ verifiedCount: 1 });
+  [reordered.criteria[0], reordered.criteria[1]] = [
+    reordered.criteria[1],
+    reordered.criteria[0],
+  ];
+
   for (const invalid of [
     undefined,
     null,
@@ -43,6 +50,8 @@ test("Factory M5 copy fails closed for inconsistent readiness payloads", () => {
     readiness({ verifiedCount: 12, ready: false }),
     { ...readiness({ verifiedCount: 1 }), verifiedCount: 2 },
     { ...readiness({ verifiedCount: 1 }), status: "ready" },
+    { ...readiness({ verifiedCount: 1 }), requiredCount: 1, criteria: [{ id: "dataRegion", status: "verified" }] },
+    reordered,
   ]) {
     assert.deepEqual(productionReadinessCopy(invalid), {
       heading: "Security & Privacy nicht verifiziert",
@@ -74,9 +83,20 @@ test("Factory renders M5 from the shared snapshot refresh lifecycle without enab
   assert.equal(helperResponse.status, 200);
   assert.match(helperResponse.headers.get("content-type") ?? "", /^text\/javascript/);
   const helperBody = await helperResponse.text();
+  assert.match(
+    helperBody,
+    /import \{ REQUIRED_PRODUCTION_READINESS_CRITERIA \} from "\.\/production-readiness\.mjs";/,
+  );
   assert.doesNotMatch(helperBody, /fetch\(/);
   assert.doesNotMatch(helperBody, /addEventListener/);
   assert.match(helperBody, /Produktion bleibt gesperrt/);
+
+  const canonicalContractResponse = await fetch(`${baseUrl}/production-readiness.mjs`);
+  assert.equal(canonicalContractResponse.status, 200);
+  assert.match(
+    canonicalContractResponse.headers.get("content-type") ?? "",
+    /^text\/javascript/,
+  );
 
   const appResponse = await fetch(`${baseUrl}/app.js`);
   assert.equal(appResponse.status, 200);
