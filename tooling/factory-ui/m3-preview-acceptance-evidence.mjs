@@ -4,6 +4,7 @@ import { M3_PREVIEW_INITIAL_VERSION } from "../m3-preview-initial-version.mjs";
 
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
+const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
 
 export const M3_PREVIEW_ACCEPTANCE_RUN = Object.freeze({
   appId: "m3-preview",
@@ -53,6 +54,7 @@ export async function verifyAcceptanceRun(fetchImpl = fetch) {
           "x-github-api-version": "2022-11-28",
         },
         redirect: "error",
+        signal: AbortSignal.timeout(GITHUB_EVIDENCE_TIMEOUT_MS),
       },
     );
   } catch {
