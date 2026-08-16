@@ -401,10 +401,15 @@ jobs:
           EXPIRED_KEYS="$(printf '%s' "$ALL_KEYS" | node ./tooling/m4-free-backup-plan.mjs prune "$CREATED_AT")"
 
           while IFS= read -r key; do
-            if ! aws s3api delete-object \
+            if aws s3api delete-object \
               --bucket "$BUCKET" \
               --key "$key" \
               --endpoint-url "$ENDPOINT" >/dev/null 2>&1; then
+              jq -cn --arg key "$key" \
+                '{event:"m4-backup-retention-delete",key:$key,result:"deleted"}'
+            else
+              jq -cn --arg key "$key" \
+                '{event:"m4-backup-retention-delete",key:$key,result:"failed"}' >&2
               echo "M4 expired backup deletion failed." >&2
               exit 1
             fi
