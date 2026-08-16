@@ -180,6 +180,14 @@ jobs:
       - name: Verify deployed m3-preview database binding
         run: node ./tooling/generated-preview-database-smoke.mjs
 
+      - name: Verify m3-preview authenticated permission and tasks acceptance
+        env:
+          APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_ALLOWED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_PASSWORD }}
+        run: node ./tooling/m3-preview-acceptance-smoke.mjs
+
       - name: Remove generated deployment config
         if: always()
         run: rm -f ./apps/m3-preview/wrangler.preview.generated.json
