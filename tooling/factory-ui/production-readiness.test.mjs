@@ -8,6 +8,7 @@ import {
   evaluateProductionReadiness,
   REQUIRED_PRODUCTION_READINESS_CRITERIA,
 } from "./production-readiness.mjs";
+import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const expectedIds = [
@@ -111,18 +112,52 @@ test("inherited readiness values cannot count as production evidence", () => {
   }
 });
 
-test("Factory snapshot exposes M5 per app without enabling production release", async () => {
+test("repository evidence verifies only the strict normal app-manifest boundary", () => {
+  const definition = Object.freeze({
+    schemaVersion: 2,
+    appId: "privacy-evidence-test",
+    displayName: "Privacy Evidence Test",
+    modules: Object.freeze([]),
+    platformServices: Object.freeze([]),
+  });
+
+  assert.deepEqual(deriveRepositoryProductionReadinessEvidence(definition), {
+    secretsOutsideAppManifests: true,
+  });
+
+  assert.throws(
+    () =>
+      deriveRepositoryProductionReadinessEvidence({
+        ...definition,
+        databaseUrl: "postgres://must-not-be-accepted",
+      }),
+    /Unknown app definition field: databaseUrl/,
+  );
+});
+
+test("Factory snapshot consumes only repository-proven M5 evidence and keeps release blocked", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot);
 
   assert.ok(snapshot.apps.length > 0);
   for (const app of snapshot.apps) {
     assert.equal(app.productionReadiness.status, "blocked");
     assert.equal(app.productionReadiness.productionReady, false);
-    assert.equal(app.productionReadiness.verifiedCount, 0);
+    assert.equal(app.productionReadiness.verifiedCount, 1);
     assert.equal(app.productionReadiness.requiredCount, expectedIds.length);
     assert.deepEqual(
       app.productionReadiness.criteria.map((criterion) => criterion.id),
       expectedIds,
+    );
+    assert.equal(
+      app.productionReadiness.criteria.find(
+        (criterion) => criterion.id === "secretsOutsideAppManifests",
+      )?.status,
+      "verified",
+    );
+    assert.ok(
+      app.productionReadiness.criteria
+        .filter((criterion) => criterion.id !== "secretsOutsideAppManifests")
+        .every((criterion) => criterion.status === "open"),
     );
   }
   assert.equal(snapshot.capabilities.releaseProduction, false);
