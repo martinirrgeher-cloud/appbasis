@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       apply:
-        description: Deploy the pre-provisioned m3-preview Worker
+        description: Deploy the exact pre-provisioned m3-preview initial version
         required: true
         default: false
         type: boolean
@@ -126,78 +126,51 @@ jobs:
           });
           NODE
 
-      - name: Require pre-provisioned m3-preview Worker
-        working-directory: apps/reference
+      - name: Require exact pre-provisioned m3-preview Worker
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_APPLY_WORKER: "0"
+        run: node ./tooling/m3-preview-worker-bootstrap.mjs ensure
+
+      - name: Resolve exact one-time m3-preview initial version
+        id: initial-version
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          pnpm exec wrangler deployments list --name "$APPBASIS_GENERATED_WORKER_NAME" --json >/dev/null 2>&1 || {
-            echo 'm3-preview Worker is not pre-provisioned.' >&2
-            exit 1
-          }
-
-      - name: Require pre-provisioned Worker secret
-        working-directory: apps/reference
-        shell: bash
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          SECRET_LIST="$(pnpm exec wrangler secret list --name "$APPBASIS_GENERATED_WORKER_NAME" --format json)"
-          jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' <<<"$SECRET_LIST" >/dev/null || {
-            echo 'm3-preview Worker is missing the pre-provisioned BETTER_AUTH_SECRET.' >&2
-            exit 1
-          }
-
-      - name: Validate m3-preview Worker bundle without provisioning
-        working-directory: apps/reference
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: >-
-          pnpm exec wrangler deploy
-          --cwd ../m3-preview
-          --config wrangler.preview.generated.json
-          --dry-run
-          --experimental-provision=false
-          --experimental-auto-create=false
-
-      - name: Upload m3-preview Worker version without deployment
-        id: version
-        working-directory: apps/reference
-        shell: bash
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          output_file="$(mktemp)"
-          trap 'rm -f "$output_file"' EXIT
-          WRANGLER_OUTPUT_FILE_PATH="$output_file" pnpm exec wrangler versions upload \
-            --cwd ../m3-preview \
-            --config wrangler.preview.generated.json \
-            --name "$APPBASIS_GENERATED_WORKER_NAME" \
-            --experimental-provision=false \
-            --experimental-auto-create=false
-          VERSION_ID="$(jq -r 'select(.type == "version-upload") | .version_id // empty' "$output_file" | tail -n 1)"
-          [[ "$VERSION_ID" =~ ^[A-Za-z0-9-]{1,128}$ ]] || {
-            echo 'Wrangler did not return a valid uploaded m3-preview version ID.' >&2
+          VERSION_ID="$(node ./tooling/m3-preview-initial-version.mjs resolve-for-deploy)"
+          [[ "$VERSION_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
+            echo 'm3-preview initial version resolver did not return a canonical version ID.' >&2
             exit 1
           }
           echo "::add-mask::$VERSION_ID"
           printf 'id=%s\n' "$VERSION_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy uploaded m3-preview Worker version
+      - name: Preflight m3-preview acceptance credentials before traffic
+        env:
+          APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_ALLOWED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_PASSWORD }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readM3PreviewAcceptanceEnvironment } from "./tooling/m3-preview-acceptance-smoke.mjs";
+
+          readM3PreviewAcceptanceEnvironment(process.env);
+          console.log("m3-preview acceptance credentials passed local preflight.");
+          NODE
+
+      - name: Deploy exact initial m3-preview Worker version
         working-directory: apps/reference
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          APPBASIS_VERSION_ID: ${{ steps.version.outputs.id }}
+          APPBASIS_VERSION_ID: ${{ steps.initial-version.outputs.id }}
         run: |
           set -euo pipefail
           pnpm exec wrangler versions deploy \
@@ -207,11 +180,27 @@ jobs:
             --config wrangler.preview.generated.json \
             -y
 
+      - name: Verify exact initial m3-preview deployment
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_VERSION_ID: ${{ steps.initial-version.outputs.id }}
+        run: node ./tooling/m3-preview-initial-version.mjs verify-deploy "$APPBASIS_VERSION_ID"
+
       - name: Verify deployed m3-preview runtime boundary
         run: node ./tooling/generated-preview-smoke.mjs
 
       - name: Verify deployed m3-preview database binding
         run: node ./tooling/generated-preview-database-smoke.mjs
+
+      - name: Verify m3-preview authenticated permission and tasks acceptance
+        env:
+          APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_ALLOWED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_PASSWORD }}
+        run: node ./tooling/m3-preview-acceptance-smoke.mjs
 
       - name: Remove generated deployment config
         if: always()
