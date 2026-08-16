@@ -12,6 +12,12 @@ import test from "node:test";
 
 import { verifyAppDefinitions } from "./app-definition.mjs";
 import { createAppSkeleton } from "./create-app.mjs";
+import { evaluateProductionReadiness } from "./factory-ui/production-readiness.mjs";
+import { deriveRepositoryProductionReadinessEvidence } from "./factory-ui/repository-production-readiness-evidence.mjs";
+import {
+  bindUlcLinzM5TargetPolicy,
+  ULC_LINZ_M5_TARGET_POLICY,
+} from "./ulc-linz-m5-target-policy.mjs";
 
 test("generates the first ULC Linz AppBasis target through createAppSkeleton", async (t) => {
   const root = await createRepositoryFixture(t);
@@ -48,6 +54,30 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     modules: [],
     platformServices: ["identity", "permissions"],
   });
+
+  const targetPolicy = bindUlcLinzM5TargetPolicy(result.definition);
+  assert.deepEqual(targetPolicy, ULC_LINZ_M5_TARGET_POLICY);
+  assert.deepEqual(targetPolicy, {
+    appId: "ulc-linz",
+    operatorProfile: "Verein",
+    highPrivacyProfileId: "appbasis-high-privacy-v0.1",
+    productionDatabaseRegionTarget: "EU / Frankfurt",
+  });
+
+  const readiness = evaluateProductionReadiness(
+    deriveRepositoryProductionReadinessEvidence(result.definition),
+  );
+  assert.equal(readiness.productionReady, false);
+  assert.equal(readiness.status, "blocked");
+  assert.equal(readiness.verifiedCount, 1);
+  assert.equal(readiness.requiredCount, 12);
+
+  const readinessById = Object.fromEntries(
+    readiness.criteria.map((criterion) => [criterion.id, criterion.status]),
+  );
+  assert.equal(readinessById.dataRegion, "open");
+  assert.equal(readinessById.highPrivacyProfile, "open");
+  assert.equal(readinessById.secretsOutsideAppManifests, "verified");
 
   const manifest = JSON.parse(
     await readFile(join(root, "apps", "ulc-linz", "appbasis.app.json"), "utf8"),
