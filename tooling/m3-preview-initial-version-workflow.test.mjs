@@ -83,5 +83,5 @@ test("pins the one-time m3-preview initial version workflow boundary", async () 
   assert.match(contract, /deployed_on/);
   assert.match(contract, /mode: 0o600/);
   assert.match(contract, /flag: "wx"/);
-  assert.match(contract, /secret\.length < 32/);
+  assert.match(contract, /value\.length < 32/);
 });
