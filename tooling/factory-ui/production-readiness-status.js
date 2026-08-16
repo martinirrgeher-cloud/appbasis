@@ -1,3 +1,5 @@
+let statusGeneration = 0;
+
 export function productionReadinessCopy(readiness) {
   if (!isConsistentReadiness(readiness)) {
     return Object.freeze({
@@ -52,9 +54,11 @@ function isConsistentReadiness(readiness) {
 }
 
 async function renderProductionReadinessForApp(appId) {
+  const generation = ++statusGeneration;
   const heading = document.querySelector("#detail-production-status");
   const detail = document.querySelector("#detail-production-summary");
-  if (!heading || !detail) return;
+  const selectedAppId = document.querySelector("#detail-id")?.textContent;
+  if (!heading || !detail || selectedAppId !== appId) return;
 
   heading.textContent = "Security & Privacy wird geprüft …";
   detail.textContent = "Produktion bleibt während der Prüfung gesperrt.";
@@ -66,6 +70,9 @@ async function renderProductionReadinessForApp(appId) {
     });
     if (!response.ok) throw new Error("snapshot unavailable");
     const snapshot = await response.json();
+    if (generation !== statusGeneration || document.querySelector("#detail-id")?.textContent !== appId) {
+      return;
+    }
     const app = Array.isArray(snapshot?.apps)
       ? snapshot.apps.find((candidate) => candidate?.appId === appId)
       : undefined;
@@ -73,6 +80,9 @@ async function renderProductionReadinessForApp(appId) {
     heading.textContent = copy.heading;
     detail.textContent = copy.detail;
   } catch {
+    if (generation !== statusGeneration || document.querySelector("#detail-id")?.textContent !== appId) {
+      return;
+    }
     const copy = productionReadinessCopy(undefined);
     heading.textContent = copy.heading;
     detail.textContent = copy.detail;
