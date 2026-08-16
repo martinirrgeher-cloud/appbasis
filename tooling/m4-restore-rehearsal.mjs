@@ -4,6 +4,8 @@ import { pathToFileURL } from "node:url";
 const NEON_API_BASE = "https://console.neon.tech/api/v2";
 const PROVIDER_ID_PATTERN = /^[a-z0-9-]{1,60}$/;
 const RESTORE_BRANCH_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const SUCCESSFUL_OPERATION_STATES = new Set(["finished", "skipped"]);
+const FAILED_OPERATION_STATES = new Set(["failed", "cancelled"]);
 
 export async function ensureM4RestoreRehearsal({
   projectId,
@@ -101,6 +103,7 @@ export async function ensureM4RestoreRehearsal({
   } catch {
     return reconcileUnknownRestore({ input, headers });
   }
+  const operationSafety = classifyRestoreOperations(payload?.operations);
 
   const confirmed = await readExactRestoreBranch({ input, headers });
   if (confirmed === null || confirmed.id !== createdBranch.id) {
@@ -108,7 +111,7 @@ export async function ensureM4RestoreRehearsal({
       "Neon restore rehearsal create succeeded but authoritative readback is not yet exact; do not create another restore branch.",
     );
   }
-  return restoreResult(confirmed, input, "confirmed");
+  return restoreResult(confirmed, input, "confirmed", operationSafety);
 }
 
 async function reconcileUnknownRestore({ input, headers }) {
@@ -121,17 +124,59 @@ async function reconcileUnknownRestore({ input, headers }) {
   );
 }
 
-function restoreResult(branch, input, writeOutcome) {
+function restoreResult(
+  branch,
+  input,
+  writeOutcome,
+  operationSafety = Object.freeze({ state: "unknown", verificationReady: false }),
+) {
+  const branchReady = branch.current_state === "ready";
   return Object.freeze({
-    status: branch.current_state === "ready" ? "restore-preview-ready" : "restore-preview-pending",
+    status: branchReady ? "restore-preview-ready" : "restore-preview-pending",
     writeOutcome,
     snapshotId: input.snapshotId,
     sourceBranchId: input.sourceBranchId,
     restoreBranchId: branch.id,
     restoreBranchName: input.restoreBranchName,
     restoreBranchState: branch.current_state,
+    restoreOperationsState: operationSafety.state,
+    verificationReady: branchReady && operationSafety.verificationReady,
     finalizeRestore: false,
   });
+}
+
+function classifyRestoreOperations(operations) {
+  if (!Array.isArray(operations)) {
+    return Object.freeze({ state: "unknown", verificationReady: false });
+  }
+  if (operations.length === 0) {
+    return Object.freeze({ state: "complete", verificationReady: true });
+  }
+
+  let hasUnknown = false;
+  let hasPending = false;
+  for (const operation of operations) {
+    if (!isRecord(operation) || typeof operation.status !== "string") {
+      hasUnknown = true;
+      continue;
+    }
+    if (FAILED_OPERATION_STATES.has(operation.status)) {
+      throw new Error(
+        "Neon restore rehearsal operation did not complete successfully; do not start restore verification.",
+      );
+    }
+    if (!SUCCESSFUL_OPERATION_STATES.has(operation.status)) {
+      hasPending = true;
+    }
+  }
+
+  if (hasUnknown) {
+    return Object.freeze({ state: "unknown", verificationReady: false });
+  }
+  if (hasPending) {
+    return Object.freeze({ state: "pending", verificationReady: false });
+  }
+  return Object.freeze({ state: "complete", verificationReady: true });
 }
 
 async function readRestoreSnapshot({ input, headers }) {
