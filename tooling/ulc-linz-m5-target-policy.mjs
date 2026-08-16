@@ -1,4 +1,3 @@
-import { parseAppDefinition } from "./app-definition.mjs";
 import {
   HIGH_PRIVACY_PROFILE,
   isCanonicalHighPrivacyProfile,
@@ -16,17 +15,20 @@ export const ULC_LINZ_M5_TARGET_POLICY = Object.freeze({
   productionDatabaseRegionTarget: "EU / Frankfurt",
 });
 
-export function bindUlcLinzM5TargetPolicy(definition) {
-  const parsed = parseAppDefinition(definition);
+export function enforceUlcLinzM5TargetPolicy(definition) {
+  if (definition.appId !== ULC_LINZ_M5_TARGET_POLICY.appId) return undefined;
+  return bindUlcLinzM5TargetPolicy(definition);
+}
 
-  if (parsed.appId !== ULC_LINZ_M5_TARGET_POLICY.appId) {
+export function bindUlcLinzM5TargetPolicy(definition) {
+  if (definition.appId !== ULC_LINZ_M5_TARGET_POLICY.appId) {
     throw new Error(
       `ULC Linz M5 target policy requires appId ${ULC_LINZ_M5_TARGET_POLICY.appId}.`,
     );
   }
 
   for (const service of REQUIRED_PLATFORM_SERVICES) {
-    if (!parsed.platformServices.includes(service)) {
+    if (!definition.platformServices.includes(service)) {
       throw new Error(
         `ULC Linz M5 target policy requires platform service ${service}.`,
       );
