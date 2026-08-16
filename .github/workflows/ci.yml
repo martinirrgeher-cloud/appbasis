@@ -115,6 +115,9 @@ jobs:
       - name: Test preview bootstrap contract
         run: node --test ./apps/reference/tooling/preview-bootstrap-contract.test.mjs
 
+      - name: Test M3 preview execution readiness preflight
+        run: node --test ./tooling/m3-preview-execution-readiness.test.mjs ./tooling/m3-preview-execution-readiness-workflow.test.mjs
+
       - name: Test M4 backup and restore readiness contracts
         run: node --test ./tooling/m4-neon-backup-readiness.test.mjs ./tooling/m4-neon-backup-readiness-workflow.test.mjs ./tooling/m4-restore-verification.test.mjs ./tooling/m4-restore-verification-workflow.test.mjs ./tooling/m4-pre-migration-snapshot.test.mjs ./tooling/m4-pre-migration-snapshot-workflow.test.mjs ./tooling/m4-neon-backup-schedule.test.mjs ./tooling/m4-neon-backup-schedule-workflow.test.mjs ./tooling/m4-restore-rehearsal.test.mjs ./tooling/m4-restore-rehearsal-operations.test.mjs ./tooling/m4-restore-operation-recheck.test.mjs ./tooling/m4-restore-rehearsal-workflow.test.mjs
 

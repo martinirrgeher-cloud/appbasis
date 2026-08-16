@@ -1,0 +1,96 @@
+name: M3 Preview Execution Readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m3-preview-execution-readiness
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: M3 preview execution readiness preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: m3-preview
+    env:
+      APPBASIS_GENERATED_WORKER_NAME: appbasis-m3-preview
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and mask every protected M3 execution input
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
+          APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_ALLOWED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN APPBASIS_DATABASE_URL APPBASIS_BETTER_AUTH_SECRET APPBASIS_ROOT_ADMIN_PASSWORD APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD APPBASIS_SMOKE_ALLOWED_PASSWORD APPBASIS_SMOKE_DENIED_PASSWORD; do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing required m3-preview execution input: $name" >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+
+      - name: Verify Cloudflare Workers account access read-only
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl --fail --silent --show-error \
+            --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          SUBDOMAIN="$(jq -r 'if .success == true then (.result.subdomain // "") else "" end' <<<"$RESPONSE")"
+          [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || {
+            echo 'Cloudflare Workers account subdomain is unavailable or invalid.' >&2
+            exit 1
+          }
+          echo "APPBASIS_GENERATED_PREVIEW_URL=https://${APPBASIS_GENERATED_WORKER_NAME}.${SUBDOMAIN}.workers.dev" >> "$GITHUB_ENV"
+
+      - name: Validate downstream M3 contracts without writes
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
+          APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_ALLOWED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_PASSWORD }}
+        run: node ./tooling/m3-preview-execution-readiness.mjs
+
+      - name: Verify M3 preview database connection and schema read-only
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: node ./apps/m3-preview/tooling/verify-preview-schema.mjs
