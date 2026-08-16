@@ -2,6 +2,10 @@ import {
   HIGH_PRIVACY_PROFILE,
   isCanonicalHighPrivacyProfile,
 } from "./factory-ui/high-privacy-profile.mjs";
+import {
+  isCanonicalUlcLinzM5RoleDataScopePolicy,
+  ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY,
+} from "./ulc-linz-m5-role-data-scope.mjs";
 
 const REQUIRED_PLATFORM_SERVICES = Object.freeze(["identity", "permissions"]);
 
@@ -12,6 +16,7 @@ export const ULC_LINZ_M5_TARGET_POLICY = Object.freeze({
   appId: "ulc-linz",
   operatorProfile: "Verein",
   highPrivacyProfileId: "appbasis-high-privacy-v0.1",
+  roleDataScopePolicyId: "ulc-linz-role-data-scope-v0.1",
   productionDatabaseRegionTarget: "EU / Frankfurt",
 });
 
@@ -41,6 +46,18 @@ export function bindUlcLinzM5TargetPolicy(definition) {
   ) {
     throw new Error(
       "ULC Linz M5 target policy is not bound to the canonical High-Privacy profile.",
+    );
+  }
+
+  if (
+    !isCanonicalUlcLinzM5RoleDataScopePolicy(
+      ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY,
+    ) ||
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.id !==
+      ULC_LINZ_M5_TARGET_POLICY.roleDataScopePolicyId
+  ) {
+    throw new Error(
+      "ULC Linz M5 target policy is not bound to the canonical role/data-scope policy.",
     );
   }
 
