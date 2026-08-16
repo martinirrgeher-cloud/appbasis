@@ -116,7 +116,7 @@ jobs:
         run: node --test ./apps/reference/tooling/preview-bootstrap-contract.test.mjs
 
       - name: Test M4 backup and restore readiness contracts
-        run: node --test ./tooling/m4-neon-backup-readiness.test.mjs ./tooling/m4-neon-backup-readiness-workflow.test.mjs ./tooling/m4-restore-verification.test.mjs ./tooling/m4-restore-verification-workflow.test.mjs ./tooling/m4-pre-migration-snapshot.test.mjs ./tooling/m4-pre-migration-snapshot-workflow.test.mjs
+        run: node --test ./tooling/m4-neon-backup-readiness.test.mjs ./tooling/m4-neon-backup-readiness-workflow.test.mjs ./tooling/m4-restore-verification.test.mjs ./tooling/m4-restore-verification-workflow.test.mjs ./tooling/m4-pre-migration-snapshot.test.mjs ./tooling/m4-pre-migration-snapshot-workflow.test.mjs ./tooling/m4-neon-backup-schedule.test.mjs ./tooling/m4-neon-backup-schedule-workflow.test.mjs
 
       - name: Build
         run: pnpm run build

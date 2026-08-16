@@ -4,7 +4,7 @@
 
 M4 beweist, dass eine spätere eigenständige Produktiv-App nicht nur gesichert, sondern in eine geeignete Zielumgebung real wiederhergestellt und fachlich geprüft werden kann.
 
-Die bisherigen Slices sind bewusst **noch nicht M4 DONE**. Sie bereiten fail-closed Prüfungen und einen kontrollierten Pre-Migration-Sicherungspfad für den aktuell real verwendeten PostgreSQL-Provider Neon sowie die erste konkrete generierte App `m3-preview` vor. Eine allgemeine Backup-Provider- oder Restore-Abstraktion entsteht nicht, solange kein weiterer realer Verbraucher sie benötigt.
+Die bisherigen Slices sind bewusst **noch nicht M4 DONE**. Sie bereiten fail-closed Backup-/Restore-Prüfungen, einen kontrollierten Pre-Migration-Sicherungspfad und die kontrollierte Konfiguration automatischer Neon-Snapshots für den aktuell real verwendeten PostgreSQL-Provider sowie die erste konkrete generierte App `m3-preview` vor. Eine allgemeine Backup-Provider- oder Restore-Abstraktion entsteht nicht, solange kein weiterer realer Verbraucher sie benötigt.
 
 ## Slice 1 – Read-only Neon Backup Readiness
 
@@ -26,7 +26,7 @@ M4 benötigt eine bewusste Entscheidung für mindestens:
 - Snapshot-Frequenz,
 - minimale Snapshot-Aufbewahrung.
 
-Der Readiness-Check besitzt dafür keine fachlichen Defaultwerte. Fehlende Policy-Werte führen fail-closed zu einem Fehler.
+Die M4-Checks und Setter besitzen dafür keine fachlichen Defaultwerte. Fehlende Policy-Werte führen fail-closed zu einem Fehler.
 
 ## Slice 2 – Read-only Restore-Fingerprint-Verifikation
 
@@ -91,10 +91,43 @@ Der manuelle Workflow `.github/workflows/m4-pre-migration-snapshot.yml` verwende
 
 **Wichtig:** Dieser Repository-Slice führt den Workflow nicht aus und erzeugt keinen Snapshot. Eine reale Snapshot-Erzeugung ist eine externe Provideränderung und benötigt weiterhin eine ausdrückliche Nutzerfreigabe.
 
+## Slice 4 – Gegatete automatische Backup-Schedule
+
+`tooling/m4-neon-backup-schedule.mjs` bereitet die kontrollierte Konfiguration automatischer Neon-Snapshots vor.
+
+Der Setter verwendet dieselben bereits vorhandenen M4-Policy-Werte wie der Readiness-Check:
+
+- `APPBASIS_REQUIRED_BACKUP_FREQUENCY`
+- `APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS`
+
+Damit gibt es keine zweite Policyquelle. M4 v0.1 verwaltet nur die eine benötigte Policy-Anforderung; zusätzliche bereits vorhandene Schedules werden nicht automatisch gelöscht oder umgeschrieben.
+
+Der Vertrag:
+
+- prüft Zielprojekt und Zielbranch read-only und verlangt einen betriebsbereiten Root-Branch,
+- liest die aktuelle Schedule vor jeder möglichen Mutation,
+- verwendet dieselbe Erfüllungssemantik wie der Readiness-Check: mindestens ein Eintrag muss die erwartete Frequenz und **mindestens** die geforderte Retention besitzen,
+- akzeptiert zusätzliche vorhandene Schedule-Einträge, wenn die M4-Policy bereits durch einen Eintrag erfüllt ist; in diesem Fall erfolgt kein PUT,
+- behandelt eine längere vorhandene Retention ausdrücklich als stärkeren zulässigen Zustand und setzt sie nicht auf das Minimum zurück,
+- erhält bei einem notwendigen Frequenzwechsel einer einzelnen vorhandenen Schedule eine bereits stärkere Retention statt sie zu reduzieren,
+- verweigert bei mehreren vorhandenen Einträgen **ohne** passenden M4-Policy-Eintrag jede automatische Ersetzung, weil ein PUT sonst fremde Schedule-Semantik löschen könnte,
+- verweigert ebenso die automatische Ersetzung eines formal ungültigen/unbekannten einzelnen Schedule-Eintrags,
+- bleibt bei `apply=false` vollständig read-only,
+- sendet bei `apply=true` höchstens **einen** `PUT /backup_schedule`,
+- setzt Frequenz und mindestens die explizite Mindest-Retention; es wird keine Provider-Default-Retention als M4-Policy übernommen,
+- verlangt nach einem erfolgreichen PUT einen autoritativen GET-Readback, der dieselbe M4-Mindest-Policy wie der Readiness-Check erfüllen muss,
+- behandelt Netzwerkfehler, ungültige Responses und Providerfehler als potenziell unklaren Write-Ausgang und führt höchstens ein read-only Reconciliation-GET aus,
+- führt niemals automatisch einen zweiten PUT aus,
+- gibt keine Provider-Response-Bodies oder Credentials in Fehlern aus.
+
+Der manuelle Workflow `.github/workflows/m4-backup-schedule.yml` verwendet `m4-dr`, `contents: read` und einen standardmäßig deaktivierten Apply-Schalter.
+
+**Wichtig:** Dieser Repository-Slice führt den Workflow nicht aus und verändert keinen Backup-Schedule. Neon verlangt für automatische Backup-Schedules einen unterstützten bezahlten Plan; vor einer realen Ausführung müssen Plan, Zielprojekt/-branch, PITR-Fenster, Frequenz und Retention live bestätigt werden. Die reale Provideränderung benötigt ausdrücklich die Freigabe des Nutzers.
+
 ## Weitere M4-Slices
 
-1. Produktions-Policy und Zielprojekt festlegen.
-2. Neon Backup-Schedule kontrolliert konfigurieren. Das ist eine externe Provideränderung und benötigt ausdrückliche Freigabe.
+1. Produktions-Policy, Zielprojekt und tatsächlichen Neon-Plan festlegen/bestätigen.
+2. Backup-Schedule und erforderliches PITR-Fenster nach ausdrücklicher Freigabe real konfigurieren und den Readiness-Check erfolgreich ausführen.
 3. Den Pre-Migration-Snapshot-Pfad an einem ausdrücklich freigegebenen realen Ziel ausführen und dokumentieren.
 4. Einen Restore zunächst in eine getrennte Restore-/Preview-Zielumgebung durchführen, niemals direkt in die laufende Produktion.
 5. Den vorab erfassten Restore-Fingerprint gegen das Restore-Ziel verifizieren.
