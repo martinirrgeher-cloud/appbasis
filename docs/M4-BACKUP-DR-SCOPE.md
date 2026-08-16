@@ -100,22 +100,22 @@ Der Setter verwendet dieselben bereits vorhandenen M4-Policy-Werte wie der Readi
 - `APPBASIS_REQUIRED_BACKUP_FREQUENCY`
 - `APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS`
 
-Damit gibt es keine zweite Policyquelle. Für M4 v0.1 wird bewusst genau **eine verwaltete Schedule-Policy** pro Zielbranch unterstützt; zusätzliche Zeitpläne werden erst bei realem Bedarf modelliert.
+Damit gibt es keine zweite Policyquelle. M4 v0.1 verwaltet nur die eine benötigte Policy-Anforderung; zusätzliche bereits vorhandene Schedules werden nicht automatisch gelöscht oder umgeschrieben.
 
 Der Vertrag:
 
 - prüft Zielprojekt und Zielbranch read-only und verlangt einen betriebsbereiten Root-Branch,
 - liest die aktuelle Schedule vor jeder möglichen Mutation,
-- betrachtet die Policy als erfüllt, wenn genau ein Schedule-Eintrag mit der erwarteten Frequenz und **mindestens** der geforderten Retention vorhanden ist,
-- akzeptiert providerseitig ergänzte optionale Zeitfelder,
+- verwendet dieselbe Erfüllungssemantik wie der Readiness-Check: mindestens ein Eintrag muss die erwartete Frequenz und **mindestens** die geforderte Retention besitzen,
+- akzeptiert zusätzliche vorhandene Schedule-Einträge, wenn die M4-Policy bereits durch einen Eintrag erfüllt ist; in diesem Fall erfolgt kein PUT,
 - behandelt eine längere vorhandene Retention ausdrücklich als stärkeren zulässigen Zustand und setzt sie nicht auf das Minimum zurück,
-- erhält bei einem notwendigen Frequenzwechsel eine bereits stärkere vorhandene Retention statt sie zu reduzieren,
-- verweigert bei mehreren vorhandenen Schedule-Einträgen jede automatische Ersetzung, weil deren Bedeutung außerhalb des aktuellen M4-v0.1-Vertrags liegt,
+- erhält bei einem notwendigen Frequenzwechsel einer einzelnen vorhandenen Schedule eine bereits stärkere Retention statt sie zu reduzieren,
+- verweigert bei mehreren vorhandenen Einträgen **ohne** passenden M4-Policy-Eintrag jede automatische Ersetzung, weil ein PUT sonst fremde Schedule-Semantik löschen könnte,
 - verweigert ebenso die automatische Ersetzung eines formal ungültigen/unbekannten einzelnen Schedule-Eintrags,
 - bleibt bei `apply=false` vollständig read-only,
 - sendet bei `apply=true` höchstens **einen** `PUT /backup_schedule`,
 - setzt Frequenz und mindestens die explizite Mindest-Retention; es wird keine Provider-Default-Retention als M4-Policy übernommen,
-- verlangt nach einem erfolgreichen PUT einen autoritativen GET-Readback, der die Mindest-Policy erfüllen muss,
+- verlangt nach einem erfolgreichen PUT einen autoritativen GET-Readback, der dieselbe M4-Mindest-Policy wie der Readiness-Check erfüllen muss,
 - behandelt Netzwerkfehler, ungültige Responses und Providerfehler als potenziell unklaren Write-Ausgang und führt höchstens ein read-only Reconciliation-GET aus,
 - führt niemals automatisch einen zweiten PUT aus,
 - gibt keine Provider-Response-Bodies oder Credentials in Fehlern aus.

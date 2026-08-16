@@ -107,6 +107,50 @@ test("an exact or stronger existing retention satisfies policy without PUT", asy
   }
 });
 
+test("additional schedules are tolerated when an existing entry already meets policy", async () => {
+  const schedule = [
+    ...matchingSchedule({ retention_seconds: 2_592_000 }),
+    { frequency: "weekly", retention_seconds: 604_800 },
+  ];
+  const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
+  const result = await ensureM4NeonBackupSchedule({
+    ...input,
+    apply: true,
+    fetchImpl,
+  });
+
+  assert.equal(result.status, "schedule-ready");
+  assert.equal(result.configuredRetentionSeconds, 2_592_000);
+  assert.equal(calls.filter((call) => call.options.method === "PUT").length, 0);
+});
+
+test("multiple schedules without a policy match are refused before any PUT", async () => {
+  const schedule = [
+    { frequency: "weekly", retention_seconds: 604_800 },
+    { frequency: "monthly", retention_seconds: 2_592_000 },
+  ];
+  const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
+  await assert.rejects(
+    ensureM4NeonBackupSchedule({ ...input, apply: true, fetchImpl }),
+    /multiple entries without an M4 policy match; automatic replacement is refused/,
+  );
+  assert.equal(calls.filter((call) => call.options.method === "PUT").length, 0);
+});
+
+test("a malformed single schedule is refused before any PUT", async () => {
+  for (const schedule of [
+    [{ frequency: "hourly", retention_seconds: 604_800 }],
+    [{ frequency: "daily" }],
+  ]) {
+    const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
+    await assert.rejects(
+      ensureM4NeonBackupSchedule({ ...input, apply: true, fetchImpl }),
+      /invalid entry; automatic replacement is refused/,
+    );
+    assert.equal(calls.filter((call) => call.options.method === "PUT").length, 0);
+  }
+});
+
 test("apply sends exactly one PUT and requires authoritative readback", async () => {
   const { fetchImpl, calls } = makeFetch({
     scheduleReads: [[], matchingSchedule()],
@@ -170,29 +214,6 @@ test("changing frequency preserves stronger existing retention", async () => {
       },
     ],
   });
-});
-
-test("multiple or malformed current schedules are refused before any PUT", async () => {
-  const cases = [
-    [
-      [
-        ...matchingSchedule(),
-        { frequency: "weekly", retention_seconds: 604_800 },
-      ],
-      /multiple entries; automatic replacement is refused/,
-    ],
-    [[{ frequency: "hourly", retention_seconds: 604_800 }], /invalid entry/],
-    [[{ frequency: "daily" }], /invalid entry/],
-  ];
-
-  for (const [schedule, pattern] of cases) {
-    const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
-    await assert.rejects(
-      ensureM4NeonBackupSchedule({ ...input, apply: true, fetchImpl }),
-      pattern,
-    );
-    assert.equal(calls.filter((call) => call.options.method === "PUT").length, 0);
-  }
 });
 
 test("timeout or invalid response reconciles once and never blindly repeats PUT", async () => {
