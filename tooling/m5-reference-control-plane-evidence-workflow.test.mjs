@@ -7,12 +7,14 @@ const workflowUrl = new URL(
   import.meta.url,
 );
 
-test("M5 Reference control-plane evidence workflow is manual, protected and read-only", async () => {
+test("M5 Reference control-plane evidence workflow is manual, main-bound and read-only", async () => {
   const workflow = await readFile(workflowUrl, "utf8");
 
   assert.match(workflow, /^\s*workflow_dispatch:\s*$/m);
   assert.match(workflow, /^permissions:\n\s+contents: read$/m);
   assert.match(workflow, /^\s+environment: reference-preview$/m);
+  assert.match(workflow, /GITHUB_REF.*refs\/heads\/main/);
+  assert.match(workflow, /M5 provider evidence must run from refs\/heads\/main/);
   assert.match(
     workflow,
     /wrangler deployments list --name appbasis-reference-role-admin --json/,
