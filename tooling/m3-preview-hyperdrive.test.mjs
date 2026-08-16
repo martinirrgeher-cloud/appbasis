@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { parseGeneratedPreviewDatabaseUrl } from "./generated-preview-hyperdrive.mjs";
 import {
+  ensureM3PreviewHyperdrive,
   M3_PREVIEW_HYPERDRIVE,
   parseM3PreviewDatabaseUrl,
   resolveM3PreviewHyperdrive,
@@ -29,7 +30,9 @@ function targetConfig(overrides = {}) {
     },
     caching: { disabled: true, ...(overrides.caching ?? {}) },
     ...Object.fromEntries(
-      Object.entries(overrides).filter(([key]) => key !== "origin" && key !== "caching"),
+      Object.entries(overrides).filter(
+        ([key]) => key !== "origin" && key !== "caching",
+      ),
     ),
   };
 }
@@ -130,4 +133,74 @@ test("fails closed when the dedicated m3 target is absent or ambiguous", async (
       /not found|not unique/,
     );
   }
+});
+
+test("does not create a missing m3 Hyperdrive without explicit confirmation", async () => {
+  let requestCount = 0;
+  await assert.rejects(
+    ensureM3PreviewHyperdrive({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      databaseUrl: DATABASE_URL,
+      apply: false,
+      fetchImpl: async () => {
+        requestCount += 1;
+        return apiResponse([]);
+      },
+    }),
+    /creation was not explicitly confirmed/,
+  );
+  assert.equal(requestCount, 1);
+});
+
+test("creates only the dedicated cache-disabled m3 Hyperdrive when explicitly confirmed", async () => {
+  const requests = [];
+  const result = await ensureM3PreviewHyperdrive({
+    accountId: ACCOUNT_ID,
+    apiToken: API_TOKEN,
+    databaseUrl: DATABASE_URL,
+    apply: true,
+    fetchImpl: async (url, options) => {
+      requests.push({ url: String(url), options });
+      if (options.method === "GET") return apiResponse([]);
+      return apiResponse(targetConfig());
+    },
+  });
+
+  assert.deepEqual(result, {
+    id: TARGET_ID,
+    name: M3_PREVIEW_HYPERDRIVE.name,
+  });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].options.method, "POST");
+  assert.deepEqual(JSON.parse(requests[1].options.body), {
+    name: "appbasis-m3-preview-db",
+    origin: {
+      scheme: "postgres",
+      host: "ep-direct.example.neon.tech",
+      port: 5432,
+      database: "appbasis_m3_preview",
+      user: "runtime.user",
+      password: "runtime-password",
+    },
+    caching: { disabled: true },
+  });
+});
+
+test("reuses a valid existing m3 Hyperdrive without mutation", async () => {
+  let requestCount = 0;
+  const result = await ensureM3PreviewHyperdrive({
+    accountId: ACCOUNT_ID,
+    apiToken: API_TOKEN,
+    databaseUrl: DATABASE_URL,
+    apply: true,
+    fetchImpl: async (_url, options) => {
+      requestCount += 1;
+      assert.equal(options.method, "GET");
+      return apiResponse([targetConfig()]);
+    },
+  });
+
+  assert.equal(result.id, TARGET_ID);
+  assert.equal(requestCount, 1);
 });
