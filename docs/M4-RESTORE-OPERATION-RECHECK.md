@@ -18,4 +18,17 @@ Beim Wiederverwenden oder Reconciliieren eines exakten Restore-Branches:
 - Provider-Lesefehler liefern keine erfundene Completion-Evidenz,
 - `finalize_restore` bleibt weiterhin `false`.
 
+## Live-Recheck nach PR #116
+
+Der read-only Restore-Rehearsal-Lauf #7 auf dem damaligen aktuellen `main` identifizierte die zuvor bewusst nur diagnostizierte Neon-Paginationvariante eindeutig: Nach einer fortgesetzten Operations-Abfrage lieferte Neon auf einer **kurzen Seite** denselben Cursor erneut. Der Lauf brach deshalb mit der sicheren Klasse `non-advancing cursor on a short page` ab.
+
+Der Vertrag wird nur für genau diese live beobachtete Kombination erweitert:
+
+- ein bereits gesehener Cursor auf einer **kurzen** Seite gilt als terminal; die bis dahin vollständig gelesene Operationsevidenz wird klassifiziert,
+- ein bereits gesehener Cursor auf einer **vollen** Seite bleibt fail-closed,
+- non-string, oversized und non-canonical Cursor bleiben unabhängig von der Seitengröße fail-closed,
+- die Änderung erzeugt keinen Provider-Write und führt insbesondere keinen weiteren Restore-POST aus.
+
+Damit wird nicht pauschal „jede kurze Seite“ als neu definierter Terminalfall akzeptiert. Der bestehende Vertrag für explizit fehlende/leere Cursor auf kurzen Seiten bleibt bestehen; zusätzlich wird nur die empirisch beobachtete Kombination aus kurzer Seite und nicht fortschreitendem Cursor als terminal anerkannt.
+
 Der Slice führt selbst keinen realen Restore aus und verändert keine Providerressource.
