@@ -70,6 +70,17 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.trainer,
     "ulc-linz:trainer",
   );
+  assert.deepEqual(ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.adminAuthorization, {
+    sourceRole: "admin",
+    runtimeRoleId: "ulc-linz:admin",
+    mode: "own-organization-admin",
+    moduleAccess: "all-known-modules-view-edit",
+    individualModulePermissionsRequired: false,
+    memberAdministration: "own-organization",
+    auditVisibility: "own-organization",
+    crossOrganization: "deny",
+    unknownModule: "deny",
+  });
   assert.equal(
     ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.permissionTemplates.kindertrainer.sourceRole,
     "trainer",
