@@ -142,6 +142,72 @@ test("an exact existing preview restore is reused without a second POST", async 
   }
 });
 
+test("a short operations page accepts Neon's empty terminal cursor without weakening full-page pagination", async () => {
+  const existing = restoredBranch();
+  const operation = {
+    id: "op-restored-12345678",
+    project_id: input.projectId,
+    branch_id: existing.id,
+    status: "finished",
+  };
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith(`/branches/${input.sourceBranchId}`)) {
+      return jsonResponse({ branch: sourceBranch() });
+    }
+    if (parsed.pathname.endsWith(`/snapshots`) && options.method === "GET") {
+      return jsonResponse({ snapshots: [snapshot()] });
+    }
+    if (parsed.pathname.endsWith(`/branches`) && options.method === "GET") {
+      return jsonResponse({ branches: [existing] });
+    }
+    if (parsed.pathname.endsWith(`/operations`) && options.method === "GET") {
+      return jsonResponse({ operations: [operation], pagination: { cursor: "" } });
+    }
+    return jsonResponse({}, 404);
+  };
+
+  const result = await ensureM4RestoreRehearsal({
+    ...input,
+    apply: false,
+    fetchImpl,
+  });
+
+  assert.equal(result.status, "restore-preview-ready");
+  assert.equal(result.restoreOperationsState, "complete");
+  assert.equal(result.verificationReady, true);
+  assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
+
+  const fullPage = Array.from({ length: 1000 }, (_, index) => ({
+    id: `op-${index}`,
+    project_id: input.projectId,
+    branch_id: index === 0 ? existing.id : "br-other-12345678",
+    status: "finished",
+  }));
+  const fullPageFetch = async (url, options) => {
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith(`/branches/${input.sourceBranchId}`)) {
+      return jsonResponse({ branch: sourceBranch() });
+    }
+    if (parsed.pathname.endsWith(`/snapshots`) && options.method === "GET") {
+      return jsonResponse({ snapshots: [snapshot()] });
+    }
+    if (parsed.pathname.endsWith(`/branches`) && options.method === "GET") {
+      return jsonResponse({ branches: [existing] });
+    }
+    if (parsed.pathname.endsWith(`/operations`) && options.method === "GET") {
+      return jsonResponse({ operations: fullPage, pagination: { cursor: "" } });
+    }
+    return jsonResponse({}, 404);
+  };
+  await assert.rejects(
+    ensureM4RestoreRehearsal({ ...input, apply: false, fetchImpl: fullPageFetch }),
+    /returned an invalid cursor/,
+  );
+});
+
 test("same-name branch is refused unless it proves the exact snapshot restore relationship", async () => {
   for (const existing of [
     restoredBranch({ restored_from: "snap-other-12345678" }),
