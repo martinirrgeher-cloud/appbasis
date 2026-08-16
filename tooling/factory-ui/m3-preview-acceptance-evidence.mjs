@@ -17,7 +17,7 @@ export const M3_PREVIEW_ACCEPTANCE_RUN = Object.freeze({
   workflowRunEvent: "workflow_dispatch",
   workflowRunBranch: "main",
   acceptedM3ContractDigest:
-    "6e2db17f9ebb3bff93ac63c774da9793bde4a5d0ada2adad18f5fdfb248f44a0",
+    "31653c9c677052b8cea69e1847bdbfd9ac10160b57d8e01ef3abd0cb03147787",
   acceptedAppDefinitionDigest:
     "6fd7568ad3ec1793991da4d1a0b8353b18a9641a872847fd629549b9e1055413",
 });
@@ -30,7 +30,8 @@ export async function deriveM3PreviewAcceptanceEvidence(
     return Object.freeze({});
   }
   if (
-    M3_PREVIEW_ACCEPTANCE_RUN.acceptedM3ContractDigest !== currentM3ContractDigest() ||
+    M3_PREVIEW_ACCEPTANCE_RUN.acceptedM3ContractDigest !==
+      m3PreviewDeploymentContractDigest() ||
     M3_PREVIEW_ACCEPTANCE_RUN.acceptedAppDefinitionDigest !== appDefinitionDigest(definition)
   ) {
     return Object.freeze({});
@@ -75,6 +76,15 @@ export async function verifyAcceptanceRun(fetchImpl = fetch) {
   return isExpectedSuccessfulRun(run);
 }
 
+export function m3PreviewDeploymentContractDigest(
+  contract = M3_PREVIEW_INITIAL_VERSION,
+) {
+  if (!isPlainObject(contract)) {
+    throw new Error("M3 preview deployment contract must be a plain object.");
+  }
+  return createHash("sha256").update(canonicalJson(contract)).digest("hex");
+}
+
 function isExpectedSuccessfulRun(run) {
   return (
     isPlainObject(run) &&
@@ -90,13 +100,6 @@ function isExpectedSuccessfulRun(run) {
     isPlainObject(run.repository) &&
     run.repository.full_name === M3_PREVIEW_ACCEPTANCE_RUN.repository
   );
-}
-
-function currentM3ContractDigest() {
-  return createHash("sha256")
-    .update(`${M3_PREVIEW_INITIAL_VERSION.sourceSha}\n`)
-    .update(`${M3_PREVIEW_INITIAL_VERSION.versionId}\n`)
-    .digest("hex");
 }
 
 function appDefinitionDigest(definition) {
