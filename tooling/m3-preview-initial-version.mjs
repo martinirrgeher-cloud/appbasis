@@ -11,6 +11,7 @@ export const M3_PREVIEW_INITIAL_VERSION = Object.freeze({
   workerName: "appbasis-m3-preview",
   tag: "m3-preview-initial-v1",
   sourceSha: "a359d6e6c39771e9d0dae3f73ba9918290356580",
+  versionId: "793fe967-f891-453b-b241-2e8f5fd58804",
   secretName: "BETTER_AUTH_SECRET",
 });
 
@@ -129,17 +130,11 @@ export async function verifyCurrentM3PreviewInitialVersionDeployment({
     listDeployments(deployment),
   ]);
 
-  if (versions.length !== 1) {
-    throw new Error(
-      "m3-preview recovery requires exactly one Worker version.",
-    );
-  }
-  const versionId = requiredVersionId(versions[0]?.id);
   return verifyExactInitialDeploymentState({
     versions,
     worker,
     deployments,
-    versionId,
+    versionId: M3_PREVIEW_INITIAL_VERSION.versionId,
   });
 }
 
@@ -410,7 +405,7 @@ if (isMainModule()) {
         apiToken: process.env.CLOUDFLARE_API_TOKEN,
       });
       console.log(
-        "m3-preview current deployment matches the exact original initial version and source SHA.",
+        "m3-preview current deployment matches the pinned original version UUID and source SHA.",
       );
     } else {
       throw new Error(
