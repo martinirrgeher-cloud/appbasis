@@ -14,6 +14,7 @@ import { verifyAppDefinitions } from "./app-definition.mjs";
 import { createAppSkeleton } from "./create-app.mjs";
 import { evaluateProductionReadiness } from "./factory-ui/production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./factory-ui/repository-production-readiness-evidence.mjs";
+import { ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY } from "./ulc-linz-m5-role-data-scope.mjs";
 import { ULC_LINZ_M5_TARGET_POLICY } from "./ulc-linz-m5-target-policy.mjs";
 
 test("generates the first ULC Linz AppBasis target through createAppSkeleton", async (t) => {
@@ -56,8 +57,27 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     appId: "ulc-linz",
     operatorProfile: "Verein",
     highPrivacyProfileId: "appbasis-high-privacy-v0.1",
+    roleDataScopePolicyId: "ulc-linz-role-data-scope-v0.1",
     productionDatabaseRegionTarget: "EU / Frankfurt",
   });
+  assert.deepEqual(ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.roles, [
+    "admin",
+    "trainer",
+    "athlete",
+    "parent",
+  ]);
+  assert.equal(
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.dataScopes.organizationBoundary,
+    "same-organization-only",
+  );
+  assert.equal(
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.dataScopes.athleteLink.relationType,
+    "self",
+  );
+  assert.equal(
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.dataScopes.parentLink.relationType,
+    "managed",
+  );
 
   const readiness = evaluateProductionReadiness(
     deriveRepositoryProductionReadinessEvidence(result.definition),
@@ -71,6 +91,7 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     readiness.criteria.map((criterion) => [criterion.id, criterion.status]),
   );
   assert.equal(readinessById.dataRegion, "open");
+  assert.equal(readinessById.rolesRights, "open");
   assert.equal(readinessById.highPrivacyProfile, "open");
   assert.equal(readinessById.secretsOutsideAppManifests, "verified");
 
