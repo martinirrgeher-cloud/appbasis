@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
+import {
+  evaluateProductionReadiness,
+  REQUIRED_PRODUCTION_READINESS_CRITERIA,
+} from "./production-readiness.mjs";
 import { productionReadinessCopy } from "./production-readiness-status.js";
 import { startFactoryServer } from "./server.mjs";
 
@@ -19,22 +22,36 @@ function readiness({ verifiedCount, ready = false }) {
   };
 }
 
-test("Factory M5 copy names every canonical open criterion without implying release", () => {
-  assert.deepEqual(productionReadinessCopy(readiness({ verifiedCount: 1 })), {
+test("Factory M5 copy names the real current 1/12 open criteria without implying release", () => {
+  const current = evaluateProductionReadiness({
+    secretsOutsideAppManifests: true,
+  });
+  assert.deepEqual(productionReadinessCopy(current), {
     heading: "Security & Privacy 1/12 geprüft",
     detail:
-      "Noch offen: AVV/DPA · Verschlüsselung · Rollen & Rechte · Löschkonzept · Aufbewahrung · Datenexport · Audit-/Security-Logging · Subprozessoren · High-Privacy-Profil · Secrets außerhalb App-Manifeste · Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
+      "Noch offen: Datenregion · AVV/DPA · Verschlüsselung · Rollen & Rechte · Löschkonzept · Aufbewahrung · Datenexport · Audit-/Security-Logging · Subprozessoren · High-Privacy-Profil · Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
   });
 
-  assert.deepEqual(productionReadinessCopy(readiness({ verifiedCount: 11 })), {
-    heading: "Security & Privacy 11/12 geprüft",
-    detail: "Noch offen: Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
-  });
+  const allExceptControlPlane = Object.fromEntries(
+    REQUIRED_PRODUCTION_READINESS_CRITERIA
+      .filter((criterion) => criterion.id !== "privilegedControlPlaneIsolation")
+      .map((criterion) => [criterion.id, true]),
+  );
+  assert.deepEqual(
+    productionReadinessCopy(evaluateProductionReadiness(allExceptControlPlane)),
+    {
+      heading: "Security & Privacy 11/12 geprüft",
+      detail: "Noch offen: Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
+    },
+  );
 });
 
 test("Factory M5 copy keeps production separate even when M5 is fully verified", () => {
+  const allVerified = Object.fromEntries(
+    REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion) => [criterion.id, true]),
+  );
   assert.deepEqual(
-    productionReadinessCopy(readiness({ verifiedCount: 12, ready: true })),
+    productionReadinessCopy(evaluateProductionReadiness(allVerified)),
     {
       heading: "Security & Privacy 12/12 geprüft",
       detail: "M5 ist erfüllt. Die Produktionsfreigabe bleibt ein separates, gesperrtes Gate.",
