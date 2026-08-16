@@ -1,4 +1,12 @@
-const ROLE_IDS = Object.freeze(["admin", "trainer", "athlete", "parent"]);
+const SOURCE_ROLE_IDS = Object.freeze(["admin", "trainer", "athlete", "parent"]);
+
+const RUNTIME_ROLE_IDS = Object.freeze({
+  admin: "ulc-linz:admin",
+  kindertrainer: "ulc-linz:kindertrainer",
+  leistungstrainer: "ulc-linz:leistungstrainer",
+  athlete: "ulc-linz:athlete",
+  parent: "ulc-linz:parent",
+});
 
 const KINDERTRAINER_MODULES = Object.freeze([
   "kindertraining",
@@ -39,8 +47,11 @@ const ATHLETE_EDIT_MODULES = Object.freeze([
 const PARENT_VIEW_MODULES = Object.freeze(["kindertraining", "u12", "u14"]);
 
 // App-specific M5 Phase-B target contract, derived from the current ULC Linz
-// production source. This is policy input only: it does not make rolesRights
-// verified until the ULC target runtime consumes and proves these boundaries.
+// production source. This is policy input only: it does not make
+// rolesAndPermissions verified until the ULC target runtime consumes and proves
+// these boundaries. Source role `trainer` is intentionally mapped to two
+// distinct AppBasis runtime role IDs so its different capability profiles can
+// never be merged into a broader role by provisioning.
 export const ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY = deepFreeze({
   schemaVersion: 1,
   id: "ulc-linz-role-data-scope-v0.1",
@@ -48,29 +59,34 @@ export const ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY = deepFreeze({
     repository: "martinirrgeher-cloud/ulc-linz",
     commit: "682ed5d37e7206f7fa521e5dab40f840cc303f0b",
   },
-  roles: [...ROLE_IDS],
-  permissionModel: {
+  sourceRoles: [...SOURCE_ROLE_IDS],
+  runtimeRoles: {
     admin: {
-      role: "admin",
+      sourceRole: "admin",
+      roleId: RUNTIME_ROLE_IDS.admin,
       mode: "own-organization-admin",
     },
     kindertrainer: {
-      role: "trainer",
+      sourceRole: "trainer",
+      roleId: RUNTIME_ROLE_IDS.kindertrainer,
       view: [...KINDERTRAINER_MODULES],
       edit: [...KINDERTRAINER_MODULES],
     },
     leistungstrainer: {
-      role: "trainer",
+      sourceRole: "trainer",
+      roleId: RUNTIME_ROLE_IDS.leistungstrainer,
       view: [...LEISTUNGSTRAINER_VIEW_MODULES],
       edit: [...LEISTUNGSTRAINER_EDIT_MODULES],
     },
     athlete: {
-      role: "athlete",
+      sourceRole: "athlete",
+      roleId: RUNTIME_ROLE_IDS.athlete,
       view: [...ATHLETE_VIEW_MODULES],
       edit: [...ATHLETE_EDIT_MODULES],
     },
     parent: {
-      role: "parent",
+      sourceRole: "parent",
+      roleId: RUNTIME_ROLE_IDS.parent,
       view: [...PARENT_VIEW_MODULES],
       edit: [],
     },
@@ -83,13 +99,13 @@ export const ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY = deepFreeze({
     canEditImpliesView: true,
     lastActiveAdmin: "protected",
     athleteLink: {
-      role: "athlete",
+      sourceRole: "athlete",
       relationType: "self",
       cardinality: "one",
       explicitLinksOnly: true,
     },
     parentLink: {
-      role: "parent",
+      sourceRole: "parent",
       relationType: "managed",
       cardinality: "many",
       explicitLinksOnly: true,
@@ -100,7 +116,22 @@ export const ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY = deepFreeze({
 export function isCanonicalUlcLinzM5RoleDataScopePolicy(
   value = ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY,
 ) {
-  return exactValue(value, ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY);
+  return (
+    exactValue(value, ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY) &&
+    hasUniqueRuntimeRoleIds(value)
+  );
+}
+
+function hasUniqueRuntimeRoleIds(value) {
+  if (!isPlainObject(value) || !isPlainObject(value.runtimeRoles)) return false;
+  const roleIds = Object.values(value.runtimeRoles).map((runtimeRole) =>
+    isPlainObject(runtimeRole) ? runtimeRole.roleId : undefined,
+  );
+  return (
+    roleIds.length > 0 &&
+    roleIds.every((roleId) => typeof roleId === "string" && roleId.length > 0) &&
+    new Set(roleIds).size === roleIds.length
+  );
 }
 
 function exactValue(value, expected) {
