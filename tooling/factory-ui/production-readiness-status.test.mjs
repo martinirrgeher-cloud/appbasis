@@ -19,10 +19,16 @@ function readiness({ verifiedCount, ready = false }) {
   };
 }
 
-test("Factory M5 copy shows partial readiness without implying release", () => {
+test("Factory M5 copy names every canonical open criterion without implying release", () => {
   assert.deepEqual(productionReadinessCopy(readiness({ verifiedCount: 1 })), {
     heading: "Security & Privacy 1/12 geprüft",
-    detail: "11 Kriterien sind noch offen. Produktion bleibt gesperrt.",
+    detail:
+      "Noch offen: AVV/DPA · Verschlüsselung · Rollen & Rechte · Löschkonzept · Aufbewahrung · Datenexport · Audit-/Security-Logging · Subprozessoren · High-Privacy-Profil · Secrets außerhalb App-Manifeste · Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
+  });
+
+  assert.deepEqual(productionReadinessCopy(readiness({ verifiedCount: 11 })), {
+    heading: "Security & Privacy 11/12 geprüft",
+    detail: "Noch offen: Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
   });
 });
 
@@ -89,6 +95,7 @@ test("Factory renders M5 from the shared snapshot refresh lifecycle without enab
   );
   assert.doesNotMatch(helperBody, /fetch\(/);
   assert.doesNotMatch(helperBody, /addEventListener/);
+  assert.match(helperBody, /Noch offen:/);
   assert.match(helperBody, /Produktion bleibt gesperrt/);
 
   const canonicalContractResponse = await fetch(`${baseUrl}/production-readiness.mjs`);
