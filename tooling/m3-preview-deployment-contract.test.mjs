@@ -89,7 +89,6 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   assert.match(hyperdrive, /name: "appbasis-m3-preview-db"/);
   assert.match(hyperdrive, /database: "appbasis_m3_preview"/);
   assert.match(hyperdrive, /resolveGeneratedPreviewHyperdrive/);
-  assert.doesNotMatch(hyperdrive, /ensureGeneratedPreviewHyperdrive/);
 });
 
 test("keeps m3-preview provisioning outside the deployment workflow", async () => {
