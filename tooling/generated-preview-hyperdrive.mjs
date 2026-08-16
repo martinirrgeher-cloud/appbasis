@@ -363,16 +363,13 @@ function cloudflareHeaders(apiToken, includeContentType) {
 }
 
 function requiredTarget(value) {
-  if (
-    !isRecord(value) ||
-    !Object.isFrozen(value) ||
-    typeof value.appId !== "string" ||
-    typeof value.environment !== "string" ||
-    typeof value.name !== "string" ||
-    typeof value.database !== "string"
-  ) {
+  if (!isRecord(value) || !Object.isFrozen(value)) {
     throw new Error("Generated preview Hyperdrive target is invalid.");
   }
+  requiredIdentifier(value.appId, "appId");
+  requiredIdentifier(value.environment, "environment");
+  requiredIdentifier(value.name, "name");
+  requiredDatabaseName(value.database);
   return value;
 }
 
