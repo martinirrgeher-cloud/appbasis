@@ -67,6 +67,35 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   assert.ok(runtimeSmoke > deploymentVerify);
   assert.ok(acceptanceSmoke > runtimeSmoke);
 
+  const acceptanceCredentialPreflightBlock = workflow.slice(
+    acceptanceCredentialPreflight,
+    versionDeploy,
+  );
+  assert.match(
+    acceptanceCredentialPreflightBlock,
+    /readM3PreviewAcceptanceEnvironment\(process\.env\)/,
+  );
+  assert.match(
+    acceptanceCredentialPreflightBlock,
+    /APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD/,
+  );
+  assert.match(
+    acceptanceCredentialPreflightBlock,
+    /APPBASIS_SMOKE_ALLOWED_PASSWORD/,
+  );
+  assert.match(
+    acceptanceCredentialPreflightBlock,
+    /APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD/,
+  );
+  assert.match(
+    acceptanceCredentialPreflightBlock,
+    /APPBASIS_SMOKE_DENIED_PASSWORD/,
+  );
+  assert.doesNotMatch(
+    acceptanceCredentialPreflightBlock,
+    /\bcurl\b|\bwrangler\b|\bfetch\s*\(/,
+  );
+
   assert.match(workflow, /node \.\/tooling\/m3-preview-hyperdrive\.mjs resolve/);
   assert.doesNotMatch(workflow, /m3-preview-hyperdrive\.mjs ensure/);
   assert.doesNotMatch(workflow, /APPBASIS_APPLY_HYPERDRIVE/);
@@ -78,11 +107,6 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   assert.match(workflow, /APPBASIS_APPLY_WORKER: "0"/);
   assert.match(workflow, /m3-preview-initial-version\.mjs resolve-for-deploy/);
   assert.match(workflow, /m3-preview-initial-version\.mjs verify-deploy/);
-  assert.match(workflow, /readM3PreviewAcceptanceEnvironment/);
-  assert.match(workflow, /APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD/);
-  assert.match(workflow, /APPBASIS_SMOKE_ALLOWED_PASSWORD/);
-  assert.match(workflow, /APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD/);
-  assert.match(workflow, /APPBASIS_SMOKE_DENIED_PASSWORD/);
   assert.match(workflow, /wrangler versions deploy/);
   assert.match(workflow, /\$\{APPBASIS_VERSION_ID\}@100%/);
   assert.match(workflow, /-y/);
