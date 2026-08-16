@@ -91,7 +91,14 @@ export async function ensureM4PreMigrationSnapshot({
   } catch {
     return reconcileUnknownCreate({ input, headers });
   }
-  const createdIdentity = requireCreatedSnapshotIdentity(payload?.snapshot, input);
+
+  let createdIdentity;
+  try {
+    createdIdentity = requireCreatedSnapshotIdentity(payload?.snapshot, input);
+  } catch {
+    return reconcileUnknownCreate({ input, headers });
+  }
+
   const confirmed = await findExactSnapshot({ input, headers });
   if (confirmed === null || confirmed.id !== createdIdentity.id) {
     throw new Error(
@@ -161,7 +168,7 @@ function requireCreatedSnapshotIdentity(snapshot, input) {
     typeof snapshot.id !== "string" ||
     !PROVIDER_ID_PATTERN.test(snapshot.id) ||
     snapshot.name !== input.snapshotName ||
-    !isCanonicalProviderTimestamp(snapshot.created_at)
+    !isProviderTimestamp(snapshot.created_at)
   ) {
     throw new Error("Neon snapshot create response is invalid for the requested migration.");
   }
@@ -273,10 +280,9 @@ function sameInstant(left, right) {
   return Number.isFinite(leftTimestamp) && leftTimestamp === rightTimestamp;
 }
 
-function isCanonicalProviderTimestamp(value) {
+function isProviderTimestamp(value) {
   if (typeof value !== "string") return false;
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp);
+  return Number.isFinite(Date.parse(value));
 }
 
 async function neonGetJson(fetchImpl, url, headers, operation) {

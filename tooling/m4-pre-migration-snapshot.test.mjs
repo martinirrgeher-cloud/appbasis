@@ -177,6 +177,40 @@ test("a failed or timed-out POST is reconciled with GET and never blindly retrie
   );
 });
 
+test("unexpected successful create payload is also reconciled without another POST", async () => {
+  const reconciled = makeFetch({
+    snapshotLists: [[], [exactSnapshot()]],
+    createPayload: { snapshot: { id: "INVALID" }, operations: [] },
+  });
+  const result = await ensureM4PreMigrationSnapshot({
+    ...input,
+    apply: true,
+    fetchImpl: reconciled.fetchImpl,
+  });
+  assert.equal(result.snapshotId, snapshotId);
+  assert.equal(
+    reconciled.calls.filter((call) => call.options.method === "POST").length,
+    1,
+  );
+
+  const unresolved = makeFetch({
+    snapshotLists: [[], []],
+    createPayload: { snapshot: { id: "INVALID" }, operations: [] },
+  });
+  await assert.rejects(
+    ensureM4PreMigrationSnapshot({
+      ...input,
+      apply: true,
+      fetchImpl: unresolved.fetchImpl,
+    }),
+    /outcome is unknown; do not retry blindly/,
+  );
+  assert.equal(
+    unresolved.calls.filter((call) => call.options.method === "POST").length,
+    1,
+  );
+});
+
 test("rejects non-root, non-ready, duplicate, or mismatched snapshot state", async () => {
   const cases = [
     [
@@ -265,23 +299,7 @@ test("sanitizes provider failures without response bodies or credentials", async
   );
 });
 
-test("fails closed when create response or authoritative readback is not exact", async () => {
-  const invalidCreate = makeFetch({
-    snapshotLists: [[], [exactSnapshot()]],
-    createPayload: {
-      snapshot: createdSnapshot({ id: "INVALID" }),
-      operations: [],
-    },
-  });
-  await assert.rejects(
-    ensureM4PreMigrationSnapshot({
-      ...input,
-      apply: true,
-      fetchImpl: invalidCreate.fetchImpl,
-    }),
-    /create response is invalid/,
-  );
-
+test("fails closed when authoritative readback is not exact", async () => {
   const missingReadback = makeFetch({ snapshotLists: [[], []] });
   await assert.rejects(
     ensureM4PreMigrationSnapshot({
