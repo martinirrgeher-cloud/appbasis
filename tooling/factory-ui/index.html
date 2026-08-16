@@ -111,8 +111,8 @@
             </div>
             <div class="factory-detail-gate factory-detail-gate--locked">
               <span>Produktion</span>
-              <strong>Gesperrt</strong>
-              <small>Freigabe bleibt fail-closed, solange Production-Gates nicht explizit erfüllt sind.</small>
+              <strong id="detail-production-status">Security & Privacy nicht verifiziert</strong>
+              <small id="detail-production-summary">Der M5-Status wird read-only aus dem Factory-Snapshot geladen. Produktion bleibt gesperrt.</small>
             </div>
           </div>
         </section>
@@ -268,6 +268,7 @@
       <div id="factory-error" class="factory-error" role="alert" hidden></div>
     </main>
     <script type="module" src="/app.js"></script>
+    <script type="module" src="/production-readiness-status.js"></script>
     <script type="module" src="/create-app.js"></script>
   </body>
 </html>
