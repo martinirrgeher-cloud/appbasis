@@ -26,11 +26,11 @@ export function evaluateM6ProductionReleaseReadiness(evidence = {}) {
   });
   const verifiedCount = criteria.filter((criterion) => criterion.status === "verified").length;
   const requiredCount = criteria.length;
-  const productionVerified = verifiedCount === requiredCount;
+  const technicalEvidenceVerified = verifiedCount === requiredCount;
 
   return Object.freeze({
-    status: productionVerified ? "verified" : "blocked",
-    productionVerified,
+    status: technicalEvidenceVerified ? "evidence-verified" : "blocked",
+    technicalEvidenceVerified,
     verifiedCount,
     requiredCount,
     explicitApprovalRequired: true,
