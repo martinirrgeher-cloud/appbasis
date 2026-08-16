@@ -21,7 +21,7 @@ function jsonResponse(payload, status = 200) {
 
 function makeFetch({
   historyRetentionSeconds = 2_592_000,
-  schedule = [{ frequency: "daily", retention_seconds: 3_024_000 }],
+  schedule = [{ frequency: "daily", retention_seconds: 3_024_000, hour: 3 }],
 } = {}) {
   const calls = [];
   const fetchImpl = async (url, options) => {
@@ -81,8 +81,8 @@ test("fails closed when scheduled backups are missing", async () => {
 test("fails closed when the required frequency has insufficient retention", async () => {
   const { fetchImpl } = makeFetch({
     schedule: [
-      { frequency: "daily", retention_seconds: 604800 },
-      { frequency: "weekly", retention_seconds: 3_024_000 },
+      { frequency: "daily", retention_seconds: 604800, hour: 3 },
+      { frequency: "weekly", retention_seconds: 3_024_000, day: 1, hour: 4 },
     ],
   });
   await assert.rejects(
@@ -91,8 +91,24 @@ test("fails closed when the required frequency has insufficient retention", asyn
   );
 });
 
+test("fails closed when a policy-matching schedule has an invalid provider shape", async () => {
+  for (const schedule of [
+    [{ frequency: "daily", retention_seconds: 3_024_000 }],
+    [{ frequency: "daily", retention_seconds: 3_024_000, hour: 24 }],
+    [{ frequency: "daily", retention_seconds: 3_024_000, hour: 3, day: 999 }],
+  ]) {
+    const { fetchImpl } = makeFetch({ schedule });
+    await assert.rejects(
+      inspectM4NeonBackupReadiness({ ...validInput, fetchImpl }),
+      /scheduled backup configuration does not meet the M4 policy/,
+    );
+  }
+});
+
 test("does not assume Neon's default retention when the API omits it", async () => {
-  const { fetchImpl } = makeFetch({ schedule: [{ frequency: "daily" }] });
+  const { fetchImpl } = makeFetch({
+    schedule: [{ frequency: "daily", hour: 3 }],
+  });
   await assert.rejects(
     inspectM4NeonBackupReadiness({ ...validInput, fetchImpl }),
     /scheduled backup configuration does not meet the M4 policy/,
