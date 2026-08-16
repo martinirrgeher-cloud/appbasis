@@ -155,6 +155,108 @@ test("operation recheck follows read-only pagination before accepting completion
   assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
 });
 
+test("short pages still accept explicit terminal cursor absence", async () => {
+  for (const pagination of [{}, { cursor: null }, { cursor: "" }]) {
+    const { fetchImpl, calls } = makeExistingRestoreFetch([
+      {
+        operations: [operation("finished")],
+        pagination,
+      },
+    ]);
+
+    const result = await ensureM4RestoreRehearsal({
+      ...input,
+      apply: false,
+      fetchImpl,
+    });
+
+    assert.equal(result.restoreOperationsState, "complete");
+    assert.equal(result.verificationReady, true);
+    assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
+  }
+});
+
+test("short-page cursor anomalies stay fail closed but report a safe diagnostic class", async () => {
+  for (const [pagination, expected] of [
+    [{ cursor: 42 }, /non-string cursor on a short page/],
+    [{ cursor: " next-page-token" }, /non-canonical cursor on a short page/],
+  ]) {
+    const { fetchImpl, calls } = makeExistingRestoreFetch([
+      {
+        operations: [operation("finished")],
+        pagination,
+      },
+    ]);
+
+    await assert.rejects(
+      ensureM4RestoreRehearsal({
+        ...input,
+        apply: false,
+        fetchImpl,
+      }),
+      expected,
+    );
+    assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
+  }
+});
+
+test("non-advancing short-page cursors stay fail closed with a safe diagnostic", async () => {
+  const fullPage = Array.from({ length: 1000 }, (_, index) =>
+    operation("finished", {
+      id: `operation-unrelated-${index}`,
+      branch_id: "br-unrelated-12345678",
+    }),
+  );
+  const { fetchImpl, calls } = makeExistingRestoreFetch([
+    {
+      operations: fullPage,
+      pagination: { cursor: "next-page-token" },
+    },
+    {
+      operations: [operation("finished")],
+      pagination: { cursor: "next-page-token" },
+    },
+  ]);
+
+  await assert.rejects(
+    ensureM4RestoreRehearsal({
+      ...input,
+      apply: false,
+      fetchImpl,
+    }),
+    /non-advancing cursor on a short page/,
+  );
+  const operationCalls = calls.filter((call) =>
+    new URL(call.url).pathname.endsWith("/operations"),
+  );
+  assert.equal(operationCalls.length, 2);
+  assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
+});
+
+test("full operation pages remain fail closed for invalid cursor metadata", async () => {
+  const fullPage = Array.from({ length: 1000 }, (_, index) =>
+    operation("finished", {
+      id: `operation-unrelated-${index}`,
+      branch_id: "br-unrelated-12345678",
+    }),
+  );
+  const { fetchImpl } = makeExistingRestoreFetch([
+    {
+      operations: fullPage,
+      pagination: { cursor: 42 },
+    },
+  ]);
+
+  await assert.rejects(
+    ensureM4RestoreRehearsal({
+      ...input,
+      apply: false,
+      fetchImpl,
+    }),
+    /non-string cursor on a full page/,
+  );
+});
+
 test("missing exact operation evidence stays fail closed", async () => {
   const { fetchImpl } = makeExistingRestoreFetch([
     { operations: [], pagination: {} },

@@ -201,17 +201,20 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
       matchingOperations.push(operation);
     }
 
-    const pageIsShort = payload.operations.length < RESTORE_OPERATION_PAGE_LIMIT;
+    const pageKind =
+      payload.operations.length < RESTORE_OPERATION_PAGE_LIMIT ? "short" : "full";
     if (payload.pagination === undefined || payload.pagination === null) {
-      if (pageIsShort) {
+      if (pageKind === "short") {
         return classifyRestoreOperations(matchingOperations);
       }
       throw new Error(
-        "Neon restore operations inspection omitted pagination for a full page.",
+        "Neon restore operations inspection omitted pagination on a full page.",
       );
     }
     if (!isRecord(payload.pagination)) {
-      throw new Error("Neon restore operations inspection returned invalid pagination.");
+      throw new Error(
+        `Neon restore operations inspection returned invalid pagination on a ${pageKind} page.`,
+      );
     }
 
     const hasCursor = Object.hasOwn(payload.pagination, "cursor");
@@ -222,18 +225,32 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
       nextCursor === undefined ||
       nextCursor === ""
     ) {
-      if (pageIsShort) {
+      if (pageKind === "short") {
         return classifyRestoreOperations(matchingOperations);
       }
-      throw new Error("Neon restore operations inspection returned an invalid cursor.");
+      throw new Error(
+        "Neon restore operations inspection returned an invalid cursor: no cursor on a full page.",
+      );
     }
-    if (
-      typeof nextCursor !== "string" ||
-      nextCursor.length > 2048 ||
-      nextCursor.trim() !== nextCursor ||
-      seenCursors.has(nextCursor)
-    ) {
-      throw new Error("Neon restore operations inspection returned an invalid cursor.");
+    if (typeof nextCursor !== "string") {
+      throw new Error(
+        `Neon restore operations inspection returned an invalid cursor: non-string cursor on a ${pageKind} page.`,
+      );
+    }
+    if (nextCursor.length > 2048) {
+      throw new Error(
+        `Neon restore operations inspection returned an invalid cursor: oversized cursor on a ${pageKind} page.`,
+      );
+    }
+    if (nextCursor.trim() !== nextCursor) {
+      throw new Error(
+        `Neon restore operations inspection returned an invalid cursor: non-canonical cursor on a ${pageKind} page.`,
+      );
+    }
+    if (seenCursors.has(nextCursor)) {
+      throw new Error(
+        `Neon restore operations inspection returned an invalid cursor: non-advancing cursor on a ${pageKind} page.`,
+      );
     }
     seenCursors.add(nextCursor);
     cursor = nextCursor;
