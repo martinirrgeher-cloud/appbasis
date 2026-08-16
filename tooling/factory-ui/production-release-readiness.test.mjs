@@ -5,21 +5,19 @@ import { fileURLToPath } from "node:url";
 
 import { loadFactorySnapshot } from "./model.mjs";
 import {
-  evaluateM6ProductionLifecycle,
-  REQUIRED_M6_PRODUCTION_LIFECYCLE_CRITERIA,
+  evaluateM6ProductionReleaseReadiness,
+  REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA,
 } from "./production-release-readiness.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const expectedIds = [
-  "m1Ready",
-  "m2Ready",
-  "m3Ready",
-  "m4Ready",
-  "m5Ready",
+  "previewAccepted",
   "productionDatabaseReady",
   "productionWorkerReady",
   "productionDomainReady",
   "productionUsersAndPermissionsReady",
+  "backupRecoveryReady",
+  "securityPrivacyReady",
   "productionMigrationsApplied",
   "productionDeploymentCompleted",
   "postDeploySmokePassed",
@@ -27,32 +25,20 @@ const expectedIds = [
 
 const allEvidence = () => Object.fromEntries(expectedIds.map((id) => [id, true]));
 
-test("M6 lifecycle pins the ordered production path from prerequisites through post-deploy smoke", () => {
+test("M6 release readiness pins only the semantic per-app production gates", () => {
   assert.deepEqual(
-    REQUIRED_M6_PRODUCTION_LIFECYCLE_CRITERIA.map((criterion) => criterion.id),
+    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map((criterion) => criterion.id),
     expectedIds,
   );
-  assert.deepEqual(
-    REQUIRED_M6_PRODUCTION_LIFECYCLE_CRITERIA.map((criterion) => criterion.stage),
-    [
-      "prerequisites",
-      "prerequisites",
-      "prerequisites",
-      "prerequisites",
-      "prerequisites",
-      "provisioning",
-      "provisioning",
-      "provisioning",
-      "provisioning",
-      "migration",
-      "deployment",
-      "verification",
-    ],
+  assert.ok(
+    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.every(
+      (criterion) => !Object.hasOwn(criterion, "stage"),
+    ),
   );
 });
 
-test("M6 lifecycle is blocked when evidence is missing and names the first open gate", () => {
-  const readiness = evaluateM6ProductionLifecycle();
+test("M6 release readiness is blocked when evidence is missing", () => {
+  const readiness = evaluateM6ProductionReleaseReadiness();
 
   assert.equal(readiness.status, "blocked");
   assert.equal(readiness.productionVerified, false);
@@ -60,21 +46,23 @@ test("M6 lifecycle is blocked when evidence is missing and names the first open 
   assert.equal(readiness.requiredCount, expectedIds.length);
   assert.equal(readiness.explicitApprovalRequired, true);
   assert.equal(readiness.releaseAuthorized, false);
-  assert.equal(readiness.nextCriterion?.id, "m1Ready");
   assert.ok(readiness.criteria.every((criterion) => criterion.status === "open"));
 });
 
-test("M6 lifecycle remains fail-closed for out-of-order, truthy or unknown evidence", () => {
+test("M6 release readiness remains fail-closed for truthy or unknown evidence", () => {
   const evidence = allEvidence();
-  evidence.m1Ready = "yes";
+  evidence.previewAccepted = "yes";
   evidence.releaseProduction = true;
 
-  const readiness = evaluateM6ProductionLifecycle(evidence);
+  const readiness = evaluateM6ProductionReleaseReadiness(evidence);
 
   assert.equal(readiness.productionVerified, false);
   assert.equal(readiness.releaseAuthorized, false);
   assert.equal(readiness.verifiedCount, expectedIds.length - 1);
-  assert.equal(readiness.nextCriterion?.id, "m1Ready");
+  assert.equal(
+    readiness.criteria.find((criterion) => criterion.id === "previewAccepted")?.status,
+    "open",
+  );
   assert.equal(
     readiness.criteria.find((criterion) => criterion.id === "postDeploySmokePassed")?.status,
     "verified",
@@ -82,12 +70,11 @@ test("M6 lifecycle remains fail-closed for out-of-order, truthy or unknown evide
 });
 
 test("complete technical M6 evidence still never authorizes release in the read-only contract", () => {
-  const readiness = evaluateM6ProductionLifecycle(allEvidence());
+  const readiness = evaluateM6ProductionReleaseReadiness(allEvidence());
 
   assert.equal(readiness.status, "verified");
   assert.equal(readiness.productionVerified, true);
   assert.equal(readiness.verifiedCount, expectedIds.length);
-  assert.equal(readiness.nextCriterion, null);
   assert.equal(readiness.explicitApprovalRequired, true);
   assert.equal(readiness.releaseAuthorized, false);
   assert.ok(readiness.criteria.every((criterion) => criterion.status === "verified"));
@@ -95,58 +82,61 @@ test("complete technical M6 evidence still never authorizes release in the read-
 
 test("malformed or inherited values cannot count as M6 production evidence", () => {
   assert.throws(
-    () => evaluateM6ProductionLifecycle([]),
-    /M6 production lifecycle evidence must be a plain object/,
+    () => evaluateM6ProductionReleaseReadiness([]),
+    /M6 production release evidence must be a plain object/,
   );
   assert.throws(
-    () => evaluateM6ProductionLifecycle(null),
-    /M6 production lifecycle evidence must be a plain object/,
+    () => evaluateM6ProductionReleaseReadiness(null),
+    /M6 production release evidence must be a plain object/,
   );
 
   const evidence = allEvidence();
-  delete evidence.m4Ready;
-  Object.defineProperty(Object.prototype, "m4Ready", {
+  delete evidence.backupRecoveryReady;
+  Object.defineProperty(Object.prototype, "backupRecoveryReady", {
     configurable: true,
     enumerable: false,
     value: true,
   });
 
   try {
-    const readiness = evaluateM6ProductionLifecycle(evidence);
+    const readiness = evaluateM6ProductionReleaseReadiness(evidence);
     assert.equal(readiness.productionVerified, false);
     assert.equal(readiness.releaseAuthorized, false);
     assert.equal(readiness.verifiedCount, expectedIds.length - 1);
-    assert.equal(readiness.nextCriterion?.id, "m4Ready");
+    assert.equal(
+      readiness.criteria.find((criterion) => criterion.id === "backupRecoveryReady")?.status,
+      "open",
+    );
   } finally {
-    delete Object.prototype.m4Ready;
+    delete Object.prototype.backupRecoveryReady;
   }
 });
 
-test("Factory snapshot exposes M6 read-only without inventing milestone or provider evidence", async () => {
+test("Factory snapshot exposes M6 read-only without inventing preview or provider evidence", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot);
 
   assert.ok(snapshot.apps.length > 0);
   for (const app of snapshot.apps) {
-    assert.equal(app.productionLifecycleReadiness.status, "blocked");
-    assert.equal(app.productionLifecycleReadiness.productionVerified, false);
-    assert.equal(app.productionLifecycleReadiness.requiredCount, expectedIds.length);
-    assert.equal(app.productionLifecycleReadiness.explicitApprovalRequired, true);
-    assert.equal(app.productionLifecycleReadiness.releaseAuthorized, false);
+    assert.equal(app.productionReleaseReadiness.status, "blocked");
+    assert.equal(app.productionReleaseReadiness.productionVerified, false);
+    assert.equal(app.productionReleaseReadiness.requiredCount, expectedIds.length);
+    assert.equal(app.productionReleaseReadiness.explicitApprovalRequired, true);
+    assert.equal(app.productionReleaseReadiness.releaseAuthorized, false);
     assert.deepEqual(
-      app.productionLifecycleReadiness.criteria.map((criterion) => criterion.id),
+      app.productionReleaseReadiness.criteria.map((criterion) => criterion.id),
       expectedIds,
     );
 
-    const m5Criterion = app.productionLifecycleReadiness.criteria.find(
-      (criterion) => criterion.id === "m5Ready",
+    const securityPrivacyCriterion = app.productionReleaseReadiness.criteria.find(
+      (criterion) => criterion.id === "securityPrivacyReady",
     );
     assert.equal(
-      m5Criterion?.status,
+      securityPrivacyCriterion?.status,
       app.productionReadiness.productionReady === true ? "verified" : "open",
     );
     assert.ok(
-      app.productionLifecycleReadiness.criteria
-        .filter((criterion) => criterion.id !== "m5Ready")
+      app.productionReleaseReadiness.criteria
+        .filter((criterion) => criterion.id !== "securityPrivacyReady")
         .every((criterion) => criterion.status === "open"),
     );
   }
