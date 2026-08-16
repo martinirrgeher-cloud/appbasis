@@ -248,8 +248,11 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
       );
     }
     if (seenCursors.has(nextCursor)) {
+      if (pageKind === "short") {
+        return classifyRestoreOperations(matchingOperations);
+      }
       throw new Error(
-        `Neon restore operations inspection returned an invalid cursor: non-advancing cursor on a ${pageKind} page.`,
+        "Neon restore operations inspection returned an invalid cursor: non-advancing cursor on a full page.",
       );
     }
     seenCursors.add(nextCursor);
