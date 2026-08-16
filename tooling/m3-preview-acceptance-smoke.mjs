@@ -46,7 +46,7 @@ export function readM3PreviewAcceptanceEnvironment(env = process.env) {
 
 export async function runM3PreviewAcceptanceSmoke(
   options,
-  { fetchImpl = globalThis.fetch, randomUUID = crypto.randomUUID } = {},
+  { fetchImpl = globalThis.fetch, randomUUID = () => crypto.randomUUID() } = {},
 ) {
   if (typeof fetchImpl !== "function" || typeof randomUUID !== "function") {
     throw new M3PreviewAcceptanceConfigurationError(
