@@ -21,7 +21,8 @@ test("M4 backup schedule workflow is manual, protected and apply-gated", async (
   assert.match(workflow, /vars\.APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS/);
   assert.match(workflow, /vars\.APPBASIS_BACKUP_SCHEDULE_HOUR/);
   assert.match(workflow, /vars\.APPBASIS_BACKUP_SCHEDULE_DAY/);
-  assert.match(workflow, /Missing Neon backup schedule hour/);
+  assert.match(workflow, /Invalid Neon backup schedule hour/);
+  assert.match(workflow, /Invalid Neon backup schedule day/);
   assert.match(workflow, /weekly\|monthly/);
   assert.match(
     workflow,
