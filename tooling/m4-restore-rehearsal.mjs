@@ -202,16 +202,17 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
     }
 
     const pageIsShort = payload.operations.length < RESTORE_OPERATION_PAGE_LIMIT;
+    if (pageIsShort) {
+      return classifyRestoreOperations(matchingOperations);
+    }
+
     if (payload.pagination === undefined || payload.pagination === null) {
-      if (pageIsShort) {
-        return classifyRestoreOperations(matchingOperations);
-      }
       throw new Error(
         "Neon restore operations inspection omitted pagination for a full page.",
       );
     }
     if (!isRecord(payload.pagination)) {
-      throw new Error("Neon restore operations inspection returned invalid pagination.");
+      throw new Error("Neon restore operations inspection returned invalid pagination for a full page.");
     }
 
     const hasCursor = Object.hasOwn(payload.pagination, "cursor");
@@ -222,18 +223,13 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
       nextCursor === undefined ||
       nextCursor === ""
     ) {
-      if (pageIsShort) {
-        return classifyRestoreOperations(matchingOperations);
-      }
-      throw new Error("Neon restore operations inspection returned an invalid cursor.");
+      throw new Error("Neon restore operations inspection returned no usable cursor for a full page.");
     }
-    if (
-      typeof nextCursor !== "string" ||
-      nextCursor.length > 2048 ||
-      nextCursor.trim() !== nextCursor ||
-      seenCursors.has(nextCursor)
-    ) {
-      throw new Error("Neon restore operations inspection returned an invalid cursor.");
+    if (typeof nextCursor !== "string" || nextCursor.length > 2048 || nextCursor.trim() !== nextCursor) {
+      throw new Error("Neon restore operations inspection returned an invalid full-page cursor.");
+    }
+    if (seenCursors.has(nextCursor)) {
+      throw new Error("Neon restore operations inspection returned a non-advancing full-page cursor.");
     }
     seenCursors.add(nextCursor);
     cursor = nextCursor;
