@@ -8,6 +8,7 @@ const MIN_RETENTION_SECONDS = 3_600;
 const MAX_RETENTION_SECONDS = 3_024_000;
 const MIN_SCHEDULE_HOUR = 0;
 const MAX_SCHEDULE_HOUR = 23;
+const CANONICAL_NONNEGATIVE_INTEGER_PATTERN = /^(?:0|[1-9]\d*)$/u;
 
 export async function ensureM4NeonBackupSchedule({
   projectId,
@@ -282,6 +283,13 @@ function requiredScheduleDay(value, frequency) {
 }
 
 function requiredInteger(value, name, min, max) {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === "string" && !CANONICAL_NONNEGATIVE_INTEGER_PATTERN.test(value))
+  ) {
+    throw new Error(`${name} is invalid.`);
+  }
   const number = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(number) || number < min || number > max) {
     throw new Error(`${name} is invalid.`);
@@ -293,7 +301,6 @@ function requiredBoolean(value, name) {
   if (typeof value !== "boolean") {
     throw new Error(`${name} is invalid.`);
   }
-  return value;
 }
 
 function requiredFetch(value) {
