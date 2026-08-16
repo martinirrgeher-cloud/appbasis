@@ -22,6 +22,10 @@ const smokeBootstrapUrl = new URL(
   "../apps/m3-preview/tooling/bootstrap-smoke-principals.mjs",
   import.meta.url,
 );
+const smokeConfigUrl = new URL(
+  "../apps/m3-preview/tooling/vite.smoke-bootstrap.config.ts",
+  import.meta.url,
+);
 const smokeContractUrl = new URL("./m3-preview-smoke-contract.mjs", import.meta.url);
 
 function pinManualBootstrapWorkflow(workflow, mutationStepName) {
@@ -34,12 +38,14 @@ function pinManualBootstrapWorkflow(workflow, mutationStepName) {
   assert.match(workflow, /pnpm run verify:repo/);
   assert.match(workflow, /verify-preview-schema\.mjs/);
 
-  const schema = workflow.indexOf("Verify migrated m3-preview database");
   const confirmation = workflow.indexOf("Require explicit");
+  const protectedInputs = workflow.indexOf("Validate and mask protected");
+  const schema = workflow.indexOf("Verify migrated m3-preview database");
   const mutation = workflow.indexOf(mutationStepName);
-  assert.ok(schema >= 0);
-  assert.ok(confirmation > schema);
-  assert.ok(mutation > confirmation);
+  assert.ok(confirmation >= 0);
+  assert.ok(protectedInputs > confirmation);
+  assert.ok(schema > protectedInputs);
+  assert.ok(mutation > schema);
 
   assert.doesNotMatch(workflow, /wrangler deploy/);
   assert.doesNotMatch(workflow, /wrangler versions deploy/);
@@ -67,8 +73,14 @@ test("pins separate explicitly confirmed m3-preview identity bootstrap workflows
 
   assert.match(rootWorkflow, /bootstrap-root-admin\.mjs/);
   assert.doesNotMatch(rootWorkflow, /bootstrap-smoke-principals\.mjs/);
-  assert.match(smokeWorkflow, /bootstrap-smoke-principals\.mjs/);
-  assert.doesNotMatch(smokeWorkflow, /bootstrap-root-admin\.mjs/);
+  assert.match(smokeWorkflow, /Build smoke bootstrap operational runner without secrets/);
+  assert.match(smokeWorkflow, /vite build/);
+  assert.match(smokeWorkflow, /vite\.smoke-bootstrap\.config\.ts/);
+  assert.match(
+    smokeWorkflow,
+    /\.smoke-bootstrap-dist\/bootstrap-smoke-principals\.mjs/,
+  );
+  assert.doesNotMatch(smokeWorkflow, /node \.\/apps\/m3-preview\/tooling\/bootstrap-smoke-principals\.mjs/);
 });
 
 test("keeps normal m3-preview deploy free of identity or permission provisioning", async () => {
@@ -93,12 +105,14 @@ test("keeps normal m3-preview deploy free of identity or permission provisioning
   assert.doesNotMatch(workflow, /APPBASIS_ROOT_ADMIN_PASSWORD/);
 });
 
-test("m3-preview operational adapters reuse shared platform contracts without Reference coupling", async () => {
-  const [rootBootstrap, smokeBootstrap, smokeContract] = await Promise.all([
-    readFile(rootBootstrapUrl, "utf8"),
-    readFile(smokeBootstrapUrl, "utf8"),
-    readFile(smokeContractUrl, "utf8"),
-  ]);
+test("bundles the m3-preview operational adapter without Reference runtime coupling", async () => {
+  const [rootBootstrap, smokeBootstrap, smokeConfig, smokeContract] =
+    await Promise.all([
+      readFile(rootBootstrapUrl, "utf8"),
+      readFile(smokeBootstrapUrl, "utf8"),
+      readFile(smokeConfigUrl, "utf8"),
+      readFile(smokeContractUrl, "utf8"),
+    ]);
 
   assert.match(rootBootstrap, /@appbasis\/identity\/root-admin/);
   assert.match(smokeBootstrap, /@appbasis\/identity/);
@@ -106,7 +120,12 @@ test("m3-preview operational adapters reuse shared platform contracts without Re
   assert.match(smokeBootstrap, /@appbasis\/permissions\/provisioning/);
   assert.doesNotMatch(rootBootstrap, /apps\/reference|@appbasis\/reference/);
   assert.doesNotMatch(smokeBootstrap, /apps\/reference|@appbasis\/reference/);
+  assert.match(
+    smokeConfig,
+    /noExternal: \["@appbasis\/database", "@appbasis\/identity", "@appbasis\/permissions"\]/,
+  );
 
+  assert.match(smokeContract, /allowedRoleId: "demo:member"/);
   assert.match(smokeContract, /m3\.root\.admin/);
   assert.match(smokeContract, /m3\.smoke\.allowed/);
   assert.match(smokeContract, /m3\.smoke\.denied/);
