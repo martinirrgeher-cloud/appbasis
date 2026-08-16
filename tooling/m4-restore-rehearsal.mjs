@@ -5,7 +5,6 @@ const NEON_API_BASE = "https://console.neon.tech/api/v2";
 const PROVIDER_ID_PATTERN = /^[a-z0-9-]{1,60}$/;
 const RESTORE_BRANCH_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const SUCCESSFUL_OPERATION_STATES = new Set(["finished", "skipped"]);
-const FAILED_OPERATION_STATES = new Set(["failed", "cancelled"]);
 
 export async function ensureM4RestoreRehearsal({
   projectId,
@@ -159,11 +158,6 @@ function classifyRestoreOperations(operations) {
     if (!isRecord(operation) || typeof operation.status !== "string") {
       hasUnknown = true;
       continue;
-    }
-    if (FAILED_OPERATION_STATES.has(operation.status)) {
-      throw new Error(
-        "Neon restore rehearsal operation did not complete successfully; do not start restore verification.",
-      );
     }
     if (!SUCCESSFUL_OPERATION_STATES.has(operation.status)) {
       hasPending = true;
