@@ -39,11 +39,11 @@ Die vorhandene Factory-Capability `releaseProduction` bleibt unabhängig davon `
 
 ## Slice 2 – erster read-only Repository-Evidenzadapter
 
-`tooling/factory-ui/repository-production-readiness-evidence.mjs` nutzt bereits bestehende oder kanonisch definierte Repository-Verträge statt einen zweiten Manifest-Verifier zu bauen.
+`tooling/factory-ui/repository-production-readiness-evidence.mjs` nutzt ausschließlich belastbare Repository-Verträge statt einen zweiten Manifest-Verifier zu bauen.
 
 Der bestehende `parseAppDefinition()`-Vertrag erlaubt im normalen `appbasis.app.json` ausschließlich `schemaVersion`, `appId`, `displayName`, `modules` und `platformServices`. Zusätzliche Felder wie Provider-IDs, Datenbankadressen oder Credentials werden abgewiesen. Deshalb darf das M5-Kriterium `secretsOutsideAppManifests` repository-seitig verifiziert werden.
 
-Weitere Kriterien werden nur ergänzt, wenn ihre konkrete Aussage durch einen eigenen, eng begrenzten Vertrag tatsächlich belegt ist.
+Weitere Kriterien werden nur ergänzt, wenn ihre konkrete **app-spezifische** Aussage durch einen eigenen, eng begrenzten Nachweis tatsächlich belegt ist.
 
 ## Slice 3 – sichtbarer read-only Factory-Status
 
@@ -87,15 +87,21 @@ Der Vertrag erfindet bewusst keine fach- oder rechtsfallspezifischen DSGVO-Regel
 
 Der Profilvertrag ist tief eingefroren und besitzt eine exakte kanonische Validierung. Änderungen, fehlende Felder oder zusätzliche, nicht freigegebene Anforderungen führen nicht stillschweigend zu einer anderen Profilsemantik.
 
-Der bestehende Repository-Evidenzadapter darf deshalb `highPrivacyProfile=true` nur aus diesem kanonischen Vertrag ableiten. Damit stehen gültige App-Definitionen repository-seitig nun auf **2/12** M5-Nachweisen:
+### Definition ist nicht gleich App-Nachweis
 
-- `highPrivacyProfile: verified`,
+Die Existenz dieses globalen Profilvertrags beweist **nicht**, dass eine konkrete App das Profil ausgewählt, gebunden oder alle zugehörigen Anforderungen erfüllt hat. Deshalb liefert `repository-production-readiness-evidence.mjs` aus der bloßen Profildefinition ausdrücklich **kein** `highPrivacyProfile=true`.
+
+Für das app-spezifische M5-Kriterium bleibt `highPrivacyProfile` fail-closed `open`, bis eine spätere konkrete App-Bindung beziehungsweise ein belastbarer Compliance-/Betreiber-Nachweis existiert. Dieser Slice führt bewusst kein neues Feld in `appbasis.app.json` ein und erfindet keine zweite Konfigurationsschicht ohne realen schreibenden Verbraucher.
+
+Der reale Factory-Snapshot bleibt deshalb nach diesem Slice bei **1/12** app-spezifisch verifizierten M5-Nachweisen:
+
 - `secretsOutsideAppManifests: verified`,
-- alle übrigen zehn Kriterien bleiben `open`,
+- `highPrivacyProfile: open`,
+- alle übrigen zehn Kriterien ebenfalls `open`,
 - `productionReady=false` bleibt unverändert,
 - `releaseProduction=false` bleibt unverändert.
 
-Das bedeutet ausdrücklich nur, dass das verlangte strengere AppBasis-Profil definiert und maschinenprüfbar ist. Es behauptet nicht, dass eine konkrete spätere Produktiv-App alle organisatorischen oder providerbezogenen Anforderungen dieses Profils bereits erfüllt.
+Der Fortschritt dieses Slices besteht darin, dass der geforderte High-Privacy-Vertrag erstmals kanonisch und maschinenprüfbar definiert ist, ohne daraus unzulässige app-spezifische Readiness abzuleiten.
 
 ## Inventarisierte vorhandene Bausteine
 
@@ -122,6 +128,7 @@ Noch nicht technisch oder organisatorisch für eine konkrete Produktiv-App beleg
 - Datenexport-Prozess,
 - vollständiger produktiver Audit-/Security-Logging-Nachweis,
 - aktuelle Subprozessoren,
+- app-spezifische Bindung/Erfüllung des High-Privacy-Profils,
 - konkrete Secret-/Credential-Konfiguration der Produktivumgebung,
 - konkrete öffentliche/private Erreichbarkeit aller privilegierten Control-Plane-Funktionen.
 
@@ -131,9 +138,10 @@ Diese Punkte bleiben deshalb im Factory-Gate offen und blockieren Produktion.
 
 1. Weitere echte technische Verträge nur dort über kleine read-only Evidenzadapter anbinden, wo die konkrete M5-Aussage tatsächlich bewiesen wird.
 2. Provider-/Policy-Nachweise getrennt und explizit anbinden; fehlende oder nicht prüfbare Nachweise bleiben offen.
-3. Rollen/Rechte und privilegierte Control-Plane-Isolation nur dann als M5-Nachweis übernehmen, wenn die konkrete App-/Produktionsaussage aus bestehenden Verträgen belastbar ableitbar ist.
-4. Für Datenregion, DPA, Verschlüsselung, Löschung, Aufbewahrung, Export und Subprozessoren keine Repository-Wahrheit erfinden; dafür braucht es reale Provider-/Betreiber-Evidenz.
-5. Erst nach vollständiger technischer und organisatorischer Evidenz einen separaten, ausdrücklich freizugebenden Production-Release-Slice planen.
+3. Eine app-spezifische High-Privacy-Bindung erst mit einem realen Factory-/App-Verbraucher einführen; bis dahin bleibt das M5-Kriterium offen.
+4. Rollen/Rechte und privilegierte Control-Plane-Isolation nur dann als M5-Nachweis übernehmen, wenn die konkrete App-/Produktionsaussage aus bestehenden Verträgen belastbar ableitbar ist.
+5. Für Datenregion, DPA, Verschlüsselung, Löschung, Aufbewahrung, Export und Subprozessoren keine Repository-Wahrheit erfinden; dafür braucht es reale Provider-/Betreiber-Evidenz.
+6. Erst nach vollständiger technischer und organisatorischer Evidenz einen separaten, ausdrücklich freizugebenden Production-Release-Slice planen.
 
 ## Sicherheitsgrenze
 
