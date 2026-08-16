@@ -14,7 +14,7 @@ import { deriveRepositoryProductionReadinessEvidence } from "./repository-produc
 export async function loadFactorySnapshot(repositoryRoot = process.cwd(), options = {}) {
   const root = resolve(repositoryRoot);
   const m3PreviewAcceptanceFetchImpl =
-    options.m3PreviewAcceptanceFetchImpl ?? fetch;
+    options.m3PreviewAcceptanceFetchImpl ?? null;
   const [appDefinitions, modules] = await Promise.all([
     readAppDefinitions(root),
     directoryNames(join(root, "modules")),
