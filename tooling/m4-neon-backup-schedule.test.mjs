@@ -9,6 +9,7 @@ const input = Object.freeze({
   apiKey: "neon-test-api-key",
   requiredFrequency: "daily",
   retentionSeconds: 1_209_600,
+  scheduleHour: 3,
 });
 
 function jsonResponse(payload, status = 200) {
@@ -32,7 +33,7 @@ function matchingSchedule(overrides = {}) {
     {
       frequency: input.requiredFrequency,
       retention_seconds: input.retentionSeconds,
-      hour: 3,
+      hour: input.scheduleHour,
       ...overrides,
     },
   ];
@@ -84,10 +85,24 @@ test("preflight is read-only and reports when the explicit policy is missing", a
   assert.deepEqual(calls.map((call) => call.options.method), ["GET", "GET"]);
 });
 
+test("canonical numeric strings from the protected workflow remain valid", async () => {
+  const { fetchImpl, calls } = makeFetch();
+  const result = await ensureM4NeonBackupSchedule({
+    ...input,
+    retentionSeconds: String(input.retentionSeconds),
+    scheduleHour: String(input.scheduleHour),
+    apply: false,
+    fetchImpl,
+  });
+
+  assert.equal(result.status, "schedule-update-required");
+  assert.deepEqual(calls.map((call) => call.options.method), ["GET", "GET"]);
+});
+
 test("an exact or stronger existing retention satisfies policy without PUT", async () => {
   for (const schedule of [
     matchingSchedule(),
-    matchingSchedule({ retention_seconds: 2_592_000 }),
+    matchingSchedule({ retention_seconds: 2_592_000, hour: 17 }),
   ]) {
     const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
     const result = await ensureM4NeonBackupSchedule({
@@ -110,7 +125,7 @@ test("an exact or stronger existing retention satisfies policy without PUT", asy
 test("additional schedules are tolerated when an existing entry already meets policy", async () => {
   const schedule = [
     ...matchingSchedule({ retention_seconds: 2_592_000 }),
-    { frequency: "weekly", retention_seconds: 604_800 },
+    { frequency: "weekly", retention_seconds: 604_800, day: 1, hour: 4 },
   ];
   const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
   const result = await ensureM4NeonBackupSchedule({
@@ -126,8 +141,8 @@ test("additional schedules are tolerated when an existing entry already meets po
 
 test("multiple schedules without a policy match are refused before any PUT", async () => {
   const schedule = [
-    { frequency: "weekly", retention_seconds: 604_800 },
-    { frequency: "monthly", retention_seconds: 2_592_000 },
+    { frequency: "weekly", retention_seconds: 604_800, day: 1, hour: 4 },
+    { frequency: "monthly", retention_seconds: 2_592_000, day: 15, hour: 5 },
   ];
   const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
   await assert.rejects(
@@ -139,8 +154,10 @@ test("multiple schedules without a policy match are refused before any PUT", asy
 
 test("a malformed single schedule is refused before any PUT", async () => {
   for (const schedule of [
-    [{ frequency: "hourly", retention_seconds: 604_800 }],
-    [{ frequency: "daily" }],
+    [{ frequency: "hourly", retention_seconds: 604_800, hour: 3 }],
+    [{ frequency: "daily", retention_seconds: 604_800 }],
+    [{ frequency: "weekly", retention_seconds: 604_800, hour: 3 }],
+    [{ frequency: "monthly", retention_seconds: 604_800, day: 32, hour: 3 }],
   ]) {
     const { fetchImpl, calls } = makeFetch({ scheduleReads: [schedule] });
     await assert.rejects(
@@ -151,7 +168,7 @@ test("a malformed single schedule is refused before any PUT", async () => {
   }
 });
 
-test("apply sends exactly one PUT and requires authoritative readback", async () => {
+test("apply sends exactly one provider-valid daily PUT and requires authoritative readback", async () => {
   const { fetchImpl, calls } = makeFetch({
     scheduleReads: [[], matchingSchedule()],
   });
@@ -177,9 +194,45 @@ test("apply sends exactly one PUT and requires authoritative readback", async ()
       {
         frequency: input.requiredFrequency,
         retention_seconds: input.retentionSeconds,
+        hour: input.scheduleHour,
       },
     ],
   });
+});
+
+test("weekly and monthly writes include the provider-required day and hour", async () => {
+  for (const policy of [
+    { requiredFrequency: "weekly", scheduleDay: 2, scheduleHour: 4 },
+    { requiredFrequency: "monthly", scheduleDay: 15, scheduleHour: 5 },
+  ]) {
+    const confirmed = [
+      {
+        frequency: policy.requiredFrequency,
+        retention_seconds: input.retentionSeconds,
+        day: policy.scheduleDay,
+        hour: policy.scheduleHour,
+      },
+    ];
+    const { fetchImpl, calls } = makeFetch({ scheduleReads: [[], confirmed] });
+    const result = await ensureM4NeonBackupSchedule({
+      ...input,
+      ...policy,
+      apply: true,
+      fetchImpl,
+    });
+
+    assert.equal(result.status, "schedule-ready");
+    assert.deepEqual(JSON.parse(calls[2].options.body), {
+      schedule: [
+        {
+          frequency: policy.requiredFrequency,
+          retention_seconds: input.retentionSeconds,
+          hour: policy.scheduleHour,
+          day: policy.scheduleDay,
+        },
+      ],
+    });
+  }
 });
 
 test("changing frequency preserves stronger existing retention", async () => {
@@ -188,12 +241,15 @@ test("changing frequency preserves stronger existing retention", async () => {
     {
       frequency: "weekly",
       retention_seconds: strongerRetention,
+      day: 1,
+      hour: 4,
     },
   ];
   const confirmed = [
     {
       frequency: "daily",
       retention_seconds: strongerRetention,
+      hour: input.scheduleHour,
     },
   ];
   const { fetchImpl, calls } = makeFetch({
@@ -211,6 +267,7 @@ test("changing frequency preserves stronger existing retention", async () => {
       {
         frequency: "daily",
         retention_seconds: strongerRetention,
+        hour: input.scheduleHour,
       },
     ],
   });
@@ -319,7 +376,7 @@ test("requires a ready root branch", async () => {
   );
 });
 
-test("validates policy inputs before provider calls", async () => {
+test("validates policy and provider timing inputs before provider calls", async () => {
   const neverFetch = async () => {
     throw new Error("must not fetch");
   };
@@ -330,6 +387,23 @@ test("validates policy inputs before provider calls", async () => {
     [{ requiredFrequency: "hourly" }, /REQUIRED_BACKUP_FREQUENCY is invalid/],
     [{ retentionSeconds: 3599 }, /MIN_SNAPSHOT_RETENTION_SECONDS is invalid/],
     [{ retentionSeconds: 3_024_001 }, /MIN_SNAPSHOT_RETENTION_SECONDS is invalid/],
+    [{ retentionSeconds: [604_800] }, /MIN_SNAPSHOT_RETENTION_SECONDS is invalid/],
+    [{ scheduleHour: "" }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: null }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: "   " }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: "03" }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: false }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: true }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: [] }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: [3] }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: {} }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: -1 }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleHour: 24 }, /BACKUP_SCHEDULE_HOUR is invalid/],
+    [{ scheduleDay: 1 }, /BACKUP_SCHEDULE_DAY must be empty for daily backups/],
+    [{ requiredFrequency: "weekly", scheduleDay: undefined }, /BACKUP_SCHEDULE_DAY is invalid/],
+    [{ requiredFrequency: "weekly", scheduleDay: [2] }, /BACKUP_SCHEDULE_DAY is invalid/],
+    [{ requiredFrequency: "weekly", scheduleDay: 8 }, /BACKUP_SCHEDULE_DAY is invalid/],
+    [{ requiredFrequency: "monthly", scheduleDay: 32 }, /BACKUP_SCHEDULE_DAY is invalid/],
     [{ apply: "1" }, /APPLY_BACKUP_SCHEDULE is invalid/],
   ];
   for (const [override, pattern] of cases) {
