@@ -35,7 +35,7 @@ Die vom Nutzer ausdrücklich zu erteilende Produktionsfreigabe wird **bewusst ni
 
 Ein statischer Snapshot darf keine frühere Zustimmung in eine spätere Produktionsaktion hineintragen. Eine zukünftige schreibende Produktionsaktion muss deshalb unmittelbar vor dem externen Write eine frische, ausdrückliche Freigabe verlangen und die dann aktuellen Gates erneut prüfen.
 
-Der M6-Snapshot führt lediglich `explicitApprovalRequired=true`. Die vorhandene Factory-Capability `releaseProduction` bleibt unverändert `false`.
+Der M6-Snapshot führt deshalb `explicitApprovalRequired=true` und gleichzeitig invariant `releaseAuthorized=false`. Selbst bei zwölf technisch verifizierten Kriterien autorisiert dieser read-only Vertrag keinen Release. Die vorhandene Factory-Capability `releaseProduction` bleibt ebenfalls unverändert `false`.
 
 ## Slice 1 – Factory-lokaler M6-Lifecycle-Vertrag
 
@@ -46,7 +46,8 @@ Der M6-Snapshot führt lediglich `explicitApprovalRequired=true`. Die vorhandene
 - kein Deployment- oder Provisionierungsadapter,
 - keine Speicherung von Secrets, Provider-IDs oder Benutzerfreigaben,
 - kanonische Reihenfolge vom M1–M5-Gate bis zum Post-Deploy-Smoke,
-- fail-closed Auswertung.
+- fail-closed Auswertung,
+- keine Release-Autorisierung aus Readiness-Evidenz.
 
 Der Factory-Snapshot liefert pro App zusätzlich `productionLifecycleReadiness`.
 
