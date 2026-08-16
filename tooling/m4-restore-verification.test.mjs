@@ -62,7 +62,7 @@ function makeDatabaseFactory({ row = validFingerprint, error } = {}) {
   };
 }
 
-test("captures a canonical read-only fingerprint after schema verification", async () => {
+test("canonicalizes the database session before capturing a read-only fingerprint", async () => {
   const database = makeDatabaseFactory();
   const schemaCalls = [];
   const result = await inspectM4RestoreFingerprint({
@@ -74,12 +74,19 @@ test("captures a canonical read-only fingerprint after schema verification", asy
   assert.deepEqual(result, validFingerprint);
   assert.equal(schemaCalls.length, 1);
   assert.equal(schemaCalls[0].connectionString, restoreConnectionString);
-  assert.equal(database.calls.length, 1);
-  assert.match(database.calls[0], /^\s*SELECT\b/i);
-  assert.doesNotMatch(
-    database.calls[0],
-    /\b(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/i,
-  );
+  assert.deepEqual(database.calls.slice(0, 2), [
+    "SET TIME ZONE 'UTC'",
+    "SET DateStyle TO 'ISO, YMD'",
+  ]);
+  assert.equal(database.calls.length, 3);
+  const fingerprintQuery = database.calls[2];
+  assert.match(fingerprintQuery, /^\s*SELECT\b/i);
+  for (const query of database.calls) {
+    assert.doesNotMatch(
+      query,
+      /\b(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/i,
+    );
+  }
   for (const table of [
     'public."user"',
     "public.account",
@@ -93,7 +100,7 @@ test("captures a canonical read-only fingerprint after schema verification", asy
     "public.appbasis_permission_administration_audit",
     "public.appbasis_task",
   ]) {
-    assert.match(database.calls[0], new RegExp(table.replaceAll(".", "\\.")));
+    assert.match(fingerprintQuery, new RegExp(table.replaceAll(".", "\\.")));
   }
   assert.equal(database.closed, 1);
 });

@@ -5,6 +5,10 @@ import { createPostgresDatabase } from "../packages/database/src/node-runtime.mj
 import { verifyM3PreviewSchema } from "../apps/m3-preview/tooling/verify-preview-schema.mjs";
 
 const EXPECTED_DATABASE_NAME = "appbasis_m3_preview";
+const CANONICAL_SESSION_QUERIES = Object.freeze([
+  "SET TIME ZONE 'UTC'",
+  "SET DateStyle TO 'ISO, YMD'",
+]);
 const FINGERPRINT_TABLES = Object.freeze([
   ["identity_users", 'public."user"', "t.id"],
   ["identity_accounts", "public.account", "t.id"],
@@ -56,6 +60,9 @@ export async function inspectM4RestoreFingerprint({
   let database;
   try {
     database = createDatabase(connectionString);
+    for (const query of CANONICAL_SESSION_QUERIES) {
+      await database.client.unsafe(query);
+    }
     const rows = await database.client.unsafe(RESTORE_FINGERPRINT_QUERY);
     if (!Array.isArray(rows) || rows.length !== 1 || !isRecord(rows[0])) {
       throw new Error("invalid fingerprint response");
