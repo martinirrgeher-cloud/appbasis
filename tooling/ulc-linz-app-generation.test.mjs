@@ -67,16 +67,24 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     "parent",
   ]);
   assert.equal(
-    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoles.kindertrainer.sourceRole,
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.trainer,
+    "ulc-linz:trainer",
+  );
+  assert.equal(
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.permissionTemplates.kindertrainer.sourceRole,
     "trainer",
   );
   assert.equal(
-    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoles.leistungstrainer.sourceRole,
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.permissionTemplates.leistungstrainer.sourceRole,
     "trainer",
   );
-  assert.notEqual(
-    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoles.kindertrainer.roleId,
-    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoles.leistungstrainer.roleId,
+  assert.equal(
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.permissionTemplates.kindertrainer.semantics,
+    "defaults-only",
+  );
+  assert.equal(
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.principalPermissionMapping.targetMechanism,
+    "principal-grants-revokes",
   );
   assert.equal(
     ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.dataScopes.organizationBoundary,
