@@ -283,14 +283,17 @@ function requiredScheduleDay(value, frequency) {
 }
 
 function requiredInteger(value, name, min, max) {
-  if (
-    value === null ||
-    value === undefined ||
-    (typeof value === "string" && !CANONICAL_NONNEGATIVE_INTEGER_PATTERN.test(value))
+  let number;
+  if (typeof value === "number") {
+    number = value;
+  } else if (
+    typeof value === "string" &&
+    CANONICAL_NONNEGATIVE_INTEGER_PATTERN.test(value)
   ) {
+    number = Number(value);
+  } else {
     throw new Error(`${name} is invalid.`);
   }
-  const number = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(number) || number < min || number > max) {
     throw new Error(`${name} is invalid.`);
   }
