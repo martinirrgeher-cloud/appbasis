@@ -4,7 +4,7 @@
 
 M6 beweist den ersten kontrollierten technischen End-to-End-Produktionspfad für eine eigenständige AppBasis-App.
 
-Dieser Vorbereitungsslice implementiert ausschließlich einen **read-only, fail-closed M6-Release-Readiness-Status** im Factory-Snapshot. Er erstellt keine Produktionsressourcen, führt keine produktiven Migrationen aus und besitzt keinen Release-Endpunkt.
+Die Vorbereitungsslices implementieren ausschließlich einen **read-only, fail-closed M6-Release-Readiness-Status** im Factory-Snapshot und dessen Anzeige. Sie erstellen keine Produktionsressourcen, führen keine produktiven Migrationen aus und besitzen keinen Release-Endpunkt.
 
 M6 ist nicht gleichbedeutend mit „Factory Complete“. Der wiederholbare Factory-Lifecycle wird erst nach dem bewiesenen ersten Produktionspfad in FC1 verallgemeinert.
 
@@ -57,9 +57,24 @@ Aktuell wird daraus ausschließlich ein bereits vorhandener echter Vertrag wiede
 
 Für Preview, Backup/Recovery und die späteren Produktionsschritte erfindet dieser Slice ausdrücklich keine statischen Erfolgssignale. Solange kein belastbarer maschinenlesbarer Nachweis angebunden ist, bleiben die jeweiligen Kriterien offen.
 
+## Slice 2 – M6-Status in der bestehenden Factory-Detailansicht
+
+Die bestehende Produktions-Gate-Kachel zeigt zusätzlich zum M5-Status nun auch den read-only M6-Nachweisstand:
+
+- derselbe bereits geladene Factory-Snapshot liefert M5 und M6; es gibt keinen zweiten Request und keinen parallelen M6-UI-State,
+- der Anzeigeadapter importiert den kanonischen `REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA`-Vertrag direkt; es gibt keine zweite Kriterienliste,
+- `explicitApprovalRequired` muss `true` und `releaseAuthorized` muss `false` sein,
+- inkonsistente, umsortierte oder widersprüchliche Payloads werden als `M6 nicht verifiziert` dargestellt,
+- bei unvollständiger Evidenz werden nur Fortschritt und Zahl der offenen Nachweise gezeigt; es wird kein Erfolg suggeriert,
+- auch vollständige technische Evidenz wird ausdrücklich nicht als Release-Autorisierung dargestellt.
+
+Der bestehende Factory-Server liefert dafür ausschließlich das bereits vorhandene read-only M6-Vertragsmodul als statisches JavaScript-Modul aus. Es entsteht weder ein neuer API-Endpunkt noch ein neuer Write-Pfad.
+
+Damit ist der bereits vorhandene M6-Vertrag im späteren Factory-Bedienfluss sichtbar, ohne einen Release-Schalter oder eine neue schreibende Control-Plane-Funktion einzuführen.
+
 ## Sicherheitsgrenze
 
-Dieser Slice verändert nicht:
+Diese Slices verändern nicht:
 
 - `createAppSkeleton()` und den maßgeblichen Generatorpfad,
 - M3-Preview-Deployments oder Preview-Datenbanken,
@@ -74,10 +89,9 @@ Es existiert weiterhin kein Factory-Release-Endpunkt und kein produktiver Provid
 ## Nächste sichere Slices
 
 1. Preview sowie Backup/Recovery nur dann read-only in den M6-Snapshot einspeisen, wenn bestehende technische Nachweise die jeweilige Aussage tatsächlich belegen.
-2. Den M6-Status read-only in der bestehenden Factory-Detailansicht sichtbar machen, ohne Release-Schalter oder Write-Pfad.
-3. Für die erste reale Produktions-App konkrete Ressourcen-Nachweise ergänzen, ohne einen allgemeinen Multi-Provider-Provisioner vorwegzubauen.
-4. Erst nach M3, M4 und M5 DONE einen getrennten, ausdrücklich freizugebenden Produktionsworkflow für die erste App entwerfen.
-5. Post-Deploy-Smoke aus den bewährten M3-Prüfmustern für diese konkrete Produktions-App ableiten.
+2. Für die erste reale Produktions-App konkrete Ressourcen-Nachweise ergänzen, ohne einen allgemeinen Multi-Provider-Provisioner vorwegzubauen.
+3. Erst nach M3, M4 und M5 DONE einen getrennten, ausdrücklich freizugebenden Produktionsworkflow für die erste App entwerfen.
+4. Post-Deploy-Smoke aus den bewährten M3-Prüfmustern für diese konkrete Produktions-App ableiten.
 
 ## Abgrenzung zu FC1
 
