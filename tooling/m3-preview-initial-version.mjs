@@ -19,9 +19,9 @@ export async function assertM3PreviewInitialVersionPreconditions({
   fetchImpl = globalThis.fetch,
 } = {}) {
   const deployment = validateProviderInputs({ accountId, apiToken, fetchImpl });
-  const [versions, deployments] = await Promise.all([
+  const [versions, worker] = await Promise.all([
     listVersions(deployment),
-    listDeployments(deployment),
+    getWorker(deployment),
   ]);
 
   if (versions.length !== 0) {
@@ -29,9 +29,9 @@ export async function assertM3PreviewInitialVersionPreconditions({
       "m3-preview initial version requires a Worker with no existing versions.",
     );
   }
-  if (deployments.length !== 0) {
+  if (worker.deployed_on !== null) {
     throw new Error(
-      "m3-preview initial version requires a Worker with no existing deployments.",
+      "m3-preview initial version requires a Worker that has never been deployed.",
     );
   }
 
@@ -46,9 +46,9 @@ export async function verifyM3PreviewInitialVersionUpload({
 } = {}) {
   const deployment = validateProviderInputs({ accountId, apiToken, fetchImpl });
   const normalizedVersionId = requiredVersionId(versionId);
-  const [versions, deployments] = await Promise.all([
+  const [versions, worker] = await Promise.all([
     listVersions(deployment),
-    listDeployments(deployment),
+    getWorker(deployment),
   ]);
 
   if (
@@ -61,9 +61,9 @@ export async function verifyM3PreviewInitialVersionUpload({
       "m3-preview initial version upload did not produce the exact expected Worker version.",
     );
   }
-  if (deployments.length !== 0) {
+  if (worker.deployed_on !== null) {
     throw new Error(
-      "m3-preview initial version upload unexpectedly created a deployment.",
+      "m3-preview initial version upload unexpectedly created deployed traffic.",
     );
   }
 
@@ -115,13 +115,14 @@ function validateProviderInputs({ accountId, apiToken, fetchImpl }) {
     throw new Error("fetchImpl must be a function.");
   }
 
-  const scriptName = encodeURIComponent(M3_PREVIEW_INITIAL_VERSION.workerName);
+  const workerName = encodeURIComponent(M3_PREVIEW_INITIAL_VERSION.workerName);
   const accountUrl = `${CLOUDFLARE_API_BASE}/accounts/${encodeURIComponent(accountId)}/workers`;
+  const workerUrl = `${accountUrl}/workers/${workerName}`;
   return Object.freeze({
     apiToken,
     fetchImpl,
-    versionsUrl: `${accountUrl}/workers/${scriptName}/versions?page=1&per_page=100`,
-    deploymentsUrl: `${accountUrl}/scripts/${scriptName}/deployments`,
+    workerUrl,
+    versionsUrl: `${workerUrl}/versions?page=1&per_page=100`,
   });
 }
 
@@ -137,16 +138,20 @@ async function listVersions(deployment) {
   return payload.result;
 }
 
-async function listDeployments(deployment) {
+async function getWorker(deployment) {
   const payload = await cloudflareJson(
     deployment,
-    deployment.deploymentsUrl,
-    "deployments",
+    deployment.workerUrl,
+    "worker",
   );
-  if (!isRecord(payload.result) || !Array.isArray(payload.result.deployments)) {
-    throw new Error("Cloudflare Worker deployments API returned an invalid result.");
+  if (
+    !isRecord(payload.result) ||
+    payload.result.name !== M3_PREVIEW_INITIAL_VERSION.workerName ||
+    !("deployed_on" in payload.result)
+  ) {
+    throw new Error("Cloudflare Worker API returned an invalid m3-preview Worker result.");
   }
-  return payload.result.deployments;
+  return payload.result;
 }
 
 async function cloudflareJson(deployment, url, operation) {
