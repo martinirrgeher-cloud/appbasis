@@ -62,11 +62,13 @@ Für Preview, Backup/Recovery und die späteren Produktionsschritte erfindet die
 Die bestehende Produktions-Gate-Kachel zeigt zusätzlich zum M5-Status nun auch den read-only M6-Nachweisstand:
 
 - derselbe bereits geladene Factory-Snapshot liefert M5 und M6; es gibt keinen zweiten Request und keinen parallelen M6-UI-State,
-- der Anzeigeadapter akzeptiert nur die kanonische Reihenfolge der zehn M6-Kriterien,
+- der Anzeigeadapter importiert den kanonischen `REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA`-Vertrag direkt; es gibt keine zweite Kriterienliste,
 - `explicitApprovalRequired` muss `true` und `releaseAuthorized` muss `false` sein,
 - inkonsistente, umsortierte oder widersprüchliche Payloads werden als `M6 nicht verifiziert` dargestellt,
 - bei unvollständiger Evidenz werden nur Fortschritt und Zahl der offenen Nachweise gezeigt; es wird kein Erfolg suggeriert,
 - auch vollständige technische Evidenz wird ausdrücklich nicht als Release-Autorisierung dargestellt.
+
+Der bestehende Factory-Server liefert dafür ausschließlich das bereits vorhandene read-only M6-Vertragsmodul als statisches JavaScript-Modul aus. Es entsteht weder ein neuer API-Endpunkt noch ein neuer Write-Pfad.
 
 Damit ist der bereits vorhandene M6-Vertrag im späteren Factory-Bedienfluss sichtbar, ohne einen Release-Schalter oder eine neue schreibende Control-Plane-Funktion einzuführen.
 

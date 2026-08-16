@@ -178,18 +178,32 @@ test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabl
     helperBody,
     /import \{ REQUIRED_PRODUCTION_READINESS_CRITERIA \} from "\.\/production-readiness\.mjs";/,
   );
+  assert.match(
+    helperBody,
+    /import \{ REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA \} from "\.\/production-release-readiness\.mjs";/,
+  );
   assert.doesNotMatch(helperBody, /fetch\(/);
   assert.doesNotMatch(helperBody, /addEventListener/);
   assert.match(helperBody, /productionReleaseReadinessCopy/);
   assert.match(helperBody, /releaseAuthorized !== false/);
   assert.match(helperBody, /Produktion bleibt gesperrt/);
 
-  const canonicalContractResponse = await fetch(`${baseUrl}/production-readiness.mjs`);
-  assert.equal(canonicalContractResponse.status, 200);
+  const canonicalM5Response = await fetch(`${baseUrl}/production-readiness.mjs`);
+  assert.equal(canonicalM5Response.status, 200);
   assert.match(
-    canonicalContractResponse.headers.get("content-type") ?? "",
+    canonicalM5Response.headers.get("content-type") ?? "",
     /^text\/javascript/,
   );
+
+  const canonicalM6Response = await fetch(`${baseUrl}/production-release-readiness.mjs`);
+  assert.equal(canonicalM6Response.status, 200);
+  assert.match(
+    canonicalM6Response.headers.get("content-type") ?? "",
+    /^text\/javascript/,
+  );
+  const canonicalM6Body = await canonicalM6Response.text();
+  assert.match(canonicalM6Body, /REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA/);
+  assert.match(canonicalM6Body, /releaseAuthorized: false/);
 
   const appResponse = await fetch(`${baseUrl}/app.js`);
   assert.equal(appResponse.status, 200);

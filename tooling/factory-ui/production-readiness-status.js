@@ -1,20 +1,12 @@
 import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
+import { REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA } from "./production-release-readiness.mjs";
 
 const REQUIRED_CRITERION_IDS = Object.freeze(
   REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion) => criterion.id),
 );
-const REQUIRED_M6_CRITERION_IDS = Object.freeze([
-  "previewAccepted",
-  "productionDatabaseReady",
-  "productionWorkerReady",
-  "productionDomainReady",
-  "productionUsersAndPermissionsReady",
-  "backupRecoveryReady",
-  "securityPrivacyReady",
-  "productionMigrationsApplied",
-  "productionDeploymentCompleted",
-  "postDeploySmokePassed",
-]);
+const REQUIRED_M6_CRITERION_IDS = Object.freeze(
+  REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map((criterion) => criterion.id),
+);
 
 export function productionReadinessCopy(readiness) {
   if (!isConsistentReadiness(readiness)) {

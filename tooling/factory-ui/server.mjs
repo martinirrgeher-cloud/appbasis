@@ -30,6 +30,7 @@ const STATIC_ROUTES = new Map([
   ["/create-app.js", { path: join(FACTORY_UI_DIRECTORY, "create-app.js"), contentType: "text/javascript; charset=utf-8" }],
   ["/production-readiness-status.js", { path: join(FACTORY_UI_DIRECTORY, "production-readiness-status.js"), contentType: "text/javascript; charset=utf-8" }],
   ["/production-readiness.mjs", { path: join(FACTORY_UI_DIRECTORY, "production-readiness.mjs"), contentType: "text/javascript; charset=utf-8" }],
+  ["/production-release-readiness.mjs", { path: join(FACTORY_UI_DIRECTORY, "production-release-readiness.mjs"), contentType: "text/javascript; charset=utf-8" }],
   ["/preview-theme.mjs", { path: join(FACTORY_UI_DIRECTORY, "preview-theme.mjs"), contentType: "text/javascript; charset=utf-8" }],
   ["/styles.css", { path: join(FACTORY_UI_DIRECTORY, "styles.css"), contentType: "text/css; charset=utf-8" }],
   ["/target-flow.css", { path: join(FACTORY_UI_DIRECTORY, "target-flow.css"), contentType: "text/css; charset=utf-8" }],
