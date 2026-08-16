@@ -38,6 +38,7 @@ export function evaluateM6ProductionLifecycle(evidence = {}) {
     verifiedCount,
     requiredCount,
     explicitApprovalRequired: true,
+    releaseAuthorized: false,
     criteria: Object.freeze(criteria),
     nextCriterion,
   });
