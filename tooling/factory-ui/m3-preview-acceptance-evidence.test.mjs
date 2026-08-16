@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { M3_PREVIEW_INITIAL_VERSION } from "../m3-preview-initial-version.mjs";
 import {
   deriveM3PreviewAcceptanceEvidence,
   M3_PREVIEW_ACCEPTANCE_RUN,
+  m3PreviewDeploymentContractDigest,
   verifyAcceptanceRun,
 } from "./m3-preview-acceptance-evidence.mjs";
 
@@ -56,9 +58,34 @@ function successfulGitHubFetch(run = successfulRun()) {
     assert.equal(options.redirect, "error");
     assert.equal(options.headers.accept, "application/vnd.github+json");
     assert.equal(options.headers["x-github-api-version"], "2022-11-28");
+    assert.ok(options.signal instanceof AbortSignal);
     return jsonResponse(run);
   };
 }
+
+test("M3 preview deployment evidence digest covers every pinned contract field", () => {
+  const baseline = m3PreviewDeploymentContractDigest();
+  assert.equal(baseline, M3_PREVIEW_ACCEPTANCE_RUN.acceptedM3ContractDigest);
+
+  for (const key of Object.keys(M3_PREVIEW_INITIAL_VERSION)) {
+    const original = M3_PREVIEW_INITIAL_VERSION[key];
+    assert.equal(typeof original, "string");
+    const changed = {
+      ...M3_PREVIEW_INITIAL_VERSION,
+      [key]: `${original}-changed`,
+    };
+    assert.notEqual(
+      m3PreviewDeploymentContractDigest(changed),
+      baseline,
+      `changing ${key} must invalidate the accepted deployment contract`,
+    );
+  }
+
+  assert.throws(
+    () => m3PreviewDeploymentContractDigest([]),
+    /deployment contract must be a plain object/,
+  );
+});
 
 test("M3 preview evidence verifies the exact accepted generated app from GitHub", async () => {
   assert.deepEqual(
