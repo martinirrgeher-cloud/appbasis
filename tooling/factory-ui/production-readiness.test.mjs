@@ -89,6 +89,28 @@ test("truthy strings, unknown keys and malformed evidence cannot unlock M5", () 
   );
 });
 
+test("inherited readiness values cannot count as production evidence", () => {
+  const ownEvidence = Object.fromEntries(expectedIds.map((id) => [id, true]));
+  delete ownEvidence.highPrivacyProfile;
+  Object.defineProperty(Object.prototype, "highPrivacyProfile", {
+    configurable: true,
+    enumerable: false,
+    value: true,
+  });
+
+  try {
+    const readiness = evaluateProductionReadiness(ownEvidence);
+    assert.equal(readiness.productionReady, false);
+    assert.equal(readiness.verifiedCount, expectedIds.length - 1);
+    assert.equal(
+      readiness.criteria.find((criterion) => criterion.id === "highPrivacyProfile")?.status,
+      "open",
+    );
+  } finally {
+    delete Object.prototype.highPrivacyProfile;
+  }
+});
+
 test("Factory snapshot exposes M5 per app without enabling production release", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot);
 
