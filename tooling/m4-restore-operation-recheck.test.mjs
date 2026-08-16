@@ -155,6 +155,90 @@ test("operation recheck follows read-only pagination before accepting completion
   assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
 });
 
+test("terminal short operation pages ignore unusable cursor metadata", async () => {
+  for (const pagination of [
+    { cursor: null },
+    { cursor: "" },
+    { cursor: 42 },
+    { cursor: { unexpected: true } },
+  ]) {
+    const { fetchImpl, calls } = makeExistingRestoreFetch([
+      {
+        operations: [operation("finished")],
+        pagination,
+      },
+    ]);
+
+    const result = await ensureM4RestoreRehearsal({
+      ...input,
+      apply: false,
+      fetchImpl,
+    });
+
+    assert.equal(result.restoreOperationsState, "complete");
+    assert.equal(result.verificationReady, true);
+    assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
+  }
+});
+
+test("terminal short page may repeat the prior cursor without weakening full-page safety", async () => {
+  const fullPage = Array.from({ length: 1000 }, (_, index) =>
+    operation("finished", {
+      id: `operation-unrelated-${index}`,
+      branch_id: "br-unrelated-12345678",
+    }),
+  );
+  const { fetchImpl, calls } = makeExistingRestoreFetch([
+    {
+      operations: fullPage,
+      pagination: { cursor: "next-page-token" },
+    },
+    {
+      operations: [operation("finished")],
+      pagination: { cursor: "next-page-token" },
+    },
+  ]);
+
+  const result = await ensureM4RestoreRehearsal({
+    ...input,
+    apply: false,
+    fetchImpl,
+  });
+
+  assert.equal(result.restoreOperationsState, "complete");
+  assert.equal(result.verificationReady, true);
+  const operationCalls = calls.filter((call) =>
+    new URL(call.url).pathname.endsWith("/operations"),
+  );
+  assert.equal(operationCalls.length, 2);
+  assert.equal(new URL(operationCalls[1].url).searchParams.get("cursor"), "next-page-token");
+  assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
+});
+
+test("full operation pages still require a valid advancing cursor", async () => {
+  const fullPage = Array.from({ length: 1000 }, (_, index) =>
+    operation("finished", {
+      id: `operation-unrelated-${index}`,
+      branch_id: "br-unrelated-12345678",
+    }),
+  );
+  const { fetchImpl } = makeExistingRestoreFetch([
+    {
+      operations: fullPage,
+      pagination: { cursor: 42 },
+    },
+  ]);
+
+  await assert.rejects(
+    ensureM4RestoreRehearsal({
+      ...input,
+      apply: false,
+      fetchImpl,
+    }),
+    /invalid full-page cursor/,
+  );
+});
+
 test("missing exact operation evidence stays fail closed", async () => {
   const { fetchImpl } = makeExistingRestoreFetch([
     { operations: [], pagination: {} },
