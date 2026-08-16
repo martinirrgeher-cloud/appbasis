@@ -103,6 +103,23 @@ Der reale Factory-Snapshot bleibt deshalb nach diesem Slice bei **1/12** app-spe
 
 Der Fortschritt dieses Slices besteht darin, dass der geforderte High-Privacy-Vertrag erstmals kanonisch und maschinenprüfbar definiert ist, ohne daraus unzulässige app-spezifische Readiness abzuleiten.
 
+## Slice 6 – app-spezifische read-only Control-Plane-Evidenzquelle
+
+`.github/workflows/m5-reference-control-plane-evidence.yml` schafft für die bestehende Reference-App eine frische, getrennte Provider-Evidenzquelle für die öffentliche Erreichbarkeit ihres privilegierten Rollen-Administrations-Workers.
+
+Der Workflow:
+
+- läuft ausschließlich manuell und mit `contents: read`,
+- verwendet die bestehende geschützte `reference-preview`-Umgebung,
+- verlangt, dass der bereits vorhandene interne Worker `appbasis-reference-role-admin` lesbar existiert,
+- verwendet danach den bestehenden fail-closed `reference-role-admin-ingress.mjs`-Vertrag,
+- verlangt live `workers.dev=false`, deaktivierte Preview-URLs, keine Custom Domain und keine Worker-Route,
+- führt keine Provider-, Secret-, Deployment- oder Produktionsänderung aus.
+
+Ein erfolgreicher Workflow-Lauf ist zunächst **nur eine app-spezifische Evidenzquelle**. Er setzt `privilegedControlPlaneIsolation` im gemeinsamen Factory-Gate nicht automatisch auf `true`. Dafür braucht es einen späteren, eng begrenzten Consumer, der einen hinreichend frischen erfolgreichen Lauf eindeutig an die konkrete App und Zielumgebung bindet. Fehlt diese Bindung oder ist der Providerzustand nicht lesbar, bleibt das Kriterium offen.
+
+Damit bleibt der aktuelle Factory-Snapshot trotz dieser neuen Evidenzquelle bei **1/12**; es wird keine Repository-Wahrheit aus einem vergangenen Providerzustand erfunden.
+
 ## Inventarisierte vorhandene Bausteine
 
 Im Repository existieren bereits technische Bausteine, die spätere M5-Nachweise unterstützen können:
