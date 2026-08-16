@@ -180,7 +180,9 @@ function isValidProviderScheduleEntry(entry) {
   ) {
     return false;
   }
-  if (entry.frequency === "daily") return true;
+  if (entry.frequency === "daily") {
+    return entry.day === undefined || entry.day === null;
+  }
   if (!Number.isInteger(entry.day)) return false;
   if (entry.frequency === "weekly") return entry.day >= 1 && entry.day <= 7;
   return entry.day >= 1 && entry.day <= 31;
