@@ -13,6 +13,8 @@ import {
 
 const SNAPSHOT_QUERY = "SELECT pg_export_snapshot() AS snapshot_id";
 const SNAPSHOT_PATTERN = /^[0-9A-Fa-f-]{1,128}$/;
+export const M4_POSTGRES_DUMP_IMAGE =
+  "postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15";
 
 export async function captureM4ConsistentBackup({
   connectionString,
@@ -103,7 +105,7 @@ export async function runPostgresDumpWithSnapshot({
         "APPBASIS_M4_SOURCE_DATABASE_URL",
         "--env",
         "APPBASIS_M4_EXPORTED_SNAPSHOT",
-        "postgres:18-alpine",
+        M4_POSTGRES_DUMP_IMAGE,
         "sh",
         "-ceu",
         'pg_dump --format=custom --no-owner --no-acl --snapshot="$APPBASIS_M4_EXPORTED_SNAPSHOT" --dbname="$APPBASIS_M4_SOURCE_DATABASE_URL"',
