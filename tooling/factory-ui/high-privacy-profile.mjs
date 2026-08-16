@@ -36,7 +36,7 @@ export const HIGH_PRIVACY_PROFILE = deepFreeze({
 });
 
 export function isCanonicalHighPrivacyProfile(profile = HIGH_PRIVACY_PROFILE) {
-  if (!hasExactDataProperties(profile, PROFILE_KEYS)) return false;
+  if (!hasExactEnumerableDataProperties(profile, PROFILE_KEYS)) return false;
 
   const profileDescriptors = Object.getOwnPropertyDescriptors(profile);
   const schemaVersion = profileDescriptors.schemaVersion.value;
@@ -50,7 +50,7 @@ export function isCanonicalHighPrivacyProfile(profile = HIGH_PRIVACY_PROFILE) {
     typeof id === "string" &&
     id === "appbasis-high-privacy-v0.1" &&
     isExactStringArray(appliesTo, EXPECTED_APPLIES_TO) &&
-    hasExactDataProperties(requirements, REQUIREMENT_KEYS) &&
+    hasExactEnumerableDataProperties(requirements, REQUIREMENT_KEYS) &&
     REQUIREMENT_KEYS.every((key) => {
       const value = Object.getOwnPropertyDescriptor(requirements, key)?.value;
       return typeof value === "string" && value === EXPECTED_REQUIREMENTS[key];
@@ -84,13 +84,14 @@ function isExactStringArray(value, expected) {
     return (
       descriptor !== undefined &&
       Object.hasOwn(descriptor, "value") &&
+      descriptor.enumerable === true &&
       typeof descriptor.value === "string" &&
       descriptor.value === expectedValue
     );
   });
 }
 
-function hasExactDataProperties(value, expectedKeys) {
+function hasExactEnumerableDataProperties(value, expectedKeys) {
   if (!isPlainObject(value)) return false;
 
   const ownKeys = Reflect.ownKeys(value);
@@ -103,7 +104,11 @@ function hasExactDataProperties(value, expectedKeys) {
 
   return expectedKeys.every((key) => {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    return descriptor !== undefined && Object.hasOwn(descriptor, "value");
+    return (
+      descriptor !== undefined &&
+      Object.hasOwn(descriptor, "value") &&
+      descriptor.enumerable === true
+    );
   });
 }
 
