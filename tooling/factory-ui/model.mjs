@@ -7,6 +7,7 @@ import {
 } from "../app-definition.mjs";
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
 import { evaluateProductionReadiness } from "./production-readiness.mjs";
+import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
 
 export async function loadFactorySnapshot(repositoryRoot = process.cwd()) {
   const root = resolve(repositoryRoot);
@@ -48,6 +49,8 @@ async function withFactoryReadiness(repositoryRoot, definition) {
     workerEntrypointPresent &&
     packageManifestPresent &&
     (!databaseManifestRequired || databaseManifestPresent);
+  const productionReadinessEvidence =
+    deriveRepositoryProductionReadinessEvidence(definition);
 
   return Object.freeze({
     ...definition,
@@ -58,7 +61,7 @@ async function withFactoryReadiness(repositoryRoot, definition) {
       databaseManifestRequired,
       databaseManifestPresent,
     }),
-    productionReadiness: evaluateProductionReadiness(),
+    productionReadiness: evaluateProductionReadiness(productionReadinessEvidence),
   });
 }
 
