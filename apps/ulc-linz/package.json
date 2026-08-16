@@ -1,0 +1,21 @@
+{
+  "name": "@appbasis/app-ulc-linz",
+  "version": "0.0.0",
+  "description": "ULC Linz generated AppBasis mini application.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@appbasis/identity": "workspace:*",
+    "@appbasis/permissions": "workspace:*",
+    "hono": "4.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}
