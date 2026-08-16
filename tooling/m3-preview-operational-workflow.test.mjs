@@ -119,10 +119,15 @@ test("provides a resumable post-deploy acceptance path without another provider 
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.match(workflow, /environment: m3-preview/);
   assert.match(workflow, /pnpm run verify:repo/);
+  assert.match(workflow, /GITHUB_REF.*refs\/heads\/main/);
   assert.match(workflow, /verify-preview-schema\.mjs/);
   assert.match(workflow, /APPBASIS_APPLY_WORKER: "0"/);
   assert.match(workflow, /m3-preview-worker-bootstrap\.mjs ensure/);
 
+  const worker = workflow.indexOf("Require exact deployed m3-preview Worker without mutation");
+  const exactDeployment = workflow.indexOf(
+    "Verify exact original m3-preview initial deployment",
+  );
   const health = workflow.indexOf("Verify deployed m3-preview health");
   const anonymousBoundary = workflow.indexOf(
     "Verify deployed m3-preview anonymous runtime boundary",
@@ -131,11 +136,14 @@ test("provides a resumable post-deploy acceptance path without another provider 
   const acceptance = workflow.indexOf(
     "Verify m3-preview authenticated permission and tasks acceptance",
   );
-  assert.ok(health >= 0);
+  assert.ok(worker >= 0);
+  assert.ok(exactDeployment > worker);
+  assert.ok(health > exactDeployment);
   assert.ok(anonymousBoundary > health);
   assert.ok(database > anonymousBoundary);
   assert.ok(acceptance > database);
 
+  assert.match(workflow, /m3-preview-initial-version\.mjs verify-current-deploy/);
   assert.match(workflow, /verifyGeneratedPreviewHealth/);
   assert.match(workflow, /verifyGeneratedPreviewRuntimeBoundary/);
   assert.match(workflow, /verifyGeneratedPreviewDatabaseBinding/);
