@@ -229,27 +229,27 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
         return classifyRestoreOperations(matchingOperations);
       }
       throw new Error(
-        "Neon restore operations inspection returned no cursor on a full page.",
+        "Neon restore operations inspection returned an invalid cursor: no cursor on a full page.",
       );
     }
     if (typeof nextCursor !== "string") {
       throw new Error(
-        `Neon restore operations inspection returned a non-string cursor on a ${pageKind} page.`,
+        `Neon restore operations inspection returned an invalid cursor: non-string cursor on a ${pageKind} page.`,
       );
     }
     if (nextCursor.length > 2048) {
       throw new Error(
-        `Neon restore operations inspection returned an oversized cursor on a ${pageKind} page.`,
+        `Neon restore operations inspection returned an invalid cursor: oversized cursor on a ${pageKind} page.`,
       );
     }
     if (nextCursor.trim() !== nextCursor) {
       throw new Error(
-        `Neon restore operations inspection returned a non-canonical cursor on a ${pageKind} page.`,
+        `Neon restore operations inspection returned an invalid cursor: non-canonical cursor on a ${pageKind} page.`,
       );
     }
     if (seenCursors.has(nextCursor)) {
       throw new Error(
-        `Neon restore operations inspection returned a non-advancing cursor on a ${pageKind} page.`,
+        `Neon restore operations inspection returned an invalid cursor: non-advancing cursor on a ${pageKind} page.`,
       );
     }
     seenCursors.add(nextCursor);
