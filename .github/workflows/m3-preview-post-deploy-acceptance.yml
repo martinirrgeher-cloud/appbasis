@@ -48,8 +48,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify repository
-        run: pnpm run verify:repo
+      - name: Verify repository and main workflow ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm run verify:repo
+          test "$GITHUB_REF" = 'refs/heads/main' || {
+            echo 'm3-preview post-deploy acceptance must run from main.' >&2
+            exit 1
+          }
 
       - name: Require explicit authenticated acceptance confirmation
         shell: bash
@@ -106,6 +113,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           APPBASIS_APPLY_WORKER: "0"
         run: node ./tooling/m3-preview-worker-bootstrap.mjs ensure
+
+      - name: Verify exact original m3-preview initial deployment
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node ./tooling/m3-preview-initial-version.mjs verify-current-deploy
 
       - name: Verify deployed m3-preview health
         run: |
