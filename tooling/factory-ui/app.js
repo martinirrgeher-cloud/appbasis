@@ -1,4 +1,5 @@
 import { previewAccentForeground } from "./preview-theme.mjs";
+import { productionReadinessCopy } from "./production-readiness-status.js";
 
 const state = {
   snapshot: null,
@@ -18,6 +19,8 @@ const elements = {
   detailSchema: document.querySelector("#detail-schema"),
   detailModules: document.querySelector("#detail-modules"),
   detailServices: document.querySelector("#detail-services"),
+  detailProductionStatus: document.querySelector("#detail-production-status"),
+  detailProductionSummary: document.querySelector("#detail-production-summary"),
   displayName: document.querySelector("#display-name"),
   appId: document.querySelector("#app-id"),
   brandMark: document.querySelector("#brand-mark"),
@@ -218,6 +221,7 @@ function renderAppDetail(app) {
   replaceWithValueChips(elements.detailModules, app.modules, moduleLabel);
   replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
   renderPreviewReadiness(app.previewReadiness);
+  renderProductionReadiness(app.productionReadiness);
 }
 
 function renderPreviewReadiness(readiness) {
@@ -247,6 +251,13 @@ function renderPreviewReadiness(readiness) {
     missing.length > 0
       ? `Fehlt: ${missing.join(", ")}. Preview bleibt gesperrt.`
       : "Die lokalen Preview-Voraussetzungen konnten nicht vollständig bestätigt werden. Preview bleibt gesperrt.";
+}
+
+function renderProductionReadiness(readiness) {
+  if (!elements.detailProductionStatus || !elements.detailProductionSummary) return;
+  const copy = productionReadinessCopy(readiness);
+  elements.detailProductionStatus.textContent = copy.heading;
+  elements.detailProductionSummary.textContent = copy.detail;
 }
 
 function previewReadinessLabel(readiness) {
