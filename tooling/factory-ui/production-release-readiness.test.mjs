@@ -59,6 +59,7 @@ test("M6 lifecycle is blocked when evidence is missing and names the first open 
   assert.equal(readiness.verifiedCount, 0);
   assert.equal(readiness.requiredCount, expectedIds.length);
   assert.equal(readiness.explicitApprovalRequired, true);
+  assert.equal(readiness.releaseAuthorized, false);
   assert.equal(readiness.nextCriterion?.id, "m1Ready");
   assert.ok(readiness.criteria.every((criterion) => criterion.status === "open"));
 });
@@ -71,6 +72,7 @@ test("M6 lifecycle remains fail-closed for out-of-order, truthy or unknown evide
   const readiness = evaluateM6ProductionLifecycle(evidence);
 
   assert.equal(readiness.productionVerified, false);
+  assert.equal(readiness.releaseAuthorized, false);
   assert.equal(readiness.verifiedCount, expectedIds.length - 1);
   assert.equal(readiness.nextCriterion?.id, "m1Ready");
   assert.equal(
@@ -79,7 +81,7 @@ test("M6 lifecycle remains fail-closed for out-of-order, truthy or unknown evide
   );
 });
 
-test("M6 lifecycle becomes verified only after the complete ordered evidence set exists", () => {
+test("complete technical M6 evidence still never authorizes release in the read-only contract", () => {
   const readiness = evaluateM6ProductionLifecycle(allEvidence());
 
   assert.equal(readiness.status, "verified");
@@ -87,6 +89,7 @@ test("M6 lifecycle becomes verified only after the complete ordered evidence set
   assert.equal(readiness.verifiedCount, expectedIds.length);
   assert.equal(readiness.nextCriterion, null);
   assert.equal(readiness.explicitApprovalRequired, true);
+  assert.equal(readiness.releaseAuthorized, false);
   assert.ok(readiness.criteria.every((criterion) => criterion.status === "verified"));
 });
 
@@ -111,6 +114,7 @@ test("malformed or inherited values cannot count as M6 production evidence", () 
   try {
     const readiness = evaluateM6ProductionLifecycle(evidence);
     assert.equal(readiness.productionVerified, false);
+    assert.equal(readiness.releaseAuthorized, false);
     assert.equal(readiness.verifiedCount, expectedIds.length - 1);
     assert.equal(readiness.nextCriterion?.id, "m4Ready");
   } finally {
@@ -127,6 +131,7 @@ test("Factory snapshot exposes M6 read-only without inventing milestone or provi
     assert.equal(app.productionLifecycleReadiness.productionVerified, false);
     assert.equal(app.productionLifecycleReadiness.requiredCount, expectedIds.length);
     assert.equal(app.productionLifecycleReadiness.explicitApprovalRequired, true);
+    assert.equal(app.productionLifecycleReadiness.releaseAuthorized, false);
     assert.deepEqual(
       app.productionLifecycleReadiness.criteria.map((criterion) => criterion.id),
       expectedIds,
