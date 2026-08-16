@@ -42,7 +42,7 @@ test("Factory M5 copy names the real current 1/12 open criteria without implying
   assert.deepEqual(productionReadinessCopy(current), {
     heading: "Security & Privacy 1/12 geprüft",
     detail:
-      "Noch offen: Datenregion · AVV/DPA · Verschlüsselung · Rollen & Rechte · Löschkonzept · Aufbewahrung · Datenexport · Audit-/Security-Logging · Subprozessoren · High-Privacy-Profil definiert · Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
+      "Noch offen: Datenregion · AVV/DPA · Verschlüsselung · Rollen & Rechte · Löschkonzept · Aufbewahrung · Datenexport · Audit-/Security-Logging · Subprozessoren · High-Privacy-Profil für App belegt · Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
   });
 
   const allExceptControlPlane = Object.fromEntries(
