@@ -41,7 +41,7 @@ Ziel: einfacher, datensparsamer Standard für private oder sehr kleine nicht-org
 | Konto-Löschung | Zugang sofort sperren; aktive personenbezogene Daten innerhalb von 30 Tagen löschen/anonymisieren, soweit keine dokumentierte Ausnahme gilt |
 | Backup-Rotation | Zielwert maximal 35 Tage |
 | Personenbezogener Export | strukturierter Export, bevorzugt JSON/CSV; zugehörige Dateien nur innerhalb des zulässigen Scopes |
-| High Privacy | nicht automatisch aktiv; bei sensiblen Szenarien verpflichtend auswählbar |
+| High Privacy | nicht automatisch aktiv; bei sensiblen Szenarien verpflichtend anzuwenden |
 
 ## Profil B – Verein
 
@@ -94,8 +94,10 @@ Dokumentierte Sperr-/Aufbewahrungsgründe dürfen nur die konkret betroffene Dat
 Für die erste reale Produktiv-App ist fachlich bereits festgelegt:
 
 - Betreiberart: **Verein**
-- gewünschte Produktions-Datenregion: **EU / Frankfurt**
+- gewünschte Produktionsdatenbankregion: **EU / Frankfurt**
 - High-Privacy-Profil: **ja**
+
+Die Region anderer Provider-Komponenten, insbesondere die tatsächliche Worker-Verarbeitung, muss separat gegen den konkreten Produktionsvertrag und Providerzustand geprüft werden; aus der Datenbankregion wird keine allgemeinere Providerregion abgeleitet.
 
 Diese drei Entscheidungen sind derzeit **Planungs-/Policy-Input, noch keine app-spezifische M5-Evidenz**. Die vorhandene technische App `m3-preview` wird dadurch ausdrücklich nicht stillschweigend zur ersten Vereins-Produktiv-App erklärt.
 
