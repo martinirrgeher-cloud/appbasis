@@ -7,8 +7,10 @@ const accountId = 'account-id';
 const apiToken = 'token-value';
 const worker = 'appbasis-reference-role-admin';
 
-function successResponse(result) {
-  return new Response(JSON.stringify({ success: true, result }), {
+function successResponse(result, resultInfo) {
+  const payload = { success: true, result };
+  if (resultInfo !== undefined) payload.result_info = resultInfo;
+  return new Response(JSON.stringify(payload), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
@@ -17,39 +19,94 @@ function successResponse(result) {
 function mockCloudflare({
   subdomain = { enabled: false, previews_enabled: false },
   domains = [],
-  scripts = [{ id: worker, routes: [] }],
+  scripts = [{ id: worker }],
+  zonePages = [
+    {
+      zones: [{ id: 'zone-1', account: { id: accountId } }],
+      resultInfo: { page: 1, total_pages: 1 },
+    },
+  ],
+  routesByZone = { 'zone-1': [] },
 } = {}) {
   const calls = [];
   const fetchImpl = async (input, init = {}) => {
-    const url = String(input);
-    calls.push({ url, authorization: new Headers(init.headers).get('authorization') });
-    if (url.endsWith(`/workers/scripts/${worker}/subdomain`)) {
+    const url = new URL(String(input));
+    calls.push({
+      url: url.toString(),
+      method: init.method,
+      authorization: new Headers(init.headers).get('authorization'),
+    });
+    if (url.pathname.endsWith(`/workers/scripts/${worker}/subdomain`)) {
       return successResponse(subdomain);
     }
-    if (url.includes('/workers/domains?')) {
+    if (url.pathname.endsWith('/workers/domains')) {
       return successResponse(domains);
     }
-    if (url.endsWith('/workers/scripts')) {
+    if (url.pathname.endsWith('/workers/scripts')) {
       return successResponse(scripts);
+    }
+    if (url.pathname === '/client/v4/zones') {
+      const page = Number(url.searchParams.get('page'));
+      const entry = zonePages[page - 1];
+      if (entry === undefined) return new Response('not found', { status: 404 });
+      return successResponse(entry.zones, entry.resultInfo);
+    }
+    const routeMatch = url.pathname.match(/^\/client\/v4\/zones\/([^/]+)\/workers\/routes$/);
+    if (routeMatch !== null) {
+      return successResponse(routesByZone[decodeURIComponent(routeMatch[1])] ?? []);
     }
     return new Response('not found', { status: 404 });
   };
   return { fetchImpl, calls };
 }
 
-test('verifies all public ingress surfaces with account-scoped Worker APIs', async () => {
+test('verifies public ingress with authoritative account-zone route inventories', async () => {
   const { fetchImpl, calls } = mockCloudflare();
 
-  await assert.doesNotReject(
-    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
-  );
+  const result = await verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl });
 
-  assert.equal(calls.length, 3);
+  assert.deepEqual(result, {
+    workersDevEnabled: false,
+    previewUrlsEnabled: false,
+    customDomainCount: 0,
+    routeCount: 0,
+    checkedZoneCount: 1,
+  });
+  assert.equal(calls.length, 5);
   assert.match(calls[0].url, /workers\/scripts\/appbasis-reference-role-admin\/subdomain$/);
   assert.match(calls[1].url, /workers\/domains\?service=appbasis-reference-role-admin$/);
   assert.match(calls[2].url, /accounts\/account-id\/workers\/scripts$/);
-  assert.equal(calls.some((call) => call.url.includes('/zones')), false);
+  const zoneInventory = new URL(calls[3].url);
+  assert.equal(zoneInventory.pathname, '/client/v4/zones');
+  assert.equal(zoneInventory.searchParams.get('account.id'), accountId);
+  assert.equal(zoneInventory.searchParams.get('type'), 'full,partial,secondary,internal');
+  assert.equal(zoneInventory.searchParams.get('page'), '1');
+  assert.equal(zoneInventory.searchParams.get('per_page'), '50');
+  assert.match(calls[4].url, /zones\/zone-1\/workers\/routes$/);
+  assert.equal(calls.every((call) => call.method === 'GET'), true);
   assert.equal(calls.every((call) => call.authorization === 'Bearer token-value'), true);
+});
+
+test('paginates the complete account-zone inventory before accepting no routes', async () => {
+  const { fetchImpl, calls } = mockCloudflare({
+    zonePages: [
+      {
+        zones: [{ id: 'zone-1', account: { id: accountId } }],
+        resultInfo: { page: 1, total_pages: 2 },
+      },
+      {
+        zones: [{ id: 'zone-2', account: { id: accountId } }],
+        resultInfo: { page: 2, total_pages: 2 },
+      },
+    ],
+    routesByZone: { 'zone-1': [], 'zone-2': [] },
+  });
+
+  const result = await verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl });
+
+  assert.equal(result.checkedZoneCount, 2);
+  assert.equal(calls.filter((call) => new URL(call.url).pathname === '/client/v4/zones').length, 2);
+  assert.equal(calls.filter((call) => call.url.endsWith('/workers/routes')).length, 2);
 });
 
 test('rejects workers.dev and Preview URL exposure', async () => {
@@ -76,14 +133,11 @@ test('rejects a custom domain assigned to the internal Worker', async () => {
   );
 });
 
-test('rejects any account-scoped Worker route associated with the internal Worker', async () => {
+test('rejects a zone-scoped Worker route associated with the internal Worker', async () => {
   const { fetchImpl } = mockCloudflare({
-    scripts: [
-      {
-        id: worker,
-        routes: [{ id: 'route-id', pattern: 'example.test/admin/*', script: worker }],
-      },
-    ],
+    routesByZone: {
+      'zone-1': [{ id: 'route-id', pattern: 'example.test/admin/*', script: worker }],
+    },
   });
 
   await assert.rejects(
@@ -92,34 +146,60 @@ test('rejects any account-scoped Worker route associated with the internal Worke
   );
 });
 
-test('accepts an omitted optional routes field as no associated routes', async () => {
-  const { fetchImpl } = mockCloudflare({ scripts: [{ id: worker }] });
-
-  await assert.doesNotReject(
-    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
-  );
-});
-
-test('accepts a null routes field as no associated routes', async () => {
-  const { fetchImpl } = mockCloudflare({ scripts: [{ id: worker, routes: null }] });
-
-  await assert.doesNotReject(
-    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
-  );
-});
-
-test('fails closed when the Worker route inventory is missing, duplicated or malformed', async () => {
-  for (const scripts of [
-    [],
-    [{ id: worker }, { id: worker }],
-    [{ id: worker, routes: 'unknown' }],
-  ]) {
+test('fails closed when the Worker inventory is missing or duplicated', async () => {
+  for (const scripts of [[], [{ id: worker }, { id: worker }]]) {
     const { fetchImpl } = mockCloudflare({ scripts });
     await assert.rejects(
       verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
-      /route inventory/,
+      /Worker inventory/,
     );
   }
+});
+
+test('fails closed on incomplete, cross-account or unstable zone pagination', async () => {
+  for (const zonePages of [
+    [
+      {
+        zones: [{ id: 'zone-1', account: { id: accountId } }],
+        resultInfo: undefined,
+      },
+    ],
+    [
+      {
+        zones: [{ id: 'zone-1', account: { id: 'other-account' } }],
+        resultInfo: { page: 1, total_pages: 1 },
+      },
+    ],
+    [
+      {
+        zones: [{ id: 'zone-1', account: { id: accountId } }],
+        resultInfo: { page: 1, total_pages: 2 },
+      },
+      {
+        zones: [{ id: 'zone-2', account: { id: accountId } }],
+        resultInfo: { page: 2, total_pages: 3 },
+      },
+    ],
+  ]) {
+    const { fetchImpl } = mockCloudflare({ zonePages });
+    await assert.rejects(
+      verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
+      /zone inventory|pagination/,
+    );
+  }
+});
+
+test('fails closed on malformed route inventory', async () => {
+  const { fetchImpl } = mockCloudflare({
+    routesByZone: {
+      'zone-1': [{ id: 'route-id', pattern: 'example.test/*', script: { unexpected: true } }],
+    },
+  });
+
+  await assert.rejects(
+    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
+    /Worker routes for zone zone-1 response is invalid/,
+  );
 });
 
 test('fails closed on unreadable or unsuccessful Cloudflare responses', async () => {
