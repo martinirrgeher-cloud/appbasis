@@ -29,7 +29,7 @@ test('role admin secret bootstrap is explicit, pre-created and ingress-guarded',
   );
 });
 
-test('role admin secret bootstrap reuses only the protected existing auth secret', () => {
+test('role admin secret bootstrap reuses only a runtime-valid protected auth secret', () => {
   assert.match(
     workflow,
     /APPBASIS_BETTER_AUTH_SECRET: \$\{\{ secrets\.APPBASIS_BETTER_AUTH_SECRET \}\}/,
@@ -37,6 +37,15 @@ test('role admin secret bootstrap reuses only the protected existing auth secret
   assert.match(
     workflow,
     /test -n "\$APPBASIS_BETTER_AUTH_SECRET"/,
+  );
+  assert.match(
+    workflow,
+    /process\.env\.APPBASIS_BETTER_AUTH_SECRET\?\.trim\(\) \?\? ""/,
+  );
+  assert.match(workflow, /secret\.length < 32/);
+  assert.match(
+    workflow,
+    /Protected existing Reference auth secret does not satisfy the role admin runtime contract\./,
   );
   assert.match(
     workflow,
