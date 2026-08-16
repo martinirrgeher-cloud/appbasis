@@ -56,6 +56,19 @@ Der Factory-Snapshot steht damit für gültige App-Definitionen aktuell auf:
 
 Das ist bewusst **keine** Aussage darüber, ob konkrete Produktions-Secrets korrekt im Provider gesetzt sind. Bewiesen wird nur die enge M5-Aussage, dass sie nicht Teil des normalen App-Manifests sein dürfen.
 
+## Slice 3 – sichtbarer read-only Factory-Status
+
+Die Factory-Detailansicht zeigt den bestehenden M5-Snapshot nun kompakt an:
+
+- `Security & Privacy x/12 geprüft` zeigt ausschließlich den bereits vom gemeinsamen Factory-Snapshot gelieferten Stand,
+- fehlende oder inkonsistente Evidenz wird als `nicht verifiziert` angezeigt,
+- der M5-Status wird im bestehenden `renderAppDetail(app)`-Lifecycle gerendert; Öffnen und `Aktualisieren` verwenden dadurch denselben Snapshot und denselben ausgewählten App-Zustand,
+- es gibt keinen zweiten Snapshot-Request und keinen parallelen M5-App-State,
+- auch bei `12/12` wird nur „M5 erfüllt“ angezeigt; die eigentliche Produktionsfreigabe bleibt ein separates gesperrtes Gate,
+- der Anzeige-Adapter besitzt keinen Release-/Provider-Write-Pfad.
+
+Damit wird M5 sichtbar, ohne die Trennung zwischen Readiness-Nachweis und späterer ausdrücklicher Produktionsfreigabe aufzuweichen.
+
 ## Inventarisierte vorhandene Bausteine
 
 Im Repository existieren bereits technische Bausteine, die spätere M5-Nachweise unterstützen können:
@@ -90,8 +103,7 @@ Diese Punkte bleiben deshalb im Factory-Gate offen und blockieren Produktion.
 
 1. Weitere echte technische Verträge nur dort über kleine read-only Evidenzadapter anbinden, wo die konkrete M5-Aussage tatsächlich bewiesen wird.
 2. Provider-/Policy-Nachweise getrennt und explizit anbinden; fehlende oder nicht prüfbare Nachweise bleiben offen.
-3. Den M5-Status in der Factory-Oberfläche sichtbar machen, ohne eine Produktionsfreigabe zu aktivieren.
-4. Erst nach vollständiger technischer und organisatorischer Evidenz einen separaten, ausdrücklich freizugebenden Production-Release-Slice planen.
+3. Erst nach vollständiger technischer und organisatorischer Evidenz einen separaten, ausdrücklich freizugebenden Production-Release-Slice planen.
 
 ## Sicherheitsgrenze
 
