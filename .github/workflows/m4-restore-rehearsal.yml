@@ -1,0 +1,80 @@
+name: M4 Restore Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Create the configured isolated restore preview branch from the selected snapshot
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m4-restore-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  restore-rehearsal:
+    name: Guarded Neon restore rehearsal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: m4-dr
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Validate and mask protected restore rehearsal inputs
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+          APPBASIS_M4_RESTORE_SNAPSHOT_ID: ${{ vars.APPBASIS_M4_RESTORE_SNAPSHOT_ID }}
+          APPBASIS_M4_RESTORE_BRANCH_NAME: ${{ vars.APPBASIS_M4_RESTORE_BRANCH_NAME }}
+        run: |
+          set -euo pipefail
+          test -n "$NEON_API_KEY" || { echo 'Missing Neon API credential.' >&2; exit 1; }
+          test -n "$NEON_PROJECT_ID" || { echo 'Missing Neon project target.' >&2; exit 1; }
+          test -n "$NEON_BRANCH_ID" || { echo 'Missing Neon source branch target.' >&2; exit 1; }
+          test -n "$APPBASIS_M4_RESTORE_SNAPSHOT_ID" || { echo 'Missing M4 restore snapshot target.' >&2; exit 1; }
+          test -n "$APPBASIS_M4_RESTORE_BRANCH_NAME" || { echo 'Missing M4 restore branch name.' >&2; exit 1; }
+          echo "::add-mask::$NEON_API_KEY"
+          echo "::add-mask::$NEON_PROJECT_ID"
+          echo "::add-mask::$NEON_BRANCH_ID"
+          echo "::add-mask::$APPBASIS_M4_RESTORE_SNAPSHOT_ID"
+          echo "::add-mask::$APPBASIS_M4_RESTORE_BRANCH_NAME"
+
+      - name: Ensure isolated restore rehearsal preview
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+          APPBASIS_M4_RESTORE_SNAPSHOT_ID: ${{ vars.APPBASIS_M4_RESTORE_SNAPSHOT_ID }}
+          APPBASIS_M4_RESTORE_BRANCH_NAME: ${{ vars.APPBASIS_M4_RESTORE_BRANCH_NAME }}
+          APPBASIS_APPLY_RESTORE_REHEARSAL: ${{ inputs.apply && '1' || '0' }}
+        run: node ./tooling/m4-restore-rehearsal.mjs ensure

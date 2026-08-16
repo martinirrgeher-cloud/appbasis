@@ -4,7 +4,7 @@
 
 M4 beweist, dass eine spätere eigenständige Produktiv-App nicht nur gesichert, sondern in eine geeignete Zielumgebung real wiederhergestellt und fachlich geprüft werden kann.
 
-Die bisherigen Slices sind bewusst **noch nicht M4 DONE**. Sie bereiten fail-closed Backup-/Restore-Prüfungen, einen kontrollierten Pre-Migration-Sicherungspfad und die kontrollierte Konfiguration automatischer Neon-Snapshots für den aktuell real verwendeten PostgreSQL-Provider sowie die erste konkrete generierte App `m3-preview` vor. Eine allgemeine Backup-Provider- oder Restore-Abstraktion entsteht nicht, solange kein weiterer realer Verbraucher sie benötigt.
+Die bisherigen Slices sind bewusst **noch nicht M4 DONE**. Sie bereiten fail-closed Backup-/Restore-Prüfungen, einen kontrollierten Pre-Migration-Sicherungspfad, die kontrollierte Konfiguration automatischer Neon-Snapshots und einen isolierten Restore-Rehearsal-Pfad für den aktuell real verwendeten PostgreSQL-Provider sowie die erste konkrete generierte App `m3-preview` vor. Eine allgemeine Backup-Provider- oder Restore-Abstraktion entsteht nicht, solange kein weiterer realer Verbraucher sie benötigt.
 
 ## Slice 1 – Read-only Neon Backup Readiness
 
@@ -124,16 +124,43 @@ Der manuelle Workflow `.github/workflows/m4-backup-schedule.yml` verwendet `m4-d
 
 **Wichtig:** Dieser Repository-Slice führt den Workflow nicht aus und verändert keinen Backup-Schedule. Neon verlangt für automatische Backup-Schedules einen unterstützten bezahlten Plan; vor einer realen Ausführung müssen Plan, Zielprojekt/-branch, PITR-Fenster, Frequenz und Retention live bestätigt werden. Die reale Provideränderung benötigt ausdrücklich die Freigabe des Nutzers.
 
+## Slice 5 – Gegateter isolierter Restore-Rehearsal
+
+`tooling/m4-restore-rehearsal.mjs` bereitet den ersten realen Restore bewusst als **getrennte Preview-Branch** vor. Der aktive Root-Branch wird dabei nicht ersetzt.
+
+Der Vertrag:
+
+- prüft den explizit konfigurierten Quellbranch zuerst read-only und verlangt einen betriebsbereiten Root-Branch,
+- liest die vorhandenen Snapshots und akzeptiert nur den exakt angegebenen Snapshot, dessen `source_branch_id` dem konfigurierten Quellbranch entspricht,
+- sucht vor jeder möglichen Mutation nach dem explizit konfigurierten Restore-Branch-Namen,
+- akzeptiert einen bereits vorhandenen exakten Restore-Branch nur, wenn dessen `restored_from` exakt auf den gewählten Snapshot zeigt; gleichnamiger fremder oder mehrdeutiger Zustand schlägt fail-closed fehl,
+- bleibt bei `apply=false` vollständig read-only,
+- sendet bei `apply=true` höchstens **einen** `POST /projects/{project_id}/snapshots/{snapshot_id}/restore`,
+- übergibt den Restore-Branch-Namen und den Root-Branch als `target_branch_id` explizit und setzt `finalize_restore` immer auf `false`,
+- ruft den separaten `finalize_restore`-Endpunkt niemals auf und verschiebt keine Compute-Endpunkte des aktiven Branches,
+- verlangt nach einem erfolgreichen Restore-POST einen autoritativen GET-Readback des Restore-Branches und prüft dabei insbesondere `project_id`, Namen und `restored_from`,
+- wertet die vom erfolgreichen Restore-POST gelieferten Neon-Operations zusätzlich fail-closed aus: nur wenn der Restore-Branch `ready` ist und alle gelieferten Operations bereits erfolgreich `finished` oder `skipped` sind, wird `verificationReady=true` gemeldet,
+- behandelt laufende, geplante, fehlgeschlagene, abbrechende, abgebrochene oder unbekannte Operations ausdrücklich als **nicht verifikationsbereit**; ein `ready`-Branch allein reicht nicht als Freigabe für Datenbankverbindung, Fingerprint oder Smokes,
+- erfindet bei einem bereits vorhandenen oder nur durch Reconciliation gefundenen Restore-Branch keine Operations-Evidenz; dieser Zustand bleibt für die nachfolgende Verifikation fail-closed, bis die Operations read-only autoritativ geprüft wurden,
+- meldet einen noch nicht `ready` befindlichen Restore-Branch als pending, ohne einen weiteren Write auszuführen,
+- behandelt Timeout, Netzwerkfehler, ungültige Responses und Providerfehler als potenziell unklaren Write-Ausgang und führt höchstens einen read-only Reconciliation-Readback aus,
+- führt niemals automatisch einen zweiten Restore-POST aus,
+- gibt keine Provider-Response-Bodies oder Credentials in Fehlern aus.
+
+Der manuelle Workflow `.github/workflows/m4-restore-rehearsal.yml` verwendet `m4-dr`, `contents: read`, geschützte Provider-/Restoreparameter und einen standardmäßig deaktivierten Apply-Schalter.
+
+**Wichtig:** Dieser Repository-Slice führt den Workflow nicht aus und erzeugt keinen Restore-Branch. Das reale `apply=true` ist eine externe Provideränderung und benötigt weiterhin die ausdrückliche Nutzerfreigabe. Nach einem realen Restore müssen sowohl der Restore-Branch als betriebsbereit als auch die zugehörigen Neon-Operations read-only als erfolgreich abgeschlossen bestätigt sein; erst danach dürfen Datenbankverbindung, Fingerprint-Verifikation sowie Health-, Auth-, Permission- und Tasks-Smokes gegen das getrennte Restore-Ziel starten. Eine Finalisierung auf den aktiven Branch ist für den M4-Rehearsal nicht vorgesehen.
+
 ## Weitere M4-Slices
 
 1. Produktions-Policy, Zielprojekt und tatsächlichen Neon-Plan festlegen/bestätigen.
 2. Backup-Schedule und erforderliches PITR-Fenster nach ausdrücklicher Freigabe real konfigurieren und den Readiness-Check erfolgreich ausführen.
 3. Den Pre-Migration-Snapshot-Pfad an einem ausdrücklich freigegebenen realen Ziel ausführen und dokumentieren.
-4. Einen Restore zunächst in eine getrennte Restore-/Preview-Zielumgebung durchführen, niemals direkt in die laufende Produktion.
-5. Den vorab erfassten Restore-Fingerprint gegen das Restore-Ziel verifizieren.
+4. Den isolierten Restore-Rehearsal nach ausdrücklicher Freigabe mit `apply=true` ausführen; danach Restore-Branch und zugehörige Neon-Operations ausschließlich read-only bis zum sicheren Abschluss prüfen.
+5. Erst nach erfolgreicher Operations-Prüfung die geschützte Datenbankverbindung des Restore-Ziels bereitstellen und den vorab erfassten Restore-Fingerprint gegen das Restore-Ziel verifizieren.
 6. Wiederhergestellte Laufzeit technisch prüfen: Health-, Identity-/Auth-, Permission- und Tasks-Smokes.
 7. Fachlich relevante Restore-Daten prüfen und das Ergebnis mit Zeit, Restore-Punkt, Ausgangspunkt, Ziel, Prüfschritten und Resultat dokumentieren.
-8. Temporäre Restore-Ressourcen kontrolliert entfernen, sofern ihre Aufbewahrung nicht mehr benötigt wird.
+8. Temporäre Restore-Ressourcen kontrolliert entfernen, sofern ihre Aufbewahrung nicht mehr benötigt wird; auch diese Provideränderung bleibt freigabepflichtig.
 
 ## M4 DONE Gate
 
