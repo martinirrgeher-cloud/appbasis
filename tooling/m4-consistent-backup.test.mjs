@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,7 @@ import test from "node:test";
 
 import {
   captureM4ConsistentBackup,
+  M4_POSTGRES_DUMP_IMAGE,
   runPostgresDumpWithSnapshot,
 } from "./m4-consistent-backup.mjs";
 
@@ -117,6 +119,33 @@ test("fingerprint and pg_dump share the exact exported repeatable-read snapshot"
     "SET LOCAL DateStyle TO 'ISO, YMD'",
   ]);
   assert.equal(database.ended, 1);
+});
+
+test("pins the PostgreSQL dump image to the approved immutable digest", async () => {
+  assert.equal(
+    M4_POSTGRES_DUMP_IMAGE,
+    "postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+  );
+
+  const dir = await mkdtemp(join(tmpdir(), "appbasis-m4-image-pin-"));
+  const outputPath = join(dir, "database.pgdump");
+  let spawnedArgs;
+  const spawnImpl = (_command, args) => {
+    spawnedArgs = args;
+    const child = new EventEmitter();
+    queueMicrotask(() => child.emit("close", 0, null));
+    return child;
+  };
+
+  await runPostgresDumpWithSnapshot({
+    connectionString,
+    snapshotId: "00000003-0000001B-1",
+    outputPath,
+    spawnImpl,
+  });
+
+  assert.equal(spawnedArgs[6], M4_POSTGRES_DUMP_IMAGE);
+  assert.match(spawnedArgs[6], /@sha256:[0-9a-f]{64}$/);
 });
 
 test("fails closed before schema inspection for a non-dedicated database URL", async () => {
