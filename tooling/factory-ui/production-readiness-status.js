@@ -26,6 +26,19 @@ export function productionReadinessCopy(readiness) {
   });
 }
 
+export function productionReadinessCriteria(readiness) {
+  const valid = isConsistentReadiness(readiness);
+  return Object.freeze(
+    REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion, index) =>
+      Object.freeze({
+        id: criterion.id,
+        label: criterion.label,
+        status: valid ? readiness.criteria[index].status : "unknown",
+      }),
+    ),
+  );
+}
+
 function isConsistentReadiness(readiness) {
   if (readiness === null || typeof readiness !== "object" || Array.isArray(readiness)) {
     return false;
