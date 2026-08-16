@@ -3,11 +3,10 @@ import test from "node:test";
 
 import {
   assertExactM3PreviewSmokePermissionState,
-  bootstrapM3PreviewSmokePrincipals,
   M3PreviewSmokeBootstrapEnvironmentError,
   M3PreviewSmokeBootstrapStateError,
   readM3PreviewSmokeBootstrapEnvironment,
-} from "./bootstrap-smoke-principals.mjs";
+} from "./bootstrap-smoke-principals-contract.mjs";
 
 const ENV = Object.freeze({
   APPBASIS_M3_SMOKE_BOOTSTRAP_TARGET: "m3-preview",
@@ -54,20 +53,6 @@ test("fails closed without the exact smoke bootstrap target and confirmation", (
       M3PreviewSmokeBootstrapEnvironmentError,
     );
   }
-});
-
-test("delegates normalized options without performing provider work in the adapter", async () => {
-  let captured;
-  const result = await bootstrapM3PreviewSmokePrincipals(ENV, async (options) => {
-    captured = options;
-    return { allowedIdentityId: "allowed-id", deniedIdentityId: "denied-id" };
-  });
-  assert.equal(captured.rootAdminPassword, ENV.APPBASIS_ROOT_ADMIN_PASSWORD);
-  assert.equal(captured.secret, ENV.APPBASIS_BETTER_AUTH_SECRET);
-  assert.deepEqual(result, {
-    allowedIdentityId: "allowed-id",
-    deniedIdentityId: "denied-id",
-  });
 });
 
 test("accepts only the exact allowed and denied permission state", async () => {

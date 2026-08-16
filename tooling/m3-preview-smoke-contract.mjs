@@ -1,5 +1,6 @@
 export const M3_PREVIEW_SMOKE_CONTRACT = Object.freeze({
   target: "m3-preview",
+  allowedRoleId: "demo:member",
   rootAdmin: Object.freeze({
     username: "m3.root.admin",
     displayName: "M3 Preview Root Admin",

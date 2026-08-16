@@ -50,6 +50,22 @@ jobs:
       - name: Verify repository
         run: pnpm run verify:repo
 
+      - name: Require explicit smoke principal bootstrap confirmation
+        shell: bash
+        env:
+          APPBASIS_M3_SMOKE_BOOTSTRAP_APPLY: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_M3_SMOKE_BOOTSTRAP_APPLY" = '1' || {
+            echo 'm3-preview smoke principal bootstrap was not explicitly confirmed.' >&2
+            exit 1
+          }
+
+      - name: Build smoke bootstrap operational runner without secrets
+        run: >-
+          pnpm --filter @appbasis/reference exec vite build
+          --config ../m3-preview/tooling/vite.smoke-bootstrap.config.ts
+
       - name: Validate and mask protected smoke bootstrap inputs
         shell: bash
         env:
@@ -88,17 +104,6 @@ jobs:
           [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || { echo 'Cloudflare Workers account subdomain is unavailable or invalid.' >&2; exit 1; }
           echo "APPBASIS_GENERATED_PREVIEW_URL=https://${APPBASIS_GENERATED_WORKER_NAME}.${SUBDOMAIN}.workers.dev" >> "$GITHUB_ENV"
 
-      - name: Require explicit smoke principal bootstrap confirmation
-        shell: bash
-        env:
-          APPBASIS_M3_SMOKE_BOOTSTRAP_APPLY: ${{ inputs.apply && '1' || '0' }}
-        run: |
-          set -euo pipefail
-          test "$APPBASIS_M3_SMOKE_BOOTSTRAP_APPLY" = '1' || {
-            echo 'm3-preview smoke principal bootstrap was not explicitly confirmed.' >&2
-            exit 1
-          }
-
       - name: Provision exact m3-preview smoke principals and permissions
         env:
           APPBASIS_M3_SMOKE_BOOTSTRAP_TARGET: m3-preview
@@ -108,4 +113,8 @@ jobs:
           APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
           APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD }}
           APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD }}
-        run: node ./apps/m3-preview/tooling/bootstrap-smoke-principals.mjs
+        run: node ./apps/m3-preview/tooling/.smoke-bootstrap-dist/bootstrap-smoke-principals.mjs
+
+      - name: Remove smoke bootstrap operational artifact
+        if: always()
+        run: rm -rf ./apps/m3-preview/tooling/.smoke-bootstrap-dist
