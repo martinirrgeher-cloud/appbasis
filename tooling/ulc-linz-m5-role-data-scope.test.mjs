@@ -107,12 +107,25 @@ test("rejects changed self and managed athlete link semantics", () => {
 
 test("rejects policy values with extra fields or stale provenance changes", () => {
   const withExtra = clonePolicy();
-  withExtra.permissionModel.parent.unrestricted = true;
+  withExtra.permissionModel.parent.extra = "unexpected";
   assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(withExtra), false);
 
   const changedSource = clonePolicy();
   changedSource.sourceSnapshot.commit = "0000000000000000000000000000000000000000";
   assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(changedSource), false);
+});
+
+test("rejects arrays with extra own properties or missing entries", () => {
+  const withExtraArrayProperty = clonePolicy();
+  withExtraArrayProperty.roles.extra = "unexpected";
+  assert.equal(
+    isCanonicalUlcLinzM5RoleDataScopePolicy(withExtraArrayProperty),
+    false,
+  );
+
+  const withMissingEntry = clonePolicy();
+  delete withMissingEntry.permissionModel.parent.view[0];
+  assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(withMissingEntry), false);
 });
 
 function clonePolicy() {
