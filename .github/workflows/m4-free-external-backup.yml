@@ -1,0 +1,418 @@
+name: M4 Free External Backup
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      backup_kind:
+        description: Backup purpose
+        required: true
+        default: daily
+        type: choice
+        options:
+          - daily
+          - pre-migration
+      change_id:
+        description: Canonical change id; required only for pre-migration backups
+        required: false
+        default: ""
+        type: string
+      apply:
+        description: Explicitly allow this manual backup write
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m4-free-external-backup-m3-preview
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Encrypted PostgreSQL backup to pre-created R2
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: m4-dr
+    env:
+      APPBASIS_M4_FREE_BACKUP_ENABLED: ${{ vars.APPBASIS_M4_FREE_BACKUP_ENABLED }}
+      APPBASIS_M4_R2_BUCKET: ${{ vars.APPBASIS_M4_R2_BUCKET }}
+      APPBASIS_M4_R2_JURISDICTION: ${{ vars.APPBASIS_M4_R2_JURISDICTION }}
+
+    steps:
+      - name: Gate scheduled activation and manual writes before secrets
+        id: gate
+        shell: bash
+        env:
+          MANUAL_APPLY: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            if [[ "$APPBASIS_M4_FREE_BACKUP_ENABLED" != "1" ]]; then
+              echo "M4 free external backup schedule is not activated."
+              echo "run=0" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          else
+            test "$MANUAL_APPLY" = "1" || {
+              echo "M4 external backup write was not explicitly confirmed." >&2
+              exit 1
+            }
+            test "$APPBASIS_M4_FREE_BACKUP_ENABLED" = "1" || {
+              echo "M4 free external backup profile is not activated." >&2
+              exit 1
+            }
+          fi
+          echo "run=1" >> "$GITHUB_OUTPUT"
+
+      - name: Check out repository
+        if: steps.gate.outputs.run == '1'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        if: steps.gate.outputs.run == '1'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.run == '1'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == '1'
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository and backup tooling
+        if: steps.gate.outputs.run == '1'
+        run: |
+          set -euo pipefail
+          pnpm run verify:repo
+          command -v docker >/dev/null
+          command -v aws >/dev/null
+          command -v jq >/dev/null
+          command -v sha256sum >/dev/null
+
+      - name: Validate and mask protected backup inputs
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APPBASIS_M4_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_M4_SOURCE_DATABASE_URL }}
+          APPBASIS_M4_BACKUP_ENCRYPTION_KEY: ${{ secrets.APPBASIS_M4_BACKUP_ENCRYPTION_KEY }}
+          APPBASIS_M4_R2_ACCESS_KEY_ID: ${{ secrets.APPBASIS_M4_R2_ACCESS_KEY_ID }}
+          APPBASIS_M4_R2_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_M4_R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing Cloudflare account id." >&2; exit 1; }
+          test -n "$APPBASIS_M4_SOURCE_DATABASE_URL" || { echo "Missing M4 source database URL." >&2; exit 1; }
+          test -n "$APPBASIS_M4_BACKUP_ENCRYPTION_KEY" || { echo "Missing M4 backup encryption key." >&2; exit 1; }
+          test -n "$APPBASIS_M4_R2_ACCESS_KEY_ID" || { echo "Missing M4 R2 access key id." >&2; exit 1; }
+          test -n "$APPBASIS_M4_R2_SECRET_ACCESS_KEY" || { echo "Missing M4 R2 secret access key." >&2; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$APPBASIS_M4_SOURCE_DATABASE_URL"
+          echo "::add-mask::$APPBASIS_M4_BACKUP_ENCRYPTION_KEY"
+          echo "::add-mask::$APPBASIS_M4_R2_ACCESS_KEY_ID"
+          echo "::add-mask::$APPBASIS_M4_R2_SECRET_ACCESS_KEY"
+          node ./tooling/m4-free-backup-plan.mjs endpoint >/dev/null
+          node ./tooling/m4-free-backup-plan.mjs bucket >/dev/null
+          node --input-type=module <<'NODE'
+          import { parseM4BackupEncryptionKey } from "./tooling/m4-backup-crypto.mjs";
+          parseM4BackupEncryptionKey(process.env.APPBASIS_M4_BACKUP_ENCRYPTION_KEY);
+          NODE
+
+      - name: Resolve exact backup policy plan
+        if: steps.gate.outputs.run == '1'
+        id: plan
+        shell: bash
+        env:
+          BACKUP_KIND: ${{ github.event_name == 'schedule' && 'daily' || inputs.backup_kind }}
+          CHANGE_ID: ${{ github.event_name == 'schedule' && '' || inputs.change_id }}
+        run: |
+          set -euo pipefail
+          PLAN="$(node ./tooling/m4-free-backup-plan.mjs plan "$BACKUP_KIND" "$CHANGE_ID")"
+          printf 'kind=%s\n' "$(jq -r '.kind' <<<"$PLAN")" >> "$GITHUB_OUTPUT"
+          printf 'created_at=%s\n' "$(jq -r '.createdAt' <<<"$PLAN")" >> "$GITHUB_OUTPUT"
+          printf 'change_id=%s\n' "$(jq -r '.changeId // ""' <<<"$PLAN")" >> "$GITHUB_OUTPUT"
+          printf 'primary_key=%s\n' "$(jq -r '.primaryKey' <<<"$PLAN")" >> "$GITHUB_OUTPUT"
+          printf 'secondary_key=%s\n' "$(jq -r '.secondaryKey // ""' <<<"$PLAN")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify pre-created R2 target
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_M4_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_M4_R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+        run: |
+          set -euo pipefail
+          ENDPOINT="$(node ./tooling/m4-free-backup-plan.mjs endpoint)"
+          BUCKET="$(node ./tooling/m4-free-backup-plan.mjs bucket)"
+          aws s3api head-bucket \
+            --bucket "$BUCKET" \
+            --endpoint-url "$ENDPOINT" >/dev/null 2>&1 || {
+              echo "M4 R2 target is not readable." >&2
+              exit 1
+            }
+
+      - name: Create restricted temporary backup workspace
+        if: steps.gate.outputs.run == '1'
+        id: workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORK="$RUNNER_TEMP/appbasis-m4-backup-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$WORK"
+          printf 'path=%s\n' "$WORK" >> "$GITHUB_OUTPUT"
+
+      - name: Capture fingerprint and PostgreSQL dump from one database snapshot
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          APPBASIS_M4_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_M4_SOURCE_DATABASE_URL }}
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          umask 077
+          node ./tooling/m4-consistent-backup.mjs capture "$WORK/database.pgdump" > "$WORK/fingerprint.json"
+          test -s "$WORK/database.pgdump"
+          test -s "$WORK/fingerprint.json"
+
+      - name: Package and encrypt backup before provider upload
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          APPBASIS_M4_BACKUP_ENCRYPTION_KEY: ${{ secrets.APPBASIS_M4_BACKUP_ENCRYPTION_KEY }}
+          WORK: ${{ steps.workspace.outputs.path }}
+          BACKUP_KIND: ${{ steps.plan.outputs.kind }}
+          CREATED_AT: ${{ steps.plan.outputs.created_at }}
+          CHANGE_ID: ${{ steps.plan.outputs.change_id }}
+        run: |
+          set -euo pipefail
+          umask 077
+          jq -n \
+            --arg appId "m3-preview" \
+            --arg kind "$BACKUP_KIND" \
+            --arg createdAt "$CREATED_AT" \
+            --arg sourceGitSha "$GITHUB_SHA" \
+            --arg changeId "$CHANGE_ID" \
+            '{schemaVersion:1,appId:$appId,kind:$kind,createdAt:$createdAt,sourceGitSha:$sourceGitSha,changeId:(if $changeId == "" then null else $changeId end),dumpFile:"database.pgdump",fingerprintFile:"fingerprint.json"}' \
+            > "$WORK/manifest.json"
+          tar -C "$WORK" -cf "$WORK/backup.tar" database.pgdump fingerprint.json manifest.json
+          node ./tooling/m4-backup-crypto.mjs encrypt "$WORK/backup.tar" "$WORK/backup.tar.aesgcm"
+          rm -f "$WORK/backup.tar" "$WORK/database.pgdump" "$WORK/fingerprint.json" "$WORK/manifest.json"
+          test -s "$WORK/backup.tar.aesgcm"
+          sha256sum "$WORK/backup.tar.aesgcm" | awk '{print $1}' > "$WORK/backup.sha256"
+
+      - name: Upload or reconcile immutable encrypted backup
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_M4_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_M4_R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          WORK: ${{ steps.workspace.outputs.path }}
+          BACKUP_KIND: ${{ steps.plan.outputs.kind }}
+          PRIMARY_KEY: ${{ steps.plan.outputs.primary_key }}
+          SECONDARY_KEY: ${{ steps.plan.outputs.secondary_key }}
+          CREATED_AT: ${{ steps.plan.outputs.created_at }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="$(node ./tooling/m4-free-backup-plan.mjs endpoint)"
+          BUCKET="$(node ./tooling/m4-free-backup-plan.mjs bucket)"
+          LOCAL_SHA256="$(cat "$WORK/backup.sha256")"
+          LOCAL_SIZE="$(stat -c '%s' "$WORK/backup.tar.aesgcm")"
+
+          verify_backup_object() {
+            local key="$1"
+            local object_kind="$2"
+            local key_sha="$3"
+            local require_current="$4"
+            local head_json remote_size remote_sha remote_key_sha remote_app remote_kind reconcile_file downloaded_size downloaded_sha
+
+            if ! head_json="$(aws s3api head-object \
+              --bucket "$BUCKET" \
+              --key "$key" \
+              --endpoint-url "$ENDPOINT" \
+              --output json 2>/dev/null)"; then
+              echo "M4 immutable backup reconciliation could not read the object." >&2
+              return 1
+            fi
+
+            if ! jq -e '
+              (.ContentLength | type == "number" and . > 0) and
+              (.Metadata | type == "object") and
+              (.Metadata.appbasisapp == "m3-preview") and
+              (.Metadata.appbasiskind | type == "string") and
+              (.Metadata.objectkeysha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+              (.Metadata.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+              (.Metadata.createdat | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$"))
+            ' <<<"$head_json" >/dev/null; then
+              echo "M4 immutable backup metadata is invalid." >&2
+              return 1
+            fi
+
+            remote_size="$(jq -r '.ContentLength' <<<"$head_json")"
+            remote_sha="$(jq -r '.Metadata.sha256' <<<"$head_json")"
+            remote_key_sha="$(jq -r '.Metadata.objectkeysha256' <<<"$head_json")"
+            remote_app="$(jq -r '.Metadata.appbasisapp' <<<"$head_json")"
+            remote_kind="$(jq -r '.Metadata.appbasiskind' <<<"$head_json")"
+
+            test "$remote_app" = "m3-preview" || { echo "M4 immutable backup app binding mismatch." >&2; return 1; }
+            test "$remote_kind" = "$object_kind" || { echo "M4 immutable backup kind binding mismatch." >&2; return 1; }
+            test "$remote_key_sha" = "$key_sha" || { echo "M4 immutable backup key binding mismatch." >&2; return 1; }
+
+            if [[ "$require_current" == "1" ]]; then
+              test "$remote_size" = "$LOCAL_SIZE" || { echo "M4 R2 backup size verification failed." >&2; return 1; }
+              test "$remote_sha" = "$LOCAL_SHA256" || { echo "M4 R2 backup digest metadata verification failed." >&2; return 1; }
+              return 0
+            fi
+
+            reconcile_file="$WORK/reconcile-$key_sha.aesgcm"
+            test ! -e "$reconcile_file" || { echo "M4 reconciliation workspace is not clean." >&2; return 1; }
+            if ! aws s3api get-object \
+              --bucket "$BUCKET" \
+              --key "$key" \
+              --endpoint-url "$ENDPOINT" \
+              "$reconcile_file" >/dev/null 2>&1; then
+              rm -f -- "$reconcile_file"
+              echo "M4 immutable backup reconciliation could not read object bytes." >&2
+              return 1
+            fi
+            downloaded_size="$(stat -c '%s' "$reconcile_file")"
+            downloaded_sha="$(sha256sum "$reconcile_file" | awk '{print $1}')"
+            rm -f -- "$reconcile_file"
+            test "$downloaded_size" = "$remote_size" || { echo "M4 reconciled backup size mismatch." >&2; return 1; }
+            test "$downloaded_sha" = "$remote_sha" || { echo "M4 reconciled backup digest mismatch." >&2; return 1; }
+          }
+
+          put_backup() {
+            local key="$1"
+            local object_kind="$2"
+            local key_sha
+            key_sha="$(printf '%s' "$key" | sha256sum | awk '{print $1}')"
+
+            if aws s3api put-object \
+              --bucket "$BUCKET" \
+              --key "$key" \
+              --body "$WORK/backup.tar.aesgcm" \
+              --content-type "application/octet-stream" \
+              --metadata "appbasisapp=m3-preview,appbasiskind=$object_kind,createdat=$CREATED_AT,objectkeysha256=$key_sha,sha256=$LOCAL_SHA256" \
+              --if-none-match '*' \
+              --endpoint-url "$ENDPOINT" >/dev/null 2>&1; then
+              verify_backup_object "$key" "$object_kind" "$key_sha" 1
+              return
+            fi
+
+            echo "M4 immutable backup write was not confirmed; reconciling existing object read-only."
+            verify_backup_object "$key" "$object_kind" "$key_sha" 0
+          }
+
+          put_backup "$PRIMARY_KEY" "$BACKUP_KIND"
+          if [[ -n "$SECONDARY_KEY" ]]; then
+            put_backup "$SECONDARY_KEY" "weekly"
+          fi
+
+      - name: Prune all expired managed retention objects
+        if: steps.gate.outputs.run == '1' && steps.plan.outputs.kind == 'daily'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_M4_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_M4_R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          CREATED_AT: ${{ steps.plan.outputs.created_at }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="$(node ./tooling/m4-free-backup-plan.mjs endpoint)"
+          BUCKET="$(node ./tooling/m4-free-backup-plan.mjs bucket)"
+
+          list_backup_keys() {
+            local prefix="$1"
+            local continuation_token=""
+            local page page_keys is_truncated next_token all_keys='[]'
+            declare -A seen_tokens=()
+
+            while true; do
+              local args=(
+                s3api list-objects-v2
+                --bucket "$BUCKET"
+                --prefix "$prefix"
+                --max-keys 1000
+                --no-paginate
+                --endpoint-url "$ENDPOINT"
+                --output json
+              )
+              if [[ -n "$continuation_token" ]]; then
+                args+=(--continuation-token "$continuation_token")
+              fi
+
+              if ! page="$(aws "${args[@]}" 2>/dev/null)"; then
+                echo "M4 retention inventory read failed." >&2
+                return 1
+              fi
+              if ! jq -e '
+                (.IsTruncated | type == "boolean") and
+                ((.Contents == null) or
+                  ((.Contents | type == "array") and all(.Contents[]; (.Key | type == "string"))))
+              ' <<<"$page" >/dev/null; then
+                echo "M4 retention inventory response is invalid." >&2
+                return 1
+              fi
+
+              page_keys="$(jq -c '[.Contents[]?.Key]' <<<"$page")"
+              all_keys="$(jq -cn --argjson left "$all_keys" --argjson right "$page_keys" '$left + $right')"
+              is_truncated="$(jq -r '.IsTruncated' <<<"$page")"
+              if [[ "$is_truncated" == "false" ]]; then
+                break
+              fi
+
+              next_token="$(jq -r '.NextContinuationToken // empty' <<<"$page")"
+              test -n "$next_token" || { echo "M4 retention inventory pagination token is missing." >&2; return 1; }
+              test "$next_token" != "$continuation_token" || { echo "M4 retention inventory pagination did not advance." >&2; return 1; }
+              if [[ -n "${seen_tokens[$next_token]+x}" ]]; then
+                echo "M4 retention inventory pagination repeated a token." >&2
+                return 1
+              fi
+              seen_tokens["$next_token"]=1
+              continuation_token="$next_token"
+            done
+
+            printf '%s\n' "$all_keys"
+          }
+
+          DAILY_KEYS="$(list_backup_keys 'appbasis/m3-preview/m4/daily/')"
+          WEEKLY_KEYS="$(list_backup_keys 'appbasis/m3-preview/m4/weekly/')"
+          ALL_KEYS="$(jq -cn --argjson daily "$DAILY_KEYS" --argjson weekly "$WEEKLY_KEYS" '$daily + $weekly')"
+          EXPIRED_KEYS="$(printf '%s' "$ALL_KEYS" | node ./tooling/m4-free-backup-plan.mjs prune "$CREATED_AT")"
+
+          while IFS= read -r key; do
+            if ! aws s3api delete-object \
+              --bucket "$BUCKET" \
+              --key "$key" \
+              --endpoint-url "$ENDPOINT" >/dev/null 2>&1; then
+              echo "M4 expired backup deletion failed." >&2
+              exit 1
+            fi
+          done < <(jq -r '.[]' <<<"$EXPIRED_KEYS")
+
+      - name: Remove temporary backup material
+        if: always() && steps.workspace.outputs.path != ''
+        shell: bash
+        env:
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: rm -rf -- "$WORK"
