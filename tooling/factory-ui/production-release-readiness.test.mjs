@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { M3_PREVIEW_ACCEPTANCE_RUN } from "./m3-preview-acceptance-evidence.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
 import {
   evaluateM6ProductionReleaseReadiness,
@@ -24,6 +25,27 @@ const expectedIds = [
 ];
 
 const allEvidence = () => Object.fromEntries(expectedIds.map((id) => [id, true]));
+
+function verifiedM3GitHubFetch() {
+  return async () => ({
+    ok: true,
+    headers: { get: () => "application/json; charset=utf-8" },
+    async json() {
+      return {
+        id: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunId,
+        run_attempt: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunAttempt,
+        name: M3_PREVIEW_ACCEPTANCE_RUN.workflowName,
+        path: M3_PREVIEW_ACCEPTANCE_RUN.workflowPath,
+        event: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunEvent,
+        head_branch: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunBranch,
+        head_sha: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunHeadSha,
+        status: "completed",
+        conclusion: "success",
+        repository: { full_name: M3_PREVIEW_ACCEPTANCE_RUN.repository },
+      };
+    },
+  });
+}
 
 test("M6 release readiness pins only the semantic per-app production gates", () => {
   assert.deepEqual(
@@ -113,10 +135,15 @@ test("malformed or inherited values cannot count as M6 production evidence", () 
   }
 });
 
-test("Factory snapshot exposes M6 read-only without inventing preview or provider evidence", async () => {
-  const snapshot = await loadFactorySnapshot(repositoryRoot);
+test("Factory snapshot promotes only independently verified GitHub M3 acceptance", async () => {
+  const snapshot = await loadFactorySnapshot(repositoryRoot, {
+    m3PreviewAcceptanceFetchImpl: verifiedM3GitHubFetch(),
+  });
 
   assert.ok(snapshot.apps.length > 0);
+  const acceptedPreview = snapshot.apps.find((app) => app.appId === "m3-preview");
+  assert.ok(acceptedPreview);
+
   for (const app of snapshot.apps) {
     assert.equal(app.productionReleaseReadiness.status, "blocked");
     assert.equal(app.productionReleaseReadiness.technicalEvidenceVerified, false);
@@ -128,6 +155,14 @@ test("Factory snapshot exposes M6 read-only without inventing preview or provide
       expectedIds,
     );
 
+    const previewCriterion = app.productionReleaseReadiness.criteria.find(
+      (criterion) => criterion.id === "previewAccepted",
+    );
+    assert.equal(
+      previewCriterion?.status,
+      app.appId === "m3-preview" ? "verified" : "open",
+    );
+
     const securityPrivacyCriterion = app.productionReleaseReadiness.criteria.find(
       (criterion) => criterion.id === "securityPrivacyReady",
     );
@@ -137,10 +172,15 @@ test("Factory snapshot exposes M6 read-only without inventing preview or provide
     );
     assert.ok(
       app.productionReleaseReadiness.criteria
-        .filter((criterion) => criterion.id !== "securityPrivacyReady")
+        .filter(
+          (criterion) =>
+            criterion.id !== "previewAccepted" &&
+            criterion.id !== "securityPrivacyReady",
+        )
         .every((criterion) => criterion.status === "open"),
     );
   }
 
+  assert.equal(acceptedPreview.productionReleaseReadiness.verifiedCount, 1);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });

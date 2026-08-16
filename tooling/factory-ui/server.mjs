@@ -40,13 +40,21 @@ const STATIC_ROUTES = new Map([
 
 export function createFactoryServer(options = {}) {
   const repositoryRoot = resolve(options.repositoryRoot ?? DEFAULT_REPOSITORY_ROOT);
+  const snapshotOptions = {
+    m3PreviewAcceptanceFetchImpl: options.m3PreviewAcceptanceFetchImpl,
+  };
 
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", `http://${request.headers.host ?? DEFAULT_HOST}`);
 
       if (url.pathname === "/api/factory/apps" && request.method === "POST") {
-        await handleCreateAppRequest(request, response, repositoryRoot);
+        await handleCreateAppRequest(
+          request,
+          response,
+          repositoryRoot,
+          snapshotOptions,
+        );
         return;
       }
 
@@ -56,7 +64,7 @@ export function createFactoryServer(options = {}) {
       }
 
       if (url.pathname === "/api/factory/snapshot") {
-        const snapshot = await loadFactorySnapshot(repositoryRoot);
+        const snapshot = await loadFactorySnapshot(repositoryRoot, snapshotOptions);
         respondJson(response, 200, snapshot, request.method === "HEAD");
         return;
       }
@@ -102,7 +110,12 @@ export async function startFactoryServer(options = {}) {
   return server;
 }
 
-async function handleCreateAppRequest(request, response, repositoryRoot) {
+async function handleCreateAppRequest(
+  request,
+  response,
+  repositoryRoot,
+  snapshotOptions,
+) {
   if (!hasValidFactoryOrigin(request)) {
     respondJson(response, 403, {
       error: {
@@ -143,7 +156,7 @@ async function handleCreateAppRequest(request, response, repositoryRoot) {
   }
 
   try {
-    await loadFactorySnapshot(repositoryRoot);
+    await loadFactorySnapshot(repositoryRoot, snapshotOptions);
   } catch {
     respondJson(response, 503, {
       error: {
