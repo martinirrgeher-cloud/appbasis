@@ -51,7 +51,7 @@ test("Factory M5 copy fails closed for inconsistent readiness payloads", () => {
   }
 });
 
-test("Factory serves the read-only M5 status adapter without enabling release", async (t) => {
+test("Factory renders M5 from the shared snapshot refresh lifecycle without enabling release", async (t) => {
   const server = await startFactoryServer({ port: 0 });
   t.after(
     () =>
@@ -69,18 +69,31 @@ test("Factory serves the read-only M5 status adapter without enabling release", 
   const html = await page.text();
   assert.match(html, /id="detail-production-status"/);
   assert.match(html, /id="detail-production-summary"/);
-  assert.match(html, /src="\/production-readiness-status\.js"/);
 
-  const script = await fetch(`${baseUrl}/production-readiness-status.js`);
-  assert.equal(script.status, 200);
-  assert.match(script.headers.get("content-type") ?? "", /^text\/javascript/);
-  const scriptBody = await script.text();
-  assert.match(scriptBody, /fetch\("\/api\/factory\/snapshot"/);
-  assert.match(scriptBody, /const generation = \+\+statusGeneration/);
-  assert.ok(
-    (scriptBody.match(/generation !== statusGeneration/g) ?? []).length >= 2,
+  const helperResponse = await fetch(`${baseUrl}/production-readiness-status.js`);
+  assert.equal(helperResponse.status, 200);
+  assert.match(helperResponse.headers.get("content-type") ?? "", /^text\/javascript/);
+  const helperBody = await helperResponse.text();
+  assert.doesNotMatch(helperBody, /fetch\(/);
+  assert.doesNotMatch(helperBody, /addEventListener/);
+  assert.match(helperBody, /Produktion bleibt gesperrt/);
+
+  const appResponse = await fetch(`${baseUrl}/app.js`);
+  assert.equal(appResponse.status, 200);
+  const appBody = await appResponse.text();
+  assert.match(
+    appBody,
+    /import \{ productionReadinessCopy \} from "\.\/production-readiness-status\.js";/,
   );
-  assert.match(scriptBody, /Produktion bleibt gesperrt/);
+  assert.match(appBody, /renderProductionReadiness\(app\.productionReadiness\);/);
+  assert.match(
+    appBody,
+    /state\.snapshot = nextSnapshot;[\s\S]*restoreSelectedAppDetail\(\);/,
+  );
+  assert.match(
+    appBody,
+    /function restoreSelectedAppDetail\(\)[\s\S]*renderAppDetail\(app\);/,
+  );
 
   const snapshotResponse = await fetch(`${baseUrl}/api/factory/snapshot`);
   assert.equal(snapshotResponse.status, 200);
