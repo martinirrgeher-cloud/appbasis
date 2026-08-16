@@ -76,6 +76,10 @@ test("Factory serves the read-only M5 status adapter without enabling release", 
   assert.match(script.headers.get("content-type") ?? "", /^text\/javascript/);
   const scriptBody = await script.text();
   assert.match(scriptBody, /fetch\("\/api\/factory\/snapshot"/);
+  assert.match(scriptBody, /const generation = \+\+statusGeneration/);
+  assert.ok(
+    (scriptBody.match(/generation !== statusGeneration/g) ?? []).length >= 2,
+  );
   assert.match(scriptBody, /Produktion bleibt gesperrt/);
 
   const snapshotResponse = await fetch(`${baseUrl}/api/factory/snapshot`);
