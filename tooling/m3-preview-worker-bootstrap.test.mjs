@@ -39,6 +39,10 @@ function notFound() {
   );
 }
 
+function accountSubdomain(value = "appbasis-preview") {
+  return success({ subdomain: value });
+}
+
 test("pins the dedicated m3-preview Worker target", () => {
   assert.deepEqual(M3_PREVIEW_WORKER, {
     name: "appbasis-m3-preview",
@@ -90,13 +94,21 @@ test("does not create a missing Worker without explicit confirmation", async () 
 
 test("creates only the empty dedicated Worker when explicitly confirmed", async () => {
   const requests = [];
+  let workerReads = 0;
   const result = await ensureM3PreviewWorker({
     accountId: ACCOUNT_ID,
     apiToken: API_TOKEN,
     apply: true,
     fetchImpl: async (url, options) => {
-      requests.push({ url: String(url), options });
-      if (options.method === "GET") return notFound();
+      const request = { url: String(url), options };
+      requests.push(request);
+      if (request.url.endsWith("/workers/subdomain")) {
+        return accountSubdomain();
+      }
+      if (options.method === "GET") {
+        workerReads += 1;
+        return workerReads === 1 ? notFound() : success(workerResult());
+      }
       return success(workerResult());
     },
   });
@@ -106,16 +118,44 @@ test("creates only the empty dedicated Worker when explicitly confirmed", async 
     name: "appbasis-m3-preview",
     status: "created",
   });
-  assert.equal(requests.length, 2);
-  assert.equal(requests[1].options.method, "POST");
-  assert.match(requests[1].url, /\/workers\/workers$/);
-  assert.deepEqual(JSON.parse(requests[1].options.body), {
+  assert.equal(requests.length, 4);
+  assert.deepEqual(
+    requests.map(({ options }) => options.method),
+    ["GET", "GET", "POST", "GET"],
+  );
+  const create = requests[2];
+  assert.match(create.url, /\/workers\/workers$/);
+  assert.deepEqual(JSON.parse(create.options.body), {
     name: "appbasis-m3-preview",
     subdomain: {
       enabled: true,
       previews_enabled: false,
     },
   });
+});
+
+test("requires an account workers.dev subdomain before creating a Worker", async () => {
+  const requests = [];
+  await assert.rejects(
+    ensureM3PreviewWorker({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      apply: true,
+      fetchImpl: async (url, options) => {
+        requests.push({ url: String(url), options });
+        if (String(url).endsWith("/workers/subdomain")) {
+          return accountSubdomain("Not Valid");
+        }
+        return notFound();
+      },
+    }),
+    /account subdomain is unavailable or invalid/,
+  );
+  assert.equal(requests.length, 2);
+  assert.deepEqual(
+    requests.map(({ options }) => options.method),
+    ["GET", "GET"],
+  );
 });
 
 test("fails closed instead of repairing an existing Worker with wrong ingress settings", async () => {
@@ -149,6 +189,9 @@ test("fails closed on a create race and never retries as update", async () => {
       apply: true,
       fetchImpl: async (url, options) => {
         requests.push({ url: String(url), options });
+        if (String(url).endsWith("/workers/subdomain")) {
+          return accountSubdomain();
+        }
         if (options.method === "GET") return notFound();
         return Response.json(
           {
@@ -161,10 +204,10 @@ test("fails closed on a create race and never retries as update", async () => {
     }),
     /Cloudflare Worker create rejected the request \(status 409; codes 10013\)/,
   );
-  assert.equal(requests.length, 2);
+  assert.equal(requests.length, 3);
   assert.deepEqual(
     requests.map(({ options }) => options.method),
-    ["GET", "POST"],
+    ["GET", "GET", "POST"],
   );
 });
 
