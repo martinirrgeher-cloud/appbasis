@@ -139,6 +139,9 @@ Der Vertrag:
 - übergibt den Restore-Branch-Namen und den Root-Branch als `target_branch_id` explizit und setzt `finalize_restore` immer auf `false`,
 - ruft den separaten `finalize_restore`-Endpunkt niemals auf und verschiebt keine Compute-Endpunkte des aktiven Branches,
 - verlangt nach einem erfolgreichen Restore-POST einen autoritativen GET-Readback des Restore-Branches und prüft dabei insbesondere `project_id`, Namen und `restored_from`,
+- wertet die vom erfolgreichen Restore-POST gelieferten Neon-Operations zusätzlich fail-closed aus: nur wenn der Restore-Branch `ready` ist und alle gelieferten Operations bereits erfolgreich `finished` oder `skipped` sind, wird `verificationReady=true` gemeldet,
+- behandelt laufende, geplante, fehlgeschlagene, abbrechende, abgebrochene oder unbekannte Operations ausdrücklich als **nicht verifikationsbereit**; ein `ready`-Branch allein reicht nicht als Freigabe für Datenbankverbindung, Fingerprint oder Smokes,
+- erfindet bei einem bereits vorhandenen oder nur durch Reconciliation gefundenen Restore-Branch keine Operations-Evidenz; dieser Zustand bleibt für die nachfolgende Verifikation fail-closed, bis die Operations read-only autoritativ geprüft wurden,
 - meldet einen noch nicht `ready` befindlichen Restore-Branch als pending, ohne einen weiteren Write auszuführen,
 - behandelt Timeout, Netzwerkfehler, ungültige Responses und Providerfehler als potenziell unklaren Write-Ausgang und führt höchstens einen read-only Reconciliation-Readback aus,
 - führt niemals automatisch einen zweiten Restore-POST aus,
@@ -146,15 +149,15 @@ Der Vertrag:
 
 Der manuelle Workflow `.github/workflows/m4-restore-rehearsal.yml` verwendet `m4-dr`, `contents: read`, geschützte Provider-/Restoreparameter und einen standardmäßig deaktivierten Apply-Schalter.
 
-**Wichtig:** Dieser Repository-Slice führt den Workflow nicht aus und erzeugt keinen Restore-Branch. Das reale `apply=true` ist eine externe Provideränderung und benötigt weiterhin die ausdrückliche Nutzerfreigabe. Nach einem realen Restore muss der Branch zuerst `ready` sein; danach werden die bereits vorbereitete Fingerprint-Verifikation sowie Health-, Auth-, Permission- und Tasks-Smokes gegen das getrennte Restore-Ziel durchgeführt. Eine Finalisierung auf den aktiven Branch ist für den M4-Rehearsal nicht vorgesehen.
+**Wichtig:** Dieser Repository-Slice führt den Workflow nicht aus und erzeugt keinen Restore-Branch. Das reale `apply=true` ist eine externe Provideränderung und benötigt weiterhin die ausdrückliche Nutzerfreigabe. Nach einem realen Restore müssen sowohl der Restore-Branch als betriebsbereit als auch die zugehörigen Neon-Operations read-only als erfolgreich abgeschlossen bestätigt sein; erst danach dürfen Datenbankverbindung, Fingerprint-Verifikation sowie Health-, Auth-, Permission- und Tasks-Smokes gegen das getrennte Restore-Ziel starten. Eine Finalisierung auf den aktiven Branch ist für den M4-Rehearsal nicht vorgesehen.
 
 ## Weitere M4-Slices
 
 1. Produktions-Policy, Zielprojekt und tatsächlichen Neon-Plan festlegen/bestätigen.
 2. Backup-Schedule und erforderliches PITR-Fenster nach ausdrücklicher Freigabe real konfigurieren und den Readiness-Check erfolgreich ausführen.
 3. Den Pre-Migration-Snapshot-Pfad an einem ausdrücklich freigegebenen realen Ziel ausführen und dokumentieren.
-4. Den isolierten Restore-Rehearsal nach ausdrücklicher Freigabe mit `apply=true` ausführen und warten, bis der getrennte Restore-Branch betriebsbereit ist.
-5. Die geschützte Datenbankverbindung des Restore-Ziels bereitstellen und den vorab erfassten Restore-Fingerprint gegen das Restore-Ziel verifizieren.
+4. Den isolierten Restore-Rehearsal nach ausdrücklicher Freigabe mit `apply=true` ausführen; danach Restore-Branch und zugehörige Neon-Operations ausschließlich read-only bis zum sicheren Abschluss prüfen.
+5. Erst nach erfolgreicher Operations-Prüfung die geschützte Datenbankverbindung des Restore-Ziels bereitstellen und den vorab erfassten Restore-Fingerprint gegen das Restore-Ziel verifizieren.
 6. Wiederhergestellte Laufzeit technisch prüfen: Health-, Identity-/Auth-, Permission- und Tasks-Smokes.
 7. Fachlich relevante Restore-Daten prüfen und das Ergebnis mit Zeit, Restore-Punkt, Ausgangspunkt, Ziel, Prüfschritten und Resultat dokumentieren.
 8. Temporäre Restore-Ressourcen kontrolliert entfernen, sofern ihre Aufbewahrung nicht mehr benötigt wird; auch diese Provideränderung bleibt freigabepflichtig.
