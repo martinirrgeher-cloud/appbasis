@@ -1,0 +1,193 @@
+name: M3 Preview Post-Deploy Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Run the controlled m3-preview authenticated acceptance writes after deployment
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m3-preview-post-deploy-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    name: M3 preview post-deploy acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: m3-preview
+    env:
+      APPBASIS_GENERATED_APP_ID: m3-preview
+      APPBASIS_GENERATED_WORKER_NAME: appbasis-m3-preview
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository and main workflow ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm run verify:repo
+          test "$GITHUB_REF" = 'refs/heads/main' || {
+            echo 'm3-preview post-deploy acceptance must run from main.' >&2
+            exit 1
+          }
+
+      - name: Require explicit authenticated acceptance confirmation
+        shell: bash
+        env:
+          APPBASIS_M3_POST_DEPLOY_ACCEPTANCE_APPLY: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_M3_POST_DEPLOY_ACCEPTANCE_APPLY" = '1' || {
+            echo 'm3-preview authenticated post-deploy acceptance was not explicitly confirmed.' >&2
+            exit 1
+          }
+
+      - name: Validate and mask protected post-deploy inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_ALLOWED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN APPBASIS_DATABASE_URL APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD APPBASIS_SMOKE_ALLOWED_PASSWORD APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD APPBASIS_SMOKE_DENIED_PASSWORD; do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing required m3-preview post-deploy input: $name" >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+
+      - name: Verify migrated m3-preview database before acceptance
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: node ./apps/m3-preview/tooling/verify-preview-schema.mjs
+
+      - name: Resolve generated workers.dev origin
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          SUBDOMAIN="$(jq -r 'if .success == true then (.result.subdomain // "") else "" end' <<<"$RESPONSE")"
+          [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || { echo 'Cloudflare Workers account subdomain is unavailable or invalid.' >&2; exit 1; }
+          echo "APPBASIS_GENERATED_PREVIEW_URL=https://${APPBASIS_GENERATED_WORKER_NAME}.${SUBDOMAIN}.workers.dev" >> "$GITHUB_ENV"
+
+      - name: Require exact deployed m3-preview Worker without mutation
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_APPLY_WORKER: "0"
+        run: node ./tooling/m3-preview-worker-bootstrap.mjs ensure
+
+      - name: Verify exact original m3-preview initial deployment
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node ./tooling/m3-preview-initial-version.mjs verify-current-deploy
+
+      - name: Verify deployed m3-preview health
+        run: |
+          node --input-type=module <<'NODE'
+          import { verifyGeneratedPreviewHealth } from "./tooling/generated-preview-smoke.mjs";
+
+          try {
+            await verifyGeneratedPreviewHealth({
+              baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
+              appId: process.env.APPBASIS_GENERATED_APP_ID,
+            });
+            console.log("Generated preview health smoke passed.");
+          } catch (error) {
+            console.error(error instanceof Error ? error.message : "Generated preview health smoke failed.");
+            process.exitCode = 1;
+          }
+          NODE
+
+      - name: Verify deployed m3-preview anonymous runtime boundary
+        run: |
+          node --input-type=module <<'NODE'
+          import { verifyGeneratedPreviewRuntimeBoundary } from "./tooling/generated-preview-smoke.mjs";
+
+          try {
+            await verifyGeneratedPreviewRuntimeBoundary({
+              baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
+            });
+            console.log("Generated preview anonymous runtime boundary passed.");
+          } catch (error) {
+            console.error(error instanceof Error ? error.message : "Generated preview anonymous runtime boundary failed.");
+            process.exitCode = 1;
+          }
+          NODE
+
+      - name: Verify deployed m3-preview database binding
+        run: |
+          node --input-type=module <<'NODE'
+          import { verifyGeneratedPreviewDatabaseBinding } from "./tooling/generated-preview-database-smoke.mjs";
+
+          try {
+            await verifyGeneratedPreviewDatabaseBinding({
+              baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
+              appId: process.env.APPBASIS_GENERATED_APP_ID,
+            });
+            console.log("Generated preview database binding smoke passed.");
+          } catch (error) {
+            console.error(error instanceof Error ? error.message : "Generated preview database binding smoke failed.");
+            process.exitCode = 1;
+          }
+          NODE
+
+      - name: Verify m3-preview authenticated permission and tasks acceptance
+        env:
+          APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_ALLOWED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD }}
+          APPBASIS_SMOKE_DENIED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_PASSWORD }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {
+            readM3PreviewAcceptanceEnvironment,
+            runM3PreviewAcceptanceSmoke,
+          } from "./tooling/m3-preview-acceptance-smoke.mjs";
+
+          try {
+            await runM3PreviewAcceptanceSmoke(readM3PreviewAcceptanceEnvironment());
+            console.log("m3-preview acceptance smoke passed: auth, permission deny-by-default and tasks persistence/toggle.");
+          } catch (error) {
+            console.error(error instanceof Error ? error.message : "m3-preview acceptance smoke failed.");
+            process.exitCode = 1;
+          }
+          NODE

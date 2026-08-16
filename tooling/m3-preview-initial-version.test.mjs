@@ -8,6 +8,7 @@ import {
   assertM3PreviewInitialVersionPreconditions,
   M3_PREVIEW_INITIAL_VERSION,
   resolveM3PreviewInitialVersionForDeploy,
+  verifyCurrentM3PreviewInitialVersionDeployment,
   verifyM3PreviewInitialVersionDeployment,
   verifyM3PreviewInitialVersionUpload,
   writeM3PreviewInitialSecretsFile,
@@ -17,6 +18,7 @@ const ACCOUNT_ID = "0123456789abcdef0123456789abcdef";
 const API_TOKEN = "cloudflare-test-token-000000000000";
 const VERSION_ID = "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e";
 const OTHER_VERSION_ID = "282bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e";
+const ORIGINAL_VERSION_ID = "793fe967-f891-453b-b241-2e8f5fd58804";
 const SECRET = "m3-preview-secret-value-0000000000000000";
 
 function versionsPayload(versions = []) {
@@ -65,11 +67,12 @@ function providerFetch({ versions = [], deployedOn = null, deployments = [] } = 
   };
 }
 
-function initialVersion(id = VERSION_ID) {
+function initialVersion(id = VERSION_ID, sourceSha = M3_PREVIEW_INITIAL_VERSION.sourceSha) {
   return {
     id,
     annotations: {
       "workers/tag": M3_PREVIEW_INITIAL_VERSION.tag,
+      "workers/message": `AppBasis m3-preview initial version ${sourceSha}`,
     },
   };
 }
@@ -85,6 +88,8 @@ test("pins the one-time m3-preview initial version contract", () => {
   assert.deepEqual(M3_PREVIEW_INITIAL_VERSION, {
     workerName: "appbasis-m3-preview",
     tag: "m3-preview-initial-v1",
+    sourceSha: "a359d6e6c39771e9d0dae3f73ba9918290356580",
+    versionId: ORIGINAL_VERSION_ID,
     secretName: "BETTER_AUTH_SECRET",
   });
   assert.equal(Object.isFrozen(M3_PREVIEW_INITIAL_VERSION), true);
@@ -190,7 +195,10 @@ test("resolves only the exact pristine initial version for first deployment", as
         versions: [
           {
             id: VERSION_ID,
-            annotations: { "workers/tag": "unexpected" },
+            annotations: {
+              "workers/tag": "unexpected",
+              "workers/message": `AppBasis m3-preview initial version ${M3_PREVIEW_INITIAL_VERSION.sourceSha}`,
+            },
           },
         ],
       }),
@@ -277,6 +285,79 @@ test("verifies exactly one 100 percent deployment of the initial version", async
       /exactly 100 percent/,
     );
   }
+});
+
+test("recovery pins the original version UUID, source SHA and exact traffic", async () => {
+  const validProvider = {
+    versions: [initialVersion(ORIGINAL_VERSION_ID)],
+    deployedOn: "2026-08-16T06:00:00.000Z",
+    deployments: [initialDeployment({ versionId: ORIGINAL_VERSION_ID })],
+  };
+  const result = await verifyCurrentM3PreviewInitialVersionDeployment({
+    accountId: ACCOUNT_ID,
+    apiToken: API_TOKEN,
+    fetchImpl: providerFetch(validProvider),
+  });
+  assert.deepEqual(result, {
+    status: "initial-version-deployed",
+    versionId: ORIGINAL_VERSION_ID,
+  });
+
+  await assert.rejects(
+    verifyCurrentM3PreviewInitialVersionDeployment({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      fetchImpl: providerFetch({
+        ...validProvider,
+        versions: [
+          initialVersion(
+            ORIGINAL_VERSION_ID,
+            "0000000000000000000000000000000000000000",
+          ),
+        ],
+      }),
+    }),
+    /exact expected initial version/,
+  );
+
+  await assert.rejects(
+    verifyCurrentM3PreviewInitialVersionDeployment({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      fetchImpl: providerFetch({
+        ...validProvider,
+        versions: [initialVersion(OTHER_VERSION_ID)],
+        deployments: [initialDeployment({ versionId: OTHER_VERSION_ID })],
+      }),
+    }),
+    /exact expected initial version/,
+  );
+
+  await assert.rejects(
+    verifyCurrentM3PreviewInitialVersionDeployment({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      fetchImpl: providerFetch({
+        ...validProvider,
+        versions: [initialVersion(ORIGINAL_VERSION_ID), initialVersion(OTHER_VERSION_ID)],
+      }),
+    }),
+    /exact expected initial version/,
+  );
+
+  await assert.rejects(
+    verifyCurrentM3PreviewInitialVersionDeployment({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      fetchImpl: providerFetch({
+        ...validProvider,
+        deployments: [
+          initialDeployment({ versionId: ORIGINAL_VERSION_ID, percentage: 50 }),
+        ],
+      }),
+    }),
+    /exactly 100 percent/,
+  );
 });
 
 test("writes only the required secret to a new owner-only file", async () => {

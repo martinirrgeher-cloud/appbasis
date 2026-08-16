@@ -14,6 +14,10 @@ const deployWorkflowUrl = new URL(
   "../.github/workflows/m3-preview-deploy.yml",
   import.meta.url,
 );
+const postDeployWorkflowUrl = new URL(
+  "../.github/workflows/m3-preview-post-deploy-acceptance.yml",
+  import.meta.url,
+);
 const rootBootstrapUrl = new URL(
   "../apps/m3-preview/tooling/bootstrap-root-admin.mjs",
   import.meta.url,
@@ -99,6 +103,60 @@ test("keeps normal m3-preview deploy free of identity or permission provisioning
   assert.match(workflow, /APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD/);
   assert.match(workflow, /APPBASIS_SMOKE_DENIED_PASSWORD/);
 
+  assert.doesNotMatch(workflow, /bootstrap-root-admin/);
+  assert.doesNotMatch(workflow, /bootstrap-smoke-principals/);
+  assert.doesNotMatch(workflow, /APPBASIS_BETTER_AUTH_SECRET/);
+  assert.doesNotMatch(workflow, /APPBASIS_ROOT_ADMIN_PASSWORD/);
+});
+
+test("provides a resumable post-deploy acceptance path without another provider deploy", async () => {
+  const workflow = await readFile(postDeployWorkflowUrl, "utf8");
+
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /apply:/);
+  assert.match(workflow, /default: false/);
+  assert.match(workflow, /type: boolean/);
+  assert.match(workflow, /permissions:\n  contents: read/);
+  assert.match(workflow, /environment: m3-preview/);
+  assert.match(workflow, /pnpm run verify:repo/);
+  assert.match(workflow, /GITHUB_REF.*refs\/heads\/main/);
+  assert.match(workflow, /verify-preview-schema\.mjs/);
+  assert.match(workflow, /APPBASIS_APPLY_WORKER: "0"/);
+  assert.match(workflow, /m3-preview-worker-bootstrap\.mjs ensure/);
+
+  const worker = workflow.indexOf("Require exact deployed m3-preview Worker without mutation");
+  const exactDeployment = workflow.indexOf(
+    "Verify exact original m3-preview initial deployment",
+  );
+  const health = workflow.indexOf("Verify deployed m3-preview health");
+  const anonymousBoundary = workflow.indexOf(
+    "Verify deployed m3-preview anonymous runtime boundary",
+  );
+  const database = workflow.indexOf("Verify deployed m3-preview database binding");
+  const acceptance = workflow.indexOf(
+    "Verify m3-preview authenticated permission and tasks acceptance",
+  );
+  assert.ok(worker >= 0);
+  assert.ok(exactDeployment > worker);
+  assert.ok(health > exactDeployment);
+  assert.ok(anonymousBoundary > health);
+  assert.ok(database > anonymousBoundary);
+  assert.ok(acceptance > database);
+
+  assert.match(workflow, /m3-preview-initial-version\.mjs verify-current-deploy/);
+  assert.match(workflow, /verifyGeneratedPreviewHealth/);
+  assert.match(workflow, /verifyGeneratedPreviewRuntimeBoundary/);
+  assert.match(workflow, /verifyGeneratedPreviewDatabaseBinding/);
+  assert.match(workflow, /runM3PreviewAcceptanceSmoke/);
+  assert.match(workflow, /error instanceof Error \? error\.message/);
+
+  assert.doesNotMatch(workflow, /wrangler deploy/);
+  assert.doesNotMatch(workflow, /wrangler versions deploy/);
+  assert.doesNotMatch(workflow, /wrangler versions upload/);
+  assert.doesNotMatch(workflow, /m3-preview-hyperdrive\.mjs ensure/);
+  assert.doesNotMatch(workflow, /APPBASIS_APPLY_HYPERDRIVE/);
+  assert.doesNotMatch(workflow, /APPBASIS_APPLY_WORKER: "1"/);
+  assert.doesNotMatch(workflow, /apply-preview-migrations/);
   assert.doesNotMatch(workflow, /bootstrap-root-admin/);
   assert.doesNotMatch(workflow, /bootstrap-smoke-principals/);
   assert.doesNotMatch(workflow, /APPBASIS_BETTER_AUTH_SECRET/);
