@@ -51,16 +51,7 @@ export async function verifyM3PreviewInitialVersionUpload({
     getWorker(deployment),
   ]);
 
-  if (
-    versions.length !== 1 ||
-    versions[0]?.id !== normalizedVersionId ||
-    versions[0]?.annotations?.["workers/tag"] !==
-      M3_PREVIEW_INITIAL_VERSION.tag
-  ) {
-    throw new Error(
-      "m3-preview initial version upload did not produce the exact expected Worker version.",
-    );
-  }
+  requireExactInitialVersion(versions, normalizedVersionId);
   if (worker.deployed_on !== null) {
     throw new Error(
       "m3-preview initial version upload unexpectedly created deployed traffic.",
@@ -69,6 +60,82 @@ export async function verifyM3PreviewInitialVersionUpload({
 
   return Object.freeze({
     status: "initial-version-uploaded",
+    versionId: normalizedVersionId,
+  });
+}
+
+export async function resolveM3PreviewInitialVersionForDeploy({
+  accountId,
+  apiToken,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const deployment = validateProviderInputs({ accountId, apiToken, fetchImpl });
+  const [versions, worker] = await Promise.all([
+    listVersions(deployment),
+    getWorker(deployment),
+  ]);
+
+  if (versions.length !== 1) {
+    throw new Error(
+      "m3-preview first deployment requires exactly one Worker version.",
+    );
+  }
+  const versionId = requiredVersionId(versions[0]?.id);
+  requireExactInitialVersion(versions, versionId);
+  if (worker.deployed_on !== null) {
+    throw new Error(
+      "m3-preview first deployment requires a Worker that has never been deployed.",
+    );
+  }
+
+  return Object.freeze({
+    status: "initial-version-deployable",
+    versionId,
+  });
+}
+
+export async function verifyM3PreviewInitialVersionDeployment({
+  accountId,
+  apiToken,
+  versionId,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const deployment = validateProviderInputs({ accountId, apiToken, fetchImpl });
+  const normalizedVersionId = requiredVersionId(versionId);
+  const [versions, worker, deployments] = await Promise.all([
+    listVersions(deployment),
+    getWorker(deployment),
+    listDeployments(deployment),
+  ]);
+
+  requireExactInitialVersion(versions, normalizedVersionId);
+  if (
+    typeof worker.deployed_on !== "string" ||
+    worker.deployed_on.trim().length === 0
+  ) {
+    throw new Error(
+      "m3-preview initial version deployment did not mark the Worker as deployed.",
+    );
+  }
+  if (deployments.length !== 1) {
+    throw new Error(
+      "m3-preview first deployment did not produce exactly one deployment.",
+    );
+  }
+  const deployedVersions = deployments[0]?.versions;
+  if (
+    !Array.isArray(deployedVersions) ||
+    deployedVersions.length !== 1 ||
+    deployedVersions[0]?.version_id !== normalizedVersionId ||
+    deployedVersions[0]?.percentage !== 100
+  ) {
+    throw new Error(
+      "m3-preview first deployment does not route exactly 100 percent to the initial version.",
+    );
+  }
+
+  return Object.freeze({
+    status: "initial-version-deployed",
     versionId: normalizedVersionId,
   });
 }
@@ -123,7 +190,20 @@ function validateProviderInputs({ accountId, apiToken, fetchImpl }) {
     fetchImpl,
     workerUrl,
     versionsUrl: `${workerUrl}/versions?page=1&per_page=100`,
+    deploymentsUrl: `${accountUrl}/scripts/${workerName}/deployments`,
   });
+}
+
+function requireExactInitialVersion(versions, versionId) {
+  if (
+    versions.length !== 1 ||
+    versions[0]?.id !== versionId ||
+    versions[0]?.annotations?.["workers/tag"] !== M3_PREVIEW_INITIAL_VERSION.tag
+  ) {
+    throw new Error(
+      "m3-preview Worker does not contain the exact expected initial version.",
+    );
+  }
 }
 
 async function listVersions(deployment) {
@@ -152,6 +232,18 @@ async function getWorker(deployment) {
     throw new Error("Cloudflare Worker API returned an invalid m3-preview Worker result.");
   }
   return payload.result;
+}
+
+async function listDeployments(deployment) {
+  const payload = await cloudflareJson(
+    deployment,
+    deployment.deploymentsUrl,
+    "deployments",
+  );
+  if (!isRecord(payload.result) || !Array.isArray(payload.result.deployments)) {
+    throw new Error("Cloudflare Worker deployments API returned an invalid result.");
+  }
+  return payload.result.deployments;
 }
 
 async function cloudflareJson(deployment, url, operation) {
@@ -255,9 +347,22 @@ if (isMainModule()) {
         versionId: process.argv[3],
       });
       console.log("m3-preview initial version upload verification passed.");
+    } else if (mode === "resolve-for-deploy") {
+      const result = await resolveM3PreviewInitialVersionForDeploy({
+        accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+        apiToken: process.env.CLOUDFLARE_API_TOKEN,
+      });
+      console.log(result.versionId);
+    } else if (mode === "verify-deploy") {
+      await verifyM3PreviewInitialVersionDeployment({
+        accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+        apiToken: process.env.CLOUDFLARE_API_TOKEN,
+        versionId: process.argv[3],
+      });
+      console.log("m3-preview initial version deployment verification passed.");
     } else {
       throw new Error(
-        "Expected command mode preflight, write-secrets-file or verify-upload.",
+        "Expected command mode preflight, write-secrets-file, verify-upload, resolve-for-deploy or verify-deploy.",
       );
     }
   } catch (error) {
