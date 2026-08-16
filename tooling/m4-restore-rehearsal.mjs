@@ -145,11 +145,8 @@ function restoreResult(
 }
 
 function classifyRestoreOperations(operations) {
-  if (!Array.isArray(operations)) {
+  if (!Array.isArray(operations) || operations.length === 0) {
     return Object.freeze({ state: "unknown", verificationReady: false });
-  }
-  if (operations.length === 0) {
-    return Object.freeze({ state: "complete", verificationReady: true });
   }
 
   let hasUnknown = false;
