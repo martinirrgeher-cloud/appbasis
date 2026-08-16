@@ -66,30 +66,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
         run: |
           set -euo pipefail
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare deployment account.' >&2; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
           test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing dedicated m3-preview database connection.' >&2; exit 1; }
-          test -n "$APPBASIS_BETTER_AUTH_SECRET" || { echo 'Missing protected Better Auth secret.' >&2; exit 1; }
           echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
           echo "::add-mask::$CLOUDFLARE_API_TOKEN"
           echo "::add-mask::$APPBASIS_DATABASE_URL"
-          echo "::add-mask::$APPBASIS_BETTER_AUTH_SECRET"
-          node --input-type=module <<'NODE' || {
-          const secret = process.env.APPBASIS_BETTER_AUTH_SECRET;
-          if (
-            typeof secret !== "string" ||
-            secret.trim() !== secret ||
-            secret.length < 32
-          ) {
-            process.exit(1);
-          }
-          NODE
-            echo 'Protected Better Auth secret does not satisfy the generated runtime contract.' >&2
-            exit 1
-          }
 
       - name: Verify m3-preview database schema before provider changes
         env:
@@ -155,6 +139,20 @@ jobs:
             exit 1
           }
 
+      - name: Require pre-provisioned Worker secret
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          SECRET_LIST="$(pnpm exec wrangler secret list --name "$APPBASIS_GENERATED_WORKER_NAME" --format json)"
+          jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' <<<"$SECRET_LIST" >/dev/null || {
+            echo 'm3-preview Worker is missing the pre-provisioned BETTER_AUTH_SECRET.' >&2
+            exit 1
+          }
+
       - name: Validate m3-preview Worker bundle without provisioning
         working-directory: apps/reference
         env:
@@ -168,40 +166,8 @@ jobs:
           --experimental-provision=false
           --experimental-auto-create=false
 
-      - name: Synchronize required Worker secret without Worker creation
-        shell: bash
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
-        run: |
-          set -euo pipefail
-          secret_response="$(mktemp)"
-          trap 'rm -f "$secret_response"' EXIT
-
-          node -e 'process.stdout.write(JSON.stringify({ name: "BETTER_AUTH_SECRET", text: process.env.APPBASIS_BETTER_AUTH_SECRET, type: "secret_text" }))' \
-            | curl --fail-with-body --silent --show-error \
-              --request PUT \
-              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$APPBASIS_GENERATED_WORKER_NAME/secrets" \
-              --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-              --header 'Content-Type: application/json' \
-              --data-binary @- \
-              > "$secret_response"
-
-          SECRET_RESPONSE="$secret_response" node <<'NODE'
-          const { readFileSync } = require('node:fs');
-          const response = JSON.parse(readFileSync(process.env.SECRET_RESPONSE, 'utf8'));
-          if (
-            response?.success !== true ||
-            response?.result?.name !== 'BETTER_AUTH_SECRET' ||
-            response?.result?.type !== 'secret_text'
-          ) {
-            console.error('Cloudflare secret synchronization returned an unexpected response.');
-            process.exit(1);
-          }
-          NODE
-
-      - name: Verify required Worker secret is present
+      - name: Upload m3-preview Worker version without deployment
+        id: version
         working-directory: apps/reference
         shell: bash
         env:
@@ -209,23 +175,37 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          SECRET_LIST="$(pnpm exec wrangler secret list --name "$APPBASIS_GENERATED_WORKER_NAME" --format json)"
-          jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' <<<"$SECRET_LIST" >/dev/null || {
-            echo 'm3-preview Worker is missing BETTER_AUTH_SECRET after synchronization.' >&2
+          output_file="$(mktemp)"
+          trap 'rm -f "$output_file"' EXIT
+          WRANGLER_OUTPUT_FILE_PATH="$output_file" pnpm exec wrangler versions upload \
+            --cwd ../m3-preview \
+            --config wrangler.preview.generated.json \
+            --name "$APPBASIS_GENERATED_WORKER_NAME" \
+            --experimental-provision=false \
+            --experimental-auto-create=false
+          VERSION_ID="$(jq -r 'select(.type == "version-upload") | .version_id // empty' "$output_file" | tail -n 1)"
+          [[ "$VERSION_ID" =~ ^[A-Za-z0-9-]{1,128}$ ]] || {
+            echo 'Wrangler did not return a valid uploaded m3-preview version ID.' >&2
             exit 1
           }
+          echo "::add-mask::$VERSION_ID"
+          printf 'id=%s\n' "$VERSION_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy m3-preview Worker without provisioning
+      - name: Deploy uploaded m3-preview Worker version
         working-directory: apps/reference
+        shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: >-
-          pnpm exec wrangler deploy
-          --cwd ../m3-preview
-          --config wrangler.preview.generated.json
-          --experimental-provision=false
-          --experimental-auto-create=false
+          APPBASIS_VERSION_ID: ${{ steps.version.outputs.id }}
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler versions deploy \
+            "${APPBASIS_VERSION_ID}@100%" \
+            --name "$APPBASIS_GENERATED_WORKER_NAME" \
+            --cwd ../m3-preview \
+            --config wrangler.preview.generated.json \
+            -y
 
       - name: Verify deployed m3-preview runtime boundary
         run: node ./tooling/generated-preview-smoke.mjs
