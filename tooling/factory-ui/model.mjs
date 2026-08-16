@@ -6,6 +6,7 @@ import {
   SUPPORTED_PLATFORM_SERVICES,
 } from "../app-definition.mjs";
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
+import { evaluateProductionReadiness } from "./production-readiness.mjs";
 
 export async function loadFactorySnapshot(repositoryRoot = process.cwd()) {
   const root = resolve(repositoryRoot);
@@ -14,7 +15,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd()) {
     directoryNames(join(root, "modules")),
   ]);
   const apps = await Promise.all(
-    appDefinitions.map((definition) => withPreviewReadiness(root, definition)),
+    appDefinitions.map((definition) => withFactoryReadiness(root, definition)),
   );
 
   return Object.freeze({
@@ -31,7 +32,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd()) {
   });
 }
 
-async function withPreviewReadiness(repositoryRoot, definition) {
+async function withFactoryReadiness(repositoryRoot, definition) {
   const appRoot = join(repositoryRoot, "apps", definition.appId);
   const databaseManifestRequired =
     createGeneratedDatabaseManifest(definition) !== null;
@@ -57,6 +58,7 @@ async function withPreviewReadiness(repositoryRoot, definition) {
       databaseManifestRequired,
       databaseManifestPresent,
     }),
+    productionReadiness: evaluateProductionReadiness(),
   });
 }
 
