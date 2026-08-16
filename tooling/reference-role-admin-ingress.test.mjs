@@ -34,7 +34,7 @@ function mockCloudflare({
       return successResponse(
         domains,
         includeDomainResultInfo
-          ? (domainResultInfo ?? { page: 1, count: domains.length, total_pages: 1 })
+          ? (domainResultInfo === undefined ? { count: domains.length } : domainResultInfo)
           : undefined,
       );
     }
@@ -61,6 +61,30 @@ test('verifies all public ingress surfaces with account-scoped Worker APIs', asy
   assert.equal(calls.every((call) => call.authorization === 'Bearer token-value'), true);
 });
 
+test('accepts omitted optional custom-domain result metadata for the Cloudflare single-page endpoint', async () => {
+  const { fetchImpl } = mockCloudflare({ includeDomainResultInfo: false });
+
+  await assert.doesNotReject(
+    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
+  );
+});
+
+test('accepts optional account-wide pagination metadata without treating it as filtered service pagination', async () => {
+  const { fetchImpl } = mockCloudflare({
+    domainResultInfo: {
+      count: 0,
+      page: 1,
+      per_page: 20,
+      total_count: 2000,
+      total_pages: 100,
+    },
+  });
+
+  await assert.doesNotReject(
+    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
+  );
+});
+
 test('rejects workers.dev and Preview URL exposure', async () => {
   for (const subdomain of [
     { enabled: true, previews_enabled: false },
@@ -85,19 +109,34 @@ test('rejects a custom domain assigned to the internal Worker', async () => {
   );
 });
 
-test('fails closed when filtered custom-domain pagination cannot prove completeness', async () => {
-  for (const options of [
-    { includeDomainResultInfo: false },
-    { domainResultInfo: { page: 2, count: 0, total_pages: 2 } },
-    { domainResultInfo: { page: 1, count: 1, total_pages: 1 } },
-    { domainResultInfo: { page: 1, count: 0, total_pages: 2 } },
+test('fails closed on malformed or contradictory optional custom-domain metadata', async () => {
+  for (const domainResultInfo of [
+    null,
+    { count: 1 },
+    { count: '0' },
+    { page: 0 },
+    { page: 2 },
+    { per_page: 0 },
+    { total_count: -1 },
+    { total_pages: -1 },
   ]) {
-    const { fetchImpl } = mockCloudflare(options);
+    const { fetchImpl } = mockCloudflare({ domainResultInfo });
     await assert.rejects(
       verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
-      /custom-domain pagination/,
+      /custom-domain result metadata/,
     );
   }
+});
+
+test('rejects custom-domain inventory entries that do not belong to the filtered Worker', async () => {
+  const { fetchImpl } = mockCloudflare({
+    domains: [{ id: 'domain-id', hostname: 'admin.example.test', service: 'other-worker' }],
+  });
+
+  await assert.rejects(
+    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
+    /custom-domain inventory is invalid/,
+  );
 });
 
 test('rejects any account-scoped Worker route associated with the internal Worker', async () => {

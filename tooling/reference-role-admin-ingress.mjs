@@ -36,29 +36,7 @@ export async function verifyReferenceRoleAdminPublicIngress({
     'Role administration Worker custom domains',
   );
   const domainResults = requiredArray(domains.result, 'Role administration Worker custom domains');
-  const domainResultInfo = requiredRecord(
-    domains.result_info,
-    'Role administration Worker custom-domain pagination',
-  );
-  const domainPage = requiredPositiveInteger(
-    domainResultInfo.page,
-    'Role administration Worker custom-domain pagination',
-  );
-  const domainCount = requiredNonNegativeInteger(
-    domainResultInfo.count,
-    'Role administration Worker custom-domain pagination',
-  );
-  const domainTotalPages = requiredNonNegativeInteger(
-    domainResultInfo.total_pages,
-    'Role administration Worker custom-domain pagination',
-  );
-  if (
-    domainPage !== 1 ||
-    domainCount !== domainResults.length ||
-    domainTotalPages > 1
-  ) {
-    throw new Error('Role administration Worker custom-domain pagination is incomplete.');
-  }
+  validateOptionalDomainResultInfo(domains.result_info, domainResults.length);
   if (
     domainResults.some(
       (candidate) =>
@@ -101,6 +79,46 @@ export async function verifyReferenceRoleAdminPublicIngress({
   });
 }
 
+function validateOptionalDomainResultInfo(resultInfo, filteredResultCount) {
+  if (resultInfo === undefined) return;
+  if (!isRecord(resultInfo)) {
+    throw new Error('Role administration Worker custom-domain result metadata is invalid.');
+  }
+
+  const count = optionalNonNegativeInteger(
+    resultInfo,
+    'count',
+    'Role administration Worker custom-domain result metadata',
+  );
+  const page = optionalPositiveInteger(
+    resultInfo,
+    'page',
+    'Role administration Worker custom-domain result metadata',
+  );
+  optionalPositiveInteger(
+    resultInfo,
+    'per_page',
+    'Role administration Worker custom-domain result metadata',
+  );
+  optionalNonNegativeInteger(
+    resultInfo,
+    'total_count',
+    'Role administration Worker custom-domain result metadata',
+  );
+  optionalNonNegativeInteger(
+    resultInfo,
+    'total_pages',
+    'Role administration Worker custom-domain result metadata',
+  );
+
+  if (count !== undefined && count !== filteredResultCount) {
+    throw new Error('Role administration Worker custom-domain result metadata is inconsistent.');
+  }
+  if (page !== undefined && page !== 1) {
+    throw new Error('Role administration Worker custom-domain result metadata is inconsistent.');
+  }
+}
+
 async function cloudflareJson(url, apiToken, fetchImpl, label) {
   let response;
   try {
@@ -139,14 +157,18 @@ function requiredValue(value, field) {
   return value;
 }
 
-function requiredPositiveInteger(value, label) {
+function optionalPositiveInteger(record, field, label) {
+  if (!Object.hasOwn(record, field)) return undefined;
+  const value = record[field];
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new Error(`${label} is invalid.`);
   }
   return value;
 }
 
-function requiredNonNegativeInteger(value, label) {
+function optionalNonNegativeInteger(record, field, label) {
+  if (!Object.hasOwn(record, field)) return undefined;
+  const value = record[field];
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} is invalid.`);
   }
