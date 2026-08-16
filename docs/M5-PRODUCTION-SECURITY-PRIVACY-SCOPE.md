@@ -35,13 +35,26 @@ Fehlt für mindestens ein Kriterium ein expliziter Nachweis, bleibt `productionR
 - unbekannte zusätzliche Felder können kein Pflichtkriterium ersetzen,
 - erst wenn alle Pflichtkriterien verifiziert sind, ergibt die reine Gate-Funktion `productionReady=true`.
 
-`tooling/factory-ui/model.mjs` hängt diesen Status an jede App im Factory-Snapshot. Aktuell wird absichtlich **noch keine Production-Evidenz eingespeist**. Deshalb stehen alle Apps im realen Factory-Snapshot auf:
+Die vorhandene Factory-Capability `releaseProduction` bleibt unabhängig davon `false`. M5 fügt weder einen Release-Endpunkt noch einen Release-Button oder Provider-Write hinzu.
+
+## Slice 2 – erster read-only Repository-Evidenzadapter
+
+`tooling/factory-ui/repository-production-readiness-evidence.mjs` nutzt einen bereits bestehenden, realen Vertrag statt einen zweiten Manifest-Verifier zu bauen:
+
+- jede App-Definition wird erneut über den bestehenden `parseAppDefinition()`-Vertrag geprüft,
+- dieser Vertrag erlaubt im normalen `appbasis.app.json` ausschließlich `schemaVersion`, `appId`, `displayName`, `modules` und `platformServices`,
+- zusätzliche Felder wie Provider-IDs, Datenbankadressen oder Credentials werden vom bestehenden App-Definition-Vertrag abgewiesen,
+- deshalb darf ausschließlich das M5-Kriterium `secretsOutsideAppManifests` als repository-seitig verifiziert eingespeist werden.
+
+Der Factory-Snapshot steht damit für gültige App-Definitionen aktuell auf:
 
 - `status: blocked`
 - `productionReady: false`
-- `verifiedCount: 0`
+- `verifiedCount: 1`
+- `secretsOutsideAppManifests: verified`
+- alle übrigen 11 Kriterien: `open`
 
-Die vorhandene Factory-Capability `releaseProduction` bleibt unabhängig davon `false`. Dieser Slice fügt weder einen Release-Endpunkt noch einen Release-Button oder Provider-Write hinzu.
+Das ist bewusst **keine** Aussage darüber, ob konkrete Produktions-Secrets korrekt im Provider gesetzt sind. Bewiesen wird nur die enge M5-Aussage, dass sie nicht Teil des normalen App-Manifests sein dürfen.
 
 ## Inventarisierte vorhandene Bausteine
 
@@ -52,7 +65,7 @@ Im Repository existieren bereits technische Bausteine, die spätere M5-Nachweise
 - der Role-Admin-Worker ist nicht über `workers.dev` oder Preview-URLs öffentlich freigegeben,
 - normale App-Definitionen enthalten App-ID, Anzeigename, Module und Plattformdienste statt Provider-Credentials.
 
-Diese Repository-Fakten werden in diesem Slice **nicht** automatisch als app-spezifische Production-Evidenz gewertet. Insbesondere beweist das Vorhandensein eines technischen Bausteins nicht, dass eine konkrete spätere Produktiv-App, deren Providerkonfiguration und deren organisatorische Datenschutzpflichten vollständig geprüft sind.
+Diese Repository-Fakten werden nicht pauschal als app-spezifische Production-Evidenz gewertet. Insbesondere beweist das Vorhandensein eines technischen Bausteins nicht, dass eine konkrete spätere Produktiv-App, deren Providerkonfiguration und deren organisatorische Datenschutzpflichten vollständig geprüft sind.
 
 ## Bewusst weiterhin offen
 
@@ -75,7 +88,7 @@ Diese Punkte bleiben deshalb im Factory-Gate offen und blockieren Produktion.
 
 ## Nächste sichere Slices
 
-1. Für echte, bereits vorhandene technische Verträge kleine read-only Evidenzadapter ergänzen, ohne App-Manifeste um Providerdetails oder Secrets zu erweitern.
+1. Weitere echte technische Verträge nur dort über kleine read-only Evidenzadapter anbinden, wo die konkrete M5-Aussage tatsächlich bewiesen wird.
 2. Provider-/Policy-Nachweise getrennt und explizit anbinden; fehlende oder nicht prüfbare Nachweise bleiben offen.
 3. Den M5-Status in der Factory-Oberfläche sichtbar machen, ohne eine Produktionsfreigabe zu aktivieren.
 4. Erst nach vollständiger technischer und organisatorischer Evidenz einen separaten, ausdrücklich freizugebenden Production-Release-Slice planen.
