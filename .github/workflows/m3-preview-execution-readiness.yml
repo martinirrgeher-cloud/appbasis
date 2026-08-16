@@ -89,3 +89,8 @@ jobs:
           APPBASIS_SMOKE_ALLOWED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_ALLOWED_PASSWORD }}
           APPBASIS_SMOKE_DENIED_PASSWORD: ${{ secrets.APPBASIS_SMOKE_DENIED_PASSWORD }}
         run: node ./tooling/m3-preview-execution-readiness.mjs
+
+      - name: Verify M3 preview database connection and schema read-only
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: node ./apps/m3-preview/tooling/verify-preview-schema.mjs
