@@ -69,6 +69,18 @@ Die Factory-Detailansicht zeigt den bestehenden M5-Snapshot nun kompakt an:
 
 Damit wird M5 sichtbar, ohne die Trennung zwischen Readiness-Nachweis und späterer ausdrücklicher Produktionsfreigabe aufzuweichen.
 
+## Slice 4 – offene Kriterien direkt benennen
+
+Die bestehende kompakte M5-Zeile nennt bei einem gültigen, noch blockierten Status jetzt zusätzlich die tatsächlich offenen Kriterien:
+
+- die Reihenfolge und Labels stammen ausschließlich aus `REQUIRED_PRODUCTION_READINESS_CRITERIA`,
+- der Browser vertraut keinen frei gelieferten Labels, sondern verwendet den kanonischen M5-Vertrag,
+- ein inkonsistenter oder nicht-kanonischer Snapshot bleibt vollständig `nicht verifiziert`,
+- es wird keine zweite Detailansicht, kein zusätzlicher Snapshot-Request und kein zusätzlicher UI-State eingeführt,
+- `productionReady` und `releaseProduction` werden dadurch nicht verändert.
+
+Damit kann der Nutzer direkt sehen, welche M5-Nachweise noch fehlen, ohne eine neue Plattform- oder Compliance-Abstraktion einzuführen.
+
 ## Inventarisierte vorhandene Bausteine
 
 Im Repository existieren bereits technische Bausteine, die spätere M5-Nachweise unterstützen können:

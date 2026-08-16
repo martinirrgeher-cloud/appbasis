@@ -12,7 +12,6 @@ export function productionReadinessCopy(readiness) {
     });
   }
 
-  const openCount = readiness.requiredCount - readiness.verifiedCount;
   if (readiness.productionReady === true) {
     return Object.freeze({
       heading: `Security & Privacy ${readiness.verifiedCount}/${readiness.requiredCount} geprüft`,
@@ -20,9 +19,13 @@ export function productionReadinessCopy(readiness) {
     });
   }
 
+  const openLabels = REQUIRED_PRODUCTION_READINESS_CRITERIA
+    .filter((_, index) => readiness.criteria[index].status === "open")
+    .map((criterion) => criterion.label);
+
   return Object.freeze({
     heading: `Security & Privacy ${readiness.verifiedCount}/${readiness.requiredCount} geprüft`,
-    detail: `${openCount} ${openCount === 1 ? "Kriterium ist" : "Kriterien sind"} noch offen. Produktion bleibt gesperrt.`,
+    detail: `Noch offen: ${openLabels.join(" · ")}. Produktion bleibt gesperrt.`,
   });
 }
 

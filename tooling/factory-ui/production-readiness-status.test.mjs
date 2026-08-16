@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
+import {
+  evaluateProductionReadiness,
+  REQUIRED_PRODUCTION_READINESS_CRITERIA,
+} from "./production-readiness.mjs";
 import { productionReadinessCopy } from "./production-readiness-status.js";
 import { startFactoryServer } from "./server.mjs";
 
@@ -19,16 +22,36 @@ function readiness({ verifiedCount, ready = false }) {
   };
 }
 
-test("Factory M5 copy shows partial readiness without implying release", () => {
-  assert.deepEqual(productionReadinessCopy(readiness({ verifiedCount: 1 })), {
-    heading: "Security & Privacy 1/12 geprüft",
-    detail: "11 Kriterien sind noch offen. Produktion bleibt gesperrt.",
+test("Factory M5 copy names the real current 1/12 open criteria without implying release", () => {
+  const current = evaluateProductionReadiness({
+    secretsOutsideAppManifests: true,
   });
+  assert.deepEqual(productionReadinessCopy(current), {
+    heading: "Security & Privacy 1/12 geprüft",
+    detail:
+      "Noch offen: Datenregion · AVV/DPA · Verschlüsselung · Rollen & Rechte · Löschkonzept · Aufbewahrung · Datenexport · Audit-/Security-Logging · Subprozessoren · High-Privacy-Profil · Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
+  });
+
+  const allExceptControlPlane = Object.fromEntries(
+    REQUIRED_PRODUCTION_READINESS_CRITERIA
+      .filter((criterion) => criterion.id !== "privilegedControlPlaneIsolation")
+      .map((criterion) => [criterion.id, true]),
+  );
+  assert.deepEqual(
+    productionReadinessCopy(evaluateProductionReadiness(allExceptControlPlane)),
+    {
+      heading: "Security & Privacy 11/12 geprüft",
+      detail: "Noch offen: Privilegierte Control Plane getrennt. Produktion bleibt gesperrt.",
+    },
+  );
 });
 
 test("Factory M5 copy keeps production separate even when M5 is fully verified", () => {
+  const allVerified = Object.fromEntries(
+    REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion) => [criterion.id, true]),
+  );
   assert.deepEqual(
-    productionReadinessCopy(readiness({ verifiedCount: 12, ready: true })),
+    productionReadinessCopy(evaluateProductionReadiness(allVerified)),
     {
       heading: "Security & Privacy 12/12 geprüft",
       detail: "M5 ist erfüllt. Die Produktionsfreigabe bleibt ein separates, gesperrtes Gate.",
@@ -89,6 +112,7 @@ test("Factory renders M5 from the shared snapshot refresh lifecycle without enab
   );
   assert.doesNotMatch(helperBody, /fetch\(/);
   assert.doesNotMatch(helperBody, /addEventListener/);
+  assert.match(helperBody, /Noch offen:/);
   assert.match(helperBody, /Produktion bleibt gesperrt/);
 
   const canonicalContractResponse = await fetch(`${baseUrl}/production-readiness.mjs`);
