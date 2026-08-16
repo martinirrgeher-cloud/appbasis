@@ -6,6 +6,8 @@ const PROVIDER_ID_PATTERN = /^[a-z0-9-]{1,60}$/;
 const ALLOWED_FREQUENCIES = new Set(["daily", "weekly", "monthly"]);
 const MIN_SNAPSHOT_RETENTION_SECONDS = 3600;
 const MAX_SNAPSHOT_RETENTION_SECONDS = 3_024_000;
+const MIN_SCHEDULE_HOUR = 0;
+const MAX_SCHEDULE_HOUR = 23;
 
 export async function inspectM4NeonBackupReadiness({
   projectId,
@@ -55,14 +57,11 @@ export async function inspectM4NeonBackupReadiness({
     throw new Error("Neon scheduled backup configuration is missing or invalid.");
   }
 
-  const matchingEntries = schedule.schedule.filter(
-    (entry) => entry?.frequency === input.requiredFrequency,
-  );
-  const acceptableEntry = matchingEntries.find(
+  const acceptableEntry = schedule.schedule.find(
     (entry) =>
-      Number.isInteger(entry?.retention_seconds) &&
-      entry.retention_seconds >= input.minSnapshotRetentionSeconds &&
-      entry.retention_seconds <= MAX_SNAPSHOT_RETENTION_SECONDS,
+      isValidProviderScheduleEntry(entry) &&
+      entry.frequency === input.requiredFrequency &&
+      entry.retention_seconds >= input.minSnapshotRetentionSeconds,
   );
   if (!acceptableEntry) {
     throw new Error("Neon scheduled backup configuration does not meet the M4 policy.");
@@ -73,6 +72,27 @@ export async function inspectM4NeonBackupReadiness({
     matchedFrequency: input.requiredFrequency,
     snapshotRetentionSeconds: acceptableEntry.retention_seconds,
   });
+}
+
+function isValidProviderScheduleEntry(entry) {
+  if (
+    !isRecord(entry) ||
+    !ALLOWED_FREQUENCIES.has(entry.frequency) ||
+    !Number.isInteger(entry.retention_seconds) ||
+    entry.retention_seconds < MIN_SNAPSHOT_RETENTION_SECONDS ||
+    entry.retention_seconds > MAX_SNAPSHOT_RETENTION_SECONDS ||
+    !Number.isInteger(entry.hour) ||
+    entry.hour < MIN_SCHEDULE_HOUR ||
+    entry.hour > MAX_SCHEDULE_HOUR
+  ) {
+    return false;
+  }
+  if (entry.frequency === "daily") {
+    return entry.day === undefined || entry.day === null;
+  }
+  if (!Number.isInteger(entry.day)) return false;
+  if (entry.frequency === "weekly") return entry.day >= 1 && entry.day <= 7;
+  return entry.day >= 1 && entry.day <= 31;
 }
 
 function validateInputs({
