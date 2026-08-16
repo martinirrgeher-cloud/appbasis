@@ -301,6 +301,7 @@ function requiredBoolean(value, name) {
   if (typeof value !== "boolean") {
     throw new Error(`${name} is invalid.`);
   }
+  return value;
 }
 
 function requiredFetch(value) {
