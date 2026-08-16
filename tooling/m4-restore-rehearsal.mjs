@@ -5,6 +5,8 @@ const NEON_API_BASE = "https://console.neon.tech/api/v2";
 const PROVIDER_ID_PATTERN = /^[a-z0-9-]{1,60}$/;
 const RESTORE_BRANCH_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const SUCCESSFUL_OPERATION_STATES = new Set(["finished", "skipped"]);
+const RESTORE_OPERATION_PAGE_LIMIT = 1000;
+const RESTORE_OPERATION_MAX_PAGES = 10;
 
 export async function ensureM4RestoreRehearsal({
   projectId,
@@ -42,7 +44,12 @@ export async function ensureM4RestoreRehearsal({
 
   const existing = await readExactRestoreBranch({ input, headers });
   if (existing !== null) {
-    return restoreResult(existing, input, "not-needed");
+    const operationSafety = await readRestoreOperationSafety({
+      input,
+      headers,
+      branch: existing,
+    });
+    return restoreResult(existing, input, "not-needed", operationSafety);
   }
 
   if (!input.apply) {
@@ -78,7 +85,12 @@ export async function ensureM4RestoreRehearsal({
   if (!response.ok) {
     const reconciled = await readExactRestoreBranch({ input, headers });
     if (reconciled !== null) {
-      return restoreResult(reconciled, input, "reconciled");
+      const operationSafety = await readRestoreOperationSafety({
+        input,
+        headers,
+        branch: reconciled,
+      });
+      return restoreResult(reconciled, input, "reconciled", operationSafety);
     }
     const status =
       Number.isInteger(response.status) && response.status >= 100 && response.status <= 599
@@ -116,7 +128,12 @@ export async function ensureM4RestoreRehearsal({
 async function reconcileUnknownRestore({ input, headers }) {
   const reconciled = await readExactRestoreBranch({ input, headers });
   if (reconciled !== null) {
-    return restoreResult(reconciled, input, "reconciled");
+    const operationSafety = await readRestoreOperationSafety({
+      input,
+      headers,
+      branch: reconciled,
+    });
+    return restoreResult(reconciled, input, "reconciled", operationSafety);
   }
   throw new Error(
     "Neon restore rehearsal create outcome is unknown; do not retry blindly. Re-run read-only preflight after provider state settles.",
@@ -142,6 +159,74 @@ function restoreResult(
     verificationReady: branchReady && operationSafety.verificationReady,
     finalizeRestore: false,
   });
+}
+
+async function readRestoreOperationSafety({ input, headers, branch }) {
+  const matchingOperations = [];
+  const seenCursors = new Set();
+  let cursor;
+
+  for (let page = 0; page < RESTORE_OPERATION_MAX_PAGES; page += 1) {
+    const url = new URL(
+      `${NEON_API_BASE}/projects/${encodeURIComponent(input.projectId)}/operations`,
+    );
+    url.searchParams.set("limit", String(RESTORE_OPERATION_PAGE_LIMIT));
+    if (cursor !== undefined) {
+      url.searchParams.set("cursor", cursor);
+    }
+
+    let payload;
+    try {
+      payload = await neonGetJson(
+        input.fetchImpl,
+        url.toString(),
+        headers,
+        "restore operations inspection",
+      );
+    } catch {
+      return Object.freeze({ state: "unknown", verificationReady: false });
+    }
+    if (!Array.isArray(payload?.operations)) {
+      throw new Error("Neon restore operations inspection returned an invalid payload.");
+    }
+
+    for (const operation of payload.operations) {
+      if (!isRecord(operation)) {
+        throw new Error("Neon restore operations inspection returned an invalid operation.");
+      }
+      if (operation.branch_id !== branch.id) continue;
+      if (operation.project_id !== input.projectId) {
+        throw new Error("Neon restore operation does not match the M4 restore rehearsal project.");
+      }
+      matchingOperations.push(operation);
+    }
+
+    if (payload.pagination === undefined || payload.pagination === null) {
+      return classifyRestoreOperations(matchingOperations);
+    }
+    if (!isRecord(payload.pagination)) {
+      throw new Error("Neon restore operations inspection returned invalid pagination.");
+    }
+    if (!Object.hasOwn(payload.pagination, "cursor") || payload.pagination.cursor === null) {
+      return classifyRestoreOperations(matchingOperations);
+    }
+
+    const nextCursor = payload.pagination.cursor;
+    if (
+      typeof nextCursor !== "string" ||
+      nextCursor.length === 0 ||
+      nextCursor.length > 2048 ||
+      seenCursors.has(nextCursor)
+    ) {
+      throw new Error("Neon restore operations inspection returned an invalid cursor.");
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+
+  throw new Error(
+    "Neon restore operations inspection exceeded the safe pagination limit; verification remains blocked.",
+  );
 }
 
 function classifyRestoreOperations(operations) {
