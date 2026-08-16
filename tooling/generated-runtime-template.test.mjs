@@ -66,6 +66,7 @@ test("wires the declared tasks module through its public workspace contract with
   assert.doesNotMatch(worker, /\/api\/tasks/);
   assert.doesNotMatch(worker, /@appbasis\/permissions/);
   assert.equal(template.files.some((entry) => entry.path === "worker/postgres.ts"), false);
+  assert.equal(template.files.some((entry) => entry.path === "worker/preview.ts"), false);
 });
 
 test("generates tasks HTTP routes and complete PostgreSQL application composition only with explicit permissions", () => {
@@ -76,6 +77,7 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
   });
   const worker = content(template, "worker/app.ts");
   const postgresRuntime = content(template, "worker/postgres.ts");
+  const previewWorker = content(template, "worker/preview.ts");
   const postgresTest = content(template, "test/app.postgres.e2e.ts");
   const packageJson = JSON.parse(content(template, "package.json"));
   const generatedTest = content(template, "test/app.test.ts");
@@ -125,6 +127,13 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
   assert.doesNotMatch(postgresRuntime, /createBetterAuthRuntime/);
   assert.doesNotMatch(postgresRuntime, /from "@appbasis\/database";/);
 
+  assert.match(previewWorker, /from "\.\/index"/);
+  assert.match(previewWorker, /\/api\/health\/database/);
+  assert.match(previewWorker, /SELECT 1::integer AS appbasis_database_health/);
+  assert.match(previewWorker, /appId: "checklist"/);
+  assert.match(previewWorker, /DATABASE_NOT_CONFIGURED/);
+  assert.match(previewWorker, /DATABASE_UNAVAILABLE/);
+
   assert.match(postgresTest, /Persistent generated task/);
   assert.match(postgresTest, /@appbasis\/permissions\/provisioning/);
   assert.match(postgresTest, /provisionPostgresPermissions/);
@@ -158,11 +167,12 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
       "worker/app.ts",
       "worker/index.ts",
       "worker/postgres.ts",
+      "worker/preview.ts",
     ],
   );
 });
 
-test("keeps checked generated PostgreSQL output byte-identical to the generator", () => {
+test("keeps checked generated PostgreSQL and preview output byte-identical to the generator", () => {
   const template = createIdentityRuntimeTemplate({
     appId: "tasks-minimal",
     displayName: "AppBasis Tasks Minimal",
@@ -181,6 +191,30 @@ test("keeps checked generated PostgreSQL output byte-identical to the generator"
     content(template, "test/app.postgres.e2e.ts"),
     readFileSync(
       new URL("../apps/tasks-minimal/test/app.postgres.e2e.ts", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    content(template, "worker/preview.ts"),
+    readFileSync(
+      new URL("../apps/tasks-minimal/worker/preview.ts", import.meta.url),
+      "utf8",
+    ),
+  );
+});
+
+test("keeps the real m3-preview consumer byte-identical to the generated preview contract", () => {
+  const template = createIdentityRuntimeTemplate({
+    appId: "m3-preview",
+    displayName: "AppBasis M3 Preview",
+    modules: ["tasks"],
+    platformServices: ["identity", "permissions"],
+  });
+
+  assert.equal(
+    content(template, "worker/preview.ts"),
+    readFileSync(
+      new URL("../apps/m3-preview/worker/preview.ts", import.meta.url),
       "utf8",
     ),
   );
