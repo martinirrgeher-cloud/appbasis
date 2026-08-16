@@ -5,7 +5,14 @@ import {
   evaluateProductionReadiness,
   REQUIRED_PRODUCTION_READINESS_CRITERIA,
 } from "./production-readiness.mjs";
-import { productionReadinessCopy } from "./production-readiness-status.js";
+import {
+  evaluateM6ProductionReleaseReadiness,
+  REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA,
+} from "./production-release-readiness.mjs";
+import {
+  productionReadinessCopy,
+  productionReleaseReadinessCopy,
+} from "./production-readiness-status.js";
 import { startFactoryServer } from "./server.mjs";
 
 function readiness({ verifiedCount, ready = false }) {
@@ -20,6 +27,12 @@ function readiness({ verifiedCount, ready = false }) {
     requiredCount: REQUIRED_PRODUCTION_READINESS_CRITERIA.length,
     criteria,
   };
+}
+
+function allM6Evidence() {
+  return Object.fromEntries(
+    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map((criterion) => [criterion.id, true]),
+  );
 }
 
 test("Factory M5 copy names the real current 1/12 open criteria without implying release", () => {
@@ -83,7 +96,62 @@ test("Factory M5 copy fails closed for inconsistent or non-canonical readiness p
   }
 });
 
-test("Factory renders M5 from the shared snapshot refresh lifecycle without enabling release", async (t) => {
+test("Factory M6 copy reports the real blocked technical evidence without authorizing release", () => {
+  const current = evaluateM6ProductionReleaseReadiness();
+  assert.deepEqual(productionReleaseReadinessCopy(current), {
+    heading: "M6 0/10 technisch geprüft",
+    detail: "10 Nachweise sind noch offen. Produktion bleibt gesperrt.",
+  });
+
+  const allExceptSmoke = allM6Evidence();
+  delete allExceptSmoke.postDeploySmokePassed;
+  assert.deepEqual(
+    productionReleaseReadinessCopy(evaluateM6ProductionReleaseReadiness(allExceptSmoke)),
+    {
+      heading: "M6 9/10 technisch geprüft",
+      detail: "1 Nachweis ist noch offen. Produktion bleibt gesperrt.",
+    },
+  );
+});
+
+test("Factory M6 copy keeps explicit release authorization separate from complete evidence", () => {
+  assert.deepEqual(
+    productionReleaseReadinessCopy(
+      evaluateM6ProductionReleaseReadiness(allM6Evidence()),
+    ),
+    {
+      heading: "M6 10/10 technisch geprüft",
+      detail: "Die technische M6-Evidenz ist vollständig. Dieser Status autorisiert keine Produktionsfreigabe.",
+    },
+  );
+});
+
+test("Factory M6 copy fails closed for inconsistent or non-canonical evidence payloads", () => {
+  const current = evaluateM6ProductionReleaseReadiness();
+  const reordered = structuredClone(current);
+  [reordered.criteria[0], reordered.criteria[1]] = [
+    reordered.criteria[1],
+    reordered.criteria[0],
+  ];
+
+  for (const invalid of [
+    undefined,
+    null,
+    {},
+    { ...current, releaseAuthorized: true },
+    { ...current, explicitApprovalRequired: false },
+    { ...current, technicalEvidenceVerified: true },
+    { ...current, verifiedCount: 1 },
+    reordered,
+  ]) {
+    assert.deepEqual(productionReleaseReadinessCopy(invalid), {
+      heading: "M6 nicht verifiziert",
+      detail: "Der M6-Status ist nicht eindeutig verfügbar. Produktion bleibt gesperrt.",
+    });
+  }
+});
+
+test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabling release", async (t) => {
   const server = await startFactoryServer({ port: 0 });
   t.after(
     () =>
@@ -112,7 +180,8 @@ test("Factory renders M5 from the shared snapshot refresh lifecycle without enab
   );
   assert.doesNotMatch(helperBody, /fetch\(/);
   assert.doesNotMatch(helperBody, /addEventListener/);
-  assert.match(helperBody, /Noch offen:/);
+  assert.match(helperBody, /productionReleaseReadinessCopy/);
+  assert.match(helperBody, /releaseAuthorized !== false/);
   assert.match(helperBody, /Produktion bleibt gesperrt/);
 
   const canonicalContractResponse = await fetch(`${baseUrl}/production-readiness.mjs`);
@@ -125,11 +194,11 @@ test("Factory renders M5 from the shared snapshot refresh lifecycle without enab
   const appResponse = await fetch(`${baseUrl}/app.js`);
   assert.equal(appResponse.status, 200);
   const appBody = await appResponse.text();
+  assert.match(appBody, /productionReleaseReadinessCopy/);
   assert.match(
     appBody,
-    /import \{ productionReadinessCopy \} from "\.\/production-readiness-status\.js";/,
+    /renderProductionReadiness\(app\.productionReadiness, app\.productionReleaseReadiness\);/,
   );
-  assert.match(appBody, /renderProductionReadiness\(app\.productionReadiness\);/);
   assert.match(
     appBody,
     /state\.snapshot = nextSnapshot;[\s\S]*restoreSelectedAppDetail\(\);/,
@@ -148,7 +217,10 @@ test("Factory renders M5 from the shared snapshot refresh lifecycle without enab
       (app) =>
         app.productionReadiness?.productionReady === false &&
         app.productionReadiness?.verifiedCount === 1 &&
-        app.productionReadiness?.requiredCount === 12,
+        app.productionReadiness?.requiredCount === 12 &&
+        app.productionReleaseReadiness?.status === "blocked" &&
+        app.productionReleaseReadiness?.technicalEvidenceVerified === false &&
+        app.productionReleaseReadiness?.releaseAuthorized === false,
     ),
   );
 });

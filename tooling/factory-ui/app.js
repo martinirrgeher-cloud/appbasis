@@ -1,5 +1,8 @@
 import { previewAccentForeground } from "./preview-theme.mjs";
-import { productionReadinessCopy } from "./production-readiness-status.js";
+import {
+  productionReadinessCopy,
+  productionReleaseReadinessCopy,
+} from "./production-readiness-status.js";
 
 const state = {
   snapshot: null,
@@ -221,7 +224,7 @@ function renderAppDetail(app) {
   replaceWithValueChips(elements.detailModules, app.modules, moduleLabel);
   replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
   renderPreviewReadiness(app.previewReadiness);
-  renderProductionReadiness(app.productionReadiness);
+  renderProductionReadiness(app.productionReadiness, app.productionReleaseReadiness);
 }
 
 function renderPreviewReadiness(readiness) {
@@ -253,11 +256,12 @@ function renderPreviewReadiness(readiness) {
       : "Die lokalen Preview-Voraussetzungen konnten nicht vollständig bestätigt werden. Preview bleibt gesperrt.";
 }
 
-function renderProductionReadiness(readiness) {
+function renderProductionReadiness(readiness, releaseReadiness) {
   if (!elements.detailProductionStatus || !elements.detailProductionSummary) return;
-  const copy = productionReadinessCopy(readiness);
-  elements.detailProductionStatus.textContent = copy.heading;
-  elements.detailProductionSummary.textContent = copy.detail;
+  const m5Copy = productionReadinessCopy(readiness);
+  const m6Copy = productionReleaseReadinessCopy(releaseReadiness);
+  elements.detailProductionStatus.textContent = `${m5Copy.heading} · ${m6Copy.heading}`;
+  elements.detailProductionSummary.textContent = `${m5Copy.detail} ${m6Copy.detail}`;
 }
 
 function previewReadinessLabel(readiness) {
