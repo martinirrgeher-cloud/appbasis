@@ -112,11 +112,15 @@ Der Workflow:
 - läuft ausschließlich manuell und mit `contents: read`,
 - verwendet die bestehende geschützte `reference-preview`-Umgebung,
 - verlangt, dass der bereits vorhandene interne Worker `appbasis-reference-role-admin` lesbar existiert,
-- verwendet danach den bestehenden fail-closed `reference-role-admin-ingress.mjs`-Vertrag,
-- verlangt live `workers.dev=false`, deaktivierte Preview-URLs, keine Custom Domain und keine Worker-Route,
-- führt keine Provider-, Secret-, Deployment- oder Produktionsänderung aus.
+- verwendet den bestehenden `reference-role-admin-ingress.mjs`-Vertrag, dessen Providerprüfung in diesem Slice fail-closed auf die autoritativen Cloudflare-Inventare gehärtet wurde,
+- verlangt live `workers.dev=false` und deaktivierte Preview-URLs,
+- akzeptiert nur eine vollständige, service-gefilterte Custom-Domain-Antwort ohne Domain; fehlende oder mehrseitige/invollständige Pagination bleibt blockiert,
+- inventarisiert alle Cloudflare-Zonen des Accounts einschließlich `internal` paginiert und prüft für jede Zone den autoritativen Worker-Routen-Endpunkt; jede Route auf den privilegierten Worker blockiert,
+- führt ausschließlich `GET`-/read-only Providerprüfungen aus und nimmt keine Provider-, Secret-, Deployment- oder Produktionsänderung vor.
 
-Ein erfolgreicher Workflow-Lauf ist zunächst **nur eine app-spezifische Evidenzquelle**. Er setzt `privilegedControlPlaneIsolation` im gemeinsamen Factory-Gate nicht automatisch auf `true`. Dafür braucht es einen späteren, eng begrenzten Consumer, der einen hinreichend frischen erfolgreichen Lauf eindeutig an die konkrete App und Zielumgebung bindet. Fehlt diese Bindung oder ist der Providerzustand nicht lesbar, bleibt das Kriterium offen.
+Die Härtung des gemeinsamen Reference-Ingress-Verifiers ist notwendig, weil das frühere optionale `routes`-Feld aus dem Account-Script-Inventar keinen belastbaren vollständigen Worker-Routen-Nachweis lieferte. Die Änderung erweitert keine öffentliche Runtime-Funktion; sie macht einen bereits bestehenden Security-Check strenger und fail-closed. Ein bestehendes Cloudflare-Token muss dafür die benötigten Leserechte auf Zonen und Worker-Routen besitzen; fehlen sie, schlägt die Evidenzprüfung sicher fehl. Dieser Slice ändert keine Token- oder Secret-Berechtigungen.
+
+Ein erfolgreicher Workflow-Lauf ist zunächst **nur eine app-spezifische Evidenzquelle**. Er setzt `privilegedControlPlaneIsolation` im gemeinsamen Factory-Gate nicht automatisch auf `true`. Dafür braucht es einen späteren, eng begrenzten Consumer, der einen hinreichend frischen erfolgreichen Lauf eindeutig an die konkrete App und Zielumgebung bindet. Fehlt diese Bindung oder ist der Providerzustand nicht vollständig lesbar, bleibt das Kriterium offen.
 
 Damit bleibt der aktuelle Factory-Snapshot trotz dieser neuen Evidenzquelle bei **1/12**; es wird keine Repository-Wahrheit aus einem vergangenen Providerzustand erfunden.
 
@@ -162,4 +166,4 @@ Diese Punkte bleiben deshalb im Factory-Gate offen und blockieren Produktion.
 
 ## Sicherheitsgrenze
 
-Dieser Slice verändert keine M3-Runtime-, M3-Workflow-, M4-Provider-, App-Manifest-, Generator-Grund- oder gemeinsame Security-Foundation-Verträge. Er führt keine Produktionsfreigabe und keine externe Provideraktion aus.
+Dieser Slice verändert keine M3-Runtime-, M3-Workflow-, M4-Provider-, App-Manifest- oder Generator-Grundverträge. Er härtet ausschließlich den bereits bestehenden Reference-Control-Plane-Ingress-Verifier für den realen M5-Evidenzverbraucher; keine öffentliche Runtime-Funktion, kein Berechtigungsmodell und kein Providerzustand wird geändert. Er führt keine Produktionsfreigabe und keine externe Provideraktion aus.
