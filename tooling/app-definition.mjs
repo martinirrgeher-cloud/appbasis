@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { withAppRegistryLock } from "./app-publication.mjs";
+import { enforceUlcLinzM5TargetPolicy } from "./ulc-linz-m5-target-policy.mjs";
 
 const APP_DEFINITION_FILE = "appbasis.app.json";
 const APP_DEFINITION_KEYS = new Set([
@@ -121,6 +122,7 @@ async function readAndValidateAppDefinitions(
     }
 
     const definition = parseAppDefinition(parsed, { directoryName });
+    enforceUlcLinzM5TargetPolicy(definition);
     if (appIds.has(definition.appId)) {
       throw new Error(`Duplicate appId: ${definition.appId}.`);
     }

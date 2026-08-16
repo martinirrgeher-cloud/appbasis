@@ -16,6 +16,7 @@ import { parseAppDefinition } from "./app-definition.mjs";
 import { acquireAppRegistryLock } from "./app-publication.mjs";
 import { renderGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
+import { enforceUlcLinzM5TargetPolicy } from "./ulc-linz-m5-target-policy.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-";
 const WORKSPACE_FINALIZATION_TIMEOUT_MS = 90_000;
@@ -33,6 +34,7 @@ export async function createAppSkeleton(input, options = {}) {
     },
     { directoryName: input.appId },
   );
+  enforceUlcLinzM5TargetPolicy(definition);
 
   const availableModules = new Set(
     await directoryNames(join(repositoryRoot, "modules")),
