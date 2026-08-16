@@ -43,6 +43,9 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   const versionResolve = workflow.indexOf(
     "Resolve exact one-time m3-preview initial version",
   );
+  const acceptanceCredentialPreflight = workflow.indexOf(
+    "Preflight m3-preview acceptance credentials before traffic",
+  );
   const versionDeploy = workflow.indexOf(
     "Deploy exact initial m3-preview Worker version",
   );
@@ -52,12 +55,17 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   const runtimeSmoke = workflow.indexOf(
     "Verify deployed m3-preview runtime boundary",
   );
+  const acceptanceSmoke = workflow.indexOf(
+    "Verify m3-preview authenticated permission and tasks acceptance",
+  );
   assert.ok(schemaGate >= 0);
   assert.ok(workerGate > schemaGate);
   assert.ok(versionResolve > workerGate);
-  assert.ok(versionDeploy > versionResolve);
+  assert.ok(acceptanceCredentialPreflight > versionResolve);
+  assert.ok(versionDeploy > acceptanceCredentialPreflight);
   assert.ok(deploymentVerify > versionDeploy);
   assert.ok(runtimeSmoke > deploymentVerify);
+  assert.ok(acceptanceSmoke > runtimeSmoke);
 
   assert.match(workflow, /node \.\/tooling\/m3-preview-hyperdrive\.mjs resolve/);
   assert.doesNotMatch(workflow, /m3-preview-hyperdrive\.mjs ensure/);
@@ -70,6 +78,11 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   assert.match(workflow, /APPBASIS_APPLY_WORKER: "0"/);
   assert.match(workflow, /m3-preview-initial-version\.mjs resolve-for-deploy/);
   assert.match(workflow, /m3-preview-initial-version\.mjs verify-deploy/);
+  assert.match(workflow, /readM3PreviewAcceptanceEnvironment/);
+  assert.match(workflow, /APPBASIS_SMOKE_ALLOWED_TEMPORARY_PASSWORD/);
+  assert.match(workflow, /APPBASIS_SMOKE_ALLOWED_PASSWORD/);
+  assert.match(workflow, /APPBASIS_SMOKE_DENIED_TEMPORARY_PASSWORD/);
+  assert.match(workflow, /APPBASIS_SMOKE_DENIED_PASSWORD/);
   assert.match(workflow, /wrangler versions deploy/);
   assert.match(workflow, /\$\{APPBASIS_VERSION_ID\}@100%/);
   assert.match(workflow, /-y/);
