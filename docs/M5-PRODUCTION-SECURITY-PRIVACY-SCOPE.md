@@ -109,14 +109,14 @@ Der Fortschritt dieses Slices besteht darin, dass der geforderte High-Privacy-Ve
 
 Der Workflow:
 
-- läuft ausschließlich manuell und mit `contents: read`,
+- läuft ausschließlich manuell, nur erfolgreich von `refs/heads/main` und mit `contents: read`,
 - verwendet die bestehende geschützte `reference-preview`-Umgebung,
 - verlangt, dass der bereits vorhandene interne Worker `appbasis-reference-role-admin` lesbar existiert,
 - verwendet danach den bestehenden fail-closed `reference-role-admin-ingress.mjs`-Vertrag,
 - verlangt live `workers.dev=false`, deaktivierte Preview-URLs, keine Custom Domain und keine Worker-Route,
 - führt keine Provider-, Secret-, Deployment- oder Produktionsänderung aus.
 
-Der bestehende Ingress-Verifier bleibt unverändert. Seine accountweiten Worker-APIs und insbesondere das dem Worker zugeordnete `routes`-Inventar wurden bereits im Reference-Control-Plane-Slice bewusst gewählt, damit die Prüfung nicht von token-sichtbaren Zonen abhängt. M5 baut auf diesem bestehenden Security-Vertrag auf, statt eine zweite Route-Inventarisierung einzuführen.
+Die bereits etablierte accountweite Worker-Route-Prüfung bleibt unverändert. Für die service-gefilterte Custom-Domain-Abfrage wird der bestehende Ingress-Verifier in diesem Slice jedoch gezielt fail-closed gehärtet: `result_info` muss vorhanden und konsistent sein; fehlende Pagination, eine unerwartete Seite, ein nicht zur Ergebnisliste passender `count` oder mehr als eine Seite werden nicht als „keine Custom Domain“ akzeptiert. Damit wird das konkrete Review-Finding behoben, ohne eine zweite Route-Inventarisierung einzuführen.
 
 Ein erfolgreicher Workflow-Lauf ist zunächst **nur eine app-spezifische Evidenzquelle**. Er setzt `privilegedControlPlaneIsolation` im gemeinsamen Factory-Gate nicht automatisch auf `true`. Dafür braucht es einen späteren, eng begrenzten Consumer, der einen hinreichend frischen erfolgreichen Lauf eindeutig an die konkrete App und Zielumgebung bindet. Fehlt diese Bindung oder ist der Providerzustand nicht lesbar, bleibt das Kriterium offen.
 
@@ -164,4 +164,4 @@ Diese Punkte bleiben deshalb im Factory-Gate offen und blockieren Produktion.
 
 ## Sicherheitsgrenze
 
-Dieser Slice verändert keine M3-Runtime-, M3-Workflow-, M4-Provider-, App-Manifest-, Generator-Grund- oder gemeinsame Security-Foundation-Verträge. Er führt keine Produktionsfreigabe und keine externe Provideraktion aus.
+Dieser Slice verändert keine M3-Runtime-, M3-Workflow-, M4-Provider-, App-Manifest- oder Generator-Grundverträge. Er härtet ausschließlich die bestehende read-only Custom-Domain-Prüfung des Reference-Control-Plane-Ingress-Verifiers fail-closed; die accountweite Route-Prüfung, das Berechtigungsmodell und der Providerzustand bleiben unverändert. Er führt keine Produktionsfreigabe und keine externe Provideraktion aus.
