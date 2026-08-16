@@ -91,6 +91,11 @@ jobs:
             exit 1
           }
 
+      - name: Verify m3-preview database schema before provider changes
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: node ./apps/m3-preview/tooling/verify-preview-schema.mjs
+
       - name: Resolve generated workers.dev origin
         shell: bash
         env:
