@@ -30,6 +30,19 @@ test("pins m3-preview as a concrete guarded deployment consumer", async () => {
   assert.match(workflow, /APPBASIS_M3_PREVIEW_DEPLOY_APPLY/);
   assert.match(workflow, /deployment was not explicitly confirmed/);
 
+  assert.match(
+    workflow,
+    /node \.\/apps\/m3-preview\/tooling\/verify-preview-schema\.mjs/,
+  );
+  const schemaGate = workflow.indexOf(
+    "Verify m3-preview database schema before provider changes",
+  );
+  const secretMutation = workflow.indexOf(
+    "Synchronize required Worker secret without Worker creation",
+  );
+  assert.ok(schemaGate >= 0);
+  assert.ok(secretMutation > schemaGate);
+
   assert.match(workflow, /node \.\/tooling\/m3-preview-hyperdrive\.mjs resolve/);
   assert.doesNotMatch(workflow, /m3-preview-hyperdrive\.mjs ensure/);
   assert.doesNotMatch(workflow, /APPBASIS_APPLY_HYPERDRIVE/);
