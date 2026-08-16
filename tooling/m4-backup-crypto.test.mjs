@@ -8,6 +8,7 @@ import {
   decryptM4BackupFile,
   encryptM4BackupFile,
   parseM4BackupEncryptionKey,
+  writeM4FileFully,
 } from "./m4-backup-crypto.mjs";
 
 const KEY = "11".repeat(32);
@@ -48,6 +49,39 @@ test("encrypts and decrypts an M4 backup with authenticated AES-256-GCM", async 
     keyHex: KEY,
   });
   assert.deepEqual(await readFile(paths.restored), source);
+});
+
+test("retries short file writes until every byte is written", async () => {
+  const source = Buffer.from("short-write-regression");
+  const written = [];
+  const calls = [];
+  const fakeFile = {
+    async write(buffer, offset, length, position) {
+      assert.equal(buffer, source);
+      assert.equal(position, null);
+      calls.push({ offset, length });
+      const bytesWritten = Math.min(3, length);
+      written.push(buffer.subarray(offset, offset + bytesWritten));
+      return { bytesWritten, buffer };
+    },
+  };
+
+  await writeM4FileFully(fakeFile, source);
+
+  assert.deepEqual(Buffer.concat(written), source);
+  assert.ok(calls.length > 1);
+  assert.deepEqual(calls[0], { offset: 0, length: source.length });
+  assert.equal(calls.at(-1).offset + calls.at(-1).length, source.length);
+});
+
+test("fails closed when a short write stops making progress", async () => {
+  await assert.rejects(
+    writeM4FileFully(
+      { async write() { return { bytesWritten: 0 }; } },
+      Buffer.from("must-not-truncate"),
+    ),
+    /did not advance/,
+  );
 });
 
 test("rejects a wrong key without leaving unauthenticated plaintext", async () => {
