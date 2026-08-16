@@ -1,0 +1,86 @@
+name: M4 Pre-Migration Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_id:
+        description: Canonical migration/change identifier for the pre-migration snapshot
+        required: true
+        type: string
+      expires_at:
+        description: Explicit UTC RFC3339 expiry for the manual snapshot
+        required: true
+        type: string
+      apply:
+        description: Create the snapshot only after explicit external approval
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m4-pre-migration-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    name: Guarded pre-migration snapshot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: m4-dr
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Validate and mask protected snapshot inputs
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+          APPBASIS_M4_MIGRATION_ID: ${{ inputs.migration_id }}
+          APPBASIS_M4_SNAPSHOT_EXPIRES_AT: ${{ inputs.expires_at }}
+        run: |
+          set -euo pipefail
+          test -n "$NEON_API_KEY" || { echo 'Missing Neon API credential.' >&2; exit 1; }
+          test -n "$NEON_PROJECT_ID" || { echo 'Missing Neon project target.' >&2; exit 1; }
+          test -n "$NEON_BRANCH_ID" || { echo 'Missing Neon branch target.' >&2; exit 1; }
+          test -n "$APPBASIS_M4_MIGRATION_ID" || { echo 'Missing migration identifier.' >&2; exit 1; }
+          test -n "$APPBASIS_M4_SNAPSHOT_EXPIRES_AT" || { echo 'Missing snapshot expiry.' >&2; exit 1; }
+          echo "::add-mask::$NEON_API_KEY"
+          echo "::add-mask::$NEON_PROJECT_ID"
+          echo "::add-mask::$NEON_BRANCH_ID"
+
+      - name: Ensure guarded pre-migration snapshot
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+          APPBASIS_M4_MIGRATION_ID: ${{ inputs.migration_id }}
+          APPBASIS_M4_SNAPSHOT_EXPIRES_AT: ${{ inputs.expires_at }}
+          APPBASIS_APPLY_PRE_MIGRATION_SNAPSHOT: ${{ inputs.apply && '1' || '0' }}
+        run: node ./tooling/m4-pre-migration-snapshot.mjs ensure

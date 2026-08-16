@@ -4,7 +4,7 @@
 
 M4 beweist, dass eine spätere eigenständige Produktiv-App nicht nur gesichert, sondern in eine geeignete Zielumgebung real wiederhergestellt und fachlich geprüft werden kann.
 
-Die bisherigen Slices sind bewusst **noch nicht M4 DONE**. Sie bereiten read-only, fail-closed Prüfungen für den aktuell real verwendeten PostgreSQL-Provider Neon und die erste konkrete generierte App `m3-preview` vor. Eine allgemeine Backup-Provider- oder Restore-Abstraktion entsteht nicht, solange kein weiterer realer Verbraucher sie benötigt.
+Die bisherigen Slices sind bewusst **noch nicht M4 DONE**. Sie bereiten fail-closed Prüfungen und einen kontrollierten Pre-Migration-Sicherungspfad für den aktuell real verwendeten PostgreSQL-Provider Neon sowie die erste konkrete generierte App `m3-preview` vor. Eine allgemeine Backup-Provider- oder Restore-Abstraktion entsteht nicht, solange kein weiterer realer Verbraucher sie benötigt.
 
 ## Slice 1 – Read-only Neon Backup Readiness
 
@@ -40,7 +40,7 @@ Der Fingerprint umfasst ausschließlich:
 - Permission-Tabellen inklusive Administration-Audit,
 - das Tasks-Fachmodul.
 
-Namen, E-Mail-Adressen, Tokens, Passwörter, Task-Texte oder andere Datensätze werden nicht ausgegeben. Der erwartete Fingerprint wird als geschützter Wert behandelt.
+Namen, E-Mail-Adressen, Tokens, Passwörter, Task-Texte oder andere Datensätze werden nicht ausgegeben. Der erwartete Fingerprint wird als geschützter Wert behandelt. Vor der Serialisierung werden die Datenbank-Session-Einstellungen für Zeitzone und Datumsdarstellung kanonisiert, damit identische Restore-Daten nicht allein wegen unterschiedlicher Login-Defaults verschiedene Fingerprints ergeben.
 
 ### Fingerprint vor dem Restore erfassen
 
@@ -69,11 +69,33 @@ Nach einem getrennt und ausdrücklich freigegeben durchgeführten Restore wird d
 
 Dieser Slice beweist Datenintegrität des Restore-Ziels, aber noch **nicht** den kompletten fachlichen Restore. Health-, Auth-, Permission- und Tasks-Smokes gegen die wiederhergestellte Laufzeit bleiben verpflichtend.
 
+## Slice 3 – Gegateter Pre-Migration-Snapshot
+
+`tooling/m4-pre-migration-snapshot.mjs` bereitet den M4-Pflichtpunkt **Sicherung vor kritischen Migrationen** vor.
+
+Der Vertrag ist bewusst Neon-spezifisch und nutzt den aktuellen Snapshot-Vertrag:
+
+- Zielprojekt und Zielbranch werden explizit vorgegeben,
+- der Branch wird zuerst read-only geladen und muss ein betriebsbereiter Root-Branch sein,
+- der Snapshot-Name wird deterministisch aus einer kanonischen Migrations-/Change-ID abgeleitet,
+- `expires_at` muss ausdrücklich als zukünftiger UTC-RFC3339-Zeitpunkt vorgegeben werden; es gibt keine versteckte Retention-Vorgabe,
+- bestehende Snapshots werden vor jeder möglichen Mutation per GET geprüft,
+- ein exakt passender bestehender Snapshot macht einen erneuten Lauf ohne weiteren POST erfolgreich,
+- mehrdeutige oder abweichende gleichnamige Snapshots führen fail-closed zum Abbruch,
+- ohne `apply=true` bleibt der gesamte Lauf read-only,
+- mit `apply=true` wird höchstens **ein** Snapshot-POST ausgeführt,
+- nach erfolgreichem POST wird der Snapshot per GET autoritativ zurückgelesen und gegen Name, Quellbranch und Ablaufzeit geprüft,
+- bei Timeout, Netzwerkfehler oder unklarem Providerergebnis wird niemals blind erneut POST ausgeführt; ein read-only Reconciliation-GET darf einen bereits entstandenen exakten Snapshot erkennen, ansonsten bleibt das Ergebnis bewusst unbestätigt und ein späterer neuer Preflight ist erforderlich.
+
+Der manuelle Workflow `.github/workflows/m4-pre-migration-snapshot.yml` verwendet `m4-dr`, `contents: read`, einen standardmäßig deaktivierten Apply-Schalter und geschützte Providerparameter.
+
+**Wichtig:** Dieser Repository-Slice führt den Workflow nicht aus und erzeugt keinen Snapshot. Eine reale Snapshot-Erzeugung ist eine externe Provideränderung und benötigt weiterhin eine ausdrückliche Nutzerfreigabe.
+
 ## Weitere M4-Slices
 
 1. Produktions-Policy und Zielprojekt festlegen.
 2. Neon Backup-Schedule kontrolliert konfigurieren. Das ist eine externe Provideränderung und benötigt ausdrückliche Freigabe.
-3. Vor kritischen Migrationen einen expliziten manuellen Snapshot-Pfad ergänzen.
+3. Den Pre-Migration-Snapshot-Pfad an einem ausdrücklich freigegebenen realen Ziel ausführen und dokumentieren.
 4. Einen Restore zunächst in eine getrennte Restore-/Preview-Zielumgebung durchführen, niemals direkt in die laufende Produktion.
 5. Den vorab erfassten Restore-Fingerprint gegen das Restore-Ziel verifizieren.
 6. Wiederhergestellte Laufzeit technisch prüfen: Health-, Identity-/Auth-, Permission- und Tasks-Smokes.
@@ -82,6 +104,6 @@ Dieser Slice beweist Datenintegrität des Restore-Ziels, aber noch **nicht** den
 
 ## M4 DONE Gate
 
-M4 ist erst DONE, wenn zusätzlich zum Backup-/PITR-Vertrag mindestens ein **realer Restore** erfolgreich durchgeführt, per Fingerprint auf Datenintegrität geprüft, technisch über die erforderlichen Smokes und fachlich geprüft sowie dokumentiert wurde.
+M4 ist erst DONE, wenn automatische Backups/Retention/PITR ausreichend konfiguriert sind, ein Backup vor kritischen Migrationen real möglich und geprüft ist, der Recovery-Prozess dokumentiert ist und mindestens ein **realer Restore** erfolgreich durchgeführt, per Fingerprint auf Datenintegrität geprüft, technisch über die erforderlichen Smokes und fachlich geprüft sowie dokumentiert wurde.
 
 Object Storage wird ergänzt, sobald eine reale App Dateien verwendet.
