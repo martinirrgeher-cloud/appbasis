@@ -148,6 +148,70 @@ function successfulSteps({
   ];
 }
 
+function defaultUuidFetch() {
+  let createdTask = null;
+  return async (url, options) => {
+    const path = new URL(url).pathname;
+    const method = options.method ?? "GET";
+    const cookie = options.headers.get("cookie");
+
+    if (path === "/api/auth/sign-in" && method === "POST") {
+      const body = JSON.parse(options.body);
+      const identityId = body.username === "m3.smoke.denied" ? "denied-id" : "allowed-id";
+      return jsonResponse(session(body.username, identityId), {
+        cookie: `session=${identityId}`,
+      });
+    }
+
+    if (path === "/api/auth/session" && method === "GET") {
+      if (cookie === "session=denied-id") {
+        return jsonResponse(session("m3.smoke.denied", "denied-id"));
+      }
+      assert.equal(cookie, "session=allowed-id");
+      return jsonResponse(session("m3.smoke.allowed", "allowed-id"));
+    }
+
+    if (path === "/api/tasks" && method === "GET" && cookie === "session=denied-id") {
+      return jsonResponse(
+        { error: { code: "PERMISSION_DENIED", message: "denied" } },
+        { status: 403 },
+      );
+    }
+
+    if (path === "/api/tasks" && method === "GET") {
+      assert.equal(cookie, "session=allowed-id");
+      return jsonResponse({ tasks: createdTask === null ? [] : [createdTask] });
+    }
+
+    if (path === "/api/tasks" && method === "POST") {
+      assert.equal(cookie, "session=allowed-id");
+      const body = JSON.parse(options.body);
+      const marker = body.title.replace("M3 acceptance ", "");
+      assert.match(marker, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      assert.equal(body.title, `M3 acceptance ${marker}`);
+      assert.equal(
+        body.description,
+        `AppBasis generated preview acceptance ${marker}.`,
+      );
+      createdTask = {
+        id: "task-default-uuid",
+        title: body.title,
+        description: body.description,
+        status: "open",
+      };
+      return jsonResponse({ task: createdTask });
+    }
+
+    if (path === "/api/tasks/task-default-uuid/toggle" && method === "POST") {
+      assert.equal(cookie, "session=allowed-id");
+      createdTask = { ...createdTask, status: "completed" };
+      return jsonResponse({ task: createdTask });
+    }
+
+    throw new Error(`unexpected request ${method} ${path}`);
+  };
+}
+
 test("pins canonical and distinct m3-preview acceptance credentials", () => {
   assert.deepEqual(readM3PreviewAcceptanceEnvironment(ENV), {
     baseURL: BASE_URL,
@@ -174,6 +238,18 @@ test("proves auth, explicit permission denial and persistent tasks behavior", as
     { fetchImpl, randomUUID: () => "marker-1" },
   );
   fetchImpl.assertDone();
+  assert.deepEqual(result, {
+    status: "ok",
+    deniedIdentityId: "denied-id",
+    allowedIdentityId: "allowed-id",
+  });
+});
+
+test("uses the real default UUID generator with its Crypto receiver intact", async () => {
+  const result = await runM3PreviewAcceptanceSmoke(
+    readM3PreviewAcceptanceEnvironment(ENV),
+    { fetchImpl: defaultUuidFetch() },
+  );
   assert.deepEqual(result, {
     status: "ok",
     deniedIdentityId: "denied-id",
