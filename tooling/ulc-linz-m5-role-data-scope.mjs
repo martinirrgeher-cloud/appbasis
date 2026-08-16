@@ -2,8 +2,7 @@ const SOURCE_ROLE_IDS = Object.freeze(["admin", "trainer", "athlete", "parent"])
 
 const RUNTIME_ROLE_IDS = Object.freeze({
   admin: "ulc-linz:admin",
-  kindertrainer: "ulc-linz:kindertrainer",
-  leistungstrainer: "ulc-linz:leistungstrainer",
+  trainer: "ulc-linz:trainer",
   athlete: "ulc-linz:athlete",
   parent: "ulc-linz:parent",
 });
@@ -49,9 +48,9 @@ const PARENT_VIEW_MODULES = Object.freeze(["kindertraining", "u12", "u14"]);
 // App-specific M5 Phase-B target contract, derived from the current ULC Linz
 // production source. This is policy input only: it does not make
 // rolesAndPermissions verified until the ULC target runtime consumes and proves
-// these boundaries. Source role `trainer` is intentionally mapped to two
-// distinct AppBasis runtime role IDs so its different capability profiles can
-// never be merged into a broader role by provisioning.
+// these boundaries. ULC permission templates are defaults, not distinct source
+// roles; individually managed module permissions remain authoritative and map
+// to the existing AppBasis principal grant/revoke model.
 export const ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY = deepFreeze({
   schemaVersion: 1,
   id: "ulc-linz-role-data-scope-v0.1",
@@ -60,43 +59,48 @@ export const ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY = deepFreeze({
     commit: "682ed5d37e7206f7fa521e5dab40f840cc303f0b",
   },
   sourceRoles: [...SOURCE_ROLE_IDS],
-  runtimeRoles: {
-    admin: {
-      sourceRole: "admin",
-      roleId: RUNTIME_ROLE_IDS.admin,
-      mode: "own-organization-admin",
-    },
+  runtimeRoleIds: { ...RUNTIME_ROLE_IDS },
+  permissionTemplates: {
     kindertrainer: {
       sourceRole: "trainer",
-      roleId: RUNTIME_ROLE_IDS.kindertrainer,
+      semantics: "defaults-only",
       view: [...KINDERTRAINER_MODULES],
       edit: [...KINDERTRAINER_MODULES],
     },
     leistungstrainer: {
       sourceRole: "trainer",
-      roleId: RUNTIME_ROLE_IDS.leistungstrainer,
+      semantics: "defaults-only",
       view: [...LEISTUNGSTRAINER_VIEW_MODULES],
       edit: [...LEISTUNGSTRAINER_EDIT_MODULES],
     },
     athlete: {
       sourceRole: "athlete",
-      roleId: RUNTIME_ROLE_IDS.athlete,
+      semantics: "defaults-only",
       view: [...ATHLETE_VIEW_MODULES],
       edit: [...ATHLETE_EDIT_MODULES],
     },
     parent: {
       sourceRole: "parent",
-      roleId: RUNTIME_ROLE_IDS.parent,
+      semantics: "defaults-only",
       view: [...PARENT_VIEW_MODULES],
       edit: [],
     },
+  },
+  principalPermissionMapping: {
+    sourceField: "permissions",
+    sourceShape: "module-canView-canEdit",
+    targetMechanism: "principal-grants-revokes",
+    capabilityNamespace: "ulc-linz:module",
+    viewAction: "view",
+    editAction: "edit",
+    editImpliesView: true,
+    unknownModule: "deny",
   },
   dataScopes: {
     organizationBoundary: "same-organization-only",
     inactiveMembership: "deny",
     unknownCapability: "deny",
     auditVisibility: "admin-only",
-    canEditImpliesView: true,
     lastActiveAdmin: "protected",
     athleteLink: {
       sourceRole: "athlete",
@@ -123,10 +127,8 @@ export function isCanonicalUlcLinzM5RoleDataScopePolicy(
 }
 
 function hasUniqueRuntimeRoleIds(value) {
-  if (!isPlainObject(value) || !isPlainObject(value.runtimeRoles)) return false;
-  const roleIds = Object.values(value.runtimeRoles).map((runtimeRole) =>
-    isPlainObject(runtimeRole) ? runtimeRole.roleId : undefined,
-  );
+  if (!isPlainObject(value) || !isPlainObject(value.runtimeRoleIds)) return false;
+  const roleIds = Object.values(value.runtimeRoleIds);
   return (
     roleIds.length > 0 &&
     roleIds.every((roleId) => typeof roleId === "string" && roleId.length > 0) &&
