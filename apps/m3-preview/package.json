@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run ./test/app.test.ts ./test/worker.test.ts ./test/preview-worker.test.ts",
-    "test:postgres": "vitest run --config vitest.postgres.config.ts"
+    "test": "vitest run ./test/app.test.ts ./test/worker.test.ts ./test/preview-worker.test.ts && node --test ./tooling/apply-preview-migrations.test.mjs",
+    "test:postgres": "vitest run --config vitest.postgres.config.ts && node --test ./test/preview-migration-executor.postgres.e2e.mjs",
+    "migrate:preview": "node ./tooling/apply-preview-migrations.mjs"
   },
   "dependencies": {
     "@appbasis/database": "workspace:*",
