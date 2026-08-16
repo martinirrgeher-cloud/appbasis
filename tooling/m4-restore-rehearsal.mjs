@@ -175,12 +175,17 @@ async function readRestoreOperationSafety({ input, headers, branch }) {
       url.searchParams.set("cursor", cursor);
     }
 
-    const payload = await neonGetJson(
-      input.fetchImpl,
-      url.toString(),
-      headers,
-      "restore operations inspection",
-    );
+    let payload;
+    try {
+      payload = await neonGetJson(
+        input.fetchImpl,
+        url.toString(),
+        headers,
+        "restore operations inspection",
+      );
+    } catch {
+      return Object.freeze({ state: "unknown", verificationReady: false });
+    }
     if (!Array.isArray(payload?.operations)) {
       throw new Error("Neon restore operations inspection returned an invalid payload.");
     }
