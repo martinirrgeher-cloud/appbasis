@@ -83,6 +83,70 @@ test("M5 high privacy profile is canonical and fails closed on contract drift", 
   );
 });
 
+test("M5 high privacy profile rejects boxed, accessor and serialization-shaped values", () => {
+  const base = structuredClone(HIGH_PRIVACY_PROFILE);
+
+  assert.equal(
+    isCanonicalHighPrivacyProfile({
+      ...base,
+      schemaVersion: new Number(1),
+    }),
+    false,
+  );
+  assert.equal(
+    isCanonicalHighPrivacyProfile({
+      ...base,
+      id: new String("appbasis-high-privacy-v0.1"),
+    }),
+    false,
+  );
+  assert.equal(
+    isCanonicalHighPrivacyProfile({
+      ...base,
+      appliesTo: [new String("children"), "school", "sensitive-data"],
+    }),
+    false,
+  );
+  assert.equal(
+    isCanonicalHighPrivacyProfile({
+      ...base,
+      requirements: {
+        ...base.requirements,
+        accessControl: new String("deny-by-default"),
+      },
+    }),
+    false,
+  );
+
+  const withToJson = structuredClone(base);
+  withToJson.toJSON = () => structuredClone(HIGH_PRIVACY_PROFILE);
+  assert.equal(isCanonicalHighPrivacyProfile(withToJson), false);
+
+  const withSymbol = structuredClone(base);
+  withSymbol[Symbol("extra")] = true;
+  assert.equal(isCanonicalHighPrivacyProfile(withSymbol), false);
+
+  const withAccessor = structuredClone(base);
+  Object.defineProperty(withAccessor, "id", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      return "appbasis-high-privacy-v0.1";
+    },
+  });
+  assert.equal(isCanonicalHighPrivacyProfile(withAccessor), false);
+
+  const appliesToWithExtraProperty = [...base.appliesTo];
+  appliesToWithExtraProperty.extra = true;
+  assert.equal(
+    isCanonicalHighPrivacyProfile({
+      ...base,
+      appliesTo: appliesToWithExtraProperty,
+    }),
+    false,
+  );
+});
+
 test("M5 gate is blocked when no production evidence is supplied", () => {
   const readiness = evaluateProductionReadiness();
 
