@@ -14,6 +14,7 @@ import { provisionPostgresPermissions } from "@appbasis/permissions/provisioning
 
 import {
   assertExactM3PreviewSmokePermissionState,
+  assertM3PreviewSmokePermissionStateReadyForProvisioning,
   M3PreviewSmokeBootstrapAuthenticationError,
   M3PreviewSmokeBootstrapStateError,
   readM3PreviewSmokeBootstrapEnvironment,
@@ -69,6 +70,12 @@ export async function provisionM3PreviewSmokePrincipals(options) {
         temporaryPassword: options.deniedTemporaryPassword,
       });
 
+      const store = new PostgresPermissionStore(connection.client);
+      await assertM3PreviewSmokePermissionStateReadyForProvisioning(store, {
+        allowedIdentityId: allowed.identityId,
+        deniedIdentityId: denied.identityId,
+      });
+
       await provisionPostgresPermissions(connection.client, {
         knownCapabilities: DEMO_KNOWN_CAPABILITIES,
         roles: DEMO_ROLE_BUNDLES,
@@ -84,7 +91,6 @@ export async function provisionM3PreviewSmokePrincipals(options) {
         ],
       });
 
-      const store = new PostgresPermissionStore(connection.client);
       await assertExactM3PreviewSmokePermissionState(store, {
         allowedIdentityId: allowed.identityId,
         deniedIdentityId: denied.identityId,

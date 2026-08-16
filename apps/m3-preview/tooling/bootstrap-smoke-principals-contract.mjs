@@ -68,33 +68,63 @@ export function readM3PreviewSmokeBootstrapEnvironment(env = process.env) {
   });
 }
 
-export async function assertExactM3PreviewSmokePermissionState(
+export async function assertM3PreviewSmokePermissionStateReadyForProvisioning(
   store,
   { allowedIdentityId, deniedIdentityId },
 ) {
   const allowed = await store.findPrincipal(allowedIdentityId);
   const denied = await store.findPrincipal(deniedIdentityId);
   if (
-    allowed === null ||
-    allowed.roleIds.length !== 1 ||
-    allowed.roleIds[0] !== M3_PREVIEW_SMOKE_CONTRACT.allowedRoleId ||
-    allowed.grants.length !== 0 ||
-    allowed.revokes.length !== 0
+    allowed !== null &&
+    !isEmptyPermissionState(allowed) &&
+    !isExactAllowedPermissionState(allowed)
   ) {
+    throw new M3PreviewSmokeBootstrapStateError(
+      "m3-preview allowed smoke principal has unsafe pre-existing permission state.",
+    );
+  }
+  if (denied !== null && !isEmptyPermissionState(denied)) {
+    throw new M3PreviewSmokeBootstrapStateError(
+      "m3-preview denied smoke principal has unsafe pre-existing permission state.",
+    );
+  }
+}
+
+export async function assertExactM3PreviewSmokePermissionState(
+  store,
+  { allowedIdentityId, deniedIdentityId },
+) {
+  const allowed = await store.findPrincipal(allowedIdentityId);
+  const denied = await store.findPrincipal(deniedIdentityId);
+  if (!isExactAllowedPermissionState(allowed)) {
     throw new M3PreviewSmokeBootstrapStateError(
       "m3-preview allowed smoke principal has unexpected permission state.",
     );
   }
-  if (
-    denied === null ||
-    denied.roleIds.length !== 0 ||
-    denied.grants.length !== 0 ||
-    denied.revokes.length !== 0
-  ) {
+  if (!isEmptyPermissionState(denied)) {
     throw new M3PreviewSmokeBootstrapStateError(
       "m3-preview denied smoke principal has unexpected permission state.",
     );
   }
+}
+
+function isExactAllowedPermissionState(value) {
+  return (
+    value !== null &&
+    value.roleIds.length === 1 &&
+    value.roleIds[0] === M3_PREVIEW_SMOKE_CONTRACT.allowedRoleId &&
+    value.grants.length === 0 &&
+    value.revokes.length === 0
+  );
+}
+
+function isEmptyPermissionState(value) {
+  return (
+    value !== null &&
+    value.roleIds.length === 0 &&
+    value.grants.length === 0 &&
+    value.revokes.length === 0
+  );
 }
 
 function requiredPostgresURL(value) {
