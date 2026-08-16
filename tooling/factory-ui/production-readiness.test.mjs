@@ -162,7 +162,7 @@ test("inherited readiness values cannot count as production evidence", () => {
   }
 });
 
-test("repository evidence verifies only canonical repository-level M5 contracts", () => {
+test("repository evidence does not infer app-specific high privacy binding", () => {
   const definition = Object.freeze({
     schemaVersion: 2,
     appId: "privacy-evidence-test",
@@ -172,7 +172,6 @@ test("repository evidence verifies only canonical repository-level M5 contracts"
   });
 
   assert.deepEqual(deriveRepositoryProductionReadinessEvidence(definition), {
-    highPrivacyProfile: true,
     secretsOutsideAppManifests: true,
   });
 
@@ -186,34 +185,34 @@ test("repository evidence verifies only canonical repository-level M5 contracts"
   );
 });
 
-test("Factory snapshot consumes only repository-proven M5 evidence and keeps release blocked", async () => {
+test("Factory snapshot keeps high privacy evidence open until an app-specific binding exists", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot);
 
   assert.ok(snapshot.apps.length > 0);
   for (const app of snapshot.apps) {
     assert.equal(app.productionReadiness.status, "blocked");
     assert.equal(app.productionReadiness.productionReady, false);
-    assert.equal(app.productionReadiness.verifiedCount, 2);
+    assert.equal(app.productionReadiness.verifiedCount, 1);
     assert.equal(app.productionReadiness.requiredCount, expectedIds.length);
     assert.deepEqual(
       app.productionReadiness.criteria.map((criterion) => criterion.id),
       expectedIds,
     );
-    for (const criterionId of ["highPrivacyProfile", "secretsOutsideAppManifests"]) {
-      assert.equal(
-        app.productionReadiness.criteria.find(
-          (criterion) => criterion.id === criterionId,
-        )?.status,
-        "verified",
-      );
-    }
+    assert.equal(
+      app.productionReadiness.criteria.find(
+        (criterion) => criterion.id === "secretsOutsideAppManifests",
+      )?.status,
+      "verified",
+    );
+    assert.equal(
+      app.productionReadiness.criteria.find(
+        (criterion) => criterion.id === "highPrivacyProfile",
+      )?.status,
+      "open",
+    );
     assert.ok(
       app.productionReadiness.criteria
-        .filter(
-          (criterion) =>
-            criterion.id !== "highPrivacyProfile" &&
-            criterion.id !== "secretsOutsideAppManifests",
-        )
+        .filter((criterion) => criterion.id !== "secretsOutsideAppManifests")
         .every((criterion) => criterion.status === "open"),
     );
   }
