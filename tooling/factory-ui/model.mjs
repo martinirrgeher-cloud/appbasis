@@ -6,6 +6,7 @@ import {
   SUPPORTED_PLATFORM_SERVICES,
 } from "../app-definition.mjs";
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
+import { deriveM3PreviewAcceptanceEvidence } from "./m3-preview-acceptance-evidence.mjs";
 import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
 import { evaluateProductionReadiness } from "./production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
@@ -54,6 +55,7 @@ async function withFactoryReadiness(repositoryRoot, definition) {
     deriveRepositoryProductionReadinessEvidence(definition);
   const productionReadiness = evaluateProductionReadiness(productionReadinessEvidence);
   const productionReleaseReadiness = evaluateM6ProductionReleaseReadiness({
+    ...deriveM3PreviewAcceptanceEvidence(definition),
     securityPrivacyReady: productionReadiness.productionReady === true,
   });
 

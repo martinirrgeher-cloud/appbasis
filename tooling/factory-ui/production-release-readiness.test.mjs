@@ -113,10 +113,13 @@ test("malformed or inherited values cannot count as M6 production evidence", () 
   }
 });
 
-test("Factory snapshot exposes M6 read-only without inventing preview or provider evidence", async () => {
+test("Factory snapshot reuses pinned M3 preview acceptance without inventing other M6 evidence", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot);
 
   assert.ok(snapshot.apps.length > 0);
+  const acceptedPreview = snapshot.apps.find((app) => app.appId === "m3-preview");
+  assert.ok(acceptedPreview);
+
   for (const app of snapshot.apps) {
     assert.equal(app.productionReleaseReadiness.status, "blocked");
     assert.equal(app.productionReleaseReadiness.technicalEvidenceVerified, false);
@@ -128,6 +131,14 @@ test("Factory snapshot exposes M6 read-only without inventing preview or provide
       expectedIds,
     );
 
+    const previewCriterion = app.productionReleaseReadiness.criteria.find(
+      (criterion) => criterion.id === "previewAccepted",
+    );
+    assert.equal(
+      previewCriterion?.status,
+      app.appId === "m3-preview" ? "verified" : "open",
+    );
+
     const securityPrivacyCriterion = app.productionReleaseReadiness.criteria.find(
       (criterion) => criterion.id === "securityPrivacyReady",
     );
@@ -137,10 +148,15 @@ test("Factory snapshot exposes M6 read-only without inventing preview or provide
     );
     assert.ok(
       app.productionReleaseReadiness.criteria
-        .filter((criterion) => criterion.id !== "securityPrivacyReady")
+        .filter(
+          (criterion) =>
+            criterion.id !== "previewAccepted" &&
+            criterion.id !== "securityPrivacyReady",
+        )
         .every((criterion) => criterion.status === "open"),
     );
   }
 
+  assert.equal(acceptedPreview.productionReleaseReadiness.verifiedCount, 1);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });

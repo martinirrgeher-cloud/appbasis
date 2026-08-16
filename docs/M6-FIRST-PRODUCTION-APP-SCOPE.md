@@ -72,6 +72,27 @@ Der bestehende Factory-Server liefert dafür ausschließlich das bereits vorhand
 
 Damit ist der bereits vorhandene M6-Vertrag im späteren Factory-Bedienfluss sichtbar, ohne einen Release-Schalter oder eine neue schreibende Control-Plane-Funktion einzuführen.
 
+## Slice 3 – M3-Acceptance als konkreter Preview-Nachweis
+
+Nach dem real erfolgreichen M3-Post-Deploy-Acceptance-Lauf kann das erste M6-Kriterium für die tatsächlich geprüfte generierte App `m3-preview` read-only belegt werden.
+
+`tooling/factory-ui/m3-preview-acceptance-evidence.mjs` enthält dafür keine neue Preview- oder Providerimplementierung, sondern ausschließlich einen kleinen, auditierbaren Verweis auf den erfolgreichen GitHub-Actions-Nachweis:
+
+- Workflow `M3 Preview Post-Deploy Acceptance`,
+- `workflow_dispatch` auf `main`,
+- erfolgreicher Run `31961655064`,
+- Run-Head `f230825c66cf7fa891b6b0cef4da77f79128cad2`,
+- M3-Deploymentvertrag über einen SHA-256-Digest an den bereits bestehenden gepinnten Source-/Worker-Version-Vertrag gebunden,
+- vollständige akzeptierte App-Definition über einen zweiten kanonischen SHA-256-Digest gebunden.
+
+Der zugrunde liegende M3-Lauf hat vor dem Erfolg unter anderem die migrierte Preview-Datenbank, den exakt gepinnten ursprünglichen Worker-Deploy, Health, anonyme Runtime-Grenze, Datenbankbindung sowie den authentifizierten Permission-/Tasks-Acceptance-Smoke geprüft.
+
+Der Adapter liefert `previewAccepted=true` ausschließlich für `m3-preview`, wenn Run-Metadaten, M3-Vertragsdigest und der Digest der aktuell gelesenen App-Definition exakt dem attestierten Zustand entsprechen. Wird der gepinnte M3-Deploymentvertrag oder die App-Definition später geändert, ist die bestehende Attestation nicht mehr gültig und das Gate fällt automatisch wieder fail-closed auf offen, bis ein neuer echter Acceptance-Nachweis vorliegt.
+
+Run-ID, Head-SHA und beide Digests bleiben interne technische Evidenz. Der Factory-Snapshot und die normale Oberfläche erhalten weiterhin nur den semantischen Boolean-Nachweis; Provider-IDs und Secrets werden dort nicht sichtbar gemacht.
+
+Damit steigt `m3-preview` im M6-Snapshot auf `1/10` technisch geprüfte Nachweise. Die übrigen neun Kriterien bleiben unverändert offen; insbesondere werden weder M4 noch M5 noch Produktionsressourcen aus dem M3-Erfolg abgeleitet.
+
 ## Sicherheitsgrenze
 
 Diese Slices verändern nicht:
@@ -88,10 +109,11 @@ Es existiert weiterhin kein Factory-Release-Endpunkt und kein produktiver Provid
 
 ## Nächste sichere Slices
 
-1. Preview sowie Backup/Recovery nur dann read-only in den M6-Snapshot einspeisen, wenn bestehende technische Nachweise die jeweilige Aussage tatsächlich belegen.
-2. Für die erste reale Produktions-App konkrete Ressourcen-Nachweise ergänzen, ohne einen allgemeinen Multi-Provider-Provisioner vorwegzubauen.
-3. Erst nach M3, M4 und M5 DONE einen getrennten, ausdrücklich freizugebenden Produktionsworkflow für die erste App entwerfen.
-4. Post-Deploy-Smoke aus den bewährten M3-Prüfmustern für diese konkrete Produktions-App ableiten.
+1. Backup/Recovery nur dann read-only in den M6-Snapshot einspeisen, wenn M4 einen belastbaren maschinenlesbaren Nachweis liefert.
+2. Security & Privacy ausschließlich über den bestehenden M5-Vertrag übernehmen; keine Abkürzung aus einzelnen Repository-Fakten.
+3. Für die erste reale Produktions-App konkrete Ressourcen-Nachweise ergänzen, ohne einen allgemeinen Multi-Provider-Provisioner vorwegzubauen.
+4. Erst nach M4 und M5 DONE einen getrennten, ausdrücklich freizugebenden Produktionsworkflow für die erste App entwerfen.
+5. Post-Deploy-Smoke aus den bewährten M3-Prüfmustern für diese konkrete Produktions-App ableiten.
 
 ## Abgrenzung zu FC1
 
