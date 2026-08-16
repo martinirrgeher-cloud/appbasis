@@ -10,6 +10,7 @@ const VERSION_ID_PATTERN =
 export const M3_PREVIEW_INITIAL_VERSION = Object.freeze({
   workerName: "appbasis-m3-preview",
   tag: "m3-preview-initial-v1",
+  sourceSha: "a359d6e6c39771e9d0dae3f73ba9918290356580",
   secretName: "BETTER_AUTH_SECRET",
 });
 
@@ -108,35 +109,37 @@ export async function verifyM3PreviewInitialVersionDeployment({
     listDeployments(deployment),
   ]);
 
-  requireExactInitialVersion(versions, normalizedVersionId);
-  if (
-    typeof worker.deployed_on !== "string" ||
-    worker.deployed_on.trim().length === 0
-  ) {
-    throw new Error(
-      "m3-preview initial version deployment did not mark the Worker as deployed.",
-    );
-  }
-  if (deployments.length !== 1) {
-    throw new Error(
-      "m3-preview first deployment did not produce exactly one deployment.",
-    );
-  }
-  const deployedVersions = deployments[0]?.versions;
-  if (
-    !Array.isArray(deployedVersions) ||
-    deployedVersions.length !== 1 ||
-    deployedVersions[0]?.version_id !== normalizedVersionId ||
-    deployedVersions[0]?.percentage !== 100
-  ) {
-    throw new Error(
-      "m3-preview first deployment does not route exactly 100 percent to the initial version.",
-    );
-  }
-
-  return Object.freeze({
-    status: "initial-version-deployed",
+  return verifyExactInitialDeploymentState({
+    versions,
+    worker,
+    deployments,
     versionId: normalizedVersionId,
+  });
+}
+
+export async function verifyCurrentM3PreviewInitialVersionDeployment({
+  accountId,
+  apiToken,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const deployment = validateProviderInputs({ accountId, apiToken, fetchImpl });
+  const [versions, worker, deployments] = await Promise.all([
+    listVersions(deployment),
+    getWorker(deployment),
+    listDeployments(deployment),
+  ]);
+
+  if (versions.length !== 1) {
+    throw new Error(
+      "m3-preview recovery requires exactly one Worker version.",
+    );
+  }
+  const versionId = requiredVersionId(versions[0]?.id);
+  return verifyExactInitialDeploymentState({
+    versions,
+    worker,
+    deployments,
+    versionId,
   });
 }
 
@@ -194,11 +197,52 @@ function validateProviderInputs({ accountId, apiToken, fetchImpl }) {
   });
 }
 
+function verifyExactInitialDeploymentState({
+  versions,
+  worker,
+  deployments,
+  versionId,
+}) {
+  requireExactInitialVersion(versions, versionId);
+  if (
+    typeof worker.deployed_on !== "string" ||
+    worker.deployed_on.trim().length === 0
+  ) {
+    throw new Error(
+      "m3-preview initial version deployment did not mark the Worker as deployed.",
+    );
+  }
+  if (deployments.length !== 1) {
+    throw new Error(
+      "m3-preview first deployment did not produce exactly one deployment.",
+    );
+  }
+  const deployedVersions = deployments[0]?.versions;
+  if (
+    !Array.isArray(deployedVersions) ||
+    deployedVersions.length !== 1 ||
+    deployedVersions[0]?.version_id !== versionId ||
+    deployedVersions[0]?.percentage !== 100
+  ) {
+    throw new Error(
+      "m3-preview first deployment does not route exactly 100 percent to the initial version.",
+    );
+  }
+
+  return Object.freeze({
+    status: "initial-version-deployed",
+    versionId,
+  });
+}
+
 function requireExactInitialVersion(versions, versionId) {
+  const expectedMessage =
+    `AppBasis m3-preview initial version ${M3_PREVIEW_INITIAL_VERSION.sourceSha}`;
   if (
     versions.length !== 1 ||
     versions[0]?.id !== versionId ||
-    versions[0]?.annotations?.["workers/tag"] !== M3_PREVIEW_INITIAL_VERSION.tag
+    versions[0]?.annotations?.["workers/tag"] !== M3_PREVIEW_INITIAL_VERSION.tag ||
+    versions[0]?.annotations?.["workers/message"] !== expectedMessage
   ) {
     throw new Error(
       "m3-preview Worker does not contain the exact expected initial version.",
@@ -360,9 +404,17 @@ if (isMainModule()) {
         versionId: process.argv[3],
       });
       console.log("m3-preview initial version deployment verification passed.");
+    } else if (mode === "verify-current-deploy") {
+      await verifyCurrentM3PreviewInitialVersionDeployment({
+        accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+        apiToken: process.env.CLOUDFLARE_API_TOKEN,
+      });
+      console.log(
+        "m3-preview current deployment matches the exact original initial version and source SHA.",
+      );
     } else {
       throw new Error(
-        "Expected command mode preflight, write-secrets-file, verify-upload, resolve-for-deploy or verify-deploy.",
+        "Expected command mode preflight, write-secrets-file, verify-upload, resolve-for-deploy, verify-deploy or verify-current-deploy.",
       );
     }
   } catch (error) {
