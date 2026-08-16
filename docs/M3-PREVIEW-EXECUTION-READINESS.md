@@ -1,16 +1,18 @@
 # M3 Preview Execution Readiness
 
-Dieser Slice ergänzt einen vollständig read-only Vorabcheck vor der ersten realen M3-Provideränderung.
+Dieser Slice ergänzt einen vollständig read-only Vorabcheck vor weiteren realen M3-Provideränderungen.
 
 ## Zweck
 
-Die M3-Reihenfolge beginnt mit einer realen Migration der dedizierten Preview-Datenbank. Damit diese erste Mutation nicht erfolgt, obwohl ein später benötigtes Preview-Secret fehlt oder formal unbrauchbar ist, kann vorher der Workflow `M3 Preview Execution Readiness` ausgeführt werden.
+Die kontrollierte M3-Reihenfolge beginnt grundsätzlich mit der dedizierten Preview-Datenbank und deren Migrationen. In einer bereits teilweise vorbereiteten Preview-Umgebung kann dieser Zustand jedoch schon vorhanden sein. Der Workflow `M3 Preview Execution Readiness` prüft deshalb vor weiteren Writes, ob die später benötigten geschützten Inputs formal gültig sind und ob die bestehende dedizierte M3-Datenbank read-only erreichbar ist und das erwartete Schema besitzt.
 
 ## Geprüfte Verträge
 
 Der Preflight verwendet die bereits bestehenden M3-Verträge für:
 
-- Preview-Datenbank-URL und Better-Auth-Secret,
+- exakte dedizierte Preview-Datenbank-URL,
+- tatsächliche read-only Datenbankverbindung und erwartetes M3-Schema,
+- Better-Auth-Secret,
 - technischen Root-Admin-Bootstrap,
 - Smoke-Principals-Bootstrap,
 - erlaubte und verweigerte Acceptance-Credentials.
@@ -23,6 +25,7 @@ Der Preflight:
 
 - hat kein `apply`-Flag,
 - führt keine Migration aus,
+- führt auf PostgreSQL nur Schema-Reads aus,
 - erstellt keinen Hyperdrive,
 - erstellt keinen Worker,
 - lädt keine Worker-Version hoch,
@@ -31,13 +34,13 @@ Der Preflight:
 - rotiert keine Secrets,
 - gibt keine Secretwerte aus.
 
-Er beweist nicht, dass spätere Provider-Writes garantiert erfolgreich sein werden. Er reduziert aber den vermeidbaren Teilzustand „erste Mutation erfolgt, späteres Pflicht-Secret fehlt“ und bleibt bei fehlender oder inkonsistenter Evidenz fail-closed.
+Er beweist nicht, dass spätere Provider-Writes garantiert erfolgreich sein werden. Er reduziert aber den vermeidbaren Teilzustand „weitere Mutation erfolgt, späteres Pflicht-Secret oder die erwartete Preview-Datenbank ist unbrauchbar“ und bleibt bei fehlender oder inkonsistenter Evidenz fail-closed.
 
 ## Reale M3-Reihenfolge danach
 
-Nach einem grünen Preflight bleibt die bestehende kontrollierte Reihenfolge unverändert:
+Nach einem grünen Preflight wird der vorhandene Providerzustand autoritativ gelesen und nur der noch fehlende Teil der bestehenden Reihenfolge ausgeführt:
 
-1. Preview-Datenbank migrieren,
+1. dedizierte Preview-Datenbank und Migrationen verifizieren beziehungsweise kontrolliert vervollständigen,
 2. Hyperdrive vorbereiten,
 3. Preview-Worker vorbereiten,
 4. Initial-Version ohne Traffic hochladen,
@@ -46,4 +49,4 @@ Nach einem grünen Preflight bleibt die bestehende kontrollierte Reihenfolge unv
 7. exakte Initial-Version auf Preview routen,
 8. Health/Auth/Permission/Tasks-Acceptance-Smokes durchführen.
 
-Alle schreibenden Provider- und Datenbankaktionen bleiben ausdrücklich freigabepflichtig.
+Vorhandene korrekte Providerressourcen werden wiederverwendet; fehlende oder mehrdeutige Zustände werden nicht blind überschrieben. Alle schreibenden Provider- und Datenbankaktionen bleiben ausdrücklich freigabepflichtig.
