@@ -7,8 +7,10 @@ const accountId = 'account-id';
 const apiToken = 'token-value';
 const worker = 'appbasis-reference-role-admin';
 
-function successResponse(result) {
-  return new Response(JSON.stringify({ success: true, result }), {
+function successResponse(result, resultInfo) {
+  const payload = { success: true, result };
+  if (resultInfo !== undefined) payload.result_info = resultInfo;
+  return new Response(JSON.stringify(payload), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
@@ -17,6 +19,8 @@ function successResponse(result) {
 function mockCloudflare({
   subdomain = { enabled: false, previews_enabled: false },
   domains = [],
+  domainResultInfo,
+  includeDomainResultInfo = true,
   scripts = [{ id: worker, routes: [] }],
 } = {}) {
   const calls = [];
@@ -27,7 +31,12 @@ function mockCloudflare({
       return successResponse(subdomain);
     }
     if (url.includes('/workers/domains?')) {
-      return successResponse(domains);
+      return successResponse(
+        domains,
+        includeDomainResultInfo
+          ? (domainResultInfo ?? { page: 1, count: domains.length, total_pages: 1 })
+          : undefined,
+      );
     }
     if (url.endsWith('/workers/scripts')) {
       return successResponse(scripts);
@@ -74,6 +83,21 @@ test('rejects a custom domain assigned to the internal Worker', async () => {
     verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
     /public custom domain/,
   );
+});
+
+test('fails closed when filtered custom-domain pagination cannot prove completeness', async () => {
+  for (const options of [
+    { includeDomainResultInfo: false },
+    { domainResultInfo: { page: 2, count: 0, total_pages: 2 } },
+    { domainResultInfo: { page: 1, count: 1, total_pages: 1 } },
+    { domainResultInfo: { page: 1, count: 0, total_pages: 2 } },
+  ]) {
+    const { fetchImpl } = mockCloudflare(options);
+    await assert.rejects(
+      verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
+      /custom-domain pagination/,
+    );
+  }
 });
 
 test('rejects any account-scoped Worker route associated with the internal Worker', async () => {
