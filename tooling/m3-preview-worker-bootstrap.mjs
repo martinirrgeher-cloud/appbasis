@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
 const ACCOUNT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 const WORKER_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const SUBDOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
 export const M3_PREVIEW_WORKER = Object.freeze({
   name: "appbasis-m3-preview",
@@ -18,15 +19,7 @@ export async function ensureM3PreviewWorker({
   fetchImpl = globalThis.fetch,
 } = {}) {
   const deployment = validateInputs({ accountId, apiToken, fetchImpl });
-  const existingResponse = await cloudflareRequest(
-    deployment.fetchImpl,
-    `${deployment.workerCollectionUrl}/${encodeURIComponent(M3_PREVIEW_WORKER.name)}`,
-    {
-      method: "GET",
-      headers: cloudflareHeaders(deployment.apiToken, false),
-    },
-    "get",
-  );
+  const existingResponse = await readWorker(deployment);
 
   if (existingResponse.status === 200) {
     return validateWorkerPayload(
@@ -44,6 +37,8 @@ export async function ensureM3PreviewWorker({
       "Dedicated m3-preview Worker is absent and creation was not explicitly confirmed.",
     );
   }
+
+  await requireAccountSubdomain(deployment);
 
   const createResponse = await cloudflareRequest(
     deployment.fetchImpl,
@@ -66,8 +61,12 @@ export async function ensureM3PreviewWorker({
     throw await cloudflareRejection("create", createResponse);
   }
 
+  const authoritativeResponse = await readWorker(deployment);
+  if (authoritativeResponse.status !== 200) {
+    throw await cloudflareRejection("verify", authoritativeResponse);
+  }
   return validateWorkerPayload(
-    await successPayload(createResponse, "create"),
+    await successPayload(authoritativeResponse, "verify"),
     "created",
   );
 }
@@ -88,11 +87,48 @@ function validateInputs({ accountId, apiToken, fetchImpl }) {
     throw new Error("fetchImpl must be a function.");
   }
 
+  const accountUrl = `${CLOUDFLARE_API_BASE}/accounts/${encodeURIComponent(accountId)}/workers`;
   return Object.freeze({
     apiToken,
     fetchImpl,
-    workerCollectionUrl: `${CLOUDFLARE_API_BASE}/accounts/${encodeURIComponent(accountId)}/workers/workers`,
+    accountSubdomainUrl: `${accountUrl}/subdomain`,
+    workerCollectionUrl: `${accountUrl}/workers`,
+    workerUrl: `${accountUrl}/workers/${encodeURIComponent(M3_PREVIEW_WORKER.name)}`,
   });
+}
+
+function readWorker(deployment) {
+  return cloudflareRequest(
+    deployment.fetchImpl,
+    deployment.workerUrl,
+    {
+      method: "GET",
+      headers: cloudflareHeaders(deployment.apiToken, false),
+    },
+    "get",
+  );
+}
+
+async function requireAccountSubdomain(deployment) {
+  const response = await cloudflareRequest(
+    deployment.fetchImpl,
+    deployment.accountSubdomainUrl,
+    {
+      method: "GET",
+      headers: cloudflareHeaders(deployment.apiToken, false),
+    },
+    "subdomain",
+  );
+  if (response.status !== 200) {
+    throw await cloudflareRejection("subdomain", response);
+  }
+  const payload = await successPayload(response, "subdomain");
+  if (
+    typeof payload.result.subdomain !== "string" ||
+    !SUBDOMAIN_PATTERN.test(payload.result.subdomain)
+  ) {
+    throw new Error("Cloudflare Workers account subdomain is unavailable or invalid.");
+  }
 }
 
 async function cloudflareRequest(fetchImpl, url, options, operation) {
