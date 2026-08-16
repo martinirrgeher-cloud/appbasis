@@ -60,11 +60,12 @@ Das ist bewusst **keine** Aussage darüber, ob konkrete Produktions-Secrets korr
 
 Die Factory-Detailansicht zeigt den bestehenden M5-Snapshot nun kompakt an:
 
-- `Security & Privacy x/12 geprüft` zeigt ausschließlich den vom Factory-Snapshot gelieferten Stand,
-- fehlende, inkonsistente oder nicht eindeutig lesbare Evidenz wird als `nicht verifiziert` angezeigt,
-- parallele/stale Snapshot-Antworten dürfen den Status einer inzwischen anders ausgewählten App nicht überschreiben,
+- `Security & Privacy x/12 geprüft` zeigt ausschließlich den bereits vom gemeinsamen Factory-Snapshot gelieferten Stand,
+- fehlende oder inkonsistente Evidenz wird als `nicht verifiziert` angezeigt,
+- der M5-Status wird im bestehenden `renderAppDetail(app)`-Lifecycle gerendert; Öffnen und `Aktualisieren` verwenden dadurch denselben Snapshot und denselben ausgewählten App-Zustand,
+- es gibt keinen zweiten Snapshot-Request und keinen parallelen M5-App-State,
 - auch bei `12/12` wird nur „M5 erfüllt“ angezeigt; die eigentliche Produktionsfreigabe bleibt ein separates gesperrtes Gate,
-- der Anzeige-Adapter führt ausschließlich read-only Snapshot-GETs aus und besitzt keinen Release-/Provider-Write-Pfad.
+- der Anzeige-Adapter besitzt keinen Release-/Provider-Write-Pfad.
 
 Damit wird M5 sichtbar, ohne die Trennung zwischen Readiness-Nachweis und späterer ausdrücklicher Produktionsfreigabe aufzuweichen.
 
