@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { createPostgresDatabase } from "@appbasis/database/node-runtime";
+import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { verifyM3PreviewSchema } from "../apps/m3-preview/tooling/verify-preview-schema.mjs";
 
 const EXPECTED_DATABASE_NAME = "appbasis_m3_preview";
