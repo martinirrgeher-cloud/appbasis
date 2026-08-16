@@ -63,7 +63,7 @@ export async function verifyReferenceRoleAdminPublicIngress({
     throw new Error('Role administration Worker route inventory could not identify the internal Worker exactly once.');
   }
   const routes = matchingScripts[0].routes;
-  if (routes !== undefined && !Array.isArray(routes)) {
+  if (routes !== undefined && routes !== null && !Array.isArray(routes)) {
     throw new Error('Role administration Worker route inventory is invalid.');
   }
   if (Array.isArray(routes) && routes.length !== 0) {

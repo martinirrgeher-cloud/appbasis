@@ -100,6 +100,14 @@ test('accepts an omitted optional routes field as no associated routes', async (
   );
 });
 
+test('accepts a null routes field as no associated routes', async () => {
+  const { fetchImpl } = mockCloudflare({ scripts: [{ id: worker, routes: null }] });
+
+  await assert.doesNotReject(
+    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
+  );
+});
+
 test('fails closed when the Worker route inventory is missing, duplicated or malformed', async () => {
   for (const scripts of [
     [],
