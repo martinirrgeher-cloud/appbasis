@@ -116,8 +116,8 @@ test("running, scheduling, failed, cancelling or cancelled operations never unlo
   }
 });
 
-test("missing or malformed operation evidence remains fail closed", async () => {
-  for (const operations of [undefined, [{ id: "op-without-status" }]]) {
+test("missing, empty or malformed operation evidence remains fail closed", async () => {
+  for (const operations of [undefined, [], [{ id: "op-without-status" }]]) {
     const { fetchImpl } = makeFetch({ operations });
     const result = await ensureM4RestoreRehearsal({
       ...input,
