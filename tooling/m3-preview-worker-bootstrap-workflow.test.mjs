@@ -66,7 +66,19 @@ test("pins the guarded m3-preview Worker bootstrap boundary", async () => {
   assert.doesNotMatch(workflow, /m3-preview-hyperdrive\.mjs ensure/);
 
   assert.match(bootstrap, /name: "appbasis-m3-preview"/);
-  assert.match(bootstrap, /workers\/workers/);
+  assert.match(
+    bootstrap,
+    /const accountUrl = `\$\{CLOUDFLARE_API_BASE\}\/accounts\/\$\{encodeURIComponent\(accountId\)\}\/workers`/,
+  );
+  assert.match(
+    bootstrap,
+    /workerCollectionUrl: `\$\{accountUrl\}\/workers`/,
+  );
+  assert.match(
+    bootstrap,
+    /workerUrl: `\$\{accountUrl\}\/workers\/\$\{encodeURIComponent\(M3_PREVIEW_WORKER\.name\)\}`/,
+  );
+  assert.match(bootstrap, /accountSubdomainUrl: `\$\{accountUrl\}\/subdomain`/);
   assert.match(bootstrap, /method: "POST"/);
   assert.match(bootstrap, /APPBASIS_APPLY_WORKER === "1"/);
   assert.match(bootstrap, /previews_enabled/);
