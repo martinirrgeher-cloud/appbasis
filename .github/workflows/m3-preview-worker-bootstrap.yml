@@ -1,0 +1,91 @@
+name: M3 Preview Worker Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Create the empty dedicated m3-preview Worker only when absent
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m3-preview-worker-bootstrap-appbasis-m3-preview
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: M3 preview Worker bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: m3-preview
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Validate and mask protected bootstrap inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare account.' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare Worker credential.' >&2; exit 1; }
+          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing dedicated m3-preview database connection.' >&2; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+
+      - name: Verify migrated m3-preview database before Worker creation
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: node ./apps/m3-preview/tooling/verify-preview-schema.mjs
+
+      - name: Require exact m3-preview Hyperdrive before Worker creation
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          HYPERDRIVE_ID="$(node ./tooling/m3-preview-hyperdrive.mjs resolve)"
+          test -n "$HYPERDRIVE_ID" || { echo 'Dedicated m3-preview Hyperdrive was not resolved.' >&2; exit 1; }
+          echo "::add-mask::$HYPERDRIVE_ID"
+
+      - name: Ensure empty dedicated m3-preview Worker
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_APPLY_WORKER: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          node ./tooling/m3-preview-worker-bootstrap.mjs ensure
