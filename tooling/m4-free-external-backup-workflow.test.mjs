@@ -60,7 +60,7 @@ test("M4 free backup captures fingerprint and dump from one exported snapshot", 
   assert.match(capture, /pg_export_snapshot\(\)/);
   assert.match(capture, /readM4RestoreFingerprintFromClient\(transaction\)/);
   assert.match(capture, /--snapshot=\"\$APPBASIS_M4_EXPORTED_SNAPSHOT\"/);
-  assert.match(capture, /postgres:18-alpine/);
+  assert.match(capture, /postgres:18-alpine@sha256:[0-9a-f]{64}/);
 });
 
 test("M4 free backup encrypts locally before any object upload", async () => {
@@ -98,7 +98,7 @@ test("M4 immutable writes reconcile an existing object instead of retrying PUT",
   assert.match(source, /test "\$downloaded_sha" = "\$remote_sha"/);
 });
 
-test("M4 retention inventories every managed page and prunes all expired actual keys", async () => {
+test("M4 retention inventories every managed page, audits and prunes all expired actual keys", async () => {
   const source = await workflowSource();
   const primaryUpload = source.indexOf('put_backup "$PRIMARY_KEY"');
   const prune = source.indexOf("Prune all expired managed retention objects");
@@ -117,5 +117,9 @@ test("M4 retention inventories every managed page and prunes all expired actual 
   assert.match(source, /appbasis\/m3-preview\/m4\/weekly\//);
   assert.match(source, /m4-free-backup-plan\.mjs prune "\$CREATED_AT"/);
   assert.match(source, /jq -r '\.\[\]' <<<"\$EXPIRED_KEYS"/);
+  assert.match(source, /event:\"m4-backup-retention-delete\"/);
+  assert.match(source, /result:\"deleted\"/);
+  assert.match(source, /result:\"failed\"/);
+  assert.match(source, /--arg key "\$key"/);
   assert.doesNotMatch(source, /steps\.plan\.outputs\.expired_keys/);
 });
