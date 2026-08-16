@@ -6,7 +6,7 @@ import {
   ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY,
 } from "./ulc-linz-m5-role-data-scope.mjs";
 
-test("pins the current ULC Linz roles and organization data scopes", () => {
+test("pins the current ULC Linz source roles and distinct runtime roles", () => {
   const policy = ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY;
 
   assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(policy), true);
@@ -15,15 +15,21 @@ test("pins the current ULC Linz roles and organization data scopes", () => {
     repository: "martinirrgeher-cloud/ulc-linz",
     commit: "682ed5d37e7206f7fa521e5dab40f840cc303f0b",
   });
-  assert.deepEqual(policy.roles, ["admin", "trainer", "athlete", "parent"]);
-  assert.equal(policy.permissionModel.admin.mode, "own-organization-admin");
-  assert.deepEqual(policy.permissionModel.kindertrainer, {
-    role: "trainer",
+  assert.deepEqual(policy.sourceRoles, ["admin", "trainer", "athlete", "parent"]);
+  assert.deepEqual(policy.runtimeRoles.admin, {
+    sourceRole: "admin",
+    roleId: "ulc-linz:admin",
+    mode: "own-organization-admin",
+  });
+  assert.deepEqual(policy.runtimeRoles.kindertrainer, {
+    sourceRole: "trainer",
+    roleId: "ulc-linz:kindertrainer",
     view: ["kindertraining", "u12", "u14", "countdown"],
     edit: ["kindertraining", "u12", "u14", "countdown"],
   });
-  assert.deepEqual(policy.permissionModel.leistungstrainer, {
-    role: "trainer",
+  assert.deepEqual(policy.runtimeRoles.leistungstrainer, {
+    sourceRole: "trainer",
+    roleId: "ulc-linz:leistungstrainer",
     view: [
       "performance_registration",
       "training_planning",
@@ -44,8 +50,9 @@ test("pins the current ULC Linz roles and organization data scopes", () => {
       "countdown",
     ],
   });
-  assert.deepEqual(policy.permissionModel.athlete, {
-    role: "athlete",
+  assert.deepEqual(policy.runtimeRoles.athlete, {
+    sourceRole: "athlete",
+    roleId: "ulc-linz:athlete",
     view: [
       "performance_registration",
       "training_overview",
@@ -54,11 +61,24 @@ test("pins the current ULC Linz roles and organization data scopes", () => {
     ],
     edit: ["performance_registration", "training_documentation", "countdown"],
   });
-  assert.deepEqual(policy.permissionModel.parent, {
-    role: "parent",
+  assert.deepEqual(policy.runtimeRoles.parent, {
+    sourceRole: "parent",
+    roleId: "ulc-linz:parent",
     view: ["kindertraining", "u12", "u14"],
     edit: [],
   });
+
+  const runtimeRoleIds = Object.values(policy.runtimeRoles).map(
+    (runtimeRole) => runtimeRole.roleId,
+  );
+  assert.equal(new Set(runtimeRoleIds).size, runtimeRoleIds.length);
+  assert.notEqual(
+    policy.runtimeRoles.kindertrainer.roleId,
+    policy.runtimeRoles.leistungstrainer.roleId,
+  );
+  assert.equal(policy.runtimeRoles.kindertrainer.sourceRole, "trainer");
+  assert.equal(policy.runtimeRoles.leistungstrainer.sourceRole, "trainer");
+
   assert.deepEqual(policy.dataScopes, {
     organizationBoundary: "same-organization-only",
     inactiveMembership: "deny",
@@ -67,26 +87,34 @@ test("pins the current ULC Linz roles and organization data scopes", () => {
     canEditImpliesView: true,
     lastActiveAdmin: "protected",
     athleteLink: {
-      role: "athlete",
+      sourceRole: "athlete",
       relationType: "self",
       cardinality: "one",
       explicitLinksOnly: true,
     },
     parentLink: {
-      role: "parent",
+      sourceRole: "parent",
       relationType: "managed",
       cardinality: "many",
       explicitLinksOnly: true,
     },
   });
   assert.equal(Object.isFrozen(policy), true);
-  assert.equal(Object.isFrozen(policy.permissionModel.leistungstrainer.view), true);
+  assert.equal(Object.isFrozen(policy.runtimeRoles.leistungstrainer.view), true);
   assert.equal(Object.isFrozen(policy.dataScopes.parentLink), true);
 });
 
 test("rejects broadened parent permissions", () => {
   const candidate = clonePolicy();
-  candidate.permissionModel.parent.edit.push("kindertraining");
+  candidate.runtimeRoles.parent.edit.push("kindertraining");
+
+  assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(candidate), false);
+});
+
+test("rejects colliding trainer runtime role identities", () => {
+  const candidate = clonePolicy();
+  candidate.runtimeRoles.leistungstrainer.roleId =
+    candidate.runtimeRoles.kindertrainer.roleId;
 
   assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(candidate), false);
 });
@@ -107,7 +135,7 @@ test("rejects changed self and managed athlete link semantics", () => {
 
 test("rejects policy values with extra fields or stale provenance changes", () => {
   const withExtra = clonePolicy();
-  withExtra.permissionModel.parent.extra = "unexpected";
+  withExtra.runtimeRoles.parent.extra = "unexpected";
   assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(withExtra), false);
 
   const changedSource = clonePolicy();
@@ -117,14 +145,14 @@ test("rejects policy values with extra fields or stale provenance changes", () =
 
 test("rejects arrays with extra own properties or missing entries", () => {
   const withExtraArrayProperty = clonePolicy();
-  withExtraArrayProperty.roles.extra = "unexpected";
+  withExtraArrayProperty.sourceRoles.extra = "unexpected";
   assert.equal(
     isCanonicalUlcLinzM5RoleDataScopePolicy(withExtraArrayProperty),
     false,
   );
 
   const withMissingEntry = clonePolicy();
-  delete withMissingEntry.permissionModel.parent.view[0];
+  delete withMissingEntry.runtimeRoles.parent.view[0];
   assert.equal(isCanonicalUlcLinzM5RoleDataScopePolicy(withMissingEntry), false);
 });
 
