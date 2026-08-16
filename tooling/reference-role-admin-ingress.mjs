@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 
 const CLOUDFLARE_API_ROOT = 'https://api.cloudflare.com/client/v4';
 const ROLE_ADMIN_WORKER = 'appbasis-reference-role-admin';
+const ZONE_PAGE_SIZE = 50;
+const ALL_ZONE_TYPES = 'full,partial,secondary,internal';
 
 export async function verifyReferenceRoleAdminPublicIngress({
   accountId,
@@ -53,21 +55,42 @@ export async function verifyReferenceRoleAdminPublicIngress({
     `${accountPath}/workers/scripts`,
     normalizedApiToken,
     fetchImpl,
-    'Role administration Worker route inventory',
+    'Role administration Worker inventory',
   );
-  const scriptResults = requiredArray(scripts.result, 'Role administration Worker route inventory');
+  const scriptResults = requiredArray(scripts.result, 'Role administration Worker inventory');
   const matchingScripts = scriptResults.filter(
     (candidate) => isRecord(candidate) && candidate.id === ROLE_ADMIN_WORKER,
   );
   if (matchingScripts.length !== 1) {
-    throw new Error('Role administration Worker route inventory could not identify the internal Worker exactly once.');
+    throw new Error('Role administration Worker inventory could not identify the internal Worker exactly once.');
   }
-  const routes = matchingScripts[0].routes;
-  if (routes !== undefined && routes !== null && !Array.isArray(routes)) {
-    throw new Error('Role administration Worker route inventory is invalid.');
-  }
-  if (Array.isArray(routes) && routes.length !== 0) {
-    throw new Error('Role administration Worker has a public Worker route.');
+
+  const zones = await listAccountZones({
+    accountId: normalizedAccountId,
+    apiToken: normalizedApiToken,
+    fetchImpl,
+  });
+  for (const zone of zones) {
+    const routes = await cloudflareJson(
+      `${CLOUDFLARE_API_ROOT}/zones/${encodeURIComponent(zone.id)}/workers/routes`,
+      normalizedApiToken,
+      fetchImpl,
+      `Worker routes for zone ${zone.id}`,
+    );
+    const routeResults = requiredArray(routes.result, `Worker routes for zone ${zone.id}`);
+    for (const candidate of routeResults) {
+      const route = requiredRecord(candidate, `Worker routes for zone ${zone.id}`);
+      if (
+        route.script !== undefined &&
+        route.script !== null &&
+        typeof route.script !== 'string'
+      ) {
+        throw new Error(`Worker routes for zone ${zone.id} response is invalid.`);
+      }
+      if (route.script === ROLE_ADMIN_WORKER) {
+        throw new Error('Role administration Worker has a public Worker route.');
+      }
+    }
   }
 
   return Object.freeze({
@@ -75,7 +98,60 @@ export async function verifyReferenceRoleAdminPublicIngress({
     previewUrlsEnabled: false,
     customDomainCount: 0,
     routeCount: 0,
+    checkedZoneCount: zones.length,
   });
+}
+
+async function listAccountZones({ accountId, apiToken, fetchImpl }) {
+  const zones = [];
+  const seenZoneIds = new Set();
+  let expectedTotalPages;
+  let page = 1;
+
+  while (expectedTotalPages === undefined || page <= expectedTotalPages) {
+    const zonesURL = new URL(`${CLOUDFLARE_API_ROOT}/zones`);
+    zonesURL.searchParams.set('account.id', accountId);
+    zonesURL.searchParams.set('type', ALL_ZONE_TYPES);
+    zonesURL.searchParams.set('page', String(page));
+    zonesURL.searchParams.set('per_page', String(ZONE_PAGE_SIZE));
+
+    const payload = await cloudflareJson(
+      zonesURL,
+      apiToken,
+      fetchImpl,
+      `Cloudflare zone inventory page ${page}`,
+    );
+    const zoneResults = requiredArray(payload.result, `Cloudflare zone inventory page ${page}`);
+    const resultInfo = requiredRecord(payload.result_info, `Cloudflare zone inventory page ${page} pagination`);
+    const resultPage = requiredPositiveInteger(resultInfo.page, `Cloudflare zone inventory page ${page} pagination`);
+    const totalPages = requiredPositiveInteger(
+      resultInfo.total_pages,
+      `Cloudflare zone inventory page ${page} pagination`,
+    );
+    if (resultPage !== page || totalPages < page) {
+      throw new Error(`Cloudflare zone inventory page ${page} pagination is invalid.`);
+    }
+    if (expectedTotalPages === undefined) {
+      expectedTotalPages = totalPages;
+    } else if (expectedTotalPages !== totalPages) {
+      throw new Error('Cloudflare zone inventory pagination changed during verification.');
+    }
+
+    for (const candidate of zoneResults) {
+      const zone = requiredRecord(candidate, `Cloudflare zone inventory page ${page}`);
+      const zoneId = requiredValue(zone.id, `Cloudflare zone inventory page ${page} zone id`);
+      const account = requiredRecord(zone.account, `Cloudflare zone inventory page ${page} zone account`);
+      if (account.id !== accountId || seenZoneIds.has(zoneId)) {
+        throw new Error(`Cloudflare zone inventory page ${page} response is invalid.`);
+      }
+      seenZoneIds.add(zoneId);
+      zones.push(Object.freeze({ id: zoneId }));
+    }
+
+    page += 1;
+  }
+
+  return Object.freeze(zones);
 }
 
 async function cloudflareJson(url, apiToken, fetchImpl, label) {
@@ -116,6 +192,13 @@ function requiredValue(value, field) {
   return value;
 }
 
+function requiredPositiveInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${label} is invalid.`);
+  }
+  return value;
+}
+
 function requiredRecord(value, label) {
   if (!isRecord(value)) throw new Error(`${label} response is invalid.`);
   return value;
@@ -136,7 +219,7 @@ async function main(env = process.env) {
     apiToken: env.CLOUDFLARE_API_TOKEN,
   });
   console.log(
-    `Reference role administration ingress verified: workers.dev=${result.workersDevEnabled}, preview URLs=${result.previewUrlsEnabled}, custom domains=${result.customDomainCount}, Worker routes=${result.routeCount}.`,
+    `Reference role administration ingress verified: workers.dev=${result.workersDevEnabled}, preview URLs=${result.previewUrlsEnabled}, custom domains=${result.customDomainCount}, Worker routes=${result.routeCount}, checked zones=${result.checkedZoneCount}.`,
   );
 }
 
