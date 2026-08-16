@@ -28,6 +28,8 @@ M4 benötigt eine bewusste Entscheidung für mindestens:
 
 Die M4-Checks und Setter besitzen dafür keine fachlichen Defaultwerte. Fehlende Policy-Werte führen fail-closed zu einem Fehler.
 
+Die Neon-API verlangt zusätzlich konkrete Ausführungskoordinaten für eine Schedule. Diese sind keine zweite Backup-Policy, werden aber ebenfalls nicht versteckt vorgegeben: `APPBASIS_BACKUP_SCHEDULE_HOUR` ist für jede Schedule erforderlich; `APPBASIS_BACKUP_SCHEDULE_DAY` ist für `weekly` und `monthly` zusätzlich erforderlich und muss bei `daily` leer bleiben.
+
 ## Slice 2 – Read-only Restore-Fingerprint-Verifikation
 
 `tooling/m4-restore-verification.mjs` definiert für die erste konkrete generierte App `m3-preview` einen deterministischen, nicht-inhaltlichen Restore-Fingerprint.
@@ -100,13 +102,21 @@ Der Setter verwendet dieselben bereits vorhandenen M4-Policy-Werte wie der Readi
 - `APPBASIS_REQUIRED_BACKUP_FREQUENCY`
 - `APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS`
 
+Zusätzlich verlangt der aktuelle Neon-Schedule-Vertrag explizite Ausführungskoordinaten:
+
+- `APPBASIS_BACKUP_SCHEDULE_HOUR` für `daily`, `weekly` und `monthly`,
+- `APPBASIS_BACKUP_SCHEDULE_DAY` zusätzlich für `weekly` und `monthly`.
+
+Diese Ausführungskoordinaten ändern nicht die M4-Erfüllungssemantik aus Frequenz und Mindest-Retention; sie verhindern lediglich, dass der Setter einen vom Provider unvollständigen Schedule-Write konstruiert. Es gibt auch hierfür keine versteckten Defaultwerte.
+
 Damit gibt es keine zweite Policyquelle. M4 v0.1 verwaltet nur die eine benötigte Policy-Anforderung; zusätzliche bereits vorhandene Schedules werden nicht automatisch gelöscht oder umgeschrieben.
 
 Der Vertrag:
 
 - prüft Zielprojekt und Zielbranch read-only und verlangt einen betriebsbereiten Root-Branch,
+- validiert Frequenz, Retention sowie die für die jeweilige Frequenz vom Provider geforderten Ausführungskoordinaten fail-closed,
 - liest die aktuelle Schedule vor jeder möglichen Mutation,
-- verwendet dieselbe Erfüllungssemantik wie der Readiness-Check: mindestens ein Eintrag muss die erwartete Frequenz und **mindestens** die geforderte Retention besitzen,
+- verwendet dieselbe Erfüllungssemantik wie der Readiness-Check: mindestens ein formal gültiger Eintrag muss die erwartete Frequenz und **mindestens** die geforderte Retention besitzen,
 - akzeptiert zusätzliche vorhandene Schedule-Einträge, wenn die M4-Policy bereits durch einen Eintrag erfüllt ist; in diesem Fall erfolgt kein PUT,
 - behandelt eine längere vorhandene Retention ausdrücklich als stärkeren zulässigen Zustand und setzt sie nicht auf das Minimum zurück,
 - erhält bei einem notwendigen Frequenzwechsel einer einzelnen vorhandenen Schedule eine bereits stärkere Retention statt sie zu reduzieren,
@@ -114,7 +124,7 @@ Der Vertrag:
 - verweigert ebenso die automatische Ersetzung eines formal ungültigen/unbekannten einzelnen Schedule-Eintrags,
 - bleibt bei `apply=false` vollständig read-only,
 - sendet bei `apply=true` höchstens **einen** `PUT /backup_schedule`,
-- setzt Frequenz und mindestens die explizite Mindest-Retention; es wird keine Provider-Default-Retention als M4-Policy übernommen,
+- setzt Frequenz, mindestens die explizite Mindest-Retention und die vom Neon-Vertrag erforderlichen Ausführungsfelder `hour` sowie bei `weekly`/`monthly` `day`; es wird keine Provider-Default-Retention oder versteckte Ausführungszeit als M4-Policy übernommen,
 - verlangt nach einem erfolgreichen PUT einen autoritativen GET-Readback, der dieselbe M4-Mindest-Policy wie der Readiness-Check erfüllen muss,
 - behandelt Netzwerkfehler, ungültige Responses und Providerfehler als potenziell unklaren Write-Ausgang und führt höchstens ein read-only Reconciliation-GET aus,
 - führt niemals automatisch einen zweiten PUT aus,
@@ -122,7 +132,7 @@ Der Vertrag:
 
 Der manuelle Workflow `.github/workflows/m4-backup-schedule.yml` verwendet `m4-dr`, `contents: read` und einen standardmäßig deaktivierten Apply-Schalter.
 
-**Wichtig:** Dieser Repository-Slice führt den Workflow nicht aus und verändert keinen Backup-Schedule. Neon verlangt für automatische Backup-Schedules einen unterstützten bezahlten Plan; vor einer realen Ausführung müssen Plan, Zielprojekt/-branch, PITR-Fenster, Frequenz und Retention live bestätigt werden. Die reale Provideränderung benötigt ausdrücklich die Freigabe des Nutzers.
+**Wichtig:** Dieser Repository-Slice führt den Workflow nicht aus und verändert keinen Backup-Schedule. Neon verlangt für automatische Backup-Schedules einen unterstützten bezahlten Plan; vor einer realen Ausführung müssen Plan, Zielprojekt/-branch, PITR-Fenster, Frequenz, Retention und die erforderlichen Schedule-Ausführungsfelder live bestätigt werden. Die reale Provideränderung benötigt ausdrücklich die Freigabe des Nutzers.
 
 ## Slice 5 – Gegateter isolierter Restore-Rehearsal
 
