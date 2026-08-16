@@ -36,6 +36,29 @@ export async function verifyReferenceRoleAdminPublicIngress({
     'Role administration Worker custom domains',
   );
   const domainResults = requiredArray(domains.result, 'Role administration Worker custom domains');
+  const domainResultInfo = requiredRecord(
+    domains.result_info,
+    'Role administration Worker custom-domain pagination',
+  );
+  const domainPage = requiredPositiveInteger(
+    domainResultInfo.page,
+    'Role administration Worker custom-domain pagination',
+  );
+  const domainCount = requiredNonNegativeInteger(
+    domainResultInfo.count,
+    'Role administration Worker custom-domain pagination',
+  );
+  const domainTotalPages = requiredNonNegativeInteger(
+    domainResultInfo.total_pages,
+    'Role administration Worker custom-domain pagination',
+  );
+  if (
+    domainPage !== 1 ||
+    domainCount !== domainResults.length ||
+    domainTotalPages > 1
+  ) {
+    throw new Error('Role administration Worker custom-domain pagination is incomplete.');
+  }
   if (
     domainResults.some(
       (candidate) =>
@@ -112,6 +135,20 @@ async function cloudflareJson(url, apiToken, fetchImpl, label) {
 function requiredValue(value, field) {
   if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
     throw new Error(`${field} is required and must not contain surrounding whitespace.`);
+  }
+  return value;
+}
+
+function requiredPositiveInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${label} is invalid.`);
+  }
+  return value;
+}
+
+function requiredNonNegativeInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} is invalid.`);
   }
   return value;
 }
