@@ -3,6 +3,10 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  HIGH_PRIVACY_PROFILE,
+  isCanonicalHighPrivacyProfile,
+} from "./high-privacy-profile.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
 import {
   evaluateProductionReadiness,
@@ -30,6 +34,52 @@ test("M5 gate contains every required production security and privacy criterion"
   assert.deepEqual(
     REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion) => criterion.id),
     expectedIds,
+  );
+});
+
+test("M5 high privacy profile is canonical and fails closed on contract drift", () => {
+  assert.deepEqual(HIGH_PRIVACY_PROFILE, {
+    schemaVersion: 1,
+    id: "appbasis-high-privacy-v0.1",
+    appliesTo: ["children", "school", "sensitive-data"],
+    requirements: {
+      securityPrivacyGate: "all-required",
+      backupRestoreBeforeProduction: "required",
+      accessControl: "deny-by-default",
+      privilegeModel: "least-privilege",
+      secretsInNormalAppManifest: "forbidden",
+      privilegedControlPlanePublicIngress: "forbidden",
+      operatorUseCaseAssessment: "required",
+    },
+  });
+  assert.equal(isCanonicalHighPrivacyProfile(), true);
+  assert.equal(Object.isFrozen(HIGH_PRIVACY_PROFILE), true);
+  assert.equal(Object.isFrozen(HIGH_PRIVACY_PROFILE.appliesTo), true);
+  assert.equal(Object.isFrozen(HIGH_PRIVACY_PROFILE.requirements), true);
+
+  assert.equal(
+    isCanonicalHighPrivacyProfile({
+      ...HIGH_PRIVACY_PROFILE,
+      appliesTo: ["children", "school"],
+    }),
+    false,
+  );
+  assert.equal(
+    isCanonicalHighPrivacyProfile({
+      ...HIGH_PRIVACY_PROFILE,
+      requirements: {
+        ...HIGH_PRIVACY_PROFILE.requirements,
+        privilegedControlPlanePublicIngress: "allowed",
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    isCanonicalHighPrivacyProfile({
+      ...HIGH_PRIVACY_PROFILE,
+      futureRequirement: true,
+    }),
+    false,
   );
 });
 
@@ -112,7 +162,7 @@ test("inherited readiness values cannot count as production evidence", () => {
   }
 });
 
-test("repository evidence verifies only the strict normal app-manifest boundary", () => {
+test("repository evidence verifies only canonical repository-level M5 contracts", () => {
   const definition = Object.freeze({
     schemaVersion: 2,
     appId: "privacy-evidence-test",
@@ -122,6 +172,7 @@ test("repository evidence verifies only the strict normal app-manifest boundary"
   });
 
   assert.deepEqual(deriveRepositoryProductionReadinessEvidence(definition), {
+    highPrivacyProfile: true,
     secretsOutsideAppManifests: true,
   });
 
@@ -142,21 +193,27 @@ test("Factory snapshot consumes only repository-proven M5 evidence and keeps rel
   for (const app of snapshot.apps) {
     assert.equal(app.productionReadiness.status, "blocked");
     assert.equal(app.productionReadiness.productionReady, false);
-    assert.equal(app.productionReadiness.verifiedCount, 1);
+    assert.equal(app.productionReadiness.verifiedCount, 2);
     assert.equal(app.productionReadiness.requiredCount, expectedIds.length);
     assert.deepEqual(
       app.productionReadiness.criteria.map((criterion) => criterion.id),
       expectedIds,
     );
-    assert.equal(
-      app.productionReadiness.criteria.find(
-        (criterion) => criterion.id === "secretsOutsideAppManifests",
-      )?.status,
-      "verified",
-    );
+    for (const criterionId of ["highPrivacyProfile", "secretsOutsideAppManifests"]) {
+      assert.equal(
+        app.productionReadiness.criteria.find(
+          (criterion) => criterion.id === criterionId,
+        )?.status,
+        "verified",
+      );
+    }
     assert.ok(
       app.productionReadiness.criteria
-        .filter((criterion) => criterion.id !== "secretsOutsideAppManifests")
+        .filter(
+          (criterion) =>
+            criterion.id !== "highPrivacyProfile" &&
+            criterion.id !== "secretsOutsideAppManifests",
+        )
         .every((criterion) => criterion.status === "open"),
     );
   }
