@@ -6,7 +6,7 @@ import {
   SUPPORTED_PLATFORM_SERVICES,
 } from "../app-definition.mjs";
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
-import { evaluateM6ProductionLifecycle } from "./production-release-readiness.mjs";
+import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
 import { evaluateProductionReadiness } from "./production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
 
@@ -53,8 +53,8 @@ async function withFactoryReadiness(repositoryRoot, definition) {
   const productionReadinessEvidence =
     deriveRepositoryProductionReadinessEvidence(definition);
   const productionReadiness = evaluateProductionReadiness(productionReadinessEvidence);
-  const productionLifecycleReadiness = evaluateM6ProductionLifecycle({
-    m5Ready: productionReadiness.productionReady === true,
+  const productionReleaseReadiness = evaluateM6ProductionReleaseReadiness({
+    securityPrivacyReady: productionReadiness.productionReady === true,
   });
 
   return Object.freeze({
@@ -67,7 +67,7 @@ async function withFactoryReadiness(repositoryRoot, definition) {
       databaseManifestPresent,
     }),
     productionReadiness,
-    productionLifecycleReadiness,
+    productionReleaseReadiness,
   });
 }
 
