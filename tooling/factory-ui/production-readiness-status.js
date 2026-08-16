@@ -1,3 +1,9 @@
+import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
+
+const REQUIRED_CRITERION_IDS = Object.freeze(
+  REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion) => criterion.id),
+);
+
 export function productionReadinessCopy(readiness) {
   if (!isConsistentReadiness(readiness)) {
     return Object.freeze({
@@ -26,23 +32,30 @@ function isConsistentReadiness(readiness) {
   }
   if (
     !Number.isInteger(readiness.verifiedCount) ||
-    !Number.isInteger(readiness.requiredCount) ||
-    readiness.requiredCount <= 0 ||
+    readiness.requiredCount !== REQUIRED_CRITERION_IDS.length ||
     readiness.verifiedCount < 0 ||
     readiness.verifiedCount > readiness.requiredCount ||
     !Array.isArray(readiness.criteria) ||
-    readiness.criteria.length !== readiness.requiredCount
+    readiness.criteria.length !== REQUIRED_CRITERION_IDS.length
   ) {
     return false;
   }
 
-  const verifiedCriteria = readiness.criteria.filter(
-    (criterion) => criterion?.status === "verified",
-  ).length;
-  const allStatusesKnown = readiness.criteria.every(
-    (criterion) => criterion?.status === "verified" || criterion?.status === "open",
-  );
-  if (!allStatusesKnown || verifiedCriteria !== readiness.verifiedCount) return false;
+  let verifiedCriteria = 0;
+  for (const [index, expectedId] of REQUIRED_CRITERION_IDS.entries()) {
+    const criterion = readiness.criteria[index];
+    if (
+      criterion === null ||
+      typeof criterion !== "object" ||
+      Array.isArray(criterion) ||
+      criterion.id !== expectedId ||
+      (criterion.status !== "verified" && criterion.status !== "open")
+    ) {
+      return false;
+    }
+    if (criterion.status === "verified") verifiedCriteria += 1;
+  }
+  if (verifiedCriteria !== readiness.verifiedCount) return false;
 
   const fullyVerified = readiness.verifiedCount === readiness.requiredCount;
   return (
