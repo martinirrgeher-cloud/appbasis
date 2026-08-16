@@ -29,7 +29,7 @@ test("M5 Reference control-plane evidence workflow is manual, protected and read
   assert.doesNotMatch(workflow, /\b(?:POST|PUT|PATCH|DELETE)\b/);
   assert.doesNotMatch(
     workflow,
-    /wrangler\s+(?:deploy|delete|secret|versions deploy|rollback)/i,
+    /wrangler\s+(?:deploy\b|delete\b|secret\b|versions\s+deploy\b|rollback\b)/i,
   );
   assert.doesNotMatch(workflow, /\bcurl\b/i);
 });
