@@ -56,6 +56,8 @@ jobs:
           NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
           APPBASIS_REQUIRED_BACKUP_FREQUENCY: ${{ vars.APPBASIS_REQUIRED_BACKUP_FREQUENCY }}
           APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS: ${{ vars.APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS }}
+          APPBASIS_BACKUP_SCHEDULE_HOUR: ${{ vars.APPBASIS_BACKUP_SCHEDULE_HOUR }}
+          APPBASIS_BACKUP_SCHEDULE_DAY: ${{ vars.APPBASIS_BACKUP_SCHEDULE_DAY }}
         run: |
           set -euo pipefail
           test -n "$NEON_API_KEY" || { echo 'Missing Neon API credential.' >&2; exit 1; }
@@ -63,6 +65,19 @@ jobs:
           test -n "$NEON_BRANCH_ID" || { echo 'Missing Neon branch target.' >&2; exit 1; }
           test -n "$APPBASIS_REQUIRED_BACKUP_FREQUENCY" || { echo 'Missing M4 backup frequency policy.' >&2; exit 1; }
           test -n "$APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS" || { echo 'Missing M4 snapshot retention policy.' >&2; exit 1; }
+          test -n "$APPBASIS_BACKUP_SCHEDULE_HOUR" || { echo 'Missing Neon backup schedule hour.' >&2; exit 1; }
+          case "$APPBASIS_REQUIRED_BACKUP_FREQUENCY" in
+            daily)
+              test -z "$APPBASIS_BACKUP_SCHEDULE_DAY" || { echo 'Neon backup schedule day must be empty for daily backups.' >&2; exit 1; }
+              ;;
+            weekly|monthly)
+              test -n "$APPBASIS_BACKUP_SCHEDULE_DAY" || { echo 'Missing Neon backup schedule day.' >&2; exit 1; }
+              ;;
+            *)
+              echo 'Unsupported M4 backup frequency.' >&2
+              exit 1
+              ;;
+          esac
           echo "::add-mask::$NEON_API_KEY"
           echo "::add-mask::$NEON_PROJECT_ID"
           echo "::add-mask::$NEON_BRANCH_ID"
@@ -74,5 +89,7 @@ jobs:
           NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
           APPBASIS_REQUIRED_BACKUP_FREQUENCY: ${{ vars.APPBASIS_REQUIRED_BACKUP_FREQUENCY }}
           APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS: ${{ vars.APPBASIS_MIN_SNAPSHOT_RETENTION_SECONDS }}
+          APPBASIS_BACKUP_SCHEDULE_HOUR: ${{ vars.APPBASIS_BACKUP_SCHEDULE_HOUR }}
+          APPBASIS_BACKUP_SCHEDULE_DAY: ${{ vars.APPBASIS_BACKUP_SCHEDULE_DAY }}
           APPBASIS_APPLY_BACKUP_SCHEDULE: ${{ inputs.apply && '1' || '0' }}
         run: node ./tooling/m4-neon-backup-schedule.mjs ensure
