@@ -60,12 +60,24 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     roleDataScopePolicyId: "ulc-linz-role-data-scope-v0.1",
     productionDatabaseRegionTarget: "EU / Frankfurt",
   });
-  assert.deepEqual(ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.roles, [
+  assert.deepEqual(ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.sourceRoles, [
     "admin",
     "trainer",
     "athlete",
     "parent",
   ]);
+  assert.equal(
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoles.kindertrainer.sourceRole,
+    "trainer",
+  );
+  assert.equal(
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoles.leistungstrainer.sourceRole,
+    "trainer",
+  );
+  assert.notEqual(
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoles.kindertrainer.roleId,
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoles.leistungstrainer.roleId,
+  );
   assert.equal(
     ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.dataScopes.organizationBoundary,
     "same-organization-only",
