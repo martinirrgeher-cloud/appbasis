@@ -8,7 +8,7 @@ export const REQUIRED_PRODUCTION_READINESS_CRITERIA = Object.freeze([
   Object.freeze({ id: "dataExport", label: "Datenexport" }),
   Object.freeze({ id: "auditSecurityLogging", label: "Audit-/Security-Logging" }),
   Object.freeze({ id: "subprocessors", label: "Subprozessoren" }),
-  Object.freeze({ id: "highPrivacyProfile", label: "High-Privacy-Profil definiert" }),
+  Object.freeze({ id: "highPrivacyProfile", label: "High-Privacy-Profil für App belegt" }),
   Object.freeze({ id: "secretsOutsideAppManifests", label: "Secrets außerhalb App-Manifeste" }),
   Object.freeze({ id: "privilegedControlPlaneIsolation", label: "Privilegierte Control Plane getrennt" }),
 ]);
