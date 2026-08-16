@@ -1,15 +1,18 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_TIMEOUT_MS = 30_000;
 
 export async function verifyGeneratedPreviewDatabaseBinding({
   baseURL,
+  appId,
   fetchImpl = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
+  const normalizedAppId = requiredIdentifier(appId);
   validateTransport(fetchImpl, timeoutMs);
 
   const controller = new AbortController();
@@ -40,11 +43,14 @@ export async function verifyGeneratedPreviewDatabaseBinding({
     } catch {
       throw new Error("Generated preview database health probe returned invalid JSON.");
     }
-    if (!isExactDatabaseHealthPayload(payload)) {
+    if (!isExactDatabaseHealthPayload(payload, normalizedAppId)) {
       throw new Error("Generated preview database health probe returned an invalid payload.");
     }
 
-    return Object.freeze({ status: "database-reachable" });
+    return Object.freeze({
+      status: "database-reachable",
+      appId: normalizedAppId,
+    });
   } finally {
     clearTimeout(timeout);
   }
@@ -63,14 +69,21 @@ function validateTransport(fetchImpl, timeoutMs) {
   }
 }
 
-function isExactDatabaseHealthPayload(payload) {
+function isExactDatabaseHealthPayload(payload, appId) {
   return (
     isRecord(payload) &&
     Object.keys(payload).length === 3 &&
     payload.status === "ok" &&
-    payload.appId === "tasks-minimal" &&
+    payload.appId === appId &&
     payload.database === "reachable"
   );
+}
+
+function requiredIdentifier(value) {
+  if (typeof value !== "string" || !IDENTIFIER_PATTERN.test(value)) {
+    throw new Error(`appId must match ${IDENTIFIER_PATTERN.source}.`);
+  }
+  return value;
 }
 
 function requiredHttpsOrigin(value) {
@@ -110,6 +123,7 @@ if (isMainModule()) {
   try {
     await verifyGeneratedPreviewDatabaseBinding({
       baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
+      appId: process.env.APPBASIS_GENERATED_APP_ID,
     });
     console.log("Generated preview database binding smoke passed.");
   } catch {

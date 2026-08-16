@@ -1,0 +1,218 @@
+name: M3 Preview Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Deploy the pre-provisioned m3-preview Worker
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m3-preview-worker-appbasis-m3-preview
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: M3 preview deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: m3-preview
+    env:
+      APPBASIS_GENERATED_APP_ID: m3-preview
+      APPBASIS_GENERATED_WORKER_NAME: appbasis-m3-preview
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository and explicit deployment confirmation
+        shell: bash
+        env:
+          APPBASIS_M3_PREVIEW_DEPLOY_APPLY: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          pnpm run verify:repo
+          test "$APPBASIS_M3_PREVIEW_DEPLOY_APPLY" = '1' || {
+            echo 'm3-preview deployment was not explicitly confirmed.' >&2
+            exit 1
+          }
+
+      - name: Validate and mask deployment-only inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing required Cloudflare deployment account.' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing required Cloudflare deployment credential.' >&2; exit 1; }
+          test -n "$APPBASIS_DATABASE_URL" || { echo 'Missing dedicated m3-preview database connection.' >&2; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+
+      - name: Verify m3-preview database schema before provider changes
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: node ./apps/m3-preview/tooling/verify-preview-schema.mjs
+
+      - name: Resolve generated workers.dev origin
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          SUBDOMAIN="$(jq -r 'if .success == true then (.result.subdomain // "") else "" end' <<<"$RESPONSE")"
+          [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || { echo 'Cloudflare Workers account subdomain is unavailable or invalid.' >&2; exit 1; }
+          ORIGIN="https://${APPBASIS_GENERATED_WORKER_NAME}.${SUBDOMAIN}.workers.dev"
+          echo "APPBASIS_GENERATED_PREVIEW_URL=$ORIGIN" >> "$GITHUB_ENV"
+
+      - name: Resolve and verify dedicated m3-preview Hyperdrive
+        id: hyperdrive
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          HYPERDRIVE_ID="$(node ./tooling/m3-preview-hyperdrive.mjs resolve)"
+          test -n "$HYPERDRIVE_ID" || { echo 'Dedicated m3-preview Hyperdrive was not resolved.' >&2; exit 1; }
+          echo "::add-mask::$HYPERDRIVE_ID"
+          printf 'id=%s\n' "$HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Render required-secret deployment config
+        env:
+          APPBASIS_HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeGeneratedPreviewWranglerConfig } from "./tooling/generated-preview-deploy-config.mjs";
+
+          await writeGeneratedPreviewWranglerConfig({
+            appId: process.env.APPBASIS_GENERATED_APP_ID,
+            hyperdriveId: process.env.APPBASIS_HYPERDRIVE_ID,
+            baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
+            entrypoint: "./worker/preview.ts",
+            outputPath: "./apps/m3-preview/wrangler.preview.generated.json",
+          });
+          NODE
+
+      - name: Require pre-provisioned m3-preview Worker
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler deployments list --name "$APPBASIS_GENERATED_WORKER_NAME" --json >/dev/null 2>&1 || {
+            echo 'm3-preview Worker is not pre-provisioned.' >&2
+            exit 1
+          }
+
+      - name: Require pre-provisioned Worker secret
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          SECRET_LIST="$(pnpm exec wrangler secret list --name "$APPBASIS_GENERATED_WORKER_NAME" --format json)"
+          jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' <<<"$SECRET_LIST" >/dev/null || {
+            echo 'm3-preview Worker is missing the pre-provisioned BETTER_AUTH_SECRET.' >&2
+            exit 1
+          }
+
+      - name: Validate m3-preview Worker bundle without provisioning
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd ../m3-preview
+          --config wrangler.preview.generated.json
+          --dry-run
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Upload m3-preview Worker version without deployment
+        id: version
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          output_file="$(mktemp)"
+          trap 'rm -f "$output_file"' EXIT
+          WRANGLER_OUTPUT_FILE_PATH="$output_file" pnpm exec wrangler versions upload \
+            --cwd ../m3-preview \
+            --config wrangler.preview.generated.json \
+            --name "$APPBASIS_GENERATED_WORKER_NAME" \
+            --experimental-provision=false \
+            --experimental-auto-create=false
+          VERSION_ID="$(jq -r 'select(.type == "version-upload") | .version_id // empty' "$output_file" | tail -n 1)"
+          [[ "$VERSION_ID" =~ ^[A-Za-z0-9-]{1,128}$ ]] || {
+            echo 'Wrangler did not return a valid uploaded m3-preview version ID.' >&2
+            exit 1
+          }
+          echo "::add-mask::$VERSION_ID"
+          printf 'id=%s\n' "$VERSION_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy uploaded m3-preview Worker version
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_VERSION_ID: ${{ steps.version.outputs.id }}
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler versions deploy \
+            "${APPBASIS_VERSION_ID}@100%" \
+            --name "$APPBASIS_GENERATED_WORKER_NAME" \
+            --cwd ../m3-preview \
+            --config wrangler.preview.generated.json \
+            -y
+
+      - name: Verify deployed m3-preview runtime boundary
+        run: node ./tooling/generated-preview-smoke.mjs
+
+      - name: Verify deployed m3-preview database binding
+        run: node ./tooling/generated-preview-database-smoke.mjs
+
+      - name: Remove generated deployment config
+        if: always()
+        run: rm -f ./apps/m3-preview/wrangler.preview.generated.json
