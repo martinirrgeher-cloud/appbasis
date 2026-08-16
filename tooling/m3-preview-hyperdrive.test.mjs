@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { parseGeneratedPreviewDatabaseUrl } from "./generated-preview-hyperdrive.mjs";
 import {
   M3_PREVIEW_HYPERDRIVE,
   parseM3PreviewDatabaseUrl,
@@ -70,6 +71,20 @@ test("accepts only the dedicated direct m3 preview database", () => {
         "postgresql://runtime.user:secret@ep-direct-pooler.example.neon.tech/appbasis_m3_preview",
       ),
     /direct Neon origin/,
+  );
+});
+
+test("rejects frozen but malformed shared Hyperdrive targets", () => {
+  const forgedTarget = Object.freeze({
+    appId: "m3 preview",
+    environment: "m3-preview",
+    name: "appbasis-m3-preview-db",
+    database: "appbasis_m3_preview",
+  });
+
+  assert.throws(
+    () => parseGeneratedPreviewDatabaseUrl(DATABASE_URL, forgedTarget),
+    /appId must match/,
   );
 });
 
