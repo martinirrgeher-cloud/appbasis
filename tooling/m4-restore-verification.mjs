@@ -8,7 +8,11 @@ const EXPECTED_DATABASE_NAME = "appbasis_m3_preview";
 const FINGERPRINT_TABLES = Object.freeze([
   ["identity_users", 'public."user"', "t.id"],
   ["identity_accounts", "public.account", "t.id"],
+  ["identity_sessions", "public.session", "t.id"],
+  ["identity_verifications", "public.verification", "t.id"],
+  ["identity_persons", "public.appbasis_person", "t.id"],
   ["identity_security_state", "public.appbasis_identity_security_state", "t.identity_id"],
+  ["identity_operations", "public.appbasis_identity_operation", "t.operation_id"],
   ["permission_capabilities", "public.appbasis_permission_capability", "t.capability_id"],
   ["permission_roles", "public.appbasis_permission_role", "t.role_id"],
   ["permission_role_capabilities", "public.appbasis_permission_role_capability", "t.role_id, t.capability_id"],

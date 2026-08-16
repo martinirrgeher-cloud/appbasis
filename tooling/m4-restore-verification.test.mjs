@@ -12,7 +12,11 @@ const restoreConnectionString =
 const fingerprintGroups = [
   "identity_users",
   "identity_accounts",
+  "identity_sessions",
+  "identity_verifications",
+  "identity_persons",
   "identity_security_state",
+  "identity_operations",
   "permission_capabilities",
   "permission_roles",
   "permission_role_capabilities",
@@ -76,6 +80,21 @@ test("captures a canonical read-only fingerprint after schema verification", asy
     database.calls[0],
     /\b(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/i,
   );
+  for (const table of [
+    'public."user"',
+    "public.account",
+    "public.session",
+    "public.verification",
+    "public.appbasis_person",
+    "public.appbasis_identity_security_state",
+    "public.appbasis_identity_operation",
+    "public.appbasis_permission_role",
+    "public.appbasis_permission_principal",
+    "public.appbasis_permission_administration_audit",
+    "public.appbasis_task",
+  ]) {
+    assert.match(database.calls[0], new RegExp(table.replaceAll(".", "\\.")));
+  }
   assert.equal(database.closed, 1);
 });
 
