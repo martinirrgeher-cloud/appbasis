@@ -44,11 +44,19 @@ test("pins M3 execution readiness as a read-only preflight before provider write
   const downstreamContracts = workflow.indexOf(
     "Validate downstream M3 contracts without writes",
   );
+  const schemaRead = workflow.indexOf(
+    "Verify M3 preview database connection and schema read-only",
+  );
   assert.ok(protectedInputs >= 0);
   assert.ok(cloudflareRead > protectedInputs);
   assert.ok(downstreamContracts > cloudflareRead);
+  assert.ok(schemaRead > downstreamContracts);
 
   assert.match(workflow, /\/workers\/subdomain/);
+  assert.match(
+    workflow,
+    /node \.\/apps\/m3-preview\/tooling\/verify-preview-schema\.mjs/,
+  );
   assert.doesNotMatch(workflow, /--request\s+(POST|PUT|PATCH|DELETE)/i);
   assert.doesNotMatch(workflow, /wrangler\s+(deploy|versions|hyperdrive)/);
   assert.doesNotMatch(workflow, /apply-preview-migrations/);
