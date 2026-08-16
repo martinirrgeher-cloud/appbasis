@@ -105,11 +105,35 @@ export function isCanonicalUlcLinzM5RoleDataScopePolicy(
 
 function exactValue(value, expected) {
   if (Array.isArray(expected)) {
-    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+    if (
+      !Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length !== expected.length
+    ) {
       return false;
     }
-    if (value.length !== expected.length) return false;
-    return expected.every((entry, index) => exactValue(value[index], entry));
+
+    const expectedKeys = [
+      ...expected.map((_, index) => String(index)),
+      "length",
+    ];
+    const valueKeys = Reflect.ownKeys(value);
+    if (
+      valueKeys.length !== expectedKeys.length ||
+      expectedKeys.some((key) => !valueKeys.includes(key))
+    ) {
+      return false;
+    }
+
+    return expected.every((entry, index) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      return (
+        descriptor !== undefined &&
+        Object.hasOwn(descriptor, "value") &&
+        descriptor.enumerable === true &&
+        exactValue(descriptor.value, entry)
+      );
+    });
   }
 
   if (isPlainObject(expected)) {
