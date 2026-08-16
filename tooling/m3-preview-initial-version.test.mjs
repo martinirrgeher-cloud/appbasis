@@ -30,20 +30,24 @@ function versionsPayload(versions = []) {
   });
 }
 
-function deploymentsPayload(deployments = []) {
+function workerPayload(deployedOn = null) {
   return Response.json({
     success: true,
-    result: { deployments },
+    result: {
+      id: "abcdef0123456789abcdef0123456789",
+      name: M3_PREVIEW_INITIAL_VERSION.workerName,
+      deployed_on: deployedOn,
+    },
   });
 }
 
-function providerFetch({ versions = [], deployments = [] } = {}) {
+function providerFetch({ versions = [], deployedOn = null } = {}) {
   return async (url, options) => {
     assert.equal(options.method, "GET");
     assert.match(options.headers.authorization, /^Bearer /);
     if (String(url).includes("/versions?")) return versionsPayload(versions);
-    if (String(url).endsWith("/deployments")) {
-      return deploymentsPayload(deployments);
+    if (String(url).endsWith("/workers/appbasis-m3-preview")) {
+      return workerPayload(deployedOn);
     }
     throw new Error(`unexpected URL ${url}`);
   };
@@ -58,7 +62,7 @@ test("pins the one-time m3-preview initial version contract", () => {
   assert.equal(Object.isFrozen(M3_PREVIEW_INITIAL_VERSION), true);
 });
 
-test("accepts only a Worker with no versions and no deployments", async () => {
+test("accepts only a Worker with no versions that has never been deployed", async () => {
   await assert.doesNotReject(
     assertM3PreviewInitialVersionPreconditions({
       accountId: ACCOUNT_ID,
@@ -81,10 +85,10 @@ test("accepts only a Worker with no versions and no deployments", async () => {
       accountId: ACCOUNT_ID,
       apiToken: API_TOKEN,
       fetchImpl: providerFetch({
-        deployments: [{ id: "deployment-id" }],
+        deployedOn: "2026-08-16T05:00:00.000Z",
       }),
     }),
-    /no existing deployments/,
+    /never been deployed/,
   );
 });
 
@@ -126,10 +130,10 @@ test("accepts only the exact tagged uploaded version while traffic remains undep
       versionId: VERSION_ID,
       fetchImpl: providerFetch({
         versions: [version],
-        deployments: [{ id: "deployment-id" }],
+        deployedOn: "2026-08-16T05:00:00.000Z",
       }),
     }),
-    /unexpectedly created a deployment/,
+    /deployed traffic/,
   );
 });
 
