@@ -200,7 +200,7 @@ test("short-page cursor anomalies stay fail closed but report a safe diagnostic 
   }
 });
 
-test("non-advancing short-page cursor is accepted as Neon's observed terminal behavior", async () => {
+test("unchanged short-page cursor is accepted as Neon's observed terminal behavior", async () => {
   const fullPage = Array.from({ length: 1000 }, (_, index) =>
     operation("finished", {
       id: `operation-unrelated-${index}`,
@@ -233,6 +233,34 @@ test("non-advancing short-page cursor is accepted as Neon's observed terminal be
   assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
 });
 
+test("older short-page cursor cycles remain fail closed", async () => {
+  const fullPage = Array.from({ length: 1000 }, (_, index) =>
+    operation("finished", {
+      id: `operation-unrelated-${index}`,
+      branch_id: "br-unrelated-12345678",
+    }),
+  );
+  const { fetchImpl, calls } = makeExistingRestoreFetch([
+    { operations: fullPage, pagination: { cursor: "cursor-a" } },
+    { operations: fullPage, pagination: { cursor: "cursor-b" } },
+    { operations: [operation("finished")], pagination: { cursor: "cursor-a" } },
+  ]);
+
+  await assert.rejects(
+    ensureM4RestoreRehearsal({
+      ...input,
+      apply: false,
+      fetchImpl,
+    }),
+    /cursor cycle on a short page/,
+  );
+  const operationCalls = calls.filter((call) =>
+    new URL(call.url).pathname.endsWith("/operations"),
+  );
+  assert.equal(operationCalls.length, 3);
+  assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
+});
+
 test("non-advancing full-page cursor remains fail closed", async () => {
   const fullPage = Array.from({ length: 1000 }, (_, index) =>
     operation("finished", {
@@ -257,7 +285,7 @@ test("non-advancing full-page cursor remains fail closed", async () => {
       apply: false,
       fetchImpl,
     }),
-    /non-advancing cursor on a full page/,
+    /cursor cycle on a full page/,
   );
   assert.equal(calls.filter((call) => call.options.method === "POST").length, 0);
 });
