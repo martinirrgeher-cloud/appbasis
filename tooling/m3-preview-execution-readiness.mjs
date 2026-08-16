@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { readM3PreviewRootAdminEnvironment } from "../apps/m3-preview/tooling/bootstrap-root-admin.mjs";
 import { readM3PreviewSmokeBootstrapEnvironment } from "../apps/m3-preview/tooling/bootstrap-smoke-principals-contract.mjs";
 import { readM3PreviewAcceptanceEnvironment } from "./m3-preview-acceptance-smoke.mjs";
+import { parseM3PreviewDatabaseUrl } from "./m3-preview-hyperdrive.mjs";
 
 export function validateM3PreviewExecutionReadiness(env = process.env) {
   const validationEnv = {
@@ -13,6 +14,7 @@ export function validateM3PreviewExecutionReadiness(env = process.env) {
     APPBASIS_M3_SMOKE_BOOTSTRAP_APPLY: "1",
   };
 
+  parseM3PreviewDatabaseUrl(validationEnv.APPBASIS_DATABASE_URL);
   readM3PreviewRootAdminEnvironment(validationEnv);
   readM3PreviewSmokeBootstrapEnvironment(validationEnv);
   readM3PreviewAcceptanceEnvironment(validationEnv);
@@ -21,6 +23,7 @@ export function validateM3PreviewExecutionReadiness(env = process.env) {
     status: "ready",
     target: "m3-preview",
     validatedContracts: Object.freeze([
+      "dedicated-preview-database",
       "database-and-auth",
       "root-admin-bootstrap",
       "smoke-principal-bootstrap",
