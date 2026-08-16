@@ -7,6 +7,21 @@ import {
   isKnownM5ProductionSecurityPrivacyCriterion,
 } from "./m5-production-security-privacy-readiness.mjs";
 
+const EXPECTED_M5_CRITERION_IDS = Object.freeze([
+  "data-region",
+  "dpa",
+  "encryption",
+  "roles-rights",
+  "deletion",
+  "retention",
+  "data-export",
+  "audit-security-logging",
+  "subprocessors",
+  "high-privacy-profile",
+  "manifest-secret-separation",
+  "privileged-control-plane-isolation",
+]);
+
 function allSatisfiedChecks() {
   return Object.fromEntries(
     M5_PRODUCTION_SECURITY_PRIVACY_CRITERIA.map(({ id }) => [
@@ -15,6 +30,13 @@ function allSatisfiedChecks() {
     ]),
   );
 }
+
+test("M5 contract pins every mandatory roadmap criterion", () => {
+  assert.deepEqual(
+    M5_PRODUCTION_SECURITY_PRIVACY_CRITERIA.map(({ id }) => id),
+    EXPECTED_M5_CRITERION_IDS,
+  );
+});
 
 test("M5 stays fail-closed when no evidence is supplied", () => {
   const result = evaluateM5ProductionSecurityPrivacyReadiness();
