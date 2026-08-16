@@ -34,7 +34,7 @@ function mockCloudflare({
       return successResponse(
         domains,
         includeDomainResultInfo
-          ? (domainResultInfo ?? { count: domains.length })
+          ? (domainResultInfo === undefined ? { count: domains.length } : domainResultInfo)
           : undefined,
       );
     }
