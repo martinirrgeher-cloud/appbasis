@@ -136,12 +136,45 @@ test("M5 high privacy profile rejects boxed, accessor and serialization-shaped v
   });
   assert.equal(isCanonicalHighPrivacyProfile(withAccessor), false);
 
+  const withNonEnumerableProfileField = structuredClone(base);
+  Object.defineProperty(withNonEnumerableProfileField, "id", {
+    enumerable: false,
+    configurable: true,
+    writable: true,
+    value: "appbasis-high-privacy-v0.1",
+  });
+  assert.equal(isCanonicalHighPrivacyProfile(withNonEnumerableProfileField), false);
+
+  const withNonEnumerableRequirement = structuredClone(base);
+  Object.defineProperty(withNonEnumerableRequirement.requirements, "accessControl", {
+    enumerable: false,
+    configurable: true,
+    writable: true,
+    value: "deny-by-default",
+  });
+  assert.equal(isCanonicalHighPrivacyProfile(withNonEnumerableRequirement), false);
+
   const appliesToWithExtraProperty = [...base.appliesTo];
   appliesToWithExtraProperty.extra = true;
   assert.equal(
     isCanonicalHighPrivacyProfile({
       ...base,
       appliesTo: appliesToWithExtraProperty,
+    }),
+    false,
+  );
+
+  const appliesToWithNonEnumerableEntry = [...base.appliesTo];
+  Object.defineProperty(appliesToWithNonEnumerableEntry, "0", {
+    enumerable: false,
+    configurable: true,
+    writable: true,
+    value: "children",
+  });
+  assert.equal(
+    isCanonicalHighPrivacyProfile({
+      ...base,
+      appliesTo: appliesToWithNonEnumerableEntry,
     }),
     false,
   );
