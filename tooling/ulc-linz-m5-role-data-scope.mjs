@@ -50,7 +50,8 @@ const PARENT_VIEW_MODULES = Object.freeze(["kindertraining", "u12", "u14"]);
 // rolesAndPermissions verified until the ULC target runtime consumes and proves
 // these boundaries. ULC permission templates are defaults, not distinct source
 // roles; individually managed module permissions remain authoritative and map
-// to the existing AppBasis principal grant/revoke model.
+// to the existing AppBasis principal grant/revoke model. Admin remains the
+// explicit own-organization privileged path from the source system.
 export const ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY = deepFreeze({
   schemaVersion: 1,
   id: "ulc-linz-role-data-scope-v0.1",
@@ -60,6 +61,17 @@ export const ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY = deepFreeze({
   },
   sourceRoles: [...SOURCE_ROLE_IDS],
   runtimeRoleIds: { ...RUNTIME_ROLE_IDS },
+  adminAuthorization: {
+    sourceRole: "admin",
+    runtimeRoleId: RUNTIME_ROLE_IDS.admin,
+    mode: "own-organization-admin",
+    moduleAccess: "all-known-modules-view-edit",
+    individualModulePermissionsRequired: false,
+    memberAdministration: "own-organization",
+    auditVisibility: "own-organization",
+    crossOrganization: "deny",
+    unknownModule: "deny",
+  },
   permissionTemplates: {
     kindertrainer: {
       sourceRole: "trainer",
@@ -122,7 +134,8 @@ export function isCanonicalUlcLinzM5RoleDataScopePolicy(
 ) {
   return (
     exactValue(value, ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY) &&
-    hasUniqueRuntimeRoleIds(value)
+    hasUniqueRuntimeRoleIds(value) &&
+    hasConsistentAdminRuntimeRole(value)
   );
 }
 
@@ -133,6 +146,15 @@ function hasUniqueRuntimeRoleIds(value) {
     roleIds.length > 0 &&
     roleIds.every((roleId) => typeof roleId === "string" && roleId.length > 0) &&
     new Set(roleIds).size === roleIds.length
+  );
+}
+
+function hasConsistentAdminRuntimeRole(value) {
+  return (
+    isPlainObject(value) &&
+    isPlainObject(value.runtimeRoleIds) &&
+    isPlainObject(value.adminAuthorization) &&
+    value.adminAuthorization.runtimeRoleId === value.runtimeRoleIds.admin
   );
 }
 
