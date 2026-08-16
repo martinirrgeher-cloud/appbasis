@@ -31,7 +31,7 @@ Ein Kriterium darf in v0.1 nicht durch `waived`, `not-applicable` oder einen unb
 
 `tooling/m5-production-security-privacy-readiness.mjs` enthält einen kleinen, providerfreien Evaluator.
 
-Für jedes Pflichtkriterium wird ausschließlich der Status `satisfied` akzeptiert. Zusätzlich ist mindestens eine nichtleere `evidenceRef` erforderlich. Diese Referenzen sind Verweise auf Nachweise, nicht die Nachweise selbst.
+Für jedes Pflichtkriterium wird ausschließlich der Status `satisfied` akzeptiert. Zusätzlich ist mindestens ein nichtleerer Eintrag in `evidenceRefs` erforderlich. Diese Referenzen sind Verweise auf Nachweise, nicht die Nachweise selbst.
 
 Wichtig:
 
@@ -42,6 +42,12 @@ Wichtig:
 - zusätzliche unbekannte Felder können kein Pflichtkriterium ersetzen
 
 Der Evaluator speichert nichts und entscheidet nicht, wo Evidence dauerhaft liegt. Damit wird noch keine neue Control-Plane-, Datenbank- oder Provider-Abstraktion eingeführt.
+
+### Trust-Grenze
+
+Der Evaluator validiert nur den festen M5-Vertrag, den Status und die Existenz von Evidence-Referenzen. Er beweist nicht selbst, dass ein referenzierter Nachweis fachlich wahr ist.
+
+Darum darf die spätere Factory den Status `satisfied` nur aus einer kontrollierten Factory-/Control-Plane-Quelle übernehmen. Öffentlich oder aus einer normalen App-Runtime gelieferte Payloads dürfen nicht direkt als vertrauenswürdige M5-Evidence verwendet werden. Andernfalls könnte eine App ihr eigenes Production-Ready-Gate selbst bestätigen.
 
 ## Bereits automatisierbare und später konkret zu prüfende Punkte
 
