@@ -41,7 +41,7 @@ test("M6 release readiness is blocked when evidence is missing", () => {
   const readiness = evaluateM6ProductionReleaseReadiness();
 
   assert.equal(readiness.status, "blocked");
-  assert.equal(readiness.productionVerified, false);
+  assert.equal(readiness.technicalEvidenceVerified, false);
   assert.equal(readiness.verifiedCount, 0);
   assert.equal(readiness.requiredCount, expectedIds.length);
   assert.equal(readiness.explicitApprovalRequired, true);
@@ -56,7 +56,7 @@ test("M6 release readiness remains fail-closed for truthy or unknown evidence", 
 
   const readiness = evaluateM6ProductionReleaseReadiness(evidence);
 
-  assert.equal(readiness.productionVerified, false);
+  assert.equal(readiness.technicalEvidenceVerified, false);
   assert.equal(readiness.releaseAuthorized, false);
   assert.equal(readiness.verifiedCount, expectedIds.length - 1);
   assert.equal(
@@ -72,11 +72,12 @@ test("M6 release readiness remains fail-closed for truthy or unknown evidence", 
 test("complete technical M6 evidence still never authorizes release in the read-only contract", () => {
   const readiness = evaluateM6ProductionReleaseReadiness(allEvidence());
 
-  assert.equal(readiness.status, "verified");
-  assert.equal(readiness.productionVerified, true);
+  assert.equal(readiness.status, "evidence-verified");
+  assert.equal(readiness.technicalEvidenceVerified, true);
   assert.equal(readiness.verifiedCount, expectedIds.length);
   assert.equal(readiness.explicitApprovalRequired, true);
   assert.equal(readiness.releaseAuthorized, false);
+  assert.equal(Object.hasOwn(readiness, "productionVerified"), false);
   assert.ok(readiness.criteria.every((criterion) => criterion.status === "verified"));
 });
 
@@ -100,7 +101,7 @@ test("malformed or inherited values cannot count as M6 production evidence", () 
 
   try {
     const readiness = evaluateM6ProductionReleaseReadiness(evidence);
-    assert.equal(readiness.productionVerified, false);
+    assert.equal(readiness.technicalEvidenceVerified, false);
     assert.equal(readiness.releaseAuthorized, false);
     assert.equal(readiness.verifiedCount, expectedIds.length - 1);
     assert.equal(
@@ -118,7 +119,7 @@ test("Factory snapshot exposes M6 read-only without inventing preview or provide
   assert.ok(snapshot.apps.length > 0);
   for (const app of snapshot.apps) {
     assert.equal(app.productionReleaseReadiness.status, "blocked");
-    assert.equal(app.productionReleaseReadiness.productionVerified, false);
+    assert.equal(app.productionReleaseReadiness.technicalEvidenceVerified, false);
     assert.equal(app.productionReleaseReadiness.requiredCount, expectedIds.length);
     assert.equal(app.productionReleaseReadiness.explicitApprovalRequired, true);
     assert.equal(app.productionReleaseReadiness.releaseAuthorized, false);
