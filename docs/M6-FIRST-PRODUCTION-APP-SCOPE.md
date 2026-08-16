@@ -4,30 +4,32 @@
 
 M6 beweist den ersten kontrollierten technischen End-to-End-Produktionspfad für eine eigenständige AppBasis-App.
 
-Dieser Vorbereitungsslice implementiert ausschließlich einen **read-only, fail-closed M6-Lifecycle-Status** im Factory-Snapshot. Er erstellt keine Produktionsressourcen, führt keine produktiven Migrationen aus und besitzt keinen Release-Endpunkt.
+Dieser Vorbereitungsslice implementiert ausschließlich einen **read-only, fail-closed M6-Release-Readiness-Status** im Factory-Snapshot. Er erstellt keine Produktionsressourcen, führt keine produktiven Migrationen aus und besitzt keinen Release-Endpunkt.
 
 M6 ist nicht gleichbedeutend mit „Factory Complete“. Der wiederholbare Factory-Lifecycle wird erst nach dem bewiesenen ersten Produktionspfad in FC1 verallgemeinert.
 
-## Verbindlicher Produktionspfad
+## Roadmap-Voraussetzungen und App-Gates
 
-Der kanonische M6-Vertrag führt genau diese geordneten Nachweise:
+M1 und M2 bleiben globale Roadmap-Voraussetzungen für M6. Sie werden bewusst nicht als dauerhaft wiederholte per-App-Felder modelliert.
 
-1. Designsystem & Rollen (M1) bereit
-2. Factory-Erzeugung (M2) bereit
-3. Preview geprüft (M3)
-4. Backup & Recovery geprüft (M4)
-5. Security & Privacy geprüft (M5)
-6. eigene Produktionsdatenbank bereit
-7. eigener Produktions-Worker bereit
-8. eigene Domain bereit
-9. produktive Benutzer & Rechte bereit
-10. kontrollierte Produktionsmigrationen ausgeführt
-11. Produktions-Deploy abgeschlossen
-12. Post-Deploy-Smoke erfolgreich
+Der Factory-Vertrag beschreibt nur die semantischen Nachweise, die für die konkrete erste Produktiv-App relevant sind:
+
+1. Preview geprüft
+2. eigene Produktionsdatenbank bereit
+3. eigener Produktions-Worker bereit
+4. eigene Domain bereit
+5. produktive Benutzer & Rechte bereit
+6. Backup & Recovery geprüft
+7. Security & Privacy geprüft
+8. kontrollierte Produktionsmigrationen ausgeführt
+9. Produktions-Deploy abgeschlossen
+10. Post-Deploy-Smoke erfolgreich
+
+Diese Liste definiert die erforderlichen Nachweise, aber noch **keine allgemeine Provider-Orchestrierung**. Die konkrete sichere Reihenfolge externer Writes wird erst mit der ersten echten Produktions-App und ihren realen Providerabhängigkeiten festgelegt.
 
 Nur der exakte boolesche Wert `true` gilt für einen Nachweis als verifiziert. Fehlende, falsche, truthy oder geerbte Werte bleiben offen. Unbekannte zusätzliche Felder können kein Pflichtkriterium ersetzen.
 
-Erst wenn alle zwölf Nachweise verifiziert sind, ist `productionVerified=true`.
+Erst wenn alle zehn Nachweise verifiziert sind, ist `productionVerified=true`.
 
 ## Ausdrückliche Freigabe bleibt separat
 
@@ -35,9 +37,9 @@ Die vom Nutzer ausdrücklich zu erteilende Produktionsfreigabe wird **bewusst ni
 
 Ein statischer Snapshot darf keine frühere Zustimmung in eine spätere Produktionsaktion hineintragen. Eine zukünftige schreibende Produktionsaktion muss deshalb unmittelbar vor dem externen Write eine frische, ausdrückliche Freigabe verlangen und die dann aktuellen Gates erneut prüfen.
 
-Der M6-Snapshot führt deshalb `explicitApprovalRequired=true` und gleichzeitig invariant `releaseAuthorized=false`. Selbst bei zwölf technisch verifizierten Kriterien autorisiert dieser read-only Vertrag keinen Release. Die vorhandene Factory-Capability `releaseProduction` bleibt ebenfalls unverändert `false`.
+Der M6-Snapshot führt deshalb `explicitApprovalRequired=true` und gleichzeitig invariant `releaseAuthorized=false`. Selbst bei zehn technisch verifizierten Kriterien autorisiert dieser read-only Vertrag keinen Release. Die vorhandene Factory-Capability `releaseProduction` bleibt ebenfalls unverändert `false`.
 
-## Slice 1 – Factory-lokaler M6-Lifecycle-Vertrag
+## Slice 1 – Factory-lokaler M6-Readiness-Vertrag
 
 `tooling/factory-ui/production-release-readiness.mjs` ist bewusst klein und Factory-lokal:
 
@@ -45,15 +47,15 @@ Der M6-Snapshot führt deshalb `explicitApprovalRequired=true` und gleichzeitig 
 - keine zweite Generatorimplementierung,
 - kein Deployment- oder Provisionierungsadapter,
 - keine Speicherung von Secrets, Provider-IDs oder Benutzerfreigaben,
-- kanonische Reihenfolge vom M1–M5-Gate bis zum Post-Deploy-Smoke,
+- semantische per-App-Gates statt Roadmap-Meilensteinflags,
 - fail-closed Auswertung,
 - keine Release-Autorisierung aus Readiness-Evidenz.
 
-Der Factory-Snapshot liefert pro App zusätzlich `productionLifecycleReadiness`.
+Der Factory-Snapshot liefert pro App zusätzlich `productionReleaseReadiness`.
 
-Aktuell wird daraus ausschließlich ein bereits vorhandener echter Vertrag wiederverwendet: `m5Ready` darf nur dann als belegt einfließen, wenn der bestehende M5-Vertrag selbst `productionReady=true` liefert. Da M5 gegenwärtig noch nicht vollständig verifiziert ist, bleibt auch dieses M6-Kriterium offen.
+Aktuell wird daraus ausschließlich ein bereits vorhandener echter Vertrag wiederverwendet: `securityPrivacyReady` darf nur dann als belegt einfließen, wenn der bestehende M5-Vertrag selbst `productionReady=true` liefert. Da M5 gegenwärtig noch nicht vollständig verifiziert ist, bleibt auch dieses M6-Kriterium offen.
 
-Für M1–M4 und die späteren Produktionsschritte erfindet dieser Slice ausdrücklich keine statischen Erfolgssignale. Solange kein belastbarer maschinenlesbarer Nachweis angebunden ist, bleiben die jeweiligen Kriterien offen.
+Für Preview, Backup/Recovery und die späteren Produktionsschritte erfindet dieser Slice ausdrücklich keine statischen Erfolgssignale. Solange kein belastbarer maschinenlesbarer Nachweis angebunden ist, bleiben die jeweiligen Kriterien offen.
 
 ## Sicherheitsgrenze
 
@@ -71,11 +73,11 @@ Es existiert weiterhin kein Factory-Release-Endpunkt und kein produktiver Provid
 
 ## Nächste sichere Slices
 
-1. M1–M4 nur dann read-only in den M6-Snapshot einspeisen, wenn ein bestehender technischer Nachweis die jeweilige Aussage tatsächlich belegt.
-2. Den M6-Lifecycle read-only in der bestehenden Factory-Detailansicht sichtbar machen, ohne Release-Schalter oder Write-Pfad.
-3. Für die erste reale Produktions-App konkrete Provider-/Ressourcen-Nachweise ergänzen, ohne einen allgemeinen Multi-Provider-Provisioner vorwegzubauen.
-4. Erst nach M3, M4 und M5 DONE einen getrennten, ausdrücklich freizugebenden Produktionsworkflow entwerfen.
-5. Post-Deploy-Smoke aus den bewährten M3-Prüfmustern für die konkrete erste Produktions-App ableiten.
+1. Preview sowie Backup/Recovery nur dann read-only in den M6-Snapshot einspeisen, wenn bestehende technische Nachweise die jeweilige Aussage tatsächlich belegen.
+2. Den M6-Status read-only in der bestehenden Factory-Detailansicht sichtbar machen, ohne Release-Schalter oder Write-Pfad.
+3. Für die erste reale Produktions-App konkrete Ressourcen-Nachweise ergänzen, ohne einen allgemeinen Multi-Provider-Provisioner vorwegzubauen.
+4. Erst nach M3, M4 und M5 DONE einen getrennten, ausdrücklich freizugebenden Produktionsworkflow für die erste App entwerfen.
+5. Post-Deploy-Smoke aus den bewährten M3-Prüfmustern für diese konkrete Produktions-App ableiten.
 
 ## Abgrenzung zu FC1
 
