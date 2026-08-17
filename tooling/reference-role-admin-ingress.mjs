@@ -90,12 +90,12 @@ function validateOptionalDomainResultInfo(resultInfo, filteredResultCount) {
     'count',
     'Role administration Worker custom-domain result metadata',
   );
-  const page = optionalPositiveInteger(
+  optionalNonNegativeInteger(
     resultInfo,
     'page',
     'Role administration Worker custom-domain result metadata',
   );
-  optionalPositiveInteger(
+  optionalNonNegativeInteger(
     resultInfo,
     'per_page',
     'Role administration Worker custom-domain result metadata',
@@ -112,9 +112,6 @@ function validateOptionalDomainResultInfo(resultInfo, filteredResultCount) {
   );
 
   if (count !== undefined && count !== filteredResultCount) {
-    throw new Error('Role administration Worker custom-domain result metadata is inconsistent.');
-  }
-  if (page !== undefined && page !== 1) {
     throw new Error('Role administration Worker custom-domain result metadata is inconsistent.');
   }
 }
@@ -153,15 +150,6 @@ async function cloudflareJson(url, apiToken, fetchImpl, label) {
 function requiredValue(value, field) {
   if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
     throw new Error(`${field} is required and must not contain surrounding whitespace.`);
-  }
-  return value;
-}
-
-function optionalPositiveInteger(record, field, label) {
-  if (!Object.hasOwn(record, field)) return undefined;
-  const value = record[field];
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new Error(`${label} is invalid.`);
   }
   return value;
 }
