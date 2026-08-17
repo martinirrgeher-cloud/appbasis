@@ -8,22 +8,37 @@ const outputDirectory = path.join(
   repositoryRoot,
   "apps/m3-preview/tooling/.smoke-bootstrap-dist",
 );
-const outputPath = path.join(outputDirectory, "bootstrap-smoke-principals.mjs");
+const bootstrapOutputPath = path.join(
+  outputDirectory,
+  "bootstrap-smoke-principals.mjs",
+);
+const restoredSmokeOutputPath = path.join(
+  outputDirectory,
+  "m4-restored-functional-smoke.mjs",
+);
 
 try {
-  await runPnpm([
+  await runViteBuild("../m3-preview/tooling/vite.smoke-bootstrap.config.ts");
+  await import(pathToFileURL(bootstrapOutputPath).href);
+
+  await runViteBuild("../m3-preview/tooling/vite.m4-restored-smoke.config.ts");
+  await import(pathToFileURL(restoredSmokeOutputPath).href);
+
+  console.log("m3-preview operational bundles verified.");
+} finally {
+  await rm(outputDirectory, { recursive: true, force: true });
+}
+
+function runViteBuild(configPath) {
+  return runPnpm([
     "--filter",
     "@appbasis/reference",
     "exec",
     "vite",
     "build",
     "--config",
-    "../m3-preview/tooling/vite.smoke-bootstrap.config.ts",
+    configPath,
   ]);
-  await import(pathToFileURL(outputPath).href);
-  console.log("m3-preview smoke bootstrap bundle verified.");
-} finally {
-  await rm(outputDirectory, { recursive: true, force: true });
 }
 
 function runPnpm(args) {
@@ -43,8 +58,8 @@ function runPnpm(args) {
       reject(
         new Error(
           signal === null
-            ? `m3-preview smoke bootstrap bundle build exited with code ${code}.`
-            : `m3-preview smoke bootstrap bundle build exited on signal ${signal}.`,
+            ? `m3-preview operational bundle build exited with code ${code}.`
+            : `m3-preview operational bundle build exited on signal ${signal}.`,
         ),
       );
     });
