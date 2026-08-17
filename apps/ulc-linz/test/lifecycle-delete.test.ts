@@ -39,7 +39,8 @@ type DeleteHarnessOptions = {
   authorizationError?: Error;
   completed?: boolean;
   targetSourceRole?: string;
-  identityDeleteError?: Error;
+  identityDeleteErrorOnce?: Error;
+  principalDeleteErrorOnce?: Error;
   remainingPrincipalOnCompletedReplay?: boolean;
   initialPrincipalAbsent?: boolean;
   initialPrincipalEmpty?: boolean;
@@ -55,6 +56,10 @@ function deleteHarness(options: DeleteHarnessOptions = {}) {
         : activePrincipal();
   let identityDisabled = false;
   let principalDeleted = false;
+  let identityDeletionCompleted = options.completed === true;
+  let identityDeleteFailed = false;
+  let principalDeleteFailed = false;
+  const initiallyCompleted = options.completed === true;
 
   const permissions: PermissionStore = {
     async findPrincipal() {
@@ -93,23 +98,38 @@ function deleteHarness(options: DeleteHarnessOptions = {}) {
     identityDeletion: {
       async isDeletionCompleted() {
         events.push("deletion-completed");
-        if (options.completed === true && !options.remainingPrincipalOnCompletedReplay) {
+        if (
+          initiallyCompleted &&
+          !options.remainingPrincipalOnCompletedReplay
+        ) {
           currentPrincipal = null;
         }
-        return options.completed === true;
+        return identityDeletionCompleted;
       },
       async deleteDisabledIdentity(identityId) {
         events.push("delete-identity");
-        if (options.identityDeleteError !== undefined) {
-          throw options.identityDeleteError;
+        if (
+          options.identityDeleteErrorOnce !== undefined &&
+          !identityDeleteFailed
+        ) {
+          identityDeleteFailed = true;
+          throw options.identityDeleteErrorOnce;
         }
         if (!identityDisabled) throw new Error("identity must be disabled first");
+        identityDeletionCompleted = true;
         return { identityId, alreadyDeleted: false };
       },
     },
     principalLifecycle: {
       async deleteQuarantinedPrincipal() {
         events.push("delete-principal");
+        if (
+          options.principalDeleteErrorOnce !== undefined &&
+          !principalDeleteFailed
+        ) {
+          principalDeleteFailed = true;
+          throw options.principalDeleteErrorOnce;
+        }
         if (currentPrincipal !== null) {
           if (
             currentPrincipal.roleIds.length !== 0 ||
@@ -141,8 +161,14 @@ function deleteHarness(options: DeleteHarnessOptions = {}) {
     get identityDisabled() {
       return identityDisabled;
     },
+    get identityDeletionCompleted() {
+      return identityDeletionCompleted;
+    },
     get principalDeleted() {
       return principalDeleted;
+    },
+    get currentPrincipal() {
+      return currentPrincipal;
     },
   };
 }
@@ -162,7 +188,7 @@ async function expectBlocked(
 }
 
 describe("ULC Linz M5-C destructive deletion orchestration", () => {
-  it("authorizes before owner reads and deletes only after the audited access replacement", async () => {
+  it("authorizes before owner reads and cleans the principal only after identity deletion", async () => {
     const state = deleteHarness();
 
     await expect(
@@ -181,10 +207,11 @@ describe("ULC Linz M5-C destructive deletion orchestration", () => {
       "find-principal",
       "replace-access",
       "disable-identity",
-      "delete-principal",
       "delete-identity",
+      "delete-principal",
     ]);
     expect(state.identityDisabled).toBe(true);
+    expect(state.identityDeletionCompleted).toBe(true);
     expect(state.principalDeleted).toBe(true);
   });
 
@@ -206,8 +233,8 @@ describe("ULC Linz M5-C destructive deletion orchestration", () => {
       "find-principal",
       "replace-access",
       "disable-identity",
-      "delete-principal",
       "delete-identity",
+      "delete-principal",
     ]);
   });
 
@@ -264,7 +291,7 @@ describe("ULC Linz M5-C destructive deletion orchestration", () => {
     ]);
   });
 
-  it("fails closed when a completed identity delete unexpectedly still has a permission principal", async () => {
+  it("fails closed when a completed identity unexpectedly retains application access", async () => {
     const state = deleteHarness({
       completed: true,
       remainingPrincipalOnCompletedReplay: true,
@@ -281,24 +308,75 @@ describe("ULC Linz M5-C destructive deletion orchestration", () => {
     ]);
   });
 
-  it("reports identity-owner failure while leaving the target disabled and the permission principal removed", async () => {
+  it("keeps an empty permission principal after an identity-owner failure and completes on retry", async () => {
     const state = deleteHarness({
-      identityDeleteError: new Error("identity delete unavailable"),
+      identityDeleteErrorOnce: new Error("identity delete unavailable"),
     });
 
     await expect(
       deleteUlcLinzIdentity(state.dependencies, TARGET_IDENTITY_ID),
     ).rejects.toThrow("identity delete unavailable");
     expect(state.identityDisabled).toBe(true);
-    expect(state.principalDeleted).toBe(true);
+    expect(state.identityDeletionCompleted).toBe(false);
+    expect(state.principalDeleted).toBe(false);
+    expect(state.currentPrincipal).toEqual(emptyPrincipal());
     expect(state.events).toEqual([
       `authorize:${TARGET_IDENTITY_ID}`,
       "deletion-completed",
       "find-principal",
       "replace-access",
       "disable-identity",
-      "delete-principal",
       "delete-identity",
+    ]);
+
+    state.events.length = 0;
+    await expect(
+      deleteUlcLinzIdentity(state.dependencies, TARGET_IDENTITY_ID),
+    ).resolves.toEqual({
+      identityId: TARGET_IDENTITY_ID,
+      permissionsChanged: false,
+      permissionPrincipalDeleted: true,
+      identityDeleted: true,
+      alreadyDeleted: false,
+    });
+    expect(state.events).toEqual([
+      `authorize:${TARGET_IDENTITY_ID}`,
+      "deletion-completed",
+      "find-principal",
+      "replace-access",
+      "disable-identity",
+      "delete-identity",
+      "delete-principal",
+    ]);
+  });
+
+  it("finishes empty-principal cleanup on retry after identity deletion already completed", async () => {
+    const state = deleteHarness({
+      principalDeleteErrorOnce: new Error("principal cleanup unavailable"),
+    });
+
+    await expect(
+      deleteUlcLinzIdentity(state.dependencies, TARGET_IDENTITY_ID),
+    ).rejects.toThrow("principal cleanup unavailable");
+    expect(state.identityDeletionCompleted).toBe(true);
+    expect(state.principalDeleted).toBe(false);
+    expect(state.currentPrincipal).toEqual(emptyPrincipal());
+
+    state.events.length = 0;
+    await expect(
+      deleteUlcLinzIdentity(state.dependencies, TARGET_IDENTITY_ID),
+    ).resolves.toEqual({
+      identityId: TARGET_IDENTITY_ID,
+      permissionsChanged: false,
+      permissionPrincipalDeleted: true,
+      identityDeleted: true,
+      alreadyDeleted: true,
+    });
+    expect(state.events).toEqual([
+      `authorize:${TARGET_IDENTITY_ID}`,
+      "deletion-completed",
+      "find-principal",
+      "delete-principal",
     ]);
   });
 });
