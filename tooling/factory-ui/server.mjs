@@ -42,6 +42,8 @@ export function createFactoryServer(options = {}) {
   const repositoryRoot = resolve(options.repositoryRoot ?? DEFAULT_REPOSITORY_ROOT);
   const snapshotOptions = {
     m3PreviewAcceptanceFetchImpl: options.m3PreviewAcceptanceFetchImpl,
+    referenceControlPlaneEvidenceFetchImpl:
+      options.referenceControlPlaneEvidenceFetchImpl,
   };
 
   return createServer(async (request, response) => {
