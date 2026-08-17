@@ -30,7 +30,10 @@ Vor jedem Restore werden fail-closed geprüft:
 7. Manifest-Bindung an ausgewählten R2-Key und Objekt-Metadaten,
 8. kanonischer Fingerprint-Vertrag,
 9. Source und Restore-Ziel müssen unterschiedliche Datenbank-Endpunkte sein,
-10. die Restore-Datenbank muss unmittelbar vor dem Write als frisches isoliertes Ziel bestätigt werden.
+10. Source und Restore-Ziel müssen verschlüsselten PostgreSQL-Transport mit genau einem starken `sslmode` erzwingen,
+11. die Restore-Datenbank muss unmittelbar vor dem Write als frisches isoliertes Ziel bestätigt werden.
+
+Als starker `sslmode` werden für diesen Restore-Vertrag nur `require`, `verify-ca` oder `verify-full` akzeptiert. Fehlender `sslmode`, schwächere Werte wie `prefer`/`disable` oder doppelte `sslmode`-Parameter werden vor jeder Datenbankverbindung fail-closed abgewiesen.
 
 Ein anderer Benutzername, ein anderes Passwort oder andere URL-Queryparameter reichen **nicht**, um Source und Restore-Ziel als verschieden anzusehen. Für die Sicherheitsentscheidung zählen Host, Port und die dedizierte Datenbank `appbasis_m3_preview`. Bei Neon werden direkte und `-pooler`-Hostnamen desselben Endpunkts zusätzlich als identisch behandelt.
 
@@ -99,7 +102,7 @@ Sie dürfen keine R2-Schreibrechte benötigen. Zusätzlich werden später gesch�
 - `APPBASIS_M4_R2_BUCKET`
 - `APPBASIS_M4_R2_JURISDICTION`
 
-Die reale Einrichtung von Bucket, Restore-Datenbank, Providerrechten, Variablen oder Secrets ist **nicht Teil dieses Repository-Slices** und benötigt vor Ausführung die ausdrückliche Nutzerfreigabe.
+Die beiden Datenbank-URLs müssen den oben definierten starken `sslmode` enthalten. Die reale Einrichtung von Bucket, Restore-Datenbank, Providerrechten, Variablen oder Secrets ist **nicht Teil dieses Repository-Slices** und benötigt vor Ausführung die ausdrückliche Nutzerfreigabe.
 
 ## M4 DONE bleibt danach offen
 
