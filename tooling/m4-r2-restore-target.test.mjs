@@ -9,6 +9,7 @@ const restoreUrl =
   "postgresql://restore:secret@restore.example.test/appbasis_m3_preview?sslmode=require";
 
 function databaseFactory({
+  expectedConnectionString = restoreUrl,
   extraSchemaCount = 0,
   publicRelationCount = 0,
   publicRoutineCount = 0,
@@ -23,7 +24,7 @@ function databaseFactory({
       return closed;
     },
     createDatabase(connectionString) {
-      assert.equal(connectionString, restoreUrl);
+      assert.equal(connectionString, expectedConnectionString);
       return {
         client: {
           async unsafe(query) {
@@ -64,6 +65,57 @@ test("accepts only a distinct fresh isolated m3-preview restore target", async (
   assert.match(database.calls[0], /pg_catalog\.pg_proc/);
   assert.match(database.calls[0], /pg_catalog\.pg_type/);
   assert.equal(database.closed, 1);
+});
+
+test("accepts only strong single sslmode values for restore transport", async () => {
+  for (const sslmode of ["require", "verify-ca", "verify-full"]) {
+    const secureRestoreUrl =
+      `postgresql://restore:secret@restore.example.test/appbasis_m3_preview?sslmode=${sslmode}`;
+    const database = databaseFactory({ expectedConnectionString: secureRestoreUrl });
+    await assert.doesNotReject(
+      verifyM4IsolatedRestoreTargetEmpty({
+        sourceUrl,
+        restoreUrl: secureRestoreUrl,
+        createDatabase: database.createDatabase,
+      }),
+    );
+    assert.equal(database.closed, 1);
+  }
+});
+
+test("rejects missing, weak or ambiguous sslmode before any database connection", async () => {
+  for (const [insecureSourceUrl, insecureRestoreUrl] of [
+    [
+      "postgresql://source:secret@source.example.test/appbasis_m3_preview",
+      restoreUrl,
+    ],
+    [
+      sourceUrl,
+      "postgresql://restore:secret@restore.example.test/appbasis_m3_preview?sslmode=prefer",
+    ],
+    [
+      sourceUrl,
+      "postgresql://restore:secret@restore.example.test/appbasis_m3_preview?sslmode=disable",
+    ],
+    [
+      sourceUrl,
+      "postgresql://restore:secret@restore.example.test/appbasis_m3_preview?sslmode=require&sslmode=disable",
+    ],
+  ]) {
+    let created = false;
+    await assert.rejects(
+      verifyM4IsolatedRestoreTargetEmpty({
+        sourceUrl: insecureSourceUrl,
+        restoreUrl: insecureRestoreUrl,
+        createDatabase() {
+          created = true;
+          throw new Error("must not connect");
+        },
+      }),
+      /encrypted transport/,
+    );
+    assert.equal(created, false);
+  }
 });
 
 test("rejects application relations, routines, types and extra user schemas", async () => {
