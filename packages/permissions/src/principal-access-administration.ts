@@ -1,5 +1,7 @@
 import {
   capabilityId,
+  principalId,
+  roleId,
   type CapabilityId,
   type PrincipalId,
   type RoleId,
@@ -20,7 +22,9 @@ import {
 
 export type PrincipalAccessAdministrationErrorCode =
   | "LAST_REQUIRED_ROLE_HOLDER"
-  | "REQUIRED_ROLE_NOT_ACTIVE";
+  | "REQUIRED_ROLE_HOLDER_SCOPE_REQUIRED"
+  | "REQUIRED_ROLE_NOT_ACTIVE"
+  | "TARGET_PRINCIPAL_OUTSIDE_REQUIRED_ROLE_SCOPE";
 
 export class PrincipalAccessAdministrationError extends Error {
   readonly code: PrincipalAccessAdministrationErrorCode;
@@ -32,12 +36,30 @@ export class PrincipalAccessAdministrationError extends Error {
   }
 }
 
+export interface RequiredRoleHolderPrincipalScopeContext {
+  readonly transaction: PermissionPostgresClient;
+  readonly targetPrincipalId: PrincipalId;
+  readonly requiredRoleIds: readonly RoleId[];
+}
+
+/**
+ * Resolves the principals that are eligible to satisfy a required-role-holder
+ * guard for the target principal's application scope. The resolver runs inside
+ * the same outer transaction as the role/override replacement. Consumers with
+ * mutable membership data must read and lock their authoritative scope rows in
+ * this callback so a concurrent membership change cannot make the guard stale.
+ */
+export type RequiredRoleHolderPrincipalScopeResolver = (
+  context: RequiredRoleHolderPrincipalScopeContext,
+) => Promise<readonly PrincipalId[]>;
+
 export interface ReplacePrincipalAccessConstraints {
   readonly expectedRoleIds?: readonly RoleId[];
   readonly expectedGrants?: readonly CapabilityId[];
   readonly expectedRevokes?: readonly CapabilityId[];
   readonly requiredRemainingCapabilities?: readonly CapabilityId[];
   readonly requiredRemainingRoleIds?: readonly RoleId[];
+  readonly resolveRequiredRoleHolderPrincipalScope?: RequiredRoleHolderPrincipalScopeResolver;
 }
 
 export interface PrincipalAccessState extends PrincipalPermissionOverrides {
@@ -52,7 +74,7 @@ export class PostgresPrincipalAccessAdministration {
   }
 
   async replacePrincipalAccess(
-    principalId: PrincipalId,
+    requestedPrincipalId: PrincipalId,
     roleIds: readonly RoleId[],
     overrides: PrincipalPermissionOverrides,
     auditContext: RoleAdministrationAuditContext,
@@ -65,18 +87,20 @@ export class PostgresPrincipalAccessAdministration {
         new PostgresPrincipalPermissionAdministration(transactionClient);
 
       const replacedRoleIds = await roleAdministration.replacePrincipalRoles(
-        principalId,
+        requestedPrincipalId,
         roleIds,
         auditContext,
         roleConstraints(constraints),
       );
       await assertRequiredRoleHoldersRemain(
         transaction,
+        requestedPrincipalId,
         constraints.requiredRemainingRoleIds ?? [],
+        constraints.resolveRequiredRoleHolderPrincipalScope,
       );
       const replacedOverrides =
         await permissionAdministration.replacePrincipalPermissions(
-          principalId,
+          requestedPrincipalId,
           overrides,
           auditContext,
           permissionConstraints(constraints),
@@ -211,11 +235,14 @@ async function assertRequiredCapabilityHoldersRemain(
 
 async function assertRequiredRoleHoldersRemain(
   transaction: PermissionPostgresClient,
+  targetPrincipalId: PrincipalId,
   requiredRoleIds: readonly RoleId[],
+  resolvePrincipalScope: RequiredRoleHolderPrincipalScopeResolver | undefined,
 ): Promise<void> {
-  const uniqueRoleIds = [...new Set(requiredRoleIds.map(String))].sort(
-    (left, right) => left.localeCompare(right),
-  );
+  const uniqueRoleIds = [...new Set(requiredRoleIds.map(String))]
+    .sort((left, right) => left.localeCompare(right))
+    .map(roleId);
+  if (uniqueRoleIds.length === 0) return;
 
   for (const requiredRoleId of uniqueRoleIds) {
     const roles = await transaction.unsafe(
@@ -232,19 +259,47 @@ async function assertRequiredRoleHoldersRemain(
         `Required active role ${requiredRoleId} does not exist.`,
       );
     }
+  }
 
+  if (resolvePrincipalScope === undefined) {
+    throw new PrincipalAccessAdministrationError(
+      "REQUIRED_ROLE_HOLDER_SCOPE_REQUIRED",
+      "Required role-holder checks need a transactional application-scope resolver.",
+    );
+  }
+
+  const resolvedPrincipalIds = await resolvePrincipalScope({
+    transaction,
+    targetPrincipalId,
+    requiredRoleIds: Object.freeze([...uniqueRoleIds]),
+  });
+  const scopedPrincipalIds = [...new Set(resolvedPrincipalIds.map(String))]
+    .sort((left, right) => left.localeCompare(right))
+    .map(principalId);
+  if (!scopedPrincipalIds.includes(targetPrincipalId)) {
+    throw new PrincipalAccessAdministrationError(
+      "TARGET_PRINCIPAL_OUTSIDE_REQUIRED_ROLE_SCOPE",
+      "The required role-holder scope must contain the target principal.",
+    );
+  }
+
+  const principalPlaceholders = scopedPrincipalIds
+    .map((_, index) => `$${index + 2}`)
+    .join(", ");
+  for (const requiredRoleId of uniqueRoleIds) {
     const holderRows = await transaction.unsafe(
       `SELECT EXISTS (
          SELECT 1
          FROM appbasis_permission_principal_role
          WHERE role_id = $1
+           AND principal_id IN (${principalPlaceholders})
        ) AS exists`,
-      [requiredRoleId],
+      [requiredRoleId, ...scopedPrincipalIds],
     );
     if (holderRows[0]?.exists !== true) {
       throw new PrincipalAccessAdministrationError(
         "LAST_REQUIRED_ROLE_HOLDER",
-        `At least one principal must retain required role ${requiredRoleId}.`,
+        `At least one in-scope principal must retain required role ${requiredRoleId}.`,
       );
     }
   }
