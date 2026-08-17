@@ -10,6 +10,7 @@ import { REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY } from "./reference-control-pla
 const nowMs = Date.parse("2026-08-17T12:00:00Z");
 const withinValidity = () => nowMs;
 const observedAt = "2026-08-17T11:36:46Z";
+const trustedHeadSha = "e7fb8dbd5e76041109e2f045eabc50fc803c13a0";
 
 function successfulRun(overrides = {}) {
   return {
@@ -19,7 +20,7 @@ function successfulRun(overrides = {}) {
     path: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowPath,
     event: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowRunEvent,
     head_branch: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowRunBranch,
-    head_sha: "e7fb8dbd5e76041109e2f045eabc50fc803c13a0",
+    head_sha: trustedHeadSha,
     created_at: "2026-08-17T11:35:55Z",
     updated_at: observedAt,
     status: "completed",
@@ -31,14 +32,28 @@ function successfulRun(overrides = {}) {
   };
 }
 
-function runsResponse(run = successfulRun()) {
-  return new Response(
-    JSON.stringify({ total_count: 1, workflow_runs: [run] }),
-    {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    },
-  );
+function jsonResponse(payload) {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function evidenceFetch(run = successfulRun()) {
+  return async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/commits/main")) {
+      return jsonResponse({ sha: trustedHeadSha });
+    }
+    if (
+      url.pathname.endsWith(
+        `/actions/workflows/${REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowFileName}/runs`,
+      )
+    ) {
+      return jsonResponse({ total_count: 1, workflow_runs: [run] });
+    }
+    throw new Error(`unexpected GitHub evidence URL: ${url}`);
+  };
 }
 
 async function createReferenceFixture() {
@@ -71,7 +86,7 @@ test("factory snapshot consumes the latest fresh successful Reference control-pl
   const root = await createReferenceFixture();
   try {
     const snapshot = await loadFactorySnapshot(root, {
-      referenceControlPlaneEvidenceFetchImpl: async () => runsResponse(),
+      referenceControlPlaneEvidenceFetchImpl: evidenceFetch(),
       referenceControlPlaneEvidenceNow: withinValidity,
     });
     const app = snapshot.apps[0];
@@ -95,8 +110,9 @@ test("factory snapshot keeps Reference control-plane isolation open when the lat
   const root = await createReferenceFixture();
   try {
     const snapshot = await loadFactorySnapshot(root, {
-      referenceControlPlaneEvidenceFetchImpl: async () =>
-        runsResponse(successfulRun({ conclusion: "failure" })),
+      referenceControlPlaneEvidenceFetchImpl: evidenceFetch(
+        successfulRun({ conclusion: "failure" }),
+      ),
       referenceControlPlaneEvidenceNow: withinValidity,
     });
     const app = snapshot.apps[0];
@@ -115,7 +131,7 @@ test("factory snapshot expires stale Reference provider evidence", async () => {
   const root = await createReferenceFixture();
   try {
     const snapshot = await loadFactorySnapshot(root, {
-      referenceControlPlaneEvidenceFetchImpl: async () => runsResponse(),
+      referenceControlPlaneEvidenceFetchImpl: evidenceFetch(),
       referenceControlPlaneEvidenceNow: () =>
         Date.parse(observedAt) + REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.maxAgeMs,
     });
