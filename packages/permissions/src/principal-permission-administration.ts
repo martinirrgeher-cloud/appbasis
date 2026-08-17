@@ -15,7 +15,6 @@ const MAX_AUDIT_REASON_LENGTH = 500;
 export type PrincipalPermissionAdministrationErrorCode =
   | "INVALID_AUDIT_CONTEXT"
   | "INVALID_OVERRIDES"
-  | "LAST_CAPABILITY_HOLDER"
   | "PRINCIPAL_NOT_FOUND"
   | "STALE_PRINCIPAL_PERMISSIONS"
   | "UNKNOWN_CAPABILITY";
@@ -38,7 +37,6 @@ export interface PrincipalPermissionOverrides {
 export interface ReplacePrincipalPermissionsConstraints {
   readonly expectedGrants?: readonly CapabilityId[];
   readonly expectedRevokes?: readonly CapabilityId[];
-  readonly requiredRemainingCapabilities?: readonly CapabilityId[];
 }
 
 interface NormalizedAuditContext {
@@ -61,15 +59,14 @@ export class PostgresPrincipalPermissionAdministration {
   ): Promise<PrincipalPermissionOverrides> {
     const normalizedPrincipalId = validatedPrincipalId(requestedPrincipalId);
     const normalized = normalizeOverrides(requestedOverrides);
-    const expected = constraints.expectedGrants === undefined && constraints.expectedRevokes === undefined
-      ? null
-      : normalizeOverrides({
-          grants: constraints.expectedGrants ?? [],
-          revokes: constraints.expectedRevokes ?? [],
-        });
-    const requiredRemainingCapabilities = sortedUniqueCapabilities(
-      constraints.requiredRemainingCapabilities ?? [],
-    );
+    const expected =
+      constraints.expectedGrants === undefined &&
+      constraints.expectedRevokes === undefined
+        ? null
+        : normalizeOverrides({
+            grants: constraints.expectedGrants ?? [],
+            revokes: constraints.expectedRevokes ?? [],
+          });
     const audit = normalizeAuditContext(auditContext);
 
     return this.#client.begin(async (transaction) => {
@@ -87,7 +84,10 @@ export class PostgresPrincipalPermissionAdministration {
         );
       }
 
-      const previous = await loadDirectOverrides(transaction, normalizedPrincipalId);
+      const previous = await loadDirectOverrides(
+        transaction,
+        normalizedPrincipalId,
+      );
       if (
         expected !== null &&
         (!sameCapabilities(previous.grants, expected.grants) ||
@@ -103,15 +103,6 @@ export class PostgresPrincipalPermissionAdministration {
         ...normalized.grants,
         ...normalized.revokes,
       ]);
-
-      if (requiredRemainingCapabilities.length !== 0) {
-        await assertRequiredCapabilitySetHolderRemains(
-          transaction,
-          normalizedPrincipalId,
-          normalized,
-          requiredRemainingCapabilities,
-        );
-      }
 
       await transaction.unsafe(
         `DELETE FROM appbasis_permission_principal_grant
@@ -183,8 +174,12 @@ async function loadDirectOverrides(
     [requestedPrincipalId],
   );
   return {
-    grants: grantRows.map((row) => capabilityId(requiredString(row, "capability_id"))),
-    revokes: revokeRows.map((row) => capabilityId(requiredString(row, "capability_id"))),
+    grants: grantRows.map((row) =>
+      capabilityId(requiredString(row, "capability_id")),
+    ),
+    revokes: revokeRows.map((row) =>
+      capabilityId(requiredString(row, "capability_id")),
+    ),
   };
 }
 
@@ -206,126 +201,6 @@ async function assertKnownCapabilities(
       );
     }
   }
-}
-
-async function assertRequiredCapabilitySetHolderRemains(
-  client: PermissionPostgresClient,
-  targetPrincipalId: PrincipalId,
-  requestedOverrides: PrincipalPermissionOverrides,
-  capabilities: readonly CapabilityId[],
-): Promise<void> {
-  const capabilityPlaceholders = capabilities
-    .map((_, index) => `$${index + 1}`)
-    .join(", ");
-  const capabilityRows = await client.unsafe(
-    `SELECT capability_id
-     FROM appbasis_permission_capability
-     WHERE capability_id IN (${capabilityPlaceholders})
-     ORDER BY capability_id ASC
-     FOR UPDATE`,
-    [...capabilities],
-  );
-  const lockedCapabilities = capabilityRows.map((row) =>
-    capabilityId(requiredString(row, "capability_id")),
-  );
-  if (!sameCapabilities(lockedCapabilities, capabilities)) {
-    throw new PrincipalPermissionAdministrationError(
-      "UNKNOWN_CAPABILITY",
-      "At least one required capability is unknown.",
-    );
-  }
-
-  if (
-    await principalWouldHaveCapabilities(
-      client,
-      targetPrincipalId,
-      requestedOverrides,
-      capabilities,
-    )
-  ) {
-    return;
-  }
-
-  const requiredCapabilityValues = capabilities
-    .map((_, index) => `($${index + 2})`)
-    .join(", ");
-  const rows = await client.unsafe(
-    `WITH required_capability(capability_id) AS (
-       VALUES ${requiredCapabilityValues}
-     )
-     SELECT EXISTS (
-       SELECT 1
-       FROM appbasis_permission_principal principal
-       WHERE principal.principal_id <> $1
-         AND NOT EXISTS (
-           SELECT 1
-           FROM required_capability required
-           WHERE EXISTS (
-             SELECT 1
-             FROM appbasis_permission_principal_revoke revoke
-             WHERE revoke.principal_id = principal.principal_id
-               AND revoke.capability_id = required.capability_id
-           )
-           OR NOT (
-             EXISTS (
-               SELECT 1
-               FROM appbasis_permission_principal_grant grant_row
-               WHERE grant_row.principal_id = principal.principal_id
-                 AND grant_row.capability_id = required.capability_id
-             )
-             OR EXISTS (
-               SELECT 1
-               FROM appbasis_permission_principal_role principal_role
-               JOIN appbasis_permission_role role
-                 ON role.role_id = principal_role.role_id
-                AND role.state = 'active'
-               JOIN appbasis_permission_role_capability role_capability
-                 ON role_capability.role_id = role.role_id
-                AND role_capability.capability_id = required.capability_id
-               WHERE principal_role.principal_id = principal.principal_id
-             )
-           )
-         )
-     ) AS exists`,
-    [targetPrincipalId, ...capabilities],
-  );
-  if (!requiredBoolean(rows[0], "exists")) {
-    throw new PrincipalPermissionAdministrationError(
-      "LAST_CAPABILITY_HOLDER",
-      `At least one principal must retain all required capabilities: ${capabilities.join(", ")}.`,
-    );
-  }
-}
-
-async function principalWouldHaveCapabilities(
-  client: PermissionPostgresClient,
-  principal: PrincipalId,
-  overrides: PrincipalPermissionOverrides,
-  capabilities: readonly CapabilityId[],
-): Promise<boolean> {
-  const grantSet = new Set(overrides.grants);
-  const revokeSet = new Set(overrides.revokes);
-  for (const capability of capabilities) {
-    if (revokeSet.has(capability)) return false;
-    if (grantSet.has(capability)) continue;
-
-    const rows = await client.unsafe(
-      `SELECT EXISTS (
-         SELECT 1
-         FROM appbasis_permission_principal_role principal_role
-         JOIN appbasis_permission_role role
-           ON role.role_id = principal_role.role_id
-          AND role.state = 'active'
-         JOIN appbasis_permission_role_capability role_capability
-           ON role_capability.role_id = role.role_id
-         WHERE principal_role.principal_id = $1
-           AND role_capability.capability_id = $2
-       ) AS allowed`,
-      [principal, capability],
-    );
-    if (!requiredBoolean(rows[0], "allowed")) return false;
-  }
-  return true;
 }
 
 function normalizeOverrides(
@@ -415,17 +290,6 @@ function sameCapabilities(
 function requiredString(row: Record<string, unknown>, field: string): string {
   const value = row[field];
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Permission principal row has an invalid ${field}.`);
-  }
-  return value;
-}
-
-function requiredBoolean(
-  row: Record<string, unknown> | undefined,
-  field: string,
-): boolean {
-  const value = row?.[field];
-  if (typeof value !== "boolean") {
     throw new Error(`Permission principal row has an invalid ${field}.`);
   }
   return value;
