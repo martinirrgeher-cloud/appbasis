@@ -35,6 +35,10 @@ test('loads the deterministic Reference manifest in Identity, Permissions then T
         relativePath: 'packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql',
       },
       {
+        ownerId: 'permissions',
+        relativePath: 'packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql',
+      },
+      {
         ownerId: 'tasks',
         relativePath: 'modules/tasks/migrations/0000_appbasis_tasks_foundation.sql',
       },
