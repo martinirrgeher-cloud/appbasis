@@ -14,7 +14,7 @@ const VALID_ULC_DEFINITION = Object.freeze({
   platformServices: Object.freeze(["identity", "permissions"]),
 });
 
-test("binds the approved ULC Linz Verein and High-Privacy target", () => {
+test("binds the approved ULC Linz M5 target contracts", () => {
   const policy = bindUlcLinzM5TargetPolicy(VALID_ULC_DEFINITION);
 
   assert.strictEqual(policy, ULC_LINZ_M5_TARGET_POLICY);
@@ -22,6 +22,7 @@ test("binds the approved ULC Linz Verein and High-Privacy target", () => {
     appId: "ulc-linz",
     operatorProfile: "Verein",
     highPrivacyProfileId: "appbasis-high-privacy-v0.1",
+    roleDataScopePolicyId: "ulc-linz-role-data-scope-v0.1",
     productionDatabaseRegionTarget: "EU / Frankfurt",
   });
   assert.equal(Object.isFrozen(policy), true);
