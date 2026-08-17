@@ -24,6 +24,10 @@ const EXPECTED_CORE_DATA_FLOWS = Object.freeze(
     Object.freeze({ from, to, purpose }),
   ),
 );
+const LEGAL_PROVIDER_TO_INVENTORY_PROVIDER = Object.freeze({
+  cloudflare: "cloudflare",
+  "neon-databricks": "neon-postgresql",
+});
 const KNOWN_CLOUDFLARE_BINDING_TYPES = Object.freeze([
   "hyperdrive",
   "kv_namespace",
@@ -34,7 +38,7 @@ const KNOWN_CLOUDFLARE_BINDING_TYPES = Object.freeze([
   "workflow",
   "service",
 ]);
-const LEGAL_PROVIDERS = Object.freeze(["cloudflare", "neon-databricks"]);
+const LEGAL_PROVIDERS = Object.freeze(Object.keys(LEGAL_PROVIDER_TO_INVENTORY_PROVIDER));
 const LEGAL_DOCUMENT_TYPES = Object.freeze([
   "dpa",
   "dpa-account-binding",
@@ -109,6 +113,19 @@ export const ULC_LINZ_M5_G_CRITERIA = Object.freeze([
   "subprocessors",
 ]);
 
+export const ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES = Object.freeze(
+  Object.fromEntries(
+    Object.entries(LEGAL_PROVIDER_TO_INVENTORY_PROVIDER).map(
+      ([legalProvider, inventoryProviderId]) => {
+        const provider = INVENTORY.providerScope.find(
+          (candidate) => candidate.id === inventoryProviderId,
+        );
+        return [legalProvider, canonicalServiceScope(provider.responsibilities)];
+      },
+    ),
+  ),
+);
+
 export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) {
   assertNoSensitiveData(sourceEvidence);
   assertPlainObject(sourceEvidence, "ULC Linz M5-G source evidence");
@@ -133,10 +150,7 @@ export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) 
       "ULC Linz M5-G source evidence must use Standard Workers global-transient processing and euOnly=false.",
     );
   }
-  requireBoolean(
-    sourceEvidence.dataFlowInventoryComplete,
-    "dataFlowInventoryComplete",
-  );
+  requireBoolean(sourceEvidence.dataFlowInventoryComplete, "dataFlowInventoryComplete");
 
   const now = parseNow(options.now);
   const rootWindow = parseEvidenceWindow(
@@ -149,12 +163,8 @@ export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) 
   assertPlainObject(sourceEvidence.providers, "providers");
   assertExactKeys(sourceEvidence.providers, EXPECTED_PROVIDER_IDS, "providers");
 
-  const cloudflare = normalizeCloudflareEvidence(
-    sourceEvidence.providers.cloudflare,
-  );
-  const neon = normalizeNeonEvidence(
-    sourceEvidence.providers["neon-postgresql"],
-  );
+  const cloudflare = normalizeCloudflareEvidence(sourceEvidence.providers.cloudflare);
+  const neon = normalizeNeonEvidence(sourceEvidence.providers["neon-postgresql"]);
   const legalEvidence = normalizeLegalEvidence(sourceEvidence.legalEvidence, now);
   const dataFlows = normalizeDataFlows(sourceEvidence.dataFlows);
 
@@ -168,13 +178,13 @@ export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) 
     neonProductionDatabaseBound:
       neon.resourceClass === "production" && neon.databaseBound,
   });
-
   const productionResourcesBound = Object.values(resourceBinding).every(
     (value) => value === true,
   );
 
-  const coreDataFlowsVerified =
+  const dataFlowScopeComplete =
     sourceEvidence.dataFlowInventoryComplete === true &&
+    dataFlows.length === EXPECTED_CORE_DATA_FLOWS.length &&
     EXPECTED_CORE_DATA_FLOWS.every((expected) =>
       dataFlows.some(
         (flow) =>
@@ -185,21 +195,29 @@ export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) 
       ),
     ) &&
     dataFlows.every((flow) => flow.status === "verified");
+  const providerScopeComplete =
+    cloudflare.bindingsInventoryComplete === true &&
+    cloudflare.telemetryInventoryComplete === true &&
+    cloudflare.unexpectedPersonalDataPersistence === false;
+  const evidenceScopeComplete = dataFlowScopeComplete && providerScopeComplete;
+  const commonCriterionPrerequisites =
+    rootFresh && productionResourcesBound && evidenceScopeComplete;
 
   const dataRegionVerified =
-    rootFresh &&
-    productionResourcesBound &&
+    commonCriterionPrerequisites &&
     cloudflare.runtimeClass === "standard-workers" &&
-    cloudflare.bindingsInventoryComplete === true &&
-    cloudflare.unexpectedPersonalDataPersistence === false &&
-    cloudflare.telemetryInventoryComplete === true &&
     neon.regionId === EXPECTED_NEON_REGION_ID &&
-    neon.regionSource === "provider-api" &&
-    coreDataFlowsVerified;
+    neon.regionSource === "provider-api";
+
+  const neonProductSpecificScheduleFresh = hasFreshLegalPair(
+    legalEvidence,
+    "neon-databricks",
+    "terms",
+    { publicBaseline: true, accountSpecific: false },
+  );
 
   const dpaVerified =
-    rootFresh &&
-    productionResourcesBound &&
+    commonCriterionPrerequisites &&
     hasFreshLegalPair(legalEvidence, "cloudflare", "dpa", {
       publicBaseline: true,
       accountSpecific: false,
@@ -208,6 +226,7 @@ export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) 
       publicBaseline: false,
       accountSpecific: true,
     }) &&
+    neonProductSpecificScheduleFresh &&
     hasFreshLegalPair(legalEvidence, "neon-databricks", "dpa", {
       publicBaseline: true,
       accountSpecific: false,
@@ -216,26 +235,22 @@ export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) 
       legalEvidence,
       "neon-databricks",
       "dpa-account-binding",
-      {
-        publicBaseline: false,
-        accountSpecific: true,
-      },
+      { publicBaseline: false, accountSpecific: true },
     );
 
   const encryptionVerified =
-    rootFresh &&
-    productionResourcesBound &&
+    commonCriterionPrerequisites &&
     cloudflare.encryptionConfigurationObserved === true &&
     neon.encryptionConfigurationObserved === true &&
     hasFreshLegalPair(legalEvidence, "cloudflare", "security") &&
     hasFreshLegalPair(legalEvidence, "neon-databricks", "security");
 
   const subprocessorsVerified =
-    rootFresh &&
-    productionResourcesBound &&
+    commonCriterionPrerequisites &&
     hasFreshLegalPair(legalEvidence, "cloudflare", "subprocessors", {
       transferModelConsistentWithAdr022: true,
     }) &&
+    neonProductSpecificScheduleFresh &&
     hasFreshLegalPair(legalEvidence, "neon-databricks", "subprocessors", {
       transferModelConsistentWithAdr022: true,
     });
@@ -272,8 +287,7 @@ export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) 
       "neon-postgresql": Object.freeze({
         regionId: neon.regionId,
         regionSource: neon.regionSource,
-        encryptionConfigurationObserved:
-          neon.encryptionConfigurationObserved,
+        encryptionConfigurationObserved: neon.encryptionConfigurationObserved,
       }),
     }),
     legalEvidence,
@@ -286,10 +300,7 @@ export function deriveUlcLinzM5ProviderProductionEvidence(
   sourceEvidence,
   options = {},
 ) {
-  const compliance = evaluateUlcLinzProviderCompliance(
-    sourceEvidence,
-    options,
-  );
+  const compliance = evaluateUlcLinzProviderCompliance(sourceEvidence, options);
   return Object.freeze(
     Object.fromEntries(
       ULC_LINZ_M5_G_CRITERIA.filter(
@@ -312,10 +323,7 @@ function normalizeCloudflareEvidence(value) {
   );
   requireBoolean(value.bindingsInventoryComplete, "bindingsInventoryComplete");
   requireBoolean(value.telemetryInventoryComplete, "telemetryInventoryComplete");
-  requireBoolean(
-    value.transportEncryptionObserved,
-    "transportEncryptionObserved",
-  );
+  requireBoolean(value.transportEncryptionObserved, "transportEncryptionObserved");
   requireNullableBoolean(value.regionalServicesEnabled, "regionalServicesEnabled");
   requireNullableBoolean(
     value.customerMetadataBoundaryEnabled,
@@ -334,10 +342,7 @@ function normalizeCloudflareEvidence(value) {
       ["none", "transient", "persistent", "unknown"],
       "personalDataDisposition",
     );
-    return Object.freeze({
-      type,
-      personalDataDisposition: binding.personalDataDisposition,
-    });
+    return Object.freeze({ type, personalDataDisposition: binding.personalDataDisposition });
   });
 
   let unexpectedPersonalDataPersistence = null;
@@ -352,9 +357,7 @@ function normalizeCloudflareEvidence(value) {
       (binding) => binding.personalDataDisposition === "persistent",
     );
     unexpectedPersonalDataPersistence =
-      hasUnknownBinding || hasUnknownDisposition
-        ? null
-        : hasUnexpectedPersistence;
+      hasUnknownBinding || hasUnknownDisposition ? null : hasUnexpectedPersistence;
   }
 
   return Object.freeze({
@@ -367,8 +370,7 @@ function normalizeCloudflareEvidence(value) {
     telemetryInventoryComplete: value.telemetryInventoryComplete,
     regionalServicesEnabled: value.regionalServicesEnabled,
     customerMetadataBoundaryEnabled: value.customerMetadataBoundaryEnabled,
-    encryptionConfigurationObserved:
-      value.transportEncryptionObserved === true,
+    encryptionConfigurationObserved: value.transportEncryptionObserved === true,
   });
 }
 
@@ -379,12 +381,11 @@ function normalizeNeonEvidence(value) {
   requireBoolean(value.projectBound, "projectBound");
   requireBoolean(value.databaseBound, "databaseBound");
   const regionId =
-    value.regionId === null ? null : requireNonEmptyString(value.regionId, "regionId");
+    value.regionId === null
+      ? null
+      : requireNonEmptyString(value.regionId, "regionId");
   requireEnum(value.regionSource, ["provider-api", null], "regionSource");
-  requireBoolean(
-    value.transportEncryptionObserved,
-    "transportEncryptionObserved",
-  );
+  requireBoolean(value.transportEncryptionObserved, "transportEncryptionObserved");
   requireBoolean(value.atRestEncryptionObserved, "atRestEncryptionObserved");
 
   return Object.freeze({
@@ -426,17 +427,13 @@ function normalizeLegalEvidence(value, now) {
           "legal evidence documentVersionOrUpdatedAt must be a string or null.",
         );
       }
-      const serviceScope = requireNonEmptyString(
-        entry.serviceScope,
-        "serviceScope",
-      );
+      const serviceScope = requireNonEmptyString(entry.serviceScope, "serviceScope");
       requireBoolean(entry.accountSpecific, "accountSpecific");
       requireBoolean(entry.publicBaseline, "publicBaseline");
       requireNullableBoolean(
         entry.transferModelConsistentWithAdr022,
         "transferModelConsistentWithAdr022",
       );
-
       const window = parseEvidenceWindow(
         entry.observedAt,
         entry.validUntilOrReviewAt,
@@ -480,10 +477,12 @@ function normalizeDataFlows(value) {
 }
 
 function hasFreshLegalPair(entries, provider, documentType, qualifiers = {}) {
+  const expectedServiceScope = ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES[provider];
   return entries.some((entry) => {
     if (
       entry.provider !== provider ||
       entry.documentType !== documentType ||
+      entry.serviceScope !== expectedServiceScope ||
       entry.fresh !== true
     ) {
       return false;
@@ -494,10 +493,21 @@ function hasFreshLegalPair(entries, provider, documentType, qualifiers = {}) {
   });
 }
 
-function parseNow(now) {
-  if (now === undefined) {
-    return Date.now();
+function canonicalServiceScope(responsibilities) {
+  if (!Array.isArray(responsibilities) || responsibilities.length === 0) {
+    throw new Error("ULC Linz M5-G provider responsibilities are invalid.");
   }
+  const normalized = responsibilities.map((responsibility) =>
+    requireNonEmptyString(responsibility, "provider responsibility"),
+  );
+  if (new Set(normalized).size !== normalized.length) {
+    throw new Error("ULC Linz M5-G provider responsibilities are invalid.");
+  }
+  return [...normalized].sort((left, right) => left.localeCompare(right)).join("+");
+}
+
+function parseNow(now) {
+  if (now === undefined) return Date.now();
   if (now instanceof Date) {
     if (Number.isNaN(now.valueOf())) {
       throw new Error("ULC Linz M5-G evaluation clock is invalid.");
@@ -610,25 +620,27 @@ function assertExactKeys(value, expectedKeys, label) {
 
 function assertNoSensitiveData(value, path = "evidence") {
   if (Array.isArray(value)) {
-    value.forEach((entry, index) => assertNoSensitiveData(entry, `${path}[${index}]`));
+    value.forEach((entry, index) =>
+      assertNoSensitiveData(entry, `${path}[${index}]`),
+    );
     return;
   }
-
   if (typeof value === "string") {
     if (SENSITIVE_STRING_PATTERNS.some((pattern) => pattern.test(value))) {
-      throw new Error(`ULC Linz M5-G source evidence contains sensitive data at ${path}.`);
+      throw new Error(
+        `ULC Linz M5-G source evidence contains sensitive data at ${path}.`,
+      );
     }
     return;
   }
-
-  if (value === null || typeof value !== "object") {
-    return;
-  }
+  if (value === null || typeof value !== "object") return;
 
   assertPlainObject(value, path);
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== "string" || SENSITIVE_KEY_PATTERN.test(key)) {
-      throw new Error(`ULC Linz M5-G source evidence contains sensitive data at ${path}.`);
+      throw new Error(
+        `ULC Linz M5-G source evidence contains sensitive data at ${path}.`,
+      );
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (
@@ -636,7 +648,9 @@ function assertNoSensitiveData(value, path = "evidence") {
       !Object.hasOwn(descriptor, "value") ||
       descriptor.enumerable !== true
     ) {
-      throw new Error(`ULC Linz M5-G source evidence contains unsafe fields at ${path}.`);
+      throw new Error(
+        `ULC Linz M5-G source evidence contains unsafe fields at ${path}.`,
+      );
     }
     assertNoSensitiveData(descriptor.value, `${path}.${key}`);
   }
@@ -659,6 +673,10 @@ function assertCanonicalInventory() {
     !providerIds.includes("neon-postgresql")
   ) {
     throw new Error("ULC Linz M5-G provider inventory scope is invalid.");
+  }
+
+  for (const provider of INVENTORY.providerScope) {
+    canonicalServiceScope(provider.responsibilities);
   }
 
   const neon = INVENTORY.providerScope.find(
