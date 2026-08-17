@@ -13,7 +13,8 @@ type UlcLinzSourceRole = keyof typeof roleDataScope.runtimeRoleIds;
 type UlcLinzQuarantinableSourceRole = Exclude<UlcLinzSourceRole, "admin">;
 
 const QUARANTINE_AUDIT_REASON = "ULC Linz pre-delete access quarantine";
-const IDENTITY_DELETION_AUDIT_REASON = "ULC Linz identity deletion";
+const DELETION_QUARANTINE_AUDIT_REASON =
+  "ULC Linz identity deletion pre-delete access quarantine";
 const ADMIN_ROLE_ID = roleId(roleDataScope.runtimeRoleIds.admin);
 const QUARANTINABLE_SOURCE_ROLES = new Set<UlcLinzQuarantinableSourceRole>([
   "trainer",
@@ -61,22 +62,9 @@ export interface UlcLinzIdentityDeletionOwner {
   }>;
 }
 
-/** Narrow local port for destructive principal lifecycle writes in @appbasis/permissions. */
+/** Narrow local port for destructive principal cleanup in @appbasis/permissions. */
 export interface UlcLinzPrincipalLifecycleOwner {
-  recordIdentityDeletionAttempt(
-    principalId: PrincipalId,
-    auditContext: {
-      readonly actorPrincipalId: PrincipalId;
-      readonly reason: string;
-    },
-  ): Promise<void>;
-  deleteQuarantinedPrincipal(
-    principalId: PrincipalId,
-    auditContext: {
-      readonly actorPrincipalId: PrincipalId;
-      readonly reason: string;
-    },
-  ): Promise<boolean>;
+  deleteQuarantinedPrincipal(principalId: PrincipalId): Promise<boolean>;
 }
 
 export interface UlcLinzPreDeleteQuarantineDependencies {
@@ -111,6 +99,12 @@ export interface UlcLinzDeletionResult {
   readonly alreadyDeleted: boolean;
 }
 
+type QuarantineMode = {
+  readonly auditReason: string;
+  readonly requirePermissionPrincipal: boolean;
+  readonly forceAudit: boolean;
+};
+
 /**
  * Safety stage before destructive deletion. This deliberately does not count as
  * deletion: it removes known ULC access before disabling the identity owner.
@@ -127,6 +121,11 @@ export async function quarantineUlcLinzIdentityBeforeDeletion(
     dependencies,
     normalizedIdentityId,
     authorization,
+    {
+      auditReason: QUARANTINE_AUDIT_REASON,
+      requirePermissionPrincipal: false,
+      forceAudit: false,
+    },
   );
 }
 
@@ -134,14 +133,14 @@ export async function quarantineUlcLinzIdentityBeforeDeletion(
  * Destructive M5-C slice for the persistent ULC owners that exist today.
  *
  * Authorization and authoritative source-role proof happen before owner state
- * is inspected. Access is quarantined first, the permission principal is then
- * removed through its own audited owner boundary, and only then may the
- * disabled identity be physically deleted through @appbasis/identity.
+ * is inspected. The existing permission administration audit is deliberately
+ * used as the privileged deletion audit: an exact principal must exist and its
+ * role/permission state is replaced (even if already empty) with a deletion-
+ * specific server-side reason before the principal row may be removed.
  *
  * If a later owner fails, the function returns an error and earlier stages stay
  * in their safer no-access state. The identity owner keeps a completed delete
- * tombstone so an ambiguous client retry can return without producing duplicate
- * destructive writes or audit attempts.
+ * tombstone so an ambiguous client retry can return without duplicate writes.
  */
 export async function deleteUlcLinzIdentity(
   dependencies: UlcLinzDeletionDependencies,
@@ -172,23 +171,22 @@ export async function deleteUlcLinzIdentity(
     dependencies,
     normalizedIdentityId,
     authorization,
-  );
-  const auditContext = Object.freeze({
-    actorPrincipalId: authorization.actorPrincipalId,
-    reason: IDENTITY_DELETION_AUDIT_REASON,
-  });
-
-  // Record the privileged destructive intent before data disappears. The audit
-  // contains identifiers and metadata only, never the deleted user payload.
-  await dependencies.principalLifecycle.recordIdentityDeletionAttempt(
-    targetPrincipalId,
-    auditContext,
+    {
+      auditReason: DELETION_QUARANTINE_AUDIT_REASON,
+      requirePermissionPrincipal: true,
+      forceAudit: true,
+    },
   );
   const permissionPrincipalDeleted =
     await dependencies.principalLifecycle.deleteQuarantinedPrincipal(
       targetPrincipalId,
-      auditContext,
     );
+  if (!permissionPrincipalDeleted) {
+    // A concurrent/disconnected principal lifecycle means the operation cannot
+    // prove that its own audited quarantine and cleanup still describe the same
+    // target state. Do not continue to physical identity deletion.
+    throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
+  }
 
   const identityDeletion = await dependencies.identityDeletion.deleteDisabledIdentity(
     normalizedIdentityId,
@@ -197,7 +195,7 @@ export async function deleteUlcLinzIdentity(
   return Object.freeze({
     identityId: normalizedIdentityId,
     permissionsChanged: quarantine.permissionsChanged,
-    permissionPrincipalDeleted,
+    permissionPrincipalDeleted: true,
     identityDeleted: true,
     alreadyDeleted: identityDeletion.alreadyDeleted,
   });
@@ -207,12 +205,17 @@ async function quarantineAuthorizedIdentity(
   dependencies: UlcLinzPreDeleteQuarantineDependencies,
   normalizedIdentityId: string,
   authorization: UlcLinzLifecycleAuthorization,
+  mode: QuarantineMode,
 ): Promise<UlcLinzPreDeleteQuarantineResult> {
   const targetSourceRole = requiredQuarantinableSourceRole(
     authorization.targetSourceRole,
   );
   const targetPrincipalId = principalId(normalizedIdentityId);
   const current = await dependencies.permissions.findPrincipal(targetPrincipalId);
+
+  if (current === null && mode.requirePermissionPrincipal) {
+    throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
+  }
 
   let permissionsChanged = false;
   if (current !== null) {
@@ -221,14 +224,15 @@ async function quarantineAuthorizedIdentity(
       targetPrincipalId,
       targetSourceRole,
     );
-    if (hasApplicationAccessState(current)) {
+    permissionsChanged = hasApplicationAccessState(current);
+    if (permissionsChanged || mode.forceAudit) {
       await dependencies.accessAdministration.replacePrincipalAccess(
         targetPrincipalId,
         [],
         { grants: [], revokes: [] },
         {
           actorPrincipalId: authorization.actorPrincipalId,
-          reason: QUARANTINE_AUDIT_REASON,
+          reason: mode.auditReason,
         },
         {
           expectedRoleIds: current.roleIds,
@@ -236,7 +240,6 @@ async function quarantineAuthorizedIdentity(
           expectedRevokes: current.revokes,
         },
       );
-      permissionsChanged = true;
     }
   }
 
@@ -306,7 +309,12 @@ function hasApplicationAccessState(current: PrincipalPermissions): boolean {
 }
 
 function requiredIdentifier(value: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 200 ||
+    value !== value.trim()
+  ) {
     throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
   }
   return value;

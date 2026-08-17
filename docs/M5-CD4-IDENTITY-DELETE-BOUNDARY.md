@@ -22,13 +22,20 @@ Für bekannte Nicht-Admin-Rollen werden anschließend über die bestehenden Owne
 
 Admin-Ziele, unbekannte Rollen, widersprüchlicher Permission-State oder fremde Capability-Namespaces blockieren fail-closed.
 
-### 2. Permission-Principal
+### 2. Permission-Principal und Lösch-Audit
 
-`PostgresPrincipalLifecycleAdministration` liegt in `@appbasis/permissions` und löscht nur einen bereits vollständig quarantänisierten Principal.
+Der erste echte Delete verlangt einen **exakt vorhandenen Permission-Principal**. Damit kann der privilegierte Vorgang vor dem physischen Löschen immer über den bereits bestehenden, transaktionalen `replacePrincipalAccess()`-Auditvertrag protokolliert werden.
 
-Vor dem destruktiven Identity-Schritt wird ein Audit-Ereignis `principal.identity.delete.requested` geschrieben. Die eigentliche Principal-Löschung und ihr Audit-Ereignis `principal.delete` liegen in derselben Permission-Transaktion.
+Für einen Delete wird `replacePrincipalAccess()` auch dann ausgeführt, wenn Rollen/Grants/Revokes bereits leer sind. Die vorhandenen Audit-Ereignisse
 
-Das Audit enthält Actor, Reason, Target und Ereignistyp, aber keinen gelöschten personenbezogenen Payload. Die bestehende separate 12-Monats-Retention des Permission-Administration-Audits bleibt unverändert.
+- `principal.roles.replace`
+- `principal.permissions.replace`
+
+tragen den serverseitigen Reason `ULC Linz identity deletion pre-delete access quarantine` und den authentifizierten Actor. Dadurch existiert vor jedem unterstützten physischen Delete ein persistentes, payload-minimiertes Audit des privilegierten Löschvorgangs.
+
+`PostgresPrincipalLifecycleAdministration` in `@appbasis/permissions` löscht anschließend ausschließlich einen vollständig quarantänisierten Principal. Hat der Principal noch Rollen, Grants oder Revokes, wird fail-closed abgebrochen.
+
+Bewusst wird in M5-C **kein neuer Permission-Audit-Eventtyp und keine neue Permission-Migration** eingeführt. Der offene M5-F-Strang besitzt die Audit-/Security-Schema-Verantwortung; M5-C verwendet den bereits freigegebenen Auditvertrag statt dieselbe Manifest-/Security-Grenze parallel zu verändern.
 
 ### 3. Identity-Owner
 
@@ -63,9 +70,10 @@ Die PostgreSQL-E2E-Tests beweisen:
 3. Der neue Identity-Owner löscht nach Deaktivierung User, Security-State, Person, Account und Session gemeinsam.
 4. Aktive/nicht vollständig deaktivierte Identities werden nicht gelöscht.
 5. Unerwartete `verification`-Persistenz blockiert fail-closed.
-6. Der ULC-End-to-End-Pfad entfernt zuerst Access, auditiert den destruktiven Intent, entfernt den Permission-Principal und löscht anschließend die Identity.
-7. Das Permission-Audit bleibt nach Subject-Löschung erhalten.
+6. Der ULC-End-to-End-Pfad erzeugt zuerst die bestehenden Permission-Administration-Audits mit Löschgrund, entfernt danach den Permission-Principal und löscht anschließend die Identity.
+7. Das Permission-Audit bleibt nach Subject-Löschung erhalten und enthält weder Kontaktadresse noch Passwort.
 8. Ein Replay nach abgeschlossenem Delete führt nicht zu doppelten destruktiven Writes oder doppelten Audit-Ereignissen.
+9. Fehlt beim ersten Delete der exakte Permission-Principal als Auditanker, wird vor Identity-Deaktivierung fail-closed abgebrochen.
 
 ## Bewusst weiterhin offen
 
@@ -75,7 +83,8 @@ M5-C bleibt global `open`, solange mindestens einer der folgenden Punkte real of
 - die tatsächliche Persistenz hinter `UlcLinzSubjectScopeResolver` ist nicht gebunden/inventarisiert,
 - ein später installiertes ULC-Fachmodul führt personenbezogene Tabellen ohne expliziten Löschvertrag ein,
 - Object Storage/Medien werden später real verwendet und besitzen noch keinen Owner-/Löschvertrag,
-- ein zukünftiger Better-Auth-Flow führt `verification`-Persistenz ein, ohne dessen exakte Subject-Zuordnung und Cleanup-Semantik zu definieren.
+- ein zukünftiger Better-Auth-Flow führt `verification`-Persistenz ein, ohne dessen exakte Subject-Zuordnung und Cleanup-Semantik zu definieren,
+- die Retention des minimalen Identity-Delete-Tombstones ist im separaten M5-D-Gate noch nicht global verifiziert.
 
 Deshalb wird weder `deletionPolicy` noch `retentionPolicy` in diesem Slice auf `verified` gesetzt. Das ist beabsichtigtes fail-closed Verhalten und kein fehlender aktueller Identity-/Permission-Löschpfad.
 

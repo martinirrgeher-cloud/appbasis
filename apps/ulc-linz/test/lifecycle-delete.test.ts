@@ -32,11 +32,13 @@ type DeleteHarnessOptions = {
   targetSourceRole?: string;
   identityDeleteError?: Error;
   remainingPrincipalOnCompletedReplay?: boolean;
+  initialPrincipalAbsent?: boolean;
 };
 
 function deleteHarness(options: DeleteHarnessOptions = {}) {
   const events: string[] = [];
-  let currentPrincipal: PrincipalPermissions | null = activePrincipal();
+  let currentPrincipal: PrincipalPermissions | null =
+    options.initialPrincipalAbsent === true ? null : activePrincipal();
   let identityDisabled = false;
   let principalDeleted = false;
 
@@ -92,9 +94,6 @@ function deleteHarness(options: DeleteHarnessOptions = {}) {
       },
     },
     principalLifecycle: {
-      async recordIdentityDeletionAttempt() {
-        events.push("audit-delete-attempt");
-      },
       async deleteQuarantinedPrincipal() {
         events.push("delete-principal");
         if (currentPrincipal !== null) {
@@ -149,7 +148,7 @@ async function expectBlocked(
 }
 
 describe("ULC Linz M5-C destructive deletion orchestration", () => {
-  it("authorizes before owner reads and deletes only after quarantine plus audit", async () => {
+  it("authorizes before owner reads and deletes only after the audited access replacement", async () => {
     const state = deleteHarness();
 
     await expect(
@@ -168,7 +167,6 @@ describe("ULC Linz M5-C destructive deletion orchestration", () => {
       "find-principal",
       "replace-access",
       "disable-identity",
-      "audit-delete-attempt",
       "delete-principal",
       "delete-identity",
     ]);
@@ -193,6 +191,21 @@ describe("ULC Linz M5-C destructive deletion orchestration", () => {
       "ADMIN_LIFECYCLE_SCOPE_UNBOUND",
     );
     expect(state.events).toEqual([`authorize:${TARGET_IDENTITY_ID}`]);
+  });
+
+  it("blocks a first delete when no exact permission principal exists to produce the audited quarantine", async () => {
+    const state = deleteHarness({ initialPrincipalAbsent: true });
+
+    await expectBlocked(
+      () => deleteUlcLinzIdentity(state.dependencies, TARGET_IDENTITY_ID),
+      "UNKNOWN_PERMISSION_STATE",
+    );
+    expect(state.events).toEqual([
+      `authorize:${TARGET_IDENTITY_ID}`,
+      "deletion-completed",
+      "find-principal",
+    ]);
+    expect(state.identityDisabled).toBe(false);
   });
 
   it("returns an idempotent completed result without repeating destructive writes", async () => {
@@ -247,7 +260,6 @@ describe("ULC Linz M5-C destructive deletion orchestration", () => {
       "find-principal",
       "replace-access",
       "disable-identity",
-      "audit-delete-attempt",
       "delete-principal",
       "delete-identity",
     ]);

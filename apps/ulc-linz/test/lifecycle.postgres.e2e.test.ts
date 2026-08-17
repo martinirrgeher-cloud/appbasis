@@ -25,8 +25,8 @@ const administrativeUsername = "ulc.lifecycle.admin";
 const administrativePassword = "ULC-lifecycle-admin-password-42";
 const targetUsername = "ulc.lifecycle.trainer";
 const targetPassword = "ULC-lifecycle-target-password-42";
-const quarantineReason = "ULC Linz pre-delete access quarantine";
-const deletionReason = "ULC Linz identity deletion";
+const deletionQuarantineReason =
+  "ULC Linz identity deletion pre-delete access quarantine";
 
 type DatabaseManifest = {
   owners: readonly {
@@ -67,7 +67,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await administrativeConnection.client.end();
     });
 
-    it("quarantines, audits, and physically deletes the current ULC permission and identity owners with safe replay", async () => {
+    it("audits quarantine and physically deletes the current ULC permission and identity owners with safe replay", async () => {
       const connection = requiredConnection();
       const auth = createBetterAuthRuntime({
         database: connection.database,
@@ -197,46 +197,32 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
                 previous_value, new_value
          FROM appbasis_permission_administration_audit
          WHERE target_id = $1
-         ORDER BY created_at ASC, id ASC`,
+         ORDER BY created_at ASC, event_id ASC`,
         [targetIdentity.identityId],
       );
-      expect(auditRows).toHaveLength(4);
+      expect(auditRows).toHaveLength(2);
       expect(auditRows).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             event_type: "principal.roles.replace",
             actor_principal_id: String(actorPrincipalId),
-            reason: quarantineReason,
+            reason: deletionQuarantineReason,
             target_type: "principal",
             target_id: targetIdentity.identityId,
           }),
           expect.objectContaining({
             event_type: "principal.permissions.replace",
             actor_principal_id: String(actorPrincipalId),
-            reason: quarantineReason,
+            reason: deletionQuarantineReason,
             target_type: "principal",
             target_id: targetIdentity.identityId,
           }),
-          {
-            event_type: "principal.identity.delete.requested",
-            actor_principal_id: String(actorPrincipalId),
-            reason: deletionReason,
-            target_type: "principal",
-            target_id: targetIdentity.identityId,
-            previous_value: null,
-            new_value: null,
-          },
-          {
-            event_type: "principal.delete",
-            actor_principal_id: String(actorPrincipalId),
-            reason: deletionReason,
-            target_type: "principal",
-            target_id: targetIdentity.identityId,
-            previous_value: null,
-            new_value: null,
-          },
         ]),
       );
+      for (const row of auditRows) {
+        expect(JSON.stringify(row)).not.toContain("ulc.lifecycle.trainer@example.invalid");
+        expect(JSON.stringify(row)).not.toContain(targetPassword);
+      }
 
       await expect(
         deleteUlcLinzIdentity(dependencies, targetIdentity.identityId),
@@ -253,7 +239,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
          WHERE target_id = $1`,
         [targetIdentity.identityId],
       );
-      expect(auditCountAfterReplay[0]?.count).toBe(4);
+      expect(auditCountAfterReplay[0]?.count).toBe(2);
     });
 
     function requiredConnection() {

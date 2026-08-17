@@ -1,10 +1,8 @@
 import { principalId, type PrincipalId } from "./contracts";
-import type { RoleAdministrationAuditContext, RoleAdministrationPostgresClient } from "./role-administration";
-
-const MAX_AUDIT_REASON_LENGTH = 500;
+import type { RoleAdministrationPostgresClient } from "./role-administration";
 
 export type PrincipalLifecycleAdministrationErrorCode =
-  | "INVALID_AUDIT_CONTEXT"
+  | "INVALID_PRINCIPAL_ID"
   | "PRINCIPAL_ACCESS_NOT_QUARANTINED";
 
 export class PrincipalLifecycleAdministrationError extends Error {
@@ -17,39 +15,22 @@ export class PrincipalLifecycleAdministrationError extends Error {
   }
 }
 
+/**
+ * Destructive cleanup boundary for the permission owner.
+ *
+ * The high-level lifecycle coordinator must first call the existing audited
+ * replacePrincipalAccess() operation. This owner refuses to delete a principal
+ * while any role/grant/revoke remains. No new audit event type is introduced
+ * here because the permission audit schema is owned by its existing migration
+ * lifecycle and is concurrently consumed by M5-F.
+ */
 export class PostgresPrincipalLifecycleAdministration {
   constructor(private readonly client: RoleAdministrationPostgresClient) {}
 
-  async recordIdentityDeletionAttempt(
-    requestedPrincipalId: PrincipalId,
-    auditContext: RoleAdministrationAuditContext,
-  ): Promise<void> {
-    const targetPrincipalId = validatedPrincipalId(requestedPrincipalId);
-    const audit = normalizedAuditContext(auditContext);
-
-    await this.client.begin(async (transaction) => {
-      await transaction.unsafe(
-        `INSERT INTO appbasis_permission_administration_audit (
-           event_type,
-           actor_principal_id,
-           reason,
-           target_type,
-           target_id,
-           previous_value,
-           new_value
-         )
-         VALUES ('principal.identity.delete.requested', $1, $2, 'principal', $3, NULL, NULL)`,
-        [audit.actorPrincipalId, audit.reason, targetPrincipalId],
-      );
-    });
-  }
-
   async deleteQuarantinedPrincipal(
     requestedPrincipalId: PrincipalId,
-    auditContext: RoleAdministrationAuditContext,
   ): Promise<boolean> {
     const targetPrincipalId = validatedPrincipalId(requestedPrincipalId);
-    const audit = normalizedAuditContext(auditContext);
 
     return this.client.begin(async (transaction) => {
       const principalRows = await transaction.unsafe(
@@ -99,51 +80,17 @@ export class PostgresPrincipalLifecycleAdministration {
           "Permission principal deletion did not affect exactly one principal.",
         );
       }
-
-      await transaction.unsafe(
-        `INSERT INTO appbasis_permission_administration_audit (
-           event_type,
-           actor_principal_id,
-           reason,
-           target_type,
-           target_id,
-           previous_value,
-           new_value
-         )
-         VALUES ('principal.delete', $1, $2, 'principal', $3, NULL, NULL)`,
-        [audit.actorPrincipalId, audit.reason, targetPrincipalId],
-      );
       return true;
     });
   }
-}
-
-function normalizedAuditContext(context: RoleAdministrationAuditContext): {
-  readonly actorPrincipalId: PrincipalId;
-  readonly reason: string;
-} {
-  const actorPrincipalId = validatedPrincipalId(context.actorPrincipalId);
-  const reason = context.reason;
-  if (
-    typeof reason !== "string" ||
-    reason.length === 0 ||
-    reason.length > MAX_AUDIT_REASON_LENGTH ||
-    reason !== reason.trim()
-  ) {
-    throw new PrincipalLifecycleAdministrationError(
-      "INVALID_AUDIT_CONTEXT",
-      `Audit reason must be trimmed and contain 1-${MAX_AUDIT_REASON_LENGTH} characters.`,
-    );
-  }
-  return { actorPrincipalId, reason };
 }
 
 function validatedPrincipalId(value: PrincipalId): PrincipalId {
   const raw = String(value);
   if (raw.length === 0 || raw.length > 200 || raw !== raw.trim()) {
     throw new PrincipalLifecycleAdministrationError(
-      "INVALID_AUDIT_CONTEXT",
-      "Audit principal ID is invalid.",
+      "INVALID_PRINCIPAL_ID",
+      "Permission principal ID is invalid.",
     );
   }
   return principalId(raw);
