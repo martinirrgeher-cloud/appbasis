@@ -5,34 +5,40 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { loadFactorySnapshot } from "./model.mjs";
-import { REFERENCE_CONTROL_PLANE_EVIDENCE_RUN } from "./reference-control-plane-evidence.mjs";
+import { REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY } from "./reference-control-plane-evidence.mjs";
 
-const withinValidity = () => Date.parse("2026-08-17T12:00:00Z");
+const nowMs = Date.parse("2026-08-17T12:00:00Z");
+const withinValidity = () => nowMs;
+const observedAt = "2026-08-17T11:36:46Z";
 
 function successfulRun(overrides = {}) {
   return {
-    id: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunId,
-    run_attempt: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunAttempt,
-    name: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowName,
-    path: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowPath,
-    event: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunEvent,
-    head_branch: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunBranch,
-    head_sha: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunHeadSha,
-    updated_at: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt,
+    id: 32025695514,
+    run_attempt: 1,
+    name: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowName,
+    path: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowPath,
+    event: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowRunEvent,
+    head_branch: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowRunBranch,
+    head_sha: "e7fb8dbd5e76041109e2f045eabc50fc803c13a0",
+    created_at: "2026-08-17T11:35:55Z",
+    updated_at: observedAt,
     status: "completed",
     conclusion: "success",
     repository: {
-      full_name: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.repository,
+      full_name: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.repository,
     },
     ...overrides,
   };
 }
 
-function runResponse(run) {
-  return new Response(JSON.stringify(run), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
+function runsResponse(run = successfulRun()) {
+  return new Response(
+    JSON.stringify({ total_count: 1, workflow_runs: [run] }),
+    {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    },
+  );
 }
 
 async function createReferenceFixture() {
@@ -61,12 +67,11 @@ function criterion(app, id) {
   return app.productionReadiness.criteria.find((candidate) => candidate.id === id);
 }
 
-test("factory snapshot consumes the pinned fresh successful Reference control-plane run without unlocking production", async () => {
+test("factory snapshot consumes the latest fresh successful Reference control-plane run without unlocking production", async () => {
   const root = await createReferenceFixture();
   try {
     const snapshot = await loadFactorySnapshot(root, {
-      referenceControlPlaneEvidenceFetchImpl: async () =>
-        runResponse(successfulRun()),
+      referenceControlPlaneEvidenceFetchImpl: async () => runsResponse(),
       referenceControlPlaneEvidenceNow: withinValidity,
     });
     const app = snapshot.apps[0];
@@ -86,12 +91,12 @@ test("factory snapshot consumes the pinned fresh successful Reference control-pl
   }
 });
 
-test("factory snapshot keeps Reference control-plane isolation open when the pinned run is not successful", async () => {
+test("factory snapshot keeps Reference control-plane isolation open when the latest run is not successful", async () => {
   const root = await createReferenceFixture();
   try {
     const snapshot = await loadFactorySnapshot(root, {
       referenceControlPlaneEvidenceFetchImpl: async () =>
-        runResponse(successfulRun({ conclusion: "failure" })),
+        runsResponse(successfulRun({ conclusion: "failure" })),
       referenceControlPlaneEvidenceNow: withinValidity,
     });
     const app = snapshot.apps[0];
@@ -106,14 +111,13 @@ test("factory snapshot keeps Reference control-plane isolation open when the pin
   }
 });
 
-test("factory snapshot expires Reference provider evidence at its review point", async () => {
+test("factory snapshot expires stale Reference provider evidence", async () => {
   const root = await createReferenceFixture();
   try {
     const snapshot = await loadFactorySnapshot(root, {
-      referenceControlPlaneEvidenceFetchImpl: async () =>
-        runResponse(successfulRun()),
+      referenceControlPlaneEvidenceFetchImpl: async () => runsResponse(),
       referenceControlPlaneEvidenceNow: () =>
-        Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.validUntilOrReviewAt),
+        Date.parse(observedAt) + REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.maxAgeMs,
     });
     const app = snapshot.apps[0];
 
