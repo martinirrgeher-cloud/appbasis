@@ -6,6 +6,7 @@
       "id": "cloudflare",
       "responsibilities": [
         "edge-runtime",
+        "tls-termination",
         "worker-execution"
       ],
       "appSpecificProductionEvidence": "open"
@@ -34,8 +35,10 @@
     }
   ],
   "freshnessPolicy": {
-    "maxAgeDays": 30,
     "observedAtRequired": true,
+    "documentOrConfigurationReferenceRequired": true,
+    "appEnvironmentBindingRequired": true,
+    "validUntilOrReviewAtRequired": true,
     "staleEvidence": "fail-closed"
   },
   "m5": {
@@ -46,6 +49,7 @@
     "providerScope": "cloudflare-and-neon-postgresql-only",
     "unknownProvider": "fail-closed",
     "missingEvidence": "fail-closed",
+    "foreignEnvironmentEvidence": "fail-closed",
     "baselineIsProductionEvidence": false
   }
 }
