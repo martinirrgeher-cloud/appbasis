@@ -4,17 +4,19 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
+import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
 import { createIdentityRuntime } from "@appbasis/identity/server";
 import {
   PostgresPermissionStore,
   PostgresPrincipalAccessAdministration,
+  PostgresPrincipalLifecycleAdministration,
   principalId,
 } from "@appbasis/permissions";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 
 import {
-  quarantineUlcLinzIdentityBeforeDeletion,
-  type UlcLinzPreDeleteQuarantineDependencies,
+  deleteUlcLinzIdentity,
+  type UlcLinzDeletionDependencies,
 } from "../worker/lifecycle";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -24,6 +26,7 @@ const administrativePassword = "ULC-lifecycle-admin-password-42";
 const targetUsername = "ulc.lifecycle.trainer";
 const targetPassword = "ULC-lifecycle-target-password-42";
 const quarantineReason = "ULC Linz pre-delete access quarantine";
+const deletionReason = "ULC Linz identity deletion";
 
 type DatabaseManifest = {
   owners: readonly {
@@ -32,14 +35,14 @@ type DatabaseManifest = {
 };
 
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
-  describe.skip("ULC Linz pre-delete quarantine PostgreSQL E2E", () => {
+  describe.skip("ULC Linz deletion lifecycle PostgreSQL E2E", () => {
     it("requires DATABASE_URL", () => {});
   });
 } else {
-  describe("ULC Linz pre-delete quarantine PostgreSQL E2E", () => {
+  describe("ULC Linz deletion lifecycle PostgreSQL E2E", () => {
     const administrativeConnection = createPostgresDatabase(databaseUrl);
     const isolatedDatabaseName =
-      "appbasis_ulc_quarantine_" + randomUUID().replaceAll("-", "").slice(0, 16);
+      "appbasis_ulc_delete_" + randomUUID().replaceAll("-", "").slice(0, 16);
     const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
     let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
     let isolatedDatabaseCreated = false;
@@ -64,7 +67,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await administrativeConnection.client.end();
     });
 
-    it("removes real ULC permissions before disabling the real Identity owner and remains safe on replay", async () => {
+    it("quarantines, audits, and physically deletes the current ULC permission and identity owners with safe replay", async () => {
       const connection = requiredConnection();
       const auth = createBetterAuthRuntime({
         database: connection.database,
@@ -98,7 +101,10 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         username: targetUsername,
         temporaryPassword: targetPassword,
         displayName: "ULC Lifecycle Trainer",
+        contactEmail: "ulc.lifecycle.trainer@example.invalid",
       });
+      const targetPersonId = targetIdentity.personId;
+      if (targetPersonId === null) throw new Error("Expected a linked target person.");
       const targetSession = await identityRuntime.service.signInWithUsername({
         username: targetUsername,
         password: targetPassword,
@@ -107,11 +113,20 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await seedTrainerAccess(connection.client, targetIdentity.identityId);
       const permissionStore = new PostgresPermissionStore(connection.client);
       const accessAdministration = new PostgresPrincipalAccessAdministration(connection.client);
+      const principalLifecycle = new PostgresPrincipalLifecycleAdministration(
+        connection.client,
+      );
+      const identityDeletion = new PostgresIdentityDeletion(
+        connection.client,
+        () => new Date("2026-08-17T21:45:00.000Z"),
+      );
       const actorPrincipalId = principalId("ulc-lifecycle-admin-principal");
-      const dependencies: UlcLinzPreDeleteQuarantineDependencies = {
+      const dependencies: UlcLinzDeletionDependencies = {
         identity: identityRuntime.service,
+        identityDeletion,
         permissions: permissionStore,
         accessAdministration,
+        principalLifecycle,
         async authorizeLifecycleWrite({ targetIdentityId }) {
           expect(targetIdentityId).toBe(targetIdentity.identityId);
           return {
@@ -135,21 +150,18 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       });
 
       await expect(
-        quarantineUlcLinzIdentityBeforeDeletion(dependencies, targetIdentity.identityId),
+        deleteUlcLinzIdentity(dependencies, targetIdentity.identityId),
       ).resolves.toEqual({
         identityId: targetIdentity.identityId,
         permissionsChanged: true,
-        identityDisabled: true,
+        permissionPrincipalDeleted: true,
+        identityDeleted: true,
+        alreadyDeleted: false,
       });
 
       await expect(
         permissionStore.findPrincipal(principalId(targetIdentity.identityId)),
-      ).resolves.toEqual({
-        principalId: principalId(targetIdentity.identityId),
-        roleIds: [],
-        grants: [],
-        revokes: [],
-      });
+      ).resolves.toBeNull();
       await expect(
         identityRuntime.service.getCurrentIdentity(targetSession.sessionToken),
       ).resolves.toBeNull();
@@ -159,39 +171,81 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
           password: targetPassword,
         }),
       ).rejects.toMatchObject({ code: "AUTHENTICATION_FAILED" });
+      await expect(identityDeletion.isDeletionCompleted(targetIdentity.identityId)).resolves.toBe(
+        true,
+      );
+
+      const remaining = await connection.client.unsafe(
+        `SELECT
+           (SELECT count(*)::int FROM "user" WHERE id = $1) AS user_count,
+           (SELECT count(*)::int FROM appbasis_identity_security_state WHERE identity_id = $1) AS state_count,
+           (SELECT count(*)::int FROM appbasis_person WHERE id = $2) AS person_count,
+           (SELECT count(*)::int FROM account WHERE user_id = $1) AS account_count,
+           (SELECT count(*)::int FROM session WHERE user_id = $1) AS session_count`,
+        [targetIdentity.identityId, targetPersonId],
+      );
+      expect(remaining[0]).toEqual({
+        user_count: 0,
+        state_count: 0,
+        person_count: 0,
+        account_count: 0,
+        session_count: 0,
+      });
 
       const auditRows = await connection.client.unsafe(
-        `SELECT event_type, actor_principal_id, reason, target_type, target_id
+        `SELECT event_type, actor_principal_id, reason, target_type, target_id,
+                previous_value, new_value
          FROM appbasis_permission_administration_audit
-         WHERE target_id = $1`,
+         WHERE target_id = $1
+         ORDER BY created_at ASC, id ASC`,
         [targetIdentity.identityId],
       );
-      expect(auditRows).toHaveLength(2);
+      expect(auditRows).toHaveLength(4);
       expect(auditRows).toEqual(
         expect.arrayContaining([
-          {
+          expect.objectContaining({
             event_type: "principal.roles.replace",
             actor_principal_id: String(actorPrincipalId),
             reason: quarantineReason,
             target_type: "principal",
             target_id: targetIdentity.identityId,
-          },
-          {
+          }),
+          expect.objectContaining({
             event_type: "principal.permissions.replace",
             actor_principal_id: String(actorPrincipalId),
             reason: quarantineReason,
             target_type: "principal",
             target_id: targetIdentity.identityId,
+          }),
+          {
+            event_type: "principal.identity.delete.requested",
+            actor_principal_id: String(actorPrincipalId),
+            reason: deletionReason,
+            target_type: "principal",
+            target_id: targetIdentity.identityId,
+            previous_value: null,
+            new_value: null,
+          },
+          {
+            event_type: "principal.delete",
+            actor_principal_id: String(actorPrincipalId),
+            reason: deletionReason,
+            target_type: "principal",
+            target_id: targetIdentity.identityId,
+            previous_value: null,
+            new_value: null,
           },
         ]),
       );
 
       await expect(
-        quarantineUlcLinzIdentityBeforeDeletion(dependencies, targetIdentity.identityId),
+        deleteUlcLinzIdentity(dependencies, targetIdentity.identityId),
       ).resolves.toEqual({
         identityId: targetIdentity.identityId,
         permissionsChanged: false,
-        identityDisabled: true,
+        permissionPrincipalDeleted: false,
+        identityDeleted: true,
+        alreadyDeleted: true,
       });
       const auditCountAfterReplay = await connection.client.unsafe(
         `SELECT count(*)::int AS count
@@ -199,7 +253,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
          WHERE target_id = $1`,
         [targetIdentity.identityId],
       );
-      expect(auditCountAfterReplay[0]?.count).toBe(2);
+      expect(auditCountAfterReplay[0]?.count).toBe(4);
     });
 
     function requiredConnection() {

@@ -13,6 +13,7 @@ type UlcLinzSourceRole = keyof typeof roleDataScope.runtimeRoleIds;
 type UlcLinzQuarantinableSourceRole = Exclude<UlcLinzSourceRole, "admin">;
 
 const QUARANTINE_AUDIT_REASON = "ULC Linz pre-delete access quarantine";
+const IDENTITY_DELETION_AUDIT_REASON = "ULC Linz identity deletion";
 const ADMIN_ROLE_ID = roleId(roleDataScope.runtimeRoleIds.admin);
 const QUARANTINABLE_SOURCE_ROLES = new Set<UlcLinzQuarantinableSourceRole>([
   "trainer",
@@ -40,19 +41,42 @@ export interface UlcLinzLifecycleAuthorization {
   /**
    * Authoritative ULC membership role for the target identity. The lifecycle
    * authorizer must resolve this from the application-owned membership scope;
-   * the quarantine coordinator never infers it from a missing/empty permission
-   * principal because that would make last-admin protection ambiguous.
+   * the coordinator never infers it from a missing/empty permission principal
+   * because that would make last-admin protection ambiguous.
    */
   readonly targetSourceRole: string;
 }
 
-/**
- * App-specific narrow port for the existing IdentityService.disableIdentity()
- * owner operation. Keeping this structural boundary local avoids importing the
- * broad Identity package root into the generated app runtime.
- */
+/** Narrow local port for the existing IdentityService.disableIdentity() owner operation. */
 export interface UlcLinzIdentityLifecycleOwner {
   disableIdentity(identityId: string): Promise<unknown>;
+}
+
+/** Narrow local port for the destructive @appbasis/identity PostgreSQL owner boundary. */
+export interface UlcLinzIdentityDeletionOwner {
+  isDeletionCompleted(identityId: string): Promise<boolean>;
+  deleteDisabledIdentity(identityId: string): Promise<{
+    readonly identityId: string;
+    readonly alreadyDeleted: boolean;
+  }>;
+}
+
+/** Narrow local port for destructive principal lifecycle writes in @appbasis/permissions. */
+export interface UlcLinzPrincipalLifecycleOwner {
+  recordIdentityDeletionAttempt(
+    principalId: PrincipalId,
+    auditContext: {
+      readonly actorPrincipalId: PrincipalId;
+      readonly reason: string;
+    },
+  ): Promise<void>;
+  deleteQuarantinedPrincipal(
+    principalId: PrincipalId,
+    auditContext: {
+      readonly actorPrincipalId: PrincipalId;
+      readonly reason: string;
+    },
+  ): Promise<boolean>;
 }
 
 export interface UlcLinzPreDeleteQuarantineDependencies {
@@ -67,23 +91,29 @@ export interface UlcLinzPreDeleteQuarantineDependencies {
   }) => Promise<UlcLinzLifecycleAuthorization>;
 }
 
+export interface UlcLinzDeletionDependencies
+  extends UlcLinzPreDeleteQuarantineDependencies {
+  readonly identityDeletion: UlcLinzIdentityDeletionOwner;
+  readonly principalLifecycle: UlcLinzPrincipalLifecycleOwner;
+}
+
 export interface UlcLinzPreDeleteQuarantineResult {
   readonly identityId: string;
   readonly permissionsChanged: boolean;
   readonly identityDisabled: true;
 }
 
+export interface UlcLinzDeletionResult {
+  readonly identityId: string;
+  readonly permissionsChanged: boolean;
+  readonly permissionPrincipalDeleted: boolean;
+  readonly identityDeleted: true;
+  readonly alreadyDeleted: boolean;
+}
+
 /**
- * First write slice of the ULC M5 deletion lifecycle.
- *
- * This deliberately does not delete or anonymize data. It removes known ULC
- * application access through the existing permissions owner before disabling
- * the identity through the existing identity owner. Better Auth's admin ban
- * used by IdentityService.disableIdentity() revokes the user's active sessions.
- *
- * ULC administrators are blocked until the authoritative membership backing
- * store can participate in the existing transactional last-required-role
- * holder guard. Unknown permission state is also fail-closed.
+ * Safety stage before destructive deletion. This deliberately does not count as
+ * deletion: it removes known ULC access before disabling the identity owner.
  */
 export async function quarantineUlcLinzIdentityBeforeDeletion(
   dependencies: UlcLinzPreDeleteQuarantineDependencies,
@@ -93,6 +123,91 @@ export async function quarantineUlcLinzIdentityBeforeDeletion(
   const authorization = await dependencies.authorizeLifecycleWrite({
     targetIdentityId: normalizedIdentityId,
   });
+  return quarantineAuthorizedIdentity(
+    dependencies,
+    normalizedIdentityId,
+    authorization,
+  );
+}
+
+/**
+ * Destructive M5-C slice for the persistent ULC owners that exist today.
+ *
+ * Authorization and authoritative source-role proof happen before owner state
+ * is inspected. Access is quarantined first, the permission principal is then
+ * removed through its own audited owner boundary, and only then may the
+ * disabled identity be physically deleted through @appbasis/identity.
+ *
+ * If a later owner fails, the function returns an error and earlier stages stay
+ * in their safer no-access state. The identity owner keeps a completed delete
+ * tombstone so an ambiguous client retry can return without producing duplicate
+ * destructive writes or audit attempts.
+ */
+export async function deleteUlcLinzIdentity(
+  dependencies: UlcLinzDeletionDependencies,
+  identityId: string,
+): Promise<UlcLinzDeletionResult> {
+  const normalizedIdentityId = requiredIdentifier(identityId);
+  const authorization = await dependencies.authorizeLifecycleWrite({
+    targetIdentityId: normalizedIdentityId,
+  });
+  requiredQuarantinableSourceRole(authorization.targetSourceRole);
+  const targetPrincipalId = principalId(normalizedIdentityId);
+
+  if (await dependencies.identityDeletion.isDeletionCompleted(normalizedIdentityId)) {
+    const remainingPrincipal = await dependencies.permissions.findPrincipal(targetPrincipalId);
+    if (remainingPrincipal !== null) {
+      throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
+    }
+    return Object.freeze({
+      identityId: normalizedIdentityId,
+      permissionsChanged: false,
+      permissionPrincipalDeleted: false,
+      identityDeleted: true,
+      alreadyDeleted: true,
+    });
+  }
+
+  const quarantine = await quarantineAuthorizedIdentity(
+    dependencies,
+    normalizedIdentityId,
+    authorization,
+  );
+  const auditContext = Object.freeze({
+    actorPrincipalId: authorization.actorPrincipalId,
+    reason: IDENTITY_DELETION_AUDIT_REASON,
+  });
+
+  // Record the privileged destructive intent before data disappears. The audit
+  // contains identifiers and metadata only, never the deleted user payload.
+  await dependencies.principalLifecycle.recordIdentityDeletionAttempt(
+    targetPrincipalId,
+    auditContext,
+  );
+  const permissionPrincipalDeleted =
+    await dependencies.principalLifecycle.deleteQuarantinedPrincipal(
+      targetPrincipalId,
+      auditContext,
+    );
+
+  const identityDeletion = await dependencies.identityDeletion.deleteDisabledIdentity(
+    normalizedIdentityId,
+  );
+
+  return Object.freeze({
+    identityId: normalizedIdentityId,
+    permissionsChanged: quarantine.permissionsChanged,
+    permissionPrincipalDeleted,
+    identityDeleted: true,
+    alreadyDeleted: identityDeletion.alreadyDeleted,
+  });
+}
+
+async function quarantineAuthorizedIdentity(
+  dependencies: UlcLinzPreDeleteQuarantineDependencies,
+  normalizedIdentityId: string,
+  authorization: UlcLinzLifecycleAuthorization,
+): Promise<UlcLinzPreDeleteQuarantineResult> {
   const targetSourceRole = requiredQuarantinableSourceRole(
     authorization.targetSourceRole,
   );
@@ -126,10 +241,8 @@ export async function quarantineUlcLinzIdentityBeforeDeletion(
   }
 
   // Permission removal happens first. If the identity-owner write then fails,
-  // application authorization still remains deny-by-default rather than
-  // leaving an active principal behind. A retry may see an empty/missing
-  // permission principal, but the authorizer must re-prove a non-admin target
-  // role before the identity owner is called.
+  // application authorization remains deny-by-default rather than leaving an
+  // active principal behind. Retry requires renewed non-admin role proof.
   await dependencies.identity.disableIdentity(normalizedIdentityId);
 
   return Object.freeze({

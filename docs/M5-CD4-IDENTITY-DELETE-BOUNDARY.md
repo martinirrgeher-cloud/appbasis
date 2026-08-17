@@ -1,41 +1,90 @@
-# M5-CD4 – Identity delete owner boundary
+# M5-C – Current-owner identity deletion boundary
 
 Stand: 2026-08-17
 
 ## Ziel
 
-Dieser Slice liefert ausführbare Evidenz für die nächste owner-spezifische Identity-Löschstufe, ohne bereits eine vollständige Lösch- oder Retention-Semantik zu behaupten.
+Dieser Slice liefert den realen destruktiven Löschpfad für die persistenten ULC-Owner, die im aktuellen App-Stand tatsächlich existieren: `identity` und `permissions`.
 
-## Technisch bewiesen
+Er führt **keine** generische Privacy-/Lifecycle-Plattform ein und setzt das globale M5-C-Gate noch nicht auf `verified`, solange Membership-/Subject-Scope-Persistenz nicht real gebunden ist.
 
-Der PostgreSQL-E2E-Test `packages/identity/test/hard-delete-boundary.postgres.e2e.test.ts` verwendet die reale `createBetterAuthRuntime()`-Komposition mit aktiviertem Admin-Plugin.
+## Technisch umgesetzt
 
-Er beweist:
+### 1. Pre-delete Quarantäne
 
-1. Der konfigurierte Better-Auth-Admin-Pfad `POST /api/auth/admin/remove-user` kann einen noch nicht an AppBasis-Identity-State gebundenen User hart löschen.
-2. Sobald `appbasis_identity_security_state` den User referenziert, blockiert der bestehende `ON DELETE RESTRICT`-FK den Better-Auth-Hard-Delete fail-closed; User und Security-State bleiben erhalten.
+`apps/ulc-linz/worker/lifecycle.ts` autorisiert den Lifecycle-Schreibzugriff zuerst gegen den app-spezifischen Membership-Scope.
 
-Damit ist der Provider-/Kompositionsbaustein technisch vorhanden, aber ein AppBasis-Identity-Delete darf noch nicht einfach auf Better Auth durchgereicht werden.
+Für bekannte Nicht-Admin-Rollen werden anschließend über die bestehenden Owner-Verträge:
 
-## Bewusst offen
+- direkte Rollen entfernt,
+- Grants/Revokes entfernt,
+- die Identity deaktiviert und aktive Sessions dadurch unbrauchbar gemacht.
 
-Vor einem schreibenden `IdentityService`-Delete-Vertrag müssen die Endzustände der tatsächlich betroffenen Owner-Daten explizit gebunden werden:
+Admin-Ziele, unbekannte Rollen, widersprüchlicher Permission-State oder fremde Capability-Namespaces blockieren fail-closed.
 
-- `appbasis_identity_security_state`
-- verknüpfter `appbasis_person`
-- `appbasis_identity_operation`
-- Better-Auth-`account` und `session` (kaskadieren mit `user`)
-- `verification`, soweit eine belastbare Zuordnung und Cleanup-Semantik existiert
+### 2. Permission-Principal
 
-Insbesondere wird in diesem Slice keine Retention-Frist erfunden und keine Operation-Historie still gelöscht oder pseudonymisiert.
+`PostgresPrincipalLifecycleAdministration` liegt in `@appbasis/permissions` und löscht nur einen bereits vollständig quarantänisierten Principal.
+
+Vor dem destruktiven Identity-Schritt wird ein Audit-Ereignis `principal.identity.delete.requested` geschrieben. Die eigentliche Principal-Löschung und ihr Audit-Ereignis `principal.delete` liegen in derselben Permission-Transaktion.
+
+Das Audit enthält Actor, Reason, Target und Ereignistyp, aber keinen gelöschten personenbezogenen Payload. Die bestehende separate 12-Monats-Retention des Permission-Administration-Audits bleibt unverändert.
+
+### 3. Identity-Owner
+
+`PostgresIdentityDeletion` liegt innerhalb von `@appbasis/identity` und ist der einzige neue destruktive Zugriff auf die aktuelle Better-Auth-/AppBasis-Identity-Persistenz.
+
+Vor Löschung muss nachweisbar gelten:
+
+- Better-Auth-User ist deaktiviert (`banned = true`),
+- `appbasis_identity_security_state.disabled_at` ist gesetzt,
+- Ziel ist kein technischer Better-Auth-Admin,
+- AppBasis-Security-State ist konsistent,
+- es existiert kein unerwarteter `verification`-Persistenzzustand.
+
+Die aktuelle Identity-Owner-Transaktion entfernt:
+
+- `appbasis_identity_security_state`,
+- verknüpften `appbasis_person`,
+- historische `appbasis_identity_operation`-Einträge des Ziel-Users,
+- Better-Auth-`user`,
+- dadurch per bestehender FK-Kaskade `account` und `session`.
+
+Ein minimaler abgeschlossener `delete:<identityId>`-Operation-Tombstone bleibt für idempotente Wiederholung nach mehrdeutigen Client-/Connection-Ergebnissen erhalten. Er enthält weder Name, Kontaktadresse noch gelöschten Fachinhalt.
+
+Falls eine zukünftige Referenz auf `appbasis_person` oder ein unerwarteter Owner die Löschung verhindert, rollt die PostgreSQL-Transaktion zurück statt Orphans oder einen scheinbaren Erfolg zu erzeugen.
+
+## Ausführbare Evidenz
+
+Die PostgreSQL-E2E-Tests beweisen:
+
+1. Der konfigurierte Better-Auth-Admin-Pfad kann einen ungebundenen User löschen.
+2. Der bestehende `ON DELETE RESTRICT`-FK schützt gebundenen AppBasis-State vor einem unkoordinierten Better-Auth-Hard-Delete.
+3. Der neue Identity-Owner löscht nach Deaktivierung User, Security-State, Person, Account und Session gemeinsam.
+4. Aktive/nicht vollständig deaktivierte Identities werden nicht gelöscht.
+5. Unerwartete `verification`-Persistenz blockiert fail-closed.
+6. Der ULC-End-to-End-Pfad entfernt zuerst Access, auditiert den destruktiven Intent, entfernt den Permission-Principal und löscht anschließend die Identity.
+7. Das Permission-Audit bleibt nach Subject-Löschung erhalten.
+8. Ein Replay nach abgeschlossenem Delete führt nicht zu doppelten destruktiven Writes oder doppelten Audit-Ereignissen.
+
+## Bewusst weiterhin offen
+
+M5-C bleibt global `open`, solange mindestens einer der folgenden Punkte real offen ist:
+
+- die tatsächliche Persistenz hinter `UlcLinzMembershipResolver` ist nicht gebunden/inventarisiert,
+- die tatsächliche Persistenz hinter `UlcLinzSubjectScopeResolver` ist nicht gebunden/inventarisiert,
+- ein später installiertes ULC-Fachmodul führt personenbezogene Tabellen ohne expliziten Löschvertrag ein,
+- Object Storage/Medien werden später real verwendet und besitzen noch keinen Owner-/Löschvertrag,
+- ein zukünftiger Better-Auth-Flow führt `verification`-Persistenz ein, ohne dessen exakte Subject-Zuordnung und Cleanup-Semantik zu definieren.
+
+Deshalb wird weder `deletionPolicy` noch `retentionPolicy` in diesem Slice auf `verified` gesetzt. Das ist beabsichtigtes fail-closed Verhalten und kein fehlender aktueller Identity-/Permission-Löschpfad.
 
 ## Sicherheitsgrenze
 
-- kein ULC-Direktzugriff auf Identity-/Better-Auth-Tabellen
-- kein neuer öffentlicher Lifecycle-Endpunkt
-- keine Schema-/Migrationänderung
+- kein direkter ULC-SQL-Zugriff auf Identity- oder Better-Auth-Tabellen
+- kein öffentlicher Lifecycle-Endpunkt
+- keine neue Migration
 - keine produktive Datenänderung
-- kein `deletionPolicy`/`retentionPolicy = verified`
+- keine Provideraktion
+- keine Secret-Änderung
 - keine generische Lifecycle-/Privacy-Engine
-
-Der nächste schreibende Owner-Slice darf erst die Endzustände implementieren, die explizit entschieden und über die Identity-Ownership-Grenze abbildbar sind.

@@ -6,5 +6,6 @@ export * from "./permissions";
 export * from "./permission-administration-audit-retention";
 export * from "./postgres-permission-store";
 export * from "./principal-access-administration";
+export * from "./principal-lifecycle-administration";
 export * from "./principal-permission-administration";
 export * from "./role-administration";
