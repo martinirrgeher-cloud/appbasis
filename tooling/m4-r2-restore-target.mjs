@@ -1,0 +1,74 @@
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
+import { validateM4RestoreDatabaseSeparation } from "./m4-r2-restore-plan.mjs";
+
+const EMPTY_TARGET_QUERY = `
+SELECT COUNT(*)::int AS relation_count
+FROM pg_catalog.pg_class AS c
+JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
+`;
+
+export async function verifyM4IsolatedRestoreTargetEmpty({
+  sourceUrl,
+  restoreUrl,
+  createDatabase = createPostgresDatabase,
+} = {}) {
+  validateM4RestoreDatabaseSeparation({ sourceUrl, restoreUrl });
+  if (typeof createDatabase !== "function") {
+    throw new Error("M4 restore target database dependency is invalid.");
+  }
+
+  let database;
+  try {
+    database = createDatabase(restoreUrl);
+    if (!database?.client || typeof database.client.unsafe !== "function") {
+      throw new Error("database client is invalid");
+    }
+    const rows = await database.client.unsafe(EMPTY_TARGET_QUERY);
+    if (
+      !Array.isArray(rows) ||
+      rows.length !== 1 ||
+      rows[0] === null ||
+      typeof rows[0] !== "object" ||
+      rows[0].relation_count !== 0
+    ) {
+      throw new Error("restore target is not empty");
+    }
+    return Object.freeze({ status: "restore-target-empty", appId: "m3-preview" });
+  } catch {
+    throw new Error(
+      "M4 restore target is not empty or could not be inspected; use a fresh isolated target.",
+    );
+  } finally {
+    if (database?.client && typeof database.client.end === "function") {
+      await database.client.end().catch(() => {});
+    }
+  }
+}
+
+function isMainModule() {
+  if (typeof process.argv[1] !== "string") return false;
+  return import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+}
+
+if (isMainModule()) {
+  try {
+    if (process.argv[2] !== "verify-empty") {
+      throw new Error("Expected command mode verify-empty.");
+    }
+    const result = await verifyM4IsolatedRestoreTargetEmpty({
+      sourceUrl: process.env.APPBASIS_M4_SOURCE_DATABASE_URL,
+      restoreUrl: process.env.APPBASIS_M4_RESTORE_DATABASE_URL,
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  } catch (error) {
+    console.error(
+      error instanceof Error ? error.message : "M4 restore target verification failed.",
+    );
+    process.exitCode = 1;
+  }
+}
