@@ -42,6 +42,7 @@
     "deletionPolicy": "open",
     "retentionPolicy": "open",
     "unknownPersistentOwner": "fail-closed",
+    "unknownRuntimeModule": "fail-closed",
     "unknownBackingStore": "fail-closed"
   }
 }
