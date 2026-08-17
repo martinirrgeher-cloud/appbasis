@@ -5,25 +5,16 @@ const toolingDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 export default {
   build: {
-    ssr: [
-      path.join(toolingDirectory, "bootstrap-smoke-principals.mjs"),
-      path.join(toolingDirectory, "m4-restored-functional-smoke.mjs"),
-    ],
+    ssr: path.join(toolingDirectory, "bootstrap-smoke-principals.mjs"),
     outDir: path.join(toolingDirectory, ".smoke-bootstrap-dist"),
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        entryFileNames: "[name].mjs",
+        entryFileNames: "bootstrap-smoke-principals.mjs",
       },
     },
   },
   ssr: {
-    noExternal: [
-      "@appbasis/database",
-      "@appbasis/identity",
-      "@appbasis/permissions",
-      "@appbasis/tasks",
-      "hono",
-    ],
+    noExternal: ["@appbasis/database", "@appbasis/identity", "@appbasis/permissions"],
   },
 };
