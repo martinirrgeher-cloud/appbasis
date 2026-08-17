@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "providerScope": [
+    {
+      "id": "cloudflare",
+      "responsibilities": [
+        "edge-runtime",
+        "worker-execution"
+      ],
+      "appSpecificProductionEvidence": "open"
+    },
+    {
+      "id": "neon-postgresql",
+      "responsibilities": [
+        "primary-postgresql"
+      ],
+      "productionDatabaseRegionTarget": "EU / Frankfurt",
+      "appSpecificProductionEvidence": "open"
+    }
+  ],
+  "dataFlows": [
+    {
+      "from": "ulc-linz-user",
+      "to": "cloudflare",
+      "purpose": "application-request-processing",
+      "evidenceStatus": "open"
+    },
+    {
+      "from": "cloudflare",
+      "to": "neon-postgresql",
+      "purpose": "application-persistence",
+      "evidenceStatus": "open"
+    }
+  ],
+  "freshnessPolicy": {
+    "maxAgeDays": 30,
+    "observedAtRequired": true,
+    "staleEvidence": "fail-closed"
+  },
+  "m5": {
+    "dataRegion": "open",
+    "dpa": "open",
+    "encryption": "open",
+    "subprocessors": "open",
+    "providerScope": "cloudflare-and-neon-postgresql-only",
+    "unknownProvider": "fail-closed",
+    "missingEvidence": "fail-closed",
+    "baselineIsProductionEvidence": false
+  }
+}
