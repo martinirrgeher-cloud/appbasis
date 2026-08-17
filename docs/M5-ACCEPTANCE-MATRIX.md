@@ -12,11 +12,11 @@ Nur der exakte boolesche Nachweis `true` aus einer zur konkreten ULC-Zielumgebun
 | 2 | AVV/DPA | aktueller Nachweis für jeden tatsächlich personenbezogene Daten verarbeitenden Dienst | Betreiber, Dienstumfang, Dokumentstand und Prüfdatum vollständig | Providerinventar und Prüfliste vorbereiten |
 | 3 | Verschlüsselung | konkrete at-rest- und in-transit-Konfiguration inklusive Backups und Secret-Grenzen | TLS erzwungen; keine Credentials im Manifest/Repository; Backupverschlüsselung belegt | Prüfpunkte je Ressourcentyp vorbereiten |
 | 4 | Rollen & Rechte | ULC-Rollen, Modulrechte, Organisationsgrenze und Self-/Managed-Scope in realer Runtime | positive Rollenfälle; Cross-Org, unbekannte Capability, inaktive Membership und letzter-Admin-Negativfälle | Testfälle vollständig spezifizieren |
-| 5 | Löschkonzept | bestätigte Regeln plus ausführbarer, berechtigungsgeprüfter und auditierter Prozess | Deaktivierung ist nicht Löschung; Ausnahmen sind datenklassenspezifisch; Restore reaktiviert nichts dauerhaft | Zustände und Datenklassen festlegen |
-| 6 | Aufbewahrung | bestätigte Frist je Datenklasse plus prüfbarer Lebenszyklus | fällige Datensätze werden erkannt; dokumentierte Ausnahme blockiert nur die betroffene Klasse | Fristenentscheidung vorbereiten |
-| 7 | Datenexport | app-spezifischer Self-/Managed-Export und separater Organisations-Export | kein Cross-Org-/Fremddatenexport; Rollen-/Scopeprüfung; Audit; dokumentiertes Format | Felder und JSON/CSV-Vertrag definieren |
-| 8 | Audit-/Security-Logging | konkrete ULC-Securityereignisse, Zugriffsschutz und bestätigte Retention | Actor, Aktion, Ziel, Organisation und Zeitpunkt; unberechtigter Logzugriff wird abgewiesen | Ereignisinventar vorbereiten |
-| 9 | Subprozessoren | aktuelle Liste für alle tatsächlich verwendeten Provider/Dienste | Dienstzuordnung, Prüfdatum und Reviewzeitpunkt vollständig | Evidenzformat vorbereiten |
+| 5 | Löschkonzept | bestätigte Regeln plus ausführbarer, berechtigungsgeprüfter und auditierter Prozess | Deaktivierung ist nicht Löschung; Ausnahmen sind datenklassenspezifisch; Restore reaktiviert nichts dauerhaft | Betreiberregeln bestätigt; technische Runtime-Evidenz offen |
+| 6 | Aufbewahrung | bestätigte Frist je Datenklasse plus prüfbarer Lebenszyklus | fällige Datensätze werden erkannt; dokumentierte Ausnahme blockiert nur die betroffene Klasse | Betreiberfristen bestätigt; technische Runtime-Evidenz offen |
+| 7 | Datenexport | app-spezifischer Self-/Managed-Export und separater Organisations-Export | kein Cross-Org-/Fremddatenexport; Rollen-/Scopeprüfung; Audit; dokumentiertes Format | JSON kanonisch, CSV ergänzend bestätigt; technische Umsetzung offen |
+| 8 | Audit-/Security-Logging | konkrete ULC-Securityereignisse, Zugriffsschutz und bestätigte Retention | Actor, Aktion, Ziel, Organisation und Zeitpunkt; unberechtigter Logzugriff wird abgewiesen | 12 Monate Retention bestätigt; Ereignisinventar vorbereiten |
+| 9 | Subprozessoren | aktuelle Liste für alle tatsächlich verwendeten Provider/Dienste | Dienstzuordnung, Prüfdatum und Reviewzeitpunkt vollständig | Provider-Scope Cloudflare + Neon bestätigt; Evidenzformat vorbereiten |
 | 10 | High-Privacy-Profil | konkrete ULC-Bindung plus Erfüllung des kanonischen Profils | fehlender Teilnachweis hält das gesamte Kriterium offen | Prüfliste aus Profil ableiten |
 | 11 | Secrets außerhalb App-Manifeste | bestehender Manifest- und Generatorvertrag | keine Providercredentials oder Secretwerte in App-Definition und generiertem Output | bereits repository-seitig belegt; Appbindung prüfen |
 | 12 | Privilegierte Control Plane getrennt | autoritativer ULC-Runtime-/Providerzustand für jede privilegierte Komponente | Ressource eindeutig vorhanden; `workers.dev=false`; Preview-URLs aus; keine Custom Domain/Worker Route; erwartete interne Binding-Beziehung; frischer und workflowgebundener Nachweis | Reference-Muster konkret auf reale ULC-Runtime zuschneiden; bis dahin `open` |
@@ -51,18 +51,20 @@ Für jede später als privilegiert klassifizierte ULC-Komponente gelten mindeste
 11. Der akzeptierte Evidence-Run ist höchstens 24 Stunden alt und an die aktuell vertrauenswürdige Workflow-Revision gebunden.
 12. Solange keine reale ULC-Runtime existiert, bleibt Kriterium 12 `open`.
 
-## Betreiberentscheidungen vor technischer Umsetzung
+## Bestätigte Betreiberentscheidungen
 
-Folgende vorbereitete Vereinswerte müssen bestätigt oder begründet angepasst werden:
+Am 2026-08-17 wurden folgende Werte für ULC Linz als Betreiber-Policy bestätigt:
 
-- Mitglieds-/Kontaktstammdaten: Ziel 12 Monate nach Austritt/Zweckende
-- operative Trainings-/Teilnahmedaten: Ziel 24 Monate, danach löschen/anonymisieren
-- besonders sensible Zusatzdaten: Ziel 90 Tage nach Zweckende
-- Audit-/Security-Daten: Ziel 12 Monate
-- Backup-Rotation: maximal 35 Tage
-- Medien: eigene Zweck-, Ownership- und Löschregel
+- Mitglieds-/Kontaktstammdaten: 12 Monate nach Austritt/Zweckende, danach löschen oder belastbar anonymisieren.
+- Operative Trainings-/Teilnahmedaten: 24 Monate, danach löschen oder irreversibel anonymisieren; rein anonyme/statistische Daten dürfen erhalten bleiben.
+- Besonders sensible Zusatzdaten: 90 Tage nach Zweckende; medizinische Diagnosen/Gesundheitsakten werden in v0.1 nicht als normaler App-Datenbestand vorgesehen.
+- Audit-/Security-Daten: 12 Monate.
+- Backup-Rotation: maximal 35 Tage; Restore darf bereits gelöschte Daten nicht dauerhaft wieder aktivieren.
+- Medien: folgen grundsätzlich dem zugehörigen Datensatz; verwaiste Medien werden spätestens nach 30 Tagen entfernt.
+- Datenexport: JSON ist der kanonische vollständige Export; CSV darf ergänzend für einfache tabellarische Daten angeboten werden.
+- Provider-Scope für M5 v0.1: ausschließlich Cloudflare und Neon/PostgreSQL. Keine zusätzlichen Analytics-, E-Mail-, Tracking- oder externen Storage-Dienste.
 
-Die Bestätigung ist Policy-Input, aber allein noch keine technische Evidenz.
+Diese Bestätigung ist verbindlicher Policy-Input, aber allein noch keine technische M5-Evidenz.
 
 ## Veränderliche Evidenz
 
