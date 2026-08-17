@@ -36,6 +36,23 @@
       ]
     }
   ],
+  "persistentTables": [
+    { "id": "appbasis_identity_security_state", "owner": "identity", "privacyClass": "identity-security-state", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_person", "owner": "identity", "privacyClass": "member-contact-master-data", "retentionPolicy": "12-months-after-exit-or-purpose-end", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "account", "owner": "identity", "privacyClass": "authentication-credential-data", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "session", "owner": "identity", "privacyClass": "authentication-session-data", "retentionPolicy": "runtime-expiry-present-post-expiry-retention-open", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "user", "owner": "identity", "privacyClass": "member-contact-master-data", "retentionPolicy": "12-months-after-exit-or-purpose-end", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "verification", "owner": "identity", "privacyClass": "authentication-verification-data", "retentionPolicy": "runtime-expiry-present-post-expiry-retention-open", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_identity_operation", "owner": "identity", "privacyClass": "identity-operation-state", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_permission_capability", "owner": "permissions", "privacyClass": "authorization-configuration", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_permission_role", "owner": "permissions", "privacyClass": "authorization-configuration", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_permission_role_capability", "owner": "permissions", "privacyClass": "authorization-configuration", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_permission_principal", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_permission_principal_role", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_permission_principal_grant", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_permission_principal_revoke", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "unmapped", "deletionEvidence": "open", "retentionEvidence": "open" },
+    { "id": "appbasis_permission_administration_audit", "owner": "permissions", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "open", "retentionEvidence": "open" }
+  ],
   "runtimeModules": [],
   "backingStores": {
     "memberships": {
@@ -54,6 +71,7 @@
     "deletionPolicy": "open",
     "retentionPolicy": "open",
     "unknownPersistentOwner": "fail-closed",
+    "unknownPersistentTable": "fail-closed",
     "unknownRuntimeModule": "fail-closed",
     "unknownBackingStore": "fail-closed"
   }
