@@ -284,7 +284,10 @@ function sameCapabilities(
   right: readonly CapabilityId[],
 ): boolean {
   if (left.length !== right.length) return false;
-  return left.every((value, index) => value === right[index]);
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  if (leftSet.size !== left.length || rightSet.size !== right.length) return false;
+  return leftSet.size === rightSet.size && [...leftSet].every((value) => rightSet.has(value));
 }
 
 function requiredString(row: Record<string, unknown>, field: string): string {
