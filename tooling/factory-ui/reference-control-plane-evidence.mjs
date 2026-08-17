@@ -4,7 +4,6 @@ const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
 
 export const REFERENCE_CONTROL_PLANE_EVIDENCE_RUN = Object.freeze({
   appId: "reference",
-  targetEnvironment: "reference-preview",
   repository: GITHUB_REPOSITORY,
   workflowName: "M5 Reference Control Plane Evidence",
   workflowPath: ".github/workflows/m5-reference-control-plane-evidence.yml",
