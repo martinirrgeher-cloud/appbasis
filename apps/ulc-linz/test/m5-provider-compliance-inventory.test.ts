@@ -20,8 +20,10 @@ type ProviderInventory = {
     evidenceStatus: ProviderEvidenceStatus;
   }>;
   freshnessPolicy: {
-    maxAgeDays: number;
     observedAtRequired: boolean;
+    documentOrConfigurationReferenceRequired: boolean;
+    appEnvironmentBindingRequired: boolean;
+    validUntilOrReviewAtRequired: boolean;
     staleEvidence: "fail-closed";
   };
   m5: {
@@ -32,6 +34,7 @@ type ProviderInventory = {
     providerScope: "cloudflare-and-neon-postgresql-only";
     unknownProvider: "fail-closed";
     missingEvidence: "fail-closed";
+    foreignEnvironmentEvidence: "fail-closed";
     baselineIsProductionEvidence: false;
   };
 };
@@ -91,6 +94,7 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
       encryption: "open",
       subprocessors: "open",
       missingEvidence: "fail-closed",
+      foreignEnvironmentEvidence: "fail-closed",
       baselineIsProductionEvidence: false,
     });
   });
@@ -111,7 +115,7 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
     expect(inventory.m5.dataRegion).toBe("open");
   });
 
-  it("defines the minimal current data-flow inventory and rejects stale evidence by policy", async () => {
+  it("defines the minimal current data-flow inventory and the planned freshness fields", async () => {
     const inventory = await readJson<ProviderInventory>(inventoryUrl);
 
     expect(inventory.dataFlows).toEqual([
@@ -129,8 +133,10 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
       },
     ]);
     expect(inventory.freshnessPolicy).toEqual({
-      maxAgeDays: 30,
       observedAtRequired: true,
+      documentOrConfigurationReferenceRequired: true,
+      appEnvironmentBindingRequired: true,
+      validUntilOrReviewAtRequired: true,
       staleEvidence: "fail-closed",
     });
   });
