@@ -8,6 +8,11 @@ import {
 } from "@appbasis/permissions";
 
 import roleDataScope from "./role-data-scope.json";
+import {
+  recordUlcLinzSecurityEvent,
+  type UlcLinzAuthorizationDenyReason,
+  type UlcLinzSecurityEventLogger,
+} from "./security-events";
 
 type UlcLinzSourceRole = keyof typeof roleDataScope.runtimeRoleIds;
 export type UlcLinzCurrentIdentity = Parameters<typeof assertIdentityActionAllowed>[0];
@@ -40,6 +45,7 @@ export interface UlcLinzAuthorizationDependencies {
   permissions: PermissionStore;
   memberships: UlcLinzMembershipResolver;
   subjectScopes: UlcLinzSubjectScopeResolver;
+  securityEvents?: UlcLinzSecurityEventLogger;
 }
 
 export type UlcLinzModuleAccessRequest = {
@@ -66,12 +72,29 @@ export async function assertUlcLinzModuleAccess(
   request: UlcLinzModuleAccessRequest,
 ): Promise<void> {
   assertCanonicalRuntimePolicy();
-  assertIdentityActionAllowed(current, "application");
+  try {
+    assertIdentityActionAllowed(current, "application");
+  } catch (error) {
+    recordAuthorizationDenial(
+      dependencies.securityEvents,
+      current,
+      "identity-access-denied",
+    );
+    throw error;
+  }
 
-  const identityId = requiredIdentifier(current.identity.identityId);
-  const organizationId = requiredIdentifier(request.organizationId);
-  const moduleKey = requiredIdentifier(request.moduleKey);
-  if (request.action !== "view" && request.action !== "edit") deny();
+  const identityId = requiredIdentifier(current.identity.identityId, () =>
+    deny(dependencies.securityEvents, current, "invalid-request"),
+  );
+  const organizationId = requiredIdentifier(request.organizationId, () =>
+    deny(dependencies.securityEvents, current, "invalid-request"),
+  );
+  const moduleKey = requiredIdentifier(request.moduleKey, () =>
+    deny(dependencies.securityEvents, current, "invalid-request"),
+  );
+  if (request.action !== "view" && request.action !== "edit") {
+    deny(dependencies.securityEvents, current, "invalid-request");
+  }
 
   const membership = await dependencies.memberships.resolveMembership({
     identityId,
@@ -83,7 +106,7 @@ export async function assertUlcLinzModuleAccess(
     membership.organizationId !== organizationId ||
     !isSourceRole(membership.sourceRole)
   ) {
-    deny();
+    deny(dependencies.securityEvents, current, "membership-denied");
   }
 
   const expectedRoleId = roleDataScope.runtimeRoleIds[membership.sourceRole];
@@ -94,7 +117,7 @@ export async function assertUlcLinzModuleAccess(
     principal.roleIds.length !== 1 ||
     principal.roleIds[0] !== roleId(expectedRoleId)
   ) {
-    deny();
+    deny(dependencies.securityEvents, current, "role-mismatch");
   }
 
   const mapping = roleDataScope.principalPermissionMapping;
@@ -103,16 +126,20 @@ export async function assertUlcLinzModuleAccess(
     principalId: currentPrincipalId,
     capability: capabilityId(`${mapping.capabilityNamespace}:${moduleKey}:${action}`),
   });
-  if (!allowed) deny();
+  if (!allowed) {
+    deny(dependencies.securityEvents, current, "capability-denied");
+  }
 
   if (request.scope === "organization") {
     if (membership.sourceRole === "athlete" || membership.sourceRole === "parent") {
-      deny();
+      deny(dependencies.securityEvents, current, "scope-denied");
     }
     return;
   }
 
-  const subjectId = requiredIdentifier(request.subjectId);
+  const subjectId = requiredIdentifier(request.subjectId, () =>
+    deny(dependencies.securityEvents, current, "invalid-request"),
+  );
   if (membership.sourceRole === "athlete") {
     const related = await dependencies.subjectScopes.hasRelation({
       identityId,
@@ -120,7 +147,9 @@ export async function assertUlcLinzModuleAccess(
       subjectId,
       relationType: "self",
     });
-    if (!related) deny();
+    if (!related) {
+      deny(dependencies.securityEvents, current, "subject-relation-denied");
+    }
   } else if (membership.sourceRole === "parent") {
     const related = await dependencies.subjectScopes.hasRelation({
       identityId,
@@ -128,7 +157,9 @@ export async function assertUlcLinzModuleAccess(
       subjectId,
       relationType: "managed",
     });
-    if (!related) deny();
+    if (!related) {
+      deny(dependencies.securityEvents, current, "subject-relation-denied");
+    }
   }
 }
 
@@ -154,11 +185,32 @@ function isSourceRole(value: string): value is UlcLinzSourceRole {
   return Object.hasOwn(roleDataScope.runtimeRoleIds, value);
 }
 
-function requiredIdentifier(value: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) deny();
+function requiredIdentifier(value: string, onInvalid: () => never): string {
+  if (typeof value !== "string" || value.trim().length === 0) onInvalid();
   return value;
 }
 
-function deny(): never {
+function deny(
+  securityEvents: UlcLinzSecurityEventLogger | undefined,
+  current: UlcLinzCurrentIdentity,
+  reasonCode: UlcLinzAuthorizationDenyReason,
+): never {
+  recordAuthorizationDenial(securityEvents, current, reasonCode);
   throw new UlcLinzAuthorizationDeniedError();
+}
+
+function recordAuthorizationDenial(
+  securityEvents: UlcLinzSecurityEventLogger | undefined,
+  current: UlcLinzCurrentIdentity,
+  reasonCode: UlcLinzAuthorizationDenyReason,
+): void {
+  recordUlcLinzSecurityEvent(securityEvents, {
+    eventType: "authorization.denied",
+    actorPrincipalId: safeIdentifier(current.identity.identityId),
+    reasonCode,
+  });
+}
+
+function safeIdentifier(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length !== 0 ? value : null;
 }
