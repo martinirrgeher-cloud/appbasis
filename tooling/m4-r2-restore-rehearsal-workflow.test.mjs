@@ -60,7 +60,7 @@ test("M4 R2 restore accepts only the exact three regular archive payload files",
   assert.match(source, /m4-r2-restore-plan\.mjs fingerprint/);
 });
 
-test("M4 R2 restore verifies a distinct empty target before any pg_restore write", async () => {
+test("M4 R2 restore verifies a distinct fresh target before any pinned pg_restore write", async () => {
   const source = await workflowSource();
   const targetCheck = source.indexOf("m4-r2-restore-target.mjs verify-empty");
   const restore = source.indexOf("pg_restore");
@@ -71,6 +71,8 @@ test("M4 R2 restore verifies a distinct empty target before any pg_restore write
   assert.match(source, /if: inputs\.apply != true/);
   assert.match(source, /no database write was requested/);
   assert.match(source, /if: inputs\.apply == true/);
+  assert.match(source, /postgres:18-alpine@sha256:[0-9a-f]{64}/);
+  assert.doesNotMatch(source, /\s+postgres:18-alpine\s+\\/);
   assert.match(source, /--single-transaction/);
   assert.match(source, /--no-owner/);
   assert.match(source, /--no-acl/);
