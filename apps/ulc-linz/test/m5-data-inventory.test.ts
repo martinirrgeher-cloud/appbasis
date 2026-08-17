@@ -39,6 +39,7 @@ type DataInventory = {
     deletionPolicy: "open";
     retentionPolicy: "open";
     unknownPersistentOwner: "fail-closed";
+    unknownRuntimeModule: "fail-closed";
     unknownBackingStore: "fail-closed";
   };
 };
@@ -85,6 +86,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
       deletionPolicy: "open",
       retentionPolicy: "open",
       unknownPersistentOwner: "fail-closed",
+      unknownRuntimeModule: "fail-closed",
       unknownBackingStore: "fail-closed",
     });
   });
