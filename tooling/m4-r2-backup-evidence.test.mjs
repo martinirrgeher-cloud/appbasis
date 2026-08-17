@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { evaluateM4R2BackupEvidence } from "./m4-r2-backup-evidence.mjs";
 
@@ -38,6 +40,28 @@ test("accepts fresh daily evidence within the existing 7/4 retention contract", 
     expiredKeys: [],
     reasons: [],
   });
+});
+
+test("CLI accepts newline-terminated inventory JSON emitted by jq", () => {
+  const cliPath = fileURLToPath(new URL("./m4-r2-backup-evidence.mjs", import.meta.url));
+  const inventory = [object("appbasis/m3-preview/m4/daily/2026-08-17.tar.aesgcm")];
+  const result = spawnSync(
+    process.execPath,
+    [cliPath, "evaluate", "2026-08-17T05:00:00.000Z"],
+    {
+      input: `${JSON.stringify(inventory)}\n`,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, "");
+  const evidence = JSON.parse(result.stdout);
+  assert.equal(evidence.ok, true);
+  assert.equal(
+    evidence.latestDailyKey,
+    "appbasis/m3-preview/m4/daily/2026-08-17.tar.aesgcm",
+  );
 });
 
 test("fails evidence when today's UTC daily backup is missing", () => {
