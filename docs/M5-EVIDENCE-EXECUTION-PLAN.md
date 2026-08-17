@@ -24,23 +24,37 @@ Dieser Plan zerlegt `Production Security & Privacy Ready v0.1` in kleine, app-sp
 - Der letzte aktive ULC-Administrator ist gegen unzulässige Herabstufung geschützt.
 - Für getrennte privilegierte Control Planes existiert ein ausführbares Reference-Muster.
 - M4 hat einen realen isolierten Restore mit funktionalem Anwendungssmoke bewiesen.
+- Die ULC-M5-Zielbindung ist auf `main` bereits maschinenprüfbar an Betreiberprofil **Verein**, Produktions-Datenregionsziel **EU / Frankfurt** und das kanonische High-Privacy-Profil gebunden (PR #126).
 
 Diese Grundlagen sind nur dann M5-Evidenz, wenn der jeweilige Nachweis an ULC und die tatsächliche Zielumgebung gebunden wird.
 
 ## Arbeitspakete
 
-| Paket | Ziel | Ergebnis | Abhängigkeit | Aktive Arbeit |
+| Paket | Ziel | Ergebnis | Abhängigkeit | Status / Restarbeit |
 |---|---|---|---|---:|
-| M5-A | Zielbindung | Verein, EU/Frankfurt und High Privacy werden kanonisch an ULC gebunden | keine | 0,5–1 h |
+| M5-A | Zielbindung | Verein, EU/Frankfurt und High Privacy werden kanonisch an ULC gebunden | keine | **DONE als Zielbindung**; keine M5-Evidenz daraus ableiten |
 | M5-B | Rollen & Rechte | ULC-Rollen, Modulrechte, Organisation sowie `self`/`managed` werden serverseitig konsumiert und positiv/negativ getestet | M5-A | 1–2 h |
 | M5-C | Löschung | Deaktivieren, Archivieren, Anonymisieren und Löschen werden je Datenklasse getrennt und auditiert | M5-A | 2–4 h |
 | M5-D | Aufbewahrung | Fristen und Reviewpunkte je ULC-Datenklasse werden bestätigt und technisch prüfbar | M5-A | 2–3,5 h |
 | M5-E | Export | Self-/Managed-Export und privilegierter Organisations-Export werden scopegeschützt, auditiert und getestet | M5-B | 2–4 h |
 | M5-F | Audit & Security Logging | relevante Auth-, Rollen-, Permission- und Adminereignisse sowie Zugriffsschutz und Retention werden belegt | M5-B, M5-D | 1–2 h |
 | M5-G | Provider & Compliance | Region, Verschlüsselung, DPA und Subprozessoren werden gegen die tatsächlich verwendeten Dienste geprüft | konkrete Ressourcen/Dienste | 2–4 h |
-| M5-H | Control Plane | ULC-Providerzustand belegt keinen unnötigen öffentlichen Ingress privilegierter Komponenten | konkrete Runtime | 1–2 h |
+| M5-H | Control Plane | ULC-Providerzustand belegt keinen unnötigen öffentlichen Ingress privilegierter Komponenten | konkrete Runtime | 1–2 h nach realer ULC-Runtime |
 | M5-I | High Privacy | kanonisches Profil wird an ULC gebunden und seine Erfüllung geprüft | M5-B–H | 0,5–1 h |
 | M5-J | Gate Consumer | alle zwölf Nachweise werden fail-closed im Factory-Snapshot zusammengeführt | M5-A–I | 1–2 h |
+
+## M5-A – Zielbindung
+
+### Status
+
+M5-A ist als **stabile Zielentscheidung** bereits abgeschlossen. PR #126 hat `ulc-linz` über den bestehenden Generator-/Verify-Pfad maschinenprüfbar an folgende kanonische Zielwerte gebunden:
+
+- Betreiberprofil `Verein`
+- Produktions-Datenregionsziel `EU / Frankfurt`
+- High-Privacy-Profil `appbasis-high-privacy-v0.1`
+- erforderliche Plattformdienste `identity` und `permissions`
+
+Diese Bindung ist bewusst **keine** Production-Readiness-Evidenz. Insbesondere bleiben `dataRegion`, `highPrivacyProfile` und weitere app-/providerabhängige Kriterien offen, bis reale ULC-Evidenz vorliegt. M5-A wird deshalb nicht erneut implementiert und erhält keinen parallelen zweiten Policy-/Manifestvertrag.
 
 ## M5-H – Control-Plane-Ausführungsplan
 
@@ -50,7 +64,7 @@ M5-H verifiziert ausschließlich privilegierte ULC-Komponenten. Die normale öff
 
 ### Voraussetzungen
 
-Technische Verifikation beginnt erst, wenn eine konkrete ULC-Runtime existiert und M5-A ihre kanonische App-/Umgebungsbindung liefert. Bis dahin bleibt M5-H `open`. Worker-Namen, Provider-Ressourcen-IDs oder Accountdetails werden nicht vorab erfunden und nicht in das normale App-Manifest geschrieben.
+Technische ULC-Verifikation beginnt erst, wenn eine konkrete ULC-Runtime existiert. M5-A liefert die kanonische App-/Zielbindung bereits; aktuell fehlt noch die reale ULC-Runtime-/Providerressource. Bis dahin bleibt M5-H für ULC `open`. Worker-Namen, Provider-Ressourcen-IDs oder Accountdetails werden nicht vorab erfunden und nicht in das normale App-Manifest geschrieben.
 
 ### Autoritative Evidenz
 
@@ -90,7 +104,7 @@ Für v0.1 gilt als Ziel maximal 24 Stunden Freshness und eine erneute Prüfung v
 
 Sobald die reale ULC-Runtime vorhanden ist:
 
-1. M5-A liefert die stabile ULC-App-/Environment-Bindung.
+1. Die bereits abgeschlossene M5-A-Zielbindung liefert die stabile ULC-App-/Zielbindung.
 2. Der existierende Reference-Ingress-Verifier wird als konkretes Muster wiederverwendet; keine zweite driftende Generator- oder Providerarchitektur entsteht.
 3. Erst bei realem ULC-Verbraucher werden notwendige gemeinsame Verifier-Primitiven minimal extrahiert; keine vorsorgliche Plattformabstraktion.
 4. Ein ULC-spezifischer Evidence-Workflow läuft read-only aus `main` gegen die exakte Zielumgebung und verwendet Secrets nur aus der geschützten CI-/Providergrenze.
@@ -98,15 +112,15 @@ Sobald die reale ULC-Runtime vorhanden ist:
 6. Adversarial Tests decken mindestens öffentliches `workers.dev`, Preview-URL, Custom Domain, Route, falsche Ressource, falsche App/Umgebung, inkonsistente Providerantwort, stale Evidence und Workflow-Drift ab.
 7. Danach vollständige Exact-Head-CI; Codex genau einmal auf dem tatsächlich finalen technischen Head.
 
-### Aktueller Blocker
+### Aktueller Arbeitsstand
 
-Auf `main` existiert derzeit keine eigenständige ULC-App-Runtime. Daher kann M5-H jetzt nur vorbereitet, aber nicht technisch verifiziert werden. Das Kriterium bleibt bewusst `open`; es darf weder aus dem Reference-Worker noch aus einem Preview-Nachweis auf ULC übertragen werden.
+Der Reference-spezifische technische Consumer läuft in PR #134 als ausführbares Vorbild für die spätere ULC-Evidenzbindung. Er darf ausschließlich `reference` verifizieren und wird nicht als ULC-Evidenz wiederverwendet. Die ULC-spezifische technische Verifikation bleibt bis zur realen ULC-Runtime bewusst `open`.
 
 ## Schnellste sichere Parallelisierung
 
 ### Entwicklungsstrang
 
-1. M5-A Zielbindung
+1. M5-A Zielbindung – **DONE**
 2. M5-B Rollen & Rechte
 3. M5-E Export
 4. M5-C/M5-D Löschung und Aufbewahrung
