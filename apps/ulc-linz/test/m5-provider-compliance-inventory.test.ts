@@ -75,6 +75,20 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
       "cloudflare",
       "neon-postgresql",
     ]);
+
+    const cloudflare = inventory.providerScope.find(
+      (provider) => provider.id === "cloudflare",
+    );
+    const neon = inventory.providerScope.find(
+      (provider) => provider.id === "neon-postgresql",
+    );
+    expect(cloudflare?.responsibilities).toEqual([
+      "edge-runtime",
+      "tls-termination",
+      "worker-execution",
+    ]);
+    expect(neon?.responsibilities).toEqual(["primary-postgresql"]);
+
     expect(inventory.m5.providerScope).toBe("cloudflare-and-neon-postgresql-only");
     expect(inventory.m5.unknownProvider).toBe("fail-closed");
   });
