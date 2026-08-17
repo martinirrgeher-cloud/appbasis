@@ -129,6 +129,9 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
   assert.match(postgresTest, /@appbasis\/permissions\/provisioning/);
   assert.match(postgresTest, /provisionPostgresPermissions/);
   assert.match(postgresTest, /0000_appbasis_permissions_foundation\.sql/);
+  assert.match(postgresTest, /0001_appbasis_permission_role_lifecycle\.sql/);
+  assert.match(postgresTest, /0002_appbasis_permission_administration_audit\.sql/);
+  assert.match(postgresTest, /0003_appbasis_principal_permission_administration_audit\.sql/);
   assert.match(postgresTest, /0000_appbasis_identity_foundation\.sql/);
   assert.match(postgresTest, /0001_appbasis_identity_foundation\.sql/);
   assert.match(postgresTest, /createGeneratedPostgresApplicationRuntime/);
