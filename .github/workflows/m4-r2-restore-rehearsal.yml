@@ -65,6 +65,12 @@ jobs:
           command -v sha256sum >/dev/null || { echo "sha256sum is unavailable." >&2; exit 1; }
           command -v tar >/dev/null || { echo "tar is unavailable." >&2; exit 1; }
 
+      - name: Build restored behavior operational runner without secrets
+        if: inputs.apply == true
+        run: >-
+          pnpm --filter @appbasis/reference exec vite build
+          --config ../m3-preview/tooling/vite.m4-restored-smoke.config.ts
+
       - name: Validate and mask protected restore inputs
         shell: bash
         env:
@@ -261,8 +267,12 @@ jobs:
         env:
           APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
         run: |
-          node ./apps/m3-preview/tooling/m4-restored-functional-smoke.mjs
+          node ./apps/m3-preview/tooling/.smoke-bootstrap-dist/m4-restored-functional-smoke.mjs
           echo "M4 R2 restore functional smoke passed: auth, deny-by-default permissions and tasks persistence." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove restored behavior operational runner
+        if: always()
+        run: rm -rf ./apps/m3-preview/tooling/.smoke-bootstrap-dist
 
       - name: Remove temporary restore workspace
         if: always()
