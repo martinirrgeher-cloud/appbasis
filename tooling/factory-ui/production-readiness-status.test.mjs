@@ -152,7 +152,11 @@ test("Factory M6 copy fails closed for inconsistent or non-canonical evidence pa
 });
 
 test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabling release", async (t) => {
-  const server = await startFactoryServer({ port: 0 });
+  const server = await startFactoryServer({
+    port: 0,
+    referenceControlPlaneEvidenceFetchImpl: async () =>
+      new Response("unavailable", { status: 503 }),
+  });
   t.after(
     () =>
       new Promise((resolveClose, rejectClose) => {

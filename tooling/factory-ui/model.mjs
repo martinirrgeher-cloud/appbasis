@@ -9,19 +9,28 @@ import { createGeneratedDatabaseManifest } from "../generated-database-manifest.
 import { deriveM3PreviewAcceptanceEvidence } from "./m3-preview-acceptance-evidence.mjs";
 import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
 import { evaluateProductionReadiness } from "./production-readiness.mjs";
+import { deriveReferenceControlPlaneEvidence } from "./reference-control-plane-evidence.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
 
 export async function loadFactorySnapshot(repositoryRoot = process.cwd(), options = {}) {
   const root = resolve(repositoryRoot);
   const m3PreviewAcceptanceFetchImpl =
     options.m3PreviewAcceptanceFetchImpl ?? fetch;
+  const referenceControlPlaneEvidenceFetchImpl =
+    options.referenceControlPlaneEvidenceFetchImpl ?? fetch;
+  const referenceControlPlaneEvidenceNow =
+    options.referenceControlPlaneEvidenceNow ?? Date.now;
   const [appDefinitions, modules] = await Promise.all([
     readAppDefinitions(root),
     directoryNames(join(root, "modules")),
   ]);
   const apps = await Promise.all(
     appDefinitions.map((definition) =>
-      withFactoryReadiness(root, definition, { m3PreviewAcceptanceFetchImpl }),
+      withFactoryReadiness(root, definition, {
+        m3PreviewAcceptanceFetchImpl,
+        referenceControlPlaneEvidenceFetchImpl,
+        referenceControlPlaneEvidenceNow,
+      }),
     ),
   );
 
@@ -42,7 +51,11 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
 async function withFactoryReadiness(
   repositoryRoot,
   definition,
-  { m3PreviewAcceptanceFetchImpl },
+  {
+    m3PreviewAcceptanceFetchImpl,
+    referenceControlPlaneEvidenceFetchImpl,
+    referenceControlPlaneEvidenceNow,
+  },
 ) {
   const appRoot = join(repositoryRoot, "apps", definition.appId);
   const databaseManifestRequired =
@@ -52,6 +65,7 @@ async function withFactoryReadiness(
     packageManifestPresent,
     databaseManifestPresent,
     m3PreviewAcceptanceEvidence,
+    referenceControlPlaneEvidence,
   ] = await Promise.all([
     pathExists(join(appRoot, "worker", "index.ts")),
     pathExists(join(appRoot, "package.json")),
@@ -61,13 +75,19 @@ async function withFactoryReadiness(
     deriveM3PreviewAcceptanceEvidence(definition, {
       fetchImpl: m3PreviewAcceptanceFetchImpl,
     }),
+    deriveReferenceControlPlaneEvidence(definition, {
+      fetchImpl: referenceControlPlaneEvidenceFetchImpl,
+      now: referenceControlPlaneEvidenceNow,
+    }),
   ]);
   const repositoryReady =
     workerEntrypointPresent &&
     packageManifestPresent &&
     (!databaseManifestRequired || databaseManifestPresent);
-  const productionReadinessEvidence =
-    deriveRepositoryProductionReadinessEvidence(definition);
+  const productionReadinessEvidence = {
+    ...deriveRepositoryProductionReadinessEvidence(definition),
+    ...referenceControlPlaneEvidence,
+  };
   const productionReadiness = evaluateProductionReadiness(productionReadinessEvidence);
   const productionReleaseReadiness = evaluateM6ProductionReleaseReadiness({
     ...m3PreviewAcceptanceEvidence,
