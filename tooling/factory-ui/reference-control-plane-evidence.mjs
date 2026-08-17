@@ -1,26 +1,24 @@
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
 const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-export const REFERENCE_CONTROL_PLANE_EVIDENCE_RUN = Object.freeze({
+export const REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY = Object.freeze({
   appId: "reference",
   repository: GITHUB_REPOSITORY,
   workflowName: "M5 Reference Control Plane Evidence",
   workflowPath: ".github/workflows/m5-reference-control-plane-evidence.yml",
-  workflowRunId: 32025695514,
-  workflowRunAttempt: 1,
-  workflowRunHeadSha: "e7fb8dbd5e76041109e2f045eabc50fc803c13a0",
+  workflowFileName: "m5-reference-control-plane-evidence.yml",
   workflowRunEvent: "workflow_dispatch",
   workflowRunBranch: "main",
-  observedAt: "2026-08-17T11:36:46Z",
-  validUntilOrReviewAt: "2026-08-18T11:36:46Z",
+  maxAgeMs: ONE_DAY_MS,
 });
 
 export async function deriveReferenceControlPlaneEvidence(
   definition,
   { fetchImpl = fetch, now = Date.now } = {},
 ) {
-  if (definition?.appId !== REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.appId) {
+  if (definition?.appId !== REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.appId) {
     return Object.freeze({});
   }
 
@@ -36,20 +34,20 @@ export async function verifyReferenceControlPlaneEvidenceRun(
 ) {
   if (typeof fetchImpl !== "function" || typeof now !== "function") return false;
 
+  const currentTime = readCurrentTime(now);
+  if (currentTime === null) return false;
+
   let response;
   try {
-    response = await fetchImpl(
-      `${GITHUB_API_BASE_URL}/repos/${REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.repository}/actions/runs/${REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunId}`,
-      {
-        method: "GET",
-        headers: {
-          accept: "application/vnd.github+json",
-          "x-github-api-version": "2022-11-28",
-        },
-        redirect: "error",
-        signal: AbortSignal.timeout(GITHUB_EVIDENCE_TIMEOUT_MS),
+    response = await fetchImpl(latestEvidenceRunsUrl(), {
+      method: "GET",
+      headers: {
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
       },
-    );
+      redirect: "error",
+      signal: AbortSignal.timeout(GITHUB_EVIDENCE_TIMEOUT_MS),
+    });
   } catch {
     return false;
   }
@@ -58,46 +56,86 @@ export async function verifyReferenceControlPlaneEvidenceRun(
   const contentType = response.headers?.get?.("content-type") ?? "";
   if (!contentType.toLowerCase().startsWith("application/json")) return false;
 
-  let run;
+  let payload;
   try {
-    run = await response.json();
+    payload = await response.json();
   } catch {
     return false;
   }
 
-  return isExpectedSuccessfulRun(run) && isEvidenceFresh(now);
+  const run = latestRunFromPayload(payload);
+  return run !== null && isExpectedFreshSuccessfulRun(run, currentTime);
 }
 
-function isExpectedSuccessfulRun(run) {
+function latestEvidenceRunsUrl() {
+  const policy = REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY;
+  const url = new URL(
+    `${GITHUB_API_BASE_URL}/repos/${policy.repository}/actions/workflows/${encodeURIComponent(policy.workflowFileName)}/runs`,
+  );
+  url.searchParams.set("branch", policy.workflowRunBranch);
+  url.searchParams.set("event", policy.workflowRunEvent);
+  url.searchParams.set("per_page", "1");
+  return url;
+}
+
+function latestRunFromPayload(payload) {
+  if (!isPlainObject(payload)) return null;
+  if (!Number.isSafeInteger(payload.total_count) || payload.total_count < 1) {
+    return null;
+  }
+  if (!Array.isArray(payload.workflow_runs) || payload.workflow_runs.length !== 1) {
+    return null;
+  }
+  return payload.workflow_runs[0];
+}
+
+function isExpectedFreshSuccessfulRun(run, currentTime) {
+  const policy = REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY;
+  if (
+    !isPlainObject(run) ||
+    !Number.isSafeInteger(run.id) ||
+    run.id < 1 ||
+    run.run_attempt !== 1 ||
+    run.name !== policy.workflowName ||
+    run.path !== policy.workflowPath ||
+    run.event !== policy.workflowRunEvent ||
+    run.head_branch !== policy.workflowRunBranch ||
+    typeof run.head_sha !== "string" ||
+    !/^[0-9a-f]{40}$/.test(run.head_sha) ||
+    run.status !== "completed" ||
+    run.conclusion !== "success" ||
+    !isPlainObject(run.repository) ||
+    run.repository.full_name !== policy.repository
+  ) {
+    return false;
+  }
+
+  const createdAt = parseTimestamp(run.created_at);
+  const observedAt = parseTimestamp(run.updated_at);
+  if (createdAt === null || observedAt === null || createdAt > observedAt) {
+    return false;
+  }
+
   return (
-    isPlainObject(run) &&
-    run.id === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunId &&
-    run.run_attempt === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunAttempt &&
-    run.name === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowName &&
-    run.path === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowPath &&
-    run.event === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunEvent &&
-    run.head_branch === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunBranch &&
-    run.head_sha === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunHeadSha &&
-    run.updated_at === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt &&
-    run.status === "completed" &&
-    run.conclusion === "success" &&
-    isPlainObject(run.repository) &&
-    run.repository.full_name === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.repository
+    currentTime >= observedAt &&
+    currentTime - observedAt < policy.maxAgeMs
   );
 }
 
-function isEvidenceFresh(now) {
+function readCurrentTime(now) {
   let currentTime;
   try {
     currentTime = now();
   } catch {
-    return false;
+    return null;
   }
+  return Number.isFinite(currentTime) ? currentTime : null;
+}
 
-  if (!Number.isFinite(currentTime)) return false;
-  const observedAt = Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt);
-  const reviewAt = Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.validUntilOrReviewAt);
-  return currentTime >= observedAt && currentTime < reviewAt;
+function parseTimestamp(value) {
+  if (typeof value !== "string") return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function isPlainObject(value) {
