@@ -200,6 +200,25 @@ describe("ULC Linz M5-C/D pre-delete access quarantine", () => {
     ]);
   });
 
+  it("fails closed when the permission store returns a different principal", async () => {
+    const state = harness({
+      principal: principal({ principalIdValue: "identity-2" }),
+    });
+
+    await expectBlocked(
+      () =>
+        quarantineUlcLinzIdentityBeforeDeletion(
+          state.dependencies,
+          TARGET_IDENTITY_ID,
+        ),
+      "UNKNOWN_PERMISSION_STATE",
+    );
+    expect(state.events).toEqual([
+      `authorize:${TARGET_IDENTITY_ID}`,
+      "find-principal",
+    ]);
+  });
+
   it("fails closed on unknown roles or capability namespaces", async () => {
     for (const current of [
       principal({ roleIds: ["ulc-linz:future-role"], grants: [] }),
