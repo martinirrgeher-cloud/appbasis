@@ -82,6 +82,24 @@ test("rejects the source database even when credentials differ", async () => {
   assert.equal(created, false);
 });
 
+test("rejects Neon direct and pooler hostnames that represent the same endpoint", async () => {
+  let created = false;
+  await assert.rejects(
+    verifyM4IsolatedRestoreTargetEmpty({
+      sourceUrl:
+        "postgresql://source:secret@ep-blue-field.eu-central-1.aws.neon.tech/appbasis_m3_preview?sslmode=require",
+      restoreUrl:
+        "postgresql://restore:secret@ep-blue-field-pooler.eu-central-1.aws.neon.tech/appbasis_m3_preview?sslmode=require",
+      createDatabase() {
+        created = true;
+        throw new Error("must not connect");
+      },
+    }),
+    /including Neon pooler aliases/,
+  );
+  assert.equal(created, false);
+});
+
 test("sanitizes restore target connection failures", async () => {
   const sentinel = "postgresql://user:super-secret@private-provider.example/hidden";
   const database = databaseFactory({ error: sentinel });
