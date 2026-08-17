@@ -8,7 +8,10 @@ const outputDirectory = path.join(
   repositoryRoot,
   "apps/m3-preview/tooling/.smoke-bootstrap-dist",
 );
-const outputPath = path.join(outputDirectory, "bootstrap-smoke-principals.mjs");
+const outputPaths = [
+  path.join(outputDirectory, "bootstrap-smoke-principals.mjs"),
+  path.join(outputDirectory, "m4-restored-functional-smoke.mjs"),
+];
 
 try {
   await runPnpm([
@@ -20,8 +23,10 @@ try {
     "--config",
     "../m3-preview/tooling/vite.smoke-bootstrap.config.ts",
   ]);
-  await import(pathToFileURL(outputPath).href);
-  console.log("m3-preview smoke bootstrap bundle verified.");
+  for (const outputPath of outputPaths) {
+    await import(pathToFileURL(outputPath).href);
+  }
+  console.log("m3-preview operational bundles verified.");
 } finally {
   await rm(outputDirectory, { recursive: true, force: true });
 }
@@ -43,8 +48,8 @@ function runPnpm(args) {
       reject(
         new Error(
           signal === null
-            ? `m3-preview smoke bootstrap bundle build exited with code ${code}.`
-            : `m3-preview smoke bootstrap bundle build exited on signal ${signal}.`,
+            ? `m3-preview operational bundle build exited with code ${code}.`
+            : `m3-preview operational bundle build exited on signal ${signal}.`,
         ),
       );
     });
