@@ -1,7 +1,4 @@
-import {
-  assertIdentityActionAllowed,
-  type CurrentIdentity,
-} from "@appbasis/identity";
+import { assertIdentityActionAllowed } from "@appbasis/identity/access";
 import {
   can,
   capabilityId,
@@ -13,6 +10,7 @@ import {
 import roleDataScope from "./role-data-scope.json";
 
 type UlcLinzSourceRole = keyof typeof roleDataScope.runtimeRoleIds;
+export type UlcLinzCurrentIdentity = Parameters<typeof assertIdentityActionAllowed>[0];
 export type UlcLinzModuleAction = "view" | "edit";
 export type UlcLinzSubjectRelation = "self" | "managed";
 
@@ -63,7 +61,7 @@ export class UlcLinzAuthorizationDeniedError extends Error {
 }
 
 export async function assertUlcLinzModuleAccess(
-  current: CurrentIdentity,
+  current: UlcLinzCurrentIdentity,
   dependencies: UlcLinzAuthorizationDependencies,
   request: UlcLinzModuleAccessRequest,
 ): Promise<void> {
