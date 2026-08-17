@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "appId": "ulc-linz",
+  "displayName": "ULC Linz",
+  "modules": [],
+  "platformServices": [
+    "identity",
+    "permissions"
+  ]
+}
