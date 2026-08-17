@@ -5,6 +5,13 @@ import {
   type IdentityHttpService,
 } from "@appbasis/identity/http";
 
+export {
+  assertUlcLinzModuleAccess,
+  UlcLinzAuthorizationDeniedError,
+  type UlcLinzAuthorizationDependencies,
+  type UlcLinzModuleAccessRequest,
+} from "./authorization";
+
 export interface GeneratedAppDependencies {
   identity: IdentityHttpService;
   secureCookies?: boolean;
