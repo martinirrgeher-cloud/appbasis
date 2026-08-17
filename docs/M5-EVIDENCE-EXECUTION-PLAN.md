@@ -42,6 +42,66 @@ Diese Grundlagen sind nur dann M5-Evidenz, wenn der jeweilige Nachweis an ULC un
 | M5-I | High Privacy | kanonisches Profil wird an ULC gebunden und seine Erfüllung geprüft | M5-B–H | 0,5–1 h |
 | M5-J | Gate Consumer | alle zwölf Nachweise werden fail-closed im Factory-Snapshot zusammengeführt | M5-A–I | 1–2 h |
 
+## M5-H – Control-Plane-Ausführungsplan
+
+### Sicherheitsziel
+
+M5-H verifiziert ausschließlich privilegierte ULC-Komponenten. Die normale öffentliche ULC-App-Runtime darf den vorgesehenen öffentlichen Ingress besitzen; privilegierte Admin-/Control-Plane-Komponenten dürfen dagegen nicht direkt aus dem Internet erreichbar sein. Das Reference-Muster ist nur Vorlage für die Nachweisform und darf nicht als ULC-Evidenz übernommen werden.
+
+### Voraussetzungen
+
+Technische Verifikation beginnt erst, wenn eine konkrete ULC-Runtime existiert und M5-A ihre kanonische App-/Umgebungsbindung liefert. Bis dahin bleibt M5-H `open`. Worker-Namen, Provider-Ressourcen-IDs oder Accountdetails werden nicht vorab erfunden und nicht in das normale App-Manifest geschrieben.
+
+### Autoritative Evidenz
+
+Für jede privilegierte ULC-Komponente muss der spätere read-only Providercheck mindestens folgende Punkte gegen die tatsächlich gebundene Cloudflare-Zielumgebung prüfen:
+
+1. Die erwartete privilegierte Worker-Ressource existiert im erwarteten Account genau einmal.
+2. `workers.dev` ist für diese Ressource deaktiviert.
+3. Preview-URLs sind für diese Ressource deaktiviert.
+4. Die Ressource besitzt keine Custom Domain.
+5. Die Ressource besitzt keine öffentliche Worker Route.
+6. Providerantworten und optionale Pagination-/Result-Metadaten sind strukturell konsistent; unvollständige oder mehrdeutige Inventare werden nicht akzeptiert.
+7. Falls die ULC-App die privilegierte Komponente benötigt, ist die erwartete interne Service-Binding-Beziehung zur öffentlichen ULC-Runtime eindeutig nachweisbar; eine öffentliche Ersatzroute ist kein zulässiger Fallback.
+8. Der Nachweis gehört zur exakten ULC-App und Zielumgebung und darf nicht aus `reference`, Preview oder einer anderen App wiederverwendet werden.
+
+### Fail-closed-Fälle
+
+M5-H bleibt oder fällt auf `open`, sobald einer der folgenden Fälle eintritt:
+
+- erwartete privilegierte Ressource fehlt, ist mehrfach oder nicht eindeutig identifizierbar
+- Providerzugriff schlägt fehl, liefert ungültiges JSON oder `success != true`
+- `workers.dev` oder Preview-URLs sind nicht explizit deaktiviert
+- mindestens eine Custom Domain oder Worker Route ist vorhanden
+- Domain-/Route-Inventar oder Pagination-Metadaten sind widersprüchlich oder unvollständig
+- erwartete interne Binding-Beziehung fehlt oder zeigt auf eine andere Ressource
+- Evidenz ist für falsche App, falsche Umgebung oder falschen Provideraccount gebunden
+- Evidenz ist älter als die zulässige Freshness
+- der Evidenzlauf verwendete eine andere, nicht vertrauenswürdig gebundene Workflow-Revision
+- Uhrzeit, GitHub-Zustand oder Providerzustand können nicht verlässlich bestimmt werden
+
+Es gibt keinen Fallback auf ältere erfolgreiche Evidenz, wenn ein neuerer relevanter Lauf fehlschlägt oder noch läuft.
+
+### Freshness und Repository-Grenze
+
+Für v0.1 gilt als Ziel maximal 24 Stunden Freshness und eine erneute Prüfung vor dem Production-Gate. Volatile Providerdaten, Run-IDs, Attempts, beobachtete Zeitpunkte oder Ablaufzeitpunkte werden nicht als Repositoryzustand committed. Im Repository verbleibt nur stabile Policy; der spätere Consumer entdeckt den neuesten passenden Evidence-Run dynamisch und validiert dessen Aktualität und vertrauenswürdige Workflow-Revision.
+
+### Geplante technische Umsetzung
+
+Sobald die reale ULC-Runtime vorhanden ist:
+
+1. M5-A liefert die stabile ULC-App-/Environment-Bindung.
+2. Der existierende Reference-Ingress-Verifier wird als konkretes Muster wiederverwendet; keine zweite driftende Generator- oder Providerarchitektur entsteht.
+3. Erst bei realem ULC-Verbraucher werden notwendige gemeinsame Verifier-Primitiven minimal extrahiert; keine vorsorgliche Plattformabstraktion.
+4. Ein ULC-spezifischer Evidence-Workflow läuft read-only aus `main` gegen die exakte Zielumgebung und verwendet Secrets nur aus der geschützten CI-/Providergrenze.
+5. Der Factory-Consumer akzeptiert nur den neuesten passenden Lauf, maximal 24 Stunden alt und an die vertrauenswürdige Workflow-Revision gebunden.
+6. Adversarial Tests decken mindestens öffentliches `workers.dev`, Preview-URL, Custom Domain, Route, falsche Ressource, falsche App/Umgebung, inkonsistente Providerantwort, stale Evidence und Workflow-Drift ab.
+7. Danach vollständige Exact-Head-CI; Codex genau einmal auf dem tatsächlich finalen technischen Head.
+
+### Aktueller Blocker
+
+Auf `main` existiert derzeit keine eigenständige ULC-App-Runtime. Daher kann M5-H jetzt nur vorbereitet, aber nicht technisch verifiziert werden. Das Kriterium bleibt bewusst `open`; es darf weder aus dem Reference-Worker noch aus einem Preview-Nachweis auf ULC übertragen werden.
+
 ## Schnellste sichere Parallelisierung
 
 ### Entwicklungsstrang
@@ -62,6 +122,7 @@ Parallel dürfen ohne Zwischenreview vorbereitet werden:
 - Exportformat und Feldumfang
 - Acceptance-Fälle und erwartete Evidenzquellen
 - Review- und Freshness-Zeitpunkte veränderlicher Nachweise
+- M5-H Control-Plane-Ingress-/Binding-Acceptance gemäß obigem Ausführungsplan
 
 Codex wird erst auf dem tatsächlichen finalen Head eines technischen Consumers angefordert. Reine Vorbereitung erhält keinen vorsorglichen Review.
 
