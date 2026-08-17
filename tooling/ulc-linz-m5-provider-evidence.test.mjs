@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   deriveUlcLinzM5ProviderProductionEvidence,
   evaluateUlcLinzProviderCompliance,
+  ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES,
 } from "./ulc-linz-m5-provider-evidence.mjs";
 
 const NOW = "2026-08-17T21:00:00.000Z";
@@ -24,8 +25,7 @@ function legalEntry({
     documentType,
     canonicalSource,
     documentVersionOrUpdatedAt: "2026-08-17",
-    serviceScope:
-      provider === "cloudflare" ? "cloudflare-workers" : "neon-postgresql",
+    serviceScope: ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES[provider],
     observedAt: OBSERVED_AT,
     validUntilOrReviewAt,
     accountSpecific,
@@ -47,6 +47,11 @@ function fullLegalEvidence() {
       canonicalSource: "https://dash.cloudflare.com/",
       accountSpecific: true,
       publicBaseline: false,
+    }),
+    legalEntry({
+      provider: "neon-databricks",
+      documentType: "terms",
+      canonicalSource: "https://neon.com/platform-terms",
     }),
     legalEntry({
       provider: "neon-databricks",
@@ -103,14 +108,8 @@ function completeEvidence() {
         runtimeClass: "standard-workers",
         bindingsInventoryComplete: true,
         bindings: [
-          {
-            type: "hyperdrive",
-            personalDataDisposition: "none",
-          },
-          {
-            type: "service",
-            personalDataDisposition: "transient",
-          },
+          { type: "hyperdrive", personalDataDisposition: "none" },
+          { type: "service", personalDataDisposition: "transient" },
         ],
         telemetryInventoryComplete: true,
         transportEncryptionObserved: true,
@@ -162,10 +161,7 @@ function baselineWithoutProductionResources() {
   evidence.providers["neon-postgresql"].transportEncryptionObserved = false;
   evidence.providers["neon-postgresql"].atRestEncryptionObserved = false;
   evidence.legalEvidence = [];
-  evidence.dataFlows = evidence.dataFlows.map((flow) => ({
-    ...flow,
-    status: "open",
-  }));
+  evidence.dataFlows = evidence.dataFlows.map((flow) => ({ ...flow, status: "open" }));
   return evidence;
 }
 
@@ -173,20 +169,20 @@ function evaluate(evidence) {
   return evaluateUlcLinzProviderCompliance(evidence, { now: NOW });
 }
 
-test("1: valid baseline without real production bindings keeps all M5-G criteria open", () => {
-  const compliance = evaluate(baselineWithoutProductionResources());
-
+function assertAllOpen(compliance) {
   assert.deepEqual(compliance.criteria, {
     dataRegion: "open",
     dpa: "open",
     encryption: "open",
     subprocessors: "open",
   });
+}
+
+test("1: valid baseline without real production bindings keeps all M5-G criteria open", () => {
+  const evidence = baselineWithoutProductionResources();
+  assertAllOpen(evaluate(evidence));
   assert.deepEqual(
-    deriveUlcLinzM5ProviderProductionEvidence(
-      baselineWithoutProductionResources(),
-      { now: NOW },
-    ),
+    deriveUlcLinzM5ProviderProductionEvidence(evidence, { now: NOW }),
     {},
   );
 });
@@ -194,73 +190,57 @@ test("1: valid baseline without real production bindings keeps all M5-G criteria
 test("2: rejects evidence for another application", () => {
   const evidence = completeEvidence();
   evidence.application = "reference";
-
   assert.throws(() => evaluate(evidence), /requires application ulc-linz/);
 });
 
 test("3: rejects preview or test environment evidence", () => {
   const evidence = completeEvidence();
   evidence.environment = "preview";
-
   assert.throws(() => evaluate(evidence), /requires production environment/);
 });
 
 test("4: rejects an EU-only claim for the Standard Workers model", () => {
   const evidence = completeEvidence();
   evidence.euOnly = true;
-
   assert.throws(() => evaluate(evidence), /euOnly=false/);
 });
 
 test("5: Frankfurt on a preview Neon resource cannot verify dataRegion", () => {
   const evidence = completeEvidence();
   evidence.providers["neon-postgresql"].resourceClass = "preview";
-
-  const compliance = evaluate(evidence);
-  assert.equal(compliance.criteria.dataRegion, "open");
+  assert.equal(evaluate(evidence).criteria.dataRegion, "open");
 });
 
 test("6: a non-Frankfurt Neon production region keeps dataRegion open", () => {
   const evidence = completeEvidence();
   evidence.providers["neon-postgresql"].regionId = "aws-us-east-1";
-
-  const compliance = evaluate(evidence);
-  assert.equal(compliance.criteria.dataRegion, "open");
+  assert.equal(evaluate(evidence).criteria.dataRegion, "open");
 });
 
 test("7: missing authoritative Neon region keeps dataRegion open", () => {
   const evidence = completeEvidence();
   evidence.providers["neon-postgresql"].regionId = null;
   evidence.providers["neon-postgresql"].regionSource = null;
-
-  const compliance = evaluate(evidence);
-  assert.equal(compliance.criteria.dataRegion, "open");
+  assert.equal(evaluate(evidence).criteria.dataRegion, "open");
 });
 
-test("8: an unknown Cloudflare binding path keeps dataRegion fail-closed open", () => {
+test("8: an unknown Cloudflare binding path blocks the whole M5-G evidence scope", () => {
   const evidence = completeEvidence();
   evidence.providers.cloudflare.bindings.push({
     type: "future-provider-binding",
     personalDataDisposition: "unknown",
   });
-
   const compliance = evaluate(evidence);
-  assert.equal(compliance.criteria.dataRegion, "open");
-  assert.equal(
-    compliance.providers.cloudflare.unexpectedPersonalDataPersistence,
-    null,
-  );
+  assertAllOpen(compliance);
+  assert.equal(compliance.providers.cloudflare.unexpectedPersonalDataPersistence, null);
 });
 
 test("9: stale subprocessor evidence affects only subprocessors", () => {
   const evidence = completeEvidence();
   const cloudflareSubprocessors = evidence.legalEvidence.find(
-    (entry) =>
-      entry.provider === "cloudflare" &&
-      entry.documentType === "subprocessors",
+    (entry) => entry.provider === "cloudflare" && entry.documentType === "subprocessors",
   );
   cloudflareSubprocessors.validUntilOrReviewAt = "2026-08-17T20:59:59.000Z";
-
   const compliance = evaluate(evidence);
   assert.equal(compliance.criteria.subprocessors, "open");
   assert.equal(compliance.criteria.dataRegion, "verified");
@@ -273,15 +253,12 @@ test("10: public DPA baselines without account-specific bindings do not verify d
   evidence.legalEvidence = evidence.legalEvidence.filter(
     (entry) => entry.documentType !== "dpa-account-binding",
   );
-
-  const compliance = evaluate(evidence);
-  assert.equal(compliance.criteria.dpa, "open");
+  assert.equal(evaluate(evidence).criteria.dpa, "open");
 });
 
 test("11: provider security documentation without real encryption configuration keeps encryption open", () => {
   const evidence = completeEvidence();
   evidence.providers["neon-postgresql"].atRestEncryptionObserved = false;
-
   const compliance = evaluate(evidence);
   assert.equal(compliance.criteria.encryption, "open");
   assert.equal(compliance.criteria.dataRegion, "verified");
@@ -289,7 +266,6 @@ test("11: provider security documentation without real encryption configuration 
 
 test("12: complete fresh production evidence verifies each M5-G criterion independently", () => {
   const compliance = evaluate(completeEvidence());
-
   assert.deepEqual(compliance.criteria, {
     dataRegion: "verified",
     dpa: "verified",
@@ -300,42 +276,26 @@ test("12: complete fresh production evidence verifies each M5-G criterion indepe
   assert.equal(Object.isFrozen(compliance.criteria), true);
   assert.equal(Object.isFrozen(compliance.providers), true);
   assert.deepEqual(
-    deriveUlcLinzM5ProviderProductionEvidence(completeEvidence(), {
-      now: NOW,
-    }),
-    {
-      dataRegion: true,
-      dpa: true,
-      encryption: true,
-      subprocessors: true,
-    },
+    deriveUlcLinzM5ProviderProductionEvidence(completeEvidence(), { now: NOW }),
+    { dataRegion: true, dpa: true, encryption: true, subprocessors: true },
   );
 });
 
 test("13: missing observedAt is rejected instead of being treated as fresh", () => {
   const evidence = completeEvidence();
   delete evidence.observedAt;
-
   assert.throws(() => evaluate(evidence), /fields are invalid/);
 });
 
 test("14: expired root evidence makes every criterion unusable", () => {
   const evidence = completeEvidence();
   evidence.validUntilOrReviewAt = NOW;
-
-  const compliance = evaluate(evidence);
-  assert.deepEqual(compliance.criteria, {
-    dataRegion: "open",
-    dpa: "open",
-    encryption: "open",
-    subprocessors: "open",
-  });
+  assertAllOpen(evaluate(evidence));
 });
 
 test("15: secret or credential fields are rejected before normalization", () => {
   const evidence = completeEvidence();
   evidence.providers.cloudflare.apiToken = "secret-value";
-
   assert.throws(() => evaluate(evidence), /contains sensitive data/);
 
   const connectionEvidence = completeEvidence();
@@ -350,7 +310,6 @@ test("16: one verified criterion never implies the other three", () => {
   evidence.providers.cloudflare.transportEncryptionObserved = false;
   evidence.providers["neon-postgresql"].transportEncryptionObserved = false;
   evidence.providers["neon-postgresql"].atRestEncryptionObserved = false;
-
   const compliance = evaluate(evidence);
   assert.deepEqual(compliance.criteria, {
     dataRegion: "verified",
@@ -367,14 +326,12 @@ test("16: one verified criterion never implies the other three", () => {
 test("rejects an unexpected provider instead of silently widening the provider scope", () => {
   const evidence = completeEvidence();
   evidence.providers["unknown-provider"] = {};
-
   assert.throws(() => evaluate(evidence), /providers fields are invalid/);
 });
 
 test("rejects truthy strings and other non-boolean provider claims", () => {
   const evidence = completeEvidence();
   evidence.providers.cloudflare.runtimeBound = "true";
-
   assert.throws(() => evaluate(evidence), /runtimeBound must be boolean/);
 });
 
@@ -382,24 +339,66 @@ test("Regional Services and Customer Metadata Boundary are observed states, not 
   const evidence = completeEvidence();
   evidence.providers.cloudflare.regionalServicesEnabled = false;
   evidence.providers.cloudflare.customerMetadataBoundaryEnabled = false;
-
   const compliance = evaluate(evidence);
   assert.equal(compliance.criteria.dataRegion, "verified");
   assert.equal(compliance.euOnly, false);
 });
 
-test("unknown or persistent personal-data Cloudflare bindings do not leak into output and block dataRegion", () => {
+test("known persistent personal-data Cloudflare bindings block all criteria without leaking binding names", () => {
   const evidence = completeEvidence();
   evidence.providers.cloudflare.bindings.push({
     type: "r2_bucket",
     personalDataDisposition: "persistent",
   });
-
   const compliance = evaluate(evidence);
-  assert.equal(compliance.criteria.dataRegion, "open");
-  assert.equal(
-    compliance.providers.cloudflare.unexpectedPersonalDataPersistence,
-    true,
-  );
+  assertAllOpen(compliance);
+  assert.equal(compliance.providers.cloudflare.unexpectedPersonalDataPersistence, true);
   assert.equal(JSON.stringify(compliance).includes("r2_bucket"), false);
+});
+
+test("an additional verified but non-canonical data flow blocks all criteria until the inventory is updated", () => {
+  const evidence = completeEvidence();
+  evidence.dataFlows.push({
+    from: "cloudflare",
+    to: "unexpected-telemetry-provider",
+    purpose: "runtime-telemetry",
+    status: "verified",
+  });
+  assertAllOpen(evaluate(evidence));
+});
+
+test("legal evidence for the wrong service scope cannot satisfy a provider criterion", () => {
+  const evidence = completeEvidence();
+  const cloudflareDpa = evidence.legalEvidence.find(
+    (entry) => entry.provider === "cloudflare" && entry.documentType === "dpa",
+  );
+  cloudflareDpa.serviceScope = "dns-only";
+  const compliance = evaluate(evidence);
+  assert.equal(compliance.criteria.dpa, "open");
+  assert.equal(compliance.criteria.dataRegion, "verified");
+  assert.equal(compliance.criteria.encryption, "verified");
+  assert.equal(compliance.criteria.subprocessors, "verified");
+});
+
+test("Neon Product Specific Schedule evidence is mandatory and fresh for DPA and subprocessors", () => {
+  const missingSchedule = completeEvidence();
+  missingSchedule.legalEvidence = missingSchedule.legalEvidence.filter(
+    (entry) =>
+      !(entry.provider === "neon-databricks" && entry.documentType === "terms"),
+  );
+  const missingCompliance = evaluate(missingSchedule);
+  assert.equal(missingCompliance.criteria.dataRegion, "verified");
+  assert.equal(missingCompliance.criteria.encryption, "verified");
+  assert.equal(missingCompliance.criteria.dpa, "open");
+  assert.equal(missingCompliance.criteria.subprocessors, "open");
+
+  const staleSchedule = completeEvidence();
+  const schedule = staleSchedule.legalEvidence.find(
+    (entry) =>
+      entry.provider === "neon-databricks" && entry.documentType === "terms",
+  );
+  schedule.validUntilOrReviewAt = "2026-08-17T20:59:59.000Z";
+  const staleCompliance = evaluate(staleSchedule);
+  assert.equal(staleCompliance.criteria.dpa, "open");
+  assert.equal(staleCompliance.criteria.subprocessors, "open");
 });
