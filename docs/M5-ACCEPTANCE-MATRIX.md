@@ -19,7 +19,7 @@ Nur der exakte boolesche Nachweis `true` aus einer zur konkreten ULC-Zielumgebun
 | 9 | Subprozessoren | aktuelle Liste für alle tatsächlich verwendeten Provider/Dienste | Dienstzuordnung, Prüfdatum und Reviewzeitpunkt vollständig | Evidenzformat vorbereiten |
 | 10 | High-Privacy-Profil | konkrete ULC-Bindung plus Erfüllung des kanonischen Profils | fehlender Teilnachweis hält das gesamte Kriterium offen | Prüfliste aus Profil ableiten |
 | 11 | Secrets außerhalb App-Manifeste | bestehender Manifest- und Generatorvertrag | keine Providercredentials oder Secretwerte in App-Definition und generiertem Output | bereits repository-seitig belegt; Appbindung prüfen |
-| 12 | Privilegierte Control Plane getrennt | autoritativer ULC-Runtime-/Providerzustand | kein unnötiger öffentlicher Ingress; erwartete Bindings/Secrets; frischer Nachweis | Reference-Muster auf ULC-Ziel zuschneiden |
+| 12 | Privilegierte Control Plane getrennt | autoritativer ULC-Runtime-/Providerzustand für jede privilegierte Komponente | Ressource eindeutig vorhanden; `workers.dev=false`; Preview-URLs aus; keine Custom Domain/Worker Route; erwartete interne Binding-Beziehung; frischer und workflowgebundener Nachweis | Reference-Muster konkret auf reale ULC-Runtime zuschneiden; bis dahin `open` |
 
 ## Rollen-/Scope-Pflichtfälle
 
@@ -33,6 +33,23 @@ Nur der exakte boolesche Nachweis `true` aus einer zur konkreten ULC-Zielumgebun
 8. Unbekannte Rolle, Capability oder Scope-Kombination wird abgewiesen.
 9. Self-/Managed-Verknüpfungen dürfen keine fremde Organisation überbrücken.
 10. Der letzte aktive Administrator kann nicht entfernt oder herabgestuft werden.
+
+## M5-H Pflichtfälle – privilegierte Control Plane
+
+Für jede später als privilegiert klassifizierte ULC-Komponente gelten mindestens folgende Acceptance-Fälle:
+
+1. Der Providerzustand identifiziert die erwartete Ressource im erwarteten Account genau einmal.
+2. `workers.dev` ist explizit deaktiviert.
+3. Preview-URLs sind explizit deaktiviert.
+4. Es existiert keine Custom Domain.
+5. Es existiert keine öffentliche Worker Route.
+6. Optional gelieferte Domain-/Route-Pagination oder Result-Metadaten sind konsistent und lassen kein verborgenes späteres Ergebnis offen.
+7. Eine benötigte interne Service-Binding-Beziehung zeigt exakt auf die erwartete privilegierte Ressource; eine öffentliche Ersatzroute wird abgewiesen.
+8. Falsche App, falsche Umgebung, falscher Provideraccount oder Reference-/Preview-Evidenz werden nicht akzeptiert.
+9. Providerfehler, ungültiges JSON, `success != true`, fehlende Felder oder mehrdeutige Inventare bleiben fail-closed.
+10. Ein neuerer fehlgeschlagener oder laufender Evidence-Run darf nicht durch einen älteren erfolgreichen Lauf übergangen werden.
+11. Der akzeptierte Evidence-Run ist höchstens 24 Stunden alt und an die aktuell vertrauenswürdige Workflow-Revision gebunden.
+12. Solange keine reale ULC-Runtime existiert, bleibt Kriterium 12 `open`.
 
 ## Betreiberentscheidungen vor technischer Umsetzung
 
@@ -49,4 +66,4 @@ Die Bestätigung ist Policy-Input, aber allein noch keine technische Evidenz.
 
 ## Veränderliche Evidenz
 
-Provider-, DPA- und Subprozessoren-Nachweise erhalten `observedAt` sowie `validUntilOrReviewAt`. Ein abgelaufener Nachweis fällt automatisch auf `open`; eine frühere Zustimmung oder ein historischer Providerzustand darf Produktion nicht dauerhaft autorisieren.
+Provider-, DPA- und Subprozessoren-Nachweise enthalten zur Laufzeit `observedAt` sowie `validUntilOrReviewAt`. Ein abgelaufener Nachweis fällt automatisch auf `open`; eine frühere Zustimmung oder ein historischer Providerzustand darf Produktion nicht dauerhaft autorisieren. Diese volatilen Werte sind Evidence-Output und werden nicht als dauerhafter Repositoryzustand committed.
