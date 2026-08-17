@@ -12,6 +12,8 @@ Der Workflow ist ausschließlich manuell:
 .github/workflows/m4-r2-restore-rehearsal.yml
 ```
 
+Der Restore-Job läuft ausschließlich auf `refs/heads/main`. Ein manuell ausgewählter Feature-Branch wird nicht ausgeführt und erhält damit keinen Restore-Pfad zu den geschützten `m4-dr`-Eingaben.
+
 ## Sicherheitsgrenzen
 
 Vor jedem Restore werden fail-closed geprüft:
