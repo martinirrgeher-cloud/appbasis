@@ -57,12 +57,13 @@ test("maps a non-admin ULC member without inventing an admin-demotion guard", as
   assert.deepEqual(result, { ok: true });
 });
 
-test("carries the active same-organization principal scope into an actual admin demotion", async () => {
+test("binds an actual admin demotion to its organization and active membership resolver", async () => {
   const calls = [];
-  const resolveActiveOrganizationPrincipalScope = async () => [
-    "principal-admin-target",
-    "principal-admin-remaining",
-  ];
+  let observedScope = null;
+  const resolveActiveOrganizationPrincipalScope = async (context) => {
+    observedScope = context;
+    return ["principal-admin-target", "principal-admin-remaining"];
+  };
 
   await replaceUlcLinzPrincipalAccess({
     administration: fakeAdministration(calls),
@@ -74,6 +75,7 @@ test("carries the active same-organization principal scope into an actual admin 
       expectedRoleIds: ["ulc-linz:admin"],
       expectedGrants: [],
       expectedRevokes: [],
+      organizationId: "organization-a",
       resolveActiveOrganizationPrincipalScope,
     },
   });
@@ -83,12 +85,29 @@ test("carries the active same-organization principal scope into an actual admin 
     "ulc-linz:admin",
   ]);
   assert.equal(
-    calls[0].constraints.resolveRequiredRoleHolderPrincipalScope,
-    resolveActiveOrganizationPrincipalScope,
+    typeof calls[0].constraints.resolveRequiredRoleHolderPrincipalScope,
+    "function",
   );
+
+  const transaction = { unsafe() {} };
+  const resolved = await calls[0].constraints.resolveRequiredRoleHolderPrincipalScope({
+    transaction,
+    targetPrincipalId: "principal-admin-target",
+    requiredRoleIds: ["ulc-linz:admin"],
+  });
+  assert.deepEqual(resolved, [
+    "principal-admin-target",
+    "principal-admin-remaining",
+  ]);
+  assert.deepEqual(observedScope, {
+    transaction,
+    targetPrincipalId: "principal-admin-target",
+    requiredRoleIds: ["ulc-linz:admin"],
+    organizationId: "organization-a",
+  });
 });
 
-test("fails closed when an actual admin demotion lacks active same-organization scope", async () => {
+test("fails closed when an actual admin demotion lacks organization scope", async () => {
   await assert.rejects(
     () =>
       replaceUlcLinzPrincipalAccess({
@@ -101,6 +120,29 @@ test("fails closed when an actual admin demotion lacks active same-organization 
           expectedRoleIds: ["ulc-linz:admin"],
           expectedGrants: [],
           expectedRevokes: [],
+          resolveActiveOrganizationPrincipalScope: async () => [
+            "principal-admin-target",
+          ],
+        },
+      }),
+    /requires the target organizationId/,
+  );
+});
+
+test("fails closed when an actual admin demotion lacks active same-organization membership resolution", async () => {
+  await assert.rejects(
+    () =>
+      replaceUlcLinzPrincipalAccess({
+        administration: fakeAdministration([]),
+        principalId: "principal-admin-target",
+        sourceRole: "trainer",
+        permissions: [],
+        auditContext,
+        constraints: {
+          expectedRoleIds: ["ulc-linz:admin"],
+          expectedGrants: [],
+          expectedRevokes: [],
+          organizationId: "organization-a",
         },
       }),
     /requires a transactional resolver for active principals in the target organization/,
