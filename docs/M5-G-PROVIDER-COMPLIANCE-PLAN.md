@@ -21,6 +21,61 @@ Für M5 v0.1 gilt:
 
 Sobald später ein zusätzlicher Dienst personenbezogene Daten verarbeitet, muss der Scope vor Production Ready erweitert und M5-G erneut vollständig bewertet werden.
 
+## Aktuell verifizierte externe Grundlage
+
+Beobachtungsstand: **2026-08-17**. Die folgenden Punkte sind ausschließlich aktuelle offizielle Providergrundlagen. Sie verifizieren noch keine app-spezifischen M5-Kriterien.
+
+### Cloudflare
+
+- Das aktuelle Cloudflare Data Processing Addendum ist Version **6.4**, wirksam seit **2026-04-03**. Es gilt für Cloudflare als Processor/Sub-Processor und enthält Regeln für Subprozessoren und internationale Datentransfers.
+- Cloudflare Workers verarbeiten Anfragen standardmäßig global am jeweiligen Cloudflare-Standort. Für eine echte geographische Begrenzung der TLS-Terminierung und Worker-Ausführung ist **Regional Services** erforderlich.
+- Regional Services kann Worker-Ausführung auf eine konfigurierte Region wie die EU beschränken. Worker-Code und Secrets werden laut Cloudflare trotzdem global verteilt; ausgehende Worker-Subrequests sowie andere Trigger wie Queues/Cron werden dadurch nicht automatisch regionalisiert.
+- Die Cloudflare Data Localization Suite mit Regional Services ist laut aktueller Dokumentation ein **Enterprise-only paid add-on**. Für AppBasis darf dieser Pfad daher weder als vorhanden angenommen noch ohne ausdrückliche Freigabe beschafft werden.
+- Cloudflare dokumentiert verschlüsselte Übertragung innerhalb des Cloudflare-Netzes und zum Origin; Cache-Datenträger sind verschlüsselt. Ohne Regional Services erfolgt die HTTPS-Terminierung standardmäßig global.
+- Die offizielle Cloudflare-Subprozessorenliste für Cloudflare Services nennt für die Developer Platform unter anderem Provider mit möglichen Verarbeitungsstandorten innerhalb und außerhalb des EWR. Eine EU-Worker-Region darf deshalb nicht mit „sämtliche Providerverarbeitung ausschließlich EU“ gleichgesetzt werden.
+
+Offizielle Grundlagen:
+
+- https://www.cloudflare.com/en-gb/cloudflare-customer-dpa/
+- https://developers.cloudflare.com/data-localization/how-to/workers/
+- https://developers.cloudflare.com/data-localization/regional-services/
+- https://developers.cloudflare.com/data-localization/
+- https://developers.cloudflare.com/data-localization/regional-services/http-requests/
+- https://www.cloudflare.com/gdpr/subprocessors/cloudflare-services/
+
+### Neon/PostgreSQL
+
+- Neon unterstützt weiterhin **AWS Europe (Frankfurt) / `aws-eu-central-1`**. Diese Region entspricht dem bestätigten ULC-Ziel EU / Frankfurt.
+- Neon verlangt SSL/TLS für Datenbankverbindungen. Die aktuelle Security-Dokumentation beschreibt AES-256 für Data-at-Rest sowie TLS 1.2/1.3 für Datenübertragung.
+- Die aktuellen Neon Platform Services Terms verweisen für Self-Service-Pläne auf den Databricks Master Cloud Services Agreement und passen dessen DPA für Neon Platform Services an. Die Neon-spezifische Subprozessorenliste ist ausdrücklich Teil dieser Vertragskette.
+- Die Neon-Subprozessorenliste wurde zuletzt am **2026-04-16** aktualisiert und nennt unter anderem AWS, Microsoft Azure, Grafana und Salesforce. Standorte außerhalb des EWR müssen deshalb in der Transfer-/DPA-Bewertung ausdrücklich berücksichtigt werden.
+- Diese Providergrundlagen beweisen noch nicht, dass eine konkrete ULC-Produktivdatenbank bereits existiert oder tatsächlich in Frankfurt provisioniert wurde.
+
+Offizielle Grundlagen:
+
+- https://neon.com/docs/changelog/2026-02-20
+- https://neon.com/docs/security/security-overview
+- https://neon.com/platform-terms
+- https://neon.com/subprocessors
+
+### Vorläufiger fail-closed Gate-Stand
+
+| Kriterium | Stand nach Dokumentprüfung | Was für `verified` noch fehlt |
+|---|---|---|
+| `dataRegion` | `open` | reale ULC-Produktivressourcen; Neon-Region Frankfurt autoritativ bestätigen; Cloudflare-Verarbeitungsmodell für ULC verbindlich entscheiden und konfigurierte Realität prüfen |
+| `dpa` | `open` | account-/vertragsbezogen bestätigen, dass die aktuellen DPA-/Vertragsbedingungen für die tatsächlich genutzten Cloudflare- und Neon-Dienste gelten |
+| `encryption` | `open` | Providerfähigkeiten sind dokumentiert; reale ULC-Verbindungen, Ressourcen und Backup-/Recovery-Pfade müssen app-spezifisch geprüft werden |
+| `subprocessors` | `open` | aktuelle Listen zum Freigabezeitpunkt erneut abrufen, tatsächlichen Dienstumfang zuordnen und Transferlage dokumentieren |
+
+### Noch offene Betreiber-/Architekturentscheidung zur Cloudflare-Datenregion
+
+Die Projektanforderung `dataRegion` sagt derzeit **„geklärt“**, nicht automatisch „sämtliche Verarbeitung ausschließlich EU“. Cloudflare bietet zwei technisch unterschiedliche Zustände:
+
+1. Standard-Workers: globale TLS-Terminierung/Worker-Verarbeitung mit vertraglichen Datenschutz- und Transfer-Schutzmechanismen.
+2. Regional Services EU: TLS-Terminierung und Worker-Ausführung auf die EU begrenzt, jedoch kosten-/planabhängig und nicht gleichbedeutend mit vollständig EU-exklusiver Verarbeitung aller Metadaten, Subprozessoren oder ausgehenden Datenflüsse.
+
+Bis festgelegt ist, welcher dieser Zustände für das ULC-High-Privacy-Profil akzeptiert wird, bleibt `dataRegion` für die Cloudflare-Seite fail-closed `open`. Es wird **keine** kostenpflichtige Regional-Services-/Enterprise-Aktivierung vorsorglich durchgeführt.
+
 ## Zu belegende M5-Kriterien
 
 M5-G liefert bzw. unterstützt autoritative Evidenz für:
@@ -119,6 +174,7 @@ M5-G bleibt offen, wenn mindestens einer dieser Fälle eintritt:
 - ein tatsächlich verwendeter Provider/Dienst fehlt im Inventar
 - Produktionsressource oder Zielumgebung ist nicht eindeutig identifizierbar
 - Produktionsregion kann nicht autoritativ als EU / Frankfurt bestätigt werden
+- Cloudflare-Verarbeitungsregion/-modell ist für das ULC-High-Privacy-Profil nicht verbindlich entschieden oder kann nicht gegen die reale Konfiguration belegt werden
 - DPA-/AVV- oder Subprozessoren-Nachweis fehlt, ist veraltet oder nicht dem Dienstumfang zuordenbar
 - Transport- oder At-Rest-Verschlüsselung kann für einen relevanten Datenpfad nicht belegt werden
 - Credentials oder Secretwerte gelangen in Manifest, Repository oder normalen Factory-Snapshot
