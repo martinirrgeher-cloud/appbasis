@@ -13,7 +13,7 @@ async function workflowSource() {
   return readFile(workflowUrl, "utf8");
 }
 
-test("M4 R2 restore rehearsal is manual, protected and never creates provider resources", async () => {
+test("M4 R2 restore rehearsal is manual, main-only, protected and never creates provider resources", async () => {
   const source = await workflowSource();
 
   assert.match(source, /^\s*workflow_dispatch:\s*$/m);
@@ -22,6 +22,7 @@ test("M4 R2 restore rehearsal is manual, protected and never creates provider re
   assert.match(source, /apply:/);
   assert.match(source, /type: boolean/);
   assert.match(source, /^permissions:\n\s+contents: read$/m);
+  assert.match(source, /^\s+if: github\.ref == 'refs\/heads\/main'$/m);
   assert.match(source, /^\s+environment: m4-dr$/m);
   assert.match(source, /APPBASIS_M4_R2_RESTORE_ACCESS_KEY_ID/);
   assert.match(source, /APPBASIS_M4_R2_RESTORE_SECRET_ACCESS_KEY/);
