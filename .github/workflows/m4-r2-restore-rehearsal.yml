@@ -256,6 +256,14 @@ jobs:
             "$WORK/verification.json" >/dev/null
           echo "M4 R2 restore fingerprint verified on the isolated database." >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Verify restored auth, permissions and tasks behavior
+        if: inputs.apply == true
+        env:
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+        run: |
+          node ./tooling/m4-restored-functional-smoke.mjs
+          echo "M4 R2 restore functional smoke passed: auth, deny-by-default permissions and tasks persistence." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Remove temporary restore workspace
         if: always()
         shell: bash
