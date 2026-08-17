@@ -120,7 +120,39 @@ Die bereits etablierte accountweite Worker-Route-Prüfung bleibt unverändert. D
 
 Ein erfolgreicher Workflow-Lauf ist zunächst **nur eine app-spezifische Evidenzquelle**. Er setzt `privilegedControlPlaneIsolation` im gemeinsamen Factory-Gate nicht automatisch auf `true`. Dafür braucht es einen späteren, eng begrenzten Consumer, der einen hinreichend frischen erfolgreichen Lauf eindeutig an die konkrete App und Zielumgebung bindet. Fehlt diese Bindung oder ist der Providerzustand nicht lesbar, bleibt das Kriterium offen.
 
-Damit bleibt der aktuelle Factory-Snapshot trotz dieser neuen Evidenzquelle bei **1/12**; es wird keine Repository-Wahrheit aus einem vergangenen Providerzustand erfunden.
+Damit bleibt der Factory-Snapshot auf dem Stand dieses Slices trotz der neuen Evidenzquelle bei **1/12**; es wird keine Repository-Wahrheit aus einem vergangenen Providerzustand erfunden.
+
+## Slice 7 – frische Reference-Control-Plane-Evidenz konsumieren
+
+`tooling/factory-ui/reference-control-plane-evidence.mjs` ist der erste reale Consumer der in Slice 6 geschaffenen Provider-Evidenzquelle. Er bleibt bewusst Reference-spezifisch und baut keine allgemeine Evidenzplattform.
+
+Der Consumer:
+
+- gilt ausschließlich für `appId=reference`,
+- hält im Repository nur stabile Regeln für App, Repository, Workflow-Name/-Pfad, `main`, `workflow_dispatch` und Freshness,
+- speichert **keine** konkrete Workflow-Run-ID, keinen historischen Head-SHA und keinen einmaligen Beobachtungszeitpunkt als Repository-Wahrheit,
+- fragt zur Laufzeit bei GitHub ausschließlich den neuesten passenden Run des M5-Reference-Workflows auf `main` ab,
+- akzeptiert nur genau einen von der gefilterten GitHub-Abfrage gelieferten neuesten Run,
+- verlangt einen gültigen Run-Identifier, `run_attempt=1`, den erwarteten Workflow, `main`, `workflow_dispatch`, einen kanonischen Commit-SHA, das erwartete Repository sowie `completed/success`,
+- verwendet `updated_at` des erfolgreichen Runs als tatsächlichen Beobachtungszeitpunkt,
+- akzeptiert diesen Reference-spezifischen Providerzustand höchstens **24 Stunden** nach dem Beobachtungszeitpunkt,
+- behandelt einen neueren laufenden oder fehlgeschlagenen Run ausdrücklich als `open` und fällt niemals auf einen älteren erfolgreichen Run zurück,
+- bleibt bei GitHub-/JSON-/Clock-/Metadatenfehlern vollständig fail-closed.
+
+Die 24-Stunden-Grenze ist eine enge Freshness-Regel für diesen konkreten Reference-Preview-Nachweistyp. Sie ist **keine globale M5-Freshness-Policy** für andere Provider-, Vertrags- oder Betreiber-Evidenzen. Solche Nachweise behalten ihre jeweils passende `validUntilOrReviewAt`-Semantik.
+
+Die Zielumgebung wird nicht durch ein loses String-Feld im Consumer behauptet. Der bestehende ausführbare Workflow-Vertrag pinnt `.github/workflows/m5-reference-control-plane-evidence.yml` auf `environment: reference-preview`, `contents: read`, den Main-Guard und das Verbot von Deploy-/Secret-/Providerwrites. Der Consumer verlangt exakt diesen Workflow-Pfad und dessen aktuellen passenden GitHub-Run.
+
+Für den Factory-Snapshot gilt damit:
+
+- `reference` erreicht **2/12**, solange der neueste passende Provider-Run erfolgreich und innerhalb des 24-Stunden-Fensters liegt,
+- `secretsOutsideAppManifests` und `privilegedControlPlaneIsolation` sind dann `verified`,
+- nach Ablauf, bei einem neueren Failure/In-Progress-Run oder bei nicht lesbarer GitHub-Evidenz fällt `reference` automatisch wieder auf **1/12** zurück,
+- andere Apps übernehmen diese Reference-Evidenz nicht und bleiben durch diesen Slice unverändert,
+- `productionReady=false` bleibt bestehen, weil zehn weitere M5-Kriterien offen sind,
+- `releaseProduction=false` und die separate M6-Freigabe bleiben unverändert gesperrt.
+
+Damit wird erstmals eine reale, frische Provider-Evidenz kontrolliert in den gemeinsamen M5-Snapshot übernommen, ohne historischen Providerzustand dauerhaft ins Repository zu schreiben.
 
 ## Inventarisierte vorhandene Bausteine
 
@@ -149,7 +181,7 @@ Noch nicht technisch oder organisatorisch für eine konkrete Produktiv-App beleg
 - aktuelle Subprozessoren,
 - app-spezifische Bindung/Erfüllung des High-Privacy-Profils,
 - konkrete Secret-/Credential-Konfiguration der Produktivumgebung,
-- konkrete öffentliche/private Erreichbarkeit aller privilegierten Control-Plane-Funktionen.
+- konkrete öffentliche/private Erreichbarkeit aller privilegierten Control-Plane-Funktionen einer späteren Produktiv-App.
 
 Diese Punkte bleiben deshalb im Factory-Gate offen und blockieren Produktion.
 
@@ -164,4 +196,4 @@ Diese Punkte bleiben deshalb im Factory-Gate offen und blockieren Produktion.
 
 ## Sicherheitsgrenze
 
-Dieser Slice verändert keine M3-Runtime-, M3-Workflow-, M4-Provider-, App-Manifest- oder Generator-Grundverträge. Er korrigiert ausschließlich die read-only Custom-Domain-Auswertung des Reference-Control-Plane-Ingress-Verifiers auf den dokumentierten Cloudflare-`SinglePage`-Vertrag; die accountweite Route-Prüfung, das Berechtigungsmodell und der Providerzustand bleiben unverändert. Er führt keine Produktionsfreigabe und keine externe Provideraktion aus.
+Slice 7 verändert keine M3-Runtime-, M3-Workflow-, M4-Provider-, App-Manifest-, Generator- oder Produktionsfreigabe-Grundverträge. Er liest ausschließlich den aktuellen GitHub-Workflow-Zustand der bereits vorhandenen Reference-Evidenzquelle und setzt nur das einzelne Kriterium `privilegedControlPlaneIsolation`, wenn alle app-spezifischen, strukturellen und zeitlichen Bedingungen erfüllt sind. Es gibt keinen Providerwrite, kein Deployment, keine Secretänderung und keine Produktionsfreigabe.
