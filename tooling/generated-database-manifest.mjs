@@ -13,11 +13,12 @@ const PLATFORM_SERVICE_DATABASE_OWNERS = Object.freeze({
   permissions: databaseOwner({
     id: "permissions",
     root: "packages/permissions",
-    schemaVersion: 3,
+    schemaVersion: 4,
     migrations: [
       "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
       "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
       "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+      "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
     ],
   }),
 });

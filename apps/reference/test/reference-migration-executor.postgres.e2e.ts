@@ -35,7 +35,7 @@ describe('Reference migration executor PostgreSQL E2E', () => {
     const result = await applyReferenceMigrations({
       connectionString: targetUrl.toString(),
     });
-    expect(result.migrationCount).toBe(6);
+    expect(result.migrationCount).toBe(7);
     expect(result.statementCount).toBeGreaterThan(0);
 
     const verification = createPostgresDatabase(targetUrl.toString());

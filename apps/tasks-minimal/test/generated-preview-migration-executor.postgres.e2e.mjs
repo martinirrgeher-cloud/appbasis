@@ -26,7 +26,7 @@ test('applies only the generated manifest to its named empty database and refuse
     const result = await applyGeneratedPreviewMigrations({
       connectionString: targetUrl.toString(),
     });
-    assert.equal(result.migrationCount, 6);
+    assert.equal(result.migrationCount, 7);
     assert.ok(result.statementCount > 0);
 
     const verification = createPostgresDatabase(targetUrl.toString());
