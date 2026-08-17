@@ -9,7 +9,7 @@ const auditContext = Object.freeze({
   reason: "ULC Zugriff ersetzen",
 });
 
-test("maps a non-admin ULC member into one atomic AppBasis access replacement", async () => {
+test("maps a non-admin ULC member without inventing an admin-demotion guard", async () => {
   const calls = [];
   const result = await replaceUlcLinzPrincipalAccess({
     administration: fakeAdministration(calls),
@@ -49,10 +49,76 @@ test("maps a non-admin ULC member into one atomic AppBasis access replacement", 
     call.constraints.requiredRemainingCapabilities,
     ULC_LINZ_M5_KNOWN_CAPABILITIES,
   );
-  assert.deepEqual(call.constraints.requiredRemainingRoleIds, [
+  assert.deepEqual(call.constraints.requiredRemainingRoleIds, []);
+  assert.equal(
+    Object.hasOwn(call.constraints, "resolveRequiredRoleHolderPrincipalScope"),
+    false,
+  );
+  assert.deepEqual(result, { ok: true });
+});
+
+test("carries the active same-organization principal scope into an actual admin demotion", async () => {
+  const calls = [];
+  const resolveActiveOrganizationPrincipalScope = async () => [
+    "principal-admin-target",
+    "principal-admin-remaining",
+  ];
+
+  await replaceUlcLinzPrincipalAccess({
+    administration: fakeAdministration(calls),
+    principalId: "principal-admin-target",
+    sourceRole: "trainer",
+    permissions: [],
+    auditContext,
+    constraints: {
+      expectedRoleIds: ["ulc-linz:admin"],
+      expectedGrants: [],
+      expectedRevokes: [],
+      resolveActiveOrganizationPrincipalScope,
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].constraints.requiredRemainingRoleIds, [
     "ulc-linz:admin",
   ]);
-  assert.deepEqual(result, { ok: true });
+  assert.equal(
+    calls[0].constraints.resolveRequiredRoleHolderPrincipalScope,
+    resolveActiveOrganizationPrincipalScope,
+  );
+});
+
+test("fails closed when an actual admin demotion lacks active same-organization scope", async () => {
+  await assert.rejects(
+    () =>
+      replaceUlcLinzPrincipalAccess({
+        administration: fakeAdministration([]),
+        principalId: "principal-admin-target",
+        sourceRole: "trainer",
+        permissions: [],
+        auditContext,
+        constraints: {
+          expectedRoleIds: ["ulc-linz:admin"],
+          expectedGrants: [],
+          expectedRevokes: [],
+        },
+      }),
+    /requires a transactional resolver for active principals in the target organization/,
+  );
+});
+
+test("fails closed for a non-admin target when the previous role snapshot is missing", async () => {
+  await assert.rejects(
+    () =>
+      replaceUlcLinzPrincipalAccess({
+        administration: fakeAdministration([]),
+        principalId: "principal-trainer",
+        sourceRole: "trainer",
+        permissions: [],
+        auditContext,
+      }),
+    /requires expectedRoleIds so an admin demotion cannot bypass/,
+  );
 });
 
 test("promotes an admin with empty direct overrides without requiring another holder", async () => {
@@ -70,6 +136,10 @@ test("promotes an admin with empty direct overrides without requiring another ho
   assert.deepEqual(calls[0].overrides, { grants: [], revokes: [] });
   assert.deepEqual(calls[0].constraints.requiredRemainingCapabilities, []);
   assert.deepEqual(calls[0].constraints.requiredRemainingRoleIds, []);
+  assert.equal(
+    Object.hasOwn(calls[0].constraints, "resolveRequiredRoleHolderPrincipalScope"),
+    false,
+  );
 });
 
 test("fails closed for unsupported roles and missing atomic administration", async () => {
