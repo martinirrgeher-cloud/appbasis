@@ -1,0 +1,193 @@
+name: M4 R2 Backup Evidence
+
+on:
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m4-r2-backup-evidence-m3-preview
+  cancel-in-progress: false
+
+jobs:
+  evidence:
+    name: Verify R2 backup freshness and retention read-only
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: m4-dr
+    env:
+      APPBASIS_M4_FREE_BACKUP_ENABLED: ${{ vars.APPBASIS_M4_FREE_BACKUP_ENABLED }}
+      APPBASIS_M4_R2_BUCKET: ${{ vars.APPBASIS_M4_R2_BUCKET }}
+      APPBASIS_M4_R2_JURISDICTION: ${{ vars.APPBASIS_M4_R2_JURISDICTION }}
+
+    steps:
+      - name: Gate inactive scheduled evidence before secrets
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" && "$APPBASIS_M4_FREE_BACKUP_ENABLED" != "1" ]]; then
+            echo "M4 free external backup profile is not activated; scheduled evidence is skipped."
+            echo "run=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test "$APPBASIS_M4_FREE_BACKUP_ENABLED" = "1" || {
+            echo "M4 R2 backup evidence cannot verify an inactive backup profile." >&2
+            exit 1
+          }
+          echo "run=1" >> "$GITHUB_OUTPUT"
+
+      - name: Check out repository
+        if: steps.gate.outputs.run == '1'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.run == '1'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Validate and mask read-only evidence inputs
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APPBASIS_M4_R2_EVIDENCE_ACCESS_KEY_ID: ${{ secrets.APPBASIS_M4_R2_EVIDENCE_ACCESS_KEY_ID }}
+          APPBASIS_M4_R2_EVIDENCE_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_M4_R2_EVIDENCE_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing Cloudflare account id." >&2; exit 1; }
+          test -n "$APPBASIS_M4_R2_EVIDENCE_ACCESS_KEY_ID" || { echo "Missing M4 R2 evidence access key id." >&2; exit 1; }
+          test -n "$APPBASIS_M4_R2_EVIDENCE_SECRET_ACCESS_KEY" || { echo "Missing M4 R2 evidence secret access key." >&2; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$APPBASIS_M4_R2_EVIDENCE_ACCESS_KEY_ID"
+          echo "::add-mask::$APPBASIS_M4_R2_EVIDENCE_SECRET_ACCESS_KEY"
+          node ./tooling/m4-free-backup-plan.mjs endpoint >/dev/null
+          node ./tooling/m4-free-backup-plan.mjs bucket >/dev/null
+
+      - name: List actual managed R2 backup inventory read-only
+        if: steps.gate.outputs.run == '1'
+        id: inventory
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_M4_R2_EVIDENCE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_M4_R2_EVIDENCE_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+        run: |
+          set -euo pipefail
+          command -v aws >/dev/null || { echo "AWS CLI is unavailable." >&2; exit 1; }
+          command -v jq >/dev/null || { echo "jq is unavailable." >&2; exit 1; }
+          umask 077
+          ENDPOINT="$(node ./tooling/m4-free-backup-plan.mjs endpoint)"
+          BUCKET="$(node ./tooling/m4-free-backup-plan.mjs bucket)"
+          INVENTORY="$RUNNER_TEMP/m4-r2-backup-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.json"
+          printf '[]\n' > "$INVENTORY"
+
+          aws s3api head-bucket \
+            --bucket "$BUCKET" \
+            --endpoint-url "$ENDPOINT" >/dev/null 2>&1 || {
+              echo "M4 R2 evidence target is not readable." >&2
+              exit 1
+            }
+
+          list_prefix() {
+            local prefix="$1"
+            local token=""
+            local page page_objects next_inventory truncated next_token
+            local -A seen_tokens=()
+
+            while true; do
+              local -a args=(
+                s3api list-objects-v2
+                --bucket "$BUCKET"
+                --prefix "$prefix"
+                --max-keys 1000
+                --no-paginate
+                --endpoint-url "$ENDPOINT"
+                --output json
+              )
+              if [[ -n "$token" ]]; then
+                args+=(--continuation-token "$token")
+              fi
+
+              page="$(aws "${args[@]}")" || {
+                echo "M4 R2 evidence inventory could not be listed." >&2
+                return 1
+              }
+              jq -e '
+                (.IsTruncated | type == "boolean") and
+                ((.Contents // []) | type == "array") and
+                all(.Contents[]?;
+                  (.Key | type == "string") and
+                  (.LastModified | type == "string") and
+                  (.Size | type == "number")
+                )
+              ' <<<"$page" >/dev/null || {
+                echo "M4 R2 evidence inventory page is invalid." >&2
+                return 1
+              }
+
+              page_objects="$RUNNER_TEMP/m4-r2-page-$GITHUB_RUN_ID-$RANDOM.json"
+              next_inventory="$RUNNER_TEMP/m4-r2-next-$GITHUB_RUN_ID-$RANDOM.json"
+              jq -c '.Contents // []' <<<"$page" > "$page_objects"
+              jq -s '.[0] + .[1]' "$INVENTORY" "$page_objects" > "$next_inventory"
+              mv "$next_inventory" "$INVENTORY"
+              rm -f -- "$page_objects"
+
+              truncated="$(jq -r '.IsTruncated' <<<"$page")"
+              if [[ "$truncated" == "false" ]]; then
+                break
+              fi
+              next_token="$(jq -r '.NextContinuationToken // empty' <<<"$page")"
+              test -n "$next_token" || {
+                echo "M4 R2 evidence pagination is truncated without a continuation token." >&2
+                return 1
+              }
+              test "$next_token" != "$token" || {
+                echo "M4 R2 evidence pagination did not advance." >&2
+                return 1
+              }
+              test -z "${seen_tokens[$next_token]:-}" || {
+                echo "M4 R2 evidence pagination repeated a continuation token." >&2
+                return 1
+              }
+              seen_tokens["$next_token"]=1
+              token="$next_token"
+            done
+          }
+
+          list_prefix "appbasis/m3-preview/m4/daily/"
+          list_prefix "appbasis/m3-preview/m4/weekly/"
+          jq -e 'type == "array"' "$INVENTORY" >/dev/null
+          printf 'path=%s\n' "$INVENTORY" >> "$GITHUB_OUTPUT"
+
+      - name: Evaluate freshness and retention evidence
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          INVENTORY: ${{ steps.inventory.outputs.path }}
+        run: |
+          set -euo pipefail
+          NOW="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
+          node ./tooling/m4-r2-backup-evidence.mjs evaluate "$NOW" < "$INVENTORY" | tee "$RUNNER_TEMP/m4-r2-evidence.json"
+          jq -r '"M4 R2 backup evidence: ok=\(.ok) daily=\(.dailyCount) weekly=\(.weeklyCount) latestDaily=" + (.latestDailyKey // "none")' \
+            "$RUNNER_TEMP/m4-r2-evidence.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary evidence inventory
+        if: always() && steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          INVENTORY: ${{ steps.inventory.outputs.path }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${INVENTORY:-}" ]]; then
+            rm -f -- "$INVENTORY"
+          fi
+          rm -f -- "$RUNNER_TEMP/m4-r2-evidence.json"
