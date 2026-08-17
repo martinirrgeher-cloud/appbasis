@@ -9,5 +9,8 @@
     "worker/**/*.ts",
     "test/**/*.ts",
     "vitest*.config.ts"
+  ],
+  "exclude": [
+    "test/**/*.postgres.e2e.test.ts"
   ]
 }
