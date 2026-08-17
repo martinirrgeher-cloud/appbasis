@@ -1,4 +1,3 @@
-import type { IdentityService } from "@appbasis/identity";
 import {
   principalId,
   roleId,
@@ -37,8 +36,17 @@ export interface UlcLinzLifecycleAuthorization {
   readonly actorPrincipalId: PrincipalId;
 }
 
+/**
+ * App-specific narrow port for the existing IdentityService.disableIdentity()
+ * owner operation. Keeping this structural boundary local avoids importing the
+ * broad Identity package root into the generated app runtime.
+ */
+export interface UlcLinzIdentityLifecycleOwner {
+  disableIdentity(identityId: string): Promise<unknown>;
+}
+
 export interface UlcLinzPreDeleteQuarantineDependencies {
-  readonly identity: Pick<IdentityService, "disableIdentity">;
+  readonly identity: UlcLinzIdentityLifecycleOwner;
   readonly permissions: PermissionStore;
   readonly accessAdministration: Pick<
     PostgresPrincipalAccessAdministration,
