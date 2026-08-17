@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "basis": {
+    "databaseManifest": "apps/ulc-linz/appbasis.database.json",
+    "appManifest": "apps/ulc-linz/appbasis.app.json",
+    "authorizationRuntime": "apps/ulc-linz/worker/authorization.ts"
+  },
+  "persistentOwners": [
+    {
+      "id": "identity",
+      "lifecycleStatus": "open",
+      "notes": [
+        "contains-personal-or-authentication-data",
+        "disable-identity-is-not-deletion"
+      ]
+    },
+    {
+      "id": "permissions",
+      "lifecycleStatus": "open",
+      "notes": [
+        "contains-principal-access-data",
+        "administration-audit-has-separate-retention"
+      ]
+    }
+  ],
+  "runtimeModules": [],
+  "backingStores": {
+    "memberships": {
+      "status": "unbound",
+      "sourceContract": "UlcLinzMembershipResolver"
+    },
+    "subjectScopes": {
+      "status": "unbound",
+      "sourceContract": "UlcLinzSubjectScopeResolver"
+    }
+  },
+  "objectStorage": {
+    "status": "not-configured"
+  },
+  "m5": {
+    "deletionPolicy": "open",
+    "retentionPolicy": "open",
+    "unknownPersistentOwner": "fail-closed",
+    "unknownBackingStore": "fail-closed"
+  }
+}
