@@ -10,7 +10,7 @@ import {
   PostgresPrincipalAccessAdministration,
   principalId,
 } from "@appbasis/permissions";
-import { createPostgresDatabase } from "../../../packages/database/src/postgres-provisioning";
+import { createPostgresDatabase } from "../../../packages/database/src/node-runtime.mjs";
 
 import {
   quarantineUlcLinzIdentityBeforeDeletion,
