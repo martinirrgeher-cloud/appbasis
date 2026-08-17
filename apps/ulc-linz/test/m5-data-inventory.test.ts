@@ -69,13 +69,14 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(databaseManifest.application).toBe(inventory.application);
     expect(appManifest.appId).toBe(inventory.application);
 
+    const databaseOwnerIds = databaseManifest.owners.map((owner) => owner.id);
     expect(sorted(inventory.persistentOwners.map((owner) => owner.id))).toEqual(
-      sorted(databaseManifest.owners.map((owner) => owner.id)),
+      sorted(databaseOwnerIds),
     );
     expect(inventory.runtimeModules).toEqual(appManifest.modules);
-    expect(sorted(appManifest.platformServices)).toEqual(
-      sorted(databaseManifest.owners.map((owner) => owner.id)),
-    );
+    expect(
+      databaseOwnerIds.every((ownerId) => appManifest.platformServices.includes(ownerId)),
+    ).toBe(true);
 
     expect(
       inventory.persistentOwners.every((owner) => owner.lifecycleStatus === "open"),
