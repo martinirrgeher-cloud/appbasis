@@ -13,11 +13,17 @@ const PERMISSION_AUDIT_BLOCK = `const permissionAdministrationAuditMigrationUrl 
   "../../../packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
   import.meta.url,
 );`;
+const PRINCIPAL_PERMISSION_AUDIT_BLOCK = `const principalPermissionAdministrationAuditMigrationUrl = new URL(
+  "../../../packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
+  import.meta.url,
+);`;
 const APPLY_PERMISSION_FOUNDATION = "  await applyMigration(permissionMigrationUrl);";
 const APPLY_PERMISSION_LIFECYCLE =
   "  await applyMigration(permissionRoleLifecycleMigrationUrl);";
 const APPLY_PERMISSION_AUDIT =
   "  await applyMigration(permissionAdministrationAuditMigrationUrl);";
+const APPLY_PRINCIPAL_PERMISSION_AUDIT =
+  "  await applyMigration(principalPermissionAdministrationAuditMigrationUrl);";
 
 export function createIdentityRuntimeTemplate(input) {
   const generated = createCoreIdentityRuntimeTemplate(input);
@@ -79,6 +85,28 @@ function withPermissionMigrations(content) {
       .replace(
         APPLY_PERMISSION_LIFECYCLE,
         `${APPLY_PERMISSION_LIFECYCLE}\n${APPLY_PERMISSION_AUDIT}`,
+      );
+  }
+
+  if (!next.includes("0003_appbasis_principal_permission_administration_audit.sql")) {
+    if (!next.includes(PERMISSION_AUDIT_BLOCK)) {
+      throw new Error(
+        "Generated PostgreSQL E2E template is missing the permission administration audit migration block.",
+      );
+    }
+    if (!next.includes(APPLY_PERMISSION_AUDIT)) {
+      throw new Error(
+        "Generated PostgreSQL E2E template is missing the permission administration audit migration application.",
+      );
+    }
+    next = next
+      .replace(
+        PERMISSION_AUDIT_BLOCK,
+        `${PERMISSION_AUDIT_BLOCK}\n${PRINCIPAL_PERMISSION_AUDIT_BLOCK}`,
+      )
+      .replace(
+        APPLY_PERMISSION_AUDIT,
+        `${APPLY_PERMISSION_AUDIT}\n${APPLY_PRINCIPAL_PERMISSION_AUDIT}`,
       );
   }
 
