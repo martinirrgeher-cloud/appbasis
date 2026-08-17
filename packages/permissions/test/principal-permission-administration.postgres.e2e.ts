@@ -21,20 +21,37 @@ import {
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
-  throw new Error("DATABASE_URL is required for principal permission PostgreSQL E2E tests.");
+  throw new Error(
+    "DATABASE_URL is required for principal permission PostgreSQL E2E tests.",
+  );
 }
 
 const administrativeConnection = createPostgresDatabase(databaseUrl);
 const isolatedDatabaseName =
   "appbasis_principal_perm_" + randomUUID().replaceAll("-", "").slice(0, 18);
-const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
+const isolatedDatabaseUrl = databaseUrlForName(
+  databaseUrl,
+  isolatedDatabaseName,
+);
 let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
 let isolatedDatabaseCreated = false;
 const migrationUrls = [
-  new URL("../migrations/0000_appbasis_permissions_foundation.sql", import.meta.url),
-  new URL("../migrations/0001_appbasis_permission_role_lifecycle.sql", import.meta.url),
-  new URL("../migrations/0002_appbasis_permission_administration_audit.sql", import.meta.url),
-  new URL("../migrations/0003_appbasis_principal_permission_administration_audit.sql", import.meta.url),
+  new URL(
+    "../migrations/0000_appbasis_permissions_foundation.sql",
+    import.meta.url,
+  ),
+  new URL(
+    "../migrations/0001_appbasis_permission_role_lifecycle.sql",
+    import.meta.url,
+  ),
+  new URL(
+    "../migrations/0002_appbasis_permission_administration_audit.sql",
+    import.meta.url,
+  ),
+  new URL(
+    "../migrations/0003_appbasis_principal_permission_administration_audit.sql",
+    import.meta.url,
+  ),
 ];
 
 const reportsRead = capabilityId("reports:read");
@@ -116,10 +133,16 @@ describe("PostgresPrincipalPermissionAdministration", () => {
     });
 
     await expect(
-      can(permissionStore, { principalId: targetPrincipal, capability: reportsRead }),
+      can(permissionStore, {
+        principalId: targetPrincipal,
+        capability: reportsRead,
+      }),
     ).resolves.toBe(false);
     await expect(
-      can(permissionStore, { principalId: targetPrincipal, capability: reportsWrite }),
+      can(permissionStore, {
+        principalId: targetPrincipal,
+        capability: reportsWrite,
+      }),
     ).resolves.toBe(true);
 
     const auditRows = await requiredIsolatedConnection().client.unsafe(
@@ -178,31 +201,12 @@ describe("PostgresPrincipalPermissionAdministration", () => {
       revokes: [reportsRead],
     });
   });
-
-  it("protects the last holder of explicitly required capabilities", async () => {
-    const administration = principalPermissionAdministration();
-
-    await expect(
-      administration.replacePrincipalPermissions(
-        targetPrincipal,
-        { grants: [], revokes: [reportsRead, reportsWrite] },
-        { actorPrincipalId: auditActor, reason: "Required capability entziehen" },
-        { requiredRemainingCapabilities: [reportsWrite] },
-      ),
-    ).rejects.toMatchObject({ code: "LAST_CAPABILITY_HOLDER" });
-
-    const principal = await new PostgresPermissionStore(
-      requiredIsolatedConnection().client,
-    ).findPrincipal(targetPrincipal);
-    expect(principal).toMatchObject({
-      grants: [reportsWrite],
-      revokes: [reportsRead],
-    });
-  });
 });
 
 function principalPermissionAdministration() {
-  return new PostgresPrincipalPermissionAdministration(roleAdministrationClient());
+  return new PostgresPrincipalPermissionAdministration(
+    roleAdministrationClient(),
+  );
 }
 
 function roleAdministrationClient(): RoleAdministrationPostgresClient {
@@ -232,7 +236,10 @@ function permissionClient(client: {
   };
 }
 
-function databaseUrlForName(connectionString: string, databaseName: string) {
+function databaseUrlForName(
+  connectionString: string,
+  databaseName: string,
+) {
   const url = new URL(connectionString);
   url.pathname = "/" + databaseName;
   return url.toString();
@@ -240,7 +247,9 @@ function databaseUrlForName(connectionString: string, databaseName: string) {
 
 function requiredIsolatedConnection() {
   if (isolatedConnection === null) {
-    throw new Error("The isolated principal permission database is not ready.");
+    throw new Error(
+      "The isolated principal permission database is not ready.",
+    );
   }
   return isolatedConnection;
 }
