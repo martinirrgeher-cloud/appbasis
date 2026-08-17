@@ -8,13 +8,7 @@ import {
 } from "./ulc-linz-m5-target-policy.mjs";
 
 export const ULC_LINZ_HIGH_PRIVACY_REQUIREMENTS = Object.freeze([
-  "securityPrivacyGate",
-  "backupRestoreBeforeProduction",
-  "accessControl",
-  "privilegeModel",
-  "secretsInNormalAppManifest",
-  "privilegedControlPlanePublicIngress",
-  "operatorUseCaseAssessment",
+  ...Object.keys(HIGH_PRIVACY_PROFILE.requirements),
 ]);
 
 export function evaluateUlcLinzHighPrivacyCompliance(
