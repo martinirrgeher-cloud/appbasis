@@ -206,19 +206,7 @@ jobs:
         env:
           APPBASIS_M4_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_M4_SOURCE_DATABASE_URL }}
           APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          node ./tooling/m4-r2-restore-plan.mjs databases >/dev/null
-          if ! docker run --rm \
-            --env APPBASIS_M4_RESTORE_DATABASE_URL \
-            postgres:18-alpine \
-            sh -ceu '
-              count="$(psql "$APPBASIS_M4_RESTORE_DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE n.nspname = '\''public'\'' AND c.relkind IN ('\''r'\','\''p'\','\''v'\','\''m'\','\''S'\','\''f'\');")"
-              test "$count" = "0"
-            '; then
-            echo "M4 restore target is not empty or could not be inspected; use a fresh isolated target." >&2
-            exit 1
-          fi
+        run: node ./tooling/m4-r2-restore-target.mjs verify-empty
 
       - name: Report preflight-only restore plan
         if: inputs.apply != true
