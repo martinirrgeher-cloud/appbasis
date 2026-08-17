@@ -16,9 +16,11 @@ export class PostgresPermissionAdministrationAuditRetention {
 
     const deleted = await this.#client.unsafe(
       `DELETE FROM appbasis_permission_administration_audit
-       WHERE created_at < ($1::timestamptz - INTERVAL '12 months')
+       WHERE created_at < (
+         $1::timestamptz - ($2::int * INTERVAL '1 month')
+       )
        RETURNING event_id`,
-      [now.toISOString()],
+      [now.toISOString(), PERMISSION_ADMINISTRATION_AUDIT_RETENTION_MONTHS],
     );
     return deleted.length;
   }
