@@ -75,7 +75,8 @@ test("factory snapshot consumes the pinned successful Reference control-plane ru
     assert.equal(criterion(app, "privilegedControlPlaneIsolation").status, "verified");
     assert.equal(criterion(app, "dataRegion").status, "open");
     assert.equal(snapshot.capabilities.releaseProduction, false);
-    assert.equal(app.productionReleaseReadiness.productionReleaseReady, false);
+    assert.equal(app.productionReleaseReadiness.technicalEvidenceVerified, false);
+    assert.equal(app.productionReleaseReadiness.releaseAuthorized, false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
