@@ -74,6 +74,7 @@ Die PostgreSQL-E2E-Tests beweisen:
 7. Das Permission-Audit bleibt nach Subject-Löschung erhalten und enthält weder Kontaktadresse noch Passwort.
 8. Ein Replay nach abgeschlossenem Delete führt nicht zu doppelten destruktiven Writes oder doppelten Audit-Ereignissen.
 9. Fehlt beim ersten Delete der exakte Permission-Principal als Auditanker, wird vor Identity-Deaktivierung fail-closed abgebrochen.
+10. Auch ein bereits leerer Permission-Principal durchläuft vor dem ersten Delete nochmals den auditierten `replacePrincipalAccess()`-Pfad.
 
 ## Bewusst weiterhin offen
 
@@ -84,7 +85,8 @@ M5-C bleibt global `open`, solange mindestens einer der folgenden Punkte real of
 - ein später installiertes ULC-Fachmodul führt personenbezogene Tabellen ohne expliziten Löschvertrag ein,
 - Object Storage/Medien werden später real verwendet und besitzen noch keinen Owner-/Löschvertrag,
 - ein zukünftiger Better-Auth-Flow führt `verification`-Persistenz ein, ohne dessen exakte Subject-Zuordnung und Cleanup-Semantik zu definieren,
-- die Retention des minimalen Identity-Delete-Tombstones ist im separaten M5-D-Gate noch nicht global verifiziert.
+- die Retention des minimalen Identity-Delete-Tombstones ist im separaten M5-D-Gate noch nicht global verifiziert,
+- Restore/Reconciliation ist noch nicht so nachgewiesen, dass ein Restore auf einen Backup-Stand vor der Löschung gelöschte personenbezogene Daten nicht dauerhaft wieder produktiv reaktiviert.
 
 Deshalb wird weder `deletionPolicy` noch `retentionPolicy` in diesem Slice auf `verified` gesetzt. Das ist beabsichtigtes fail-closed Verhalten und kein fehlender aktueller Identity-/Permission-Löschpfad.
 
