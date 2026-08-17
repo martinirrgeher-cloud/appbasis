@@ -136,11 +136,13 @@ export async function quarantineUlcLinzIdentityBeforeDeletion(
  * is inspected. The existing permission administration audit is deliberately
  * used as the privileged deletion audit: an exact principal must exist and its
  * role/permission state is replaced (even if already empty) with a deletion-
- * specific server-side reason before the principal row may be removed.
+ * specific server-side reason before physical identity deletion starts.
  *
- * If a later owner fails, the function returns an error and earlier stages stay
- * in their safer no-access state. The identity owner keeps a completed delete
- * tombstone so an ambiguous client retry can return without duplicate writes.
+ * The permission principal stays present but empty until identity deletion has
+ * completed. That order keeps an identity-owner failure safely retryable. If
+ * permission cleanup fails after identity deletion, the completed identity
+ * tombstone plus an empty principal allows a later retry to finish cleanup
+ * without re-running destructive identity work.
  */
 export async function deleteUlcLinzIdentity(
   dependencies: UlcLinzDeletionDependencies,
@@ -150,18 +152,21 @@ export async function deleteUlcLinzIdentity(
   const authorization = await dependencies.authorizeLifecycleWrite({
     targetIdentityId: normalizedIdentityId,
   });
-  requiredQuarantinableSourceRole(authorization.targetSourceRole);
+  const targetSourceRole = requiredQuarantinableSourceRole(
+    authorization.targetSourceRole,
+  );
   const targetPrincipalId = principalId(normalizedIdentityId);
 
   if (await dependencies.identityDeletion.isDeletionCompleted(normalizedIdentityId)) {
-    const remainingPrincipal = await dependencies.permissions.findPrincipal(targetPrincipalId);
-    if (remainingPrincipal !== null) {
-      throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
-    }
+    const permissionPrincipalDeleted = await cleanupCompletedDeletionPrincipal(
+      dependencies,
+      targetPrincipalId,
+      targetSourceRole,
+    );
     return Object.freeze({
       identityId: normalizedIdentityId,
       permissionsChanged: false,
-      permissionPrincipalDeleted: false,
+      permissionPrincipalDeleted,
       identityDeleted: true,
       alreadyDeleted: true,
     });
@@ -177,28 +182,70 @@ export async function deleteUlcLinzIdentity(
       forceAudit: true,
     },
   );
+
+  // Keep the empty permission principal until physical identity deletion has
+  // succeeded. If identity deletion fails, retry can still prove and re-audit
+  // the exact principal rather than getting stuck after a partial cross-owner
+  // write.
+  const identityDeletion = await dependencies.identityDeletion.deleteDisabledIdentity(
+    normalizedIdentityId,
+  );
+
   const permissionPrincipalDeleted =
     await dependencies.principalLifecycle.deleteQuarantinedPrincipal(
       targetPrincipalId,
     );
   if (!permissionPrincipalDeleted) {
-    // A concurrent/disconnected principal lifecycle means the operation cannot
-    // prove that its own audited quarantine and cleanup still describe the same
-    // target state. Do not continue to physical identity deletion.
-    throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
+    const remainingPrincipal = await dependencies.permissions.findPrincipal(
+      targetPrincipalId,
+    );
+    if (remainingPrincipal !== null) {
+      throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
+    }
   }
-
-  const identityDeletion = await dependencies.identityDeletion.deleteDisabledIdentity(
-    normalizedIdentityId,
-  );
 
   return Object.freeze({
     identityId: normalizedIdentityId,
     permissionsChanged: quarantine.permissionsChanged,
-    permissionPrincipalDeleted: true,
+    permissionPrincipalDeleted,
     identityDeleted: true,
     alreadyDeleted: identityDeletion.alreadyDeleted,
   });
+}
+
+async function cleanupCompletedDeletionPrincipal(
+  dependencies: UlcLinzDeletionDependencies,
+  targetPrincipalId: PrincipalId,
+  targetSourceRole: UlcLinzQuarantinableSourceRole,
+): Promise<boolean> {
+  const remainingPrincipal = await dependencies.permissions.findPrincipal(
+    targetPrincipalId,
+  );
+  if (remainingPrincipal === null) return false;
+
+  assertQuarantinablePermissionState(
+    remainingPrincipal,
+    targetPrincipalId,
+    targetSourceRole,
+  );
+  if (hasApplicationAccessState(remainingPrincipal)) {
+    // A completed identity must never silently cause a newly granted or stale
+    // permission state to be deleted. Reconciliation must resolve that drift.
+    throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
+  }
+
+  const deleted = await dependencies.principalLifecycle.deleteQuarantinedPrincipal(
+    targetPrincipalId,
+  );
+  if (deleted) return true;
+
+  const afterCleanup = await dependencies.permissions.findPrincipal(
+    targetPrincipalId,
+  );
+  if (afterCleanup !== null) {
+    throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
+  }
+  return false;
 }
 
 async function quarantineAuthorizedIdentity(
