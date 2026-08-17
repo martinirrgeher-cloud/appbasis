@@ -148,9 +148,10 @@ async function assertRequiredCapabilityHoldersRemain(
     }
     return capabilityId(value);
   });
+  const lockedCapabilitySet = new Set(lockedCapabilities);
   if (
-    lockedCapabilities.length !== capabilities.length ||
-    !lockedCapabilities.every((value, index) => value === capabilities[index])
+    lockedCapabilitySet.size !== capabilities.length ||
+    !capabilities.every((value) => lockedCapabilitySet.has(value))
   ) {
     throw new RoleAdministrationError(
       "UNKNOWN_CAPABILITY",
