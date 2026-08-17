@@ -101,6 +101,23 @@ test('accepts zero-valued pagination metadata for an empty Cloudflare single-pag
   );
 });
 
+test('rejects later-page metadata even when the custom-domain result is empty', async () => {
+  const { fetchImpl } = mockCloudflare({
+    domainResultInfo: {
+      count: 0,
+      page: 2,
+      per_page: 0,
+      total_count: 0,
+      total_pages: 0,
+    },
+  });
+
+  await assert.rejects(
+    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
+    /custom-domain result metadata is inconsistent/,
+  );
+});
+
 test('rejects workers.dev and Preview URL exposure', async () => {
   for (const subdomain of [
     { enabled: true, previews_enabled: false },
