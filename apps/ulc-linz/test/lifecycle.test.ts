@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { IdentityService, IdentityState } from "@appbasis/identity";
 import {
   capabilityId,
   principalId,
@@ -13,6 +12,7 @@ import {
 import {
   quarantineUlcLinzIdentityBeforeDeletion,
   UlcLinzLifecycleBlockedError,
+  type UlcLinzIdentityLifecycleOwner,
   type UlcLinzPreDeleteQuarantineDependencies,
 } from "../worker/lifecycle";
 
@@ -44,23 +44,6 @@ function principal(input: {
   };
 }
 
-function disabledIdentity(identityId: string): IdentityState {
-  const timestamp = new Date("2026-08-17T00:00:00.000Z");
-  return {
-    identityId,
-    username: "ulc.user",
-    displayName: "ULC User",
-    contactEmail: null,
-    personId: null,
-    mustChangePassword: false,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    passwordChangedAt: timestamp,
-    disabledAt: timestamp,
-    accountStatus: "disabled",
-  };
-}
-
 function harness(options: HarnessOptions = {}) {
   const events: string[] = [];
   let replaceArgs: ReplaceAccessArgs | null = null;
@@ -77,11 +60,11 @@ function harness(options: HarnessOptions = {}) {
     },
   };
 
-  const identity: Pick<IdentityService, "disableIdentity"> = {
+  const identity: UlcLinzIdentityLifecycleOwner = {
     async disableIdentity(identityId) {
       events.push("disable-identity");
       if (options.identityError !== undefined) throw options.identityError;
-      return disabledIdentity(identityId);
+      return { identityId, accountStatus: "disabled" };
     },
   };
 
