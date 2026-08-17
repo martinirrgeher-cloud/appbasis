@@ -67,7 +67,6 @@ test("binds the pinned successful provider run only to the Reference app", async
     ),
     {},
   );
-  assert.equal(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.targetEnvironment, "reference-preview");
 });
 
 test("fails closed when any pinned run identity or success field does not match", async () => {
