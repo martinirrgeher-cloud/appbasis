@@ -76,10 +76,11 @@ describe("PostgresPermissionAdministrationAuditRetention", () => {
          ('principal.permissions.replace', 'retention-admin', 'newer principal event', 'principal', 'principal-new', '{}'::jsonb, '{}'::jsonb, '2025-08-17T12:00:00.001Z')`,
     );
 
-    const retention = new PostgresPermissionAdministrationAuditRetention(connection.client);
-    await expect(
-      retention.deleteExpiredAuditEvents(new Date("2026-08-17T12:00:00.000Z")),
-    ).resolves.toBe(2);
+    const retention = new PostgresPermissionAdministrationAuditRetention(
+      connection.client,
+      () => new Date("2026-08-17T12:00:00.000Z"),
+    );
+    await expect(retention.deleteExpiredAuditEvents()).resolves.toBe(2);
 
     const remaining = await connection.client.unsafe(
       `SELECT reason, created_at
@@ -95,8 +96,9 @@ describe("PostgresPermissionAdministrationAuditRetention", () => {
   it("rejects an invalid retention clock before issuing a cleanup write", async () => {
     const retention = new PostgresPermissionAdministrationAuditRetention(
       requiredIsolatedConnection().client,
+      () => new Date(Number.NaN),
     );
-    await expect(retention.deleteExpiredAuditEvents(new Date(Number.NaN))).rejects.toThrow(
+    await expect(retention.deleteExpiredAuditEvents()).rejects.toThrow(
       "requires a valid current time",
     );
   });
