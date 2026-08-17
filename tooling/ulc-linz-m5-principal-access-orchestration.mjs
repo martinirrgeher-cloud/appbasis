@@ -29,8 +29,13 @@ export async function replaceUlcLinzPrincipalAccess({
     sourceRole,
     permissions,
   });
-  const requiredRemainingCapabilities =
-    sourceRole === "admin" ? [] : ULC_LINZ_M5_KNOWN_CAPABILITIES;
+  const demotingFromAdmin = sourceRole !== "admin";
+  const requiredRemainingCapabilities = demotingFromAdmin
+    ? ULC_LINZ_M5_KNOWN_CAPABILITIES
+    : [];
+  const requiredRemainingRoleIds = demotingFromAdmin
+    ? [ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.admin]
+    : [];
 
   return administration.replacePrincipalAccess(
     principalId,
@@ -42,6 +47,7 @@ export async function replaceUlcLinzPrincipalAccess({
       expectedGrants: constraints.expectedGrants,
       expectedRevokes: constraints.expectedRevokes,
       requiredRemainingCapabilities,
+      requiredRemainingRoleIds,
     },
   );
 }
