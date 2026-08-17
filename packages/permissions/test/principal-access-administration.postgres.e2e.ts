@@ -164,6 +164,36 @@ describe("PostgresPrincipalAccessAdministration", () => {
     ]);
   });
 
+  it("rolls back a demotion when it would remove the last required role holder", async () => {
+    const administration = principalAccessAdministration();
+    const beforeAuditRows = await targetAuditRows();
+
+    await expect(
+      administration.replacePrincipalAccess(
+        targetPrincipal,
+        [readerRole],
+        { grants: [reportsRead], revokes: [] },
+        { actorPrincipalId: auditActor, reason: "Letzte Writer-Rolle schützen" },
+        {
+          expectedRoleIds: [writerRole],
+          expectedGrants: [reportsRead],
+          expectedRevokes: [],
+          requiredRemainingRoleIds: [writerRole],
+        },
+      ),
+    ).rejects.toMatchObject({ code: "LAST_REQUIRED_ROLE_HOLDER" });
+
+    const principal = await new PostgresPermissionStore(
+      requiredIsolatedConnection().client,
+    ).findPrincipal(targetPrincipal);
+    expect(principal).toMatchObject({
+      roleIds: [writerRole],
+      grants: [reportsRead],
+      revokes: [],
+    });
+    expect(await targetAuditRows()).toEqual(beforeAuditRows);
+  });
+
   it("rolls back the role change and both audit events when override replacement fails", async () => {
     const administration = principalAccessAdministration();
     const beforeAuditRows = await targetAuditRows();
