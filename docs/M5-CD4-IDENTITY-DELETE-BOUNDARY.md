@@ -33,7 +33,9 @@ Für einen Delete wird `replacePrincipalAccess()` auch dann ausgeführt, wenn Ro
 
 tragen den serverseitigen Reason `ULC Linz identity deletion pre-delete access quarantine` und den authentifizierten Actor. Dadurch existiert vor jedem unterstützten physischen Delete ein persistentes, payload-minimiertes Audit des privilegierten Löschvorgangs.
 
-`PostgresPrincipalLifecycleAdministration` in `@appbasis/permissions` löscht anschließend ausschließlich einen vollständig quarantänisierten Principal. Hat der Principal noch Rollen, Grants oder Revokes, wird fail-closed abgebrochen.
+Der vollständig quarantänisierte Permission-Principal bleibt bis zum erfolgreichen Identity-Delete als leerer, nicht autorisierender Owner-Zustand erhalten. Erst danach entfernt `PostgresPrincipalLifecycleAdministration` in `@appbasis/permissions` den Principal. Hat der Principal zu diesem Zeitpunkt wieder Rollen, Grants oder Revokes, wird fail-closed abgebrochen statt den Drift still zu löschen.
+
+Diese Reihenfolge macht Teilfehler kontrolliert wiederholbar: Scheitert der Identity-Owner, bleibt der leere Principal als Auditanker für einen Retry bestehen. Scheitert nur der nachgelagerte Permission-Cleanup, kann der abgeschlossene Identity-Delete-Tombstone den Retry auf den sicheren Cleanup begrenzen.
 
 Bewusst wird in M5-C **kein neuer Permission-Audit-Eventtyp und keine neue Permission-Migration** eingeführt. Der offene M5-F-Strang besitzt die Audit-/Security-Schema-Verantwortung; M5-C verwendet den bereits freigegebenen Auditvertrag statt dieselbe Manifest-/Security-Grenze parallel zu verändern.
 
@@ -63,18 +65,19 @@ Falls eine zukünftige Referenz auf `appbasis_person` oder ein unerwarteter Owne
 
 ## Ausführbare Evidenz
 
-Die PostgreSQL-E2E-Tests beweisen:
+Die PostgreSQL-E2E- und Lifecycle-Tests beweisen:
 
 1. Der konfigurierte Better-Auth-Admin-Pfad kann einen ungebundenen User löschen.
 2. Der bestehende `ON DELETE RESTRICT`-FK schützt gebundenen AppBasis-State vor einem unkoordinierten Better-Auth-Hard-Delete.
 3. Der neue Identity-Owner löscht nach Deaktivierung User, Security-State, Person, Account und Session gemeinsam.
 4. Aktive/nicht vollständig deaktivierte Identities werden nicht gelöscht.
 5. Unerwartete `verification`-Persistenz blockiert fail-closed.
-6. Der ULC-End-to-End-Pfad erzeugt zuerst die bestehenden Permission-Administration-Audits mit Löschgrund, entfernt danach den Permission-Principal und löscht anschließend die Identity.
+6. Der ULC-End-to-End-Pfad erzeugt zuerst die bestehenden Permission-Administration-Audits mit Löschgrund, löscht danach die Identity und entfernt erst anschließend den bereits leeren Permission-Principal.
 7. Das Permission-Audit bleibt nach Subject-Löschung erhalten und enthält weder Kontaktadresse noch Passwort.
-8. Ein Replay nach abgeschlossenem Delete führt nicht zu doppelten destruktiven Writes oder doppelten Audit-Ereignissen.
+8. Ein Replay nach abgeschlossenem Delete führt nicht zu doppelten destruktiven Identity-Writes oder doppelten Audit-Ereignissen.
 9. Fehlt beim ersten Delete der exakte Permission-Principal als Auditanker, wird vor Identity-Deaktivierung fail-closed abgebrochen.
 10. Auch ein bereits leerer Permission-Principal durchläuft vor dem ersten Delete nochmals den auditierten `replacePrincipalAccess()`-Pfad.
+11. Ein Identity-Owner-Fehler lässt den leeren Principal bestehen und kann nach Behebung wiederholt werden; ein nachgelagerter Principal-Cleanup-Fehler kann nach abgeschlossenem Identity-Delete separat fertiggestellt werden.
 
 ## Bewusst weiterhin offen
 
