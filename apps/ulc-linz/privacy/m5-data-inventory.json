@@ -9,6 +9,11 @@
   "persistentOwners": [
     {
       "id": "identity",
+      "schemaVersion": 2,
+      "migrations": [
+        "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
+        "packages/identity/drizzle/0001_appbasis_identity_foundation.sql"
+      ],
       "lifecycleStatus": "open",
       "notes": [
         "contains-personal-or-authentication-data",
@@ -17,6 +22,13 @@
     },
     {
       "id": "permissions",
+      "schemaVersion": 4,
+      "migrations": [
+        "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
+        "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
+        "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+        "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql"
+      ],
       "lifecycleStatus": "open",
       "notes": [
         "contains-principal-access-data",
