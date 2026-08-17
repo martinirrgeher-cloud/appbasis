@@ -1,0 +1,279 @@
+name: M4 R2 Restore Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_key:
+        description: Exact canonical M4 R2 backup object key to restore
+        required: true
+        type: string
+      apply:
+        description: Restore into the configured isolated empty restore database
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m4-r2-restore-rehearsal-m3-preview
+  cancel-in-progress: false
+
+jobs:
+  restore-rehearsal:
+    name: Guarded encrypted R2 restore into isolated database
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: m4-dr
+    env:
+      APPBASIS_M4_R2_BUCKET: ${{ vars.APPBASIS_M4_R2_BUCKET }}
+      APPBASIS_M4_R2_JURISDICTION: ${{ vars.APPBASIS_M4_R2_JURISDICTION }}
+      APPBASIS_M4_R2_RESTORE_KEY: ${{ inputs.backup_key }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository and restore tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm run verify:repo
+          command -v aws >/dev/null || { echo "AWS CLI is unavailable." >&2; exit 1; }
+          command -v docker >/dev/null || { echo "Docker is unavailable." >&2; exit 1; }
+          command -v jq >/dev/null || { echo "jq is unavailable." >&2; exit 1; }
+          command -v sha256sum >/dev/null || { echo "sha256sum is unavailable." >&2; exit 1; }
+          command -v tar >/dev/null || { echo "tar is unavailable." >&2; exit 1; }
+
+      - name: Validate and mask protected restore inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APPBASIS_M4_R2_RESTORE_ACCESS_KEY_ID: ${{ secrets.APPBASIS_M4_R2_RESTORE_ACCESS_KEY_ID }}
+          APPBASIS_M4_R2_RESTORE_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_M4_R2_RESTORE_SECRET_ACCESS_KEY }}
+          APPBASIS_M4_BACKUP_ENCRYPTION_KEY: ${{ secrets.APPBASIS_M4_BACKUP_ENCRYPTION_KEY }}
+          APPBASIS_M4_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_M4_SOURCE_DATABASE_URL }}
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          for name in \
+            CLOUDFLARE_ACCOUNT_ID \
+            APPBASIS_M4_R2_RESTORE_ACCESS_KEY_ID \
+            APPBASIS_M4_R2_RESTORE_SECRET_ACCESS_KEY \
+            APPBASIS_M4_BACKUP_ENCRYPTION_KEY \
+            APPBASIS_M4_SOURCE_DATABASE_URL \
+            APPBASIS_M4_RESTORE_DATABASE_URL; do
+            test -n "${!name:-}" || { echo "Missing protected M4 restore input: $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+          node ./tooling/m4-free-backup-plan.mjs endpoint >/dev/null
+          node ./tooling/m4-free-backup-plan.mjs bucket >/dev/null
+          node ./tooling/m4-r2-restore-plan.mjs key "$APPBASIS_M4_R2_RESTORE_KEY" >/dev/null
+          node ./tooling/m4-r2-restore-plan.mjs databases >/dev/null
+          node --input-type=module <<'NODE'
+          import { parseM4BackupEncryptionKey } from "./tooling/m4-backup-crypto.mjs";
+          parseM4BackupEncryptionKey(process.env.APPBASIS_M4_BACKUP_ENCRYPTION_KEY);
+          NODE
+
+      - name: Create restricted temporary restore workspace
+        id: workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORK="$RUNNER_TEMP/appbasis-m4-r2-restore-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$WORK"
+          mkdir -p "$WORK/extracted"
+          printf 'path=%s\n' "$WORK" >> "$GITHUB_OUTPUT"
+
+      - name: Read and validate selected immutable R2 object
+        id: object
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_M4_R2_RESTORE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_M4_R2_RESTORE_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="$(node ./tooling/m4-free-backup-plan.mjs endpoint)"
+          BUCKET="$(node ./tooling/m4-free-backup-plan.mjs bucket)"
+          HEAD_JSON="$(aws s3api head-object \
+            --bucket "$BUCKET" \
+            --key "$APPBASIS_M4_R2_RESTORE_KEY" \
+            --endpoint-url "$ENDPOINT" \
+            --output json 2>/dev/null)" || {
+              echo "M4 R2 restore object is not readable." >&2
+              exit 1
+            }
+          OBJECT="$(node ./tooling/m4-r2-restore-plan.mjs head "$APPBASIS_M4_R2_RESTORE_KEY" <<<"$HEAD_JSON")"
+          printf 'created_at=%s\n' "$(jq -r '.createdAt' <<<"$OBJECT")" >> "$GITHUB_OUTPUT"
+          printf 'ciphertext_sha256=%s\n' "$(jq -r '.ciphertextSha256' <<<"$OBJECT")" >> "$GITHUB_OUTPUT"
+          printf 'content_length=%s\n' "$(jq -r '.contentLength' <<<"$OBJECT")" >> "$GITHUB_OUTPUT"
+
+          test ! -e "$WORK/backup.tar.aesgcm"
+          aws s3api get-object \
+            --bucket "$BUCKET" \
+            --key "$APPBASIS_M4_R2_RESTORE_KEY" \
+            --endpoint-url "$ENDPOINT" \
+            "$WORK/backup.tar.aesgcm" >/dev/null
+
+          LOCAL_SIZE="$(stat -c '%s' "$WORK/backup.tar.aesgcm")"
+          LOCAL_SHA256="$(sha256sum "$WORK/backup.tar.aesgcm" | awk '{print $1}')"
+          test "$LOCAL_SIZE" = "$(jq -r '.contentLength' <<<"$OBJECT")" || {
+            echo "M4 R2 restore ciphertext size mismatch." >&2
+            exit 1
+          }
+          test "$LOCAL_SHA256" = "$(jq -r '.ciphertextSha256' <<<"$OBJECT")" || {
+            echo "M4 R2 restore ciphertext digest mismatch." >&2
+            exit 1
+          }
+
+      - name: Decrypt and validate exact backup archive
+        shell: bash
+        env:
+          APPBASIS_M4_BACKUP_ENCRYPTION_KEY: ${{ secrets.APPBASIS_M4_BACKUP_ENCRYPTION_KEY }}
+          WORK: ${{ steps.workspace.outputs.path }}
+          OBJECT_CREATED_AT: ${{ steps.object.outputs.created_at }}
+        run: |
+          set -euo pipefail
+          umask 077
+          node ./tooling/m4-backup-crypto.mjs decrypt \
+            "$WORK/backup.tar.aesgcm" \
+            "$WORK/backup.tar" >/dev/null
+          rm -f -- "$WORK/backup.tar.aesgcm"
+
+          printf 'database.pgdump\nfingerprint.json\nmanifest.json\n' > "$WORK/expected-entries.txt"
+          tar --list --file "$WORK/backup.tar" > "$WORK/archive-entries.txt"
+          cmp -s "$WORK/expected-entries.txt" "$WORK/archive-entries.txt" || {
+            echo "M4 R2 restore archive entries are not exact." >&2
+            exit 1
+          }
+          tar --list --verbose --file "$WORK/backup.tar" > "$WORK/archive-verbose.txt"
+          awk '
+            BEGIN { ok = 1; count = 0 }
+            { count += 1; if (substr($1, 1, 1) != "-") ok = 0 }
+            END { if (!ok || count != 3) exit 1 }
+          ' "$WORK/archive-verbose.txt" || {
+            echo "M4 R2 restore archive contains a non-regular entry." >&2
+            exit 1
+          }
+
+          tar --extract \
+            --file "$WORK/backup.tar" \
+            --directory "$WORK/extracted" \
+            --no-same-owner \
+            --no-same-permissions
+          rm -f -- "$WORK/backup.tar"
+          for path in database.pgdump fingerprint.json manifest.json; do
+            test -f "$WORK/extracted/$path" && test -s "$WORK/extracted/$path" || {
+              echo "M4 R2 restore archive payload is missing or empty." >&2
+              exit 1
+            }
+          done
+
+          node ./tooling/m4-r2-restore-plan.mjs manifest \
+            "$APPBASIS_M4_R2_RESTORE_KEY" \
+            "$OBJECT_CREATED_AT" \
+            < "$WORK/extracted/manifest.json" \
+            > "$WORK/manifest.normalized.json"
+          node ./tooling/m4-r2-restore-plan.mjs fingerprint \
+            < "$WORK/extracted/fingerprint.json" \
+            > "$WORK/fingerprint.normalized.json"
+
+      - name: Verify isolated restore target is still empty
+        shell: bash
+        env:
+          APPBASIS_M4_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_M4_SOURCE_DATABASE_URL }}
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node ./tooling/m4-r2-restore-plan.mjs databases >/dev/null
+          if ! docker run --rm \
+            --env APPBASIS_M4_RESTORE_DATABASE_URL \
+            postgres:18-alpine \
+            sh -ceu '
+              count="$(psql "$APPBASIS_M4_RESTORE_DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE n.nspname = '\''public'\'' AND c.relkind IN ('\''r'\','\''p'\','\''v'\','\''m'\','\''S'\','\''f'\');")"
+              test "$count" = "0"
+            '; then
+            echo "M4 restore target is not empty or could not be inspected; use a fresh isolated target." >&2
+            exit 1
+          fi
+
+      - name: Report preflight-only restore plan
+        if: inputs.apply != true
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "M4 R2 restore preflight passed; no database write was requested." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Restore custom dump atomically into isolated database
+        if: inputs.apply == true
+        shell: bash
+        env:
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          if ! docker run --rm \
+            --env APPBASIS_M4_RESTORE_DATABASE_URL \
+            --volume "$WORK/extracted:/restore:ro" \
+            postgres:18-alpine \
+            sh -ceu '
+              pg_restore \
+                --single-transaction \
+                --no-owner \
+                --no-acl \
+                --exit-on-error \
+                --dbname="$APPBASIS_M4_RESTORE_DATABASE_URL" \
+                /restore/database.pgdump
+            '; then
+            echo "M4 isolated restore failed or its outcome is unconfirmed; do not retry against this target unless the empty-target preflight passes again." >&2
+            exit 1
+          fi
+
+      - name: Verify restored database fingerprint
+        if: inputs.apply == true
+        shell: bash
+        env:
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          EXPECTED_FINGERPRINT="$(cat "$WORK/fingerprint.normalized.json")"
+          APPBASIS_M4_EXPECTED_RESTORE_FINGERPRINT="$EXPECTED_FINGERPRINT" \
+            node ./tooling/m4-restore-verification.mjs verify | tee "$WORK/verification.json"
+          jq -e '.status == "restore-fingerprint-match" and .appId == "m3-preview"' \
+            "$WORK/verification.json" >/dev/null
+          echo "M4 R2 restore fingerprint verified on the isolated database." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary restore workspace
+        if: always()
+        shell: bash
+        env:
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${WORK:-}" && "$WORK" == "$RUNNER_TEMP"/appbasis-m4-r2-restore-* ]]; then
+            rm -rf -- "$WORK"
+          fi
