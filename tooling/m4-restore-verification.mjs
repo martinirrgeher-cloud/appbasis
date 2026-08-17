@@ -9,6 +9,10 @@ const CANONICAL_SESSION_QUERIES = Object.freeze([
   "SET TIME ZONE 'UTC'",
   "SET DateStyle TO 'ISO, YMD'",
 ]);
+const CANONICAL_LOCAL_SESSION_QUERIES = Object.freeze([
+  "SET LOCAL TIME ZONE 'UTC'",
+  "SET LOCAL DateStyle TO 'ISO, YMD'",
+]);
 const FINGERPRINT_TABLES = Object.freeze([
   ["identity_users", 'public."user"', "t.id"],
   ["identity_accounts", "public.account", "t.id"],
@@ -38,6 +42,29 @@ ${FINGERPRINT_TABLES.flatMap(([key, table, order]) => [
 ]).join(",\n")}
 `;
 
+export async function configureM4FingerprintSession(client, { local = false } = {}) {
+  if (!client || typeof client.unsafe !== "function") {
+    throw new Error("M4 fingerprint database client is invalid.");
+  }
+  const queries = local
+    ? CANONICAL_LOCAL_SESSION_QUERIES
+    : CANONICAL_SESSION_QUERIES;
+  for (const query of queries) {
+    await client.unsafe(query);
+  }
+}
+
+export async function readM4RestoreFingerprintFromClient(client) {
+  if (!client || typeof client.unsafe !== "function") {
+    throw new Error("M4 fingerprint database client is invalid.");
+  }
+  const rows = await client.unsafe(RESTORE_FINGERPRINT_QUERY);
+  if (!Array.isArray(rows) || rows.length !== 1 || !isRecord(rows[0])) {
+    throw new Error("M4 database fingerprint response is invalid.");
+  }
+  return normalizeFingerprint(rows[0], "M4 database fingerprint");
+}
+
 export async function inspectM4RestoreFingerprint({
   connectionString,
   createDatabase = createPostgresDatabase,
@@ -60,14 +87,8 @@ export async function inspectM4RestoreFingerprint({
   let database;
   try {
     database = createDatabase(connectionString);
-    for (const query of CANONICAL_SESSION_QUERIES) {
-      await database.client.unsafe(query);
-    }
-    const rows = await database.client.unsafe(RESTORE_FINGERPRINT_QUERY);
-    if (!Array.isArray(rows) || rows.length !== 1 || !isRecord(rows[0])) {
-      throw new Error("invalid fingerprint response");
-    }
-    return normalizeFingerprint(rows[0], "M4 database fingerprint");
+    await configureM4FingerprintSession(database.client);
+    return await readM4RestoreFingerprintFromClient(database.client);
   } catch {
     throw new Error("M4 database fingerprint read failed.");
   } finally {
@@ -123,6 +144,27 @@ export function parseM4RestoreFingerprint(value) {
   );
 }
 
+export function requiredM3PreviewDatabaseUrl(value, name) {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
+    throw new Error(`${name} must be a canonical PostgreSQL URL.`);
+  }
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be a canonical PostgreSQL URL.`);
+  }
+  if (
+    (url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||
+    url.hostname.length === 0 ||
+    url.pathname !== `/${EXPECTED_DATABASE_NAME}` ||
+    url.hash.length > 0
+  ) {
+    throw new Error(`${name} must select the dedicated m3-preview database.`);
+  }
+  return value;
+}
+
 function normalizeFingerprint(value, name) {
   if (!isRecord(value)) {
     throw new Error(`${name} is invalid.`);
@@ -152,27 +194,6 @@ function normalizeFingerprint(value, name) {
     normalized[field] = fieldValue;
   }
   return Object.freeze(normalized);
-}
-
-function requiredM3PreviewDatabaseUrl(value, name) {
-  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
-    throw new Error(`${name} must be a canonical PostgreSQL URL.`);
-  }
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error(`${name} must be a canonical PostgreSQL URL.`);
-  }
-  if (
-    (url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||
-    url.hostname.length === 0 ||
-    url.pathname !== `/${EXPECTED_DATABASE_NAME}` ||
-    url.hash.length > 0
-  ) {
-    throw new Error(`${name} must select the dedicated m3-preview database.`);
-  }
-  return value;
 }
 
 function isRecord(value) {
