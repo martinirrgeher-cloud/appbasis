@@ -46,17 +46,31 @@ export async function replaceUlcLinzPrincipalAccess({
   const requiredRemainingRoleIds = demotingFromAdmin
     ? [adminRuntimeRoleId]
     : [];
-  const resolveRequiredRoleHolderPrincipalScope = demotingFromAdmin
-    ? constraints.resolveActiveOrganizationPrincipalScope
-    : undefined;
 
-  if (
-    demotingFromAdmin &&
-    typeof resolveRequiredRoleHolderPrincipalScope !== "function"
-  ) {
-    throw new Error(
-      "ULC Linz admin demotion requires a transactional resolver for active principals in the target organization.",
-    );
+  let resolveRequiredRoleHolderPrincipalScope;
+  if (demotingFromAdmin) {
+    if (
+      typeof constraints.organizationId !== "string" ||
+      constraints.organizationId.trim().length === 0
+    ) {
+      throw new Error(
+        "ULC Linz admin demotion requires the target organizationId.",
+      );
+    }
+    if (typeof constraints.resolveActiveOrganizationPrincipalScope !== "function") {
+      throw new Error(
+        "ULC Linz admin demotion requires a transactional resolver for active principals in the target organization.",
+      );
+    }
+
+    const organizationId = constraints.organizationId;
+    const resolveActiveOrganizationPrincipalScope =
+      constraints.resolveActiveOrganizationPrincipalScope;
+    resolveRequiredRoleHolderPrincipalScope = (context) =>
+      resolveActiveOrganizationPrincipalScope({
+        ...context,
+        organizationId,
+      });
   }
 
   return administration.replacePrincipalAccess(
