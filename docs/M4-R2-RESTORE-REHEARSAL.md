@@ -2,7 +2,7 @@
 
 ## Zweck
 
-Dieser Slice bereitet den realen M4-Restore eines verschlüsselten R2-Backups von `m3-preview` in eine **separate, vorab bereitgestellte und leere Restore-Datenbank** vor.
+Dieser Slice bereitet den realen M4-Restore eines verschlüsselten R2-Backups von `m3-preview` in eine **separate, vorab bereitgestellte und frische Restore-Datenbank** vor.
 
 Er erzeugt weder R2-Bucket noch Datenbank, setzt keine Secrets und führt durch den Merge allein keinen Provider- oder Datenbank-Write aus.
 
@@ -28,9 +28,18 @@ Vor jedem Restore werden fail-closed geprüft:
 7. Manifest-Bindung an ausgewählten R2-Key und Objekt-Metadaten,
 8. kanonischer Fingerprint-Vertrag,
 9. Source und Restore-Ziel müssen unterschiedliche Datenbank-Endpunkte sein,
-10. die Restore-Datenbank muss vor dem Write leer sein.
+10. die Restore-Datenbank muss unmittelbar vor dem Write als frisches isoliertes Ziel bestätigt werden.
 
-Ein anderer Benutzername, ein anderes Passwort oder andere URL-Queryparameter reichen **nicht**, um Source und Restore-Ziel als verschieden anzusehen. Für die Sicherheitsentscheidung zählen Host, Port und die dedizierte Datenbank `appbasis_m3_preview`.
+Ein anderer Benutzername, ein anderes Passwort oder andere URL-Queryparameter reichen **nicht**, um Source und Restore-Ziel als verschieden anzusehen. Für die Sicherheitsentscheidung zählen Host, Port und die dedizierte Datenbank `appbasis_m3_preview`. Bei Neon werden direkte und `-pooler`-Hostnamen desselben Endpunkts zusätzlich als identisch behandelt.
+
+„Frisch“ bedeutet für diesen Rehearsal-Vertrag:
+
+- keine Anwendungsrelationen im Schema `public`,
+- keine Routinen im Schema `public`,
+- keine Typen im Schema `public`,
+- keine zusätzlichen User-Schemas außerhalb der PostgreSQL-Systemschemas und `public`.
+
+Unerwarteter Providerzustand wird nicht automatisch bereinigt. Die Prüfung bricht fail-closed ab und verlangt ein frisches isoliertes Ziel.
 
 ## Preflight und Apply
 
@@ -47,7 +56,7 @@ Es erfolgt kein Datenbank-Write.
 
 `apply=true` aktiviert zusätzlich den eigentlichen Restore in die bereits existierende isolierte Restore-Datenbank.
 
-Der PostgreSQL-Custom-Dump wird mit PostgreSQL 18 und folgenden Grenzen eingespielt:
+Der PostgreSQL-Custom-Dump wird mit demselben bereits im M4-Backup-Vertrag verwendeten, per SHA-256-Digest gepinnten PostgreSQL-18-Alpine-Image eingespielt. Der Restore verwendet:
 
 ```text
 --single-transaction
@@ -56,7 +65,7 @@ Der PostgreSQL-Custom-Dump wird mit PostgreSQL 18 und folgenden Grenzen eingespi
 --exit-on-error
 ```
 
-Damit wird ein normaler Restorefehler transaktional zurückgerollt. Bleibt das Ergebnis wegen eines externen Fehlers trotzdem unbekannt, darf der Workflow nicht blind gegen dasselbe Ziel wiederholt werden. Vor einem neuen Versuch muss die Empty-Target-Prüfung erneut erfolgreich sein.
+Damit wird ein normaler Restorefehler transaktional zurückgerollt. Bleibt das Ergebnis wegen eines externen Fehlers trotzdem unbekannt, darf der Workflow nicht blind gegen dasselbe Ziel wiederholt werden. Vor einem neuen Versuch muss die Fresh-Target-Prüfung erneut erfolgreich sein.
 
 ## Nachweis nach Restore
 
@@ -68,7 +77,9 @@ tooling/m4-restore-verification.mjs verify
 
 gegen die Restore-Datenbank geprüft.
 
-Der Fingerprint umfasst die relevanten Identity-, Permission- und Tasks-Tabellen. Ein Restore gilt in diesem Slice nur dann als erfolgreich, wenn Schema und Fingerprint exakt passen.
+Der Fingerprint umfasst die relevanten Identity-, Permission- und Tasks-Tabellen. Zusätzlich läuft die bestehende `m3-preview`-Schema-Prüfung. Ein Restore gilt in diesem Slice nur dann als erfolgreich, wenn Schema und Fingerprint exakt zum gespeicherten Nachweis passen.
+
+Der Workflow selbst serialisiert Restore-Rehearsals für `m3-preview` über eine feste GitHub-Actions-Concurrency-Gruppe. Eine zusätzliche generische Lock-/Provider-Schicht wird für diesen konkreten isolierten Verbraucher nicht eingeführt.
 
 ## Credentials
 
