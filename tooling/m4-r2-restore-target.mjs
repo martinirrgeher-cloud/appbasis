@@ -18,6 +18,11 @@ export async function verifyM4IsolatedRestoreTargetEmpty({
   createDatabase = createPostgresDatabase,
 } = {}) {
   validateM4RestoreDatabaseSeparation({ sourceUrl, restoreUrl });
+  if (databaseAliasIdentity(sourceUrl) === databaseAliasIdentity(restoreUrl)) {
+    throw new Error(
+      "M4 restore target must be a different database endpoint from source, including Neon pooler aliases.",
+    );
+  }
   if (typeof createDatabase !== "function") {
     throw new Error("M4 restore target database dependency is invalid.");
   }
@@ -48,6 +53,20 @@ export async function verifyM4IsolatedRestoreTargetEmpty({
       await database.client.end().catch(() => {});
     }
   }
+}
+
+function databaseAliasIdentity(value) {
+  const url = new URL(value);
+  const port = url.port === "" ? "5432" : url.port;
+  return `${normalizeProviderHostname(url.hostname)}:${port}${url.pathname}`;
+}
+
+function normalizeProviderHostname(value) {
+  const hostname = value.toLowerCase();
+  if (!hostname.endsWith(".neon.tech")) return hostname;
+  const labels = hostname.split(".");
+  labels[0] = labels[0].replace(/-pooler$/, "");
+  return labels.join(".");
 }
 
 function isMainModule() {
