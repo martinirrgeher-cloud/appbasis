@@ -28,6 +28,7 @@ type HarnessOptions = {
   authorizationError?: Error;
   permissionError?: Error;
   identityError?: Error;
+  targetSourceRole?: string;
 };
 
 function principal(input: {
@@ -93,7 +94,10 @@ function harness(options: HarnessOptions = {}) {
       if (options.authorizationError !== undefined) {
         throw options.authorizationError;
       }
-      return { actorPrincipalId: ACTOR_PRINCIPAL_ID };
+      return {
+        actorPrincipalId: ACTOR_PRINCIPAL_ID,
+        targetSourceRole: options.targetSourceRole ?? "trainer",
+      };
     },
   };
 
@@ -127,7 +131,7 @@ describe("ULC Linz M5-C/D pre-delete access quarantine", () => {
       grants: ["ulc-linz:module:kindertraining:view"],
       revokes: ["ulc-linz:module:kindertraining:edit"],
     });
-    const state = harness({ principal: current });
+    const state = harness({ principal: current, targetSourceRole: "trainer" });
 
     await expect(
       quarantineUlcLinzIdentityBeforeDeletion(
@@ -163,9 +167,10 @@ describe("ULC Linz M5-C/D pre-delete access quarantine", () => {
     });
   });
 
-  it("blocks ULC administrators before any owner write while membership scope is unbound", async () => {
+  it("blocks an authoritative admin role before reading or writing owner state", async () => {
     const state = harness({
-      principal: principal({ roleIds: ["ulc-linz:admin"], grants: [] }),
+      principal: null,
+      targetSourceRole: "admin",
     });
 
     await expectBlocked(
@@ -176,7 +181,43 @@ describe("ULC Linz M5-C/D pre-delete access quarantine", () => {
         ),
       "ADMIN_LIFECYCLE_SCOPE_UNBOUND",
     );
+    expect(state.events).toEqual([`authorize:${TARGET_IDENTITY_ID}`]);
+  });
 
+  it("blocks an admin permission principal even if lifecycle authorization claims a non-admin role", async () => {
+    const state = harness({
+      principal: principal({ roleIds: ["ulc-linz:admin"], grants: [] }),
+      targetSourceRole: "trainer",
+    });
+
+    await expectBlocked(
+      () =>
+        quarantineUlcLinzIdentityBeforeDeletion(
+          state.dependencies,
+          TARGET_IDENTITY_ID,
+        ),
+      "ADMIN_LIFECYCLE_SCOPE_UNBOUND",
+    );
+    expect(state.events).toEqual([
+      `authorize:${TARGET_IDENTITY_ID}`,
+      "find-principal",
+    ]);
+  });
+
+  it("fails closed when permission role and authoritative source role disagree", async () => {
+    const state = harness({
+      principal: principal({ roleIds: ["ulc-linz:trainer"], grants: [] }),
+      targetSourceRole: "athlete",
+    });
+
+    await expectBlocked(
+      () =>
+        quarantineUlcLinzIdentityBeforeDeletion(
+          state.dependencies,
+          TARGET_IDENTITY_ID,
+        ),
+      "UNKNOWN_PERMISSION_STATE",
+    );
     expect(state.events).toEqual([
       `authorize:${TARGET_IDENTITY_ID}`,
       "find-principal",
@@ -202,25 +243,36 @@ describe("ULC Linz M5-C/D pre-delete access quarantine", () => {
     ]);
   });
 
-  it("fails closed on unknown roles or capability namespaces", async () => {
-    for (const current of [
-      principal({ roleIds: ["ulc-linz:future-role"], grants: [] }),
-      principal({ roleIds: ["ulc-linz:trainer"], grants: ["other-app:member:edit"] }),
-    ]) {
-      const state = harness({ principal: current });
-      await expectBlocked(
-        () =>
-          quarantineUlcLinzIdentityBeforeDeletion(
-            state.dependencies,
-            TARGET_IDENTITY_ID,
-          ),
-        "UNKNOWN_PERMISSION_STATE",
-      );
-      expect(state.events).toEqual([
-        `authorize:${TARGET_IDENTITY_ID}`,
-        "find-principal",
-      ]);
-    }
+  it("fails closed on unknown source roles or capability namespaces", async () => {
+    const unknownRole = harness({ targetSourceRole: "future-role" });
+    await expectBlocked(
+      () =>
+        quarantineUlcLinzIdentityBeforeDeletion(
+          unknownRole.dependencies,
+          TARGET_IDENTITY_ID,
+        ),
+      "UNKNOWN_PERMISSION_STATE",
+    );
+    expect(unknownRole.events).toEqual([`authorize:${TARGET_IDENTITY_ID}`]);
+
+    const unknownCapability = harness({
+      principal: principal({
+        roleIds: ["ulc-linz:trainer"],
+        grants: ["other-app:member:edit"],
+      }),
+    });
+    await expectBlocked(
+      () =>
+        quarantineUlcLinzIdentityBeforeDeletion(
+          unknownCapability.dependencies,
+          TARGET_IDENTITY_ID,
+        ),
+      "UNKNOWN_PERMISSION_STATE",
+    );
+    expect(unknownCapability.events).toEqual([
+      `authorize:${TARGET_IDENTITY_ID}`,
+      "find-principal",
+    ]);
   });
 
   it("requires lifecycle authorization before reading or writing owner state", async () => {
@@ -269,12 +321,15 @@ describe("ULC Linz M5-C/D pre-delete access quarantine", () => {
     expect(state.replaceArgs).not.toBeNull();
   });
 
-  it("treats an absent or already-empty permission principal as already permission-quarantined", async () => {
+  it("safely retries after permission quarantine only with renewed non-admin role proof", async () => {
     for (const current of [
       null,
       principal({ roleIds: [], grants: [], revokes: [] }),
     ]) {
-      const state = harness({ principal: current });
+      const state = harness({
+        principal: current,
+        targetSourceRole: "trainer",
+      });
       await expect(
         quarantineUlcLinzIdentityBeforeDeletion(
           state.dependencies,
