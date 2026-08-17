@@ -8,19 +8,26 @@ type AppManifest = {
   platformServices: string[];
 };
 
+type PersistentOwnerContract = {
+  id: string;
+  schemaVersion: number;
+  migrations: string[];
+};
+
 type DatabaseManifest = {
   application: string;
-  owners: Array<{ id: string }>;
+  owners: PersistentOwnerContract[];
 };
 
 type DataInventory = {
   schemaVersion: number;
   application: string;
-  persistentOwners: Array<{
-    id: string;
-    lifecycleStatus: "open";
-    notes: string[];
-  }>;
+  persistentOwners: Array<
+    PersistentOwnerContract & {
+      lifecycleStatus: "open";
+      notes: string[];
+    }
+  >;
   runtimeModules: string[];
   backingStores: {
     memberships: {
@@ -57,8 +64,20 @@ function sorted(values: string[]): string[] {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
+function sortedOwnerContracts(
+  owners: readonly PersistentOwnerContract[],
+): PersistentOwnerContract[] {
+  return owners
+    .map((owner) => ({
+      id: owner.id,
+      schemaVersion: owner.schemaVersion,
+      migrations: [...owner.migrations],
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
 describe("ULC Linz M5 C/D data inventory", () => {
-  it("tracks every current persistent owner and runtime module fail closed", async () => {
+  it("tracks every current persistent owner revision and runtime module fail closed", async () => {
     const [inventory, appManifest, databaseManifest] = await Promise.all([
       readJson<DataInventory>(inventoryUrl),
       readJson<AppManifest>(appManifestUrl),
@@ -70,11 +89,12 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(databaseManifest.application).toBe(inventory.application);
     expect(appManifest.appId).toBe(inventory.application);
 
-    const databaseOwnerIds = databaseManifest.owners.map((owner) => owner.id);
-    expect(sorted(inventory.persistentOwners.map((owner) => owner.id))).toEqual(
-      sorted(databaseOwnerIds),
+    expect(sortedOwnerContracts(inventory.persistentOwners)).toEqual(
+      sortedOwnerContracts(databaseManifest.owners),
     );
     expect(inventory.runtimeModules).toEqual(appManifest.modules);
+
+    const databaseOwnerIds = databaseManifest.owners.map((owner) => owner.id);
     expect(
       databaseOwnerIds.every((ownerId) => appManifest.platformServices.includes(ownerId)),
     ).toBe(true);
