@@ -3,51 +3,62 @@ import test from "node:test";
 
 import {
   deriveReferenceControlPlaneEvidence,
-  REFERENCE_CONTROL_PLANE_EVIDENCE_RUN,
+  REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY,
   verifyReferenceControlPlaneEvidenceRun,
 } from "./reference-control-plane-evidence.mjs";
 
-const withinValidity = () => Date.parse("2026-08-17T12:00:00Z");
+const nowMs = Date.parse("2026-08-17T12:00:00Z");
+const withinValidity = () => nowMs;
+const observedAt = "2026-08-17T11:36:46Z";
+const createdAt = "2026-08-17T11:35:55Z";
 
 function expectedRun(overrides = {}) {
   return {
-    id: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunId,
-    run_attempt: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunAttempt,
-    name: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowName,
-    path: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowPath,
-    event: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunEvent,
-    head_branch: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunBranch,
-    head_sha: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunHeadSha,
-    updated_at: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt,
+    id: 32025695514,
+    run_attempt: 1,
+    name: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowName,
+    path: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowPath,
+    event: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowRunEvent,
+    head_branch: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowRunBranch,
+    head_sha: "e7fb8dbd5e76041109e2f045eabc50fc803c13a0",
+    created_at: createdAt,
+    updated_at: observedAt,
     status: "completed",
     conclusion: "success",
     repository: {
-      full_name: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.repository,
+      full_name: REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.repository,
     },
     ...overrides,
   };
 }
 
-function jsonResponse(payload, { status = 200, contentType = "application/json; charset=utf-8" } = {}) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": contentType },
-  });
+function runsResponse(runs = [expectedRun()], totalCount = runs.length) {
+  return new Response(
+    JSON.stringify({ total_count: totalCount, workflow_runs: runs }),
+    {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    },
+  );
 }
 
-test("binds the pinned fresh successful provider run only to the Reference app", async () => {
+test("discovers the latest fresh successful provider run only for the Reference app", async () => {
   let calls = 0;
   const fetchImpl = async (input, init) => {
     calls += 1;
+    const url = new URL(String(input));
     assert.equal(
-      String(input),
-      `https://api.github.com/repos/${REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.repository}/actions/runs/${REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunId}`,
+      `${url.origin}${url.pathname}`,
+      `https://api.github.com/repos/${REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.repository}/actions/workflows/${REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.workflowFileName}/runs`,
     );
+    assert.equal(url.searchParams.get("branch"), "main");
+    assert.equal(url.searchParams.get("event"), "workflow_dispatch");
+    assert.equal(url.searchParams.get("per_page"), "1");
     assert.equal(init.method, "GET");
     assert.equal(init.redirect, "error");
     assert.equal(init.headers.accept, "application/vnd.github+json");
     assert.equal(init.headers["x-github-api-version"], "2022-11-28");
-    return jsonResponse(expectedRun());
+    return runsResponse();
   };
 
   assert.deepEqual(
@@ -73,26 +84,28 @@ test("binds the pinned fresh successful provider run only to the Reference app",
   );
 });
 
-test("fails closed when any pinned run identity or success field does not match", async () => {
+test("fails closed when the latest run identity or outcome is not the expected Reference evidence", async () => {
   const mismatches = [
-    { id: 1 },
+    { id: 0 },
     { run_attempt: 2 },
     { name: "other" },
     { path: ".github/workflows/other.yml" },
     { event: "push" },
     { head_branch: "feature" },
-    { head_sha: "0".repeat(40) },
-    { updated_at: "2026-08-17T11:36:45Z" },
-    { status: "in_progress" },
+    { head_sha: "not-a-sha" },
+    { status: "in_progress", conclusion: null },
     { conclusion: "failure" },
     { repository: { full_name: "other/repository" } },
     { repository: null },
+    { created_at: "invalid" },
+    { updated_at: "invalid" },
+    { created_at: "2026-08-17T11:37:00Z", updated_at: observedAt },
   ];
 
   for (const mismatch of mismatches) {
     assert.equal(
       await verifyReferenceControlPlaneEvidenceRun(
-        async () => jsonResponse(expectedRun(mismatch)),
+        async () => runsResponse([expectedRun(mismatch)]),
         withinValidity,
       ),
       false,
@@ -100,40 +113,75 @@ test("fails closed when any pinned run identity or success field does not match"
   }
 });
 
-test("expires the provider observation at its explicit review point", async () => {
-  const fetchImpl = async () => jsonResponse(expectedRun());
-
+test("uses the newest run outcome instead of falling back to an older success", async () => {
   assert.equal(
     await verifyReferenceControlPlaneEvidenceRun(
-      fetchImpl,
-      () => Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt),
-    ),
-    true,
-  );
-  assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(
-      fetchImpl,
-      () => Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.validUntilOrReviewAt) - 1,
-    ),
-    true,
-  );
-  assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(
-      fetchImpl,
-      () => Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.validUntilOrReviewAt),
-    ),
-    false,
-  );
-  assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(
-      fetchImpl,
-      () => Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt) - 1,
+      async () => runsResponse([
+        expectedRun({
+          id: 32025695515,
+          status: "completed",
+          conclusion: "failure",
+          updated_at: "2026-08-17T11:50:00Z",
+        }),
+      ], 4),
+      withinValidity,
     ),
     false,
   );
 });
 
-test("fails closed on unreadable, non-JSON, malformed or untimeable GitHub evidence", async () => {
+test("expires provider evidence using the stable Reference freshness window", async () => {
+  const fetchImpl = async () => runsResponse();
+  const observedAtMs = Date.parse(observedAt);
+
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(fetchImpl, () => observedAtMs),
+    true,
+  );
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(
+      fetchImpl,
+      () => observedAtMs + REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.maxAgeMs - 1,
+    ),
+    true,
+  );
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(
+      fetchImpl,
+      () => observedAtMs + REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY.maxAgeMs,
+    ),
+    false,
+  );
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(fetchImpl, () => observedAtMs - 1),
+    false,
+  );
+});
+
+test("fails closed on malformed run listings and invalid clocks", async () => {
+  const malformedPayloads = [
+    null,
+    {},
+    { total_count: 0, workflow_runs: [] },
+    { total_count: 1, workflow_runs: [] },
+    { total_count: 1, workflow_runs: [expectedRun(), expectedRun()] },
+    { total_count: "1", workflow_runs: [expectedRun()] },
+  ];
+
+  for (const payload of malformedPayloads) {
+    assert.equal(
+      await verifyReferenceControlPlaneEvidenceRun(
+        async () =>
+          new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        withinValidity,
+      ),
+      false,
+    );
+  }
+
   assert.equal(
     await verifyReferenceControlPlaneEvidenceRun(async () => {
       throw new Error("network unavailable");
@@ -142,14 +190,18 @@ test("fails closed on unreadable, non-JSON, malformed or untimeable GitHub evide
   );
   assert.equal(
     await verifyReferenceControlPlaneEvidenceRun(
-      async () => jsonResponse(expectedRun(), { status: 503 }),
+      async () => new Response("unavailable", { status: 503 }),
       withinValidity,
     ),
     false,
   );
   assert.equal(
     await verifyReferenceControlPlaneEvidenceRun(
-      async () => jsonResponse(expectedRun(), { contentType: "text/plain" }),
+      async () =>
+        new Response(JSON.stringify({ total_count: 1, workflow_runs: [expectedRun()] }), {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
       withinValidity,
     ),
     false,
@@ -165,38 +217,19 @@ test("fails closed on unreadable, non-JSON, malformed or untimeable GitHub evide
     ),
     false,
   );
-  assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(
-      async () => jsonResponse(null),
-      withinValidity,
-    ),
-    false,
-  );
-  assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(null, withinValidity),
-    false,
-  );
-  assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(
-      async () => jsonResponse(expectedRun()),
-      null,
-    ),
-    false,
-  );
-  assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(
-      async () => jsonResponse(expectedRun()),
-      () => Number.NaN,
-    ),
-    false,
-  );
-  assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(
-      async () => jsonResponse(expectedRun()),
-      () => {
-        throw new Error("clock unavailable");
-      },
-    ),
-    false,
-  );
+
+  let fetchCalls = 0;
+  for (const now of [null, () => Number.NaN, () => { throw new Error("clock unavailable"); }]) {
+    assert.equal(
+      await verifyReferenceControlPlaneEvidenceRun(
+        async () => {
+          fetchCalls += 1;
+          return runsResponse();
+        },
+        now,
+      ),
+      false,
+    );
+  }
+  assert.equal(fetchCalls, 0);
 });
