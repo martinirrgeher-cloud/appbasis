@@ -37,9 +37,35 @@ export async function verifyReferenceControlPlaneEvidenceRun(
   const currentTime = readCurrentTime(now);
   if (currentTime === null) return false;
 
+  const trustedHeadSha = await fetchCurrentMainHeadSha(fetchImpl);
+  if (trustedHeadSha === null) return false;
+
+  const payload = await fetchJson(fetchImpl, latestEvidenceRunsUrl());
+  if (payload === null) return false;
+
+  const run = latestRunFromPayload(payload);
+  return (
+    run !== null &&
+    isExpectedFreshSuccessfulRun(run, currentTime, trustedHeadSha)
+  );
+}
+
+async function fetchCurrentMainHeadSha(fetchImpl) {
+  const payload = await fetchJson(fetchImpl, currentMainHeadUrl());
+  if (
+    !isPlainObject(payload) ||
+    typeof payload.sha !== "string" ||
+    !/^[0-9a-f]{40}$/.test(payload.sha)
+  ) {
+    return null;
+  }
+  return payload.sha;
+}
+
+async function fetchJson(fetchImpl, url) {
   let response;
   try {
-    response = await fetchImpl(latestEvidenceRunsUrl(), {
+    response = await fetchImpl(url, {
       method: "GET",
       headers: {
         accept: "application/vnd.github+json",
@@ -49,22 +75,25 @@ export async function verifyReferenceControlPlaneEvidenceRun(
       signal: AbortSignal.timeout(GITHUB_EVIDENCE_TIMEOUT_MS),
     });
   } catch {
-    return false;
+    return null;
   }
 
-  if (!response?.ok) return false;
+  if (!response?.ok) return null;
   const contentType = response.headers?.get?.("content-type") ?? "";
-  if (!contentType.toLowerCase().startsWith("application/json")) return false;
+  if (!contentType.toLowerCase().startsWith("application/json")) return null;
 
-  let payload;
   try {
-    payload = await response.json();
+    return await response.json();
   } catch {
-    return false;
+    return null;
   }
+}
 
-  const run = latestRunFromPayload(payload);
-  return run !== null && isExpectedFreshSuccessfulRun(run, currentTime);
+function currentMainHeadUrl() {
+  const policy = REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY;
+  return new URL(
+    `${GITHUB_API_BASE_URL}/repos/${policy.repository}/commits/${encodeURIComponent(policy.workflowRunBranch)}`,
+  );
 }
 
 function latestEvidenceRunsUrl() {
@@ -89,7 +118,7 @@ function latestRunFromPayload(payload) {
   return payload.workflow_runs[0];
 }
 
-function isExpectedFreshSuccessfulRun(run, currentTime) {
+function isExpectedFreshSuccessfulRun(run, currentTime, trustedHeadSha) {
   const policy = REFERENCE_CONTROL_PLANE_EVIDENCE_POLICY;
   if (
     !isPlainObject(run) ||
@@ -100,8 +129,7 @@ function isExpectedFreshSuccessfulRun(run, currentTime) {
     run.path !== policy.workflowPath ||
     run.event !== policy.workflowRunEvent ||
     run.head_branch !== policy.workflowRunBranch ||
-    typeof run.head_sha !== "string" ||
-    !/^[0-9a-f]{40}$/.test(run.head_sha) ||
+    run.head_sha !== trustedHeadSha ||
     run.status !== "completed" ||
     run.conclusion !== "success" ||
     !isPlainObject(run.repository) ||
