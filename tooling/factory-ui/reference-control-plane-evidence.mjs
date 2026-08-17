@@ -12,24 +12,29 @@ export const REFERENCE_CONTROL_PLANE_EVIDENCE_RUN = Object.freeze({
   workflowRunHeadSha: "e7fb8dbd5e76041109e2f045eabc50fc803c13a0",
   workflowRunEvent: "workflow_dispatch",
   workflowRunBranch: "main",
+  observedAt: "2026-08-17T11:36:46Z",
+  validUntilOrReviewAt: "2026-08-18T11:36:46Z",
 });
 
 export async function deriveReferenceControlPlaneEvidence(
   definition,
-  { fetchImpl = fetch } = {},
+  { fetchImpl = fetch, now = Date.now } = {},
 ) {
   if (definition?.appId !== REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.appId) {
     return Object.freeze({});
   }
 
-  const verified = await verifyReferenceControlPlaneEvidenceRun(fetchImpl);
+  const verified = await verifyReferenceControlPlaneEvidenceRun(fetchImpl, now);
   return Object.freeze(
     verified ? { privilegedControlPlaneIsolation: true } : {},
   );
 }
 
-export async function verifyReferenceControlPlaneEvidenceRun(fetchImpl = fetch) {
-  if (typeof fetchImpl !== "function") return false;
+export async function verifyReferenceControlPlaneEvidenceRun(
+  fetchImpl = fetch,
+  now = Date.now,
+) {
+  if (typeof fetchImpl !== "function" || typeof now !== "function") return false;
 
   let response;
   try {
@@ -60,7 +65,7 @@ export async function verifyReferenceControlPlaneEvidenceRun(fetchImpl = fetch) 
     return false;
   }
 
-  return isExpectedSuccessfulRun(run);
+  return isExpectedSuccessfulRun(run) && isEvidenceFresh(now);
 }
 
 function isExpectedSuccessfulRun(run) {
@@ -73,11 +78,26 @@ function isExpectedSuccessfulRun(run) {
     run.event === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunEvent &&
     run.head_branch === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunBranch &&
     run.head_sha === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunHeadSha &&
+    run.updated_at === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt &&
     run.status === "completed" &&
     run.conclusion === "success" &&
     isPlainObject(run.repository) &&
     run.repository.full_name === REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.repository
   );
+}
+
+function isEvidenceFresh(now) {
+  let currentTime;
+  try {
+    currentTime = now();
+  } catch {
+    return false;
+  }
+
+  if (!Number.isFinite(currentTime)) return false;
+  const observedAt = Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt);
+  const reviewAt = Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.validUntilOrReviewAt);
+  return currentTime >= observedAt && currentTime < reviewAt;
 }
 
 function isPlainObject(value) {
