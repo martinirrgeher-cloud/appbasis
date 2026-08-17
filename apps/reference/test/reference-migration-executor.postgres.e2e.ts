@@ -89,6 +89,23 @@ describe('Reference migration executor PostgreSQL E2E', () => {
 
     await expect(
       applyReferenceMigrations({ connectionString: foreignObjectUrl.toString() }),
-    ).rejects.toBeInstanceOf(ReferenceMigrationExecutionError);
+    ).rejects.toThrow('Reference migrations require an empty public schema.');
+
+    const verification = createPostgresDatabase(foreignObjectUrl.toString());
+    try {
+      const appbasisTables = await verification.client<{ count: number }[]>`
+        SELECT count(*)::int AS count
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name LIKE 'appbasis_%'
+      `;
+      const marker = await verification.client<{ value: number }[]>`
+        SELECT public.foreign_marker() AS value
+      `;
+      expect(appbasisTables[0]?.count).toBe(0);
+      expect(marker[0]?.value).toBe(1);
+    } finally {
+      await verification.client.end();
+    }
   });
 });
