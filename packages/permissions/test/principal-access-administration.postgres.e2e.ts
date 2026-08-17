@@ -51,6 +51,8 @@ const migrationUrls = [
 const reportsRead = capabilityId("reports:read");
 const reportsWrite = capabilityId("reports:write");
 const unknownCapability = capabilityId("reports:unknown");
+const collationDashCapability = capabilityId("a-b");
+const collationUnderscoreCapability = capabilityId("a_b");
 const readerRole = roleId("managed:reader");
 const writerRole = roleId("managed:writer");
 const targetPrincipal = principalId("principal-target");
@@ -229,6 +231,73 @@ describe("PostgresPrincipalAccessAdministration", () => {
         capability: reportsWrite,
       }),
     ).resolves.toBe(true);
+  });
+
+  it("accepts required capability sets regardless of PostgreSQL collation order", async () => {
+    const administration = principalAccessAdministration();
+    const connection = requiredIsolatedConnection();
+    await connection.client.unsafe(
+      `INSERT INTO appbasis_permission_capability (capability_id)
+       VALUES ($1), ($2)`,
+      [collationDashCapability, collationUnderscoreCapability],
+    );
+
+    try {
+      await expect(
+        administration.replacePrincipalAccess(
+          targetPrincipal,
+          [writerRole],
+          {
+            grants: [
+              reportsRead,
+              collationDashCapability,
+              collationUnderscoreCapability,
+            ],
+            revokes: [],
+          },
+          { actorPrincipalId: auditActor, reason: "Collation-unabhängig prüfen" },
+          {
+            expectedRoleIds: [writerRole],
+            expectedGrants: [reportsRead],
+            expectedRevokes: [],
+            requiredRemainingCapabilities: [
+              collationDashCapability,
+              collationUnderscoreCapability,
+            ],
+          },
+        ),
+      ).resolves.toMatchObject({ roleIds: [writerRole], revokes: [] });
+
+      const permissionStore = new PostgresPermissionStore(connection.client);
+      await expect(
+        can(permissionStore, {
+          principalId: targetPrincipal,
+          capability: collationDashCapability,
+        }),
+      ).resolves.toBe(true);
+      await expect(
+        can(permissionStore, {
+          principalId: targetPrincipal,
+          capability: collationUnderscoreCapability,
+        }),
+      ).resolves.toBe(true);
+    } finally {
+      await connection.client.unsafe(
+        `DELETE FROM appbasis_permission_principal_grant
+         WHERE principal_id = $1
+           AND capability_id IN ($2, $3)`,
+        [
+          targetPrincipal,
+          collationDashCapability,
+          collationUnderscoreCapability,
+        ],
+      );
+      await connection.client.unsafe(
+        `DELETE FROM appbasis_permission_capability
+         WHERE capability_id IN ($1, $2)`,
+        [collationDashCapability, collationUnderscoreCapability],
+      );
+    }
   });
 
   it("rolls back a demotion when it would remove the last required role holder", async () => {
