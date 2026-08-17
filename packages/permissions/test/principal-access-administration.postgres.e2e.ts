@@ -56,6 +56,7 @@ const collationUnderscoreCapability = capabilityId("a_b");
 const readerRole = roleId("managed:reader");
 const writerRole = roleId("managed:writer");
 const targetPrincipal = principalId("principal-target");
+const unrelatedPrincipal = principalId("principal-unrelated-scope");
 const auditActor = principalId("principal-administrator");
 
 beforeAll(async () => {
@@ -90,13 +91,13 @@ beforeAll(async () => {
   );
   await connection.client.unsafe(
     `INSERT INTO appbasis_permission_principal (principal_id)
-     VALUES ($1)`,
-    [targetPrincipal],
+     VALUES ($1), ($2)`,
+    [targetPrincipal, unrelatedPrincipal],
   );
   await connection.client.unsafe(
     `INSERT INTO appbasis_permission_principal_role (principal_id, role_id)
-     VALUES ($1, $2)`,
-    [targetPrincipal, readerRole],
+     VALUES ($1, $2), ($3, $4)`,
+    [targetPrincipal, readerRole, unrelatedPrincipal, writerRole],
   );
 });
 
@@ -300,7 +301,7 @@ describe("PostgresPrincipalAccessAdministration", () => {
     }
   });
 
-  it("rolls back a demotion when it would remove the last required role holder", async () => {
+  it("fails closed when a required role-holder scope is missing", async () => {
     const administration = principalAccessAdministration();
     const beforeAuditRows = await targetAuditRows();
 
@@ -309,7 +310,7 @@ describe("PostgresPrincipalAccessAdministration", () => {
         targetPrincipal,
         [readerRole],
         { grants: [reportsRead], revokes: [] },
-        { actorPrincipalId: auditActor, reason: "Letzte Writer-Rolle schützen" },
+        { actorPrincipalId: auditActor, reason: "Role-Scope verlangen" },
         {
           expectedRoleIds: [writerRole],
           expectedGrants: [reportsRead],
@@ -317,7 +318,62 @@ describe("PostgresPrincipalAccessAdministration", () => {
           requiredRemainingRoleIds: [writerRole],
         },
       ),
+    ).rejects.toMatchObject({ code: "REQUIRED_ROLE_HOLDER_SCOPE_REQUIRED" });
+
+    const principal = await new PostgresPermissionStore(
+      requiredIsolatedConnection().client,
+    ).findPrincipal(targetPrincipal);
+    expect(principal).toMatchObject({
+      roleIds: [writerRole],
+      grants: [reportsRead],
+      revokes: [],
+    });
+    expect(await targetAuditRows()).toEqual(beforeAuditRows);
+  });
+
+  it("does not let an out-of-scope role holder preserve the target scope", async () => {
+    const administration = principalAccessAdministration();
+    const beforeAuditRows = await targetAuditRows();
+
+    await expect(
+      administration.replacePrincipalAccess(
+        targetPrincipal,
+        [readerRole],
+        { grants: [reportsRead], revokes: [] },
+        { actorPrincipalId: auditActor, reason: "Organisation A schützen" },
+        {
+          expectedRoleIds: [writerRole],
+          expectedGrants: [reportsRead],
+          expectedRevokes: [],
+          requiredRemainingRoleIds: [writerRole],
+          resolveRequiredRoleHolderPrincipalScope: async ({
+            transaction,
+            targetPrincipalId,
+            requiredRoleIds,
+          }) => {
+            expect(targetPrincipalId).toBe(targetPrincipal);
+            expect(requiredRoleIds).toEqual([writerRole]);
+            const targetRoleRows = await transaction.unsafe(
+              `SELECT role_id
+               FROM appbasis_permission_principal_role
+               WHERE principal_id = $1
+               ORDER BY role_id ASC`,
+              [targetPrincipal],
+            );
+            expect(targetRoleRows).toEqual([{ role_id: readerRole }]);
+            return [targetPrincipal];
+          },
+        },
+      ),
     ).rejects.toMatchObject({ code: "LAST_REQUIRED_ROLE_HOLDER" });
+
+    const unrelatedRoles = await requiredIsolatedConnection().client.unsafe(
+      `SELECT role_id
+       FROM appbasis_permission_principal_role
+       WHERE principal_id = $1`,
+      [unrelatedPrincipal],
+    );
+    expect(unrelatedRoles).toEqual([{ role_id: writerRole }]);
 
     const principal = await new PostgresPermissionStore(
       requiredIsolatedConnection().client,
