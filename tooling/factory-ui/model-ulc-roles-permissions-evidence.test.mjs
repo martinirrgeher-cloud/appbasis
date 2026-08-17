@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
 import { ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY } from "../ulc-linz-m5-role-data-scope.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
+import { ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY } from "./ulc-linz-roles-permissions-evidence.mjs";
 
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const VALID_ULC_DEFINITION = Object.freeze({
   schemaVersion: 2,
   appId: "ulc-linz",
@@ -51,6 +54,12 @@ async function createFactoryFixture({ rolePolicy } = {}) {
     `${JSON.stringify({ name: "@appbasis/app-ulc-linz", private: true }, null, 2)}\n`,
     "utf8",
   );
+
+  for (const { path } of ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY.acceptanceTests) {
+    const destination = join(root, path);
+    await mkdir(dirname(destination), { recursive: true });
+    await copyFile(join(repositoryRoot, path), destination);
+  }
 
   return root;
 }
