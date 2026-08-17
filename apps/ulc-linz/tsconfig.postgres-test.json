@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "test/lifecycle.postgres.e2e.test.ts",
+    "worker/lifecycle.ts",
+    "../../packages/database/src/client.ts"
+  ]
+}
