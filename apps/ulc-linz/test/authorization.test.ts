@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { CurrentIdentity } from "@appbasis/identity";
 import {
   capabilityId,
   InMemoryPermissionStore,
@@ -12,12 +11,15 @@ import {
   assertUlcLinzModuleAccess,
   UlcLinzAuthorizationDeniedError,
   type UlcLinzAuthorizationDependencies,
+  type UlcLinzCurrentIdentity,
 } from "../worker/authorization";
 
 const ORGANIZATION_ID = "verein-1";
 const IDENTITY_ID = "identity-1";
 
-function currentIdentity(access: CurrentIdentity["access"] = "full"): CurrentIdentity {
+function currentIdentity(
+  access: UlcLinzCurrentIdentity["access"] = "full",
+): UlcLinzCurrentIdentity {
   return {
     identity: {
       identityId: IDENTITY_ID,
