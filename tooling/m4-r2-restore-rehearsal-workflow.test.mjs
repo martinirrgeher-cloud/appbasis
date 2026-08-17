@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { M4_POSTGRES_DUMP_IMAGE } from "./m4-consistent-backup.mjs";
+
 const workflowUrl = new URL(
   "../.github/workflows/m4-r2-restore-rehearsal.yml",
   import.meta.url,
@@ -71,7 +73,7 @@ test("M4 R2 restore verifies a distinct fresh target before any pinned pg_restor
   assert.match(source, /if: inputs\.apply != true/);
   assert.match(source, /no database write was requested/);
   assert.match(source, /if: inputs\.apply == true/);
-  assert.match(source, /postgres:18-alpine@sha256:[0-9a-f]{64}/);
+  assert.ok(source.includes(M4_POSTGRES_DUMP_IMAGE));
   assert.doesNotMatch(source, /\s+postgres:18-alpine\s+\\/);
   assert.match(source, /--single-transaction/);
   assert.match(source, /--no-owner/);
