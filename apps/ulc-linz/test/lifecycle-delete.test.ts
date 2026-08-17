@@ -26,6 +26,15 @@ function activePrincipal(): PrincipalPermissions {
   };
 }
 
+function emptyPrincipal(): PrincipalPermissions {
+  return {
+    principalId: principalId(TARGET_IDENTITY_ID),
+    roleIds: [],
+    grants: [],
+    revokes: [],
+  };
+}
+
 type DeleteHarnessOptions = {
   authorizationError?: Error;
   completed?: boolean;
@@ -33,12 +42,17 @@ type DeleteHarnessOptions = {
   identityDeleteError?: Error;
   remainingPrincipalOnCompletedReplay?: boolean;
   initialPrincipalAbsent?: boolean;
+  initialPrincipalEmpty?: boolean;
 };
 
 function deleteHarness(options: DeleteHarnessOptions = {}) {
   const events: string[] = [];
   let currentPrincipal: PrincipalPermissions | null =
-    options.initialPrincipalAbsent === true ? null : activePrincipal();
+    options.initialPrincipalAbsent === true
+      ? null
+      : options.initialPrincipalEmpty === true
+        ? emptyPrincipal()
+        : activePrincipal();
   let identityDisabled = false;
   let principalDeleted = false;
 
@@ -172,6 +186,29 @@ describe("ULC Linz M5-C destructive deletion orchestration", () => {
     ]);
     expect(state.identityDisabled).toBe(true);
     expect(state.principalDeleted).toBe(true);
+  });
+
+  it("forces the audited access replacement even when the permission principal is already empty", async () => {
+    const state = deleteHarness({ initialPrincipalEmpty: true });
+
+    await expect(
+      deleteUlcLinzIdentity(state.dependencies, TARGET_IDENTITY_ID),
+    ).resolves.toEqual({
+      identityId: TARGET_IDENTITY_ID,
+      permissionsChanged: false,
+      permissionPrincipalDeleted: true,
+      identityDeleted: true,
+      alreadyDeleted: false,
+    });
+    expect(state.events).toEqual([
+      `authorize:${TARGET_IDENTITY_ID}`,
+      "deletion-completed",
+      "find-principal",
+      "replace-access",
+      "disable-identity",
+      "delete-principal",
+      "delete-identity",
+    ]);
   });
 
   it("does not inspect or mutate owner state when lifecycle authorization fails", async () => {
