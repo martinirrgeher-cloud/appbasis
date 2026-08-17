@@ -90,7 +90,7 @@ function validateOptionalDomainResultInfo(resultInfo, filteredResultCount) {
     'count',
     'Role administration Worker custom-domain result metadata',
   );
-  optionalNonNegativeInteger(
+  const page = optionalNonNegativeInteger(
     resultInfo,
     'page',
     'Role administration Worker custom-domain result metadata',
@@ -112,6 +112,9 @@ function validateOptionalDomainResultInfo(resultInfo, filteredResultCount) {
   );
 
   if (count !== undefined && count !== filteredResultCount) {
+    throw new Error('Role administration Worker custom-domain result metadata is inconsistent.');
+  }
+  if (page !== undefined && page !== 0 && page !== 1) {
     throw new Error('Role administration Worker custom-domain result metadata is inconsistent.');
   }
 }
