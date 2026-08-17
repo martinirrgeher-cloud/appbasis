@@ -2,10 +2,12 @@ import type { CapabilityId, PrincipalId, RoleId } from "./contracts";
 import {
   PostgresPrincipalPermissionAdministration,
   type PrincipalPermissionOverrides,
+  type ReplacePrincipalPermissionsConstraints,
 } from "./principal-permission-administration";
 import type { PermissionPostgresClient } from "./postgres-permission-store";
 import {
   PostgresRoleAdministration,
+  type ReplacePrincipalRolesConstraints,
   type RoleAdministrationAuditContext,
   type RoleAdministrationPostgresClient,
 } from "./role-administration";
@@ -60,10 +62,7 @@ export class PostgresPrincipalAccessAdministration {
         principalId,
         roleIds,
         auditContext,
-        {
-          expectedRoleIds: constraints.expectedRoleIds,
-          requiredRemainingCapabilities: constraints.requiredRemainingCapabilities,
-        },
+        roleConstraints(constraints),
       );
       await assertRequiredRoleHoldersRemain(
         transaction,
@@ -74,10 +73,7 @@ export class PostgresPrincipalAccessAdministration {
           principalId,
           overrides,
           auditContext,
-          {
-            expectedGrants: constraints.expectedGrants,
-            expectedRevokes: constraints.expectedRevokes,
-          },
+          permissionConstraints(constraints),
         );
 
       return Object.freeze({
@@ -89,12 +85,41 @@ export class PostgresPrincipalAccessAdministration {
   }
 }
 
+function roleConstraints(
+  constraints: ReplacePrincipalAccessConstraints,
+): ReplacePrincipalRolesConstraints {
+  return {
+    ...(constraints.expectedRoleIds === undefined
+      ? {}
+      : { expectedRoleIds: constraints.expectedRoleIds }),
+    ...(constraints.requiredRemainingCapabilities === undefined
+      ? {}
+      : {
+          requiredRemainingCapabilities:
+            constraints.requiredRemainingCapabilities,
+        }),
+  };
+}
+
+function permissionConstraints(
+  constraints: ReplacePrincipalAccessConstraints,
+): ReplacePrincipalPermissionsConstraints {
+  return {
+    ...(constraints.expectedGrants === undefined
+      ? {}
+      : { expectedGrants: constraints.expectedGrants }),
+    ...(constraints.expectedRevokes === undefined
+      ? {}
+      : { expectedRevokes: constraints.expectedRevokes }),
+  };
+}
+
 async function assertRequiredRoleHoldersRemain(
   transaction: PermissionPostgresClient,
   requiredRoleIds: readonly RoleId[],
 ): Promise<void> {
-  const uniqueRoleIds = [...new Set(requiredRoleIds.map(String))].sort((left, right) =>
-    left.localeCompare(right),
+  const uniqueRoleIds = [...new Set(requiredRoleIds.map(String))].sort(
+    (left, right) => left.localeCompare(right),
   );
 
   for (const requiredRoleId of uniqueRoleIds) {
