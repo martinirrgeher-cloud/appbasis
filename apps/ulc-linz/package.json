@@ -7,7 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:postgres": "vitest run ./test/lifecycle.postgres.e2e.ts"
+    "test:postgres": "vitest run ./test/lifecycle.postgres.e2e.test.ts"
   },
   "dependencies": {
     "@appbasis/identity": "workspace:*",
