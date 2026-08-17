@@ -1,6 +1,7 @@
 import { previewAccentForeground } from "./preview-theme.mjs";
 import {
   productionReadinessCopy,
+  productionReleaseCriteriaCopy,
   productionReleaseReadinessCopy,
 } from "./production-readiness-status.js";
 
@@ -262,6 +263,43 @@ function renderProductionReadiness(readiness, releaseReadiness) {
   const m6Copy = productionReleaseReadinessCopy(releaseReadiness);
   elements.detailProductionStatus.textContent = `${m5Copy.heading} · ${m6Copy.heading}`;
   elements.detailProductionSummary.textContent = `${m5Copy.detail} ${m6Copy.detail}`;
+  renderProductionReleaseCriteria(releaseReadiness);
+}
+
+function renderProductionReleaseCriteria(readiness) {
+  const productionGate = elements.detailProductionStatus?.closest(".factory-detail-gate");
+  if (!productionGate) return;
+
+  let criteriaList = productionGate.querySelector("[data-m6-release-criteria]");
+  if (criteriaList === null) {
+    criteriaList = document.createElement("div");
+    criteriaList.className = "factory-detail-gates";
+    criteriaList.dataset.m6ReleaseCriteria = "";
+    criteriaList.setAttribute("aria-label", "Technische M6-Nachweise");
+    productionGate.append(criteriaList);
+  }
+
+  criteriaList.replaceChildren();
+  for (const criterion of productionReleaseCriteriaCopy(readiness)) {
+    const item = document.createElement("div");
+    item.className = "factory-detail-gate";
+    if (criterion.status !== "verified") {
+      item.classList.add("factory-detail-gate--locked");
+    }
+
+    const label = document.createElement("span");
+    label.textContent = criterion.label;
+    const status = document.createElement("strong");
+    status.textContent = criterion.status === "verified" ? "Geprüft" : "Offen";
+    const detail = document.createElement("small");
+    detail.textContent =
+      criterion.status === "verified"
+        ? "Technischer Nachweis im aktuellen Factory-Snapshot bestätigt."
+        : "Technischer Nachweis fehlt oder ist nicht eindeutig bestätigt.";
+
+    item.append(label, status, detail);
+    criteriaList.append(item);
+  }
 }
 
 function previewReadinessLabel(readiness) {
