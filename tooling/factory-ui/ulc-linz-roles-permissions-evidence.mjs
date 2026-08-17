@@ -64,6 +64,18 @@ export const ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY = Object.freeze({
       gitBlobSha: "3dcb970be3c6c47dd25e331832479aef283505b4",
     }),
     Object.freeze({
+      path: "packages/permissions/test/permissions.postgres.e2e.ts",
+      gitBlobSha: "434b3b91a3435a6052181351824f6501aa8a3686",
+    }),
+    Object.freeze({
+      path: "packages/permissions/test/role-administration.postgres.e2e.ts",
+      gitBlobSha: "f1e543bbd634929073ae6b04bcd95209b7f60394",
+    }),
+    Object.freeze({
+      path: "packages/permissions/test/principal-permission-administration.postgres.e2e.ts",
+      gitBlobSha: "75e0ddc4d59a5d4fed43a1f3f188ebd7a8e68b3b",
+    }),
+    Object.freeze({
       path: "packages/permissions/test/principal-access-administration.postgres.e2e.ts",
       gitBlobSha: "c1a9c7514ad9800458faf1931d61f6ef78b11b90",
     }),
