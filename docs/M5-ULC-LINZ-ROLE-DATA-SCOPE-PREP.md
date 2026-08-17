@@ -4,7 +4,7 @@
 
 Diese Datei konkretisiert M5 Phase B für die erste reale Ziel-App **ULC Linz** anhand des aktuellen fachlichen Quellstands `martinirrgeher-cloud/ulc-linz` auf Commit `682ed5d37e7206f7fa521e5dab40f840cc303f0b`.
 
-Sie ist **Vorbereitung, keine M5-Evidenz**. Insbesondere werden `rolesRights`, `retention`, `deletionConcept`, `dataExport` oder `highPrivacyProfile` dadurch nicht auf `verified` gesetzt. Die spätere technische Ziel-App muss die Regeln serverseitig umsetzen und mit positiven sowie negativen Smokes beweisen.
+Sie ist **Vorbereitung, keine M5-Evidenz**. Insbesondere werden `rolesAndPermissions`, `retention`, `deletionConcept`, `dataExport` oder `highPrivacyProfile` dadurch nicht auf `verified` gesetzt. Die spätere technische Ziel-App muss die Regeln serverseitig umsetzen und mit positiven sowie negativen Smokes beweisen.
 
 ## 1. Rollenmodell, das erhalten werden muss
 
@@ -80,9 +80,9 @@ Für die Ziel-App reicht deshalb ein grobes `athletes:read` nicht als alleinige 
 - Trainer-/Adminzugriffe entstehen nicht durch diese Links, sondern über ihre eigenen Rollen-/Modulgrenzen
 - Verknüpfungen dürfen nur innerhalb derselben Organisation bestehen
 
-## 3. Pflicht-Smokes für `rolesRights`
+## 3. Pflicht-Smokes für `rolesAndPermissions`
 
-Das spätere app-spezifische M5-Kriterium `rolesRights` darf erst nach serverseitiger Implementierung und mindestens folgenden positiven/negativen Smokes als erfüllt gelten:
+Das spätere app-spezifische M5-Kriterium `rolesAndPermissions` darf erst nach serverseitiger Implementierung und mindestens folgenden positiven/negativen Smokes als erfüllt gelten:
 
 1. Admin darf die vorgesehenen ULC-Rollen-/Permission-Zuordnungen des eigenen Vereins verwalten.
 2. Admin kann keinen zweiten Verein lesen oder verändern.
@@ -143,4 +143,4 @@ Nach Abschluss der ULC-M5-Zielbindung soll ein kleiner app-spezifischer Verbrauc
 4. Export-/Retention-Zielwerte nur als Policy-Input führt und **nicht** als bereits verifizierte M5-Evidenz markiert,
 5. weiterhin den vorhandenen AppBasis-Permissions-Vertrag nutzt statt eine zweite Rollenengine zu bauen.
 
-Erst wenn die reale ULC-Zielruntime diese Regeln serverseitig konsumiert und die app-spezifischen Smokes bestehen, kann `rolesRights` belastbar Richtung `verified` gehen. `dataExport`, `retention` und `deletionConcept` bleiben bis zu ihren jeweils eigenen technischen und Betreiber-Nachweisen offen.
+Erst wenn die reale ULC-Zielruntime diese Regeln serverseitig konsumiert und die app-spezifischen Smokes bestehen, kann `rolesAndPermissions` belastbar Richtung `verified` gehen. `dataExport`, `retention` und `deletionConcept` bleiben bis zu ihren jeweils eigenen technischen und Betreiber-Nachweisen offen.
