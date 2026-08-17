@@ -85,6 +85,22 @@ test('accepts optional account-wide pagination metadata without treating it as f
   );
 });
 
+test('accepts zero-valued pagination metadata for an empty Cloudflare single-page result', async () => {
+  const { fetchImpl } = mockCloudflare({
+    domainResultInfo: {
+      count: 0,
+      page: 0,
+      per_page: 0,
+      total_count: 0,
+      total_pages: 0,
+    },
+  });
+
+  await assert.doesNotReject(
+    verifyReferenceRoleAdminPublicIngress({ accountId, apiToken, fetchImpl }),
+  );
+});
+
 test('rejects workers.dev and Preview URL exposure', async () => {
   for (const subdomain of [
     { enabled: true, previews_enabled: false },
@@ -101,6 +117,7 @@ test('rejects workers.dev and Preview URL exposure', async () => {
 test('rejects a custom domain assigned to the internal Worker', async () => {
   const { fetchImpl } = mockCloudflare({
     domains: [{ id: 'domain-id', hostname: 'admin.example.test', service: worker }],
+    domainResultInfo: { count: 1, page: 0, per_page: 0 },
   });
 
   await assert.rejects(
@@ -114,9 +131,9 @@ test('fails closed on malformed or contradictory optional custom-domain metadata
     null,
     { count: 1 },
     { count: '0' },
-    { page: 0 },
-    { page: 2 },
-    { per_page: 0 },
+    { page: -1 },
+    { page: '0' },
+    { per_page: -1 },
     { total_count: -1 },
     { total_pages: -1 },
   ]) {
