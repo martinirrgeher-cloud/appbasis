@@ -82,6 +82,8 @@ jobs:
           AWS_REGION: auto
         run: |
           set -euo pipefail
+          command -v aws >/dev/null || { echo "AWS CLI is unavailable." >&2; exit 1; }
+          command -v jq >/dev/null || { echo "jq is unavailable." >&2; exit 1; }
           umask 077
           ENDPOINT="$(node ./tooling/m4-free-backup-plan.mjs endpoint)"
           BUCKET="$(node ./tooling/m4-free-backup-plan.mjs bucket)"
@@ -175,9 +177,8 @@ jobs:
           set -euo pipefail
           NOW="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
           node ./tooling/m4-r2-backup-evidence.mjs evaluate "$NOW" < "$INVENTORY" | tee "$RUNNER_TEMP/m4-r2-evidence.json"
-          jq -r '
-            "M4 R2 backup evidence: ok=\(.ok) daily=\(.dailyCount) weekly=\(.weeklyCount) latestDaily=\(.latestDailyKey // \"none\")"
-          ' "$RUNNER_TEMP/m4-r2-evidence.json" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '"M4 R2 backup evidence: ok=\(.ok) daily=\(.dailyCount) weekly=\(.weeklyCount) latestDaily=" + (.latestDailyKey // "none")' \
+            "$RUNNER_TEMP/m4-r2-evidence.json" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary evidence inventory
         if: always() && steps.gate.outputs.run == '1'
