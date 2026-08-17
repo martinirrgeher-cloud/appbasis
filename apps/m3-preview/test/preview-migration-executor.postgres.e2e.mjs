@@ -30,7 +30,7 @@ test("applies only the m3-preview manifest to its named empty database and refus
     const result = await applyM3PreviewMigrations({
       connectionString: targetUrl.toString(),
     });
-    assert.equal(result.migrationCount, 6);
+    assert.equal(result.migrationCount, 7);
     assert.ok(result.statementCount > 0);
 
     const verification = createPostgresDatabase(targetUrl.toString());
