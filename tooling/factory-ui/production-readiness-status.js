@@ -55,6 +55,22 @@ export function productionReleaseReadinessCopy(readiness) {
   });
 }
 
+export function productionReleaseCriteriaCopy(readiness) {
+  const consistent = isConsistentM6Readiness(readiness);
+  return Object.freeze(
+    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map((criterion, index) =>
+      Object.freeze({
+        id: criterion.id,
+        label: criterion.label,
+        status:
+          consistent && readiness.criteria[index].status === "verified"
+            ? "verified"
+            : "open",
+      }),
+    ),
+  );
+}
+
 function isConsistentReadiness(readiness) {
   if (readiness === null || typeof readiness !== "object" || Array.isArray(readiness)) {
     return false;
