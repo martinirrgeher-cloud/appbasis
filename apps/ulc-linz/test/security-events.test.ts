@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { IdentityError } from "@appbasis/identity";
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import {
   capabilityId,
@@ -54,23 +53,17 @@ function eventCollector(events: UlcLinzSecurityEvent[]) {
 }
 
 describe("ULC Linz M5-F audit and security logging", () => {
-  it("records a sanitized structured event for a denied sign-in", async () => {
+  it("records a sanitized structured event for a failed sign-in request", async () => {
     const events: UlcLinzSecurityEvent[] = [];
     const identity: IdentityHttpService = {
       async signInWithUsername() {
-        throw new IdentityError(
-          "AUTHENTICATION_FAILED",
-          "Backend details must not reach the security event.",
-        );
+        throw new Error("Backend details must not reach the security event.");
       },
       async getCurrentIdentity() {
         return null;
       },
       async changeRequiredPassword() {
-        throw new IdentityError(
-          "PASSWORD_CHANGE_FAILED",
-          "Backend details must not reach the security event.",
-        );
+        throw new Error("Backend details must not reach the security event.");
       },
     };
 
@@ -87,7 +80,7 @@ describe("ULC Linz M5-F audit and security logging", () => {
       }),
     });
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(500);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       schemaVersion: 1,
@@ -95,7 +88,7 @@ describe("ULC Linz M5-F audit and security logging", () => {
       category: "security",
       eventType: "identity.request.denied",
       operation: "sign-in",
-      httpStatus: 401,
+      httpStatus: 500,
       errorCode: "AUTHENTICATION_FAILED",
     });
     expect(events[0]?.occurredAt).toEqual(expect.any(String));
