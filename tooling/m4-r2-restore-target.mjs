@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { validateM4RestoreDatabaseSeparation } from "./m4-r2-restore-plan.mjs";
 
+const STRONG_SSL_MODES = new Set(["require", "verify-ca", "verify-full"]);
 const EMPTY_TARGET_QUERY = `
 SELECT
   (
@@ -40,6 +41,8 @@ export async function verifyM4IsolatedRestoreTargetEmpty({
   createDatabase = createPostgresDatabase,
 } = {}) {
   validateM4RestoreDatabaseSeparation({ sourceUrl, restoreUrl });
+  assertEncryptedDatabaseTransport(sourceUrl, "M4 source database URL");
+  assertEncryptedDatabaseTransport(restoreUrl, "M4 restore database URL");
   if (databaseAliasIdentity(sourceUrl) === databaseAliasIdentity(restoreUrl)) {
     throw new Error(
       "M4 restore target must be a different database endpoint from source, including Neon pooler aliases.",
@@ -77,6 +80,16 @@ export async function verifyM4IsolatedRestoreTargetEmpty({
     if (database?.client && typeof database.client.end === "function") {
       await database.client.end().catch(() => {});
     }
+  }
+}
+
+function assertEncryptedDatabaseTransport(value, name) {
+  const url = new URL(value);
+  const sslModes = url.searchParams.getAll("sslmode");
+  if (sslModes.length !== 1 || !STRONG_SSL_MODES.has(sslModes[0])) {
+    throw new Error(
+      `${name} must require encrypted transport with exactly one strong sslmode.`,
+    );
   }
 }
 
