@@ -5,11 +5,33 @@ import { createPostgresDatabase } from "../packages/database/src/node-runtime.mj
 import { validateM4RestoreDatabaseSeparation } from "./m4-r2-restore-plan.mjs";
 
 const EMPTY_TARGET_QUERY = `
-SELECT COUNT(*)::int AS relation_count
-FROM pg_catalog.pg_class AS c
-JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-WHERE n.nspname = 'public'
-  AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
+SELECT
+  (
+    SELECT COUNT(*)::int
+    FROM pg_catalog.pg_namespace AS n
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'public')
+      AND n.nspname !~ '^pg_toast(?:_|$)'
+      AND n.nspname !~ '^pg_temp_'
+  ) AS extra_schema_count,
+  (
+    SELECT COUNT(*)::int
+    FROM pg_catalog.pg_class AS c
+    JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
+  ) AS public_relation_count,
+  (
+    SELECT COUNT(*)::int
+    FROM pg_catalog.pg_proc AS p
+    JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+  ) AS public_routine_count,
+  (
+    SELECT COUNT(*)::int
+    FROM pg_catalog.pg_type AS t
+    JOIN pg_catalog.pg_namespace AS n ON n.oid = t.typnamespace
+    WHERE n.nspname = 'public'
+  ) AS public_type_count
 `;
 
 export async function verifyM4IsolatedRestoreTargetEmpty({
@@ -39,7 +61,10 @@ export async function verifyM4IsolatedRestoreTargetEmpty({
       rows.length !== 1 ||
       rows[0] === null ||
       typeof rows[0] !== "object" ||
-      rows[0].relation_count !== 0
+      rows[0].extra_schema_count !== 0 ||
+      rows[0].public_relation_count !== 0 ||
+      rows[0].public_routine_count !== 0 ||
+      rows[0].public_type_count !== 0
     ) {
       throw new Error("restore target is not empty");
     }
