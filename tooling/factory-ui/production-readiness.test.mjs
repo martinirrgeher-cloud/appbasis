@@ -283,7 +283,10 @@ test("repository evidence does not infer app-specific high privacy binding", () 
 });
 
 test("Factory snapshot keeps high privacy evidence open until an app-specific binding exists", async () => {
-  const snapshot = await loadFactorySnapshot(repositoryRoot);
+  const snapshot = await loadFactorySnapshot(repositoryRoot, {
+    referenceControlPlaneEvidenceFetchImpl: async () =>
+      new Response("unavailable", { status: 503 }),
+  });
 
   assert.ok(snapshot.apps.length > 0);
   for (const app of snapshot.apps) {
