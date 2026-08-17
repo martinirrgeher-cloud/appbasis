@@ -8,7 +8,13 @@ const sourceUrl =
 const restoreUrl =
   "postgresql://restore:secret@restore.example.test/appbasis_m3_preview?sslmode=require";
 
-function databaseFactory({ relationCount = 0, error = null } = {}) {
+function databaseFactory({
+  extraSchemaCount = 0,
+  publicRelationCount = 0,
+  publicRoutineCount = 0,
+  publicTypeCount = 0,
+  error = null,
+} = {}) {
   let closed = 0;
   const calls = [];
   return {
@@ -23,7 +29,12 @@ function databaseFactory({ relationCount = 0, error = null } = {}) {
           async unsafe(query) {
             calls.push(query);
             if (error) throw new Error(error);
-            return [{ relation_count: relationCount }];
+            return [{
+              extra_schema_count: extraSchemaCount,
+              public_relation_count: publicRelationCount,
+              public_routine_count: publicRoutineCount,
+              public_type_count: publicTypeCount,
+            }];
           },
           async end() {
             closed += 1;
@@ -34,7 +45,7 @@ function databaseFactory({ relationCount = 0, error = null } = {}) {
   };
 }
 
-test("accepts only a distinct empty isolated m3-preview restore target", async () => {
+test("accepts only a distinct fresh isolated m3-preview restore target", async () => {
   const database = databaseFactory();
   const result = await verifyM4IsolatedRestoreTargetEmpty({
     sourceUrl,
@@ -49,11 +60,51 @@ test("accepts only a distinct empty isolated m3-preview restore target", async (
     database.calls[0],
     /\b(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/i,
   );
+  assert.match(database.calls[0], /pg_catalog\.pg_namespace/);
+  assert.match(database.calls[0], /pg_catalog\.pg_proc/);
+  assert.match(database.calls[0], /pg_catalog\.pg_type/);
   assert.equal(database.closed, 1);
 });
 
-test("rejects a non-empty restore target and closes the connection", async () => {
-  const database = databaseFactory({ relationCount: 1 });
+test("rejects application relations, routines, types and extra user schemas", async () => {
+  for (const state of [
+    { publicRelationCount: 1 },
+    { publicRoutineCount: 1 },
+    { publicTypeCount: 1 },
+    { extraSchemaCount: 1 },
+  ]) {
+    const database = databaseFactory(state);
+    await assert.rejects(
+      verifyM4IsolatedRestoreTargetEmpty({
+        sourceUrl,
+        restoreUrl,
+        createDatabase: database.createDatabase,
+      }),
+      /not empty or could not be inspected/,
+    );
+    assert.equal(database.closed, 1);
+  }
+});
+
+test("rejects malformed empty-target inspection results fail-closed", async () => {
+  const database = databaseFactory();
+  database.createDatabase = (connectionString) => {
+    assert.equal(connectionString, restoreUrl);
+    return {
+      client: {
+        async unsafe(query) {
+          database.calls.push(query);
+          return [{
+            extra_schema_count: 0,
+            public_relation_count: 0,
+            public_routine_count: 0,
+          }];
+        },
+        async end() {},
+      },
+    };
+  };
+
   await assert.rejects(
     verifyM4IsolatedRestoreTargetEmpty({
       sourceUrl,
@@ -62,7 +113,6 @@ test("rejects a non-empty restore target and closes the connection", async () =>
     }),
     /not empty or could not be inspected/,
   );
-  assert.equal(database.closed, 1);
 });
 
 test("rejects the source database even when credentials differ", async () => {
