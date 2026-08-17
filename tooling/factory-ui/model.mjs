@@ -18,6 +18,8 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
     options.m3PreviewAcceptanceFetchImpl ?? fetch;
   const referenceControlPlaneEvidenceFetchImpl =
     options.referenceControlPlaneEvidenceFetchImpl ?? fetch;
+  const referenceControlPlaneEvidenceNow =
+    options.referenceControlPlaneEvidenceNow ?? Date.now;
   const [appDefinitions, modules] = await Promise.all([
     readAppDefinitions(root),
     directoryNames(join(root, "modules")),
@@ -27,6 +29,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
       withFactoryReadiness(root, definition, {
         m3PreviewAcceptanceFetchImpl,
         referenceControlPlaneEvidenceFetchImpl,
+        referenceControlPlaneEvidenceNow,
       }),
     ),
   );
@@ -51,6 +54,7 @@ async function withFactoryReadiness(
   {
     m3PreviewAcceptanceFetchImpl,
     referenceControlPlaneEvidenceFetchImpl,
+    referenceControlPlaneEvidenceNow,
   },
 ) {
   const appRoot = join(repositoryRoot, "apps", definition.appId);
@@ -73,6 +77,7 @@ async function withFactoryReadiness(
     }),
     deriveReferenceControlPlaneEvidence(definition, {
       fetchImpl: referenceControlPlaneEvidenceFetchImpl,
+      now: referenceControlPlaneEvidenceNow,
     }),
   ]);
   const repositoryReady =
