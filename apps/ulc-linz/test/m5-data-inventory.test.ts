@@ -19,6 +19,15 @@ type DatabaseManifest = {
   owners: PersistentOwnerContract[];
 };
 
+type PersistentTableInventory = {
+  id: string;
+  owner: string;
+  privacyClass: string;
+  retentionPolicy: string;
+  deletionEvidence: "open";
+  retentionEvidence: "open";
+};
+
 type DataInventory = {
   schemaVersion: number;
   application: string;
@@ -28,6 +37,7 @@ type DataInventory = {
       notes: string[];
     }
   >;
+  persistentTables: PersistentTableInventory[];
   runtimeModules: string[];
   backingStores: {
     memberships: {
@@ -46,6 +56,7 @@ type DataInventory = {
     deletionPolicy: "open";
     retentionPolicy: "open";
     unknownPersistentOwner: "fail-closed";
+    unknownPersistentTable: "fail-closed";
     unknownRuntimeModule: "fail-closed";
     unknownBackingStore: "fail-closed";
   };
@@ -55,6 +66,7 @@ const inventoryUrl = new URL("../privacy/m5-data-inventory.json", import.meta.ur
 const appManifestUrl = new URL("../appbasis.app.json", import.meta.url);
 const databaseManifestUrl = new URL("../appbasis.database.json", import.meta.url);
 const authorizationUrl = new URL("../worker/authorization.ts", import.meta.url);
+const repoRootUrl = new URL("../../../", import.meta.url);
 
 async function readJson<T>(url: URL): Promise<T> {
   return JSON.parse(await readFile(url, "utf8")) as T;
@@ -74,6 +86,33 @@ function sortedOwnerContracts(
       migrations: [...owner.migrations],
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function createdTableNames(sql: string): string[] {
+  const names: string[] = [];
+  const pattern = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?([A-Za-z0-9_]+)"?/gi;
+  for (const match of sql.matchAll(pattern)) {
+    const name = match[1];
+    if (name !== undefined) names.push(name);
+  }
+  return names;
+}
+
+async function persistentTablesFromMigrations(
+  databaseManifest: DatabaseManifest,
+): Promise<Array<{ owner: string; id: string }>> {
+  const tables: Array<{ owner: string; id: string }> = [];
+  for (const owner of databaseManifest.owners) {
+    for (const migration of owner.migrations) {
+      const sql = await readFile(new URL(migration, repoRootUrl), "utf8");
+      for (const id of createdTableNames(sql)) tables.push({ owner: owner.id, id });
+    }
+  }
+  return tables;
+}
+
+function sortedTableKeys(tables: readonly { owner: string; id: string }[]): string[] {
+  return sorted(tables.map((table) => `${table.owner}:${table.id}`));
 }
 
 describe("ULC Linz M5 C/D data inventory", () => {
@@ -106,9 +145,46 @@ describe("ULC Linz M5 C/D data inventory", () => {
       deletionPolicy: "open",
       retentionPolicy: "open",
       unknownPersistentOwner: "fail-closed",
+      unknownPersistentTable: "fail-closed",
       unknownRuntimeModule: "fail-closed",
       unknownBackingStore: "fail-closed",
     });
+  });
+
+  it("classifies every currently created PostgreSQL table without claiming verification", async () => {
+    const [inventory, databaseManifest] = await Promise.all([
+      readJson<DataInventory>(inventoryUrl),
+      readJson<DatabaseManifest>(databaseManifestUrl),
+    ]);
+    const migrationTables = await persistentTablesFromMigrations(databaseManifest);
+
+    expect(sortedTableKeys(inventory.persistentTables)).toEqual(
+      sortedTableKeys(migrationTables),
+    );
+    expect(
+      inventory.persistentTables.every(
+        (table) =>
+          table.privacyClass.length > 0 &&
+          table.retentionPolicy.length > 0 &&
+          table.deletionEvidence === "open" &&
+          table.retentionEvidence === "open",
+      ),
+    ).toBe(true);
+
+    const person = inventory.persistentTables.find((table) => table.id === "appbasis_person");
+    const user = inventory.persistentTables.find((table) => table.id === "user");
+    const audit = inventory.persistentTables.find(
+      (table) => table.id === "appbasis_permission_administration_audit",
+    );
+    expect(person?.retentionPolicy).toBe("12-months-after-exit-or-purpose-end");
+    expect(user?.retentionPolicy).toBe("12-months-after-exit-or-purpose-end");
+    expect(audit?.retentionPolicy).toBe("12-months");
+
+    const unmapped = inventory.persistentTables.filter(
+      (table) => table.retentionPolicy === "unmapped",
+    );
+    expect(unmapped.length).toBeGreaterThan(0);
+    expect(inventory.m5.retentionPolicy).toBe("open");
   });
 
   it("keeps resolver-only membership and subject-scope persistence unverified", async () => {
