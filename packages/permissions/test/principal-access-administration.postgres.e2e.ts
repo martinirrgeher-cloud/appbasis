@@ -164,6 +164,73 @@ describe("PostgresPrincipalAccessAdministration", () => {
     ]);
   });
 
+  it("rolls back when final overrides would remove the last required capability holder", async () => {
+    const administration = principalAccessAdministration();
+    const beforeAuditRows = await targetAuditRows();
+
+    await expect(
+      administration.replacePrincipalAccess(
+        targetPrincipal,
+        [writerRole],
+        { grants: [], revokes: [] },
+        { actorPrincipalId: auditActor, reason: "Letzten Read-Holder schützen" },
+        {
+          expectedRoleIds: [writerRole],
+          expectedGrants: [reportsRead],
+          expectedRevokes: [],
+          requiredRemainingCapabilities: [reportsRead],
+        },
+      ),
+    ).rejects.toMatchObject({ code: "LAST_CAPABILITY_HOLDER" });
+
+    const principal = await new PostgresPermissionStore(
+      requiredIsolatedConnection().client,
+    ).findPrincipal(targetPrincipal);
+    expect(principal).toMatchObject({
+      roleIds: [writerRole],
+      grants: [reportsRead],
+      revokes: [],
+    });
+    expect(await targetAuditRows()).toEqual(beforeAuditRows);
+  });
+
+  it("allows removing an old revoke when the final role state retains the required capability", async () => {
+    const administration = principalAccessAdministration();
+    const connection = requiredIsolatedConnection();
+    await connection.client.unsafe(
+      `INSERT INTO appbasis_permission_principal_revoke (
+         principal_id, capability_id
+       ) VALUES ($1, $2)`,
+      [targetPrincipal, reportsWrite],
+    );
+
+    await expect(
+      administration.replacePrincipalAccess(
+        targetPrincipal,
+        [writerRole],
+        { grants: [reportsRead], revokes: [] },
+        { actorPrincipalId: auditActor, reason: "Stale Write-Revoke entfernen" },
+        {
+          expectedRoleIds: [writerRole],
+          expectedGrants: [reportsRead],
+          expectedRevokes: [reportsWrite],
+          requiredRemainingCapabilities: [reportsWrite],
+        },
+      ),
+    ).resolves.toEqual({
+      roleIds: [writerRole],
+      grants: [reportsRead],
+      revokes: [],
+    });
+
+    await expect(
+      can(new PostgresPermissionStore(connection.client), {
+        principalId: targetPrincipal,
+        capability: reportsWrite,
+      }),
+    ).resolves.toBe(true);
+  });
+
   it("rolls back a demotion when it would remove the last required role holder", async () => {
     const administration = principalAccessAdministration();
     const beforeAuditRows = await targetAuditRows();
