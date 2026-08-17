@@ -25,17 +25,39 @@ export async function replaceUlcLinzPrincipalAccess({
     throw new Error(`Unsupported ULC Linz source role ${String(sourceRole)}.`);
   }
 
+  const adminRuntimeRoleId =
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.admin;
+  if (sourceRole !== "admin" && constraints.expectedRoleIds === undefined) {
+    throw new Error(
+      "ULC Linz non-admin access replacement requires expectedRoleIds so an admin demotion cannot bypass the same-organization guard.",
+    );
+  }
+
   const overrides = mapUlcLinzManagedPermissionsToPrincipalOverrides({
     sourceRole,
     permissions,
   });
-  const demotingFromAdmin = sourceRole !== "admin";
-  const requiredRemainingCapabilities = demotingFromAdmin
+  const demotingFromAdmin =
+    sourceRole !== "admin" &&
+    constraints.expectedRoleIds.includes(adminRuntimeRoleId);
+  const requiredRemainingCapabilities = sourceRole !== "admin"
     ? ULC_LINZ_M5_KNOWN_CAPABILITIES
     : [];
   const requiredRemainingRoleIds = demotingFromAdmin
-    ? [ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.admin]
+    ? [adminRuntimeRoleId]
     : [];
+  const resolveRequiredRoleHolderPrincipalScope = demotingFromAdmin
+    ? constraints.resolveActiveOrganizationPrincipalScope
+    : undefined;
+
+  if (
+    demotingFromAdmin &&
+    typeof resolveRequiredRoleHolderPrincipalScope !== "function"
+  ) {
+    throw new Error(
+      "ULC Linz admin demotion requires a transactional resolver for active principals in the target organization.",
+    );
+  }
 
   return administration.replacePrincipalAccess(
     principalId,
@@ -48,6 +70,9 @@ export async function replaceUlcLinzPrincipalAccess({
       expectedRevokes: constraints.expectedRevokes,
       requiredRemainingCapabilities,
       requiredRemainingRoleIds,
+      ...(resolveRequiredRoleHolderPrincipalScope === undefined
+        ? {}
+        : { resolveRequiredRoleHolderPrincipalScope }),
     },
   );
 }
