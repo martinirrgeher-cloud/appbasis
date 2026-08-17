@@ -94,11 +94,12 @@ function escapeRegExp(value) {
 async function readStdinJson() {
   let value = "";
   for await (const chunk of process.stdin) value += chunk;
-  if (value.length === 0 || value.trim() !== value) {
+  const normalized = value.trim();
+  if (normalized.length === 0) {
     throw new Error("M4 R2 backup inventory input is invalid.");
   }
   try {
-    return JSON.parse(value);
+    return JSON.parse(normalized);
   } catch {
     throw new Error("M4 R2 backup inventory input is invalid.");
   }
