@@ -7,6 +7,8 @@ import {
   verifyReferenceControlPlaneEvidenceRun,
 } from "./reference-control-plane-evidence.mjs";
 
+const withinValidity = () => Date.parse("2026-08-17T12:00:00Z");
+
 function expectedRun(overrides = {}) {
   return {
     id: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunId,
@@ -16,6 +18,7 @@ function expectedRun(overrides = {}) {
     event: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunEvent,
     head_branch: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunBranch,
     head_sha: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunHeadSha,
+    updated_at: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt,
     status: "completed",
     conclusion: "success",
     repository: {
@@ -32,7 +35,7 @@ function jsonResponse(payload, { status = 200, contentType = "application/json; 
   });
 }
 
-test("binds the pinned successful provider run only to the Reference app", async () => {
+test("binds the pinned fresh successful provider run only to the Reference app", async () => {
   let calls = 0;
   const fetchImpl = async (input, init) => {
     calls += 1;
@@ -50,7 +53,7 @@ test("binds the pinned successful provider run only to the Reference app", async
   assert.deepEqual(
     await deriveReferenceControlPlaneEvidence(
       { appId: "reference" },
-      { fetchImpl },
+      { fetchImpl, now: withinValidity },
     ),
     { privilegedControlPlaneIsolation: true },
   );
@@ -63,6 +66,7 @@ test("binds the pinned successful provider run only to the Reference app", async
         fetchImpl: async () => {
           throw new Error("non-Reference apps must not query Reference evidence");
         },
+        now: withinValidity,
       },
     ),
     {},
@@ -78,6 +82,7 @@ test("fails closed when any pinned run identity or success field does not match"
     { event: "push" },
     { head_branch: "feature" },
     { head_sha: "0".repeat(40) },
+    { updated_at: "2026-08-17T11:36:45Z" },
     { status: "in_progress" },
     { conclusion: "failure" },
     { repository: { full_name: "other/repository" } },
@@ -86,45 +91,112 @@ test("fails closed when any pinned run identity or success field does not match"
 
   for (const mismatch of mismatches) {
     assert.equal(
-      await verifyReferenceControlPlaneEvidenceRun(async () =>
-        jsonResponse(expectedRun(mismatch)),
+      await verifyReferenceControlPlaneEvidenceRun(
+        async () => jsonResponse(expectedRun(mismatch)),
+        withinValidity,
       ),
       false,
     );
   }
 });
 
-test("fails closed on unreadable, non-JSON or malformed GitHub evidence", async () => {
+test("expires the provider observation at its explicit review point", async () => {
+  const fetchImpl = async () => jsonResponse(expectedRun());
+
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(
+      fetchImpl,
+      () => Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt),
+    ),
+    true,
+  );
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(
+      fetchImpl,
+      () => Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.validUntilOrReviewAt) - 1,
+    ),
+    true,
+  );
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(
+      fetchImpl,
+      () => Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.validUntilOrReviewAt),
+    ),
+    false,
+  );
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(
+      fetchImpl,
+      () => Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt) - 1,
+    ),
+    false,
+  );
+});
+
+test("fails closed on unreadable, non-JSON, malformed or untimeable GitHub evidence", async () => {
   assert.equal(
     await verifyReferenceControlPlaneEvidenceRun(async () => {
       throw new Error("network unavailable");
-    }),
+    }, withinValidity),
     false,
   );
   assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(async () =>
-      jsonResponse(expectedRun(), { status: 503 }),
+    await verifyReferenceControlPlaneEvidenceRun(
+      async () => jsonResponse(expectedRun(), { status: 503 }),
+      withinValidity,
     ),
     false,
   );
   assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(async () =>
-      jsonResponse(expectedRun(), { contentType: "text/plain" }),
+    await verifyReferenceControlPlaneEvidenceRun(
+      async () => jsonResponse(expectedRun(), { contentType: "text/plain" }),
+      withinValidity,
     ),
     false,
   );
   assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(async () =>
-      new Response("not-json", {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    await verifyReferenceControlPlaneEvidenceRun(
+      async () =>
+        new Response("not-json", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      withinValidity,
     ),
     false,
   );
   assert.equal(
-    await verifyReferenceControlPlaneEvidenceRun(async () => jsonResponse(null)),
+    await verifyReferenceControlPlaneEvidenceRun(
+      async () => jsonResponse(null),
+      withinValidity,
+    ),
     false,
   );
-  assert.equal(await verifyReferenceControlPlaneEvidenceRun(null), false);
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(null, withinValidity),
+    false,
+  );
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(
+      async () => jsonResponse(expectedRun()),
+      null,
+    ),
+    false,
+  );
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(
+      async () => jsonResponse(expectedRun()),
+      () => Number.NaN,
+    ),
+    false,
+  );
+  assert.equal(
+    await verifyReferenceControlPlaneEvidenceRun(
+      async () => jsonResponse(expectedRun()),
+      () => {
+        throw new Error("clock unavailable");
+      },
+    ),
+    false,
+  );
 });
