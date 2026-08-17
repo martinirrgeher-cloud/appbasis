@@ -49,10 +49,13 @@ test("maps a non-admin ULC member into one atomic AppBasis access replacement", 
     call.constraints.requiredRemainingCapabilities,
     ULC_LINZ_M5_KNOWN_CAPABILITIES,
   );
+  assert.deepEqual(call.constraints.requiredRemainingRoleIds, [
+    "ulc-linz:admin",
+  ]);
   assert.deepEqual(result, { ok: true });
 });
 
-test("promotes an admin with empty direct overrides without requiring another full holder", async () => {
+test("promotes an admin with empty direct overrides without requiring another holder", async () => {
   const calls = [];
   await replaceUlcLinzPrincipalAccess({
     administration: fakeAdministration(calls),
@@ -66,6 +69,7 @@ test("promotes an admin with empty direct overrides without requiring another fu
   assert.deepEqual(calls[0].roleIds, ["ulc-linz:admin"]);
   assert.deepEqual(calls[0].overrides, { grants: [], revokes: [] });
   assert.deepEqual(calls[0].constraints.requiredRemainingCapabilities, []);
+  assert.deepEqual(calls[0].constraints.requiredRemainingRoleIds, []);
 });
 
 test("fails closed for unsupported roles and missing atomic administration", async () => {
