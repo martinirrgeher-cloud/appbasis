@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { M4_POSTGRES_DUMP_IMAGE } from "./m4-consistent-backup.mjs";
+import {
+  M4RestoredFunctionalSmokeConfigurationError,
+  readM4RestoredFunctionalSmokeEnvironment,
+} from "./m4-restored-functional-smoke.mjs";
 
 const workflowUrl = new URL(
   "../.github/workflows/m4-r2-restore-rehearsal.yml",
@@ -89,4 +93,39 @@ test("M4 R2 restore reuses canonical post-restore fingerprint verification", asy
   assert.match(source, /m4-restore-verification\.mjs verify/);
   assert.match(source, /restore-fingerprint-match/);
   assert.match(source, /do not retry against this target unless the empty-target preflight passes again/);
+});
+
+test("M4 R2 restore runs functional auth, permission and tasks smoke only after fingerprint match", async () => {
+  const source = await workflowSource();
+  const fingerprint = source.indexOf("m4-restore-verification.mjs verify");
+  const functionalSmoke = source.indexOf("m4-restored-functional-smoke.mjs");
+
+  assert.ok(fingerprint >= 0 && functionalSmoke > fingerprint);
+  assert.match(source, /Verify restored auth, permissions and tasks behavior/);
+  assert.match(source, /APPBASIS_M4_RESTORE_DATABASE_URL/);
+  assert.match(source, /deny-by-default permissions and tasks persistence/);
+});
+
+test("M4 restored functional smoke requires an explicit PostgreSQL restore target", () => {
+  assert.throws(
+    () => readM4RestoredFunctionalSmokeEnvironment({}),
+    M4RestoredFunctionalSmokeConfigurationError,
+  );
+  assert.throws(
+    () =>
+      readM4RestoredFunctionalSmokeEnvironment({
+        APPBASIS_M4_RESTORE_DATABASE_URL: "https://not-postgres.example.test",
+      }),
+    M4RestoredFunctionalSmokeConfigurationError,
+  );
+  assert.deepEqual(
+    readM4RestoredFunctionalSmokeEnvironment({
+      APPBASIS_M4_RESTORE_DATABASE_URL:
+        "postgresql://restore.example.test/appbasis_m3_preview?sslmode=verify-full",
+    }),
+    {
+      connectionString:
+        "postgresql://restore.example.test/appbasis_m3_preview?sslmode=verify-full",
+    },
+  );
 });
