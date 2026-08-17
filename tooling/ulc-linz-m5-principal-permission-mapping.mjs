@@ -25,16 +25,16 @@ export function mapUlcLinzManagedPermissionsToPrincipalOverrides({
   permissions,
 }) {
   assertCanonicalTargetMapping();
-  if (!NON_ADMIN_SOURCE_ROLES.has(sourceRole)) {
-    if (sourceRole === "admin") {
-      throw new Error(
-        "ULC Linz admin permissions are role-derived and must not be converted to principal overrides.",
-      );
-    }
-    throw new Error(`Unsupported ULC Linz source role ${String(sourceRole)}.`);
-  }
   if (!Array.isArray(permissions)) {
     throw new Error("ULC Linz managed permissions must be an array.");
+  }
+
+  if (sourceRole === "admin") {
+    assertCanonicalAdminOverrideSemantics();
+    return emptyOverrides();
+  }
+  if (!NON_ADMIN_SOURCE_ROLES.has(sourceRole)) {
+    throw new Error(`Unsupported ULC Linz source role ${String(sourceRole)}.`);
   }
 
   const byModule = new Map();
@@ -122,6 +122,13 @@ export async function replaceUlcLinzPrincipalPermissions({
   );
 }
 
+function emptyOverrides() {
+  return Object.freeze({
+    grants: Object.freeze([]),
+    revokes: Object.freeze([]),
+  });
+}
+
 function moduleCapability(moduleKey, action) {
   return `${ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.principalPermissionMapping.capabilityNamespace}:${moduleKey}:${action}`;
 }
@@ -140,6 +147,23 @@ function assertCanonicalTargetMapping() {
   ) {
     throw new Error(
       "ULC Linz principal permission mapping is not bound to the canonical M5 role/data-scope policy.",
+    );
+  }
+}
+
+function assertCanonicalAdminOverrideSemantics() {
+  const admin = ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.adminAuthorization;
+  if (
+    admin.sourceRole !== "admin" ||
+    admin.runtimeRoleId !== ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.admin ||
+    admin.mode !== "own-organization-admin" ||
+    admin.moduleAccess !== "all-known-modules-view-edit" ||
+    admin.individualModulePermissionsRequired !== false ||
+    admin.crossOrganization !== "deny" ||
+    admin.unknownModule !== "deny"
+  ) {
+    throw new Error(
+      "ULC Linz admin override semantics are not bound to the canonical M5 role/data-scope policy.",
     );
   }
 }
