@@ -91,14 +91,25 @@ test("M4 R2 restore reuses canonical post-restore fingerprint verification", asy
   assert.match(source, /do not retry against this target unless the empty-target preflight passes again/);
 });
 
-test("M4 R2 restore runs functional auth, permission and tasks smoke only after fingerprint match", async () => {
+test("M4 R2 restore builds and executes the bundled functional smoke only after fingerprint match", async () => {
   const source = await workflowSource();
+  const bundleConfig = "vite.m4-restored-smoke.config.ts";
+  const bundleRunner =
+    "apps/m3-preview/tooling/.smoke-bootstrap-dist/m4-restored-functional-smoke.mjs";
+  const build = source.indexOf(bundleConfig);
   const fingerprint = source.indexOf("m4-restore-verification.mjs verify");
-  const functionalSmoke = source.indexOf(
-    "apps/m3-preview/tooling/m4-restored-functional-smoke.mjs",
-  );
+  const functionalSmoke = source.indexOf(bundleRunner);
 
-  assert.ok(fingerprint >= 0 && functionalSmoke > fingerprint);
+  assert.ok(build >= 0 && fingerprint > build && functionalSmoke > fingerprint);
+  assert.match(source, /Build restored behavior operational runner without secrets/);
+  assert.match(source, /--config \.\.\/m3-preview\/tooling\/vite\.m4-restored-smoke\.config\.ts/);
+  assert.match(source, new RegExp(`node \\.\/${bundleRunner.replaceAll("/", "\\/")}`));
+  assert.doesNotMatch(
+    source,
+    /node \.\/apps\/m3-preview\/tooling\/m4-restored-functional-smoke\.mjs/,
+  );
+  assert.match(source, /Remove restored behavior operational runner/);
+  assert.match(source, /rm -rf \.\/apps\/m3-preview\/tooling\/\.smoke-bootstrap-dist/);
   assert.match(source, /Verify restored auth, permissions and tasks behavior/);
   assert.match(source, /APPBASIS_M4_RESTORE_DATABASE_URL/);
   assert.match(source, /deny-by-default permissions and tasks persistence/);
