@@ -173,9 +173,28 @@ Für jede privilegierte Control-Plane-Komponente der konkreten Produktion:
 
 Der bestehende Reference-Admin-Worker ist ein Architekturbeleg, aber **keine** app-spezifische Produktions-Evidenz für eine andere App.
 
+### Bereits vorhandenes ausführbares Referenzmuster
+
+Für die reale App `reference` existiert bereits der manuelle Workflow `.github/workflows/m5-reference-control-plane-evidence.yml`.
+
+Er ist absichtlich:
+
+- `workflow_dispatch`-only,
+- an `refs/heads/main` gebunden,
+- mit `contents: read` minimal berechtigt,
+- auf die bestehende `reference-preview`-Umgebung beschränkt,
+- read-only gegenüber Cloudflare,
+- ohne Deployment-, Secret-, Rollback- oder sonstige Providerwrites.
+
+Der Workflow verifiziert am autoritativen Providerzustand, dass der bereits erzeugte interne Role-Administration-Worker existiert und keinen öffentlichen Ingress besitzt.
+
+Dieser Lauf ist **nur Evidenz für den konkret geprüften Reference-Verbraucher und dessen Umgebung**. Er darf weder `privilegedControlPlaneIsolation` noch ein anderes M5-Kriterium für `ulc-linz` oder eine spätere App automatisch verifizieren. Für jede eigenständige App ist derselbe Evidenztyp erneut gegen deren tatsächliche Runtime-/Providerressourcen zu erbringen.
+
+Der Workflow ist damit ein ausführbares Muster, kein globaler M5-Pass.
+
 ### Fail-closed
 
-`open`, wenn Repository-Soll und realer Providerzustand nicht übereinstimmen oder die Erreichbarkeit nicht autoritativ geprüft wurde.
+`open`, wenn Repository-Soll und realer Providerzustand nicht übereinstimmen, die Erreichbarkeit nicht autoritativ geprüft wurde oder nur Evidenz einer anderen App vorliegt.
 
 ## Phase-A-Ergebnis
 
