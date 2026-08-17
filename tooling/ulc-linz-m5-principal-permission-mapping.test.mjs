@@ -59,15 +59,22 @@ test("treats canEdit as canView and replaces explicit false values with revokes"
   assert.ok(result.revokes.includes(capability("countdown", "edit")));
 });
 
-test("rejects admin conversion, user-management grants, unknown modules and duplicates", () => {
-  assert.throws(
-    () =>
-      mapUlcLinzManagedPermissionsToPrincipalOverrides({
-        sourceRole: "admin",
-        permissions: [],
-      }),
-    /admin permissions are role-derived/,
-  );
+test("clears direct overrides for admin because admin permissions are role-derived", () => {
+  const result = mapUlcLinzManagedPermissionsToPrincipalOverrides({
+    sourceRole: "admin",
+    permissions: [
+      { moduleKey: "athletes", canView: false, canEdit: false },
+      { moduleKey: "user_management", canView: true, canEdit: true },
+    ],
+  });
+
+  assert.deepEqual(result, { grants: [], revokes: [] });
+  assert.equal(Object.isFrozen(result), true);
+  assert.equal(Object.isFrozen(result.grants), true);
+  assert.equal(Object.isFrozen(result.revokes), true);
+});
+
+test("rejects user-management grants, unknown modules and duplicates for non-admin roles", () => {
   assert.throws(
     () =>
       mapUlcLinzManagedPermissionsToPrincipalOverrides({
@@ -101,7 +108,7 @@ test("rejects admin conversion, user-management grants, unknown modules and dupl
   );
 });
 
-test("rejects malformed permission shapes instead of coercing them", () => {
+test("rejects malformed permission shapes instead of coercing them for non-admin roles", () => {
   assert.throws(
     () =>
       mapUlcLinzManagedPermissionsToPrincipalOverrides({
@@ -126,6 +133,14 @@ test("rejects malformed permission shapes instead of coercing them", () => {
         ],
       }),
     /contain exactly moduleKey, canView and canEdit/,
+  );
+  assert.throws(
+    () =>
+      mapUlcLinzManagedPermissionsToPrincipalOverrides({
+        sourceRole: "admin",
+        permissions: null,
+      }),
+    /must be an array/,
   );
 });
 
@@ -164,4 +179,39 @@ test("uses the AppBasis principal administration write contract as the consumer 
   assert.deepEqual(result, calls[0][1]);
   assert.ok(result.grants.includes(capability("kindertraining", "view")));
   assert.ok(result.revokes.includes(capability("kindertraining", "edit")));
+});
+
+test("admin promotion clears stale direct grants and revokes through the same write contract", async () => {
+  const calls = [];
+  const administration = {
+    async replacePrincipalPermissions(...args) {
+      calls.push(args);
+      return args[1];
+    },
+  };
+  const staleGrant = capability("athletes", "view");
+  const staleRevoke = capability("user_management", "view");
+  const constraints = {
+    expectedGrants: [staleGrant],
+    expectedRevokes: [staleRevoke],
+  };
+
+  const result = await replaceUlcLinzPrincipalPermissions({
+    administration,
+    principalId: "promoted-principal",
+    sourceRole: "admin",
+    permissions: [
+      { moduleKey: "athletes", canView: false, canEdit: false },
+    ],
+    auditContext: {
+      actorPrincipalId: "admin-principal",
+      reason: "ULC Admin-Promotion",
+    },
+    constraints,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0][1], { grants: [], revokes: [] });
+  assert.equal(calls[0][3], constraints);
+  assert.deepEqual(result, { grants: [], revokes: [] });
 });
