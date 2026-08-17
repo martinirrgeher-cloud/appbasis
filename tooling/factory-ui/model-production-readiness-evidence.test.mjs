@@ -7,6 +7,8 @@ import test from "node:test";
 import { loadFactorySnapshot } from "./model.mjs";
 import { REFERENCE_CONTROL_PLANE_EVIDENCE_RUN } from "./reference-control-plane-evidence.mjs";
 
+const withinValidity = () => Date.parse("2026-08-17T12:00:00Z");
+
 function successfulRun(overrides = {}) {
   return {
     id: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunId,
@@ -16,6 +18,7 @@ function successfulRun(overrides = {}) {
     event: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunEvent,
     head_branch: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunBranch,
     head_sha: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.workflowRunHeadSha,
+    updated_at: REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.observedAt,
     status: "completed",
     conclusion: "success",
     repository: {
@@ -58,12 +61,13 @@ function criterion(app, id) {
   return app.productionReadiness.criteria.find((candidate) => candidate.id === id);
 }
 
-test("factory snapshot consumes the pinned successful Reference control-plane run without unlocking production", async () => {
+test("factory snapshot consumes the pinned fresh successful Reference control-plane run without unlocking production", async () => {
   const root = await createReferenceFixture();
   try {
     const snapshot = await loadFactorySnapshot(root, {
       referenceControlPlaneEvidenceFetchImpl: async () =>
         runResponse(successfulRun()),
+      referenceControlPlaneEvidenceNow: withinValidity,
     });
     const app = snapshot.apps[0];
 
@@ -88,12 +92,33 @@ test("factory snapshot keeps Reference control-plane isolation open when the pin
     const snapshot = await loadFactorySnapshot(root, {
       referenceControlPlaneEvidenceFetchImpl: async () =>
         runResponse(successfulRun({ conclusion: "failure" })),
+      referenceControlPlaneEvidenceNow: withinValidity,
     });
     const app = snapshot.apps[0];
 
     assert.equal(app.productionReadiness.verifiedCount, 1);
     assert.equal(app.productionReadiness.productionReady, false);
     assert.equal(criterion(app, "secretsOutsideAppManifests").status, "verified");
+    assert.equal(criterion(app, "privilegedControlPlaneIsolation").status, "open");
+    assert.equal(snapshot.capabilities.releaseProduction, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("factory snapshot expires Reference provider evidence at its review point", async () => {
+  const root = await createReferenceFixture();
+  try {
+    const snapshot = await loadFactorySnapshot(root, {
+      referenceControlPlaneEvidenceFetchImpl: async () =>
+        runResponse(successfulRun()),
+      referenceControlPlaneEvidenceNow: () =>
+        Date.parse(REFERENCE_CONTROL_PLANE_EVIDENCE_RUN.validUntilOrReviewAt),
+    });
+    const app = snapshot.apps[0];
+
+    assert.equal(app.productionReadiness.verifiedCount, 1);
+    assert.equal(app.productionReadiness.productionReady, false);
     assert.equal(criterion(app, "privilegedControlPlaneIsolation").status, "open");
     assert.equal(snapshot.capabilities.releaseProduction, false);
   } finally {
