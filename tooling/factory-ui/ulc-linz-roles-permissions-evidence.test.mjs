@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
 import { ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY } from "../ulc-linz-m5-role-data-scope.mjs";
@@ -11,6 +12,7 @@ import {
   ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY,
 } from "./ulc-linz-roles-permissions-evidence.mjs";
 
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const VALID_ULC_DEFINITION = Object.freeze({
   schemaVersion: 2,
   appId: "ulc-linz",
@@ -40,6 +42,12 @@ async function createFixture({ rolePolicy, databaseManifest } = {}) {
     )}\n`,
     "utf8",
   );
+
+  for (const { path } of ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY.acceptanceTests) {
+    const destination = join(root, path);
+    await mkdir(dirname(destination), { recursive: true });
+    await copyFile(join(repositoryRoot, path), destination);
+  }
   return root;
 }
 
@@ -47,7 +55,7 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-test("emits app-specific M5-B evidence only for the approved ULC role and persistence contracts", async () => {
+test("emits app-specific M5-B evidence only for the approved ULC role, persistence and acceptance contracts", async () => {
   const root = await createFixture();
   try {
     assert.deepEqual(
@@ -158,6 +166,31 @@ test("fails closed when the pinned permissions ownership contract changes even i
       ).schemaVersion,
       4,
     );
+    assert.deepEqual(
+      await deriveUlcLinzRolesAndPermissionsEvidence(
+        root,
+        VALID_ULC_DEFINITION,
+      ),
+      {},
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("fails closed when a required M5-B acceptance test changes or disappears", async () => {
+  const root = await createFixture();
+  const { path } = ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY.acceptanceTests[0];
+  try {
+    await writeFile(join(root, path), "// weakened acceptance test\n", "utf8");
+    assert.deepEqual(
+      await deriveUlcLinzRolesAndPermissionsEvidence(
+        root,
+        VALID_ULC_DEFINITION,
+      ),
+      {},
+    );
+    await rm(join(root, path), { force: true });
     assert.deepEqual(
       await deriveUlcLinzRolesAndPermissionsEvidence(
         root,
