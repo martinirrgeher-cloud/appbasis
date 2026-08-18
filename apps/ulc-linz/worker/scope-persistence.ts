@@ -1,4 +1,4 @@
-import type { createPostgresDatabase } from "@appbasis/database";
+import type { IdentityPostgresRuntimeSqlClient } from "@appbasis/identity/postgres-runtime";
 
 import type {
   UlcLinzMembershipResolution,
@@ -11,8 +11,7 @@ const SOURCE_ROLES = new Set(["admin", "trainer", "athlete", "parent"] as const)
 const DELETABLE_SOURCE_ROLES = new Set(["trainer", "athlete", "parent"] as const);
 const DELETION_MARKER_RETENTION_DAYS = 35;
 
-type SqlClient = ReturnType<typeof createPostgresDatabase>["client"];
-type SqlExecutor = Pick<SqlClient, "unsafe">;
+type SqlClient = IdentityPostgresRuntimeSqlClient;
 
 export type UlcLinzSourceRole = "admin" | "trainer" | "athlete" | "parent";
 export type UlcLinzDeletableSourceRole = Exclude<UlcLinzSourceRole, "admin">;
@@ -57,8 +56,8 @@ export class UlcLinzScopePersistenceBlockedError extends Error {
 
 /**
  * App-owned PostgreSQL persistence for the ULC-specific organization membership
- * and self/managed subject relations. This deliberately stays under apps/ulc-linz
- * instead of becoming another AppBasis platform service from a single consumer.
+ * and self/managed subject relations. It consumes the already-existing identity
+ * SQL contract and deliberately does not create another AppBasis platform service.
  */
 export class PostgresUlcLinzScopePersistence
   implements UlcLinzMembershipResolver, UlcLinzSubjectScopeResolver
@@ -133,33 +132,21 @@ export class PostgresUlcLinzScopePersistence
 
   /**
    * Final app-owner cleanup after the identity/permission owners have completed.
-   * The transaction retains only a 35-day marker, matching the confirmed maximum
-   * backup rotation window needed for retry and restore reconciliation.
+   * Marker insert, inbound/outbound scope cleanup and membership deletion execute
+   * as one PostgreSQL statement, so no partial app-owner success can be reported.
    */
   async completeIdentityDeletion(identityId: string): Promise<UlcLinzDeletionMarker> {
     const normalizedIdentityId = requiredIdentifier(identityId);
-    const completedAt = validNow(this.now());
+    const existing = await findDeletionMarker(this.sql, normalizedIdentityId);
+    if (existing !== null) {
+      await assertNoLiveScopeRows(this.sql, existing);
+      return existing;
+    }
 
-    return this.sql.begin(async (transaction) => {
-      const existing = await findDeletionMarker(transaction, normalizedIdentityId);
-      if (existing !== null) {
-        await assertNoLiveScopeRows(transaction, existing);
-        return existing;
-      }
-
-      const membershipRows = await transaction.unsafe(
-        `SELECT identity_id, organization_id, subject_id, source_role, active, ended_at
-         FROM ulc_linz_membership
-         WHERE identity_id = $1
-         FOR UPDATE`,
-        [normalizedIdentityId],
-      );
-      if (membershipRows.length !== 1) blocked();
-      const target = lifecycleTarget(membershipRows[0]);
-      const sourceRole = requiredDeletableSourceRole(target.sourceRole);
-
-      const markerRows = await transaction.unsafe(
-        `INSERT INTO ulc_linz_lifecycle_deletion (
+    const completedAt = validNow(this.now()).toISOString();
+    const rows = await this.sql.unsafe(
+      `WITH inserted AS (
+         INSERT INTO ulc_linz_lifecycle_deletion (
            identity_id,
            organization_id,
            subject_id,
@@ -167,36 +154,56 @@ export class PostgresUlcLinzScopePersistence
            completed_at,
            purge_after
          )
-         VALUES ($1, $2, $3, $4, $5, $5::timestamptz + interval '35 days')
-         RETURNING identity_id, organization_id, subject_id, source_role, completed_at, purge_after`,
-        [
-          normalizedIdentityId,
-          target.organizationId,
-          target.subjectId,
-          sourceRole,
-          completedAt.toISOString(),
-        ],
-      );
-      if (markerRows.length !== 1) blocked();
-
-      await transaction.unsafe(
-        `DELETE FROM ulc_linz_subject_scope
+         SELECT identity_id,
+                organization_id,
+                subject_id,
+                source_role,
+                $2::timestamptz,
+                $2::timestamptz + interval '35 days'
+         FROM ulc_linz_membership
          WHERE identity_id = $1
-            OR (organization_id = $2 AND subject_id = $3)`,
-        [normalizedIdentityId, target.organizationId, target.subjectId],
-      );
-      const deletedMembership = await transaction.unsafe(
-        `DELETE FROM ulc_linz_membership
-         WHERE identity_id = $1
-         RETURNING identity_id`,
-        [normalizedIdentityId],
-      );
-      if (deletedMembership.length !== 1) blocked();
+           AND source_role IN ('trainer', 'athlete', 'parent')
+         ON CONFLICT (identity_id) DO NOTHING
+         RETURNING identity_id, organization_id, subject_id, source_role, completed_at, purge_after
+       ),
+       deleted_scopes AS (
+         DELETE FROM ulc_linz_subject_scope AS scope
+         USING inserted AS marker
+         WHERE scope.identity_id = marker.identity_id
+            OR (
+              scope.organization_id = marker.organization_id
+              AND scope.subject_id = marker.subject_id
+            )
+         RETURNING scope.identity_id
+       ),
+       deleted_membership AS (
+         DELETE FROM ulc_linz_membership AS membership
+         USING inserted AS marker
+         WHERE membership.identity_id = marker.identity_id
+         RETURNING membership.identity_id
+       )
+       SELECT marker.identity_id,
+              marker.organization_id,
+              marker.subject_id,
+              marker.source_role,
+              marker.completed_at,
+              marker.purge_after,
+              (SELECT count(*)::int FROM deleted_membership) AS deleted_membership_count
+       FROM inserted AS marker`,
+      [normalizedIdentityId, completedAt],
+    );
 
-      const marker = deletionMarker(markerRows[0]);
-      await assertNoLiveScopeRows(transaction, marker);
-      return marker;
-    });
+    if (rows.length === 0) {
+      const raced = await findDeletionMarker(this.sql, normalizedIdentityId);
+      if (raced === null) blocked();
+      await assertNoLiveScopeRows(this.sql, raced);
+      return raced;
+    }
+    if (rows.length !== 1 || rows[0]?.deleted_membership_count !== 1) blocked();
+
+    const marker = deletionMarker(rows[0]);
+    await assertNoLiveScopeRows(this.sql, marker);
+    return marker;
   }
 
   /** Deterministic 12-calendar-month member/contact retention evaluation. */
@@ -240,7 +247,7 @@ function retentionState(
   const exceptionFields = [reason, actor, reviewAt].filter((value) => value !== null).length;
   if (exceptionFields !== 0 && exceptionFields !== 3) blocked();
 
-  const dueAt = addCalendarMonths(target.endedAt, 12);
+  const dueAt = addCalendarMonthsClamped(target.endedAt, 12);
   if (now.getTime() <= dueAt.getTime()) {
     return Object.freeze({ status: "active", target });
   }
@@ -250,14 +257,27 @@ function retentionState(
   return Object.freeze({ status: "due", target });
 }
 
-function addCalendarMonths(value: Date, months: number): Date {
-  const result = new Date(value.getTime());
-  result.setUTCMonth(result.getUTCMonth() + months);
-  return result;
+function addCalendarMonthsClamped(value: Date, months: number): Date {
+  const absoluteMonth = value.getUTCMonth() + months;
+  const year = value.getUTCFullYear() + Math.floor(absoluteMonth / 12);
+  const month = ((absoluteMonth % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const day = Math.min(value.getUTCDate(), lastDay);
+  return new Date(
+    Date.UTC(
+      year,
+      month,
+      day,
+      value.getUTCHours(),
+      value.getUTCMinutes(),
+      value.getUTCSeconds(),
+      value.getUTCMilliseconds(),
+    ),
+  );
 }
 
 async function findDeletionMarker(
-  sql: SqlExecutor,
+  sql: SqlClient,
   identityId: string,
 ): Promise<UlcLinzDeletionMarker | null> {
   const rows = await sql.unsafe(
@@ -272,7 +292,7 @@ async function findDeletionMarker(
 }
 
 async function assertNoLiveScopeRows(
-  sql: SqlExecutor,
+  sql: SqlClient,
   marker: UlcLinzDeletionMarker,
 ): Promise<void> {
   const rows = await sql.unsafe(
