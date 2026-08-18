@@ -264,7 +264,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function generatedWorkerTest(appId) {
-  return `import { describe, expect, it } from "vitest";
+  return String.raw`import { describe, expect, it } from "vitest";
 
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import { InMemoryPermissionStore } from "@appbasis/permissions";
