@@ -18,27 +18,31 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
-      gitBlobSha: "812f3bd9782c1481d109d6d99a4220ba97264d85",
+      gitBlobSha: "7d4e1eebaf60ef618128db99491a38ae76bdba9c",
     }),
     Object.freeze({
       path: "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
-      gitBlobSha: "1e3f20070f78630cfba4b1819903274e43e2c3ec",
+      gitBlobSha: "c8db1d7d437ac8f575fad268bc219c588c666bd8",
+    }),
+    Object.freeze({
+      path: "apps/ulc-linz/package.json",
+      gitBlobSha: "a312e67e7dda9eed15f2718f9990e0d2c2c542ea",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/lifecycle-service.ts",
-      gitBlobSha: "afcc8440506dc99748a6f5c82cd0be776232902d",
+      gitBlobSha: "9c933ecbc0f82d5a4f138da8aa530e11760c5951",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/scope-persistence.ts",
-      gitBlobSha: "7b05d4a5081717b3c55273d5069b67eba67eb947",
+      gitBlobSha: "eae61f1167a50599ab0da13dc1bca7862519c093",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/retention.ts",
-      gitBlobSha: "5782b958af6b271d91e1e78e9ef0f3c9f87d432f",
+      gitBlobSha: "688c8d641851f0c5e70d9331be913b58d82ecf7b",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/restore-reconciliation.ts",
-      gitBlobSha: "a2d0f47cbc12faab6697130f2e613164300be47d",
+      gitBlobSha: "31b0637b08cde518fc10a7a4fcd2fbf8cf40aa53",
     }),
     Object.freeze({
       path: "packages/identity/src/postgres-deletion-retention.ts",
@@ -57,12 +61,16 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
       gitBlobSha: "5db555f80cf4289d15e26b1211a1e5e6cb6ebe46",
     }),
     Object.freeze({
+      path: "apps/ulc-linz/test/lifecycle-audit.postgres.e2e.test.ts",
+      gitBlobSha: "b7d4681234af3535c5b45e0319099df3d1ef8c20",
+    }),
+    Object.freeze({
       path: "apps/ulc-linz/test/retention-state.test.ts",
-      gitBlobSha: "d5c00b414e6639dca5723856d0c83654d5e27cff",
+      gitBlobSha: "d5554fe5e05d0d9e696be5dcd1b10b3dcea4daa2",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/m5-data-inventory.test.ts",
-      gitBlobSha: "b3127e29511ec85a6cb52f0dd2658a428cfe769b",
+      gitBlobSha: "d93242bc4042333a29c159882775afac571593e0",
     }),
     Object.freeze({
       path: "packages/permissions/test/permission-administration-audit-retention.postgres.e2e.ts",
