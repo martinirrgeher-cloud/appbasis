@@ -23,6 +23,7 @@ const ROOT_FIELDS = Object.freeze([
 ]);
 const NEON_FIELDS = Object.freeze([
   "inventoryComplete",
+  "inventoryMatchesSelectedCreateScope",
   "projects",
   "targetRegionAvailable",
   "selectedCreateMethodSupportsExplicitRegion",
@@ -92,6 +93,7 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
   const neon = exactRecord(root.neon, NEON_FIELDS, "NEON_PREFLIGHT_INVALID");
   if (
     neon.inventoryComplete !== true ||
+    neon.inventoryMatchesSelectedCreateScope !== true ||
     neon.targetRegionAvailable !== true ||
     neon.selectedCreateMethodSupportsExplicitRegion !== true
   ) {
@@ -122,6 +124,7 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     environment: ENVIRONMENT,
     status: "ready-for-explicit-provider-write-approval",
     providerInventoryVerified: true,
+    providerCreateScopeVerified: true,
     noExistingProductionResourceCandidate: true,
     targetRegionAvailable: true,
     selectedCreateMethodSupportsExplicitRegion: true,
