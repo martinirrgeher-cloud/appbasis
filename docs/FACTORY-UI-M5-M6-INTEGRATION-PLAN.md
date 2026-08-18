@@ -31,6 +31,25 @@ Der UI-Stack darf nicht vor den kanonischen M5/M6-Verträgen zur neuen Wahrheit 
 
 Keine Blind-Cherry-Picks anhand dieser Datei. Die konkrete Integrationsreihenfolge wird beim späteren Live-Check aus dem dann aktuellen Main und den noch offenen PR-Abhängigkeiten abgeleitet.
 
+## Vor #166 final zu klärender Gate-/Terminologievertrag
+
+Die Projektquellen verwenden `Production Ready` aktuell in unterschiedlich breitem Sinn:
+
+- M5 heißt **Production Security & Privacy Ready v0.1** und sein Repository-Gate/Feld wird heute als `productionReady` bezeichnet.
+- Die Roadmap-Definition **Production Ready v0.1** verlangt zusätzlich Backup/DR, realen Restore, getrennte Produktionsressourcen, kontrollierte Domain/Migrationen, ausdrückliche Freigabe und grünen Post-Deploy-Smoke.
+- FC1 trennt **Production Ready** ausdrücklich von **Produktion freigegeben**.
+
+Daraus folgt: Die aktuelle #166-UI-Bezeichnung, die den engeren M5-Status als `Production Ready` darstellt, darf **nicht ungeprüft zur finalen FC1-Semantik werden**.
+
+Vor dem finalen #166-Head ist daher eine Sol-Entscheidung nötig:
+
+1. kanonische Bedeutung von `Security & Privacy Ready`, `Production Ready` und `Produktion freigegeben` festlegen,
+2. klären, welche ausdrückliche Freigabe in die Production-Ready-Definition gehört und welche das separate Release-Gate autorisiert,
+3. bei einer Grundsatzpräzisierung zuerst Entscheidungsregister, danach Betriebsakte/Roadmap konsistent aktualisieren,
+4. erst dann UI-Labels, Snapshot-Ableitung und Acceptance-Tests finalisieren.
+
+Sichere Zwischenrichtung: M5 in der UI als **Security & Privacy Ready** behandeln und `Production Ready` für den später vollständig definierten Pre-Release-Gesamtzustand reservieren. Das ist bis zur formalen Entscheidung eine Empfehlung, kein stiller Architekturentscheid.
+
 ## Empfohlene Zielreihenfolge
 
 ### Phase 1 – M5-Vertragsbasis festziehen
@@ -50,13 +69,19 @@ Vor einer UI-Finalisierung muss geklärt sein:
 
 Für #166 ist entscheidend, dass nach der finalen M6-Integration weiterhin gilt:
 
-- M5 und M6 bleiben getrennte Gates,
-- M6 kann Production Release nicht selbst autorisieren,
-- Preview-Akzeptanz bleibt ein eigener M6-Nachweis,
+- M5 und M6 bleiben getrennte fachliche Gates,
+- technische M6-Evidence kann Production Release nicht selbst autorisieren,
+- Preview-Akzeptanz bleibt ein eigener Nachweis,
 - vollständige technische Evidence ersetzt keine ausdrückliche Release-Freigabe,
 - Provider-/Resource-Evidence bleibt sanitisiert und fail-closed.
 
 #165 verändert derzeit keine #166-UI-Datei. Trotzdem muss #166 nach der finalen M6-Vertragsintegration semantisch erneut getestet werden, weil sein UI aus den Readiness-/Snapshot-Verträgen liest.
+
+#### Beim Operator-Review gefundene M6-Ausführungslücke
+
+Der aktuell gepinnte #165-Plan verlangt in seinem read-only M5-Evidence-Schritt reale M5-F-Evidence für einen Production-Security-Logging-Sink. Die 13 gepinnten Schritte enthalten derzeit jedoch keinen eigenen mutierenden Schritt, der diesen Sink bzw. die Cloudflare-Ausleitung anlegt/konfiguriert; `runtime-configuration` ist eng auf `BETTER_AUTH_SECRET`, `APPBASIS_BASE_URL` und `HYPERDRIVE` gepinnt.
+
+Vor einem realen M6-Durchlauf muss #165 oder sein finaler Nachfolger deshalb eindeutig festlegen, **welcher freigabepflichtige mutierende Schritt** den Logging-Sink/Export bereitstellt. Keine ungeplante manuelle Providerkonfiguration zwischen den gepinnten Schritten. Diese Vorbereitung ändert #165 nicht parallel, sondern markiert den Punkt für dessen finalen Integrationsreview.
 
 ### Phase 3 – #136 auf finale Basis integrieren
 
@@ -75,7 +100,7 @@ Erst danach den spezifischen #166-Slice übernehmen:
 
 - Lifecycle-Orientierung,
 - `Nächster sicherer Schritt`,
-- klare Trennung `Production Ready` / `Produktion freigeben`,
+- geklärte und kanonische Trennung der Readiness-/Release-Zustände,
 - fail-closed Cross-Gate-Darstellung,
 - kein Produktionsbutton / keine Release-Aktion.
 
@@ -129,12 +154,12 @@ Auf dem **tatsächlichen finalen Integrationshead**:
 Mindestens nachweisen:
 
 - zehn M6-Kriterien bleiben read-only sichtbar und kanonisch,
-- M5 `Production Ready` bleibt all-required/fail-closed,
-- Preview und Production Ready werden nicht gleichgesetzt,
-- Production Ready und Produktion freigeben bleiben getrennt,
+- M5 Security & Privacy bleibt all-required/fail-closed,
+- Preview und spätere Production Readiness werden nicht gleichgesetzt,
+- `Security & Privacy Ready`, `Production Ready` und `Produktion freigegeben` verwenden die dann verbindlich geklärte Semantik,
 - „Was fehlt?“ basiert auf kanonischer Evidence,
 - inkonsistente Preview-/M5-/M6-Zustände fallen fail-closed zurück,
-- vollständige M6-Evidence führt nur zur Aufforderung nach ausdrücklicher Freigabe,
+- vollständige technische Evidence führt ohne separates Release-Gate zu keiner Produktionsfreigabe,
 - `releaseProduction` bleibt ohne separat implementierten und freigegebenen späteren Slice deaktiviert,
 - keine Provider-IDs, Datenbankadressen, Connection Strings oder Secretwerte werden sichtbar,
 - keine neue Generator-, Gate-, Provider- oder Lifecycle-Plattform entsteht.
