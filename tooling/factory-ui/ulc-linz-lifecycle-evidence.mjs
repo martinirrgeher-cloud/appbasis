@@ -29,6 +29,18 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
       gitBlobSha: "21180582e2cb2f23e97ccfdd6a0cb95c0f45ce8d",
     }),
     Object.freeze({
+      path: "apps/ulc-linz/worker/app.ts",
+      gitBlobSha: "3acdcd47bf696c23334c15a11fe80c70368d608c",
+    }),
+    Object.freeze({
+      path: "packages/identity/src/better-auth.ts",
+      gitBlobSha: "6a16b0ca73961c970a57ef03cdad41670735734e",
+    }),
+    Object.freeze({
+      path: "packages/identity/src/http.ts",
+      gitBlobSha: "b920cc91c44efc953c89083adea4c85351c2470e",
+    }),
+    Object.freeze({
       path: "apps/ulc-linz/worker/lifecycle-service.ts",
       gitBlobSha: "9c933ecbc0f82d5a4f138da8aa530e11760c5951",
     }),
