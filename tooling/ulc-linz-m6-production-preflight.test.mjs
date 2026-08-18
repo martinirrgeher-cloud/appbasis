@@ -36,7 +36,17 @@ test("ULC M6 preflight verifies repository contracts but never authorizes a prov
   assert.equal(result.releaseAuthorized, false);
   assert.equal(result.explicitApprovalRequired, true);
   assert.equal(result.firstProviderWriteStepId, "neon-production-database");
-  assert.deepEqual(result.prerequisiteGates, ["M3_DONE", "M4_DONE", "M5_DONE"]);
+  assert.deepEqual(result.requiredPrerequisiteGates, [
+    "M3_DONE",
+    "M4_DONE",
+    "M5_DONE",
+  ]);
+  assert.deepEqual(result.nextAction, {
+    stepId: "neon-production-database",
+    actionClass: "provider-write",
+    approvalRequired: true,
+    executionAuthorized: false,
+  });
 
   assert.deepEqual(result.productionTarget, {
     databaseRegion: "EU / Frankfurt",
@@ -51,7 +61,7 @@ test("ULC M6 preflight verifies repository contracts but never authorizes a prov
     appDefinitionVerified: true,
     databaseManifestVerified: true,
     runtimeContractVerified: true,
-    resourceBindingContractVerified: true,
+    resourceBindingValidationContractVerified: true,
     permissionProvisioningContractVerified: true,
     m6CriterionCoverageVerified: true,
     secretValuesInRepository: false,
@@ -61,6 +71,7 @@ test("ULC M6 preflight verifies repository contracts but never authorizes a prov
 
   assert.equal(result.executionPlan, ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN);
   assert.equal(Object.isFrozen(result), true);
+  assert.equal(Object.isFrozen(result.nextAction), true);
   assert.equal(Object.isFrozen(result.executionPlan), true);
 });
 
