@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+
 import { assertNoPublicWorkerIngressEvidence } from "./worker-public-ingress-contract.mjs";
 import { evaluateUlcLinzProductionResourceBinding } from "./ulc-linz-m6-production-resource-binding.mjs";
 
@@ -8,6 +11,19 @@ const VERIFIED_EVIDENCE = Object.freeze({
 const PROVIDER = "cloudflare";
 const PROVIDER_API_SOURCE = "provider-api";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+const PUBLIC_RUNTIME_FILES = Object.freeze([
+  Object.freeze({
+    path: "apps/ulc-linz/worker/app.ts",
+    url: new URL("../apps/ulc-linz/worker/app.ts", import.meta.url),
+    gitBlobSha: "3acdcd47bf696c23334c15a11fe80c70368d608c",
+  }),
+  Object.freeze({
+    path: "apps/ulc-linz/worker/index.ts",
+    url: new URL("../apps/ulc-linz/worker/index.ts", import.meta.url),
+    gitBlobSha: "ec682291fb90cb3b5fa5eaaf5bd552b5742d411c",
+  }),
+]);
 
 const ROOT_FIELDS = Object.freeze([
   "resourceBindingEvidence",
@@ -53,6 +69,7 @@ export function deriveUlcLinzM5HControlPlaneEvidence(
       root.resourceBindingEvidence,
       { now: nowDate },
     );
+    assertCurrentPublicRuntimeContract();
     const controlPlane = exactRecord(
       root.controlPlaneEvidence,
       CONTROL_PLANE_FIELDS,
@@ -134,6 +151,19 @@ export function deriveUlcLinzM5HControlPlaneEvidence(
   }
 }
 
+function assertCurrentPublicRuntimeContract() {
+  for (const entry of PUBLIC_RUNTIME_FILES) {
+    const content = readFileSync(entry.url);
+    const digest = createHash("sha1")
+      .update(`blob ${content.length}\0`, "utf8")
+      .update(content)
+      .digest("hex");
+    if (digest !== entry.gitBlobSha) {
+      throw new Error("ULC Linz M5-H public runtime contract drifted.");
+    }
+  }
+}
+
 function exactRecord(value, fields) {
   if (
     value === null ||
@@ -178,8 +208,11 @@ function exactArray(value) {
   }
 
   const descriptors = Object.getOwnPropertyDescriptors(value);
-  const keys = Object.keys(descriptors);
+  const descriptorKeys = Object.keys(descriptors);
+  const keys = descriptorKeys.filter((key) => key !== "length");
   if (
+    descriptorKeys.length !== value.length + 1 ||
+    !Object.hasOwn(descriptors, "length") ||
     keys.length !== value.length ||
     keys.some((key, index) => key !== String(index))
   ) {

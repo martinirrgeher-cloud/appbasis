@@ -23,6 +23,8 @@ Der provider- und Reference-spezifische Cloudflare-Reader bleibt in `tooling/ref
 1. die bereits bestehende, frische ULC-Production-Resource-Binding-Evidence,
 2. eine geschützte read-only Control-Plane-Inventarevidence für exakt dieselbe App, Umgebung, Cloudflare-Account-Bindung, öffentliche Runtime und dasselbe Evidence-Zeitfenster.
 
+Der H-Consumer pinnt zusätzlich den aktuell sicherheitsgeprüften öffentlichen ULC-Runtime-Vertrag (`worker/app.ts` + `worker/index.ts`) über seine Git-Blob-Identitäten. Jede Änderung an diesen öffentlichen Routing-/Entrypoint-Grenzen invalidiert H fail-closed und verlangt eine bewusste erneute H-Prüfung. Dadurch kann ein später eingebetteter privilegierter `/api/admin/...`-Pfad nicht durch ein leeres Providerinventar unbemerkt H erfüllen.
+
 Der H-Consumer verlangt:
 
 - `application = ulc-linz`,
