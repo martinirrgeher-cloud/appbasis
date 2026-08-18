@@ -30,6 +30,11 @@ const EXPECTED_STEPS = [
     ["database-binding", "production-worker"],
   ],
   [
+    "production-security-logging-sink",
+    "provider-write",
+    ["production-worker", "runtime-configuration"],
+  ],
+  [
     "production-migrations",
     "production-data-write",
     ["neon-production-database"],
@@ -37,7 +42,12 @@ const EXPECTED_STEPS = [
   [
     "production-worker-deploy",
     "provider-write",
-    ["database-binding", "runtime-configuration", "production-migrations"],
+    [
+      "database-binding",
+      "runtime-configuration",
+      "production-security-logging-sink",
+      "production-migrations",
+    ],
   ],
   [
     "production-access-bootstrap",
@@ -53,7 +63,11 @@ const EXPECTED_STEPS = [
       "production-access-bootstrap",
     ],
   ],
-  ["m5-production-evidence", "read-only-evidence", ["production-domain-activation"]],
+  [
+    "m5-production-evidence",
+    "read-only-evidence",
+    ["production-domain-activation", "production-security-logging-sink"],
+  ],
   [
     "backup-recovery-validation",
     "recovery-validation-write",
@@ -171,7 +185,7 @@ test("ULC M6 execution plan covers every canonical M6 release criterion exactly 
   assert.deepEqual(
     ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.m6CriterionCoverage
       .securityPrivacyReady,
-    ["m5-production-evidence"],
+    ["production-security-logging-sink", "m5-production-evidence"],
   );
   assert.deepEqual(
     ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.m6CriterionCoverage.previewAccepted,
@@ -256,6 +270,35 @@ test("ULC M6 runtime configuration names secrets without storing secret values",
   assert.equal(step.target.secretValuesInRepository, false);
 });
 
+test("ULC M6 security logging sink is a separate approved write and blocks deploy and M5 evidence until its real contract can be evidenced", () => {
+  const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
+  const logging = plan.steps.find(
+    (entry) => entry.id === "production-security-logging-sink",
+  );
+  const deploy = plan.steps.find(
+    (entry) => entry.id === "production-worker-deploy",
+  );
+  const m5 = plan.steps.find((entry) => entry.id === "m5-production-evidence");
+
+  assert.equal(logging.kind, "provider-write");
+  assert.equal(logging.approvalRequired, true);
+  assert.equal(logging.target.providerNeutralContract, true);
+  assert.equal(logging.target.providerSelectionMustBeExplicit, true);
+  assert.equal(logging.target.structuredEventCaptureRequired, true);
+  assert.equal(logging.target.protectedOperationalAccessRequired, true);
+  assert.equal(logging.target.retentionMonths, 12);
+  assert.equal(logging.target.retentionMustBeProviderVerified, true);
+  assert.equal(logging.target.sinkInventoryMustBeComplete, true);
+  assert.equal(logging.target.publicReadEndpointAllowed, false);
+  assert.equal(logging.target.runtimeDeliveryIntegrationRequired, true);
+  assert.equal(deploy.requires.includes("production-security-logging-sink"), true);
+  assert.equal(m5.requires.includes("production-security-logging-sink"), true);
+  assert.equal(
+    m5.target.auditSecurityLoggingEvidenceOwner,
+    "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs",
+  );
+});
+
 test("ULC M6 production access bootstrap reuses existing identity and principal-access writers", () => {
   const step = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.steps.find(
     (entry) => entry.id === "production-access-bootstrap",
@@ -296,6 +339,10 @@ test("ULC M6 M5, recovery and post-deploy gates stay fail-closed and complete", 
   assert.equal(
     m5.target.resourceBindingConsumer,
     "tooling/ulc-linz-m6-production-resource-binding.mjs",
+  );
+  assert.equal(
+    m5.target.auditSecurityLoggingEvidenceOwner,
+    "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs",
   );
 
   assert.equal(recovery.target.automaticBackupRequired, true);
