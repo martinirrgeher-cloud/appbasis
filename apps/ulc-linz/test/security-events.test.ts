@@ -157,7 +157,7 @@ describe("ULC Linz M5-F audit and security logging", () => {
     expect(serialized).not.toContain("appbasis.session");
   });
 
-  it("records actor, action, module target and organization for an authorization denial", async () => {
+  it("records actor, action, module target and verified organization for an authorization denial", async () => {
     const events: UlcLinzSecurityEvent[] = [];
     const dependencies = authorizationDependencies({ events });
 
@@ -185,6 +185,30 @@ describe("ULC Linz M5-F audit and security logging", () => {
     });
     expect(events[0]?.occurredAt).toEqual(expect.any(String));
     expect(JSON.stringify(events[0])).not.toContain("appbasis.session");
+  });
+
+  it("does not attribute a cross-organization membership denial to the requested organization", async () => {
+    const events: UlcLinzSecurityEvent[] = [];
+    const dependencies = authorizationDependencies({
+      events,
+      membershipOrganizationId: "verein-2",
+    });
+
+    await expect(
+      assertUlcLinzModuleAccess(currentIdentity(), dependencies, {
+        organizationId: ORGANIZATION_ID,
+        moduleKey: "kindertraining",
+        action: "view",
+        scope: "organization",
+      }),
+    ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventType: "authorization.denied",
+      organizationId: null,
+      reasonCode: "membership-denied",
+    });
   });
 
   it("never copies a subject id into a denied managed-access event", async () => {
@@ -263,6 +287,28 @@ describe("ULC Linz M5-F audit and security logging", () => {
       "[ulc-linz-security] security event sink failed",
     );
     expect(JSON.stringify(fallback.mock.calls)).not.toContain("must-not-escape");
+  });
+
+  it("keeps denial semantics even when both the security sink and fallback console fail", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {
+      throw new Error("console unavailable");
+    });
+    const dependencies = authorizationDependencies({
+      logger: {
+        record() {
+          throw new Error("sink unavailable");
+        },
+      },
+    });
+
+    await expect(
+      assertUlcLinzModuleAccess(currentIdentity(), dependencies, {
+        organizationId: ORGANIZATION_ID,
+        moduleKey: "kindertraining",
+        action: "view",
+        scope: "organization",
+      }),
+    ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
   });
 
   it("preserves the original denied identity response when the sink throws", async () => {
