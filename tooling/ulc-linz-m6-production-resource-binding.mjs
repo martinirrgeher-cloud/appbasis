@@ -11,6 +11,10 @@ const NEON_FRANKFURT_REGION = "aws-eu-central-1";
 const PROVIDER_API_SOURCE = "provider-api";
 const RUNTIME_CONTRACT_FILES = Object.freeze([
   Object.freeze({
+    path: "apps/ulc-linz/worker/app.ts",
+    url: new URL("../apps/ulc-linz/worker/app.ts", import.meta.url),
+  }),
+  Object.freeze({
     path: "apps/ulc-linz/worker/index.ts",
     url: new URL("../apps/ulc-linz/worker/index.ts", import.meta.url),
   }),
