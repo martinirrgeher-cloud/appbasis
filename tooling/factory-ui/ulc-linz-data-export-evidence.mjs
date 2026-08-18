@@ -14,6 +14,8 @@ export const ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY = Object.freeze({
   platformServices: Object.freeze(["identity", "permissions"]),
   inventoryGitBlobSha: "7d4e1eebaf60ef618128db99491a38ae76bdba9c",
   requiredPostgresTest: "./test/data-export.postgres.e2e.test.ts",
+  requiredRepositoryEvidenceTest:
+    "./tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs",
   evidenceFiles: Object.freeze([
     Object.freeze({ path: "apps/ulc-linz/privacy/m5-export-contract.json", gitBlobSha: "1fc2f45a75ae464e2fac9324ef27f8a03d5b65f4" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export.ts", gitBlobSha: "539c2f7455a0b847e0afda39ddfe0acd471cb8d2" }),
@@ -24,6 +26,7 @@ export const ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY = Object.freeze({
     Object.freeze({ path: "apps/ulc-linz/test/data-export-fail-closed.test.ts", gitBlobSha: "d73b5e2d30c30fa2c94547e1b003fb6c0093f649" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export.postgres.e2e.test.ts", gitBlobSha: "5b51decd4358d2962ced6d8cc11934533846daf3" }),
     Object.freeze({ path: "apps/ulc-linz/test/m5-export-contract.test.ts", gitBlobSha: "97923ac69499123de6b8ce87e81f6d89a431347e" }),
+    Object.freeze({ path: "tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs", gitBlobSha: "51d815eae660b113869f806a4baffac3edd8980a" }),
   ]),
 });
 
@@ -43,12 +46,13 @@ export async function deriveUlcLinzDataExportEvidence(
 
   try {
     const root = resolve(repositoryRoot);
-    const [databaseManifest, inventory, exportContract, appPackage, filesValid] =
+    const [databaseManifest, inventory, exportContract, appPackage, rootPackage, filesValid] =
       await Promise.all([
         readJsonObject(join(root, "apps", "ulc-linz", "appbasis.database.json")),
         readJsonObject(join(root, "apps", "ulc-linz", "privacy", "m5-data-inventory.json")),
         readJsonObject(join(root, "apps", "ulc-linz", "privacy", "m5-export-contract.json")),
         readJsonObject(join(root, "apps", "ulc-linz", "package.json")),
+        readJsonObject(join(root, "package.json")),
         verifyEvidenceFiles(root),
       ]);
     const expectedDatabaseManifest = createExpectedUlcLinzDatabaseManifest(definition);
@@ -59,9 +63,11 @@ export async function deriveUlcLinzDataExportEvidence(
       inventory === undefined ||
       exportContract === undefined ||
       appPackage === undefined ||
+      rootPackage === undefined ||
       !isCurrentInventory(inventory) ||
       !isCompleteExportClassification(inventory, exportContract) ||
       !executesPostgresAcceptance(appPackage) ||
+      !executesRepositoryAcceptance(rootPackage) ||
       !filesValid
     ) {
       return EMPTY_EVIDENCE;
@@ -148,6 +154,16 @@ function executesPostgresAcceptance(appPackage) {
   return (
     typeof script === "string" &&
     script.split(/\s+/u).includes(ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY.requiredPostgresTest)
+  );
+}
+
+function executesRepositoryAcceptance(rootPackage) {
+  const script = rootPackage.scripts?.["verify:apps"];
+  return (
+    typeof script === "string" &&
+    script
+      .split(/\s+/u)
+      .includes(ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY.requiredRepositoryEvidenceTest)
   );
 }
 
