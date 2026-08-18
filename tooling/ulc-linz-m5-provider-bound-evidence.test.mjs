@@ -137,6 +137,24 @@ function complianceEvidence() {
         purpose: "application-persistence",
         status: "verified",
       },
+      {
+        from: "appbasis-control-plane",
+        to: "cloudflare",
+        purpose: "provider-evidence-read",
+        status: "verified",
+      },
+      {
+        from: "appbasis-control-plane",
+        to: "neon-postgresql",
+        purpose: "provider-evidence-read",
+        status: "verified",
+      },
+      {
+        from: "neon-postgresql",
+        to: "neon-postgresql",
+        purpose: "managed-backup-recovery",
+        status: "verified",
+      },
     ],
   };
 }
@@ -236,6 +254,14 @@ test("fails closed when provider semantics disagree across the two evidence laye
   const wrongRuntime = complianceEvidence();
   wrongRuntime.providers.cloudflare.runtimeClass = "regional-services";
   assert.deepEqual(derive(resourceBindingEvidence(), wrongRuntime), {});
+});
+
+test("fails closed when a canonical operational flow is absent", () => {
+  const compliance = complianceEvidence();
+  compliance.dataFlows = compliance.dataFlows.filter(
+    (flow) => flow.purpose !== "managed-backup-recovery",
+  );
+  assert.deepEqual(derive(resourceBindingEvidence(), compliance), {});
 });
 
 test("preserves independent criteria after the common runtime/resource binding has been proven", () => {

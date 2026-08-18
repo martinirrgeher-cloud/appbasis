@@ -140,6 +140,24 @@ function completeEvidence() {
         purpose: "application-persistence",
         status: "verified",
       },
+      {
+        from: "appbasis-control-plane",
+        to: "cloudflare",
+        purpose: "provider-evidence-read",
+        status: "verified",
+      },
+      {
+        from: "appbasis-control-plane",
+        to: "neon-postgresql",
+        purpose: "provider-evidence-read",
+        status: "verified",
+      },
+      {
+        from: "neon-postgresql",
+        to: "neon-postgresql",
+        purpose: "managed-backup-recovery",
+        status: "verified",
+      },
     ],
   };
 }
@@ -354,6 +372,15 @@ test("known persistent personal-data Cloudflare bindings block all criteria with
   assertAllOpen(compliance);
   assert.equal(compliance.providers.cloudflare.unexpectedPersonalDataPersistence, true);
   assert.equal(JSON.stringify(compliance).includes("r2_bucket"), false);
+});
+
+test("a missing required control-plane or backup data flow blocks all criteria", () => {
+  for (const purpose of ["provider-evidence-read", "managed-backup-recovery"]) {
+    const evidence = completeEvidence();
+    const index = evidence.dataFlows.findIndex((flow) => flow.purpose === purpose);
+    evidence.dataFlows.splice(index, 1);
+    assertAllOpen(evaluate(evidence));
+  }
 });
 
 test("an additional verified but non-canonical data flow blocks all criteria until the inventory is updated", () => {

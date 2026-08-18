@@ -30,6 +30,20 @@ Der finale technische Pfad verbindet drei bereits vorhandene Verantwortungen:
 
 `ulc-linz-m5-provider-bound-evidence.mjs` ist der kanonische gebundene M5-G-Produktions-Evidence-Pfad für den späteren Factory-Consumer. Er akzeptiert die beiden Evidence-Schichten nur gemeinsam.
 
+## Kanonischer Datenfluss-Scope
+
+Der aktuelle M5-G-Scope enthält genau die heute erforderlichen Grundflüsse:
+
+1. `ulc-linz-user -> cloudflare` für `application-request-processing`
+2. `cloudflare -> neon-postgresql` für `application-persistence`
+3. `appbasis-control-plane -> cloudflare` für `provider-evidence-read`
+4. `appbasis-control-plane -> neon-postgresql` für `provider-evidence-read`
+5. `neon-postgresql -> neon-postgresql` für `managed-backup-recovery`
+
+Damit sind auch die geschützten Provider-Evidence-Abfragen und der Neon-Backup-/Recovery-Pfad Teil der fail-closed Scope-Prüfung.
+
+Cloudflare Logs/Telemetry werden nicht als fiktiver zusätzlicher Datenfluss eingetragen, solange kein konkreter realer Zielpfad belegt ist. Stattdessen muss das reale Telemetry-Inventar vollständig sein. Sobald ein zusätzlicher realer Telemetry-/Logging-Datenfluss vorhanden ist, blockiert die bestehende exakte Datenflussprüfung alle vier M5-G-Kriterien, bis dieser Flow bewusst in den kanonischen Scope aufgenommen und bewertet wurde.
+
 ## Fail-closed Bindung
 
 Production-Evidence wird nur abgeleitet, wenn:
@@ -42,7 +56,8 @@ Production-Evidence wird nur abgeleitet, wenn:
 - die Neon-Region autoritativ Frankfurt ist,
 - die Compliance-Evidence dieselbe Neon-Region trägt,
 - Cloudflare als `standard-workers` beobachtet ist,
-- der Compliance-Snapshot vollständige Produktionsressourcenbindung enthält.
+- der Compliance-Snapshot vollständige Produktionsressourcenbindung enthält,
+- alle fünf kanonischen aktuellen Datenflüsse vollständig und als `verified` belegt sind.
 
 Fehlt oder widerspricht einer dieser gemeinsamen Nachweise, liefert der gebundene Consumer `{}`. Ein einzelner plausibler Compliance-Snapshot kann damit keinen Produktionsnachweis mehr ohne exakte Runtime-/Resource-Bindung erzeugen.
 

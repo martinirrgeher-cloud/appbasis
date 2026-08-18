@@ -129,7 +129,7 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
     expect(inventory.m5.dataRegion).toBe("open");
   });
 
-  it("defines the minimal current data-flow inventory and the planned freshness fields", async () => {
+  it("defines the complete current M5-G operational data-flow inventory and freshness fields", async () => {
     const inventory = await readJson<ProviderInventory>(inventoryUrl);
 
     expect(inventory.dataFlows).toEqual([
@@ -143,6 +143,24 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
         from: "cloudflare",
         to: "neon-postgresql",
         purpose: "application-persistence",
+        evidenceStatus: "open",
+      },
+      {
+        from: "appbasis-control-plane",
+        to: "cloudflare",
+        purpose: "provider-evidence-read",
+        evidenceStatus: "open",
+      },
+      {
+        from: "appbasis-control-plane",
+        to: "neon-postgresql",
+        purpose: "provider-evidence-read",
+        evidenceStatus: "open",
+      },
+      {
+        from: "neon-postgresql",
+        to: "neon-postgresql",
+        purpose: "managed-backup-recovery",
         evidenceStatus: "open",
       },
     ]);
