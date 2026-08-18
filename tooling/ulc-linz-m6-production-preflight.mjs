@@ -1,7 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
+import { REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA } from "./factory-ui/production-release-readiness.mjs";
+import {
+  ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE,
+  isCanonicalUlcLinzM5PermissionProvisioningBundle,
+} from "./ulc-linz-m5-permission-provisioning.mjs";
 import { ULC_LINZ_M5_TARGET_POLICY } from "./ulc-linz-m5-target-policy.mjs";
+import { createExpectedUlcLinzDatabaseManifest } from "./ulc-linz-database-contract.mjs";
 import { ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT } from "./ulc-linz-m6-production-resource-binding.mjs";
 
 const APPLICATION = "ulc-linz";
@@ -17,18 +24,6 @@ const APP_DEFINITION_FIELDS = Object.freeze([
   "modules",
   "platformServices",
 ]);
-const DATABASE_MANIFEST_FIELDS = Object.freeze([
-  "manifestVersion",
-  "application",
-  "dialect",
-  "owners",
-]);
-const DATABASE_OWNER_FIELDS = Object.freeze([
-  "id",
-  "root",
-  "schemaVersion",
-  "migrations",
-]);
 const RESOURCE_BINDING_CONTRACT_FIELDS = Object.freeze([
   "schemaVersion",
   "application",
@@ -39,37 +34,30 @@ const RESOURCE_BINDING_CONTRACT_FIELDS = Object.freeze([
   "euOnly",
   "neonRegion",
 ]);
+const MUTATING_STEP_KINDS = Object.freeze(
+  new Set([
+    "provider-write",
+    "production-data-write",
+    "application-write",
+    "public-exposure-write",
+    "recovery-validation-write",
+    "production-smoke-write",
+    "authorization-gate",
+  ]),
+);
 
-const EXPECTED_DATABASE_OWNERS = deepFreeze([
-  {
-    id: "identity",
-    root: "packages/identity",
-    schemaVersion: 2,
-    migrations: [
-      "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
-      "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
-    ],
-  },
-  {
-    id: "permissions",
-    root: "packages/permissions",
-    schemaVersion: 4,
-    migrations: [
-      "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
-      "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
-      "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
-      "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
-    ],
-  },
-  {
-    id: "ulc-linz-lifecycle",
-    root: "apps/ulc-linz",
-    schemaVersion: 1,
-    migrations: [
-      "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
-    ],
-  },
-]);
+const M6_CRITERION_COVERAGE = deepFreeze({
+  previewAccepted: ["prerequisite:M3_DONE"],
+  productionDatabaseReady: ["neon-production-database", "database-binding"],
+  productionWorkerReady: ["production-worker", "production-worker-deploy"],
+  productionDomainReady: ["production-domain-activation"],
+  productionUsersAndPermissionsReady: ["production-access-bootstrap"],
+  backupRecoveryReady: ["backup-recovery-validation"],
+  securityPrivacyReady: ["m5-production-evidence"],
+  productionMigrationsApplied: ["production-migrations"],
+  productionDeploymentCompleted: ["production-worker-deploy"],
+  postDeploySmokePassed: ["post-deploy-smokes"],
+});
 
 export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
   schemaVersion: 1,
@@ -78,6 +66,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
   mode: "preflight-only",
   providerWritesEnabled: false,
   firstProviderWriteStepId: "neon-production-database",
+  m6CriterionCoverage: M6_CRITERION_COVERAGE,
   steps: [
     {
       sequence: 1,
@@ -117,30 +106,28 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
     },
     {
       sequence: 4,
-      id: "production-domain-preparation",
-      kind: "provider-write",
+      id: "production-domain-selection",
+      kind: "operator-input",
       approvalRequired: true,
       requires: ["production-worker"],
       target: {
-        provider: "cloudflare",
         hostnameSource: "operator-supplied",
+        providerWrite: false,
         publicIngress: false,
       },
     },
     {
       sequence: 5,
-      id: "runtime-secrets",
+      id: "runtime-configuration",
       kind: "provider-write",
       approvalRequired: true,
       requires: ["database-binding", "production-worker"],
       target: {
         provider: "cloudflare",
+        secretNames: ["BETTER_AUTH_SECRET"],
+        plainConfigurationNames: ["APPBASIS_BASE_URL"],
+        requiredBindings: ["HYPERDRIVE"],
         secretValuesInRepository: false,
-        requiredRuntimeConfiguration: [
-          "BETTER_AUTH_SECRET",
-          "APPBASIS_BASE_URL",
-          "HYPERDRIVE",
-        ],
       },
     },
     {
@@ -152,7 +139,10 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       target: {
         dialect: "postgresql",
         manifest: "apps/ulc-linz/appbasis.database.json",
-        backupBeforeCriticalMigrationRequired: true,
+        backupRecoveryStatePrecheckRequired: true,
+        immediateBackupBeforeCriticalMigrationPreferred: true,
+        rollbackOrRecoveryPlanRequired: true,
+        migrationVerificationRequired: true,
       },
     },
     {
@@ -162,7 +152,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       approvalRequired: true,
       requires: [
         "database-binding",
-        "runtime-secrets",
+        "runtime-configuration",
         "production-migrations",
       ],
       target: {
@@ -173,12 +163,28 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
     },
     {
       sequence: 8,
+      id: "production-access-bootstrap",
+      kind: "application-write",
+      approvalRequired: true,
+      requires: ["production-migrations", "production-worker-deploy"],
+      target: {
+        canonicalPermissionBundle:
+          "tooling/ulc-linz-m5-permission-provisioning.mjs",
+        principalAssignmentsMustBeExplicit: true,
+        defaultPrincipalAssignments: 0,
+        leastPrivilegeRequired: true,
+        noSecondProvisioningContract: true,
+      },
+    },
+    {
+      sequence: 9,
       id: "production-domain-activation",
       kind: "public-exposure-write",
       approvalRequired: true,
       requires: [
-        "production-domain-preparation",
+        "production-domain-selection",
         "production-worker-deploy",
+        "production-access-bootstrap",
       ],
       target: {
         provider: "cloudflare",
@@ -187,7 +193,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 9,
+      sequence: 10,
       id: "m5-production-evidence",
       kind: "read-only-evidence",
       approvalRequired: false,
@@ -196,21 +202,30 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
         gate: "Production Security & Privacy Ready v0.1",
         resourceBindingConsumer:
           "tooling/ulc-linz-m6-production-resource-binding.mjs",
+        allRequired: true,
+        failClosed: true,
       },
     },
     {
-      sequence: 10,
+      sequence: 11,
       id: "backup-recovery-validation",
       kind: "recovery-validation-write",
       approvalRequired: true,
       requires: ["m5-production-evidence", "production-migrations"],
       target: {
         gate: "Backup & Disaster Recovery v0.1",
+        automaticBackupRequired: true,
+        retentionRequired: true,
+        pointInTimeRecoveryPreferred: true,
         realRestoreRequired: true,
+        restoreDataIntegrityCheckRequired: true,
+        restoreAuthCheckRequired: true,
+        restorePermissionsCheckRequired: true,
+        restoreApplicationSmokeRequired: true,
       },
     },
     {
-      sequence: 11,
+      sequence: 12,
       id: "post-deploy-smokes",
       kind: "production-smoke-write",
       approvalRequired: true,
@@ -224,7 +239,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 12,
+      sequence: 13,
       id: "release-gate",
       kind: "authorization-gate",
       approvalRequired: true,
@@ -254,10 +269,15 @@ export async function evaluateUlcLinzM6ProductionPreflight(
 ) {
   assertCanonicalTargetContract();
   assertExecutionPlanContract();
+  assertM6CoverageContract();
+  assertPermissionProvisioningContract();
 
   const root = resolve(repositoryRoot);
   const [appDefinition, databaseManifest] = await Promise.all([
-    readJson(join(root, "apps", APPLICATION, "appbasis.app.json"), "APP_DEFINITION_INVALID"),
+    readJson(
+      join(root, "apps", APPLICATION, "appbasis.app.json"),
+      "APP_DEFINITION_INVALID",
+    ),
     readJson(
       join(root, "apps", APPLICATION, "appbasis.database.json"),
       "DATABASE_MANIFEST_INVALID",
@@ -265,7 +285,7 @@ export async function evaluateUlcLinzM6ProductionPreflight(
   ]);
 
   assertAppDefinition(appDefinition);
-  assertDatabaseManifest(databaseManifest);
+  assertDatabaseManifest(appDefinition, databaseManifest);
   assertResourceBindingContract();
 
   return deepFreeze({
@@ -293,6 +313,8 @@ export async function evaluateUlcLinzM6ProductionPreflight(
       databaseManifestVerified: true,
       runtimeContractVerified: true,
       resourceBindingContractVerified: true,
+      permissionProvisioningContractVerified: true,
+      m6CriterionCoverageVerified: true,
       secretValuesInRepository: false,
       automaticProviderWrites: false,
       automaticProductionRelease: false,
@@ -319,7 +341,7 @@ function assertExecutionPlanContract() {
     plan.providerWritesEnabled !== false ||
     plan.firstProviderWriteStepId !== "neon-production-database" ||
     !Array.isArray(plan.steps) ||
-    plan.steps.length !== 12
+    plan.steps.length !== 13
   ) {
     fail("EXECUTION_PLAN_DRIFT");
   }
@@ -328,10 +350,11 @@ function assertExecutionPlanContract() {
     "neon-production-database",
     "production-worker",
     "database-binding",
-    "production-domain-preparation",
-    "runtime-secrets",
+    "production-domain-selection",
+    "runtime-configuration",
     "production-migrations",
     "production-worker-deploy",
+    "production-access-bootstrap",
     "production-domain-activation",
     "m5-production-evidence",
     "backup-recovery-validation",
@@ -350,9 +373,20 @@ function assertExecutionPlanContract() {
       fail("EXECUTION_PLAN_DRIFT");
     }
 
-    if (step.kind !== "read-only-evidence" && step.approvalRequired !== true) {
+    if (MUTATING_STEP_KINDS.has(step.kind) && step.approvalRequired !== true) {
       fail("WRITE_BOUNDARY_DRIFT");
     }
+  }
+
+  const domainSelection = plan.steps.find(
+    (step) => step.id === "production-domain-selection",
+  );
+  if (
+    domainSelection?.kind !== "operator-input" ||
+    domainSelection.target?.providerWrite !== false ||
+    domainSelection.target?.publicIngress !== false
+  ) {
+    fail("DOMAIN_SELECTION_BOUNDARY_DRIFT");
   }
 
   const domainActivation = plan.steps.find(
@@ -360,18 +394,68 @@ function assertExecutionPlanContract() {
   );
   if (
     domainActivation?.kind !== "public-exposure-write" ||
-    domainActivation.target?.publicIngress !== true
+    domainActivation.target?.publicIngress !== true ||
+    domainActivation.approvalRequired !== true
   ) {
     fail("PUBLIC_EXPOSURE_BOUNDARY_DRIFT");
+  }
+
+  const migration = plan.steps.find(
+    (step) => step.id === "production-migrations",
+  );
+  if (
+    migration?.target?.backupRecoveryStatePrecheckRequired !== true ||
+    migration.target?.immediateBackupBeforeCriticalMigrationPreferred !== true ||
+    migration.target?.rollbackOrRecoveryPlanRequired !== true ||
+    migration.target?.migrationVerificationRequired !== true
+  ) {
+    fail("MIGRATION_SAFETY_DRIFT");
   }
 
   const releaseGate = plan.steps.at(-1);
   if (
     releaseGate?.id !== "release-gate" ||
     releaseGate.target?.automaticRelease !== false ||
-    releaseGate.target?.explicitUserReleaseApprovalRequired !== true
+    releaseGate.target?.explicitUserReleaseApprovalRequired !== true ||
+    releaseGate.approvalRequired !== true
   ) {
     fail("RELEASE_GATE_DRIFT");
+  }
+}
+
+function assertM6CoverageContract() {
+  const requiredIds = REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map(
+    (criterion) => criterion.id,
+  ).sort();
+  const coveredIds = Object.keys(M6_CRITERION_COVERAGE).sort();
+  if (!isDeepStrictEqual(coveredIds, requiredIds)) {
+    fail("M6_CRITERION_COVERAGE_DRIFT");
+  }
+
+  const stepIds = new Set(
+    ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.steps.map((step) => step.id),
+  );
+  for (const references of Object.values(M6_CRITERION_COVERAGE)) {
+    if (
+      !Array.isArray(references) ||
+      references.length < 1 ||
+      references.some(
+        (reference) =>
+          typeof reference !== "string" ||
+          (!reference.startsWith("prerequisite:") && !stepIds.has(reference)),
+      )
+    ) {
+      fail("M6_CRITERION_COVERAGE_DRIFT");
+    }
+  }
+}
+
+function assertPermissionProvisioningContract() {
+  if (
+    !isCanonicalUlcLinzM5PermissionProvisioningBundle() ||
+    ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE.principalRoleAssignments.length !== 0
+  ) {
+    fail("PERMISSION_PROVISIONING_CONTRACT_DRIFT");
   }
 }
 
@@ -382,43 +466,22 @@ function assertAppDefinition(value) {
     app.appId !== APPLICATION ||
     typeof app.displayName !== "string" ||
     app.displayName.length < 1 ||
-    !exactStringArray(app.modules, []) ||
-    !exactStringArray(app.platformServices, ["identity", "permissions"])
+    !isDeepStrictEqual(app.modules, []) ||
+    !isDeepStrictEqual(app.platformServices, ["identity", "permissions"])
   ) {
     fail("APP_DEFINITION_INVALID");
   }
 }
 
-function assertDatabaseManifest(value) {
-  const manifest = exactRecord(
-    value,
-    DATABASE_MANIFEST_FIELDS,
-    "DATABASE_MANIFEST_INVALID",
-  );
-  if (
-    manifest.manifestVersion !== 1 ||
-    manifest.application !== APPLICATION ||
-    manifest.dialect !== "postgresql" ||
-    !Array.isArray(manifest.owners) ||
-    manifest.owners.length !== EXPECTED_DATABASE_OWNERS.length
-  ) {
+function assertDatabaseManifest(definition, value) {
+  let expected;
+  try {
+    expected = createExpectedUlcLinzDatabaseManifest(definition);
+  } catch {
     fail("DATABASE_MANIFEST_INVALID");
   }
-
-  for (const [index, expectedOwner] of EXPECTED_DATABASE_OWNERS.entries()) {
-    const owner = exactRecord(
-      manifest.owners[index],
-      DATABASE_OWNER_FIELDS,
-      "DATABASE_MANIFEST_INVALID",
-    );
-    if (
-      owner.id !== expectedOwner.id ||
-      owner.root !== expectedOwner.root ||
-      owner.schemaVersion !== expectedOwner.schemaVersion ||
-      !exactStringArray(owner.migrations, expectedOwner.migrations)
-    ) {
-      fail("DATABASE_MANIFEST_INVALID");
-    }
+  if (!isDeepStrictEqual(value, expected)) {
+    fail("DATABASE_MANIFEST_INVALID");
   }
 }
 
@@ -452,8 +515,11 @@ async function readJson(path, code) {
   }
 
   try {
-    return JSON.parse(content);
-  } catch {
+    const parsed = JSON.parse(content);
+    if (!isPlainRecord(parsed)) fail(code);
+    return parsed;
+  } catch (error) {
+    if (error instanceof UlcLinzM6ProductionPreflightError) throw error;
     fail(code);
   }
 }
@@ -476,26 +542,6 @@ function exactRecord(value, fields, code) {
     }
   }
   return value;
-}
-
-function exactStringArray(value, expected) {
-  if (!Array.isArray(value) || value.length !== expected.length) return false;
-  if (Object.getOwnPropertySymbols(value).length > 0) return false;
-  const descriptors = Object.getOwnPropertyDescriptors(value);
-  const expectedKeys = new Set([
-    ...expected.map((_, index) => String(index)),
-    "length",
-  ]);
-  if (
-    Object.keys(descriptors).length !== expectedKeys.size ||
-    Object.keys(descriptors).some((key) => !expectedKeys.has(key))
-  ) {
-    return false;
-  }
-  for (const [index, item] of value.entries()) {
-    if (item !== expected[index]) return false;
-  }
-  return true;
 }
 
 function isPlainRecord(value) {
