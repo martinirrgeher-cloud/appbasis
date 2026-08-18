@@ -25,6 +25,7 @@ describe("ULC Linz deterministic retention state", () => {
           ended_at: null,
           retention_exception_reason: null,
           retention_exception_actor: null,
+          retention_exception_created_at: null,
           retention_review_at: null,
         },
         {
@@ -36,6 +37,7 @@ describe("ULC Linz deterministic retention state", () => {
           ended_at: "2025-08-18T10:30:00.000Z",
           retention_exception_reason: null,
           retention_exception_actor: null,
+          retention_exception_created_at: null,
           retention_review_at: null,
         },
         {
@@ -47,6 +49,7 @@ describe("ULC Linz deterministic retention state", () => {
           ended_at: "2025-08-17T10:30:00.000Z",
           retention_exception_reason: null,
           retention_exception_actor: null,
+          retention_exception_created_at: null,
           retention_review_at: null,
         },
         {
@@ -58,6 +61,7 @@ describe("ULC Linz deterministic retention state", () => {
           ended_at: "2025-07-18T10:30:00.000Z",
           retention_exception_reason: "legal-hold",
           retention_exception_actor: "ulc-admin",
+          retention_exception_created_at: "2026-08-18T10:00:00.000Z",
           retention_review_at: "2026-10-18T10:30:00.000Z",
         },
         {
@@ -69,6 +73,7 @@ describe("ULC Linz deterministic retention state", () => {
           ended_at: "2025-07-18T10:30:00.000Z",
           retention_exception_reason: "legal-hold",
           retention_exception_actor: "ulc-admin",
+          retention_exception_created_at: "2026-08-17T10:30:00.000Z",
           retention_review_at: "2026-08-18T10:29:59.999Z",
         },
       ]),
@@ -83,6 +88,15 @@ describe("ULC Linz deterministic retention state", () => {
       ["future-review", "exception"],
       ["expired-review", "due"],
     ]);
+    expect(
+      states.find((state) => state.target.identityId === "future-review"),
+    ).toMatchObject({
+      status: "exception",
+      actor: "ulc-admin",
+      reason: "legal-hold",
+      createdAt: new Date("2026-08-18T10:00:00.000Z"),
+      reviewAt: new Date("2026-10-18T10:30:00.000Z"),
+    });
   });
 
   it("fails closed on an impossible inactive admin lifecycle row", async () => {
@@ -97,6 +111,7 @@ describe("ULC Linz deterministic retention state", () => {
           ended_at: "2025-07-18T10:30:00.000Z",
           retention_exception_reason: null,
           retention_exception_actor: null,
+          retention_exception_created_at: null,
           retention_review_at: null,
         },
       ]),
