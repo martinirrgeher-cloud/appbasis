@@ -258,13 +258,14 @@ async function applyManifestMigrations(
     await readFile(new URL("../appbasis.database.json", import.meta.url), "utf8"),
   ) as DatabaseManifest;
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 6 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 7 || new Set(migrations).size !== migrations.length) {
     throw new Error("ULC lifecycle E2E requires the exact manifest-owned migration set.");
   }
   for (const migration of migrations) {
     if (
       !migration.startsWith("packages/identity/") &&
-      !migration.startsWith("packages/permissions/")
+      !migration.startsWith("packages/permissions/") &&
+      migration !== "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql"
     ) {
       throw new Error("ULC lifecycle E2E encountered an unexpected migration owner.");
     }
