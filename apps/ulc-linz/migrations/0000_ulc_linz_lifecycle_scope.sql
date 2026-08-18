@@ -22,7 +22,13 @@ CREATE TABLE "ulc_linz_membership" (
     CHECK (
       ("retention_exception_reason" IS NULL AND "retention_exception_actor" IS NULL AND "retention_review_at" IS NULL)
       OR
-      ("retention_exception_reason" IS NOT NULL AND "retention_exception_actor" IS NOT NULL AND "retention_review_at" IS NOT NULL)
+      (
+        "active" = false
+        AND "source_role" <> 'admin'
+        AND "retention_exception_reason" IS NOT NULL
+        AND "retention_exception_actor" IS NOT NULL
+        AND "retention_review_at" IS NOT NULL
+      )
     )
 );
 --> statement-breakpoint
