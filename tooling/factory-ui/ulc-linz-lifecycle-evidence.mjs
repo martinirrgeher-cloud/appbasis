@@ -22,7 +22,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
-      gitBlobSha: "1254dc8bee280d6bec4a4436f792e83386461ef7",
+      gitBlobSha: "1e3f20070f78630cfba4b1819903274e43e2c3ec",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/lifecycle-service.ts",
@@ -55,6 +55,10 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle-persistence.postgres.e2e.test.ts",
       gitBlobSha: "5db555f80cf4289d15e26b1211a1e5e6cb6ebe46",
+    }),
+    Object.freeze({
+      path: "apps/ulc-linz/test/retention-state.test.ts",
+      gitBlobSha: "d5c00b414e6639dca5723856d0c83654d5e27cff",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/m5-data-inventory.test.ts",
