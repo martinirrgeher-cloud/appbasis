@@ -65,6 +65,9 @@ function authorizationDependencies(input: {
   const sourceRole = input.sourceRole ?? "trainer";
   const role = roleId(`ulc-linz:${sourceRole}`);
   const view = capabilityId("ulc-linz:module:kindertraining:view");
+  const securityEvents =
+    input.logger ??
+    (input.events === undefined ? undefined : eventCollector(input.events));
 
   return {
     permissions: new InMemoryPermissionStore({
@@ -93,9 +96,7 @@ function authorizationDependencies(input: {
         return input.relation ?? false;
       },
     },
-    securityEvents:
-      input.logger ??
-      (input.events === undefined ? undefined : eventCollector(input.events)),
+    ...(securityEvents === undefined ? {} : { securityEvents }),
   };
 }
 
