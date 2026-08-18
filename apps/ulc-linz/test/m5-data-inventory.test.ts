@@ -24,16 +24,17 @@ type PersistentTableInventory = {
   owner: string;
   privacyClass: string;
   retentionPolicy: string;
-  deletionEvidence: "open";
-  retentionEvidence: "open";
+  deletionEvidence: string;
+  retentionEvidence: string;
 };
 
 type DataInventory = {
   schemaVersion: number;
   application: string;
+  scope: string;
   persistentOwners: Array<
     PersistentOwnerContract & {
-      lifecycleStatus: "open";
+      lifecycleStatus: string;
       notes: string[];
     }
   >;
@@ -41,31 +42,33 @@ type DataInventory = {
   runtimeModules: string[];
   backingStores: {
     memberships: {
-      status: "unbound";
-      sourceContract: "UlcLinzMembershipResolver";
+      status: string;
+      sourceContract: string;
+      owner: string;
+      table: string;
     };
     subjectScopes: {
-      status: "unbound";
-      sourceContract: "UlcLinzSubjectScopeResolver";
+      status: string;
+      sourceContract: string;
+      owner: string;
+      table: string;
     };
   };
   objectStorage: {
-    status: "not-configured";
+    status: string;
+    futureIntroduction: string;
   };
-  m5: {
-    deletionPolicy: "open";
-    retentionPolicy: "open";
-    unknownPersistentOwner: "fail-closed";
-    unknownPersistentTable: "fail-closed";
-    unknownRuntimeModule: "fail-closed";
-    unknownBackingStore: "fail-closed";
-  };
+  m5: Record<string, string>;
 };
 
 const inventoryUrl = new URL("../privacy/m5-data-inventory.json", import.meta.url);
 const appManifestUrl = new URL("../appbasis.app.json", import.meta.url);
 const databaseManifestUrl = new URL("../appbasis.database.json", import.meta.url);
 const authorizationUrl = new URL("../worker/authorization.ts", import.meta.url);
+const scopePersistenceUrl = new URL("../worker/scope-persistence.ts", import.meta.url);
+const lifecycleServiceUrl = new URL("../worker/lifecycle-service.ts", import.meta.url);
+const retentionUrl = new URL("../worker/retention.ts", import.meta.url);
+const restoreUrl = new URL("../worker/restore-reconciliation.ts", import.meta.url);
 const repoRootUrl = new URL("../../../", import.meta.url);
 
 async function readJson<T>(url: URL): Promise<T> {
@@ -116,42 +119,53 @@ function sortedTableKeys(tables: readonly { owner: string; id: string }[]): stri
 }
 
 describe("ULC Linz M5 C/D data inventory", () => {
-  it("tracks every current persistent owner revision and runtime module fail closed", async () => {
+  it("tracks the exact current persistent owners and invalidates future persistence by default", async () => {
     const [inventory, appManifest, databaseManifest] = await Promise.all([
       readJson<DataInventory>(inventoryUrl),
       readJson<AppManifest>(appManifestUrl),
       readJson<DatabaseManifest>(databaseManifestUrl),
     ]);
 
-    expect(inventory.schemaVersion).toBe(1);
+    expect(inventory.schemaVersion).toBe(2);
     expect(inventory.application).toBe("ulc-linz");
+    expect(inventory.scope).toBe("current-materialized-v0.1");
     expect(databaseManifest.application).toBe(inventory.application);
     expect(appManifest.appId).toBe(inventory.application);
+    expect(appManifest.modules).toEqual([]);
+    expect(inventory.runtimeModules).toEqual(appManifest.modules);
 
     expect(sortedOwnerContracts(inventory.persistentOwners)).toEqual(
       sortedOwnerContracts(databaseManifest.owners),
     );
-    expect(inventory.runtimeModules).toEqual(appManifest.modules);
-
-    const databaseOwnerIds = databaseManifest.owners.map((owner) => owner.id);
+    expect(databaseManifest.owners.map((owner) => owner.id)).toEqual([
+      "identity",
+      "permissions",
+      "ulc-linz-lifecycle",
+    ]);
+    expect(appManifest.platformServices).toEqual(["identity", "permissions"]);
     expect(
-      databaseOwnerIds.every((ownerId) => appManifest.platformServices.includes(ownerId)),
+      inventory.persistentOwners.every(
+        (owner) => owner.lifecycleStatus === "verified-current-scope",
+      ),
     ).toBe(true);
 
-    expect(
-      inventory.persistentOwners.every((owner) => owner.lifecycleStatus === "open"),
-    ).toBe(true);
+    expect(inventory.objectStorage).toEqual({
+      status: "not-configured",
+      futureIntroduction: "invalidates-current-cd-evidence",
+    });
     expect(inventory.m5).toEqual({
-      deletionPolicy: "open",
-      retentionPolicy: "open",
+      deletionPolicy: "verified-current-scope",
+      retentionPolicy: "verified-current-scope",
+      restoreReconciliation: "verified-current-scope",
       unknownPersistentOwner: "fail-closed",
       unknownPersistentTable: "fail-closed",
       unknownRuntimeModule: "fail-closed",
       unknownBackingStore: "fail-closed",
+      futureObjectStorage: "fail-closed",
     });
   });
 
-  it("classifies every currently created PostgreSQL table without claiming verification", async () => {
+  it("classifies every currently created PostgreSQL table with no open or unmapped lifecycle", async () => {
     const [inventory, databaseManifest] = await Promise.all([
       readJson<DataInventory>(inventoryUrl),
       readJson<DatabaseManifest>(databaseManifestUrl),
@@ -161,63 +175,94 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
+    expect(inventory.persistentTables).toHaveLength(18);
+    for (const table of inventory.persistentTables) {
+      expect(table.privacyClass.length).toBeGreaterThan(0);
+      expect(table.retentionPolicy.length).toBeGreaterThan(0);
+      expect(table.retentionPolicy).not.toBe("unmapped");
+      expect(table.deletionEvidence).not.toBe("open");
+      expect(table.retentionEvidence).not.toBe("open");
+    }
+
     expect(
-      inventory.persistentTables.every(
-        (table) =>
-          table.privacyClass.length > 0 &&
-          table.retentionPolicy.length > 0 &&
-          table.deletionEvidence === "open" &&
-          table.retentionEvidence === "open",
+      inventory.persistentTables.find((table) => table.id === "appbasis_person"),
+    ).toMatchObject({
+      retentionPolicy: "12-months-after-exit-or-purpose-end",
+      deletionEvidence: "verified",
+      retentionEvidence: "verified",
+    });
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "appbasis_permission_administration_audit",
       ),
-    ).toBe(true);
-
-    const person = inventory.persistentTables.find((table) => table.id === "appbasis_person");
-    const user = inventory.persistentTables.find((table) => table.id === "user");
-    const audit = inventory.persistentTables.find(
-      (table) => table.id === "appbasis_permission_administration_audit",
-    );
-    expect(person?.retentionPolicy).toBe("12-months-after-exit-or-purpose-end");
-    expect(user?.retentionPolicy).toBe("12-months-after-exit-or-purpose-end");
-    expect(audit?.retentionPolicy).toBe("12-months");
-
-    const unmapped = inventory.persistentTables.filter(
-      (table) => table.retentionPolicy === "unmapped",
-    );
-    expect(unmapped.length).toBeGreaterThan(0);
-    expect(inventory.m5.retentionPolicy).toBe("open");
+    ).toMatchObject({
+      retentionPolicy: "12-months",
+      deletionEvidence: "retained-by-policy",
+      retentionEvidence: "verified",
+    });
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "ulc_linz_lifecycle_deletion",
+      ),
+    ).toMatchObject({
+      retentionPolicy: "35-days",
+      deletionEvidence: "retained-by-policy",
+      retentionEvidence: "verified",
+    });
+    expect(
+      inventory.persistentTables.find((table) => table.id === "verification"),
+    ).toMatchObject({
+      deletionEvidence: "fail-closed-unused",
+      retentionEvidence: "fail-closed-unused",
+    });
   });
 
-  it("keeps resolver-only membership and subject-scope persistence unverified", async () => {
-    const [inventory, databaseManifest, authorizationSource] = await Promise.all([
+  it("binds membership and subject-scope resolver ports to the ULC app-owned PostgreSQL owner", async () => {
+    const [
+      inventory,
+      authorizationSource,
+      scopePersistenceSource,
+      lifecycleServiceSource,
+    ] = await Promise.all([
       readJson<DataInventory>(inventoryUrl),
-      readJson<DatabaseManifest>(databaseManifestUrl),
       readFile(authorizationUrl, "utf8"),
+      readFile(scopePersistenceUrl, "utf8"),
+      readFile(lifecycleServiceUrl, "utf8"),
     ]);
 
     expect(inventory.backingStores.memberships).toEqual({
-      status: "unbound",
+      status: "bound",
       sourceContract: "UlcLinzMembershipResolver",
+      owner: "ulc-linz-lifecycle",
+      table: "ulc_linz_membership",
     });
     expect(inventory.backingStores.subjectScopes).toEqual({
-      status: "unbound",
+      status: "bound",
       sourceContract: "UlcLinzSubjectScopeResolver",
+      owner: "ulc-linz-lifecycle",
+      table: "ulc_linz_subject_scope",
     });
     expect(authorizationSource).toContain("export interface UlcLinzMembershipResolver");
     expect(authorizationSource).toContain("export interface UlcLinzSubjectScopeResolver");
-
-    const ownerIds = databaseManifest.owners.map((owner) => owner.id);
-    expect(ownerIds).not.toContain("memberships");
-    expect(ownerIds).not.toContain("subject-scopes");
-    expect(inventory.objectStorage.status).toBe("not-configured");
+    expect(scopePersistenceSource).toContain("implements UlcLinzMembershipResolver, UlcLinzSubjectScopeResolver");
+    expect(lifecycleServiceSource).toContain("actorMembership.sourceRole !== \"admin\"");
+    expect(lifecycleServiceSource).toContain("target.sourceRole === \"admin\"");
   });
 
-  it("does not mistake identity disablement for M5 deletion evidence", async () => {
-    const inventory = await readJson<DataInventory>(inventoryUrl);
-    const identity = inventory.persistentOwners.find((owner) => owner.id === "identity");
+  it("pins member retention, bounded delete markers and restore reconciliation to the confirmed policies", async () => {
+    const [scopePersistenceSource, retentionSource, restoreSource] = await Promise.all([
+      readFile(scopePersistenceUrl, "utf8"),
+      readFile(retentionUrl, "utf8"),
+      readFile(restoreUrl, "utf8"),
+    ]);
 
-    expect(identity).toBeDefined();
-    expect(identity?.notes).toContain("disable-identity-is-not-deletion");
-    expect(inventory.m5.deletionPolicy).toBe("open");
-    expect(inventory.m5.retentionPolicy).toBe("open");
+    expect(scopePersistenceSource).toContain("addCalendarMonthsClamped(target.endedAt, 12)");
+    expect(scopePersistenceSource).toContain("interval '35 days'");
+    expect(scopePersistenceSource).toContain("WHERE purge_after < $1");
+    expect(retentionSource).toContain("status === \"exception\"");
+    expect(retentionSource).toContain("deleteUlcLinzIdentity(");
+    expect(restoreSource).toContain("WHERE purge_after >= $1");
+    expect(restoreSource).toContain("reconcileUlcLinzRestoredDatabase");
+    expect(restoreSource).toContain("restoredMembership.sourceRole !== marker.sourceRole");
   });
 });
