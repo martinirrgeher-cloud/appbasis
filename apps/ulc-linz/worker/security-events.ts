@@ -89,8 +89,16 @@ export function recordUlcLinzSecurityEvent(
     (logger ?? consoleSecurityEventLogger).record(event);
     return true;
   } catch {
-    console.error("[ulc-linz-security] security event sink failed");
+    recordSecuritySinkFailure();
     return false;
+  }
+}
+
+function recordSecuritySinkFailure(): void {
+  try {
+    console.error("[ulc-linz-security] security event sink failed");
+  } catch {
+    // Logging failure must never replace the denied application response.
   }
 }
 
