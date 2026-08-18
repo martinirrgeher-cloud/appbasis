@@ -25,7 +25,8 @@ export interface AuthSession {
 export type IdentityOperationKind =
   | "provision"
   | "required-password-change"
-  | "disable";
+  | "disable"
+  | "delete";
 
 export interface IdentityOperation {
   operationId: string;

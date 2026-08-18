@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "id": "ulc-linz-role-data-scope-v0.1",
+  "sourceSnapshot": {
+    "repository": "martinirrgeher-cloud/ulc-linz",
+    "commit": "682ed5d37e7206f7fa521e5dab40f840cc303f0b"
+  },
+  "sourceRoles": [
+    "admin",
+    "trainer",
+    "athlete",
+    "parent"
+  ],
+  "runtimeRoleIds": {
+    "admin": "ulc-linz:admin",
+    "trainer": "ulc-linz:trainer",
+    "athlete": "ulc-linz:athlete",
+    "parent": "ulc-linz:parent"
+  },
+  "adminAuthorization": {
+    "sourceRole": "admin",
+    "runtimeRoleId": "ulc-linz:admin",
+    "mode": "own-organization-admin",
+    "moduleAccess": "all-known-modules-view-edit",
+    "individualModulePermissionsRequired": false,
+    "memberAdministration": "own-organization",
+    "auditVisibility": "own-organization",
+    "crossOrganization": "deny",
+    "unknownModule": "deny"
+  },
+  "permissionTemplates": {
+    "kindertrainer": {
+      "sourceRole": "trainer",
+      "semantics": "defaults-only",
+      "view": [
+        "kindertraining",
+        "u12",
+        "u14",
+        "countdown"
+      ],
+      "edit": [
+        "kindertraining",
+        "u12",
+        "u14",
+        "countdown"
+      ]
+    },
+    "leistungstrainer": {
+      "sourceRole": "trainer",
+      "semantics": "defaults-only",
+      "view": [
+        "performance_registration",
+        "training_planning",
+        "training_overview",
+        "training_documentation",
+        "exercise_catalog",
+        "training_blocks",
+        "athletes",
+        "countdown"
+      ],
+      "edit": [
+        "performance_registration",
+        "training_planning",
+        "training_documentation",
+        "exercise_catalog",
+        "training_blocks",
+        "athletes",
+        "countdown"
+      ]
+    },
+    "athlete": {
+      "sourceRole": "athlete",
+      "semantics": "defaults-only",
+      "view": [
+        "performance_registration",
+        "training_overview",
+        "training_documentation",
+        "countdown"
+      ],
+      "edit": [
+        "performance_registration",
+        "training_documentation",
+        "countdown"
+      ]
+    },
+    "parent": {
+      "sourceRole": "parent",
+      "semantics": "defaults-only",
+      "view": [
+        "kindertraining",
+        "u12",
+        "u14"
+      ],
+      "edit": []
+    }
+  },
+  "principalPermissionMapping": {
+    "sourceField": "permissions",
+    "sourceShape": "module-canView-canEdit",
+    "targetMechanism": "principal-grants-revokes",
+    "capabilityNamespace": "ulc-linz:module",
+    "viewAction": "view",
+    "editAction": "edit",
+    "editImpliesView": true,
+    "unknownModule": "deny"
+  },
+  "dataScopes": {
+    "organizationBoundary": "same-organization-only",
+    "inactiveMembership": "deny",
+    "unknownCapability": "deny",
+    "auditVisibility": "admin-only",
+    "lastActiveAdmin": "protected",
+    "athleteLink": {
+      "sourceRole": "athlete",
+      "relationType": "self",
+      "cardinality": "one",
+      "explicitLinksOnly": true
+    },
+    "parentLink": {
+      "sourceRole": "parent",
+      "relationType": "managed",
+      "cardinality": "many",
+      "explicitLinksOnly": true
+    }
+  }
+}

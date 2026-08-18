@@ -227,17 +227,29 @@ test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabl
   const snapshot = await snapshotResponse.json();
   assert.equal(snapshot.capabilities.releaseProduction, false);
   assert.ok(
-    snapshot.apps.every(
-      (app) =>
+    snapshot.apps.every((app) => {
+      const isUlcLinz = app.appId === "ulc-linz";
+      const expectedVerifiedCount = isUlcLinz ? 4 : 1;
+      return (
         app.productionReadiness?.productionReady === false &&
-        app.productionReadiness?.verifiedCount === 1 &&
+        app.productionReadiness?.verifiedCount === expectedVerifiedCount &&
         app.productionReadiness?.requiredCount === 12 &&
         app.productionReadiness?.criteria?.find(
           (criterion) => criterion.id === "highPrivacyProfile",
         )?.status === "open" &&
+        app.productionReadiness?.criteria?.find(
+          (criterion) => criterion.id === "rolesAndPermissions",
+        )?.status === (isUlcLinz ? "verified" : "open") &&
+        app.productionReadiness?.criteria?.find(
+          (criterion) => criterion.id === "deletionConcept",
+        )?.status === (isUlcLinz ? "verified" : "open") &&
+        app.productionReadiness?.criteria?.find(
+          (criterion) => criterion.id === "retention",
+        )?.status === (isUlcLinz ? "verified" : "open") &&
         app.productionReleaseReadiness?.status === "blocked" &&
         app.productionReleaseReadiness?.technicalEvidenceVerified === false &&
-        app.productionReleaseReadiness?.releaseAuthorized === false,
-    ),
+        app.productionReleaseReadiness?.releaseAuthorized === false
+      );
+    }),
   );
 });

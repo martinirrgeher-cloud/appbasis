@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 2,
+  "application": "ulc-linz",
+  "scope": "current-materialized-v0.1",
+  "basis": {
+    "databaseManifest": "apps/ulc-linz/appbasis.database.json",
+    "appManifest": "apps/ulc-linz/appbasis.app.json",
+    "authorizationRuntime": "apps/ulc-linz/worker/authorization.ts",
+    "lifecycleRuntime": "apps/ulc-linz/worker/lifecycle-service.ts",
+    "retentionRuntime": "apps/ulc-linz/worker/retention.ts",
+    "restoreReconciliation": "apps/ulc-linz/worker/restore-reconciliation.ts"
+  },
+  "persistentOwners": [
+    {
+      "id": "identity",
+      "schemaVersion": 2,
+      "migrations": [
+        "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
+        "packages/identity/drizzle/0001_appbasis_identity_foundation.sql"
+      ],
+      "lifecycleStatus": "verified-current-scope",
+      "notes": [
+        "contains-personal-or-authentication-data",
+        "physical-delete-owner-is-postgres-identity-deletion",
+        "completed-delete-marker-retained-35-days-for-retry-and-restore-reconciliation"
+      ]
+    },
+    {
+      "id": "permissions",
+      "schemaVersion": 4,
+      "migrations": [
+        "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
+        "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
+        "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+        "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql"
+      ],
+      "lifecycleStatus": "verified-current-scope",
+      "notes": [
+        "contains-principal-access-data",
+        "principal-state-deleted-with-identity-lifecycle",
+        "administration-audit-has-separate-12-month-retention"
+      ]
+    },
+    {
+      "id": "ulc-linz-lifecycle",
+      "schemaVersion": 1,
+      "migrations": [
+        "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql"
+      ],
+      "lifecycleStatus": "verified-current-scope",
+      "notes": [
+        "app-owned-membership-subject-scope-and-lifecycle-audit-persistence",
+        "member-contact-retention-12-calendar-months",
+        "retention-exceptions-require-authenticated-active-same-org-admin-with-actor-reason-created-at-future-review",
+        "retention-exception-state-and-audit-event-are-atomic",
+        "completed-app-delete-and-audit-event-are-atomic",
+        "app-lifecycle-audit-retention-12-months",
+        "admin-membership-must-be-demoted-before-inactivation-or-deletion-db-enforced",
+        "delete-marker-retention-35-days",
+        "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion"
+      ]
+    }
+  ],
+  "persistentTables": [
+    { "id": "appbasis_identity_security_state", "owner": "identity", "privacyClass": "identity-security-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "appbasis_person", "owner": "identity", "privacyClass": "member-contact-master-data", "retentionPolicy": "12-months-after-exit-or-purpose-end", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "account", "owner": "identity", "privacyClass": "authentication-credential-data", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "session", "owner": "identity", "privacyClass": "authentication-session-data", "retentionPolicy": "runtime-expiry-plus-12-month-member-lifecycle-ceiling", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "user", "owner": "identity", "privacyClass": "member-contact-master-data", "retentionPolicy": "12-months-after-exit-or-purpose-end", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "verification", "owner": "identity", "privacyClass": "authentication-verification-data", "retentionPolicy": "not-used-by-current-ulc-runtime-delete-blocks-if-present", "deletionEvidence": "fail-closed-unused", "retentionEvidence": "fail-closed-unused" },
+    { "id": "appbasis_identity_operation", "owner": "identity", "privacyClass": "identity-operation-state", "retentionPolicy": "identity-lifecycle-plus-35-day-completed-delete-marker", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "appbasis_permission_capability", "owner": "permissions", "privacyClass": "authorization-configuration", "retentionPolicy": "configuration-lifecycle-not-personal", "deletionEvidence": "not-personal", "retentionEvidence": "not-personal" },
+    { "id": "appbasis_permission_role", "owner": "permissions", "privacyClass": "authorization-configuration", "retentionPolicy": "configuration-lifecycle-not-personal", "deletionEvidence": "not-personal", "retentionEvidence": "not-personal" },
+    { "id": "appbasis_permission_role_capability", "owner": "permissions", "privacyClass": "authorization-configuration", "retentionPolicy": "configuration-lifecycle-not-personal", "deletionEvidence": "not-personal", "retentionEvidence": "not-personal" },
+    { "id": "appbasis_permission_principal", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "appbasis_permission_principal_role", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "appbasis_permission_principal_grant", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "appbasis_permission_principal_revoke", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "appbasis_permission_administration_audit", "owner": "permissions", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" },
+    { "id": "ulc_linz_membership", "owner": "ulc-linz-lifecycle", "privacyClass": "membership-lifecycle-data", "retentionPolicy": "12-months-after-exit-or-purpose-end", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "ulc_linz_subject_scope", "owner": "ulc-linz-lifecycle", "privacyClass": "subject-access-link", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
+    { "id": "ulc_linz_lifecycle_deletion", "owner": "ulc-linz-lifecycle", "privacyClass": "minimal-delete-reconciliation-state", "retentionPolicy": "35-days", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" },
+    { "id": "ulc_linz_lifecycle_audit", "owner": "ulc-linz-lifecycle", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" }
+  ],
+  "runtimeModules": [],
+  "backingStores": {
+    "memberships": {
+      "status": "bound",
+      "sourceContract": "UlcLinzMembershipResolver",
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_membership"
+    },
+    "subjectScopes": {
+      "status": "bound",
+      "sourceContract": "UlcLinzSubjectScopeResolver",
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_subject_scope"
+    }
+  },
+  "objectStorage": {
+    "status": "not-configured",
+    "futureIntroduction": "invalidates-current-cd-evidence"
+  },
+  "m5": {
+    "deletionPolicy": "verified-current-scope",
+    "retentionPolicy": "verified-current-scope",
+    "restoreReconciliation": "verified-current-scope",
+    "unknownPersistentOwner": "fail-closed",
+    "unknownPersistentTable": "fail-closed",
+    "unknownRuntimeModule": "fail-closed",
+    "unknownBackingStore": "fail-closed",
+    "futureObjectStorage": "fail-closed"
+  }
+}

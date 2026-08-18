@@ -282,14 +282,15 @@ test("repository evidence does not infer app-specific high privacy binding", () 
   );
 });
 
-test("Factory snapshot keeps high privacy evidence open until an app-specific binding exists", async () => {
+test("Factory snapshot keeps high privacy evidence open while consuming verified ULC B/C/D evidence", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot);
 
   assert.ok(snapshot.apps.length > 0);
   for (const app of snapshot.apps) {
+    const isUlcLinz = app.appId === "ulc-linz";
     assert.equal(app.productionReadiness.status, "blocked");
     assert.equal(app.productionReadiness.productionReady, false);
-    assert.equal(app.productionReadiness.verifiedCount, 1);
+    assert.equal(app.productionReadiness.verifiedCount, isUlcLinz ? 4 : 1);
     assert.equal(app.productionReadiness.requiredCount, expectedIds.length);
     assert.deepEqual(
       app.productionReadiness.criteria.map((criterion) => criterion.id),
@@ -303,13 +304,38 @@ test("Factory snapshot keeps high privacy evidence open until an app-specific bi
     );
     assert.equal(
       app.productionReadiness.criteria.find(
+        (criterion) => criterion.id === "rolesAndPermissions",
+      )?.status,
+      isUlcLinz ? "verified" : "open",
+    );
+    assert.equal(
+      app.productionReadiness.criteria.find(
+        (criterion) => criterion.id === "deletionConcept",
+      )?.status,
+      isUlcLinz ? "verified" : "open",
+    );
+    assert.equal(
+      app.productionReadiness.criteria.find(
+        (criterion) => criterion.id === "retention",
+      )?.status,
+      isUlcLinz ? "verified" : "open",
+    );
+    assert.equal(
+      app.productionReadiness.criteria.find(
         (criterion) => criterion.id === "highPrivacyProfile",
       )?.status,
       "open",
     );
     assert.ok(
       app.productionReadiness.criteria
-        .filter((criterion) => criterion.id !== "secretsOutsideAppManifests")
+        .filter(
+          (criterion) =>
+            criterion.id !== "secretsOutsideAppManifests" &&
+            (!isUlcLinz ||
+              !["rolesAndPermissions", "deletionConcept", "retention"].includes(
+                criterion.id,
+              )),
+        )
         .every((criterion) => criterion.status === "open"),
     );
   }

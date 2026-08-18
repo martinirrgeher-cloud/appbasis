@@ -1,0 +1,140 @@
+# M5-G – ULC Provider-/Compliance-Evidence Final Integration
+
+Stand: 2026-08-18
+
+## Zweck
+
+Dieser Slice bringt die heute technisch umsetzbare M5-G-Grenze für ULC Linz auf den aktuellen gemeinsamen Runtime-/C/D/F-Stand, ohne reale Produktionsressourcen zu erfinden oder Providerwrites auszuführen.
+
+Verbindlich bleibt ADR-022:
+
+- Cloudflare Standard Workers mit kontrollierter globaler transienter Verarbeitung
+- ausdrücklich nicht EU-only
+- persistente personenbezogene Primärdaten in einer eigenen Neon-Produktivdatenbank in EU / Frankfurt
+- keine zusätzlichen Cloudflare-Persistenzdienste für personenbezogene ULC-Daten ohne neue Entscheidung
+
+M5-G umfasst weiterhin genau vier getrennte Kriterien:
+
+- `dataRegion`
+- `dpa`
+- `encryption`
+- `subprocessors`
+
+## Integrierte Verträge
+
+Der finale technische Pfad verbindet drei bereits vorhandene Verantwortungen:
+
+1. `m5-provider-compliance-inventory.json` definiert den app-spezifischen Provider- und Datenfluss-Scope.
+2. `ulc-linz-m6-production-resource-binding.mjs` bindet spätere reale Production-Evidence an den exakten deploybaren ULC-Runtime-Vertrag, dedizierte Cloudflare-/Neon-Ressourcen und Frankfurt.
+3. `ulc-linz-m5-provider-evidence.mjs` bewertet Datenregion, DPA, Verschlüsselung und Subprozessoren getrennt und freshness-basiert.
+
+`ulc-linz-m5-provider-bound-evidence.mjs` ist der kanonische gebundene M5-G-Produktions-Evidence-Pfad für den späteren Factory-Consumer. Er akzeptiert die beiden Evidence-Schichten nur gemeinsam.
+
+## Kanonischer Datenfluss-Scope
+
+Der aktuelle M5-G-Scope enthält genau die heute erforderlichen Grundflüsse:
+
+1. `ulc-linz-user -> cloudflare` für `application-request-processing`
+2. `cloudflare -> neon-postgresql` für `application-persistence`
+3. `appbasis-control-plane -> cloudflare` für `provider-evidence-read`
+4. `appbasis-control-plane -> neon-postgresql` für `provider-evidence-read`
+5. `neon-postgresql -> neon-postgresql` für `managed-backup-recovery`
+
+Damit sind auch die geschützten Provider-Evidence-Abfragen und der Neon-Backup-/Recovery-Pfad Teil der fail-closed Scope-Prüfung.
+
+Cloudflare Logs/Telemetry werden nicht als fiktiver zusätzlicher Datenfluss eingetragen, solange kein konkreter realer Zielpfad belegt ist. Stattdessen muss das reale Telemetry-Inventar vollständig sein. Sobald ein zusätzlicher realer Telemetry-/Logging-Datenfluss vorhanden ist, blockiert die bestehende exakte Datenflussprüfung alle vier M5-G-Kriterien, bis dieser Flow bewusst in den kanonischen Scope aufgenommen und bewertet wurde.
+
+## Konkrete Resource-Korrelation
+
+Gleiche App-, Environment-, Region- und Zeitwerte allein sind kein ausreichender Nachweis, dass Compliance- und Resource-Binding-Evidence dieselben konkreten Produktionsressourcen beschreiben.
+
+Darum erzeugt der gebundene M5-G-Consumer erst **nach erfolgreicher Validierung durch den bestehenden #155-Resource-Binding-Vertrag** einen internen SHA-256-Fingerprint über die validierten Runtime-/Cloudflare-/Neon-Bindungsidentitäten und das Evidence-Zeitfenster. Die zugehörige Compliance-Evidence muss genau diesen Korrelationswert mitbringen.
+
+Der Fingerprint:
+
+- enthält selbst keine Provider-ID, keinen Hostnamen, keinen Runtime-Digest und kein Secret im Klartext,
+- wird nicht in den Factory-Kriterienoutput übernommen,
+- ändert sich bei Runtime-, Worker-, Hostname-, Datenbank-, Hyperdrive-/Binding- oder Zeitfenster-Drift,
+- verhindert die versehentliche Kombination zweier formal plausibler, aber zu unterschiedlichen konkreten Ressourcen gehörender Snapshots.
+
+Die Authentizität der späteren realen Evidence bleibt Aufgabe der geschützten Control-Plane-/CI-Grenze; dieser Repository-Slice behauptet noch keinen realen Provider-Nachweis.
+
+## Fail-closed Bindung
+
+Production-Evidence wird nur abgeleitet, wenn:
+
+- beide Evidence-Schichten `ulc-linz` + `production` betreffen,
+- beide `standard-workers-global-transient` und `euOnly=false` tragen,
+- beide dasselbe `observedAt` und `validUntilOrReviewAt` besitzen,
+- der Resource-Binding-Consumer den exakten aktuellen Runtime-Digest bestätigt,
+- der Compliance-Korrelationsfingerprint exakt zur validierten konkreten Resource-Binding-Evidence passt,
+- Production Worker, Hostname, Datenbank und Datenbank-Binding bestätigt sind,
+- die Neon-Region autoritativ Frankfurt ist,
+- die Compliance-Evidence dieselbe Neon-Region trägt,
+- Cloudflare als `standard-workers` beobachtet ist,
+- der Compliance-Snapshot vollständige Produktionsressourcenbindung enthält,
+- alle fünf kanonischen aktuellen Datenflüsse vollständig und als `verified` belegt sind.
+
+Fehlt oder widerspricht einer dieser gemeinsamen Nachweise, liefert der gebundene Consumer `{}`. Ein einzelner plausibler Compliance-Snapshot kann damit keinen Produktionsnachweis mehr ohne exakte Runtime-/Resource-Bindung erzeugen.
+
+Sind die gemeinsamen Bindungen gültig, bleiben die vier Kriterien weiterhin unabhängig: ein veralteter Subprozessor-Nachweis öffnet beispielsweise nicht automatisch Datenregion, DPA oder Verschlüsselung und schließt diese auch nicht unnötig, sofern deren eigene Evidence gültig bleibt.
+
+## Generator-/Runtime-Grenze
+
+Der deploybare `identity + permissions` Worker bleibt über den kanonischen `createAppSkeleton()`-/Runtime-Generatorpfad erzeugbar. Die geprüften Dateien
+
+- `apps/ulc-linz/worker/index.ts`
+- `apps/ulc-linz/worker/postgres.ts`
+- `apps/ulc-linz/test/worker.test.ts`
+
+bleiben byte-identisch zum kanonischen Generatorvertrag.
+
+Der Resource-Binding-Digest umfasst die tatsächlich ausführungsrelevanten Dateien:
+
+- `worker/app.ts`
+- `worker/index.ts`
+- `worker/postgres.ts`
+
+Damit erzwingt jede relevante Runtimeänderung neue Resource-Binding-Evidence.
+
+## Bewusst weiterhin offen
+
+Dieser Repository-Slice behauptet keine reale M5-G-Erfüllung. Die vier Kriterien bleiben für eine echte Produktionsfreigabe fail-closed offen, solange insbesondere nicht real und aktuell belegt sind:
+
+- konkrete dedizierte ULC-Neon-Produktionsressource in Frankfurt,
+- konkrete ULC-Cloudflare-Produktionsruntime, Route/Hostname und Datenbankbindung,
+- vollständiges reales Cloudflare Binding-/Telemetry-Inventar,
+- reale Verschlüsselungskonfiguration,
+- aktuelle account-/dienstbezogene DPA-/Vertragsevidence,
+- aktuelle Subprozessor-/Transfer-Evidence,
+- Freshness und app-/environment-genaue Zuordnung dieser Evidence.
+
+Die vorhandenen Tests verwenden ausschließlich Fixtures. Fixture-Erfolg ist kein Produktionsnachweis.
+
+## Sicherheits-/Architekturgrenze
+
+Nicht enthalten:
+
+- kein Provider-API-Write
+- kein Neon-Projekt-/Branch-/DB-Create
+- kein Cloudflare Worker-/Domain-/Hyperdrive-Create
+- keine kostenpflichtige Regionalisierung
+- kein Secret
+- kein Deployment
+- keine produktive Migration
+- keine Produktionsfreigabe
+- keine generische Provider-Compliance-Plattform
+- keine EU-only-Behauptung für Standard Workers
+
+Der spätere reale Evidence-Reader bleibt eine geschützte Control-Plane-/CI-Funktion und wird nicht in die öffentliche App-Runtime verschoben.
+
+## Review-Gate
+
+Vor Codex:
+
+1. vollständige Exact-Head-CI,
+2. ChatGPT-Diff-/Architektur-/Security-Review,
+3. erkannte Findings gebündelt korrigieren,
+4. vollständige Exact-Head-CI auf dem tatsächlichen finalen Head.
+
+Danach ist genau ein finaler Codex-Review auf diesem unveränderten Head offen.
