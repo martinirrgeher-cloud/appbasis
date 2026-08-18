@@ -297,9 +297,15 @@ export async function evaluateUlcLinzM6ProductionPreflight(
     providerWriteAllowed: false,
     releaseAuthorized: false,
     explicitApprovalRequired: true,
-    prerequisiteGates: ["M3_DONE", "M4_DONE", "M5_DONE"],
+    requiredPrerequisiteGates: ["M3_DONE", "M4_DONE", "M5_DONE"],
     firstProviderWriteStepId:
       ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.firstProviderWriteStepId,
+    nextAction: {
+      stepId: ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.firstProviderWriteStepId,
+      actionClass: "provider-write",
+      approvalRequired: true,
+      executionAuthorized: false,
+    },
     productionTarget: {
       databaseRegion: HUMAN_REGION,
       providerRegion: NEON_REGION,
@@ -312,7 +318,7 @@ export async function evaluateUlcLinzM6ProductionPreflight(
       appDefinitionVerified: true,
       databaseManifestVerified: true,
       runtimeContractVerified: true,
-      resourceBindingContractVerified: true,
+      resourceBindingValidationContractVerified: true,
       permissionProvisioningContractVerified: true,
       m6CriterionCoverageVerified: true,
       secretValuesInRepository: false,
