@@ -42,9 +42,10 @@ Der Preflight baut ausschließlich auf bestehenden Verträgen auf:
 - `replaceUlcLinzPrincipalAccess()` auf `PostgresPrincipalAccessAdministration` für die ULC-spezifische Rollen-/Override-Zuweisung
 - ULC-M5-Permission-Provisioning-Bundle für Rollen/Capabilities
 - `ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT` aus dem bestehenden #155-Pfad
+- `tooling/ulc-linz-m5-audit-security-logging-evidence.mjs` als bestehender M5-F-Evidence-Owner
 - bestehender M6-Release-Readiness-Vertrag mit zehn Pflichtkriterien
 
-Es entsteht keine zweite Generator-, Datenbank-, Identity-, Rollen-, Resource-Binding- oder Readiness-Implementierung.
+Es entsteht keine zweite Generator-, Datenbank-, Identity-, Rollen-, Audit-, Resource-Binding- oder Readiness-Implementierung.
 
 ## Produktziel
 
@@ -57,6 +58,8 @@ Für ULC v0.1 bleibt verbindlich:
 - ausdrücklich **kein EU-only-Claim**
 - eigener Produktionshostname
 - keine zusätzlichen Cloudflare-Persistenzdienste für personenbezogene ULC-Daten ohne neue Bewertung
+- realer Security-Logging-Sink mit strukturierter Event-Erfassung, geschütztem operativem Zugriff und exakt 12 Monaten Retention vor M5-F-Evidence
+- kein Logging-Anbieter wird repository-seitig vorweggenommen; die spätere Auswahl muss ausdrücklich erfolgen
 - Secrets außerhalb des Repository
 - explizite Freigabe für jede produktive oder providerseitige Write-Grenze
 
@@ -88,18 +91,30 @@ Für ULC v0.1 bleibt verbindlich:
    - `HYPERDRIVE` als erforderliches Binding
    - keine Secretwerte im Repository, Chat oder Log
 
-6. **Produktionsmigrationen**
+6. **Production Security Logging einrichten**
+   - eigener expliziter Provider-Write
+   - Logging-Anbieter wird erst im realen Durchlauf ausdrücklich ausgewählt; der Repository-Vertrag bleibt provider-neutral
+   - strukturierte Security-Events müssen tatsächlich im Produktions-Sink ankommen
+   - operativer Zugriff muss geschützt sein
+   - Retention exakt 12 Monate und providerseitig nachweisbar
+   - vollständiges Sink-Inventar erforderlich
+   - keine öffentliche Read-API
+   - Runtime-Delivery-/Binding-Integration muss vor dem Worker-Deploy hergestellt sein
+   - bestehender M5-F-Evidence-Owner bleibt die spätere Nachweisgrenze
+
+7. **Produktionsmigrationen**
    - ausschließlich aus `apps/ulc-linz/appbasis.database.json`
    - vorher Backup-/Recovery-Zustand prüfen
    - bei kritischer Migration möglichst Sicherung unmittelbar vorher
    - Recovery-/Rollback-Pfad vorab festlegen
    - Migration danach verifizieren
 
-7. **Produktions-Worker deployen**
+8. **Produktions-Worker deployen**
    - kanonischer Entrypoint `./worker/index.ts`
+   - Security-Logging-Delivery muss vorher eingerichtet sein
    - noch ohne öffentliche Domain-Aktivierung
 
-8. **Produktive Benutzer & Rechte bootstrapen**
+9. **Produktive Benutzer & Rechte bootstrapen**
    - erster technischer Benutzer über bestehenden `createInitialTechnicalAdmin()`-Vertrag
    - nur für leeren bzw. eng recoverable Identity-Ausgangszustand
    - ULC-Rollen-/Override-Zuweisung über bestehenden `replaceUlcLinzPrincipalAccess()`-Pfad
@@ -109,18 +124,20 @@ Für ULC v0.1 bleibt verbindlich:
    - reale Principal-Zuweisungen müssen explizit erfolgen
    - kein zweiter Provisioning-Vertrag wird eingeführt
 
-9. **Produktionsdomain aktivieren**
+10. **Produktionsdomain aktivieren**
    - eigener expliziter Public-Exposure-Write
-   - erst nach Runtime-Konfiguration, Migration, Deployment und Access-Bootstrap
+   - erst nach Runtime-Konfiguration, Logging, Migration, Deployment und Access-Bootstrap
    - technische öffentliche Erreichbarkeit ist noch **keine** Produktionsfreigabe; `releaseAuthorized` bleibt bis zum finalen Gate `false`
 
-10. **M5-Production-Evidence erheben**
+11. **M5-Production-Evidence erheben**
     - read-only
     - reale ULC-Produktionsressourcen
     - bestehender #155-Resource-Binding-Consumer
+    - bestehender M5-F-Security-Logging-Evidence-Owner
+    - Production Security Logging muss bereits real eingerichtet und nachweisbar sein
     - finaler M5-All-required-/fail-closed-Pfad
 
-11. **Backup & Recovery für ULC-Produktion validieren**
+12. **Backup & Recovery für ULC-Produktion validieren**
     - automatische Backups
     - Retention
     - PITR soweit verfügbar
@@ -130,13 +147,13 @@ Für ULC v0.1 bleibt verbindlich:
     - Permissions
     - App-Smoke
 
-12. **Post-Deploy-Smokes**
+13. **Post-Deploy-Smokes**
     - Health
     - Auth
     - Permissions
     - Application
 
-13. **Release-Gate**
+14. **Release-Gate**
     - kein automatischer Release
     - ausdrückliche Nutzerfreigabe weiterhin zwingend
 
@@ -157,20 +174,24 @@ Der Preflight muss exakt alle zehn bestehenden M6-Kriterien abdecken:
 
 Ein Contract-Test vergleicht diese Abdeckung direkt mit `REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA`. Wird dort später ein Pflichtkriterium ergänzt oder entfernt, blockiert der Preflight fail-closed bis zur bewussten Anpassung.
 
-Zusätzlich sind alle 13 Ausführungsschritte mit ihrer erwarteten Klasse gepinnt. Dependencies dürfen nur auf bereits vorherige Schritte zeigen. Eine spätere Umklassifizierung eines Provider-Writes in einen scheinbar read-only Schritt oder eine nach vorne gerichtete/zyklische Dependency wird dadurch fail-closed abgewiesen.
+`securityPrivacyReady` ist zusätzlich explizit an den Production-Security-Logging-Sink und danach an die vollständige M5-Production-Evidence gebunden. M5-F kann dadurch nicht mehr als theoretischer Evidence-Schritt hinter einer nie eingerichteten Sink-Grenze stehen.
+
+Zusätzlich sind alle 14 Ausführungsschritte mit ihrer erwarteten Klasse gepinnt. Dependencies dürfen nur auf bereits vorherige Schritte zeigen. Eine spätere Umklassifizierung eines Provider-Writes in einen scheinbar read-only Schritt oder eine nach vorne gerichtete/zyklische Dependency wird dadurch fail-closed abgewiesen.
 
 ## Harte Sicherheitsgrenzen
 
 - `evaluateUlcLinzM6ProductionPreflight()` besitzt **keinen Execute-/Provision-/Deploy-Pfad**.
 - `providerWritesEnabled` bleibt `false`.
 - Der erste reale Write ist eindeutig `neon-production-database`.
+- Der Security-Logging-Sink ist ein eigener späterer Write mit eigener ausdrücklicher Freigabe; kein Provider wird vorsorglich gewählt oder beschafft.
+- Worker-Deploy und M5-Evidence hängen fail-closed vom real eingerichteten Logging-Sink ab.
 - Domain-Auswahl und öffentliche Domain-Aktivierung sind getrennt.
 - Öffentliche Erreichbarkeit allein kann den Release nicht autorisieren.
 - Jeder mutierende Schritt verlangt ausdrückliche Freigabe.
 - Secretwerte sind kein Repository-Input.
 - Der Release-Gate kann technisch nicht automatisch autorisieren.
-- Fehlende oder driftende App-, Datenbank-, Runtime-/Binding-, Permission-, Step- oder M6-Verträge blockieren fail-closed.
+- Fehlende oder driftende App-, Datenbank-, Runtime-/Binding-, Permission-, Logging-, Step- oder M6-Verträge blockieren fail-closed.
 
 ## Bewusst noch nicht ausgeführt
 
-Dieser Slice ist nur Vorbereitung. Insbesondere existiert aus diesem Slice heraus weiterhin **keine** neu angelegte ULC-Produktionsdatenbank, kein neuer Produktions-Worker, kein Produktions-Binding, keine aktivierte Domain, kein gesetztes Secret, keine produktive Migration und keine Produktionsfreigabe.
+Dieser Slice ist nur Vorbereitung. Insbesondere existiert aus diesem Slice heraus weiterhin **keine** neu angelegte ULC-Produktionsdatenbank, kein neuer Produktions-Worker, kein Produktions-Binding, kein realer Security-Logging-Sink, keine aktivierte Domain, kein gesetztes Secret, keine produktive Migration und keine Produktionsfreigabe.
