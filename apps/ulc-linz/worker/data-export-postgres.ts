@@ -29,6 +29,11 @@ export interface UlcLinzExportIdentityReader {
  * implemented by IdentityStateStore.find(); this adapter never reaches into
  * Identity-owned tables directly and does not import the broad Identity package
  * surface into the normal ULC runtime type graph.
+ *
+ * Membership lifecycle status is deliberately not used as a dataset filter:
+ * M5-D retains ended member/contact data for the confirmed retention window, so
+ * a privileged same-organization export must include that still-stored data.
+ * Actor activity is enforced separately by the canonical authorization service.
  */
 export class PostgresUlcLinzExportDatasetReader {
   constructor(
@@ -96,7 +101,6 @@ export class PostgresUlcLinzExportDatasetReader {
         `SELECT identity_id, organization_id, subject_id
          FROM ulc_linz_membership
          WHERE organization_id = $1
-           AND active = true
          ORDER BY subject_id ASC, identity_id ASC`,
         [input.organizationId],
       );
@@ -108,8 +112,7 @@ export class PostgresUlcLinzExportDatasetReader {
       `SELECT identity_id, organization_id, subject_id
        FROM ulc_linz_membership
        WHERE organization_id = $1
-         AND subject_id = $2
-         AND active = true`,
+         AND subject_id = $2`,
       [input.organizationId, subjectId],
     );
     if (rows.length !== 1) incomplete();
