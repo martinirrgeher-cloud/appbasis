@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "operatorProfile": "Verein",
+  "highPrivacyProfileId": "appbasis-high-privacy-v0.1",
+  "applicability": [
+    "children"
+  ],
+  "decision": "high-privacy-required",
+  "basis": [
+    "children-and-youth-athlete-data"
+  ]
+}
