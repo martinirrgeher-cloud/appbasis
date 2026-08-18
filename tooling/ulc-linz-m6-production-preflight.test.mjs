@@ -16,19 +16,67 @@ const APP_DEFINITION_PATH = "apps/ulc-linz/appbasis.app.json";
 const DATABASE_MANIFEST_PATH = "apps/ulc-linz/appbasis.database.json";
 
 const EXPECTED_STEPS = [
-  ["neon-production-database", "provider-write"],
-  ["production-worker", "provider-write"],
-  ["database-binding", "provider-write"],
-  ["production-domain-selection", "operator-input"],
-  ["runtime-configuration", "provider-write"],
-  ["production-migrations", "production-data-write"],
-  ["production-worker-deploy", "provider-write"],
-  ["production-access-bootstrap", "application-write"],
-  ["production-domain-activation", "public-exposure-write"],
-  ["m5-production-evidence", "read-only-evidence"],
-  ["backup-recovery-validation", "recovery-validation-write"],
-  ["post-deploy-smokes", "production-smoke-write"],
-  ["release-gate", "authorization-gate"],
+  ["neon-production-database", "provider-write", []],
+  ["production-worker", "provider-write", ["neon-production-database"]],
+  [
+    "database-binding",
+    "provider-write",
+    ["neon-production-database", "production-worker"],
+  ],
+  ["production-domain-selection", "operator-input", ["production-worker"]],
+  [
+    "runtime-configuration",
+    "provider-write",
+    ["database-binding", "production-worker"],
+  ],
+  [
+    "production-migrations",
+    "production-data-write",
+    ["neon-production-database"],
+  ],
+  [
+    "production-worker-deploy",
+    "provider-write",
+    ["database-binding", "runtime-configuration", "production-migrations"],
+  ],
+  [
+    "production-access-bootstrap",
+    "application-write",
+    ["production-migrations", "production-worker-deploy"],
+  ],
+  [
+    "production-domain-activation",
+    "public-exposure-write",
+    [
+      "production-domain-selection",
+      "production-worker-deploy",
+      "production-access-bootstrap",
+    ],
+  ],
+  ["m5-production-evidence", "read-only-evidence", ["production-domain-activation"]],
+  [
+    "backup-recovery-validation",
+    "recovery-validation-write",
+    ["m5-production-evidence", "production-migrations"],
+  ],
+  [
+    "post-deploy-smokes",
+    "production-smoke-write",
+    [
+      "m5-production-evidence",
+      "backup-recovery-validation",
+      "production-domain-activation",
+    ],
+  ],
+  [
+    "release-gate",
+    "authorization-gate",
+    [
+      "m5-production-evidence",
+      "backup-recovery-validation",
+      "post-deploy-smokes",
+    ],
+  ],
 ];
 const MUTATING_STEP_KINDS = new Set([
   "provider-write",
@@ -91,13 +139,13 @@ test("ULC M6 preflight verifies repository contracts but never authorizes a prov
   assert.equal(Object.isFrozen(result.executionPlan), true);
 });
 
-test("ULC M6 execution plan pins every step id, step kind and backward-only dependency", () => {
+test("ULC M6 execution plan pins every step id, step kind and exact dependency", () => {
   const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
 
   assert.equal(plan.steps.length, EXPECTED_STEPS.length);
   const seen = new Set();
   for (const [index, step] of plan.steps.entries()) {
-    assert.deepEqual([step.id, step.kind], EXPECTED_STEPS[index]);
+    assert.deepEqual([step.id, step.kind, step.requires], EXPECTED_STEPS[index]);
     assert.equal(step.sequence, index + 1);
     for (const requirement of step.requires) {
       assert.equal(seen.has(requirement), true, `${step.id} -> ${requirement}`);
@@ -157,8 +205,12 @@ test("ULC M6 plan keeps every mutating or release action behind explicit approva
   assert.equal(releaseGate.target.automaticRelease, false);
 });
 
-test("ULC M6 separates hostname selection from public domain activation", () => {
+test("ULC M6 keeps worker creation and deploy private until explicit domain activation", () => {
   const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
+  const worker = plan.steps.find((step) => step.id === "production-worker");
+  const deploy = plan.steps.find(
+    (step) => step.id === "production-worker-deploy",
+  );
   const selection = plan.steps.find(
     (step) => step.id === "production-domain-selection",
   );
@@ -166,18 +218,15 @@ test("ULC M6 separates hostname selection from public domain activation", () => 
     (step) => step.id === "production-domain-activation",
   );
 
+  assert.equal(worker.target.workersDev, false);
+  assert.equal(worker.target.publicIngress, false);
+  assert.equal(deploy.target.publicIngress, false);
   assert.equal(selection.kind, "operator-input");
   assert.equal(selection.target.providerWrite, false);
   assert.equal(selection.target.publicIngress, false);
-
   assert.equal(activation.kind, "public-exposure-write");
   assert.equal(activation.approvalRequired, true);
   assert.equal(activation.target.publicIngress, true);
-  assert.deepEqual(activation.requires, [
-    "production-domain-selection",
-    "production-worker-deploy",
-    "production-access-bootstrap",
-  ]);
 });
 
 test("ULC M6 migrations require recovery precheck, recovery path and verification", () => {
@@ -231,6 +280,38 @@ test("ULC M6 production access bootstrap reuses existing identity and principal-
   assert.equal(step.target.defaultPrincipalAssignments, 0);
   assert.equal(step.target.leastPrivilegeRequired, true);
   assert.equal(step.target.noSecondProvisioningContract, true);
+});
+
+test("ULC M6 M5, recovery and post-deploy gates stay fail-closed and complete", () => {
+  const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
+  const m5 = plan.steps.find((step) => step.id === "m5-production-evidence");
+  const recovery = plan.steps.find(
+    (step) => step.id === "backup-recovery-validation",
+  );
+  const smokes = plan.steps.find((step) => step.id === "post-deploy-smokes");
+
+  assert.equal(m5.approvalRequired, false);
+  assert.equal(m5.target.allRequired, true);
+  assert.equal(m5.target.failClosed, true);
+  assert.equal(
+    m5.target.resourceBindingConsumer,
+    "tooling/ulc-linz-m6-production-resource-binding.mjs",
+  );
+
+  assert.equal(recovery.target.automaticBackupRequired, true);
+  assert.equal(recovery.target.retentionRequired, true);
+  assert.equal(recovery.target.realRestoreRequired, true);
+  assert.equal(recovery.target.restoreDataIntegrityCheckRequired, true);
+  assert.equal(recovery.target.restoreAuthCheckRequired, true);
+  assert.equal(recovery.target.restorePermissionsCheckRequired, true);
+  assert.equal(recovery.target.restoreApplicationSmokeRequired, true);
+
+  assert.deepEqual(smokes.target.checks, [
+    "health",
+    "auth",
+    "permissions",
+    "application",
+  ]);
 });
 
 test("ULC M6 preflight fails closed when app definition drifts", async () => {
