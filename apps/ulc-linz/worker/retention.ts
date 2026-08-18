@@ -1,8 +1,5 @@
+import { principalId } from "@appbasis/permissions";
 import type { PostgresIdentityDeletionRetention } from "@appbasis/identity/postgres-deletion-retention";
-import {
-  principalId,
-  type PostgresPermissionAdministrationAuditRetention,
-} from "@appbasis/permissions";
 
 import {
   deleteUlcLinzIdentity,
@@ -27,26 +24,21 @@ export interface UlcLinzRetentionDependencies
     PostgresIdentityDeletionRetention,
     "purgeExpiredCompletedDeletions"
   >;
-  readonly permissionAuditRetention: Pick<
-    PostgresPermissionAdministrationAuditRetention,
-    "deleteExpiredAuditEvents"
-  >;
 }
 
 export interface UlcLinzRetentionRunResult {
   readonly deletedIdentityIds: readonly string[];
   readonly exceptionIdentityIds: readonly string[];
-  readonly purgedPermissionAuditEvents: number;
   readonly purgedAppDeletionMarkers: number;
   readonly purgedIdentityDeletionTombstones: number;
 }
 
 /**
- * Non-request-runtime retention executor for all currently materialized ULC
- * personal lifecycle classes: member/contact identity + principal state, the
- * app-owned membership/subject scope, permission administration audit and the
- * bounded deletion reconciliation markers. It intentionally does not invent a
- * generic scheduler or claim future module/object-storage coverage.
+ * Non-request-runtime retention executor for the current ULC member/contact
+ * lifecycle plus bounded delete markers. Permission-administration audit has a
+ * separate existing owner-local 12-month retention primitive; keeping owner
+ * cleanup independent avoids coupling ULC to Permissions implementation details.
+ * No generic scheduler or future module/object-storage lifecycle is invented.
  */
 export async function runUlcLinzRetention(
   dependencies: UlcLinzRetentionDependencies,
@@ -85,11 +77,6 @@ export async function runUlcLinzRetention(
     deletedIdentityIds.push(targetIdentityId);
   }
 
-  const purgedPermissionAuditEvents =
-    await dependencies.permissionAuditRetention.deleteExpiredAuditEvents();
-
-  // App marker first, then Identity owner tombstone. Both use the same confirmed
-  // 35-day backup window and strictly-older semantics in their owner boundary.
   const purgedAppDeletionMarkers =
     await dependencies.scopes.purgeExpiredDeletionMarkers();
   const purgedIdentityDeletionTombstones =
@@ -98,7 +85,6 @@ export async function runUlcLinzRetention(
   return Object.freeze({
     deletedIdentityIds: Object.freeze(deletedIdentityIds),
     exceptionIdentityIds: Object.freeze(exceptionIdentityIds),
-    purgedPermissionAuditEvents,
     purgedAppDeletionMarkers,
     purgedIdentityDeletionTombstones,
   });
