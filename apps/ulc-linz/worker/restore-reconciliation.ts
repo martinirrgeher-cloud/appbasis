@@ -1,4 +1,3 @@
-import type { IdentityPostgresRuntimeSqlClient } from "@appbasis/identity/postgres-runtime";
 import { principalId } from "@appbasis/permissions";
 
 import {
@@ -9,11 +8,10 @@ import {
 import type {
   PostgresUlcLinzScopePersistence,
   UlcLinzDeletionMarker,
+  UlcLinzSqlClient,
 } from "./scope-persistence";
 
 const RESTORE_RECONCILIATION_ACTOR = principalId("ulc-linz:restore-reconciliation");
-
-type SqlClient = IdentityPostgresRuntimeSqlClient;
 
 export interface UlcLinzDeletionReconciliationSource {
   listCurrentDeletionMarkers(): Promise<readonly UlcLinzDeletionMarker[]>;
@@ -28,7 +26,7 @@ export class PostgresUlcLinzDeletionReconciliationSource
   implements UlcLinzDeletionReconciliationSource
 {
   constructor(
-    private readonly sql: SqlClient,
+    private readonly sql: UlcLinzSqlClient,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
