@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
+import { createExpectedUlcLinzDatabaseManifest } from "../ulc-linz-database-contract.mjs";
 import {
   isCanonicalUlcLinzM5PermissionProvisioningBundle,
   ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE,
@@ -99,9 +99,7 @@ export async function deriveUlcLinzRolesAndPermissionsEvidence(
     if (!hasExpectedTargetPolicyBinding()) return EMPTY_EVIDENCE;
     if (!hasApprovedPermissionProvisioning()) return EMPTY_EVIDENCE;
 
-    const expectedDatabaseManifest = createGeneratedDatabaseManifest(definition);
-    if (expectedDatabaseManifest === null) return EMPTY_EVIDENCE;
-
+    const expectedDatabaseManifest = createExpectedUlcLinzDatabaseManifest(definition);
     const root = resolve(repositoryRoot);
     const [runtimePolicy, databaseManifest, acceptanceTestsValid] = await Promise.all([
       readJsonObject(
