@@ -25,7 +25,7 @@ const NEON_FIELDS = Object.freeze([
   "inventoryComplete",
   "projects",
   "targetRegionAvailable",
-  "createRegionParameterSupported",
+  "selectedCreateMethodSupportsExplicitRegion",
 ]);
 const PROJECT_FIELDS = Object.freeze(["name", "region"]);
 const UNSAFE_FIELD_PATTERN =
@@ -55,6 +55,7 @@ export const ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT = deepFreeze({
     previewUrls: false,
     publicIngress: false,
     ingressStateMustBeAppliedAtInitialCreateOrFirstDeploy: true,
+    closedIngressRequiredBeforeApplicationCodeUpload: true,
   },
 });
 
@@ -92,7 +93,7 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
   if (
     neon.inventoryComplete !== true ||
     neon.targetRegionAvailable !== true ||
-    neon.createRegionParameterSupported !== true
+    neon.selectedCreateMethodSupportsExplicitRegion !== true
   ) {
     fail("NEON_PREFLIGHT_INVALID");
   }
@@ -123,6 +124,7 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     providerInventoryVerified: true,
     noExistingProductionResourceCandidate: true,
     targetRegionAvailable: true,
+    selectedCreateMethodSupportsExplicitRegion: true,
     explicitRegionSelectionRequired: true,
     providerDefaultRegionAllowed: false,
     providerWriteAllowed: false,
@@ -178,7 +180,9 @@ function assertCanonicalContracts() {
     safety.cloudflareWorkerCreation.previewUrls !== false ||
     safety.cloudflareWorkerCreation.publicIngress !== false ||
     safety.cloudflareWorkerCreation
-      .ingressStateMustBeAppliedAtInitialCreateOrFirstDeploy !== true
+      .ingressStateMustBeAppliedAtInitialCreateOrFirstDeploy !== true ||
+    safety.cloudflareWorkerCreation
+      .closedIngressRequiredBeforeApplicationCodeUpload !== true
   ) {
     fail("CONTRACT_DRIFT");
   }
@@ -260,7 +264,11 @@ function exactRecord(value, fields, code) {
 }
 
 function exactArray(value, code) {
-  if (!Array.isArray(value) || Object.getOwnPropertySymbols(value).length > 0) {
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    Object.getOwnPropertySymbols(value).length > 0
+  ) {
     fail(code);
   }
   const descriptors = Object.getOwnPropertyDescriptors(value);
@@ -296,7 +304,11 @@ function assertSafeEvidenceTree(value, seen = new Set()) {
   }
   if (typeof value === "boolean" || typeof value === "number") return;
   if (Array.isArray(value)) {
-    if (seen.has(value) || Object.getOwnPropertySymbols(value).length > 0) {
+    if (
+      Object.getPrototypeOf(value) !== Array.prototype ||
+      seen.has(value) ||
+      Object.getOwnPropertySymbols(value).length > 0
+    ) {
       fail("UNSAFE_EVIDENCE");
     }
     seen.add(value);
