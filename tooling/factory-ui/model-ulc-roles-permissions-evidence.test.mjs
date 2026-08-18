@@ -5,9 +5,10 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
+import { createExpectedUlcLinzDatabaseManifest } from "../ulc-linz-database-contract.mjs";
 import { ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY } from "../ulc-linz-m5-role-data-scope.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
+import { ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY } from "./ulc-linz-lifecycle-evidence.mjs";
 import { ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY } from "./ulc-linz-roles-permissions-evidence.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -20,7 +21,7 @@ const VALID_ULC_DEFINITION = Object.freeze({
 });
 
 async function createFactoryFixture({ rolePolicy } = {}) {
-  const root = await mkdtemp(join(tmpdir(), "appbasis-factory-ulc-m5-b-"));
+  const root = await mkdtemp(join(tmpdir(), "appbasis-factory-ulc-m5-bcd-"));
   const appRoot = join(root, "apps", "ulc-linz");
   await mkdir(join(appRoot, "worker"), { recursive: true });
   await mkdir(join(root, "modules"), { recursive: true });
@@ -33,7 +34,7 @@ async function createFactoryFixture({ rolePolicy } = {}) {
   await writeFile(
     join(appRoot, "appbasis.database.json"),
     `${JSON.stringify(
-      createGeneratedDatabaseManifest(VALID_ULC_DEFINITION),
+      createExpectedUlcLinzDatabaseManifest(VALID_ULC_DEFINITION),
       null,
       2,
     )}\n`,
@@ -55,7 +56,13 @@ async function createFactoryFixture({ rolePolicy } = {}) {
     "utf8",
   );
 
-  for (const { path } of ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY.acceptanceTests) {
+  const evidencePaths = new Set([
+    ...ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY.acceptanceTests.map(
+      ({ path }) => path,
+    ),
+    ...ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.evidenceFiles.map(({ path }) => path),
+  ]);
+  for (const path of evidencePaths) {
     const destination = join(root, path);
     await mkdir(dirname(destination), { recursive: true });
     await copyFile(join(repositoryRoot, path), destination);
@@ -68,20 +75,22 @@ function criterion(app, id) {
   return app.productionReadiness.criteria.find((candidate) => candidate.id === id);
 }
 
-test("Factory marks only ULC rolesAndPermissions as verified when the app-specific contracts match", async () => {
+test("Factory marks only the current ULC repository, B, C and D evidence as verified", async () => {
   const root = await createFactoryFixture();
   try {
     const snapshot = await loadFactorySnapshot(root);
     const app = snapshot.apps[0];
 
     assert.equal(app.appId, "ulc-linz");
-    assert.equal(app.productionReadiness.verifiedCount, 2);
+    assert.equal(app.productionReadiness.verifiedCount, 4);
     assert.equal(app.productionReadiness.requiredCount, 12);
     assert.equal(app.productionReadiness.productionReady, false);
     assert.equal(criterion(app, "secretsOutsideAppManifests").status, "verified");
     assert.equal(criterion(app, "rolesAndPermissions").status, "verified");
+    assert.equal(criterion(app, "deletionConcept").status, "verified");
+    assert.equal(criterion(app, "retention").status, "verified");
     assert.equal(criterion(app, "dataRegion").status, "open");
-    assert.equal(criterion(app, "deletionConcept").status, "open");
+    assert.equal(criterion(app, "dataExport").status, "open");
     assert.equal(snapshot.capabilities.releaseProduction, false);
     assert.equal(app.productionReleaseReadiness.technicalEvidenceVerified, false);
     assert.equal(app.productionReleaseReadiness.releaseAuthorized, false);
@@ -90,7 +99,7 @@ test("Factory marks only ULC rolesAndPermissions as verified when the app-specif
   }
 });
 
-test("Factory keeps ULC rolesAndPermissions open when the runtime policy drifts", async () => {
+test("Factory keeps roles open on B drift while independently preserving exact C/D evidence", async () => {
   const rolePolicy = JSON.parse(
     JSON.stringify(ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY),
   );
@@ -101,9 +110,11 @@ test("Factory keeps ULC rolesAndPermissions open when the runtime policy drifts"
     const snapshot = await loadFactorySnapshot(root);
     const app = snapshot.apps[0];
 
-    assert.equal(app.productionReadiness.verifiedCount, 1);
+    assert.equal(app.productionReadiness.verifiedCount, 3);
     assert.equal(criterion(app, "secretsOutsideAppManifests").status, "verified");
     assert.equal(criterion(app, "rolesAndPermissions").status, "open");
+    assert.equal(criterion(app, "deletionConcept").status, "verified");
+    assert.equal(criterion(app, "retention").status, "verified");
     assert.equal(app.productionReadiness.productionReady, false);
     assert.equal(snapshot.capabilities.releaseProduction, false);
   } finally {
