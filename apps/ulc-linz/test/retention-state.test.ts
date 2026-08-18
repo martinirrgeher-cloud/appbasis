@@ -79,9 +79,9 @@ describe("ULC Linz deterministic retention state", () => {
     expect(states.map((state) => [state.target.identityId, state.status])).toEqual([
       ["active-member", "active"],
       ["exact-boundary", "active"],
-      ["expired-review", "due"],
-      ["future-review", "exception"],
       ["overdue", "due"],
+      ["future-review", "exception"],
+      ["expired-review", "due"],
     ]);
   });
 
