@@ -48,19 +48,83 @@ const ALLOWED_PREREQUISITE_REFERENCES = Object.freeze([
 ]);
 
 const EXPECTED_EXECUTION_STEPS = deepFreeze([
-  { id: "neon-production-database", kind: "provider-write" },
-  { id: "production-worker", kind: "provider-write" },
-  { id: "database-binding", kind: "provider-write" },
-  { id: "production-domain-selection", kind: "operator-input" },
-  { id: "runtime-configuration", kind: "provider-write" },
-  { id: "production-migrations", kind: "production-data-write" },
-  { id: "production-worker-deploy", kind: "provider-write" },
-  { id: "production-access-bootstrap", kind: "application-write" },
-  { id: "production-domain-activation", kind: "public-exposure-write" },
-  { id: "m5-production-evidence", kind: "read-only-evidence" },
-  { id: "backup-recovery-validation", kind: "recovery-validation-write" },
-  { id: "post-deploy-smokes", kind: "production-smoke-write" },
-  { id: "release-gate", kind: "authorization-gate" },
+  { id: "neon-production-database", kind: "provider-write", requires: [] },
+  {
+    id: "production-worker",
+    kind: "provider-write",
+    requires: ["neon-production-database"],
+  },
+  {
+    id: "database-binding",
+    kind: "provider-write",
+    requires: ["neon-production-database", "production-worker"],
+  },
+  {
+    id: "production-domain-selection",
+    kind: "operator-input",
+    requires: ["production-worker"],
+  },
+  {
+    id: "runtime-configuration",
+    kind: "provider-write",
+    requires: ["database-binding", "production-worker"],
+  },
+  {
+    id: "production-migrations",
+    kind: "production-data-write",
+    requires: ["neon-production-database"],
+  },
+  {
+    id: "production-worker-deploy",
+    kind: "provider-write",
+    requires: [
+      "database-binding",
+      "runtime-configuration",
+      "production-migrations",
+    ],
+  },
+  {
+    id: "production-access-bootstrap",
+    kind: "application-write",
+    requires: ["production-migrations", "production-worker-deploy"],
+  },
+  {
+    id: "production-domain-activation",
+    kind: "public-exposure-write",
+    requires: [
+      "production-domain-selection",
+      "production-worker-deploy",
+      "production-access-bootstrap",
+    ],
+  },
+  {
+    id: "m5-production-evidence",
+    kind: "read-only-evidence",
+    requires: ["production-domain-activation"],
+  },
+  {
+    id: "backup-recovery-validation",
+    kind: "recovery-validation-write",
+    requires: ["m5-production-evidence", "production-migrations"],
+  },
+  {
+    id: "post-deploy-smokes",
+    kind: "production-smoke-write",
+    requires: [
+      "m5-production-evidence",
+      "backup-recovery-validation",
+      "production-domain-activation",
+    ],
+  },
+  {
+    id: "release-gate",
+    kind: "authorization-gate",
+    requires: [
+      "m5-production-evidence",
+      "backup-recovery-validation",
+      "post-deploy-smokes",
+    ],
+  },
 ]);
 
 const M6_CRITERION_COVERAGE = deepFreeze({
@@ -384,7 +448,7 @@ function assertExecutionPlanContract() {
       step.sequence !== index + 1 ||
       step.id !== expected.id ||
       step.kind !== expected.kind ||
-      !Array.isArray(step.requires) ||
+      !isDeepStrictEqual(step.requires, expected.requires) ||
       typeof step.approvalRequired !== "boolean"
     ) {
       fail("EXECUTION_PLAN_DRIFT");
@@ -400,30 +464,79 @@ function assertExecutionPlanContract() {
     }
   }
 
+  const neonDatabase = stepById(plan, "neon-production-database");
+  if (
+    neonDatabase.target?.provider !== "neon" ||
+    neonDatabase.target?.dedicatedProductionResource !== true ||
+    neonDatabase.target?.region !== NEON_REGION
+  ) {
+    fail("NEON_TARGET_DRIFT");
+  }
+
+  const productionWorker = stepById(plan, "production-worker");
+  if (
+    productionWorker.target?.provider !== "cloudflare" ||
+    productionWorker.target?.dedicatedProductionResource !== true ||
+    productionWorker.target?.workersDev !== false ||
+    productionWorker.target?.publicIngress !== false
+  ) {
+    fail("WORKER_TARGET_DRIFT");
+  }
+
+  const databaseBinding = stepById(plan, "database-binding");
+  if (
+    databaseBinding.target?.provider !== "cloudflare" ||
+    databaseBinding.target?.bindingType !==
+      "hyperdrive-or-equivalent-database-binding"
+  ) {
+    fail("DATABASE_BINDING_TARGET_DRIFT");
+  }
+
   const domainSelection = stepById(plan, "production-domain-selection");
   if (
+    domainSelection.target?.hostnameSource !== "operator-supplied" ||
     domainSelection.target?.providerWrite !== false ||
     domainSelection.target?.publicIngress !== false
   ) {
     fail("DOMAIN_SELECTION_BOUNDARY_DRIFT");
   }
 
-  const domainActivation = stepById(plan, "production-domain-activation");
+  const runtimeConfiguration = stepById(plan, "runtime-configuration");
   if (
-    domainActivation.target?.publicIngress !== true ||
-    domainActivation.approvalRequired !== true
+    runtimeConfiguration.target?.provider !== "cloudflare" ||
+    !isDeepStrictEqual(runtimeConfiguration.target?.secretNames, [
+      "BETTER_AUTH_SECRET",
+    ]) ||
+    !isDeepStrictEqual(runtimeConfiguration.target?.plainConfigurationNames, [
+      "APPBASIS_BASE_URL",
+    ]) ||
+    !isDeepStrictEqual(runtimeConfiguration.target?.requiredBindings, [
+      "HYPERDRIVE",
+    ]) ||
+    runtimeConfiguration.target?.secretValuesInRepository !== false
   ) {
-    fail("PUBLIC_EXPOSURE_BOUNDARY_DRIFT");
+    fail("RUNTIME_CONFIGURATION_DRIFT");
   }
 
   const migration = stepById(plan, "production-migrations");
   if (
+    migration.target?.dialect !== "postgresql" ||
+    migration.target?.manifest !== "apps/ulc-linz/appbasis.database.json" ||
     migration.target?.backupRecoveryStatePrecheckRequired !== true ||
     migration.target?.immediateBackupBeforeCriticalMigrationPreferred !== true ||
     migration.target?.rollbackOrRecoveryPlanRequired !== true ||
     migration.target?.migrationVerificationRequired !== true
   ) {
     fail("MIGRATION_SAFETY_DRIFT");
+  }
+
+  const workerDeploy = stepById(plan, "production-worker-deploy");
+  if (
+    workerDeploy.target?.provider !== "cloudflare" ||
+    workerDeploy.target?.runtimeEntrypoint !== "./worker/index.ts" ||
+    workerDeploy.target?.publicIngress !== false
+  ) {
+    fail("WORKER_DEPLOYMENT_DRIFT");
   }
 
   const accessBootstrap = stepById(plan, "production-access-bootstrap");
@@ -443,6 +556,55 @@ function assertExecutionPlanContract() {
     accessBootstrap.target?.noSecondProvisioningContract !== true
   ) {
     fail("PRODUCTION_ACCESS_CONTRACT_DRIFT");
+  }
+
+  const domainActivation = stepById(plan, "production-domain-activation");
+  if (
+    domainActivation.target?.provider !== "cloudflare" ||
+    domainActivation.target?.hostnameSource !== "operator-supplied" ||
+    domainActivation.target?.publicIngress !== true ||
+    domainActivation.approvalRequired !== true
+  ) {
+    fail("PUBLIC_EXPOSURE_BOUNDARY_DRIFT");
+  }
+
+  const m5Evidence = stepById(plan, "m5-production-evidence");
+  if (
+    m5Evidence.target?.gate !== "Production Security & Privacy Ready v0.1" ||
+    m5Evidence.target?.resourceBindingConsumer !==
+      "tooling/ulc-linz-m6-production-resource-binding.mjs" ||
+    m5Evidence.target?.allRequired !== true ||
+    m5Evidence.target?.failClosed !== true ||
+    m5Evidence.approvalRequired !== false
+  ) {
+    fail("M5_EVIDENCE_GATE_DRIFT");
+  }
+
+  const recovery = stepById(plan, "backup-recovery-validation");
+  if (
+    recovery.target?.gate !== "Backup & Disaster Recovery v0.1" ||
+    recovery.target?.automaticBackupRequired !== true ||
+    recovery.target?.retentionRequired !== true ||
+    recovery.target?.pointInTimeRecoveryPreferred !== true ||
+    recovery.target?.realRestoreRequired !== true ||
+    recovery.target?.restoreDataIntegrityCheckRequired !== true ||
+    recovery.target?.restoreAuthCheckRequired !== true ||
+    recovery.target?.restorePermissionsCheckRequired !== true ||
+    recovery.target?.restoreApplicationSmokeRequired !== true
+  ) {
+    fail("BACKUP_RECOVERY_GATE_DRIFT");
+  }
+
+  const smokes = stepById(plan, "post-deploy-smokes");
+  if (
+    !isDeepStrictEqual(smokes.target?.checks, [
+      "health",
+      "auth",
+      "permissions",
+      "application",
+    ])
+  ) {
+    fail("POST_DEPLOY_SMOKE_DRIFT");
   }
 
   const releaseGate = plan.steps.at(-1);
