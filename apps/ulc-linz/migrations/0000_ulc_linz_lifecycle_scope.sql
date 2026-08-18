@@ -12,6 +12,12 @@ CREATE TABLE "ulc_linz_membership" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "ulc_linz_membership_source_role_check"
     CHECK ("source_role" IN ('admin', 'trainer', 'athlete', 'parent')),
+  CONSTRAINT "ulc_linz_membership_lifecycle_state_check"
+    CHECK (
+      ("active" = true AND "ended_at" IS NULL)
+      OR
+      ("active" = false AND "ended_at" IS NOT NULL AND "source_role" <> 'admin')
+    ),
   CONSTRAINT "ulc_linz_membership_retention_exception_check"
     CHECK (
       ("retention_exception_reason" IS NULL AND "retention_exception_actor" IS NULL AND "retention_review_at" IS NULL)
@@ -51,7 +57,7 @@ CREATE TABLE "ulc_linz_lifecycle_deletion" (
   CONSTRAINT "ulc_linz_lifecycle_deletion_source_role_check"
     CHECK ("source_role" IN ('trainer', 'athlete', 'parent')),
   CONSTRAINT "ulc_linz_lifecycle_deletion_purge_after_check"
-    CHECK ("purge_after" > "completed_at")
+    CHECK ("purge_after" = "completed_at" + interval '35 days')
 );
 --> statement-breakpoint
 CREATE INDEX "ulc_linz_lifecycle_deletion_purge_idx"
