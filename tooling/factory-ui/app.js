@@ -1,5 +1,6 @@
 import { previewAccentForeground } from "./preview-theme.mjs";
 import {
+  factoryLifecycleCopy,
   productionReadinessCopy,
   productionReleaseCriteriaCopy,
   productionReleaseReadinessCopy,
@@ -226,6 +227,11 @@ function renderAppDetail(app) {
   replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
   renderPreviewReadiness(app.previewReadiness);
   renderProductionReadiness(app.productionReadiness, app.productionReleaseReadiness);
+  renderFactoryLifecycle(
+    app.previewReadiness,
+    app.productionReadiness,
+    app.productionReleaseReadiness,
+  );
 }
 
 function renderPreviewReadiness(readiness) {
@@ -261,14 +267,30 @@ function renderProductionReadiness(readiness, releaseReadiness) {
   if (!elements.detailProductionStatus || !elements.detailProductionSummary) return;
   const m5Copy = productionReadinessCopy(readiness);
   const m6Copy = productionReleaseReadinessCopy(releaseReadiness);
-  elements.detailProductionStatus.textContent = `${m5Copy.heading} · ${m6Copy.heading}`;
-  elements.detailProductionSummary.textContent = `${m5Copy.detail} ${m6Copy.detail}`;
-  renderProductionReleaseCriteria(releaseReadiness);
+  const productionGate = elements.detailProductionStatus.closest(".factory-detail-gate");
+  const productionLabel = productionGate?.querySelector(":scope > span");
+  if (productionLabel) productionLabel.textContent = "Production Ready";
+  elements.detailProductionStatus.textContent = m5Copy.heading;
+  elements.detailProductionSummary.textContent = m5Copy.detail;
+  renderProductionReleaseCriteria(releaseReadiness, m6Copy);
 }
 
-function renderProductionReleaseCriteria(readiness) {
+function renderProductionReleaseCriteria(readiness, releaseCopy) {
   const productionGate = elements.detailProductionStatus?.closest(".factory-detail-gate");
   if (!productionGate) return;
+
+  let releaseSummary = productionGate.querySelector("[data-m6-release-summary]");
+  if (releaseSummary === null) {
+    releaseSummary = document.createElement("div");
+    releaseSummary.className = "factory-release-gate";
+    releaseSummary.dataset.m6ReleaseSummary = "";
+    productionGate.append(releaseSummary);
+  }
+  const releaseHeading = document.createElement("strong");
+  releaseHeading.textContent = `Produktion freigeben · ${releaseCopy.heading}`;
+  const releaseDetail = document.createElement("span");
+  releaseDetail.textContent = releaseCopy.detail;
+  releaseSummary.replaceChildren(releaseHeading, releaseDetail);
 
   let criteriaList = productionGate.querySelector("[data-m6-release-criteria]");
   if (criteriaList === null) {
@@ -300,6 +322,56 @@ function renderProductionReleaseCriteria(readiness) {
     item.append(label, status, detail);
     criteriaList.append(item);
   }
+}
+
+function renderFactoryLifecycle(previewReadiness, readiness, releaseReadiness) {
+  const readinessSection = document
+    .querySelector("#detail-readiness-heading")
+    ?.closest(".factory-detail-section");
+  const gateList = readinessSection?.querySelector(":scope > .factory-detail-gates");
+  if (!readinessSection || !gateList) return;
+
+  let lifecycle = readinessSection.querySelector("[data-factory-lifecycle]");
+  if (lifecycle === null) {
+    lifecycle = document.createElement("div");
+    lifecycle.dataset.factoryLifecycle = "";
+    readinessSection.insertBefore(lifecycle, gateList);
+  }
+
+  const copy = factoryLifecycleCopy(
+    previewReadiness,
+    readiness,
+    releaseReadiness,
+  );
+  const flow = document.createElement("ol");
+  flow.className = "factory-flow";
+  flow.setAttribute("aria-label", "App-Lifecycle");
+
+  for (const stage of copy.stages) {
+    const item = document.createElement("li");
+    if (stage.state === "current") item.classList.add("is-current");
+    const marker = document.createElement("span");
+    marker.textContent =
+      stage.state === "complete" ? "✓" : stage.state === "current" ? "→" : "–";
+    marker.setAttribute("aria-hidden", "true");
+    const label = document.createElement("strong");
+    label.textContent = stage.label;
+    const status = document.createElement("small");
+    status.textContent = stage.heading;
+    item.append(marker, label, status);
+    flow.append(item);
+  }
+
+  const nextStep = document.createElement("div");
+  nextStep.className = "factory-release-gate";
+  nextStep.setAttribute("role", "note");
+  const nextHeading = document.createElement("strong");
+  nextHeading.textContent = `Nächster sicherer Schritt: ${copy.nextStep.heading}`;
+  const nextDetail = document.createElement("span");
+  nextDetail.textContent = copy.nextStep.detail;
+  nextStep.append(nextHeading, nextDetail);
+
+  lifecycle.replaceChildren(flow, nextStep);
 }
 
 function previewReadinessLabel(readiness) {
@@ -401,8 +473,8 @@ function renderCatalog(draftState = { modules: [], services: [], focus: null }) 
 
 function renderCheckboxes(container, ids, groupName, labelFor, selectedIds = []) {
   if (!container) return;
-  container.replaceChildren();
 
+  container.replaceChildren();
   if (ids.length === 0) {
     container.append(emptyState("Aktuell keine Auswahl verfügbar."));
     return;
