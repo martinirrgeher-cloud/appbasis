@@ -42,7 +42,7 @@ Die öffentliche ULC-Runtime erzeugt einen kleinen strukturierten Eventvertrag f
 
 - `authorization.denied`
 - Actor/Principal, soweit sicher vorhanden
-- Organisation, soweit als sicherer Log-Identifier normalisierbar
+- Organisation nur nach erfolgreicher aktiver Same-Organization-Membership-Prüfung; ein bloß vom Client angefragter Fremdverein wird nicht als autoritativer Organisationskontext geloggt
 - Aktion `view` / `edit`
 - Modul als fachlich notwendiges Ziel
 - fester Denial-Reason-Code
@@ -63,7 +63,8 @@ Ein Fehler eines injizierten/Provider-Sinks:
 - eröffnet niemals einen Zugriff,
 - ersetzt niemals die ursprüngliche Authorization-Denial-Semantik,
 - ersetzt niemals eine bereits verweigerte Identity-HTTP-Antwort,
-- wird nur mit einer festen secrets-freien Fallback-Meldung diagnostiziert.
+- wird nur mit einer festen secrets-freien Fallback-Meldung diagnostiziert,
+- bleibt auch dann ohne Einfluss auf die Denial-Semantik, wenn selbst die Fallback-Konsole fehlschlägt.
 
 ## Zugriffsschutz
 
