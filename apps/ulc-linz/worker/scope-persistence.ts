@@ -48,6 +48,7 @@ export type UlcLinzRetentionState =
       target: UlcLinzLifecycleTarget;
       reason: string;
       actor: string;
+      createdAt: Date;
       reviewAt: Date;
     }>;
 
@@ -66,8 +67,8 @@ export class UlcLinzScopePersistenceBlockedError extends Error {
 }
 
 /**
- * App-owned PostgreSQL persistence for the ULC-specific organization membership
- * and self/managed subject relations. It consumes a narrow SQL port and
+ * App-owned PostgreSQL persistence for the ULC-specific organization membership,
+ * subject relations and lifecycle audit. It consumes a narrow SQL port and
  * deliberately does not create another AppBasis platform service.
  */
 export class PostgresUlcLinzScopePersistence
@@ -142,9 +143,9 @@ export class PostgresUlcLinzScopePersistence
   }
 
   /**
-   * Persist a narrow retention exception only after the normal 12-month member
-   * retention is already due. Actor, reason and future review date are stored on
-   * the retained record so the exception cannot become an unowned indefinite hold.
+   * Persist a narrow retention exception only after the ordinary 12-month member
+   * retention is already due. State update and immutable audit metadata are one
+   * PostgreSQL statement, so a privileged exception cannot exist without audit.
    */
   async setRetentionException(input: {
     identityId: string;
@@ -162,19 +163,40 @@ export class PostgresUlcLinzScopePersistence
     if (reviewAt.getTime() <= now.getTime()) blocked();
 
     const rows = await this.sql.unsafe(
-      `UPDATE ulc_linz_membership
-       SET retention_exception_reason = $4,
-           retention_exception_actor = $3,
-           retention_review_at = $5,
-           updated_at = $6
-       WHERE identity_id = $1
-         AND organization_id = $2
-         AND active = false
-         AND source_role IN ('trainer', 'athlete', 'parent')
-         AND ended_at IS NOT NULL
-         AND ended_at + interval '12 months' < $6::timestamptz
-       RETURNING identity_id, organization_id, subject_id, source_role, active, ended_at,
-                 retention_exception_reason, retention_exception_actor, retention_review_at`,
+      `WITH updated AS (
+         UPDATE ulc_linz_membership
+         SET retention_exception_reason = $4,
+             retention_exception_actor = $3,
+             retention_exception_created_at = $6,
+             retention_review_at = $5,
+             updated_at = $6
+         WHERE identity_id = $1
+           AND organization_id = $2
+           AND active = false
+           AND source_role IN ('trainer', 'athlete', 'parent')
+           AND ended_at IS NOT NULL
+           AND ended_at + interval '12 months' < $6::timestamptz
+         RETURNING identity_id, organization_id, subject_id, source_role, active, ended_at,
+                   retention_exception_reason, retention_exception_actor,
+                   retention_exception_created_at, retention_review_at
+       ),
+       audit_event AS (
+         INSERT INTO ulc_linz_lifecycle_audit (
+           event_type,
+           actor_principal_id,
+           target_identity_id,
+           organization_id,
+           reason,
+           review_at,
+           created_at
+         )
+         SELECT 'retention.exception.set', $3, identity_id, organization_id, $4, $5, $6
+         FROM updated
+         RETURNING event_id
+       )
+       SELECT updated.*,
+              (SELECT count(*)::int FROM audit_event) AS audit_count
+       FROM updated`,
       [
         identityId,
         organizationId,
@@ -184,7 +206,7 @@ export class PostgresUlcLinzScopePersistence
         now.toISOString(),
       ],
     );
-    if (rows.length !== 1) blocked();
+    if (rows.length !== 1 || rows[0]?.audit_count !== 1) blocked();
     const row = rows[0];
     if (row === undefined) blocked();
     const state = retentionState(row, now);
@@ -194,11 +216,17 @@ export class PostgresUlcLinzScopePersistence
 
   /**
    * Final app-owner cleanup after the identity/permission owners have completed.
-   * Marker insert, inbound/outbound scope cleanup and membership deletion execute
-   * as one PostgreSQL statement, so no partial app-owner success can be reported.
+   * Delete marker, completion audit, inbound/outbound scope cleanup and membership
+   * deletion execute as one PostgreSQL statement. Existing markers make replay safe.
    */
-  async completeIdentityDeletion(identityId: string): Promise<UlcLinzDeletionMarker> {
-    const normalizedIdentityId = requiredIdentifier(identityId);
+  async completeIdentityDeletion(input: {
+    identityId: string;
+    actor: string;
+    reason: string;
+  }): Promise<UlcLinzDeletionMarker> {
+    const normalizedIdentityId = requiredIdentifier(input.identityId);
+    const actor = requiredIdentifier(input.actor);
+    const reason = requiredReason(input.reason);
     const existing = await findDeletionMarker(this.sql, normalizedIdentityId);
     if (existing !== null) {
       await assertNoLiveScopeRows(this.sql, existing);
@@ -228,6 +256,20 @@ export class PostgresUlcLinzScopePersistence
          ON CONFLICT (identity_id) DO NOTHING
          RETURNING identity_id, organization_id, subject_id, source_role, completed_at, purge_after
        ),
+       audit_event AS (
+         INSERT INTO ulc_linz_lifecycle_audit (
+           event_type,
+           actor_principal_id,
+           target_identity_id,
+           organization_id,
+           reason,
+           review_at,
+           created_at
+         )
+         SELECT 'identity.delete.completed', $3, identity_id, organization_id, $4, NULL, $2
+         FROM inserted
+         RETURNING event_id
+       ),
        deleted_scopes AS (
          DELETE FROM ulc_linz_subject_scope AS scope
          USING inserted AS marker
@@ -250,9 +292,10 @@ export class PostgresUlcLinzScopePersistence
               marker.source_role,
               marker.completed_at,
               marker.purge_after,
+              (SELECT count(*)::int FROM audit_event) AS audit_count,
               (SELECT count(*)::int FROM deleted_membership) AS deleted_membership_count
        FROM inserted AS marker`,
-      [normalizedIdentityId, completedAt],
+      [normalizedIdentityId, completedAt, actor, reason],
     );
 
     if (rows.length === 0) {
@@ -261,7 +304,13 @@ export class PostgresUlcLinzScopePersistence
       await assertNoLiveScopeRows(this.sql, raced);
       return raced;
     }
-    if (rows.length !== 1 || rows[0]?.deleted_membership_count !== 1) blocked();
+    if (
+      rows.length !== 1 ||
+      rows[0]?.audit_count !== 1 ||
+      rows[0]?.deleted_membership_count !== 1
+    ) {
+      blocked();
+    }
 
     const marker = deletionMarker(rows[0]);
     await assertNoLiveScopeRows(this.sql, marker);
@@ -273,7 +322,8 @@ export class PostgresUlcLinzScopePersistence
     const now = validNow(this.now());
     const rows = await this.sql.unsafe(
       `SELECT identity_id, organization_id, subject_id, source_role, active, ended_at,
-              retention_exception_reason, retention_exception_actor, retention_review_at
+              retention_exception_reason, retention_exception_actor,
+              retention_exception_created_at, retention_review_at
        FROM ulc_linz_membership
        ORDER BY identity_id ASC`,
     );
@@ -290,6 +340,17 @@ export class PostgresUlcLinzScopePersistence
     );
     return rows.length;
   }
+
+  async purgeExpiredLifecycleAuditEvents(): Promise<number> {
+    const now = validNow(this.now()).toISOString();
+    const rows = await this.sql.unsafe(
+      `DELETE FROM ulc_linz_lifecycle_audit
+       WHERE created_at < $1::timestamptz - interval '12 months'
+       RETURNING event_id`,
+      [now],
+    );
+    return rows.length;
+  }
 }
 
 function retentionState(
@@ -297,24 +358,35 @@ function retentionState(
   now: Date,
 ): UlcLinzRetentionState {
   const target = lifecycleTarget(row);
+  const reason = nullableRowString(row, "retention_exception_reason");
+  const actor = nullableRowString(row, "retention_exception_actor");
+  const createdAt = nullableDate(row.retention_exception_created_at);
+  const reviewAt = nullableDate(row.retention_review_at);
+  const exceptionFields = [reason, actor, createdAt, reviewAt].filter(
+    (value) => value !== null,
+  ).length;
+  if (exceptionFields !== 0 && exceptionFields !== 4) blocked();
+
   if (target.active) {
-    if (target.endedAt !== null) blocked();
+    if (target.endedAt !== null || exceptionFields !== 0) blocked();
     return Object.freeze({ status: "active", target });
   }
   if (target.endedAt === null || target.sourceRole === "admin") blocked();
 
-  const reason = nullableRowString(row, "retention_exception_reason");
-  const actor = nullableRowString(row, "retention_exception_actor");
-  const reviewAt = nullableDate(row.retention_review_at);
-  const exceptionFields = [reason, actor, reviewAt].filter((value) => value !== null).length;
-  if (exceptionFields !== 0 && exceptionFields !== 3) blocked();
-
   const dueAt = addCalendarMonthsClamped(target.endedAt, 12);
   if (now.getTime() <= dueAt.getTime()) {
+    if (exceptionFields !== 0) blocked();
     return Object.freeze({ status: "active", target });
   }
-  if (reason !== null && actor !== null && reviewAt !== null && reviewAt.getTime() > now.getTime()) {
-    return Object.freeze({ status: "exception", target, reason, actor, reviewAt });
+  if (
+    reason !== null &&
+    actor !== null &&
+    createdAt !== null &&
+    reviewAt !== null &&
+    reviewAt.getTime() > createdAt.getTime() &&
+    reviewAt.getTime() > now.getTime()
+  ) {
+    return Object.freeze({ status: "exception", target, reason, actor, createdAt, reviewAt });
   }
   return Object.freeze({ status: "due", target });
 }
@@ -442,7 +514,7 @@ function requiredRowString(row: Record<string, unknown>, key: string): string {
 
 function nullableRowString(row: Record<string, unknown>, key: string): string | null {
   const value = row[key];
-  if (value === null) return null;
+  if (value === null || value === undefined) return null;
   if (typeof value !== "string" || value.length === 0 || value !== value.trim()) blocked();
   return value;
 }
@@ -460,7 +532,7 @@ function requiredDate(value: unknown): Date {
 }
 
 function nullableDate(value: unknown): Date | null {
-  if (value === null) return null;
+  if (value === null || value === undefined) return null;
   const date = value instanceof Date ? new Date(value.getTime()) : new Date(String(value));
   if (Number.isNaN(date.getTime())) blocked();
   return date;
