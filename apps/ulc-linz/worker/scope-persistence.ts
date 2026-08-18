@@ -1,5 +1,3 @@
-import type { IdentityPostgresRuntimeSqlClient } from "@appbasis/identity/postgres-runtime";
-
 import type {
   UlcLinzMembershipResolution,
   UlcLinzMembershipResolver,
@@ -12,7 +10,14 @@ const DELETABLE_SOURCE_ROLES = new Set(["trainer", "athlete", "parent"] as const
 const DELETION_MARKER_RETENTION_DAYS = 35;
 const MAX_RETENTION_EXCEPTION_REASON_LENGTH = 1000;
 
-type SqlClient = IdentityPostgresRuntimeSqlClient;
+type UlcLinzSqlParameter = string | number | boolean | null;
+
+export interface UlcLinzSqlClient {
+  unsafe(
+    query: string,
+    parameters?: UlcLinzSqlParameter[],
+  ): PromiseLike<readonly Record<string, unknown>[]>;
+}
 
 export type UlcLinzSourceRole = "admin" | "trainer" | "athlete" | "parent";
 export type UlcLinzDeletableSourceRole = Exclude<UlcLinzSourceRole, "admin">;
@@ -62,14 +67,14 @@ export class UlcLinzScopePersistenceBlockedError extends Error {
 
 /**
  * App-owned PostgreSQL persistence for the ULC-specific organization membership
- * and self/managed subject relations. It consumes the already-existing identity
- * SQL contract and deliberately does not create another AppBasis platform service.
+ * and self/managed subject relations. It consumes a narrow SQL port and
+ * deliberately does not create another AppBasis platform service.
  */
 export class PostgresUlcLinzScopePersistence
   implements UlcLinzMembershipResolver, UlcLinzSubjectScopeResolver
 {
   constructor(
-    private readonly sql: SqlClient,
+    private readonly sql: UlcLinzSqlClient,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -180,7 +185,9 @@ export class PostgresUlcLinzScopePersistence
       ],
     );
     if (rows.length !== 1) blocked();
-    const state = retentionState(rows[0], now);
+    const row = rows[0];
+    if (row === undefined) blocked();
+    const state = retentionState(row, now);
     if (state.status !== "exception") blocked();
     return state;
   }
@@ -332,7 +339,7 @@ function addCalendarMonthsClamped(value: Date, months: number): Date {
 }
 
 async function findDeletionMarker(
-  sql: SqlClient,
+  sql: UlcLinzSqlClient,
   identityId: string,
 ): Promise<UlcLinzDeletionMarker | null> {
   const rows = await sql.unsafe(
@@ -347,7 +354,7 @@ async function findDeletionMarker(
 }
 
 async function assertNoLiveScopeRows(
-  sql: SqlClient,
+  sql: UlcLinzSqlClient,
   marker: UlcLinzDeletionMarker,
 ): Promise<void> {
   const rows = await sql.unsafe(
