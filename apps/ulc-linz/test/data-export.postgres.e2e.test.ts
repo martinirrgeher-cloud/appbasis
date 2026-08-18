@@ -48,7 +48,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await administrativeConnection.client.end();
     });
 
-    it("exports only authorized current member/contact data through real owner contracts", async () => {
+    it("exports authorized current and retained member/contact data through real owner contracts", async () => {
       await administrativeConnection.client.unsafe(`CREATE DATABASE ${databaseName}`);
       databaseCreated = true;
       const connection = createPostgresDatabase(isolatedUrl);
@@ -124,6 +124,15 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         ]);
         expect(JSON.stringify(selfResult)).not.toContain("password");
         expect(JSON.stringify(selfResult)).not.toContain(athleteCurrent.sessionToken);
+
+        await connection.client.unsafe(
+          `UPDATE ulc_linz_membership
+           SET active = false,
+               ended_at = '2026-02-01T00:00:00.000Z'::timestamptz,
+               updated_at = '2026-02-01T00:00:00.000Z'::timestamptz
+           WHERE identity_id = $1`,
+          [child.identityId],
+        );
 
         const managedResult = await exportUlcLinzDataWithCanonicalAuthorization(
           parentCurrent,
