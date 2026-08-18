@@ -51,7 +51,10 @@
       "notes": [
         "app-owned-membership-and-subject-scope-persistence",
         "member-contact-retention-12-calendar-months",
-        "delete-marker-retention-35-days"
+        "retention-exceptions-require-authenticated-active-same-org-admin-with-actor-reason-future-review",
+        "admin-membership-must-be-demoted-before-inactivation-or-deletion-db-enforced",
+        "delete-marker-retention-35-days",
+        "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion"
       ]
     }
   ],
