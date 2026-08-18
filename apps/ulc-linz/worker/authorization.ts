@@ -79,22 +79,23 @@ export async function assertUlcLinzModuleAccess(
       dependencies.securityEvents,
       current,
       request,
+      null,
       "identity-access-denied",
     );
     throw error;
   }
 
   const identityId = requiredIdentifier(current.identity.identityId, () =>
-    deny(dependencies.securityEvents, current, request, "invalid-request"),
+    deny(dependencies.securityEvents, current, request, null, "invalid-request"),
   );
   const organizationId = requiredIdentifier(request.organizationId, () =>
-    deny(dependencies.securityEvents, current, request, "invalid-request"),
+    deny(dependencies.securityEvents, current, request, null, "invalid-request"),
   );
   const moduleKey = requiredIdentifier(request.moduleKey, () =>
-    deny(dependencies.securityEvents, current, request, "invalid-request"),
+    deny(dependencies.securityEvents, current, request, null, "invalid-request"),
   );
   if (request.action !== "view" && request.action !== "edit") {
-    deny(dependencies.securityEvents, current, request, "invalid-request");
+    deny(dependencies.securityEvents, current, request, null, "invalid-request");
   }
 
   const membership = await dependencies.memberships.resolveMembership({
@@ -107,7 +108,7 @@ export async function assertUlcLinzModuleAccess(
     membership.organizationId !== organizationId ||
     !isSourceRole(membership.sourceRole)
   ) {
-    deny(dependencies.securityEvents, current, request, "membership-denied");
+    deny(dependencies.securityEvents, current, request, null, "membership-denied");
   }
 
   const expectedRoleId = roleDataScope.runtimeRoleIds[membership.sourceRole];
@@ -118,7 +119,13 @@ export async function assertUlcLinzModuleAccess(
     principal.roleIds.length !== 1 ||
     principal.roleIds[0] !== roleId(expectedRoleId)
   ) {
-    deny(dependencies.securityEvents, current, request, "role-mismatch");
+    deny(
+      dependencies.securityEvents,
+      current,
+      request,
+      organizationId,
+      "role-mismatch",
+    );
   }
 
   const mapping = roleDataScope.principalPermissionMapping;
@@ -128,18 +135,36 @@ export async function assertUlcLinzModuleAccess(
     capability: capabilityId(`${mapping.capabilityNamespace}:${moduleKey}:${action}`),
   });
   if (!allowed) {
-    deny(dependencies.securityEvents, current, request, "capability-denied");
+    deny(
+      dependencies.securityEvents,
+      current,
+      request,
+      organizationId,
+      "capability-denied",
+    );
   }
 
   if (request.scope === "organization") {
     if (membership.sourceRole === "athlete" || membership.sourceRole === "parent") {
-      deny(dependencies.securityEvents, current, request, "scope-denied");
+      deny(
+        dependencies.securityEvents,
+        current,
+        request,
+        organizationId,
+        "scope-denied",
+      );
     }
     return;
   }
 
   const subjectId = requiredIdentifier(request.subjectId, () =>
-    deny(dependencies.securityEvents, current, request, "invalid-request"),
+    deny(
+      dependencies.securityEvents,
+      current,
+      request,
+      organizationId,
+      "invalid-request",
+    ),
   );
   if (membership.sourceRole === "athlete") {
     const related = await dependencies.subjectScopes.hasRelation({
@@ -153,6 +178,7 @@ export async function assertUlcLinzModuleAccess(
         dependencies.securityEvents,
         current,
         request,
+        organizationId,
         "subject-relation-denied",
       );
     }
@@ -168,6 +194,7 @@ export async function assertUlcLinzModuleAccess(
         dependencies.securityEvents,
         current,
         request,
+        organizationId,
         "subject-relation-denied",
       );
     }
@@ -205,9 +232,16 @@ function deny(
   securityEvents: UlcLinzSecurityEventLogger | undefined,
   current: UlcLinzCurrentIdentity,
   request: UlcLinzModuleAccessRequest,
+  organizationId: string | null,
   reasonCode: UlcLinzAuthorizationDenyReason,
 ): never {
-  recordAuthorizationDenial(securityEvents, current, request, reasonCode);
+  recordAuthorizationDenial(
+    securityEvents,
+    current,
+    request,
+    organizationId,
+    reasonCode,
+  );
   throw new UlcLinzAuthorizationDeniedError();
 }
 
@@ -215,12 +249,13 @@ function recordAuthorizationDenial(
   securityEvents: UlcLinzSecurityEventLogger | undefined,
   current: UlcLinzCurrentIdentity,
   request: UlcLinzModuleAccessRequest,
+  organizationId: string | null,
   reasonCode: UlcLinzAuthorizationDenyReason,
 ): void {
   recordUlcLinzSecurityEvent(securityEvents, {
     eventType: "authorization.denied",
     actorPrincipalId: current.identity.identityId,
-    organizationId: request.organizationId,
+    organizationId,
     action: request.action,
     targetId: request.moduleKey,
     reasonCode,
