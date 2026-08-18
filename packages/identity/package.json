@@ -9,6 +9,7 @@
     "./better-auth": "./src/better-auth.ts",
     "./http": "./src/http.ts",
     "./postgres-deletion": "./src/postgres-deletion.ts",
+    "./postgres-deletion-retention": "./src/postgres-deletion-retention.ts",
     "./postgres-runtime": {
       "types": "./src/postgres-runtime-contract.ts",
       "default": "./src/postgres-runtime.ts"
