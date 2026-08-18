@@ -27,9 +27,10 @@ ULC Linz v0.1 verwendet als app-spezifischen ersten Produktionsdatenbank-Zielver
 - Region muss beim Create **explizit** gesetzt werden
 - Provider-Default-Region ist nicht zulässig
 - die **tatsächlich ausgewählte Create-Methode** muss eine explizite Regionsauswahl unterstützen
+- die Provider-Inventur muss aus exakt demselben Organisations-/Create-Scope stammen, in den später geschrieben würde
 - existiert bereits eine gleichnamige oder plausibel kollidierende ULC-Linz-Produktionsressource, wird nicht blind neu erzeugt
 
-Der Preflight akzeptiert nur frische, vollständige Provider-API-Inventarevidence. Das Evidence-Fenster ist auf höchstens 15 Minuten begrenzt.
+Der Preflight akzeptiert nur frische, vollständige Provider-API-Inventarevidence. Das Evidence-Fenster ist auf höchstens 15 Minuten begrenzt. Provider- oder Organisations-IDs werden nicht in den Ergebnis-Snapshot übernommen.
 
 ## Cloudflare-Sicherheitsvertrag für den nachfolgenden Worker-Schritt
 
@@ -53,6 +54,7 @@ Damit darf kein Zwischenzustand entstehen, in dem der Produktions-Worker unbeabs
 
 - `source = provider-api`
 - vollständige Neon-Projektinventur
+- Bestätigung, dass Inventur und ausgewählter Create-Scope identisch sind
 - Providerbestätigung, dass Frankfurt verfügbar ist
 - Bestätigung, dass die **ausgewählte** Create-Methode eine explizite Regionsauswahl unterstützt
 - frische Zeitstempel
@@ -65,6 +67,7 @@ Die Projektinventur wird im Speicher geprüft, aber nicht in den Ergebnis-Snapsh
 Der Preflight blockiert mindestens bei:
 
 - unvollständigem Providerinventar
+- abweichendem Inventur-/Create-Scope
 - nicht autoritativer Quelle
 - veralteter Evidence
 - zu langem Evidence-Gültigkeitsfenster
