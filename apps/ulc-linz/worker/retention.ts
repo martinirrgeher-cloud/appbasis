@@ -1,5 +1,4 @@
 import { principalId } from "@appbasis/permissions";
-import type { PostgresIdentityDeletionRetention } from "@appbasis/identity/postgres-deletion-retention";
 
 import {
   deleteUlcLinzIdentity,
@@ -14,16 +13,17 @@ import type {
 
 const RETENTION_ACTOR = principalId("ulc-linz:retention-system");
 
+export interface UlcLinzIdentityDeletionRetention {
+  purgeExpiredCompletedDeletions(): Promise<number>;
+}
+
 export interface UlcLinzRetentionDependencies
   extends Omit<UlcLinzDeletionDependencies, "authorizeLifecycleWrite"> {
   readonly scopes: Pick<
     PostgresUlcLinzScopePersistence,
     "evaluateRetention" | "completeIdentityDeletion" | "purgeExpiredDeletionMarkers"
   >;
-  readonly identityDeletionRetention: Pick<
-    PostgresIdentityDeletionRetention,
-    "purgeExpiredCompletedDeletions"
-  >;
+  readonly identityDeletionRetention: UlcLinzIdentityDeletionRetention;
 }
 
 export interface UlcLinzRetentionRunResult {
