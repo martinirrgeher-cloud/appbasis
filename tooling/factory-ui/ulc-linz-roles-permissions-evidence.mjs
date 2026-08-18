@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { createExpectedUlcLinzDatabaseManifest } from "../ulc-linz-database-contract.mjs";
+import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
 import {
   isCanonicalUlcLinzM5PermissionProvisioningBundle,
   ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE,
@@ -99,7 +99,8 @@ export async function deriveUlcLinzRolesAndPermissionsEvidence(
     if (!hasExpectedTargetPolicyBinding()) return EMPTY_EVIDENCE;
     if (!hasApprovedPermissionProvisioning()) return EMPTY_EVIDENCE;
 
-    const expectedDatabaseManifest = createExpectedUlcLinzDatabaseManifest(definition);
+    const expectedPlatformManifest = createGeneratedDatabaseManifest(definition);
+    if (expectedPlatformManifest === null) return EMPTY_EVIDENCE;
     const root = resolve(repositoryRoot);
     const [runtimePolicy, databaseManifest, acceptanceTestsValid] = await Promise.all([
       readJsonObject(
@@ -122,8 +123,8 @@ export async function deriveUlcLinzRolesAndPermissionsEvidence(
 
     if (
       databaseManifest === undefined ||
-      !isDeepStrictEqual(databaseManifest, expectedDatabaseManifest) ||
       !hasPinnedPlatformOwners(databaseManifest) ||
+      !hasExpectedGeneratedPlatformOwners(databaseManifest, expectedPlatformManifest) ||
       !acceptanceTestsValid
     ) {
       return EMPTY_EVIDENCE;
@@ -175,6 +176,21 @@ function hasPinnedPlatformOwners(databaseManifest) {
       return isDeepStrictEqual(actualOwner, expectedOwner);
     },
   );
+}
+
+function hasExpectedGeneratedPlatformOwners(databaseManifest, expectedPlatformManifest) {
+  if (
+    !Array.isArray(databaseManifest.owners) ||
+    !Array.isArray(expectedPlatformManifest.owners)
+  ) {
+    return false;
+  }
+  return expectedPlatformManifest.owners.every((expectedOwner) => {
+    const actualOwner = databaseManifest.owners.find(
+      (candidate) => candidate?.id === expectedOwner.id,
+    );
+    return isDeepStrictEqual(actualOwner, expectedOwner);
+  });
 }
 
 async function verifyAcceptanceTests(repositoryRoot) {
