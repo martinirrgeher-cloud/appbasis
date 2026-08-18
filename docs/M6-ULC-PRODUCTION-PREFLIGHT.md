@@ -102,6 +102,7 @@ Für ULC v0.1 bleibt verbindlich:
 9. **Produktionsdomain aktivieren**
    - eigener expliziter Public-Exposure-Write
    - erst nach Runtime-Konfiguration, Migration, Deployment und Access-Bootstrap
+   - technische öffentliche Erreichbarkeit ist noch **keine** Produktionsfreigabe; `releaseAuthorized` bleibt bis zum finalen Gate `false`
 
 10. **M5-Production-Evidence erheben**
     - read-only
@@ -152,6 +153,7 @@ Ein Contract-Test vergleicht diese Abdeckung direkt mit `REQUIRED_M6_PRODUCTION_
 - `providerWritesEnabled` bleibt `false`.
 - Der erste reale Write ist eindeutig `neon-production-database`.
 - Domain-Auswahl und öffentliche Domain-Aktivierung sind getrennt.
+- Öffentliche Erreichbarkeit allein kann den Release nicht autorisieren.
 - Jeder mutierende Schritt verlangt ausdrückliche Freigabe.
 - Secretwerte sind kein Repository-Input.
 - Der Release-Gate kann technisch nicht automatisch autorisieren.
