@@ -26,7 +26,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/package.json",
-      gitBlobSha: "a312e67e7dda9eed15f2718f9990e0d2c2c542ea",
+      gitBlobSha: "21180582e2cb2f23e97ccfdd6a0cb95c0f45ce8d",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/lifecycle-service.ts",
