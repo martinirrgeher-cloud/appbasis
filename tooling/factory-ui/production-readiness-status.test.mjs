@@ -228,7 +228,8 @@ test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabl
   assert.equal(snapshot.capabilities.releaseProduction, false);
   assert.ok(
     snapshot.apps.every((app) => {
-      const expectedVerifiedCount = app.appId === "ulc-linz" ? 2 : 1;
+      const isUlcLinz = app.appId === "ulc-linz";
+      const expectedVerifiedCount = isUlcLinz ? 4 : 1;
       return (
         app.productionReadiness?.productionReady === false &&
         app.productionReadiness?.verifiedCount === expectedVerifiedCount &&
@@ -238,7 +239,13 @@ test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabl
         )?.status === "open" &&
         app.productionReadiness?.criteria?.find(
           (criterion) => criterion.id === "rolesAndPermissions",
-        )?.status === (app.appId === "ulc-linz" ? "verified" : "open") &&
+        )?.status === (isUlcLinz ? "verified" : "open") &&
+        app.productionReadiness?.criteria?.find(
+          (criterion) => criterion.id === "deletionConcept",
+        )?.status === (isUlcLinz ? "verified" : "open") &&
+        app.productionReadiness?.criteria?.find(
+          (criterion) => criterion.id === "retention",
+        )?.status === (isUlcLinz ? "verified" : "open") &&
         app.productionReleaseReadiness?.status === "blocked" &&
         app.productionReleaseReadiness?.technicalEvidenceVerified === false &&
         app.productionReleaseReadiness?.releaseAuthorized === false
