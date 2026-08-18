@@ -34,17 +34,34 @@ const RESOURCE_BINDING_CONTRACT_FIELDS = Object.freeze([
   "euOnly",
   "neonRegion",
 ]);
-const MUTATING_STEP_KINDS = Object.freeze(
-  new Set([
-    "provider-write",
-    "production-data-write",
-    "application-write",
-    "public-exposure-write",
-    "recovery-validation-write",
-    "production-smoke-write",
-    "authorization-gate",
-  ]),
-);
+const MUTATING_STEP_KINDS = new Set([
+  "provider-write",
+  "production-data-write",
+  "application-write",
+  "public-exposure-write",
+  "recovery-validation-write",
+  "production-smoke-write",
+  "authorization-gate",
+]);
+const ALLOWED_PREREQUISITE_REFERENCES = Object.freeze([
+  "prerequisite:M3_DONE",
+]);
+
+const EXPECTED_EXECUTION_STEPS = deepFreeze([
+  { id: "neon-production-database", kind: "provider-write" },
+  { id: "production-worker", kind: "provider-write" },
+  { id: "database-binding", kind: "provider-write" },
+  { id: "production-domain-selection", kind: "operator-input" },
+  { id: "runtime-configuration", kind: "provider-write" },
+  { id: "production-migrations", kind: "production-data-write" },
+  { id: "production-worker-deploy", kind: "provider-write" },
+  { id: "production-access-bootstrap", kind: "application-write" },
+  { id: "production-domain-activation", kind: "public-exposure-write" },
+  { id: "m5-production-evidence", kind: "read-only-evidence" },
+  { id: "backup-recovery-validation", kind: "recovery-validation-write" },
+  { id: "post-deploy-smokes", kind: "production-smoke-write" },
+  { id: "release-gate", kind: "authorization-gate" },
+]);
 
 const M6_CRITERION_COVERAGE = deepFreeze({
   previewAccepted: ["prerequisite:M3_DONE"],
@@ -168,8 +185,14 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       approvalRequired: true,
       requires: ["production-migrations", "production-worker-deploy"],
       target: {
+        identityBootstrapContract:
+          "@appbasis/identity/root-admin#createInitialTechnicalAdmin",
+        requiresEmptyOrRecoverableIdentitySet: true,
         canonicalPermissionBundle:
           "tooling/ulc-linz-m5-permission-provisioning.mjs",
+        principalAccessOrchestration:
+          "tooling/ulc-linz-m5-principal-access-orchestration.mjs#replaceUlcLinzPrincipalAccess",
+        principalAccessAdministration: "PostgresPrincipalAccessAdministration",
         principalAssignmentsMustBeExplicit: true,
         defaultPrincipalAssignments: 0,
         leastPrivilegeRequired: true,
@@ -317,10 +340,11 @@ export async function evaluateUlcLinzM6ProductionPreflight(
     contracts: {
       appDefinitionVerified: true,
       databaseManifestVerified: true,
-      runtimeContractVerified: true,
+      runtimeBindingDigestContractVerified: true,
       resourceBindingValidationContractVerified: true,
       permissionProvisioningContractVerified: true,
       m6CriterionCoverageVerified: true,
+      liveProductionEvidenceConsumed: false,
       secretValuesInRepository: false,
       automaticProviderWrites: false,
       automaticProductionRelease: false,
@@ -347,75 +371,78 @@ function assertExecutionPlanContract() {
     plan.providerWritesEnabled !== false ||
     plan.firstProviderWriteStepId !== "neon-production-database" ||
     !Array.isArray(plan.steps) ||
-    plan.steps.length !== 13
+    plan.steps.length !== EXPECTED_EXECUTION_STEPS.length
   ) {
     fail("EXECUTION_PLAN_DRIFT");
   }
 
-  const expectedIds = [
-    "neon-production-database",
-    "production-worker",
-    "database-binding",
-    "production-domain-selection",
-    "runtime-configuration",
-    "production-migrations",
-    "production-worker-deploy",
-    "production-access-bootstrap",
-    "production-domain-activation",
-    "m5-production-evidence",
-    "backup-recovery-validation",
-    "post-deploy-smokes",
-    "release-gate",
-  ];
-
+  const priorStepIds = new Set();
   for (const [index, step] of plan.steps.entries()) {
+    const expected = EXPECTED_EXECUTION_STEPS[index];
     if (
+      expected === undefined ||
       step.sequence !== index + 1 ||
-      step.id !== expectedIds[index] ||
+      step.id !== expected.id ||
+      step.kind !== expected.kind ||
       !Array.isArray(step.requires) ||
-      typeof step.kind !== "string" ||
       typeof step.approvalRequired !== "boolean"
     ) {
       fail("EXECUTION_PLAN_DRIFT");
     }
+
+    if (step.requires.some((requiredStepId) => !priorStepIds.has(requiredStepId))) {
+      fail("EXECUTION_DEPENDENCY_DRIFT");
+    }
+    priorStepIds.add(step.id);
 
     if (MUTATING_STEP_KINDS.has(step.kind) && step.approvalRequired !== true) {
       fail("WRITE_BOUNDARY_DRIFT");
     }
   }
 
-  const domainSelection = plan.steps.find(
-    (step) => step.id === "production-domain-selection",
-  );
+  const domainSelection = stepById(plan, "production-domain-selection");
   if (
-    domainSelection?.kind !== "operator-input" ||
     domainSelection.target?.providerWrite !== false ||
     domainSelection.target?.publicIngress !== false
   ) {
     fail("DOMAIN_SELECTION_BOUNDARY_DRIFT");
   }
 
-  const domainActivation = plan.steps.find(
-    (step) => step.id === "production-domain-activation",
-  );
+  const domainActivation = stepById(plan, "production-domain-activation");
   if (
-    domainActivation?.kind !== "public-exposure-write" ||
     domainActivation.target?.publicIngress !== true ||
     domainActivation.approvalRequired !== true
   ) {
     fail("PUBLIC_EXPOSURE_BOUNDARY_DRIFT");
   }
 
-  const migration = plan.steps.find(
-    (step) => step.id === "production-migrations",
-  );
+  const migration = stepById(plan, "production-migrations");
   if (
-    migration?.target?.backupRecoveryStatePrecheckRequired !== true ||
+    migration.target?.backupRecoveryStatePrecheckRequired !== true ||
     migration.target?.immediateBackupBeforeCriticalMigrationPreferred !== true ||
     migration.target?.rollbackOrRecoveryPlanRequired !== true ||
     migration.target?.migrationVerificationRequired !== true
   ) {
     fail("MIGRATION_SAFETY_DRIFT");
+  }
+
+  const accessBootstrap = stepById(plan, "production-access-bootstrap");
+  if (
+    accessBootstrap.target?.identityBootstrapContract !==
+      "@appbasis/identity/root-admin#createInitialTechnicalAdmin" ||
+    accessBootstrap.target?.requiresEmptyOrRecoverableIdentitySet !== true ||
+    accessBootstrap.target?.canonicalPermissionBundle !==
+      "tooling/ulc-linz-m5-permission-provisioning.mjs" ||
+    accessBootstrap.target?.principalAccessOrchestration !==
+      "tooling/ulc-linz-m5-principal-access-orchestration.mjs#replaceUlcLinzPrincipalAccess" ||
+    accessBootstrap.target?.principalAccessAdministration !==
+      "PostgresPrincipalAccessAdministration" ||
+    accessBootstrap.target?.principalAssignmentsMustBeExplicit !== true ||
+    accessBootstrap.target?.defaultPrincipalAssignments !== 0 ||
+    accessBootstrap.target?.leastPrivilegeRequired !== true ||
+    accessBootstrap.target?.noSecondProvisioningContract !== true
+  ) {
+    fail("PRODUCTION_ACCESS_CONTRACT_DRIFT");
   }
 
   const releaseGate = plan.steps.at(-1);
@@ -445,11 +472,13 @@ function assertM6CoverageContract() {
     if (
       !Array.isArray(references) ||
       references.length < 1 ||
-      references.some(
-        (reference) =>
-          typeof reference !== "string" ||
-          (!reference.startsWith("prerequisite:") && !stepIds.has(reference)),
-      )
+      references.some((reference) => {
+        if (typeof reference !== "string") return true;
+        if (reference.startsWith("prerequisite:")) {
+          return !ALLOWED_PREREQUISITE_REFERENCES.includes(reference);
+        }
+        return !stepIds.has(reference);
+      })
     ) {
       fail("M6_CRITERION_COVERAGE_DRIFT");
     }
@@ -510,6 +539,12 @@ function assertResourceBindingContract() {
   ) {
     fail("RESOURCE_BINDING_CONTRACT_DRIFT");
   }
+}
+
+function stepById(plan, id) {
+  const step = plan.steps.find((entry) => entry.id === id);
+  if (step === undefined) fail("EXECUTION_PLAN_DRIFT");
+  return step;
 }
 
 async function readJson(path, code) {
