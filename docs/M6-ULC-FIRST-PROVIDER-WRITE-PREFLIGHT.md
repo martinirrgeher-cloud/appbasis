@@ -48,6 +48,58 @@ Vor bzw. beim ersten Create/Deploy muss gelten:
 
 Damit darf kein Zwischenzustand entstehen, in dem der Produktions-Worker unbeabsichtigt über `workers.dev` oder eine Preview URL erreichbar ist, bevor die kontrollierte Domain-Aktivierung erfolgt.
 
+## Ausführbarer read-only Provider-State-Reader
+
+`tooling/ulc-linz-m6-provider-state-preflight.mjs` erzeugt die Provider-Evidence nicht aus Operator-Behauptungen, sondern liest sie direkt aus den Provider-APIs und übergibt den normalisierten Neon-Anteil anschließend an `evaluateUlcLinzM6FirstProviderWritePreflight()`.
+
+Der Reader besitzt ausschließlich `GET`-Pfade.
+
+### Neon
+
+Er liest:
+
+- `GET /api/v2/projects` mit dem **späteren Create-Organisationsscope** als `org_id`
+- alle Projektseiten über den von Neon gelieferten Cursor, `limit=400`
+- `unavailable_project_ids`; bereits ein Eintrag macht die Inventur unvollständig und blockiert
+- `GET /api/v2/regions` mit demselben `org_id`
+- Frankfurt ausschließlich dann als verfügbar, wenn `aws-eu-central-1` in dieser organisationsspezifischen Regionsantwort vorhanden ist
+
+Der aktuell akzeptierte spätere Create-Mechanismus ist bewusst exakt benannt:
+
+`neon-api-v2-project-create-region-id`
+
+Damit wird nur ein Create-Pfad vorbereitet, der beim Neon-v2-Project-Create `region_id` explizit setzt. Ein Connector oder anderer Mechanismus, der nur einen Provider-Default verwenden kann, scheitert bereits vor dem ersten Provider-Read fail-closed.
+
+### Cloudflare
+
+Der Reader liest zusätzlich vor dem ersten Neon-Write:
+
+- `GET /client/v4/accounts/{accountId}/workers/scripts`
+- vollständiges Worker-Inventar des späteren Cloudflare-Account-Scopes
+- exakte und plausibel kollidierende ULC-Linz-Production-Worker-Namen
+
+Eine bestehende Produktionsressource wird nicht adoptiert oder überschrieben. Schon ein plausibler Kollisionskandidat blockiert den Preflight.
+
+Die spätere Worker-Erstellung bleibt davon getrennt: `workers.dev=false`, Preview URLs `false` und kein Public Ingress werden weiterhin erst am Worker-Create/ersten Deploy kontrolliert gesetzt und danach erneut read-only verifiziert.
+
+## Ausführung
+
+Der Reader benötigt nur die Namen der bestehenden Secret-/Scope-Inputs, niemals Werte im Repository:
+
+- `NEON_API_KEY`
+- `NEON_ORG_ID` – derselbe Scope, in den später geschrieben würde
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `ULC_LINZ_M6_NEON_CREATE_METHOD=neon-api-v2-project-create-region-id`
+
+Aufruf:
+
+```sh
+node ./tooling/ulc-linz-m6-provider-state-preflight.mjs
+```
+
+API-Tokens werden nur als Bearer-Header verwendet. Fehlerausgaben enthalten ausschließlich feste Fehlercodes; Provider-Response-Bodies, Credentials, Connection Strings sowie Account-/Org-IDs werden nicht in das Ergebnis übernommen.
+
 ## Read-only Provider-Evidence
 
 `evaluateUlcLinzM6FirstProviderWritePreflight()` akzeptiert ausschließlich:
@@ -62,23 +114,44 @@ Damit darf kein Zwischenzustand entstehen, in dem der Produktions-Worker unbeabs
 
 Die Projektinventur wird im Speicher geprüft, aber nicht in den Ergebnis-Snapshot übernommen.
 
+Der ausführbare Provider-State-Reader ergänzt davor zusätzlich die vollständige Cloudflare-Worker-Kollisionsprüfung. Auch sein Erfolgsoutput bleibt `providerWriteAllowed=false` und `executionAuthorized=false`.
+
 ## Fail-closed-Fälle
 
 Der Preflight blockiert mindestens bei:
 
-- unvollständigem Providerinventar
+- unvollständigem Neon-Providerinventar
+- Neon-`unavailable_project_ids`
 - abweichendem Inventur-/Create-Scope
+- Neon-Cursor-Schleifen oder nicht vollständig lesbarer Pagination
 - nicht autoritativer Quelle
 - veralteter Evidence
 - zu langem Evidence-Gültigkeitsfenster
-- fehlender Frankfurt-Verfügbarkeit
+- fehlender Frankfurt-Verfügbarkeit im ausgewählten Neon-Organisationsscope
 - ausgewähltem Create-Mechanismus ohne explizite Regionsauswahl
 - bereits vorhandener exakter Produktionsressource
-- plausibel kollidierender ULC-Linz-Produktionsressource
+- plausibel kollidierender Neon- oder Cloudflare-ULC-Linz-Produktionsressource
+- fehlerhafter oder unvollständiger Cloudflare-Worker-Inventur
 - unsicherem Evidence-Inhalt
 - manipulierten Array-Prototypen/Gettern
 - zusätzlichen unerwarteten Evidence-Feldern
 - Drift zum bestehenden M6-Ausführungsplan oder #155-Resource-Binding-Vertrag
+
+## Tests
+
+`tooling/ulc-linz-m6-provider-state-preflight.test.mjs` ist verpflichtend in Root-`verify:apps` registriert und prüft insbesondere:
+
+- ausschließlich `GET`-Requests und keine Request-Bodies
+- vollständige Neon-Cursor-Pagination
+- Blockade bei `unavailable_project_ids`
+- organisationsbezogene Frankfurt-Verfügbarkeit
+- Cloudflare-Worker-Kollisionen
+- Provider-API-/Shape-Anomalien
+- Cursor-Loops
+- Accessor-basierte Providerwerte
+- keine Rückgabe von API-Keys, Tokens, Org- oder Account-IDs
+- keine Providerreads bei einem nicht explizit regionsfähigen Create-Mechanismus
+- erfolgreiche Evidence autorisiert trotzdem keinen Write
 
 ## Kein Provider-Write
 
