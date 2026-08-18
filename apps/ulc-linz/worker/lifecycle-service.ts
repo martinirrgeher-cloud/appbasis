@@ -16,6 +16,7 @@ import type {
 } from "./scope-persistence";
 
 const ADMIN_ROLE_ID = roleId(roleDataScope.runtimeRoleIds.admin);
+const MANUAL_DELETION_AUDIT_REASON = "manual-identity-deletion";
 
 type CanonicalAdminScopes = Pick<
   PostgresUlcLinzScopePersistence,
@@ -105,9 +106,11 @@ export async function deleteUlcLinzIdentityWithCanonicalAuthorization(
     targetIdentityId,
   );
 
-  const completedMarker = await dependencies.scopes.completeIdentityDeletion(
-    targetIdentityId,
-  );
+  const completedMarker = await dependencies.scopes.completeIdentityDeletion({
+    identityId: targetIdentityId,
+    actor: String(actorPrincipalId),
+    reason: MANUAL_DELETION_AUDIT_REASON,
+  });
   if (
     completedMarker.organizationId !== organizationId ||
     completedMarker.sourceRole !== targetSourceRole
@@ -121,7 +124,7 @@ export async function deleteUlcLinzIdentityWithCanonicalAuthorization(
  * Canonical M5-D exception boundary. Only an authenticated, active same-org ULC
  * admin with the canonical persisted admin role can create a retention hold.
  * The store accepts it only after the ordinary 12-month retention is already due
- * and requires a reason plus a future review date.
+ * and records actor, reason, creation time and future review time atomically.
  */
 export async function setUlcLinzRetentionExceptionWithCanonicalAuthorization(
   current: UlcLinzCurrentIdentity,
