@@ -10,6 +10,7 @@ import {
   REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA,
 } from "./production-release-readiness.mjs";
 import {
+  factoryLifecycleCopy,
   productionReadinessCopy,
   productionReleaseReadinessCopy,
 } from "./production-readiness-status.js";
@@ -29,10 +30,26 @@ function readiness({ verifiedCount, ready = false }) {
   };
 }
 
+function allM5Evidence() {
+  return Object.fromEntries(
+    REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion) => [criterion.id, true]),
+  );
+}
+
 function allM6Evidence() {
   return Object.fromEntries(
     REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map((criterion) => [criterion.id, true]),
   );
+}
+
+function repositoryReadyPreview() {
+  return {
+    status: "repository-ready",
+    workerEntrypointPresent: true,
+    packageManifestPresent: true,
+    databaseManifestRequired: true,
+    databaseManifestPresent: true,
+  };
 }
 
 test("Factory M5 copy names the real current 1/12 open criteria without implying release", () => {
@@ -151,6 +168,76 @@ test("Factory M6 copy fails closed for inconsistent or non-canonical evidence pa
   }
 });
 
+test("Factory lifecycle separates Preview, Production Ready and production release", () => {
+  const preview = repositoryReadyPreview();
+  const m5Open = evaluateProductionReadiness();
+  const m6Open = evaluateM6ProductionReleaseReadiness();
+
+  const previewStep = factoryLifecycleCopy(preview, m5Open, m6Open);
+  assert.deepEqual(
+    previewStep.stages.map(({ label, state, heading }) => ({ label, state, heading })),
+    [
+      { label: "Repository", state: "complete", heading: "Erzeugt" },
+      { label: "Preview", state: "current", heading: "Lokal vorbereitet" },
+      { label: "Production Ready", state: "locked", heading: "0/12 geprüft" },
+      { label: "Produktion freigeben", state: "locked", heading: "0/10 geprüft" },
+    ],
+  );
+  assert.equal(previewStep.nextStep.heading, "Preview erstellen und prüfen");
+
+  const previewAccepted = evaluateM6ProductionReleaseReadiness({ previewAccepted: true });
+  const productionReadyStep = factoryLifecycleCopy(preview, m5Open, previewAccepted);
+  assert.equal(productionReadyStep.stages[1].heading, "Geprüft");
+  assert.equal(productionReadyStep.stages[2].state, "current");
+  assert.equal(productionReadyStep.nextStep.heading, "Production Ready vervollständigen");
+
+  const m5Ready = evaluateProductionReadiness(allM5Evidence());
+  const productionEvidence = evaluateM6ProductionReleaseReadiness({
+    previewAccepted: true,
+    securityPrivacyReady: true,
+  });
+  const releaseStep = factoryLifecycleCopy(preview, m5Ready, productionEvidence);
+  assert.equal(releaseStep.stages[2].heading, "Bereit");
+  assert.equal(releaseStep.stages[3].state, "current");
+  assert.equal(releaseStep.nextStep.heading, "Produktionsnachweise vorbereiten");
+
+  const approvalStep = factoryLifecycleCopy(
+    preview,
+    m5Ready,
+    evaluateM6ProductionReleaseReadiness(allM6Evidence()),
+  );
+  assert.equal(approvalStep.stages[3].heading, "Technisch vollständig");
+  assert.equal(
+    approvalStep.nextStep.heading,
+    "Ausdrückliche Produktionsfreigabe erforderlich",
+  );
+});
+
+test("Factory lifecycle fails closed for ambiguous preview or M5/M6 cross-gate state", () => {
+  const invalidPreview = {
+    ...repositoryReadyPreview(),
+    workerEntrypointPresent: false,
+  };
+  const previewStatus = factoryLifecycleCopy(
+    invalidPreview,
+    evaluateProductionReadiness(),
+    evaluateM6ProductionReleaseReadiness(),
+  );
+  assert.equal(previewStatus.stages[1].heading, "Status offen");
+  assert.equal(previewStatus.nextStep.heading, "Preview-Status klären");
+
+  const m5Ready = evaluateProductionReadiness(allM5Evidence());
+  const mismatchedM6 = allM6Evidence();
+  delete mismatchedM6.securityPrivacyReady;
+  const mismatch = factoryLifecycleCopy(
+    repositoryReadyPreview(),
+    m5Ready,
+    evaluateM6ProductionReleaseReadiness(mismatchedM6),
+  );
+  assert.equal(mismatch.stages[3].heading, "Gesperrt");
+  assert.equal(mismatch.nextStep.heading, "Freigabe-Status klären");
+});
+
 test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabling release", async (t) => {
   const server = await startFactoryServer({ port: 0 });
   t.after(
@@ -185,6 +272,7 @@ test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabl
   assert.doesNotMatch(helperBody, /fetch\(/);
   assert.doesNotMatch(helperBody, /addEventListener/);
   assert.match(helperBody, /productionReleaseReadinessCopy/);
+  assert.match(helperBody, /factoryLifecycleCopy/);
   assert.match(helperBody, /releaseAuthorized !== false/);
   assert.match(helperBody, /Produktion bleibt gesperrt/);
 
@@ -209,6 +297,11 @@ test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabl
   assert.equal(appResponse.status, 200);
   const appBody = await appResponse.text();
   assert.match(appBody, /productionReleaseReadinessCopy/);
+  assert.match(appBody, /factoryLifecycleCopy/);
+  assert.match(appBody, /function renderFactoryLifecycle/);
+  assert.match(appBody, /Nächster sicherer Schritt:/);
+  assert.match(appBody, /Produktion freigeben ·/);
+  assert.doesNotMatch(appBody, /releaseProduction\s*\(/);
   assert.match(
     appBody,
     /renderProductionReadiness\(app\.productionReadiness, app\.productionReleaseReadiness\);/,
