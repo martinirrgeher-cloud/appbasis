@@ -12,6 +12,7 @@ import type {
 } from "./scope-persistence";
 
 const RESTORE_RECONCILIATION_ACTOR = principalId("ulc-linz:restore-reconciliation");
+const RESTORE_RECONCILIATION_AUDIT_REASON = "restore-reconciliation";
 
 export interface UlcLinzDeletionReconciliationSource {
   listCurrentDeletionMarkers(): Promise<readonly UlcLinzDeletionMarker[]>;
@@ -116,7 +117,11 @@ export async function reconcileUlcLinzRestoredDatabase(
       marker.identityId,
     );
 
-    const completed = await target.scopes.completeIdentityDeletion(marker.identityId);
+    const completed = await target.scopes.completeIdentityDeletion({
+      identityId: marker.identityId,
+      actor: String(RESTORE_RECONCILIATION_ACTOR),
+      reason: RESTORE_RECONCILIATION_AUDIT_REASON,
+    });
     if (
       completed.organizationId !== marker.organizationId ||
       completed.subjectId !== marker.subjectId ||
