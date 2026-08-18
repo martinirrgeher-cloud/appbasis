@@ -22,7 +22,7 @@ export interface UlcLinzDeletionReconciliationSource {
 /**
  * Read-only source for deletion decisions that still fall inside the confirmed
  * 35-day backup window. A restore must obtain this from an authoritative newer
- * ULC database before a restored older database can be promoted.
+ * ULC database/recovery point before a restored older database can be promoted.
  */
 export class PostgresUlcLinzDeletionReconciliationSource
   implements UlcLinzDeletionReconciliationSource
@@ -35,7 +35,14 @@ export class PostgresUlcLinzDeletionReconciliationSource
   async listCurrentDeletionMarkers(): Promise<readonly UlcLinzDeletionMarker[]> {
     const now = validNow(this.now()).toISOString();
     const rows = await this.sql.unsafe(
-      `SELECT identity_id, organization_id, subject_id, source_role, completed_at, purge_after
+      `SELECT identity_id,
+              organization_id,
+              subject_id,
+              source_role,
+              completed_at,
+              purge_after,
+              completed_at <= $1::timestamptz AS completed_not_future,
+              purge_after = completed_at + interval '35 days' AS retention_window_valid
        FROM ulc_linz_lifecycle_deletion
        WHERE purge_after >= $1
        ORDER BY completed_at ASC, identity_id ASC`,
@@ -72,6 +79,7 @@ export async function reconcileUlcLinzRestoredDatabase(
   const reconciledIdentityIds: string[] = [];
 
   for (const marker of markers) {
+    assertMarkerShape(marker);
     if (seen.has(marker.identityId)) blocked();
     seen.add(marker.identityId);
 
@@ -131,6 +139,7 @@ function assertSameMarker(
   source: UlcLinzDeletionMarker,
   target: UlcLinzDeletionMarker,
 ): void {
+  assertMarkerShape(target);
   if (
     source.identityId !== target.identityId ||
     source.organizationId !== target.organizationId ||
@@ -141,12 +150,33 @@ function assertSameMarker(
   }
 }
 
-function markerFromRow(row: Record<string, unknown>): UlcLinzDeletionMarker {
-  const sourceRole = row.source_role;
-  if (sourceRole !== "trainer" && sourceRole !== "athlete" && sourceRole !== "parent") {
+function assertMarkerShape(marker: UlcLinzDeletionMarker): void {
+  requiredIdentifier(marker.identityId);
+  requiredIdentifier(marker.organizationId);
+  requiredIdentifier(marker.subjectId);
+  if (
+    marker.sourceRole !== "trainer" &&
+    marker.sourceRole !== "athlete" &&
+    marker.sourceRole !== "parent"
+  ) {
     blocked();
   }
-  return Object.freeze({
+  const completedAt = requiredDate(marker.completedAt);
+  const purgeAfter = requiredDate(marker.purgeAfter);
+  if (purgeAfter.getTime() <= completedAt.getTime()) blocked();
+}
+
+function markerFromRow(row: Record<string, unknown>): UlcLinzDeletionMarker {
+  const sourceRole = row.source_role;
+  if (
+    sourceRole !== "trainer" &&
+    sourceRole !== "athlete" &&
+    sourceRole !== "parent"
+  ) {
+    blocked();
+  }
+  if (row.completed_not_future !== true || row.retention_window_valid !== true) blocked();
+  const marker = Object.freeze({
     identityId: requiredIdentifier(row.identity_id),
     organizationId: requiredIdentifier(row.organization_id),
     subjectId: requiredIdentifier(row.subject_id),
@@ -154,6 +184,8 @@ function markerFromRow(row: Record<string, unknown>): UlcLinzDeletionMarker {
     completedAt: requiredDate(row.completed_at),
     purgeAfter: requiredDate(row.purge_after),
   });
+  assertMarkerShape(marker);
+  return marker;
 }
 
 function requiredIdentifier(value: unknown): string {
