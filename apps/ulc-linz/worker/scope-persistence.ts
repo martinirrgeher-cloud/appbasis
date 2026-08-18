@@ -10,6 +10,7 @@ import type {
 const SOURCE_ROLES = new Set(["admin", "trainer", "athlete", "parent"] as const);
 const DELETABLE_SOURCE_ROLES = new Set(["trainer", "athlete", "parent"] as const);
 const DELETION_MARKER_RETENTION_DAYS = 35;
+const MAX_RETENTION_EXCEPTION_REASON_LENGTH = 1000;
 
 type SqlClient = IdentityPostgresRuntimeSqlClient;
 
@@ -44,6 +45,11 @@ export type UlcLinzRetentionState =
       actor: string;
       reviewAt: Date;
     }>;
+
+export type UlcLinzRetentionException = Extract<
+  UlcLinzRetentionState,
+  { status: "exception" }
+>;
 
 export class UlcLinzScopePersistenceBlockedError extends Error {
   readonly code = "ULC_LINZ_SCOPE_PERSISTENCE_BLOCKED";
@@ -128,6 +134,55 @@ export class PostgresUlcLinzScopePersistence
 
   async findDeletionMarker(identityId: string): Promise<UlcLinzDeletionMarker | null> {
     return findDeletionMarker(this.sql, requiredIdentifier(identityId));
+  }
+
+  /**
+   * Persist a narrow retention exception only after the normal 12-month member
+   * retention is already due. Actor, reason and future review date are stored on
+   * the retained record so the exception cannot become an unowned indefinite hold.
+   */
+  async setRetentionException(input: {
+    identityId: string;
+    organizationId: string;
+    actor: string;
+    reason: string;
+    reviewAt: Date;
+  }): Promise<UlcLinzRetentionException> {
+    const identityId = requiredIdentifier(input.identityId);
+    const organizationId = requiredIdentifier(input.organizationId);
+    const actor = requiredIdentifier(input.actor);
+    const reason = requiredReason(input.reason);
+    const now = validNow(this.now());
+    const reviewAt = requiredDate(input.reviewAt);
+    if (reviewAt.getTime() <= now.getTime()) blocked();
+
+    const rows = await this.sql.unsafe(
+      `UPDATE ulc_linz_membership
+       SET retention_exception_reason = $4,
+           retention_exception_actor = $3,
+           retention_review_at = $5,
+           updated_at = $6
+       WHERE identity_id = $1
+         AND organization_id = $2
+         AND active = false
+         AND source_role IN ('trainer', 'athlete', 'parent')
+         AND ended_at IS NOT NULL
+         AND ended_at + interval '12 months' < $6::timestamptz
+       RETURNING identity_id, organization_id, subject_id, source_role, active, ended_at,
+                 retention_exception_reason, retention_exception_actor, retention_review_at`,
+      [
+        identityId,
+        organizationId,
+        actor,
+        reason,
+        reviewAt.toISOString(),
+        now.toISOString(),
+      ],
+    );
+    if (rows.length !== 1) blocked();
+    const state = retentionState(rows[0], now);
+    if (state.status !== "exception") blocked();
+    return state;
   }
 
   /**
@@ -239,7 +294,7 @@ function retentionState(
     if (target.endedAt !== null) blocked();
     return Object.freeze({ status: "active", target });
   }
-  if (target.endedAt === null) blocked();
+  if (target.endedAt === null || target.sourceRole === "admin") blocked();
 
   const reason = nullableRowString(row, "retention_exception_reason");
   const actor = nullableRowString(row, "retention_exception_actor");
@@ -320,13 +375,16 @@ function lifecycleTarget(row: Record<string, unknown> | undefined): UlcLinzLifec
 
 function deletionMarker(row: Record<string, unknown> | undefined): UlcLinzDeletionMarker {
   if (row === undefined) blocked();
+  const completedAt = requiredDate(row.completed_at);
+  const purgeAfter = requiredDate(row.purge_after);
+  if (purgeAfter.getTime() <= completedAt.getTime()) blocked();
   return Object.freeze({
     identityId: requiredRowString(row, "identity_id"),
     organizationId: requiredRowString(row, "organization_id"),
     subjectId: requiredRowString(row, "subject_id"),
     sourceRole: requiredDeletableSourceRole(row.source_role),
-    completedAt: requiredDate(row.completed_at),
-    purgeAfter: requiredDate(row.purge_after),
+    completedAt,
+    purgeAfter,
   });
 }
 
@@ -350,6 +408,18 @@ function requiredIdentifier(value: string): string {
     typeof value !== "string" ||
     value.length === 0 ||
     value.length > 200 ||
+    value !== value.trim()
+  ) {
+    blocked();
+  }
+  return value;
+}
+
+function requiredReason(value: string): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > MAX_RETENTION_EXCEPTION_REASON_LENGTH ||
     value !== value.trim()
   ) {
     blocked();
