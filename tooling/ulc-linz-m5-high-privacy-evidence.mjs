@@ -30,6 +30,7 @@ import {
   bindUlcLinzM5TargetPolicy,
   ULC_LINZ_M5_TARGET_POLICY,
 } from "./ulc-linz-m5-target-policy.mjs";
+import { evaluateUlcLinzProductionResourceBinding } from "./ulc-linz-m6-production-resource-binding.mjs";
 
 const EMPTY_EVIDENCE = Object.freeze({});
 const HIGH_PRIVACY_CRITERION_ID = "highPrivacyProfile";
@@ -305,16 +306,11 @@ async function deriveOperatorUseCaseAssessmentEvidence(repositoryRoot) {
 function deriveBackupRestoreEvidence(input, providerBoundEvidenceInput, now) {
   try {
     const evidence = exactRecord(input, BACKUP_FIELDS);
-    const providerEvidence = deriveUlcLinzM5GBoundProductionEvidence(
-      providerBoundEvidenceInput,
+    const resourceBinding = evaluateUlcLinzProductionResourceBinding(
+      providerBoundEvidenceInput.resourceBindingEvidence,
       { now },
     );
-    if (
-      providerEvidence.dataRegion !== true ||
-      providerEvidence.dpa !== true ||
-      providerEvidence.encryption !== true ||
-      providerEvidence.subprocessors !== true
-    ) {
+    if (resourceBinding.productionDatabaseBound !== true) {
       return EMPTY_EVIDENCE;
     }
     if (
