@@ -73,7 +73,7 @@ describe("ULC Linz M5-E export contract", () => {
     ).toEqual(sortedUnique(excludedPrivacyClasses));
   });
 
-  it("exports only current member/contact master data as a normal user dataset", () => {
+  it("exports only member/contact master data as a normal user dataset", () => {
     expect(exportContract.datasets).toHaveLength(1);
     expect(exportContract.datasets[0]).toEqual({
       id: "member-contact",

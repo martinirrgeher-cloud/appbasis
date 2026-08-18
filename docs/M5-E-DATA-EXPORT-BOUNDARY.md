@@ -27,7 +27,9 @@ Membership und Subject-Scope sind nicht mehr abstrakt/ungebunden. Der Export kon
 
 Der konkrete aktuelle Dataset-Reader `PostgresUlcLinzExportDatasetReader` liest die Zuordnung Organisation/Subject → Identity ausschließlich aus `ulc_linz_membership`. Die eigentlichen Identity-Masterdaten liest er ausschließlich über den öffentlichen Owner-Vertrag `IdentityStateStore.find()`; M5-E greift nicht direkt per SQL auf Identity-eigene Tabellen zu.
 
-Für Self/Managed muss exakt eine aktive Zuordnung existieren. Für den Organisations-Export werden ausschließlich aktive Memberships des autorisierten Vereins gelesen. Fehlt zu einer Membership der passende Identity-/Person-State oder stimmt `personId` nicht exakt mit dem ULC-Subject überein, bricht der gesamte Dataset-Read ab. Ein Teilbestand wird nie als vollständiger Export zurückgegeben.
+Die **handelnde** Identity muss durch die kanonische Autorisierung weiterhin eine aktive Same-Organization-Membership und die passende aktive Runtime-Role besitzen. Für `self` muss genau die eigene Subject-Zuordnung auflösbar sein. Für `managed` muss der aktive Parent eine explizite `managed`-Relation zum Ziel besitzen; die Ziel-Membership darf bereits beendet sein, solange ihre Member-/Kontaktdaten gemäß M5-D noch tatsächlich gespeichert werden. Beim Organisations-Export werden entsprechend alle noch gespeicherten Membership-Zuordnungen des autorisierten Vereins berücksichtigt – aktive und innerhalb des Retention-Lifecycles noch vorhandene beendete Memberships. Der Export erfindet keine eigene Retention-Frist: sobald der M5-D-Owner die zugehörige Persistenz regelkonform entfernt hat, ist sie auch nicht mehr exportierbar.
+
+Fehlt zu einer noch gespeicherten Membership der passende Identity-/Person-State oder stimmt `personId` nicht exakt mit dem ULC-Subject überein, bricht der gesamte Dataset-Read ab. Ein Teilbestand wird nie als vollständiger Export zurückgegeben.
 
 ## Aktuelle Datenklassifikation
 
@@ -64,8 +66,8 @@ M5-E erfindet keinen zweiten Audit-Sink. Der persistente Security-/Audit-Nachwei
 Der PostgreSQL-E2E verwendet die reale sieben Migrationen umfassende ULC-Datenbankkomposition und beweist auf echten Owner-Verträgen:
 
 - Self-Export über reale Membership + Self-Scope + Permission-Role,
-- Managed-Export über reale Parent-Membership + Managed-Scope,
-- Organisations-Export ausschließlich als Admin und ausschließlich für denselben Verein,
+- Managed-Export über reale aktive Parent-Membership + Managed-Scope auch für noch gespeicherte Daten einer bereits beendeten Ziel-Membership,
+- Organisations-Export ausschließlich als aktiver Admin im eigenen Verein und einschließlich noch gespeicherter beendeter Member-/Kontaktdaten,
 - Cross-Organization-Denial vor dem Dataset-Read,
 - Identity-/Membership-Inkonsistenz erzeugt keinen Teil-Export und kein Erfolgs-Audit.
 
