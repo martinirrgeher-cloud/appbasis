@@ -26,6 +26,7 @@ ULC Linz v0.1 verwendet als app-spezifischen ersten Produktionsdatenbank-Zielver
 - dedizierte Produktionsressource
 - Region muss beim Create **explizit** gesetzt werden
 - Provider-Default-Region ist nicht zulässig
+- die **tatsächlich ausgewählte Create-Methode** muss eine explizite Regionsauswahl unterstützen
 - existiert bereits eine gleichnamige oder plausibel kollidierende ULC-Linz-Produktionsressource, wird nicht blind neu erzeugt
 
 Der Preflight akzeptiert nur frische, vollständige Provider-API-Inventarevidence. Das Evidence-Fenster ist auf höchstens 15 Minuten begrenzt.
@@ -42,6 +43,7 @@ Vor bzw. beim ersten Create/Deploy muss gelten:
 - Preview URLs = false
 - kein öffentliches Ingress
 - die geschlossene Ingress-Konfiguration wird bereits beim initialen Create oder ersten Deploy angewandt
+- bevor ULC-Anwendungscode hochgeladen wird, muss der geschlossene Ingress-Zustand feststehen
 
 Damit darf kein Zwischenzustand entstehen, in dem der Produktions-Worker unbeabsichtigt über `workers.dev` oder eine Preview URL erreichbar ist, bevor die kontrollierte Domain-Aktivierung erfolgt.
 
@@ -52,7 +54,7 @@ Damit darf kein Zwischenzustand entstehen, in dem der Produktions-Worker unbeabs
 - `source = provider-api`
 - vollständige Neon-Projektinventur
 - Providerbestätigung, dass Frankfurt verfügbar ist
-- Providerbestätigung, dass die Create-Methode eine explizite Regionsauswahl unterstützt
+- Bestätigung, dass die **ausgewählte** Create-Methode eine explizite Regionsauswahl unterstützt
 - frische Zeitstempel
 - keine Secrets, Credentials oder Connection Strings
 
@@ -67,10 +69,11 @@ Der Preflight blockiert mindestens bei:
 - veralteter Evidence
 - zu langem Evidence-Gültigkeitsfenster
 - fehlender Frankfurt-Verfügbarkeit
-- Create-Mechanismus ohne explizite Regionsauswahl
+- ausgewähltem Create-Mechanismus ohne explizite Regionsauswahl
 - bereits vorhandener exakter Produktionsressource
 - plausibel kollidierender ULC-Linz-Produktionsressource
 - unsicherem Evidence-Inhalt
+- manipulierten Array-Prototypen/Gettern
 - zusätzlichen unerwarteten Evidence-Feldern
 - Drift zum bestehenden M6-Ausführungsplan oder #155-Resource-Binding-Vertrag
 
