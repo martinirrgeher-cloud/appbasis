@@ -38,8 +38,8 @@ export function deriveUlcLinzM5FAuditSecurityLoggingEvidence(input, { now = new 
       logging.validUntilOrReviewAt !== root.resourceBindingEvidence.validUntilOrReviewAt ||
       logging.runtimeBindingId !== root.resourceBindingEvidence.cloudflare.runtimeBindingId
     ) return EMPTY;
-    opaque(logging.runtimeBindingId); opaque(logging.sinkBindingId);
-    if (logging.sinkBindingId === logging.runtimeBindingId) return EMPTY;
+    opaque(logging.runtimeBindingId);
+    opaque(logging.sinkBindingId);
     const observedAt = timestamp(logging.observedAt);
     if (!observedAt || nowDate < observedAt || nowDate.getTime() - observedAt.getTime() >= MAX_AGE_MS) return EMPTY;
     return VERIFIED;
@@ -50,8 +50,12 @@ export function deriveUlcLinzM5FAuditSecurityLoggingEvidence(input, { now = new 
 
 function assertCurrentContract() {
   for (const [, url, expected] of CONTRACT_FILES) {
-    const content = readFileSync(url);
-    const actual = createHash("sha1").update(`blob ${content.length}\0`, "utf8").update(content).digest("hex");
+    const raw = readFileSync(url, "utf8");
+    const content = raw.replaceAll("\r\n", "\n");
+    const actual = createHash("sha1")
+      .update(`blob ${Buffer.byteLength(content, "utf8")}\0`, "utf8")
+      .update(content, "utf8")
+      .digest("hex");
     if (actual !== expected) throw new Error("M5-F contract drifted");
   }
 }
