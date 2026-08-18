@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   evaluateUlcLinzProductionResourceBinding,
+  ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
   UlcLinzProductionResourceBindingError,
 } from "./ulc-linz-m6-production-resource-binding.mjs";
 
@@ -17,6 +18,7 @@ function validEvidence() {
     validUntilOrReviewAt: "2026-08-18T06:25:00.000Z",
     runtime: {
       entrypoint: "./worker/index.ts",
+      contractDigest: ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
       providerModel: "standard-workers-global-transient",
       euOnly: false,
     },
@@ -89,6 +91,7 @@ test("accepts only a complete dedicated ULC production resource binding and emit
     "worker-ulc-production-1",
     "hyperdrive-ulc-production-1",
     "ulc.example.test",
+    ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
   ]) {
     assert.equal(serialized.includes(internal), false);
   }
@@ -109,6 +112,7 @@ test("rejects another app, non-production environment and schema drift", () => {
 test("rejects runtime drift and never upgrades Standard Workers to EU-only", () => {
   for (const mutate of [
     (evidence) => (evidence.runtime.entrypoint = "./worker/other.ts"),
+    (evidence) => (evidence.runtime.contractDigest = `sha256:${"0".repeat(64)}`),
     (evidence) => (evidence.runtime.providerModel = "regional-workers"),
     (evidence) => (evidence.runtime.euOnly = true),
   ]) {
