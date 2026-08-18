@@ -1,3 +1,7 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+
 import {
   HIGH_PRIVACY_PROFILE,
   isCanonicalHighPrivacyProfile,
@@ -10,8 +14,18 @@ import { deriveRepositoryProductionReadinessEvidence } from "./factory-ui/reposi
 import { deriveUlcLinzDataExportEvidence } from "./factory-ui/ulc-linz-data-export-evidence.mjs";
 import { deriveUlcLinzLifecycleEvidence } from "./factory-ui/ulc-linz-lifecycle-evidence.mjs";
 import { deriveUlcLinzRolesAndPermissionsEvidence } from "./factory-ui/ulc-linz-roles-permissions-evidence.mjs";
+import { deriveUlcLinzM5FAuditSecurityLoggingEvidence } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { deriveUlcLinzM5HControlPlaneEvidence } from "./ulc-linz-m5-control-plane-evidence.mjs";
-import { deriveUlcLinzM5GBoundProductionEvidence } from "./ulc-linz-m5-provider-bound-evidence.mjs";
+import {
+  deriveUlcLinzM5GBoundProductionEvidence,
+  deriveUlcLinzM5GResourceBindingFingerprint,
+} from "./ulc-linz-m5-provider-bound-evidence.mjs";
+import {
+  isCanonicalUlcLinzM5PermissionProvisioningBundle,
+  ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE,
+  ULC_LINZ_M5_KNOWN_CAPABILITIES,
+} from "./ulc-linz-m5-permission-provisioning.mjs";
+import { ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY } from "./ulc-linz-m5-role-data-scope.mjs";
 import {
   bindUlcLinzM5TargetPolicy,
   ULC_LINZ_M5_TARGET_POLICY,
@@ -20,13 +34,39 @@ import {
 const EMPTY_EVIDENCE = Object.freeze({});
 const HIGH_PRIVACY_CRITERION_ID = "highPrivacyProfile";
 const OWNER_INPUT_FIELDS = Object.freeze([
-  "auditSecurityLoggingEvidence",
+  "auditSecurityLoggingEvidenceInput",
   "providerBoundEvidenceInput",
   "controlPlaneEvidenceInput",
-  "backupRestoreEvidence",
-  "leastPrivilegeEvidence",
-  "operatorUseCaseAssessmentEvidence",
+  "backupRestoreEvidenceInput",
 ]);
+const BACKUP_FIELDS = Object.freeze([
+  "schemaVersion",
+  "application",
+  "environment",
+  "sourceDatabaseBindingId",
+  "restoreTargetBindingId",
+  "evidenceSource",
+  "restoreTestedAt",
+  "automaticBackupsEnabled",
+  "retentionDefined",
+  "preMigrationBackupDefined",
+  "restoreProcedureDocumented",
+  "restoreSucceeded",
+  "dataIntegrityVerified",
+  "authVerified",
+  "permissionsVerified",
+  "applicationSmokeVerified",
+  "restoreReconciliationVerified",
+]);
+const OPERATOR_ASSESSMENT = Object.freeze({
+  schemaVersion: 1,
+  application: "ulc-linz",
+  operatorProfile: "Verein",
+  highPrivacyProfileId: "appbasis-high-privacy-v0.1",
+  applicability: Object.freeze(["children"]),
+  decision: "high-privacy-required",
+  basis: Object.freeze(["children-and-youth-athlete-data"]),
+});
 
 export const ULC_LINZ_HIGH_PRIVACY_REQUIREMENTS = Object.freeze([
   ...Object.keys(HIGH_PRIVACY_PROFILE.requirements),
@@ -40,48 +80,56 @@ export async function deriveUlcLinzHighPrivacyRequirementEvidenceFromOwners(
 ) {
   assertCanonicalProfileBinding(definition);
   const inputs = validateOwnerInputs(ownerInputs);
-  const auditSecurityLoggingEvidence = exactOptionalOwnerEvidence(
-    inputs.auditSecurityLoggingEvidence,
-    "auditSecurityLogging",
-  );
-  const backupRestoreEvidence = exactOptionalOwnerEvidence(
-    inputs.backupRestoreEvidence,
-    "backupRestoreBeforeProduction",
-  );
-  const leastPrivilegeEvidence = exactOptionalOwnerEvidence(
-    inputs.leastPrivilegeEvidence,
-    "leastPrivilege",
-  );
-  const operatorUseCaseAssessmentEvidence = exactOptionalOwnerEvidence(
-    inputs.operatorUseCaseAssessmentEvidence,
-    "operatorUseCaseAssessment",
-  );
+  const nowDate = requiredDate(now);
+  const volatileInputsCoherent = hasCoherentVolatileResourceBinding(inputs, nowDate);
 
-  const [rolesAndPermissionsEvidence, lifecycleEvidence] = await Promise.all([
-    deriveUlcLinzRolesAndPermissionsEvidence(repositoryRoot, definition),
-    deriveUlcLinzLifecycleEvidence(repositoryRoot, definition),
-  ]);
+  const [rolesAndPermissionsEvidence, lifecycleEvidence, operatorAssessmentEvidence] =
+    await Promise.all([
+      deriveUlcLinzRolesAndPermissionsEvidence(repositoryRoot, definition),
+      deriveUlcLinzLifecycleEvidence(repositoryRoot, definition),
+      deriveOperatorUseCaseAssessmentEvidence(repositoryRoot),
+    ]);
+  const leastPrivilegeEvidence = deriveLeastPrivilegeEvidence(
+    rolesAndPermissionsEvidence,
+  );
+  const repositoryEvidence = deriveRepositoryProductionReadinessEvidence(definition);
+
+  const auditSecurityLoggingEvidence =
+    volatileInputsCoherent && inputs.auditSecurityLoggingEvidenceInput !== undefined
+      ? deriveUlcLinzM5FAuditSecurityLoggingEvidence(
+          inputs.auditSecurityLoggingEvidenceInput,
+          { now: nowDate },
+        )
+      : EMPTY_EVIDENCE;
   const dataExportEvidence = await deriveUlcLinzDataExportEvidence(
     repositoryRoot,
     definition,
     auditSecurityLoggingEvidence,
   );
-  const repositoryEvidence =
-    deriveRepositoryProductionReadinessEvidence(definition);
   const providerEvidence =
-    inputs.providerBoundEvidenceInput === undefined
-      ? EMPTY_EVIDENCE
-      : deriveUlcLinzM5GBoundProductionEvidence(
+    volatileInputsCoherent && inputs.providerBoundEvidenceInput !== undefined
+      ? deriveUlcLinzM5GBoundProductionEvidence(
           inputs.providerBoundEvidenceInput,
-          { now },
-        );
+          { now: nowDate },
+        )
+      : EMPTY_EVIDENCE;
   const controlPlaneEvidence =
-    inputs.controlPlaneEvidenceInput === undefined
-      ? EMPTY_EVIDENCE
-      : deriveUlcLinzM5HControlPlaneEvidence(
+    volatileInputsCoherent && inputs.controlPlaneEvidenceInput !== undefined
+      ? deriveUlcLinzM5HControlPlaneEvidence(
           inputs.controlPlaneEvidenceInput,
-          { now },
-        );
+          { now: nowDate },
+        )
+      : EMPTY_EVIDENCE;
+  const backupRestoreEvidence =
+    volatileInputsCoherent &&
+    inputs.backupRestoreEvidenceInput !== undefined &&
+    inputs.providerBoundEvidenceInput !== undefined
+      ? deriveBackupRestoreEvidence(
+          inputs.backupRestoreEvidenceInput,
+          inputs.providerBoundEvidenceInput,
+          nowDate,
+        )
+      : EMPTY_EVIDENCE;
 
   const nonHighPrivacyProductionEvidence = Object.freeze({
     ...repositoryEvidence,
@@ -96,21 +144,17 @@ export async function deriveUlcLinzHighPrivacyRequirementEvidenceFromOwners(
   return Object.freeze({
     securityPrivacyGate:
       isCanonicalAllRequiredSecurityPrivacyGate() &&
-      hasEveryNonHighPrivacyProductionCriterion(
-        nonHighPrivacyProductionEvidence,
-      ),
+      hasEveryNonHighPrivacyProductionCriterion(nonHighPrivacyProductionEvidence),
     backupRestoreBeforeProduction:
       backupRestoreEvidence.backupRestoreBeforeProduction === true,
     accessControl: rolesAndPermissionsEvidence.rolesAndPermissions === true,
-    privilegeModel:
-      rolesAndPermissionsEvidence.rolesAndPermissions === true &&
-      leastPrivilegeEvidence.leastPrivilege === true,
+    privilegeModel: leastPrivilegeEvidence.leastPrivilege === true,
     secretsInNormalAppManifest:
       repositoryEvidence.secretsOutsideAppManifests === true,
     privilegedControlPlanePublicIngress:
       controlPlaneEvidence.privilegedControlPlaneIsolation === true,
     operatorUseCaseAssessment:
-      operatorUseCaseAssessmentEvidence.operatorUseCaseAssessment === true,
+      operatorAssessmentEvidence.operatorUseCaseAssessment === true,
   });
 }
 
@@ -142,7 +186,6 @@ export async function deriveUlcLinzHighPrivacyProductionEvidenceFromOwners(
     ownerInputs,
     options,
   );
-
   return compliance.highPrivacyProfile
     ? Object.freeze({ highPrivacyProfile: true })
     : EMPTY_EVIDENCE;
@@ -192,20 +235,152 @@ export function deriveUlcLinzHighPrivacyProductionEvidence(
     definition,
     requirementEvidence,
   );
-
   return compliance.highPrivacyProfile
     ? Object.freeze({ highPrivacyProfile: true })
     : EMPTY_EVIDENCE;
 }
 
+function deriveLeastPrivilegeEvidence(rolesAndPermissionsEvidence) {
+  if (rolesAndPermissionsEvidence.rolesAndPermissions !== true) {
+    return EMPTY_EVIDENCE;
+  }
+  if (
+    !isCanonicalUlcLinzM5PermissionProvisioningBundle(
+      ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE,
+    ) ||
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.dataScopes.organizationBoundary !==
+      "same-organization-only" ||
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.dataScopes.unknownCapability !== "deny" ||
+    ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.principalPermissionMapping.unknownModule !==
+      "deny"
+  ) {
+    return EMPTY_EVIDENCE;
+  }
+
+  const roles = ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE.roles;
+  const adminRole = roles.find(
+    (entry) =>
+      entry.roleId === ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.admin,
+  );
+  const nonAdminRoles = ["trainer", "athlete", "parent"].map((sourceRole) =>
+    roles.find(
+      (entry) =>
+        entry.roleId === ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds[sourceRole],
+    ),
+  );
+  if (
+    adminRole === undefined ||
+    !isDeepStrictEqual(adminRole.capabilities, ULC_LINZ_M5_KNOWN_CAPABILITIES) ||
+    nonAdminRoles.some(
+      (entry) => entry === undefined || entry.capabilities.length !== 0,
+    ) ||
+    ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE.principalRoleAssignments.length !== 0
+  ) {
+    return EMPTY_EVIDENCE;
+  }
+  return Object.freeze({ leastPrivilege: true });
+}
+
+async function deriveOperatorUseCaseAssessmentEvidence(repositoryRoot) {
+  try {
+    const raw = await readFile(
+      join(
+        repositoryRoot,
+        "apps",
+        "ulc-linz",
+        "privacy",
+        "m5-high-privacy-assessment.json",
+      ),
+      "utf8",
+    );
+    const value = JSON.parse(raw);
+    return isDeepStrictEqual(value, OPERATOR_ASSESSMENT)
+      ? Object.freeze({ operatorUseCaseAssessment: true })
+      : EMPTY_EVIDENCE;
+  } catch {
+    return EMPTY_EVIDENCE;
+  }
+}
+
+function deriveBackupRestoreEvidence(input, providerBoundEvidenceInput, now) {
+  try {
+    const evidence = exactRecord(input, BACKUP_FIELDS);
+    const providerEvidence = deriveUlcLinzM5GBoundProductionEvidence(
+      providerBoundEvidenceInput,
+      { now },
+    );
+    if (
+      providerEvidence.dataRegion !== true ||
+      providerEvidence.dpa !== true ||
+      providerEvidence.encryption !== true ||
+      providerEvidence.subprocessors !== true
+    ) {
+      return EMPTY_EVIDENCE;
+    }
+    if (
+      evidence.schemaVersion !== 1 ||
+      evidence.application !== "ulc-linz" ||
+      evidence.environment !== "production" ||
+      evidence.evidenceSource !== "controlled-restore-run" ||
+      evidence.sourceDatabaseBindingId !==
+        providerBoundEvidenceInput.resourceBindingEvidence.neon.databaseBindingId ||
+      evidence.restoreTargetBindingId === evidence.sourceDatabaseBindingId ||
+      evidence.automaticBackupsEnabled !== true ||
+      evidence.retentionDefined !== true ||
+      evidence.preMigrationBackupDefined !== true ||
+      evidence.restoreProcedureDocumented !== true ||
+      evidence.restoreSucceeded !== true ||
+      evidence.dataIntegrityVerified !== true ||
+      evidence.authVerified !== true ||
+      evidence.permissionsVerified !== true ||
+      evidence.applicationSmokeVerified !== true ||
+      evidence.restoreReconciliationVerified !== true
+    ) {
+      return EMPTY_EVIDENCE;
+    }
+    requireOpaqueIdentifier(evidence.sourceDatabaseBindingId);
+    requireOpaqueIdentifier(evidence.restoreTargetBindingId);
+    const restoreTestedAt = canonicalTimestamp(evidence.restoreTestedAt);
+    if (restoreTestedAt === null || restoreTestedAt.getTime() > now.getTime()) {
+      return EMPTY_EVIDENCE;
+    }
+    return Object.freeze({ backupRestoreBeforeProduction: true });
+  } catch {
+    return EMPTY_EVIDENCE;
+  }
+}
+
+function hasCoherentVolatileResourceBinding(inputs, now) {
+  try {
+    const fingerprints = [];
+    for (const candidate of [
+      inputs.providerBoundEvidenceInput,
+      inputs.controlPlaneEvidenceInput,
+      inputs.auditSecurityLoggingEvidenceInput,
+    ]) {
+      if (candidate === undefined) continue;
+      if (!isPlainObject(candidate) || !isPlainObject(candidate.resourceBindingEvidence)) {
+        return false;
+      }
+      fingerprints.push(
+        deriveUlcLinzM5GResourceBindingFingerprint(
+          candidate.resourceBindingEvidence,
+          { now },
+        ),
+      );
+    }
+    return fingerprints.length < 2 || fingerprints.every((value) => value === fingerprints[0]);
+  } catch {
+    return false;
+  }
+}
+
 function assertCanonicalProfileBinding(definition) {
   const targetPolicy = bindUlcLinzM5TargetPolicy(definition);
-
   if (
     !isCanonicalHighPrivacyProfile(HIGH_PRIVACY_PROFILE) ||
     targetPolicy.highPrivacyProfileId !== HIGH_PRIVACY_PROFILE.id ||
-    targetPolicy.highPrivacyProfileId !==
-      ULC_LINZ_M5_TARGET_POLICY.highPrivacyProfileId
+    targetPolicy.highPrivacyProfileId !== ULC_LINZ_M5_TARGET_POLICY.highPrivacyProfileId
   ) {
     throw new Error(
       "ULC Linz High-Privacy evidence is not bound to the canonical profile.",
@@ -214,26 +389,18 @@ function assertCanonicalProfileBinding(definition) {
 }
 
 function isCanonicalAllRequiredSecurityPrivacyGate() {
-  const criterionIds = REQUIRED_PRODUCTION_READINESS_CRITERIA.map(
-    ({ id }) => id,
-  );
+  const criterionIds = REQUIRED_PRODUCTION_READINESS_CRITERIA.map(({ id }) => id);
   if (!criterionIds.includes(HIGH_PRIVACY_CRITERION_ID)) return false;
-
   const completeEvidence = Object.fromEntries(
     criterionIds.map((criterionId) => [criterionId, true]),
   );
-  if (
-    evaluateProductionReadiness(completeEvidence).productionReady !== true
-  ) {
+  if (evaluateProductionReadiness(completeEvidence).productionReady !== true) {
     return false;
   }
-
   return criterionIds.every((criterionId) => {
     const incompleteEvidence = { ...completeEvidence };
     delete incompleteEvidence[criterionId];
-    return (
-      evaluateProductionReadiness(incompleteEvidence).productionReady === false
-    );
+    return evaluateProductionReadiness(incompleteEvidence).productionReady === false;
   });
 }
 
@@ -247,7 +414,6 @@ function validateOwnerInputs(value) {
   if (!isPlainObject(value)) {
     throw new Error("ULC Linz High-Privacy owner inputs are invalid.");
   }
-
   const descriptors = Object.getOwnPropertyDescriptors(value);
   for (const [key, descriptor] of Object.entries(descriptors)) {
     if (
@@ -266,39 +432,12 @@ function validateOwnerInputs(value) {
   return value;
 }
 
-function exactOptionalOwnerEvidence(value, key) {
-  if (value === undefined) return EMPTY_EVIDENCE;
-  if (!isPlainObject(value) || Object.getOwnPropertySymbols(value).length !== 0) {
-    throw new Error("ULC Linz High-Privacy owner evidence is invalid.");
-  }
-
-  const descriptors = Object.getOwnPropertyDescriptors(value);
-  const keys = Object.keys(descriptors);
-  if (keys.length === 0) return EMPTY_EVIDENCE;
-  if (keys.length !== 1 || keys[0] !== key) {
-    throw new Error("ULC Linz High-Privacy owner evidence is invalid.");
-  }
-
-  const descriptor = descriptors[key];
-  if (
-    !Object.hasOwn(descriptor, "value") ||
-    descriptor.enumerable !== true ||
-    descriptor.get !== undefined ||
-    descriptor.set !== undefined ||
-    descriptor.value !== true
-  ) {
-    throw new Error("ULC Linz High-Privacy owner evidence is invalid.");
-  }
-  return Object.freeze({ [key]: true });
-}
-
 function validateRequirementEvidence(evidence) {
   if (!isPlainObject(evidence)) {
     throw new Error(
       "ULC Linz High-Privacy requirement evidence must be a plain object.",
     );
   }
-
   for (const key of Reflect.ownKeys(evidence)) {
     if (
       typeof key !== "string" ||
@@ -306,7 +445,6 @@ function validateRequirementEvidence(evidence) {
     ) {
       throw new Error("ULC Linz High-Privacy requirement evidence is invalid.");
     }
-
     const descriptor = Object.getOwnPropertyDescriptor(evidence, key);
     if (
       descriptor === undefined ||
@@ -317,6 +455,60 @@ function validateRequirementEvidence(evidence) {
       throw new Error("ULC Linz High-Privacy requirement evidence is invalid.");
     }
   }
+}
+
+function exactRecord(value, fields) {
+  if (!isPlainObject(value) || Object.getOwnPropertySymbols(value).length !== 0) {
+    throw new Error("ULC Linz High-Privacy operational evidence is invalid.");
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Object.keys(descriptors);
+  if (
+    keys.length !== fields.length ||
+    fields.some((field) => !Object.hasOwn(descriptors, field)) ||
+    keys.some((key) => !fields.includes(key))
+  ) {
+    throw new Error("ULC Linz High-Privacy operational evidence is invalid.");
+  }
+  for (const descriptor of Object.values(descriptors)) {
+    if (
+      !Object.hasOwn(descriptor, "value") ||
+      descriptor.enumerable !== true ||
+      descriptor.get !== undefined ||
+      descriptor.set !== undefined
+    ) {
+      throw new Error("ULC Linz High-Privacy operational evidence is invalid.");
+    }
+  }
+  return value;
+}
+
+function requireOpaqueIdentifier(value) {
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    value.length > 200 ||
+    value !== value.trim() ||
+    !/^[A-Za-z0-9._:-]+$/.test(value)
+  ) {
+    throw new Error("ULC Linz High-Privacy operational evidence is invalid.");
+  }
+}
+
+function canonicalTimestamp(value) {
+  if (typeof value !== "string") return null;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    return null;
+  }
+  return parsed;
+}
+
+function requiredDate(value) {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new Error("ULC Linz High-Privacy evidence clock is invalid.");
+  }
+  return new Date(value.getTime());
 }
 
 function isPlainObject(value) {
