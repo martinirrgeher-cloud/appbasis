@@ -19,6 +19,7 @@ function validEvidence() {
     source: "provider-api",
     neon: {
       inventoryComplete: true,
+      inventoryMatchesSelectedCreateScope: true,
       projects: [
         { name: "appbasis-m3-preview", region: "aws-us-east-2" },
         { name: "appbasis-m4-r2-restore", region: "aws-us-east-1" },
@@ -37,6 +38,7 @@ test("ULC M6 first provider-write preflight stays blocked on explicit approval e
 
   assert.equal(result.status, "ready-for-explicit-provider-write-approval");
   assert.equal(result.providerInventoryVerified, true);
+  assert.equal(result.providerCreateScopeVerified, true);
   assert.equal(result.noExistingProductionResourceCandidate, true);
   assert.equal(result.targetRegionAvailable, true);
   assert.equal(result.selectedCreateMethodSupportsExplicitRegion, true);
@@ -134,6 +136,19 @@ test("ULC M6 provider preflight fails closed on an ambiguous existing ULC produc
 test("ULC M6 provider preflight fails closed when Neon inventory is incomplete", () => {
   const evidence = validEvidence();
   evidence.neon.inventoryComplete = false;
+
+  assert.throws(
+    () =>
+      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
+        now: NOW,
+      }),
+    errorWithCode("NEON_PREFLIGHT_INVALID"),
+  );
+});
+
+test("ULC M6 provider preflight fails closed when inventory and selected create scope differ", () => {
+  const evidence = validEvidence();
+  evidence.neon.inventoryMatchesSelectedCreateScope = false;
 
   assert.throws(
     () =>
