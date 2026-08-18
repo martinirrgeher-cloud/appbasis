@@ -175,7 +175,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(18);
+    expect(inventory.persistentTables).toHaveLength(19);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -206,6 +206,16 @@ describe("ULC Linz M5 C/D data inventory", () => {
       ),
     ).toMatchObject({
       retentionPolicy: "35-days",
+      deletionEvidence: "retained-by-policy",
+      retentionEvidence: "verified",
+    });
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "ulc_linz_lifecycle_audit",
+      ),
+    ).toMatchObject({
+      privacyClass: "audit-security-data",
+      retentionPolicy: "12-months",
       deletionEvidence: "retained-by-policy",
       retentionEvidence: "verified",
     });
@@ -249,7 +259,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(lifecycleServiceSource).toContain("target.sourceRole === \"admin\"");
   });
 
-  it("pins member retention, bounded delete markers and restore reconciliation to the confirmed policies", async () => {
+  it("pins member retention, audited exceptions, delete audit and restore reconciliation to confirmed policies", async () => {
     const [scopePersistenceSource, retentionSource, restoreSource] = await Promise.all([
       readFile(scopePersistenceUrl, "utf8"),
       readFile(retentionUrl, "utf8"),
@@ -259,8 +269,12 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(scopePersistenceSource).toContain("addCalendarMonthsClamped(target.endedAt, 12)");
     expect(scopePersistenceSource).toContain("interval '35 days'");
     expect(scopePersistenceSource).toContain("WHERE purge_after < $1");
+    expect(scopePersistenceSource).toContain("retention.exception.set");
+    expect(scopePersistenceSource).toContain("identity.delete.completed");
+    expect(scopePersistenceSource).toContain("interval '12 months'");
     expect(retentionSource).toContain("status === \"exception\"");
     expect(retentionSource).toContain("deleteUlcLinzIdentity(");
+    expect(retentionSource).toContain("purgeExpiredLifecycleAuditEvents");
     expect(restoreSource).toContain("WHERE purge_after >= $1");
     expect(restoreSource).toContain("reconcileUlcLinzRestoredDatabase");
     expect(restoreSource).toContain("restoredMembership.sourceRole !== marker.sourceRole");
