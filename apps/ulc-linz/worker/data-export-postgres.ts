@@ -1,5 +1,3 @@
-import type { IdentityStateStore } from "@appbasis/identity";
-
 import {
   UlcLinzDataExportBlockedError,
   type UlcLinzExportDataset,
@@ -9,17 +7,33 @@ import type { UlcLinzSqlClient } from "./scope-persistence";
 
 type MembershipRow = Record<string, unknown>;
 
+export interface UlcLinzExportIdentityState {
+  readonly identityId: string;
+  readonly personId: string | null;
+  readonly username: string;
+  readonly displayName: string;
+  readonly contactEmail: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export interface UlcLinzExportIdentityReader {
+  find(identityId: string): Promise<UlcLinzExportIdentityState | null>;
+}
+
 /**
  * Concrete current-scope M5-E dataset reader.
  *
  * ULC-owned membership rows establish organization/subject -> identity mapping.
- * Identity master data is read only through the public IdentityStateStore owner
- * contract; this adapter never reaches into Identity-owned tables directly.
+ * Identity master data is read only through the narrow structural owner contract
+ * implemented by IdentityStateStore.find(); this adapter never reaches into
+ * Identity-owned tables directly and does not import the broad Identity package
+ * surface into the normal ULC runtime type graph.
  */
 export class PostgresUlcLinzExportDatasetReader {
   constructor(
     private readonly sql: UlcLinzSqlClient,
-    private readonly identities: Pick<IdentityStateStore, "find">,
+    private readonly identities: UlcLinzExportIdentityReader,
   ) {}
 
   async readDatasets(input: {
