@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+
 import { ULC_LINZ_M5_TARGET_POLICY } from "./ulc-linz-m5-target-policy.mjs";
 
 const APPLICATION = ULC_LINZ_M5_TARGET_POLICY.appId;
@@ -6,6 +9,16 @@ const RUNTIME_ENTRYPOINT = "./worker/index.ts";
 const PROVIDER_MODEL = "standard-workers-global-transient";
 const NEON_FRANKFURT_REGION = "aws-eu-central-1";
 const PROVIDER_API_SOURCE = "provider-api";
+const RUNTIME_CONTRACT_FILES = Object.freeze([
+  Object.freeze({
+    path: "apps/ulc-linz/worker/index.ts",
+    url: new URL("../apps/ulc-linz/worker/index.ts", import.meta.url),
+  }),
+  Object.freeze({
+    path: "apps/ulc-linz/worker/postgres.ts",
+    url: new URL("../apps/ulc-linz/worker/postgres.ts", import.meta.url),
+  }),
+]);
 
 const ROOT_FIELDS = Object.freeze([
   "schemaVersion",
@@ -19,6 +32,7 @@ const ROOT_FIELDS = Object.freeze([
 ]);
 const RUNTIME_FIELDS = Object.freeze([
   "entrypoint",
+  "contractDigest",
   "providerModel",
   "euOnly",
 ]);
@@ -51,11 +65,15 @@ const UNSAFE_VALUE_PATTERNS = Object.freeze([
   /^basic\s+/i,
 ]);
 
+export const ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST =
+  calculateRuntimeContractDigest();
+
 export const ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT = Object.freeze({
   schemaVersion: 1,
   application: APPLICATION,
   environment: ENVIRONMENT,
   runtimeEntrypoint: RUNTIME_ENTRYPOINT,
+  runtimeContractDigest: ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
   providerModel: PROVIDER_MODEL,
   euOnly: false,
   neonRegion: NEON_FRANKFURT_REGION,
@@ -96,9 +114,14 @@ export function evaluateUlcLinzProductionResourceBinding(
     fail("STALE_EVIDENCE");
   }
 
-  const runtime = exactRecord(root.runtime, RUNTIME_FIELDS, "RUNTIME_CONTRACT_MISMATCH");
+  const runtime = exactRecord(
+    root.runtime,
+    RUNTIME_FIELDS,
+    "RUNTIME_CONTRACT_MISMATCH",
+  );
   if (
     runtime.entrypoint !== RUNTIME_ENTRYPOINT ||
+    runtime.contractDigest !== ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST ||
     runtime.providerModel !== PROVIDER_MODEL ||
     runtime.euOnly !== false
   ) {
@@ -162,6 +185,17 @@ export function evaluateUlcLinzProductionResourceBinding(
     neonRegion: NEON_FRANKFURT_REGION,
     scopeComplete: true,
   });
+}
+
+function calculateRuntimeContractDigest() {
+  const hash = createHash("sha256");
+  for (const entry of RUNTIME_CONTRACT_FILES) {
+    hash.update(entry.path, "utf8");
+    hash.update("\0", "utf8");
+    hash.update(readFileSync(entry.url));
+    hash.update("\0", "utf8");
+  }
+  return `sha256:${hash.digest("hex")}`;
 }
 
 function assertCanonicalContract() {
