@@ -10,6 +10,7 @@ import { deriveM3PreviewAcceptanceEvidence } from "./m3-preview-acceptance-evide
 import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
 import { evaluateProductionReadiness } from "./production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
+import { deriveUlcLinzLifecycleEvidence } from "./ulc-linz-lifecycle-evidence.mjs";
 import { deriveUlcLinzRolesAndPermissionsEvidence } from "./ulc-linz-roles-permissions-evidence.mjs";
 
 export async function loadFactorySnapshot(repositoryRoot = process.cwd(), options = {}) {
@@ -54,6 +55,7 @@ async function withFactoryReadiness(
     databaseManifestPresent,
     m3PreviewAcceptanceEvidence,
     ulcLinzRolesAndPermissionsEvidence,
+    ulcLinzLifecycleEvidence,
   ] = await Promise.all([
     pathExists(join(appRoot, "worker", "index.ts")),
     pathExists(join(appRoot, "package.json")),
@@ -64,6 +66,7 @@ async function withFactoryReadiness(
       fetchImpl: m3PreviewAcceptanceFetchImpl,
     }),
     deriveUlcLinzRolesAndPermissionsEvidence(repositoryRoot, definition),
+    deriveUlcLinzLifecycleEvidence(repositoryRoot, definition),
   ]);
   const repositoryReady =
     workerEntrypointPresent &&
@@ -72,6 +75,7 @@ async function withFactoryReadiness(
   const productionReadinessEvidence = {
     ...deriveRepositoryProductionReadinessEvidence(definition),
     ...ulcLinzRolesAndPermissionsEvidence,
+    ...ulcLinzLifecycleEvidence,
   };
   const productionReadiness = evaluateProductionReadiness(productionReadinessEvidence);
   const productionReleaseReadiness = evaluateM6ProductionReleaseReadiness({
