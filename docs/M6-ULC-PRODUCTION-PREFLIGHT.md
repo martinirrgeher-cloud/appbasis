@@ -27,6 +27,10 @@ mit:
 - `providerWriteAllowed = false`
 - `releaseAuthorized = false`
 - `explicitApprovalRequired = true`
+- `requiredPrerequisiteGates = [M3_DONE, M4_DONE, M5_DONE]`
+- `nextAction.executionAuthorized = false`
+
+`requiredPrerequisiteGates` beschreibt nur die später zwingenden Gates. Der Repository-Preflight behauptet **nicht**, dass diese bereits live belegt sind. Ebenso wird nur der bestehende Runtime-/Resource-Binding-Validierungsvertrag geprüft; reale Production-Evidence wird in diesem Slice nicht konsumiert.
 
 ## Kanonische Verträge
 
@@ -34,11 +38,13 @@ Der Preflight baut ausschließlich auf bestehenden Verträgen auf:
 
 - ULC-Zielpolicy / Neon-Zielregion Frankfurt
 - `createExpectedUlcLinzDatabaseManifest()` für die reale Datenbankownership
+- `createInitialTechnicalAdmin()` als bestehender fail-closed Identity-Bootstrap für einen leeren bzw. eng recoverable Identity-Store
+- `replaceUlcLinzPrincipalAccess()` auf `PostgresPrincipalAccessAdministration` für die ULC-spezifische Rollen-/Override-Zuweisung
 - ULC-M5-Permission-Provisioning-Bundle für Rollen/Capabilities
 - `ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT` aus dem bestehenden #155-Pfad
 - bestehender M6-Release-Readiness-Vertrag mit zehn Pflichtkriterien
 
-Es entsteht keine zweite Generator-, Datenbank-, Rollen-, Resource-Binding- oder Readiness-Implementierung.
+Es entsteht keine zweite Generator-, Datenbank-, Identity-, Rollen-, Resource-Binding- oder Readiness-Implementierung.
 
 ## Produktziel
 
@@ -94,7 +100,11 @@ Für ULC v0.1 bleibt verbindlich:
    - noch ohne öffentliche Domain-Aktivierung
 
 8. **Produktive Benutzer & Rechte bootstrapen**
-   - bestehendes ULC-Permission-Provisioning-Bundle bleibt Rollenbasis
+   - erster technischer Benutzer über bestehenden `createInitialTechnicalAdmin()`-Vertrag
+   - nur für leeren bzw. eng recoverable Identity-Ausgangszustand
+   - ULC-Rollen-/Override-Zuweisung über bestehenden `replaceUlcLinzPrincipalAccess()`-Pfad
+   - darunter bestehender `PostgresPrincipalAccessAdministration`-Vertrag
+   - ULC-M5-Permission-Provisioning-Bundle bleibt Rollen-/Capability-Basis
    - keine Default-Principal-Zuweisungen
    - reale Principal-Zuweisungen müssen explizit erfolgen
    - kein zweiter Provisioning-Vertrag wird eingeführt
@@ -147,6 +157,8 @@ Der Preflight muss exakt alle zehn bestehenden M6-Kriterien abdecken:
 
 Ein Contract-Test vergleicht diese Abdeckung direkt mit `REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA`. Wird dort später ein Pflichtkriterium ergänzt oder entfernt, blockiert der Preflight fail-closed bis zur bewussten Anpassung.
 
+Zusätzlich sind alle 13 Ausführungsschritte mit ihrer erwarteten Klasse gepinnt. Dependencies dürfen nur auf bereits vorherige Schritte zeigen. Eine spätere Umklassifizierung eines Provider-Writes in einen scheinbar read-only Schritt oder eine nach vorne gerichtete/zyklische Dependency wird dadurch fail-closed abgewiesen.
+
 ## Harte Sicherheitsgrenzen
 
 - `evaluateUlcLinzM6ProductionPreflight()` besitzt **keinen Execute-/Provision-/Deploy-Pfad**.
@@ -157,7 +169,7 @@ Ein Contract-Test vergleicht diese Abdeckung direkt mit `REQUIRED_M6_PRODUCTION_
 - Jeder mutierende Schritt verlangt ausdrückliche Freigabe.
 - Secretwerte sind kein Repository-Input.
 - Der Release-Gate kann technisch nicht automatisch autorisieren.
-- Fehlende oder driftende App-, Datenbank-, Runtime-, Resource-Binding-, Permission- oder M6-Verträge blockieren fail-closed.
+- Fehlende oder driftende App-, Datenbank-, Runtime-/Binding-, Permission-, Step- oder M6-Verträge blockieren fail-closed.
 
 ## Bewusst noch nicht ausgeführt
 
