@@ -15,6 +15,21 @@ const REPOSITORY_ROOT = process.cwd();
 const APP_DEFINITION_PATH = "apps/ulc-linz/appbasis.app.json";
 const DATABASE_MANIFEST_PATH = "apps/ulc-linz/appbasis.database.json";
 
+const EXPECTED_STEPS = [
+  ["neon-production-database", "provider-write"],
+  ["production-worker", "provider-write"],
+  ["database-binding", "provider-write"],
+  ["production-domain-selection", "operator-input"],
+  ["runtime-configuration", "provider-write"],
+  ["production-migrations", "production-data-write"],
+  ["production-worker-deploy", "provider-write"],
+  ["production-access-bootstrap", "application-write"],
+  ["production-domain-activation", "public-exposure-write"],
+  ["m5-production-evidence", "read-only-evidence"],
+  ["backup-recovery-validation", "recovery-validation-write"],
+  ["post-deploy-smokes", "production-smoke-write"],
+  ["release-gate", "authorization-gate"],
+];
 const MUTATING_STEP_KINDS = new Set([
   "provider-write",
   "production-data-write",
@@ -60,10 +75,11 @@ test("ULC M6 preflight verifies repository contracts but never authorizes a prov
   assert.deepEqual(result.contracts, {
     appDefinitionVerified: true,
     databaseManifestVerified: true,
-    runtimeContractVerified: true,
+    runtimeBindingDigestContractVerified: true,
     resourceBindingValidationContractVerified: true,
     permissionProvisioningContractVerified: true,
     m6CriterionCoverageVerified: true,
+    liveProductionEvidenceConsumed: false,
     secretValuesInRepository: false,
     automaticProviderWrites: false,
     automaticProductionRelease: false,
@@ -73,6 +89,21 @@ test("ULC M6 preflight verifies repository contracts but never authorizes a prov
   assert.equal(Object.isFrozen(result), true);
   assert.equal(Object.isFrozen(result.nextAction), true);
   assert.equal(Object.isFrozen(result.executionPlan), true);
+});
+
+test("ULC M6 execution plan pins every step id, step kind and backward-only dependency", () => {
+  const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
+
+  assert.equal(plan.steps.length, EXPECTED_STEPS.length);
+  const seen = new Set();
+  for (const [index, step] of plan.steps.entries()) {
+    assert.deepEqual([step.id, step.kind], EXPECTED_STEPS[index]);
+    assert.equal(step.sequence, index + 1);
+    for (const requirement of step.requires) {
+      assert.equal(seen.has(requirement), true, `${step.id} -> ${requirement}`);
+    }
+    seen.add(step.id);
+  }
 });
 
 test("ULC M6 execution plan covers every canonical M6 release criterion exactly by id", () => {
@@ -94,6 +125,10 @@ test("ULC M6 execution plan covers every canonical M6 release criterion exactly 
       .securityPrivacyReady,
     ["m5-production-evidence"],
   );
+  assert.deepEqual(
+    ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.m6CriterionCoverage.previewAccepted,
+    ["prerequisite:M3_DONE"],
+  );
 });
 
 test("ULC M6 plan keeps every mutating or release action behind explicit approval", () => {
@@ -101,7 +136,6 @@ test("ULC M6 plan keeps every mutating or release action behind explicit approva
 
   assert.equal(plan.providerWritesEnabled, false);
   assert.equal(plan.firstProviderWriteStepId, "neon-production-database");
-  assert.equal(plan.steps.length, 13);
 
   for (const step of plan.steps) {
     if (MUTATING_STEP_KINDS.has(step.kind)) {
@@ -173,13 +207,26 @@ test("ULC M6 runtime configuration names secrets without storing secret values",
   assert.equal(step.target.secretValuesInRepository, false);
 });
 
-test("ULC M6 production access bootstrap stays explicit and has no default principal assignment", () => {
+test("ULC M6 production access bootstrap reuses existing identity and principal-access writers", () => {
   const step = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.steps.find(
     (entry) => entry.id === "production-access-bootstrap",
   );
 
   assert.equal(step.kind, "application-write");
   assert.equal(step.approvalRequired, true);
+  assert.equal(
+    step.target.identityBootstrapContract,
+    "@appbasis/identity/root-admin#createInitialTechnicalAdmin",
+  );
+  assert.equal(step.target.requiresEmptyOrRecoverableIdentitySet, true);
+  assert.equal(
+    step.target.principalAccessOrchestration,
+    "tooling/ulc-linz-m5-principal-access-orchestration.mjs#replaceUlcLinzPrincipalAccess",
+  );
+  assert.equal(
+    step.target.principalAccessAdministration,
+    "PostgresPrincipalAccessAdministration",
+  );
   assert.equal(step.target.principalAssignmentsMustBeExplicit, true);
   assert.equal(step.target.defaultPrincipalAssignments, 0);
   assert.equal(step.target.leastPrivilegeRequired, true);
