@@ -22,6 +22,14 @@
         "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
         "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql"
       ]
+    },
+    {
+      "id": "ulc-linz-lifecycle",
+      "root": "apps/ulc-linz",
+      "schemaVersion": 1,
+      "migrations": [
+        "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql"
+      ]
     }
   ]
 }
