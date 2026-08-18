@@ -22,6 +22,8 @@ Vor jedem realen Durchlauf zuerst:
 - **WRITE** – externe/produktive Änderung; ausdrückliche Freigabe erforderlich.
 - **DB-WRITE** – produktive Datenbankänderung; ausdrückliche Freigabe erforderlich.
 - **DEPLOY** – Produktionsdeployment; ausdrückliche Freigabe erforderlich.
+- **RESTORE-WRITE** – Recovery-/Restore-Validierung mit realer externer Änderung; ausdrückliche Freigabe erforderlich.
+- **SMOKE-WRITE** – kontrollierter Produktions-Smoke, der produktiven Zustand verändern kann; ausdrückliche Freigabe erforderlich.
 - **RELEASE** – öffentliche Produktionsfreigabe; eigene ausdrückliche Freigabe erforderlich.
 - **STOP** – fail-closed abbrechen, nichts „zurechtinterpretieren“.
 
@@ -31,12 +33,25 @@ Vor dem ersten Providerwrite müssen gemeinsam erfüllt sein:
 
 - [ ] finaler Repository-/M5/M6-Stand eindeutig und grün,
 - [ ] M5-/M6-Preflight erfolgreich, aber weiterhin `providerWriteAllowed=false` / `executionAuthorized=false`,
-- [ ] Nutzer hat **genau den nächsten konkreten Write** ausdrücklich freigegeben,
+- [ ] Nutzer hat **genau den nächsten konkreten mutierenden Schritt** ausdrücklich freigegeben,
 - [ ] keine Kosten-/Plan-/Providerannahme wurde stillschweigend getroffen,
 - [ ] keine Secretwerte befinden sich in Chat, Repository, Ticket, Screenshot, Log oder Evidence-Dokument,
 - [ ] Produktions- und Preview-Ressourcen bleiben eindeutig getrennt.
 
 Fehlt ein Punkt: **STOP**.
+
+## Bekannter Vor-Ausführungs-Blocker – Production Security Logging
+
+Der aktuelle technische #165-Plan pinnt 13 Schritte und verlangt in Schritt 10 reale M5-F-Evidence für den Production-Security-Logging-Sink. Gleichzeitig enthält der aktuell gepinnte 13-Schritte-Vertrag **keinen eigenen mutierenden Schritt**, der diesen Production-Sink bzw. die Cloudflare-Ausleitung mit ausdrücklicher Freigabe anlegt oder konfiguriert; `runtime-configuration` ist aktuell auf `BETTER_AUTH_SECRET`, `APPBASIS_BASE_URL` und `HYPERDRIVE` begrenzt.
+
+Daher gilt vor einem echten Produktionslauf:
+
+- [ ] **STOP**, solange der finale M6-Vertrag nicht eindeutig festlegt, in welchem mutierenden, freigabepflichtigen Schritt der reale Logging-Sink und seine Ausleitung bereitgestellt werden,
+- [ ] der Schritt muss 12-Monats-Retention, geschützten Zugriff, DPA/AVV-/Subprozessor-/Transferbewertung und vollständige Production-Bindung berücksichtigen,
+- [ ] keine spontane manuelle Providerkonfiguration außerhalb des gepinnten Ausführungsplans,
+- [ ] keine M5-F-Evidence behaupten, bevor der reale Sink existiert und read-only verifiziert wurde.
+
+Dieser Punkt ist eine **Integrationslücke vor Ausführung**, keine Berechtigung, #165 in diesem Vorbereitungsstrang parallel umzubauen.
 
 ## 1. Neon-Produktionsdatenbank Frankfurt – erster Providerwrite
 
@@ -114,6 +129,7 @@ Mismatch: **STOP**.
 - [ ] Domain/DNS-Kontrolle bestätigen,
 - [ ] prüfen, ob der Host bereits belegt ist,
 - [ ] HTTPS-Origin festlegen, der später exakt `APPBASIS_BASE_URL` wird,
+- [ ] Operator bestätigt diese Auswahl als Input für die späteren freigabepflichtigen Schritte,
 - [ ] noch **keine** Domain aktivieren und noch **keinen** öffentlichen Ingress öffnen.
 
 Ungeklärter Host: **STOP vor Schritt 9**.
@@ -233,7 +249,15 @@ M5 < 12/12: **STOP – Production Ready bleibt false.**
 
 ## 11. ULC-spezifisches Backup-/Recovery-Gate mit realem Restore
 
-**Klasse:** WRITE/Restore + READ-Evidence
+**Klasse:** RESTORE-WRITE + READ-Evidence
+
+### Unmittelbar davor
+
+- [ ] Restore-Ziel und etwaige dafür nötige Providerressource sind eindeutig isoliert von Produktion,
+- [ ] Kosten-/Providerwirkung des Restore-Vorgangs bekannt,
+- [ ] Nutzer gibt den realen Restore-/Recovery-Validation-Write ausdrücklich frei.
+
+### Danach belegen
 
 - [ ] eigener kontrollierter Backup-/Restore-Nachweis für diese Produktions-App,
 - [ ] isoliertes Restore-Ziel, nicht die Produktionsdatenbank,
@@ -251,7 +275,18 @@ Realer Restore nicht erfolgreich: **STOP**.
 
 ## 12. Post-Deploy-Smokes
 
-**Klasse:** READ/Test gegen reale Production
+**Klasse:** SMOKE-WRITE gegen reale Production
+
+Der aktuelle #165-Vertrag klassifiziert diesen Schritt bewusst als `production-smoke-write` und verlangt ausdrückliche Freigabe.
+
+### Unmittelbar davor
+
+- [ ] genauer Smoke-Umfang und erwartete kontrollierte Testdaten/-writes bekannt,
+- [ ] Cleanup-/Reconciliation-Verhalten für erzeugte Testdaten geklärt,
+- [ ] keine echten Nutzer-/Produktionsdaten werden unnötig verändert,
+- [ ] Nutzer gibt den Production-Smoke-Write ausdrücklich frei.
+
+### Ausführen und belegen
 
 Mindestens:
 
@@ -265,7 +300,8 @@ Zusätzlich prüfen:
 - [ ] keine Secrets/Providerdetails in Antworten/Logs,
 - [ ] keine unerwartete öffentliche Control Plane,
 - [ ] Logging-/Telemetry-Delivery gesund,
-- [ ] relevante Denials bleiben fail-closed.
+- [ ] relevante Denials bleiben fail-closed,
+- [ ] kontrollierte Smoke-Testdaten sind nachvollziehbar und werden gemäß freigegebenem Vertrag bereinigt bzw. eindeutig als Test-Evidence behandelt.
 
 Jeder relevante Smoke-Fehler: **STOP**, keine Freigabe.
 
@@ -298,10 +334,10 @@ Das Treffen dieser Entscheidungen **autorisiert noch keine Bestellung, Ressource
 
 ## Operator-Abschlussregel
 
-Nach jedem Write:
+Nach jedem mutierenden Schritt:
 
-1. nicht sofort den nächsten Write ausführen,
-2. tatsächlichen Providerzustand read-only verifizieren,
+1. nicht sofort den nächsten mutierenden Schritt ausführen,
+2. tatsächlichen Provider-/Produktionszustand read-only verifizieren,
 3. erwartete Evidence sichern/sanitisieren,
 4. Abweichungen fail-closed stoppen,
 5. erst dann die nächste erforderliche ausdrückliche Freigabe einholen.
