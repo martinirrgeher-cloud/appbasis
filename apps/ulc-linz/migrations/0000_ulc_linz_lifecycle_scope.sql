@@ -44,6 +44,7 @@ CREATE INDEX "ulc_linz_subject_scope_subject_idx"
 CREATE TABLE "ulc_linz_lifecycle_deletion" (
   "identity_id" text PRIMARY KEY NOT NULL,
   "organization_id" text NOT NULL,
+  "subject_id" text NOT NULL,
   "source_role" text NOT NULL,
   "completed_at" timestamp with time zone NOT NULL,
   "purge_after" timestamp with time zone NOT NULL,
