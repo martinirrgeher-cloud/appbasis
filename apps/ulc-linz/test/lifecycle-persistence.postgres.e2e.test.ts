@@ -15,7 +15,10 @@ import {
 } from "@appbasis/permissions";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 
-import { deleteUlcLinzIdentityWithCanonicalAuthorization } from "../worker/lifecycle-service";
+import {
+  deleteUlcLinzIdentityWithCanonicalAuthorization,
+  setUlcLinzRetentionExceptionWithCanonicalAuthorization,
+} from "../worker/lifecycle-service";
 import {
   PostgresUlcLinzDeletionReconciliationSource,
   reconcileUlcLinzRestoredDatabase,
@@ -25,13 +28,13 @@ import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
 
 const databaseUrl = process.env.DATABASE_URL;
 const baseURL = "http://localhost:3000";
-const bootstrapUsername = "ulc.lifecycle.persistence.bootstrap";
+const bootstrapUsername = "ulc.persist.bootstrap";
 const bootstrapPassword = "ULC-persistence-bootstrap-password-42";
-const actorUsername = "ulc.lifecycle.persistence.admin";
+const actorUsername = "ulc.persist.admin";
 const actorPassword = "ULC-persistence-actor-password-42";
-const manualTargetUsername = "ulc.lifecycle.persistence.manual";
+const manualTargetUsername = "ulc.persist.manual";
 const manualTargetPassword = "ULC-persistence-manual-password-42";
-const retentionTargetUsername = "ulc.lifecycle.persistence.retention";
+const retentionTargetUsername = "ulc.persist.retention";
 const retentionTargetPassword = "ULC-persistence-retention-password-42";
 const organizationId = "ulc-linz";
 const fixedNow = new Date("2026-08-18T10:30:00.000Z");
@@ -43,7 +46,9 @@ type DatabaseManifest = {
   }[];
 };
 
-type AppIdentity = Awaited<ReturnType<ReturnType<typeof createIdentityRuntime>["service"]["createInitialUser"]>>;
+type AppIdentity = Awaited<
+  ReturnType<ReturnType<typeof createIdentityRuntime>["service"]["createInitialUser"]>
+>;
 
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
   describe.skip("ULC Linz lifecycle persistence PostgreSQL E2E", () => {
@@ -74,7 +79,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await administrativeConnection.client.end();
     });
 
-    it("binds real ULC membership/scope persistence, retention and restore reconciliation fail-closed", async () => {
+    it("binds real ULC persistence, authorized retention and restore reconciliation fail-closed", async () => {
       await administrativeConnection.client.unsafe(`CREATE DATABASE ${sourceDatabaseName}`);
       sourceCreated = true;
 
@@ -130,6 +135,51 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
           relationType: "self",
         }),
       ).resolves.toBe(true);
+
+      await expect(
+        setUlcLinzRetentionExceptionWithCanonicalAuthorization(
+          actorCurrent,
+          { permissions: sourcePermissions, scopes: sourceScopes },
+          {
+            organizationId: "other-organization",
+            targetIdentityId: "fixture-retention-exception",
+            reason: "legal-hold",
+            reviewAt: new Date("2026-10-18T10:30:00.000Z"),
+          },
+        ),
+      ).rejects.toMatchObject({ code: "UNKNOWN_PERMISSION_STATE" });
+
+      await expect(
+        setUlcLinzRetentionExceptionWithCanonicalAuthorization(
+          actorCurrent,
+          { permissions: sourcePermissions, scopes: sourceScopes },
+          {
+            organizationId,
+            targetIdentityId: "fixture-retention-exception",
+            reason: "legal-hold",
+            reviewAt: new Date("2026-10-18T10:30:00.000Z"),
+          },
+        ),
+      ).resolves.toMatchObject({
+        status: "exception",
+        actor: seeded.actor.identityId,
+        reason: "legal-hold",
+        reviewAt: new Date("2026-10-18T10:30:00.000Z"),
+      });
+
+      // The database itself requires active admins. An administrator must be
+      // demoted to a deletable source role before membership end/deletion.
+      await expect(
+        source.client.unsafe(
+          `INSERT INTO ulc_linz_membership (
+             identity_id, organization_id, subject_id, source_role, active, ended_at
+           ) VALUES (
+             'fixture-inactive-admin', $1, 'fixture-inactive-admin-subject',
+             'admin', false, '2025-07-18T10:30:00.000Z'
+           )`,
+          [organizationId],
+        ),
+      ).rejects.toThrow();
 
       await expect(
         deleteUlcLinzIdentityWithCanonicalAuthorization(
@@ -193,7 +243,9 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         seeded.manualTarget.identityId,
         seeded.retentionTarget.identityId,
       ]) {
-        await expect(sourcePermissions.findPrincipal(principalId(deletedIdentityId))).resolves.toBeNull();
+        await expect(
+          sourcePermissions.findPrincipal(principalId(deletedIdentityId)),
+        ).resolves.toBeNull();
         await expect(sourceScopes.findLifecycleTarget(deletedIdentityId)).resolves.toBeNull();
         await expect(sourceScopes.findDeletionMarker(deletedIdentityId)).resolves.toMatchObject({
           identityId: deletedIdentityId,
@@ -294,7 +346,9 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
                 : retentionTargetPassword,
           }),
         ).rejects.toMatchObject({ code: "AUTHENTICATION_FAILED" });
-        await expect(restoredPermissions.findPrincipal(principalId(deletedIdentityId))).resolves.toBeNull();
+        await expect(
+          restoredPermissions.findPrincipal(principalId(deletedIdentityId)),
+        ).resolves.toBeNull();
         await expect(restoredScopes.findLifecycleTarget(deletedIdentityId)).resolves.toBeNull();
       }
 
@@ -423,13 +477,12 @@ async function seedSourceSnapshot(connection: ReturnType<typeof createPostgresDa
 
   await connection.client.unsafe(
     `INSERT INTO ulc_linz_membership (
-       identity_id, organization_id, subject_id, source_role, active, ended_at,
-       retention_exception_reason, retention_exception_actor, retention_review_at
+       identity_id, organization_id, subject_id, source_role, active, ended_at
      ) VALUES
        ('fixture-retention-exception', $1, 'fixture-subject-exception', 'parent', false,
-        '2025-07-18T10:30:00.000Z', 'legal-hold', 'ulc-linz:admin-fixture', '2026-10-18T10:30:00.000Z'),
+        '2025-07-18T10:30:00.000Z'),
        ('fixture-retention-boundary', $1, 'fixture-subject-boundary', 'parent', false,
-        '2025-08-18T10:30:00.000Z', NULL, NULL, NULL)`,
+        '2025-08-18T10:30:00.000Z')`,
     [organizationId],
   );
 
