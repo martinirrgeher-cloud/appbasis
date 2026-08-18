@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "appId": "ulc-linz",
+  "canonicalFormat": "json",
+  "supplementaryFormats": [
+    "csv"
+  ],
+  "unknownDataset": "deny",
+  "runtimeModules": [],
+  "datasets": [
+    {
+      "id": "member-contact",
+      "privacyClasses": [
+        "member-contact-master-data"
+      ],
+      "sourceTables": [
+        {
+          "owner": "identity",
+          "table": "appbasis_person",
+          "privacyClass": "member-contact-master-data"
+        },
+        {
+          "owner": "identity",
+          "table": "user",
+          "privacyClass": "member-contact-master-data"
+        }
+      ],
+      "scopes": [
+        "self",
+        "managed",
+        "organization"
+      ],
+      "allowedFields": [
+        "username",
+        "displayName",
+        "contactEmail",
+        "createdAt",
+        "updatedAt"
+      ],
+      "csvEligible": true,
+      "csvColumns": [
+        "username",
+        "displayName",
+        "contactEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  ],
+  "excludedTables": [
+    { "owner": "identity", "table": "appbasis_identity_security_state", "privacyClass": "identity-security-state" },
+    { "owner": "identity", "table": "account", "privacyClass": "authentication-credential-data" },
+    { "owner": "identity", "table": "session", "privacyClass": "authentication-session-data" },
+    { "owner": "identity", "table": "verification", "privacyClass": "authentication-verification-data" },
+    { "owner": "identity", "table": "appbasis_identity_operation", "privacyClass": "identity-operation-state" },
+    { "owner": "permissions", "table": "appbasis_permission_capability", "privacyClass": "authorization-configuration" },
+    { "owner": "permissions", "table": "appbasis_permission_role", "privacyClass": "authorization-configuration" },
+    { "owner": "permissions", "table": "appbasis_permission_role_capability", "privacyClass": "authorization-configuration" },
+    { "owner": "permissions", "table": "appbasis_permission_principal", "privacyClass": "authorization-state" },
+    { "owner": "permissions", "table": "appbasis_permission_principal_role", "privacyClass": "authorization-state" },
+    { "owner": "permissions", "table": "appbasis_permission_principal_grant", "privacyClass": "authorization-state" },
+    { "owner": "permissions", "table": "appbasis_permission_principal_revoke", "privacyClass": "authorization-state" },
+    { "owner": "permissions", "table": "appbasis_permission_administration_audit", "privacyClass": "audit-security-data" }
+  ],
+  "excludedPrivacyClasses": [
+    "authentication-credential-data",
+    "authentication-session-data",
+    "authentication-verification-data",
+    "identity-security-state",
+    "identity-operation-state",
+    "authorization-configuration",
+    "authorization-state",
+    "audit-security-data"
+  ],
+  "credentialFieldNames": [
+    "password",
+    "passwordHash",
+    "accessToken",
+    "refreshToken",
+    "idToken",
+    "sessionToken",
+    "token",
+    "secret",
+    "credential",
+    "cookie",
+    "apiKey",
+    "connectionString"
+  ]
+}
