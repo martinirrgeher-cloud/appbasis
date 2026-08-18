@@ -10,7 +10,6 @@
     "test:postgres": "vitest run ./test/lifecycle.postgres.e2e.test.ts ./test/lifecycle-persistence.postgres.e2e.test.ts"
   },
   "dependencies": {
-    "@appbasis/database": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",
     "hono": "4.13.1"
