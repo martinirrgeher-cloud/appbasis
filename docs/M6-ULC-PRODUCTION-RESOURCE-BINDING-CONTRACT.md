@@ -58,9 +58,12 @@ Bevor irgendeine Produktionsressource mit ULC gebunden werden darf, muss der zu 
 - `/api/health` benötigt keine DB-/Secret-Bindings,
 - alle übrigen Requests schlagen bei fehlenden oder ungültigen Runtime-Bindings fail-closed fehl,
 - Runtime-/Providerfehler dürfen keine Connection Strings, Providerantworten oder Secrets in Antworten oder Logs übernehmen,
-- keine Fachmodulroute wird erfunden, solange kein Fachmodul installiert ist.
+- keine Fachmodulroute wird erfunden, solange kein Fachmodul installiert ist,
+- die Binding-Evidence muss zusätzlich den SHA-256-Vertrag der tatsächlich ausführungsrelevanten Dateien `apps/ulc-linz/worker/app.ts`, `apps/ulc-linz/worker/index.ts` und `apps/ulc-linz/worker/postgres.ts` exakt treffen.
 
-Ein fehlender oder nicht CI-verifizierter deploybarer Runtime-Vertrag blockiert die Resource-Bindung.
+Der Runtime-Digest wird aus **Pfad + Dateiinhalt** aller drei Dateien gebildet. Dadurch erzwingt jede spätere relevante Runtimeänderung neue Resource-Binding-Evidence. Der Digest darf im geschützten Raw-Evidence-Input vorkommen, wird aber nicht in den normalen Factory-/M5-Snapshot übernommen.
+
+Ein fehlender, nicht CI-verifizierter oder gegenüber der Binding-Evidence gedrifteter Runtime-Vertrag blockiert die Resource-Bindung.
 
 ## Phasen des ersten Produktionspfads
 
@@ -103,8 +106,9 @@ Geschützte Bindungsdaten dürfen enthalten:
 - autoritative Neon-Projekt-/Branch-/Datenbank-IDs,
 - autoritative Cloudflare-Account-/Worker-/Binding-IDs,
 - konkreten Produktionshostname,
-- Secret-Referenznamen,
-- Zeitstempel und Provider-Metadaten.
+- den aktuellen Runtime-Contract-Digest,
+- `observedAt` und `validUntilOrReviewAt`,
+- Provider-Metadaten zur eindeutigen Identität, Region und Ressourcenklasse.
 
 Sie dürfen **nicht** enthalten:
 
@@ -162,11 +166,11 @@ Readiness oder ein erfolgreicher Deploy autorisieren keinen Nutzertraffic und ke
 
 Die tatsächliche Freigabe bleibt eine eigene, frische Entscheidung unmittelbar vor dem Release.
 
-## Technischer Binding-Input für den späteren Consumer
+## Technischer Binding-Input des implementierten Consumers
 
-Der technische Consumer soll Providerreads **nicht selbst provisionieren**. Er erhält einen geschützten Raw-Evidence-Snapshot aus der Control Plane und validiert ihn fail-closed.
+Der technische Consumer ruft Provider **nicht selbst auf** und provisioniert nichts. Er erhält einen geschützten Raw-Evidence-Snapshot aus der Control Plane und validiert ihn fail-closed.
 
-Minimaler Inputvertrag:
+Der aktuelle Inputvertrag entspricht dem in #155 implementierten Consumer:
 
 ```json
 {
@@ -174,35 +178,41 @@ Minimaler Inputvertrag:
   "application": "ulc-linz",
   "environment": "production",
   "observedAt": "<ISO-8601>",
+  "validUntilOrReviewAt": "<ISO-8601>",
   "runtime": {
     "entrypoint": "./worker/index.ts",
+    "contractDigest": "sha256:<exact-current-runtime-digest>",
     "providerModel": "standard-workers-global-transient",
     "euOnly": false
   },
   "neon": {
-    "projectBound": true,
-    "branchBound": true,
-    "databaseBound": true,
+    "projectBindingId": "<opaque-provider-id>",
+    "branchBindingId": "<opaque-provider-id>",
+    "databaseBindingId": "<opaque-provider-id>",
     "region": "aws-eu-central-1",
-    "regionSource": "provider-api"
+    "regionSource": "provider-api",
+    "identitySource": "provider-api",
+    "dedicatedProductionResource": true
   },
   "cloudflare": {
-    "accountBound": true,
-    "workerBound": true,
-    "hostnameBound": true,
-    "databaseBindingBound": true,
+    "accountBindingId": "<opaque-provider-id>",
+    "runtimeBindingId": "<opaque-provider-id>",
+    "hostnameBinding": "<canonical-lowercase-hostname>",
+    "databaseBindingId": "<opaque-provider-id>",
+    "identitySource": "provider-api",
     "bindingInventoryComplete": true,
     "telemetryInventoryComplete": true,
-    "unexpectedPersonalDataPersistence": false
+    "unexpectedPersonalDataPersistence": false,
+    "dedicatedProductionResource": true
   }
 }
 ```
 
-Der reale geschützte Raw-Snapshot darf zusätzlich Provider-IDs zur eindeutigen Zuordnung enthalten. Der normalisierte Consumer-Output darf sie nicht in den normalen Factory-/M5-Snapshot übernehmen.
+Der Consumer akzeptiert keine Ableitung von Region, Environment oder Production-Zweck aus Ressourcennamen oder Hoststrings. Die Resource-Identität und Neon-Region müssen aus autoritativer Provider-Evidence stammen.
 
 ## Normalisierter, secrets-freier Binding-Output
 
-Der spätere Consumer soll höchstens semantische, nicht-sensitive Bindungsinformationen weiterreichen:
+Der implementierte Consumer reicht nur semantische, nicht-sensitive Bindungsinformationen weiter:
 
 ```json
 {
@@ -210,6 +220,7 @@ Der spätere Consumer soll höchstens semantische, nicht-sensitive Bindungsinfor
   "application": "ulc-linz",
   "environment": "production",
   "observedAt": "<ISO-8601>",
+  "validUntilOrReviewAt": "<ISO-8601>",
   "runtimeContractVerified": true,
   "productionDatabaseBound": true,
   "productionWorkerBound": true,
@@ -222,26 +233,29 @@ Der spätere Consumer soll höchstens semantische, nicht-sensitive Bindungsinfor
 }
 ```
 
+Provider-IDs, Hostname und Runtime-Digest werden bewusst nicht in diesen normalen Output übernommen.
+
 Dieser Output ist **keine** M5-G-Verifizierung. Er ist lediglich die eindeutig gebundene Ressourcengrundlage, auf der der bestehende M5-G-Evaluator seine vier Kriterien getrennt bewerten kann.
 
 ## Fail-closed-Regeln des Binding-Consumers
 
-Der spätere technische Consumer muss mindestens blockieren bei:
+Der technische Consumer blockiert mindestens bei:
 
 - falscher App oder falschem Environment,
 - unbekannter Schema-Version,
-- Preview-/Reference-/Restore-Ressource statt ULC-Produktion,
+- Preview-/Reference-/Restore-Ressource statt eindeutig dedizierter ULC-Produktion,
 - fehlender oder nicht autoritativ gelesener Neon-Region,
 - Neon-Region ungleich `aws-eu-central-1`,
 - `euOnly = true` für das Standard-Workers-Modell,
 - fehlendem deploybaren Runtime-Entrypoint,
-- fehlender eindeutiger Worker-/Hostname-/DB-Bindung,
+- fehlendem oder vom aktuellen ULC-Runtimevertrag abweichendem Runtime-Digest,
+- fehlender eindeutiger Provider-Identität für Neon Project/Branch/Database oder Cloudflare Account/Worker/DB-Binding,
+- fehlender eindeutiger Produktionshostname-Bindung,
 - unvollständigem Cloudflare-Binding- oder Telemetry-Inventar,
 - zusätzlicher nicht freigegebener personenbezogener Cloudflare-Persistenz,
-- unbekannten Providerpfaden,
-- Secret-/Credential-/Connection-String-Feldern im normalisierten Output,
-- mehrdeutiger Ressourcenidentität,
-- veralteter oder fehlender Beobachtungszeit.
+- Secret-/Credential-/Connection-String-Feldern oder credential-shaped Werten im Evidence-Baum,
+- Accessors, Symbols, geerbter oder nicht-kanonischer Evidence-Struktur,
+- zukünftigem `observedAt`, abgelaufenem `validUntilOrReviewAt` oder nicht-kanonischen Zeitstempeln.
 
 Kein Fehlerfall darf automatisch eine fehlende Ressource erzeugen oder reparieren.
 
@@ -271,6 +285,18 @@ Solange die folgenden Punkte nicht real aufgelöst sind, bleibt Phase 1 blockier
 
 Diese Blocker verhindern **nicht** die technische Vorbereitung des Binding-Consumers, wohl aber echte externe Providerwrites.
 
+## Implementierungsstand
+
+Der Resource-Binding-Consumer ist in #155 technisch umgesetzt und geprüft. Sein finaler technischer Stand vor Codex/Integration lautet:
+
+- exakter Head `3d5ba73ca3bfbbb75f490a09abd0957a7407898d`,
+- Exact-Head-CI #1077 PASS,
+- 9/9 Resource-Binding-Tests PASS,
+- vollständiger Root-`verify:apps`-Lauf PASS,
+- finaler ChatGPT-Diff-/Architektur-/Security-Review ohne verbleibendes Blocking Finding,
+- kein Codex-Zwischenreview,
+- keine Providerressource, kein Secret, keine Produktionsdatenbank und kein Deployment verändert.
+
 ## Exit-Kriterien dieses Vertrags
 
 Der Vorbereitungsschritt ist abgeschlossen, wenn:
@@ -280,6 +306,7 @@ Der Vorbereitungsschritt ist abgeschlossen, wenn:
 - leere Ressourcenerstellung von Datenmigration/Deploy/Release getrennt ist,
 - der geschützte Raw-Binding-Input feststeht,
 - der secrets-freie normalisierte Output feststeht,
+- Runtime-Drift durch den aktuellen Runtime-Digest fail-closed gebunden ist,
 - M5-G weiterhin ausschließlich read-only konsumiert,
 - alle relevanten Fail-closed-Fälle definiert sind,
 - die konkrete externe Freigabegrenze vor Providerwrites explizit bleibt,
