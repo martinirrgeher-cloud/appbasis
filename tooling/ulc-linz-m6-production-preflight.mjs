@@ -70,6 +70,11 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
     requires: ["database-binding", "production-worker"],
   },
   {
+    id: "production-security-logging-sink",
+    kind: "provider-write",
+    requires: ["production-worker", "runtime-configuration"],
+  },
+  {
     id: "production-migrations",
     kind: "production-data-write",
     requires: ["neon-production-database"],
@@ -80,6 +85,7 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
     requires: [
       "database-binding",
       "runtime-configuration",
+      "production-security-logging-sink",
       "production-migrations",
     ],
   },
@@ -100,7 +106,10 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
   {
     id: "m5-production-evidence",
     kind: "read-only-evidence",
-    requires: ["production-domain-activation"],
+    requires: [
+      "production-domain-activation",
+      "production-security-logging-sink",
+    ],
   },
   {
     id: "backup-recovery-validation",
@@ -134,7 +143,10 @@ const M6_CRITERION_COVERAGE = deepFreeze({
   productionDomainReady: ["production-domain-activation"],
   productionUsersAndPermissionsReady: ["production-access-bootstrap"],
   backupRecoveryReady: ["backup-recovery-validation"],
-  securityPrivacyReady: ["m5-production-evidence"],
+  securityPrivacyReady: [
+    "production-security-logging-sink",
+    "m5-production-evidence",
+  ],
   productionMigrationsApplied: ["production-migrations"],
   productionDeploymentCompleted: ["production-worker-deploy"],
   postDeploySmokePassed: ["post-deploy-smokes"],
@@ -213,6 +225,24 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
     },
     {
       sequence: 6,
+      id: "production-security-logging-sink",
+      kind: "provider-write",
+      approvalRequired: true,
+      requires: ["production-worker", "runtime-configuration"],
+      target: {
+        providerNeutralContract: true,
+        providerSelectionMustBeExplicit: true,
+        structuredEventCaptureRequired: true,
+        protectedOperationalAccessRequired: true,
+        retentionMonths: 12,
+        retentionMustBeProviderVerified: true,
+        sinkInventoryMustBeComplete: true,
+        publicReadEndpointAllowed: false,
+        runtimeDeliveryIntegrationRequired: true,
+      },
+    },
+    {
+      sequence: 7,
       id: "production-migrations",
       kind: "production-data-write",
       approvalRequired: true,
@@ -227,13 +257,14 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 7,
+      sequence: 8,
       id: "production-worker-deploy",
       kind: "provider-write",
       approvalRequired: true,
       requires: [
         "database-binding",
         "runtime-configuration",
+        "production-security-logging-sink",
         "production-migrations",
       ],
       target: {
@@ -243,7 +274,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 8,
+      sequence: 9,
       id: "production-access-bootstrap",
       kind: "application-write",
       approvalRequired: true,
@@ -264,7 +295,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 9,
+      sequence: 10,
       id: "production-domain-activation",
       kind: "public-exposure-write",
       approvalRequired: true,
@@ -280,21 +311,26 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 10,
+      sequence: 11,
       id: "m5-production-evidence",
       kind: "read-only-evidence",
       approvalRequired: false,
-      requires: ["production-domain-activation"],
+      requires: [
+        "production-domain-activation",
+        "production-security-logging-sink",
+      ],
       target: {
         gate: "Production Security & Privacy Ready v0.1",
         resourceBindingConsumer:
           "tooling/ulc-linz-m6-production-resource-binding.mjs",
+        auditSecurityLoggingEvidenceOwner:
+          "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs",
         allRequired: true,
         failClosed: true,
       },
     },
     {
-      sequence: 11,
+      sequence: 12,
       id: "backup-recovery-validation",
       kind: "recovery-validation-write",
       approvalRequired: true,
@@ -312,7 +348,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 12,
+      sequence: 13,
       id: "post-deploy-smokes",
       kind: "production-smoke-write",
       approvalRequired: true,
@@ -326,7 +362,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 13,
+      sequence: 14,
       id: "release-gate",
       kind: "authorization-gate",
       approvalRequired: true,
@@ -518,6 +554,22 @@ function assertExecutionPlanContract() {
     fail("RUNTIME_CONFIGURATION_DRIFT");
   }
 
+  const securityLogging = stepById(plan, "production-security-logging-sink");
+  if (
+    securityLogging.target?.providerNeutralContract !== true ||
+    securityLogging.target?.providerSelectionMustBeExplicit !== true ||
+    securityLogging.target?.structuredEventCaptureRequired !== true ||
+    securityLogging.target?.protectedOperationalAccessRequired !== true ||
+    securityLogging.target?.retentionMonths !== 12 ||
+    securityLogging.target?.retentionMustBeProviderVerified !== true ||
+    securityLogging.target?.sinkInventoryMustBeComplete !== true ||
+    securityLogging.target?.publicReadEndpointAllowed !== false ||
+    securityLogging.target?.runtimeDeliveryIntegrationRequired !== true ||
+    securityLogging.approvalRequired !== true
+  ) {
+    fail("SECURITY_LOGGING_SINK_DRIFT");
+  }
+
   const migration = stepById(plan, "production-migrations");
   if (
     migration.target?.dialect !== "postgresql" ||
@@ -573,6 +625,8 @@ function assertExecutionPlanContract() {
     m5Evidence.target?.gate !== "Production Security & Privacy Ready v0.1" ||
     m5Evidence.target?.resourceBindingConsumer !==
       "tooling/ulc-linz-m6-production-resource-binding.mjs" ||
+    m5Evidence.target?.auditSecurityLoggingEvidenceOwner !==
+      "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs" ||
     m5Evidence.target?.allRequired !== true ||
     m5Evidence.target?.failClosed !== true ||
     m5Evidence.approvalRequired !== false
