@@ -8,7 +8,6 @@ import { createIdentityRuntime, PostgresIdentityStateStore } from "@appbasis/ide
 import { PostgresPermissionStore } from "@appbasis/permissions";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 
-import type { UlcLinzCurrentIdentity } from "../worker/authorization";
 import { PostgresUlcLinzExportDatasetReader } from "../worker/data-export-postgres";
 import { exportUlcLinzDataWithCanonicalAuthorization } from "../worker/data-export-service";
 import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
@@ -56,10 +55,24 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       try {
         await applyManifestMigrations(connection.client);
         const runtime = await createBootstrapRuntime(connection);
-        const admin = await createAppIdentity(runtime, "m5e.admin", "M5E-admin-password-42-secure", "M5E Admin");
-        const parent = await createAppIdentity(runtime, "m5e.parent", "M5E-parent-password-42-secure", "M5E Parent");
-        const child = await createAppIdentity(runtime, "m5e.child", "M5E-child-password-42-secure", "M5E Child");
-        const athlete = await createAppIdentity(runtime, "m5e.athlete", "M5E-athlete-password-42-secure", "M5E Athlete");
+        const adminPassword = "M5E-admin-password-42-secure";
+        const parentPassword = "M5E-parent-password-42-secure";
+        const childPassword = "M5E-child-password-42-secure";
+        const athletePassword = "M5E-athlete-password-42-secure";
+        const admin = await createAppIdentity(runtime, "m5e.admin", adminPassword, "M5E Admin");
+        const parent = await createAppIdentity(runtime, "m5e.parent", parentPassword, "M5E Parent");
+        const child = await createAppIdentity(runtime, "m5e.child", childPassword, "M5E Child");
+        const athlete = await createAppIdentity(runtime, "m5e.athlete", athletePassword, "M5E Athlete");
+        const adminCurrent = await activateIdentity(runtime, "m5e.admin", adminPassword);
+        const parentCurrent = await activateIdentity(runtime, "m5e.parent", parentPassword);
+        const athleteCurrent = await activateIdentity(runtime, "m5e.athlete", athletePassword);
+
+        expect(adminCurrent.access).toBe("full");
+        expect(parentCurrent.access).toBe("full");
+        expect(athleteCurrent.access).toBe("full");
+        expect(adminCurrent.identity.mustChangePassword).toBe(false);
+        expect(parentCurrent.identity.mustChangePassword).toBe(false);
+        expect(athleteCurrent.identity.mustChangePassword).toBe(false);
 
         await seedRoleAndPrincipal(connection.client, admin.identityId, "admin");
         await seedRoleAndPrincipal(connection.client, parent.identityId, "parent");
@@ -94,7 +107,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         };
 
         const selfResult = await exportUlcLinzDataWithCanonicalAuthorization(
-          asCurrent(athlete),
+          athleteCurrent,
           dependencies,
           {
             organizationId,
@@ -110,9 +123,10 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
           }),
         ]);
         expect(JSON.stringify(selfResult)).not.toContain("password");
+        expect(JSON.stringify(selfResult)).not.toContain(athleteCurrent.sessionToken);
 
         const managedResult = await exportUlcLinzDataWithCanonicalAuthorization(
-          asCurrent(parent),
+          parentCurrent,
           dependencies,
           {
             organizationId,
@@ -126,7 +140,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         });
 
         const organizationResult = await exportUlcLinzDataWithCanonicalAuthorization(
-          asCurrent(admin),
+          adminCurrent,
           dependencies,
           { organizationId, scope: "organization" },
         );
@@ -138,7 +152,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         const readDatasets = vi.fn(reader.readDatasets.bind(reader));
         await expect(
           exportUlcLinzDataWithCanonicalAuthorization(
-            asCurrent(athlete),
+            athleteCurrent,
             { ...dependencies, readDatasets },
             {
               organizationId: "other-organization",
@@ -158,7 +172,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         const auditBeforePartial = audit.mock.calls.length;
         await expect(
           exportUlcLinzDataWithCanonicalAuthorization(
-            asCurrent(admin),
+            adminCurrent,
             dependencies,
             { organizationId, scope: "organization" },
           ),
@@ -169,14 +183,6 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       }
     });
   });
-}
-
-function asCurrent(identity: AppIdentity): UlcLinzCurrentIdentity {
-  return {
-    identity,
-    sessionToken: "e2e-session-token-not-exported",
-    access: "full",
-  };
 }
 
 async function createBootstrapRuntime(
@@ -216,6 +222,24 @@ async function createAppIdentity(
     temporaryPassword: password,
     displayName,
     contactEmail: `${username}@example.invalid`,
+  });
+}
+
+async function activateIdentity(
+  runtime: ReturnType<typeof createIdentityRuntime>,
+  username: string,
+  temporaryPassword: string,
+) {
+  const signedIn = await runtime.service.signInWithUsername({
+    username,
+    password: temporaryPassword,
+  });
+  expect(signedIn.access).toBe("password-change-required");
+  return runtime.service.changeRequiredPassword({
+    sessionToken: signedIn.sessionToken,
+    currentPassword: temporaryPassword,
+    newPassword: `${temporaryPassword}-changed`,
+    idempotencyKey: randomUUID(),
   });
 }
 
