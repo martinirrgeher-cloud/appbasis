@@ -25,7 +25,7 @@ function validEvidence() {
         { name: "appbasis-reference-preview", region: "aws-us-east-1" },
       ],
       targetRegionAvailable: true,
-      createRegionParameterSupported: true,
+      selectedCreateMethodSupportsExplicitRegion: true,
     },
   };
 }
@@ -39,6 +39,7 @@ test("ULC M6 first provider-write preflight stays blocked on explicit approval e
   assert.equal(result.providerInventoryVerified, true);
   assert.equal(result.noExistingProductionResourceCandidate, true);
   assert.equal(result.targetRegionAvailable, true);
+  assert.equal(result.selectedCreateMethodSupportsExplicitRegion, true);
   assert.equal(result.explicitRegionSelectionRequired, true);
   assert.equal(result.providerDefaultRegionAllowed, false);
   assert.equal(result.providerWriteAllowed, false);
@@ -71,7 +72,7 @@ test("ULC M6 provider-write safety contract pins Frankfurt and forbids default-r
   });
 });
 
-test("ULC M6 provider-write safety contract keeps workers.dev and Preview URLs closed before public domain activation", () => {
+test("ULC M6 provider-write safety contract keeps workers.dev and Preview URLs closed before application code upload", () => {
   const worker =
     ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT.cloudflareWorkerCreation;
 
@@ -81,6 +82,7 @@ test("ULC M6 provider-write safety contract keeps workers.dev and Preview URLs c
     previewUrls: false,
     publicIngress: false,
     ingressStateMustBeAppliedAtInitialCreateOrFirstDeploy: true,
+    closedIngressRequiredBeforeApplicationCodeUpload: true,
   });
 });
 
@@ -155,9 +157,9 @@ test("ULC M6 provider preflight fails closed when Frankfurt is unavailable", () 
   );
 });
 
-test("ULC M6 provider preflight fails closed when the create mechanism cannot explicitly select the region", () => {
+test("ULC M6 provider preflight fails closed when the selected create mechanism cannot explicitly select the region", () => {
   const evidence = validEvidence();
-  evidence.neon.createRegionParameterSupported = false;
+  evidence.neon.selectedCreateMethodSupportsExplicitRegion = false;
 
   assert.throws(
     () =>
@@ -208,6 +210,23 @@ test("ULC M6 provider preflight accepts only authoritative provider API evidence
 test("ULC M6 provider preflight rejects unsafe provider inventory evidence", () => {
   const evidence = validEvidence();
   evidence.neon.projects[0].name = "postgres://example.invalid/secret";
+
+  assert.throws(
+    () =>
+      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
+        now: NOW,
+      }),
+    errorWithCode("UNSAFE_EVIDENCE"),
+  );
+});
+
+test("ULC M6 provider preflight rejects array prototype manipulation before using provider inventory", () => {
+  const evidence = validEvidence();
+  Object.setPrototypeOf(evidence.neon.projects, {
+    map() {
+      throw new Error("must not execute attacker-controlled map");
+    },
+  });
 
   assert.throws(
     () =>
