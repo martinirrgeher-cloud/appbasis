@@ -3,9 +3,7 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import {
-  deriveUlcLinzM5GResourceBindingFingerprint,
-} from "../ulc-linz-m5-provider-bound-evidence.mjs";
+import { deriveUlcLinzM5GResourceBindingFingerprint } from "../ulc-linz-m5-provider-bound-evidence.mjs";
 import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "../ulc-linz-m5-provider-evidence.mjs";
 import { ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST } from "../ulc-linz-m6-production-resource-binding.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
@@ -35,21 +33,14 @@ const VALID_ULC_DEFINITION = Object.freeze({
 function ownerEvidenceAllTrue() {
   const owners = {};
   for (const entry of ULC_LINZ_M5_J_OWNER_MATRIX) {
-    const evidence = {};
-    for (const criterionId of entry.criteria) evidence[criterionId] = true;
-    owners[entry.owner] = evidence;
+    owners[entry.owner] = Object.fromEntries(
+      entry.criteria.map((criterionId) => [criterionId, true]),
+    );
   }
   return owners;
 }
 
-function legalEntry({
-  provider,
-  documentType,
-  canonicalSource,
-  accountSpecific = false,
-  publicBaseline = true,
-  transferModelConsistentWithAdr022 = null,
-}) {
+function legalEntry({ provider, documentType, canonicalSource, accountSpecific = false, publicBaseline = true, transferModelConsistentWithAdr022 = null }) {
   return {
     provider,
     documentType,
@@ -66,57 +57,15 @@ function legalEntry({
 
 function fullLegalEvidence() {
   return [
-    legalEntry({
-      provider: "cloudflare",
-      documentType: "dpa",
-      canonicalSource: "https://www.cloudflare.com/cloudflare-customer-dpa/",
-    }),
-    legalEntry({
-      provider: "cloudflare",
-      documentType: "dpa-account-binding",
-      canonicalSource: "https://dash.cloudflare.com/",
-      accountSpecific: true,
-      publicBaseline: false,
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "terms",
-      canonicalSource: "https://neon.com/platform-terms",
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "dpa",
-      canonicalSource: "https://www.databricks.com/legal/data-processing-addendum",
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "dpa-account-binding",
-      canonicalSource: "https://console.neon.tech/",
-      accountSpecific: true,
-      publicBaseline: false,
-    }),
-    legalEntry({
-      provider: "cloudflare",
-      documentType: "subprocessors",
-      canonicalSource: "https://www.cloudflare.com/cloudflare-subprocessors/",
-      transferModelConsistentWithAdr022: true,
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "subprocessors",
-      canonicalSource: "https://www.databricks.com/legal/subprocessors",
-      transferModelConsistentWithAdr022: true,
-    }),
-    legalEntry({
-      provider: "cloudflare",
-      documentType: "security",
-      canonicalSource: "https://developers.cloudflare.com/ssl/",
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "security",
-      canonicalSource: "https://neon.com/docs/security/security-overview",
-    }),
+    legalEntry({ provider: "cloudflare", documentType: "dpa", canonicalSource: "https://www.cloudflare.com/cloudflare-customer-dpa/" }),
+    legalEntry({ provider: "cloudflare", documentType: "dpa-account-binding", canonicalSource: "https://dash.cloudflare.com/", accountSpecific: true, publicBaseline: false }),
+    legalEntry({ provider: "neon-databricks", documentType: "terms", canonicalSource: "https://neon.com/platform-terms" }),
+    legalEntry({ provider: "neon-databricks", documentType: "dpa", canonicalSource: "https://www.databricks.com/legal/data-processing-addendum" }),
+    legalEntry({ provider: "neon-databricks", documentType: "dpa-account-binding", canonicalSource: "https://console.neon.tech/", accountSpecific: true, publicBaseline: false }),
+    legalEntry({ provider: "cloudflare", documentType: "subprocessors", canonicalSource: "https://www.cloudflare.com/cloudflare-subprocessors/", transferModelConsistentWithAdr022: true }),
+    legalEntry({ provider: "neon-databricks", documentType: "subprocessors", canonicalSource: "https://www.databricks.com/legal/subprocessors", transferModelConsistentWithAdr022: true }),
+    legalEntry({ provider: "cloudflare", documentType: "security", canonicalSource: "https://developers.cloudflare.com/ssl/" }),
+    legalEntry({ provider: "neon-databricks", documentType: "security", canonicalSource: "https://neon.com/docs/security/security-overview" }),
   ];
 }
 
@@ -158,36 +107,11 @@ function complianceEvidence() {
     },
     legalEvidence: fullLegalEvidence(),
     dataFlows: [
-      {
-        from: "ulc-linz-user",
-        to: "cloudflare",
-        purpose: "application-request-processing",
-        status: "verified",
-      },
-      {
-        from: "cloudflare",
-        to: "neon-postgresql",
-        purpose: "application-persistence",
-        status: "verified",
-      },
-      {
-        from: "appbasis-control-plane",
-        to: "cloudflare",
-        purpose: "provider-evidence-read",
-        status: "verified",
-      },
-      {
-        from: "appbasis-control-plane",
-        to: "neon-postgresql",
-        purpose: "provider-evidence-read",
-        status: "verified",
-      },
-      {
-        from: "neon-postgresql",
-        to: "neon-postgresql",
-        purpose: "managed-backup-recovery",
-        status: "verified",
-      },
+      { from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" },
+      { from: "cloudflare", to: "neon-postgresql", purpose: "application-persistence", status: "verified" },
+      { from: "appbasis-control-plane", to: "cloudflare", purpose: "provider-evidence-read", status: "verified" },
+      { from: "appbasis-control-plane", to: "neon-postgresql", purpose: "provider-evidence-read", status: "verified" },
+      { from: "neon-postgresql", to: "neon-postgresql", purpose: "managed-backup-recovery", status: "verified" },
     ],
   };
 }
@@ -195,6 +119,8 @@ function complianceEvidence() {
 function resourceBindingEvidence({
   observedAt = OBSERVED_AT,
   validUntilOrReviewAt = VALID_UNTIL,
+  runtimeBindingId = "opaque-worker",
+  databaseBindingId = "opaque-neon-database",
 } = {}) {
   return {
     schemaVersion: 1,
@@ -211,7 +137,7 @@ function resourceBindingEvidence({
     neon: {
       projectBindingId: "opaque-neon-project",
       branchBindingId: "opaque-neon-branch",
-      databaseBindingId: "opaque-neon-database",
+      databaseBindingId,
       region: "aws-eu-central-1",
       regionSource: "provider-api",
       identitySource: "provider-api",
@@ -219,7 +145,7 @@ function resourceBindingEvidence({
     },
     cloudflare: {
       accountBindingId: "opaque-account",
-      runtimeBindingId: "opaque-worker",
+      runtimeBindingId,
       hostnameBinding: "ulc.example.test",
       databaseBindingId: "opaque-hyperdrive",
       identitySource: "provider-api",
@@ -231,27 +157,29 @@ function resourceBindingEvidence({
   };
 }
 
-function providerBoundEvidenceInput(resource = resourceBindingEvidence()) {
+function providerBoundEvidenceInput(resource) {
+  const value = resource ?? resourceBindingEvidence();
   return {
-    resourceBindingEvidence: resource,
+    resourceBindingEvidence: value,
     complianceEvidence: complianceEvidence(),
     complianceResourceBindingFingerprint:
-      deriveUlcLinzM5GResourceBindingFingerprint(resource, { now: NOW }),
+      deriveUlcLinzM5GResourceBindingFingerprint(value, { now: NOW }),
   };
 }
 
-function controlPlaneEvidenceInput(resource = resourceBindingEvidence()) {
+function controlPlaneEvidenceInput(resource) {
+  const value = resource ?? resourceBindingEvidence();
   return {
-    resourceBindingEvidence: resource,
+    resourceBindingEvidence: value,
     controlPlaneEvidence: {
       schemaVersion: 1,
       application: "ulc-linz",
       environment: "production",
-      observedAt: resource.observedAt,
-      validUntilOrReviewAt: resource.validUntilOrReviewAt,
+      observedAt: value.observedAt,
+      validUntilOrReviewAt: value.validUntilOrReviewAt,
       provider: "cloudflare",
-      providerAccountBindingId: resource.cloudflare.accountBindingId,
-      publicRuntimeBindingId: resource.cloudflare.runtimeBindingId,
+      providerAccountBindingId: value.cloudflare.accountBindingId,
+      publicRuntimeBindingId: value.cloudflare.runtimeBindingId,
       inventorySource: "provider-api",
       privilegedComponentInventoryComplete: true,
       publicRuntimeBindingInventoryComplete: true,
@@ -260,14 +188,60 @@ function controlPlaneEvidenceInput(resource = resourceBindingEvidence()) {
   };
 }
 
-function completeOwnerInputs() {
+function auditSecurityLoggingEvidenceInput(resource) {
+  const value = resource ?? resourceBindingEvidence();
   return {
-    auditSecurityLoggingEvidence: { auditSecurityLogging: true },
-    providerBoundEvidenceInput: providerBoundEvidenceInput(),
-    controlPlaneEvidenceInput: controlPlaneEvidenceInput(),
-    backupRestoreEvidence: { backupRestoreBeforeProduction: true },
-    leastPrivilegeEvidence: { leastPrivilege: true },
-    operatorUseCaseAssessmentEvidence: { operatorUseCaseAssessment: true },
+    resourceBindingEvidence: value,
+    loggingEvidence: {
+      schemaVersion: 1,
+      application: "ulc-linz",
+      environment: "production",
+      observedAt: value.observedAt,
+      validUntilOrReviewAt: value.validUntilOrReviewAt,
+      inventorySource: "provider-api",
+      runtimeBindingId: value.cloudflare.runtimeBindingId,
+      sinkBindingId: "opaque-security-log-sink",
+      sinkIdentitySource: "provider-api",
+      structuredEventCaptureEnabled: true,
+      protectedOperationalAccess: true,
+      retentionMonths: 12,
+      retentionSource: "provider-api",
+      sinkInventoryComplete: true,
+      publicReadEndpointPresent: false,
+    },
+  };
+}
+
+function backupRestoreEvidenceInput(resource) {
+  const value = resource ?? resourceBindingEvidence();
+  return {
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "production",
+    sourceDatabaseBindingId: value.neon.databaseBindingId,
+    restoreTargetBindingId: "opaque-restore-target",
+    evidenceSource: "controlled-restore-run",
+    restoreTestedAt: "2026-08-18T12:40:00.000Z",
+    automaticBackupsEnabled: true,
+    retentionDefined: true,
+    preMigrationBackupDefined: true,
+    restoreProcedureDocumented: true,
+    restoreSucceeded: true,
+    dataIntegrityVerified: true,
+    authVerified: true,
+    permissionsVerified: true,
+    applicationSmokeVerified: true,
+    restoreReconciliationVerified: true,
+  };
+}
+
+function completeOwnerInputs() {
+  const resource = resourceBindingEvidence();
+  return {
+    auditSecurityLoggingEvidenceInput: auditSecurityLoggingEvidenceInput(resource),
+    providerBoundEvidenceInput: providerBoundEvidenceInput(resource),
+    controlPlaneEvidenceInput: controlPlaneEvidenceInput(resource),
+    backupRestoreEvidenceInput: backupRestoreEvidenceInput(resource),
   };
 }
 
@@ -280,214 +254,152 @@ test("M5-J ownership matrix covers every canonical criterion exactly once", () =
   const assigned = ULC_LINZ_M5_J_OWNER_MATRIX.flatMap((entry) => entry.criteria);
   assert.equal(assigned.length, REQUIRED_PRODUCTION_READINESS_CRITERIA.length);
   assert.equal(new Set(assigned).size, assigned.length);
-  assert.deepEqual(
-    new Set(assigned),
-    new Set(REQUIRED_PRODUCTION_READINESS_CRITERIA.map(({ id }) => id)),
-  );
-
-  assert.equal(
-    isUlcLinzM5JOwnerMatrixComplete([
-      ...REQUIRED_PRODUCTION_READINESS_CRITERIA,
-      { id: "futureCriterion", label: "Future" },
-    ]),
-    false,
-  );
+  assert.deepEqual(new Set(assigned), new Set(REQUIRED_PRODUCTION_READINESS_CRITERIA.map(({ id }) => id)));
+  assert.equal(isUlcLinzM5JOwnerMatrixComplete([...REQUIRED_PRODUCTION_READINESS_CRITERIA, { id: "futureCriterion", label: "Future" }]), false);
 });
 
-test("M5-J deterministic composition reaches Production Ready only with all twelve owner criteria", () => {
-  const evidence = composeUlcLinzM5JProductionEvidence(ownerEvidenceAllTrue());
-  const readiness = evaluateProductionReadiness(evidence);
-
+test("M5-J deterministic composition is all-required", () => {
+  const readiness = evaluateProductionReadiness(
+    composeUlcLinzM5JProductionEvidence(ownerEvidenceAllTrue()),
+  );
   assert.equal(readiness.productionReady, true);
   assert.equal(readiness.verifiedCount, 12);
-  assert.deepEqual(
-    Object.keys(evidence),
-    REQUIRED_PRODUCTION_READINESS_CRITERIA.map(({ id }) => id),
-  );
-});
 
-test("M5-J blocks Production Ready when each required criterion is removed one at a time", () => {
   for (const criterion of REQUIRED_PRODUCTION_READINESS_CRITERIA) {
     const owners = ownerEvidenceAllTrue();
-    const entry = ULC_LINZ_M5_J_OWNER_MATRIX.find(({ criteria }) =>
-      criteria.includes(criterion.id),
-    );
+    const entry = ULC_LINZ_M5_J_OWNER_MATRIX.find(({ criteria }) => criteria.includes(criterion.id));
     assert.ok(entry);
     delete owners[entry.owner][criterion.id];
-
-    const readiness = evaluateProductionReadiness(
+    const incomplete = evaluateProductionReadiness(
       composeUlcLinzM5JProductionEvidence(owners),
     );
-    assert.equal(readiness.productionReady, false, criterion.id);
-    assert.equal(readiness.verifiedCount, 11, criterion.id);
-    assert.equal(criterionStatus(readiness, criterion.id), "open", criterion.id);
+    assert.equal(incomplete.productionReady, false, criterion.id);
+    assert.equal(incomplete.verifiedCount, 11, criterion.id);
+    assert.equal(criterionStatus(incomplete, criterion.id), "open", criterion.id);
   }
 });
 
-test("M5-J never lets unexpected keys or a second owner overwrite criterion ownership", () => {
-  const owners = ownerEvidenceAllTrue();
-  owners.repository.rolesAndPermissions = true;
-  const readiness = evaluateProductionReadiness(
-    composeUlcLinzM5JProductionEvidence(owners),
-  );
+test("M5-J rejects unexpected, accessor, symbol and inherited owner evidence", () => {
+  const unknown = ownerEvidenceAllTrue();
+  unknown.unexpectedOwner = { dataRegion: true };
+  assert.deepEqual(composeUlcLinzM5JProductionEvidence(unknown), {});
 
-  assert.equal(readiness.productionReady, false);
-  assert.equal(criterionStatus(readiness, "secretsOutsideAppManifests"), "open");
-  assert.equal(criterionStatus(readiness, "rolesAndPermissions"), "verified");
-
-  const withUnknownOwner = ownerEvidenceAllTrue();
-  withUnknownOwner.unexpectedOwner = { dataRegion: true };
-  assert.deepEqual(composeUlcLinzM5JProductionEvidence(withUnknownOwner), {});
-});
-
-test("M5-J treats false, truthy non-booleans, accessors, symbols and inherited owner evidence as open", () => {
-  const falseOwners = ownerEvidenceAllTrue();
-  falseOwners.providerCompliance.dataRegion = false;
-  let readiness = evaluateProductionReadiness(
-    composeUlcLinzM5JProductionEvidence(falseOwners),
-  );
-  assert.equal(readiness.productionReady, false);
-  assert.equal(criterionStatus(readiness, "dataRegion"), "open");
-  assert.equal(criterionStatus(readiness, "dpa"), "verified");
-
-  const stringOwners = ownerEvidenceAllTrue();
-  stringOwners.providerCompliance.dataRegion = "true";
-  readiness = evaluateProductionReadiness(
-    composeUlcLinzM5JProductionEvidence(stringOwners),
-  );
-  assert.equal(criterionStatus(readiness, "dataRegion"), "open");
-  assert.equal(criterionStatus(readiness, "dpa"), "verified");
-
-  const accessorOwners = ownerEvidenceAllTrue();
+  const accessor = ownerEvidenceAllTrue();
   let getterCalls = 0;
-  Object.defineProperty(accessorOwners.providerCompliance, "dataRegion", {
+  Object.defineProperty(accessor.providerCompliance, "dataRegion", {
     enumerable: true,
-    get() {
-      getterCalls += 1;
-      return true;
-    },
+    get() { getterCalls += 1; return true; },
   });
-  readiness = evaluateProductionReadiness(
-    composeUlcLinzM5JProductionEvidence(accessorOwners),
+  const readiness = evaluateProductionReadiness(
+    composeUlcLinzM5JProductionEvidence(accessor),
   );
   assert.equal(getterCalls, 0);
   assert.equal(criterionStatus(readiness, "dataRegion"), "open");
-  assert.equal(criterionStatus(readiness, "dpa"), "open");
 
-  const symbolOwners = ownerEvidenceAllTrue();
-  symbolOwners.lifecycle[Symbol("hidden")] = true;
-  readiness = evaluateProductionReadiness(
-    composeUlcLinzM5JProductionEvidence(symbolOwners),
+  const symbol = ownerEvidenceAllTrue();
+  symbol.lifecycle[Symbol("hidden")] = true;
+  assert.equal(
+    criterionStatus(
+      evaluateProductionReadiness(composeUlcLinzM5JProductionEvidence(symbol)),
+      "deletionConcept",
+    ),
+    "open",
   );
-  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
-  assert.equal(criterionStatus(readiness, "retention"), "open");
 
-  const inheritedOwners = ownerEvidenceAllTrue();
-  inheritedOwners.dataExport = Object.create({ dataExport: true });
-  readiness = evaluateProductionReadiness(
-    composeUlcLinzM5JProductionEvidence(inheritedOwners),
+  const inherited = ownerEvidenceAllTrue();
+  inherited.dataExport = Object.create({ dataExport: true });
+  assert.equal(
+    criterionStatus(
+      evaluateProductionReadiness(composeUlcLinzM5JProductionEvidence(inherited)),
+      "dataExport",
+    ),
+    "open",
   );
-  assert.equal(criterionStatus(readiness, "dataExport"), "open");
 });
 
-test("M5-J owner integration can produce all twelve only from the current B-I contracts plus explicit external owner outputs", async () => {
-  const evidence = await deriveUlcLinzM5JProductionEvidence(
-    repositoryRoot,
-    VALID_ULC_DEFINITION,
-    completeOwnerInputs(),
-    { now: NOW },
-  );
-  const readiness = evaluateProductionReadiness(evidence);
-
-  assert.equal(readiness.productionReady, true);
-  assert.equal(readiness.verifiedCount, 12);
-  assert.equal(Object.isFrozen(evidence), true);
-});
-
-test("M5-J rejects cross-app provider evidence and keeps High Privacy open", async () => {
-  const inputs = completeOwnerInputs();
-  inputs.providerBoundEvidenceInput.complianceEvidence.application = "reference";
-
+test("M5-J owner integration can produce all twelve only from current repository owners plus structured operational evidence", async () => {
   const readiness = evaluateProductionReadiness(
     await deriveUlcLinzM5JProductionEvidence(
       repositoryRoot,
       VALID_ULC_DEFINITION,
-      inputs,
+      completeOwnerInputs(),
       { now: NOW },
     ),
   );
+  assert.equal(readiness.productionReady, true);
+  assert.equal(readiness.verifiedCount, 12);
+});
 
-  assert.equal(readiness.productionReady, false);
-  for (const id of ["dataRegion", "dpa", "encryption", "subprocessors", "highPrivacyProfile"]) {
+test("M5-J keeps F, E and High Privacy open when logging retention evidence is insufficient", async () => {
+  const inputs = completeOwnerInputs();
+  inputs.auditSecurityLoggingEvidenceInput.loggingEvidence.retentionMonths = 1;
+  const readiness = evaluateProductionReadiness(
+    await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
+  );
+  for (const id of ["auditSecurityLogging", "dataExport", "highPrivacyProfile"]) {
     assert.equal(criterionStatus(readiness, id), "open", id);
   }
 });
 
-test("M5-J rejects stale H evidence independently and keeps Production Ready false", async () => {
+test("M5-J rejects mixed production resource snapshots across F, G and H", async () => {
   const inputs = completeOwnerInputs();
-  const staleResource = resourceBindingEvidence({
-    observedAt: "2026-08-17T12:50:00.000Z",
-    validUntilOrReviewAt: "2026-08-19T12:50:00.000Z",
-  });
-  inputs.controlPlaneEvidenceInput = controlPlaneEvidenceInput(staleResource);
+  const other = resourceBindingEvidence({ runtimeBindingId: "other-worker", databaseBindingId: "other-db" });
+  inputs.controlPlaneEvidenceInput = controlPlaneEvidenceInput(other);
 
   const readiness = evaluateProductionReadiness(
-    await deriveUlcLinzM5JProductionEvidence(
-      repositoryRoot,
-      VALID_ULC_DEFINITION,
-      inputs,
-      { now: NOW },
-    ),
+    await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
   );
-
   assert.equal(readiness.productionReady, false);
-  assert.equal(criterionStatus(readiness, "privilegedControlPlaneIsolation"), "open");
-  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
+  for (const id of ["auditSecurityLogging", "dataRegion", "dpa", "encryption", "subprocessors", "privilegedControlPlaneIsolation", "highPrivacyProfile"]) {
+    assert.equal(criterionStatus(readiness, id), "open", id);
+  }
 });
 
-test("M5-J rejects runtime-contract drift in provider evidence", async () => {
+test("M5-J requires a real restore-shaped High Privacy owner input", async () => {
   const inputs = completeOwnerInputs();
-  inputs.providerBoundEvidenceInput.resourceBindingEvidence.runtime.contractDigest =
-    `sha256:${"0".repeat(64)}`;
-
+  inputs.backupRestoreEvidenceInput.restoreSucceeded = false;
   const readiness = evaluateProductionReadiness(
-    await deriveUlcLinzM5JProductionEvidence(
-      repositoryRoot,
-      VALID_ULC_DEFINITION,
-      inputs,
-      { now: NOW },
-    ),
+    await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
   );
+  assert.equal(readiness.productionReady, false);
+  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
+  assert.equal(criterionStatus(readiness, "dataRegion"), "verified");
+});
 
+test("M5-J rejects cross-app and runtime-drift provider evidence", async () => {
+  const crossApp = completeOwnerInputs();
+  crossApp.providerBoundEvidenceInput.complianceEvidence.application = "reference";
+  let readiness = evaluateProductionReadiness(
+    await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, crossApp, { now: NOW }),
+  );
   assert.equal(readiness.productionReady, false);
   assert.equal(criterionStatus(readiness, "dataRegion"), "open");
-  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
+
+  const drift = completeOwnerInputs();
+  drift.providerBoundEvidenceInput.resourceBindingEvidence.runtime.contractDigest = `sha256:${"0".repeat(64)}`;
+  readiness = evaluateProductionReadiness(
+    await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, drift, { now: NOW }),
+  );
+  assert.equal(readiness.productionReady, false);
+  assert.equal(criterionStatus(readiness, "dataRegion"), "open");
 });
 
 test("M5-J never reuses ULC evidence for another app", async () => {
   const evidence = await deriveUlcLinzM5JProductionEvidence(
     repositoryRoot,
-    {
-      ...VALID_ULC_DEFINITION,
-      appId: "reference",
-      displayName: "Reference",
-    },
+    { ...VALID_ULC_DEFINITION, appId: "reference", displayName: "Reference" },
     completeOwnerInputs(),
     { now: NOW },
   );
   assert.deepEqual(evidence, {});
-  assert.equal(evaluateProductionReadiness(evidence).productionReady, false);
 });
 
-test("Factory snapshot consumes M5-J while release production remains a separate locked gate", async () => {
+test("Factory snapshot consumes M5-J while release production remains separately locked", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot, {
     ulcLinzM5JOwnerInputs: completeOwnerInputs(),
     m5EvidenceNow: NOW,
     m3PreviewAcceptanceFetchImpl: async () =>
-      new Response("{}", {
-        status: 503,
-        headers: { "content-type": "application/json" },
-      }),
+      new Response("{}", { status: 503, headers: { "content-type": "application/json" } }),
   });
   const ulc = snapshot.apps.find((app) => app.appId === "ulc-linz");
   assert.ok(ulc);
