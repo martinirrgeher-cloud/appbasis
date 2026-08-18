@@ -43,8 +43,8 @@ function validEvidence() {
   };
 }
 
-async function expectBlocked(run, code) {
-  await assert.rejects(run, (error) => {
+function expectBlocked(run, code) {
+  assert.throws(run, (error) => {
     assert.ok(error instanceof UlcLinzProductionResourceBindingError);
     assert.equal(error.code, code);
     assert.equal(
@@ -55,10 +55,12 @@ async function expectBlocked(run, code) {
   });
 }
 
+function evaluate(evidence) {
+  return evaluateUlcLinzProductionResourceBinding(evidence, { now: NOW });
+}
+
 test("accepts only a complete dedicated ULC production resource binding and emits a sanitized semantic snapshot", () => {
-  const result = evaluateUlcLinzProductionResourceBinding(validEvidence(), {
-    now: NOW,
-  });
+  const result = evaluate(validEvidence());
 
   assert.deepEqual(result, {
     schemaVersion: 1,
@@ -79,7 +81,7 @@ test("accepts only a complete dedicated ULC production resource binding and emit
   assert.ok(Object.isFrozen(result));
 
   const serialized = JSON.stringify(result);
-  for (const sensitiveOrInternal of [
+  for (const internal of [
     "project-ulc-production-1",
     "branch-ulc-production-1",
     "database-ulc-production-1",
@@ -88,136 +90,79 @@ test("accepts only a complete dedicated ULC production resource binding and emit
     "hyperdrive-ulc-production-1",
     "ulc.example.test",
   ]) {
-    assert.equal(serialized.includes(sensitiveOrInternal), false);
+    assert.equal(serialized.includes(internal), false);
   }
 });
 
-test("rejects another app, non-production environment and schema drift", async () => {
+test("rejects another app, non-production environment and schema drift", () => {
   for (const mutate of [
-    (evidence) => {
-      evidence.application = "reference";
-    },
-    (evidence) => {
-      evidence.environment = "preview";
-    },
-    (evidence) => {
-      evidence.schemaVersion = 2;
-    },
+    (evidence) => (evidence.application = "reference"),
+    (evidence) => (evidence.environment = "preview"),
+    (evidence) => (evidence.schemaVersion = 2),
   ]) {
     const evidence = validEvidence();
     mutate(evidence);
-    await expectBlocked(
-      () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(evidence, { now: NOW })),
-      "INVALID_EVIDENCE",
-    );
+    expectBlocked(() => evaluate(evidence), "INVALID_EVIDENCE");
   }
 });
 
-test("rejects runtime drift and never upgrades Standard Workers to EU-only", async () => {
+test("rejects runtime drift and never upgrades Standard Workers to EU-only", () => {
   for (const mutate of [
-    (evidence) => {
-      evidence.runtime.entrypoint = "./worker/other.ts";
-    },
-    (evidence) => {
-      evidence.runtime.providerModel = "regional-workers";
-    },
-    (evidence) => {
-      evidence.runtime.euOnly = true;
-    },
+    (evidence) => (evidence.runtime.entrypoint = "./worker/other.ts"),
+    (evidence) => (evidence.runtime.providerModel = "regional-workers"),
+    (evidence) => (evidence.runtime.euOnly = true),
   ]) {
     const evidence = validEvidence();
     mutate(evidence);
-    await expectBlocked(
-      () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(evidence, { now: NOW })),
-      "RUNTIME_CONTRACT_MISMATCH",
-    );
+    expectBlocked(() => evaluate(evidence), "RUNTIME_CONTRACT_MISMATCH");
   }
 });
 
-test("requires authoritative Frankfurt Neon identity and a dedicated production resource", async () => {
+test("requires authoritative Frankfurt Neon identity and a dedicated production resource", () => {
   for (const mutate of [
-    (evidence) => {
-      evidence.neon.region = "aws-us-east-2";
-    },
-    (evidence) => {
-      evidence.neon.regionSource = "hostname-inference";
-    },
-    (evidence) => {
-      evidence.neon.identitySource = "repository-name";
-    },
-    (evidence) => {
-      evidence.neon.projectBindingId = "";
-    },
-    (evidence) => {
-      evidence.neon.dedicatedProductionResource = false;
-    },
+    (evidence) => (evidence.neon.region = "aws-us-east-2"),
+    (evidence) => (evidence.neon.regionSource = "hostname-inference"),
+    (evidence) => (evidence.neon.identitySource = "repository-name"),
+    (evidence) => (evidence.neon.projectBindingId = ""),
+    (evidence) => (evidence.neon.dedicatedProductionResource = false),
   ]) {
     const evidence = validEvidence();
     mutate(evidence);
-    await expectBlocked(
-      () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(evidence, { now: NOW })),
-      "NEON_BINDING_MISMATCH",
-    );
+    expectBlocked(() => evaluate(evidence), "NEON_BINDING_MISMATCH");
   }
 });
 
-test("requires complete Cloudflare identity, hostname, binding and telemetry evidence", async () => {
+test("requires complete Cloudflare identity, hostname, binding and telemetry evidence", () => {
   for (const mutate of [
-    (evidence) => {
-      evidence.cloudflare.identitySource = "repository-name";
-    },
-    (evidence) => {
-      evidence.cloudflare.bindingInventoryComplete = false;
-    },
-    (evidence) => {
-      evidence.cloudflare.telemetryInventoryComplete = false;
-    },
-    (evidence) => {
-      evidence.cloudflare.unexpectedPersonalDataPersistence = true;
-    },
-    (evidence) => {
-      evidence.cloudflare.dedicatedProductionResource = false;
-    },
-    (evidence) => {
-      evidence.cloudflare.hostnameBinding = "https://ulc.example.test/path";
-    },
-    (evidence) => {
-      evidence.cloudflare.databaseBindingId = "";
-    },
+    (evidence) => (evidence.cloudflare.identitySource = "repository-name"),
+    (evidence) => (evidence.cloudflare.bindingInventoryComplete = false),
+    (evidence) => (evidence.cloudflare.telemetryInventoryComplete = false),
+    (evidence) => (evidence.cloudflare.unexpectedPersonalDataPersistence = true),
+    (evidence) => (evidence.cloudflare.dedicatedProductionResource = false),
+    (evidence) => (evidence.cloudflare.hostnameBinding = "https://ulc.example.test/path"),
+    (evidence) => (evidence.cloudflare.databaseBindingId = ""),
   ]) {
     const evidence = validEvidence();
     mutate(evidence);
-    await expectBlocked(
-      () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(evidence, { now: NOW })),
-      "CLOUDFLARE_BINDING_MISMATCH",
-    );
+    expectBlocked(() => evaluate(evidence), "CLOUDFLARE_BINDING_MISMATCH");
   }
 });
 
-test("fails closed on stale, future or malformed evidence timestamps", async () => {
+test("fails closed on stale, future or malformed evidence timestamps", () => {
   const stale = validEvidence();
   stale.validUntilOrReviewAt = NOW.toISOString();
-  await expectBlocked(
-    () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(stale, { now: NOW })),
-    "STALE_EVIDENCE",
-  );
+  expectBlocked(() => evaluate(stale), "STALE_EVIDENCE");
 
   const future = validEvidence();
   future.observedAt = "2026-08-18T05:31:00.000Z";
-  await expectBlocked(
-    () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(future, { now: NOW })),
-    "STALE_EVIDENCE",
-  );
+  expectBlocked(() => evaluate(future), "STALE_EVIDENCE");
 
   const malformed = validEvidence();
   malformed.observedAt = "2026-08-18 05:25:00Z";
-  await expectBlocked(
-    () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(malformed, { now: NOW })),
-    "INVALID_EVIDENCE",
-  );
+  expectBlocked(() => evaluate(malformed), "INVALID_EVIDENCE");
 });
 
-test("rejects secret-like fields and credential-shaped values before normalization", async () => {
+test("rejects secret-like fields and credential-shaped values before normalization", () => {
   for (const mutate of [
     (evidence) => {
       evidence.connectionString = "postgresql://user:password@example.test/db";
@@ -231,14 +176,11 @@ test("rejects secret-like fields and credential-shaped values before normalizati
   ]) {
     const evidence = validEvidence();
     mutate(evidence);
-    await expectBlocked(
-      () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(evidence, { now: NOW })),
-      "UNSAFE_EVIDENCE",
-    );
+    expectBlocked(() => evaluate(evidence), "UNSAFE_EVIDENCE");
   }
 });
 
-test("does not invoke accessors, accept symbols or accept inherited evidence", async () => {
+test("does not invoke accessors, accept symbols or accept inherited evidence", () => {
   let getterCalls = 0;
   const accessorEvidence = validEvidence();
   Object.defineProperty(accessorEvidence.cloudflare, "runtimeBindingId", {
@@ -248,24 +190,15 @@ test("does not invoke accessors, accept symbols or accept inherited evidence", a
       return "worker-ulc-production-1";
     },
   });
-  await expectBlocked(
-    () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(accessorEvidence, { now: NOW })),
-    "UNSAFE_EVIDENCE",
-  );
+  expectBlocked(() => evaluate(accessorEvidence), "UNSAFE_EVIDENCE");
   assert.equal(getterCalls, 0);
 
   const symbolEvidence = validEvidence();
   symbolEvidence[Symbol("hidden")] = "value";
-  await expectBlocked(
-    () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(symbolEvidence, { now: NOW })),
-    "UNSAFE_EVIDENCE",
-  );
+  expectBlocked(() => evaluate(symbolEvidence), "UNSAFE_EVIDENCE");
 
   const inherited = Object.create(validEvidence());
-  await expectBlocked(
-    () => Promise.resolve(evaluateUlcLinzProductionResourceBinding(inherited, { now: NOW })),
-    "UNSAFE_EVIDENCE",
-  );
+  expectBlocked(() => evaluate(inherited), "UNSAFE_EVIDENCE");
 });
 
 test("does not infer environment or resource purpose from provider identifier names", () => {
@@ -274,6 +207,5 @@ test("does not infer environment or resource purpose from provider identifier na
   evidence.cloudflare.runtimeBindingId = "opaque-runtime-456";
   evidence.cloudflare.databaseBindingId = "opaque-binding-789";
 
-  const result = evaluateUlcLinzProductionResourceBinding(evidence, { now: NOW });
-  assert.equal(result.scopeComplete, true);
+  assert.equal(evaluate(evidence).scopeComplete, true);
 });
