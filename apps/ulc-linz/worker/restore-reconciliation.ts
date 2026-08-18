@@ -1,4 +1,4 @@
-import type { createPostgresDatabase } from "@appbasis/database";
+import type { IdentityPostgresRuntimeSqlClient } from "@appbasis/identity/postgres-runtime";
 import { principalId } from "@appbasis/permissions";
 
 import {
@@ -13,7 +13,7 @@ import type {
 
 const RESTORE_RECONCILIATION_ACTOR = principalId("ulc-linz:restore-reconciliation");
 
-type SqlClient = ReturnType<typeof createPostgresDatabase>["client"];
+type SqlClient = IdentityPostgresRuntimeSqlClient;
 
 export interface UlcLinzDeletionReconciliationSource {
   listCurrentDeletionMarkers(): Promise<readonly UlcLinzDeletionMarker[]>;
@@ -83,15 +83,13 @@ export async function reconcileUlcLinzRestoredDatabase(
 
     if (restoredMarker !== null) {
       assertSameMarker(marker, restoredMarker);
-    } else {
-      if (
-        restoredMembership === null ||
-        restoredMembership.organizationId !== marker.organizationId ||
-        restoredMembership.subjectId !== marker.subjectId ||
-        restoredMembership.sourceRole !== marker.sourceRole
-      ) {
-        blocked();
-      }
+    } else if (
+      restoredMembership === null ||
+      restoredMembership.organizationId !== marker.organizationId ||
+      restoredMembership.subjectId !== marker.subjectId ||
+      restoredMembership.sourceRole !== marker.sourceRole
+    ) {
+      blocked();
     }
 
     await deleteUlcLinzIdentity(
