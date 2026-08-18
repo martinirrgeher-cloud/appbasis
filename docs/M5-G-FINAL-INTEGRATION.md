@@ -44,6 +44,21 @@ Damit sind auch die geschützten Provider-Evidence-Abfragen und der Neon-Backup-
 
 Cloudflare Logs/Telemetry werden nicht als fiktiver zusätzlicher Datenfluss eingetragen, solange kein konkreter realer Zielpfad belegt ist. Stattdessen muss das reale Telemetry-Inventar vollständig sein. Sobald ein zusätzlicher realer Telemetry-/Logging-Datenfluss vorhanden ist, blockiert die bestehende exakte Datenflussprüfung alle vier M5-G-Kriterien, bis dieser Flow bewusst in den kanonischen Scope aufgenommen und bewertet wurde.
 
+## Konkrete Resource-Korrelation
+
+Gleiche App-, Environment-, Region- und Zeitwerte allein sind kein ausreichender Nachweis, dass Compliance- und Resource-Binding-Evidence dieselben konkreten Produktionsressourcen beschreiben.
+
+Darum erzeugt der gebundene M5-G-Consumer erst **nach erfolgreicher Validierung durch den bestehenden #155-Resource-Binding-Vertrag** einen internen SHA-256-Fingerprint über die validierten Runtime-/Cloudflare-/Neon-Bindungsidentitäten und das Evidence-Zeitfenster. Die zugehörige Compliance-Evidence muss genau diesen Korrelationswert mitbringen.
+
+Der Fingerprint:
+
+- enthält selbst keine Provider-ID, keinen Hostnamen, keinen Runtime-Digest und kein Secret im Klartext,
+- wird nicht in den Factory-Kriterienoutput übernommen,
+- ändert sich bei Runtime-, Worker-, Hostname-, Datenbank-, Hyperdrive-/Binding- oder Zeitfenster-Drift,
+- verhindert die versehentliche Kombination zweier formal plausibler, aber zu unterschiedlichen konkreten Ressourcen gehörender Snapshots.
+
+Die Authentizität der späteren realen Evidence bleibt Aufgabe der geschützten Control-Plane-/CI-Grenze; dieser Repository-Slice behauptet noch keinen realen Provider-Nachweis.
+
 ## Fail-closed Bindung
 
 Production-Evidence wird nur abgeleitet, wenn:
@@ -52,6 +67,7 @@ Production-Evidence wird nur abgeleitet, wenn:
 - beide `standard-workers-global-transient` und `euOnly=false` tragen,
 - beide dasselbe `observedAt` und `validUntilOrReviewAt` besitzen,
 - der Resource-Binding-Consumer den exakten aktuellen Runtime-Digest bestätigt,
+- der Compliance-Korrelationsfingerprint exakt zur validierten konkreten Resource-Binding-Evidence passt,
 - Production Worker, Hostname, Datenbank und Datenbank-Binding bestätigt sind,
 - die Neon-Region autoritativ Frankfurt ist,
 - die Compliance-Evidence dieselbe Neon-Region trägt,

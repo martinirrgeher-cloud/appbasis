@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   evaluateUlcLinzProviderCompliance,
   ULC_LINZ_M5_G_CRITERIA,
@@ -8,7 +10,20 @@ const EMPTY_EVIDENCE = Object.freeze({});
 const INPUT_FIELDS = Object.freeze([
   "resourceBindingEvidence",
   "complianceEvidence",
+  "complianceResourceBindingFingerprint",
 ]);
+const FINGERPRINT_PATTERN = /^sha256:[a-f0-9]{64}$/;
+
+export function deriveUlcLinzM5GResourceBindingFingerprint(
+  resourceBindingEvidence,
+  { now = new Date() } = {},
+) {
+  const nowDate = requiredDate(now);
+  evaluateUlcLinzProductionResourceBinding(resourceBindingEvidence, {
+    now: nowDate,
+  });
+  return calculateResourceBindingFingerprint(resourceBindingEvidence);
+}
 
 export function deriveUlcLinzM5GBoundProductionEvidence(
   input,
@@ -17,13 +32,23 @@ export function deriveUlcLinzM5GBoundProductionEvidence(
   try {
     const root = exactRecord(input);
     const nowDate = requiredDate(now);
-    const compliance = evaluateUlcLinzProviderCompliance(
-      root.complianceEvidence,
-      { now: nowDate.toISOString() },
-    );
     const resourceBinding = evaluateUlcLinzProductionResourceBinding(
       root.resourceBindingEvidence,
       { now: nowDate },
+    );
+    const expectedFingerprint = calculateResourceBindingFingerprint(
+      root.resourceBindingEvidence,
+    );
+    if (
+      !isSha256Fingerprint(root.complianceResourceBindingFingerprint) ||
+      root.complianceResourceBindingFingerprint !== expectedFingerprint
+    ) {
+      return EMPTY_EVIDENCE;
+    }
+
+    const compliance = evaluateUlcLinzProviderCompliance(
+      root.complianceEvidence,
+      { now: nowDate.toISOString() },
     );
 
     if (!isSameProductionSnapshot(resourceBinding, compliance)) {
@@ -40,6 +65,39 @@ export function deriveUlcLinzM5GBoundProductionEvidence(
   } catch {
     return EMPTY_EVIDENCE;
   }
+}
+
+function calculateResourceBindingFingerprint(evidence) {
+  const canonicalBinding = [
+    evidence.schemaVersion,
+    evidence.application,
+    evidence.environment,
+    evidence.observedAt,
+    evidence.validUntilOrReviewAt,
+    evidence.runtime.entrypoint,
+    evidence.runtime.contractDigest,
+    evidence.runtime.providerModel,
+    evidence.runtime.euOnly,
+    evidence.neon.projectBindingId,
+    evidence.neon.branchBindingId,
+    evidence.neon.databaseBindingId,
+    evidence.neon.region,
+    evidence.neon.regionSource,
+    evidence.neon.identitySource,
+    evidence.neon.dedicatedProductionResource,
+    evidence.cloudflare.accountBindingId,
+    evidence.cloudflare.runtimeBindingId,
+    evidence.cloudflare.hostnameBinding,
+    evidence.cloudflare.databaseBindingId,
+    evidence.cloudflare.identitySource,
+    evidence.cloudflare.bindingInventoryComplete,
+    evidence.cloudflare.telemetryInventoryComplete,
+    evidence.cloudflare.unexpectedPersonalDataPersistence,
+    evidence.cloudflare.dedicatedProductionResource,
+  ];
+  return `sha256:${createHash("sha256")
+    .update(JSON.stringify(canonicalBinding), "utf8")
+    .digest("hex")}`;
 }
 
 function isSameProductionSnapshot(resourceBinding, compliance) {
@@ -95,6 +153,10 @@ function exactRecord(value) {
     }
   }
   return value;
+}
+
+function isSha256Fingerprint(value) {
+  return typeof value === "string" && FINGERPRINT_PATTERN.test(value);
 }
 
 function requiredDate(value) {

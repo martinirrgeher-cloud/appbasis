@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { deriveUlcLinzM5GBoundProductionEvidence } from "./ulc-linz-m5-provider-bound-evidence.mjs";
+import {
+  deriveUlcLinzM5GBoundProductionEvidence,
+  deriveUlcLinzM5GResourceBindingFingerprint,
+} from "./ulc-linz-m5-provider-bound-evidence.mjs";
 import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evidence.mjs";
 import { ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST } from "./ulc-linz-m6-production-resource-binding.mjs";
 
@@ -195,11 +198,20 @@ function resourceBindingEvidence() {
   };
 }
 
-function derive(resource = resourceBindingEvidence(), compliance = complianceEvidence()) {
+function fingerprint(resource = resourceBindingEvidence()) {
+  return deriveUlcLinzM5GResourceBindingFingerprint(resource, { now: NOW });
+}
+
+function derive(
+  resource = resourceBindingEvidence(),
+  compliance = complianceEvidence(),
+  complianceResourceBindingFingerprint = fingerprint(resource),
+) {
   return deriveUlcLinzM5GBoundProductionEvidence(
     {
       resourceBindingEvidence: resource,
       complianceEvidence: compliance,
+      complianceResourceBindingFingerprint,
     },
     { now: NOW },
   );
@@ -222,10 +234,25 @@ test("returns only M5-G criterion booleans when runtime/resource and compliance 
   );
 });
 
+test("creates a deterministic secrets-free correlation fingerprint only after resource validation", () => {
+  const resource = resourceBindingEvidence();
+  const value = fingerprint(resource);
+  assert.match(value, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(value, fingerprint(resource));
+  assert.equal(value.includes("opaque-neon-project"), false);
+
+  const drifted = resourceBindingEvidence();
+  drifted.runtime.contractDigest = `sha256:${"0".repeat(64)}`;
+  assert.throws(() => fingerprint(drifted));
+});
+
 test("fails closed when exact runtime-contract evidence is absent or drifted", () => {
   assert.deepEqual(
     deriveUlcLinzM5GBoundProductionEvidence(
-      { complianceEvidence: complianceEvidence() },
+      {
+        complianceEvidence: complianceEvidence(),
+        complianceResourceBindingFingerprint: fingerprint(),
+      },
       { now: NOW },
     ),
     {},
@@ -233,13 +260,29 @@ test("fails closed when exact runtime-contract evidence is absent or drifted", (
 
   const drifted = resourceBindingEvidence();
   drifted.runtime.contractDigest = `sha256:${"0".repeat(64)}`;
-  assert.deepEqual(derive(drifted), {});
+  assert.deepEqual(
+    derive(drifted, complianceEvidence(), fingerprint()),
+    {},
+  );
+});
+
+test("fails closed when the compliance snapshot is correlated to another concrete resource binding", () => {
+  const other = resourceBindingEvidence();
+  other.cloudflare.runtimeBindingId = "opaque-other-worker";
+  assert.notEqual(fingerprint(other), fingerprint());
+  assert.deepEqual(
+    derive(resourceBindingEvidence(), complianceEvidence(), fingerprint(other)),
+    {},
+  );
 });
 
 test("fails closed when resource binding and compliance evidence do not share the same observation window", () => {
   const resource = resourceBindingEvidence();
   resource.observedAt = "2026-08-18T12:44:59.000Z";
-  assert.deepEqual(derive(resource), {});
+  assert.deepEqual(
+    derive(resource, complianceEvidence(), fingerprint(resource)),
+    {},
+  );
 
   const compliance = complianceEvidence();
   compliance.validUntilOrReviewAt = "2026-08-18T13:46:00.000Z";
@@ -284,6 +327,7 @@ test("never invokes accessors and rejects symbols or inherited wrapper objects",
   let calls = 0;
   const accessor = {
     resourceBindingEvidence: resourceBindingEvidence(),
+    complianceResourceBindingFingerprint: fingerprint(),
   };
   Object.defineProperty(accessor, "complianceEvidence", {
     enumerable: true,
@@ -301,6 +345,7 @@ test("never invokes accessors and rejects symbols or inherited wrapper objects",
   const symbol = {
     resourceBindingEvidence: resourceBindingEvidence(),
     complianceEvidence: complianceEvidence(),
+    complianceResourceBindingFingerprint: fingerprint(),
   };
   symbol[Symbol("hidden")] = true;
   assert.deepEqual(
@@ -311,6 +356,7 @@ test("never invokes accessors and rejects symbols or inherited wrapper objects",
   const inherited = Object.create({
     resourceBindingEvidence: resourceBindingEvidence(),
     complianceEvidence: complianceEvidence(),
+    complianceResourceBindingFingerprint: fingerprint(),
   });
   assert.deepEqual(
     deriveUlcLinzM5GBoundProductionEvidence(inherited, { now: NOW }),
