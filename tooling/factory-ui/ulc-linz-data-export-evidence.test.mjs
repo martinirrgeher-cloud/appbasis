@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -94,6 +94,22 @@ test("fails closed when the PostgreSQL E2E stops being executed", async () => {
   });
 });
 
+test("fails closed when the E evidence test stops being part of verify:apps", async () => {
+  await withTemporaryUlc(async (root) => {
+    const path = join(root, "package.json");
+    const rootPackage = JSON.parse(await readFile(path, "utf8"));
+    rootPackage.scripts["verify:apps"] = rootPackage.scripts["verify:apps"].replace(
+      " ./tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs",
+      "",
+    );
+    await writeFile(path, `${JSON.stringify(rootPackage, null, 2)}\n`, "utf8");
+    assert.deepEqual(
+      await deriveUlcLinzDataExportEvidence(root, definition, AUDIT_EVIDENCE),
+      {},
+    );
+  });
+});
+
 async function withTemporaryUlc(run) {
   const root = await mkdtemp(join(tmpdir(), "appbasis-m5e-"));
   try {
@@ -101,6 +117,12 @@ async function withTemporaryUlc(run) {
       join(repositoryRoot, "apps", "ulc-linz"),
       join(root, "apps", "ulc-linz"),
       { recursive: true },
+    );
+    await cp(join(repositoryRoot, "package.json"), join(root, "package.json"));
+    await mkdir(join(root, "tooling", "factory-ui"), { recursive: true });
+    await cp(
+      join(repositoryRoot, "tooling", "factory-ui", "ulc-linz-data-export-evidence.test.mjs"),
+      join(root, "tooling", "factory-ui", "ulc-linz-data-export-evidence.test.mjs"),
     );
     await run(root);
   } finally {
