@@ -301,13 +301,13 @@ describe("ULC Linz M5-F audit and security logging", () => {
   it("does not expose audit or security logs through the public ULC app", async () => {
     const identity: IdentityHttpService = {
       async signInWithUsername() {
-        return currentIdentity().identity;
+        return currentIdentity();
       },
       async getCurrentIdentity() {
         return null;
       },
       async changeRequiredPassword() {
-        return currentIdentity().identity;
+        return currentIdentity();
       },
     };
     const app = createGeneratedApp({ identity, secureCookies: false });
