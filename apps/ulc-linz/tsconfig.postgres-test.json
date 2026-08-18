@@ -6,8 +6,8 @@
     "allowImportingTsExtensions": true
   },
   "include": [
-    "test/lifecycle.postgres.e2e.test.ts",
-    "worker/lifecycle.ts",
+    "test/*.postgres.e2e.test.ts",
+    "worker/**/*.ts",
     "../../packages/database/src/client.ts"
   ]
 }
