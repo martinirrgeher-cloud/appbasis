@@ -30,15 +30,15 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/scope-persistence.ts",
-      gitBlobSha: "bc03bcac6095d0bb3569b4bde8ec24bcb232b5c9",
+      gitBlobSha: "7b05d4a5081717b3c55273d5069b67eba67eb947",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/retention.ts",
-      gitBlobSha: "078445fb916dec88aa68402f0bae1776bdfee8e6",
+      gitBlobSha: "5782b958af6b271d91e1e78e9ef0f3c9f87d432f",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/restore-reconciliation.ts",
-      gitBlobSha: "600864fad72cfb4b38c3987f693955d896c1bd74",
+      gitBlobSha: "a2d0f47cbc12faab6697130f2e613164300be47d",
     }),
     Object.freeze({
       path: "packages/identity/src/postgres-deletion-retention.ts",
