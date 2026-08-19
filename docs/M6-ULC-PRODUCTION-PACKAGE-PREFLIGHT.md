@@ -1,6 +1,6 @@
 # M6 – ULC Linz Production Package Preflight
 
-Stand: 2026-08-18
+Stand: 2026-08-19
 
 ## Zweck
 
@@ -132,9 +132,11 @@ Der aktuelle M5-F-Vertrag verlangt für Production Security Events reale Evidenc
 3. strukturierte Event-Erfassung aktiviert,
 4. geschützten operativen Zugriff,
 5. vollständiges Sink-Inventar,
-6. **exakt 12 Monate Retention**,
+6. **exakt 12 Kalendermonate Retention**,
 7. keine öffentliche Read-API,
 8. dieselbe frische Production-Resource-Binding-Evidence wie M5-G/H.
+
+Die kanonische Semantik ist kalenderbasiert und wird nicht auf eine feste Tageszahl reduziert. Eine reine Providerangabe von `365`, `366` oder `360` Tagen belegt deshalb nicht automatisch exakt 12 Kalendermonate. Eine native `12 months`-/`1 year`-Policy ist nur akzeptabel, wenn ihre autoritative Providersemantik kalenderäquivalent ist. Andernfalls bleibt M5-F fail-closed offen oder benötigt vor Production einen getrennt geprüften kalenderbasierten Enforcement-Pfad.
 
 Cloudflare Workers Logs allein erfüllen dieses Gate nicht: Cloudflare dokumentiert aktuell maximal 7 Tage Workers-Log-Retention. Für 12 Monate ist daher ein externer bzw. separat persistent arbeitender Logging-Sink notwendig.
 
@@ -148,11 +150,11 @@ Aktuell dokumentierte Cloudflare-Optionen:
 ### Logging-Checkliste
 
 - [ ] **SOL-ENTSCHEIDUNG:** konkreten Security-Log-Sink auswählen.
-- [ ] **MANUELL:** Kosten/Plan und 12-Monats-Retention des Sinks akzeptieren.
+- [ ] **MANUELL:** Kosten/Plan und nachweisbar kalenderäquivalente 12-Monats-Retention des Sinks akzeptieren.
 - [ ] **MANUELL:** DPA/AVV, Datenregion, Subprozessoren und Transfers des zusätzlichen Sink-Providers bewerten, falls ein Drittanbieter gewählt wird.
 - [ ] **WRITE-FREIGABE:** Sink und Cloudflare-Ausleitung konfigurieren.
 - [ ] **EVIDENCE:** Produktions-Sink-ID aus Provider-API erfassen.
-- [ ] **EVIDENCE:** 12 Monate Retention aus Provider-API/Account-Konfiguration belegen.
+- [ ] **EVIDENCE:** exakt 12 Kalendermonate Retention aus Provider-API/Account-Konfiguration und Providersemantik belegen; feste Tage allein reichen nicht.
 - [ ] **EVIDENCE:** geschützten operativen Zugriff und fehlende öffentliche Read-API belegen.
 - [ ] **EVIDENCE:** Test-Security-Event bis zum Sink nachvollziehen, ohne personenbezogene Testpayloads oder Secrets zu protokollieren.
 - [ ] **EVIDENCE:** Delivery-/Destination-Health prüfen.
@@ -183,13 +185,13 @@ Unverändert verbindlich:
 
 ### Neon / Databricks-Vertragskette
 
-Der aktuelle Neon Product Specific Schedule verweist für Neon auf den Databricks-Vertragsrahmen und ersetzt die allgemeine Subprocessor-Referenz durch die **Neon-spezifische Subprocessor List**. Für M5-G reicht daher eine allgemeine Databricks-Subprozessorliste allein nicht.
+Der aktuelle **Product Specific Schedule (Neon)** steht unter dem Databricks-Vertragsrahmen. Für Neon Platform Services ergänzt er die aktuelle **Databricks Subprocessors**-Liste ausdrücklich um **Grafana Labs (United States)**. Die frühere Vorbereitungsannahme einer separat maßgeblichen Neon-spezifischen Subprozessorliste ist damit überholt. Für M5-G müssen der aktuelle Neon Schedule und die aktuelle Databricks-Subprozessorliste gemeinsam bewertet werden.
 
 - [ ] **JETZT:** Neon Platform Services Product Specific Schedule dokumentieren.
-- [ ] **JETZT:** Neon-spezifische Subprozessorliste mit Stand/Abrufdatum dokumentieren.
+- [ ] **JETZT:** aktuelle Databricks-Subprozessorliste dokumentieren und die Neon-Schedule-Ergänzung Grafana Labs ausdrücklich mit erfassen.
 - [ ] **MANUELL:** Betreiber bestätigt die für den Neon-Account geltende Vertrags-/DPA-Bindung.
 - [ ] **EVIDENCE:** konkrete Neon-Production-Ressource der richtigen Account-/Vertragsbeziehung zuordnen.
-- [ ] **EVIDENCE:** Subprozessor-/Transfer-Evidence bei finalem M5-G-Lauf frisch erfassen.
+- [ ] **EVIDENCE:** Product Specific Schedule, aktuelle Databricks-Subprozessorliste und Neon-Schedule-Ergänzungen bei finalem M5-G-Lauf frisch erfassen.
 
 ### Änderungsbeobachtung
 
@@ -290,7 +292,7 @@ Vor jeglichem Provider-Create muss eine konkrete Liste mit Region, Ressourcentyp
 ### Gate U2 – Verträge / Privacy
 
 - [ ] **MANUELL:** Cloudflare-DPA/AVV-/Transfer-/Subprozessor-Nachweise akzeptieren bzw. zur juristischen Prüfung eskalieren.
-- [ ] **MANUELL:** Neon-/Databricks-Vertragskette und Neon-spezifische Subprozessoren akzeptieren bzw. eskalieren.
+- [ ] **MANUELL:** Neon-/Databricks-Vertragskette einschließlich aktuellem Neon Schedule, Databricks-Subprozessorliste und Grafana-Labs-Ergänzung akzeptieren bzw. eskalieren.
 - [ ] **MANUELL:** zusätzlichen Logging-Provider analog akzeptieren, falls vorhanden.
 
 ### Gate U3 – Secrets
@@ -343,7 +345,7 @@ Ein gemeinsamer, frischer Production-Snapshot muss mindestens enthalten bzw. ein
 - geschützter Zugriff,
 - vollständiges Sink-Inventar,
 - keine öffentliche Read-API,
-- Retention exakt 12 Monate.
+- Retention exakt 12 Kalendermonate; feste Tageszahlen allein genügen nicht als Evidence.
 
 ### M5-G Provider Compliance
 
@@ -374,7 +376,7 @@ Alle volatilen F/G/H-Evidenzen müssen auf denselben realen Resource-Binding-Sna
 
 ---
 
-## 10. Provider-Recherche – Stand 2026-08-18
+## 10. Provider-Recherche – Stand 2026-08-19
 
 Diese Quellen sind **Planungsgrundlage**, nicht selbst Production-Evidence. Vor einem kostenpflichtigen/produktiven Write werden plan- und accountabhängige Angaben nochmals live geprüft.
 
@@ -388,10 +390,12 @@ Diese Quellen sind **Planungsgrundlage**, nicht selbst Production-Evidence. Vor 
 - Cloudflare DPA v6.4, effective 2026-04-03: https://www.cloudflare.com/cloudflare-customer-dpa/
 - Privacy/Trust Hub inkl. Subprocessor-Verweis: https://www.cloudflare.com/trust-hub/privacy-and-data-protection/
 
-### Neon
+### Neon / Databricks
 
-- Platform Services Product Specific Schedule: https://neon.com/platform-terms
-- Neon-spezifische Subprozessoren: https://neon.com/subprocessors
+- Product Specific Schedule (Neon): https://neon.com/platform-terms
+  - aktueller Schedule ergänzt für Neon Platform Services Grafana Labs (US) zu den übrigen Databricks-Subprozessoren.
+- Databricks Subprocessors: https://www.databricks.com/legal/databricks-subprocessors
+- `https://neon.com/subprocessors` kann als Provider-Verweis dienen, ist nach aktuellem Schedule aber **keine eigenständige maßgebliche Neon-Subprozessorliste**.
 - Security overview: https://neon.com/docs/security/security-overview
 - Frankfurt-Region `aws-eu-central-1`: https://neon.com/docs/changelog/2026-02-20
 - Backup/Snapshot-Änderungen: https://neon.com/docs/changelog/2025-10-31 und https://neon.com/docs/changelog/2026-02-27
