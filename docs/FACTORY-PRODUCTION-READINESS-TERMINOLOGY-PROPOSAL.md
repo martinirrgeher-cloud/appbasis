@@ -1,56 +1,28 @@
-# AppFactory – Vorschlag für kanonische Readiness-Terminologie
+# AppFactory – kanonische Readiness-Terminologie
 
 Stand: 2026-08-19
 
 ## Status
 
-**Entscheidungsvorlage – noch kein ADR und noch keine verbindliche Architekturänderung.**
+**Angenommen.** Die frühere Entscheidungsvorlage ist durch ADR-023 verbindlich entschieden.
 
-Dieser Vorschlag löst einen Terminologie-Widerspruch zwischen M5, der breiteren Roadmap-Definition von `Production Ready v0.1` und dem FC1-Lifecycle auf, ohne bestehende Runtime-/Gate-Verträge still umzudeuten.
+Autoritative Reihenfolge bleibt: Entscheidungsregister → Betriebsakte → Roadmap/Gates → Runbook. `docs/ADR-023-READINESS-LIFECYCLE.md` spiegelt die Entscheidung für die Repository-Integration.
 
-## Ausgangslage
-
-Die Projektquellen verwenden derzeit drei überlappende Begriffe:
-
-1. **M5 – Production Security & Privacy Ready v0.1**
-   - zwölf Security-/Privacy-Pflichtkriterien,
-   - der aktuelle Repository-Evaluator verwendet das Feld `productionReady`,
-   - ein fehlendes M5-Kriterium hält dieses Gate fail-closed offen.
-
-2. **Production Ready v0.1** in der Roadmap
-   - zusätzlich Factory Ready,
-   - Backup/DR + realer Restore,
-   - Security/Privacy Ready,
-   - getrennte Produktionsdatenbank,
-   - getrennter Produktions-Worker,
-   - kontrollierte Domain,
-   - kontrollierte Migrationen,
-   - ausdrückliche Freigabe,
-   - Post-Deploy-Smoke grün.
-
-3. **FC1-Lifecycle**
-   - `Production Ready`,
-   - danach separat `Produktion freigegeben`.
-
-Damit darf das interne M5-Feld `productionReady` nicht allein aufgrund seines Namens als FC1-`Production Ready` dargestellt werden.
-
-## Empfohlene kanonische Semantik
+## Kanonische Semantik
 
 ### 1. Security & Privacy Ready
 
 Bedeutung:
 
-- genau das M5-Gate,
+- exakt das M5-Gate,
 - alle zwölf kanonischen M5-Kriterien erfüllt,
-- fail-closed bei einem fehlenden oder nicht vertrauenswürdig gebundenen Nachweis.
+- fail-closed bei einem fehlenden, widersprüchlichen oder nicht vertrauenswürdig gebundenen Nachweis.
 
 UI-Label:
 
 **Security & Privacy Ready**
 
-Technischer Hinweis:
-
-Das bestehende interne Feld `productionReady` kann aus Kompatibilitätsgründen zunächst bestehen bleiben. Die UI darf den Feldnamen nicht als fachliche Lifecycle-Bezeichnung verwenden.
+Das bestehende interne M5-Feld `productionReady` kann aus Kompatibilitätsgründen zunächst bestehen bleiben. Die UI darf seinen Namen nicht als fachliche Lifecycle-Bezeichnung interpretieren.
 
 ### 2. Production Ready
 
@@ -65,64 +37,45 @@ Die konkrete App hat den vollständigen technischen Pre-Release-Zustand erreicht
 - dedizierte Produktionsdatenbank,
 - dedizierter Produktions-Worker,
 - kontrollierte Produktionsdomain,
-- produktive Benutzer & Rechte,
+- produktive Benutzer und Rechte,
 - produktive Migrationen erfolgreich,
 - Produktionsdeployment erfolgreich,
 - Post-Deploy-Smokes erfolgreich,
-- alle erforderlichen mutierenden Vorbereitungsschritte wurden jeweils ausdrücklich freigegeben und kontrolliert ausgeführt,
+- alle notwendigen mutierenden Vorbereitungsschritte jeweils ausdrücklich freigegeben und kontrolliert ausgeführt,
 - keine offenen relevanten Security-/Privacy-/Recovery-/Review-Blocker.
-
-Wichtig:
 
 `Production Ready` setzt **nicht** `releaseAuthorized=true`.
 
-Es bedeutet: Die App **kann jetzt kontrolliert freigegeben werden**.
+Es bedeutet ausschließlich: Die App kann jetzt kontrolliert für den finalen Release freigegeben werden.
 
 ### 3. Produktion freigegeben
 
 Bedeutung:
 
 - `Production Ready=true`,
-- zusätzlich separate ausdrückliche Release-Freigabe des Nutzers,
-- Release-Gate setzt erst dann die Freigabe-Autorisierung,
+- zusätzlich separate ausdrückliche finale Release-Freigabe,
+- erst das separate Release-Gate autorisiert den Übergang,
 - kein automatischer Übergang aus technischer Evidence.
 
 UI-Label:
 
 **Produktion freigegeben**
 
-## Interpretation der „ausdrücklichen Freigabe“ aus der Roadmap
+## Zwei getrennte Freigabearten
 
-Um FC1 und den M6-Sicherheitsvertrag konsistent zu halten, wird empfohlen, zwei Freigabearten ausdrücklich zu unterscheiden:
+### Schrittfreigaben
 
-### A. Schrittfreigaben
+Jeder mutierende Provider-/Produktionsschritt benötigt seine eigene ausdrückliche Freigabe, zum Beispiel Neon-Create, Worker-Create, DB-Binding, Secret-/Runtime-Konfiguration, Logging-Sink, produktive Migration, Deployment, Access-Bootstrap, Public Ingress, Restore oder Production-Smokes.
 
-Jeder mutierende Provider-/Produktionsschritt benötigt seine eigene ausdrückliche Freigabe, zum Beispiel:
+Eine Schrittfreigabe autorisiert nur den jeweiligen konkreten Schritt und ist Bestandteil des kontrollierten Wegs zu Production Ready.
 
-- Neon-Create,
-- Worker-Create,
-- DB-Binding,
-- Runtime-/Secret-Konfiguration,
-- Logging-Sink,
-- produktive Migration,
-- Deployment,
-- produktiver Access-Bootstrap,
-- Public Ingress,
-- Restore,
-- Production-Smokes.
+### Finale Release-Freigabe
 
-Diese Freigaben autorisieren **nur den jeweiligen Schritt** und sind Bestandteil des kontrollierten Wegs zu Production Ready.
+Davon getrennt autorisiert eine eigene ausdrückliche Release-Freigabe erst den Lifecycle-Übergang zu **Produktion freigegeben**.
 
-### B. Release-Freigabe
+Schrittfreigaben ersetzen diese finale Release-Freigabe nicht.
 
-Eine davon getrennte ausdrückliche Freigabe autorisiert erst den Lifecycle-Übergang zu `Produktion freigegeben`.
-
-Damit wird die Roadmap-Anforderung „ausdrückliche Freigabe“ nicht gestrichen, sondern präzisiert:
-
-- mutierende Produktionsvorbereitung braucht Schrittfreigaben,
-- der finale Release braucht eine separate Release-Freigabe.
-
-## Empfohlener Lifecycle
+## Kanonischer Lifecycle
 
 1. Entwurf
 2. Repository erzeugt
@@ -133,45 +86,29 @@ Damit wird die Roadmap-Anforderung „ausdrückliche Freigabe“ nicht gestriche
 7. Production Ready
 8. Produktion freigegeben
 
-FC1 verlangt nur Mindestzustände; der zusätzliche sichtbare Zustand `Security & Privacy Ready` macht das bestehende M5-Gate transparent, ohne `Production Ready` zu überladen.
+## Ableitung für den finalen Factory-Readiness-Slice
 
-## Ableitung für #166
+Der gemeinsame Integrationsnachfolger von #134 + #136 + #166 muss:
 
-Nach einer verbindlichen Entscheidung sollte #166 bzw. sein finaler Integrationsnachfolger:
-
-- M5 nicht als `Production Ready`, sondern als `Security & Privacy Ready` darstellen,
+- M5 als **Security & Privacy Ready** darstellen,
 - `Production Ready` nicht aus `productionReadiness.productionReady` allein ableiten,
-- den umfassenden Production-Ready-Zustand aus den kanonischen Preview-/M5-/M6-/Recovery-Verträgen ableiten,
+- den umfassenden Production-Ready-Zustand aus den kanonischen Preview-/M5-/M6-/Recovery-/Deployment-/Smoke-Verträgen ableiten,
 - `Produktion freigegeben` ausschließlich aus dem separaten Release-Gate ableiten,
 - bei unvollständiger oder widersprüchlicher Evidence fail-closed bleiben,
 - keinen aktiven Produktionsbutton einführen, solange kein eigener kontrollierter Release-Slice existiert.
 
-## Notwendige Quellenpflege bei Annahme
-
-Wenn dieser Vorschlag angenommen wird:
-
-1. **Entscheidungsregister** zuerst um eine präzisierende ADR ergänzen bzw. ADR-011 erweitern.
-2. **Betriebsakte** auf dieselbe Terminologie bringen.
-3. **Roadmap** bei `Production Ready v0.1` die zwei Freigabearten ausdrücklich unterscheiden.
-4. **Runbook** dieselbe Operator-/Release-Trennung verwenden.
-5. Erst danach UI-/Snapshot-/Acceptance-Tests finalisieren.
+Die Terminologieanpassung wird in denselben finalen Factory-Readiness-Integrationshead aufgenommen und durch dessen einen finalen Sol/max-Codex-Review abgedeckt. Ein zusätzlicher Terminologie-Review entfällt.
 
 ## Sicherheitswirkung
 
-Die vorgeschlagene Präzisierung lockert kein Gate:
+Die Präzisierung lockert kein Gate:
 
 - M5 bleibt all-required/fail-closed,
-- Production Ready wird breiter, nicht schwächer,
-- jeder mutierende Schritt bleibt freigabepflichtig,
-- Release bleibt separat freigabepflichtig,
+- Production Ready ist breiter als M5,
+- jeder mutierende Schritt bleibt separat freigabepflichtig,
+- der finale Release bleibt zusätzlich separat freigabepflichtig,
 - vollständige technische Evidence autorisiert keinen Auto-Release.
 
-## Noch nicht enthalten
+## Nicht enthalten
 
-- keine ADR-Änderung,
-- keine Betriebsakten-/Roadmap-/Runbook-Änderung,
-- keine #166-Codeänderung,
-- kein Merge,
-- kein Codex-Aufruf,
-- kein Providerwrite,
-- keine Produktionsfreigabe.
+Diese Dokumentationsentscheidung verändert aktuell keine Runtime-, Schema-, Migration-, Manifest-, Provider- oder Release-Logik. #163 und #165 bleiben unverändert.
