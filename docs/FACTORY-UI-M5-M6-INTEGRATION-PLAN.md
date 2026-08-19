@@ -1,75 +1,35 @@
 # AppFactory – Integrationsplan UI / M5 / M6
 
-Stand der Planung: 2026-08-19, 06:57 Europe/Vienna
+Stand der Planung: 2026-08-19, 17:43 Europe/Vienna
 
 ## Zweck
 
-Dieser Plan beschreibt, wie der Factory-Lifecycle-Slice aus #166 später sicher auf den tatsächlich finalen M5/M6-Unterbau gebracht wird. Er führt **keinen Merge, keinen Providerwrite und keine Produktionsfreigabe** aus.
+Dieser Plan beschreibt die spätere sichere Integration der Factory-Readiness-Oberfläche auf dem tatsächlichen finalen M5/M6-Unterbau. Er führt **keinen Merge, keinen Providerwrite und keine Produktionsfreigabe** aus.
 
-SHAs und CI-Angaben in dieser Datei sind nur der bei der Planung verifizierte Ausgangspunkt. Vor jedem weiteren Änderungsschritt ist der Live-State erneut maßgeblich.
+SHAs und CI-Angaben sind nur Planungssnapshot; vor jeder Aktion gilt der Live-State.
 
-## Live-Ausgangspunkt dieser Synchronisierung
+## Live-Ausgangspunkt
 
 | Element | verifizierter Stand | CI |
 |---|---|---|
 | `main` | `e7fb8dbd5e76041109e2f045eabc50fc803c13a0` | aktueller Main-Head |
 | #163 – M5 Final Hardening | `ab0e2c609c96463ddc015a4227589d22f5a7f2b1` | #1173 PASS, literal Exact-Head |
-| #165 – ULC M6 Production Preflight | `63cf29c6978204d68de1584da3273b2218be75d2` | #1192 PASS, Exact-Head |
+| #165 – ULC M6 Production Preflight | `dc82bf4e4e89f7bc2261670f90a6bdc85743a727` | #1200 PASS, literal Exact-Head |
+| #134 – Reference Evidence | `e7782a20702fd1fe054ebbef10001e42b9afb1f5` | #983 PASS; vor finaler Integration neu auf aktuellem main validieren |
 | #136 – read-only M6 UI | `5a61d2b486903d61de0dc81ccb73611f942ccff3` | #993 PASS |
-| #166 – Lifecycle UI | `b7d45a4f258cdf99e40cf0578f2198add1262fec` | #1180 PASS auf byte-identischem Source-Tree; vor Finalreview literal Exact-Head erforderlich |
+| #166 – Lifecycle UI | `b7d45a4f258cdf99e40cf0578f2198add1262fec` | #1180 PASS auf damaligem Source-Tree; vor Finalreview literal Exact-Head erforderlich |
 
-Alle genannten PRs sind weiterhin Zwischenstände; kein alter PR-Text ersetzt den späteren Live-Check.
+## Verbindlich entschieden: Readiness-Terminologie
 
-## Seit der Erstfassung geschlossen: Production Security Logging
+Gemäß ADR-023 gilt:
 
-Die frühere Vorbereitung hatte korrekt erkannt, dass #165 reale M5-F-Logging-Evidence verlangte, ohne einen eigenen mutierenden Logging-Sink-Schritt zu besitzen.
+1. **Security & Privacy Ready** = exakt M5, zwölf Pflichtkriterien, all-required/fail-closed.
+2. **Production Ready** = vollständiger technischer Pre-Release-Zustand aus den kanonischen Preview-/M5-/M6-/Recovery-/Ressourcen-/Migrations-/Deployment-/Smoke-Verträgen.
+3. **Produktion freigegeben** = Production Ready plus separate ausdrückliche finale Release-Freigabe und separates Release-Gate.
 
-Der aktuelle #165-Head hat diese Lücke geschlossen:
+Das bestehende interne M5-Feld `productionReady` darf vorerst technisch bestehen bleiben, darf aber nicht als umfassender UI-Lifecycle-Zustand interpretiert werden.
 
-- 14 statt 13 gepinnte M6-Schritte,
-- eigener Schritt **Production Security Logging einrichten**,
-- Schrittklasse `provider-write`,
-- ausdrückliche Nutzerfreigabe erforderlich,
-- strukturierte Event-Erfassung,
-- geschützter operativer Zugriff,
-- exakt 12 Monate Retention,
-- vollständiges Sink-Inventar,
-- keine öffentliche Read-API,
-- Logging-/Delivery-Konfiguration liegt vor Worker-Deploy und vor M5-Production-Evidence,
-- bestehender M5-F-Evidence-Owner bleibt maßgeblich.
-
-Damit ist dieser frühere Repository-/Planungsblocker im aktuellen #165-Vertrag **geschlossen**. Vor einem realen Providerwrite muss der dann aktuelle Head trotzdem erneut live geprüft werden.
-
-## Noch offen: kanonische Readiness-Terminologie
-
-Die Projektquellen unterscheiden nicht überall sauber genug zwischen drei Begriffen:
-
-1. **M5 – Production Security & Privacy Ready v0.1**
-   - zwölf Security-/Privacy-Pflichtkriterien,
-   - Repository-Feld heute `productionReady`,
-   - fehlendes Kriterium hält dieses Gate fail-closed offen.
-2. **Production Ready v0.1** in der späteren Roadmap-Definition
-   - zusätzlich Backup/DR + realer Restore,
-   - getrennte Produktionsdatenbank und Produktions-Worker,
-   - kontrollierte Domain/Migrationen,
-   - Security/Privacy,
-   - Post-Deploy-Smoke,
-   - ausdrücklich genannte Freigabe.
-3. **FC1-Lifecycle**
-   - führt `Production Ready` und `Produktion freigegeben` ausdrücklich als getrennte Zustände.
-
-Deshalb darf #166 das interne M5-Feld `productionReady` nicht allein aufgrund seines Namens als endgültigen FC1-Zustand `Production Ready` darstellen.
-
-### Sichere Zwischenrichtung
-
-Bis zur formalen Sol-Entscheidung:
-
-- M5 in der UI als **Security & Privacy Ready** behandeln,
-- `Production Ready` für den später kanonisch definierten vollständigen Pre-Release-Gesamtzustand reservieren,
-- `Produktion freigegeben` ausschließlich nach separatem Release-Gate,
-- keine bestehende Backend-Feldbenennung als UI-/Architekturentscheidung interpretieren.
-
-Vor der finalen #166-Integration muss geklärt werden, welche in der Roadmap genannte „ausdrückliche Freigabe“ Voraussetzung für Production Ready ist und welche Freigabe das separate Release-Gate autorisiert. Eine Grundsatzpräzisierung wird zuerst im Entscheidungsregister und danach konsistent in Betriebsakte/Roadmap/Runbook nachgezogen.
+Mutierende Produktionsvorbereitungsschritte benötigen weiterhin ihre jeweilige ausdrückliche Schrittfreigabe. Diese ersetzt die finale Release-Freigabe nicht.
 
 ## Integrationsgrundsatz
 
@@ -77,124 +37,116 @@ Der UI-Stack darf nie vor den kanonischen M5/M6-Verträgen zur neuen Wahrheit we
 
 Reihenfolge:
 
-1. tatsächlichen M5-Unterbau finalisieren,
-2. tatsächlichen M6-Unterbau darauf finalisieren,
-3. #136 read-only M6-Darstellung auf diesen Stand bringen,
-4. #166-spezifischen Lifecycle-Diff darauf anwenden,
-5. vollständige literal Exact-Head-CI,
-6. ChatGPT-Diff-/Architektur-/Security-/Lifecycle-Review,
-7. Findings gebündelt beheben,
-8. erneut vollständige Exact-Head-CI,
-9. genau ein finaler Codex-Review auf dem unveränderten finalen Head,
-10. Merge-Gate und Post-Merge-CI.
+1. #163 final reviewen und nach vollständigem Gate mergen.
+2. #165 auf neuen `main` sauber restacken, #164-Acceptance kontrolliert integrieren, vollständig neu prüfen, final reviewen und mergen.
+3. Erst danach einen **neuen gemeinsamen Factory-Readiness-Integrations-PR** auf aktuellem `main` bilden.
+4. #134-spezifische Reference-Evidence seriell integrieren.
+5. #136 read-only M6-Darstellung integrieren.
+6. #166 Lifecycle-Diff integrieren und gemäß ADR-023 terminologisch korrigieren.
+7. vollständige literal Exact-Head-CI.
+8. ChatGPT Diff-/Architektur-/Security-/Lifecycle-Review.
+9. Findings gebündelt beheben und Exact-Head-CI erneut vollständig grün.
+10. genau ein finaler Codex-Review Sol/max auf dem unveränderten finalen Head.
+11. Expected-Head-Squash-Merge und Post-Merge-CI.
 
 Keine Blind-Cherry-Picks nach alten SHAs.
 
 ## Phase 1 – M5-Vertragsbasis
 
-#163 ist derzeit der breite Vor-Codex-M5-Härtungsstand und besitzt den literal Exact-Head-CI-Vertrag.
-
-Vor Integration prüfen:
-
-- tatsächlicher Head unverändert oder neue Basis,
-- vollständige Exact-Head-CI,
-- finaler Codex-Review exakt auf dem finalen Head,
-- keine offenen relevanten Review-Threads,
-- mergebar,
-- nach Merge Post-Merge-CI auf `main` grün.
+#163 bleibt bis zu seinem finalen Codex eingefroren. Vor Merge: tatsächlicher Head, Exact-Head-CI, Codex-Commit, Threads und Mergeability erneut live prüfen. Nach Merge muss Post-Merge-CI auf `main` PASS sein.
 
 ## Phase 2 – M6-Vertragsbasis
 
-#165 ist auf #163 gestapelt und hat jetzt den kontrollierten 14-Schritte-Pfad bis zum expliziten Release-Gate.
+#165 ist auf #163 gestapelt. Nach #163-Squash darf er nicht blind nur retargetet werden. Die vorbereitete Restack-Grenze wird verwendet; zusätzlich darf exakt der docs-only M4-Acceptance-Record aus #164 integriert werden.
 
 Für die spätere UI maßgeblich:
 
-- M5 und M6 bleiben getrennte Gates,
-- Logging-Sink-Setup ist eigener freigabepflichtiger Schritt,
-- Restore und Post-Deploy-Smokes sind mutierende, freigabepflichtige Schritte,
-- technische M6-Evidence kann Release nicht selbst autorisieren,
+- M5 und M6 bleiben getrennte technische Gates,
+- Production Security Logging ist eigener freigabepflichtiger M6-Schritt,
+- Restore und Post-Deploy-Smokes sind kontrollierte, mutierende Schritte,
+- technische Evidence autorisiert Release niemals selbst,
 - Preview-Akzeptanz bleibt eigener Nachweis,
 - Provider-/Resource-Evidence bleibt sanitisiert und fail-closed.
 
-Falls #163 nach Codex verändert wird, muss #165 auf die neue Basis gezogen und vollständig neu Exact-Head-CI + ChatGPT-geprüft werden.
+## Phase 3 – Reference Evidence auf aktuellen main binden
 
-## Phase 3 – #136 auf finale Basis bringen
+#134 akzeptiert nur den neuesten erfolgreichen `M5 Reference Control Plane Evidence`-Workflow-Dispatch, dessen `head_sha` exakt dem dann aktuellen `main` entspricht.
 
-#136 macht die zehn M6-Kriterien read-only sichtbar.
+Deshalb nach #165-Post-Merge-PASS und **vor** der finalen Factory-Integration:
 
-Nach finalem M5/M6-Unterbau:
+1. aktuellen `main` pinnen,
+2. Workflow `M5 Reference Control Plane Evidence` auf `main` manuell ausführen,
+3. erfolgreichen Run und dessen `head_sha` prüfen,
+4. erst dann #134-spezifischen Diff in den gemeinsamen Factory-PR übernehmen.
 
-- isolierten #136-Diff neu prüfen,
-- keine alte Snapshot-/Gate-Semantik zurückbringen,
-- kanonische M6-Kriterien weiterverwenden,
-- keine Provider-/Release-Aktion ergänzen,
-- vollständige literal Exact-Head-CI.
+Ein vorheriger Run wird durch Main-Drift absichtlich ungültig.
 
-## Phase 4 – #166 spezifisch integrieren
+## Phase 4 – #136 und #166 konsolidieren
 
-Erst danach den Lifecycle-Slice übernehmen:
+#136 macht die zehn bestehenden M6-Kriterien read-only sichtbar. #166 ergänzt Lifecycle-Orientierung und nächsten sicheren Schritt.
 
-- verständliche Lifecycle-Orientierung,
-- „Was fehlt?“ / nächster sicherer Schritt,
+Beim Replay müssen erhalten bleiben:
+
+- zehn kanonische M6-Kriterien,
+- keine zweite Gate-Berechnung,
+- keine Provider-/Release-Aktion,
+- keine Provider-IDs, DB-Adressen oder Secrets,
+- fail-closed bei inkonsistenter Evidence.
+
+Gemäß ADR-023 muss der finale UI-Lifecycle:
+
 - M5 als **Security & Privacy Ready** darstellen,
-- endgültiges `Production Ready` erst nach formaler Terminologieentscheidung,
-- `Produktion freigegeben` separat,
-- fail-closed bei widersprüchlicher Preview-/M5-/M6-Evidence,
-- kein Produktionsbutton und kein `releaseProduction`-Enablement.
+- umfassendes **Production Ready** nur aus dem vollständigen technischen Gesamtvertrag ableiten,
+- **Produktion freigegeben** nur nach separatem Release-Gate darstellen,
+- keinen Auto-Release und keinen ungesicherten Produktionsbutton einführen.
 
-## Konflikt-/Review-Zonen
+## Kritische Integrationszonen
 
-### Textuell wahrscheinlich
+### `tooling/factory-ui/production-readiness-status.test.mjs`
 
-`tooling/factory-ui/production-readiness-status.test.mjs`
+#134 und #166 berühren dieselbe Acceptance-Foundation. Die finale Version muss Reference-Fail-closed-Verhalten, M5/M6-Trennung und ADR-023-Lifecycle gemeinsam beweisen.
 
-- #163 verändert M5-/Evidence-Acceptance,
-- #166 erweitert Lifecycle-/Fail-closed-Acceptance,
-- finale Version muss beide Ziele erhalten.
+### `tooling/factory-ui/app.js`
 
-### Stack-lokal #136/#166
+Die UI darf ausschließlich sanitizierte, kanonische Readiness-Daten darstellen und keine Provider-/Release-Aktion erfinden.
 
-- `tooling/factory-ui/app.js`
-- `tooling/factory-ui/production-readiness-status.js`
+### `tooling/factory-ui/production-readiness-status.js`
 
-#166 baut direkt auf #136. Die zehn M6-Kriterien dürfen beim Replay nicht verloren gehen.
+Text-/Lifecycle-Ableitung muss ADR-023 folgen; M5-internes `productionReady` darf nicht mit umfassendem Production Ready gleichgesetzt werden.
 
-### Semantisch kritisch
+### `tooling/factory-ui/model.mjs`
 
-`tooling/factory-ui/model.mjs`
+Der Snapshot bleibt Datenquelle; kein veralteter M5/M6-Vertrag, kein zirkuläres Readiness-Gate und keine automatische Release-Autorisierung.
 
-- liefert die Snapshot-/Readiness-Daten,
-- darf keinen veralteten M5/M6-Vertrag zurückbringen,
-- UI darf keine Criteria-Zahl, Readiness oder Release-Autorisierung selbst erfinden.
+## Finales Validierungs-/Codex-Gate
 
-## Finales #166-Validierungs-/Codex-Gate
+Auf dem tatsächlichen gemeinsamen Factory-Integrationshead:
 
-Auf dem tatsächlichen finalen Integrationshead:
-
-1. `main`, alle offenen PRs, Heads, CI, Reviews, Threads, Mergeability live prüfen.
-2. Finalen #166-Head festhalten.
-3. Vollständige literal Exact-Head-CI exakt auf diesem Head.
-4. ChatGPT-Diff-/Architektur-/Security-/Lifecycle-Review gegen aktuellen `main`.
-5. Findings gebündelt beheben.
-6. Vollständige literal Exact-Head-CI erneut grün.
-7. Genau einen finalen Codex-Review auf dem unveränderten finalen Head.
-8. Nur bei echtem Codex-Finding: beheben → Exact-Head-CI → genau ein Re-Review.
-9. Keine offenen relevanten Threads/Blocker; PR mergebar.
-10. Merge mit Expected-Head-SHA.
-11. Post-Merge-CI prüfen.
+1. `main`, alle offenen PRs, finalen Head, CI, Reviews, Threads und Mergeability live prüfen.
+2. vollständige literal Exact-Head-CI exakt auf diesem Head.
+3. vollständiger ChatGPT Security-/Architecture-/UI-/Lifecycle-Review.
+4. Findings gebündelt beheben.
+5. vollständige Exact-Head-CI erneut grün.
+6. genau ein finaler Codex-Review **Sol/max**.
+7. bei echtem Codex-Finding: einmal beheben → Exact-Head-CI → genau ein Re-Review.
+8. keine offenen relevanten Threads/Blocker.
+9. Expected-Head-Squash-Merge.
+10. Post-Merge-CI prüfen.
+11. #134, #136 und #166 als integriert/superseded schließen.
 
 ## Acceptance nach Integration
 
 Mindestens:
 
 - zehn M6-Kriterien read-only und kanonisch sichtbar,
-- M5 Security & Privacy all-required/fail-closed,
+- M5 als Security & Privacy Ready all-required/fail-closed,
 - Preview vorbereitet/deployed/geprüft später unterscheidbar,
-- `Security & Privacy Ready`, `Production Ready`, `Produktion freigegeben` verwenden die verbindlich beschlossene Semantik,
+- Production Ready bleibt umfassender technischer Pre-Release-Zustand,
+- Produktion freigegeben bleibt separate finale Release-Stufe,
 - „Was fehlt?“ stammt aus kanonischer Evidence,
 - inkonsistente Zustände fallen fail-closed zurück,
-- vollständige technische Evidence führt ohne separates Release-Gate zu keiner Produktionsfreigabe,
-- `releaseProduction` bleibt deaktiviert, bis ein eigener späterer freigegebener Slice existiert,
+- technische Evidence allein führt nie zur Produktionsfreigabe,
+- `releaseProduction` bleibt deaktiviert, bis ein eigener kontrollierter Release-Slice existiert,
 - keine Provider-IDs, DB-Adressen, Connection Strings oder Secretwerte sichtbar,
 - keine zweite Generator-, Readiness-, Provider- oder Lifecycle-Plattform.
 
