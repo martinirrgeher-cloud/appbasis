@@ -1,103 +1,91 @@
 # M6 – ULC Linz Operator Go-Live Checklist
 
-Stand: 2026-08-18
+Stand: 2026-08-19
 
 ## Zweck
 
-Diese kurze Checkliste ist der **Operator-Laufzettel** für den ersten realen ULC-Produktionsdurchlauf. Sie verdichtet die bestehenden M5/M6-Preflights und den aktuellen technischen #165-Pfad zu Freigabe-, Stop- und Evidence-Punkten.
+Dieser Laufzettel verdichtet den aktuell vorbereiteten ULC-M6-Pfad für den ersten realen Produktionsdurchlauf. Er ist **kein Execute-Script, keine Produktionsfreigabe und kein zweiter Provisionierer**.
 
-Sie ist **kein Execute-Script, keine Produktionsfreigabe und kein zweiter Provisionierer**. Der kanonische Generator-/Publikationspfad bleibt `createAppSkeleton()`. Reale Writes dürfen nur nach neuer ausdrücklicher Nutzerfreigabe erfolgen.
+Verbindlich bleibt:
 
-Vor jedem realen Durchlauf zuerst:
+- `createAppSkeleton()` ist der kanonische Generator-/Publikationspfad.
+- Preview und Produktion bleiben getrennte Lebenszyklen.
+- Provider-IDs, Datenbankadressen, Connection Strings und Secretwerte bleiben außerhalb normaler Factory-/Evidence-Ausgaben.
+- Jeder mutierende Produktions-/Provider-Schritt benötigt eine neue ausdrückliche Nutzerfreigabe.
+- Nach jedem mutierenden Schritt wird der tatsächliche Zustand read-only geprüft, bevor der nächste Write freigegeben wird.
+- Diese Datei ist keine dauerhafte Wahrheit: vor dem realen Durchlauf werden `main`, alle offenen PRs, der tatsächliche M5/M6-Head, CI/Reviews und Providerzustand frisch geprüft.
 
-- aktuellen `main`-Head, alle offenen PRs und den tatsächlich freigegebenen M5/M6-Integrationshead prüfen,
-- vollständige CI und finalen Review-/Merge-Stand verifizieren,
-- Providerzustand frisch read-only prüfen,
-- sicherstellen, dass keine ältere Checkliste einen aktuelleren Code-/Providervertrag überschreibt.
+Der bei dieser Synchronisierung aktuelle technische #165-Stand besitzt **14 gepinnte Schritte** und enthält jetzt einen eigenen freigabepflichtigen Schritt für Production Security Logging. Damit ist die zuvor dokumentierte Logging-Sink-Ausführungslücke im aktuellen #165-Vertrag geschlossen. Vor realer Ausführung muss dieser Zustand erneut live bestätigt werden.
 
 ## Legende
 
-- **READ** – read-only Prüfung, kein Providerwrite.
+- **READ** – read-only Prüfung.
 - **INPUT** – Operatorentscheidung ohne Providerwrite.
 - **WRITE** – externe/produktive Änderung; ausdrückliche Freigabe erforderlich.
 - **DB-WRITE** – produktive Datenbankänderung; ausdrückliche Freigabe erforderlich.
 - **DEPLOY** – Produktionsdeployment; ausdrückliche Freigabe erforderlich.
-- **RESTORE-WRITE** – Recovery-/Restore-Validierung mit realer externer Änderung; ausdrückliche Freigabe erforderlich.
-- **SMOKE-WRITE** – kontrollierter Produktions-Smoke, der produktiven Zustand verändern kann; ausdrückliche Freigabe erforderlich.
-- **RELEASE** – öffentliche Produktionsfreigabe; eigene ausdrückliche Freigabe erforderlich.
-- **STOP** – fail-closed abbrechen, nichts „zurechtinterpretieren“.
+- **RESTORE-WRITE** – realer Recovery-/Restore-Test; ausdrückliche Freigabe erforderlich.
+- **SMOKE-WRITE** – kontrollierter Produktions-Smoke mit möglichem Testdaten-Write; ausdrückliche Freigabe erforderlich.
+- **RELEASE** – separate Produktionsfreigabe.
+- **STOP** – fail-closed abbrechen.
 
 ## 0. Globales Start-Gate
 
 Vor dem ersten Providerwrite müssen gemeinsam erfüllt sein:
 
-- [ ] finaler Repository-/M5/M6-Stand eindeutig und grün,
-- [ ] M5-/M6-Preflight erfolgreich, aber weiterhin `providerWriteAllowed=false` / `executionAuthorized=false`,
-- [ ] Nutzer hat **genau den nächsten konkreten mutierenden Schritt** ausdrücklich freigegeben,
-- [ ] keine Kosten-/Plan-/Providerannahme wurde stillschweigend getroffen,
-- [ ] keine Secretwerte befinden sich in Chat, Repository, Ticket, Screenshot, Log oder Evidence-Dokument,
-- [ ] Produktions- und Preview-Ressourcen bleiben eindeutig getrennt.
+- [ ] finaler Repository-/M5/M6-Stand eindeutig,
+- [ ] vollständige literal Exact-Head-CI grün,
+- [ ] erforderliche finale Reviews abgeschlossen,
+- [ ] keine offenen relevanten Review-Threads/Blocker,
+- [ ] M3, M4 und M5 als erforderliche Vorgates tatsächlich erfüllt,
+- [ ] M6-Preflight weiterhin `providerWriteAllowed=false` / `executionAuthorized=false`,
+- [ ] Providerzustand frisch read-only geprüft,
+- [ ] keine kollidierenden Produktionsressourcen vorhanden,
+- [ ] keine Secretwerte in Chat, Repository, Tickets, Screenshots, Logs oder Evidence,
+- [ ] Nutzer hat **genau den nächsten konkreten mutierenden Schritt** ausdrücklich freigegeben.
 
 Fehlt ein Punkt: **STOP**.
 
-## Bekannter Vor-Ausführungs-Blocker – Production Security Logging
-
-Der aktuelle technische #165-Plan pinnt 13 Schritte und verlangt in Schritt 10 reale M5-F-Evidence für den Production-Security-Logging-Sink. Gleichzeitig enthält der aktuell gepinnte 13-Schritte-Vertrag **keinen eigenen mutierenden Schritt**, der diesen Production-Sink bzw. die Cloudflare-Ausleitung mit ausdrücklicher Freigabe anlegt oder konfiguriert; `runtime-configuration` ist aktuell auf `BETTER_AUTH_SECRET`, `APPBASIS_BASE_URL` und `HYPERDRIVE` begrenzt.
-
-Daher gilt vor einem echten Produktionslauf:
-
-- [ ] **STOP**, solange der finale M6-Vertrag nicht eindeutig festlegt, in welchem mutierenden, freigabepflichtigen Schritt der reale Logging-Sink und seine Ausleitung bereitgestellt werden,
-- [ ] der Schritt muss 12-Monats-Retention, geschützten Zugriff, DPA/AVV-/Subprozessor-/Transferbewertung und vollständige Production-Bindung berücksichtigen,
-- [ ] keine spontane manuelle Providerkonfiguration außerhalb des gepinnten Ausführungsplans,
-- [ ] keine M5-F-Evidence behaupten, bevor der reale Sink existiert und read-only verifiziert wurde.
-
-Dieser Punkt ist eine **Integrationslücke vor Ausführung**, keine Berechtigung, #165 in diesem Vorbereitungsstrang parallel umzubauen.
-
-## 1. Neon-Produktionsdatenbank Frankfurt – erster Providerwrite
+## 1. Neon-Produktionsdatenbank Frankfurt
 
 **Klasse:** READ → WRITE
 
-### Unmittelbar davor
+Vorher:
 
-- [ ] Providerinventur frisch und vollständig aus exakt demselben Organisations-/Create-Scope lesen.
-- [ ] Evidence höchstens 15 Minuten alt bzw. innerhalb des aktuell gültigen Preflight-Fensters.
-- [ ] keine exakte oder plausibel kollidierende ULC-Produktionsressource vorhanden.
-- [ ] ausgewählte Create-Methode kann die Region **explizit** setzen.
-- [ ] Zielregion exakt `aws-eu-central-1` / Frankfurt.
-- [ ] Provider-Default-Region wird nicht verwendet.
-- [ ] gewünschter Neon-Plan/Kostenrahmen manuell akzeptiert.
-- [ ] Nutzer gibt **diesen Neon-Create-Write** ausdrücklich frei.
+- [ ] vollständige Neon-Inventur im späteren Create-Org-Scope,
+- [ ] Frankfurt `aws-eu-central-1` autoritativ verfügbar,
+- [ ] keine exakte oder plausible ULC-Production-Kollision,
+- [ ] Create-Pfad kann die Region explizit setzen,
+- [ ] Plan/Kostenrahmen manuell akzeptiert,
+- [ ] Nutzerfreigabe für genau diesen Create-Write.
 
-**Wichtig:** Der bei Erstellung dieses Dokuments bekannte vereinfachte Neon-Create-Connector exponiert keine explizite Regionswahl und ist daher für den echten Frankfurt-Create **nicht zulässig**. Vor Ausführung den dann verfügbaren Create-Pfad erneut verifizieren.
+Danach READ:
 
-### Danach read-only belegen
-
-- [ ] dedizierte Production-Zuordnung `ulc-linz` / `production`,
+- [ ] dedizierte ULC-Production-Ressource,
 - [ ] Region autoritativ Frankfurt,
 - [ ] eindeutige Project-/Branch-/Database-Bindung,
-- [ ] keine Connection Strings/Credentials im normalen Evidence-Output,
-- [ ] Verschlüsselungs-/TLS-/Backup-Fähigkeiten für die konkrete Ressource erfassbar.
+- [ ] keine Credentials/Connection Strings in normaler Evidence,
+- [ ] Backup-/TLS-/Encryption-Fähigkeiten für die konkrete Ressource erfassbar.
 
-Abweichung oder Mehrdeutigkeit: **STOP**.
+Abweichung: **STOP**.
 
-## 2. Dedizierten Produktions-Worker anlegen – noch ohne öffentlichen Ingress
+## 2. Dedizierten Produktions-Worker anlegen
 
 **Klasse:** READ → WRITE
 
-### Unmittelbar davor
+Vorher:
 
-- [ ] dedizierter Zielworker eindeutig und kollisionsfrei,
-- [ ] `workers.dev = false`,
-- [ ] Preview URLs = false,
-- [ ] `publicIngress = false`,
-- [ ] geschlossener Ingress ist **vor Upload von ULC-Anwendungscode** festgelegt,
-- [ ] Nutzer gibt den Worker-Create/initialen Providerwrite ausdrücklich frei.
+- [ ] eindeutiger kollisionsfreier Worker,
+- [ ] `workers.dev=false`,
+- [ ] Preview URLs aus,
+- [ ] `publicIngress=false`,
+- [ ] Nutzerfreigabe für den Worker-Write.
 
-### Danach read-only belegen
+Danach READ:
 
-- [ ] eigener Produktions-Worker vorhanden,
-- [ ] kein `workers.dev`, keine Preview-URL, keine Custom-Domain/Route als unbeabsichtigter Zwischenzustand,
-- [ ] noch keine öffentliche Erreichbarkeit.
+- [ ] eigener Production-Worker vorhanden,
+- [ ] kein öffentlicher Zwischenzustand,
+- [ ] keine unerwartete Domain/Route/Preview-URL.
 
 Öffentlicher Zwischenzustand: **STOP**.
 
@@ -105,34 +93,34 @@ Abweichung oder Mehrdeutigkeit: **STOP**.
 
 **Klasse:** READ → WRITE
 
-### Unmittelbar davor
+Vorher:
 
-- [ ] Neon-Evidence aus Schritt 1 ist noch gültig und gehört zur exakt freigegebenen Ressource,
-- [ ] Worker-Evidence aus Schritt 2 gehört zur exakt freigegebenen Runtime,
-- [ ] `HYPERDRIVE` wird als Binding behandelt, nicht als Secretname,
+- [ ] Neon-Evidence gehört exakt zu Schritt 1,
+- [ ] Worker-Evidence gehört exakt zu Schritt 2,
+- [ ] `HYPERDRIVE` wird als Binding behandelt,
 - [ ] keine Preview-/Test-DB wird gebunden,
-- [ ] Nutzer gibt den Binding-Write ausdrücklich frei.
+- [ ] Nutzerfreigabe für den Binding-Write.
 
-### Danach read-only belegen
+Danach READ:
 
-- [ ] genau eine erwartete Production-DB-Bindung,
+- [ ] exakt erwartete Production-DB-Bindung,
 - [ ] Resource-Binding-Consumer akzeptiert den Snapshot fail-closed,
-- [ ] keine Provider-ID, DB-Adresse oder Connection String gelangt in normale Factory-/M5-/M6-Ausgaben.
+- [ ] keine Provider-ID/DB-Adresse/Connection String in normalem Output.
 
 Mismatch: **STOP**.
 
 ## 4. Produktions-Domain auswählen
 
-**Klasse:** INPUT – **noch kein Providerwrite**
+**Klasse:** INPUT – noch kein Providerwrite
 
-- [ ] gewünschten öffentlichen Produktionshostname festlegen,
-- [ ] Domain/DNS-Kontrolle bestätigen,
-- [ ] prüfen, ob der Host bereits belegt ist,
-- [ ] HTTPS-Origin festlegen, der später exakt `APPBASIS_BASE_URL` wird,
-- [ ] Operator bestätigt diese Auswahl als Input für die späteren freigabepflichtigen Schritte,
-- [ ] noch **keine** Domain aktivieren und noch **keinen** öffentlichen Ingress öffnen.
+- [ ] gewünschten Produktionshostname festlegen,
+- [ ] Domain-/DNS-Kontrolle bestätigen,
+- [ ] bestehende Belegung prüfen,
+- [ ] kanonischen HTTPS-Origin festlegen,
+- [ ] Origin wird später exakt `APPBASIS_BASE_URL`,
+- [ ] noch keine Domain aktivieren und keinen Public Ingress öffnen.
 
-Ungeklärter Host: **STOP vor Schritt 9**.
+Unklarer Host: **STOP vor Schritt 10**.
 
 ## 5. Runtime-Konfiguration setzen
 
@@ -140,206 +128,229 @@ Ungeklärter Host: **STOP vor Schritt 9**.
 
 Aktueller Runtimevertrag:
 
-- `HYPERDRIVE` – Binding, **kein Secret**,
-- `APPBASIS_BASE_URL` – freigegebener HTTPS-Origin, kein Secret,
+- `HYPERDRIVE` – Binding,
+- `APPBASIS_BASE_URL` – kontrollierte Konfiguration,
 - `BETTER_AUTH_SECRET` – Secret; Wert niemals dokumentieren.
 
-### Unmittelbar davor
+Vorher:
 
-- [ ] verantwortliche Person für Production-Secrets festgelegt,
-- [ ] Secret wird außerhalb von Chat/Repository/Evidence erzeugt und gesetzt,
-- [ ] Origin aus Schritt 4 ist eindeutig,
-- [ ] Nutzer gibt die Runtime-Konfigurations-/Secret-Writes ausdrücklich frei.
+- [ ] Verantwortliche für Production-Secrets festgelegt,
+- [ ] Secret außerhalb von Chat/Repository/Evidence erzeugt,
+- [ ] Origin aus Schritt 4 eindeutig,
+- [ ] Nutzerfreigabe für Runtime-Konfigurations-/Secret-Writes.
 
-### Danach read-only belegen
+Danach READ:
 
 - [ ] erwartete Binding-/Konfigurationsnamen vorhanden,
-- [ ] keine Secretwerte lesbar dokumentiert,
-- [ ] keine zusätzliche nicht inventarisierte Production-Konfiguration.
+- [ ] keine Secretwerte sichtbar,
+- [ ] keine unerwartete zusätzliche Production-Konfiguration.
 
-## 6. Kontrollierte Produktionsmigrationen
+## 6. Production Security Logging einrichten
+
+**Klasse:** WRITE
+
+Dieser Schritt ist im aktuellen #165-Vertrag ausdrücklich vorhanden und muss vor Worker-Deploy und vor M5-Production-Evidence liegen.
+
+Vorher:
+
+- [ ] konkreter Logging-Sink/Exportweg bewusst ausgewählt,
+- [ ] strukturierte Security-Events unterstützt,
+- [ ] geschützter operativer Zugriff definiert,
+- [ ] exakt 12 Monate Retention technisch/providerseitig möglich,
+- [ ] vollständiges Sink-Inventar möglich,
+- [ ] keine öffentliche Read-API,
+- [ ] Kosten/Plan akzeptiert,
+- [ ] DPA/AVV, Datenregion, Subprozessoren und Transfers bewertet,
+- [ ] erforderliche Logging-Credentials/Secrets sicher außerhalb des Repository verwaltet,
+- [ ] Nutzerfreigabe für genau diesen Logging-/Delivery-Write.
+
+Danach READ:
+
+- [ ] reale ULC-Production-Sink-Bindung eindeutig,
+- [ ] strukturierte Event-Erfassung aktiv,
+- [ ] operativer Zugriff geschützt,
+- [ ] Retention exakt 12 Monate belegt,
+- [ ] Sink-/Destination-Inventar vollständig,
+- [ ] keine öffentliche Read-API,
+- [ ] Delivery-/Destination-Health geprüft,
+- [ ] keine Secret-/personenbezogene Payload-Leakage.
+
+Unvollständige Logging-Evidence: **STOP**.
+
+## 7. Kontrollierte Produktionsmigrationen
 
 **Klasse:** DB-WRITE
 
-### Unmittelbar davor
+Vorher:
 
-- [ ] exakter freigegebener App-/DB-Manifest- und Migrationsstand bekannt,
-- [ ] Ziel ist eindeutig die eigene ULC-Produktionsdatenbank,
+- [ ] exakter freigegebener App-/DB-Manifest-/Migrationsstand,
+- [ ] Ziel eindeutig die eigene ULC-Produktionsdatenbank,
 - [ ] Backup-/Recovery-Precheck grün,
-- [ ] Recovery-/Rollback-Pfad dokumentiert und realistisch ausführbar,
-- [ ] keine unerwartete Schema-/Migrationsdrift,
-- [ ] Nutzer gibt **die konkrete Produktionsmigration** ausdrücklich frei.
+- [ ] Recovery-/Rollback-Pfad dokumentiert,
+- [ ] keine Schema-/Migrationsdrift,
+- [ ] Nutzerfreigabe für die konkrete Produktionsmigration.
 
-### Danach read-only belegen
+Danach READ:
 
 - [ ] erwartete Migrationen vollständig angewendet,
-- [ ] kein unbekannter/zusätzlicher Schema-Drift,
-- [ ] Migrationsergebnis und Recovery-Referenz dokumentiert, ohne Credentials/DB-Adressen offenzulegen.
+- [ ] kein unbekannter Schema-Drift,
+- [ ] Ergebnis und Recovery-Referenz ohne Credentials dokumentiert.
 
-Fehler/Teilzustand: **STOP**, keine improvisierte Fortsetzung.
+Fehler/Teilzustand: **STOP**.
 
-## 7. Worker deployen – weiterhin ohne öffentliche Domain-Aktivierung
+## 8. Produktions-Worker deployen – weiterhin ohne Public Ingress
 
 **Klasse:** DEPLOY
 
-### Unmittelbar davor
+Vorher:
 
-- [ ] finaler freigegebener Runtime-Head bekannt,
-- [ ] vollständige Exact-Head-CI grün,
-- [ ] Worker-Ingress weiterhin geschlossen,
-- [ ] DB-/Runtime-Bindings entsprechen dem freigegebenen Produktionssnapshot,
-- [ ] Nutzer gibt das Produktionsdeployment ausdrücklich frei.
+- [ ] finaler Runtime-Head bekannt,
+- [ ] literal Exact-Head-CI grün,
+- [ ] Worker-Ingress geschlossen,
+- [ ] DB-/Runtime-/Logging-Bindings entsprechen dem freigegebenen Snapshot,
+- [ ] Nutzerfreigabe für das Produktionsdeployment.
 
-### Danach read-only belegen
+Danach READ:
 
 - [ ] deployter Runtimevertrag entspricht dem freigegebenen Head,
 - [ ] Worker weiterhin nicht öffentlich erreichbar,
-- [ ] keine unerwarteten Bindings/Telemetry-/Persistenzdienste hinzugekommen.
+- [ ] keine unerwarteten Bindings/Telemetry-/Persistenzdienste.
 
-## 8. Produktive Benutzer & Rechte provisionieren
+## 9. Produktive Benutzer & Rechte provisionieren
 
 **Klasse:** DB-WRITE / privilegierter Write
 
-- [ ] ausschließlich bestehende Root-Admin-/Principal-Access-/Permission-Provisioning-Verträge verwenden,
-- [ ] keine Default-Principal-Zuweisungen erfinden,
-- [ ] Organisation/Rolle/Scope eindeutig festlegen,
-- [ ] Least-Privilege-Vertrag unverändert,
-- [ ] Nutzer gibt diesen privilegierten Produktionswrite ausdrücklich frei.
+Vorher:
 
-Danach:
+- [ ] ausschließlich bestehende Root-Admin-/Principal-Access-/Permission-Provisioning-Verträge,
+- [ ] keine Default-Principal-Zuweisungen,
+- [ ] Organisation/Rolle/Scope eindeutig,
+- [ ] Least Privilege unverändert,
+- [ ] Nutzerfreigabe für den privilegierten Production-Write.
 
-- [ ] produktive Benutzer-/Rollen-/Scope-Evidence read-only prüfen,
-- [ ] Last-Admin-/Required-Role-Holder-Schutz weiterhin intakt,
+Danach READ:
+
+- [ ] produktive Benutzer-/Rollen-/Scope-Evidence,
+- [ ] Last-Admin-/Required-Role-Holder-Schutz intakt,
 - [ ] keine Cross-Org- oder unbekannte Capability-Zuweisung.
 
-## 9. Öffentliche Domain / Ingress aktivieren
+## 10. Öffentliche Domain / Ingress aktivieren
 
 **Klasse:** WRITE – separates Public-Ingress-Gate
 
-Dieser Schritt ist bewusst getrennt von Worker-Create und Deployment.
-
-### Unmittelbar davor
+Vorher:
 
 - [ ] Domain aus Schritt 4 endgültig bestätigt,
-- [ ] Runtime/DB/Benutzer-Konfiguration aus Schritten 1–8 geprüft,
-- [ ] keine zweite unbeabsichtigte öffentliche Origin-Möglichkeit,
+- [ ] Runtime/DB/Logging/Benutzer-Konfiguration aus Schritten 1–9 geprüft,
+- [ ] keine zweite unbeabsichtigte öffentliche Origin,
 - [ ] `workers.dev` und Preview URLs bleiben aus,
-- [ ] Nutzer gibt **die öffentliche Domain-/Ingress-Aktivierung separat** ausdrücklich frei.
+- [ ] Nutzerfreigabe für die Domain-/Ingress-Aktivierung.
 
-### Danach read-only belegen
+Danach READ:
 
-- [ ] genau der freigegebene HTTPS-Origin ist öffentlich,
-- [ ] Route zeigt auf den dedizierten ULC-Produktions-Worker,
+- [ ] exakt freigegebener HTTPS-Origin öffentlich,
+- [ ] Route zeigt auf den dedizierten ULC-Production-Worker,
 - [ ] keine Preview-/Test-Domain als Produktion,
 - [ ] `APPBASIS_BASE_URL` entspricht exakt dem freigegebenen Origin.
 
-## 10. M5-Production-Evidence erheben
+## 11. M5-Production-Evidence erheben
 
 **Klasse:** READ
 
-- [ ] F/G/H-Evidence stammt aus derselben realen Production-Resource-Binding-Sicht bzw. dem verlangten gemeinsamen Fingerprint,
+- [ ] F/G/H-Evidence aus derselben realen Production-Resource-Binding-Sicht/Fingerprint,
 - [ ] Freshness-/Gültigkeitsfenster eingehalten,
-- [ ] Logging-Sink, geschützter Zugriff und exakt 12 Monate Retention real belegt,
+- [ ] Logging-Sink + geschützter Zugriff + exakt 12 Monate Retention real belegt,
 - [ ] Neon Frankfurt, DPA/Account-Bindung, Verschlüsselung, Subprozessoren/Transfers und Datenflüsse real belegt,
 - [ ] Control-Plane-/Ingress-Snapshot aktuell und geschützt,
-- [ ] keine Fixture-/Dokumentationswerte werden als Production-Evidence akzeptiert,
-- [ ] M5-J ergibt nur bei vollständiger kanonischer Evidence 12/12.
+- [ ] keine Fixtures/Dokumentationswerte als Production-Evidence,
+- [ ] M5-J nur bei vollständiger kanonischer Evidence 12/12.
 
-M5 < 12/12: **STOP – Production Ready bleibt false.**
+M5 < 12/12: **STOP – Security & Privacy Ready bleibt offen.**
 
-## 11. ULC-spezifisches Backup-/Recovery-Gate mit realem Restore
+## 12. Backup-/Recovery-Validierung mit realem Restore
 
 **Klasse:** RESTORE-WRITE + READ-Evidence
 
-### Unmittelbar davor
+Vorher:
 
-- [ ] Restore-Ziel und etwaige dafür nötige Providerressource sind eindeutig isoliert von Produktion,
-- [ ] Kosten-/Providerwirkung des Restore-Vorgangs bekannt,
-- [ ] Nutzer gibt den realen Restore-/Recovery-Validation-Write ausdrücklich frei.
+- [ ] Restore-Ziel eindeutig isoliert von Produktion,
+- [ ] Kosten-/Providerwirkung bekannt,
+- [ ] Nutzerfreigabe für realen Restore-/Recovery-Validation-Write.
 
-### Danach belegen
+Danach:
 
-- [ ] eigener kontrollierter Backup-/Restore-Nachweis für diese Produktions-App,
-- [ ] isoliertes Restore-Ziel, nicht die Produktionsdatenbank,
+- [ ] eigener kontrollierter Backup-/Restore-Nachweis,
 - [ ] Datenintegrität geprüft,
 - [ ] Auth geprüft,
 - [ ] Permissions geprüft,
 - [ ] Application-Smoke geprüft,
 - [ ] Restore-Reconciliation für bereits gelöschte/retention-gesteuerte Daten geprüft.
 
-### Bekannter Stop-Punkt
+### Bekannte Architekturgrenze
 
-Der aktuelle ULC-Lifecycle schützt Restore-Reconciliation über einen 35-Tage-Löschmarker-/Tombstone-Horizont. Wenn der tatsächliche Backup-/Snapshot-Horizont ältere Wiederherstellungen zulässt, die diese Schutzgrenze überschreiten, muss die Architektur **vor Production Ready** bewusst neu bewertet bzw. gehärtet werden. Nicht durch Dokumentation übergehen.
+Der aktuelle ULC-Lifecycle schützt Restore-Reconciliation über einen 35-Tage-Löschmarker-/Tombstone-Horizont. Wenn der reale Backup-/Snapshot-Horizont Wiederherstellungen ermöglicht, die diese Schutzgrenze überschreiten, muss die Architektur **vor Production Ready** bewusst neu bewertet bzw. gehärtet werden.
 
-Realer Restore nicht erfolgreich: **STOP**.
+Restore nicht erfolgreich oder Horizon-Mismatch ungeklärt: **STOP**.
 
-## 12. Post-Deploy-Smokes
+## 13. Post-Deploy-Smokes
 
 **Klasse:** SMOKE-WRITE gegen reale Production
 
-Der aktuelle #165-Vertrag klassifiziert diesen Schritt bewusst als `production-smoke-write` und verlangt ausdrückliche Freigabe.
+Vorher:
 
-### Unmittelbar davor
-
-- [ ] genauer Smoke-Umfang und erwartete kontrollierte Testdaten/-writes bekannt,
-- [ ] Cleanup-/Reconciliation-Verhalten für erzeugte Testdaten geklärt,
-- [ ] keine echten Nutzer-/Produktionsdaten werden unnötig verändert,
-- [ ] Nutzer gibt den Production-Smoke-Write ausdrücklich frei.
-
-### Ausführen und belegen
+- [ ] genauer Smoke-Umfang bekannt,
+- [ ] kontrollierte Testdaten/-writes definiert,
+- [ ] Cleanup-/Reconciliation-Verhalten geklärt,
+- [ ] keine echten Nutzerdaten unnötig verändert,
+- [ ] Nutzerfreigabe für den Production-Smoke-Write.
 
 Mindestens:
 
 - [ ] Health,
 - [ ] Auth,
-- [ ] Permissions/deny-by-default,
-- [ ] Application-Verhalten.
-
-Zusätzlich prüfen:
-
+- [ ] Permissions / deny-by-default,
+- [ ] Application-Verhalten,
+- [ ] Logging-/Telemetry-Delivery gesund,
 - [ ] keine Secrets/Providerdetails in Antworten/Logs,
 - [ ] keine unerwartete öffentliche Control Plane,
-- [ ] Logging-/Telemetry-Delivery gesund,
-- [ ] relevante Denials bleiben fail-closed,
-- [ ] kontrollierte Smoke-Testdaten sind nachvollziehbar und werden gemäß freigegebenem Vertrag bereinigt bzw. eindeutig als Test-Evidence behandelt.
+- [ ] Smoke-Testdaten nachvollziehbar bereinigt bzw. eindeutig als Test-Evidence behandelt.
 
-Jeder relevante Smoke-Fehler: **STOP**, keine Freigabe.
+Relevanter Fehler: **STOP**.
 
-## 13. Explizites Release-Gate
+## 14. Explizites Release-Gate
 
 **Klasse:** RELEASE
 
-Auch wenn alle technischen M6-Kriterien vollständig belegt sind:
+Auch wenn alle technischen Nachweise vollständig sind:
 
 - [ ] `releaseAuthorized` bleibt bis zur separaten Freigabe false,
-- [ ] alle zehn kanonischen M6-Kriterien sind aktuell und real belegt,
-- [ ] M5 Production Ready ist weiterhin gültig,
+- [ ] alle zehn kanonischen M6-Kriterien aktuell und real belegt,
+- [ ] M5 Security & Privacy weiterhin gültig,
+- [ ] Backup/Restore weiterhin gültig,
 - [ ] keine offene relevante Review-/Security-/Privacy-/Recovery-Frage,
-- [ ] tatsächlicher Providerzustand unmittelbar vor Release nochmals read-only geprüft,
+- [ ] tatsächlicher Providerzustand unmittelbar vor Release erneut read-only geprüft,
 - [ ] Nutzer gibt **die Produktionsfreigabe selbst** ausdrücklich frei.
 
-Erst danach darf ein später dafür vorgesehener kontrollierter Release-Pfad die App als `Produktion freigegeben` markieren. Kein Auto-Release.
+Kein Auto-Release.
 
 ## Sichere manuelle Entscheidungen, die vorgezogen werden können
 
-Diese Punkte können ohne Providerwrite vorbereitet werden:
+Ohne Providerwrite können vorbereitet werden:
 
-- [ ] gewünschter Produktionshostname / Domain,
+- [ ] gewünschter Produktionshostname,
 - [ ] wer Production-Secrets verwalten darf,
-- [ ] konkreter Security-Logging-Sink inklusive Kosten, DPA/AVV, Datenregion, Subprozessoren und **exakt 12 Monaten Retention**,
-- [ ] Neon-Plan und realer Create-Pfad, der eine explizite Frankfurt-Region unterstützt,
-- [ ] verantwortliche Person für Provider-/Subprozessor-Änderungsbeobachtung.
+- [ ] konkreter Security-Logging-Sink inklusive Kosten, DPA/AVV, Region, Subprozessoren und 12-Monats-Retention,
+- [ ] Neon-Plan und regionsfähiger Frankfurt-Create-Pfad,
+- [ ] Verantwortliche für Provider-/Subprozessor-Änderungsbeobachtung.
 
-Das Treffen dieser Entscheidungen **autorisiert noch keine Bestellung, Ressourcenerstellung oder Konfigurationsänderung**.
+Diese Entscheidungen autorisieren **keinen** Providerwrite.
 
 ## Operator-Abschlussregel
 
 Nach jedem mutierenden Schritt:
 
-1. nicht sofort den nächsten mutierenden Schritt ausführen,
+1. nicht automatisch fortfahren,
 2. tatsächlichen Provider-/Produktionszustand read-only verifizieren,
-3. erwartete Evidence sichern/sanitisieren,
+3. Evidence sanitisieren und sichern,
 4. Abweichungen fail-closed stoppen,
 5. erst dann die nächste erforderliche ausdrückliche Freigabe einholen.
-
-Damit bleibt der reale M6-Durchlauf kontrolliert, nachvollziehbar und ohne stillen Übergang von „technisch vorbereitet“ zu „produktiv freigegeben“.
