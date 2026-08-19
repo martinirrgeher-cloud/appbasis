@@ -6,9 +6,9 @@ Stand der Vorbereitung: 2026-08-19, 12:57 Europe/Vienna
 
 **Nur Ablaufvorbereitung. Kein Codex-Review, kein Merge und keine Provider-/Produktionsaktion wird durch dieses Dokument ausgelöst.**
 
-Dieses Runbook konkretisiert den bestehenden AppBasis-Merge- und Codex-Vertrag für die aktuelle M5→M6-Kette. Dauerhaft verbindlich bleiben insbesondere:
+Dieses Runbook konkretisiert den bestehenden AppBasis-Merge- und Codex-Vertrag für die aktuelle M5→M6-Kette. Verbindlich bleiben:
 
-- tatsächlichen PR-Head vor jedem Review/Merge live lesen,
+- tatsächlichen PR-Head vor Review und Merge live lesen,
 - vollständige CI exakt auf diesem Head = PASS,
 - ChatGPT Diff-/Architektur-/Security-Prüfung abgeschlossen,
 - genau ein finaler Codex-Review auf dem tatsächlichen finalen Head,
@@ -19,15 +19,15 @@ Dieses Runbook konkretisiert den bestehenden AppBasis-Merge- und Codex-Vertrag f
 - danach neuen `main`-SHA lesen und Post-Merge-CI prüfen,
 - kein Merge aufgrund eines alten Handoffs oder einer alten CI.
 
-Alle SHA-/CI-Angaben in diesem Dokument sind **nur der heutige Vorbereitungssnapshot**. Am Ausführungstag werden `main`, alle offenen PRs, tatsächliche Heads, CI, Reviews, Threads und Mergeability erneut live geprüft.
+Alle SHA-/CI-Angaben hier sind nur ein Vorbereitungssnapshot. Am Ausführungstag werden `main`, alle offenen PRs, tatsächliche Heads, CI, Reviews, Threads und Mergeability erneut live geprüft.
 
-## 1. Heutiger Vorbereitungssnapshot
+## 1. Vorbereitungssnapshot
 
 Live verifiziert am 2026-08-19, 12:57 Europe/Vienna:
 
 - `main`: `e7fb8dbd5e76041109e2f045eabc50fc803c13a0`
 - offene PRs: 28
-- #163 `fix: harden final M5 evidence and exact-head CI`
+- #163
   - Base: `main`
   - Head: `ab0e2c609c96463ddc015a4227589d22f5a7f2b1`
   - Exact-Head-CI #1173: PASS
@@ -35,21 +35,22 @@ Live verifiziert am 2026-08-19, 12:57 Europe/Vienna:
   - Review-Threads: keine
   - mergeable: ja
   - Draft: ja
-- #165 `feat: prepare guarded ULC M6 production path`
+- #165
   - Base-Branch: `agent/m5-pre-codex-hardening` / #163
   - Base-SHA: `ab0e2c609c96463ddc015a4227589d22f5a7f2b1`
   - Head: `dc82bf4e4e89f7bc2261670f90a6bdc85743a727`
-  - isolierter Diff gegen #163: 12 Dateien
+  - isolierter Diff gegen seine aktuelle #163-Basis: 12 Dateien
   - Exact-Head-CI #1200: PASS
   - Reviews: keine
   - Review-Threads: keine
   - mergeable: ja
   - Draft: ja
-- Repository erlaubt Squash-Merge; `delete_branch_on_merge=false`.
+- Repository erlaubt Squash-Merge.
+- `delete_branch_on_merge=false`; der #163-Head-Branch wird durch den Merge nicht automatisch gelöscht.
 
-Dieser Snapshot autorisiert morgen nichts automatisch.
+Dieser Snapshot autorisiert am Ausführungstag nichts automatisch.
 
-## 2. Codex-Trigger – genau einmal
+## 2. Codex-Trigger – keine Doppeltrigger
 
 Der aktuell im Repository beobachtete Codex-Hinweis nennt drei mögliche Review-Trigger:
 
@@ -57,156 +58,137 @@ Der aktuell im Repository beobachtete Codex-Hinweis nennt drei mögliche Review-
 2. Draft als **Ready for review** markieren,
 3. `@codex review` kommentieren.
 
-Daraus folgt für die Credit-sparsame Arbeitsweise:
+Daraus folgt:
 
 **Nie gleichzeitig `Ready for review` und `@codex review` als zwei parallele Trigger verwenden.**
 
-Für einen noch als Draft geführten finalen PR ist der bevorzugte erste Trigger:
+Für einen finalen Draft-PR ist der bevorzugte erste Trigger:
 
 - genau einmal **Mark ready for review**,
 - danach keinen zusätzlichen `@codex review`-Kommentar senden,
-- erst das tatsächliche Codex-Ergebnis abwarten und gegen den gepinnten Head verifizieren.
+- das tatsächliche Codex-Ergebnis gegen den vorher gepinnten Head verifizieren.
 
-Wenn ein Codex-Review tatsächlich ein Finding meldet und nach dem Fix ein neuer Head entsteht, ist der PR bereits Ready. Der genau einmal zulässige Re-Review wird dann über **einen einzigen** expliziten `@codex review`-Kommentar ausgelöst, der den neuen finalen SHA nennt.
+Wenn der Ready-Event zusätzlich eine neue CI auf demselben Head startet, ist vor Merge **auch dieser neueste CI-Lauf vollständig PASS abzuwarten**. Ein älterer PASS-Lauf genügt dann nicht als aktuelles Merge-Gate.
+
+Wenn Codex ein echtes Finding meldet und nach dem Fix ein neuer Head entsteht, ist der PR bereits Ready. Der einmal zulässige Re-Review wird dann über **einen einzigen** expliziten `@codex review`-Kommentar ausgelöst, der den neuen finalen SHA nennt.
 
 ### Quota-/Toolfehler
 
-Wird der Codex-Review nachweislich **nicht ausgeführt**, z. B. wegen ausgeschöpftem Kontingent:
+Wird der Codex-Review nachweislich nicht ausgeführt, z. B. wegen Kontingent:
 
 - kein Merge,
-- kein wiederholtes Triggern solange die Ursache fortbesteht,
+- nicht blind erneut triggern,
 - Head unverändert lassen,
-- nach bestätigter Verfügbarkeit genau einen neuen expliziten Review-Trigger verwenden.
+- erst nach bestätigter Verfügbarkeit genau einen neuen expliziten Review-Trigger verwenden.
 
-Tritt derselbe Review-/Toolfehler zweimal ohne echten Fortschritt auf: **STOP gemäß Loop-Regel.**
+Tritt derselbe Review-/Toolfehler zweimal ohne Fortschritt auf: **STOP gemäß Loop-Regel.**
 
-## 3. Phase A – #163 M5 final reviewen
+## 3. Phase A – #163 final reviewen
 
 ### A0 – Live-Start-Gate
 
 Unmittelbar vor Codex:
 
-1. aktuelle Prüfzeit Europe/Vienna erfassen,
+1. Prüfzeit Europe/Vienna erfassen,
 2. `main` neu lesen,
-3. **alle** offenen PRs neu lesen,
+3. alle offenen PRs neu lesen,
 4. #163 tatsächlichen Head neu lesen,
-5. #163 Exact-Head-CI neu verifizieren,
-6. Reviews und Review-Threads neu lesen,
-7. Mergeability neu lesen.
+5. vollständige Exact-Head-CI verifizieren,
+6. Reviews und Review-Threads lesen,
+7. Mergeability lesen.
 
 ### A1 – Drift-Regel
 
-Nur wenn weiterhin sicher gilt:
+Codex nur auslösen, wenn:
 
-- #163 Head ist der tatsächlich geprüfte finale Head,
-- vollständige CI exakt auf diesem Head PASS,
-- ChatGPT-Review deckt exakt diesen Head ab,
-- keine neuen Blocking Findings/Threads,
-- PR mergeable,
+- #163 Head tatsächlich final ist,
+- vollständige CI exakt auf diesem Head PASS ist,
+- ChatGPT-Review exakt diesen Head abdeckt,
+- keine neuen Blocking Findings/Threads bestehen,
+- PR mergeable ist.
 
-darf Codex ausgelöst werden.
+Wenn `main` seit der letzten Integrationsprüfung geändert wurde, #163 nicht blind auf dem alten Base-Zustand reviewen. Zuerst die neue Base gegen #163 prüfen. Nur wenn notwendig den PR auf den aktuellen `main`-Stand ziehen; danach vollständige Exact-Head-CI und ChatGPT-Review erneut durchführen.
 
-Wenn `main` seit der letzten vollständigen Integrationsprüfung geändert wurde, wird #163 **nicht blind auf dem alten Head reviewed**. Zuerst den neuen Base-Zustand gegen #163 prüfen; nötigenfalls #163 auf den aktuellen `main`-Stand ziehen, vollständige Exact-Head-CI und ChatGPT-Review erneut durchführen. Erst der danach unveränderte Head ist Codex-fähig.
-
-### A2 – Erster und einziger normaler Codex-Trigger
+### A2 – Erster Codex-Trigger
 
 Wenn #163 weiterhin Draft ist:
 
-- #163 **genau einmal Ready for review markieren**,
-- **kein** zusätzlicher `@codex review`-Kommentar.
+- aktuellen Head pinnen,
+- #163 genau einmal **Ready for review** markieren,
+- keinen zusätzlichen `@codex review`-Kommentar senden.
 
-Vor dem Trigger den aktuellen SHA protokollieren. Nach dem Codex-Ergebnis erneut prüfen, dass der PR-Head seit dem Trigger nicht verändert wurde.
+Danach prüfen:
 
-### A3 – Codex-Ergebnis: kein Finding
+- wurde durch Ready eine neue CI gestartet? Dann muss deren vollständiger Lauf PASS sein,
+- welcher Codex-Abschluss gehört zum Trigger,
+- ist der PR-Head seit dem Trigger unverändert?
 
-Wenn Codex keine relevanten Findings meldet:
+### A3 – Kein Finding
 
-1. sicherstellen, dass der Review/positive Codex-Abschluss nach dem Trigger erfolgte,
-2. tatsächlichen #163-Head erneut lesen,
-3. bestätigen, dass er exakt dem vor Codex gepinnten SHA entspricht,
-4. CI exakt auf diesem Head weiterhin PASS,
-5. keine offenen relevanten Review-Threads,
-6. PR mergeable.
+Bei positivem Codex-Abschluss ohne relevantes Finding:
 
-Erst dann weiter zu Phase B.
+1. Head erneut lesen,
+2. Head muss exakt dem vor Codex gepinnten SHA entsprechen,
+3. alle CI-Läufe, die für diesen finalen Head durch den Ready-/Review-Vorgang entstanden sind, müssen vollständig PASS sein,
+4. keine offenen relevanten Threads,
+5. mergeable.
 
-### A4 – Codex-Ergebnis: echtes Finding
+Erst dann Phase B.
+
+### A4 – Echtes Finding
 
 Bei einem echten Finding:
 
-1. **nicht mergen**,
+1. nicht mergen,
 2. Finding fachlich prüfen,
-3. alle daraus erkannten zusammengehörigen Korrekturen gebündelt implementieren,
-4. neuen tatsächlichen Head erfassen,
+3. zusammengehörige Korrekturen gebündelt implementieren,
+4. neuen Head erfassen,
 5. vollständige Exact-Head-CI,
 6. vollständiger ChatGPT Diff-/Architektur-/Security-Review,
-7. wenn grün: genau **ein** Re-Review mit einem einzigen `@codex review` auf dem neuen SHA.
+7. wenn grün: genau ein Re-Review mit einem einzigen `@codex review` auf dem neuen SHA.
 
 Wenn dieser einmalige Re-Review ein weiteres echtes Finding meldet:
 
 - Finding beheben und CI/ChatGPT-Prüfung durchführen,
 - **keinen dritten Codex-Review automatisch auslösen**,
-- Merge bleibt blockiert, bis der Nutzer eine ausdrückliche Ausnahme vom normalen Review-Limit entscheidet.
+- Merge bleibt blockiert, bis der Nutzer ausdrücklich über eine Ausnahme entscheidet.
 
 ## 4. Phase B – #163 mergen
 
 ### B0 – Finales Merge-Gate
 
-Direkt vor dem Merge erneut live bestätigen:
+Direkt vor Merge erneut live bestätigen:
 
 - finaler #163-Head bekannt,
-- vollständige CI exakt auf diesem Head PASS,
-- Codex hat exakt den finalen unveränderten Head abgeschlossen,
+- vollständige aktuelle CI exakt auf diesem Head PASS,
+- Codex hat exakt diesen unveränderten Head abgeschlossen,
 - keine offenen relevanten Review-Threads/Blocker,
 - mergeable.
 
-### B1 – Merge-Methode
+### B1 – Merge
 
-Bevorzugt wird der etablierte Repository-Pfad:
+Bevorzugter Repository-Pfad:
 
 - **Squash merge**,
-- mit `expected_head_sha=<finaler #163 Head>`.
+- `expected_head_sha=<finaler #163 Head>`.
 
-Kein ungeschützter Merge, wenn der Head zwischen Prüfung und Merge wechseln könnte.
+### B2 – Post-Merge
 
-### B2 – Post-Merge-Gate
+Nach Merge:
 
-Nach erfolgreichem Merge:
+1. neuen `main`-SHA sofort lesen,
+2. #163 als tatsächlich merged bestätigen,
+3. Post-Merge-CI auf dem neuen `main` vollständig PASS prüfen.
 
-1. neuen `main`-SHA sofort live lesen,
-2. bestätigen, dass #163 tatsächlich merged ist,
-3. **Post-Merge-CI auf dem neuen `main` abwarten und vollständig PASS prüfen**,
-4. PR-CI von #163 darf nicht als Ersatz für Post-Merge-CI verwendet werden.
+PR-CI von #163 ist kein Ersatz für Post-Merge-CI.
 
 Post-Merge-CI FAIL oder unbekannt: **STOP. #165 noch nicht finalisieren.**
 
-## 5. Historische M5-PRs nach #163
+## 5. Historische M5-PRs danach schließen
 
-Erst nachdem #163 gemerged **und** die Post-Merge-CI auf `main` PASS ist, können die durch #163 vollständig ersetzten historischen M5-PRs geschlossen werden.
+Erst nach #163-Merge **und** erfolgreicher Post-Merge-CI auf `main` dürfen die durch #163 ersetzten historischen M5-PRs geschlossen werden:
 
-Aktuelle Closure-Liste:
-
-- #139
-- #142
-- #143
-- #144
-- #146
-- #147
-- #148
-- #149
-- #150
-- #151
-- #152
-- #153
-- #154
-- #155
-- #156
-- #157
-- #158
-- #159
-- #160
-- #161
-- #162
+#139, #142, #143, #144, #146, #147, #148, #149, #150, #151, #152, #153, #154, #155, #156, #157, #158, #159, #160, #161, #162.
 
 Für diese 21 PRs:
 
@@ -215,49 +197,67 @@ Für diese 21 PRs:
 - als `superseded by #163` schließen,
 - Traceability erhalten.
 
-Closure erst nach erfolgreichem #163-Post-Merge-Gate, damit bei einem vorherigen Codex-/Mergeproblem kein Rückweg unnötig zerstört wird.
-
 ## 6. Phase C – #165 sauber auf neuen `main` bringen
 
-#165 ist aktuell bewusst auf #163 gestapelt. Das Repository hat `delete_branch_on_merge=false`; der Base-Branch verschwindet daher beim #163-Merge nicht automatisch.
+#165 ist aktuell auf dem #163-Branch gestapelt. Nach einem Squash-Merge von #163 darf #165 **nicht nur blind auf `main` retargetet** werden: Die Squash-Commit-Abstammung kann sonst die alte #163-Historie in den Drei-Punkt-PR-Diff ziehen.
 
-Trotzdem darf #165 nach einem **Squash-Merge von #163** nicht einfach nur blind auf `main` umgestellt werden: Squash erzeugt eine neue Commit-Abstammung. Ein reines Retarget kann deshalb die alte #163-Historie in den Drei-Punkt-PR-Diff ziehen, obwohl der Inhalt bereits in `main` steckt.
+### C1 – Tatsächlichen Stack-Anker verwenden
 
-### C1 – Kanonischer Stack-Transfer
+Unmittelbar vor dem Stack-Transfer live lesen und pinnen:
 
-Nach #163-Post-Merge-CI PASS:
+- neuen `main`-SHA,
+- tatsächlichen #165-Head,
+- **tatsächlichen #165-Base-SHA**.
 
-1. neuen `main`-SHA pinnen,
-2. finalen #163-Head vor dem Squash als alten Stack-Anker pinnen,
-3. die **#165-spezifischen Commits/Änderungen nach diesem #163-Anker** auf den neuen `main` übertragen,
-4. bevorzugte Git-Semantik: `rebase --onto <new-main> <finaler-#163-head> <#165-branch>` oder ein äquivalenter frischer Branch/Cherry-pick ausschließlich der #165-spezifischen Commits,
-5. #165 anschließend auf `main` retargeten,
-6. tatsächlichen neuen #165-Head erfassen.
+Der für den Transfer maßgebliche Trennpunkt ist der **wirkliche Base-SHA von #165**, nicht pauschal der finale #163-Head.
 
-Wenn #163 aufgrund eines Codex-Findings vor dem Merge noch geändert wurde, bleibt der alte #165-Base-Anker für die Abgrenzung der #165-spezifischen Commits maßgeblich. Konflikte mit dem finalen #163-Fix müssen semantisch aufgelöst und vollständig neu geprüft werden.
+Das ist besonders wichtig, falls #163 durch ein Codex-Finding noch einen neuen Head erhalten hat:
 
-### C2 – Diff-Gate
+- wenn #165 vorher nicht auf diesen neuen #163-Head gezogen wurde, bleibt sein tatsächlicher alter Base-SHA der Stack-Anker,
+- nur wenn der neue #163-Head tatsächlich Base/Ancestor von #165 ist, darf er als Rebase-Trennpunkt verwendet werden.
 
-Der heutige #165-spezifische Ausgangsdiff gegen #163 umfasst 12 Dateien. Nach dem Stack-Transfer:
+### C2 – Kanonischer Transfer
 
-- prüfen, dass der Diff gegen den neuen `main` weiterhin nur den beabsichtigten M6-Slice enthält,
-- zusätzliche Dateien nur akzeptieren, wenn sie durch einen notwendigen Konflikt-/Integrationsfix klar erklärt sind,
-- kein stilles Wiederaufnehmen bereits durch #163 gemergter M5-Dateien,
+Die #165-spezifischen Commits/Änderungen nach seinem tatsächlichen Base-SHA auf den neuen `main` übertragen.
+
+Bevorzugte Git-Semantik:
+
+`git rebase --onto <new-main> <actual-#165-base-sha> <#165-branch>`
+
+oder ein äquivalenter frischer Branch/Cherry-pick ausschließlich der #165-spezifischen Commits.
+
+Danach:
+
+1. #165 auf `main` retargeten,
+2. tatsächlichen neuen #165-Head erfassen,
+3. Diff gegen neuen `main` prüfen.
+
+Konflikte mit einem späteren #163-Fix müssen semantisch gelöst und vollständig neu geprüft werden.
+
+### C3 – Diff-Gate
+
+Der heutige #165-spezifische Ausgangsdiff gegen seine aktuelle #163-Basis umfasst 12 Dateien.
+
+Nach Stack-Transfer:
+
+- Diff gegen neuen `main` muss nur den beabsichtigten M6-Slice enthalten,
+- zusätzliche Dateien nur mit klar erklärtem Integrationsfix,
+- keine still wiederaufgenommenen #163-M5-Dateien,
 - kein zweiter Generator-/Provider-/Security-Vertrag.
 
-Unerwartet großer oder historienbedingter Diff: **STOP und Stack bereinigen, bevor CI/Codex verbraucht wird.**
+Unerwartet großer/historienbedingter Diff: **STOP und Stack bereinigen, bevor CI oder Codex verbraucht wird.**
 
-### C3 – #165 neu validieren
+### C4 – #165 neu validieren
 
-Der heutige CI #1200 ist nach dem Stack-Transfer **nicht** das finale Merge-Gate, auch wenn der fachliche 12-Dateien-Slice unverändert erscheint.
+Der heutige CI #1200 ist nach dem Stack-Transfer nicht mehr das finale Merge-Gate.
 
 Erforderlich auf dem neuen tatsächlichen #165-Head:
 
 1. vollständige literal Exact-Head-CI,
 2. vollständiger ChatGPT Diff-/Architektur-/Security-/Operations-Review,
-3. alle Findings gebündelt korrigieren,
-4. erneute Exact-Head-CI falls sich der Head geändert hat,
-5. keine offenen relevanten Review-Threads,
+3. Findings gebündelt korrigieren,
+4. nach jeder Head-Änderung vollständige Exact-Head-CI erneut,
+5. keine offenen relevanten Threads,
 6. mergeable.
 
 Erst dann Codex.
@@ -268,11 +268,13 @@ Erst dann Codex.
 
 ### D1 – Codex
 
-Wenn der neue #165-Head final, CI-grün und ChatGPT-geprüft ist:
+Wenn #165 final, CI-grün und ChatGPT-geprüft ist:
 
-- genau einmal **Ready for review** als normaler Codex-Trigger,
+- Head pinnen,
+- genau einmal **Ready for review** als normalen Codex-Trigger,
 - kein paralleler `@codex review`-Kommentar,
-- bei echtem Finding dieselbe Ein-Re-Review-Regel wie für #163.
+- falls Ready eine neue CI startet: diesen neuesten Lauf vor Merge vollständig PASS abwarten,
+- bei echtem Finding dieselbe Ein-Re-Review-Regel wie bei #163.
 
 ### D2 – Merge
 
@@ -281,57 +283,58 @@ Nur bei vollständigem Merge-Gate:
 - Squash merge bevorzugt,
 - `expected_head_sha=<finaler #165 Head>`,
 - danach neuen `main`-SHA lesen,
-- Post-Merge-CI auf dem neuen `main` vollständig PASS prüfen.
+- Post-Merge-CI vollständig PASS prüfen.
 
-Ein Merge von #165 autorisiert **keinen** Provider-Write, kein Deployment und keine Produktionsfreigabe.
+#165-Merge autorisiert keinen Provider-Write, kein Deployment und keine Produktionsfreigabe.
 
-## 8. Was morgen ausdrücklich nicht parallelisiert wird
+## 8. Parallelisierung und Credit-Priorität
 
-Während #163 durch Codex-/Merge-/Post-Merge-Gate läuft:
+Während #163 durch Codex/Merge/Post-Merge läuft:
 
-- #165 wird nicht gleichzeitig final-Codex-reviewed,
-- kein paralleler Security-/Runtime-Fundament-PR wird gemerged,
-- #164/#134 erhalten nicht vorsorglich ebenfalls Codex-Reviews,
+- #165 nicht gleichzeitig final-Codex-reviewen,
+- keinen parallelen Security-/Runtime-Fundament-PR mergen,
+- #164/#134 nicht vorsorglich ebenfalls mit Codex reviewen,
 - #135 bleibt Vorbereitungsstrang.
 
-Nach #163-Post-Merge PASS wird #165 der aktive abhängige M6-Strang.
+Danach wird #165 der aktive abhängige M6-Strang.
 
-Damit bleiben maximal:
+Priorität:
 
-- **Strang A:** #163 → danach #165 seriell auf derselben M5/M6-Grenze,
-- **Strang B:** nur ein klar unabhängiger Strang, falls tatsächlich sinnvoll,
-- **Vorbereitung:** #135.
+1. #163,
+2. #163 Post-Merge-CI,
+3. historische M5-PRs schließen,
+4. #165 sauber auf neuen `main` übertragen,
+5. #165 Exact-Head-CI + ChatGPT-Review,
+6. #165 finaler Codex,
+7. #165 Merge + Post-Merge-CI.
 
-Credit-Priorität bleibt #163, danach #165.
+## 9. Andere PRs nicht vorziehen
 
-## 9. Verbleibende andere PRs
-
-Nicht Teil des unmittelbaren M5→M6-Codex-Pfads:
-
-- #164: eigenständiger M4-Acceptance-Dokument-PR; nach geändertem `main` neu auf aktuellen Stand ziehen, Exact-Head-CI + ChatGPT-Review, dann genau ein finaler Codex.
-- #136 + #166: später zu einem finalen UI-Slice auf aktuellem `main` konsolidieren; nicht zwei Codex-Reviews verbrauchen.
-- #134: Reference-Control-Plane-Pfad; später auf aktuellen `main` bringen und final reviewen, nicht vor der ULC-kritischen Kette priorisieren.
-- #135: Vorbereitungs-/Evidence-Dokumentation; kein Codex solange der Prep-Strang noch bewusst erweitert wird.
+- #164: später auf aktuellen `main` ziehen → Exact-Head-CI → ChatGPT-Review → ein finaler Codex.
+- #136 + #166: später als ein finaler UI-Slice auf aktuellem `main` konsolidieren; nicht zwei Codex-Reviews verbrauchen.
+- #134: Reference-Control-Plane später auf aktuellen `main` bringen; nicht vor der ULC-kritischen Kette priorisieren.
+- #135: Vorbereitungs-/Evidence-Dokumentation; kein Codex solange bewusst weiter vorbereitet wird.
 
 ## 10. Harte Stop-Regeln
 
-Sofort stoppen und **keinen weiteren Codex-Credit verbrauchen**, wenn mindestens eines gilt:
+Keinen weiteren Codex-Credit verbrauchen, wenn:
 
-- tatsächlicher Head ist nicht der erwartete final geprüfte Head,
-- CI ist nicht vollständig PASS exakt auf diesem Head,
-- `main`-Drift wurde nicht bewertet,
-- Review-/Mergeability-Zustand ist unklar,
-- Codex-Review bezieht sich auf einen älteren Commit,
-- derselbe Codex-/Toolfehler tritt zweimal ohne Fortschritt auf,
-- einmaliger Re-Review hat ein weiteres Finding erzeugt und ein dritter Review wäre nötig,
-- #165-Diff nach dem Squash-Stack-Transfer enthält unerwartet die alte M5-Historie,
-- Post-Merge-CI auf `main` ist nicht PASS.
+- tatsächlicher Head nicht der erwartete geprüfte Head ist,
+- aktuelle vollständige CI nicht PASS exakt auf diesem Head ist,
+- `main`-Drift nicht bewertet wurde,
+- Review-/Mergeability-Zustand unklar ist,
+- Codex sich auf einen älteren Commit bezieht,
+- derselbe Codex-/Toolfehler zweimal ohne Fortschritt auftritt,
+- der einmalige Re-Review erneut ein Finding erzeugt und ein dritter Review nötig wäre,
+- #165-Stack-Anker nicht eindeutig ist,
+- #165-Diff nach Squash-Transfer unerwartet alte M5-Historie enthält,
+- Post-Merge-CI auf `main` nicht PASS ist.
 
 ## 11. Produktionsgrenze
 
 Dieses Runbook endet bei Repository-Merge und Post-Merge-CI.
 
-Es autorisiert insbesondere **nicht**:
+Es autorisiert nicht:
 
 - Neon-/Cloudflare-Ressourcen,
 - Logging-Sink-/Tail-Worker-Erstellung,
