@@ -19,7 +19,7 @@ Für ULC v0.1 gilt:
 - kein öffentlicher Permission-Probe-Endpunkt,
 - keine Fachmodul-Datenmutation; aktueller App-Vertrag hat `modules: []`,
 - ein grüner Smoke autorisiert **niemals** das getrennte Release-Gate,
-- normale weitere Benutzer/Rollen werden erst nach erfolgreichem kontrolliertem Production-Smoke und später über den kanonischen Rollenverwaltungsweg angelegt.
+- normale weitere Benutzer/Rollen werden erst nach erfolgreichem kontrolliertem Production-Smoke und einer getrennten bewussten Provisioning-Entscheidung über den kanonischen Rollenverwaltungsweg angelegt; das ist nicht automatisch mit dem Release-Gate gekoppelt.
 
 ## 2. Gefundenes #165-Sequenz-Finding
 
@@ -265,13 +265,13 @@ Bleibt bestehen. Er darf durch Smoke-Cleanup niemals entfernt, downgraded oder a
 
 ## 12. Normale Benutzer nach dem Smoke
 
-Erst nachdem:
+Nach einem vollständig erfolgreichen Production-Smoke dürfen normale reale Benutzer **nur über die bestehende Rollenverwaltung und nach einer separaten bewussten Provisioning-Freigabe** eingeladen/angelegt werden.
 
-- Smoke vollständig PASS,
-- Smoke-Cleanup kontrolliert,
-- Release-Gate später ausdrücklich freigegeben,
+Das Release-Gate bleibt davon getrennt:
 
-werden normale reale Benutzer über die bestehende Rollenverwaltung eingeladen/angelegt.
+- ein erfolgreicher Smoke autorisiert weder Benutzeranlage noch Release automatisch,
+- eine bewusste Benutzer-Provisioning-Entscheidung ist keine Production-Release-Freigabe,
+- eine Production-Release-Freigabe legt nicht automatisch zusätzliche Benutzer an.
 
 Keine direkte SQL-Benutzeranlage, keine Default-Massenrollen, kein zweiter Admin nur aus Bequemlichkeit.
 
