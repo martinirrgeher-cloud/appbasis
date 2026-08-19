@@ -66,17 +66,23 @@ Erforderlich für die erste reale ULC-Produktion:
 - [ ] **EVIDENCE:** keine unerwartete personenbezogene Persistenz über KV, D1, R2, Durable Objects oder andere Cloudflare-Persistenzdienste.
 - [ ] **EVIDENCE:** Runtime- und Production-Bindings müssen exakt zum aktuellen freigegebenen ULC-Runtime-Vertrag passen.
 
-### 1.3 Noch bewusst nicht festgelegte Cloudflare-Details
+### 1.3 Bereits bestätigter Hostname und noch offene Providerdetails
 
-Folgende Werte werden **nicht** in diesem Vorbereitungsstrang erfunden:
+Bereits als nicht geheimer Operator-Input bestätigt:
+
+- Produktionshostname: `app.ulc-linz.at`
+- kanonischer Origin: `https://app.ulc-linz.at`
+
+Diese Bestätigung führt **keinen** DNS-, Domain-, Route-, TLS- oder `APPBASIS_BASE_URL`-Write aus. Unmittelbar vor dem späteren Ingress-Write müssen DNS-Kontrolle, freie Belegung, Ziel-Worker und TLS-Zustand erneut read-only geprüft werden.
+
+Folgende Providerdetails werden weiterhin **nicht** in diesem Vorbereitungsstrang erfunden:
 
 - finaler Worker-/Service-Name,
 - Provider-ID,
 - Hyperdrive-ID,
-- finaler Produktionshostname,
 - Deployment-Credential-Namen eines noch nicht finalisierten M6-Workflows.
 
-**SOL-ENTSCHEIDUNG vor Domain-Write:** Die Produktion soll genau den bewusst freigegebenen öffentlichen Origin besitzen. Ob `workers.dev` für den öffentlichen ULC-Worker deaktiviert wird, muss der konkrete M6-Produktionsvertrag explizit festlegen; ein unbeabsichtigter zweiter öffentlicher Origin ist nicht zulässig.
+Der aktuelle #165-Vertrag bereitet den sicheren Ingress-Grundsatz bereits vor: `workers.dev=false`, Preview URLs aus und kein öffentlicher Zwischenzustand vor der bewussten Domain-Aktivierung. Vor dem Domain-Write wird dieser Vertrag am tatsächlichen finalen Head erneut live geprüft; ein unbeabsichtigter zweiter öffentlicher Origin ist nicht zulässig.
 
 ---
 
@@ -104,21 +110,22 @@ Zusätzliche Deployment-/Logging-Credentials werden erst benannt, wenn der konkr
 
 ## 3. Produktions-Domain
 
-Pflichtanforderung:
+Bestätigter geplanter Zielzustand:
 
-- eigene Internetadresse / eigener Produktionshostname für ULC,
+- Hostname `app.ulc-linz.at`,
+- kanonischer Origin `https://app.ulc-linz.at`,
 - HTTPS-only,
-- `APPBASIS_BASE_URL` muss exakt diesem freigegebenen Origin entsprechen,
+- `APPBASIS_BASE_URL` muss beim späteren Write exakt diesem freigegebenen Origin entsprechen,
 - Domain/Route muss eindeutig auf den dedizierten ULC-Produktions-Worker zeigen,
 - keine Preview-/Test-Domain darf als Produktion wiederverwendet werden,
 - Factory/UI zeigt später die benutzerverständliche Domain, nicht Provider-IDs.
 
-### Spätere Nutzerentscheidung
+### Noch vor dem späteren Ingress-Write erforderlich
 
-- [ ] **MANUELL:** exakten gewünschten Produktionshostname nennen/bestätigen.
-- [ ] **MANUELL:** bestätigen, dass die Domain DNS-seitig kontrolliert werden darf.
-- [ ] **MANUELL:** bestätigen, ob der gewünschte Host bereits anderweitig verwendet wird.
-- [ ] **SOL-ENTSCHEIDUNG:** finalen Ingress-Vertrag einschließlich `workers.dev`/Custom-Domain-Verhalten festlegen.
+- [x] **MANUELL:** gewünschten Produktionshostname `app.ulc-linz.at` und Origin `https://app.ulc-linz.at` bestätigt.
+- [ ] **READ/MANUELL:** DNS-Kontrolle unmittelbar vor dem Write bestätigen.
+- [ ] **READ:** bestehende Belegung/Kollision unmittelbar vor dem Write prüfen.
+- [ ] **READ:** finalen Ingress-Vertrag auf dem tatsächlichen M6-Head einschließlich `workers.dev=false`, deaktivierter Preview URLs und genau einer freigegebenen öffentlichen Origin bestätigen.
 - [ ] **WRITE-FREIGABE:** erst danach DNS-/Custom-Domain-/Route-Write ausführen.
 
 ---
@@ -276,7 +283,8 @@ Diese Punkte sollen im M6-Durchlauf **vor** dem jeweiligen möglichen Blocker ab
 
 ### Gate U0 – Zielidentität
 
-- [ ] **MANUELL:** exakten Produktionshostname bestätigen.
+- [x] **MANUELL:** geplanter Produktionshostname `app.ulc-linz.at` und Origin `https://app.ulc-linz.at` als Operator-Input bestätigt.
+- [ ] **READ/MANUELL:** DNS-Kontrolle und freie Belegung unmittelbar vor dem Ingress-Write bestätigen.
 - [ ] **MANUELL:** zuständigen Cloudflare-Account und Neon-Account bestätigen.
 - [ ] **MANUELL:** bestätigen, unter welcher juristischen Person / welchem Betreibervertrag ULC läuft.
 
@@ -415,9 +423,9 @@ Der Vorbereitungsstrang gilt dokumentarisch als fertig, wenn:
 - [x] Backup-/Restore-/Reconciliation-Nachweis definiert ist,
 - [x] alle produktiven/manuellen Betreiberfreigaben U0–U6 sichtbar sind,
 - [x] 35-Tage-Lifecycle-/Backup-Grenze als eigener Architekturblocker markiert ist,
-- [ ] konkrete Domain vom Nutzer bestätigt ist,
+- [x] konkrete Domain/Origin als Operator-Input bestätigt: `app.ulc-linz.at` / `https://app.ulc-linz.at`,
 - [ ] Logging-Sink per Sol-Architekturentscheidung ausgewählt ist,
 - [ ] konkrete Providerpläne/Kosten unmittelbar vor Write live geprüft und vom Nutzer freigegeben sind,
-- [ ] keine reale Providerressource für diesen Preflight erzeugt oder verändert wurde.
+- [x] keine reale Providerressource wurde **durch diesen Preflight** erzeugt oder verändert.
 
-Bis zu diesen späteren Freigaben darf die Factory keine erfolgreiche Produktionsfreigabe anzeigen.
+Bis zu den späteren Freigaben darf die Factory keine erfolgreiche Produktionsfreigabe anzeigen.
