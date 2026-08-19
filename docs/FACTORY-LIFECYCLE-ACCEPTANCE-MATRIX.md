@@ -1,6 +1,6 @@
 # AppFactory – Lifecycle Acceptance Matrix
 
-Stand: 2026-08-18
+Stand: 2026-08-19
 
 ## Zweck
 
@@ -9,58 +9,52 @@ Diese Matrix beschreibt die benutzerverständliche Lifecycle-Semantik, die AppFa
 Verbindliche Grenzen:
 
 - Preview und Produktion bleiben getrennte Lebenszyklen.
-- Bestehende Preview-, M5- und M6-Verträge bleiben die fachlichen Wahrheitsquellen.
+- Bestehende Preview-, M5-, M6- und Recovery-Verträge bleiben die fachlichen Wahrheitsquellen.
 - Ein fehlender, widersprüchlicher oder nicht vertrauenswürdig gebundener Nachweis führt fail-closed zu `offen`/`gesperrt`.
-- Eine technische Readiness darf keine Produktionsfreigabe automatisch autorisieren.
-- Eine Produktionsfreigabe erfordert weiterhin eine separate ausdrückliche Nutzerfreigabe.
+- Technische Readiness autorisiert keine Produktionsfreigabe automatisch.
+- Produktive Writes benötigen weiterhin ihre jeweilige ausdrückliche Schrittfreigabe.
+- Der finale Release benötigt zusätzlich eine separate ausdrückliche Release-Freigabe.
 - Provider-IDs, Datenbankadressen, Connection Strings und Secretwerte gehören nicht in die normale Factory-UI.
 - Diese Matrix erzeugt weder Providerwrites noch Deployment-, Migrations- oder Release-Aktionen.
 
-## Ziel-Lifecycle aus FC1
+## Verbindliche Terminologie gemäß ADR-023
 
-Der vollständige FC1-Zielzustand unterscheidet mindestens:
+1. **Security & Privacy Ready** = exakt M5, alle zwölf Pflichtkriterien auf gültiger Evidence.
+2. **Production Ready** = vollständiger technischer Pre-Release-Zustand der konkreten App.
+3. **Produktion freigegeben** = Production Ready plus separate ausdrückliche finale Release-Freigabe und erfolgreiches Release-Gate.
 
-1. Repository erzeugt
-2. Preview vorbereitet
-3. Preview deployed
-4. Preview geprüft
-5. Production Ready
-6. Produktion freigegeben
+Das bestehende interne M5-Feld `productionReady` darf aus Kompatibilitätsgründen zunächst bestehen bleiben, ist aber fachlich nur das M5-/Security-&-Privacy-Gate. Die UI darf daraus nicht allein den umfassenden Zustand Production Ready ableiten.
 
-Der aktuelle UI-Slice aus #166 fasst die Preview-Phase noch kompakter zusammen. Das ist als Zwischenschritt zulässig; für FC1 muss die Oberfläche die drei Preview-Zustände später unterscheidbar machen, ohne einen zweiten Lifecycle-Vertrag zu erfinden.
+## Ziel-Lifecycle
 
-## Wichtiger Terminologie-/Gate-Befund
+1. Entwurf
+2. Repository erzeugt
+3. Preview vorbereitet
+4. Preview deployed
+5. Preview geprüft
+6. Security & Privacy Ready
+7. Production Ready
+8. Produktion freigegeben
 
-Die aktuellen Projektquellen verwenden **`Production Ready` in zwei unterschiedlich breiten Bedeutungen**:
-
-1. Der Meilenstein **M5 – Production Security & Privacy Ready v0.1** setzt sein internes Gate auf `Production Ready = false`, sobald eines seiner zwölf Security-/Privacy-Kriterien fehlt. Der aktuelle Repository-Pfad verwendet dafür ebenfalls das Feld `productionReady`.
-2. Die spätere Roadmap-Definition **„Production Ready v0.1“** ist breiter: zusätzlich zu Factory Ready verlangt sie Backup/DR, realen Restore, M5 Security/Privacy, getrennte Produktionsdatenbank und Produktions-Worker, kontrollierte Domain und Migrationen, ausdrückliche Freigabe sowie grünen Post-Deploy-Smoke.
-3. FC1 führt gleichzeitig **Production Ready** und **Produktion freigegeben** als zwei getrennte Lifecycle-Zustände.
-
-Damit ist die derzeitige #166-Bezeichnung `Production Ready` für den engeren M5-Status **noch keine belastbare finale FC1-Semantik**. Diese Datei entscheidet den Widerspruch nicht still.
-
-### Sichere Empfehlung für die spätere Sol-Entscheidung
-
-Bis die Terminologie verbindlich geklärt ist:
-
-- den engeren M5-Zustand fachlich als **Security & Privacy Ready** behandeln,
-- `Production Ready` im Lifecycle für den vollständigen, kanonisch definierten Pre-Release-Zustand reservieren,
-- `Produktion freigegeben` erst nach dem separaten Release-Gate darstellen,
-- ausdrücklich klären, welche der in der Roadmap genannten „ausdrücklichen Freigaben“ Voraussetzung für Production Ready ist und welche die eigentliche Release-Autorisierung darstellt.
-
-Wenn diese Grundsatzsemantik geändert oder präzisiert wird, muss zuerst das Entscheidungsregister und danach die Betriebsakte/Roadmap konsistent aktualisiert werden. Erst danach darf die UI sie als endgültigen Vertrag festschreiben.
+Der aktuelle UI-Zwischenslice darf Preview noch kompakter darstellen. Für FC1 müssen die drei Preview-Zustände später unterscheidbar sein, ohne einen zweiten Lifecycle-Vertrag zu erfinden.
 
 ## Acceptance-Matrix
 
 | Zustand | Darf als erreicht erscheinen, wenn | „Was fehlt noch?“ | Nächster sicherer Schritt | Nicht zulässig |
 |---|---|---|---|---|
-| **Repository erzeugt** | kanonischer Generator-/Repositoryvertrag für die App erfolgreich vorliegt | fehlende/ungültige Repository- oder Manifestbestandteile | Repository-/Generatorstatus klären bzw. fehlende zulässige Konfiguration vervollständigen | aus Repository-Erfolg ein Preview- oder Production-Ergebnis ableiten |
-| **Preview vorbereitet** | Preview-Voraussetzungen, erwartete Runtime-/Package-/DB-Manifest-Verträge und notwendige Preview-Konfiguration vollständig vorbereitet sind | konkrete fehlende Preview-Voraussetzungen in benutzerverständlicher Form | Preview-Deployment vorbereiten bzw. freigeben | „deployed“ anzeigen, solange keine echte Deployment-Evidence vorliegt |
-| **Preview deployed** | die vorgesehene Preview tatsächlich bereitgestellt und an die getrennte Preview-/Test-Infrastruktur gebunden ist | fehlende Deployment-/Binding-/Health-Evidence | Preview prüfen | Preview-Deployment als Production-Deployment umetikettieren |
-| **Preview geprüft** | die reale Preview mit den vorgesehenen Tests/Smokes geprüft und ausdrücklich akzeptiert ist | fehlende oder fehlgeschlagene Preview-Prüfungen | offene Readiness-Gates bearbeiten | aus erfolgreicher Preview automatisch Security/Privacy Ready, Production Ready oder Release ableiten |
-| **Security & Privacy Ready (M5, Detailgate)** | alle kanonischen M5-Kriterien auf realer, gültiger Evidence erfüllt sind | ausschließlich die vom kanonischen M5-Gate als offen gemeldeten Punkte | verbleibende technische Production-Readiness-Voraussetzungen bearbeiten | den M5-Status allein als endgültiges FC1-`Production Ready` ausgeben, solange die Terminologie nicht geklärt ist |
-| **Production Ready (FC1-Ziel, Semantik zu finalisieren)** | der künftig verbindlich definierte vollständige Pre-Release-Vertrag erfüllt ist; mindestens dürfen keine noch erforderlichen Preview-, Security/Privacy-, Recovery-, Ressourcen-, Migrations-, Deployment- oder Smoke-Gates offen sein | alle vom kanonischen Gesamtvertrag noch offenen Voraussetzungen | bei vollständiger technischer Readiness nur noch den ausdrücklich definierten Freigabe-/Release-Schritt anbieten | aus M5 allein oder aus Teil-M6-Evidence Production Ready ableiten; Release automatisch autorisieren |
-| **Produktion freigegeben** | der vollständige technische Vertrag erfüllt ist **und** das separate Release-Gate die ausdrückliche Produktionsfreigabe erhalten hat | offene technische Nachweise bzw. fehlende Release-Autorisierung | bei fehlender Evidence: Nachweis klären; bei vollständiger Evidence: ausdrückliche Release-Freigabe einholen | aus vollständiger technischer Evidence automatisch freigeben oder einen ungesicherten Produktionsbutton aktivieren |
+| **Repository erzeugt** | kanonischer Generator-/Repositoryvertrag erfolgreich vorliegt | fehlende/ungültige Repository- oder Manifestbestandteile | Repository-/Generatorstatus klären | aus Repository-Erfolg Preview oder Produktion ableiten |
+| **Preview vorbereitet** | Preview-Voraussetzungen, Runtime-/Package-/DB-Manifest-Verträge und notwendige Preview-Konfiguration vollständig vorbereitet sind | konkrete fehlende Preview-Voraussetzungen | Preview-Deployment vorbereiten bzw. freigeben | „deployed“ ohne reale Deployment-Evidence anzeigen |
+| **Preview deployed** | Preview real bereitgestellt und an getrennte Preview-/Test-Infrastruktur gebunden ist | fehlende Deployment-/Binding-/Health-Evidence | Preview prüfen | Preview als Production-Deployment umetikettieren |
+| **Preview geprüft** | reale Preview mit vorgesehenen Tests/Smokes geprüft und akzeptiert ist | fehlende oder fehlgeschlagene Preview-Prüfungen | offene Readiness-Gates bearbeiten | aus Preview automatisch spätere Gates ableiten |
+| **Security & Privacy Ready** | alle zwölf kanonischen M5-Kriterien auf realer, gültiger und gemeinsam vertrauenswürdig gebundener Evidence erfüllt sind | vom kanonischen M5-Gate gemeldete offene Punkte | verbleibende Production-Readiness-Voraussetzungen bearbeiten | M5 allein als umfassendes Production Ready ausgeben |
+| **Production Ready** | Preview geprüft, Security & Privacy Ready, Backup/Recovery inkl. realem Restore, dedizierte Produktionsressourcen, kontrollierte Migrationen und Deployment, produktive Benutzer/Rechte, grüne Post-Deploy-Smokes sowie alle weiteren kanonischen technischen Pre-Release-Gates erfüllt sind; keine relevanten Blocker offen | alle vom kanonischen Gesamtvertrag noch offenen Voraussetzungen | bei vollständiger technischer Readiness finale Release-Freigabe einholen | aus M5 allein oder Teil-M6-Evidence ableiten; Release automatisch autorisieren |
+| **Produktion freigegeben** | Production Ready erfüllt ist und das separate Release-Gate eine ausdrückliche finale Release-Freigabe besitzt | fehlende technische Evidence oder fehlende finale Release-Autorisierung | bei vollständiger Readiness: ausdrückliche Release-Freigabe; sonst offenen Nachweis schließen | aus technischer Evidence automatisch freigeben |
+
+## Schrittfreigaben versus finale Release-Freigabe
+
+Mutierende Produktionsvorbereitungsschritte wie Provider-Create, Binding, Secret-/Runtime-Konfiguration, Logging-Sink, Migration, Deployment, Access-Bootstrap, Public Ingress, Restore und Production-Smokes benötigen jeweils eine eigene ausdrückliche Freigabe.
+
+Diese Schrittfreigaben sind Teil des kontrollierten Wegs zu Production Ready. Sie ersetzen **nicht** die separate finale Release-Freigabe für `Produktion freigegeben`.
 
 ## Anzeige „Was fehlt noch?“
 
@@ -72,12 +66,10 @@ Pflichtverhalten:
 - keine erfundenen Success-Zustände,
 - keine Provideridentitäten oder internen Bindingdaten als Ersatz für verständliche Kriterien anzeigen,
 - mehrere offene Punkte vollständig und deterministisch anzeigen,
-- bei nicht validierbarer Evidence lieber `Status klären` als einen teilweise erfolgreichen Zustand behaupten,
-- M5 und die umfassendere Production-Readiness nicht unter demselben Label zusammenfallen lassen, bevor der Vertragskonflikt geklärt ist.
+- bei nicht validierbarer Evidence lieber `Status klären` als Teilerfolg behaupten,
+- Security & Privacy Ready und umfassendes Production Ready getrennt darstellen.
 
 ## Nächster sicherer Schritt
-
-Es darf immer nur ein Schritt empfohlen werden, der aus dem **letzten sicher bestätigten Zustand** folgt.
 
 Priorität:
 
@@ -86,66 +78,46 @@ Priorität:
 3. Preview vorbereiten,
 4. Preview deployen,
 5. Preview prüfen,
-6. offene M5 Security-/Privacy-Kriterien schließen,
+6. offene M5-/Security-&-Privacy-Kriterien schließen,
 7. verbleibende Recovery-/Produktionsressourcen-/Migrations-/Deployment-/Smoke-Gates schließen,
-8. erst bei vollständig geklärter technischer Readiness die definierte ausdrückliche Release-Freigabe einholen.
+8. erst bei vollständigem Production Ready die separate finale Release-Freigabe einholen.
 
-Ein empfohlener nächster Schritt ist **keine Ausführungsautorisierung**. Externe oder produktive Writes bleiben separat freigabepflichtig.
+Ein empfohlener nächster Schritt ist **keine Ausführungsautorisierung**.
 
 ## Fail-closed-/Fehlerzustände
 
 ### Inkonsistente Preview-Evidence
 
-Beispiele:
-
-- Status behauptet „bereit“, aber erforderlicher Runtime-/Manifestnachweis fehlt.
-- Preview wird als deployed gemeldet, obwohl keine bindbare Deployment-Evidence existiert.
-- Preview wird als geprüft gemeldet, obwohl die vorgesehenen Prüfungen nicht erfolgreich nachgewiesen sind.
-
-Erwartung:
-
-- betroffener Zustand bleibt offen,
-- nachfolgende Zustände bleiben gesperrt,
-- UI zeigt `Preview-Status klären` oder gleichwertig,
-- keine schreibende Aktion wird dadurch freigeschaltet.
+Bei widersprüchlicher Preview-Evidence bleibt der betroffene Zustand offen, alle nachfolgenden Zustände gesperrt und die UI zeigt `Preview-Status klären` oder gleichwertig. Keine schreibende Aktion wird dadurch freigeschaltet.
 
 ### M5/M6-Widerspruch
 
-Beispiel: M6 behauptet Security/Privacy bereit, während der kanonische M5-Status nicht erfüllt ist.
+Behauptet M6 Security/Privacy bereit, während M5 nicht erfüllt ist, bleiben Production Ready und Release gesperrt. Der Widerspruch wird nicht schöngerechnet.
 
-Erwartung:
+### Vollständige technische Evidence ohne finale Release-Freigabe
 
-- Production Ready/Release bleibt gesperrt,
-- UI zeigt `Freigabe-Status klären` oder gleichwertig,
-- der Widerspruch darf nicht schöngerechnet werden.
+Production Ready darf als vollständig erscheinen. Der Lifecycle bleibt trotzdem vor `Produktion freigegeben`, bis die separate finale Release-Freigabe vorliegt. Nächster sicherer Schritt ist sinngemäß `Ausdrückliche Produktionsfreigabe erforderlich`. Kein Auto-Release.
 
-### Vollständige technische Evidence ohne Release-Freigabe
+## Acceptance-Szenarien
 
-Erwartung:
-
-- technische Readiness kann als vollständig erscheinen, sobald der dafür kanonisch definierte Vertrag erfüllt ist,
-- Lifecycle bleibt vor `Produktion freigegeben`, solange das separate Release-Gate keine ausdrückliche Nutzerfreigabe besitzt,
-- nächster sicherer Schritt lautet sinngemäß `Ausdrückliche Produktionsfreigabe erforderlich`,
-- kein Auto-Release.
-
-## Acceptance-Szenarien für die spätere FC1-Umsetzung
-
-1. Repository vollständig, Preview noch nicht vorbereitet → genau `Preview vorbereiten` ist der nächste sichere Schritt.
-2. Preview vorbereitet, aber nicht deployed → `Preview deployen`; spätere Readiness bleibt gesperrt.
-3. Preview deployed, aber nicht geprüft → `Preview prüfen`; spätere Readiness bleibt gesperrt.
-4. Preview geprüft, M5 11/12 → exakt das fehlende M5-Kriterium bleibt sichtbar; M5 Security & Privacy Ready ist false.
-5. M5 12/12, weitere technische Production-Gates offen → M5 ist erfüllt, **volles Production Ready bleibt offen**.
-6. Alle kanonischen technischen Pre-Release-Gates erfüllt, keine separate Release-Autorisierung → keine Produktionsfreigabe, kein Auto-Release.
+1. Repository vollständig, Preview noch nicht vorbereitet → `Preview vorbereiten`.
+2. Preview vorbereitet, aber nicht deployed → `Preview deployen`.
+3. Preview deployed, aber nicht geprüft → `Preview prüfen`.
+4. Preview geprüft, M5 11/12 → exakt das fehlende M5-Kriterium bleibt sichtbar; Security & Privacy Ready ist false.
+5. M5 12/12, weitere technische Production-Gates offen → Security & Privacy Ready erfüllt, Production Ready offen.
+6. Alle technischen Pre-Release-Gates erfüllt, keine finale Release-Autorisierung → Production Ready erfüllt, Produktion freigegeben bleibt false.
 7. Widersprüchliche Preview-/M5-/M6-Evidence → fail-closed `Status klären`.
-8. Unbekannte neue Pflichtkriterien → UI darf nicht still als vollständig weiterlaufen; Vertrag muss bewusst aktualisiert werden.
-9. Provider-Evidence enthält interne IDs/Adressen → normale UI zeigt ausschließlich semantische, sanitizierte Readiness-Information.
-10. Preview-/Production-Ressourcen sind identisch → Lifecycle darf nicht als korrekt getrennt akzeptiert werden.
-11. M5-internes `productionReady=true`, aber der umfassende Roadmap-Vertrag ist noch nicht erfüllt → UI darf daraus nicht ungeprüft FC1-`Production Ready` machen.
+8. Unbekannte neue Pflichtkriterien → nicht still als vollständig weiterlaufen; Vertrag bewusst aktualisieren.
+9. Provider-Evidence enthält interne IDs/Adressen → normale UI zeigt nur semantische, sanitizierte Readiness-Information.
+10. Preview-/Production-Ressourcen sind identisch → Lifecycle nicht als korrekt getrennt akzeptieren.
+11. internes M5-`productionReady=true`, aber umfassender technischer Vertrag offen → UI darf daraus kein Production Ready machen.
+12. alle mutierenden Vorbereitungsschritte waren einzeln freigegeben, aber finale Release-Freigabe fehlt → kein Release.
 
-## Abgrenzung zu #136/#166
+## Abgrenzung zum finalen Factory-Readiness-Integrationsslice
 
 - #136 macht die zehn bestehenden M6-Kriterien read-only sichtbar.
-- #166 ergänzt als Zwischen-Slice Lifecycle-Orientierung, nächsten sicheren Schritt und eine visuelle Trennung der Gates.
-- Vor der finalen #166-/FC1-Integration muss die oben beschriebene `Production Ready`-Terminologie geklärt werden.
-- Diese Matrix verlangt nicht, dass #166 auf seinem aktuellen Zwischenhead bereits die komplette Preview-Unterteilung materialisiert.
-- Vor jeder späteren Umsetzung ist der dann aktuelle Snapshot-/Readiness-Vertrag live zu prüfen; diese Datei ist keine Ersatzquelle für Codeverträge.
+- #166 ergänzt Lifecycle-Orientierung und nächsten sicheren Schritt.
+- #134 bindet sicherheitsrelevante Reference-Evidence in dieselbe Factory-Foundation.
+- Diese drei Zwischenstände werden nach #165 in einem finalen Factory-Readiness-Integrations-PR konsolidiert.
+- Die Terminologieanpassung gemäß ADR-023 wird in denselben finalen Head aufgenommen und durch denselben einmaligen Sol/max-Codex-Review abgedeckt.
+- Vor jeder Umsetzung ist der dann aktuelle Snapshot-/Readiness-Vertrag live zu prüfen; diese Matrix ersetzt keine Codeverträge.
