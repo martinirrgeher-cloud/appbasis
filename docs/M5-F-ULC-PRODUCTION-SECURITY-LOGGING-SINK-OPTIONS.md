@@ -87,7 +87,7 @@ Aktuell positiv:
 Vorbehalte:
 
 - DPA erlaubt trotz EU-Datenregion bestimmte internationale Verarbeitung; die aktuelle Subprozessorliste enthält unter anderem AWS USA, Cloudflare global und weitere US-Dienste. Das muss als Transfer-/Subprozessor-Evidence akzeptiert werden und darf nicht als EU-only vermarktet werden.
-- Retention ist providerseitig in Tagen ausgedrückt; die bestehende M5-F-Semantik `retentionMonths=12` muss vor Providerfreigabe sauber normalisiert werden.
+- Retention ist providerseitig in Tagen ausgedrückt. Eine reine Tageszahl genügt für den kanonischen AppBasis-Vertrag von exakt 12 Kalendermonaten nicht.
 - AI-/Zusatzfunktionen sind für den M5-F-Sink nicht erforderlich und sollen nicht vorsorglich aktiviert werden.
 
 **Vorläufige Rangfolge: 1. Better Stack Germany.** Noch keine Bestellung/Freigabe.
@@ -110,6 +110,7 @@ Vorbehalte:
 - zentrale Account-/Management-Funktionen sind nicht automatisch EU-only.
 - aktuelle Subprozessorliste muss am Freigabetag aus dem Trust Center erfasst werden.
 - höhere Fixkosten als Better Stack für den erwartbar kleinen ULC-Security-Logstrom.
+- Soweit die konkrete Retention nur als feste Tageszahl konfiguriert/nachgewiesen werden kann, reicht auch diese Darstellung allein nicht für exakt 12 Kalendermonate.
 
 **Vorläufige Rangfolge: 2. Axiom EU Central.**
 
@@ -127,7 +128,8 @@ Vorbehalte:
 
 - Pro startet aktuell bei USD 19/Monat plus Nutzung und standardmäßig 30 Tagen Log-Retention; längere Retention verursacht Zusatzkosten bzw. muss konkret für den Plan bestätigt werden,
 - für den reinen ULC-Security-Sink funktional umfangreicher als nötig,
-- direkte OTel-Ausleitung bliebe zu breit; auch bei Grafana wäre der gefilterte Tail-Worker-Pfad bevorzugt.
+- direkte OTel-Ausleitung bliebe zu breit; auch bei Grafana wäre der gefilterte Tail-Worker-Pfad bevorzugt,
+- die UI-Bezeichnung `1 year` darf nur dann als AppBasis-Evidence für 12 Kalendermonate gelten, wenn die autoritative Providersemantik tatsächlich kalenderäquivalent ist; 30-Tage-Schritte allein genügen dafür nicht.
 
 **Vorläufige Rangfolge: 3. Grafana Cloud EU.**
 
@@ -153,22 +155,25 @@ Nicht bevorzugt. Ein separater Observability-Sink reduziert gemeinsame Ausfall-/
 
 Aktuell nicht bevorzugt. `UlcLinzSecurityEventLogger` ist synchron und der generierte Produktions-Worker injiziert derzeit keinen externen Logger. Ein direkter Netzwerk-Sink würde Runtime-/Generator-/ExecutionContext-Verträge erweitern; der Tail-Worker-Slice ist für den heutigen realen Verbraucher enger.
 
-## 6. Offene Sol-Entscheidung: `12 Monate` versus providerseitige Tage
+## 6. Verbindliche Retention-Semantik: exakt 12 Kalendermonate
 
 Der aktuelle M5-F-Consumer verlangt:
 
 `retentionMonths === 12`
 
-Better Stack und Axiom konfigurieren Retention providerseitig in Tagen. Grafana beschreibt im UI `1 year`, dokumentiert im API-Vertrag aber Perioden in 30-Tage-Schritten.
+Diese Semantik wird **nicht** auf eine feste Tageszahl umgedeutet. AppBasis verwendet für bestehende Audit-Retention bereits eine kalenderbasierte Monatsgrenze (`12 * INTERVAL '1 month'`). Für den Production-Security-Sink gilt daher derselbe fachliche Maßstab:
 
-Es wäre falsch, stillschweigend `365 Tage == exakt 12 Kalendermonate` zu behaupten.
+**12 Monate = exakt 12 Kalendermonate.**
 
-Vor finaler Providerfreigabe muss deshalb einmal verbindlich präzisiert werden:
+Konsequenzen für Provider-Evidence:
 
-- entweder `12 Monate` wird als providerneutrale Mindest-Aufbewahrungsdauer formalisiert und zulässige Providerrepräsentationen werden explizit normalisiert,
-- oder ein Provider muss eine autoritativ nachweisbare native `12 months`-/`1 year`-Policy liefern, die ohne semantische Erfindung verifiziert werden kann.
+1. Eine autoritativ dokumentierte native Policy `12 months` oder `1 year` kann nur dann akzeptiert werden, wenn ihre Providersemantik nachweislich einer kalenderbasierten Jahres-/Monatsfrist entspricht.
+2. Eine alleinige feste Tageszahl wie `365`, `366` oder `360` Tage ist **kein** äquivalenter Nachweis für exakt 12 Kalendermonate, weil keine feste Tageszahl für jedes Startdatum dieselbe Kalendergrenze beschreibt.
+3. Ein Provider, der ausschließlich feste Tage konfigurieren bzw. belegen kann, erfüllt den heutigen M5-F-Vertrag damit nicht allein. Dann ist vor Production entweder ein ausdrücklich kontrollierter kalenderbasierter Retention-/Delete-Mechanismus erforderlich oder ein Provider/Plan mit nachweisbar passender nativer Semantik zu wählen.
+4. Eine solche spätere Enforcement-Lösung wäre ein eigener realer Vertical Slice mit eigenem CI-/Security-/Review-Gate; sie wird in diesem Vorbereitungs-PR nicht erfunden.
+5. Bis eine konkrete Providerkonfiguration diese Semantik autoritativ belegt, bleibt `auditSecurityLogging` fail-closed offen.
 
-Bis dahin darf eine reine Tage-Einstellung nicht automatisch `auditSecurityLogging=true` erzeugen.
+Damit ist die Architektursemantik geklärt, **nicht** die Providerwahl. Better Stack bleibt bevorzugter Kandidat, aber seine reine `logs_retention`-Tagesangabe reicht ohne zusätzlichen kalenderäquivalenten Nachweis oder Enforcement nicht für M5-F.
 
 ## 7. Empfohlene spätere Zielkonfiguration – noch nicht autorisiert
 
@@ -180,7 +185,7 @@ Wenn Better Stack nach den finalen Checks bestätigt wird:
 - minimaler Ingest-Token nur für diese Quelle,
 - getrennte menschliche Query-/Admin-Berechtigungen nach Least Privilege,
 - keine öffentliche Read-API,
-- Retention nach der noch zu präzisierenden 12-Monats-Semantik,
+- Retention nur mit autoritativ belegter Übereinstimmung zur kanonischen 12-Kalendermonats-Semantik; eine feste Tageszahl allein reicht nicht,
 - DPA-/Subprozessor-/Transfer-Evidence mit Abrufdatum,
 - Provider-API-Evidence für Source/Sink-ID, Region und Retention,
 - nur das bestehende normalisierte Security-Event-Schema wird übertragen,
@@ -195,7 +200,7 @@ Später ausdrücklich zu bestätigen:
 3. DPA/AVV und Vertragsbindung des Accounts,
 4. aktuelle Subprozessoren und internationale Transfers,
 5. Datenregion des konkreten Sink,
-6. Retention-Semantik nach der Sol-Präzisierung,
+6. autoritativer Nachweis der kanonischen 12-Kalendermonats-Retention,
 7. Sink-/Source-Anlage,
 8. Anlage/Deployment des nicht öffentlichen Tail Workers,
 9. Ingest-Credential/Secret,
