@@ -8,7 +8,7 @@ Stand: 2026-08-19
 
 Dieses Dokument bereitet den realen M5-F-/M6-Logging-Schritt für `ulc-linz` vor. Es legt noch keinen kostenpflichtigen Anbieter verbindlich fest, erzeugt keinen Logging-Sink, keinen Cloudflare Tail Worker, kein Secret und kein Deployment.
 
-## 1. Verbindlicher bestehender M5-F-Vertrag
+## 1. Bestehender M5-F-Vertrag
 
 Der aktuelle Repository-Vertrag akzeptiert `auditSecurityLogging=true` nur bei gemeinsam belegter Production-Evidence für:
 
@@ -24,140 +24,122 @@ Der aktuelle Repository-Vertrag akzeptiert `auditSecurityLogging=true` nur bei g
 
 Der aktuelle Security-Event-Vertrag ist bewusst klein. Er protokolliert nur normalisierte Denial-Ereignisse und schließt insbesondere Credentials, Sessions, Request-Bodies und Backenddetails aus. Bei Authorization-Denials können jedoch `actorPrincipalId` und `organizationId` enthalten sein; der Log-Sink ist deshalb als personenbezogen/pseudonym behandelt und muss DPA/AVV, Datenregion, Transfers, Subprozessoren und Zugriffsschutz erfüllen.
 
-## 2. Warum direkter Cloudflare-OTel-Logexport nicht die bevorzugte M5-F-Lösung ist
+## 2. Datenminimierung: kein pauschaler OTel-Export als M5-F-Default
 
-Cloudflare empfiehlt OpenTelemetry für neue allgemeine Observability-Exporte. Der aktuelle OTel-Logexport umfasst jedoch nicht nur die bewusst schmalen ULC-Security-Events, sondern auch Application-/Console-Logs sowie systemgenerierte Worker-Logs. Workers Logs enthalten zusätzlich Invocation-Logs, Request-/Response-Metadaten, Fehler und Exceptions.
+Cloudflare empfiehlt OpenTelemetry für neue allgemeine Observability-Exporte. Der aktuelle OTel-Logexport umfasst jedoch Application-/Console-Logs **und systemgenerierte Worker-Logs**. Workers Logs umfassen Invocation-Logs, Custom Logs, Errors und Exceptions.
 
-Für M5-F wäre ein 100-%-Sampling erforderlich, wenn kein Security-Denial verloren gehen darf. Damit würde ein direkter OTel-Export den Drittanbieter-Scope unnötig auf alle Worker-Logs erweitern.
+Für M5-F müsste ohne vorgelagerte Filterung 100 % gesampelt werden, damit kein Security-Denial verloren geht. Damit würde der Drittanbieter-Scope unnötig auf den gesamten Worker-Logstrom erweitert.
 
-**Architekturempfehlung:** Für den M5-F-Security-Sink nicht pauschal alle Worker-Logs per OTel exportieren.
+**Architekturempfehlung:** Für den engen M5-F-Security-Sink nicht pauschal alle Worker-Logs per OTel exportieren.
 
-Das ist keine Ablehnung von Cloudflare OTel für spätere allgemeine Observability. Es ist eine Datenminimierungsentscheidung für den engeren M5-F-Security-Logging-Zweck.
+OTel bleibt für spätere allgemeine Operations-Observability eine mögliche getrennte Entscheidung.
 
 ## 3. Empfohlener Delivery-Pfad
 
-### Variante A – dedizierter nicht öffentlicher Tail Worker (bevorzugt)
+### Dedizierter nicht öffentlicher Tail Worker
 
 Zielpfad:
 
-`ULC Production Worker -> Tail Worker -> gefilterte [ulc-linz-security]-Events -> externer EU-Sink`
+`ULC Production Worker -> Tail Worker -> nur [ulc-linz-security]-Events -> externer EU-Sink`
 
-Begründung:
-
-- der bestehende ULC-Worker und sein Security-Eventvertrag müssen nicht zu einer zweiten Logging-Plattform umgebaut werden,
-- Cloudflare Tail Workers sind ausdrücklich für kundenspezifisches Filtern/Transformieren und anschließendes Senden an HTTP-Endpunkte vorgesehen,
-- nur die bereits normalisierten `[ulc-linz-security]`-Events werden nach außen weitergegeben,
-- Invocation-Request-Metadaten, sonstige Console-Logs, normale Runtimefehler und Exceptions werden nicht automatisch an den M5-F-Drittanbieter übertragen,
-- der Tail Worker benötigt keinen öffentlichen HTTP-Ingress,
-- ein Delivery-Fehler kann die bereits verweigerte Anwendungstransaktion nicht öffnen oder deren Denial-Antwort verändern,
-- die zusätzliche Worker-Ressource ist ein konkreter Verbraucher für eine heute reale M5-F-Anforderung und keine vorsorgliche Plattformabstraktion.
-
-### Fail-closed Anforderungen an den späteren Tail-Worker-Slice
-
-Falls diese Variante später freigegeben wird, muss der kleine Vertical Slice mindestens beweisen:
-
-1. nur Tail-Handler; kein öffentlicher `fetch()`-Ingress,
-2. nur Logs mit dem exakten M5-F-Präfix `[ulc-linz-security] ` werden berücksichtigt,
-3. Payload nach dem Präfix muss als JSON parsebar sein und exakt zum freigegebenen Security-Event-Schema gehören,
-4. keine Request-Headers, Request-URL, IP, Cookies, Response-Bodies, Exceptions oder übrigen Tail-Event-Metadaten werden in den externen Payload kopiert,
-5. Ingest-Credential ist ausschließlich ein Secret des Delivery-Workers und erscheint nie in Repository/Evidence/UI,
-6. Credential erhält nur minimale Ingest-Berechtigung für den dedizierten Production-Security-Datensatz,
-7. Sinkfehler werden ohne Event-Payload geloggt und führen nicht zu einer rekursiven Tail-Kette,
-8. Tail Worker selbst ist nicht sein eigener Tail-Consumer,
-9. Delivery-/Sink-Inventar wird im bestehenden Cloudflare-Telemetry-Inventar vollständig sichtbar,
-10. kein zweiter M5-F-Evidence-Owner entsteht; `tooling/ulc-linz-m5-audit-security-logging-evidence.mjs` bleibt die Gate-Grenze.
-
-### Variante B – direkter OTel-Export des gesamten Worker-Logstroms
-
-**Nicht bevorzugt für M5-F.**
+Cloudflare Tail Workers sind ausdrücklich für kundenspezifisches Filtern/Transformieren und anschließendes Senden an HTTP-Endpunkte vorgesehen. Das ist für den heutigen M5-F-Verbraucher kleiner und datenärmer als ein Export des vollständigen Worker-Logstroms.
 
 Vorteile:
 
-- wenig eigene Delivery-Logik,
-- Cloudflare empfiehlt OTel für allgemeine Observability,
-- Destination Health ist providerseitig sichtbar,
-- `persist=false` kann Cloudflare-Dashboard-Persistenz vermeiden.
+- bestehender ULC-Security-Eventvertrag bleibt die Quelle,
+- nur bereits normalisierte Security-Events verlassen Cloudflare in Richtung Log-Sink,
+- Request-Header, Request-URL, IP, übrige Invocation-Metadaten, normale Runtimefehler und Exceptions werden nicht automatisch an den M5-F-Sink übertragen,
+- kein öffentlicher HTTP-Ingress am Delivery-Worker,
+- Delivery-Fehler können eine bereits verweigerte App-Anfrage nicht wieder öffnen,
+- reale Anforderung, daher kein spekulativer Plattform-Layer.
 
-Nachteile für ULC M5-F:
+### Fail-closed Anforderungen an einen späteren Tail-Worker-Slice
 
-- exportiert breiteren Worker-Log-/Systemlog-Scope als die Security-Events,
-- 100-%-Sampling wäre für vollständige Security-Denials notwendig,
-- vergrößert Datenschutz-/Subprozessor-/Kosten-Scope,
-- verwischt die Trennung zwischen allgemeiner Operations-Observability und dem engen M5-F-Security-Audit-Sink.
+Falls später ausdrücklich freigegeben:
 
-Diese Variante darf nur gewählt werden, wenn später bewusst akzeptiert wird, dass der vollständige exportierte Logscope Teil des M5-G-Datenflussinventars und der Datenschutzbewertung wird.
+1. nur `tail()`-Handler, kein öffentlicher `fetch()`-Ingress,
+2. nur Logs mit exaktem Präfix `[ulc-linz-security] ` berücksichtigen,
+3. Payload danach als JSON parsen und exakt gegen das freigegebene Security-Event-Schema validieren,
+4. keine übrigen Tail-Event-/Request-/Exception-Metadaten in den externen Payload kopieren,
+5. Ingest-Credential nur als Secret des Delivery-Workers,
+6. Credential nur mit minimaler Ingest-Berechtigung für den dedizierten ULC-Production-Security-Sink,
+7. Sinkfehler ohne Event-Payload protokollieren,
+8. Tail Worker nicht selbst als Tail-Consumer konfigurieren,
+9. Delivery-Ressource und Telemetry vollständig im bestehenden Cloudflare-Inventar erfassen,
+10. kein zweiter M5-F-Evidence-Owner; `tooling/ulc-linz-m5-audit-security-logging-evidence.mjs` bleibt Gate-Grenze.
 
-### Variante C – direkter HTTP-Sink aus der ULC Runtime
+## 4. Providervergleich
 
-Aktuell **nicht empfohlen**.
-
-Der bestehende `UlcLinzSecurityEventLogger` ist synchron und der generierte Produktions-Worker injiziert derzeit keinen externen Logger. Eine direkte HTTP-Ausleitung würde damit Runtime-/Generator-/ExecutionContext-Verträge erweitern. Für den heutigen Verbraucher ist der Tail-Worker-Pfad kleiner und hält die Application-Runtime vom Drittanbieter getrennt.
-
-## 4. Providervergleich für den externen Sink
-
-### Axiom Cloud – bevorzugter Kandidat, noch nicht freigegeben
+### 1. Better Stack – Region Germany – derzeit bevorzugter Kandidat
 
 Aktuell positiv:
 
-- Axiom dokumentiert `EU Central 1 (AWS)` als Edge Deployment.
-- Event-Ingest und Edge-Queries können über `eu-central-1.aws.edge.axiom.co` regional gebunden werden.
-- Axiom Cloud unterstützt benutzerdefinierte Dataset-Retention, auch länger als den Organisationsdefault bzw. `Forever`.
-- Retention ist dataset-spezifisch und über Provider/API-Modelle als Tage erfassbar.
-- DPA vorhanden; SCC-/Transfermechanismen sind dokumentiert.
-- Verschlüsselung at rest und in transit ist dokumentiert.
-- Rollen-/Zugriffskontrollen und Audit-Funktionen sind vorhanden; einzelne Enterprise-/Add-on-Funktionen müssen vor Kauf erneut geprüft werden.
-- Cloudflare und Axiom dokumentieren beide Integrationspfade für Workers/OTel.
-- aktuelle Preisrichtung für Axiom Cloud: Plattform ab ca. USD 25/Monat plus Nutzung; tatsächliches Angebot muss unmittelbar vor Kauf erneut geprüft werden.
-
-Wichtige Vorbehalte:
-
-- Axioms aktuelle Edge-Dokumentation nennt EU Central 1, während eine andere aktuelle Limits-Tabelle für `Axiom Cloud` noch nur `US` als supported edge deployment ausweist. **Diese Provider-Dokumentationsinkonsistenz muss vor Bestellung über den tatsächlichen Account-/Plan-Create-Flow oder Support autoritativ geklärt werden.** Ohne belegbares EU Central für den gewählten Plan: STOP.
-- Account-/Management-Funktionen laufen über die zentrale Axiom-Plattform; EU-Edge bedeutet daher nicht automatisch vollständige EU-only-Verarbeitung des gesamten Kundenkontos.
-- aktuelle Subprozessorliste muss am Freigabetag aus dem Axiom Trust Center erfasst und akzeptiert werden.
-- die Provider-Retention wird in Tagen konfiguriert; siehe offene Retention-Semantik unten.
-
-**Vorläufige Rangfolge: 1. Axiom**, sofern EU Central für den tatsächlich gewählten Plan belegbar ist und DPA/Subprozessoren/Transfers sowie Kosten manuell akzeptiert werden.
-
-### Grafana Cloud EU – belastbare Alternative
-
-Positiv:
-
-- Cloudflare dokumentiert Grafana Cloud als direkten OTel-Zielprovider.
-- mehrere EU-Regionen verfügbar.
-- offizielles DPA und veröffentlichte Subprozessorliste.
-- Logs-Retention ist bis maximal `1 year` konfigurierbar; API verlangt Perioden in 30-Tage-Schritten.
-- Provider-Dokumentation erlaubt zusätzliche Retention über den 30-Tage-Default.
-
-Nachteile/Unsicherheiten:
-
-- Pro startet aktuell bei USD 19/Monat plus Nutzung, aber die Pricing-Seite weist für Pro standardmäßig 30 Tage Logs aus und verweist für längere Retention auf zusätzliche Optionen/Support; konkrete 12-Monats-Kosten müssen vor Bestellung verbindlich bestätigt werden.
-- für M5-F würde auch hier der direkte Cloudflare-OTel-Export unnötig breite Logs exportieren; bei Auswahl bleibt der gefilterte Tail-Worker-Pfad bevorzugt.
-
-**Vorläufige Rangfolge: 2. Grafana Cloud EU.**
-
-### Better Stack Germany – technische Alternative, rechtlich noch nicht vollständig vorbereitet
-
-Positiv:
-
-- selbst bedienbare Telemetry-Region `germany`,
-- OpenTelemetry unterstützt,
-- Retention pro Quelle in Tagen konfigurierbar und über API auslesbar,
-- aktuelle Pricing-Seite nennt USD 0.10/GB Ingestion und USD 0.05/GB/Monat Retention; konkrete Gesamtkosten hängen vom Volumen/Plan ab,
+- Telemetry-Quellen können selbst bedienbar mit `data_region = germany` angelegt werden.
+- `logs_retention` ist pro Quelle in Tagen konfigurierbar und über Provider-API auslesbar.
+- OpenTelemetry wird unterstützt; für den empfohlenen Tail-Worker-Pfad kann der dedizierte Ingest-Endpunkt verwendet werden.
+- Sicherheitsseite dokumentiert standardmäßige Speicherung in EU-Regionen, AES-256 at rest sowie HTTPS/TLS in transit.
+- DPA vorhanden; Restricted Transfers werden über DPF bzw. SCCs abgedeckt.
+- veröffentlichte DPA-Schedules enthalten die aktuelle Subprozessorliste und Security Measures.
+- Provider-API liefert Sink-ID, Datenregion und Retention – damit ist die spätere M5-F-Evidence gut maschinenprüfbar.
+- aktuelle Preisbasis für Logs: USD 0.10/GB Ingestion und USD 0.05/GB/Monat Retention; für eine kleine Vereins-App voraussichtlich geringe variable Kosten. Der tatsächliche Preis/Plan muss vor Bestellung erneut geprüft werden.
 - Spending Alerts/Limits verfügbar.
 
 Vorbehalte:
 
-- DPA-/Subprozessoren-Evidence wurde in diesem Vorbereitungslauf noch nicht so vollständig autoritativ erfasst wie für Axiom/Grafana,
-- Retention ist ebenfalls tagebasiert,
-- „Host data in your own bucket“ bzw. Cloudflare R2 wird **nicht** als Abkürzung gewählt: R2 wäre eine zusätzliche Cloudflare-Persistenz für potenziell personenbezogene Security-Logs und würde ADR-022 neu öffnen.
+- DPA erlaubt trotz EU-Datenregion bestimmte internationale Verarbeitung; die aktuelle Subprozessorliste enthält unter anderem AWS USA, Cloudflare global und weitere US-Dienste. Das muss als Transfer-/Subprozessor-Evidence akzeptiert werden und darf nicht als EU-only vermarktet werden.
+- Retention ist providerseitig in Tagen ausgedrückt; die bestehende M5-F-Semantik `retentionMonths=12` muss vor Providerfreigabe sauber normalisiert werden.
+- AI-/Zusatzfunktionen sind für den M5-F-Sink nicht erforderlich und sollen nicht vorsorglich aktiviert werden.
 
-**Vorläufige Rangfolge: 3. Better Stack Germany.**
+**Vorläufige Rangfolge: 1. Better Stack Germany.** Noch keine Bestellung/Freigabe.
 
-## 5. Verworfene bzw. nicht ausreichende Optionen
+### 2. Axiom Cloud – EU Central 1 – starke Alternative
+
+Positiv:
+
+- aktuelle Edge-Dokumentation nennt `EU Central 1 (AWS)` für Ingest und Edge-Queries,
+- benutzerdefinierte Dataset-Retention, auch länger als Default bzw. `Forever`,
+- DPA mit SCC-/Transfermechanismen,
+- AES-256/TLS sowie ISO 27001/SOC 2 dokumentiert,
+- dataset-spezifische Zugriffskontrolle und API-Evidence möglich,
+- Axiom und Cloudflare dokumentieren Integrationspfade,
+- aktuelle Preisrichtung Axiom Cloud: ca. USD 25/Monat Plattformgebühr plus Nutzung.
+
+Vorbehalte:
+
+- Axioms aktuelle Edge-Dokumentation nennt EU Central 1, während eine ebenfalls aktuelle Limits-Tabelle beim Axiom-Cloud-Plan noch `US` als supported edge deployment ausweist. Vor Kauf muss die tatsächliche EU-Central-Verfügbarkeit des gewählten Plans autoritativ bestätigt werden. Ohne Nachweis: STOP.
+- zentrale Account-/Management-Funktionen sind nicht automatisch EU-only.
+- aktuelle Subprozessorliste muss am Freigabetag aus dem Trust Center erfasst werden.
+- höhere Fixkosten als Better Stack für den erwartbar kleinen ULC-Security-Logstrom.
+
+**Vorläufige Rangfolge: 2. Axiom EU Central.**
+
+### 3. Grafana Cloud EU – belastbare Alternative
+
+Positiv:
+
+- Cloudflare dokumentiert Grafana Cloud als OTel-Zielprovider,
+- mehrere EU-Regionen,
+- offizielles DPA und veröffentlichte Subprozessorliste,
+- Logs-Retention bis maximal `1 year` konfigurierbar; API dokumentiert Retention in 30-Tage-Schritten,
+- gut etablierte Zugriffskontrollen/Observability-Funktionen.
+
+Vorbehalte:
+
+- Pro startet aktuell bei USD 19/Monat plus Nutzung und standardmäßig 30 Tagen Log-Retention; längere Retention verursacht Zusatzkosten bzw. muss konkret für den Plan bestätigt werden,
+- für den reinen ULC-Security-Sink funktional umfangreicher als nötig,
+- direkte OTel-Ausleitung bliebe zu breit; auch bei Grafana wäre der gefilterte Tail-Worker-Pfad bevorzugt.
+
+**Vorläufige Rangfolge: 3. Grafana Cloud EU.**
+
+## 5. Nicht ausreichende / nicht bevorzugte Optionen
 
 ### Cloudflare Workers Logs allein
 
-Nicht ausreichend: aktuelle maximale native Retention beträgt 7 Tage auf Workers Paid, nicht 12 Monate.
+Nicht ausreichend: aktuelle maximale native Retention auf Workers Paid beträgt 7 Tage.
+
+### Direkter Cloudflare-OTel-Export des gesamten Worker-Logstroms
+
+Nicht als M5-F-Default: zu breiter Datenumfang. Nur nach bewusster neuer Datenfluss-/Privacy-Bewertung für allgemeine Observability.
 
 ### Cloudflare R2 als primärer Security-Log-Sink
 
@@ -165,67 +147,77 @@ Nicht ohne neue Architektur-/Datenschutzentscheidung. ADR-022 sieht für ULC v0.
 
 ### ULC Neon-Produktionsdatenbank als primärer Security-Log-Sink
 
-Nicht bevorzugt: Die Security-Evidence soll einen geschützten operativen Sink mit eigener Identität besitzen. Ein separater Observability-Sink verbessert Incident-Isolation und verhindert, dass Anwendungspersistenz und Sicherheitsbeobachtung denselben Ausfall-/Zugriffspfad teilen.
+Nicht bevorzugt. Ein separater Observability-Sink reduziert gemeinsame Ausfall-/Zugriffsdomänen zwischen Anwendungsdaten und Sicherheitsbeobachtung.
+
+### Direkter HTTP-Sink aus der ULC Application Runtime
+
+Aktuell nicht bevorzugt. `UlcLinzSecurityEventLogger` ist synchron und der generierte Produktions-Worker injiziert derzeit keinen externen Logger. Ein direkter Netzwerk-Sink würde Runtime-/Generator-/ExecutionContext-Verträge erweitern; der Tail-Worker-Slice ist für den heutigen realen Verbraucher enger.
 
 ## 6. Offene Sol-Entscheidung: `12 Monate` versus providerseitige Tage
 
-Der aktuelle M5-F-Consumer verlangt exakt:
+Der aktuelle M5-F-Consumer verlangt:
 
 `retentionMonths === 12`
 
-Axiom und Better Stack konfigurieren Retention providerseitig in **Tagen**. Grafana beschreibt im UI `1 year`, die API dokumentiert jedoch Vielfache von 30 Tagen bis maximal 1 Jahr.
+Better Stack und Axiom konfigurieren Retention providerseitig in Tagen. Grafana beschreibt im UI `1 year`, dokumentiert im API-Vertrag aber Perioden in 30-Tage-Schritten.
 
-Es wäre sicherheitsfachlich falsch, stillschweigend `365 Tage == exakt 12 Kalendermonate` zu behaupten.
+Es wäre falsch, stillschweigend `365 Tage == exakt 12 Kalendermonate` zu behaupten.
 
-Vor der finalen Providerwahl muss deshalb **einmal** entschieden und danach der Evidence-Vertrag konsistent umgesetzt werden:
+Vor finaler Providerfreigabe muss deshalb einmal verbindlich präzisiert werden:
 
-- entweder `12 Monate` wird als providerneutrale Mindestdauer von einem Jahr formalisiert und die zulässige Provider-Repräsentation explizit normalisiert,
-- oder der gewählte Provider muss eine autoritativ nachweisbare native `12 months`-/`1 year`-Policy liefern, die der M5-F-Evidence-Reader ohne semantische Erfindung verifizieren kann.
+- entweder `12 Monate` wird als providerneutrale Mindest-Aufbewahrungsdauer formalisiert und zulässige Providerrepräsentationen werden explizit normalisiert,
+- oder ein Provider muss eine autoritativ nachweisbare native `12 months`-/`1 year`-Policy liefern, die ohne semantische Erfindung verifiziert werden kann.
 
-Bis diese Semantik entschieden ist, darf kein Provider aufgrund einer bloßen `365`-Tage-Einstellung als M5-F-verifiziert gelten.
+Bis dahin darf eine reine Tage-Einstellung nicht automatisch `auditSecurityLogging=true` erzeugen.
 
 ## 7. Empfohlene spätere Zielkonfiguration – noch nicht autorisiert
 
-Wenn Axiom nach den offenen Checks bestätigt wird:
+Wenn Better Stack nach den finalen Checks bestätigt wird:
 
-- dedizierter Axiom-Datensatz nur für `ulc-linz` Production Security Events,
-- Edge: `EU Central 1 (AWS)`,
-- Ingest/Query über den EU-Edge-Endpunkt, nicht über einen US-routenden Standard-Query-Pfad,
-- minimaler Ingest-only API Token für den Tail Worker,
+- eigene Telemetry-Quelle nur für `ulc-linz` Production Security Events,
+- `data_region = germany`,
+- kein eigener R2-/S3-Bucket für v0.1,
+- minimaler Ingest-Token nur für diese Quelle,
 - getrennte menschliche Query-/Admin-Berechtigungen nach Least Privilege,
 - keine öffentliche Read-API,
 - Retention nach der noch zu präzisierenden 12-Monats-Semantik,
-- geschützter operativer Zugriff,
-- Subprozessor-/Transfer-/DPA-Evidence mit Abrufdatum,
-- Provider-API-Evidence für Sink-Identität und Retention,
-- Testevent enthält ausschließlich das bereits freigegebene Security-Event-Schema.
+- DPA-/Subprozessor-/Transfer-Evidence mit Abrufdatum,
+- Provider-API-Evidence für Source/Sink-ID, Region und Retention,
+- nur das bestehende normalisierte Security-Event-Schema wird übertragen,
+- Kostenalarm vor Produktionsstart konfigurieren.
 
 ## 8. Manuelle Freigabepunkte vor irgendeinem Write
 
-Der Nutzer/Betreiber muss später ausdrücklich bestätigen:
+Später ausdrücklich zu bestätigen:
 
-1. konkreten Sink-Anbieter und Plan,
+1. konkreter Sink-Anbieter und Plan,
 2. Kostenrahmen,
-3. DPA/AVV und Vertragsbindung des verwendeten Accounts,
+3. DPA/AVV und Vertragsbindung des Accounts,
 4. aktuelle Subprozessoren und internationale Transfers,
-5. Datenregion / tatsächliche EU-Edge-Verfügbarkeit des gewählten Plans,
+5. Datenregion des konkreten Sink,
 6. Retention-Semantik nach der Sol-Präzisierung,
-7. Anlage des Sink-Datensatzes,
+7. Sink-/Source-Anlage,
 8. Anlage/Deployment des nicht öffentlichen Tail Workers,
-9. Anlage des Ingest-Credentials/Secrets,
+9. Ingest-Credential/Secret,
 10. Aktivierung des Tail-Consumers am Production Worker.
 
 Jeder mutierende Provider-/Deployment-Schritt bleibt separat freigabepflichtig. Diese Entscheidungsvorlage autorisiert keinen davon.
 
-## 9. Offizielle Quellen – Research-Baseline 2026-08-19
+## 9. Offizielle Research-Baseline – 2026-08-19
 
 Cloudflare:
 
 - https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/
 - https://developers.cloudflare.com/workers/observability/logs/workers-logs/
 - https://developers.cloudflare.com/workers/observability/logs/tail-workers/
-- https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/axiom/
-- https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/grafana-cloud/
+
+Better Stack:
+
+- https://betterstack.com/pricing
+- https://betterstack.com/security
+- https://betterstack.com/dpa
+- https://betterstack.com/dpa/schedules
+- https://betterstack.com/docs/logs/api/create-a-source/
 
 Axiom:
 
@@ -241,11 +233,5 @@ Grafana:
 - https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve-api/
 - https://grafana.com/pricing/
 - https://grafana.com/legal/list-of-subprocessors/
-
-Better Stack:
-
-- https://betterstack.com/pricing
-- https://betterstack.com/docs/logs/api/create-a-source/
-- https://betterstack.com/security
 
 Vor jedem realen Providerwrite müssen Preise, Planfähigkeiten, DPA/Subprozessoren, Regionen und Retention erneut frisch geprüft werden.
