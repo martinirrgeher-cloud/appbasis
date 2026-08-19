@@ -4,7 +4,7 @@ Stand: 2026-08-19
 
 ## Zweck
 
-Dieser Laufzettel verdichtet den aktuell vorbereiteten ULC-M6-Pfad für den ersten realen Produktionsdurchlauf. Er ist **kein Execute-Script, keine Produktionsfreigabe und kein zweiter Provisionierer**.
+Dieser Laufzettel verdichtet den vorbereiteten ULC-M6-Pfad für den ersten realen Produktionsdurchlauf. Er ist **kein Execute-Script, keine Produktionsfreigabe und kein zweiter Provisionierer**.
 
 Verbindlich bleibt:
 
@@ -13,9 +13,9 @@ Verbindlich bleibt:
 - Provider-IDs, Datenbankadressen, Connection Strings und Secretwerte bleiben außerhalb normaler Factory-/Evidence-Ausgaben.
 - Jeder mutierende Produktions-/Provider-Schritt benötigt eine neue ausdrückliche Nutzerfreigabe.
 - Nach jedem mutierenden Schritt wird der tatsächliche Zustand read-only geprüft, bevor der nächste Write freigegeben wird.
-- Diese Datei ist keine dauerhafte Wahrheit: vor dem realen Durchlauf werden `main`, alle offenen PRs, der tatsächliche M5/M6-Head, CI/Reviews und Providerzustand frisch geprüft.
+- Diese Datei ist keine dynamische Zustandsquelle: vor dem realen Durchlauf werden `main`, alle offenen PRs, der tatsächliche M5/M6-Head, CI/Reviews und Providerzustand frisch geprüft.
 
-Der bei dieser Synchronisierung aktuelle technische #165-Stand besitzt **14 gepinnte Schritte** und enthält jetzt einen eigenen freigabepflichtigen Schritt für Production Security Logging. Damit ist die zuvor dokumentierte Logging-Sink-Ausführungslücke im aktuellen #165-Vertrag geschlossen. Vor realer Ausführung muss dieser Zustand erneut live bestätigt werden.
+Der vorbereitete technische M6-Vertrag umfasst 14 gepinnte Schritte und enthält einen eigenen freigabepflichtigen Schritt für Production Security Logging. Ob dieser Vertrag am realen Ausführungstag noch unverändert gilt, wird live auf dem tatsächlichen finalen Head geprüft.
 
 ## Legende
 
@@ -109,18 +109,24 @@ Danach READ:
 
 Mismatch: **STOP**.
 
-## 4. Produktions-Domain auswählen
+## 4. Produktions-Domain bestätigen und read-only prüfen
 
-**Klasse:** INPUT – noch kein Providerwrite
+**Klasse:** INPUT / READ – noch kein Providerwrite
 
-- [ ] gewünschten Produktionshostname festlegen,
-- [ ] Domain-/DNS-Kontrolle bestätigen,
-- [ ] bestehende Belegung prüfen,
-- [ ] kanonischen HTTPS-Origin festlegen,
+Bereits bestätigter Operator-Input:
+
+- [x] Produktionshostname `app.ulc-linz.at`,
+- [x] kanonischer HTTPS-Origin `https://app.ulc-linz.at`.
+
+Unmittelbar vor Schritt 10 weiterhin erforderlich:
+
+- [ ] Domain-/DNS-Kontrolle autoritativ bestätigen,
+- [ ] bestehende Belegung/Kollision prüfen,
+- [ ] Ziel-Worker und TLS-Zustand prüfen,
 - [ ] Origin wird später exakt `APPBASIS_BASE_URL`,
 - [ ] noch keine Domain aktivieren und keinen Public Ingress öffnen.
 
-Unklarer Host: **STOP vor Schritt 10**.
+Fehlende DNS-Kontrolle, Kollision oder abweichender Origin: **STOP vor Schritt 10**.
 
 ## 5. Runtime-Konfiguration setzen
 
@@ -129,19 +135,20 @@ Unklarer Host: **STOP vor Schritt 10**.
 Aktueller Runtimevertrag:
 
 - `HYPERDRIVE` – Binding,
-- `APPBASIS_BASE_URL` – kontrollierte Konfiguration,
+- `APPBASIS_BASE_URL` – kontrollierte Konfiguration; geplanter Wert `https://app.ulc-linz.at`,
 - `BETTER_AUTH_SECRET` – Secret; Wert niemals dokumentieren.
 
 Vorher:
 
 - [ ] Verantwortliche für Production-Secrets festgelegt,
 - [ ] Secret außerhalb von Chat/Repository/Evidence erzeugt,
-- [ ] Origin aus Schritt 4 eindeutig,
+- [ ] Origin aus Schritt 4 read-only bestätigt,
 - [ ] Nutzerfreigabe für Runtime-Konfigurations-/Secret-Writes.
 
 Danach READ:
 
 - [ ] erwartete Binding-/Konfigurationsnamen vorhanden,
+- [ ] `APPBASIS_BASE_URL` entspricht exakt `https://app.ulc-linz.at`,
 - [ ] keine Secretwerte sichtbar,
 - [ ] keine unerwartete zusätzliche Production-Konfiguration.
 
@@ -149,14 +156,15 @@ Danach READ:
 
 **Klasse:** WRITE
 
-Dieser Schritt ist im aktuellen #165-Vertrag ausdrücklich vorhanden und muss vor Worker-Deploy und vor M5-Production-Evidence liegen.
+Dieser Schritt muss vor Worker-Deploy und vor M5-Production-Evidence liegen.
 
 Vorher:
 
 - [ ] konkreter Logging-Sink/Exportweg bewusst ausgewählt,
 - [ ] strukturierte Security-Events unterstützt,
 - [ ] geschützter operativer Zugriff definiert,
-- [ ] exakt 12 Monate Retention technisch/providerseitig möglich,
+- [ ] **exakt 12 Kalendermonate** Retention autoritativ nachweisbar,
+- [ ] eine reine feste Tageszahl wie `365`, `366` oder `360` wird nicht als gleichwertiger Nachweis behandelt,
 - [ ] vollständiges Sink-Inventar möglich,
 - [ ] keine öffentliche Read-API,
 - [ ] Kosten/Plan akzeptiert,
@@ -169,13 +177,13 @@ Danach READ:
 - [ ] reale ULC-Production-Sink-Bindung eindeutig,
 - [ ] strukturierte Event-Erfassung aktiv,
 - [ ] operativer Zugriff geschützt,
-- [ ] Retention exakt 12 Monate belegt,
+- [ ] Retention exakt 12 Kalendermonate aus Providerkonfiguration und autoritativer Semantik belegt,
 - [ ] Sink-/Destination-Inventar vollständig,
 - [ ] keine öffentliche Read-API,
 - [ ] Delivery-/Destination-Health geprüft,
 - [ ] keine Secret-/personenbezogene Payload-Leakage.
 
-Unvollständige Logging-Evidence: **STOP**.
+Kann ein Provider nur feste Tage belegen und existiert kein separat geprüftes kalenderbasiertes Enforcement, bleibt M5-F fail-closed: **STOP**.
 
 ## 7. Kontrollierte Produktionsmigrationen
 
@@ -225,6 +233,7 @@ Vorher:
 - [ ] ausschließlich bestehende Root-Admin-/Principal-Access-/Permission-Provisioning-Verträge,
 - [ ] keine Default-Principal-Zuweisungen,
 - [ ] Organisation/Rolle/Scope eindeutig,
+- [ ] initial genau ein bestätigter Produktionsadministrator; konkrete Identity erst sicher beim freigabepflichtigen Write,
 - [ ] Least Privilege unverändert,
 - [ ] Nutzerfreigabe für den privilegierten Production-Write.
 
@@ -234,24 +243,26 @@ Danach READ:
 - [ ] Last-Admin-/Required-Role-Holder-Schutz intakt,
 - [ ] keine Cross-Org- oder unbekannte Capability-Zuweisung.
 
+Weitere normale Benutzer erst nach erfolgreichem kontrolliertem Produktions-Smoke über die normale Rollenverwaltung.
+
 ## 10. Öffentliche Domain / Ingress aktivieren
 
 **Klasse:** WRITE – separates Public-Ingress-Gate
 
 Vorher:
 
-- [ ] Domain aus Schritt 4 endgültig bestätigt,
+- [ ] bestätigter Host `app.ulc-linz.at` ist unmittelbar vor Write kollisionsfrei und unter kontrolliertem DNS,
 - [ ] Runtime/DB/Logging/Benutzer-Konfiguration aus Schritten 1–9 geprüft,
 - [ ] keine zweite unbeabsichtigte öffentliche Origin,
-- [ ] `workers.dev` und Preview URLs bleiben aus,
+- [ ] `workers.dev=false` und Preview URLs bleiben aus,
 - [ ] Nutzerfreigabe für die Domain-/Ingress-Aktivierung.
 
 Danach READ:
 
-- [ ] exakt freigegebener HTTPS-Origin öffentlich,
+- [ ] exakt `https://app.ulc-linz.at` öffentlich,
 - [ ] Route zeigt auf den dedizierten ULC-Production-Worker,
 - [ ] keine Preview-/Test-Domain als Produktion,
-- [ ] `APPBASIS_BASE_URL` entspricht exakt dem freigegebenen Origin.
+- [ ] `APPBASIS_BASE_URL` entspricht exakt `https://app.ulc-linz.at`.
 
 ## 11. M5-Production-Evidence erheben
 
@@ -259,7 +270,7 @@ Danach READ:
 
 - [ ] F/G/H-Evidence aus derselben realen Production-Resource-Binding-Sicht/Fingerprint,
 - [ ] Freshness-/Gültigkeitsfenster eingehalten,
-- [ ] Logging-Sink + geschützter Zugriff + exakt 12 Monate Retention real belegt,
+- [ ] Logging-Sink + geschützter Zugriff + exakt 12 Kalendermonate Retention real belegt; feste Tageszahl allein genügt nicht,
 - [ ] Neon Frankfurt, DPA/Account-Bindung, Verschlüsselung, Subprozessoren/Transfers und Datenflüsse real belegt,
 - [ ] Control-Plane-/Ingress-Snapshot aktuell und geschützt,
 - [ ] keine Fixtures/Dokumentationswerte als Production-Evidence,
@@ -337,9 +348,9 @@ Kein Auto-Release.
 
 Ohne Providerwrite können vorbereitet werden:
 
-- [ ] gewünschter Produktionshostname,
+- [x] gewünschter Produktionshostname `app.ulc-linz.at` / Origin `https://app.ulc-linz.at`,
 - [ ] wer Production-Secrets verwalten darf,
-- [ ] konkreter Security-Logging-Sink inklusive Kosten, DPA/AVV, Region, Subprozessoren und 12-Monats-Retention,
+- [ ] konkreter Security-Logging-Sink inklusive Kosten, DPA/AVV, Region, Subprozessoren und exakt 12 Kalendermonaten Retention,
 - [ ] Neon-Plan und regionsfähiger Frankfurt-Create-Pfad,
 - [ ] Verantwortliche für Provider-/Subprozessor-Änderungsbeobachtung.
 
