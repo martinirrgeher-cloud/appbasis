@@ -1,6 +1,6 @@
 # M6 – ULC Production Resource Binding Contract
 
-Stand: 2026-08-18
+Stand: 2026-08-19
 
 ## Zweck
 
@@ -23,6 +23,7 @@ Der Vertrag ist **keine allgemeine Multi-App-Provider-Orchestrierung**. Eine sp�
 - Persistente personenbezogene Primärdaten gehören in eine eigene Neon-Produktionsdatenbank in **EU / Frankfurt**.
 - Provider-IDs, Datenbankadressen, Connection Strings und Secretwerte bleiben außerhalb von `appbasis.app.json`, `appbasis.database.json` und normalen Factory-Snapshots.
 - Provisionierung, Resource Binding, Evidence, Migration, Deployment und Release bleiben getrennte Verantwortungen.
+- Der bestätigte nicht geheime Operator-Input für die spätere Produktion ist `app.ulc-linz.at` mit kanonischem Origin `https://app.ulc-linz.at`; diese Bestätigung ist noch kein DNS-/Ingress-/Providerwrite.
 
 ## Der erste konkrete M6-Ressourcensatz
 
@@ -39,13 +40,14 @@ Für `application = ulc-linz` und `environment = production` werden später gena
 ### Cloudflare
 
 - eigener Standard Cloudflare Worker für ULC-Produktion,
-- eigener Produktionshostname / eigene Domain-Route,
+- bestätigter geplanter Produktionshostname `app.ulc-linz.at`,
+- eigene kontrollierte Domain-/Route-Bindung auf genau diesen Host,
 - kontrollierte Datenbankbindung für die ULC-Produktionsdatenbank,
-- `APPBASIS_BASE_URL` passend zum tatsächlichen Produktionsorigin,
+- `APPBASIS_BASE_URL` beim späteren Write exakt `https://app.ulc-linz.at`,
 - `BETTER_AUTH_SECRET` als geschütztes Secret,
 - keine zusätzliche personenbezogene Persistenz über KV, D1, R2, Durable Objects oder andere Cloudflare-Speicher ohne neue Entscheidung.
 
-Der Vertrag legt **keinen** konkreten Worker-Namen, Hyperdrive-Namen, Hostnamen, Domainnamen, Provider-ID oder Secretwert im Repository fest. Diese Werte entstehen erst beim ausdrücklich freigegebenen realen M6-Durchlauf.
+Der Vertrag legt **keinen** konkreten Worker-Namen, Hyperdrive-Namen, Provider-ID oder Secretwert im normalen Repositoryvertrag fest. Der bestätigte Hostname ist ein separater nicht geheimer Operator-Input; seine DNS-Kontrolle, freie Belegung, TLS- und Worker-Bindung werden erst unmittelbar vor dem freigabepflichtigen Ingress-Write autoritativ geprüft.
 
 ## Runtime-Vertrag vor Resource Binding
 
@@ -77,7 +79,7 @@ Erlaubt ohne Providerwrite:
 - Providerfähigkeit und Region prüfen,
 - Kosten-/Planabhängigkeiten prüfen,
 - benötigte Secret-Namen und geschützte Environment-Grenzen bestimmen,
-- Domain-/Hostname-Anforderung bestimmen, ohne einen Namen zu erfinden.
+- den bestätigten Hostnamen `app.ulc-linz.at` konsumieren und DNS-Kontrolle/Kollision read-only prüfen, ohne eine Domain oder Route zu schreiben.
 
 Ergebnis ist nur `readyForExplicitResourceApproval = true|false`; es entsteht keine Produktionsressource.
 
@@ -170,7 +172,7 @@ Die tatsächliche Freigabe bleibt eine eigene, frische Entscheidung unmittelbar 
 
 Der technische Consumer ruft Provider **nicht selbst auf** und provisioniert nichts. Er erhält einen geschützten Raw-Evidence-Snapshot aus der Control Plane und validiert ihn fail-closed.
 
-Der aktuelle Inputvertrag entspricht dem in #155 implementierten Consumer:
+Der kanonische Inputvertrag verlangt semantisch:
 
 ```json
 {
@@ -197,7 +199,7 @@ Der aktuelle Inputvertrag entspricht dem in #155 implementierten Consumer:
   "cloudflare": {
     "accountBindingId": "<opaque-provider-id>",
     "runtimeBindingId": "<opaque-provider-id>",
-    "hostnameBinding": "<canonical-lowercase-hostname>",
+    "hostnameBinding": "app.ulc-linz.at",
     "databaseBindingId": "<opaque-provider-id>",
     "identitySource": "provider-api",
     "bindingInventoryComplete": true,
@@ -208,7 +210,7 @@ Der aktuelle Inputvertrag entspricht dem in #155 implementierten Consumer:
 }
 ```
 
-Der Consumer akzeptiert keine Ableitung von Region, Environment oder Production-Zweck aus Ressourcennamen oder Hoststrings. Die Resource-Identität und Neon-Region müssen aus autoritativer Provider-Evidence stammen.
+Der Consumer akzeptiert keine Ableitung von Region, Environment oder Production-Zweck aus Ressourcennamen oder Hoststrings. Der Hostname wird mit dem bestätigten Operator-Input korreliert; Resource-Identität und Neon-Region müssen aus autoritativer Provider-Evidence stammen.
 
 ## Normalisierter, secrets-freier Binding-Output
 
@@ -250,7 +252,7 @@ Der technische Consumer blockiert mindestens bei:
 - fehlendem deploybaren Runtime-Entrypoint,
 - fehlendem oder vom aktuellen ULC-Runtimevertrag abweichendem Runtime-Digest,
 - fehlender eindeutiger Provider-Identität für Neon Project/Branch/Database oder Cloudflare Account/Worker/DB-Binding,
-- fehlender eindeutiger Produktionshostname-Bindung,
+- fehlender bzw. vom bestätigten Operator-Input `app.ulc-linz.at` abweichender Produktionshostname-Bindung,
 - unvollständigem Cloudflare-Binding- oder Telemetry-Inventar,
 - zusätzlicher nicht freigegebener personenbezogener Cloudflare-Persistenz,
 - Secret-/Credential-/Connection-String-Feldern oder credential-shaped Werten im Evidence-Baum,
@@ -265,7 +267,7 @@ Bevor Phase 1 tatsächlich ausgeführt wird, muss der Nutzer mindestens konkret 
 
 - **Neon:** welche ULC-Produktionsressource angelegt wird und dass die Region `aws-eu-central-1 / Frankfurt` sein muss,
 - **Cloudflare:** welche Worker-/DB-Binding-Ressource angelegt oder gebunden werden soll,
-- **Domain:** welcher konkrete Produktionshostname verwendet werden soll,
+- **Domain:** dass der bestätigte Produktionshostname `app.ulc-linz.at` verwendet wird und vor Ingress noch DNS-Kontrolle/Kollision/TLS read-only geprüft werden,
 - **Kosten:** welche Provideroptionen Kosten verursachen oder einen bezahlten Plan voraussetzen können,
 - **Secrets:** welche Secret-Namen benötigt werden und dass ihre Werte außerhalb des Repositories bleiben,
 - **Datenwirkung:** dass die Ressourcen zunächst leer bleiben und noch keine personenbezogenen Produktionsdaten migriert werden,
@@ -279,23 +281,25 @@ Solange die folgenden Punkte nicht real aufgelöst sind, bleibt Phase 1 blockier
 
 1. kein eindeutig gebundenes ULC-Produktions-Neon-Projekt in Frankfurt vorhanden,
 2. kein eindeutig gebundener ULC-Produktions-Cloudflare-Worker vorhanden,
-3. kein bestätigter konkreter Produktionshostname vorhanden,
+3. DNS-Kontrolle, freie Belegung und TLS-Ziel für `app.ulc-linz.at` sind unmittelbar vor dem späteren Ingress-Write noch autoritativ zu prüfen,
 4. kein sicherer Provider-Write-Pfad darf eine Neon-Region nur erraten oder aus einem Namen ableiten,
-5. der konkret verwendete Cloudflare-DB-Binding-/Planvertrag muss vor Erstellung auf aktuelle Kosten-/Planabhängigkeiten geprüft werden.
+5. der konkret verwendete Cloudflare-DB-Binding-/Planvertrag muss vor Erstellung auf aktuelle Kosten-/Planabhängigkeiten geprüft werden,
+6. jeder reale Provider-Write benötigt weiterhin eine eigene ausdrückliche Nutzerfreigabe.
 
 Diese Blocker verhindern **nicht** die technische Vorbereitung des Binding-Consumers, wohl aber echte externe Providerwrites.
 
-## Implementierungsstand
+## Implementierungsstand und Source of Truth
 
-Der Resource-Binding-Consumer ist in #155 technisch umgesetzt und geprüft. Sein finaler technischer Stand vor Codex/Integration lautet:
+Der Resource-Binding-Consumer entstand im technischen Slice #155 und wurde danach in die breitere M5-/M6-Integrationskette übernommen. Einzelne historische PR-SHAs oder CI-Nummern werden hier nicht als dauerhafte Wahrheit festgeschrieben.
 
-- exakter Head `3d5ba73ca3bfbbb75f490a09abd0957a7407898d`,
-- Exact-Head-CI #1077 PASS,
-- 9/9 Resource-Binding-Tests PASS,
-- vollständiger Root-`verify:apps`-Lauf PASS,
-- finaler ChatGPT-Diff-/Architektur-/Security-Review ohne verbleibendes Blocking Finding,
-- kein Codex-Zwischenreview,
-- keine Providerressource, kein Secret, keine Produktionsdatenbank und kein Deployment verändert.
+Vor jedem realen M6-Schritt gilt ausschließlich der frisch live verifizierte Zustand des tatsächlichen finalen Integrationsheads einschließlich:
+
+- Runtime-/Binding-Vertrag,
+- vollständiger Exact-Head-CI,
+- finalem Review-Gate,
+- tatsächlicher Provider-/Ressourcenlage.
+
+Dieser Dokumentvertrag autorisiert keinen Merge und keinen Providerwrite.
 
 ## Exit-Kriterien dieses Vertrags
 
@@ -307,6 +311,7 @@ Der Vorbereitungsschritt ist abgeschlossen, wenn:
 - der geschützte Raw-Binding-Input feststeht,
 - der secrets-freie normalisierte Output feststeht,
 - Runtime-Drift durch den aktuellen Runtime-Digest fail-closed gebunden ist,
+- bestätigter Hostname und tatsächliche Providerbindung getrennt behandelt werden,
 - M5-G weiterhin ausschließlich read-only konsumiert,
 - alle relevanten Fail-closed-Fälle definiert sind,
 - die konkrete externe Freigabegrenze vor Providerwrites explizit bleibt,
