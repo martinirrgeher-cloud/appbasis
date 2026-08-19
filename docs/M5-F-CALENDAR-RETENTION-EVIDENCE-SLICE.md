@@ -111,13 +111,22 @@ Fehlt irgendein Teil, liefert der M5-F-Owner `{}`.
 
 Dieser Modus ist der vorbereitete Kandidat für einen dedizierten PostgreSQL/Neon-Security-Log-Pfad.
 
-### 5.1 Speichergrundlage
+### 5.1 Speicher- und Delete-Ownership-Grundlage
 
-Der zugrunde liegende Speicher muss nachweisbar verhindern, dass Daten **vor** der kalenderbasierten 12-Monats-Grenze automatisch verschwinden.
+Für PostgreSQL ist die Untergrenze nicht sinnvoll als frei erfundenes `provider-api`-Boolean zu modellieren. Maßgeblich ist stattdessen der reale Datenbank-/Ownership-Vertrag:
 
-Eine native kürzere Retention ist unzulässig.
+- die Security-Log-Tabelle besitzt **keine native/konfigurierte TTL oder zweite automatische Early-Delete-Route**,
+- ausschließlich der definierte Retention-Owner darf regulär abgelaufene Security-Log-Zeilen löschen,
+- Ingest-Credential besitzt kein `DELETE`,
+- geschützter Query-/Operations-Zugriff besitzt kein `DELETE`, sofern nicht für einen ausdrücklich getrennten Incident-/Legal-Delete-Fall notwendig und dann separat auditiert,
+- keine öffentliche Runtime erhält Delete-Rechte auf die Security-Log-Tabelle,
+- Trigger, Funktionen, Jobs oder weitere Credentials mit Delete-Wirkung werden vollständig inventarisiert; unbekannte Delete-Pfade blockieren fail-closed.
 
-Eine längere/native unbegrenzte Speicherhaltung ist nur zulässig, wenn der kontrollierte Cleanup die obere Grenze zuverlässig durchsetzt.
+Damit wird nachgewiesen, dass Daten nicht vor der kalenderbasierten Grenze durch einen parallelen normalen Retention-Pfad verschwinden können.
+
+Eine kürzere Provider-/Storage-Retention oder ein unbekannter automatischer Delete-Mechanismus ist unzulässig.
+
+Eine längere/native unbegrenzte Tabellenhaltung ist zulässig, **wenn und nur wenn** der kontrollierte Cleanup die obere 12-Kalendermonats-Grenze zuverlässig durchsetzt.
 
 ### 5.2 Exakter Cleanup-Vertrag
 
@@ -145,10 +154,12 @@ Vorgeschlagene mode-spezifische Evidence:
 
 ```text
 mode = "controlled-calendar-enforcement"
-storageRetentionSource = "provider-api"
-storageRetentionFloorVerified = true
-enforcementOwner = "ulc-linz-security-log-retention"
-enforcementContractDigest = <sha256/contract digest>
+deleteAuthoritySource = "database-contract"
+exclusiveDeleteOwner = "ulc-linz-security-log-retention"
+deleteAuthorityContractDigest = <sha256 digest>
+databaseInventorySource = "protected-database-read"
+databaseInventoryFingerprint = <sha256 fingerprint>
+enforcementContractDigest = <sha256 contract digest>
 executionBindingSource = "provider-api"
 executionBindingId = <opaque id>
 lastSuccessfulExecutionAt = <ISO timestamp>
@@ -156,7 +167,17 @@ executionFreshnessHours = 24
 acceptanceContractDigest = <sha256 digest>
 ```
 
-Wichtig: `storageRetentionFloorVerified`, `executionBinding...` und `lastSuccessfulExecutionAt` dürfen nicht als frei gesetzte Booleans/Strings aus einer UI kommen. Sie müssen von einem geschützten Evidence-Reader aus realem Provider-/Execution-State abgeleitet werden.
+Der geschützte Database-Evidence-Reader muss mindestens ableiten:
+
+- konkrete gebundene Production-DB/Security-Log-Tabelle,
+- tatsächliche Rollen-/Privilege-Grenze für `INSERT`/`SELECT`/`DELETE`,
+- keine unbekannten Delete-fähigen App-Credentials,
+- keine unbekannte TTL-/Trigger-/Job-/Routine-Grenze mit Early-Delete-Wirkung,
+- exakte Migration-/Owner-Identität.
+
+`databaseInventoryFingerprint`, `executionBinding...` und `lastSuccessfulExecutionAt` dürfen nicht aus UI-/Operator-Text übernommen werden. Sie werden aus geschütztem realem DB-/Provider-/Execution-State abgeleitet.
+
+Ein Cleanup-Lauf mit `deleted_count = 0` kann als Execution-Nachweis zulässig sein, solange Execution-Binding, Owner-Vertrag und reale DB-Grenze vollständig belegt sind. M5-F muss nicht zwölf Monate auf das erste tatsächlich abgelaufene Event warten; die Kalendersemantik wird zusätzlich im realen PostgreSQL-E2E bewiesen.
 
 ### 5.4 Execution Owner
 
@@ -206,17 +227,23 @@ Mindestens:
 10. Zeitfenster-Mismatch zu Resource-/Logging-Evidence blockiert.
 11. stale Evidence >=24h blockiert.
 12. fehlgeschlagener Cleanup blockiert controlled enforcement.
+13. zusätzliche Delete-Berechtigung für Ingest/öffentliche Runtime blockiert.
+14. unbekannter Trigger/Job/Routine mit Delete-Wirkung blockiert.
+15. Database-Inventory-Fingerprint-Drift blockiert.
 
 ### 7.2 PostgreSQL-E2E
 
 Bei controlled enforcement real gegen isoliertes PostgreSQL:
 
 - Migration/Schema anwenden,
+- getrennte Testrollen für Ingest/Query/Cleanup materialisieren,
+- beweisen, dass Ingest/Query keine normalen Delete-Rechte besitzen,
 - Testevents um mehrere Kalendergrenzen schreiben,
 - Cleanup über den echten Owner ausführen,
 - exakt erwartete Datensätze bleiben/löschen,
 - keine Payload wird im Cleanup-Resultat zurückgegeben,
 - Transaktions-/Fehlerfall prüfen,
+- Datenbankinventar/Privileges gegen den Evidence-Reader prüfen,
 - anschließend realen Evidence-Deriver gegen den gebundenen Testzustand prüfen.
 
 ### 7.3 M5-F-Integration
@@ -233,11 +260,12 @@ Der spätere Slice muss die sicherheitsrelevanten konkreten Verträge pinnen, mi
 - aktuelles ULC-Security-Event-Schema,
 - M5-F-Deriver,
 - Retention-Owner,
+- DB-Privilege-/Inventory-Evidence-Reader,
 - PostgreSQL-E2E/Acceptance,
 - Execution-/Scheduler-Binding-Vertrag,
 - bei Neon: konkrete Security-Log-Persistenz-/Migrationseigentümerschaft.
 
-Eine Änderung an Event-Schema, Retention-Owner oder Execution-Binding invalidiert die Production-Evidence fail-closed und verlangt eine neue Prüfung.
+Eine Änderung an Event-Schema, Retention-Owner, DB-Delete-Grenze oder Execution-Binding invalidiert die Production-Evidence fail-closed und verlangt eine neue Prüfung.
 
 ## 9. Keine vorzeitige Providerentscheidung
 
