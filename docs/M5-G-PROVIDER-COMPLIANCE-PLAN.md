@@ -1,6 +1,6 @@
 # M5-G – ULC Provider & Compliance Plan
 
-Stand: 2026-08-17
+Stand: 2026-08-19
 
 ## Zweck
 
@@ -25,7 +25,7 @@ Sobald später ein zusätzlicher Dienst personenbezogene Daten verarbeitet, muss
 
 ## Aktuell verifizierte externe Grundlage
 
-Beobachtungsstand: **2026-08-17**. Die folgenden Punkte sind ausschließlich aktuelle offizielle Providergrundlagen. Sie verifizieren noch keine app-spezifischen M5-Kriterien.
+Beobachtungsstand: **2026-08-19**. Die folgenden Punkte sind ausschließlich aktuelle offizielle Providergrundlagen. Sie verifizieren noch keine app-spezifischen M5-Kriterien.
 
 ### Cloudflare
 
@@ -33,9 +33,9 @@ Beobachtungsstand: **2026-08-17**. Die folgenden Punkte sind ausschließlich akt
 - Cloudflare Workers verarbeiten Anfragen ohne Data Localization Suite grundsätzlich über das globale Cloudflare-Netz. Eine echte geographische Begrenzung der TLS-Terminierung und Worker-Ausführung erfordert **Regional Services** auf dem betreffenden Hostnamen.
 - Regional Services kann TLS-Terminierung und Worker-Ausführung auf eine konfigurierte Region wie die EU beschränken. Worker-Code und Secrets werden laut Cloudflare trotzdem global verteilt.
 - Regional Services regionalisiert **keine ausgehenden Worker-Subrequests** und gilt nicht automatisch für andere Trigger wie Queues oder Cron Triggers. Diese Datenflüsse müssen separat bewertet werden, sobald sie real verwendet werden.
-- Die **Customer Metadata Boundary (CMB)** ist die getrennte Funktion für regionalisierte Speicherung von Customer Logs/Traffic-Metadaten. Ohne CMB kann diese Metadatenverarbeitung global erfolgen. Für ein striktes EU-Verarbeitungsmodell reicht Regional Services alleine daher nicht aus.
-- Data Localization Suite, Regional Services und Customer Metadata Boundary sind laut aktueller Cloudflare-Dokumentation **Enterprise-only paid**. Dieser Pfad darf weder als vorhanden angenommen noch ohne ausdrückliche Freigabe beschafft werden.
-- Die Cloudflare-Subprozessorenliste nennt für Cloudflare Services und die Developer Platform Verarbeitungsstandorte innerhalb und außerhalb des EWR. Eine EU-Worker-Region darf deshalb nicht mit „sämtliche Providerverarbeitung ausschließlich EU“ gleichgesetzt werden.
+- Die **Customer Metadata Boundary (CMB)** ist die getrennte Funktion für regionalisierte Speicherung von Customer Logs/Traffic-Metadaten. Ohne CMB kann diese Metadatenverarbeitung global erfolgen.
+- Data Localization Suite, Regional Services und Customer Metadata Boundary sind kosten-/vertragsrelevante Zusatzfunktionen und werden für ULC v0.1 gemäß ADR-022 **nicht vorsorglich vorausgesetzt oder beschafft**.
+- Die Cloudflare-Subprozessorenliste nennt für Cloudflare Services und die Developer Platform Verarbeitungsstandorte innerhalb und außerhalb des EWR. Standard Workers dürfen deshalb nicht als EU-only dargestellt werden.
 
 Offizielle Grundlagen:
 
@@ -50,11 +50,11 @@ Offizielle Grundlagen:
 ### Neon/PostgreSQL / Databricks
 
 - Neon unterstützt weiterhin **AWS Europe (Frankfurt) / `aws-eu-central-1`**. Diese Region entspricht dem bestätigten ULC-Ziel EU / Frankfurt.
-- Neon verlangt SSL/TLS für Datenbankverbindungen. Die aktuelle Security-Dokumentation beschreibt AES-256 für Data-at-Rest sowie TLS 1.2/1.3 für Datenübertragung.
+- Neon verlangt SSL/TLS für Datenbankverbindungen. Die aktuelle Security-Dokumentation beschreibt AES-256 für Data-at-Rest sowie TLS für Datenübertragung.
 - Die aktuelle Neon-Vertragsgrundlage ist das **Product Specific Schedule (Neon)**, zuletzt aktualisiert am **2026-08-05**. Neon ist Teil der Databricks Platform; das Schedule verweist auf das jeweils aktuelle Databricks Master Cloud Services Agreement und dessen DPA und ändert diese Verträge für Neon Platform Services gezielt ab.
-- Das aktuelle Neon Schedule nennt **Grafana Labs (USA)** zusätzlich zu den Databricks-Subprozessoren. Die bisherige Annahme einer eigenständigen statischen Neon-Subprozessorenliste ist deshalb nicht mehr maßgeblich.
-- `https://neon.com/subprocessors` verweist aktuell auf die **Databricks Subprocessors**-Liste. Diese Liste ist Stand **2026-06-09**. Für Cloud-Service-Provider wie AWS wird die Verarbeitungsregion bei designated services als kundenabhängig/Customer Selected beschrieben; zugleich existieren weitere Support-/Betriebs-Subprozessoren und Databricks-Affiliates in mehreren Ländern.
-- Die Provider-Security-Dokumentation beschreibt verschlüsselte Backups/Recovery-Daten; für M5 bleibt trotzdem die konkrete ULC-Produktionsressource und deren tatsächliche Konfiguration maßgeblich.
+- Das aktuelle Neon Schedule nennt **Grafana Labs (USA)** zusätzlich zu den auf der Databricks-Subprozessorenliste geführten Subprozessoren. Die frühere Annahme einer eigenständigen statischen Neon-Subprozessorenliste ist deshalb nicht mehr maßgeblich.
+- `https://neon.com/subprocessors` verweist auf die Databricks-Subprozessorenstruktur. Die aktuell veröffentlichte Databricks-Liste ist Stand **2026-06-09**.
+- Provider-Security-Dokumentation und Neon Schedule liefern eine Verschlüsselungsbaseline; für M5 bleibt trotzdem die konkrete ULC-Produktionsressource und deren tatsächliche Konfiguration maßgeblich.
 - Diese Providergrundlagen beweisen noch nicht, dass eine konkrete ULC-Produktivdatenbank bereits existiert oder tatsächlich in Frankfurt provisioniert wurde.
 
 Offizielle Grundlagen:
@@ -70,70 +70,61 @@ Offizielle Grundlagen:
 
 | Kriterium | Stand nach Dokumentprüfung | Was für `verified` noch fehlt |
 |---|---|---|
-| `dataRegion` | `open` | reale ULC-Produktivressourcen; Neon-Region Frankfurt autoritativ bestätigen; Cloudflare-Verarbeitungsmodell für ULC verbindlich entscheiden und konfigurierte Realität prüfen |
+| `dataRegion` | `open` | reale ULC-Produktivressourcen; Neon-Region Frankfurt autoritativ bestätigen; reale Cloudflare-Konfiguration muss ADR-022 entsprechen |
 | `dpa` | `open` | account-/vertragsbezogen bestätigen, dass die aktuellen Cloudflare- und Databricks/Neon-Vertrags-/DPA-Bedingungen für die tatsächlich genutzten Dienste gelten |
 | `encryption` | `open` | Providerfähigkeiten sind dokumentiert; reale ULC-Verbindungen, Ressourcen und Backup-/Recovery-Pfade müssen app-spezifisch geprüft werden |
 | `subprocessors` | `open` | aktuelle Listen zum Freigabezeitpunkt erneut abrufen, tatsächlichen Dienstumfang zuordnen und Transferlage dokumentieren |
 
-## Offene Betreiber-/Architekturentscheidung: Cloudflare-Datenregion
+## Verbindliche Cloudflare-Entscheidung gemäß ADR-022
 
-Die Projektanforderung `dataRegion` verlangt derzeit **„geklärt“**, nicht automatisch „sämtliche Verarbeitung ausschließlich EU“. Für ULC/High Privacy müssen wir trotzdem ausdrücklich festlegen, welches Verarbeitungsmodell akzeptiert wird.
+Für **ULC Linz v0.1** ist das Verarbeitungsmodell bereits entschieden:
 
-### Variante A – Standard Workers, kontrollierte globale Transient-Verarbeitung
+- **Standard Cloudflare Workers**,
+- kontrollierte globale transiente Verarbeitung,
+- ausdrücklich **nicht EU-only**,
+- persistente personenbezogene Primärdaten in der eigenen Neon-Produktionsdatenbank in **EU / Frankfurt**,
+- Cloudflare soweit möglich zustandslos bezüglich personenbezogener Fach-/Identity-Daten,
+- keine zusätzlichen Cloudflare-Persistenzdienste für personenbezogene ULC-Daten ohne neue Bewertung,
+- Regional Services / Customer Metadata Boundary sind **keine v0.1-Voraussetzung** und werden nicht vorsorglich beschafft.
+
+Diese Entscheidung verifiziert `dataRegion` noch nicht. Das Kriterium bleibt bis zur realen, app-spezifisch gebundenen Production-Evidence `open`.
+
+### Gewähltes Modell – Standard Workers, kontrollierte globale Transient-Verarbeitung
 
 Technischer Zielzustand:
 
 - persistente personenbezogene Primärdaten ausschließlich in der ULC-Neon-Produktivdatenbank in **EU / Frankfurt**
 - Cloudflare Worker bleibt für ULC v0.1 soweit möglich zustandslos bezüglich personenbezogener Fach-/Identity-Daten
 - keine zusätzlichen Cloudflare-Persistenzdienste für personenbezogene ULC-Daten in M5 v0.1
-- TLS wird verwendet, aber Worker-Ausführung/TLS-Terminierung darf im globalen Cloudflare-Netz stattfinden
+- TLS wird verwendet, Worker-Ausführung/TLS-Terminierung darf im globalen Cloudflare-Netz stattfinden
 - Cloudflare-DPA, internationale Transfermechanismen und Subprozessorenlage werden ausdrücklich als Teil der Compliance-Bewertung dokumentiert
 - Logs/Observability werden datenminimiert; keine Secrets und keine unnötigen fachlich/personenbezogenen Inhalte
-- `dataRegion` darf erst `verified` werden, wenn dieses globale transiente Verarbeitungsmodell als Betreiber-/Compliance-Entscheidung ausdrücklich akzeptiert und gegen die reale Konfiguration geprüft wurde
+- `dataRegion` darf erst `verified` werden, wenn die reale Konfiguration exakt diesem Zielvertrag entspricht und vollständig read-only belegt ist
 
 Vorteile:
 
-- kein Enterprise-/Data-Localization-Zwang
+- kein vorsorglicher Enterprise-/Data-Localization-Zwang
 - entspricht dem bestehenden Cloudflare-Workers-Referenzstack
 - geringer Betriebs- und Kostenaufwand
 
 Grenzen:
 
 - keine EU-only-Aussage für TLS-Terminierung/Worker-Ausführung
-- ohne CMB keine Zusage, dass Customer Logs ausschließlich in der EU gespeichert werden
+- ohne zusätzliche Regionalisierung keine Zusage, dass sämtliche Cloudflare-Metadatenverarbeitung ausschließlich in der EU erfolgt
 - internationale Transfers/Subprozessoren müssen bewusst akzeptiert und dokumentiert werden
 
-### Variante B – Striktere EU-Regionalisierung über Cloudflare Data Localization Suite
+### Nicht gewählte spätere Alternative – striktere EU-Regionalisierung
 
-Technischer Zielzustand:
+Regional Services plus gegebenenfalls Customer Metadata Boundary bleiben eine **spätere Alternative**, falls eine rechtliche, vertragliche oder fachliche EU-only-Anforderung entsteht.
 
-- Regional Services für den produktiven ULC-Hostname mit Region EU
-- Customer Metadata Boundary auf EU, wenn Customer Logs/Traffic-Metadaten ebenfalls regional gebunden werden sollen
-- Neon-Produktivdatenbank in EU / Frankfurt
-- reale Konfiguration und Datenflüsse vor Freigabe read-only verifizieren
+Eine solche Änderung würde:
 
-Vorteile:
+- ADR-022 neu öffnen,
+- die reale Datenfluss-/Privacy-Bewertung ändern,
+- plan-/kosten-/vertragsrelevante Providerfunktionen betreffen,
+- eine ausdrückliche Nutzerfreigabe vor jedem Providerwrite verlangen.
 
-- TLS-Terminierung und Worker-Ausführung für den regionalisierten Hostnamen in der EU
-- CMB kann Customer Logs/Traffic-Metadaten in der EU halten
-
-Grenzen:
-
-- Enterprise-only paid; Preis/Vertrag muss separat mit Cloudflare geklärt werden
-- Worker-Code und Secrets werden weiterhin global verteilt
-- ausgehende Worker-Subrequests werden durch Regional Services nicht regionalisiert
-- Queues/Cron und spätere zusätzliche Cloudflare-Dienste benötigen jeweils eigene Bewertung
-- auch diese Variante bedeutet nicht automatisch, dass sämtliche Cloudflare-/Subprozessorverarbeitung ausschließlich in der EU stattfindet
-
-### Technische Empfehlung für M5 v0.1
-
-**Variante A ist der bevorzugte Default für die erste ULC-v0.1-Produktion, sofern der Betreiber das dokumentierte globale transiente Cloudflare-Verarbeitungsmodell akzeptiert und die konkrete Datenschutz-/Transferbewertung dies trägt.**
-
-Begründung: AppBasis soll keine kostenpflichtige Enterprise-Plattformfunktion vorsorglich einführen, wenn der reale Verbraucher sie nicht zwingend benötigt. Die sensiblen persistenten Daten können in Neon Frankfurt gebunden bleiben; Cloudflare wird für v0.1 möglichst stateless und datenminimiert gehalten.
-
-**Wenn der Betreiber oder eine rechtliche/vertragliche Vorgabe EU-only-TLS-Terminierung/Worker-Ausführung verlangt, ist Variante A nicht ausreichend.** Dann bleibt `dataRegion` fail-closed `open`, bis Variante B oder ein anderer ausdrücklich freigegebener Hostingpfad umgesetzt und verifiziert wurde.
-
-Diese Empfehlung ist noch **keine Grundsatzentscheidung** und ändert den High-Privacy-Vertrag nicht. Eine endgültige Betreiberentscheidung wird anschließend im Entscheidungsregister konsistent festgehalten.
+Sie wird in M5 v0.1 nicht vorsorglich umgesetzt.
 
 ## Zu belegende M5-Kriterien
 
@@ -156,17 +147,22 @@ Der Nachweis muss an die konkrete ULC-Zielumgebung gebunden sein und mindestens 
 - öffentliche ULC-Runtime
 - gegebenenfalls privilegierte ULC-Control-Plane-Komponenten
 - tatsächlich verwendete Bindings und externen Datenflüsse
-- für Variante B zusätzlich Regional-Services-/CMB-Zustand
+- tatsächliches Standard-Workers-Modell ohne EU-only-Fehlbehauptung
 
 Keine Reference-, Preview- oder fremde App-Ressource darf als ULC-Evidenz wiederverwendet werden.
 
 ### Datenregion
 
-Cloudflare-Evidenz darf nur dann zu `dataRegion` beitragen, wenn der akzeptierte Zielvertrag und die reale Konfiguration übereinstimmen.
+Cloudflare-Evidenz darf nur dann zu `dataRegion` beitragen, wenn der ADR-022-Zielvertrag und die reale Konfiguration übereinstimmen.
 
-Für Variante A muss die Evidenz ausdrücklich festhalten, dass Cloudflare-Verarbeitung **nicht als EU-only** behauptet wird.
+Die Evidence muss ausdrücklich festhalten:
 
-Für Variante B müssen Regional Services und – sofern für das Profil verlangt – Customer Metadata Boundary autoritativ für die reale ULC-Zielumgebung bestätigt werden.
+- `providerModel = standard-workers-global-transient`,
+- `euOnly = false`,
+- keine unerwarteten zusätzlichen personenbezogenen Persistenzpfade,
+- vollständiges reales Binding-/Telemetry-/Datenflussinventar.
+
+Fehlen Regional Services/CMB ist unter ADR-022 **kein Fehler**. Eine spätere reale Aktivierung solcher Funktionen wäre dagegen Teil des Providerzustands und müsste neu bewertet werden.
 
 ### Verschlüsselung
 
@@ -205,7 +201,7 @@ Für die konkrete ULC-Produktivdatenbank müssen mindestens belegt werden:
 
 ### AVV/DPA und Subprozessoren
 
-Für Neon müssen die zum Prüfzeitpunkt gültigen Databricks/Neon-Vertrags-/Datenschutzunterlagen und die aktuelle Subprozessorenliste gegen den real genutzten Dienstumfang geprüft werden. Der Evidence-Output hält Prüfzeitpunkt und Reviewzeitpunkt fest; veränderliche Providerinformationen werden nicht als dauerhafte Wahrheit eingefroren.
+Für Neon müssen die zum Prüfzeitpunkt gültigen Databricks/Neon-Vertrags-/Datenschutzunterlagen und die aktuelle Databricks-Subprozessorenliste **plus Neon-Schedule-Ergänzungen** gegen den real genutzten Dienstumfang geprüft werden. Der Evidence-Output hält Prüfzeitpunkt und Reviewzeitpunkt fest; veränderliche Providerinformationen werden nicht als dauerhafte Wahrheit eingefroren.
 
 ## Datenfluss-Inventar
 
@@ -213,11 +209,11 @@ Vor `verified` muss für ULC v0.1 ein kleines, app-spezifisches Datenfluss-Inven
 
 | Datenfluss | Quelle | Ziel | personenbezogen | Pflichtnachweis |
 |---|---|---|---|---|
-| Browser → ULC Runtime | Benutzergerät | Cloudflare Runtime | ja | TLS / Zielbindung / akzeptiertes Regionalmodell |
+| Browser → ULC Runtime | Benutzergerät | Cloudflare Runtime | ja | TLS / Zielbindung / ADR-022-Verarbeitungsmodell |
 | ULC Runtime → Produktiv-DB | Cloudflare Runtime | Neon/PostgreSQL | ja | TLS / DB-Zielbindung / Region |
 | CI/Control Plane → Provider APIs | geschützte CI-/Admin-Grenze | Cloudflare/Neon | primär technische Metadaten, privilegiert | Secret-Grenze / Audit / Least Privilege |
 | Backup/Recovery | Neon/PostgreSQL | providerseitige Recovery-Kopien | ja | Verschlüsselung / Retention / Restore-Grenze |
-| Cloudflare Logs/Analytics | Cloudflare Runtime | Cloudflare Telemetry | potentiell personenbezogene Metadaten | Datenminimierung / CMB-Zustand falls verwendet / Retention |
+| Cloudflare Logs/Telemetry | Cloudflare Runtime | tatsächlich aktivierte Telemetry-Ziele | potentiell personenbezogene Metadaten | Datenminimierung / vollständiges Inventar / Retention / Providerbewertung |
 
 Nicht vorhandene Datenflüsse werden nicht künstlich ergänzt. Neue reale Dienste oder Trigger erweitern das Inventar fail-closed.
 
@@ -241,9 +237,8 @@ M5-G bleibt offen, wenn mindestens einer dieser Fälle eintritt:
 - ein tatsächlich verwendeter Provider/Dienst fehlt im Inventar
 - Produktionsressource oder Zielumgebung ist nicht eindeutig identifizierbar
 - Neon-Produktionsregion kann nicht autoritativ als EU / Frankfurt bestätigt werden
-- Cloudflare-Verarbeitungsmodell ist für ULC/High Privacy nicht verbindlich entschieden oder stimmt nicht mit der realen Konfiguration überein
-- Variante A wird verwendet, aber fälschlich als EU-only dokumentiert
-- Variante B wird verlangt, aber Regional Services/CMB sind nicht eindeutig belegt
+- die reale Cloudflare-Konfiguration widerspricht ADR-022 oder kann nicht vollständig bestimmt werden
+- Standard Workers werden fälschlich als EU-only dokumentiert
 - DPA-/AVV- oder Subprozessoren-Nachweis fehlt, ist veraltet oder nicht dem Dienstumfang zuordenbar
 - Transport- oder At-Rest-Verschlüsselung kann für einen relevanten Datenpfad nicht belegt werden
 - Credentials oder Secretwerte gelangen in Manifest, Repository oder normalen Factory-Snapshot
@@ -253,18 +248,16 @@ M5-G bleibt offen, wenn mindestens einer dieser Fälle eintritt:
 
 ## Technische Reihenfolge
 
-1. Reale ULC-Runtime im Repository herstellen.
-2. Read-only Provider-/Compliance-Inventar an die ULC-App binden, ohne offene Kriterien vorzeitig zu verifizieren.
-3. Cloudflare-Regionalmodell als Betreiberentscheidung festlegen.
-4. Später tatsächlich verwendete Cloudflare- und Neon-Produktionsressourcen eindeutig binden; keine Ressource vorab erfinden.
-5. Read-only Provider-/Konfigurationsevidenz erfassen.
-6. Aktuelle DPA-/AVV- und Subprozessorenunterlagen für exakt diese beiden Provider prüfen.
-7. Datenfluss-Inventar gegen reale Runtime/Bindings bestätigen.
-8. Vier M5-Kriterien getrennt auswerten; fehlende Teilnachweise bleiben `open`.
-9. Factory-Gate erst nach app-spezifischer, frischer Evidenz aktualisieren.
-10. Vollständige Exact-Head-CI und ChatGPT-Diff-/Architektur-/Security-Prüfung.
-11. Finalen Codex-Review gemäß aktueller Sammelstrategie später nachholen; bis dahin kein Merge final-review-pflichtiger technischer Consumer.
+1. ADR-022 als festen ULC-v0.1-Zielvertrag konsumieren; das Cloudflare-Modell nicht erneut entscheiden.
+2. Reale ULC-Produktionsressourcen nach ausdrücklicher Freigabe eindeutig binden; keine Ressource vorab erfinden.
+3. Read-only Provider-/Konfigurationsevidenz gegen genau diese Ressourcen erfassen.
+4. Aktuelle DPA-/AVV- und Subprozessorenunterlagen für exakt die tatsächlich verwendeten Provider/Dienste prüfen.
+5. Datenfluss-Inventar gegen reale Runtime/Bindings bestätigen.
+6. Vier M5-G-Kriterien getrennt auswerten; fehlende Teilnachweise bleiben `open`.
+7. Factory-Gate erst nach app-spezifischer, frischer Evidenz aktualisieren.
+8. Vollständige Exact-Head-CI und ChatGPT-Diff-/Architektur-/Security-Prüfung.
+9. Finalen Codex-Review gemäß der Codex-sparsamen Strategie nur auf einem tatsächlich finalen Integrationshead durchführen.
 
 ## Produktionsgrenze
 
-Dieser Plan autorisiert weder das Anlegen einer Cloudflare- noch einer Neon-Produktionsressource. Produktive Ressourcen, kostenpflichtige Cloudflare-Enterprise-/Data-Localization-Funktionen, produktive Datenbankänderungen, Secrets, Deployments und Produktionsfreigaben benötigen weiterhin eine separate ausdrückliche Zustimmung.
+Dieser Plan autorisiert weder das Anlegen einer Cloudflare- noch einer Neon-Produktionsressource. Produktive Ressourcen, kostenpflichtige Cloudflare-Regionalisierungsfunktionen, produktive Datenbankänderungen, Secrets, Deployments und Produktionsfreigaben benötigen weiterhin eine separate ausdrückliche Zustimmung.
