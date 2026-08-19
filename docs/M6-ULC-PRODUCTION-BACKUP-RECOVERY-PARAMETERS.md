@@ -33,7 +33,7 @@ Der PostgreSQL-E2E-Vertrag beweist zusätzlich:
 - Permission-/Membership-Zustand bleibt gelöscht,
 - Löschmarker bleiben exakt an der 35-Tage-Grenze erhalten und werden erst danach purgiert.
 
-**Folgerung:** Solange dieser C/D-Vertrag gilt, darf kein wiederherstellbarer personenbezogener ULC-Backupstand still länger als 35 Tage aufbewahrt werden.
+**Folgerung:** Solange dieser C/D-Vertrag gilt, darf kein personenbezogener ULC-Recovery-Point weiter restaurierbar bleiben, sobald der von ihm repräsentierte Datenstand älter als 35 Tage ist. Maßgeblich ist der Recovery-Point-Zeitpunkt, nicht der spätere Zeitpunkt, zu dem ein Snapshotobjekt angelegt wurde.
 
 ## 2. Aktueller Neon-Recovery-Baukasten – Planungsbasis
 
@@ -53,7 +53,8 @@ Für Scheduled Snapshots definiert die aktuelle Neon-OpenAPI:
 
 - bekannte Frequenzen `daily`, `weekly`, `monthly`,
 - `retention_seconds` maximal und standardmäßig `3024000`, also exakt 35 Tage,
-- manuelle Snapshots besitzen keine entsprechende Maximal-Retention und werden über `expires_at` begrenzt.
+- manuelle Snapshots besitzen keine entsprechende Maximal-Retention und werden über `expires_at` begrenzt,
+- ein manueller Snapshot kann über `timestamp` oder `lsn` auch einen älteren Punkt innerhalb des aktuellen Restore Window repräsentieren.
 
 Snapshots sind aktuell als Beta ausgewiesen. Diese Eigenschaft muss am realen Production-Freigabetag erneut geprüft und bewusst akzeptiert oder durch einen anderen Backup-Pfad ersetzt werden. Diese Vorbereitung nimmt keine Beta-/Kostenfreigabe vorweg.
 
@@ -88,14 +89,20 @@ Damit ist `PITR < 35 Tage` kein Sicherheitsproblem: Die Löschmarker leben läng
 
 Vor jeder kritischen Produktionsmigration ist ein expliziter Pre-Migration-Recovery-Point erforderlich.
 
+Für einen normalen Pre-Migration-Snapshot soll der Recovery Point der unmittelbar vor der Migration liegende aktuelle Production-Zustand sein. Neon erlaubt technisch aber auch die Erzeugung eines Snapshots aus einem älteren `timestamp`-/`lsn`-Punkt. Deshalb gilt die Ablaufgrenze immer relativ zum **repräsentierten Recovery Point**.
+
 Für einen manuellen Neon-Snapshot gilt fail-closed:
 
-- Snapshot nur vom aktuellen Production-Root-Branch,
+- Snapshot nur vom maßgeblichen Production-Root-Branch,
 - Snapshot-ID/Branch-ID nur in geschützter Operations-Evidence, nicht im normalen App-Manifest/UI-Snapshot,
+- Recovery-Point-Zeitpunkt aus der autoritativen Snapshot-/Operation-Evidence eindeutig bestimmen,
 - `expires_at` **muss gesetzt** sein,
-- `expires_at` darf maximal `snapshot-created-at + 35 Tage` betragen,
-- kein `expires_at = null`, kein „never expires“ und kein manuell später verlängertes Ablaufdatum über diese Grenze,
+- `expires_at` darf maximal `recovery-point-at + 35 Tage` betragen,
+- ist dieser berechnete Ablaufzeitpunkt beim geplanten Create bereits erreicht oder überschritten, darf der Snapshot nicht als zulässiger ULC-Recovery-Point erzeugt/verwendet werden,
+- kein `expires_at = null`, kein „never expires“ und kein manuell später verlängertes Ablaufdatum über die Recovery-Point-Grenze,
 - die konkrete Migration darf erst nach read-only bestätigtem Snapshotzustand freigegeben werden.
+
+Damit kann ein heute erzeugtes Snapshotobjekt eines bereits älteren PITR-Zustands die 35-Tage-Lifecycle-Grenze nicht nach hinten verlängern.
 
 Wenn künftig ein Backup länger als 35 Tage benötigt wird: **STOP.** Zuerst C/D-Löschmarker-/Tombstone-Retention und Restore-Reconciliation bewusst neu bewerten und technisch neu beweisen. Backup-Retention niemals allein verlängern.
 
