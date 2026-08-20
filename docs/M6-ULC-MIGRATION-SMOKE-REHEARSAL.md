@@ -2,167 +2,90 @@
 
 ## Zweck
 
-Dieser Slice bereitet die zwei späteren M6-Write-Grenzen `production-migrations` und `post-deploy-smokes` so weit wie möglich **ohne Produktionswirkung** vor.
+Dieser Slice bereitet `production-migrations` und `post-deploy-smokes` ohne Produktionswirkung vor. Er verbindet sich nicht mit einer Produktionsdatenbank, führt kein SQL aus, verändert keinen Provider, loggt sich nicht in Produktion ein und autorisiert keinen Release.
 
-Er führt insbesondere **nicht** aus:
+Auch bei erfolgreichem Rehearsal bleiben `productionDatabaseWriteAllowed=false`, `productionSmokeExecutionAuthorized=false`, `releaseAuthorized=false` und `explicitApprovalStillRequired=true`.
 
-- keine Verbindung zu einer Produktionsdatenbank
-- keine SQL-Ausführung
-- keine Neon-/Cloudflare-Änderung
-- kein Login gegen Produktion
-- keine Session-Erzeugung gegen Produktion
-- kein Permission-Smoke gegen Produktionsdaten
-- keine Fachmodulmutation
-- keine Produktionsfreigabe
+## 1. Produktionsmigrationen
 
-Der Output bleibt deshalb auch bei vollständig erfolgreichem Rehearsal:
+Es wird ausschließlich der bestehende gemeinsame Migrationsexecutor verwendet:
 
-- `productionDatabaseWriteAllowed = false`
-- `productionSmokeExecutionAuthorized = false`
-- `releaseAuthorized = false`
-- `explicitApprovalStillRequired = true`
-
-## 1. Produktionsmigrationen – Repository-Rehearsal
-
-Der ULC-Slice baut keinen zweiten Migrationsexecutor.
-
-Verwendet wird der bestehende gemeinsame Vertrag:
-
-- Plan laden: `tooling/database-migration-executor.mjs#loadRepositoryMigrationPlan`
+- Plan: `tooling/database-migration-executor.mjs#loadRepositoryMigrationPlan`
 - spätere Ausführung: `tooling/database-migration-executor.mjs#applyRepositoryMigrationPlan`
 
-Der generische Executor besitzt bereits die relevanten Sicherheitsgrenzen:
+Der konkrete ULC-Plan umfasst acht Migrationen in Manifest-Reihenfolge: zwei Identity-, vier Permissions- und zwei ULC-Lifecycle-Migrationen. Für jede Datei werden nur Owner, Pfad, Statement-Anzahl und SHA-256-Digest in die Evidence aufgenommen.
 
-- Manifest-/Application-/Owner-Prüfung
-- Migrationen nur innerhalb des deklarierten Owner-Roots
-- keine fehlenden, doppelten, entkommenden oder symlinkenden Migrationsdateien
-- keine Transaction-Control-Statements in den Manifest-Migrationen
-- spätere Ziel-DB-Prüfung
-- leeres `public`-Schema als Voraussetzung für den initialen Lauf
-- atomare Migrationstransaktion
+Der spätere produktive Lauf benötigt weiterhin eine ausdrückliche Freigabe, frische gebundene Provider-Evidence, Recovery-Precheck, Sicherungs-/Rollbackpfad, exakte Ziel-DB-Bindung und nachgelagerte Migrationsverifikation.
 
-Das ULC-Rehearsal pinnt zusätzlich den **konkreten aktuellen Produktionsplan** auf exakt acht Migrationen in Manifest-Reihenfolge:
+## 2. Exact-Head-Bindung
 
-1. Identity `0000_appbasis_identity_foundation.sql`
-2. Identity `0001_appbasis_identity_foundation.sql`
-3. Permissions `0000_appbasis_permissions_foundation.sql`
-4. Permissions `0001_appbasis_permission_role_lifecycle.sql`
-5. Permissions `0002_appbasis_permission_administration_audit.sql`
-6. Permissions `0003_appbasis_principal_permission_administration_audit.sql`
-7. ULC Lifecycle `0000_ulc_linz_lifecycle_scope.sql`
-8. ULC Lifecycle `0001_ulc_linz_retention_deletion_claim.sql`
+Rehearsal-Evidence gilt nur für den **exakten sauberen Repository-Head**, auf dem sie erzeugt wurde.
 
-Für jede Datei werden nur Pfad, Statement-Anzahl und SHA-256-Digest in den Rehearsal-Snapshot übernommen. SQL-Inhalte und Connection Strings werden nicht ausgegeben.
+`evaluateUlcLinzM6MigrationSmokeRehearsal()`:
 
-Der spätere produktive Lauf muss zusätzlich weiterhin erfüllen:
+- liest `git rev-parse --verify HEAD`,
+- akzeptiert nur einen vollständigen 40-stelligen Commit-SHA,
+- verlangt einen sauberen Worktree über `git status --porcelain=v1 --untracked-files=all`,
+- blockiert bei nicht verifizierbarem Head mit `REPOSITORY_HEAD_UNVERIFIED`,
+- blockiert bei lokalen Änderungen oder untracked Dateien mit `REPOSITORY_HEAD_DIRTY`,
+- übernimmt `repositoryHeadSha` in `validatedInputDigests`,
+- bindet diesen SHA damit direkt in den `planFingerprint` ein.
 
-- ausdrückliche Freigabe für genau diesen Produktions-DB-Write
-- frische, gebundene Provider-Evidence für die tatsächliche Ziel-DB
-- Backup-/Recovery-Zustand vorher geprüft
-- vor kritischen Migrationen möglichst unmittelbare Sicherung
-- Recovery-/Rollback-Pfad vorher definiert
-- Ziel-DB stimmt mit der freigegebenen Produktionsressource überein
-- Plan-Fingerprint entspricht dem zuvor geprüften Rehearsal
-- Migration danach verifiziert
+Dadurch invalidiert **jeder neue Commit** die alte Rehearsal-Evidence, auch wenn Migrationen und semantische Snapshots gleich geblieben sind. Das schließt insbesondere Änderungen am Migrationsexecutor, Production-Preflight, Rehearsal selbst oder deren Implementierungsabhängigkeiten ein.
 
-Die tatsächliche Datenbankidentität wird nicht im Repository gespeichert.
+Der spätere Executor muss den verifizierten Head zusammen mit dem Plan-Fingerprint konsumieren. Eine Evidence von einem anderen Head darf nicht wiederverwendet werden.
 
-## 2. Production-Smoke-Vertrag
+## 3. Weitere execution-bound Inputs
 
-Der bestehende M6-Plan klassifiziert `post-deploy-smokes` zu Recht als `production-smoke-write`: Ein erfolgreicher Auth-Smoke erzeugt produktiven Session-State, und Denial-Fälle können Security-Events im produktiven Logging-Sink erzeugen.
+Zusätzlich zum exakten Head bindet der Fingerprint weiterhin:
 
-Daher gilt auch später:
+- Datenbankmanifest,
+- App-Definition,
+- öffentliche ULC-Runtime,
+- Permission-/Authorization-Smoke-Vertrag,
+- validierten Repository-Preflight,
+- kanonischen M6-Ausführungsplan,
+- Smoke-Vertrag,
+- alle acht Migrationen.
 
-- ausdrückliche Freigabe erforderlich
-- dedizierte Smoke-Identitäten statt echter Nutzerkonten
-- Credentials ausschließlich außerhalb des Repository
-- kein automatischer Passwortwechsel während des Smokes
-- keine Fachmodul-Datenmutation als Teil dieses v0.1-Smokes
-- ein grüner Smoke autorisiert **keine** Produktionsfreigabe
+Die Head-Bindung ersetzt diese inhaltlichen Digests nicht; sie ergänzt sie um die vollständige Repository-Provenienz.
 
-### Health
+## 4. Production-Smoke-Vertrag
 
-Öffentliche Produktionsruntime über HTTPS:
+`post-deploy-smokes` bleibt ein `production-smoke-write`, weil Auth-Smokes Session-State und Denial-Fälle Security-Events erzeugen können. Deshalb sind dedizierte Smoke-Identitäten und eine ausdrückliche Freigabe erforderlich.
 
-- `GET /api/health`
-- erwartete Antwort: `status=ok`, `appId=ulc-linz`
+Geprüft werden:
 
-### Auth / Session
+- `GET /api/health`,
+- `POST /api/auth/sign-in`,
+- `GET /api/auth/session`,
+- geschützter Permission-Allowed- und Denied-Fall über `assertUlcLinzModuleAccess`,
+- Unknown-Capability deny-by-default,
+- aktueller Application-Scope.
 
-Mit einer dedizierten, bereits vollständig aktivierten Smoke-Identität:
+Es wird keine öffentliche Permission-/Smoke-Probe erfunden. Der aktuelle ULC-Stand hat `modules: []`; daher wird kein fiktiver Fachmodul-Smoke behauptet. Sobald ein echtes Fachmodul hinzukommt, muss der Vertrag fail-closed angepasst werden.
 
-- erfolgreicher `POST /api/auth/sign-in`
-- danach erfolgreicher `GET /api/auth/session`
-- `mustChangePassword` darf für den Smoke nicht offen sein
-- der Smoke darf nicht selbst Passwort-/Benutzer-Lifecycle korrigieren
+## 5. Execution Binding
 
-### Permissions
+Der Rehearsal-Vertrag ist an `production-migrations`, `post-deploy-smokes` und `release-gate` gebunden. Er verlangt insbesondere:
 
-Es wird **keine öffentliche Permission-Probe-Route** erfunden.
+- `migrationPlanFingerprintRequiredAtExecution=true`,
+- `freshProviderEvidenceRequiredAtExecution=true`,
+- `providerBoundTargetRequiredAtExecution=true`,
+- `verifiedRepositoryHeadRequiredAtExecution=true`,
+- `cleanRepositoryRequiredForRehearsal=true`,
+- `rehearsalMustBeRecomputedOnFinalHead=true`,
+- `smokeContractRequiredAtExecution=true`,
+- `futureExecutorMustConsumeBinding=true`.
 
-Der Permission-Smoke verwendet an einer geschützten Operationsgrenze den bestehenden Runtime-Vertrag:
+Ein grüner Smoke ersetzt niemals M4/M5 oder die separate Release-Freigabe.
 
-`apps/ulc-linz/worker/authorization.ts#assertUlcLinzModuleAccess`
+## 6. Output und Stop-Bedingungen
 
-Mindestens erforderlich:
+Der Output enthält nur Evidence wie Head-SHA, Digests, Counts, Plan-Fingerprint und Smoke-Vertrag; keine SQL-Inhalte, Provider-Credentials, Connection Strings oder Produktions-IDs.
 
-- ein explizit erlaubter Same-Organization-Fall
-- ein explizit verweigerter Fall
-- Unknown-Capability bleibt deny-by-default
-- keine Provider-/DB-IDs im normalen Ergebnis
+Fail-closed blockieren insbesondere ein nicht verifizierbarer/unsauberer Repository-Head, Manifest-/Migration-Drift, unsichere Migrationen, geänderte öffentliche Routen, neue Fachmodule ohne aktualisierten Smoke-Vertrag, öffentliche Probe-Routen oder Drift der M6-Schrittklassifikation.
 
-### Application
+## Noch nicht ausgeführt
 
-Der aktuelle erzeugte ULC-Stand besitzt in `appbasis.app.json` bewusst `modules: []` und öffentlich nur die Identity-/Health-Grundlage. Deshalb wird **kein fiktiver Fachmodul-Smoke** behauptet.
-
-Für diesen Stand bedeutet `application`:
-
-- aktueller Core-Runtime-Vertrag ist unverändert
-- Health/Auth/Session funktionieren
-- der bestehende Permission-Guard kann geschützt gegen reale Rollen-/Scope-Daten geprüft werden
-- es existiert keine zusätzliche öffentliche Smoke-/Admin-Probe
-
-Sobald ein echtes Fachmodul in `appbasis.app.json` aufgenommen wird, muss dieses Rehearsal fail-closed angepasst werden und der Post-Deploy-Smoke mindestens einen realen Fachmodul-Smoke ergänzen.
-
-## 3. Execution Binding
-
-Der Rehearsal-Vertrag ist ausdrücklich an die bestehenden M6-Schritte `production-migrations`, `post-deploy-smokes` und `release-gate` gebunden. Ein späterer echter Executor darf diese Vorbereitung nicht umgehen. Er muss fail-closed nachweisen, dass:
-
-- das Rehearsal auf dem tatsächlichen finalen Head frisch neu berechnet wurde,
-- der erwartete Migrations-Plan-Fingerprint exakt übereinstimmt,
-- frische Provider-Evidence für die freigegebene Zielressource vorliegt,
-- die Ziel-Datenbank an genau diese Provider-Evidence gebunden ist,
-- der hier definierte Smoke-Vertrag konsumiert wird,
-- kein Smoke-Erfolg den separaten Release-Gate ersetzt.
-
-`futureExecutorMustConsumeBinding = true` ist damit Teil des fail-closed Vertrags und keine bloße Dokumentationskonvention.
-
-## 4. Rehearsal-Output
-
-`evaluateUlcLinzM6MigrationSmokeRehearsal()` liefert nur Repository-Evidence:
-
-- exakte Migrationen + Owner-Reihenfolge
-- Statement-Anzahlen
-- Datei-Digests
-- Plan-Fingerprint
-- gepinnten Smoke-Vertrag
-- weiterhin gesperrte Produktionsausführung
-
-Keine SQL-Statements, Provider-Credentials, Connection Strings oder Produktions-IDs werden ausgegeben.
-
-## 5. Stop-Bedingungen
-
-Fail-closed blockieren insbesondere:
-
-- App-/DB-Manifest-Drift
-- zusätzlicher oder fehlender Migration-Owner
-- zusätzliche, fehlende oder umsortierte Migration
-- unsichere Migration laut gemeinsamem Migrationsexecutor
-- geänderte aktuelle öffentliche ULC-Routen
-- neu hinzugefügtes Fachmodul ohne aktualisierten Smoke-Vertrag
-- öffentliche Permission-/Smoke-Probe
-- Drift der M6-Klassifikation von Migration oder Post-Deploy-Smoke
-
-## 6. Noch nicht ausgeführt
-
-Der Rehearsal-Slice ist ausschließlich Vorbereitung. Ein echter Produktionslauf bleibt hinter den bereits definierten M6-Freigabegrenzen und benötigt vor jeder produktiven Aktion erneut den aktuellen Live-/Provider-State und die ausdrückliche Nutzerfreigabe.
+Dieser Slice ist reine Vorbereitung. Jeder spätere produktive Schritt benötigt erneut aktuellen Live-/Provider-State und die ausdrückliche Nutzerfreigabe.
