@@ -197,7 +197,7 @@ test("fails closed when the current app-owned database contract drifts", async (
     const activation = await lifecycleActivationEvidence(root);
     const manifest = createExpectedUlcLinzDatabaseManifest(VALID_ULC_DEFINITION);
     const changed = JSON.parse(JSON.stringify(manifest));
-    changed.owners.find((owner) => owner.id === "ulc-linz-lifecycle").schemaVersion = 2;
+    changed.owners.find((owner) => owner.id === "ulc-linz-lifecycle").schemaVersion = 3;
     await writeFile(
       join(root, "apps", "ulc-linz", "appbasis.database.json"),
       `${JSON.stringify(changed, null, 2)}\n`,
@@ -237,6 +237,12 @@ test("pins every destructive C/D implementation used by the current lifecycle cl
       path,
     );
   }
+  assert.ok(
+    ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.evidenceFiles.some(
+      (entry) => entry.path === "apps/ulc-linz/test/retention-claim.postgres.e2e.test.ts",
+    ),
+    "retention claim PostgreSQL acceptance must be pinned",
+  );
 
   const root = await createFixture();
   try {
@@ -259,6 +265,7 @@ test("lifecycle contract digest covers schemas, dependency versions and executab
     "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
     "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
     "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
+    "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "apps/ulc-linz/worker/restore-reconciliation.ts",
   ]) {
     assert.ok(ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.lifecycleContractPaths.includes(path), path);

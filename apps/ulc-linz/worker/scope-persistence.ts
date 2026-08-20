@@ -147,6 +147,9 @@ export class PostgresUlcLinzScopePersistence
    * Persist a narrow retention exception only after the ordinary 12-month member
    * retention is already due. State update and immutable audit metadata are one
    * PostgreSQL statement, so a privileged exception cannot exist without audit.
+   * A deletion claim is an irreversible lifecycle transition for this membership:
+   * once claimed, a later retention exception must fail closed instead of racing
+   * an already-started destructive owner sequence.
    */
   async setRetentionException(input: {
     identityId: string;
@@ -186,9 +189,11 @@ export class PostgresUlcLinzScopePersistence
            AND source_role IN ('trainer', 'athlete', 'parent')
            AND ended_at IS NOT NULL
            AND ended_at + interval '12 months' < $6::timestamptz
+           AND retention_deletion_claimed_at IS NULL
          RETURNING identity_id, organization_id, subject_id, source_role, active, ended_at,
                    retention_exception_reason, retention_exception_actor,
-                   retention_exception_created_at, retention_review_at
+                   retention_exception_created_at, retention_review_at,
+                   retention_deletion_claimed_at
        ),
        audit_event AS (
          INSERT INTO ulc_linz_lifecycle_audit (
@@ -222,6 +227,90 @@ export class PostgresUlcLinzScopePersistence
     const state = retentionState(row, now);
     if (state.status !== "exception") blocked();
     return state;
+  }
+
+  /**
+   * Atomically claims a due membership for automatic retention deletion.
+   * The claim writes the same PostgreSQL row used by setRetentionException(), so
+   * PostgreSQL serializes the two competing updates. Whichever state transition
+   * commits first makes the other transition's WHERE predicate fail closed.
+   * Existing claims are reusable for safe deletion retries after partial owner
+   * failures, but they permanently exclude a new legal hold from being inserted
+   * after destructive deletion has started.
+   */
+  async claimDueRetentionDeletion(
+    expectedTarget: UlcLinzLifecycleTarget,
+  ): Promise<void> {
+    const identityId = requiredIdentifier(expectedTarget.identityId);
+    const organizationId = requiredIdentifier(expectedTarget.organizationId);
+    const subjectId = requiredIdentifier(expectedTarget.subjectId);
+    const sourceRole = requiredDeletableSourceRole(expectedTarget.sourceRole);
+    if (expectedTarget.active) blocked();
+    const endedAt = requiredDate(expectedTarget.endedAt);
+    const now = validNow(this.now());
+    const dueAt = addCalendarMonthsClamped(endedAt, 12);
+    if (now.getTime() <= dueAt.getTime()) blocked();
+    const nowIso = now.toISOString();
+
+    const rows = await this.sql.unsafe(
+      `UPDATE ulc_linz_membership
+       SET retention_deletion_claimed_at = COALESCE(
+             retention_deletion_claimed_at,
+             $6::timestamptz
+           ),
+           updated_at = CASE
+             WHEN retention_deletion_claimed_at IS NULL THEN $6::timestamptz
+             ELSE updated_at
+           END
+       WHERE identity_id = $1
+         AND organization_id = $2
+         AND subject_id = $3
+         AND source_role = $4
+         AND active = false
+         AND ended_at = $5::timestamptz
+         AND ended_at + interval '12 months' < $6::timestamptz
+         AND (
+           retention_deletion_claimed_at IS NULL
+           OR retention_deletion_claimed_at <= $6::timestamptz
+         )
+         AND (
+           (
+             retention_exception_reason IS NULL
+             AND retention_exception_actor IS NULL
+             AND retention_exception_created_at IS NULL
+             AND retention_review_at IS NULL
+           )
+           OR (
+             retention_exception_reason IS NOT NULL
+             AND retention_exception_actor IS NOT NULL
+             AND retention_exception_created_at IS NOT NULL
+             AND retention_review_at IS NOT NULL
+             AND retention_review_at <= $6::timestamptz
+           )
+         )
+       RETURNING identity_id, organization_id, subject_id, source_role, active, ended_at,
+                 retention_deletion_claimed_at`,
+      [
+        identityId,
+        organizationId,
+        subjectId,
+        sourceRole,
+        endedAt.toISOString(),
+        nowIso,
+      ],
+    );
+    if (rows.length !== 1) blocked();
+    const row = rows[0];
+    if (row === undefined) blocked();
+    const claimedTarget = lifecycleTarget(row);
+    const claimedAt = requiredDate(row.retention_deletion_claimed_at);
+    if (
+      !sameLifecycleTarget(claimedTarget, expectedTarget) ||
+      claimedAt.getTime() <= dueAt.getTime() ||
+      claimedAt.getTime() > now.getTime()
+    ) {
+      blocked();
+    }
   }
 
   /**
@@ -333,7 +422,8 @@ export class PostgresUlcLinzScopePersistence
     const rows = await this.sql.unsafe(
       `SELECT identity_id, organization_id, subject_id, source_role, active, ended_at,
               retention_exception_reason, retention_exception_actor,
-              retention_exception_created_at, retention_review_at
+              retention_exception_created_at, retention_review_at,
+              retention_deletion_claimed_at
        FROM ulc_linz_membership
        ORDER BY identity_id ASC`,
     );
@@ -372,6 +462,7 @@ function retentionState(
   const actor = nullableRowString(row, "retention_exception_actor");
   const createdAt = nullableDate(row.retention_exception_created_at);
   const reviewAt = nullableDate(row.retention_review_at);
+  const deletionClaimedAt = nullableDate(row.retention_deletion_claimed_at);
   const exceptionFields = [reason, actor, createdAt, reviewAt].filter(
     (value) => value !== null,
   ).length;
@@ -396,12 +487,25 @@ function retentionState(
   }
 
   if (target.active) {
-    if (target.endedAt !== null || exceptionFields !== 0) blocked();
+    if (target.endedAt !== null || exceptionFields !== 0 || deletionClaimedAt !== null) {
+      blocked();
+    }
     return Object.freeze({ status: "active", target });
   }
   if (target.endedAt === null || target.sourceRole === "admin") blocked();
 
   const dueAt = addCalendarMonthsClamped(target.endedAt, 12);
+  if (deletionClaimedAt !== null) {
+    if (
+      deletionClaimedAt.getTime() <= dueAt.getTime() ||
+      deletionClaimedAt.getTime() > now.getTime() ||
+      (reviewAt !== null && reviewAt.getTime() > deletionClaimedAt.getTime())
+    ) {
+      blocked();
+    }
+    return Object.freeze({ status: "due", target });
+  }
+
   if (now.getTime() <= dueAt.getTime()) {
     if (exceptionFields !== 0) blocked();
     return Object.freeze({ status: "active", target });
@@ -478,6 +582,20 @@ function lifecycleTarget(row: Record<string, unknown> | undefined): UlcLinzLifec
     active: requiredBoolean(row, "active"),
     endedAt: nullableDate(row.ended_at),
   });
+}
+
+function sameLifecycleTarget(
+  current: UlcLinzLifecycleTarget,
+  expected: UlcLinzLifecycleTarget,
+): boolean {
+  return (
+    current.identityId === expected.identityId &&
+    current.organizationId === expected.organizationId &&
+    current.subjectId === expected.subjectId &&
+    current.sourceRole === expected.sourceRole &&
+    current.active === expected.active &&
+    current.endedAt?.getTime() === expected.endedAt?.getTime()
+  );
 }
 
 function deletionMarker(row: Record<string, unknown> | undefined): UlcLinzDeletionMarker {

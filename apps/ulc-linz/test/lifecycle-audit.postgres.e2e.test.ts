@@ -9,6 +9,10 @@ import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
 const databaseUrl = process.env.DATABASE_URL;
 const fixedNow = new Date("2026-08-18T10:30:00.000Z");
 const organizationId = "ulc-linz";
+const lifecycleMigrations = [
+  "../migrations/0000_ulc_linz_lifecycle_scope.sql",
+  "../migrations/0001_ulc_linz_retention_deletion_claim.sql",
+] as const;
 
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
   describe.skip("ULC Linz lifecycle audit PostgreSQL E2E", () => {
@@ -26,12 +30,11 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await administrativeConnection.client.unsafe(`CREATE DATABASE ${databaseName}`);
       created = true;
       isolated = createPostgresDatabase(isolatedDatabaseUrl);
-      const migration = await readFile(
-        new URL("../migrations/0000_ulc_linz_lifecycle_scope.sql", import.meta.url),
-        "utf8",
-      );
-      for (const statement of migration.split("--> statement-breakpoint")) {
-        if (statement.trim() !== "") await requiredConnection().client.unsafe(statement);
+      for (const migrationPath of lifecycleMigrations) {
+        const migration = await readFile(new URL(migrationPath, import.meta.url), "utf8");
+        for (const statement of migration.split("--> statement-breakpoint")) {
+          if (statement.trim() !== "") await requiredConnection().client.unsafe(statement);
+        }
       }
     });
 

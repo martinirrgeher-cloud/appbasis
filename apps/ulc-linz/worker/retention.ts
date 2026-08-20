@@ -8,7 +8,6 @@ import {
 import type {
   PostgresUlcLinzScopePersistence,
   UlcLinzDeletableSourceRole,
-  UlcLinzLifecycleTarget,
   UlcLinzRetentionState,
 } from "./scope-persistence";
 
@@ -24,6 +23,7 @@ export interface UlcLinzRetentionDependencies
   readonly scopes: Pick<
     PostgresUlcLinzScopePersistence,
     | "evaluateRetention"
+    | "claimDueRetentionDeletion"
     | "completeIdentityDeletion"
     | "purgeExpiredDeletionMarkers"
     | "purgeExpiredLifecycleAuditEvents"
@@ -70,11 +70,7 @@ export async function runUlcLinzRetention(
         principalLifecycle: dependencies.principalLifecycle,
         async authorizeLifecycleWrite({ targetIdentityId: authorizedTarget }) {
           if (authorizedTarget !== targetIdentityId) blocked();
-          await revalidateDueRetentionState(
-            dependencies.scopes,
-            state.target,
-            sourceRole,
-          );
+          await dependencies.scopes.claimDueRetentionDeletion(state.target);
           return {
             actorPrincipalId: RETENTION_ACTOR,
             targetSourceRole: sourceRole,
@@ -107,51 +103,12 @@ export async function runUlcLinzRetention(
   });
 }
 
-async function revalidateDueRetentionState(
-  scopes: Pick<PostgresUlcLinzScopePersistence, "evaluateRetention">,
-  expectedTarget: UlcLinzLifecycleTarget,
-  expectedSourceRole: UlcLinzDeletableSourceRole,
-): Promise<void> {
-  const currentStates = await scopes.evaluateRetention();
-  const matches = currentStates.filter(
-    (candidate) => candidate.target.identityId === expectedTarget.identityId,
-  );
-  if (matches.length !== 1) retentionStateChanged();
-  const current = matches[0];
-  if (
-    current === undefined ||
-    current.status !== "due" ||
-    deletableSourceRole(current) !== expectedSourceRole ||
-    !sameLifecycleTarget(current.target, expectedTarget)
-  ) {
-    retentionStateChanged();
-  }
-}
-
-function sameLifecycleTarget(
-  current: UlcLinzLifecycleTarget,
-  expected: UlcLinzLifecycleTarget,
-): boolean {
-  return (
-    current.identityId === expected.identityId &&
-    current.organizationId === expected.organizationId &&
-    current.subjectId === expected.subjectId &&
-    current.sourceRole === expected.sourceRole &&
-    current.active === expected.active &&
-    current.endedAt?.getTime() === expected.endedAt?.getTime()
-  );
-}
-
 function deletableSourceRole(
   state: Extract<UlcLinzRetentionState, { status: "due" }>,
 ): UlcLinzDeletableSourceRole {
   const value = state.target.sourceRole;
   if (value !== "trainer" && value !== "athlete" && value !== "parent") blocked();
   return value;
-}
-
-function retentionStateChanged(): never {
-  throw new UlcLinzLifecycleBlockedError("UNKNOWN_PERMISSION_STATE");
 }
 
 function blocked(): never {

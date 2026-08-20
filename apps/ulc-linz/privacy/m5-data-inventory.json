@@ -43,9 +43,10 @@
     },
     {
       "id": "ulc-linz-lifecycle",
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "migrations": [
-        "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql"
+        "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
+        "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql"
       ],
       "lifecycleStatus": "verified-current-scope",
       "notes": [
@@ -53,6 +54,7 @@
         "member-contact-retention-12-calendar-months",
         "retention-exceptions-require-authenticated-active-same-org-admin-with-actor-reason-created-at-future-review",
         "retention-exception-state-and-audit-event-are-atomic",
+        "retention-deletion-claim-atomically-excludes-late-retention-exceptions",
         "completed-app-delete-and-audit-event-are-atomic",
         "app-lifecycle-audit-retention-12-months",
         "admin-membership-must-be-demoted-before-inactivation-or-deletion-db-enforced",

@@ -77,6 +77,19 @@ describe("ULC Linz deterministic retention state", () => {
           retention_exception_created_at: "2026-08-17T10:30:00.000Z",
           retention_review_at: "2026-08-18T10:29:59.999Z",
         },
+        {
+          identity_id: "claimed-retry",
+          organization_id: "ulc-linz",
+          subject_id: "subject-claimed",
+          source_role: "trainer",
+          active: false,
+          ended_at: "2025-07-18T10:30:00.000Z",
+          retention_exception_reason: null,
+          retention_exception_actor: null,
+          retention_exception_created_at: null,
+          retention_review_at: null,
+          retention_deletion_claimed_at: "2026-08-18T10:00:00.000Z",
+        },
       ]),
       () => now,
     );
@@ -88,6 +101,7 @@ describe("ULC Linz deterministic retention state", () => {
       ["overdue", "due"],
       ["future-review", "exception"],
       ["expired-review", "due"],
+      ["claimed-retry", "due"],
     ]);
     expect(
       states.find((state) => state.target.identityId === "future-review"),
@@ -100,7 +114,7 @@ describe("ULC Linz deterministic retention state", () => {
     });
   });
 
-  it("revalidates a due identity before destructive owner operations", async () => {
+  it("requires the atomic deletion claim before any destructive owner operation", async () => {
     const target = Object.freeze({
       identityId: "race-target",
       organizationId: "ulc-linz",
@@ -109,25 +123,18 @@ describe("ULC Linz deterministic retention state", () => {
       active: false,
       endedAt: new Date("2025-07-18T10:30:00.000Z"),
     });
-    let retentionReads = 0;
+    let claimCalls = 0;
     let destructiveOwnerCalls = 0;
     const dependencies = {
       scopes: {
         async evaluateRetention() {
-          retentionReads += 1;
-          if (retentionReads === 1) {
-            return [Object.freeze({ status: "due" as const, target })];
-          }
-          return [
-            Object.freeze({
-              status: "exception" as const,
-              target,
-              reason: "legal-hold",
-              actor: "ulc-admin",
-              createdAt: new Date("2026-08-18T10:00:00.000Z"),
-              reviewAt: new Date("2026-10-18T10:30:00.000Z"),
-            }),
-          ];
+          return [Object.freeze({ status: "due" as const, target })];
+        },
+        async claimDueRetentionDeletion() {
+          claimCalls += 1;
+          throw Object.assign(new Error("claim blocked"), {
+            code: "ULC_LINZ_SCOPE_PERSISTENCE_BLOCKED",
+          });
         },
         async completeIdentityDeletion() {
           destructiveOwnerCalls += 1;
@@ -180,9 +187,9 @@ describe("ULC Linz deterministic retention state", () => {
     } as unknown as Parameters<typeof runUlcLinzRetention>[0];
 
     await expect(runUlcLinzRetention(dependencies)).rejects.toMatchObject({
-      code: "UNKNOWN_PERMISSION_STATE",
+      code: "ULC_LINZ_SCOPE_PERSISTENCE_BLOCKED",
     });
-    expect(retentionReads).toBe(2);
+    expect(claimCalls).toBe(1);
     expect(destructiveOwnerCalls).toBe(0);
   });
 
@@ -226,6 +233,31 @@ describe("ULC Linz deterministic retention state", () => {
           retention_exception_actor: "ulc-admin",
           retention_exception_created_at: "2026-08-18T10:00:00.000Z",
           retention_review_at: "2027-08-18T10:00:00.001Z",
+        },
+      ]),
+      () => now,
+    );
+
+    await expect(persistence.evaluateRetention()).rejects.toMatchObject({
+      code: "ULC_LINZ_SCOPE_PERSISTENCE_BLOCKED",
+    });
+  });
+
+  it("fails closed when a deletion claim conflicts with a later active retention exception", async () => {
+    const persistence = new PostgresUlcLinzScopePersistence(
+      fakeSql([
+        {
+          identity_id: "invalid-claimed-exception",
+          organization_id: "ulc-linz",
+          subject_id: "subject-invalid-claimed",
+          source_role: "trainer",
+          active: false,
+          ended_at: "2025-07-18T10:30:00.000Z",
+          retention_exception_reason: "late-hold",
+          retention_exception_actor: "ulc-admin",
+          retention_exception_created_at: "2026-08-18T10:00:00.000Z",
+          retention_review_at: "2026-10-18T10:30:00.000Z",
+          retention_deletion_claimed_at: "2026-08-18T10:05:00.000Z",
         },
       ]),
       () => now,
