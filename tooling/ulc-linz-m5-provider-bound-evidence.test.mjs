@@ -301,6 +301,37 @@ test("fails closed when provider semantics disagree across the two evidence laye
   assert.deepEqual(derive(resourceBindingEvidence(), wrongRuntime), {});
 });
 
+test("fails closed when Cloudflare route and hostname binding state disagree across evidence layers", () => {
+  const resourceWithHostname = resourceBindingEvidence();
+  resourceWithHostname.cloudflare.hostnameBinding = "ulc.example.test";
+  assert.deepEqual(
+    derive(resourceWithHostname, complianceEvidence(), fingerprint(resourceWithHostname)),
+    {},
+  );
+
+  const complianceWithRoute = complianceEvidence();
+  complianceWithRoute.providers.cloudflare.routeBound = true;
+  assert.deepEqual(derive(resourceBindingEvidence(), complianceWithRoute), {});
+
+  const alignedPublicResource = resourceBindingEvidence();
+  alignedPublicResource.cloudflare.hostnameBinding = "ulc.example.test";
+  const alignedPublicCompliance = complianceEvidence();
+  alignedPublicCompliance.providers.cloudflare.routeBound = true;
+  assert.deepEqual(
+    derive(
+      alignedPublicResource,
+      alignedPublicCompliance,
+      fingerprint(alignedPublicResource),
+    ),
+    {
+      dataRegion: true,
+      dpa: true,
+      encryption: true,
+      subprocessors: true,
+    },
+  );
+});
+
 test("fails closed when a canonical operational flow is absent", () => {
   const compliance = complianceEvidence();
   compliance.dataFlows = compliance.dataFlows.filter(
