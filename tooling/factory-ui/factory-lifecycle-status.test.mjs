@@ -190,6 +190,23 @@ test("Factory lifecycle blocks ambiguous preview and M5/M6 cross-gate drift", ()
   );
   assert.equal(previewStatus.nextStep.heading, "Preview-Status klären");
 
+  const repositoryIncompletePreview = {
+    ...repositoryReadyPreview(),
+    status: "repository-incomplete",
+    workerEntrypointPresent: false,
+  };
+  const staleCompleteEvidence = factoryLifecycleCopy(
+    repositoryIncompletePreview,
+    evaluateProductionReadiness(allM5Evidence()),
+    evaluateM6ProductionReleaseReadiness(allM6Evidence()),
+  );
+  assert.equal(staleCompleteEvidence.stages[1].state, "current");
+  assert.equal(staleCompleteEvidence.stages[1].heading, "Vorbereitung offen");
+  assert.equal(staleCompleteEvidence.stages[2].state, "locked");
+  assert.equal(staleCompleteEvidence.stages[3].state, "locked");
+  assert.equal(staleCompleteEvidence.stages[4].state, "locked");
+  assert.equal(staleCompleteEvidence.nextStep.heading, "Preview vorbereiten");
+
   const mismatch = factoryLifecycleCopy(
     repositoryReadyPreview(),
     evaluateProductionReadiness(allM5Evidence()),
