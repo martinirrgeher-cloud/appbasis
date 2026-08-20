@@ -31,7 +31,11 @@ const EXPECTED_STEPS = [
   [
     "runtime-configuration",
     "provider-write",
-    ["database-binding", "production-worker"],
+    [
+      "database-binding",
+      "production-worker",
+      "production-domain-selection",
+    ],
   ],
   [
     "production-security-logging-sink",
@@ -220,6 +224,51 @@ test("ULC M6 execution plan pins every step id, step kind and exact dependency",
   }
 });
 
+test("ULC M6 dependency graph preserves critical gates and ordering transitively", () => {
+  const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
+  const runtime = stepById(plan, "runtime-configuration");
+  assert.equal(runtime.requires.includes("production-domain-selection"), true);
+
+  for (const step of plan.steps) {
+    if (!MUTATING_STEP_KINDS.has(step.kind)) continue;
+    assert.equal(
+      dependencyClosure(plan, step.id).has("prerequisite:M3_DONE"),
+      true,
+      `${step.id} must remain transitively behind M3`,
+    );
+  }
+
+  for (const stepId of [
+    "runtime-configuration",
+    "production-security-logging-sink",
+    "production-worker-deploy",
+    "production-access-bootstrap",
+    "backup-recovery-validation",
+    "m5-production-evidence",
+    "production-domain-activation",
+    "post-deploy-smokes",
+    "release-gate",
+  ]) {
+    assert.equal(
+      dependencyClosure(plan, stepId).has("production-domain-selection"),
+      true,
+      `${stepId} must remain transitively behind production-domain-selection`,
+    );
+  }
+
+  const activationClosure = dependencyClosure(plan, "production-domain-activation");
+  assert.equal(activationClosure.has("backup-recovery-validation"), true);
+  assert.equal(activationClosure.has("m5-production-evidence"), true);
+  assert.equal(activationClosure.has("prerequisite:M4_DONE"), true);
+
+  const releaseClosure = dependencyClosure(plan, "release-gate");
+  assert.equal(releaseClosure.has("production-domain-activation"), true);
+  assert.equal(releaseClosure.has("post-deploy-smokes"), true);
+  assert.equal(releaseClosure.has("m5-production-evidence"), true);
+  assert.equal(releaseClosure.has("prerequisite:M4_DONE"), true);
+  assert.equal(releaseClosure.has("prerequisite:M3_DONE"), true);
+});
+
 test("ULC M6 execution plan covers every canonical M6 release criterion exactly by id", () => {
   const requiredIds = REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map(
     (criterion) => criterion.id,
@@ -324,6 +373,7 @@ test("ULC M6 runtime configuration names secrets without storing secret values",
   assert.deepEqual(step.target.plainConfigurationNames, ["APPBASIS_BASE_URL"]);
   assert.deepEqual(step.target.requiredBindings, ["HYPERDRIVE"]);
   assert.equal(step.target.secretValuesInRepository, false);
+  assert.equal(step.requires.includes("production-domain-selection"), true);
 });
 
 test("ULC M6 security logging sink is a separate approved preparation write and blocks deploy and final M5 evidence until its real contract can be evidenced", () => {
@@ -503,6 +553,29 @@ async function writeFixture(root, fixture) {
       "utf8",
     ),
   ]);
+}
+
+function stepById(plan, id) {
+  const step = plan.steps.find((entry) => entry.id === id);
+  assert.notEqual(step, undefined, id);
+  return step;
+}
+
+function dependencyClosure(plan, stepId) {
+  const byId = new Map(plan.steps.map((step) => [step.id, step]));
+  const closure = new Set();
+  const pending = [...stepById(plan, stepId).requires];
+
+  while (pending.length > 0) {
+    const requirement = pending.pop();
+    if (closure.has(requirement)) continue;
+    closure.add(requirement);
+    if (requirement.startsWith("prerequisite:")) continue;
+    const step = byId.get(requirement);
+    assert.notEqual(step, undefined, requirement);
+    pending.push(...step.requires);
+  }
+  return closure;
 }
 
 function errorWithCode(code) {
