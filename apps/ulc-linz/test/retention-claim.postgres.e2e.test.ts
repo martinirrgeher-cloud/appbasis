@@ -16,6 +16,7 @@ const organizationId = "ulc-linz";
 type DatabaseManifest = {
   owners: readonly {
     id: string;
+    root: string;
     schemaVersion: number;
     migrations: readonly string[];
   }[];
@@ -179,6 +180,7 @@ async function applyUlcLifecycleMigrations(
   const owner = manifest.owners.find((candidate) => candidate.id === "ulc-linz-lifecycle");
   expect(owner).toEqual({
     id: "ulc-linz-lifecycle",
+    root: "apps/ulc-linz",
     schemaVersion: 2,
     migrations: [
       "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",

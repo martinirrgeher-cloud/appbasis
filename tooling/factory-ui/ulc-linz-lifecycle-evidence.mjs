@@ -160,7 +160,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/retention-claim.postgres.e2e.test.ts",
-      gitBlobSha: "c813daa354d054f27a67e8e32dede3398e24cbbd",
+      gitBlobSha: "cab1402a956e728785e34897571865b5da13c417",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/retention-state.test.ts",
