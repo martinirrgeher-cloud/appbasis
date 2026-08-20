@@ -178,9 +178,10 @@ export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) 
     neonProductionDatabaseBound:
       neon.resourceClass === "production" && neon.databaseBound,
   });
-  const productionResourcesBound = Object.values(resourceBinding).every(
-    (value) => value === true,
-  );
+  const productionPreparationResourcesBound =
+    resourceBinding.cloudflareProductionRuntimeBound === true &&
+    resourceBinding.neonProductionProjectBound === true &&
+    resourceBinding.neonProductionDatabaseBound === true;
 
   const dataFlowScopeComplete =
     sourceEvidence.dataFlowInventoryComplete === true &&
@@ -201,7 +202,7 @@ export function evaluateUlcLinzProviderCompliance(sourceEvidence, options = {}) 
     cloudflare.unexpectedPersonalDataPersistence === false;
   const evidenceScopeComplete = dataFlowScopeComplete && providerScopeComplete;
   const commonCriterionPrerequisites =
-    rootFresh && productionResourcesBound && evidenceScopeComplete;
+    rootFresh && productionPreparationResourcesBound && evidenceScopeComplete;
 
   const dataRegionVerified =
     commonCriterionPrerequisites &&
