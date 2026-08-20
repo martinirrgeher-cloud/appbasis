@@ -225,7 +225,7 @@ function renderAppDetail(app) {
   if (elements.detailSchema) elements.detailSchema.textContent = `Schema v${app.schemaVersion}`;
   replaceWithValueChips(elements.detailModules, app.modules, moduleLabel);
   replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
-  renderPreviewReadiness(app.previewReadiness);
+  renderPreviewReadiness(app.previewReadiness, app.productionReleaseReadiness);
   renderProductionReadiness(app.productionReadiness, app.productionReleaseReadiness);
   renderFactoryLifecycle(
     app.previewReadiness,
@@ -234,7 +234,7 @@ function renderAppDetail(app) {
   );
 }
 
-function renderPreviewReadiness(readiness) {
+function renderPreviewReadiness(readiness, releaseReadiness) {
   const previewGate = document.querySelector(
     ".factory-detail-gates .factory-detail-gate:nth-child(3)",
   );
@@ -242,10 +242,23 @@ function renderPreviewReadiness(readiness) {
   const detail = previewGate?.querySelector("small");
   if (!heading || !detail) return;
 
+  const previewAccepted =
+    readiness?.status === "repository-ready" &&
+    productionReleaseCriteriaCopy(releaseReadiness).some(
+      (criterion) => criterion.id === "previewAccepted" && criterion.status === "verified",
+    );
+
+  if (previewAccepted) {
+    heading.textContent = "Preview geprüft";
+    detail.textContent =
+      "Die Preview wurde im aktuellen M6-Snapshot abgenommen. Produktionsvorbereitung und Produktion bleiben separate, freigabepflichtige Schritte.";
+    return;
+  }
+
   if (readiness?.status === "repository-ready") {
     heading.textContent = "Lokale Preview-Voraussetzungen erfüllt";
     detail.textContent =
-      "Die benötigten lokalen App-Artefakte sind vorhanden. Externe Preview-Voraussetzungen werden noch nicht geprüft; Preview bleibt gesperrt.";
+      "Die benötigten lokalen App-Artefakte sind vorhanden. Die externe Preview-Abnahme ist noch offen.";
     return;
   }
 
