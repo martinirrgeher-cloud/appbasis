@@ -10,7 +10,7 @@ const REQUIRED_M6_CRITERION_IDS = Object.freeze(
 const PREPARATION_CRITERION_IDS = Object.freeze([
   "productionDatabaseReady",
   "productionWorkerReady",
-  "productionAccessReady",
+  "productionUsersAndPermissionsReady",
   "productionMigrationsApplied",
   "productionDeploymentCompleted",
 ]);
