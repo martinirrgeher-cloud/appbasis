@@ -310,7 +310,10 @@ function deriveBackupRestoreEvidence(input, providerBoundEvidenceInput, now) {
       providerBoundEvidenceInput.resourceBindingEvidence,
       { now },
     );
-    if (resourceBinding.productionDatabaseBound !== true) {
+    if (
+      resourceBinding.productionDatabaseBound !== true ||
+      resourceBinding.runtimeContractVerified !== true
+    ) {
       return EMPTY_EVIDENCE;
     }
     if (
@@ -337,7 +340,18 @@ function deriveBackupRestoreEvidence(input, providerBoundEvidenceInput, now) {
     requireOpaqueIdentifier(evidence.sourceDatabaseBindingId);
     requireOpaqueIdentifier(evidence.restoreTargetBindingId);
     const restoreTestedAt = canonicalTimestamp(evidence.restoreTestedAt);
-    if (restoreTestedAt === null || restoreTestedAt.getTime() > now.getTime()) {
+    const resourceObservedAt = canonicalTimestamp(resourceBinding.observedAt);
+    const resourceValidUntilOrReviewAt = canonicalTimestamp(
+      resourceBinding.validUntilOrReviewAt,
+    );
+    if (
+      restoreTestedAt === null ||
+      resourceObservedAt === null ||
+      resourceValidUntilOrReviewAt === null ||
+      restoreTestedAt.getTime() < resourceObservedAt.getTime() ||
+      restoreTestedAt.getTime() > now.getTime() ||
+      restoreTestedAt.getTime() >= resourceValidUntilOrReviewAt.getTime()
+    ) {
       return EMPTY_EVIDENCE;
     }
     return Object.freeze({ backupRestoreBeforeProduction: true });

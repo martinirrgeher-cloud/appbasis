@@ -99,6 +99,56 @@ describe("ULC Linz deterministic retention state", () => {
     });
   });
 
+  it("rejects retention-exception review horizons beyond the 12-month audit lifetime before writing", async () => {
+    let sqlCalls = 0;
+    const persistence = new PostgresUlcLinzScopePersistence(
+      {
+        async unsafe() {
+          sqlCalls += 1;
+          return [];
+        },
+      } as unknown as ConstructorParameters<typeof PostgresUlcLinzScopePersistence>[0],
+      () => now,
+    );
+
+    await expect(
+      persistence.setRetentionException({
+        identityId: "exception-target",
+        organizationId: "ulc-linz",
+        actor: "ulc-admin",
+        reason: "legal-hold",
+        reviewAt: new Date("2027-08-18T10:30:00.001Z"),
+      }),
+    ).rejects.toMatchObject({
+      code: "ULC_LINZ_SCOPE_PERSISTENCE_BLOCKED",
+    });
+    expect(sqlCalls).toBe(0);
+  });
+
+  it("fails closed when persisted exception state outlives its 12-month audit lifetime", async () => {
+    const persistence = new PostgresUlcLinzScopePersistence(
+      fakeSql([
+        {
+          identity_id: "overlong-exception",
+          organization_id: "ulc-linz",
+          subject_id: "subject-overlong",
+          source_role: "parent",
+          active: false,
+          ended_at: "2025-07-18T10:30:00.000Z",
+          retention_exception_reason: "legal-hold",
+          retention_exception_actor: "ulc-admin",
+          retention_exception_created_at: "2026-08-18T10:00:00.000Z",
+          retention_review_at: "2027-08-18T10:00:00.001Z",
+        },
+      ]),
+      () => now,
+    );
+
+    await expect(persistence.evaluateRetention()).rejects.toMatchObject({
+      code: "ULC_LINZ_SCOPE_PERSISTENCE_BLOCKED",
+    });
+  });
+
   it("fails closed on an impossible inactive admin lifecycle row", async () => {
     const persistence = new PostgresUlcLinzScopePersistence(
       fakeSql([

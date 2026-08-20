@@ -103,6 +103,37 @@ test("fails closed when inventory policy or future object-storage scope changes"
   }
 });
 
+test("pins every destructive C/D implementation used by the current lifecycle claim", async () => {
+  const destructivePaths = [
+    "apps/ulc-linz/worker/lifecycle.ts",
+    "packages/identity/src/postgres-deletion.ts",
+    "packages/permissions/src/principal-lifecycle-administration.ts",
+  ];
+  for (const path of destructivePaths) {
+    assert.ok(
+      ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.evidenceFiles.some(
+        (entry) => entry.path === path,
+      ),
+      path,
+    );
+  }
+
+  const root = await createFixture();
+  try {
+    await writeFile(
+      join(root, destructivePaths[0]),
+      "// destructive lifecycle drift\n",
+      "utf8",
+    );
+    assert.deepEqual(
+      await deriveUlcLinzLifecycleEvidence(root, VALID_ULC_DEFINITION),
+      {},
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("fails closed when a required C/D runtime or acceptance file changes or disappears", async () => {
   const root = await createFixture();
   const { path } = ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.evidenceFiles.find(

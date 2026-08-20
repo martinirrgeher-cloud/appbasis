@@ -9,6 +9,7 @@ const SOURCE_ROLES = new Set(["admin", "trainer", "athlete", "parent"] as const)
 const DELETABLE_SOURCE_ROLES = new Set(["trainer", "athlete", "parent"] as const);
 const DELETION_MARKER_RETENTION_DAYS = 35;
 const MAX_RETENTION_EXCEPTION_REASON_LENGTH = 1000;
+const MAX_RETENTION_EXCEPTION_REVIEW_MONTHS = 12;
 
 type UlcLinzSqlParameter = string | number | boolean | null;
 
@@ -160,7 +161,16 @@ export class PostgresUlcLinzScopePersistence
     const reason = requiredReason(input.reason);
     const now = validNow(this.now());
     const reviewAt = requiredDate(input.reviewAt);
-    if (reviewAt.getTime() <= now.getTime()) blocked();
+    const latestReviewAt = addCalendarMonthsClamped(
+      now,
+      MAX_RETENTION_EXCEPTION_REVIEW_MONTHS,
+    );
+    if (
+      reviewAt.getTime() <= now.getTime() ||
+      reviewAt.getTime() > latestReviewAt.getTime()
+    ) {
+      blocked();
+    }
 
     const rows = await this.sql.unsafe(
       `WITH updated AS (
@@ -366,6 +376,24 @@ function retentionState(
     (value) => value !== null,
   ).length;
   if (exceptionFields !== 0 && exceptionFields !== 4) blocked();
+
+  if (
+    reason !== null &&
+    actor !== null &&
+    createdAt !== null &&
+    reviewAt !== null
+  ) {
+    const latestReviewAt = addCalendarMonthsClamped(
+      createdAt,
+      MAX_RETENTION_EXCEPTION_REVIEW_MONTHS,
+    );
+    if (
+      reviewAt.getTime() <= createdAt.getTime() ||
+      reviewAt.getTime() > latestReviewAt.getTime()
+    ) {
+      blocked();
+    }
+  }
 
   if (target.active) {
     if (target.endedAt !== null || exceptionFields !== 0) blocked();

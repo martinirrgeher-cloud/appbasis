@@ -221,7 +221,7 @@ function backupRestoreEvidenceInput(resource) {
     sourceDatabaseBindingId: value.neon.databaseBindingId,
     restoreTargetBindingId: "opaque-restore-target",
     evidenceSource: "controlled-restore-run",
-    restoreTestedAt: "2026-08-18T12:40:00.000Z",
+    restoreTestedAt: "2026-08-18T12:47:00.000Z",
     automaticBackupsEnabled: true,
     retentionDefined: true,
     preMigrationBackupDefined: true,
@@ -360,6 +360,22 @@ test("M5-J requires a real restore-shaped High Privacy owner input", async () =>
   inputs.backupRestoreEvidenceInput.restoreSucceeded = false;
   const readiness = evaluateProductionReadiness(
     await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
+  );
+  assert.equal(readiness.productionReady, false);
+  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
+  assert.equal(criterionStatus(readiness, "dataRegion"), "verified");
+});
+
+test("M5-J rejects restore evidence outside the current production resource window", async () => {
+  const inputs = completeOwnerInputs();
+  inputs.backupRestoreEvidenceInput.restoreTestedAt = "2026-08-18T12:44:59.999Z";
+  const readiness = evaluateProductionReadiness(
+    await deriveUlcLinzM5JProductionEvidence(
+      repositoryRoot,
+      VALID_ULC_DEFINITION,
+      inputs,
+      { now: NOW },
+    ),
   );
   assert.equal(readiness.productionReady, false);
   assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
