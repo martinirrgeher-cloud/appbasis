@@ -41,7 +41,7 @@ Der generische Executor besitzt bereits die relevanten Sicherheitsgrenzen:
 - leeres `public`-Schema als Voraussetzung für den initialen Lauf
 - atomare Migrationstransaktion
 
-Das ULC-Rehearsal pinnt zusätzlich den **konkreten aktuellen Produktionsplan** auf exakt sieben Migrationen in Manifest-Reihenfolge:
+Das ULC-Rehearsal pinnt zusätzlich den **konkreten aktuellen Produktionsplan** auf exakt acht Migrationen in Manifest-Reihenfolge:
 
 1. Identity `0000_appbasis_identity_foundation.sql`
 2. Identity `0001_appbasis_identity_foundation.sql`
@@ -50,6 +50,7 @@ Das ULC-Rehearsal pinnt zusätzlich den **konkreten aktuellen Produktionsplan** 
 5. Permissions `0002_appbasis_permission_administration_audit.sql`
 6. Permissions `0003_appbasis_principal_permission_administration_audit.sql`
 7. ULC Lifecycle `0000_ulc_linz_lifecycle_scope.sql`
+8. ULC Lifecycle `0001_ulc_linz_retention_deletion_claim.sql`
 
 Für jede Datei werden nur Pfad, Statement-Anzahl und SHA-256-Digest in den Rehearsal-Snapshot übernommen. SQL-Inhalte und Connection Strings werden nicht ausgegeben.
 
