@@ -22,6 +22,11 @@ test("ULC M6 migration rehearsal loads the exact canonical production plan witho
   const result = await evaluateUlcLinzM6MigrationSmokeRehearsal();
 
   assert.equal(result.status, "rehearsed-blocked-before-production-write");
+  assert.match(result.verifiedRepositoryHeadSha, /^[0-9a-f]{40}$/);
+  assert.equal(
+    result.validatedInputDigests.repositoryHeadSha,
+    result.verifiedRepositoryHeadSha,
+  );
   assert.equal(result.repositoryPreflightVerified, true);
   assert.equal(result.migrationRehearsalVerified, true);
   assert.equal(result.productionSmokeContractVerified, true);
@@ -52,7 +57,7 @@ test("ULC M6 migration rehearsal loads the exact canonical production plan witho
   assert.equal(Object.isFrozen(result.smoke), true);
 });
 
-test("ULC M6 rehearsal binds the future migration and smoke executors back to the exact checked plan", () => {
+test("ULC M6 rehearsal binds the future migration and smoke executors back to the exact checked plan and head", () => {
   const binding =
     ULC_LINZ_M6_MIGRATION_SMOKE_REHEARSAL_CONTRACT.executionBinding;
 
@@ -63,6 +68,8 @@ test("ULC M6 rehearsal binds the future migration and smoke executors back to th
     migrationPlanFingerprintRequiredAtExecution: true,
     freshProviderEvidenceRequiredAtExecution: true,
     providerBoundTargetRequiredAtExecution: true,
+    verifiedRepositoryHeadRequiredAtExecution: true,
+    cleanRepositoryRequiredForRehearsal: true,
     rehearsalMustBeRecomputedOnFinalHead: true,
     smokeContractRequiredAtExecution: true,
     futureExecutorMustConsumeBinding: true,
