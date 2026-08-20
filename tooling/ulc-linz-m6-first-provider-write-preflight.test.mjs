@@ -31,12 +31,16 @@ function validEvidence() {
   };
 }
 
-test("ULC M6 first provider-write preflight stays blocked on explicit approval even when provider inventory is clean", () => {
+test("ULC M6 first provider-write preflight verifies inventory but remains blocked before the production-preparation gate", () => {
   const result = evaluateUlcLinzM6FirstProviderWritePreflight(validEvidence(), {
     now: NOW,
   });
 
-  assert.equal(result.status, "ready-for-explicit-provider-write-approval");
+  assert.equal(result.phase, "production-preparation");
+  assert.equal(
+    result.status,
+    "provider-inventory-verified-blocked-before-production-preparation-gate",
+  );
   assert.equal(result.providerInventoryVerified, true);
   assert.equal(result.providerCreateScopeVerified, true);
   assert.equal(result.noExistingProductionResourceCandidate, true);
@@ -44,6 +48,12 @@ test("ULC M6 first provider-write preflight stays blocked on explicit approval e
   assert.equal(result.selectedCreateMethodSupportsExplicitRegion, true);
   assert.equal(result.explicitRegionSelectionRequired, true);
   assert.equal(result.providerDefaultRegionAllowed, false);
+  assert.equal(result.productionPreparationGateEvidenceConsumed, false);
+  assert.equal(result.productionPreparationEligible, false);
+  assert.equal(result.productionReady, false);
+  assert.deepEqual(result.requiredPreparationGates, ["M3_DONE"]);
+  assert.deepEqual(result.requiredProductionReadyGates, ["M4_DONE", "M5_DONE"]);
+  assert.equal(result.publicExposureAllowed, false);
   assert.equal(result.providerWriteAllowed, false);
   assert.equal(result.executionAuthorized, false);
   assert.equal(result.explicitApprovalRequired, true);
@@ -60,9 +70,20 @@ test("ULC M6 first provider-write preflight stays blocked on explicit approval e
   assert.equal(Object.isFrozen(result.firstProviderWrite), true);
 });
 
-test("ULC M6 provider-write safety contract pins Frankfurt and forbids default-region fallback", () => {
+test("ULC M6 provider-write safety contract separates preparation from Production Ready", () => {
   const contract = ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT;
 
+  assert.deepEqual(contract.productionPreparation, {
+    requiredGateEvidence: ["M3_DONE"],
+    m4RequiredBeforePreparationWrite: false,
+    m5RequiredBeforePreparationWrite: false,
+    explicitApprovalRequiredPerMutatingStep: true,
+    publicExposureBeforeM4M5Allowed: false,
+  });
+  assert.deepEqual(contract.productionReady, {
+    requiredGateEvidence: ["M4_DONE", "M5_DONE"],
+    explicitReleaseApprovalStillRequired: true,
+  });
   assert.deepEqual(contract.firstProviderWrite, {
     stepId: "neon-production-database",
     provider: "neon",
