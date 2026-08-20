@@ -1,6 +1,8 @@
 import { previewAccentForeground } from "./preview-theme.mjs";
 import {
+  factoryLifecycleCopy,
   productionReadinessCopy,
+  productionReleaseCriteriaCopy,
   productionReleaseReadinessCopy,
 } from "./production-readiness-status.js";
 
@@ -223,11 +225,24 @@ function renderAppDetail(app) {
   if (elements.detailSchema) elements.detailSchema.textContent = `Schema v${app.schemaVersion}`;
   replaceWithValueChips(elements.detailModules, app.modules, moduleLabel);
   replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
-  renderPreviewReadiness(app.previewReadiness);
-  renderProductionReadiness(app.productionReadiness, app.productionReleaseReadiness);
+  renderPreviewReadiness(
+    app.previewReadiness,
+    app.productionReadiness,
+    app.productionReleaseReadiness,
+  );
+  renderProductionReadiness(
+    app.previewReadiness,
+    app.productionReadiness,
+    app.productionReleaseReadiness,
+  );
+  renderFactoryLifecycle(
+    app.previewReadiness,
+    app.productionReadiness,
+    app.productionReleaseReadiness,
+  );
 }
 
-function renderPreviewReadiness(readiness) {
+function renderPreviewReadiness(readiness, productionReadiness, releaseReadiness) {
   const previewGate = document.querySelector(
     ".factory-detail-gates .factory-detail-gate:nth-child(3)",
   );
@@ -235,10 +250,23 @@ function renderPreviewReadiness(readiness) {
   const detail = previewGate?.querySelector("small");
   if (!heading || !detail) return;
 
+  const previewAccepted =
+    readiness?.status === "repository-ready" &&
+    productionReleaseCriteriaCopy(readiness, productionReadiness, releaseReadiness).some(
+      (criterion) => criterion.id === "previewAccepted" && criterion.status === "verified",
+    );
+
+  if (previewAccepted) {
+    heading.textContent = "Preview geprüft";
+    detail.textContent =
+      "Die Preview wurde im aktuellen M6-Snapshot abgenommen. Produktionsvorbereitung und Produktion bleiben separate, freigabepflichtige Schritte.";
+    return;
+  }
+
   if (readiness?.status === "repository-ready") {
     heading.textContent = "Lokale Preview-Voraussetzungen erfüllt";
     detail.textContent =
-      "Die benötigten lokalen App-Artefakte sind vorhanden. Externe Preview-Voraussetzungen werden noch nicht geprüft; Preview bleibt gesperrt.";
+      "Die benötigten lokalen App-Artefakte sind vorhanden. Die externe Preview-Abnahme ist noch offen.";
     return;
   }
 
@@ -256,12 +284,133 @@ function renderPreviewReadiness(readiness) {
       : "Die lokalen Preview-Voraussetzungen konnten nicht vollständig bestätigt werden. Preview bleibt gesperrt.";
 }
 
-function renderProductionReadiness(readiness, releaseReadiness) {
+function renderProductionReadiness(previewReadiness, readiness, releaseReadiness) {
   if (!elements.detailProductionStatus || !elements.detailProductionSummary) return;
   const m5Copy = productionReadinessCopy(readiness);
-  const m6Copy = productionReleaseReadinessCopy(releaseReadiness);
-  elements.detailProductionStatus.textContent = `${m5Copy.heading} · ${m6Copy.heading}`;
-  elements.detailProductionSummary.textContent = `${m5Copy.detail} ${m6Copy.detail}`;
+  const m6Copy = productionReleaseReadinessCopy(
+    previewReadiness,
+    readiness,
+    releaseReadiness,
+  );
+  const productionGate = elements.detailProductionStatus.closest(".factory-detail-gate");
+  const productionLabel = productionGate?.querySelector(":scope > span");
+  if (productionLabel) productionLabel.textContent = "Security & Privacy Ready";
+  elements.detailProductionStatus.textContent = m5Copy.heading;
+  elements.detailProductionSummary.textContent = m5Copy.detail;
+  renderProductionReleaseCriteria(
+    previewReadiness,
+    readiness,
+    releaseReadiness,
+    m6Copy,
+  );
+}
+
+function renderProductionReleaseCriteria(
+  previewReadiness,
+  productionReadiness,
+  releaseReadiness,
+  releaseCopy,
+) {
+  const productionGate = elements.detailProductionStatus?.closest(".factory-detail-gate");
+  if (!productionGate) return;
+
+  let releaseSummary = productionGate.querySelector("[data-m6-release-summary]");
+  if (releaseSummary === null) {
+    releaseSummary = document.createElement("div");
+    releaseSummary.className = "factory-release-gate";
+    releaseSummary.dataset.m6ReleaseSummary = "";
+    productionGate.append(releaseSummary);
+  }
+  const releaseHeading = document.createElement("strong");
+  releaseHeading.textContent = `Production Ready · ${releaseCopy.heading}`;
+  const releaseDetail = document.createElement("span");
+  releaseDetail.textContent = releaseCopy.detail;
+  releaseSummary.replaceChildren(releaseHeading, releaseDetail);
+
+  let criteriaList = productionGate.querySelector("[data-m6-release-criteria]");
+  if (criteriaList === null) {
+    criteriaList = document.createElement("div");
+    criteriaList.className = "factory-detail-gates";
+    criteriaList.dataset.m6ReleaseCriteria = "";
+    criteriaList.setAttribute("aria-label", "Technische M6-Nachweise");
+    productionGate.append(criteriaList);
+  }
+
+  criteriaList.replaceChildren();
+  for (const criterion of productionReleaseCriteriaCopy(
+    previewReadiness,
+    productionReadiness,
+    releaseReadiness,
+  )) {
+    const item = document.createElement("div");
+    item.className = "factory-detail-gate";
+    if (criterion.status !== "verified") {
+      item.classList.add("factory-detail-gate--locked");
+    }
+
+    const label = document.createElement("span");
+    label.textContent = criterion.label;
+    const status = document.createElement("strong");
+    status.textContent = criterion.status === "verified" ? "Geprüft" : "Offen";
+    const detail = document.createElement("small");
+    detail.textContent =
+      criterion.status === "verified"
+        ? "Technischer Nachweis im aktuellen Factory-Snapshot bestätigt."
+        : "Technischer Nachweis fehlt oder ist nicht eindeutig bestätigt.";
+
+    item.append(label, status, detail);
+    criteriaList.append(item);
+  }
+}
+
+function renderFactoryLifecycle(previewReadiness, readiness, releaseReadiness) {
+  const readinessSection = document
+    .querySelector("#detail-readiness-heading")
+    ?.closest(".factory-detail-section");
+  const gateList = readinessSection?.querySelector(":scope > .factory-detail-gates");
+  if (!readinessSection || !gateList) return;
+
+  let lifecycle = readinessSection.querySelector("[data-factory-lifecycle]");
+  if (lifecycle === null) {
+    lifecycle = document.createElement("div");
+    lifecycle.dataset.factoryLifecycle = "";
+    readinessSection.insertBefore(lifecycle, gateList);
+  }
+
+  const copy = factoryLifecycleCopy(
+    previewReadiness,
+    readiness,
+    releaseReadiness,
+  );
+  const flow = document.createElement("ol");
+  flow.className = "factory-flow";
+  flow.setAttribute("aria-label", "App-Lifecycle");
+
+  for (const stage of copy.stages) {
+    const item = document.createElement("li");
+    if (stage.state === "current") item.classList.add("is-current");
+    const marker = document.createElement("span");
+    marker.textContent =
+      stage.state === "complete" ? "✓" : stage.state === "current" ? "→" : "–";
+    marker.setAttribute("aria-hidden", "true");
+    const label = document.createElement("strong");
+    label.textContent = stage.label;
+    const status = document.createElement("small");
+    status.textContent = stage.heading;
+    item.append(marker, label, status);
+    flow.append(item);
+  }
+
+  const nextStep = document.createElement("div");
+  nextStep.className = "factory-release-gate";
+  nextStep.setAttribute("role", "note");
+  const nextHeading = document.createElement("strong");
+  nextHeading.textContent = `Nächster sicherer Schritt: ${copy.nextStep.heading}`;
+  const nextDetail = document.createElement("span");
+  nextDetail.textContent = copy.nextStep.detail;
+  nextStep.append(nextHeading, nextDetail);
+
+  lifecycle.replaceChildren(flow, nextStep);
 }
 
 function previewReadinessLabel(readiness) {
@@ -363,8 +512,8 @@ function renderCatalog(draftState = { modules: [], services: [], focus: null }) 
 
 function renderCheckboxes(container, ids, groupName, labelFor, selectedIds = []) {
   if (!container) return;
-  container.replaceChildren();
 
+  container.replaceChildren();
   if (ids.length === 0) {
     container.append(emptyState("Aktuell keine Auswahl verfügbar."));
     return;

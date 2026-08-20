@@ -29,10 +29,26 @@ function readiness({ verifiedCount, ready = false }) {
   };
 }
 
+function allM5Evidence() {
+  return Object.fromEntries(
+    REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion) => [criterion.id, true]),
+  );
+}
+
 function allM6Evidence() {
   return Object.fromEntries(
     REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map((criterion) => [criterion.id, true]),
   );
+}
+
+function repositoryReadyPreview() {
+  return {
+    status: "repository-ready",
+    workerEntrypointPresent: true,
+    packageManifestPresent: true,
+    databaseManifestRequired: true,
+    databaseManifestPresent: true,
+  };
 }
 
 test("Factory M5 copy names the real current 1/12 open criteria without implying release", () => {
@@ -60,11 +76,8 @@ test("Factory M5 copy names the real current 1/12 open criteria without implying
 });
 
 test("Factory M5 copy keeps production separate even when M5 is fully verified", () => {
-  const allVerified = Object.fromEntries(
-    REQUIRED_PRODUCTION_READINESS_CRITERIA.map((criterion) => [criterion.id, true]),
-  );
   assert.deepEqual(
-    productionReadinessCopy(evaluateProductionReadiness(allVerified)),
+    productionReadinessCopy(evaluateProductionReadiness(allM5Evidence())),
     {
       heading: "Security & Privacy 12/12 geprüft",
       detail: "M5 ist erfüllt. Die Produktionsfreigabe bleibt ein separates, gesperrtes Gate.",
@@ -96,17 +109,27 @@ test("Factory M5 copy fails closed for inconsistent or non-canonical readiness p
   }
 });
 
-test("Factory M6 copy reports the real blocked technical evidence without authorizing release", () => {
+test("Factory M6 copy reports legitimate blocked technical progress without authorizing release", () => {
+  const preview = repositoryReadyPreview();
+  const m5Open = evaluateProductionReadiness();
   const current = evaluateM6ProductionReleaseReadiness();
-  assert.deepEqual(productionReleaseReadinessCopy(current), {
-    heading: "M6 0/10 technisch geprüft",
-    detail: "10 Nachweise sind noch offen. Produktion bleibt gesperrt.",
-  });
+  assert.deepEqual(
+    productionReleaseReadinessCopy(preview, m5Open, current),
+    {
+      heading: "M6 0/10 technisch geprüft",
+      detail: "10 Nachweise sind noch offen. Produktion bleibt gesperrt.",
+    },
+  );
 
   const allExceptSmoke = allM6Evidence();
   delete allExceptSmoke.postDeploySmokePassed;
+  const m5Ready = evaluateProductionReadiness(allM5Evidence());
   assert.deepEqual(
-    productionReleaseReadinessCopy(evaluateM6ProductionReleaseReadiness(allExceptSmoke)),
+    productionReleaseReadinessCopy(
+      preview,
+      m5Ready,
+      evaluateM6ProductionReleaseReadiness(allExceptSmoke),
+    ),
     {
       heading: "M6 9/10 technisch geprüft",
       detail: "1 Nachweis ist noch offen. Produktion bleibt gesperrt.",
@@ -117,6 +140,8 @@ test("Factory M6 copy reports the real blocked technical evidence without author
 test("Factory M6 copy keeps explicit release authorization separate from complete evidence", () => {
   assert.deepEqual(
     productionReleaseReadinessCopy(
+      repositoryReadyPreview(),
+      evaluateProductionReadiness(allM5Evidence()),
       evaluateM6ProductionReleaseReadiness(allM6Evidence()),
     ),
     {
@@ -127,6 +152,8 @@ test("Factory M6 copy keeps explicit release authorization separate from complet
 });
 
 test("Factory M6 copy fails closed for inconsistent or non-canonical evidence payloads", () => {
+  const preview = repositoryReadyPreview();
+  const m5Open = evaluateProductionReadiness();
   const current = evaluateM6ProductionReleaseReadiness();
   const reordered = structuredClone(current);
   [reordered.criteria[0], reordered.criteria[1]] = [
@@ -144,10 +171,13 @@ test("Factory M6 copy fails closed for inconsistent or non-canonical evidence pa
     { ...current, verifiedCount: 1 },
     reordered,
   ]) {
-    assert.deepEqual(productionReleaseReadinessCopy(invalid), {
-      heading: "M6 nicht verifiziert",
-      detail: "Der M6-Status ist nicht eindeutig verfügbar. Produktion bleibt gesperrt.",
-    });
+    assert.deepEqual(
+      productionReleaseReadinessCopy(preview, m5Open, invalid),
+      {
+        heading: "M6 nicht verifiziert",
+        detail: "Preview-, M5- oder M6-Evidence ist nicht konsistent. Produktion bleibt gesperrt.",
+      },
+    );
   }
 });
 
@@ -185,6 +215,7 @@ test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabl
   assert.doesNotMatch(helperBody, /fetch\(/);
   assert.doesNotMatch(helperBody, /addEventListener/);
   assert.match(helperBody, /productionReleaseReadinessCopy/);
+  assert.match(helperBody, /isConsistentM6DisplaySnapshot/);
   assert.match(helperBody, /releaseAuthorized !== false/);
   assert.match(helperBody, /Produktion bleibt gesperrt/);
 
@@ -211,7 +242,7 @@ test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabl
   assert.match(appBody, /productionReleaseReadinessCopy/);
   assert.match(
     appBody,
-    /renderProductionReadiness\(app\.productionReadiness, app\.productionReleaseReadiness\);/,
+    /renderProductionReadiness\(\s*app\.previewReadiness,\s*app\.productionReadiness,\s*app\.productionReleaseReadiness,\s*\);/,
   );
   assert.match(
     appBody,

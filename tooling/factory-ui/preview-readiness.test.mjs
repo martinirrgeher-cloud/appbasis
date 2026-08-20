@@ -111,10 +111,16 @@ test("factory UI surfaces repository readiness while keeping external preview ac
   );
 
   assert.match(appScript, /previewReadinessLabel\(app\.previewReadiness\)/);
-  assert.match(appScript, /renderPreviewReadiness\(app\.previewReadiness\)/);
+  assert.match(
+    appScript,
+    /renderPreviewReadiness\(\s*app\.previewReadiness,\s*app\.productionReadiness,\s*app\.productionReleaseReadiness,\s*\)/,
+  );
+  assert.match(appScript, /productionReleaseCriteriaCopy\(readiness, productionReadiness, releaseReadiness\)/);
   assert.match(appScript, /Lokale Preview-Voraussetzungen erfüllt/);
-  assert.match(appScript, /Externe Preview-Voraussetzungen werden noch nicht geprüft/);
-  assert.match(appScript, /Preview bleibt gesperrt/);
+  assert.match(appScript, /Die externe Preview-Abnahme ist noch offen/);
+  assert.match(appScript, /Preview wurde im aktuellen M6-Snapshot abgenommen/);
+  assert.doesNotMatch(appScript, /Externe Preview-Voraussetzungen werden noch nicht geprüft/);
+  assert.doesNotMatch(appScript, /Preview bleibt gesperrt.*repository-ready/);
   assert.doesNotMatch(appScript, /\/api\/factory\/preview/);
 });
 
