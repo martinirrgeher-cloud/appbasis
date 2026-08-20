@@ -49,7 +49,11 @@ const ALLOWED_PREREQUISITE_REFERENCES = Object.freeze([
 ]);
 
 const EXPECTED_EXECUTION_STEPS = deepFreeze([
-  { id: "neon-production-database", kind: "provider-write", requires: [] },
+  {
+    id: "neon-production-database",
+    kind: "provider-write",
+    requires: ["prerequisite:M3_DONE"],
+  },
   {
     id: "production-worker",
     kind: "provider-write",
@@ -195,7 +199,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       id: "neon-production-database",
       kind: "provider-write",
       approvalRequired: true,
-      requires: [],
+      requires: ["prerequisite:M3_DONE"],
       target: {
         provider: "neon",
         dedicatedProductionResource: true,
@@ -572,7 +576,8 @@ function assertExecutionPlanContract() {
   if (
     neonDatabase.target?.provider !== "neon" ||
     neonDatabase.target?.dedicatedProductionResource !== true ||
-    neonDatabase.target?.region !== NEON_REGION
+    neonDatabase.target?.region !== NEON_REGION ||
+    !neonDatabase.requires.includes("prerequisite:M3_DONE")
   ) {
     fail("NEON_TARGET_DRIFT");
   }
