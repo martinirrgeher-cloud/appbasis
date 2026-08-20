@@ -223,9 +223,7 @@ async function readNeonRegions({ apiKey, orgId, fetchImpl }) {
   );
   return regions.map((item) => {
     const region = plainRecord(item, "NEON_REGION_INVENTORY_INVALID");
-    return requiredRegion(
-      ownData(region, "region_id", "NEON_REGION_INVENTORY_INVALID"),
-    );
+    return requiredRegion(ownData(region, "id", "NEON_REGION_INVENTORY_INVALID"));
   });
 }
 
