@@ -94,9 +94,22 @@ export function factoryLifecycleCopy(
     repositoryPreviewReady &&
     m6Consistent &&
     criterionIsVerified(releaseReadiness, "previewAccepted");
+  const backupRecoveryReady =
+    m6Consistent && criterionIsVerified(releaseReadiness, "backupRecoveryReady");
+  const productionDomainReady =
+    m6Consistent && criterionIsVerified(releaseReadiness, "productionDomainReady");
+  const productionDeploymentCompleted =
+    m6Consistent && criterionIsVerified(releaseReadiness, "productionDeploymentCompleted");
+  const postDeploySmokePassed =
+    m6Consistent && criterionIsVerified(releaseReadiness, "postDeploySmokePassed");
+  const releaseOrderingConsistent =
+    (!securityPrivacyReady || backupRecoveryReady) &&
+    (!productionDomainReady || (backupRecoveryReady && securityPrivacyReady)) &&
+    (!postDeploySmokePassed || (productionDomainReady && productionDeploymentCompleted));
   const releaseCrossConsistent =
     m5Consistent &&
     m6Consistent &&
+    releaseOrderingConsistent &&
     criterionIsVerified(releaseReadiness, "securityPrivacyReady") === securityPrivacyReady;
   const securityPrivacyStageReady = securityPrivacyReady && releaseCrossConsistent;
   const preparationStarted =
@@ -211,7 +224,7 @@ export function factoryLifecycleCopy(
   } else if (!releaseCrossConsistent) {
     nextStep = lifecycleNextStep(
       "Readiness-Status klären",
-      "M5 und M6 widersprechen sich im Security-/Privacy-Gate. Produktion bleibt fail-closed gesperrt.",
+      "M5/M6-Evidence widerspricht dem Security-/Privacy- oder Recovery-/Public-Ingress-Ablauf. Produktion bleibt fail-closed gesperrt.",
     );
   } else if (!preparationStarted) {
     nextStep = lifecycleNextStep(
