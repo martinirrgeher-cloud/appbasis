@@ -72,7 +72,11 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
   {
     id: "runtime-configuration",
     kind: "provider-write",
-    requires: ["database-binding", "production-worker"],
+    requires: [
+      "database-binding",
+      "production-worker",
+      "production-domain-selection",
+    ],
   },
   {
     id: "production-security-logging-sink",
@@ -247,7 +251,11 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       id: "runtime-configuration",
       kind: "provider-write",
       approvalRequired: true,
-      requires: ["database-binding", "production-worker"],
+      requires: [
+        "database-binding",
+        "production-worker",
+        "production-domain-selection",
+      ],
       target: {
         provider: "cloudflare",
         secretNames: ["BETTER_AUTH_SECRET"],
@@ -613,6 +621,7 @@ function assertExecutionPlanContract() {
   const runtimeConfiguration = stepById(plan, "runtime-configuration");
   if (
     runtimeConfiguration.target?.provider !== "cloudflare" ||
+    !runtimeConfiguration.requires.includes("production-domain-selection") ||
     !isDeepStrictEqual(runtimeConfiguration.target?.secretNames, [
       "BETTER_AUTH_SECRET",
     ]) ||
