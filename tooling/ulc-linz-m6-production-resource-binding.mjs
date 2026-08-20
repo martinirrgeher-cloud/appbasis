@@ -23,6 +23,7 @@ const RUNTIME_CONTRACT_PATHS = Object.freeze([
 ]);
 const RUNTIME_CONTRACT_DIRECTORIES = Object.freeze([
   "apps/ulc-linz/worker",
+  "apps/ulc-linz/privacy",
   "packages/database/src",
   "packages/identity/src",
   "packages/permissions/src",
