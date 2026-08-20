@@ -12,6 +12,7 @@ import {
 import {
   factoryLifecycleCopy,
   productionReleaseCriteriaCopy,
+  productionReleaseReadinessCopy,
 } from "./production-readiness-status.js";
 import { startFactoryServer } from "./server.mjs";
 
@@ -49,20 +50,37 @@ function repositoryReadyPreview() {
   };
 }
 
-test("Factory M6 criteria remain read-only and fail closed for inconsistent snapshots", () => {
+test("Factory M6 detail and summary share one fail-closed display state", () => {
+  const preview = repositoryReadyPreview();
+  const m5Open = evaluateProductionReadiness();
   const open = evaluateM6ProductionReleaseReadiness();
-  assert.equal(productionReleaseCriteriaCopy(open).length, 10);
-  assert.ok(productionReleaseCriteriaCopy(open).every((criterion) => criterion.status === "open"));
+  assert.equal(productionReleaseCriteriaCopy(preview, m5Open, open).length, 10);
+  assert.ok(
+    productionReleaseCriteriaCopy(preview, m5Open, open).every(
+      (criterion) => criterion.status === "open",
+    ),
+  );
 
   const previewAccepted = evaluateM6ProductionReleaseReadiness({ previewAccepted: true });
-  assert.equal(productionReleaseCriteriaCopy(previewAccepted)[0].status, "verified");
-  assert.ok(productionReleaseCriteriaCopy(previewAccepted).slice(1).every((criterion) => criterion.status === "open"));
+  assert.equal(
+    productionReleaseCriteriaCopy(preview, m5Open, previewAccepted)[0].status,
+    "verified",
+  );
+  assert.ok(
+    productionReleaseCriteriaCopy(preview, m5Open, previewAccepted)
+      .slice(1)
+      .every((criterion) => criterion.status === "open"),
+  );
 
   const structurallyInconsistent = { ...previewAccepted, releaseAuthorized: true };
   assert.ok(
-    productionReleaseCriteriaCopy(structurallyInconsistent).every(
+    productionReleaseCriteriaCopy(preview, m5Open, structurallyInconsistent).every(
       (criterion) => criterion.status === "open",
     ),
+  );
+  assert.equal(
+    productionReleaseReadinessCopy(preview, m5Open, structurallyInconsistent).heading,
+    "M6 nicht verifiziert",
   );
 
   const orderingInconsistent = evaluateM6ProductionReleaseReadiness({
@@ -70,9 +88,43 @@ test("Factory M6 criteria remain read-only and fail closed for inconsistent snap
     productionWorkerReady: true,
   });
   assert.ok(
-    productionReleaseCriteriaCopy(orderingInconsistent).every(
+    productionReleaseCriteriaCopy(preview, m5Open, orderingInconsistent).every(
       (criterion) => criterion.status === "open",
     ),
+  );
+  assert.equal(
+    productionReleaseReadinessCopy(preview, m5Open, orderingInconsistent).heading,
+    "M6 nicht verifiziert",
+  );
+
+  const crossGateDrift = evaluateM6ProductionReleaseReadiness(
+    preparationEvidence({ backupRecoveryReady: true, securityPrivacyReady: true }),
+  );
+  assert.ok(
+    productionReleaseCriteriaCopy(preview, m5Open, crossGateDrift).every(
+      (criterion) => criterion.status === "open",
+    ),
+  );
+  assert.equal(
+    productionReleaseReadinessCopy(preview, m5Open, crossGateDrift).heading,
+    "M6 nicht verifiziert",
+  );
+
+  const repositoryIncompletePreview = {
+    ...preview,
+    status: "repository-incomplete",
+    workerEntrypointPresent: false,
+  };
+  const m5Ready = evaluateProductionReadiness(allM5Evidence());
+  const completeM6 = evaluateM6ProductionReleaseReadiness(allM6Evidence());
+  assert.ok(
+    productionReleaseCriteriaCopy(repositoryIncompletePreview, m5Ready, completeM6).every(
+      (criterion) => criterion.status === "open",
+    ),
+  );
+  assert.equal(
+    productionReleaseReadinessCopy(repositoryIncompletePreview, m5Ready, completeM6).heading,
+    "M6 nicht verifiziert",
   );
 });
 
@@ -300,9 +352,14 @@ test("Factory lifecycle rejects every out-of-order phase transition", () => {
     assert.equal(lifecycle.stages[3].state, "locked", scenario.name);
     assert.equal(lifecycle.stages[4].state, "locked", scenario.name);
     assert.ok(
-      productionReleaseCriteriaCopy(releaseReadiness).every(
+      productionReleaseCriteriaCopy(preview, scenario.m5, releaseReadiness).every(
         (criterion) => criterion.status === "open",
       ),
+      scenario.name,
+    );
+    assert.equal(
+      productionReleaseReadinessCopy(preview, scenario.m5, releaseReadiness).heading,
+      "M6 nicht verifiziert",
       scenario.name,
     );
   }
@@ -325,10 +382,12 @@ test("Factory lifecycle blocks ambiguous preview and M5/M6 cross-gate drift", ()
     status: "repository-incomplete",
     workerEntrypointPresent: false,
   };
+  const m5Ready = evaluateProductionReadiness(allM5Evidence());
+  const completeM6 = evaluateM6ProductionReleaseReadiness(allM6Evidence());
   const staleCompleteEvidence = factoryLifecycleCopy(
     repositoryIncompletePreview,
-    evaluateProductionReadiness(allM5Evidence()),
-    evaluateM6ProductionReleaseReadiness(allM6Evidence()),
+    m5Ready,
+    completeM6,
   );
   assert.equal(staleCompleteEvidence.stages[1].state, "current");
   assert.equal(staleCompleteEvidence.stages[1].heading, "Vorbereitung offen");
@@ -336,16 +395,32 @@ test("Factory lifecycle blocks ambiguous preview and M5/M6 cross-gate drift", ()
   assert.equal(staleCompleteEvidence.stages[3].state, "locked");
   assert.equal(staleCompleteEvidence.stages[4].state, "locked");
   assert.equal(staleCompleteEvidence.nextStep.heading, "Preview vorbereiten");
+  assert.ok(
+    productionReleaseCriteriaCopy(repositoryIncompletePreview, m5Ready, completeM6).every(
+      (criterion) => criterion.status === "open",
+    ),
+  );
 
+  const m5Open = evaluateProductionReadiness();
+  const releaseClaimsM5 = evaluateM6ProductionReleaseReadiness(
+    preparationEvidence({ backupRecoveryReady: true, securityPrivacyReady: true }),
+  );
   const mismatch = factoryLifecycleCopy(
     repositoryReadyPreview(),
-    evaluateProductionReadiness(allM5Evidence()),
-    evaluateM6ProductionReleaseReadiness({ previewAccepted: true }),
+    m5Open,
+    releaseClaimsM5,
   );
   assert.equal(mismatch.nextStep.heading, "Readiness-Status klären");
+  assert.equal(mismatch.stages[1].state, "current");
+  assert.notEqual(mismatch.stages[1].heading, "Geprüft");
   assert.equal(mismatch.stages[2].state, "locked");
   assert.equal(mismatch.stages[3].state, "locked");
   assert.equal(mismatch.stages[4].state, "locked");
+  assert.ok(
+    productionReleaseCriteriaCopy(repositoryReadyPreview(), m5Open, releaseClaimsM5).every(
+      (criterion) => criterion.status === "open",
+    ),
+  );
 });
 
 test("Factory UI renders M5, Production Ready and release as separate read-only boundaries", async (t) => {
@@ -374,7 +449,7 @@ test("Factory UI renders M5, Production Ready and release as separate read-only 
   assert.match(helperBody, /!productionDeploymentCompleted \|\| productionMigrationsApplied/);
   assert.match(helperBody, /!productionUsersAndPermissionsReady \|\| productionDeploymentCompleted/);
   assert.match(helperBody, /isConsistentM6CriterionOrdering/);
-  assert.match(helperBody, /m6OrderingConsistent/);
+  assert.match(helperBody, /isConsistentM6DisplaySnapshot/);
   assert.match(helperBody, /productionDomainReady/);
   assert.match(helperBody, /preparationEvidenceComplete/);
 
@@ -386,7 +461,11 @@ test("Factory UI renders M5, Production Ready and release as separate read-only 
   assert.match(appBody, /Nächster sicherer Schritt:/);
   assert.match(
     appBody,
-    /renderPreviewReadiness\(app\.previewReadiness, app\.productionReleaseReadiness\)/,
+    /renderPreviewReadiness\(\s*app\.previewReadiness,\s*app\.productionReadiness,\s*app\.productionReleaseReadiness,\s*\)/,
+  );
+  assert.match(
+    appBody,
+    /productionReleaseReadinessCopy\(\s*previewReadiness,\s*readiness,\s*releaseReadiness,\s*\)/,
   );
   assert.match(appBody, /Preview wurde im aktuellen M6-Snapshot abgenommen/);
   assert.doesNotMatch(appBody, /releaseProduction\s*\(/);
