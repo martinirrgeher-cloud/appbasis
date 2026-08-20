@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
@@ -31,7 +31,13 @@ const ACTIVATION_FIELDS = Object.freeze([
   "publicIngressPresent",
 ]);
 const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
+  "pnpm-lock.yaml",
+  "apps/ulc-linz/appbasis.app.json",
   "apps/ulc-linz/appbasis.database.json",
+  "apps/ulc-linz/package.json",
+  "packages/database/package.json",
+  "packages/identity/package.json",
+  "packages/permissions/package.json",
   "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
   "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
   "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
@@ -49,12 +55,19 @@ const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
   "packages/permissions/src/principal-lifecycle-administration.ts",
   "packages/permissions/src/permission-administration-audit-retention.ts",
 ]);
+const LIFECYCLE_CONTRACT_DIRECTORIES = Object.freeze([
+  "apps/ulc-linz/worker",
+  "packages/database/src",
+  "packages/identity/src",
+  "packages/permissions/src",
+]);
 
 export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   appId: "ulc-linz",
   modules: Object.freeze([]),
   platformServices: Object.freeze(["identity", "permissions"]),
   lifecycleContractPaths: LIFECYCLE_CONTRACT_PATHS,
+  lifecycleContractDirectories: LIFECYCLE_CONTRACT_DIRECTORIES,
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
@@ -106,7 +119,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/retention.ts",
-      gitBlobSha: "688c8d641851f0c5e70d9331be913b58d82ecf7b",
+      gitBlobSha: "7ab9c1ba18eca1b8c2da2f113d67b27aeae84da1",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/restore-reconciliation.ts",
@@ -142,7 +155,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/retention-state.test.ts",
-      gitBlobSha: "9a85ae20482f639940dfe467ac16474074a02939",
+      gitBlobSha: "2382e1b9f3e4dff271d5709ce9f94aabf7de8f26",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/m5-data-inventory.test.ts",
@@ -157,8 +170,9 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
 
 export async function deriveUlcLinzLifecycleContractDigest(repositoryRoot) {
   const root = resolve(repositoryRoot);
+  const paths = await collectLifecycleContractPaths(root);
   const hash = createHash("sha256");
-  for (const path of LIFECYCLE_CONTRACT_PATHS) {
+  for (const path of paths) {
     const content = await readFile(join(root, path));
     hash.update(path, "utf8");
     hash.update("\0", "utf8");
@@ -210,6 +224,35 @@ export async function deriveUlcLinzLifecycleEvidence(
   } catch {
     return EMPTY_EVIDENCE;
   }
+}
+
+async function collectLifecycleContractPaths(repositoryRoot) {
+  const paths = new Set(LIFECYCLE_CONTRACT_PATHS);
+  for (const directory of LIFECYCLE_CONTRACT_DIRECTORIES) {
+    for (const path of await collectRegularFiles(repositoryRoot, directory)) {
+      paths.add(path);
+    }
+  }
+  return [...paths].sort((left, right) => left.localeCompare(right));
+}
+
+async function collectRegularFiles(repositoryRoot, relativeDirectory) {
+  const entries = await readdir(join(repositoryRoot, relativeDirectory), {
+    withFileTypes: true,
+  });
+  const paths = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const relativePath = `${relativeDirectory}/${entry.name}`;
+    if (entry.isDirectory()) {
+      paths.push(...(await collectRegularFiles(repositoryRoot, relativePath)));
+      continue;
+    }
+    if (!entry.isFile()) {
+      throw new Error("ULC Linz lifecycle contract contains an unsupported filesystem entry.");
+    }
+    paths.push(relativePath);
+  }
+  return paths;
 }
 
 function isProductionLifecycleActivationVerified(input, lifecycleContractDigest, now) {

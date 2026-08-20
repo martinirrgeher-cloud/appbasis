@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { runUlcLinzRetention } from "../worker/retention";
 import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
 
 const now = new Date("2026-08-18T10:30:00.000Z");
@@ -97,6 +98,92 @@ describe("ULC Linz deterministic retention state", () => {
       createdAt: new Date("2026-08-18T10:00:00.000Z"),
       reviewAt: new Date("2026-10-18T10:30:00.000Z"),
     });
+  });
+
+  it("revalidates a due identity before destructive owner operations", async () => {
+    const target = Object.freeze({
+      identityId: "race-target",
+      organizationId: "ulc-linz",
+      subjectId: "subject-race",
+      sourceRole: "trainer" as const,
+      active: false,
+      endedAt: new Date("2025-07-18T10:30:00.000Z"),
+    });
+    let retentionReads = 0;
+    let destructiveOwnerCalls = 0;
+    const dependencies = {
+      scopes: {
+        async evaluateRetention() {
+          retentionReads += 1;
+          if (retentionReads === 1) {
+            return [Object.freeze({ status: "due" as const, target })];
+          }
+          return [
+            Object.freeze({
+              status: "exception" as const,
+              target,
+              reason: "legal-hold",
+              actor: "ulc-admin",
+              createdAt: new Date("2026-08-18T10:00:00.000Z"),
+              reviewAt: new Date("2026-10-18T10:30:00.000Z"),
+            }),
+          ];
+        },
+        async completeIdentityDeletion() {
+          destructiveOwnerCalls += 1;
+          throw new Error("must not complete deletion");
+        },
+        async purgeExpiredDeletionMarkers() {
+          return 0;
+        },
+        async purgeExpiredLifecycleAuditEvents() {
+          return 0;
+        },
+      },
+      identity: {
+        async disableIdentity() {
+          destructiveOwnerCalls += 1;
+        },
+      },
+      identityDeletion: {
+        async isDeletionCompleted() {
+          destructiveOwnerCalls += 1;
+          return false;
+        },
+        async deleteDisabledIdentity() {
+          destructiveOwnerCalls += 1;
+          return { identityId: target.identityId, alreadyDeleted: false };
+        },
+      },
+      permissions: {
+        async findPrincipal() {
+          destructiveOwnerCalls += 1;
+          return null;
+        },
+      },
+      accessAdministration: {
+        async replacePrincipalAccess() {
+          destructiveOwnerCalls += 1;
+        },
+      },
+      principalLifecycle: {
+        async deleteQuarantinedPrincipal() {
+          destructiveOwnerCalls += 1;
+          return true;
+        },
+      },
+      identityDeletionRetention: {
+        async purgeExpiredCompletedDeletions() {
+          return 0;
+        },
+      },
+    } as unknown as Parameters<typeof runUlcLinzRetention>[0];
+
+    await expect(runUlcLinzRetention(dependencies)).rejects.toMatchObject({
+      code: "UNKNOWN_PERMISSION_STATE",
+    });
+    expect(retentionReads).toBe(2);
+    expect(destructiveOwnerCalls).toBe(0);
   });
 
   it("rejects retention-exception review horizons beyond the 12-month audit lifetime before writing", async () => {

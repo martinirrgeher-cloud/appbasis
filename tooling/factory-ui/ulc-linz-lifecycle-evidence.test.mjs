@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -27,6 +27,12 @@ const VALID_ULC_DEFINITION = Object.freeze({
 
 async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), "appbasis-ulc-m5-cd-evidence-"));
+  for (const directory of ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.lifecycleContractDirectories) {
+    const destination = join(root, directory);
+    await mkdir(dirname(destination), { recursive: true });
+    await cp(join(repositoryRoot, directory), destination, { recursive: true });
+  }
+
   const databasePath = join(root, "apps", "ulc-linz", "appbasis.database.json");
   await mkdir(dirname(databasePath), { recursive: true });
   await writeFile(
@@ -208,9 +214,7 @@ test("fails closed when inventory policy or future object-storage scope changes"
   const inventoryPath = join(root, "apps", "ulc-linz", "privacy", "m5-data-inventory.json");
   try {
     const activation = await lifecycleActivationEvidence(root);
-    const inventory = JSON.parse(
-      await import("node:fs/promises").then(({ readFile }) => readFile(inventoryPath, "utf8")),
-    );
+    const inventory = JSON.parse(await readFile(inventoryPath, "utf8"));
     inventory.objectStorage.status = "configured";
     await writeFile(inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`, "utf8");
     assert.deepEqual(await deriveWithActivation(root, activation), {});
@@ -248,8 +252,9 @@ test("pins every destructive C/D implementation used by the current lifecycle cl
   }
 });
 
-test("lifecycle contract digest covers schema migrations and restore reconciliation", () => {
+test("lifecycle contract digest covers schemas, dependency versions and executable source roots", () => {
   for (const path of [
+    "pnpm-lock.yaml",
     "apps/ulc-linz/appbasis.database.json",
     "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
     "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
@@ -257,6 +262,36 @@ test("lifecycle contract digest covers schema migrations and restore reconciliat
     "apps/ulc-linz/worker/restore-reconciliation.ts",
   ]) {
     assert.ok(ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.lifecycleContractPaths.includes(path), path);
+  }
+  for (const directory of [
+    "apps/ulc-linz/worker",
+    "packages/database/src",
+    "packages/identity/src",
+    "packages/permissions/src",
+  ]) {
+    assert.ok(
+      ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.lifecycleContractDirectories.includes(directory),
+      directory,
+    );
+  }
+});
+
+test("lifecycle digest invalidates activation on transitive role-policy or Identity dependency drift", async () => {
+  for (const path of [
+    "apps/ulc-linz/worker/role-data-scope.json",
+    "packages/identity/src/service.ts",
+  ]) {
+    const root = await createFixture();
+    try {
+      const activation = await lifecycleActivationEvidence(root);
+      const before = activation.activationEvidence.lifecycleContractDigest;
+      const original = await readFile(join(root, path), "utf8");
+      await writeFile(join(root, path), `${original}\n`, "utf8");
+      assert.notEqual(await deriveUlcLinzLifecycleContractDigest(root), before, path);
+      assert.deepEqual(await deriveWithActivation(root, activation), {}, path);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   }
 });
 
