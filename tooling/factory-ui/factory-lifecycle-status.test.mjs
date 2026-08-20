@@ -294,6 +294,8 @@ test("Factory lifecycle rejects every out-of-order phase transition", () => {
       "Readiness-Status klären",
       scenario.name,
     );
+    assert.equal(lifecycle.stages[1].state, "current", scenario.name);
+    assert.notEqual(lifecycle.stages[1].heading, "Geprüft", scenario.name);
     assert.equal(lifecycle.stages[2].state, "locked", scenario.name);
     assert.equal(lifecycle.stages[3].state, "locked", scenario.name);
     assert.equal(lifecycle.stages[4].state, "locked", scenario.name);
@@ -372,6 +374,7 @@ test("Factory UI renders M5, Production Ready and release as separate read-only 
   assert.match(helperBody, /!productionDeploymentCompleted \|\| productionMigrationsApplied/);
   assert.match(helperBody, /!productionUsersAndPermissionsReady \|\| productionDeploymentCompleted/);
   assert.match(helperBody, /isConsistentM6CriterionOrdering/);
+  assert.match(helperBody, /m6OrderingConsistent/);
   assert.match(helperBody, /productionDomainReady/);
   assert.match(helperBody, /preparationEvidenceComplete/);
 
