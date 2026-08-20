@@ -82,6 +82,7 @@ const EXPECTED_STEPS = [
       "production-access-bootstrap",
       "backup-recovery-validation",
       "m5-production-evidence",
+      "prerequisite:M4_DONE",
     ],
   ],
   [
@@ -111,6 +112,10 @@ const MUTATING_STEP_KINDS = new Set([
   "recovery-validation-write",
   "production-smoke-write",
   "authorization-gate",
+]);
+const ALLOWED_EXTERNAL_PREREQUISITES = new Set([
+  "prerequisite:M3_DONE",
+  "prerequisite:M4_DONE",
 ]);
 
 test("ULC M6 preflight separates controlled production preparation from Production Ready", async () => {
@@ -197,7 +202,15 @@ test("ULC M6 execution plan pins every step id, step kind and exact dependency",
     assert.deepEqual([step.id, step.kind, step.requires], EXPECTED_STEPS[index]);
     assert.equal(step.sequence, index + 1);
     for (const requirement of step.requires) {
-      assert.equal(seen.has(requirement), true, `${step.id} -> ${requirement}`);
+      if (requirement.startsWith("prerequisite:")) {
+        assert.equal(
+          ALLOWED_EXTERNAL_PREREQUISITES.has(requirement),
+          true,
+          `${step.id} -> ${requirement}`,
+        );
+      } else {
+        assert.equal(seen.has(requirement), true, `${step.id} -> ${requirement}`);
+      }
     }
     seen.add(step.id);
   }
@@ -278,6 +291,7 @@ test("ULC M6 keeps worker creation and deploy private and blocks public domain a
   assert.equal(activation.target.publicIngress, true);
   assert.equal(activation.requires.includes("m5-production-evidence"), true);
   assert.equal(activation.requires.includes("backup-recovery-validation"), true);
+  assert.equal(activation.requires.includes("prerequisite:M4_DONE"), true);
 });
 
 test("ULC M6 migrations require recovery precheck, recovery path and verification", () => {
@@ -407,6 +421,7 @@ test("ULC M6 recovery precedes the final M5 gate and both precede public exposur
 
   assert.equal(activation.requires.includes("backup-recovery-validation"), true);
   assert.equal(activation.requires.includes("m5-production-evidence"), true);
+  assert.equal(activation.requires.includes("prerequisite:M4_DONE"), true);
   assert.deepEqual(smokes.target.checks, [
     "health",
     "auth",
