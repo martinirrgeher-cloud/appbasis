@@ -31,8 +31,8 @@ function makeFetch({
     { name: "appbasis-reference-preview", region_id: "aws-us-east-1" },
   ],
   regions = [
-    { region_id: "aws-us-east-1" },
-    { region_id: "aws-eu-central-1" },
+    { id: "aws-us-east-1" },
+    { id: "aws-eu-central-1" },
   ],
   workers = [{ id: "appbasis-reference-preview" }],
   unavailableProjectIds = [],
@@ -146,7 +146,7 @@ test("ULC M6 executable provider-state preflight follows Neon cursor pagination 
       });
     }
     if (parsed.pathname.endsWith("/regions")) {
-      return jsonResponse({ regions: [{ region_id: "aws-eu-central-1" }] });
+      return jsonResponse({ regions: [{ id: "aws-eu-central-1" }] });
     }
     return jsonResponse({ success: true, result: [] });
   };
@@ -169,10 +169,18 @@ test("ULC M6 executable provider-state preflight fails closed when Neon reports 
 });
 
 test("ULC M6 executable provider-state preflight fails closed when Frankfurt is not available to the selected Neon organization", async () => {
-  const { fetchImpl } = makeFetch({ regions: [{ region_id: "aws-us-east-1" }] });
+  const { fetchImpl } = makeFetch({ regions: [{ id: "aws-us-east-1" }] });
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
     errorWithCode("NEON_PREFLIGHT_INVALID"),
+  );
+});
+
+test("ULC M6 executable provider-state preflight binds Neon /regions entries to provider field id and rejects project-style region_id", async () => {
+  const { fetchImpl } = makeFetch({ regions: [{ region_id: "aws-eu-central-1" }] });
+  await assert.rejects(
+    runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
+    errorWithCode("NEON_REGION_INVENTORY_INVALID", true),
   );
 });
 
