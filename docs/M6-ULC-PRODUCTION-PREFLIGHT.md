@@ -31,7 +31,7 @@ Gemäß ADR-023 und der Entscheidung vom 20.08.2026 werden drei Zustände strikt
    - benötigt zusätzlich eine davon getrennte ausdrückliche finale Release-Freigabe.
    - technische Evidence autorisiert niemals automatisch den Release.
 
-Diese Trennung löst die reale Evidence-Abhängigkeit: M5-G und M5-F benötigen konkrete Produktionsressourcen bzw. einen realen Logging-Sink. Solche Ressourcen dürfen deshalb kontrolliert vorbereitet werden, ohne dadurch Production Ready zu behaupten.
+Diese Trennung löst die reale Evidence-Abhängigkeit: M5-G und M5-F benötigen konkrete Produktionsressourcen bzw. einen realen Logging-Sink. Solche Ressourcen dürfen deshalb kontrolliert vorbereitet werden, ohne dadurch Production Ready zu behaupten. Das finale M5-Gate wird erst **nach** der realen Backup-/Restore-Validierung bewertet, weil das High-Privacy-Profil diese Recovery-Evidence selbst als Pflichtnachweis konsumiert.
 
 ## Kanonische Verträge
 
@@ -77,11 +77,11 @@ Für ULC v0.1 gilt weiterhin:
 
 Bis einschließlich Schritt 9 bleibt die Produktionsruntime absichtlich nicht öffentlich erreichbar.
 
-### Phase B – reale M5-/M4-Evidence und Production Ready
+### Phase B – reale Recovery-/M5-Evidence und Production Ready
 
-10. **M5-Production-Evidence** – read-only aus den real vorbereiteten Ressourcen. Das vollständige fail-closed Gate heißt `Security & Privacy Ready v0.1`.
-11. **Backup & Recovery validieren** – automatische Backups, Retention, PITR soweit verfügbar sowie realer Restore mit Datenintegrität, Auth, Permissions und App-Smoke.
-12. **Produktionsdomain aktivieren** – erst nach erfolgreicher M5- und M4-Evidence; eigener ausdrücklich freizugebender Public-Exposure-Write.
+10. **Backup & Recovery validieren** – automatische Backups, Retention, PITR soweit verfügbar sowie realer Restore mit Datenintegrität, Auth, Permissions und App-Smoke. Dieser Schritt benötigt keine bereits fertige M5-Gesamtevidence und erzeugt die Recovery-Evidence, die das High-Privacy-Profil benötigt.
+11. **Finale M5-Production-Evidence** – read-only aus den real vorbereiteten Ressourcen **und** der erfolgreichen Recovery-Evidence. Erst hier wird das vollständige fail-closed Gate `Security & Privacy Ready v0.1` mit allen Pflichtkriterien bewertet.
+12. **Produktionsdomain aktivieren** – erst nach erfolgreicher Recovery- und M5-Evidence; eigener ausdrücklich freizugebender Public-Exposure-Write.
 13. **Post-Deploy-Smokes** – Health, Auth, Permissions, Application. Der Smoke ist selbst ein kontrollierter Produktionswrite und benötigt Freigabe.
 
 Erst wenn alle zehn M6-Kriterien erfüllt sind, kann der technische Zustand `Production Ready` entstehen.
@@ -94,7 +94,7 @@ Erst wenn alle zehn M6-Kriterien erfüllt sind, kann der technische Zustand `Pro
 
 Der Plan deckt exakt die zehn bestehenden Kriterien ab: Preview, Produktionsdatenbank, Produktions-Worker, Domain, Benutzer/Rechte, Backup/Recovery, Security/Privacy, Migrationen, Deployment und Post-Deploy-Smoke.
 
-`securityPrivacyReady` ist an den realen Security-Logging-Sink und die vollständige M5-Production-Evidence gebunden. `backupRecoveryReady` entsteht erst aus dem realen Recovery-Schritt. Die öffentliche Domain hängt ausdrücklich von beiden Schritten ab.
+`backupRecoveryReady` entsteht aus dem realen Recovery-Schritt. `securityPrivacyReady` ist an den realen Security-Logging-Sink und die danach vollständige M5-Production-Evidence gebunden. Die finale M5-Evidence verlangt ausdrücklich erfolgreiche Backup-/Restore-Evidence für das High-Privacy-Profil. Die öffentliche Domain hängt von beiden Schritten ab.
 
 ## Harte Sicherheitsgrenzen
 
@@ -105,6 +105,7 @@ Der Plan deckt exakt die zehn bestehenden Kriterien ab: Preview, Produktionsdate
 - Jeder mutierende Vorbereitungsschritt benötigt eine ausdrückliche Freigabe.
 - Vor M4/M5 gibt es kein öffentliches Production-Ingress.
 - Domain-Auswahl und Domain-Aktivierung sind getrennt.
+- Recovery-Evidence wird vor dem finalen M5-12/12-Gate erzeugt; M5 kann dadurch nicht auf eine erst nach ihm geplante Recovery-Prüfung warten.
 - Production Ready setzt M4 und M5 voraus.
 - Release setzt Production Ready plus separate Release-Freigabe voraus.
 - Secretwerte sind kein Repository-Input.
