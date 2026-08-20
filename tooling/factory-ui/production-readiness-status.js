@@ -25,7 +25,7 @@ export function productionReadinessCopy(readiness) {
   if (readiness.productionReady === true) {
     return Object.freeze({
       heading: `Security & Privacy ${readiness.verifiedCount}/${readiness.requiredCount} geprüft`,
-      detail: "M5 ist erfüllt. Production Ready und Produktionsfreigabe bleiben separate Gates.",
+      detail: "M5 ist erfüllt. Die Produktionsfreigabe bleibt ein separates, gesperrtes Gate.",
     });
   }
 
@@ -98,17 +98,26 @@ export function factoryLifecycleCopy(
     m6Consistent &&
     criterionIsVerified(releaseReadiness, "securityPrivacyReady") === securityPrivacyReady;
   const securityPrivacyStageReady = securityPrivacyReady && releaseCrossConsistent;
-  const productionReady =
-    releaseCrossConsistent && releaseReadiness.technicalEvidenceVerified === true;
   const preparationStarted =
     releaseCrossConsistent &&
     previewAccepted &&
     PREPARATION_CRITERION_IDS.some((id) => criterionIsVerified(releaseReadiness, id));
+  const preparationComplete =
+    releaseCrossConsistent &&
+    previewAccepted &&
+    PREPARATION_CRITERION_IDS.every((id) => criterionIsVerified(releaseReadiness, id));
+  const productionReady =
+    releaseCrossConsistent && releaseReadiness.technicalEvidenceVerified === true;
 
   const m5OpenLabels = m5Consistent
     ? REQUIRED_PRODUCTION_READINESS_CRITERIA
         .filter((_, index) => productionReadiness.criteria[index].status === "open")
         .map((criterion) => criterion.label)
+    : [];
+  const preparationOpenLabels = releaseCrossConsistent
+    ? PREPARATION_CRITERION_IDS
+        .filter((id) => !criterionIsVerified(releaseReadiness, id))
+        .map((id) => m6CriterionLabel(id))
     : [];
   const m6OpenLabels = releaseCrossConsistent
     ? REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA
@@ -133,13 +142,13 @@ export function factoryLifecycleCopy(
     lifecycleStage(
       "production-preparation",
       "Produktionsvorbereitung",
-      securityPrivacyStageReady
+      preparationComplete
         ? "complete"
         : previewAccepted && releaseCrossConsistent
           ? "current"
           : "locked",
-      securityPrivacyStageReady
-        ? "Evidence abgeschlossen"
+      preparationComplete
+        ? "Vorbereitung abgeschlossen"
         : !releaseCrossConsistent && previewAccepted
           ? "Gesperrt"
           : preparationStarted
@@ -151,10 +160,14 @@ export function factoryLifecycleCopy(
     lifecycleStage(
       "production-ready",
       "Production Ready",
-      productionReady ? "complete" : securityPrivacyStageReady ? "current" : "locked",
+      productionReady
+        ? "complete"
+        : preparationComplete && securityPrivacyStageReady
+          ? "current"
+          : "locked",
       productionReady
         ? "Bereit"
-        : securityPrivacyStageReady
+        : preparationComplete && securityPrivacyStageReady
           ? `${releaseReadiness.verifiedCount}/${releaseReadiness.requiredCount} geprüft`
           : "Gesperrt",
     ),
@@ -197,14 +210,19 @@ export function factoryLifecycleCopy(
       "Readiness-Status klären",
       "M5 und M6 widersprechen sich im Security-/Privacy-Gate. Produktion bleibt fail-closed gesperrt.",
     );
-  } else if (!securityPrivacyReady && !preparationStarted) {
+  } else if (!preparationStarted) {
     nextStep = lifecycleNextStep(
       "Kontrollierte Produktionsvorbereitung vorbereiten",
       "Nach autoritativem Provider-Preflight und ausdrücklicher Einzelfreigabe jedes mutierenden Schritts dürfen notwendige nicht öffentliche Produktionsressourcen vorbereitet werden. Domain und Public Ingress bleiben geschlossen.",
     );
+  } else if (!preparationComplete) {
+    nextStep = lifecycleNextStep(
+      "Produktionsvorbereitung vervollständigen",
+      `Noch offen: ${preparationOpenLabels.join(" · ")}. Jeder mutierende Schritt bleibt einzeln freigabepflichtig; Domain und Public Ingress bleiben geschlossen.`,
+    );
   } else if (!securityPrivacyReady) {
     nextStep = lifecycleNextStep(
-      "Produktionsvorbereitung und M4/M5-Evidence fortsetzen",
+      "M4/M5-Evidence abschließen",
       `M5 noch offen: ${m5OpenLabels.join(" · ")}. Backup/Recovery liegt vor dem finalen M5-Gate; Domain und Public Ingress bleiben bis M4 + M5 geschlossen.`,
     );
   } else if (!productionReady) {
@@ -233,6 +251,10 @@ function lifecycleNextStep(heading, detail) {
 function criterionIsVerified(readiness, id) {
   const index = REQUIRED_M6_CRITERION_IDS.indexOf(id);
   return index >= 0 && readiness.criteria[index].status === "verified";
+}
+
+function m6CriterionLabel(id) {
+  return REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.find((criterion) => criterion.id === id)?.label ?? id;
 }
 
 function isConsistentPreviewReadiness(readiness) {
