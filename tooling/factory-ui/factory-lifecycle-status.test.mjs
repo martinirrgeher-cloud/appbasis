@@ -32,7 +32,7 @@ function preparationEvidence(extra = {}) {
     previewAccepted: true,
     productionDatabaseReady: true,
     productionWorkerReady: true,
-    productionAccessReady: true,
+    productionUsersAndPermissionsReady: true,
     productionMigrationsApplied: true,
     productionDeploymentCompleted: true,
     ...extra,
@@ -117,7 +117,7 @@ test("Factory lifecycle follows ADR-024 preparation, readiness and release phase
     m5Open,
     evaluateM6ProductionReleaseReadiness({
       ...preparationEvidence(),
-      productionAccessReady: false,
+      productionUsersAndPermissionsReady: false,
     }),
   );
   assert.equal(missingProductionAccess.stages[2].state, "current");
