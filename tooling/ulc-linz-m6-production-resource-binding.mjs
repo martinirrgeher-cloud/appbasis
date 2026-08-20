@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { ULC_LINZ_M5_TARGET_POLICY } from "./ulc-linz-m5-target-policy.mjs";
 
@@ -9,19 +11,21 @@ const RUNTIME_ENTRYPOINT = "./worker/index.ts";
 const PROVIDER_MODEL = "standard-workers-global-transient";
 const NEON_FRANKFURT_REGION = "aws-eu-central-1";
 const PROVIDER_API_SOURCE = "provider-api";
-const RUNTIME_CONTRACT_FILES = Object.freeze([
-  Object.freeze({
-    path: "apps/ulc-linz/worker/app.ts",
-    url: new URL("../apps/ulc-linz/worker/app.ts", import.meta.url),
-  }),
-  Object.freeze({
-    path: "apps/ulc-linz/worker/index.ts",
-    url: new URL("../apps/ulc-linz/worker/index.ts", import.meta.url),
-  }),
-  Object.freeze({
-    path: "apps/ulc-linz/worker/postgres.ts",
-    url: new URL("../apps/ulc-linz/worker/postgres.ts", import.meta.url),
-  }),
+const REPOSITORY_ROOT = fileURLToPath(new URL("../", import.meta.url));
+const RUNTIME_CONTRACT_PATHS = Object.freeze([
+  "pnpm-lock.yaml",
+  "apps/ulc-linz/appbasis.app.json",
+  "apps/ulc-linz/appbasis.database.json",
+  "apps/ulc-linz/package.json",
+  "packages/database/package.json",
+  "packages/identity/package.json",
+  "packages/permissions/package.json",
+]);
+const RUNTIME_CONTRACT_DIRECTORIES = Object.freeze([
+  "apps/ulc-linz/worker",
+  "packages/database/src",
+  "packages/identity/src",
+  "packages/permissions/src",
 ]);
 
 const ROOT_FIELDS = Object.freeze([
@@ -70,7 +74,7 @@ const UNSAFE_VALUE_PATTERNS = Object.freeze([
 ]);
 
 export const ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST =
-  calculateRuntimeContractDigest();
+  deriveUlcLinzProductionRuntimeContractDigest();
 
 export const ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT = Object.freeze({
   schemaVersion: 1,
@@ -89,6 +93,21 @@ export class UlcLinzProductionResourceBindingError extends Error {
     this.name = "UlcLinzProductionResourceBindingError";
     this.code = code;
   }
+}
+
+export function deriveUlcLinzProductionRuntimeContractDigest(
+  repositoryRoot = REPOSITORY_ROOT,
+) {
+  const root = resolve(repositoryRoot);
+  const paths = collectRuntimeContractPaths(root);
+  const hash = createHash("sha256");
+  for (const path of paths) {
+    hash.update(path, "utf8");
+    hash.update("\0", "utf8");
+    hash.update(readFileSync(join(root, path)));
+    hash.update("\0", "utf8");
+  }
+  return `sha256:${hash.digest("hex")}`;
 }
 
 export function evaluateUlcLinzProductionResourceBinding(
@@ -191,15 +210,37 @@ export function evaluateUlcLinzProductionResourceBinding(
   });
 }
 
-function calculateRuntimeContractDigest() {
-  const hash = createHash("sha256");
-  for (const entry of RUNTIME_CONTRACT_FILES) {
-    hash.update(entry.path, "utf8");
-    hash.update("\0", "utf8");
-    hash.update(readFileSync(entry.url));
-    hash.update("\0", "utf8");
+function collectRuntimeContractPaths(repositoryRoot) {
+  const paths = new Set(RUNTIME_CONTRACT_PATHS);
+  for (const directory of RUNTIME_CONTRACT_DIRECTORIES) {
+    for (const path of collectRegularFiles(repositoryRoot, directory)) {
+      paths.add(path);
+    }
   }
-  return `sha256:${hash.digest("hex")}`;
+  return [...paths].sort((left, right) => left.localeCompare(right));
+}
+
+function collectRegularFiles(repositoryRoot, relativeDirectory) {
+  const entries = readdirSync(join(repositoryRoot, relativeDirectory), {
+    withFileTypes: true,
+  });
+  const paths = [];
+  for (const entry of entries.sort((left, right) =>
+    left.name.localeCompare(right.name),
+  )) {
+    const relativePath = `${relativeDirectory}/${entry.name}`;
+    if (entry.isDirectory()) {
+      paths.push(...collectRegularFiles(repositoryRoot, relativePath));
+      continue;
+    }
+    if (!entry.isFile()) {
+      throw new Error(
+        "ULC Linz production runtime contract contains an unsupported filesystem entry.",
+      );
+    }
+    paths.push(relativePath);
+  }
+  return paths;
 }
 
 function assertCanonicalContract() {
