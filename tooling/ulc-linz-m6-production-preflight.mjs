@@ -95,19 +95,11 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
     requires: ["production-migrations", "production-worker-deploy"],
   },
   {
-    id: "production-domain-activation",
-    kind: "public-exposure-write",
-    requires: [
-      "production-domain-selection",
-      "production-worker-deploy",
-      "production-access-bootstrap",
-    ],
-  },
-  {
     id: "m5-production-evidence",
     kind: "read-only-evidence",
     requires: [
-      "production-domain-activation",
+      "production-worker-deploy",
+      "production-access-bootstrap",
       "production-security-logging-sink",
     ],
   },
@@ -115,6 +107,17 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
     id: "backup-recovery-validation",
     kind: "recovery-validation-write",
     requires: ["m5-production-evidence", "production-migrations"],
+  },
+  {
+    id: "production-domain-activation",
+    kind: "public-exposure-write",
+    requires: [
+      "production-domain-selection",
+      "production-worker-deploy",
+      "production-access-bootstrap",
+      "m5-production-evidence",
+      "backup-recovery-validation",
+    ],
   },
   {
     id: "post-deploy-smokes",
@@ -159,6 +162,25 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
   mode: "preflight-only",
   providerWritesEnabled: false,
   firstProviderWriteStepId: "neon-production-database",
+  phaseModel: {
+    productionPreparation: {
+      requiredGateEvidence: ["M3_DONE"],
+      m4RequiredBeforePreparationWrite: false,
+      m5RequiredBeforePreparationWrite: false,
+      explicitApprovalRequiredPerMutatingStep: true,
+      publicExposureAllowed: false,
+    },
+    productionReady: {
+      requiredGateEvidence: ["M4_DONE", "M5_DONE"],
+      publicExposureAllowedAfterGates: true,
+      postDeploySmokeRequired: true,
+    },
+    release: {
+      productionReadyRequired: true,
+      explicitUserReleaseApprovalRequired: true,
+      automaticRelease: false,
+    },
+  },
   m6CriterionCoverage: M6_CRITERION_COVERAGE,
   steps: [
     {
@@ -296,31 +318,16 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
     },
     {
       sequence: 10,
-      id: "production-domain-activation",
-      kind: "public-exposure-write",
-      approvalRequired: true,
-      requires: [
-        "production-domain-selection",
-        "production-worker-deploy",
-        "production-access-bootstrap",
-      ],
-      target: {
-        provider: "cloudflare",
-        hostnameSource: "operator-supplied",
-        publicIngress: true,
-      },
-    },
-    {
-      sequence: 11,
       id: "m5-production-evidence",
       kind: "read-only-evidence",
       approvalRequired: false,
       requires: [
-        "production-domain-activation",
+        "production-worker-deploy",
+        "production-access-bootstrap",
         "production-security-logging-sink",
       ],
       target: {
-        gate: "Production Security & Privacy Ready v0.1",
+        gate: "Security & Privacy Ready v0.1",
         resourceBindingConsumer:
           "tooling/ulc-linz-m6-production-resource-binding.mjs",
         auditSecurityLoggingEvidenceOwner:
@@ -330,7 +337,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 12,
+      sequence: 11,
       id: "backup-recovery-validation",
       kind: "recovery-validation-write",
       approvalRequired: true,
@@ -345,6 +352,24 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
         restoreAuthCheckRequired: true,
         restorePermissionsCheckRequired: true,
         restoreApplicationSmokeRequired: true,
+      },
+    },
+    {
+      sequence: 12,
+      id: "production-domain-activation",
+      kind: "public-exposure-write",
+      approvalRequired: true,
+      requires: [
+        "production-domain-selection",
+        "production-worker-deploy",
+        "production-access-bootstrap",
+        "m5-production-evidence",
+        "backup-recovery-validation",
+      ],
+      target: {
+        provider: "cloudflare",
+        hostnameSource: "operator-supplied",
+        publicIngress: true,
       },
     },
     {
@@ -420,10 +445,13 @@ export async function evaluateUlcLinzM6ProductionPreflight(
     providerWriteAllowed: false,
     releaseAuthorized: false,
     explicitApprovalRequired: true,
-    requiredPrerequisiteGates: ["M3_DONE", "M4_DONE", "M5_DONE"],
+    productionPreparationPrerequisiteGates: ["M3_DONE"],
+    productionReadyRequiredGates: ["M4_DONE", "M5_DONE"],
+    publicExposureBeforeProductionReadyGatesAllowed: false,
     firstProviderWriteStepId:
       ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.firstProviderWriteStepId,
     nextAction: {
+      phase: "production-preparation",
       stepId: ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.firstProviderWriteStepId,
       actionClass: "provider-write",
       approvalRequired: true,
@@ -444,6 +472,8 @@ export async function evaluateUlcLinzM6ProductionPreflight(
       resourceBindingValidationContractVerified: true,
       permissionProvisioningContractVerified: true,
       m6CriterionCoverageVerified: true,
+      productionPreparationSeparatedFromProductionReady: true,
+      publicExposureBlockedUntilM4M5: true,
       liveProductionEvidenceConsumed: false,
       secretValuesInRepository: false,
       automaticProviderWrites: false,
@@ -470,6 +500,22 @@ function assertExecutionPlanContract() {
     plan.mode !== "preflight-only" ||
     plan.providerWritesEnabled !== false ||
     plan.firstProviderWriteStepId !== "neon-production-database" ||
+    !isDeepStrictEqual(plan.phaseModel?.productionPreparation?.requiredGateEvidence, [
+      "M3_DONE",
+    ]) ||
+    plan.phaseModel?.productionPreparation?.m4RequiredBeforePreparationWrite !== false ||
+    plan.phaseModel?.productionPreparation?.m5RequiredBeforePreparationWrite !== false ||
+    plan.phaseModel?.productionPreparation?.explicitApprovalRequiredPerMutatingStep !== true ||
+    plan.phaseModel?.productionPreparation?.publicExposureAllowed !== false ||
+    !isDeepStrictEqual(plan.phaseModel?.productionReady?.requiredGateEvidence, [
+      "M4_DONE",
+      "M5_DONE",
+    ]) ||
+    plan.phaseModel?.productionReady?.publicExposureAllowedAfterGates !== true ||
+    plan.phaseModel?.productionReady?.postDeploySmokeRequired !== true ||
+    plan.phaseModel?.release?.productionReadyRequired !== true ||
+    plan.phaseModel?.release?.explicitUserReleaseApprovalRequired !== true ||
+    plan.phaseModel?.release?.automaticRelease !== false ||
     !Array.isArray(plan.steps) ||
     plan.steps.length !== EXPECTED_EXECUTION_STEPS.length
   ) {
@@ -610,19 +656,9 @@ function assertExecutionPlanContract() {
     fail("PRODUCTION_ACCESS_CONTRACT_DRIFT");
   }
 
-  const domainActivation = stepById(plan, "production-domain-activation");
-  if (
-    domainActivation.target?.provider !== "cloudflare" ||
-    domainActivation.target?.hostnameSource !== "operator-supplied" ||
-    domainActivation.target?.publicIngress !== true ||
-    domainActivation.approvalRequired !== true
-  ) {
-    fail("PUBLIC_EXPOSURE_BOUNDARY_DRIFT");
-  }
-
   const m5Evidence = stepById(plan, "m5-production-evidence");
   if (
-    m5Evidence.target?.gate !== "Production Security & Privacy Ready v0.1" ||
+    m5Evidence.target?.gate !== "Security & Privacy Ready v0.1" ||
     m5Evidence.target?.resourceBindingConsumer !==
       "tooling/ulc-linz-m6-production-resource-binding.mjs" ||
     m5Evidence.target?.auditSecurityLoggingEvidenceOwner !==
@@ -647,6 +683,18 @@ function assertExecutionPlanContract() {
     recovery.target?.restoreApplicationSmokeRequired !== true
   ) {
     fail("BACKUP_RECOVERY_GATE_DRIFT");
+  }
+
+  const domainActivation = stepById(plan, "production-domain-activation");
+  if (
+    domainActivation.target?.provider !== "cloudflare" ||
+    domainActivation.target?.hostnameSource !== "operator-supplied" ||
+    domainActivation.target?.publicIngress !== true ||
+    domainActivation.approvalRequired !== true ||
+    !domainActivation.requires.includes("m5-production-evidence") ||
+    !domainActivation.requires.includes("backup-recovery-validation")
+  ) {
+    fail("PUBLIC_EXPOSURE_BOUNDARY_DRIFT");
   }
 
   const smokes = stepById(plan, "post-deploy-smokes");
