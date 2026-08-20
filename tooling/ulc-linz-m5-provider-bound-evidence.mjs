@@ -119,6 +119,8 @@ function isSameProductionSnapshot(resourceBinding, compliance) {
     compliance.providers.cloudflare.runtimeClass === "standard-workers" &&
     providerBinding.cloudflareProductionRuntimeBound === true &&
     typeof providerBinding.cloudflareProductionRouteBound === "boolean" &&
+    resourceBinding.productionHostnameBound ===
+      providerBinding.cloudflareProductionRouteBound &&
     providerBinding.neonProductionProjectBound === true &&
     providerBinding.neonProductionDatabaseBound === true
   );
