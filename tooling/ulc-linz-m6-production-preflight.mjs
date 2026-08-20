@@ -95,18 +95,23 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
     requires: ["production-migrations", "production-worker-deploy"],
   },
   {
+    id: "backup-recovery-validation",
+    kind: "recovery-validation-write",
+    requires: [
+      "production-migrations",
+      "production-worker-deploy",
+      "production-access-bootstrap",
+    ],
+  },
+  {
     id: "m5-production-evidence",
     kind: "read-only-evidence",
     requires: [
       "production-worker-deploy",
       "production-access-bootstrap",
       "production-security-logging-sink",
+      "backup-recovery-validation",
     ],
-  },
-  {
-    id: "backup-recovery-validation",
-    kind: "recovery-validation-write",
-    requires: ["m5-production-evidence", "production-migrations"],
   },
   {
     id: "production-domain-activation",
@@ -115,16 +120,16 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
       "production-domain-selection",
       "production-worker-deploy",
       "production-access-bootstrap",
-      "m5-production-evidence",
       "backup-recovery-validation",
+      "m5-production-evidence",
     ],
   },
   {
     id: "post-deploy-smokes",
     kind: "production-smoke-write",
     requires: [
-      "m5-production-evidence",
       "backup-recovery-validation",
+      "m5-production-evidence",
       "production-domain-activation",
     ],
   },
@@ -132,8 +137,8 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
     id: "release-gate",
     kind: "authorization-gate",
     requires: [
-      "m5-production-evidence",
       "backup-recovery-validation",
+      "m5-production-evidence",
       "post-deploy-smokes",
     ],
   },
@@ -318,30 +323,14 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
     },
     {
       sequence: 10,
-      id: "m5-production-evidence",
-      kind: "read-only-evidence",
-      approvalRequired: false,
-      requires: [
-        "production-worker-deploy",
-        "production-access-bootstrap",
-        "production-security-logging-sink",
-      ],
-      target: {
-        gate: "Security & Privacy Ready v0.1",
-        resourceBindingConsumer:
-          "tooling/ulc-linz-m6-production-resource-binding.mjs",
-        auditSecurityLoggingEvidenceOwner:
-          "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs",
-        allRequired: true,
-        failClosed: true,
-      },
-    },
-    {
-      sequence: 11,
       id: "backup-recovery-validation",
       kind: "recovery-validation-write",
       approvalRequired: true,
-      requires: ["m5-production-evidence", "production-migrations"],
+      requires: [
+        "production-migrations",
+        "production-worker-deploy",
+        "production-access-bootstrap",
+      ],
       target: {
         gate: "Backup & Disaster Recovery v0.1",
         automaticBackupRequired: true,
@@ -355,6 +344,28 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
+      sequence: 11,
+      id: "m5-production-evidence",
+      kind: "read-only-evidence",
+      approvalRequired: false,
+      requires: [
+        "production-worker-deploy",
+        "production-access-bootstrap",
+        "production-security-logging-sink",
+        "backup-recovery-validation",
+      ],
+      target: {
+        gate: "Security & Privacy Ready v0.1",
+        resourceBindingConsumer:
+          "tooling/ulc-linz-m6-production-resource-binding.mjs",
+        auditSecurityLoggingEvidenceOwner:
+          "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs",
+        backupRestoreEvidenceRequiredForHighPrivacyProfile: true,
+        allRequired: true,
+        failClosed: true,
+      },
+    },
+    {
       sequence: 12,
       id: "production-domain-activation",
       kind: "public-exposure-write",
@@ -363,8 +374,8 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
         "production-domain-selection",
         "production-worker-deploy",
         "production-access-bootstrap",
-        "m5-production-evidence",
         "backup-recovery-validation",
+        "m5-production-evidence",
       ],
       target: {
         provider: "cloudflare",
@@ -378,8 +389,8 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       kind: "production-smoke-write",
       approvalRequired: true,
       requires: [
-        "m5-production-evidence",
         "backup-recovery-validation",
+        "m5-production-evidence",
         "production-domain-activation",
       ],
       target: {
@@ -392,8 +403,8 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       kind: "authorization-gate",
       approvalRequired: true,
       requires: [
-        "m5-production-evidence",
         "backup-recovery-validation",
+        "m5-production-evidence",
         "post-deploy-smokes",
       ],
       target: {
@@ -473,6 +484,7 @@ export async function evaluateUlcLinzM6ProductionPreflight(
       permissionProvisioningContractVerified: true,
       m6CriterionCoverageVerified: true,
       productionPreparationSeparatedFromProductionReady: true,
+      recoveryEvidencePrecedesFinalM5Gate: true,
       publicExposureBlockedUntilM4M5: true,
       liveProductionEvidenceConsumed: false,
       secretValuesInRepository: false,
@@ -656,20 +668,6 @@ function assertExecutionPlanContract() {
     fail("PRODUCTION_ACCESS_CONTRACT_DRIFT");
   }
 
-  const m5Evidence = stepById(plan, "m5-production-evidence");
-  if (
-    m5Evidence.target?.gate !== "Security & Privacy Ready v0.1" ||
-    m5Evidence.target?.resourceBindingConsumer !==
-      "tooling/ulc-linz-m6-production-resource-binding.mjs" ||
-    m5Evidence.target?.auditSecurityLoggingEvidenceOwner !==
-      "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs" ||
-    m5Evidence.target?.allRequired !== true ||
-    m5Evidence.target?.failClosed !== true ||
-    m5Evidence.approvalRequired !== false
-  ) {
-    fail("M5_EVIDENCE_GATE_DRIFT");
-  }
-
   const recovery = stepById(plan, "backup-recovery-validation");
   if (
     recovery.target?.gate !== "Backup & Disaster Recovery v0.1" ||
@@ -680,9 +678,26 @@ function assertExecutionPlanContract() {
     recovery.target?.restoreDataIntegrityCheckRequired !== true ||
     recovery.target?.restoreAuthCheckRequired !== true ||
     recovery.target?.restorePermissionsCheckRequired !== true ||
-    recovery.target?.restoreApplicationSmokeRequired !== true
+    recovery.target?.restoreApplicationSmokeRequired !== true ||
+    recovery.requires.includes("m5-production-evidence")
   ) {
     fail("BACKUP_RECOVERY_GATE_DRIFT");
+  }
+
+  const m5Evidence = stepById(plan, "m5-production-evidence");
+  if (
+    m5Evidence.target?.gate !== "Security & Privacy Ready v0.1" ||
+    m5Evidence.target?.resourceBindingConsumer !==
+      "tooling/ulc-linz-m6-production-resource-binding.mjs" ||
+    m5Evidence.target?.auditSecurityLoggingEvidenceOwner !==
+      "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs" ||
+    m5Evidence.target?.backupRestoreEvidenceRequiredForHighPrivacyProfile !== true ||
+    !m5Evidence.requires.includes("backup-recovery-validation") ||
+    m5Evidence.target?.allRequired !== true ||
+    m5Evidence.target?.failClosed !== true ||
+    m5Evidence.approvalRequired !== false
+  ) {
+    fail("M5_EVIDENCE_GATE_DRIFT");
   }
 
   const domainActivation = stepById(plan, "production-domain-activation");
