@@ -1,7 +1,8 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { isDeepStrictEqual } from "node:util";
+import { isDeepStrictEqual, promisify } from "node:util";
 
 import { loadRepositoryMigrationPlan } from "./database-migration-executor.mjs";
 import {
@@ -9,6 +10,7 @@ import {
   evaluateUlcLinzM6ProductionPreflight,
 } from "./ulc-linz-m6-production-preflight.mjs";
 
+const execFileAsync = promisify(execFile);
 const APPLICATION = "ulc-linz";
 const ENVIRONMENT = "production";
 const MANIFEST_PATH = "apps/ulc-linz/appbasis.database.json";
@@ -60,6 +62,8 @@ export const ULC_LINZ_M6_MIGRATION_SMOKE_REHEARSAL_CONTRACT = deepFreeze({
     migrationPlanFingerprintRequiredAtExecution: true,
     freshProviderEvidenceRequiredAtExecution: true,
     providerBoundTargetRequiredAtExecution: true,
+    verifiedRepositoryHeadRequiredAtExecution: true,
+    cleanRepositoryRequiredForRehearsal: true,
     rehearsalMustBeRecomputedOnFinalHead: true,
     smokeContractRequiredAtExecution: true,
     futureExecutorMustConsumeBinding: true,
@@ -148,6 +152,7 @@ export async function evaluateUlcLinzM6MigrationSmokeRehearsal(
   repositoryRoot = process.cwd(),
 ) {
   const root = resolve(repositoryRoot);
+  const verifiedRepositoryHeadSha = await readVerifiedRepositoryHead(root);
   const repositoryPreflight = await evaluateUlcLinzM6ProductionPreflight(root);
   assertRepositoryPreflight(repositoryPreflight);
   assertExecutionPlanContract();
@@ -189,6 +194,7 @@ export async function evaluateUlcLinzM6MigrationSmokeRehearsal(
   }
 
   const validatedInputDigests = deepFreeze({
+    repositoryHeadSha: verifiedRepositoryHeadSha,
     manifest: { path: MANIFEST_PATH, digest: digestBytes(manifestRaw) },
     appDefinition: {
       path: APP_DEFINITION_PATH,
@@ -214,6 +220,7 @@ export async function evaluateUlcLinzM6MigrationSmokeRehearsal(
     application: APPLICATION,
     environment: ENVIRONMENT,
     status: "rehearsed-blocked-before-production-write",
+    verifiedRepositoryHeadSha,
     repositoryPreflightVerified: true,
     migrationRehearsalVerified: true,
     productionSmokeContractVerified: true,
@@ -277,6 +284,8 @@ function assertExecutionPlanContract() {
     binding.migrationPlanFingerprintRequiredAtExecution !== true ||
     binding.freshProviderEvidenceRequiredAtExecution !== true ||
     binding.providerBoundTargetRequiredAtExecution !== true ||
+    binding.verifiedRepositoryHeadRequiredAtExecution !== true ||
+    binding.cleanRepositoryRequiredForRehearsal !== true ||
     binding.rehearsalMustBeRecomputedOnFinalHead !== true ||
     binding.smokeContractRequiredAtExecution !== true ||
     binding.futureExecutorMustConsumeBinding !== true ||
@@ -342,6 +351,30 @@ function assertPermissionSmokeContract(source) {
   ) {
     fail("PERMISSION_SMOKE_CONTRACT_DRIFT");
   }
+}
+
+async function readVerifiedRepositoryHead(root) {
+  let head;
+  let status;
+  try {
+    ({ stdout: head } = await execFileAsync(
+      "git",
+      ["-C", root, "rev-parse", "--verify", "HEAD"],
+      { encoding: "utf8" },
+    ));
+    ({ stdout: status } = await execFileAsync(
+      "git",
+      ["-C", root, "status", "--porcelain=v1", "--untracked-files=all"],
+      { encoding: "utf8" },
+    ));
+  } catch {
+    fail("REPOSITORY_HEAD_UNVERIFIED");
+  }
+
+  const sha = head.trim();
+  if (!/^[0-9a-f]{40}$/.test(sha)) fail("REPOSITORY_HEAD_UNVERIFIED");
+  if (status.trim() !== "") fail("REPOSITORY_HEAD_DIRTY");
+  return sha;
 }
 
 async function readBinary(path, code) {
