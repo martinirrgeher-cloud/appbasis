@@ -45,6 +45,7 @@ const MUTATING_STEP_KINDS = new Set([
 ]);
 const ALLOWED_PREREQUISITE_REFERENCES = Object.freeze([
   "prerequisite:M3_DONE",
+  "prerequisite:M4_DONE",
 ]);
 
 const EXPECTED_EXECUTION_STEPS = deepFreeze([
@@ -122,6 +123,7 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
       "production-access-bootstrap",
       "backup-recovery-validation",
       "m5-production-evidence",
+      "prerequisite:M4_DONE",
     ],
   },
   {
@@ -376,6 +378,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
         "production-access-bootstrap",
         "backup-recovery-validation",
         "m5-production-evidence",
+        "prerequisite:M4_DONE",
       ],
       target: {
         provider: "cloudflare",
@@ -548,7 +551,14 @@ function assertExecutionPlanContract() {
       fail("EXECUTION_PLAN_DRIFT");
     }
 
-    if (step.requires.some((requiredStepId) => !priorStepIds.has(requiredStepId))) {
+    if (
+      step.requires.some((requiredReference) => {
+        if (requiredReference.startsWith("prerequisite:")) {
+          return !ALLOWED_PREREQUISITE_REFERENCES.includes(requiredReference);
+        }
+        return !priorStepIds.has(requiredReference);
+      })
+    ) {
       fail("EXECUTION_DEPENDENCY_DRIFT");
     }
     priorStepIds.add(step.id);
@@ -707,7 +717,8 @@ function assertExecutionPlanContract() {
     domainActivation.target?.publicIngress !== true ||
     domainActivation.approvalRequired !== true ||
     !domainActivation.requires.includes("m5-production-evidence") ||
-    !domainActivation.requires.includes("backup-recovery-validation")
+    !domainActivation.requires.includes("backup-recovery-validation") ||
+    !domainActivation.requires.includes("prerequisite:M4_DONE")
   ) {
     fail("PUBLIC_EXPOSURE_BOUNDARY_DRIFT");
   }
