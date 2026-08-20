@@ -42,6 +42,17 @@ export const ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT = deepFreeze({
   schemaVersion: 1,
   application: APPLICATION,
   environment: ENVIRONMENT,
+  productionPreparation: {
+    requiredGateEvidence: ["M3_DONE"],
+    m4RequiredBeforePreparationWrite: false,
+    m5RequiredBeforePreparationWrite: false,
+    explicitApprovalRequiredPerMutatingStep: true,
+    publicExposureBeforeM4M5Allowed: false,
+  },
+  productionReady: {
+    requiredGateEvidence: ["M4_DONE", "M5_DONE"],
+    explicitReleaseApprovalStillRequired: true,
+  },
   firstProviderWrite: {
     stepId: FIRST_PROVIDER_WRITE_STEP_ID,
     provider: NEON_PROVIDER,
@@ -112,7 +123,8 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     schemaVersion: 1,
     application: APPLICATION,
     environment: ENVIRONMENT,
-    status: "ready-for-explicit-provider-write-approval",
+    phase: "production-preparation",
+    status: "provider-inventory-verified-blocked-before-production-preparation-gate",
     providerInventoryVerified: true,
     providerCreateScopeVerified: true,
     noExistingProductionResourceCandidate: true,
@@ -120,6 +132,14 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     selectedCreateMethodSupportsExplicitRegion: true,
     explicitRegionSelectionRequired: true,
     providerDefaultRegionAllowed: false,
+    productionPreparationGateEvidenceConsumed: false,
+    productionPreparationEligible: false,
+    productionReady: false,
+    requiredPreparationGates:
+      ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT.productionPreparation.requiredGateEvidence,
+    requiredProductionReadyGates:
+      ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT.productionReady.requiredGateEvidence,
+    publicExposureAllowed: false,
     providerWriteAllowed: false,
     executionAuthorized: false,
     explicitApprovalRequired: true,
@@ -153,6 +173,18 @@ function assertCanonicalContracts() {
   if (
     safety.application !== APPLICATION ||
     safety.environment !== ENVIRONMENT ||
+    !Array.isArray(safety.productionPreparation.requiredGateEvidence) ||
+    safety.productionPreparation.requiredGateEvidence.length !== 1 ||
+    safety.productionPreparation.requiredGateEvidence[0] !== "M3_DONE" ||
+    safety.productionPreparation.m4RequiredBeforePreparationWrite !== false ||
+    safety.productionPreparation.m5RequiredBeforePreparationWrite !== false ||
+    safety.productionPreparation.explicitApprovalRequiredPerMutatingStep !== true ||
+    safety.productionPreparation.publicExposureBeforeM4M5Allowed !== false ||
+    !Array.isArray(safety.productionReady.requiredGateEvidence) ||
+    safety.productionReady.requiredGateEvidence.length !== 2 ||
+    safety.productionReady.requiredGateEvidence[0] !== "M4_DONE" ||
+    safety.productionReady.requiredGateEvidence[1] !== "M5_DONE" ||
+    safety.productionReady.explicitReleaseApprovalStillRequired !== true ||
     safety.firstProviderWrite.stepId !== FIRST_PROVIDER_WRITE_STEP_ID ||
     safety.firstProviderWrite.provider !== NEON_PROVIDER ||
     safety.firstProviderWrite.projectName !== NEON_PROJECT_NAME ||
