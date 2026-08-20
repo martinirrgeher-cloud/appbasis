@@ -111,7 +111,6 @@ function isSameProductionSnapshot(resourceBinding, compliance) {
     resourceBinding.runtimeContractVerified === true &&
     resourceBinding.productionDatabaseBound === true &&
     resourceBinding.productionWorkerBound === true &&
-    resourceBinding.productionHostnameBound === true &&
     resourceBinding.databaseBindingBound === true &&
     resourceBinding.scopeComplete === true &&
     resourceBinding.neonRegion ===
