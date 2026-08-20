@@ -55,18 +55,23 @@ const EXPECTED_STEPS = [
     ["production-migrations", "production-worker-deploy"],
   ],
   [
+    "backup-recovery-validation",
+    "recovery-validation-write",
+    [
+      "production-migrations",
+      "production-worker-deploy",
+      "production-access-bootstrap",
+    ],
+  ],
+  [
     "m5-production-evidence",
     "read-only-evidence",
     [
       "production-worker-deploy",
       "production-access-bootstrap",
       "production-security-logging-sink",
+      "backup-recovery-validation",
     ],
-  ],
-  [
-    "backup-recovery-validation",
-    "recovery-validation-write",
-    ["m5-production-evidence", "production-migrations"],
   ],
   [
     "production-domain-activation",
@@ -75,16 +80,16 @@ const EXPECTED_STEPS = [
       "production-domain-selection",
       "production-worker-deploy",
       "production-access-bootstrap",
-      "m5-production-evidence",
       "backup-recovery-validation",
+      "m5-production-evidence",
     ],
   ],
   [
     "post-deploy-smokes",
     "production-smoke-write",
     [
-      "m5-production-evidence",
       "backup-recovery-validation",
+      "m5-production-evidence",
       "production-domain-activation",
     ],
   ],
@@ -92,8 +97,8 @@ const EXPECTED_STEPS = [
     "release-gate",
     "authorization-gate",
     [
-      "m5-production-evidence",
       "backup-recovery-validation",
+      "m5-production-evidence",
       "post-deploy-smokes",
     ],
   ],
@@ -147,6 +152,7 @@ test("ULC M6 preflight separates controlled production preparation from Producti
     permissionProvisioningContractVerified: true,
     m6CriterionCoverageVerified: true,
     productionPreparationSeparatedFromProductionReady: true,
+    recoveryEvidencePrecedesFinalM5Gate: true,
     publicExposureBlockedUntilM4M5: true,
     liveProductionEvidenceConsumed: false,
     secretValuesInRepository: false,
@@ -301,7 +307,7 @@ test("ULC M6 runtime configuration names secrets without storing secret values",
   assert.equal(step.target.secretValuesInRepository, false);
 });
 
-test("ULC M6 security logging sink is a separate approved preparation write and blocks deploy and M5 evidence until its real contract can be evidenced", () => {
+test("ULC M6 security logging sink is a separate approved preparation write and blocks deploy and final M5 evidence until its real contract can be evidenced", () => {
   const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
   const logging = plan.steps.find(
     (entry) => entry.id === "production-security-logging-sink",
@@ -326,6 +332,7 @@ test("ULC M6 security logging sink is a separate approved preparation write and 
   assert.equal(m5.requires.includes("production-security-logging-sink"), true);
   assert.equal(m5.requires.includes("production-worker-deploy"), true);
   assert.equal(m5.requires.includes("production-access-bootstrap"), true);
+  assert.equal(m5.requires.includes("backup-recovery-validation"), true);
   assert.equal(
     m5.target.auditSecurityLoggingEvidenceOwner,
     "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs",
@@ -358,19 +365,35 @@ test("ULC M6 production access bootstrap reuses existing identity and principal-
   assert.equal(step.target.noSecondProvisioningContract, true);
 });
 
-test("ULC M6 M5, recovery, public exposure and post-deploy gates stay fail-closed and ordered", () => {
+test("ULC M6 recovery precedes the final M5 gate and both precede public exposure", () => {
   const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
-  const m5 = plan.steps.find((step) => step.id === "m5-production-evidence");
   const recovery = plan.steps.find(
     (step) => step.id === "backup-recovery-validation",
   );
+  const m5 = plan.steps.find((step) => step.id === "m5-production-evidence");
   const activation = plan.steps.find(
     (step) => step.id === "production-domain-activation",
   );
   const smokes = plan.steps.find((step) => step.id === "post-deploy-smokes");
 
+  assert.equal(recovery.sequence, 10);
+  assert.equal(recovery.requires.includes("m5-production-evidence"), false);
+  assert.equal(recovery.requires.includes("production-migrations"), true);
+  assert.equal(recovery.requires.includes("production-worker-deploy"), true);
+  assert.equal(recovery.requires.includes("production-access-bootstrap"), true);
+  assert.equal(recovery.target.automaticBackupRequired, true);
+  assert.equal(recovery.target.retentionRequired, true);
+  assert.equal(recovery.target.realRestoreRequired, true);
+  assert.equal(recovery.target.restoreDataIntegrityCheckRequired, true);
+  assert.equal(recovery.target.restoreAuthCheckRequired, true);
+  assert.equal(recovery.target.restorePermissionsCheckRequired, true);
+  assert.equal(recovery.target.restoreApplicationSmokeRequired, true);
+
+  assert.equal(m5.sequence, 11);
   assert.equal(m5.approvalRequired, false);
+  assert.equal(m5.requires.includes("backup-recovery-validation"), true);
   assert.equal(m5.target.gate, "Security & Privacy Ready v0.1");
+  assert.equal(m5.target.backupRestoreEvidenceRequiredForHighPrivacyProfile, true);
   assert.equal(m5.target.allRequired, true);
   assert.equal(m5.target.failClosed, true);
   assert.equal(
@@ -382,16 +405,8 @@ test("ULC M6 M5, recovery, public exposure and post-deploy gates stay fail-close
     "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs",
   );
 
-  assert.equal(recovery.target.automaticBackupRequired, true);
-  assert.equal(recovery.target.retentionRequired, true);
-  assert.equal(recovery.target.realRestoreRequired, true);
-  assert.equal(recovery.target.restoreDataIntegrityCheckRequired, true);
-  assert.equal(recovery.target.restoreAuthCheckRequired, true);
-  assert.equal(recovery.target.restorePermissionsCheckRequired, true);
-  assert.equal(recovery.target.restoreApplicationSmokeRequired, true);
-
-  assert.equal(activation.requires.includes("m5-production-evidence"), true);
   assert.equal(activation.requires.includes("backup-recovery-validation"), true);
+  assert.equal(activation.requires.includes("m5-production-evidence"), true);
   assert.deepEqual(smokes.target.checks, [
     "health",
     "auth",
