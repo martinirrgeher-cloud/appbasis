@@ -125,9 +125,9 @@ export function factoryLifecycleCopy(
   const preparationOrderingConsistent =
     (!preparationEvidenceStarted || previewAccepted) &&
     (!productionWorkerReady || productionDatabaseReady) &&
-    (!productionUsersAndPermissionsReady || productionWorkerReady) &&
-    (!productionMigrationsApplied || productionUsersAndPermissionsReady) &&
-    (!productionDeploymentCompleted || productionMigrationsApplied);
+    (!productionMigrationsApplied || productionWorkerReady) &&
+    (!productionDeploymentCompleted || productionMigrationsApplied) &&
+    (!productionUsersAndPermissionsReady || productionDeploymentCompleted);
   const releaseOrderingConsistent =
     preparationOrderingConsistent &&
     (!backupRecoveryReady || preparationEvidenceComplete) &&
