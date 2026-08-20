@@ -89,11 +89,13 @@ export function factoryLifecycleCopy(
     previewConsistent && previewReadiness.status === "repository-ready";
   const m5Consistent = isConsistentReadiness(productionReadiness);
   const m6Consistent = isConsistentM6Readiness(releaseReadiness);
+  const m6OrderingConsistent =
+    m6Consistent && isConsistentM6CriterionOrdering(releaseReadiness);
   const securityPrivacyReady =
     m5Consistent && productionReadiness.productionReady === true;
   const previewAccepted =
     repositoryPreviewReady &&
-    m6Consistent &&
+    m6OrderingConsistent &&
     criterionIsVerified(releaseReadiness, "previewAccepted");
   const productionDatabaseReady =
     m6Consistent && criterionIsVerified(releaseReadiness, "productionDatabaseReady");
@@ -130,6 +132,7 @@ export function factoryLifecycleCopy(
     (!productionDeploymentCompleted || productionMigrationsApplied) &&
     (!productionUsersAndPermissionsReady || productionDeploymentCompleted);
   const releaseOrderingConsistent =
+    m6OrderingConsistent &&
     preparationOrderingConsistent &&
     (!backupRecoveryReady || preparationEvidenceComplete) &&
     (!securityPrivacyReady || (preparationEvidenceComplete && backupRecoveryReady)) &&
@@ -236,6 +239,11 @@ export function factoryLifecycleCopy(
     nextStep = lifecycleNextStep(
       "M6-Status klären",
       "Die technische M6-Evidenz ist nicht eindeutig. Das Gate bleibt fail-closed; keine Produktionsaktion starten.",
+    );
+  } else if (!m6OrderingConsistent) {
+    nextStep = lifecycleNextStep(
+      "Readiness-Status klären",
+      "M6-Evidence widerspricht der verbindlichen Reihenfolge Preview → Produktionsvorbereitung → Recovery → Security & Privacy → Domain/Public Ingress → Smoke. Produktion bleibt fail-closed gesperrt.",
     );
   } else if (!previewAccepted) {
     nextStep = lifecycleNextStep(
