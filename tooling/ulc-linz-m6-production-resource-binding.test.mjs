@@ -32,6 +32,7 @@ const RUNTIME_CONTRACT_FILES = Object.freeze([
 ]);
 const RUNTIME_CONTRACT_DIRECTORIES = Object.freeze([
   "apps/ulc-linz/worker",
+  "apps/ulc-linz/privacy",
   "packages/database/src",
   "packages/identity/src",
   "packages/permissions/src",
@@ -138,7 +139,7 @@ test("accepts only a complete dedicated ULC production resource binding and emit
   }
 });
 
-test("runtime contract digest invalidates on transitive runtime and dependency drift", () => {
+test("runtime contract digest invalidates on transitive runtime, privacy contract and dependency drift", () => {
   const fixtureRoot = mkdtempSync(
     join(tmpdir(), "appbasis-ulc-runtime-contract-"),
   );
@@ -152,6 +153,7 @@ test("runtime contract digest invalidates on transitive runtime and dependency d
 
     for (const path of [
       "apps/ulc-linz/worker/security-events.ts",
+      "apps/ulc-linz/privacy/m5-export-contract.json",
       "packages/database/src/node-runtime.mjs",
       "packages/identity/src/http.ts",
       "packages/permissions/src/index.ts",
