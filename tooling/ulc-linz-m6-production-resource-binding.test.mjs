@@ -1,13 +1,41 @@
 import assert from "node:assert/strict";
+import {
+  cpSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
+  deriveUlcLinzProductionRuntimeContractDigest,
   evaluateUlcLinzProductionResourceBinding,
   ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
   UlcLinzProductionResourceBindingError,
 } from "./ulc-linz-m6-production-resource-binding.mjs";
 
 const NOW = new Date("2026-08-18T05:30:00.000Z");
+const REPOSITORY_ROOT = fileURLToPath(new URL("../", import.meta.url));
+const RUNTIME_CONTRACT_FILES = Object.freeze([
+  "pnpm-lock.yaml",
+  "apps/ulc-linz/appbasis.app.json",
+  "apps/ulc-linz/appbasis.database.json",
+  "apps/ulc-linz/package.json",
+  "packages/database/package.json",
+  "packages/identity/package.json",
+  "packages/permissions/package.json",
+]);
+const RUNTIME_CONTRACT_DIRECTORIES = Object.freeze([
+  "apps/ulc-linz/worker",
+  "packages/database/src",
+  "packages/identity/src",
+  "packages/permissions/src",
+]);
 
 function validEvidence() {
   return {
@@ -61,6 +89,19 @@ function evaluate(evidence) {
   return evaluateUlcLinzProductionResourceBinding(evidence, { now: NOW });
 }
 
+function copyRuntimeContractFixture(targetRoot) {
+  for (const path of RUNTIME_CONTRACT_FILES) {
+    const target = join(targetRoot, path);
+    mkdirSync(dirname(target), { recursive: true });
+    cpSync(join(REPOSITORY_ROOT, path), target);
+  }
+  for (const directory of RUNTIME_CONTRACT_DIRECTORIES) {
+    const target = join(targetRoot, directory);
+    mkdirSync(dirname(target), { recursive: true });
+    cpSync(join(REPOSITORY_ROOT, directory), target, { recursive: true });
+  }
+}
+
 test("accepts only a complete dedicated ULC production resource binding and emits a sanitized semantic snapshot", () => {
   const result = evaluate(validEvidence());
 
@@ -94,6 +135,43 @@ test("accepts only a complete dedicated ULC production resource binding and emit
     ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
   ]) {
     assert.equal(serialized.includes(internal), false);
+  }
+});
+
+test("runtime contract digest invalidates on transitive runtime and dependency drift", () => {
+  const fixtureRoot = mkdtempSync(
+    join(tmpdir(), "appbasis-ulc-runtime-contract-"),
+  );
+  try {
+    copyRuntimeContractFixture(fixtureRoot);
+    const baseline = deriveUlcLinzProductionRuntimeContractDigest(fixtureRoot);
+    assert.equal(
+      baseline,
+      ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
+    );
+
+    for (const path of [
+      "apps/ulc-linz/worker/security-events.ts",
+      "packages/database/src/node-runtime.mjs",
+      "packages/identity/src/http.ts",
+      "packages/permissions/src/index.ts",
+      "pnpm-lock.yaml",
+    ]) {
+      const target = join(fixtureRoot, path);
+      const original = readFileSync(target);
+      writeFileSync(
+        target,
+        Buffer.concat([original, Buffer.from("\n// runtime-contract-drift\n")]),
+      );
+      assert.notEqual(
+        deriveUlcLinzProductionRuntimeContractDigest(fixtureRoot),
+        baseline,
+        path,
+      );
+      writeFileSync(target, original);
+    }
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
   }
 });
 
