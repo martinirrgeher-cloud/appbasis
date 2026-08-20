@@ -182,7 +182,8 @@ export function evaluateUlcLinzProductionResourceBinding(
     cloudflare.databaseBindingId,
     "CLOUDFLARE_BINDING_MISMATCH",
   );
-  requireHostname(cloudflare.hostnameBinding);
+  const productionHostnameBound = cloudflare.hostnameBinding !== null;
+  if (productionHostnameBound) requireHostname(cloudflare.hostnameBinding);
   if (
     cloudflare.identitySource !== PROVIDER_API_SOURCE ||
     cloudflare.bindingInventoryComplete !== true ||
@@ -202,7 +203,7 @@ export function evaluateUlcLinzProductionResourceBinding(
     runtimeContractVerified: true,
     productionDatabaseBound: true,
     productionWorkerBound: true,
-    productionHostnameBound: true,
+    productionHostnameBound,
     databaseBindingBound: true,
     providerModel: PROVIDER_MODEL,
     euOnly: false,
