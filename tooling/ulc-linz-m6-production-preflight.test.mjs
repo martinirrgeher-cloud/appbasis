@@ -16,7 +16,11 @@ const APP_DEFINITION_PATH = "apps/ulc-linz/appbasis.app.json";
 const DATABASE_MANIFEST_PATH = "apps/ulc-linz/appbasis.database.json";
 
 const EXPECTED_STEPS = [
-  ["neon-production-database", "provider-write", []],
+  [
+    "neon-production-database",
+    "provider-write",
+    ["prerequisite:M3_DONE"],
+  ],
   ["production-worker", "provider-write", ["neon-production-database"]],
   [
     "database-binding",
@@ -254,6 +258,7 @@ test("ULC M6 plan keeps every mutating or release action behind explicit approva
   }
 
   const firstStep = plan.steps[0];
+  assert.deepEqual(firstStep.requires, ["prerequisite:M3_DONE"]);
   assert.deepEqual(firstStep.target, {
     provider: "neon",
     dedicatedProductionResource: true,
