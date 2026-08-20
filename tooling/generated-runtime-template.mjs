@@ -1,3 +1,4 @@
+import { extendIdentityPermissionsWorkerTemplate } from "./generated-identity-permissions-worker-template.mjs";
 import { createIdentityRuntimeTemplate as createCoreIdentityRuntimeTemplate } from "./generated-runtime-template-core.mjs";
 
 const POSTGRES_E2E_PATH = "test/app.postgres.e2e.ts";
@@ -26,7 +27,10 @@ const APPLY_PRINCIPAL_PERMISSION_AUDIT =
   "  await applyMigration(principalPermissionAdministrationAuditMigrationUrl);";
 
 export function createIdentityRuntimeTemplate(input) {
-  const generated = createCoreIdentityRuntimeTemplate(input);
+  const generated = extendIdentityPermissionsWorkerTemplate(
+    input,
+    createCoreIdentityRuntimeTemplate(input),
+  );
   const files = generated.files.map((entry) => {
     if (entry.path !== POSTGRES_E2E_PATH) return entry;
     return Object.freeze({

@@ -10,18 +10,25 @@ import { deriveM3PreviewAcceptanceEvidence } from "./m3-preview-acceptance-evide
 import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
 import { evaluateProductionReadiness } from "./production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
+import { deriveUlcLinzM5JProductionEvidence } from "./ulc-linz-production-readiness-evidence.mjs";
 
 export async function loadFactorySnapshot(repositoryRoot = process.cwd(), options = {}) {
   const root = resolve(repositoryRoot);
   const m3PreviewAcceptanceFetchImpl =
     options.m3PreviewAcceptanceFetchImpl ?? fetch;
+  const ulcLinzM5JOwnerInputs = options.ulcLinzM5JOwnerInputs ?? {};
+  const m5EvidenceNow = options.m5EvidenceNow ?? new Date();
   const [appDefinitions, modules] = await Promise.all([
     readAppDefinitions(root),
     directoryNames(join(root, "modules")),
   ]);
   const apps = await Promise.all(
     appDefinitions.map((definition) =>
-      withFactoryReadiness(root, definition, { m3PreviewAcceptanceFetchImpl }),
+      withFactoryReadiness(root, definition, {
+        m3PreviewAcceptanceFetchImpl,
+        ulcLinzM5JOwnerInputs,
+        m5EvidenceNow,
+      }),
     ),
   );
 
@@ -42,7 +49,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
 async function withFactoryReadiness(
   repositoryRoot,
   definition,
-  { m3PreviewAcceptanceFetchImpl },
+  { m3PreviewAcceptanceFetchImpl, ulcLinzM5JOwnerInputs, m5EvidenceNow },
 ) {
   const appRoot = join(repositoryRoot, "apps", definition.appId);
   const databaseManifestRequired =
@@ -52,6 +59,7 @@ async function withFactoryReadiness(
     packageManifestPresent,
     databaseManifestPresent,
     m3PreviewAcceptanceEvidence,
+    productionReadinessEvidence,
   ] = await Promise.all([
     pathExists(join(appRoot, "worker", "index.ts")),
     pathExists(join(appRoot, "package.json")),
@@ -61,14 +69,24 @@ async function withFactoryReadiness(
     deriveM3PreviewAcceptanceEvidence(definition, {
       fetchImpl: m3PreviewAcceptanceFetchImpl,
     }),
+    definition.appId === "ulc-linz"
+      ? deriveUlcLinzM5JProductionEvidence(
+          repositoryRoot,
+          definition,
+          ulcLinzM5JOwnerInputs,
+          { now: m5EvidenceNow },
+        )
+      : Promise.resolve(
+          deriveRepositoryProductionReadinessEvidence(definition),
+        ),
   ]);
   const repositoryReady =
     workerEntrypointPresent &&
     packageManifestPresent &&
     (!databaseManifestRequired || databaseManifestPresent);
-  const productionReadinessEvidence =
-    deriveRepositoryProductionReadinessEvidence(definition);
-  const productionReadiness = evaluateProductionReadiness(productionReadinessEvidence);
+  const productionReadiness = evaluateProductionReadiness(
+    productionReadinessEvidence,
+  );
   const productionReleaseReadiness = evaluateM6ProductionReleaseReadiness({
     ...m3PreviewAcceptanceEvidence,
     securityPrivacyReady: productionReadiness.productionReady === true,
