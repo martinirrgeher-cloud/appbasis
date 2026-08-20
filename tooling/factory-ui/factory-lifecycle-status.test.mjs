@@ -119,6 +119,8 @@ test("Factory lifecycle follows ADR-024 preparation, readiness and release phase
       previewAccepted: true,
       productionDatabaseReady: true,
       productionWorkerReady: true,
+      productionMigrationsApplied: true,
+      productionDeploymentCompleted: true,
     }),
   );
   assert.equal(missingProductionAccess.stages[2].state, "current");
@@ -191,21 +193,11 @@ test("Factory lifecycle rejects every out-of-order phase transition", () => {
       evidence: { previewAccepted: true, productionWorkerReady: true },
     },
     {
-      name: "users before worker",
+      name: "migrations before worker",
       m5: m5Open,
       evidence: {
         previewAccepted: true,
         productionDatabaseReady: true,
-        productionUsersAndPermissionsReady: true,
-      },
-    },
-    {
-      name: "migrations before users",
-      m5: m5Open,
-      evidence: {
-        previewAccepted: true,
-        productionDatabaseReady: true,
-        productionWorkerReady: true,
         productionMigrationsApplied: true,
       },
     },
@@ -216,8 +208,18 @@ test("Factory lifecycle rejects every out-of-order phase transition", () => {
         previewAccepted: true,
         productionDatabaseReady: true,
         productionWorkerReady: true,
-        productionUsersAndPermissionsReady: true,
         productionDeploymentCompleted: true,
+      },
+    },
+    {
+      name: "users before deployment",
+      m5: m5Open,
+      evidence: {
+        previewAccepted: true,
+        productionDatabaseReady: true,
+        productionWorkerReady: true,
+        productionMigrationsApplied: true,
+        productionUsersAndPermissionsReady: true,
       },
     },
     {
@@ -227,8 +229,8 @@ test("Factory lifecycle rejects every out-of-order phase transition", () => {
         previewAccepted: true,
         productionDatabaseReady: true,
         productionWorkerReady: true,
-        productionUsersAndPermissionsReady: true,
         productionMigrationsApplied: true,
+        productionDeploymentCompleted: true,
         backupRecoveryReady: true,
       },
     },
@@ -252,7 +254,8 @@ test("Factory lifecycle rejects every out-of-order phase transition", () => {
         previewAccepted: true,
         productionDatabaseReady: true,
         productionWorkerReady: true,
-        productionUsersAndPermissionsReady: true,
+        productionMigrationsApplied: true,
+        productionDeploymentCompleted: true,
         backupRecoveryReady: true,
         securityPrivacyReady: true,
         productionDomainReady: true,
@@ -347,7 +350,10 @@ test("Factory UI renders M5, Production Ready and release as separate read-only 
   assert.match(helperBody, /Produktionsvorbereitung/);
   assert.match(helperBody, /factoryLifecycleCopy/);
   assert.match(helperBody, /releaseAuthorized !== false/);
-  assert.match(helperBody, /productionWorkerReady \|\| productionDatabaseReady/);
+  assert.match(helperBody, /!productionWorkerReady \|\| productionDatabaseReady/);
+  assert.match(helperBody, /!productionMigrationsApplied \|\| productionWorkerReady/);
+  assert.match(helperBody, /!productionDeploymentCompleted \|\| productionMigrationsApplied/);
+  assert.match(helperBody, /!productionUsersAndPermissionsReady \|\| productionDeploymentCompleted/);
   assert.match(helperBody, /productionDomainReady/);
   assert.match(helperBody, /preparationEvidenceComplete/);
 
