@@ -104,7 +104,7 @@ function complianceEvidence() {
       cloudflare: {
         resourceClass: "production",
         runtimeBound: true,
-        routeBound: true,
+        routeBound: false,
         runtimeClass: "standard-workers",
         bindingsInventoryComplete: true,
         bindings: [
@@ -187,7 +187,7 @@ function resourceBindingEvidence() {
     cloudflare: {
       accountBindingId: "opaque-account",
       runtimeBindingId: "opaque-worker",
-      hostnameBinding: "ulc.example.test",
+      hostnameBinding: null,
       databaseBindingId: "opaque-hyperdrive",
       identitySource: "provider-api",
       bindingInventoryComplete: true,
@@ -217,7 +217,7 @@ function derive(
   );
 }
 
-test("returns only M5-G criterion booleans when runtime/resource and compliance evidence are one aligned fresh production snapshot", () => {
+test("returns M5-G criterion booleans from an aligned private production snapshot before public route or hostname activation", () => {
   const result = derive();
   assert.deepEqual(result, {
     dataRegion: true,
@@ -226,6 +226,8 @@ test("returns only M5-G criterion booleans when runtime/resource and compliance 
     subprocessors: true,
   });
   assert.equal(Object.isFrozen(result), true);
+  assert.equal(complianceEvidence().providers.cloudflare.routeBound, false);
+  assert.equal(resourceBindingEvidence().cloudflare.hostnameBinding, null);
   const serialized = JSON.stringify(result);
   assert.equal(serialized.includes("opaque-neon-project"), false);
   assert.equal(
@@ -297,6 +299,37 @@ test("fails closed when provider semantics disagree across the two evidence laye
   const wrongRuntime = complianceEvidence();
   wrongRuntime.providers.cloudflare.runtimeClass = "regional-services";
   assert.deepEqual(derive(resourceBindingEvidence(), wrongRuntime), {});
+});
+
+test("fails closed when Cloudflare route and hostname binding state disagree across evidence layers", () => {
+  const resourceWithHostname = resourceBindingEvidence();
+  resourceWithHostname.cloudflare.hostnameBinding = "ulc.example.test";
+  assert.deepEqual(
+    derive(resourceWithHostname, complianceEvidence(), fingerprint(resourceWithHostname)),
+    {},
+  );
+
+  const complianceWithRoute = complianceEvidence();
+  complianceWithRoute.providers.cloudflare.routeBound = true;
+  assert.deepEqual(derive(resourceBindingEvidence(), complianceWithRoute), {});
+
+  const alignedPublicResource = resourceBindingEvidence();
+  alignedPublicResource.cloudflare.hostnameBinding = "ulc.example.test";
+  const alignedPublicCompliance = complianceEvidence();
+  alignedPublicCompliance.providers.cloudflare.routeBound = true;
+  assert.deepEqual(
+    derive(
+      alignedPublicResource,
+      alignedPublicCompliance,
+      fingerprint(alignedPublicResource),
+    ),
+    {
+      dataRegion: true,
+      dpa: true,
+      encryption: true,
+      subprocessors: true,
+    },
+  );
 });
 
 test("fails closed when a canonical operational flow is absent", () => {

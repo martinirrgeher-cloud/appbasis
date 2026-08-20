@@ -101,6 +101,7 @@ function calculateResourceBindingFingerprint(evidence) {
 }
 
 function isSameProductionSnapshot(resourceBinding, compliance) {
+  const providerBinding = compliance.resourceBinding;
   return (
     resourceBinding.application === compliance.application &&
     resourceBinding.environment === compliance.environment &&
@@ -111,13 +112,17 @@ function isSameProductionSnapshot(resourceBinding, compliance) {
     resourceBinding.runtimeContractVerified === true &&
     resourceBinding.productionDatabaseBound === true &&
     resourceBinding.productionWorkerBound === true &&
-    resourceBinding.productionHostnameBound === true &&
     resourceBinding.databaseBindingBound === true &&
     resourceBinding.scopeComplete === true &&
     resourceBinding.neonRegion ===
       compliance.providers["neon-postgresql"].regionId &&
     compliance.providers.cloudflare.runtimeClass === "standard-workers" &&
-    Object.values(compliance.resourceBinding).every((value) => value === true)
+    providerBinding.cloudflareProductionRuntimeBound === true &&
+    typeof providerBinding.cloudflareProductionRouteBound === "boolean" &&
+    resourceBinding.productionHostnameBound ===
+      providerBinding.cloudflareProductionRouteBound &&
+    providerBinding.neonProductionProjectBound === true &&
+    providerBinding.neonProductionDatabaseBound === true
   );
 }
 
