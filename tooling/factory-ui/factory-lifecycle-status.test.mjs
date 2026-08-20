@@ -58,8 +58,22 @@ test("Factory M6 criteria remain read-only and fail closed for inconsistent snap
   assert.equal(productionReleaseCriteriaCopy(previewAccepted)[0].status, "verified");
   assert.ok(productionReleaseCriteriaCopy(previewAccepted).slice(1).every((criterion) => criterion.status === "open"));
 
-  const inconsistent = { ...previewAccepted, releaseAuthorized: true };
-  assert.ok(productionReleaseCriteriaCopy(inconsistent).every((criterion) => criterion.status === "open"));
+  const structurallyInconsistent = { ...previewAccepted, releaseAuthorized: true };
+  assert.ok(
+    productionReleaseCriteriaCopy(structurallyInconsistent).every(
+      (criterion) => criterion.status === "open",
+    ),
+  );
+
+  const orderingInconsistent = evaluateM6ProductionReleaseReadiness({
+    previewAccepted: true,
+    productionWorkerReady: true,
+  });
+  assert.ok(
+    productionReleaseCriteriaCopy(orderingInconsistent).every(
+      (criterion) => criterion.status === "open",
+    ),
+  );
 });
 
 test("Factory lifecycle follows ADR-024 preparation, readiness and release phases", () => {
@@ -273,11 +287,8 @@ test("Factory lifecycle rejects every out-of-order phase transition", () => {
   ];
 
   for (const scenario of cases) {
-    const lifecycle = factoryLifecycleCopy(
-      preview,
-      scenario.m5,
-      evaluateM6ProductionReleaseReadiness(scenario.evidence),
-    );
+    const releaseReadiness = evaluateM6ProductionReleaseReadiness(scenario.evidence);
+    const lifecycle = factoryLifecycleCopy(preview, scenario.m5, releaseReadiness);
     assert.equal(
       lifecycle.nextStep.heading,
       "Readiness-Status klären",
@@ -286,6 +297,12 @@ test("Factory lifecycle rejects every out-of-order phase transition", () => {
     assert.equal(lifecycle.stages[2].state, "locked", scenario.name);
     assert.equal(lifecycle.stages[3].state, "locked", scenario.name);
     assert.equal(lifecycle.stages[4].state, "locked", scenario.name);
+    assert.ok(
+      productionReleaseCriteriaCopy(releaseReadiness).every(
+        (criterion) => criterion.status === "open",
+      ),
+      scenario.name,
+    );
   }
 });
 
@@ -354,6 +371,7 @@ test("Factory UI renders M5, Production Ready and release as separate read-only 
   assert.match(helperBody, /!productionMigrationsApplied \|\| productionWorkerReady/);
   assert.match(helperBody, /!productionDeploymentCompleted \|\| productionMigrationsApplied/);
   assert.match(helperBody, /!productionUsersAndPermissionsReady \|\| productionDeploymentCompleted/);
+  assert.match(helperBody, /isConsistentM6CriterionOrdering/);
   assert.match(helperBody, /productionDomainReady/);
   assert.match(helperBody, /preparationEvidenceComplete/);
 
