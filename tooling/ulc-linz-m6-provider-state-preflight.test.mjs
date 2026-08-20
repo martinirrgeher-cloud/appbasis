@@ -43,10 +43,7 @@ function makeFetch({
     const href = String(url);
     requests.push({ href, init });
     if (href.startsWith("https://console.neon.tech/api/v2/projects")) {
-      return jsonResponse({
-        projects,
-        unavailable_project_ids: unavailableProjectIds,
-      });
+      return jsonResponse({ projects, unavailable_project_ids: unavailableProjectIds });
     }
     if (href.startsWith("https://console.neon.tech/api/v2/regions")) {
       return jsonResponse({ regions });
@@ -61,12 +58,10 @@ function makeFetch({
 
 test("ULC M6 executable provider-state preflight performs only read-only provider GETs and still requires explicit approval", async () => {
   const { fetchImpl, requests } = makeFetch();
-
   const result = await runUlcLinzM6ProviderStatePreflight(validInputs(), {
     fetchImpl,
     now: NOW,
   });
-
   assert.equal(result.status, "ready-for-explicit-provider-write-approval");
   assert.equal(result.readOnlyProviderStatePreflightVerified, true);
   assert.equal(result.cloudflareWorkerInventoryVerified, true);
@@ -80,7 +75,6 @@ test("ULC M6 executable provider-state preflight performs only read-only provide
     assert.equal(request.init.method, "GET");
     assert.equal(Object.hasOwn(request.init, "body"), false);
   }
-
   const neonProjectsRequest = new URL(requests[0].href);
   assert.equal(neonProjectsRequest.searchParams.get("org_id"), NEON_ORG_ID);
   assert.equal(neonProjectsRequest.searchParams.get("limit"), "400");
@@ -91,7 +85,6 @@ test("ULC M6 executable provider-state preflight performs only read-only provide
     requests[2].href,
     `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts`,
   );
-
   const serialized = JSON.stringify(result);
   assert.equal(serialized.includes(NEON_API_KEY), false);
   assert.equal(serialized.includes(CLOUDFLARE_API_TOKEN), false);
@@ -110,6 +103,8 @@ test("ULC M6 read-only provider contract pins the authoritative inventories and 
       projectsEndpoint: "/projects",
       regionsEndpoint: "/regions",
       projectPageLimit: 400,
+      maxProjectPages: 25,
+      maxProjectInventory: 10000,
       completeInventoryRequired: true,
       organizationScopedRegionInventoryRequired: true,
       targetRegion: "aws-eu-central-1",
@@ -123,7 +118,6 @@ test("ULC M6 read-only provider contract pins the authoritative inventories and 
     },
     providerWriteAllowed: false,
   });
-
   const source = await readFile(
     new URL("./ulc-linz-m6-provider-state-preflight.mjs", import.meta.url),
     "utf8",
@@ -147,9 +141,7 @@ test("ULC M6 executable provider-state preflight follows Neon cursor pagination 
       }
       assert.equal(parsed.searchParams.get("cursor"), "next-page");
       return jsonResponse({
-        projects: [
-          { name: "appbasis-ulc-linz-production", region_id: "aws-eu-central-1" },
-        ],
+        projects: [{ name: "appbasis-ulc-linz-production", region_id: "aws-eu-central-1" }],
         unavailable_project_ids: [],
       });
     }
@@ -158,21 +150,18 @@ test("ULC M6 executable provider-state preflight follows Neon cursor pagination 
     }
     return jsonResponse({ success: true, result: [] });
   };
-
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
     errorWithCode("EXISTING_PRODUCTION_RESOURCE_CANDIDATE"),
   );
   assert.equal(
-    requests.filter((request) => new URL(request.href).pathname.endsWith("/projects"))
-      .length,
+    requests.filter((request) => new URL(request.href).pathname.endsWith("/projects")).length,
     2,
   );
 });
 
 test("ULC M6 executable provider-state preflight fails closed when Neon reports an incomplete project inventory", async () => {
   const { fetchImpl } = makeFetch({ unavailableProjectIds: ["unavailable-project"] });
-
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
     errorWithCode("NEON_PROJECT_INVENTORY_INCOMPLETE", true),
@@ -181,7 +170,6 @@ test("ULC M6 executable provider-state preflight fails closed when Neon reports 
 
 test("ULC M6 executable provider-state preflight fails closed when Frankfurt is not available to the selected Neon organization", async () => {
   const { fetchImpl } = makeFetch({ regions: [{ region_id: "aws-us-east-1" }] });
-
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
     errorWithCode("NEON_PREFLIGHT_INVALID"),
@@ -189,10 +177,7 @@ test("ULC M6 executable provider-state preflight fails closed when Frankfurt is 
 });
 
 test("ULC M6 executable provider-state preflight rejects any colliding Cloudflare production worker", async () => {
-  const { fetchImpl } = makeFetch({
-    workers: [{ id: "legacy-ulc-linz-prod-worker" }],
-  });
-
+  const { fetchImpl } = makeFetch({ workers: [{ id: "legacy-ulc-linz-prod-worker" }] });
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
     errorWithCode("EXISTING_CLOUDFLARE_WORKER_CANDIDATE", true),
@@ -208,7 +193,6 @@ test("ULC M6 executable provider-state preflight fails closed on Cloudflare inve
     }),
     errorWithCode("CLOUDFLARE_API_ERROR", true),
   );
-
   const missingWorkerId = makeFetch({ workers: [{}] });
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), {
@@ -223,7 +207,6 @@ test("ULC M6 executable provider-state preflight rejects create mechanisms that 
   const { fetchImpl, requests } = makeFetch();
   const inputs = validInputs();
   inputs.selectedNeonCreateMethod = "connector-default-region";
-
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(inputs, { fetchImpl, now: NOW }),
     errorWithCode("UNSUPPORTED_NEON_CREATE_METHOD", true),
@@ -245,7 +228,6 @@ test("ULC M6 executable provider-state preflight rejects repeated Neon cursors i
     }
     throw new Error("later provider reads must not run after pagination failure");
   };
-
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
     errorWithCode("NEON_PROJECT_PAGINATION_LOOP", true),
@@ -256,11 +238,8 @@ test("ULC M6 executable provider-state preflight rejects repeated Neon cursors i
 test("ULC M6 executable provider-state preflight does not leak provider credentials when a provider read fails", async () => {
   const fetchImpl = async () => ({
     ok: false,
-    async json() {
-      return { error: `Bearer ${NEON_API_KEY}` };
-    },
+    async json() { return { error: `Bearer ${NEON_API_KEY}` }; },
   });
-
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
     (error) => {
@@ -277,12 +256,9 @@ test("ULC M6 executable provider-state preflight rejects accessor-backed provide
   const project = { region_id: "aws-us-east-1" };
   Object.defineProperty(project, "name", {
     enumerable: true,
-    get() {
-      throw new Error("must not execute provider-controlled accessor");
-    },
+    get() { throw new Error("must not execute provider-controlled accessor"); },
   });
   const { fetchImpl } = makeFetch({ projects: [project] });
-
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
     errorWithCode("NEON_PROJECT_INVENTORY_INVALID", true),
@@ -290,12 +266,7 @@ test("ULC M6 executable provider-state preflight rejects accessor-backed provide
 });
 
 function jsonResponse(value) {
-  return {
-    ok: true,
-    async json() {
-      return value;
-    },
-  };
+  return { ok: true, async json() { return value; } };
 }
 
 function errorWithCode(code, requireProviderStateError = false) {

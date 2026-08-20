@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 
 import {
+  ULC_LINZ_M6_MAX_NEON_PROJECT_INVENTORY,
   ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT,
   evaluateUlcLinzM6FirstProviderWritePreflight,
 } from "./ulc-linz-m6-first-provider-write-preflight.mjs";
@@ -16,6 +17,13 @@ const TARGET_NEON_REGION =
 const TARGET_CLOUDFLARE_WORKER =
   ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT.cloudflareWorkerCreation.workerName;
 
+if (
+  NEON_PROJECT_PAGE_LIMIT * MAX_NEON_PROJECT_PAGES !==
+  ULC_LINZ_M6_MAX_NEON_PROJECT_INVENTORY
+) {
+  throw new Error("ULC Linz M6 Neon inventory limits drifted.");
+}
+
 export const ULC_LINZ_M6_NEON_EXPLICIT_REGION_CREATE_METHOD =
   "neon-api-v2-project-create-region-id";
 
@@ -29,6 +37,8 @@ export const ULC_LINZ_M6_READ_ONLY_PROVIDER_PREFLIGHT_CONTRACT = deepFreeze({
     projectsEndpoint: "/projects",
     regionsEndpoint: "/regions",
     projectPageLimit: NEON_PROJECT_PAGE_LIMIT,
+    maxProjectPages: MAX_NEON_PROJECT_PAGES,
+    maxProjectInventory: ULC_LINZ_M6_MAX_NEON_PROJECT_INVENTORY,
     completeInventoryRequired: true,
     organizationScopedRegionInventoryRequired: true,
     targetRegion: TARGET_NEON_REGION,
@@ -68,12 +78,8 @@ export async function runUlcLinzM6ProviderStatePreflight(
     cloudflareApiToken,
     "CLOUDFLARE_API_TOKEN_REQUIRED",
   );
-  const safeCloudflareAccountId = requiredCloudflareAccountId(
-    cloudflareAccountId,
-  );
-  if (
-    selectedNeonCreateMethod !== ULC_LINZ_M6_NEON_EXPLICIT_REGION_CREATE_METHOD
-  ) {
+  const safeCloudflareAccountId = requiredCloudflareAccountId(cloudflareAccountId);
+  if (selectedNeonCreateMethod !== ULC_LINZ_M6_NEON_EXPLICIT_REGION_CREATE_METHOD) {
     fail("UNSUPPORTED_NEON_CREATE_METHOD");
   }
   if (typeof fetchImpl !== "function") fail("INVALID_FETCH_IMPLEMENTATION");
@@ -99,9 +105,7 @@ export async function runUlcLinzM6ProviderStatePreflight(
   }
 
   const observedAt = nowDate.toISOString();
-  const validUntilOrReviewAt = new Date(
-    nowDate.getTime() + EVIDENCE_WINDOW_MS,
-  ).toISOString();
+  const validUntilOrReviewAt = new Date(nowDate.getTime() + EVIDENCE_WINDOW_MS).toISOString();
 
   const evaluated = evaluateUlcLinzM6FirstProviderWritePreflight(
     {
@@ -148,14 +152,13 @@ async function readCompleteNeonProjectInventory({ apiKey, orgId, fetchImpl }) {
       ownData(response, "projects", "NEON_PROJECT_INVENTORY_INVALID"),
       "NEON_PROJECT_INVENTORY_INVALID",
     );
+    if (projectItems.length > NEON_PROJECT_PAGE_LIMIT) {
+      fail("NEON_PROJECT_INVENTORY_INVALID");
+    }
 
     const unavailable = Object.hasOwn(response, "unavailable_project_ids")
       ? plainArray(
-          ownData(
-            response,
-            "unavailable_project_ids",
-            "NEON_PROJECT_INVENTORY_INVALID",
-          ),
+          ownData(response, "unavailable_project_ids", "NEON_PROJECT_INVENTORY_INVALID"),
           "NEON_PROJECT_INVENTORY_INVALID",
         )
       : [];
@@ -173,18 +176,37 @@ async function readCompleteNeonProjectInventory({ apiKey, orgId, fetchImpl }) {
         ),
       });
     }
+    if (projects.length > ULC_LINZ_M6_MAX_NEON_PROJECT_INVENTORY) {
+      fail("NEON_PROJECT_INVENTORY_TOO_LARGE");
+    }
 
-    if (!Object.hasOwn(response, "pagination")) return projects;
+    const pageKind =
+      projectItems.length < NEON_PROJECT_PAGE_LIMIT ? "short" : "full";
+    if (
+      !Object.hasOwn(response, "pagination") ||
+      ownData(response, "pagination", "NEON_PROJECT_INVENTORY_INVALID") === null
+    ) {
+      if (pageKind === "short") return projects;
+      fail("NEON_PROJECT_INVENTORY_INCOMPLETE");
+    }
+
     const pagination = plainRecord(
       ownData(response, "pagination", "NEON_PROJECT_INVENTORY_INVALID"),
       "NEON_PROJECT_INVENTORY_INVALID",
     );
-    const nextCursor = requiredCursor(
-      ownData(pagination, "cursor", "NEON_PROJECT_INVENTORY_INVALID"),
-    );
-    if (seenCursors.has(nextCursor)) fail("NEON_PROJECT_PAGINATION_LOOP");
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
+    const nextCursor = Object.hasOwn(pagination, "cursor")
+      ? ownData(pagination, "cursor", "NEON_PROJECT_INVENTORY_INVALID")
+      : undefined;
+
+    if (nextCursor === null || nextCursor === undefined || nextCursor === "") {
+      if (pageKind === "short") return projects;
+      fail("NEON_PROJECT_INVENTORY_INCOMPLETE");
+    }
+
+    const safeCursor = requiredCursor(nextCursor);
+    if (seenCursors.has(safeCursor)) fail("NEON_PROJECT_PAGINATION_LOOP");
+    seenCursors.add(safeCursor);
+    cursor = safeCursor;
   }
 
   fail("NEON_PROJECT_INVENTORY_TOO_LARGE");
@@ -238,10 +260,7 @@ async function providerJson(url, bearerToken, fetchImpl, errorCode) {
   try {
     response = await fetchImpl(url, {
       method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${bearerToken}`,
-      },
+      headers: { Accept: "application/json", Authorization: `Bearer ${bearerToken}` },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {
@@ -265,9 +284,7 @@ async function providerJson(url, bearerToken, fetchImpl, errorCode) {
 function isUlcProductionCandidate(name) {
   const normalized = name.toLowerCase();
   if (normalized === TARGET_CLOUDFLARE_WORKER) return true;
-  if (normalized === "ulc-linz" || normalized === "appbasis-ulc-linz") {
-    return true;
-  }
+  if (normalized === "ulc-linz" || normalized === "appbasis-ulc-linz") return true;
   return (
     normalized.includes("ulc-linz") &&
     (normalized.includes("production") || /(?:^|-)prod(?:-|$)/.test(normalized))
@@ -292,8 +309,7 @@ function plainRecord(value, code) {
     value === null ||
     typeof value !== "object" ||
     Array.isArray(value) ||
-    (Object.getPrototypeOf(value) !== Object.prototype &&
-      Object.getPrototypeOf(value) !== null) ||
+    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) ||
     Object.getOwnPropertySymbols(value).length !== 0
   ) {
     fail(code);
@@ -309,8 +325,7 @@ function plainArray(value, code) {
   ) {
     fail(code);
   }
-  const descriptors = Object.getOwnPropertyDescriptors(value);
-  for (const descriptor of Object.values(descriptors)) {
+  for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
     if (!("value" in descriptor) || descriptor.get !== undefined || descriptor.set !== undefined) {
       fail(code);
     }
@@ -358,9 +373,7 @@ function requiredCursor(value) {
 }
 
 function requiredCredential(value, code) {
-  if (typeof value !== "string" || value.length < 1 || value.length > 4096) {
-    fail(code);
-  }
+  if (typeof value !== "string" || value.length < 1 || value.length > 4096) fail(code);
   return value;
 }
 
@@ -379,16 +392,12 @@ function requiredCloudflareAccountId(value) {
 }
 
 function requiredDate(value) {
-  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
-    fail("INVALID_CLOCK");
-  }
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) fail("INVALID_CLOCK");
   return value;
 }
 
 function deepFreeze(value) {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
-    return value;
-  }
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
   for (const child of Object.values(value)) deepFreeze(child);
   return Object.freeze(value);
 }
@@ -418,9 +427,6 @@ async function main() {
   }
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }

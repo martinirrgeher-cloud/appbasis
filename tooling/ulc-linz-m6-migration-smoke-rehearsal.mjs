@@ -161,11 +161,16 @@ export async function evaluateUlcLinzM6MigrationSmokeRehearsal(
   });
   assertMigrationPlan(plan);
 
-  const [appDefinition, appRuntimeSource, authorizationSource] = await Promise.all([
-    readJson(join(root, APP_DEFINITION_PATH), "APP_DEFINITION_INVALID"),
-    readText(join(root, APP_RUNTIME_PATH), "PUBLIC_RUNTIME_CONTRACT_DRIFT"),
-    readText(join(root, AUTHORIZATION_PATH), "PERMISSION_SMOKE_CONTRACT_DRIFT"),
-  ]);
+  const [manifestRaw, appDefinitionRaw, appRuntimeRaw, authorizationRaw] =
+    await Promise.all([
+      readBinary(join(root, MANIFEST_PATH), "MIGRATION_PLAN_DRIFT"),
+      readBinary(join(root, APP_DEFINITION_PATH), "APP_DEFINITION_INVALID"),
+      readBinary(join(root, APP_RUNTIME_PATH), "PUBLIC_RUNTIME_CONTRACT_DRIFT"),
+      readBinary(join(root, AUTHORIZATION_PATH), "PERMISSION_SMOKE_CONTRACT_DRIFT"),
+    ]);
+  const appDefinition = parseJson(appDefinitionRaw, "APP_DEFINITION_INVALID");
+  const appRuntimeSource = appRuntimeRaw.toString("utf8");
+  const authorizationSource = authorizationRaw.toString("utf8");
   assertApplicationScope(appDefinition);
   assertPublicRuntimeContract(appRuntimeSource);
   assertPermissionSmokeContract(authorizationSource);
@@ -173,19 +178,36 @@ export async function evaluateUlcLinzM6MigrationSmokeRehearsal(
   const migrationFiles = [];
   let statementCount = 0;
   for (const migration of plan) {
-    const raw = await readFile(join(root, migration.relativePath));
-    const digest = `sha256:${createHash("sha256").update(raw).digest("hex")}`;
+    const raw = await readBinary(join(root, migration.relativePath), "MIGRATION_PLAN_DRIFT");
     migrationFiles.push({
       ownerId: migration.ownerId,
       relativePath: migration.relativePath,
       statementCount: migration.statements.length,
-      digest,
+      digest: digestBytes(raw),
     });
     statementCount += migration.statements.length;
   }
-  const planFingerprint = `sha256:${createHash("sha256")
-    .update(JSON.stringify(migrationFiles))
-    .digest("hex")}`;
+
+  const validatedInputDigests = deepFreeze({
+    manifest: { path: MANIFEST_PATH, digest: digestBytes(manifestRaw) },
+    appDefinition: {
+      path: APP_DEFINITION_PATH,
+      digest: digestBytes(appDefinitionRaw),
+    },
+    publicRuntime: { path: APP_RUNTIME_PATH, digest: digestBytes(appRuntimeRaw) },
+    permissionSmokeContract: {
+      path: AUTHORIZATION_PATH,
+      digest: digestBytes(authorizationRaw),
+    },
+    repositoryPreflight: digestJson(repositoryPreflight),
+    executionPlan: digestJson(ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN),
+    smokeContract: digestJson(ULC_LINZ_M6_MIGRATION_SMOKE_REHEARSAL_CONTRACT.smoke),
+  });
+
+  const planFingerprint = createUlcLinzM6ExecutionBoundPlanFingerprint({
+    migrationFiles,
+    validatedInputDigests,
+  });
 
   return deepFreeze({
     schemaVersion: 1,
@@ -201,6 +223,7 @@ export async function evaluateUlcLinzM6MigrationSmokeRehearsal(
     explicitApprovalStillRequired: true,
     executionBinding:
       ULC_LINZ_M6_MIGRATION_SMOKE_REHEARSAL_CONTRACT.executionBinding,
+    validatedInputDigests,
     migration: {
       migrationCount: plan.length,
       statementCount,
@@ -212,8 +235,18 @@ export async function evaluateUlcLinzM6MigrationSmokeRehearsal(
         ULC_LINZ_M6_MIGRATION_SMOKE_REHEARSAL_CONTRACT.migration
           .futureExecutorContract,
     },
-    smoke:
-      ULC_LINZ_M6_MIGRATION_SMOKE_REHEARSAL_CONTRACT.smoke,
+    smoke: ULC_LINZ_M6_MIGRATION_SMOKE_REHEARSAL_CONTRACT.smoke,
+  });
+}
+
+export function createUlcLinzM6ExecutionBoundPlanFingerprint({
+  migrationFiles,
+  validatedInputDigests,
+}) {
+  return digestJson({
+    schemaVersion: 1,
+    migrationFiles,
+    validatedInputDigests,
   });
 }
 
@@ -311,26 +344,32 @@ function assertPermissionSmokeContract(source) {
   }
 }
 
-async function readJson(path, code) {
+async function readBinary(path, code) {
   try {
-    return JSON.parse(await readFile(path, "utf8"));
+    return await readFile(path);
   } catch {
     fail(code);
   }
 }
 
-async function readText(path, code) {
+function parseJson(raw, code) {
   try {
-    return await readFile(path, "utf8");
+    return JSON.parse(raw.toString("utf8"));
   } catch {
     fail(code);
   }
+}
+
+function digestBytes(raw) {
+  return `sha256:${createHash("sha256").update(raw).digest("hex")}`;
+}
+
+function digestJson(value) {
+  return digestBytes(Buffer.from(JSON.stringify(value), "utf8"));
 }
 
 function deepFreeze(value) {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
-    return value;
-  }
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
   for (const child of Object.values(value)) deepFreeze(child);
   return Object.freeze(value);
 }

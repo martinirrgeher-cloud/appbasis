@@ -1,43 +1,16 @@
-# M4 – Recovery Acceptance Record 2026-08-17
+# M4 – Recovery Evidence Record 2026-08-17
 
 ## Status
 
-**M4 Backup & Disaster Recovery v0.1 ist für den ersten realen Verbraucher `m3-preview` DONE.**
+**M4 Backup & Disaster Recovery v0.1 bleibt für `m3-preview` OPEN.**
 
-Dieser Acceptance Record ersetzt ausschließlich die älteren Statusaussagen in `M4-BACKUP-DR-SCOPE.md` und `M4-R2-RESTORE-REHEARSAL.md`, nach denen M4 vor dem realen Abschlusslauf noch offen war. Die dort beschriebenen technischen Sicherheits-, Backup-, Restore- und Fail-closed-Verträge bleiben unverändert gültig.
+Dieser Record dokumentiert starke reale Recovery-Evidence, reicht aber nicht aus, um das M4-DONE-Gate fail-closed zu schließen. Für DONE verlangt die aktuelle Roadmap einen real getesteten Restore, dessen Ergebnis fachlich geprüft ist – einschließlich Datenintegrität, Auth, Permissions und mindestens eines Fachmodul-Smokes.
 
-Die Evidenz gilt nur für den aktuellen ersten Verbraucher `m3-preview`. Eine spätere eigenständige Produktiv-App muss ihren eigenen Backup-/Restore-Nachweis auf ihren eigenen Ressourcen erbringen.
+Die derzeit noch fehlende Grenze ist **unabhängig verifizierbare Ausführungsprovenienz des historischen Restore-/Funktions-Smoke-Laufs**. Der historische GitHub-Actions-Run-Identifier und der konkrete R2-Objekt-Key des damaligen Restore-Laufs stehen in der aktuell zugänglichen Evidence nicht belastbar zur Verfügung. Sie werden nicht nachträglich erfunden.
 
-## Geprüfter Umfang
+Die vorhandenen persistenten Daten beweisen den erreichten Datenbankzustand, aber nicht allein, dass der kanonische Workflow tatsächlich alle vorgesehenen Schritte in der geforderten Reihenfolge ausgeführt hat. Insbesondere dürfen Health-Request, Better-Auth-Anmeldung, Passwortwechsel, Permission-Deny und die Reihenfolge nach erfolgreicher Fingerprint-Prüfung nicht ausschließlich aus der später sichtbaren Datenbanksignatur als ausgeführt abgeleitet werden.
 
-M4 verlangt für DONE nicht nur vorhandene Backup-Software, sondern einen realen Wiederherstellungsnachweis mit:
-
-- realem externem Backup-Pfad und Retention,
-- Pre-Migration-Sicherungspfad,
-- realem Restore in ein getrenntes Ziel,
-- Datenintegritätsprüfung,
-- Health-/Auth-Prüfung,
-- Permission-Prüfung inklusive deny-by-default-Negativfall,
-- mindestens einem echten Fachmodul-Smoke,
-- dokumentierter Recovery-Evidenz.
-
-## Backup- und Recovery-Verträge
-
-Der aktuell kanonische Free-First-Pfad verwendet den bestehenden `M4 Free External Backup`-Workflow:
-
-- tägliche geplante Ausführung um `02:17 UTC`, wenn das geschützte M4-Profil aktiviert ist,
-- PostgreSQL-18-Custom-Dump und Fingerprint aus demselben konsistenten Datenbanksnapshot,
-- client-seitige AES-256-GCM-Verschlüsselung vor dem Provider-Upload,
-- immutable R2-Objekte,
-- Retention der letzten 7 Daily-Slots plus 4 jüngsten Weekly-Slots,
-- getrennte immutable Pre-Migration-Backups,
-- read-only Reconciliation statt blindem Wiederholen bei unklarem Write-Ausgang.
-
-Der reale externe Backup-Pfad und der reale Pre-Migration-Pfad wurden vor diesem Acceptance Record bereits erfolgreich ausgeführt. Dieser Abschluss führt bewusst keinen zweiten Provider-Write und keinen zusätzlichen Restore nur zur Dokumentation aus.
-
-Der historische GitHub-Actions-Run-Identifier und der konkrete R2-Objekt-Key des damaligen Restore-Laufs werden in diesem Repository nicht nachträglich erfunden. Der aktuell verbundene GitHub-Reader stellt diese historischen Workflow-Dispatch-Eingaben nicht bereit. Die Datenintegrität wird deshalb unten unabhängig und read-only gegen den tatsächlich restaurierten Datenbestand belegt.
-
-## Restore-Ziel
+## Geprüfter Recovery-Umfang
 
 Geprüfte Umgebung:
 
@@ -50,11 +23,25 @@ Geprüfte Umgebung:
 
 Das Restore-Ziel enthält den vollständigen erwarteten `m3-preview`-Schemaumfang mit Identity/Auth, Permissions und Tasks.
 
-## Unabhängige Datenintegritätsprüfung
+## Backup- und Recovery-Verträge
 
-Am 18.08.2026 wurde Quelle gegen Restore erneut ausschließlich read-only geprüft.
+Der kanonische Free-First-Pfad verwendet den bestehenden `M4 Free External Backup`-Workflow:
 
-Der nach dem Restore ausgeführte M4-Funktions-Smoke hinterlässt eindeutig erkennbare Testdatensätze (`m4r.*` sowie `M4 restored smoke ...`). Für die Baseline-Prüfung wurden ausschließlich diese eindeutig nachträglich erzeugten M4-Smoke-Datensätze aus dem Restore herausgerechnet.
+- tägliche geplante Ausführung um `02:17 UTC`, wenn das geschützte M4-Profil aktiviert ist,
+- PostgreSQL-18-Custom-Dump und Fingerprint aus demselben konsistenten Datenbanksnapshot,
+- client-seitige AES-256-GCM-Verschlüsselung vor dem Provider-Upload,
+- immutable R2-Objekte,
+- Retention der letzten 7 Daily-Slots plus 4 jüngsten Weekly-Slots,
+- getrennte immutable Pre-Migration-Backups,
+- read-only Reconciliation statt blindem Wiederholen bei unklarem Write-Ausgang.
+
+Der externe Backup-Pfad und der Pre-Migration-Pfad wurden bereits real verwendet. Dieser Repository-Record führt keinen zusätzlichen Provider-Write und keinen weiteren Restore aus.
+
+## Unabhängig bestätigte Datenintegrität
+
+Am 18.08.2026 wurde Quelle gegen Restore ausschließlich read-only verglichen.
+
+Der Restore-Datenbestand enthält eindeutig als M4-Testdaten erkennbare Datensätze (`m4r.*` sowie `M4 restored smoke ...`). Für die Baseline-Prüfung wurden ausschließlich diese eindeutig nachträglich erzeugten M4-Testdatensätze aus dem Restore herausgerechnet.
 
 Danach stimmen **alle 32 kanonischen M4-Fingerprint-Felder exakt überein**: Für jede der 16 vom M4-Fingerprint erfassten Tabellen sind sowohl Zeilenanzahl als auch Digest zwischen Quelle und restaurierter Baseline identisch.
 
@@ -77,69 +64,68 @@ Danach stimmen **alle 32 kanonischen M4-Fingerprint-Felder exakt überein**: Fü
 | Permission Administration Audit | 0 | 0 | exakt gleich |
 | Tasks | 1 | 1 | exakt gleich |
 
-Damit ist die restaurierte Baseline unabhängig vom späteren Funktions-Smoke datenidentisch zur aktuellen Quelle für den vollständigen kanonischen M4-Fingerprint-Scope.
+Damit ist die restaurierte Baseline für den vollständigen kanonischen M4-Fingerprint-Scope datenidentisch zur geprüften Quelle.
 
-## Realer Funktions-Smoke auf dem Restore-Ziel
+## Beobachtete Testdatensignatur
 
-PR #132 hat den kanonischen Restore-Workflow so erweitert, dass der Funktions-Smoke erst **nach erfolgreicher Restore-Fingerprint-Prüfung** ausgeführt wird.
+Die live gelesene Restore-Datenbank enthält folgende persistente Signatur:
 
-Die live gelesene Restore-Datenbank enthält exakt die erwartete Signatur dieses Smokes:
+- 2 M4-Testidentitäten,
+- davon 1 Identität mit genau 1 persistierter Rollenbindung,
+- 1 Identität ohne Rollenbindung,
+- 1 M4-Testtask,
+- dieser Task steht auf `completed`.
 
-- 2 M4-Smoke-Identitäten,
-- davon 1 erlaubte und 1 verweigerte Identität,
-- erlaubte Identität: genau 1 persistierte Rollenbindung,
-- verweigerte Identität: 0 Rollenbindungen,
-- 1 M4-Smoke-Task,
-- dieser Task steht nach Persistenzprüfung und Toggle auf `completed`.
+Die Testidentitäten wurden zwischen `2026-08-17T12:02:14.899Z` und `2026-08-17T12:02:16.179Z` erzeugt. Der Task wurde um `2026-08-17T12:02:30.140Z` erzeugt und zuletzt um `2026-08-17T12:02:32.389Z` aktualisiert.
 
-Die Smoke-Identitäten wurden zwischen `2026-08-17T12:02:14.899Z` und `2026-08-17T12:02:16.179Z` erzeugt. Der Smoke-Task wurde um `2026-08-17T12:02:30.140Z` erzeugt und zuletzt um `2026-08-17T12:02:32.389Z` aktualisiert.
-
-Diese Zeitpunkte liegen nach dem Merge des finalen Restore-Smoke-Vertrags aus PR #132. Der dortige Testvertrag prüft:
-
-1. Health `200` für `m3-preview`,
-2. echte Better-Auth-Anmeldung,
-3. verpflichtenden Passwortwechsel und danach Full Access,
-4. deny-by-default `403 PERMISSION_DENIED` für die verweigerte Identität,
-5. erlaubte Task-Erzeugung,
-6. Task-Persistenz nach neuer Runtime-Instanz,
-7. Toggle auf `completed`,
-8. erneute Persistenzprüfung nach weiterer Runtime-Neueröffnung.
-
-Die im Restore vorhandene Signatur entspricht exakt diesem operationalen Testvertrag.
+Diese Signatur ist **konsistent mit** dem in PR #132 definierten Restore-Smoke-Vertrag. Sie ist jedoch allein kein unabhängiger Beweis dafür, dass der historische Workflow sämtliche vorgesehenen HTTP-/Auth-/Permission-Schritte und deren Reihenfolge tatsächlich ausgeführt hat.
 
 ## Dauer
 
-Die reine Funktions-Smoke-Phase ist aus den persistenten Zeitstempeln mit **17,490 Sekunden** beobachtbar (`12:02:14.899Z` bis `12:02:32.389Z`).
+Aus den persistenten Zeitstempeln ist für die beobachtete Testdatensignatur ein Intervall von **17,490 Sekunden** sichtbar (`12:02:14.899Z` bis `12:02:32.389Z`).
 
-Da der aktuelle GitHub-Reader die historische Workflow-Run-Dauer dieses manuellen Restore-Laufs nicht mehr auflisten kann, wird keine kürzere Gesamt-Restore-Dauer erfunden. Als konservative dokumentierte End-to-end-Wandzeit gilt deshalb das Intervall vom Bereitstellen des isolierten Restore-Projekts bis zum abgeschlossenen Funktions-Smoke:
+Als rein beobachtbares äußeres Zeitfenster zwischen Bereitstellung des Restore-Projekts und letztem Testdaten-Update gilt:
 
 - Start: `2026-08-17T08:06:22Z`
-- Abschluss: `2026-08-17T12:02:32.389Z`
-- konservative End-to-end-Dauer: **3 h 56 min 10,389 s**
+- letztes beobachtetes Update: `2026-08-17T12:02:32.389Z`
+- Intervall: **3 h 56 min 10,389 s**
 
-Diese Dauer ist bewusst eine Obergrenze einschließlich Bereitstellungs-/Wartezeit und nicht als reine `pg_restore`-Laufzeit zu interpretieren.
+Dieses Intervall ist **keine verifizierte Workflow-Laufzeit** und keine gemessene `pg_restore`-Dauer.
 
-## Ergebnis / M4 DONE Gate
+## M4-Gate – bestätigte und offene Evidence
 
-Für `m3-preview` ist damit nachgewiesen:
+Belastbar bestätigt sind:
 
-- Backup-Pfad vorhanden und real verwendet,
-- Retention und Pre-Migration-Pfad definiert und real erprobt,
-- realer Restore in getrennte Umgebung vorhanden,
-- Schema vollständig,
+- Backup-/Retention-/Pre-Migration-Verträge vorhanden,
+- getrenntes Restore-Ziel vorhanden,
+- erwartetes Schema vorhanden,
 - 16/16 Tabellen bzw. 32/32 Count-/Digest-Fingerprintwerte baseline-identisch,
-- Health erfolgreich,
-- Auth inklusive Passwortwechsel erfolgreich,
-- Permission-Negativfall deny-by-default erfolgreich,
-- erlaubter Tasks-Fachmodulpfad inklusive Persistenz und Toggle erfolgreich,
-- Recovery-Zeitpunkt, Quelle, Ziel, Dauer und Ergebnis dokumentiert.
+- persistente Testdatensignatur auf dem Restore-Ziel vorhanden,
+- Quelle, Ziel und beobachtete Zeitpunkte dokumentiert.
 
-**M4 v0.1 ist damit für den ersten realen AppBasis-Verbraucher `m3-preview` abgeschlossen.**
+Für **M4 DONE** fehlt weiterhin ein unabhängig verifizierbarer Nachweis, dass der kanonische Restore-/Smoke-Lauf tatsächlich die erforderlichen fachlichen Schritte in der vorgesehenen Reihenfolge ausgeführt hat. Deshalb werden insbesondere folgende Punkte aus diesem historischen Datenbankzustand **nicht** als abgeschlossen behauptet:
+
+- Health-Smoke ausgeführt und erfolgreich,
+- Better-Auth-Anmeldung ausgeführt und erfolgreich,
+- verpflichtender Passwortwechsel ausgeführt und erfolgreich,
+- Permission-Negativfall tatsächlich als `403 PERMISSION_DENIED` geprüft,
+- erlaubter Tasks-Pfad über die vorgesehene Runtime ausgeführt,
+- Smoke erst nach erfolgreicher Restore-Fingerprint-Prüfung ausgeführt.
+
+## Sicherer Weg zum Abschluss
+
+M4 kann geschlossen werden, sobald mindestens eine der folgenden belastbaren Provenienzvarianten vorliegt:
+
+1. die historische Workflow-/Provider-Evidence wird autoritativ wiedergefunden und belegt den konkreten Restore-/Smoke-Lauf einschließlich Reihenfolge und Ergebnis, **oder**
+2. ein neuer kontrollierter Restore-/Verification-Lauf erzeugt diese Evidence erneut und nachvollziehbar.
+
+Variante 2 wäre eine externe Restore-/Provideraktion und darf nur nach ausdrücklicher Nutzerfreigabe ausgeführt werden.
 
 ## Grenzen
 
-- Dieser Nachweis ist keine Produktionsfreigabe.
+- Dieser Record ist keine Produktionsfreigabe.
 - Er erzeugt keine neue Produktionsressource und verändert keine Produktivdatenbank.
-- Er ersetzt nicht den später erforderlichen app-spezifischen Backup-/Restore-Nachweis der ersten echten Produktiv-App.
-- Object Storage innerhalb einer Fach-App wird erst Bestandteil ihres eigenen Recovery-Gates, sobald diese App tatsächlich Dateien speichert.
-- M5- und M6-Gates bleiben unabhängig und werden durch diesen Record nicht freigeschaltet.
+- M4 bleibt OPEN und kann M6 daher nicht freischalten.
+- Eine spätere eigenständige Produktiv-App benötigt ohnehin ihren eigenen Backup-/Restore-Nachweis auf ihren eigenen Ressourcen.
+- Object Storage wird Bestandteil des jeweiligen Recovery-Gates, sobald eine App tatsächlich Dateien speichert.
+- M5- und M6-Gates bleiben unabhängig.

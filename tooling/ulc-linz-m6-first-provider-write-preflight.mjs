@@ -11,6 +11,7 @@ const NEON_PROJECT_NAME = "appbasis-ulc-linz-production";
 const CLOUDFLARE_WORKER_NAME = "appbasis-ulc-linz-production";
 const FIRST_PROVIDER_WRITE_STEP_ID = "neon-production-database";
 const MAX_EVIDENCE_AGE_MS = 15 * 60 * 1000;
+export const ULC_LINZ_M6_MAX_NEON_PROJECT_INVENTORY = 10_000;
 
 const ROOT_FIELDS = Object.freeze([
   "schemaVersion",
@@ -74,16 +75,13 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
 ) {
   assertCanonicalContracts();
   assertSafeEvidenceTree(evidence);
-
   const root = exactRecord(evidence, ROOT_FIELDS, "INVALID_EVIDENCE");
   if (
     root.schemaVersion !== 1 ||
     root.application !== APPLICATION ||
     root.environment !== ENVIRONMENT ||
     root.source !== PROVIDER_API_SOURCE
-  ) {
-    fail("INVALID_EVIDENCE");
-  }
+  ) fail("INVALID_EVIDENCE");
 
   const observedAt = canonicalTimestamp(root.observedAt);
   const validUntilOrReviewAt = canonicalTimestamp(root.validUntilOrReviewAt);
@@ -96,24 +94,16 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     neon.inventoryMatchesSelectedCreateScope !== true ||
     neon.targetRegionAvailable !== true ||
     neon.selectedCreateMethodSupportsExplicitRegion !== true
-  ) {
-    fail("NEON_PREFLIGHT_INVALID");
-  }
+  ) fail("NEON_PREFLIGHT_INVALID");
 
   const projects = exactArray(neon.projects, "NEON_PREFLIGHT_INVALID");
-  if (projects.length > 400) fail("NEON_PREFLIGHT_INVALID");
-
+  if (projects.length > ULC_LINZ_M6_MAX_NEON_PROJECT_INVENTORY) {
+    fail("NEON_PREFLIGHT_INVALID");
+  }
   const normalizedProjects = projects.map((value) => {
-    const project = exactRecord(
-      value,
-      PROJECT_FIELDS,
-      "NEON_PREFLIGHT_INVALID",
-    );
-    const name = requiredProjectName(project.name);
-    const region = requiredRegion(project.region);
-    return { name, region };
+    const project = exactRecord(value, PROJECT_FIELDS, "NEON_PREFLIGHT_INVALID");
+    return { name: requiredProjectName(project.name), region: requiredRegion(project.region) };
   });
-
   if (normalizedProjects.some((project) => isUlcProductionCandidate(project.name))) {
     fail("EXISTING_PRODUCTION_RESOURCE_CANDIDATE");
   }
@@ -135,8 +125,7 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     explicitApprovalRequired: true,
     observedAt: observedAt.toISOString(),
     validUntilOrReviewAt: validUntilOrReviewAt.toISOString(),
-    firstProviderWrite:
-      ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT.firstProviderWrite,
+    firstProviderWrite: ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT.firstProviderWrite,
     futureCloudflareWorkerCreation:
       ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT.cloudflareWorkerCreation,
   });
@@ -146,26 +135,19 @@ function assertCanonicalContracts() {
   const firstStep = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.steps[0];
   if (
     ULC_LINZ_M5_TARGET_POLICY.appId !== APPLICATION ||
-    ULC_LINZ_M5_TARGET_POLICY.productionDatabaseRegionTarget !==
-      "EU / Frankfurt" ||
-    ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT.application !==
-      APPLICATION ||
-    ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT.environment !==
-      ENVIRONMENT ||
-    ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT.neonRegion !==
-      NEON_REGION ||
+    ULC_LINZ_M5_TARGET_POLICY.productionDatabaseRegionTarget !== "EU / Frankfurt" ||
+    ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT.application !== APPLICATION ||
+    ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT.environment !== ENVIRONMENT ||
+    ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT.neonRegion !== NEON_REGION ||
     ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.providerWritesEnabled !== false ||
-    ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.firstProviderWriteStepId !==
-      FIRST_PROVIDER_WRITE_STEP_ID ||
+    ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.firstProviderWriteStepId !== FIRST_PROVIDER_WRITE_STEP_ID ||
     firstStep?.id !== FIRST_PROVIDER_WRITE_STEP_ID ||
     firstStep.kind !== "provider-write" ||
     firstStep.approvalRequired !== true ||
     firstStep.target?.provider !== NEON_PROVIDER ||
     firstStep.target?.region !== NEON_REGION ||
     firstStep.target?.dedicatedProductionResource !== true
-  ) {
-    fail("CONTRACT_DRIFT");
-  }
+  ) fail("CONTRACT_DRIFT");
 
   const safety = ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT;
   if (
@@ -182,19 +164,14 @@ function assertCanonicalContracts() {
     safety.cloudflareWorkerCreation.workersDev !== false ||
     safety.cloudflareWorkerCreation.previewUrls !== false ||
     safety.cloudflareWorkerCreation.publicIngress !== false ||
-    safety.cloudflareWorkerCreation
-      .ingressStateMustBeAppliedAtInitialCreateOrFirstDeploy !== true ||
-    safety.cloudflareWorkerCreation
-      .closedIngressRequiredBeforeApplicationCodeUpload !== true
-  ) {
-    fail("CONTRACT_DRIFT");
-  }
+    safety.cloudflareWorkerCreation.ingressStateMustBeAppliedAtInitialCreateOrFirstDeploy !== true ||
+    safety.cloudflareWorkerCreation.closedIngressRequiredBeforeApplicationCodeUpload !== true
+  ) fail("CONTRACT_DRIFT");
 }
 
 function assertFreshEvidence(observedAt, validUntilOrReviewAt, now) {
   const age = now.getTime() - observedAt.getTime();
-  const validityWindow =
-    validUntilOrReviewAt.getTime() - observedAt.getTime();
+  const validityWindow = validUntilOrReviewAt.getTime() - observedAt.getTime();
   if (
     observedAt.getTime() > now.getTime() ||
     age < 0 ||
@@ -202,22 +179,15 @@ function assertFreshEvidence(observedAt, validUntilOrReviewAt, now) {
     validUntilOrReviewAt.getTime() <= now.getTime() ||
     validityWindow <= 0 ||
     validityWindow > MAX_EVIDENCE_AGE_MS
-  ) {
-    fail("STALE_EVIDENCE");
-  }
+  ) fail("STALE_EVIDENCE");
 }
 
 function isUlcProductionCandidate(name) {
   const normalized = name.toLowerCase();
   if (normalized === NEON_PROJECT_NAME) return true;
-  if (normalized === "ulc-linz" || normalized === "appbasis-ulc-linz") {
-    return true;
-  }
-  return (
-    normalized.includes("ulc-linz") &&
-    (normalized.includes("production") ||
-      /(?:^|-)prod(?:-|$)/.test(normalized))
-  );
+  if (normalized === "ulc-linz" || normalized === "appbasis-ulc-linz") return true;
+  return normalized.includes("ulc-linz") &&
+    (normalized.includes("production") || /(?:^|-)prod(?:-|$)/.test(normalized));
 }
 
 function requiredProjectName(value) {
@@ -227,9 +197,7 @@ function requiredProjectName(value) {
     value.length > 64 ||
     value !== value.trim() ||
     /[\u0000-\u001f\u007f]/u.test(value)
-  ) {
-    fail("NEON_PREFLIGHT_INVALID");
-  }
+  ) fail("NEON_PREFLIGHT_INVALID");
   return value;
 }
 
@@ -240,9 +208,7 @@ function requiredRegion(value) {
     value.length > 100 ||
     value !== value.trim() ||
     !/^[a-z0-9-]+$/.test(value)
-  ) {
-    fail("NEON_PREFLIGHT_INVALID");
-  }
+  ) fail("NEON_PREFLIGHT_INVALID");
   return value;
 }
 
@@ -255,9 +221,7 @@ function exactRecord(value, fields, code) {
     keys.length !== fields.length ||
     fields.some((field) => !Object.hasOwn(descriptors, field)) ||
     keys.some((field) => !expected.has(field))
-  ) {
-    fail(code);
-  }
+  ) fail(code);
   for (const descriptor of Object.values(descriptors)) {
     if (!("value" in descriptor) || descriptor.get !== undefined || descriptor.set !== undefined) {
       fail("UNSAFE_EVIDENCE");
@@ -271,21 +235,11 @@ function exactArray(value, code) {
     !Array.isArray(value) ||
     Object.getPrototypeOf(value) !== Array.prototype ||
     Object.getOwnPropertySymbols(value).length > 0
-  ) {
-    fail(code);
-  }
+  ) fail(code);
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const keys = Object.keys(descriptors);
-  const expectedKeys = new Set([
-    ...value.map((_, index) => String(index)),
-    "length",
-  ]);
-  if (
-    keys.length !== expectedKeys.size ||
-    keys.some((key) => !expectedKeys.has(key))
-  ) {
-    fail(code);
-  }
+  const expectedKeys = new Set([...value.map((_, index) => String(index)), "length"]);
+  if (keys.length !== expectedKeys.size || keys.some((key) => !expectedKeys.has(key))) fail(code);
   for (const descriptor of Object.values(descriptors)) {
     if (!("value" in descriptor) || descriptor.get !== undefined || descriptor.set !== undefined) {
       fail("UNSAFE_EVIDENCE");
@@ -297,10 +251,7 @@ function exactArray(value, code) {
 function assertSafeEvidenceTree(value, seen = new Set()) {
   if (value === null) return;
   if (typeof value === "string") {
-    if (
-      value.includes("\0") ||
-      UNSAFE_VALUE_PATTERNS.some((pattern) => pattern.test(value))
-    ) {
+    if (value.includes("\0") || UNSAFE_VALUE_PATTERNS.some((pattern) => pattern.test(value))) {
       fail("UNSAFE_EVIDENCE");
     }
     return;
@@ -311,12 +262,9 @@ function assertSafeEvidenceTree(value, seen = new Set()) {
       Object.getPrototypeOf(value) !== Array.prototype ||
       seen.has(value) ||
       Object.getOwnPropertySymbols(value).length > 0
-    ) {
-      fail("UNSAFE_EVIDENCE");
-    }
+    ) fail("UNSAFE_EVIDENCE");
     seen.add(value);
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    for (const descriptor of Object.values(descriptors)) {
+    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
       if (!("value" in descriptor) || descriptor.get !== undefined || descriptor.set !== undefined) {
         fail("UNSAFE_EVIDENCE");
       }
@@ -328,9 +276,7 @@ function assertSafeEvidenceTree(value, seen = new Set()) {
   if (!isPlainRecord(value) || seen.has(value)) fail("UNSAFE_EVIDENCE");
   seen.add(value);
   if (Object.getOwnPropertySymbols(value).length > 0) fail("UNSAFE_EVIDENCE");
-
-  const descriptors = Object.getOwnPropertyDescriptors(value);
-  for (const [key, descriptor] of Object.entries(descriptors)) {
+  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
     if (UNSAFE_FIELD_PATTERN.test(key)) fail("UNSAFE_EVIDENCE");
     if (!("value" in descriptor) || descriptor.get !== undefined || descriptor.set !== undefined) {
       fail("UNSAFE_EVIDENCE");
@@ -343,34 +289,24 @@ function assertSafeEvidenceTree(value, seen = new Set()) {
 function canonicalTimestamp(value) {
   if (typeof value !== "string") fail("INVALID_EVIDENCE");
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
-    fail("INVALID_EVIDENCE");
-  }
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) fail("INVALID_EVIDENCE");
   return parsed;
 }
 
 function requiredDate(value) {
-  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
-    fail("INVALID_EVIDENCE");
-  }
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) fail("INVALID_EVIDENCE");
   return value;
 }
 
 function isPlainRecord(value) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }
 
 function deepFreeze(value) {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
-    return value;
-  }
-  for (const child of Object.values(value)) {
-    deepFreeze(child);
-  }
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const child of Object.values(value)) deepFreeze(child);
   return Object.freeze(value);
 }
 
