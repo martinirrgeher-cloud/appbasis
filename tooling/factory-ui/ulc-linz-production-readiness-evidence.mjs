@@ -17,6 +17,7 @@ const EXTERNAL_INPUT_FIELDS = Object.freeze([
   "auditSecurityLoggingEvidenceInput",
   "providerBoundEvidenceInput",
   "controlPlaneEvidenceInput",
+  "lifecycleActivationEvidenceInput",
   "backupRestoreEvidenceInput",
 ]);
 
@@ -53,9 +54,17 @@ export async function deriveUlcLinzM5JProductionEvidence(
   const rolesAndPermissionsEvidence = await safelyDerive(() =>
     deriveUlcLinzRolesAndPermissionsEvidence(repositoryRoot, definition),
   );
-  const lifecycleEvidence = await safelyDerive(() =>
-    deriveUlcLinzLifecycleEvidence(repositoryRoot, definition),
-  );
+  const lifecycleEvidence =
+    coherentVolatileInputs && inputs.lifecycleActivationEvidenceInput !== undefined
+      ? await safelyDerive(() =>
+          deriveUlcLinzLifecycleEvidence(
+            repositoryRoot,
+            definition,
+            inputs.lifecycleActivationEvidenceInput,
+            { now: nowDate },
+          ),
+        )
+      : EMPTY_EVIDENCE;
   const auditSecurityLoggingEvidence =
     coherentVolatileInputs && inputs.auditSecurityLoggingEvidenceInput !== undefined
       ? await safelyDerive(() =>
@@ -176,6 +185,7 @@ function hasCoherentVolatileResourceBinding(inputs, now) {
       inputs.providerBoundEvidenceInput,
       inputs.controlPlaneEvidenceInput,
       inputs.auditSecurityLoggingEvidenceInput,
+      inputs.lifecycleActivationEvidenceInput,
     ]) {
       if (candidate === undefined) continue;
       if (!isPlainObject(candidate) || !isPlainObject(candidate.resourceBindingEvidence)) return false;

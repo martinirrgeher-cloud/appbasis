@@ -8,6 +8,9 @@ import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "../ulc-linz-m5-provider-evid
 import { ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST } from "../ulc-linz-m6-production-resource-binding.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
 import {
+  deriveUlcLinzLifecycleContractDigest,
+} from "./ulc-linz-lifecycle-evidence.mjs";
+import {
   evaluateProductionReadiness,
   REQUIRED_PRODUCTION_READINESS_CRITERIA,
 } from "./production-readiness.mjs";
@@ -22,6 +25,8 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
 const NOW = new Date("2026-08-18T12:50:00.000Z");
 const OBSERVED_AT = "2026-08-18T12:45:00.000Z";
 const VALID_UNTIL = "2026-08-18T13:45:00.000Z";
+const LIFECYCLE_CONTRACT_DIGEST =
+  await deriveUlcLinzLifecycleContractDigest(repositoryRoot);
 const VALID_ULC_DEFINITION = Object.freeze({
   schemaVersion: 2,
   appId: "ulc-linz",
@@ -212,6 +217,28 @@ function auditSecurityLoggingEvidenceInput(resource) {
   };
 }
 
+function lifecycleActivationEvidenceInput(resource) {
+  const value = resource ?? resourceBindingEvidence();
+  return {
+    resourceBindingEvidence: value,
+    activationEvidence: {
+      schemaVersion: 1,
+      application: "ulc-linz",
+      environment: "production",
+      observedAt: value.observedAt,
+      validUntilOrReviewAt: value.validUntilOrReviewAt,
+      evidenceSource: "controlled-production-activation-run",
+      executionBoundary: "protected-operations",
+      lifecycleContractDigest: LIFECYCLE_CONTRACT_DIGEST,
+      activationInventoryComplete: true,
+      deletionExecutorBound: true,
+      retentionExecutorBound: true,
+      restoreReconciliationExecutorBound: true,
+      publicIngressPresent: false,
+    },
+  };
+}
+
 function backupRestoreEvidenceInput(resource) {
   const value = resource ?? resourceBindingEvidence();
   return {
@@ -222,6 +249,7 @@ function backupRestoreEvidenceInput(resource) {
     restoreTargetBindingId: "opaque-restore-target",
     evidenceSource: "controlled-restore-run",
     restoreTestedAt: "2026-08-18T12:47:00.000Z",
+    lifecycleContractDigest: LIFECYCLE_CONTRACT_DIGEST,
     automaticBackupsEnabled: true,
     retentionDefined: true,
     preMigrationBackupDefined: true,
@@ -241,6 +269,7 @@ function completeOwnerInputs() {
     auditSecurityLoggingEvidenceInput: auditSecurityLoggingEvidenceInput(resource),
     providerBoundEvidenceInput: providerBoundEvidenceInput(resource),
     controlPlaneEvidenceInput: controlPlaneEvidenceInput(resource),
+    lifecycleActivationEvidenceInput: lifecycleActivationEvidenceInput(resource),
     backupRestoreEvidenceInput: backupRestoreEvidenceInput(resource),
   };
 }
@@ -330,6 +359,30 @@ test("M5-J owner integration can produce all twelve only from current repository
   assert.equal(readiness.verifiedCount, 12);
 });
 
+test("M5-J keeps C/D and High Privacy open without protected production lifecycle activation", async () => {
+  const inputs = completeOwnerInputs();
+  delete inputs.lifecycleActivationEvidenceInput;
+  const readiness = evaluateProductionReadiness(
+    await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
+  );
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
+  assert.equal(criterionStatus(readiness, "retention"), "open");
+  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
+  assert.equal(criterionStatus(readiness, "dataRegion"), "verified");
+});
+
+test("M5-J rejects lifecycle activation when its schema and reconciliation contract drifts", async () => {
+  const inputs = completeOwnerInputs();
+  inputs.lifecycleActivationEvidenceInput.activationEvidence.lifecycleContractDigest =
+    `sha256:${"0".repeat(64)}`;
+  const readiness = evaluateProductionReadiness(
+    await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
+  );
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
+  assert.equal(criterionStatus(readiness, "retention"), "open");
+  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
+});
+
 test("M5-J keeps F, E and High Privacy open when logging retention evidence is insufficient", async () => {
   const inputs = completeOwnerInputs();
   inputs.auditSecurityLoggingEvidenceInput.loggingEvidence.retentionMonths = 1;
@@ -341,7 +394,7 @@ test("M5-J keeps F, E and High Privacy open when logging retention evidence is i
   }
 });
 
-test("M5-J rejects mixed production resource snapshots across F, G and H", async () => {
+test("M5-J rejects mixed production resource snapshots across operational owners", async () => {
   const inputs = completeOwnerInputs();
   const other = resourceBindingEvidence({ runtimeBindingId: "other-worker", databaseBindingId: "other-db" });
   inputs.controlPlaneEvidenceInput = controlPlaneEvidenceInput(other);
@@ -350,7 +403,7 @@ test("M5-J rejects mixed production resource snapshots across F, G and H", async
     await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
   );
   assert.equal(readiness.productionReady, false);
-  for (const id of ["auditSecurityLogging", "dataRegion", "dpa", "encryption", "subprocessors", "privilegedControlPlaneIsolation", "highPrivacyProfile"]) {
+  for (const id of ["auditSecurityLogging", "dataRegion", "dpa", "encryption", "subprocessors", "deletionConcept", "retention", "privilegedControlPlaneIsolation", "highPrivacyProfile"]) {
     assert.equal(criterionStatus(readiness, id), "open", id);
   }
 });
@@ -380,6 +433,18 @@ test("M5-J rejects restore evidence outside the current production resource wind
   assert.equal(readiness.productionReady, false);
   assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
   assert.equal(criterionStatus(readiness, "dataRegion"), "verified");
+});
+
+test("M5-J rejects restore evidence for an older lifecycle schema or reconciliation contract", async () => {
+  const inputs = completeOwnerInputs();
+  inputs.backupRestoreEvidenceInput.lifecycleContractDigest = `sha256:${"0".repeat(64)}`;
+  const readiness = evaluateProductionReadiness(
+    await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
+  );
+  assert.equal(readiness.productionReady, false);
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "verified");
+  assert.equal(criterionStatus(readiness, "retention"), "verified");
+  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
 });
 
 test("M5-J rejects cross-app and runtime-drift provider evidence", async () => {

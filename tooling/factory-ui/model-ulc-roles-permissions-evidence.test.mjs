@@ -75,20 +75,20 @@ function criterion(app, id) {
   return app.productionReadiness.criteria.find((candidate) => candidate.id === id);
 }
 
-test("Factory marks only the current ULC repository, B, C and D evidence as verified", async () => {
+test("Factory keeps C/D operationally open while current repository and B evidence are verified", async () => {
   const root = await createFactoryFixture();
   try {
     const snapshot = await loadFactorySnapshot(root);
     const app = snapshot.apps[0];
 
     assert.equal(app.appId, "ulc-linz");
-    assert.equal(app.productionReadiness.verifiedCount, 4);
+    assert.equal(app.productionReadiness.verifiedCount, 2);
     assert.equal(app.productionReadiness.requiredCount, 12);
     assert.equal(app.productionReadiness.productionReady, false);
     assert.equal(criterion(app, "secretsOutsideAppManifests").status, "verified");
     assert.equal(criterion(app, "rolesAndPermissions").status, "verified");
-    assert.equal(criterion(app, "deletionConcept").status, "verified");
-    assert.equal(criterion(app, "retention").status, "verified");
+    assert.equal(criterion(app, "deletionConcept").status, "open");
+    assert.equal(criterion(app, "retention").status, "open");
     assert.equal(criterion(app, "dataRegion").status, "open");
     assert.equal(criterion(app, "dataExport").status, "open");
     assert.equal(snapshot.capabilities.releaseProduction, false);
@@ -99,7 +99,7 @@ test("Factory marks only the current ULC repository, B, C and D evidence as veri
   }
 });
 
-test("Factory keeps roles open on B drift while independently preserving exact C/D evidence", async () => {
+test("Factory keeps roles and C/D open on B drift without production lifecycle activation", async () => {
   const rolePolicy = JSON.parse(
     JSON.stringify(ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY),
   );
@@ -110,11 +110,11 @@ test("Factory keeps roles open on B drift while independently preserving exact C
     const snapshot = await loadFactorySnapshot(root);
     const app = snapshot.apps[0];
 
-    assert.equal(app.productionReadiness.verifiedCount, 3);
+    assert.equal(app.productionReadiness.verifiedCount, 1);
     assert.equal(criterion(app, "secretsOutsideAppManifests").status, "verified");
     assert.equal(criterion(app, "rolesAndPermissions").status, "open");
-    assert.equal(criterion(app, "deletionConcept").status, "verified");
-    assert.equal(criterion(app, "retention").status, "verified");
+    assert.equal(criterion(app, "deletionConcept").status, "open");
+    assert.equal(criterion(app, "retention").status, "open");
     assert.equal(app.productionReadiness.productionReady, false);
     assert.equal(snapshot.capabilities.releaseProduction, false);
   } finally {

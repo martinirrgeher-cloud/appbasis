@@ -4,17 +4,57 @@ import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import { createExpectedUlcLinzDatabaseManifest } from "../ulc-linz-database-contract.mjs";
+import { evaluateUlcLinzProductionResourceBinding } from "../ulc-linz-m6-production-resource-binding.mjs";
 
 const EMPTY_EVIDENCE = Object.freeze({});
 const VERIFIED_EVIDENCE = Object.freeze({
   deletionConcept: true,
   retention: true,
 });
+const ACTIVATION_ROOT_FIELDS = Object.freeze([
+  "resourceBindingEvidence",
+  "activationEvidence",
+]);
+const ACTIVATION_FIELDS = Object.freeze([
+  "schemaVersion",
+  "application",
+  "environment",
+  "observedAt",
+  "validUntilOrReviewAt",
+  "evidenceSource",
+  "executionBoundary",
+  "lifecycleContractDigest",
+  "activationInventoryComplete",
+  "deletionExecutorBound",
+  "retentionExecutorBound",
+  "restoreReconciliationExecutorBound",
+  "publicIngressPresent",
+]);
+const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
+  "apps/ulc-linz/appbasis.database.json",
+  "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
+  "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+  "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
+  "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
+  "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+  "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
+  "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
+  "apps/ulc-linz/worker/lifecycle.ts",
+  "apps/ulc-linz/worker/lifecycle-service.ts",
+  "apps/ulc-linz/worker/scope-persistence.ts",
+  "apps/ulc-linz/worker/retention.ts",
+  "apps/ulc-linz/worker/restore-reconciliation.ts",
+  "packages/identity/src/postgres-deletion.ts",
+  "packages/identity/src/postgres-deletion-retention.ts",
+  "packages/permissions/src/principal-lifecycle-administration.ts",
+  "packages/permissions/src/permission-administration-audit-retention.ts",
+]);
 
 export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   appId: "ulc-linz",
   modules: Object.freeze([]),
   platformServices: Object.freeze(["identity", "permissions"]),
+  lifecycleContractPaths: LIFECYCLE_CONTRACT_PATHS,
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
@@ -115,7 +155,25 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   ]),
 });
 
-export async function deriveUlcLinzLifecycleEvidence(repositoryRoot, definition) {
+export async function deriveUlcLinzLifecycleContractDigest(repositoryRoot) {
+  const root = resolve(repositoryRoot);
+  const hash = createHash("sha256");
+  for (const path of LIFECYCLE_CONTRACT_PATHS) {
+    const content = await readFile(join(root, path));
+    hash.update(path, "utf8");
+    hash.update("\0", "utf8");
+    hash.update(content);
+    hash.update("\0", "utf8");
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
+export async function deriveUlcLinzLifecycleEvidence(
+  repositoryRoot,
+  definition,
+  lifecycleActivationEvidenceInput,
+  { now = new Date() } = {},
+) {
   if (!isExactCurrentUlcDefinition(definition)) return EMPTY_EVIDENCE;
 
   try {
@@ -137,9 +195,52 @@ export async function deriveUlcLinzLifecycleEvidence(repositoryRoot, definition)
       return EMPTY_EVIDENCE;
     }
 
+    const lifecycleContractDigest = await deriveUlcLinzLifecycleContractDigest(root);
+    if (
+      !isProductionLifecycleActivationVerified(
+        lifecycleActivationEvidenceInput,
+        lifecycleContractDigest,
+        requiredDate(now),
+      )
+    ) {
+      return EMPTY_EVIDENCE;
+    }
+
     return VERIFIED_EVIDENCE;
   } catch {
     return EMPTY_EVIDENCE;
+  }
+}
+
+function isProductionLifecycleActivationVerified(input, lifecycleContractDigest, now) {
+  try {
+    const root = exactRecord(input, ACTIVATION_ROOT_FIELDS);
+    const resourceBinding = evaluateUlcLinzProductionResourceBinding(
+      root.resourceBindingEvidence,
+      { now },
+    );
+    const activation = exactRecord(root.activationEvidence, ACTIVATION_FIELDS);
+    if (
+      activation.schemaVersion !== 1 ||
+      activation.application !== "ulc-linz" ||
+      activation.environment !== "production" ||
+      activation.evidenceSource !== "controlled-production-activation-run" ||
+      activation.executionBoundary !== "protected-operations" ||
+      activation.lifecycleContractDigest !== lifecycleContractDigest ||
+      activation.activationInventoryComplete !== true ||
+      activation.deletionExecutorBound !== true ||
+      activation.retentionExecutorBound !== true ||
+      activation.restoreReconciliationExecutorBound !== true ||
+      activation.publicIngressPresent !== false ||
+      activation.observedAt !== resourceBinding.observedAt ||
+      activation.validUntilOrReviewAt !== resourceBinding.validUntilOrReviewAt
+    ) {
+      return false;
+    }
+    return canonicalTimestamp(activation.observedAt) !== null &&
+      canonicalTimestamp(activation.validUntilOrReviewAt) !== null;
+  } catch {
+    return false;
   }
 }
 
@@ -205,6 +306,35 @@ async function readJsonObject(path) {
   }
 }
 
+function exactRecord(value, fields) {
+  if (
+    !isPlainObject(value) ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    throw new Error("ULC Linz lifecycle activation evidence is invalid.");
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Object.keys(descriptors);
+  if (
+    keys.length !== fields.length ||
+    fields.some((field) => !Object.hasOwn(descriptors, field)) ||
+    keys.some((key) => !fields.includes(key))
+  ) {
+    throw new Error("ULC Linz lifecycle activation evidence is invalid.");
+  }
+  for (const descriptor of Object.values(descriptors)) {
+    if (
+      !Object.hasOwn(descriptor, "value") ||
+      descriptor.enumerable !== true ||
+      descriptor.get !== undefined ||
+      descriptor.set !== undefined
+    ) {
+      throw new Error("ULC Linz lifecycle activation evidence is invalid.");
+    }
+  }
+  return value;
+}
+
 function gitBlobSha(content) {
   const size = Buffer.byteLength(content, "utf8");
   return createHash("sha1")
@@ -215,6 +345,32 @@ function gitBlobSha(content) {
 
 function normalizeLineEndings(value) {
   return value.replaceAll("\r\n", "\n");
+}
+
+function canonicalTimestamp(value) {
+  if (typeof value !== "string") return null;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    return null;
+  }
+  return parsed;
+}
+
+function requiredDate(value) {
+  const parsed =
+    value instanceof Date
+      ? new Date(value.getTime())
+      : typeof value === "string"
+        ? new Date(value)
+        : null;
+  if (
+    parsed === null ||
+    !Number.isFinite(parsed.getTime()) ||
+    (typeof value === "string" && parsed.toISOString() !== value)
+  ) {
+    throw new Error("ULC Linz lifecycle evidence clock is invalid.");
+  }
+  return parsed;
 }
 
 function isPlainObject(value) {

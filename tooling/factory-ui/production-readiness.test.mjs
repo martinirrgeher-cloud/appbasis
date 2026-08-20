@@ -282,7 +282,7 @@ test("repository evidence does not infer app-specific high privacy binding", () 
   );
 });
 
-test("Factory snapshot keeps high privacy evidence open while consuming verified ULC B/C/D evidence", async () => {
+test("Factory snapshot keeps operational lifecycle and high privacy evidence open without production activation", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot);
 
   assert.ok(snapshot.apps.length > 0);
@@ -290,7 +290,7 @@ test("Factory snapshot keeps high privacy evidence open while consuming verified
     const isUlcLinz = app.appId === "ulc-linz";
     assert.equal(app.productionReadiness.status, "blocked");
     assert.equal(app.productionReadiness.productionReady, false);
-    assert.equal(app.productionReadiness.verifiedCount, isUlcLinz ? 4 : 1);
+    assert.equal(app.productionReadiness.verifiedCount, isUlcLinz ? 2 : 1);
     assert.equal(app.productionReadiness.requiredCount, expectedIds.length);
     assert.deepEqual(
       app.productionReadiness.criteria.map((criterion) => criterion.id),
@@ -312,13 +312,13 @@ test("Factory snapshot keeps high privacy evidence open while consuming verified
       app.productionReadiness.criteria.find(
         (criterion) => criterion.id === "deletionConcept",
       )?.status,
-      isUlcLinz ? "verified" : "open",
+      "open",
     );
     assert.equal(
       app.productionReadiness.criteria.find(
         (criterion) => criterion.id === "retention",
       )?.status,
-      isUlcLinz ? "verified" : "open",
+      "open",
     );
     assert.equal(
       app.productionReadiness.criteria.find(
@@ -331,10 +331,7 @@ test("Factory snapshot keeps high privacy evidence open while consuming verified
         .filter(
           (criterion) =>
             criterion.id !== "secretsOutsideAppManifests" &&
-            (!isUlcLinz ||
-              !["rolesAndPermissions", "deletionConcept", "retention"].includes(
-                criterion.id,
-              )),
+            (!isUlcLinz || criterion.id !== "rolesAndPermissions"),
         )
         .every((criterion) => criterion.status === "open"),
     );

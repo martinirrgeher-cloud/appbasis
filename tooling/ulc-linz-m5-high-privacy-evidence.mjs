@@ -12,7 +12,10 @@ import {
 } from "./factory-ui/production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./factory-ui/repository-production-readiness-evidence.mjs";
 import { deriveUlcLinzDataExportEvidence } from "./factory-ui/ulc-linz-data-export-evidence.mjs";
-import { deriveUlcLinzLifecycleEvidence } from "./factory-ui/ulc-linz-lifecycle-evidence.mjs";
+import {
+  deriveUlcLinzLifecycleContractDigest,
+  deriveUlcLinzLifecycleEvidence,
+} from "./factory-ui/ulc-linz-lifecycle-evidence.mjs";
 import { deriveUlcLinzRolesAndPermissionsEvidence } from "./factory-ui/ulc-linz-roles-permissions-evidence.mjs";
 import { deriveUlcLinzM5FAuditSecurityLoggingEvidence } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { deriveUlcLinzM5HControlPlaneEvidence } from "./ulc-linz-m5-control-plane-evidence.mjs";
@@ -38,6 +41,7 @@ const OWNER_INPUT_FIELDS = Object.freeze([
   "auditSecurityLoggingEvidenceInput",
   "providerBoundEvidenceInput",
   "controlPlaneEvidenceInput",
+  "lifecycleActivationEvidenceInput",
   "backupRestoreEvidenceInput",
 ]);
 const BACKUP_FIELDS = Object.freeze([
@@ -48,6 +52,7 @@ const BACKUP_FIELDS = Object.freeze([
   "restoreTargetBindingId",
   "evidenceSource",
   "restoreTestedAt",
+  "lifecycleContractDigest",
   "automaticBackupsEnabled",
   "retentionDefined",
   "preMigrationBackupDefined",
@@ -84,12 +89,22 @@ export async function deriveUlcLinzHighPrivacyRequirementEvidenceFromOwners(
   const nowDate = requiredDate(now);
   const volatileInputsCoherent = hasCoherentVolatileResourceBinding(inputs, nowDate);
 
-  const [rolesAndPermissionsEvidence, lifecycleEvidence, operatorAssessmentEvidence] =
-    await Promise.all([
-      deriveUlcLinzRolesAndPermissionsEvidence(repositoryRoot, definition),
-      deriveUlcLinzLifecycleEvidence(repositoryRoot, definition),
-      deriveOperatorUseCaseAssessmentEvidence(repositoryRoot),
-    ]);
+  const [
+    rolesAndPermissionsEvidence,
+    lifecycleEvidence,
+    operatorAssessmentEvidence,
+    lifecycleContractDigest,
+  ] = await Promise.all([
+    deriveUlcLinzRolesAndPermissionsEvidence(repositoryRoot, definition),
+    deriveUlcLinzLifecycleEvidence(
+      repositoryRoot,
+      definition,
+      volatileInputsCoherent ? inputs.lifecycleActivationEvidenceInput : undefined,
+      { now: nowDate },
+    ),
+    deriveOperatorUseCaseAssessmentEvidence(repositoryRoot),
+    deriveLifecycleContractDigestSafely(repositoryRoot),
+  ]);
   const leastPrivilegeEvidence = deriveLeastPrivilegeEvidence(
     rolesAndPermissionsEvidence,
   );
@@ -124,10 +139,12 @@ export async function deriveUlcLinzHighPrivacyRequirementEvidenceFromOwners(
   const backupRestoreEvidence =
     volatileInputsCoherent &&
     inputs.backupRestoreEvidenceInput !== undefined &&
-    inputs.providerBoundEvidenceInput !== undefined
+    inputs.providerBoundEvidenceInput !== undefined &&
+    lifecycleContractDigest !== null
       ? deriveBackupRestoreEvidence(
           inputs.backupRestoreEvidenceInput,
           inputs.providerBoundEvidenceInput,
+          lifecycleContractDigest,
           nowDate,
         )
       : EMPTY_EVIDENCE;
@@ -303,7 +320,20 @@ async function deriveOperatorUseCaseAssessmentEvidence(repositoryRoot) {
   }
 }
 
-function deriveBackupRestoreEvidence(input, providerBoundEvidenceInput, now) {
+async function deriveLifecycleContractDigestSafely(repositoryRoot) {
+  try {
+    return await deriveUlcLinzLifecycleContractDigest(repositoryRoot);
+  } catch {
+    return null;
+  }
+}
+
+function deriveBackupRestoreEvidence(
+  input,
+  providerBoundEvidenceInput,
+  expectedLifecycleContractDigest,
+  now,
+) {
   try {
     const evidence = exactRecord(input, BACKUP_FIELDS);
     const resourceBinding = evaluateUlcLinzProductionResourceBinding(
@@ -321,6 +351,7 @@ function deriveBackupRestoreEvidence(input, providerBoundEvidenceInput, now) {
       evidence.application !== "ulc-linz" ||
       evidence.environment !== "production" ||
       evidence.evidenceSource !== "controlled-restore-run" ||
+      evidence.lifecycleContractDigest !== expectedLifecycleContractDigest ||
       evidence.sourceDatabaseBindingId !==
         providerBoundEvidenceInput.resourceBindingEvidence.neon.databaseBindingId ||
       evidence.restoreTargetBindingId === evidence.sourceDatabaseBindingId ||
@@ -367,6 +398,7 @@ function hasCoherentVolatileResourceBinding(inputs, now) {
       inputs.providerBoundEvidenceInput,
       inputs.controlPlaneEvidenceInput,
       inputs.auditSecurityLoggingEvidenceInput,
+      inputs.lifecycleActivationEvidenceInput,
     ]) {
       if (candidate === undefined) continue;
       if (!isPlainObject(candidate) || !isPlainObject(candidate.resourceBindingEvidence)) {
