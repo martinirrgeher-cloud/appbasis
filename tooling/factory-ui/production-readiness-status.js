@@ -94,17 +94,46 @@ export function factoryLifecycleCopy(
     repositoryPreviewReady &&
     m6Consistent &&
     criterionIsVerified(releaseReadiness, "previewAccepted");
+  const productionDatabaseReady =
+    m6Consistent && criterionIsVerified(releaseReadiness, "productionDatabaseReady");
+  const productionWorkerReady =
+    m6Consistent && criterionIsVerified(releaseReadiness, "productionWorkerReady");
+  const productionUsersAndPermissionsReady =
+    m6Consistent && criterionIsVerified(releaseReadiness, "productionUsersAndPermissionsReady");
+  const productionMigrationsApplied =
+    m6Consistent && criterionIsVerified(releaseReadiness, "productionMigrationsApplied");
+  const productionDeploymentCompleted =
+    m6Consistent && criterionIsVerified(releaseReadiness, "productionDeploymentCompleted");
   const backupRecoveryReady =
     m6Consistent && criterionIsVerified(releaseReadiness, "backupRecoveryReady");
   const productionDomainReady =
     m6Consistent && criterionIsVerified(releaseReadiness, "productionDomainReady");
-  const productionDeploymentCompleted =
-    m6Consistent && criterionIsVerified(releaseReadiness, "productionDeploymentCompleted");
   const postDeploySmokePassed =
     m6Consistent && criterionIsVerified(releaseReadiness, "postDeploySmokePassed");
+  const preparationEvidenceStarted =
+    productionDatabaseReady ||
+    productionWorkerReady ||
+    productionUsersAndPermissionsReady ||
+    productionMigrationsApplied ||
+    productionDeploymentCompleted;
+  const preparationEvidenceComplete =
+    productionDatabaseReady &&
+    productionWorkerReady &&
+    productionUsersAndPermissionsReady &&
+    productionMigrationsApplied &&
+    productionDeploymentCompleted;
+  const preparationOrderingConsistent =
+    (!preparationEvidenceStarted || previewAccepted) &&
+    (!productionWorkerReady || productionDatabaseReady) &&
+    (!productionUsersAndPermissionsReady || productionWorkerReady) &&
+    (!productionMigrationsApplied || productionUsersAndPermissionsReady) &&
+    (!productionDeploymentCompleted || productionMigrationsApplied);
   const releaseOrderingConsistent =
-    (!securityPrivacyReady || backupRecoveryReady) &&
-    (!productionDomainReady || (backupRecoveryReady && securityPrivacyReady)) &&
+    preparationOrderingConsistent &&
+    (!backupRecoveryReady || preparationEvidenceComplete) &&
+    (!securityPrivacyReady || (preparationEvidenceComplete && backupRecoveryReady)) &&
+    (!productionDomainReady ||
+      (preparationEvidenceComplete && backupRecoveryReady && securityPrivacyReady)) &&
     (!postDeploySmokePassed || (productionDomainReady && productionDeploymentCompleted));
   const releaseCrossConsistent =
     m5Consistent &&
@@ -113,13 +142,9 @@ export function factoryLifecycleCopy(
     criterionIsVerified(releaseReadiness, "securityPrivacyReady") === securityPrivacyReady;
   const securityPrivacyStageReady = securityPrivacyReady && releaseCrossConsistent;
   const preparationStarted =
-    releaseCrossConsistent &&
-    previewAccepted &&
-    PREPARATION_CRITERION_IDS.some((id) => criterionIsVerified(releaseReadiness, id));
+    releaseCrossConsistent && previewAccepted && preparationEvidenceStarted;
   const preparationComplete =
-    releaseCrossConsistent &&
-    previewAccepted &&
-    PREPARATION_CRITERION_IDS.every((id) => criterionIsVerified(releaseReadiness, id));
+    releaseCrossConsistent && previewAccepted && preparationEvidenceComplete;
   const productionReady =
     previewAccepted &&
     releaseCrossConsistent &&
@@ -224,7 +249,7 @@ export function factoryLifecycleCopy(
   } else if (!releaseCrossConsistent) {
     nextStep = lifecycleNextStep(
       "Readiness-Status klären",
-      "M5/M6-Evidence widerspricht dem Security-/Privacy- oder Recovery-/Public-Ingress-Ablauf. Produktion bleibt fail-closed gesperrt.",
+      "M5/M6-Evidence widerspricht der verbindlichen Reihenfolge Preview → Produktionsvorbereitung → Recovery → Security & Privacy → Domain/Public Ingress → Smoke. Produktion bleibt fail-closed gesperrt.",
     );
   } else if (!preparationStarted) {
     nextStep = lifecycleNextStep(
