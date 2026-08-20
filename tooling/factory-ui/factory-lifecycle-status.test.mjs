@@ -27,6 +27,17 @@ function allM6Evidence() {
   );
 }
 
+function preparationEvidence(extra = {}) {
+  return {
+    previewAccepted: true,
+    productionDatabaseReady: true,
+    productionWorkerReady: true,
+    productionMigrationsApplied: true,
+    productionDeploymentCompleted: true,
+    ...extra,
+  };
+}
+
 function repositoryReadyPreview() {
   return {
     status: "repository-ready",
@@ -95,24 +106,32 @@ test("Factory lifecycle follows ADR-024 preparation, readiness and release phase
     }),
   );
   assert.equal(preparationInProgress.stages[2].heading, "In Arbeit · nicht öffentlich");
-  assert.equal(
-    preparationInProgress.nextStep.heading,
-    "Produktionsvorbereitung und M4/M5-Evidence fortsetzen",
+  assert.equal(preparationInProgress.nextStep.heading, "Produktionsvorbereitung vervollständigen");
+  assert.match(preparationInProgress.nextStep.detail, /Kontrollierte Produktionsmigrationen/);
+  assert.match(preparationInProgress.nextStep.detail, /Produktions-Deploy abgeschlossen/);
+
+  const preparationComplete = factoryLifecycleCopy(
+    preview,
+    m5Open,
+    evaluateM6ProductionReleaseReadiness(preparationEvidence()),
   );
-  assert.match(preparationInProgress.nextStep.detail, /Backup\/Recovery liegt vor dem finalen M5-Gate/);
+  assert.equal(preparationComplete.stages[2].state, "complete");
+  assert.equal(preparationComplete.stages[2].heading, "Vorbereitung abgeschlossen");
+  assert.equal(preparationComplete.stages[3].state, "locked");
+  assert.equal(preparationComplete.nextStep.heading, "M4/M5-Evidence abschließen");
+  assert.match(preparationComplete.nextStep.detail, /Backup\/Recovery liegt vor dem finalen M5-Gate/);
 
   const m5Ready = evaluateProductionReadiness(allM5Evidence());
   const productionReadyInProgress = factoryLifecycleCopy(
     preview,
     m5Ready,
-    evaluateM6ProductionReleaseReadiness({
-      previewAccepted: true,
-      securityPrivacyReady: true,
-    }),
+    evaluateM6ProductionReleaseReadiness(
+      preparationEvidence({ securityPrivacyReady: true }),
+    ),
   );
   assert.equal(productionReadyInProgress.stages[2].state, "complete");
   assert.equal(productionReadyInProgress.stages[3].state, "current");
-  assert.equal(productionReadyInProgress.stages[3].heading, "2/10 geprüft");
+  assert.equal(productionReadyInProgress.stages[3].heading, "6/10 geprüft");
   assert.equal(productionReadyInProgress.nextStep.heading, "Production Ready vervollständigen");
 
   const productionReady = factoryLifecycleCopy(
@@ -128,6 +147,21 @@ test("Factory lifecycle follows ADR-024 preparation, readiness and release phase
     productionReady.nextStep.heading,
     "Ausdrückliche Produktionsfreigabe erforderlich",
   );
+});
+
+test("Factory lifecycle does not let M5 alone complete production preparation", () => {
+  const lifecycle = factoryLifecycleCopy(
+    repositoryReadyPreview(),
+    evaluateProductionReadiness(allM5Evidence()),
+    evaluateM6ProductionReleaseReadiness({
+      previewAccepted: true,
+      securityPrivacyReady: true,
+    }),
+  );
+
+  assert.equal(lifecycle.stages[2].state, "current");
+  assert.equal(lifecycle.stages[3].state, "locked");
+  assert.equal(lifecycle.nextStep.heading, "Kontrollierte Produktionsvorbereitung vorbereiten");
 });
 
 test("Factory lifecycle blocks ambiguous preview and M5/M6 cross-gate drift", () => {
