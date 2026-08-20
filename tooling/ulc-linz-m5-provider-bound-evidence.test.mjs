@@ -187,7 +187,7 @@ function resourceBindingEvidence() {
     cloudflare: {
       accountBindingId: "opaque-account",
       runtimeBindingId: "opaque-worker",
-      hostnameBinding: "ulc.example.test",
+      hostnameBinding: null,
       databaseBindingId: "opaque-hyperdrive",
       identitySource: "provider-api",
       bindingInventoryComplete: true,
@@ -217,7 +217,7 @@ function derive(
   );
 }
 
-test("returns only M5-G criterion booleans when runtime/resource and compliance evidence are one aligned fresh production snapshot", () => {
+test("returns M5-G criteria from one aligned private production snapshot before public hostname activation", () => {
   const result = derive();
   assert.deepEqual(result, {
     dataRegion: true,
