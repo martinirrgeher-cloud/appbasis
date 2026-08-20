@@ -63,7 +63,8 @@ export function productionReleaseReadinessCopy(readiness) {
 }
 
 export function productionReleaseCriteriaCopy(readiness) {
-  const consistent = isConsistentM6Readiness(readiness);
+  const consistent =
+    isConsistentM6Readiness(readiness) && isConsistentM6CriterionOrdering(readiness);
   return Object.freeze(
     REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map((criterion, index) =>
       Object.freeze({
@@ -292,6 +293,50 @@ function lifecycleNextStep(heading, detail) {
 function criterionIsVerified(readiness, id) {
   const index = REQUIRED_M6_CRITERION_IDS.indexOf(id);
   return index >= 0 && readiness.criteria[index].status === "verified";
+}
+
+function isConsistentM6CriterionOrdering(readiness) {
+  const previewAccepted = criterionIsVerified(readiness, "previewAccepted");
+  const productionDatabaseReady = criterionIsVerified(readiness, "productionDatabaseReady");
+  const productionWorkerReady = criterionIsVerified(readiness, "productionWorkerReady");
+  const productionUsersAndPermissionsReady = criterionIsVerified(
+    readiness,
+    "productionUsersAndPermissionsReady",
+  );
+  const backupRecoveryReady = criterionIsVerified(readiness, "backupRecoveryReady");
+  const securityPrivacyReady = criterionIsVerified(readiness, "securityPrivacyReady");
+  const productionMigrationsApplied = criterionIsVerified(readiness, "productionMigrationsApplied");
+  const productionDeploymentCompleted = criterionIsVerified(
+    readiness,
+    "productionDeploymentCompleted",
+  );
+  const productionDomainReady = criterionIsVerified(readiness, "productionDomainReady");
+  const postDeploySmokePassed = criterionIsVerified(readiness, "postDeploySmokePassed");
+  const preparationEvidenceStarted =
+    productionDatabaseReady ||
+    productionWorkerReady ||
+    productionUsersAndPermissionsReady ||
+    productionMigrationsApplied ||
+    productionDeploymentCompleted;
+  const preparationEvidenceComplete =
+    productionDatabaseReady &&
+    productionWorkerReady &&
+    productionUsersAndPermissionsReady &&
+    productionMigrationsApplied &&
+    productionDeploymentCompleted;
+
+  return (
+    (!preparationEvidenceStarted || previewAccepted) &&
+    (!productionWorkerReady || productionDatabaseReady) &&
+    (!productionMigrationsApplied || productionWorkerReady) &&
+    (!productionDeploymentCompleted || productionMigrationsApplied) &&
+    (!productionUsersAndPermissionsReady || productionDeploymentCompleted) &&
+    (!backupRecoveryReady || preparationEvidenceComplete) &&
+    (!securityPrivacyReady || (preparationEvidenceComplete && backupRecoveryReady)) &&
+    (!productionDomainReady ||
+      (preparationEvidenceComplete && backupRecoveryReady && securityPrivacyReady)) &&
+    (!postDeploySmokePassed || (productionDomainReady && productionDeploymentCompleted))
+  );
 }
 
 function m6CriterionLabel(id) {
