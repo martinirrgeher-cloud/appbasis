@@ -56,16 +56,23 @@ function makeFetch({
   return { fetchImpl, requests };
 }
 
-test("ULC M6 executable provider-state preflight performs only read-only provider GETs and still requires explicit approval", async () => {
+test("ULC M6 executable provider-state preflight performs only read-only provider GETs and remains blocked before the preparation gate", async () => {
   const { fetchImpl, requests } = makeFetch();
   const result = await runUlcLinzM6ProviderStatePreflight(validInputs(), {
     fetchImpl,
     now: NOW,
   });
-  assert.equal(result.status, "ready-for-explicit-provider-write-approval");
+  assert.equal(
+    result.status,
+    "provider-inventory-verified-blocked-before-production-preparation-gate",
+  );
   assert.equal(result.readOnlyProviderStatePreflightVerified, true);
   assert.equal(result.cloudflareWorkerInventoryVerified, true);
   assert.equal(result.noExistingCloudflareWorkerCandidate, true);
+  assert.equal(result.productionPreparationGateEvidenceConsumed, false);
+  assert.equal(result.productionPreparationEligible, false);
+  assert.equal(result.productionReady, false);
+  assert.equal(result.publicExposureAllowed, false);
   assert.equal(result.providerWriteAllowed, false);
   assert.equal(result.executionAuthorized, false);
   assert.equal(result.explicitApprovalRequired, true);
