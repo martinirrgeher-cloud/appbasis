@@ -36,57 +36,15 @@ function legalEntry({
 
 function fullLegalEvidence() {
   return [
-    legalEntry({
-      provider: "cloudflare",
-      documentType: "dpa",
-      canonicalSource: "https://www.cloudflare.com/cloudflare-customer-dpa/",
-    }),
-    legalEntry({
-      provider: "cloudflare",
-      documentType: "dpa-account-binding",
-      canonicalSource: "https://dash.cloudflare.com/",
-      accountSpecific: true,
-      publicBaseline: false,
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "terms",
-      canonicalSource: "https://neon.com/platform-terms",
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "dpa",
-      canonicalSource: "https://www.databricks.com/legal/data-processing-addendum",
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "dpa-account-binding",
-      canonicalSource: "https://console.neon.tech/",
-      accountSpecific: true,
-      publicBaseline: false,
-    }),
-    legalEntry({
-      provider: "cloudflare",
-      documentType: "subprocessors",
-      canonicalSource: "https://www.cloudflare.com/cloudflare-subprocessors/",
-      transferModelConsistentWithAdr022: true,
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "subprocessors",
-      canonicalSource: "https://www.databricks.com/legal/subprocessors",
-      transferModelConsistentWithAdr022: true,
-    }),
-    legalEntry({
-      provider: "cloudflare",
-      documentType: "security",
-      canonicalSource: "https://developers.cloudflare.com/ssl/",
-    }),
-    legalEntry({
-      provider: "neon-databricks",
-      documentType: "security",
-      canonicalSource: "https://neon.com/docs/security/security-overview",
-    }),
+    legalEntry({ provider: "cloudflare", documentType: "dpa", canonicalSource: "https://www.cloudflare.com/cloudflare-customer-dpa/" }),
+    legalEntry({ provider: "cloudflare", documentType: "dpa-account-binding", canonicalSource: "https://dash.cloudflare.com/", accountSpecific: true, publicBaseline: false }),
+    legalEntry({ provider: "neon-databricks", documentType: "terms", canonicalSource: "https://neon.com/platform-terms" }),
+    legalEntry({ provider: "neon-databricks", documentType: "dpa", canonicalSource: "https://www.databricks.com/legal/data-processing-addendum" }),
+    legalEntry({ provider: "neon-databricks", documentType: "dpa-account-binding", canonicalSource: "https://console.neon.tech/", accountSpecific: true, publicBaseline: false }),
+    legalEntry({ provider: "cloudflare", documentType: "subprocessors", canonicalSource: "https://www.cloudflare.com/cloudflare-subprocessors/", transferModelConsistentWithAdr022: true }),
+    legalEntry({ provider: "neon-databricks", documentType: "subprocessors", canonicalSource: "https://www.databricks.com/legal/subprocessors", transferModelConsistentWithAdr022: true }),
+    legalEntry({ provider: "cloudflare", documentType: "security", canonicalSource: "https://developers.cloudflare.com/ssl/" }),
+    legalEntry({ provider: "neon-databricks", documentType: "security", canonicalSource: "https://neon.com/docs/security/security-overview" }),
   ];
 }
 
@@ -104,7 +62,7 @@ function complianceEvidence() {
       cloudflare: {
         resourceClass: "production",
         runtimeBound: true,
-        routeBound: true,
+        routeBound: false,
         runtimeClass: "standard-workers",
         bindingsInventoryComplete: true,
         bindings: [
@@ -128,36 +86,11 @@ function complianceEvidence() {
     },
     legalEvidence: fullLegalEvidence(),
     dataFlows: [
-      {
-        from: "ulc-linz-user",
-        to: "cloudflare",
-        purpose: "application-request-processing",
-        status: "verified",
-      },
-      {
-        from: "cloudflare",
-        to: "neon-postgresql",
-        purpose: "application-persistence",
-        status: "verified",
-      },
-      {
-        from: "appbasis-control-plane",
-        to: "cloudflare",
-        purpose: "provider-evidence-read",
-        status: "verified",
-      },
-      {
-        from: "appbasis-control-plane",
-        to: "neon-postgresql",
-        purpose: "provider-evidence-read",
-        status: "verified",
-      },
-      {
-        from: "neon-postgresql",
-        to: "neon-postgresql",
-        purpose: "managed-backup-recovery",
-        status: "verified",
-      },
+      { from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" },
+      { from: "cloudflare", to: "neon-postgresql", purpose: "application-persistence", status: "verified" },
+      { from: "appbasis-control-plane", to: "cloudflare", purpose: "provider-evidence-read", status: "verified" },
+      { from: "appbasis-control-plane", to: "neon-postgresql", purpose: "provider-evidence-read", status: "verified" },
+      { from: "neon-postgresql", to: "neon-postgresql", purpose: "managed-backup-recovery", status: "verified" },
     ],
   };
 }
@@ -202,36 +135,22 @@ function fingerprint(resource = resourceBindingEvidence()) {
   return deriveUlcLinzM5GResourceBindingFingerprint(resource, { now: NOW });
 }
 
-function derive(
-  resource = resourceBindingEvidence(),
-  compliance = complianceEvidence(),
-  complianceResourceBindingFingerprint = fingerprint(resource),
-) {
+function derive(resource = resourceBindingEvidence(), compliance = complianceEvidence(), complianceResourceBindingFingerprint = fingerprint(resource)) {
   return deriveUlcLinzM5GBoundProductionEvidence(
-    {
-      resourceBindingEvidence: resource,
-      complianceEvidence: compliance,
-      complianceResourceBindingFingerprint,
-    },
+    { resourceBindingEvidence: resource, complianceEvidence: compliance, complianceResourceBindingFingerprint },
     { now: NOW },
   );
 }
 
-test("returns M5-G criteria from one aligned private production snapshot before public hostname activation", () => {
+test("returns M5-G criteria from one aligned private production snapshot before public route or hostname activation", () => {
   const result = derive();
-  assert.deepEqual(result, {
-    dataRegion: true,
-    dpa: true,
-    encryption: true,
-    subprocessors: true,
-  });
+  assert.deepEqual(result, { dataRegion: true, dpa: true, encryption: true, subprocessors: true });
   assert.equal(Object.isFrozen(result), true);
+  assert.equal(complianceEvidence().providers.cloudflare.routeBound, false);
+  assert.equal(resourceBindingEvidence().cloudflare.hostnameBinding, null);
   const serialized = JSON.stringify(result);
   assert.equal(serialized.includes("opaque-neon-project"), false);
-  assert.equal(
-    serialized.includes(ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST),
-    false,
-  );
+  assert.equal(serialized.includes(ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST), false);
 });
 
 test("creates a deterministic secrets-free correlation fingerprint only after resource validation", () => {
@@ -240,7 +159,6 @@ test("creates a deterministic secrets-free correlation fingerprint only after re
   assert.match(value, /^sha256:[a-f0-9]{64}$/);
   assert.equal(value, fingerprint(resource));
   assert.equal(value.includes("opaque-neon-project"), false);
-
   const drifted = resourceBindingEvidence();
   drifted.runtime.contractDigest = `sha256:${"0".repeat(64)}`;
   assert.throws(() => fingerprint(drifted));
@@ -249,41 +167,27 @@ test("creates a deterministic secrets-free correlation fingerprint only after re
 test("fails closed when exact runtime-contract evidence is absent or drifted", () => {
   assert.deepEqual(
     deriveUlcLinzM5GBoundProductionEvidence(
-      {
-        complianceEvidence: complianceEvidence(),
-        complianceResourceBindingFingerprint: fingerprint(),
-      },
+      { complianceEvidence: complianceEvidence(), complianceResourceBindingFingerprint: fingerprint() },
       { now: NOW },
     ),
     {},
   );
-
   const drifted = resourceBindingEvidence();
   drifted.runtime.contractDigest = `sha256:${"0".repeat(64)}`;
-  assert.deepEqual(
-    derive(drifted, complianceEvidence(), fingerprint()),
-    {},
-  );
+  assert.deepEqual(derive(drifted, complianceEvidence(), fingerprint()), {});
 });
 
 test("fails closed when the compliance snapshot is correlated to another concrete resource binding", () => {
   const other = resourceBindingEvidence();
   other.cloudflare.runtimeBindingId = "opaque-other-worker";
   assert.notEqual(fingerprint(other), fingerprint());
-  assert.deepEqual(
-    derive(resourceBindingEvidence(), complianceEvidence(), fingerprint(other)),
-    {},
-  );
+  assert.deepEqual(derive(resourceBindingEvidence(), complianceEvidence(), fingerprint(other)), {});
 });
 
 test("fails closed when resource binding and compliance evidence do not share the same observation window", () => {
   const resource = resourceBindingEvidence();
   resource.observedAt = "2026-08-18T12:44:59.000Z";
-  assert.deepEqual(
-    derive(resource, complianceEvidence(), fingerprint(resource)),
-    {},
-  );
-
+  assert.deepEqual(derive(resource, complianceEvidence(), fingerprint(resource)), {});
   const compliance = complianceEvidence();
   compliance.validUntilOrReviewAt = "2026-08-18T13:46:00.000Z";
   assert.deepEqual(derive(resourceBindingEvidence(), compliance), {});
@@ -293,7 +197,6 @@ test("fails closed when provider semantics disagree across the two evidence laye
   const compliance = complianceEvidence();
   compliance.providers["neon-postgresql"].regionId = "aws-us-east-1";
   assert.deepEqual(derive(resourceBindingEvidence(), compliance), {});
-
   const wrongRuntime = complianceEvidence();
   wrongRuntime.providers.cloudflare.runtimeClass = "regional-services";
   assert.deepEqual(derive(resourceBindingEvidence(), wrongRuntime), {});
@@ -301,26 +204,15 @@ test("fails closed when provider semantics disagree across the two evidence laye
 
 test("fails closed when a canonical operational flow is absent", () => {
   const compliance = complianceEvidence();
-  compliance.dataFlows = compliance.dataFlows.filter(
-    (flow) => flow.purpose !== "managed-backup-recovery",
-  );
+  compliance.dataFlows = compliance.dataFlows.filter((flow) => flow.purpose !== "managed-backup-recovery");
   assert.deepEqual(derive(resourceBindingEvidence(), compliance), {});
 });
 
 test("preserves independent criteria after the common runtime/resource binding has been proven", () => {
   const compliance = complianceEvidence();
-  const subprocessors = compliance.legalEvidence.find(
-    (entry) =>
-      entry.provider === "cloudflare" &&
-      entry.documentType === "subprocessors",
-  );
+  const subprocessors = compliance.legalEvidence.find((entry) => entry.provider === "cloudflare" && entry.documentType === "subprocessors");
   subprocessors.validUntilOrReviewAt = "2026-08-18T12:49:59.000Z";
-
-  assert.deepEqual(derive(resourceBindingEvidence(), compliance), {
-    dataRegion: true,
-    dpa: true,
-    encryption: true,
-  });
+  assert.deepEqual(derive(resourceBindingEvidence(), compliance), { dataRegion: true, dpa: true, encryption: true });
 });
 
 test("never invokes accessors and rejects symbols or inherited wrapper objects", () => {
@@ -336,10 +228,7 @@ test("never invokes accessors and rejects symbols or inherited wrapper objects",
       return complianceEvidence();
     },
   });
-  assert.deepEqual(
-    deriveUlcLinzM5GBoundProductionEvidence(accessor, { now: NOW }),
-    {},
-  );
+  assert.deepEqual(deriveUlcLinzM5GBoundProductionEvidence(accessor, { now: NOW }), {});
   assert.equal(calls, 0);
 
   const symbol = {
@@ -348,18 +237,12 @@ test("never invokes accessors and rejects symbols or inherited wrapper objects",
     complianceResourceBindingFingerprint: fingerprint(),
   };
   symbol[Symbol("hidden")] = true;
-  assert.deepEqual(
-    deriveUlcLinzM5GBoundProductionEvidence(symbol, { now: NOW }),
-    {},
-  );
+  assert.deepEqual(deriveUlcLinzM5GBoundProductionEvidence(symbol, { now: NOW }), {});
 
   const inherited = Object.create({
     resourceBindingEvidence: resourceBindingEvidence(),
     complianceEvidence: complianceEvidence(),
     complianceResourceBindingFingerprint: fingerprint(),
   });
-  assert.deepEqual(
-    deriveUlcLinzM5GBoundProductionEvidence(inherited, { now: NOW }),
-    {},
-  );
+  assert.deepEqual(deriveUlcLinzM5GBoundProductionEvidence(inherited, { now: NOW }), {});
 });
