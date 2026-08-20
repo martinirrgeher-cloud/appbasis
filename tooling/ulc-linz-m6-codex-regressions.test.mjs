@@ -32,7 +32,7 @@ function jsonResponse(value) {
 }
 
 function regionsResponse() {
-  return jsonResponse({ regions: [{ region_id: "aws-eu-central-1" }] });
+  return jsonResponse({ regions: [{ id: "aws-eu-central-1" }] });
 }
 
 function workersResponse() {
