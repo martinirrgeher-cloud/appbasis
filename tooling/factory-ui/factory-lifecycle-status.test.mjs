@@ -32,6 +32,7 @@ function preparationEvidence(extra = {}) {
     previewAccepted: true,
     productionDatabaseReady: true,
     productionWorkerReady: true,
+    productionAccessReady: true,
     productionMigrationsApplied: true,
     productionDeploymentCompleted: true,
     ...extra,
@@ -107,8 +108,21 @@ test("Factory lifecycle follows ADR-024 preparation, readiness and release phase
   );
   assert.equal(preparationInProgress.stages[2].heading, "In Arbeit · nicht öffentlich");
   assert.equal(preparationInProgress.nextStep.heading, "Produktionsvorbereitung vervollständigen");
+  assert.match(preparationInProgress.nextStep.detail, /Produktive Benutzer & Rechte/);
   assert.match(preparationInProgress.nextStep.detail, /Kontrollierte Produktionsmigrationen/);
   assert.match(preparationInProgress.nextStep.detail, /Produktions-Deploy abgeschlossen/);
+
+  const missingProductionAccess = factoryLifecycleCopy(
+    preview,
+    m5Open,
+    evaluateM6ProductionReleaseReadiness({
+      ...preparationEvidence(),
+      productionAccessReady: false,
+    }),
+  );
+  assert.equal(missingProductionAccess.stages[2].state, "current");
+  assert.equal(missingProductionAccess.nextStep.heading, "Produktionsvorbereitung vervollständigen");
+  assert.match(missingProductionAccess.nextStep.detail, /Produktive Benutzer & Rechte/);
 
   const preparationComplete = factoryLifecycleCopy(
     preview,
@@ -131,7 +145,7 @@ test("Factory lifecycle follows ADR-024 preparation, readiness and release phase
   );
   assert.equal(productionReadyInProgress.stages[2].state, "complete");
   assert.equal(productionReadyInProgress.stages[3].state, "current");
-  assert.equal(productionReadyInProgress.stages[3].heading, "6/10 geprüft");
+  assert.equal(productionReadyInProgress.stages[3].heading, "7/10 geprüft");
   assert.equal(productionReadyInProgress.nextStep.heading, "Production Ready vervollständigen");
 
   const productionReady = factoryLifecycleCopy(
