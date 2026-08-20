@@ -91,7 +91,7 @@ export function factoryLifecycleCopy(
   const securityPrivacyReady =
     m5Consistent && productionReadiness.productionReady === true;
   const previewAccepted =
-    previewConsistent &&
+    repositoryPreviewReady &&
     m6Consistent &&
     criterionIsVerified(releaseReadiness, "previewAccepted");
   const releaseCrossConsistent =
@@ -108,7 +108,9 @@ export function factoryLifecycleCopy(
     previewAccepted &&
     PREPARATION_CRITERION_IDS.every((id) => criterionIsVerified(releaseReadiness, id));
   const productionReady =
-    releaseCrossConsistent && releaseReadiness.technicalEvidenceVerified === true;
+    previewAccepted &&
+    releaseCrossConsistent &&
+    releaseReadiness.technicalEvidenceVerified === true;
 
   const m5OpenLabels = m5Consistent
     ? REQUIRED_PRODUCTION_READINESS_CRITERIA
