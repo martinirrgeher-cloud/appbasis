@@ -40,38 +40,54 @@ export function productionReadinessCopy(readiness) {
   });
 }
 
-export function productionReleaseReadinessCopy(readiness) {
-  if (!isConsistentM6Readiness(readiness)) {
+export function productionReleaseReadinessCopy(
+  previewReadiness,
+  productionReadiness,
+  releaseReadiness,
+) {
+  const displayConsistent = isConsistentM6DisplaySnapshot(
+    previewReadiness,
+    productionReadiness,
+    releaseReadiness,
+  );
+  if (!displayConsistent) {
     return Object.freeze({
       heading: "M6 nicht verifiziert",
-      detail: "Der M6-Status ist nicht eindeutig verfügbar. Produktion bleibt gesperrt.",
+      detail: "Preview-, M5- oder M6-Evidence ist nicht konsistent. Produktion bleibt gesperrt.",
     });
   }
 
-  if (readiness.technicalEvidenceVerified === true) {
+  if (releaseReadiness.technicalEvidenceVerified === true) {
     return Object.freeze({
-      heading: `M6 ${readiness.verifiedCount}/${readiness.requiredCount} technisch geprüft`,
+      heading: `M6 ${releaseReadiness.verifiedCount}/${releaseReadiness.requiredCount} technisch geprüft`,
       detail: "Die technische M6-Evidenz ist vollständig. Dieser Status autorisiert keine Produktionsfreigabe.",
     });
   }
 
-  const openCount = readiness.requiredCount - readiness.verifiedCount;
+  const openCount = releaseReadiness.requiredCount - releaseReadiness.verifiedCount;
   return Object.freeze({
-    heading: `M6 ${readiness.verifiedCount}/${readiness.requiredCount} technisch geprüft`,
+    heading: `M6 ${releaseReadiness.verifiedCount}/${releaseReadiness.requiredCount} technisch geprüft`,
     detail: `${openCount} ${openCount === 1 ? "Nachweis ist" : "Nachweise sind"} noch offen. Produktion bleibt gesperrt.`,
   });
 }
 
-export function productionReleaseCriteriaCopy(readiness) {
-  const consistent =
-    isConsistentM6Readiness(readiness) && isConsistentM6CriterionOrdering(readiness);
+export function productionReleaseCriteriaCopy(
+  previewReadiness,
+  productionReadiness,
+  releaseReadiness,
+) {
+  const displayConsistent = isConsistentM6DisplaySnapshot(
+    previewReadiness,
+    productionReadiness,
+    releaseReadiness,
+  );
   return Object.freeze(
     REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map((criterion, index) =>
       Object.freeze({
         id: criterion.id,
         label: criterion.label,
         status:
-          consistent && readiness.criteria[index].status === "verified"
+          displayConsistent && releaseReadiness.criteria[index].status === "verified"
             ? "verified"
             : "open",
       }),
@@ -93,10 +109,13 @@ export function factoryLifecycleCopy(
     m6Consistent && isConsistentM6CriterionOrdering(releaseReadiness);
   const securityPrivacyReady =
     m5Consistent && productionReadiness.productionReady === true;
+  const releaseCrossConsistent = isConsistentM6DisplaySnapshot(
+    previewReadiness,
+    productionReadiness,
+    releaseReadiness,
+  );
   const previewAccepted =
-    repositoryPreviewReady &&
-    m6OrderingConsistent &&
-    criterionIsVerified(releaseReadiness, "previewAccepted");
+    releaseCrossConsistent && criterionIsVerified(releaseReadiness, "previewAccepted");
   const productionDatabaseReady =
     m6Consistent && criterionIsVerified(releaseReadiness, "productionDatabaseReady");
   const productionWorkerReady =
@@ -125,25 +144,6 @@ export function factoryLifecycleCopy(
     productionUsersAndPermissionsReady &&
     productionMigrationsApplied &&
     productionDeploymentCompleted;
-  const preparationOrderingConsistent =
-    (!preparationEvidenceStarted || previewAccepted) &&
-    (!productionWorkerReady || productionDatabaseReady) &&
-    (!productionMigrationsApplied || productionWorkerReady) &&
-    (!productionDeploymentCompleted || productionMigrationsApplied) &&
-    (!productionUsersAndPermissionsReady || productionDeploymentCompleted);
-  const releaseOrderingConsistent =
-    m6OrderingConsistent &&
-    preparationOrderingConsistent &&
-    (!backupRecoveryReady || preparationEvidenceComplete) &&
-    (!securityPrivacyReady || (preparationEvidenceComplete && backupRecoveryReady)) &&
-    (!productionDomainReady ||
-      (preparationEvidenceComplete && backupRecoveryReady && securityPrivacyReady)) &&
-    (!postDeploySmokePassed || (productionDomainReady && productionDeploymentCompleted));
-  const releaseCrossConsistent =
-    m5Consistent &&
-    m6Consistent &&
-    releaseOrderingConsistent &&
-    criterionIsVerified(releaseReadiness, "securityPrivacyReady") === securityPrivacyReady;
   const securityPrivacyStageReady = securityPrivacyReady && releaseCrossConsistent;
   const preparationStarted =
     releaseCrossConsistent && previewAccepted && preparationEvidenceStarted;
@@ -245,11 +245,6 @@ export function factoryLifecycleCopy(
       "Readiness-Status klären",
       "M6-Evidence widerspricht der verbindlichen Reihenfolge Preview → Produktionsvorbereitung → Recovery → Security & Privacy → Domain/Public Ingress → Smoke. Produktion bleibt fail-closed gesperrt.",
     );
-  } else if (!previewAccepted) {
-    nextStep = lifecycleNextStep(
-      "Preview erstellen und prüfen",
-      "Als Nächstes den getrennten Preview-Pfad verwenden und die Preview abnehmen. Diese Ansicht startet noch kein Deployment.",
-    );
   } else if (!m5Consistent) {
     nextStep = lifecycleNextStep(
       "Security-/Privacy-Status klären",
@@ -258,7 +253,12 @@ export function factoryLifecycleCopy(
   } else if (!releaseCrossConsistent) {
     nextStep = lifecycleNextStep(
       "Readiness-Status klären",
-      "M5/M6-Evidence widerspricht der verbindlichen Reihenfolge Preview → Produktionsvorbereitung → Recovery → Security & Privacy → Domain/Public Ingress → Smoke. Produktion bleibt fail-closed gesperrt.",
+      "M5/M6-Evidence widerspricht dem aktuellen Preview-/Security-/Privacy-Gesamtzustand. Produktion bleibt fail-closed gesperrt.",
+    );
+  } else if (!previewAccepted) {
+    nextStep = lifecycleNextStep(
+      "Preview erstellen und prüfen",
+      "Als Nächstes den getrennten Preview-Pfad verwenden und die Preview abnehmen. Diese Ansicht startet noch kein Deployment.",
     );
   } else if (!preparationStarted) {
     nextStep = lifecycleNextStep(
@@ -301,6 +301,23 @@ function lifecycleNextStep(heading, detail) {
 function criterionIsVerified(readiness, id) {
   const index = REQUIRED_M6_CRITERION_IDS.indexOf(id);
   return index >= 0 && readiness.criteria[index].status === "verified";
+}
+
+function isConsistentM6DisplaySnapshot(
+  previewReadiness,
+  productionReadiness,
+  releaseReadiness,
+) {
+  if (!isConsistentPreviewReadiness(previewReadiness)) return false;
+  if (previewReadiness.status !== "repository-ready") return false;
+  if (!isConsistentReadiness(productionReadiness)) return false;
+  if (!isConsistentM6Readiness(releaseReadiness)) return false;
+  if (!isConsistentM6CriterionOrdering(releaseReadiness)) return false;
+
+  const securityPrivacyReady = productionReadiness.productionReady === true;
+  return (
+    criterionIsVerified(releaseReadiness, "securityPrivacyReady") === securityPrivacyReady
+  );
 }
 
 function isConsistentM6CriterionOrdering(readiness) {
