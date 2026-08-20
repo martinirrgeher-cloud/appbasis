@@ -225,8 +225,16 @@ function renderAppDetail(app) {
   if (elements.detailSchema) elements.detailSchema.textContent = `Schema v${app.schemaVersion}`;
   replaceWithValueChips(elements.detailModules, app.modules, moduleLabel);
   replaceWithValueChips(elements.detailServices, app.platformServices, serviceLabel);
-  renderPreviewReadiness(app.previewReadiness, app.productionReleaseReadiness);
-  renderProductionReadiness(app.productionReadiness, app.productionReleaseReadiness);
+  renderPreviewReadiness(
+    app.previewReadiness,
+    app.productionReadiness,
+    app.productionReleaseReadiness,
+  );
+  renderProductionReadiness(
+    app.previewReadiness,
+    app.productionReadiness,
+    app.productionReleaseReadiness,
+  );
   renderFactoryLifecycle(
     app.previewReadiness,
     app.productionReadiness,
@@ -234,7 +242,7 @@ function renderAppDetail(app) {
   );
 }
 
-function renderPreviewReadiness(readiness, releaseReadiness) {
+function renderPreviewReadiness(readiness, productionReadiness, releaseReadiness) {
   const previewGate = document.querySelector(
     ".factory-detail-gates .factory-detail-gate:nth-child(3)",
   );
@@ -244,7 +252,7 @@ function renderPreviewReadiness(readiness, releaseReadiness) {
 
   const previewAccepted =
     readiness?.status === "repository-ready" &&
-    productionReleaseCriteriaCopy(releaseReadiness).some(
+    productionReleaseCriteriaCopy(readiness, productionReadiness, releaseReadiness).some(
       (criterion) => criterion.id === "previewAccepted" && criterion.status === "verified",
     );
 
@@ -276,19 +284,33 @@ function renderPreviewReadiness(readiness, releaseReadiness) {
       : "Die lokalen Preview-Voraussetzungen konnten nicht vollständig bestätigt werden. Preview bleibt gesperrt.";
 }
 
-function renderProductionReadiness(readiness, releaseReadiness) {
+function renderProductionReadiness(previewReadiness, readiness, releaseReadiness) {
   if (!elements.detailProductionStatus || !elements.detailProductionSummary) return;
   const m5Copy = productionReadinessCopy(readiness);
-  const m6Copy = productionReleaseReadinessCopy(releaseReadiness);
+  const m6Copy = productionReleaseReadinessCopy(
+    previewReadiness,
+    readiness,
+    releaseReadiness,
+  );
   const productionGate = elements.detailProductionStatus.closest(".factory-detail-gate");
   const productionLabel = productionGate?.querySelector(":scope > span");
   if (productionLabel) productionLabel.textContent = "Security & Privacy Ready";
   elements.detailProductionStatus.textContent = m5Copy.heading;
   elements.detailProductionSummary.textContent = m5Copy.detail;
-  renderProductionReleaseCriteria(releaseReadiness, m6Copy);
+  renderProductionReleaseCriteria(
+    previewReadiness,
+    readiness,
+    releaseReadiness,
+    m6Copy,
+  );
 }
 
-function renderProductionReleaseCriteria(readiness, releaseCopy) {
+function renderProductionReleaseCriteria(
+  previewReadiness,
+  productionReadiness,
+  releaseReadiness,
+  releaseCopy,
+) {
   const productionGate = elements.detailProductionStatus?.closest(".factory-detail-gate");
   if (!productionGate) return;
 
@@ -315,7 +337,11 @@ function renderProductionReleaseCriteria(readiness, releaseCopy) {
   }
 
   criteriaList.replaceChildren();
-  for (const criterion of productionReleaseCriteriaCopy(readiness)) {
+  for (const criterion of productionReleaseCriteriaCopy(
+    previewReadiness,
+    productionReadiness,
+    releaseReadiness,
+  )) {
     const item = document.createElement("div");
     item.className = "factory-detail-gate";
     if (criterion.status !== "verified") {
