@@ -116,8 +116,9 @@ test("Factory lifecycle follows ADR-024 preparation, readiness and release phase
     preview,
     m5Open,
     evaluateM6ProductionReleaseReadiness({
-      ...preparationEvidence(),
-      productionUsersAndPermissionsReady: false,
+      previewAccepted: true,
+      productionDatabaseReady: true,
+      productionWorkerReady: true,
     }),
   );
   assert.equal(missingProductionAccess.stages[2].state, "current");
@@ -174,9 +175,115 @@ test("Factory lifecycle does not let M5 alone complete production preparation", 
     }),
   );
 
-  assert.equal(lifecycle.stages[2].state, "current");
+  assert.equal(lifecycle.nextStep.heading, "Readiness-Status klären");
+  assert.equal(lifecycle.stages[2].state, "locked");
   assert.equal(lifecycle.stages[3].state, "locked");
-  assert.equal(lifecycle.nextStep.heading, "Kontrollierte Produktionsvorbereitung vorbereiten");
+});
+
+test("Factory lifecycle rejects every out-of-order phase transition", () => {
+  const preview = repositoryReadyPreview();
+  const m5Open = evaluateProductionReadiness();
+  const m5Ready = evaluateProductionReadiness(allM5Evidence());
+  const cases = [
+    {
+      name: "worker before database",
+      m5: m5Open,
+      evidence: { previewAccepted: true, productionWorkerReady: true },
+    },
+    {
+      name: "users before worker",
+      m5: m5Open,
+      evidence: {
+        previewAccepted: true,
+        productionDatabaseReady: true,
+        productionUsersAndPermissionsReady: true,
+      },
+    },
+    {
+      name: "migrations before users",
+      m5: m5Open,
+      evidence: {
+        previewAccepted: true,
+        productionDatabaseReady: true,
+        productionWorkerReady: true,
+        productionMigrationsApplied: true,
+      },
+    },
+    {
+      name: "deployment before migrations",
+      m5: m5Open,
+      evidence: {
+        previewAccepted: true,
+        productionDatabaseReady: true,
+        productionWorkerReady: true,
+        productionUsersAndPermissionsReady: true,
+        productionDeploymentCompleted: true,
+      },
+    },
+    {
+      name: "recovery before preparation completion",
+      m5: m5Open,
+      evidence: {
+        previewAccepted: true,
+        productionDatabaseReady: true,
+        productionWorkerReady: true,
+        productionUsersAndPermissionsReady: true,
+        productionMigrationsApplied: true,
+        backupRecoveryReady: true,
+      },
+    },
+    {
+      name: "M5 before recovery",
+      m5: m5Ready,
+      evidence: preparationEvidence({ securityPrivacyReady: true }),
+    },
+    {
+      name: "domain before M5",
+      m5: m5Open,
+      evidence: preparationEvidence({
+        backupRecoveryReady: true,
+        productionDomainReady: true,
+      }),
+    },
+    {
+      name: "domain before preparation completion",
+      m5: m5Ready,
+      evidence: {
+        previewAccepted: true,
+        productionDatabaseReady: true,
+        productionWorkerReady: true,
+        productionUsersAndPermissionsReady: true,
+        backupRecoveryReady: true,
+        securityPrivacyReady: true,
+        productionDomainReady: true,
+      },
+    },
+    {
+      name: "smoke before domain",
+      m5: m5Ready,
+      evidence: preparationEvidence({
+        backupRecoveryReady: true,
+        securityPrivacyReady: true,
+        postDeploySmokePassed: true,
+      }),
+    },
+  ];
+
+  for (const scenario of cases) {
+    const lifecycle = factoryLifecycleCopy(
+      preview,
+      scenario.m5,
+      evaluateM6ProductionReleaseReadiness(scenario.evidence),
+    );
+    assert.equal(
+      lifecycle.nextStep.heading,
+      "Readiness-Status klären",
+      scenario.name,
+    );
+    assert.equal(lifecycle.stages[2].state, "locked", scenario.name);
+    assert.equal(lifecycle.stages[3].state, "locked", scenario.name);
+    assert.equal(lifecycle.stages[4].state, "locked", scenario.name);
+  }
 });
 
 test("Factory lifecycle blocks ambiguous preview and M5/M6 cross-gate drift", () => {
@@ -217,45 +324,6 @@ test("Factory lifecycle blocks ambiguous preview and M5/M6 cross-gate drift", ()
   assert.equal(mismatch.stages[2].state, "locked");
   assert.equal(mismatch.stages[3].state, "locked");
   assert.equal(mismatch.stages[4].state, "locked");
-
-  const m5BeforeRecovery = factoryLifecycleCopy(
-    repositoryReadyPreview(),
-    evaluateProductionReadiness(allM5Evidence()),
-    evaluateM6ProductionReleaseReadiness(
-      preparationEvidence({ securityPrivacyReady: true }),
-    ),
-  );
-  assert.equal(m5BeforeRecovery.nextStep.heading, "Readiness-Status klären");
-  assert.equal(m5BeforeRecovery.stages[2].state, "locked");
-  assert.equal(m5BeforeRecovery.stages[3].state, "locked");
-  assert.equal(m5BeforeRecovery.stages[4].state, "locked");
-
-  const domainBeforeRecovery = factoryLifecycleCopy(
-    repositoryReadyPreview(),
-    evaluateProductionReadiness(),
-    evaluateM6ProductionReleaseReadiness({
-      ...preparationEvidence(),
-      productionDomainReady: true,
-    }),
-  );
-  assert.equal(domainBeforeRecovery.nextStep.heading, "Readiness-Status klären");
-  assert.equal(domainBeforeRecovery.stages[2].state, "locked");
-  assert.equal(domainBeforeRecovery.stages[3].state, "locked");
-  assert.equal(domainBeforeRecovery.stages[4].state, "locked");
-
-  const smokeBeforeDomain = factoryLifecycleCopy(
-    repositoryReadyPreview(),
-    evaluateProductionReadiness(allM5Evidence()),
-    evaluateM6ProductionReleaseReadiness({
-      ...preparationEvidence(),
-      backupRecoveryReady: true,
-      securityPrivacyReady: true,
-      postDeploySmokePassed: true,
-    }),
-  );
-  assert.equal(smokeBeforeDomain.nextStep.heading, "Readiness-Status klären");
-  assert.equal(smokeBeforeDomain.stages[3].state, "locked");
-  assert.equal(smokeBeforeDomain.stages[4].state, "locked");
 });
 
 test("Factory UI renders M5, Production Ready and release as separate read-only boundaries", async (t) => {
@@ -279,6 +347,9 @@ test("Factory UI renders M5, Production Ready and release as separate read-only 
   assert.match(helperBody, /Produktionsvorbereitung/);
   assert.match(helperBody, /factoryLifecycleCopy/);
   assert.match(helperBody, /releaseAuthorized !== false/);
+  assert.match(helperBody, /productionWorkerReady \|\| productionDatabaseReady/);
+  assert.match(helperBody, /productionDomainReady/);
+  assert.match(helperBody, /preparationEvidenceComplete/);
 
   const appResponse = await fetch(`${baseUrl}/app.js`);
   assert.equal(appResponse.status, 200);
@@ -286,6 +357,11 @@ test("Factory UI renders M5, Production Ready and release as separate read-only 
   assert.match(appBody, /Security & Privacy Ready/);
   assert.match(appBody, /Production Ready ·/);
   assert.match(appBody, /Nächster sicherer Schritt:/);
+  assert.match(
+    appBody,
+    /renderPreviewReadiness\(app\.previewReadiness, app\.productionReleaseReadiness\)/,
+  );
+  assert.match(appBody, /Preview wurde im aktuellen M6-Snapshot abgenommen/);
   assert.doesNotMatch(appBody, /releaseProduction\s*\(/);
 
   const snapshotResponse = await fetch(`${baseUrl}/api/factory/snapshot`);
