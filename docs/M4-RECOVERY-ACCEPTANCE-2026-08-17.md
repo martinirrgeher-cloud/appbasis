@@ -125,7 +125,7 @@ Variante 2 wäre eine externe Restore-/Provideraktion und darf nur nach ausdrüc
 
 - Dieser Record ist keine Produktionsfreigabe.
 - Er erzeugt keine neue Produktionsressource und verändert keine Produktivdatenbank.
-- M4 bleibt OPEN und kann M6 daher nicht freischalten.
+- M4 bleibt OPEN. Damit bleiben `Production Ready` und jede öffentliche Produktions-Exposition fail-closed blockiert; die gemäß ADR-024 ausdrücklich freigegebene, nicht öffentliche Produktionsvorbereitung wird dadurch nicht grundsätzlich gesperrt.
 - Eine spätere eigenständige Produktiv-App benötigt ohnehin ihren eigenen Backup-/Restore-Nachweis auf ihren eigenen Ressourcen.
 - Object Storage wird Bestandteil des jeweiligen Recovery-Gates, sobald eine App tatsächlich Dateien speichert.
 - M5- und M6-Gates bleiben unabhängig.
