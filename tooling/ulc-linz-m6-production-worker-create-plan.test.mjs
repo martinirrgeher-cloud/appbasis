@@ -44,6 +44,7 @@ test("M6 worker create plan uses metadata-only closed Cloudflare beta create con
     schemaVersion: 1,
     application: "ulc-linz",
     environment: "production",
+    phase: "production-preparation",
     stepId: "production-worker",
     provider: "cloudflare",
     apiStatus: "beta",
@@ -56,6 +57,9 @@ test("M6 worker create plan uses metadata-only closed Cloudflare beta create con
         previews_enabled: false,
       },
     },
+    requiredPreparationGateEvidence: ["M3_DONE"],
+    productionPreparationGateEvidenceConsumed: false,
+    productionPreparationEligible: false,
     applicationCodeUploadAllowed: false,
     versionDeploymentAllowed: false,
     routeAttachmentAllowed: false,
@@ -63,14 +67,19 @@ test("M6 worker create plan uses metadata-only closed Cloudflare beta create con
     providerWriteAllowed: false,
     executionAuthorized: false,
     explicitApprovalRequired: true,
+    publicExposureAllowed: false,
+    productionReady: false,
     betaCapabilityReverificationRequired: true,
   });
   assert.equal(Object.isFrozen(plan), true);
   assert.equal(Object.isFrozen(plan.body), true);
   assert.equal(Object.isFrozen(plan.body.subdomain), true);
+  assert.equal(Object.isFrozen(plan.requiredPreparationGateEvidence), true);
 });
 
 for (const [field, value] of [
+  ["schemaVersion", 2],
+  ["phase", "production-ready"],
   ["priorStepVerified", "wrong-step"],
   ["providerInventoryVerified", false],
   ["noExistingCloudflareWorkerCandidate", false],
@@ -92,6 +101,15 @@ for (const [field, value] of [
     );
   });
 }
+
+test("M6 worker create plan fails closed when required M3 evidence drifts", () => {
+  const state = validPrewrite();
+  state.requiredPreparationGateEvidence = ["M4_DONE"];
+  assert.throws(
+    () => planUlcLinzM6ProductionWorkerCreate(state),
+    errorWithCode("WORKER_CREATE_PLAN_PRECONDITIONS_NOT_MET"),
+  );
+});
 
 for (const [field, value] of [
   ["name", "wrong-worker"],
@@ -118,6 +136,24 @@ test("M6 worker create plan rejects accessor-backed safety state", () => {
       return false;
     },
   });
+  assert.throws(
+    () => planUlcLinzM6ProductionWorkerCreate(state),
+    errorWithCode("INVALID_PREWRITE_STATE"),
+  );
+});
+
+test("M6 worker create plan rejects accessor-backed gate evidence", () => {
+  const state = validPrewrite();
+  const gateEvidence = [];
+  Object.defineProperty(gateEvidence, "0", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      return "M3_DONE";
+    },
+  });
+  gateEvidence.length = 1;
+  state.requiredPreparationGateEvidence = gateEvidence;
   assert.throws(
     () => planUlcLinzM6ProductionWorkerCreate(state),
     errorWithCode("INVALID_PREWRITE_STATE"),
