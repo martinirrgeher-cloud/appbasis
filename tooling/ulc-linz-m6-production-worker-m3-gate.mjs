@@ -153,10 +153,12 @@ function assertSafeCreatePlan(value) {
     ownData(plan, "requiredPreparationGateEvidence", "INVALID_CREATE_PLAN"),
     "INVALID_CREATE_PLAN",
   );
+  const gateOwnNames = Object.getOwnPropertyNames(gates);
   if (
     gates.length !== 1 ||
-    Object.keys(gates).length !== 1 ||
-    Object.keys(gates)[0] !== "0" ||
+    gateOwnNames.length !== 2 ||
+    !gateOwnNames.includes("0") ||
+    !gateOwnNames.includes("length") ||
     ownData(gates, "0", "INVALID_CREATE_PLAN") !== "M3_DONE"
   ) {
     fail("WORKER_M3_GATE_PRECONDITIONS_NOT_MET");
@@ -183,7 +185,7 @@ function assertSafeCreatePlan(value) {
 
 function exactPlainRecord(value, expectedFields, code) {
   const record = requiredPlainRecord(value, code);
-  const keys = Object.keys(record).sort();
+  const keys = Object.getOwnPropertyNames(record).sort();
   const expected = [...expectedFields].sort();
   if (
     keys.length !== expected.length ||
