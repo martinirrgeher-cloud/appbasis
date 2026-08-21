@@ -83,6 +83,23 @@ test("worker prewrite runs only after exact Neon production resource verificatio
   );
 });
 
+test("worker prewrite summary distinguishes Neon-create skip from evaluated target", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /M6 production worker prewrite skipped: exact Neon production resource is not yet verified and Neon creation remains pending; no Cloudflare write is authorized\./,
+  );
+  assert.match(
+    workflow,
+    /M6 production worker prewrite evaluated safely; no Cloudflare write is authorized\./,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /echo 'M6 production worker prewrite evaluated safely; no Cloudflare write is authorized\.' >> "\$GITHUB_STEP_SUMMARY"/,
+  );
+});
+
 test("workflow never prints the raw provider evidence snapshot", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
