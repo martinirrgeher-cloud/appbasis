@@ -100,6 +100,28 @@ Die Pre-Write-Auswertung blockiert fail-closed, wenn die Provider-Inventur nicht
 
 Der bestehende Workflow `M6 ULC Provider State Preflight` darf den Worker-Zielzustand deshalb nur dann read-only auswerten, wenn `existingExactProductionResourceVerified=true` bestätigt ist. Ist stattdessen ein Neon-Create legitim noch erforderlich (`firstProviderWriteRequired=true` und `firstProviderWriteAlreadySatisfied=false`), wird die Worker-Pre-Write-Auswertung übersprungen. Widersprüchliche Neon-Readiness-Zustände blockieren fail-closed. Der Workflow enthält weiterhin keinen Cloudflare-Write.
 
+## Production-Worker Create-Plan
+
+`tooling/ulc-linz-m6-production-worker-create-plan.mjs` beschreibt ausschließlich den späteren Provider-Request; es führt ihn nicht aus. Der Plan basiert auf dem aktuell dokumentierten Cloudflare-Beta-Endpunkt `POST /client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/workers/workers`, der einen Worker ohne Version-/Code-Deployment anlegen kann.
+
+Der Create-Body muss atomar enthalten:
+
+- `name=appbasis-ulc-linz-production`
+- `subdomain.enabled=false`
+- `subdomain.previews_enabled=false`
+
+Der Plan erlaubt ausdrücklich **nicht**:
+
+- Anwendungscode-Upload,
+- Version-Deployment,
+- Route-Attachment,
+- Domain-Attachment,
+- `workers.dev`,
+- Preview URLs,
+- öffentliche Exposition.
+
+Da der verwendete Provider-Endpunkt als Beta dokumentiert ist, ist `betaCapabilityReverificationRequired=true` verbindlich: unmittelbar vor einem späteren realen Write muss read-only erneut verifiziert werden, dass der Endpunkt weiterhin existiert und dieselbe atomare geschlossene Subdomain-Konfiguration unterstützt. Provider-Write und Execution bleiben bis zu separater M3-Gate-Evidence und ausdrücklicher Betreiberfreigabe `false`.
+
 ## Inputs
 
 Nur Namen, nie Werte im Repository:
