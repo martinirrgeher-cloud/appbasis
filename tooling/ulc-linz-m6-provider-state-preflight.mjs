@@ -180,13 +180,15 @@ async function readCompleteNeonProjectInventory({ apiKey, orgId, fetchImpl }) {
       fail("NEON_PROJECT_INVENTORY_TOO_LARGE");
     }
 
-    const pageKind =
-      projectItems.length < NEON_PROJECT_PAGE_LIMIT ? "short" : "full";
+    // Neon may return pagination.cursor even for the terminal page. A page
+    // shorter than the requested limit is complete as long as Neon did not
+    // report unavailable projects. Only a full page can require another read.
+    if (projectItems.length < NEON_PROJECT_PAGE_LIMIT) return projects;
+
     if (
       !Object.hasOwn(response, "pagination") ||
       ownData(response, "pagination", "NEON_PROJECT_INVENTORY_INVALID") === null
     ) {
-      if (pageKind === "short") return projects;
       fail("NEON_PROJECT_INVENTORY_INCOMPLETE");
     }
 
@@ -199,7 +201,6 @@ async function readCompleteNeonProjectInventory({ apiKey, orgId, fetchImpl }) {
       : undefined;
 
     if (nextCursor === null || nextCursor === undefined || nextCursor === "") {
-      if (pageKind === "short") return projects;
       fail("NEON_PROJECT_INVENTORY_INCOMPLETE");
     }
 
