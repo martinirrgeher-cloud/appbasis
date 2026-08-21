@@ -132,7 +132,7 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     providerInventoryVerified: true,
     providerCreateScopeVerified: true,
     noExistingProductionResourceCandidate: true,
-    targetRegionAvailable: targetRegionConfirmedBeforeCreate,
+    targetRegionAvailable: neon.targetRegionAvailable,
     targetRegionVerificationDeferredUntilPostCreate: !targetRegionConfirmedBeforeCreate,
     postCreateRegionVerificationRequired: true,
     selectedCreateMethodSupportsExplicitRegion: true,
