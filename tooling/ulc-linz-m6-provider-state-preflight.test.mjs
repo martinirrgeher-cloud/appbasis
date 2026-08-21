@@ -7,6 +7,7 @@ import {
   ULC_LINZ_M6_READ_ONLY_PROVIDER_PREFLIGHT_CONTRACT,
   UlcLinzM6ProviderStatePreflightError,
   runUlcLinzM6ProviderStatePreflight,
+  verifyUlcLinzM6CreatedNeonProjectRegion,
 } from "./ulc-linz-m6-provider-state-preflight.mjs";
 
 const NOW = new Date("2026-08-18T20:00:00.000Z");
@@ -35,6 +36,7 @@ function makeFetch({
     { id: "aws-us-east-1" },
     { id: "aws-eu-central-1" },
   ],
+  regionStatus = 200,
   workers = [{ id: "appbasis-reference-preview" }],
   unavailableProjectIds = [],
   cloudflareSuccess = true,
@@ -47,6 +49,7 @@ function makeFetch({
       return jsonResponse({ projects, unavailable_project_ids: unavailableProjectIds });
     }
     if (href.startsWith("https://console.neon.tech/api/v2/regions")) {
+      if (regionStatus === 404) return { ok: false, status: 404 };
       return jsonResponse({ regions });
     }
     if (href.includes("api.cloudflare.com/client/v4/accounts/")) {
@@ -77,6 +80,9 @@ test("ULC M6 executable provider-state preflight performs only read-only provide
   assert.equal(result.readOnlyProviderStatePreflightVerified, true);
   assert.equal(result.cloudflareWorkerInventoryVerified, true);
   assert.equal(result.noExistingCloudflareWorkerCandidate, true);
+  assert.equal(result.targetRegionAvailable, true);
+  assert.equal(result.targetRegionVerificationDeferredUntilPostCreate, false);
+  assert.equal(result.postCreateRegionVerificationRequired, true);
   assert.equal(result.productionPreparationGateEvidenceConsumed, false);
   assert.equal(result.productionPreparationEligible, false);
   assert.equal(result.productionReady, false);
@@ -107,7 +113,21 @@ test("ULC M6 executable provider-state preflight performs only read-only provide
   assert.equal(serialized.includes(CLOUDFLARE_ACCOUNT_ID), false);
 });
 
-test("ULC M6 read-only provider contract pins the authoritative inventories and has no write method", async () => {
+test("ULC M6 provider-state preflight defers region verification on Neon /regions 404 without authorizing a write", async () => {
+  const { fetchImpl } = makeFetch({ regionStatus: 404 });
+  const result = await runUlcLinzM6ProviderStatePreflight(validInputs(), {
+    fetchImpl,
+    now: NOW,
+  });
+  assert.equal(result.providerInventoryVerified, true);
+  assert.equal(result.targetRegionAvailable, false);
+  assert.equal(result.targetRegionVerificationDeferredUntilPostCreate, true);
+  assert.equal(result.postCreateRegionVerificationRequired, true);
+  assert.equal(result.providerWriteAllowed, false);
+  assert.equal(result.executionAuthorized, false);
+});
+
+test("ULC M6 read-only provider contract pins authoritative inventory and mandatory post-create region verification", async () => {
   assert.deepEqual(ULC_LINZ_M6_READ_ONLY_PROVIDER_PREFLIGHT_CONTRACT, {
     schemaVersion: 1,
     application: "ulc-linz",
@@ -121,7 +141,9 @@ test("ULC M6 read-only provider contract pins the authoritative inventories and 
       maxProjectPages: 25,
       maxProjectInventory: 10000,
       completeInventoryRequired: true,
-      organizationScopedRegionInventoryRequired: true,
+      organizationScopedRegionInventoryRequired: false,
+      regionInventoryNotFoundMayDeferVerification: true,
+      postCreateRegionVerificationRequired: true,
       targetRegion: "aws-eu-central-1",
       selectedCreateMethod: "neon-api-v2-project-create-region-id",
     },
@@ -139,6 +161,27 @@ test("ULC M6 read-only provider contract pins the authoritative inventories and 
   );
   assert.equal(/method:\s*["'](?:POST|PUT|PATCH|DELETE)["']/.test(source), false);
   assert.equal(source.includes('method: "GET"'), true);
+});
+
+test("ULC M6 post-create verifier permits only the exact Frankfurt region", () => {
+  const verified = verifyUlcLinzM6CreatedNeonProjectRegion({
+    id: "project-redacted",
+    region_id: "aws-eu-central-1",
+  });
+  assert.equal(verified.postCreateRegionVerified, true);
+  assert.equal(verified.continuationAllowed, true);
+  assert.equal(verified.expectedRegion, "aws-eu-central-1");
+  assert.equal(verified.observedRegion, "aws-eu-central-1");
+  assert.equal(Object.isFrozen(verified), true);
+
+  assert.throws(
+    () => verifyUlcLinzM6CreatedNeonProjectRegion({ region_id: "aws-us-east-1" }),
+    errorWithCode("CREATED_NEON_PROJECT_REGION_MISMATCH", true),
+  );
+  assert.throws(
+    () => verifyUlcLinzM6CreatedNeonProjectRegion({ id: "missing-region" }),
+    errorWithCode("CREATED_NEON_PROJECT_INVALID", true),
+  );
 });
 
 test("ULC M6 executable provider-state preflight follows Neon cursor pagination only after a full project page", async () => {
@@ -218,7 +261,7 @@ test("ULC M6 executable provider-state preflight fails closed when Neon reports 
   );
 });
 
-test("ULC M6 executable provider-state preflight fails closed when Frankfurt is not available to the selected Neon organization", async () => {
+test("ULC M6 executable provider-state preflight fails closed when Frankfurt is explicitly unavailable", async () => {
   const { fetchImpl } = makeFetch({ regions: [{ id: "aws-us-east-1" }] });
   await assert.rejects(
     runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
@@ -296,6 +339,7 @@ test("ULC M6 executable provider-state preflight rejects repeated Neon cursors o
 test("ULC M6 executable provider-state preflight does not leak provider credentials when a provider read fails", async () => {
   const fetchImpl = async () => ({
     ok: false,
+    status: 401,
     async json() { return { error: `Bearer ${NEON_API_KEY}` }; },
   });
   await assert.rejects(
@@ -324,7 +368,7 @@ test("ULC M6 executable provider-state preflight rejects accessor-backed provide
 });
 
 function jsonResponse(value) {
-  return { ok: true, async json() { return value; } };
+  return { ok: true, status: 200, async json() { return value; } };
 }
 
 function errorWithCode(code, requireProviderStateError = false) {
