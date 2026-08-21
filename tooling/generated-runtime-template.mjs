@@ -1,4 +1,5 @@
 import { extendIdentityPermissionsWorkerTemplate } from "./generated-identity-permissions-worker-template.mjs";
+import { renderGeneratedPrivateWorkerConfig } from "./generated-private-worker-config.mjs";
 import { createIdentityRuntimeTemplate as createCoreIdentityRuntimeTemplate } from "./generated-runtime-template-core.mjs";
 
 const POSTGRES_E2E_PATH = "test/app.postgres.e2e.ts";
@@ -38,6 +39,12 @@ export function createIdentityRuntimeTemplate(input) {
       content: withPermissionMigrations(entry.content),
     });
   });
+  files.push(
+    Object.freeze({
+      path: "wrangler.jsonc",
+      content: renderGeneratedPrivateWorkerConfig(input),
+    }),
+  );
 
   return Object.freeze({
     ...generated,
