@@ -24,8 +24,11 @@ test("renders the deterministic runnable identity runtime", () => {
       "tsconfig.json",
       "vitest.config.ts",
       "worker/app.ts",
-      "wrangler.production.jsonc",
     ],
+  );
+  assert.equal(
+    first.files.some((entry) => entry.path === "wrangler.production.jsonc"),
+    false,
   );
 });
 
@@ -67,6 +70,10 @@ test("wires the declared tasks module through its public workspace contract with
   assert.doesNotMatch(worker, /\/api\/tasks/);
   assert.doesNotMatch(worker, /@appbasis\/permissions/);
   assert.equal(template.files.some((entry) => entry.path === "worker/postgres.ts"), false);
+  assert.equal(
+    template.files.some((entry) => entry.path === "wrangler.production.jsonc"),
+    false,
+  );
 });
 
 test("generates tasks HTTP routes and complete PostgreSQL application composition only with explicit permissions", () => {
