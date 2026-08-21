@@ -61,6 +61,7 @@ export const ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT = deepFreeze({
     explicitRegionSelectionRequired: true,
     providerDefaultRegionAllowed: false,
     existingProductionCandidateAllowed: false,
+    postCreateRegionVerificationRequired: true,
   },
   cloudflareWorkerCreation: {
     workerName: CLOUDFLARE_WORKER_NAME,
@@ -103,7 +104,8 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
   if (
     neon.inventoryComplete !== true ||
     neon.inventoryMatchesSelectedCreateScope !== true ||
-    neon.targetRegionAvailable !== true ||
+    ![true, false, null].includes(neon.targetRegionAvailable) ||
+    neon.targetRegionAvailable === false ||
     neon.selectedCreateMethodSupportsExplicitRegion !== true
   ) fail("NEON_PREFLIGHT_INVALID");
 
@@ -119,6 +121,8 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     fail("EXISTING_PRODUCTION_RESOURCE_CANDIDATE");
   }
 
+  const targetRegionConfirmedBeforeCreate = neon.targetRegionAvailable === true;
+
   return deepFreeze({
     schemaVersion: 1,
     application: APPLICATION,
@@ -128,7 +132,9 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     providerInventoryVerified: true,
     providerCreateScopeVerified: true,
     noExistingProductionResourceCandidate: true,
-    targetRegionAvailable: true,
+    targetRegionAvailable: targetRegionConfirmedBeforeCreate,
+    targetRegionVerificationDeferredUntilPostCreate: !targetRegionConfirmedBeforeCreate,
+    postCreateRegionVerificationRequired: true,
     selectedCreateMethodSupportsExplicitRegion: true,
     explicitRegionSelectionRequired: true,
     providerDefaultRegionAllowed: false,
@@ -192,6 +198,7 @@ function assertCanonicalContracts() {
     safety.firstProviderWrite.explicitRegionSelectionRequired !== true ||
     safety.firstProviderWrite.providerDefaultRegionAllowed !== false ||
     safety.firstProviderWrite.existingProductionCandidateAllowed !== false ||
+    safety.firstProviderWrite.postCreateRegionVerificationRequired !== true ||
     safety.cloudflareWorkerCreation.workerName !== CLOUDFLARE_WORKER_NAME ||
     safety.cloudflareWorkerCreation.workersDev !== false ||
     safety.cloudflareWorkerCreation.previewUrls !== false ||
