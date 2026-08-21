@@ -78,7 +78,7 @@ test("ULC M6 provider preflight permits provider-404 region inventory only by de
   evidence.neon.targetRegionAvailable = null;
 
   const result = evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW });
-  assert.equal(result.targetRegionAvailable, false);
+  assert.equal(result.targetRegionAvailable, null);
   assert.equal(result.targetRegionVerificationDeferredUntilPostCreate, true);
   assert.equal(result.postCreateRegionVerificationRequired, true);
   assert.equal(result.providerDefaultRegionAllowed, false);
