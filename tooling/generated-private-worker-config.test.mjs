@@ -77,3 +77,17 @@ test("private production worker bootstrap config rejects invalid app identifiers
     /lowercase kebab-case identifier/,
   );
 });
+
+test("private production worker bootstrap fails closed on invalid derived Cloudflare Worker names", () => {
+  assert.throws(
+    () => renderGeneratedPrivateWorkerBootstrapConfig({ appId: "tasks-" }),
+    /production Worker name is invalid/,
+  );
+  assert.throws(
+    () =>
+      renderGeneratedPrivateWorkerBootstrapConfig({
+        appId: `a${"b".repeat(44)}`,
+      }),
+    /production Worker name is invalid/,
+  );
+});
