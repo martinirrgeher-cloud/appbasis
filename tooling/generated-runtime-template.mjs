@@ -3,6 +3,7 @@ import { renderGeneratedPrivateWorkerConfig } from "./generated-private-worker-c
 import { createIdentityRuntimeTemplate as createCoreIdentityRuntimeTemplate } from "./generated-runtime-template-core.mjs";
 
 const POSTGRES_E2E_PATH = "test/app.postgres.e2e.ts";
+const WORKER_ENTRYPOINT_PATH = "worker/index.ts";
 const PERMISSION_FOUNDATION_BLOCK = `const permissionMigrationUrl = new URL(
   "../../../packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
   import.meta.url,
@@ -39,12 +40,15 @@ export function createIdentityRuntimeTemplate(input) {
       content: withPermissionMigrations(entry.content),
     });
   });
-  files.push(
-    Object.freeze({
-      path: "wrangler.production.jsonc",
-      content: renderGeneratedPrivateWorkerConfig(input),
-    }),
-  );
+
+  if (files.some((entry) => entry.path === WORKER_ENTRYPOINT_PATH)) {
+    files.push(
+      Object.freeze({
+        path: "wrangler.production.jsonc",
+        content: renderGeneratedPrivateWorkerConfig(input),
+      }),
+    );
+  }
 
   return Object.freeze({
     ...generated,
