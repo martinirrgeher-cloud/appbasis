@@ -56,52 +56,6 @@ jobs:
           echo "::add-mask::$CLOUDFLARE_API_TOKEN"
           echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
 
-      - name: Probe Neon endpoint statuses read-only
-        shell: bash
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
-        run: |
-          set -euo pipefail
-
-          probe_status() {
-            local label="$1"
-            local url="$2"
-            local status
-
-            status="$(curl --silent --show-error \
-              --output /dev/null \
-              --write-out '%{http_code}' \
-              --request GET \
-              --url "$url" \
-              --header 'accept: application/json' \
-              --header "authorization: Bearer ${NEON_API_KEY}")" || {
-                echo "Neon ${label} read-only probe transport failure." >&2
-                return 1
-              }
-
-            echo "Neon ${label} read-only probe HTTP status: $status"
-            case "$status" in
-              2??) return 0 ;;
-              *) return 1 ;;
-            esac
-          }
-
-          failed=0
-          probe_status \
-            "projects" \
-            "https://console.neon.tech/api/v2/projects?org_id=${NEON_ORG_ID}&limit=400&timeout=30000" || failed=1
-          probe_status \
-            "user-organizations" \
-            "https://console.neon.tech/api/v2/users/me/organizations" || failed=1
-          probe_status \
-            "organization" \
-            "https://console.neon.tech/api/v2/organizations/${NEON_ORG_ID}" || failed=1
-          probe_status \
-            "regions" \
-            "https://console.neon.tech/api/v2/regions?org_id=${NEON_ORG_ID}" || failed=1
-          test "$failed" -eq 0
-
       - name: Run read-only provider-state preflight
         shell: bash
         env:
@@ -124,6 +78,7 @@ jobs:
             result?.readOnlyProviderStatePreflightVerified !== true ||
             result?.cloudflareWorkerInventoryVerified !== true ||
             result?.noExistingCloudflareWorkerCandidate !== true ||
+            result?.postCreateRegionVerificationRequired !== true ||
             result?.providerWriteAllowed !== false ||
             result?.executionAuthorized !== false ||
             result?.explicitApprovalRequired !== true ||
