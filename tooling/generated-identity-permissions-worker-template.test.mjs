@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
 
+const PRODUCTION_BOOTSTRAP_CONFIG_PATH = "wrangler.production.bootstrap.jsonc";
 const ulcInput = {
   appId: "ulc-linz",
   displayName: "ULC Linz",
@@ -24,7 +25,7 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "worker/app.ts",
     "worker/index.ts",
     "worker/postgres.ts",
-    "wrangler.production.jsonc",
+    PRODUCTION_BOOTSTRAP_CONFIG_PATH,
   ]);
 
   const worker = content(template, "worker/index.ts");
@@ -63,7 +64,7 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
     ],
   );
   assert.equal(
-    identityOnly.files.some((entry) => entry.path === "wrangler.production.jsonc"),
+    identityOnly.files.some((entry) => entry.path === PRODUCTION_BOOTSTRAP_CONFIG_PATH),
     false,
   );
 
@@ -88,7 +89,7 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
     ),
   );
   assert.equal(
-    guardedTasks.files.some((entry) => entry.path === "wrangler.production.jsonc"),
+    guardedTasks.files.some((entry) => entry.path === PRODUCTION_BOOTSTRAP_CONFIG_PATH),
     true,
   );
 });
