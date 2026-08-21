@@ -56,6 +56,30 @@ jobs:
           echo "::add-mask::$CLOUDFLARE_API_TOKEN"
           echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
 
+      - name: Probe Neon API status read-only
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            --request GET \
+            --url "https://console.neon.tech/api/v2/projects?org_id=${NEON_ORG_ID}&limit=1" \
+            --header 'accept: application/json' \
+            --header "authorization: Bearer ${NEON_API_KEY}")"
+          case "$status" in
+            2??)
+              echo "Neon API read-only probe HTTP status: $status"
+              ;;
+            *)
+              echo "Neon API read-only probe HTTP status: $status" >&2
+              exit 1
+              ;;
+          esac
+
       - name: Run read-only provider-state preflight
         shell: bash
         env:
