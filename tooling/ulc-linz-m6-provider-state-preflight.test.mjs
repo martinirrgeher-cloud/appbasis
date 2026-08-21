@@ -14,6 +14,7 @@ const NEON_ORG_ID = "org-muddy-morning-22453865";
 const CLOUDFLARE_ACCOUNT_ID = "0123456789abcdef0123456789abcdef";
 const NEON_API_KEY = "neon-test-key-never-return";
 const CLOUDFLARE_API_TOKEN = "cloudflare-test-token-never-return";
+const NEON_PROJECT_PAGE_LIMIT = 400;
 
 function validInputs() {
   return {
@@ -54,6 +55,13 @@ function makeFetch({
     throw new Error(`unexpected test URL: ${href}`);
   };
   return { fetchImpl, requests };
+}
+
+function fullProjectPage(prefix, region = "aws-us-east-1") {
+  return Array.from({ length: NEON_PROJECT_PAGE_LIMIT }, (_, index) => ({
+    name: `${prefix}-${index}`,
+    region_id: region,
+  }));
 }
 
 test("ULC M6 executable provider-state preflight performs only read-only provider GETs and remains blocked before the preparation gate", async () => {
@@ -133,7 +141,7 @@ test("ULC M6 read-only provider contract pins the authoritative inventories and 
   assert.equal(source.includes('method: "GET"'), true);
 });
 
-test("ULC M6 executable provider-state preflight follows Neon cursor pagination before deciding that the inventory is clean", async () => {
+test("ULC M6 executable provider-state preflight follows Neon cursor pagination only after a full project page", async () => {
   const requests = [];
   const fetchImpl = async (url, init) => {
     const parsed = new URL(String(url));
@@ -141,7 +149,7 @@ test("ULC M6 executable provider-state preflight follows Neon cursor pagination 
     if (parsed.pathname.endsWith("/projects")) {
       if (parsed.searchParams.get("cursor") === null) {
         return jsonResponse({
-          projects: [{ name: "appbasis-m3-preview", region_id: "aws-us-east-2" }],
+          projects: fullProjectPage("preview-first-page"),
           unavailable_project_ids: [],
           pagination: { cursor: "next-page" },
         });
@@ -150,6 +158,7 @@ test("ULC M6 executable provider-state preflight follows Neon cursor pagination 
       return jsonResponse({
         projects: [{ name: "appbasis-ulc-linz-production", region_id: "aws-eu-central-1" }],
         unavailable_project_ids: [],
+        pagination: { cursor: "terminal-cursor" },
       });
     }
     if (parsed.pathname.endsWith("/regions")) {
@@ -164,6 +173,40 @@ test("ULC M6 executable provider-state preflight follows Neon cursor pagination 
   assert.equal(
     requests.filter((request) => new URL(request.href).pathname.endsWith("/projects")).length,
     2,
+  );
+});
+
+test("ULC M6 executable provider-state preflight treats a short Neon page as terminal even when pagination.cursor is present", async () => {
+  const requests = [];
+  const fetchImpl = async (url, init) => {
+    const parsed = new URL(String(url));
+    requests.push({ href: parsed.href, init });
+    if (parsed.pathname.endsWith("/projects")) {
+      assert.equal(parsed.searchParams.get("cursor"), null);
+      return jsonResponse({
+        projects: [{ name: "appbasis-m3-preview", region_id: "aws-us-east-2" }],
+        unavailable_project_ids: [],
+        pagination: { cursor: "provider-terminal-cursor" },
+      });
+    }
+    if (parsed.pathname.endsWith("/regions")) {
+      return jsonResponse({ regions: [{ id: "aws-eu-central-1" }] });
+    }
+    if (parsed.pathname.endsWith("/workers/scripts")) {
+      return jsonResponse({ success: true, result: [] });
+    }
+    throw new Error(`unexpected test URL: ${parsed.href}`);
+  };
+
+  const result = await runUlcLinzM6ProviderStatePreflight(validInputs(), {
+    fetchImpl,
+    now: NOW,
+  });
+
+  assert.equal(result.readOnlyProviderStatePreflightVerified, true);
+  assert.equal(
+    requests.filter((request) => new URL(request.href).pathname.endsWith("/projects")).length,
+    1,
   );
 });
 
@@ -229,14 +272,14 @@ test("ULC M6 executable provider-state preflight rejects create mechanisms that 
   assert.equal(requests.length, 0);
 });
 
-test("ULC M6 executable provider-state preflight rejects repeated Neon cursors instead of looping", async () => {
+test("ULC M6 executable provider-state preflight rejects repeated Neon cursors on full pages instead of looping", async () => {
   let projectCalls = 0;
   const fetchImpl = async (url) => {
     const parsed = new URL(String(url));
     if (parsed.pathname.endsWith("/projects")) {
       projectCalls += 1;
       return jsonResponse({
-        projects: [{ name: `preview-${projectCalls}`, region_id: "aws-us-east-1" }],
+        projects: fullProjectPage(`preview-page-${projectCalls}`),
         unavailable_project_ids: [],
         pagination: { cursor: "same-cursor" },
       });
