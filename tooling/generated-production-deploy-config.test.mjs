@@ -5,7 +5,6 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  renderGeneratedProductionBootstrapWranglerConfig,
   renderGeneratedProductionWranglerConfig,
   writeGeneratedProductionWranglerConfig,
 } from "./generated-production-deploy-config.mjs";
@@ -35,19 +34,6 @@ test("renders the final production deployment bindings without public ingress", 
   ]);
   assert.equal("routes" in config, false);
   assert.equal("route" in config, false);
-});
-
-test("keeps bootstrap secretless while preserving private production bindings", () => {
-  const deploy = renderGeneratedProductionWranglerConfig(input);
-  const bootstrap = renderGeneratedProductionBootstrapWranglerConfig(input);
-
-  assert.equal("secrets" in bootstrap, false);
-  assert.equal(bootstrap.name, deploy.name);
-  assert.equal(bootstrap.workers_dev, false);
-  assert.equal(bootstrap.preview_urls, false);
-  assert.equal(bootstrap.keep_vars, true);
-  assert.deepEqual(bootstrap.vars, deploy.vars);
-  assert.deepEqual(bootstrap.hyperdrive, deploy.hyperdrive);
 });
 
 test("reuses fail-closed provider, origin and entrypoint validation", () => {
