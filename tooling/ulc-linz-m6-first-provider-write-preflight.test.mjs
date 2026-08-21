@@ -45,6 +45,8 @@ test("ULC M6 first provider-write preflight verifies inventory but remains block
   assert.equal(result.providerCreateScopeVerified, true);
   assert.equal(result.noExistingProductionResourceCandidate, true);
   assert.equal(result.targetRegionAvailable, true);
+  assert.equal(result.targetRegionVerificationDeferredUntilPostCreate, false);
+  assert.equal(result.postCreateRegionVerificationRequired, true);
   assert.equal(result.selectedCreateMethodSupportsExplicitRegion, true);
   assert.equal(result.explicitRegionSelectionRequired, true);
   assert.equal(result.providerDefaultRegionAllowed, false);
@@ -65,9 +67,22 @@ test("ULC M6 first provider-write preflight verifies inventory but remains block
     explicitRegionSelectionRequired: true,
     providerDefaultRegionAllowed: false,
     existingProductionCandidateAllowed: false,
+    postCreateRegionVerificationRequired: true,
   });
   assert.equal(Object.isFrozen(result), true);
   assert.equal(Object.isFrozen(result.firstProviderWrite), true);
+});
+
+test("ULC M6 provider preflight permits provider-404 region inventory only by deferring exact verification until after create", () => {
+  const evidence = validEvidence();
+  evidence.neon.targetRegionAvailable = null;
+
+  const result = evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW });
+  assert.equal(result.targetRegionAvailable, false);
+  assert.equal(result.targetRegionVerificationDeferredUntilPostCreate, true);
+  assert.equal(result.postCreateRegionVerificationRequired, true);
+  assert.equal(result.providerDefaultRegionAllowed, false);
+  assert.equal(result.providerWriteAllowed, false);
 });
 
 test("ULC M6 provider-write safety contract separates preparation from Production Ready", () => {
@@ -92,6 +107,7 @@ test("ULC M6 provider-write safety contract separates preparation from Productio
     explicitRegionSelectionRequired: true,
     providerDefaultRegionAllowed: false,
     existingProductionCandidateAllowed: false,
+    postCreateRegionVerificationRequired: true,
   });
 });
 
@@ -180,7 +196,7 @@ test("ULC M6 provider preflight fails closed when inventory and selected create 
   );
 });
 
-test("ULC M6 provider preflight fails closed when Frankfurt is unavailable", () => {
+test("ULC M6 provider preflight fails closed when Frankfurt is explicitly unavailable", () => {
   const evidence = validEvidence();
   evidence.neon.targetRegionAvailable = false;
 
