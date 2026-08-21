@@ -13,6 +13,9 @@ export const ULC_LINZ_M6_PRODUCTION_WORKER_PREWRITE_CONTRACT = deepFreeze({
   previewUrls: false,
   publicIngress: false,
   applicationCodeUploadAllowed: false,
+  requiredPreparationGateEvidence: ["M3_DONE"],
+  productionPreparationGateEvidenceConsumed: false,
+  productionPreparationEligible: false,
   explicitApprovalRequired: true,
   providerWriteAllowed: false,
   executionAuthorized: false,
@@ -38,6 +41,8 @@ export function evaluateUlcLinzM6ProductionWorkerPrewrite(providerState) {
     ownData(state, "existingExactProductionResourceVerified", "INVALID_PROVIDER_STATE") !== true ||
     ownData(state, "firstProviderWriteAlreadySatisfied", "INVALID_PROVIDER_STATE") !== true ||
     ownData(state, "firstProviderWriteRequired", "INVALID_PROVIDER_STATE") !== false ||
+    ownData(state, "productionPreparationGateEvidenceConsumed", "INVALID_PROVIDER_STATE") !== false ||
+    ownData(state, "productionPreparationEligible", "INVALID_PROVIDER_STATE") !== false ||
     ownData(state, "providerWriteAllowed", "INVALID_PROVIDER_STATE") !== false ||
     ownData(state, "executionAuthorized", "INVALID_PROVIDER_STATE") !== false ||
     ownData(state, "publicExposureAllowed", "INVALID_PROVIDER_STATE") !== false ||
@@ -52,7 +57,7 @@ export function evaluateUlcLinzM6ProductionWorkerPrewrite(providerState) {
     environment: ENVIRONMENT,
     phase: "production-preparation",
     stepId: "production-worker",
-    status: "worker-create-prepared-awaiting-explicit-approval",
+    status: "worker-target-verified-blocked-awaiting-m3-gate-evidence",
     priorStepVerified: "neon-production-database",
     providerInventoryVerified: true,
     noExistingCloudflareWorkerCandidate: true,
@@ -64,6 +69,9 @@ export function evaluateUlcLinzM6ProductionWorkerPrewrite(providerState) {
       publicIngress: false,
       applicationCodeUploadAllowed: false,
     },
+    requiredPreparationGateEvidence: ["M3_DONE"],
+    productionPreparationGateEvidenceConsumed: false,
+    productionPreparationEligible: false,
     providerWriteRequired: true,
     providerWriteAllowed: false,
     executionAuthorized: false,
