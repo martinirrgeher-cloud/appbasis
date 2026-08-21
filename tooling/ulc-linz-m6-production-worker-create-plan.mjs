@@ -7,6 +7,7 @@ export const ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT = deepFreeze({
   schemaVersion: 1,
   application: APPLICATION,
   environment: ENVIRONMENT,
+  phase: "production-preparation",
   stepId: "production-worker",
   provider: "cloudflare",
   apiStatus: "beta",
@@ -19,6 +20,9 @@ export const ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT = deepFreeze({
       previews_enabled: false,
     },
   },
+  requiredPreparationGateEvidence: ["M3_DONE"],
+  productionPreparationGateEvidenceConsumed: false,
+  productionPreparationEligible: false,
   applicationCodeUploadAllowed: false,
   versionDeploymentAllowed: false,
   routeAttachmentAllowed: false,
@@ -26,6 +30,8 @@ export const ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT = deepFreeze({
   providerWriteAllowed: false,
   executionAuthorized: false,
   explicitApprovalRequired: true,
+  publicExposureAllowed: false,
+  productionReady: false,
   betaCapabilityReverificationRequired: true,
 });
 
@@ -40,8 +46,10 @@ export class UlcLinzM6ProductionWorkerCreatePlanError extends Error {
 export function planUlcLinzM6ProductionWorkerCreate(prewrite) {
   const state = requiredPlainRecord(prewrite, "INVALID_PREWRITE_STATE");
   if (
+    ownData(state, "schemaVersion", "INVALID_PREWRITE_STATE") !== 1 ||
     ownData(state, "application", "INVALID_PREWRITE_STATE") !== APPLICATION ||
     ownData(state, "environment", "INVALID_PREWRITE_STATE") !== ENVIRONMENT ||
+    ownData(state, "phase", "INVALID_PREWRITE_STATE") !== "production-preparation" ||
     ownData(state, "stepId", "INVALID_PREWRITE_STATE") !== "production-worker" ||
     ownData(state, "status", "INVALID_PREWRITE_STATE") !==
       "worker-target-verified-blocked-awaiting-m3-gate-evidence" ||
@@ -57,6 +65,17 @@ export function planUlcLinzM6ProductionWorkerCreate(prewrite) {
     ownData(state, "explicitApprovalRequired", "INVALID_PREWRITE_STATE") !== true ||
     ownData(state, "publicExposureAllowed", "INVALID_PREWRITE_STATE") !== false ||
     ownData(state, "productionReady", "INVALID_PREWRITE_STATE") !== false
+  ) {
+    fail("WORKER_CREATE_PLAN_PRECONDITIONS_NOT_MET");
+  }
+
+  const gateEvidence = requiredArray(
+    ownData(state, "requiredPreparationGateEvidence", "INVALID_PREWRITE_STATE"),
+    "INVALID_PREWRITE_STATE",
+  );
+  if (
+    gateEvidence.length !== 1 ||
+    ownData(gateEvidence, "0", "INVALID_PREWRITE_STATE") !== "M3_DONE"
   ) {
     fail("WORKER_CREATE_PLAN_PRECONDITIONS_NOT_MET");
   }
@@ -85,6 +104,17 @@ function requiredPlainRecord(value, code) {
     typeof value !== "object" ||
     Array.isArray(value) ||
     Object.getPrototypeOf(value) !== Object.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    fail(code);
+  }
+  return value;
+}
+
+function requiredArray(value, code) {
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
     Object.getOwnPropertySymbols(value).length !== 0
   ) {
     fail(code);
