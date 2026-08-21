@@ -27,12 +27,10 @@ test("renders the final production deployment bindings without public ingress", 
   assert.deepEqual(config.vars, {
     APPBASIS_BASE_URL: "https://app.ulc-linz.example.test",
   });
-  assert.deepEqual(config.secrets, {
-    required: ["BETTER_AUTH_SECRET"],
-  });
   assert.deepEqual(config.hyperdrive, [
     { binding: "HYPERDRIVE", id: "provider-hyperdrive-id" },
   ]);
+  assert.equal("secrets" in config, false);
   assert.equal("routes" in config, false);
   assert.equal("route" in config, false);
 });
@@ -89,7 +87,7 @@ test("rejects production worker names that exceed the Cloudflare limit", () => {
   );
 });
 
-test("writes only an owner-readable generated deployment artifact", async () => {
+test("writes only an owner-readable runtime deployment artifact", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "appbasis-generated-production-"));
   const outputPath = path.join(directory, "wrangler.production.generated.json");
   try {
@@ -99,7 +97,7 @@ test("writes only an owner-readable generated deployment artifact", async () => 
     assert.equal(written.compatibility_date, "2026-08-21");
     assert.equal(written.workers_dev, false);
     assert.equal(written.preview_urls, false);
-    assert.deepEqual(written.secrets.required, ["BETTER_AUTH_SECRET"]);
+    assert.equal("secrets" in written, false);
     assert.equal((await stat(outputPath)).mode & 0o777, 0o600);
   } finally {
     await rm(directory, { recursive: true, force: true });
