@@ -1,9 +1,10 @@
 import { extendIdentityPermissionsWorkerTemplate } from "./generated-identity-permissions-worker-template.mjs";
-import { renderGeneratedPrivateWorkerConfig } from "./generated-private-worker-config.mjs";
+import { renderGeneratedPrivateWorkerBootstrapConfig } from "./generated-private-worker-config.mjs";
 import { createIdentityRuntimeTemplate as createCoreIdentityRuntimeTemplate } from "./generated-runtime-template-core.mjs";
 
 const POSTGRES_E2E_PATH = "test/app.postgres.e2e.ts";
 const WORKER_ENTRYPOINT_PATH = "worker/index.ts";
+const PRODUCTION_WORKER_BOOTSTRAP_CONFIG_PATH = "wrangler.production.bootstrap.jsonc";
 const PERMISSION_FOUNDATION_BLOCK = `const permissionMigrationUrl = new URL(
   "../../../packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
   import.meta.url,
@@ -44,8 +45,8 @@ export function createIdentityRuntimeTemplate(input) {
   if (files.some((entry) => entry.path === WORKER_ENTRYPOINT_PATH)) {
     files.push(
       Object.freeze({
-        path: "wrangler.production.jsonc",
-        content: renderGeneratedPrivateWorkerConfig(input),
+        path: PRODUCTION_WORKER_BOOTSTRAP_CONFIG_PATH,
+        content: renderGeneratedPrivateWorkerBootstrapConfig(input),
       }),
     );
   }
