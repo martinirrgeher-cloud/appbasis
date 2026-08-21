@@ -20,10 +20,11 @@ Das Konsumieren der M3-Evidence darf deshalb nur die Produktionsvorbereitung als
 
 `tooling/ulc-linz-m6-production-worker-m3-gate.mjs`:
 
-1. akzeptiert ausschließlich den geschlossenen Worker-Create-Plan aus dem vorherigen M6-Slice,
-2. liest die aktuelle `apps/m3-preview/appbasis.app.json`,
-3. ruft `deriveM3PreviewAcceptanceEvidence()` auf,
-4. bleibt bei Datei-, Contract-, Definition-, HTTP-, JSON-, Run- oder sonstigem Evidence-Fehler fail-closed.
+1. akzeptiert ausschließlich den exakten geschlossenen Worker-Create-Plan aus dem vorherigen M6-Slice,
+2. blockiert zusätzliche oder driftende Create-/Body-Felder fail-closed,
+3. liest die aktuelle `apps/m3-preview/appbasis.app.json`,
+4. ruft `deriveM3PreviewAcceptanceEvidence()` auf,
+5. bleibt bei Datei-, Contract-, Definition-, HTTP-, JSON-, Run- oder sonstigem Evidence-Fehler fail-closed.
 
 Bei gültiger Evidence wird ausschließlich folgender Übergang erlaubt:
 
@@ -40,7 +41,10 @@ Unverändert gesperrt bleiben:
 - `releaseAuthorized=false`
 - `explicitApprovalRequired=true`
 
-Der Cloudflare-Beta-Create-Vertrag muss unmittelbar vor einem späteren realen Write zusätzlich erneut read-only verifiziert werden (`betaCapabilityReverificationRequired=true`).
+`productionPreparationEligible=true` ist ausdrücklich **kein Freshness-Nachweis für Providerzustand**. Unmittelbar vor einem späteren realen Worker-Write müssen deshalb beide Grenzen erneut read-only verifiziert werden:
+
+- aktueller Cloudflare-/Providerzustand (`providerStateReverificationRequired=true`),
+- weiterhin verfügbarer atomar geschlossener Cloudflare-Beta-Create-Vertrag (`betaCapabilityReverificationRequired=true`).
 
 ## Nicht enthalten
 
