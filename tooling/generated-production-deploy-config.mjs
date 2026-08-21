@@ -20,34 +20,11 @@ export function renderGeneratedProductionWranglerConfig(input = {}) {
   });
 }
 
-export function renderGeneratedProductionBootstrapWranglerConfig(input = {}) {
-  const config = renderGeneratedProductionWranglerConfig(input);
-  const bootstrapConfig = { ...config };
-  delete bootstrapConfig.secrets;
-  return Object.freeze(bootstrapConfig);
-}
-
 export async function writeGeneratedProductionWranglerConfig({
   outputPath,
   ...input
 } = {}) {
-  return writeGeneratedConfig(
-    outputPath,
-    renderGeneratedProductionWranglerConfig(input),
-  );
-}
-
-export async function writeGeneratedProductionBootstrapWranglerConfig({
-  outputPath,
-  ...input
-} = {}) {
-  return writeGeneratedConfig(
-    outputPath,
-    renderGeneratedProductionBootstrapWranglerConfig(input),
-  );
-}
-
-async function writeGeneratedConfig(outputPath, config) {
+  const config = renderGeneratedProductionWranglerConfig(input);
   if (typeof outputPath !== "string" || outputPath.trim().length === 0) {
     throw new Error("outputPath is required.");
   }
