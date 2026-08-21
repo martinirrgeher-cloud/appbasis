@@ -79,6 +79,8 @@ jobs:
             result?.cloudflareWorkerInventoryVerified !== true ||
             result?.noExistingCloudflareWorkerCandidate !== true ||
             result?.postCreateRegionVerificationRequired !== true ||
+            result?.productionPreparationGateEvidenceConsumed !== false ||
+            result?.productionPreparationEligible !== false ||
             result?.providerWriteAllowed !== false ||
             result?.executionAuthorized !== false ||
             result?.explicitApprovalRequired !== true ||
@@ -89,6 +91,55 @@ jobs:
           }
           NODE
           echo 'M6 read-only provider inventory verified; no provider write is authorized.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify production worker target remains blocked before M3 gate evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_PATH="$RUNNER_TEMP/m6-provider-state-preflight.json"
+          RESULT_PATH="$RESULT_PATH" node --input-type=module <<'NODE'
+          import { appendFile, readFile } from "node:fs/promises";
+          import { evaluateUlcLinzM6ProductionWorkerPrewrite } from "./tooling/ulc-linz-m6-production-worker-prewrite.mjs";
+
+          const providerState = JSON.parse(await readFile(process.env.RESULT_PATH, "utf8"));
+          if (providerState?.existingExactProductionResourceVerified !== true) {
+            if (
+              providerState?.firstProviderWriteRequired !== true ||
+              providerState?.firstProviderWriteAlreadySatisfied !== false
+            ) {
+              throw new Error("M6 provider preflight returned an inconsistent Neon readiness state.");
+            }
+            await appendFile(
+              process.env.GITHUB_STEP_SUMMARY,
+              "M6 production worker prewrite skipped: exact Neon production resource is not yet verified and Neon creation remains pending; no Cloudflare write is authorized.\n",
+            );
+            process.exit(0);
+          }
+
+          const prewrite = evaluateUlcLinzM6ProductionWorkerPrewrite(providerState);
+          if (
+            prewrite?.stepId !== "production-worker" ||
+            prewrite?.status !== "worker-target-verified-blocked-awaiting-m3-gate-evidence" ||
+            prewrite?.worker?.name !== "appbasis-ulc-linz-production" ||
+            prewrite?.worker?.workersDev !== false ||
+            prewrite?.worker?.previewUrls !== false ||
+            prewrite?.worker?.publicIngress !== false ||
+            prewrite?.worker?.applicationCodeUploadAllowed !== false ||
+            prewrite?.productionPreparationGateEvidenceConsumed !== false ||
+            prewrite?.productionPreparationEligible !== false ||
+            prewrite?.providerWriteAllowed !== false ||
+            prewrite?.executionAuthorized !== false ||
+            prewrite?.explicitApprovalRequired !== true ||
+            prewrite?.publicExposureAllowed !== false ||
+            prewrite?.productionReady !== false
+          ) {
+            throw new Error("M6 production worker target violated its pre-gate deny-by-default boundary.");
+          }
+          await appendFile(
+            process.env.GITHUB_STEP_SUMMARY,
+            "M6 production worker prewrite evaluated safely; no Cloudflare write is authorized.\n",
+          );
+          NODE
 
       - name: Remove temporary provider evidence
         if: always()

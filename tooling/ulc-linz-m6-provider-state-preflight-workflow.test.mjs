@@ -61,6 +61,45 @@ test("M6 provider preflight workflow is manual, main-only and read-only", async 
   }
 });
 
+test("worker prewrite runs only after exact Neon production resource verification", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /if \(providerState\?\.existingExactProductionResourceVerified !== true\) \{/,
+  );
+  assert.match(workflow, /providerState\?\.firstProviderWriteRequired !== true/);
+  assert.match(
+    workflow,
+    /providerState\?\.firstProviderWriteAlreadySatisfied !== false/,
+  );
+  assert.match(
+    workflow,
+    /throw new Error\("M6 provider preflight returned an inconsistent Neon readiness state\."\)/,
+  );
+  assert.match(
+    workflow,
+    /const prewrite = evaluateUlcLinzM6ProductionWorkerPrewrite\(providerState\);/,
+  );
+});
+
+test("worker prewrite summary distinguishes Neon-create skip from evaluated target", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /M6 production worker prewrite skipped: exact Neon production resource is not yet verified and Neon creation remains pending; no Cloudflare write is authorized\./,
+  );
+  assert.match(
+    workflow,
+    /M6 production worker prewrite evaluated safely; no Cloudflare write is authorized\./,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /echo 'M6 production worker prewrite evaluated safely; no Cloudflare write is authorized\.' >> "\$GITHUB_STEP_SUMMARY"/,
+  );
+});
+
 test("workflow never prints the raw provider evidence snapshot", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
