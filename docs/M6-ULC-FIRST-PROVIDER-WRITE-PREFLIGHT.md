@@ -98,7 +98,7 @@ Wichtig: Der reine Provider-State-Reader darf den Worker **noch nicht als freiga
 
 Die Pre-Write-Auswertung blockiert fail-closed, wenn die Provider-Inventur nicht vollständig/verifiziert ist, ein Worker-Kandidat existiert, die Neon-Produktionsdatenbank nicht bereits als exakt verifiziert gilt oder irgendein vorgelagerter Safety-Status einen Write bzw. öffentliche Exposition bereits erlaubt.
 
-Der bestehende Workflow `M6 ULC Provider State Preflight` darf diesen Zielzustand read-only prüfen und im Step Summary ausschließlich melden, dass der Worker-Target-Vertrag verifiziert ist, aber bis zur separaten M3-Gate-Evidence blockiert bleibt. Er enthält weiterhin keinen Cloudflare-Write.
+Der bestehende Workflow `M6 ULC Provider State Preflight` darf den Worker-Zielzustand deshalb nur dann read-only auswerten, wenn `existingExactProductionResourceVerified=true` bestätigt ist. Ist stattdessen ein Neon-Create legitim noch erforderlich (`firstProviderWriteRequired=true` und `firstProviderWriteAlreadySatisfied=false`), wird die Worker-Pre-Write-Auswertung übersprungen. Widersprüchliche Neon-Readiness-Zustände blockieren fail-closed. Der Workflow enthält weiterhin keinen Cloudflare-Write.
 
 ## Inputs
 
