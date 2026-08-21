@@ -41,7 +41,7 @@ export function createIdentityRuntimeTemplate(input) {
   });
   files.push(
     Object.freeze({
-      path: "wrangler.jsonc",
+      path: "wrangler.production.jsonc",
       content: renderGeneratedPrivateWorkerConfig(input),
     }),
   );
