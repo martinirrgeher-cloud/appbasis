@@ -120,7 +120,7 @@ test("ULC M6 provider-state preflight defers region verification on Neon /region
     now: NOW,
   });
   assert.equal(result.providerInventoryVerified, true);
-  assert.equal(result.targetRegionAvailable, false);
+  assert.equal(result.targetRegionAvailable, null);
   assert.equal(result.targetRegionVerificationDeferredUntilPostCreate, true);
   assert.equal(result.postCreateRegionVerificationRequired, true);
   assert.equal(result.providerWriteAllowed, false);
