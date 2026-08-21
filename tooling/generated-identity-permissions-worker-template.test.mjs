@@ -24,6 +24,7 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "worker/app.ts",
     "worker/index.ts",
     "worker/postgres.ts",
+    "wrangler.production.jsonc",
   ]);
 
   const worker = content(template, "worker/index.ts");
@@ -59,6 +60,7 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
       "tsconfig.json",
       "vitest.config.ts",
       "worker/app.ts",
+      "wrangler.production.jsonc",
     ],
   );
 
