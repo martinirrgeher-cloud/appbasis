@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           RESULT_PATH="$RUNNER_TEMP/m6-provider-state-preflight.json"
           RESULT_PATH="$RESULT_PATH" node --input-type=module <<'NODE'
-          import { readFile } from "node:fs/promises";
+          import { appendFile, readFile } from "node:fs/promises";
           import { evaluateUlcLinzM6ProductionWorkerPrewrite } from "./tooling/ulc-linz-m6-production-worker-prewrite.mjs";
 
           const providerState = JSON.parse(await readFile(process.env.RESULT_PATH, "utf8"));
@@ -109,6 +109,10 @@ jobs:
             ) {
               throw new Error("M6 provider preflight returned an inconsistent Neon readiness state.");
             }
+            await appendFile(
+              process.env.GITHUB_STEP_SUMMARY,
+              "M6 production worker prewrite skipped: exact Neon production resource is not yet verified and Neon creation remains pending; no Cloudflare write is authorized.\n",
+            );
             process.exit(0);
           }
 
@@ -131,8 +135,11 @@ jobs:
           ) {
             throw new Error("M6 production worker target violated its pre-gate deny-by-default boundary.");
           }
+          await appendFile(
+            process.env.GITHUB_STEP_SUMMARY,
+            "M6 production worker prewrite evaluated safely; no Cloudflare write is authorized.\n",
+          );
           NODE
-          echo 'M6 production worker prewrite evaluated safely; no Cloudflare write is authorized.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary provider evidence
         if: always()
