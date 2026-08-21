@@ -60,8 +60,11 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
       "tsconfig.json",
       "vitest.config.ts",
       "worker/app.ts",
-      "wrangler.production.jsonc",
     ],
+  );
+  assert.equal(
+    identityOnly.files.some((entry) => entry.path === "wrangler.production.jsonc"),
+    false,
   );
 
   const guardedTasks = createIdentityRuntimeTemplate({
@@ -83,6 +86,10 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
       new URL("../apps/tasks-minimal/worker/postgres.ts", import.meta.url),
       "utf8",
     ),
+  );
+  assert.equal(
+    guardedTasks.files.some((entry) => entry.path === "wrangler.production.jsonc"),
+    true,
   );
 });
 
