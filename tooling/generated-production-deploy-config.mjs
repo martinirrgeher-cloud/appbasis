@@ -6,9 +6,14 @@ import { renderGeneratedPreviewWranglerConfig } from "./generated-preview-deploy
 const WORKER_NAME_PREFIX = "appbasis-";
 const PRODUCTION_WORKER_NAME_SUFFIX = "-production";
 const WORKER_NAME_MAX_LENGTH = 63;
+const PRODUCTION_COMPATIBILITY_DATE = "2026-08-21";
 
 export function renderGeneratedProductionWranglerConfig(input = {}) {
-  const previewContract = renderGeneratedPreviewWranglerConfig(input);
+  assertProductionCompatibilityDate(input.compatibilityDate);
+  const previewContract = renderGeneratedPreviewWranglerConfig({
+    ...input,
+    compatibilityDate: PRODUCTION_COMPATIBILITY_DATE,
+  });
   const workerName = requiredProductionWorkerName(input.appId);
 
   return Object.freeze({
@@ -40,6 +45,14 @@ export async function writeGeneratedProductionWranglerConfig({
     await rm(temporaryPath, { force: true });
   }
   return outputPath;
+}
+
+function assertProductionCompatibilityDate(value) {
+  if (value !== undefined && value !== PRODUCTION_COMPATIBILITY_DATE) {
+    throw new Error(
+      `compatibilityDate must remain ${PRODUCTION_COMPATIBILITY_DATE} for the production Worker contract.`,
+    );
+  }
 }
 
 function requiredProductionWorkerName(appId) {
