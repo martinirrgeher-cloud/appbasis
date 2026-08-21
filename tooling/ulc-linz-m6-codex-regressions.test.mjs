@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   ULC_LINZ_M6_MAX_NEON_PROJECT_INVENTORY,
+  UlcLinzM6FirstProviderWritePreflightError,
   evaluateUlcLinzM6FirstProviderWritePreflight,
 } from "./ulc-linz-m6-first-provider-write-preflight.mjs";
 import {
@@ -144,6 +145,35 @@ test("M6 first-provider evaluator uses the aggregate pagination bound rather tha
   };
   const result = evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW });
   assert.equal(result.providerInventoryVerified, true);
+});
+
+test("M6 adopted Neon production target requires exact case-sensitive project name", () => {
+  const evidence = {
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "production",
+    observedAt: "2026-08-20T10:29:00.000Z",
+    validUntilOrReviewAt: "2026-08-20T10:40:00.000Z",
+    source: "provider-api",
+    neon: {
+      inventoryComplete: true,
+      inventoryMatchesSelectedCreateScope: true,
+      projects: [
+        { name: "APPBASIS-ULC-LINZ-PRODUCTION", region: "aws-eu-central-1" },
+      ],
+      targetRegionAvailable: null,
+      selectedCreateMethodSupportsExplicitRegion: true,
+    },
+  };
+
+  assert.throws(
+    () => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }),
+    (error) => {
+      assert.equal(error instanceof UlcLinzM6FirstProviderWritePreflightError, true);
+      assert.equal(error.code, "EXISTING_PRODUCTION_RESOURCE_CANDIDATE");
+      return true;
+    },
+  );
 });
 
 test("M6 execution-bound migration fingerprint changes for every validated non-migration input class", async () => {

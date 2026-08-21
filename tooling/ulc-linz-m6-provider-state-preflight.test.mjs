@@ -209,10 +209,12 @@ test("ULC M6 executable provider-state preflight follows Neon cursor pagination 
     }
     return jsonResponse({ success: true, result: [] });
   };
-  await assert.rejects(
-    runUlcLinzM6ProviderStatePreflight(validInputs(), { fetchImpl, now: NOW }),
-    errorWithCode("EXISTING_PRODUCTION_RESOURCE_CANDIDATE"),
-  );
+  const result = await runUlcLinzM6ProviderStatePreflight(validInputs(), {
+    fetchImpl,
+    now: NOW,
+  });
+  assert.equal(result.existingExactProductionResourceVerified, true);
+  assert.equal(result.firstProviderWriteAlreadySatisfied, true);
   assert.equal(
     requests.filter((request) => new URL(request.href).pathname.endsWith("/projects")).length,
     2,

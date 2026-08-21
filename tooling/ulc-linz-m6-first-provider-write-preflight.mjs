@@ -61,6 +61,7 @@ export const ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT = deepFreeze({
     explicitRegionSelectionRequired: true,
     providerDefaultRegionAllowed: false,
     existingProductionCandidateAllowed: false,
+    exactExistingTargetMaySatisfyStep: true,
     postCreateRegionVerificationRequired: true,
   },
   cloudflareWorkerCreation: {
@@ -117,10 +118,23 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     const project = exactRecord(value, PROJECT_FIELDS, "NEON_PREFLIGHT_INVALID");
     return { name: requiredProjectName(project.name), region: requiredRegion(project.region) };
   });
-  if (normalizedProjects.some((project) => isUlcProductionCandidate(project.name))) {
+
+  const productionCandidates = normalizedProjects.filter((project) =>
+    isUlcProductionCandidate(project.name),
+  );
+  if (productionCandidates.length > 1) {
+    fail("EXISTING_PRODUCTION_RESOURCE_CANDIDATE");
+  }
+  const existingExactProductionResource = productionCandidates[0] ?? null;
+  if (
+    existingExactProductionResource !== null &&
+    (existingExactProductionResource.name !== NEON_PROJECT_NAME ||
+      existingExactProductionResource.region !== NEON_REGION)
+  ) {
     fail("EXISTING_PRODUCTION_RESOURCE_CANDIDATE");
   }
 
+  const firstProviderWriteRequired = existingExactProductionResource === null;
   const targetRegionConfirmedBeforeCreate = neon.targetRegionAvailable === true;
 
   return deepFreeze({
@@ -128,12 +142,18 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
     application: APPLICATION,
     environment: ENVIRONMENT,
     phase: "production-preparation",
-    status: "provider-inventory-verified-blocked-before-production-preparation-gate",
+    status: firstProviderWriteRequired
+      ? "provider-inventory-verified-blocked-before-production-preparation-gate"
+      : "existing-production-database-verified-blocked-before-production-preparation-gate",
     providerInventoryVerified: true,
     providerCreateScopeVerified: true,
-    noExistingProductionResourceCandidate: true,
+    noExistingProductionResourceCandidate: firstProviderWriteRequired,
+    existingExactProductionResourceVerified: !firstProviderWriteRequired,
+    firstProviderWriteRequired,
+    firstProviderWriteAlreadySatisfied: !firstProviderWriteRequired,
     targetRegionAvailable: neon.targetRegionAvailable,
-    targetRegionVerificationDeferredUntilPostCreate: !targetRegionConfirmedBeforeCreate,
+    targetRegionVerificationDeferredUntilPostCreate:
+      firstProviderWriteRequired && !targetRegionConfirmedBeforeCreate,
     postCreateRegionVerificationRequired: true,
     selectedCreateMethodSupportsExplicitRegion: true,
     explicitRegionSelectionRequired: true,
@@ -198,6 +218,7 @@ function assertCanonicalContracts() {
     safety.firstProviderWrite.explicitRegionSelectionRequired !== true ||
     safety.firstProviderWrite.providerDefaultRegionAllowed !== false ||
     safety.firstProviderWrite.existingProductionCandidateAllowed !== false ||
+    safety.firstProviderWrite.exactExistingTargetMaySatisfyStep !== true ||
     safety.firstProviderWrite.postCreateRegionVerificationRequired !== true ||
     safety.cloudflareWorkerCreation.workerName !== CLOUDFLARE_WORKER_NAME ||
     safety.cloudflareWorkerCreation.workersDev !== false ||
