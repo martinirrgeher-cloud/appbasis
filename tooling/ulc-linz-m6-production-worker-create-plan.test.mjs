@@ -71,6 +71,10 @@ test("M6 worker create plan uses metadata-only closed Cloudflare beta create con
 });
 
 for (const [field, value] of [
+  ["priorStepVerified", "wrong-step"],
+  ["providerInventoryVerified", false],
+  ["noExistingCloudflareWorkerCandidate", false],
+  ["providerWriteRequired", false],
   ["productionPreparationGateEvidenceConsumed", true],
   ["productionPreparationEligible", true],
   ["providerWriteAllowed", true],
