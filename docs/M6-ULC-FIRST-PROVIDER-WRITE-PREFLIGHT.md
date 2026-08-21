@@ -76,9 +76,9 @@ Vor dem ersten noch erforderlichen Provider-Write wird zusätzlich `GET /client/
 
 ## Production-Worker Pre-Write
 
-Wenn die exakte Neon-Zielressource bereits verifiziert ist und kein Cloudflare-Worker-Kandidat existiert, darf `tooling/ulc-linz-m6-production-worker-prewrite.mjs` ausschließlich den **nächsten geplanten mutierenden Schritt** vorbereiten. Der Output ist kein Executor und autorisiert keinen Write.
+Wenn die exakte Neon-Zielressource bereits verifiziert ist und kein Cloudflare-Worker-Kandidat existiert, darf `tooling/ulc-linz-m6-production-worker-prewrite.mjs` ausschließlich den **festen Zielzustand des nächsten geplanten mutierenden Schritts** verifizieren. Der Output ist kein Executor und autorisiert keinen Write.
 
-Der vorbereitete Zielzustand ist fest:
+Der Zielzustand ist fest:
 
 - Schritt `production-worker`
 - Provider `cloudflare`
@@ -87,13 +87,18 @@ Der vorbereitete Zielzustand ist fest:
 - `previewUrls=false`
 - `publicIngress=false`
 - `applicationCodeUploadAllowed=false`
+- erforderliche Preparation-Gate-Evidence: `M3_DONE`
+- `productionPreparationGateEvidenceConsumed=false`
+- `productionPreparationEligible=false`
 - `providerWriteAllowed=false`
 - `executionAuthorized=false`
 - `explicitApprovalRequired=true`
 
-Die Pre-Write-Auswertung blockiert fail-closed, wenn die Provider-Inventur nicht vollständig/verifiziert ist, ein Worker-Kandidat existiert, die Neon-Produktionsdatenbank nicht bereits als exakt verifiziert gilt oder irgendein vorgelagerter Safety-Status einen Write bzw. öffentliche Exposition bereits erlaubt. Der reale Cloudflare-Create bleibt ein separater späterer Schritt und benötigt eine ausdrückliche Betreiberfreigabe.
+Wichtig: Der reine Provider-State-Reader darf den Worker **noch nicht als freigabefähig vorbereitet** melden. Solange die separate, vertrauenswürdig gebundene M3-Gate-Evidence nicht konsumiert wurde, lautet der Zustand `worker-target-verified-blocked-awaiting-m3-gate-evidence`. Erst ein nachgelagerter Gate-Consumer darf aus gültiger M3-Evidence einen preparation-eligible Zustand ableiten; auch dann bleibt eine separate ausdrückliche Betreiberfreigabe vor dem realen Cloudflare-Write zwingend.
 
-Der bestehende Workflow `M6 ULC Provider State Preflight` darf diesen Pre-Write-Zustand read-only prüfen und im Step Summary ausschließlich melden, dass der nächste Schritt vorbereitet ist. Er enthält weiterhin keinen Cloudflare-Write.
+Die Pre-Write-Auswertung blockiert fail-closed, wenn die Provider-Inventur nicht vollständig/verifiziert ist, ein Worker-Kandidat existiert, die Neon-Produktionsdatenbank nicht bereits als exakt verifiziert gilt oder irgendein vorgelagerter Safety-Status einen Write bzw. öffentliche Exposition bereits erlaubt.
+
+Der bestehende Workflow `M6 ULC Provider State Preflight` darf diesen Zielzustand read-only prüfen und im Step Summary ausschließlich melden, dass der Worker-Target-Vertrag verifiziert ist, aber bis zur separaten M3-Gate-Evidence blockiert bleibt. Er enthält weiterhin keinen Cloudflare-Write.
 
 ## Inputs
 
