@@ -24,6 +24,7 @@ test("renders the deterministic runnable identity runtime", () => {
       "tsconfig.json",
       "vitest.config.ts",
       "worker/app.ts",
+      "wrangler.production.jsonc",
     ],
   );
 });
@@ -161,6 +162,7 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
       "worker/app.ts",
       "worker/index.ts",
       "worker/postgres.ts",
+      "wrangler.production.jsonc",
     ],
   );
 });
