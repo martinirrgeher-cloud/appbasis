@@ -2,9 +2,9 @@
 
 ## Zweck
 
-Dieser Preflight ist die letzte read-only Provider-Inventur vor der kontrollierten Produktionsvorbereitung. Der erste mögliche spätere Write bleibt `neon-production-database`.
+Dieser Preflight ist die letzte read-only Provider-Inventur vor der kontrollierten Produktionsvorbereitung. Der erste mögliche spätere Write bleibt `neon-production-database`, **sofern** die exakt vorgesehene Produktionsdatenbank noch nicht existiert.
 
-Ein erfolgreicher Inventarcheck autorisiert **weder** den Provider-Write **noch** bereits dessen Freigabe. Der Output bleibt ausdrücklich:
+Ein erfolgreicher Inventarcheck autorisiert **weder** einen Provider-Write **noch** bereits dessen Freigabe. Der Output bleibt ausdrücklich:
 
 - Phase `production-preparation`
 - `productionPreparationGateEvidenceConsumed=false`
@@ -25,10 +25,12 @@ ULC Linz v0.1 verwendet:
 - Neon
 - `aws-eu-central-1` / Frankfurt
 - dedizierte Produktionsressource
-- explizite Regionswahl beim Create
+- explizite Regionswahl beim Create, falls ein Create noch erforderlich ist
 - keinen Provider-Default für die Region
 - exakt denselben Organisationsscope für Inventur und späteren Create
-- keine blinde Neuerzeugung oder Adoption bei vorhandenen/kollidierenden ULC-Produktionsressourcen
+- keine blinde Neuerzeugung oder Adoption bei abweichenden/kollidierenden ULC-Produktionsressourcen
+
+Eine bereits vorhandene Ressource darf den Schritt `neon-production-database` ausschließlich dann als bereits erfüllt repräsentieren, wenn im vollständigen Providerinventar **genau ein** ULC-Production-Kandidat existiert und dieser gleichzeitig exakt `appbasis-ulc-linz-production` heißt und exakt `aws-eu-central-1` meldet. Jeder zweite Kandidat, jeder abweichende Name und jede abweichende Region blockiert fail-closed. Diese Verifikation ist read-only und autorisiert keinen weiteren mutierenden Schritt.
 
 Die Evidence muss frisch und vollständig sein; das Gültigkeitsfenster beträgt maximal 15 Minuten. Provider-/Organisations-IDs werden nicht in den Ergebnis-Snapshot übernommen.
 
@@ -59,18 +61,18 @@ Nach dem Phasenmodell darf die öffentliche Domain erst aktiviert werden, nachde
 - Regionsinventar verwendet den Provider-Identifier `id`; Projektobjekte verwenden weiterhin `region_id`
 - ein erfolgreicher Regions-Response bestätigt Frankfurt nur bei `id=aws-eu-central-1`
 - ein erfolgreicher Regions-Response ohne Frankfurt blockiert fail-closed
-- ausschließlich HTTP 404 auf `/regions` darf die Regionsverifikation bis unmittelbar nach dem ausdrücklich freigegebenen Create verschieben; Auth-, Transport-, JSON-, Shape- und andere HTTP-Fehler blockieren weiterhin fail-closed
-- ein 404 wird nicht als positive oder negative Verfügbarkeitsaussage ausgegeben: `targetRegionAvailable=null` und `targetRegionVerificationDeferredUntilPostCreate=true`
+- ausschließlich HTTP 404 auf `/regions` darf die Regionsverifikation bis unmittelbar nach einem erforderlichen, ausdrücklich freigegebenen Create verschieben; Auth-, Transport-, JSON-, Shape- und andere HTTP-Fehler blockieren weiterhin fail-closed
+- ein 404 wird nicht als positive oder negative Verfügbarkeitsaussage ausgegeben: `targetRegionAvailable=null`
 
 Der akzeptierte spätere Create-Mechanismus ist `neon-api-v2-project-create-region-id`; ein Mechanismus ohne explizite Regionswahl wird abgewiesen. Die Create-Region bleibt hart auf `aws-eu-central-1` gepinnt; Provider-Default bleibt verboten.
 
-Unabhängig davon, ob `/regions` vor dem Create erfolgreich war oder HTTP 404 geliefert hat, ist die Post-Create-Verifikation Pflicht. Der neu erzeugte Neon-Projektzustand muss unmittelbar read-only zurückgelesen werden. `verifyUlcLinzM6CreatedNeonProjectRegion()` akzeptiert ausschließlich ein Provider-Projekt mit `region_id=aws-eu-central-1`. Fehlende, malformed oder abweichende `region_id` blockiert jeden weiteren Produktionsvorbereitungsschritt fail-closed. Migration, Binding, Deployment, öffentliche Exposition und Release dürfen dann nicht fortgesetzt werden.
+Wenn die exakt vorgesehene Produktionsressource bereits im vollständigen Projektinventar vorhanden ist und ihre `region_id` exakt Frankfurt bestätigt, meldet der Preflight `existingExactProductionResourceVerified=true`, `firstProviderWriteRequired=false` und `firstProviderWriteAlreadySatisfied=true`. Die Ressource wird dabei nicht verändert.
 
-Diese Verschiebung autorisiert keinen Provider-Write. Der spätere Neon-Create benötigt weiterhin M3-Gate-Evidence und die ausdrückliche Freigabe genau dieses mutierenden Schritts.
+Wenn ein Create noch erforderlich ist, bleibt die Post-Create-Verifikation Pflicht. Der neu erzeugte Neon-Projektzustand muss unmittelbar read-only zurückgelesen werden. `verifyUlcLinzM6CreatedNeonProjectRegion()` akzeptiert ausschließlich ein Provider-Projekt mit `region_id=aws-eu-central-1`. Fehlende, malformed oder abweichende `region_id` blockiert jeden weiteren Produktionsvorbereitungsschritt fail-closed. Migration, Binding, Deployment, öffentliche Exposition und Release dürfen dann nicht fortgesetzt werden.
 
 ### Cloudflare
 
-Vor dem ersten Neon-Write wird zusätzlich `GET /client/v4/accounts/{accountId}/workers/scripts` gelesen. Der Endpoint wird als vollständiges Single-Page-Inventar behandelt. Exakte oder plausibel kollidierende ULC-Linz-Production-Worker blockieren.
+Vor dem ersten noch erforderlichen Provider-Write wird zusätzlich `GET /client/v4/accounts/{accountId}/workers/scripts` gelesen. Der Endpoint wird als vollständiges Single-Page-Inventar behandelt. Exakte oder plausibel kollidierende ULC-Linz-Production-Worker blockieren.
 
 ## Inputs
 
@@ -92,17 +94,17 @@ Credentials werden nicht im Ergebnis ausgegeben; Fehler verwenden feste Fehlerco
 
 ## Fail-closed-Fälle
 
-Blockiert wird insbesondere bei unvollständiger Pagination, `unavailable_project_ids`, Scope-Drift, Cursor-Schleifen, stale Evidence, explizit fehlender Frankfurt-Verfügbarkeit in einem erfolgreichen Regionsinventar, ungeeignetem Create-Mechanismus, bestehenden Produktionskandidaten, Cloudflare-Kollisionen, unsicheren Shapes/Gettern/Prototypen, zusätzlichen unerwarteten Feldern oder Vertragsdrift. HTTP 404 auf `/regions` ist die einzige Ausnahme, die keine Verfügbarkeit behauptet, sondern die exakte Regionsverifikation zwingend bis direkt nach Create verschiebt.
+Blockiert wird insbesondere bei unvollständiger Pagination, `unavailable_project_ids`, Scope-Drift, Cursor-Schleifen, stale Evidence, explizit fehlender Frankfurt-Verfügbarkeit in einem erfolgreichen Regionsinventar, ungeeignetem Create-Mechanismus, mehreren oder abweichenden Produktionskandidaten, Cloudflare-Kollisionen, unsicheren Shapes/Gettern/Prototypen, zusätzlichen unerwarteten Feldern oder Vertragsdrift. HTTP 404 auf `/regions` ist nur dann tolerierbar, wenn keine bereits vorhandene Zielressource ihre Region verifizieren kann und ein späterer Create noch erforderlich ist.
 
 ## Entscheidende Freigabegrenze
 
 Ein grüner Provider-Inventarcheck bedeutet nur: **der gelesene Providerzustand ist für den vorgesehenen Vorbereitungspfad konsistent**. Er bedeutet ausdrücklich nicht:
 
 - M3-Gate konsumiert,
-- Provider-Write freigabefähig,
+- ein noch erforderlicher Provider-Write freigabefähig,
 - M4 oder M5 erfüllt,
 - Production Ready,
 - öffentliche Exposition erlaubt,
 - Release erlaubt.
 
-Ein späterer schreibender Vorbereitungsschritt muss vor Ausführung M3-Evidence und die ausdrückliche Freigabe dieses konkreten mutierenden Schritts konsumieren. Dieser PR enthält keinen solchen Executor.
+Ist die exakte Neon-Zielressource bereits vorhanden und verifiziert, entfällt ausschließlich deren Neuerzeugung. Jeder nachfolgende mutierende Schritt benötigt weiterhin seine eigene ausdrückliche Freigabe. Dieser PR enthält keinen mutierenden Executor.
