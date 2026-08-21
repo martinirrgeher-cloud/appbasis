@@ -7,7 +7,7 @@ export function renderGeneratedPrivateWorkerConfig(input) {
   return `${JSON.stringify(
     {
       $schema: "./node_modules/wrangler/config-schema.json",
-      name: `appbasis-${appId}`,
+      name: `appbasis-${appId}-production`,
       compatibility_date: COMPATIBILITY_DATE,
       compatibility_flags: ["nodejs_compat"],
       main: "./worker/index.ts",
