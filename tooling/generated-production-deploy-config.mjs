@@ -14,10 +14,11 @@ export function renderGeneratedProductionWranglerConfig(input = {}) {
     ...input,
     compatibilityDate: PRODUCTION_COMPATIBILITY_DATE,
   });
+  const { secrets: _requiredSecretMetadata, ...runtimeConfig } = previewContract;
   const workerName = requiredProductionWorkerName(input.appId);
 
   return Object.freeze({
-    ...previewContract,
+    ...runtimeConfig,
     name: workerName,
     workers_dev: false,
     preview_urls: false,
