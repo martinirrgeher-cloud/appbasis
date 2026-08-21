@@ -74,6 +74,27 @@ Wenn ein Create noch erforderlich ist, bleibt die Post-Create-Verifikation Pflic
 
 Vor dem ersten noch erforderlichen Provider-Write wird zusätzlich `GET /client/v4/accounts/{accountId}/workers/scripts` gelesen. Der Endpoint wird als vollständiges Single-Page-Inventar behandelt. Exakte oder plausibel kollidierende ULC-Linz-Production-Worker blockieren.
 
+## Production-Worker Pre-Write
+
+Wenn die exakte Neon-Zielressource bereits verifiziert ist und kein Cloudflare-Worker-Kandidat existiert, darf `tooling/ulc-linz-m6-production-worker-prewrite.mjs` ausschließlich den **nächsten geplanten mutierenden Schritt** vorbereiten. Der Output ist kein Executor und autorisiert keinen Write.
+
+Der vorbereitete Zielzustand ist fest:
+
+- Schritt `production-worker`
+- Provider `cloudflare`
+- Workername exakt `appbasis-ulc-linz-production`
+- `workersDev=false`
+- `previewUrls=false`
+- `publicIngress=false`
+- `applicationCodeUploadAllowed=false`
+- `providerWriteAllowed=false`
+- `executionAuthorized=false`
+- `explicitApprovalRequired=true`
+
+Die Pre-Write-Auswertung blockiert fail-closed, wenn die Provider-Inventur nicht vollständig/verifiziert ist, ein Worker-Kandidat existiert, die Neon-Produktionsdatenbank nicht bereits als exakt verifiziert gilt oder irgendein vorgelagerter Safety-Status einen Write bzw. öffentliche Exposition bereits erlaubt. Der reale Cloudflare-Create bleibt ein separater späterer Schritt und benötigt eine ausdrückliche Betreiberfreigabe.
+
+Der bestehende Workflow `M6 ULC Provider State Preflight` darf diesen Pre-Write-Zustand read-only prüfen und im Step Summary ausschließlich melden, dass der nächste Schritt vorbereitet ist. Er enthält weiterhin keinen Cloudflare-Write.
+
 ## Inputs
 
 Nur Namen, nie Werte im Repository:
