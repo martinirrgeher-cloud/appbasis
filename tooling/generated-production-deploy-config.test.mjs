@@ -20,6 +20,7 @@ test("renders the final production deployment bindings without public ingress", 
 
   assert.equal(config.name, "appbasis-ulc-linz-production");
   assert.equal(config.main, "./worker/index.ts");
+  assert.equal(config.compatibility_date, "2026-08-21");
   assert.equal(config.workers_dev, false);
   assert.equal(config.preview_urls, false);
   assert.equal(config.keep_vars, true);
@@ -34,6 +35,28 @@ test("renders the final production deployment bindings without public ingress", 
   ]);
   assert.equal("routes" in config, false);
   assert.equal("route" in config, false);
+});
+
+test("pins the same compatibility date as the production bootstrap contract", () => {
+  assert.equal(
+    renderGeneratedProductionWranglerConfig(input).compatibility_date,
+    "2026-08-21",
+  );
+  assert.equal(
+    renderGeneratedProductionWranglerConfig({
+      ...input,
+      compatibilityDate: "2026-08-21",
+    }).compatibility_date,
+    "2026-08-21",
+  );
+  assert.throws(
+    () =>
+      renderGeneratedProductionWranglerConfig({
+        ...input,
+        compatibilityDate: "2026-08-14",
+      }),
+    /must remain 2026-08-21/,
+  );
 });
 
 test("reuses fail-closed provider, origin and entrypoint validation", () => {
@@ -73,6 +96,7 @@ test("writes only an owner-readable generated deployment artifact", async () => 
     await writeGeneratedProductionWranglerConfig({ ...input, outputPath });
     const written = JSON.parse(await readFile(outputPath, "utf8"));
     assert.equal(written.name, "appbasis-ulc-linz-production");
+    assert.equal(written.compatibility_date, "2026-08-21");
     assert.equal(written.workers_dev, false);
     assert.equal(written.preview_urls, false);
     assert.deepEqual(written.secrets.required, ["BETTER_AUTH_SECRET"]);
