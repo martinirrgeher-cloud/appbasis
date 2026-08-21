@@ -90,6 +90,35 @@ jobs:
           NODE
           echo 'M6 read-only provider inventory verified; no provider write is authorized.' >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Prepare production worker pre-write gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_PATH="$RUNNER_TEMP/m6-provider-state-preflight.json"
+          RESULT_PATH="$RESULT_PATH" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          import { evaluateUlcLinzM6ProductionWorkerPrewrite } from "./tooling/ulc-linz-m6-production-worker-prewrite.mjs";
+
+          const providerState = JSON.parse(await readFile(process.env.RESULT_PATH, "utf8"));
+          const prewrite = evaluateUlcLinzM6ProductionWorkerPrewrite(providerState);
+          if (
+            prewrite?.stepId !== "production-worker" ||
+            prewrite?.worker?.name !== "appbasis-ulc-linz-production" ||
+            prewrite?.worker?.workersDev !== false ||
+            prewrite?.worker?.previewUrls !== false ||
+            prewrite?.worker?.publicIngress !== false ||
+            prewrite?.worker?.applicationCodeUploadAllowed !== false ||
+            prewrite?.providerWriteAllowed !== false ||
+            prewrite?.executionAuthorized !== false ||
+            prewrite?.explicitApprovalRequired !== true ||
+            prewrite?.publicExposureAllowed !== false ||
+            prewrite?.productionReady !== false
+          ) {
+            throw new Error("M6 production worker pre-write contract violated its deny-by-default boundary.");
+          }
+          NODE
+          echo 'Next M6 step prepared: production-worker; explicit approval is still required and no Cloudflare write is authorized.' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Remove temporary provider evidence
         if: always()
         shell: bash
