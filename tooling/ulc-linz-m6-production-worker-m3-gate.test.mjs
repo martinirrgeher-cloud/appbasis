@@ -60,6 +60,7 @@ test("M6 worker gate consumes canonical M3 preview acceptance without authorizin
     publicExposureAllowed: false,
     productionReady: false,
     releaseAuthorized: false,
+    providerStateReverificationRequired: true,
     betaCapabilityReverificationRequired: true,
   });
   assert.equal(Object.isFrozen(result), true);
@@ -81,6 +82,8 @@ test("M6 worker gate stays blocked when canonical M3 acceptance cannot be verifi
   assert.equal(result.publicExposureAllowed, false);
   assert.equal(result.productionReady, false);
   assert.equal(result.releaseAuthorized, false);
+  assert.equal(result.providerStateReverificationRequired, true);
+  assert.equal(result.betaCapabilityReverificationRequired, true);
 });
 
 for (const mutate of [
@@ -118,6 +121,30 @@ for (const mutate of [
     );
   });
 }
+
+test("M6 worker gate rejects additional create-plan fields", async () => {
+  const plan = structuredClone(ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT);
+  plan.executor = "unexpected";
+  await assert.rejects(
+    () =>
+      evaluateUlcLinzM6ProductionWorkerM3Gate(plan, process.cwd(), {
+        fetchImpl: successfulAcceptanceFetch(),
+      }),
+    errorWithCode("INVALID_CREATE_PLAN"),
+  );
+});
+
+test("M6 worker gate rejects additional create-body fields", async () => {
+  const plan = structuredClone(ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT);
+  plan.body.script = "unexpected";
+  await assert.rejects(
+    () =>
+      evaluateUlcLinzM6ProductionWorkerM3Gate(plan, process.cwd(), {
+        fetchImpl: successfulAcceptanceFetch(),
+      }),
+    errorWithCode("INVALID_CREATE_PLAN"),
+  );
+});
 
 test("M6 worker gate rejects accessor-backed create safety state", async () => {
   const plan = structuredClone(ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT);
