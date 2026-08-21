@@ -92,6 +92,12 @@ jobs:
             "projects" \
             "https://console.neon.tech/api/v2/projects?org_id=${NEON_ORG_ID}&limit=400&timeout=30000" || failed=1
           probe_status \
+            "user-organizations" \
+            "https://console.neon.tech/api/v2/users/me/organizations" || failed=1
+          probe_status \
+            "organization" \
+            "https://console.neon.tech/api/v2/organizations/${NEON_ORG_ID}" || failed=1
+          probe_status \
             "regions" \
             "https://console.neon.tech/api/v2/regions?org_id=${NEON_ORG_ID}" || failed=1
           test "$failed" -eq 0
