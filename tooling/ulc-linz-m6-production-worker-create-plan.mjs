@@ -45,6 +45,11 @@ export function planUlcLinzM6ProductionWorkerCreate(prewrite) {
     ownData(state, "stepId", "INVALID_PREWRITE_STATE") !== "production-worker" ||
     ownData(state, "status", "INVALID_PREWRITE_STATE") !==
       "worker-target-verified-blocked-awaiting-m3-gate-evidence" ||
+    ownData(state, "priorStepVerified", "INVALID_PREWRITE_STATE") !==
+      "neon-production-database" ||
+    ownData(state, "providerInventoryVerified", "INVALID_PREWRITE_STATE") !== true ||
+    ownData(state, "noExistingCloudflareWorkerCandidate", "INVALID_PREWRITE_STATE") !== true ||
+    ownData(state, "providerWriteRequired", "INVALID_PREWRITE_STATE") !== true ||
     ownData(state, "productionPreparationGateEvidenceConsumed", "INVALID_PREWRITE_STATE") !== false ||
     ownData(state, "productionPreparationEligible", "INVALID_PREWRITE_STATE") !== false ||
     ownData(state, "providerWriteAllowed", "INVALID_PREWRITE_STATE") !== false ||
