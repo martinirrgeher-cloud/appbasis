@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
 
+const PRODUCTION_BOOTSTRAP_CONFIG_PATH = "wrangler.production.bootstrap.jsonc";
 const input = {
   appId: "checklist",
   displayName: "Checklist",
@@ -27,7 +28,7 @@ test("renders the deterministic runnable identity runtime", () => {
     ],
   );
   assert.equal(
-    first.files.some((entry) => entry.path === "wrangler.production.jsonc"),
+    first.files.some((entry) => entry.path === PRODUCTION_BOOTSTRAP_CONFIG_PATH),
     false,
   );
 });
@@ -71,7 +72,7 @@ test("wires the declared tasks module through its public workspace contract with
   assert.doesNotMatch(worker, /@appbasis\/permissions/);
   assert.equal(template.files.some((entry) => entry.path === "worker/postgres.ts"), false);
   assert.equal(
-    template.files.some((entry) => entry.path === "wrangler.production.jsonc"),
+    template.files.some((entry) => entry.path === PRODUCTION_BOOTSTRAP_CONFIG_PATH),
     false,
   );
 });
@@ -169,7 +170,7 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
       "worker/app.ts",
       "worker/index.ts",
       "worker/postgres.ts",
-      "wrangler.production.jsonc",
+      PRODUCTION_BOOTSTRAP_CONFIG_PATH,
     ],
   );
 });
