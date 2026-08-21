@@ -40,7 +40,9 @@ export const ULC_LINZ_M6_READ_ONLY_PROVIDER_PREFLIGHT_CONTRACT = deepFreeze({
     maxProjectPages: MAX_NEON_PROJECT_PAGES,
     maxProjectInventory: ULC_LINZ_M6_MAX_NEON_PROJECT_INVENTORY,
     completeInventoryRequired: true,
-    organizationScopedRegionInventoryRequired: true,
+    organizationScopedRegionInventoryRequired: false,
+    regionInventoryNotFoundMayDeferVerification: true,
+    postCreateRegionVerificationRequired: true,
     targetRegion: TARGET_NEON_REGION,
     selectedCreateMethod: ULC_LINZ_M6_NEON_EXPLICIT_REGION_CREATE_METHOD,
   },
@@ -89,7 +91,7 @@ export async function runUlcLinzM6ProviderStatePreflight(
     orgId: safeNeonOrgId,
     fetchImpl,
   });
-  const neonRegions = await readNeonRegions({
+  const targetRegionAvailable = await readTargetNeonRegionAvailability({
     apiKey: safeNeonApiKey,
     orgId: safeNeonOrgId,
     fetchImpl,
@@ -119,7 +121,7 @@ export async function runUlcLinzM6ProviderStatePreflight(
         inventoryComplete: true,
         inventoryMatchesSelectedCreateScope: true,
         projects: neonProjects,
-        targetRegionAvailable: neonRegions.includes(TARGET_NEON_REGION),
+        targetRegionAvailable,
         selectedCreateMethodSupportsExplicitRegion: true,
       },
     },
@@ -131,6 +133,25 @@ export async function runUlcLinzM6ProviderStatePreflight(
     readOnlyProviderStatePreflightVerified: true,
     cloudflareWorkerInventoryVerified: true,
     noExistingCloudflareWorkerCandidate: true,
+  });
+}
+
+export function verifyUlcLinzM6CreatedNeonProjectRegion(project) {
+  const safeProject = plainRecord(project, "CREATED_NEON_PROJECT_INVALID");
+  const region = requiredRegionWithCode(
+    ownData(safeProject, "region_id", "CREATED_NEON_PROJECT_INVALID"),
+    "CREATED_NEON_PROJECT_INVALID",
+  );
+  if (region !== TARGET_NEON_REGION) {
+    fail("CREATED_NEON_PROJECT_REGION_MISMATCH");
+  }
+  return deepFreeze({
+    application: "ulc-linz",
+    environment: "production",
+    expectedRegion: TARGET_NEON_REGION,
+    observedRegion: region,
+    postCreateRegionVerified: true,
+    continuationAllowed: true,
   });
 }
 
@@ -180,9 +201,6 @@ async function readCompleteNeonProjectInventory({ apiKey, orgId, fetchImpl }) {
       fail("NEON_PROJECT_INVENTORY_TOO_LARGE");
     }
 
-    // Neon may return pagination.cursor even for the terminal page. A page
-    // shorter than the requested limit is complete as long as Neon did not
-    // report unavailable projects. Only a full page can require another read.
     if (projectItems.length < NEON_PROJECT_PAGE_LIMIT) return projects;
 
     if (
@@ -213,19 +231,21 @@ async function readCompleteNeonProjectInventory({ apiKey, orgId, fetchImpl }) {
   fail("NEON_PROJECT_INVENTORY_TOO_LARGE");
 }
 
-async function readNeonRegions({ apiKey, orgId, fetchImpl }) {
+async function readTargetNeonRegionAvailability({ apiKey, orgId, fetchImpl }) {
   const url = new URL(`${NEON_API_ROOT}/regions`);
   url.searchParams.set("org_id", orgId);
-  const body = await neonJson(url, apiKey, fetchImpl);
+  const body = await neonJsonAllowNotFound(url, apiKey, fetchImpl);
+  if (body === null) return null;
   const response = plainRecord(body, "NEON_REGION_INVENTORY_INVALID");
   const regions = plainArray(
     ownData(response, "regions", "NEON_REGION_INVENTORY_INVALID"),
     "NEON_REGION_INVENTORY_INVALID",
   );
-  return regions.map((item) => {
+  const normalized = regions.map((item) => {
     const region = plainRecord(item, "NEON_REGION_INVENTORY_INVALID");
     return requiredRegion(ownData(region, "id", "NEON_REGION_INVENTORY_INVALID"));
   });
+  return normalized.includes(TARGET_NEON_REGION);
 }
 
 async function readCloudflareWorkers({ apiToken, accountId, fetchImpl }) {
@@ -252,6 +272,30 @@ async function readCloudflareWorkers({ apiToken, accountId, fetchImpl }) {
 
 async function neonJson(url, apiKey, fetchImpl) {
   return providerJson(url, apiKey, fetchImpl, "NEON_API_ERROR");
+}
+
+async function neonJsonAllowNotFound(url, apiKey, fetchImpl) {
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "GET",
+      headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    fail("NEON_API_ERROR");
+  }
+  if (response === null || typeof response !== "object") fail("NEON_API_ERROR");
+  if (response.ok !== true) {
+    if (response.status === 404) return null;
+    fail("NEON_API_ERROR");
+  }
+  if (typeof response.json !== "function") fail("NEON_API_ERROR");
+  try {
+    return await response.json();
+  } catch {
+    fail("NEON_API_ERROR");
+  }
 }
 
 async function providerJson(url, bearerToken, fetchImpl, errorCode) {
@@ -346,6 +390,10 @@ function requiredProviderName(value, code) {
 }
 
 function requiredRegion(value) {
+  return requiredRegionWithCode(value, "NEON_REGION_INVENTORY_INVALID");
+}
+
+function requiredRegionWithCode(value, code) {
   if (
     typeof value !== "string" ||
     value.length < 1 ||
@@ -353,7 +401,7 @@ function requiredRegion(value) {
     value !== value.trim() ||
     !/^[a-z0-9-]+$/.test(value)
   ) {
-    fail("NEON_REGION_INVENTORY_INVALID");
+    fail(code);
   }
   return value;
 }
