@@ -57,9 +57,16 @@ Nach dem Phasenmodell darf die öffentliche Domain erst aktiviert werden, nachde
 - terminaler leerer/null Cursor ist nur auf einer kurzen letzten Seite zulässig
 - `GET /api/v2/regions` mit demselben `org_id`
 - Regionsinventar verwendet den Provider-Identifier `id`; Projektobjekte verwenden weiterhin `region_id`
-- Frankfurt gilt nur bei `id=aws-eu-central-1` als verfügbar
+- ein erfolgreicher Regions-Response bestätigt Frankfurt nur bei `id=aws-eu-central-1`
+- ein erfolgreicher Regions-Response ohne Frankfurt blockiert fail-closed
+- ausschließlich HTTP 404 auf `/regions` darf die Regionsverifikation bis unmittelbar nach dem ausdrücklich freigegebenen Create verschieben; Auth-, Transport-, JSON-, Shape- und andere HTTP-Fehler blockieren weiterhin fail-closed
+- ein 404 wird nicht als positive oder negative Verfügbarkeitsaussage ausgegeben: `targetRegionAvailable=null` und `targetRegionVerificationDeferredUntilPostCreate=true`
 
-Der akzeptierte spätere Create-Mechanismus ist `neon-api-v2-project-create-region-id`; ein Mechanismus ohne explizite Regionswahl wird abgewiesen.
+Der akzeptierte spätere Create-Mechanismus ist `neon-api-v2-project-create-region-id`; ein Mechanismus ohne explizite Regionswahl wird abgewiesen. Die Create-Region bleibt hart auf `aws-eu-central-1` gepinnt; Provider-Default bleibt verboten.
+
+Unabhängig davon, ob `/regions` vor dem Create erfolgreich war oder HTTP 404 geliefert hat, ist die Post-Create-Verifikation Pflicht. Der neu erzeugte Neon-Projektzustand muss unmittelbar read-only zurückgelesen werden. `verifyUlcLinzM6CreatedNeonProjectRegion()` akzeptiert ausschließlich ein Provider-Projekt mit `region_id=aws-eu-central-1`. Fehlende, malformed oder abweichende `region_id` blockiert jeden weiteren Produktionsvorbereitungsschritt fail-closed. Migration, Binding, Deployment, öffentliche Exposition und Release dürfen dann nicht fortgesetzt werden.
+
+Diese Verschiebung autorisiert keinen Provider-Write. Der spätere Neon-Create benötigt weiterhin M3-Gate-Evidence und die ausdrückliche Freigabe genau dieses mutierenden Schritts.
 
 ### Cloudflare
 
@@ -85,7 +92,7 @@ Credentials werden nicht im Ergebnis ausgegeben; Fehler verwenden feste Fehlerco
 
 ## Fail-closed-Fälle
 
-Blockiert wird insbesondere bei unvollständiger Pagination, `unavailable_project_ids`, Scope-Drift, Cursor-Schleifen, stale Evidence, fehlender Frankfurt-Verfügbarkeit, ungeeignetem Create-Mechanismus, bestehenden Produktionskandidaten, Cloudflare-Kollisionen, unsicheren Shapes/Gettern/Prototypen, zusätzlichen unerwarteten Feldern oder Vertragsdrift.
+Blockiert wird insbesondere bei unvollständiger Pagination, `unavailable_project_ids`, Scope-Drift, Cursor-Schleifen, stale Evidence, explizit fehlender Frankfurt-Verfügbarkeit in einem erfolgreichen Regionsinventar, ungeeignetem Create-Mechanismus, bestehenden Produktionskandidaten, Cloudflare-Kollisionen, unsicheren Shapes/Gettern/Prototypen, zusätzlichen unerwarteten Feldern oder Vertragsdrift. HTTP 404 auf `/regions` ist die einzige Ausnahme, die keine Verfügbarkeit behauptet, sondern die exakte Regionsverifikation zwingend bis direkt nach Create verschiebt.
 
 ## Entscheidende Freigabegrenze
 
