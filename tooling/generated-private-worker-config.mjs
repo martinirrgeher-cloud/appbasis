@@ -1,7 +1,7 @@
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 const COMPATIBILITY_DATE = "2026-08-21";
 
-export function renderGeneratedPrivateWorkerConfig(input) {
+export function renderGeneratedPrivateWorkerBootstrapConfig(input) {
   const appId = requiredIdentifier(input?.appId, "appId");
 
   return `${JSON.stringify(
@@ -13,7 +13,7 @@ export function renderGeneratedPrivateWorkerConfig(input) {
       main: "./worker/index.ts",
       workers_dev: false,
       preview_urls: false,
-      keep_vars: false,
+      keep_vars: true,
     },
     null,
     2,
