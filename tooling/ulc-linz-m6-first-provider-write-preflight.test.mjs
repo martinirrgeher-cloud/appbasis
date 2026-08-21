@@ -32,18 +32,15 @@ function validEvidence() {
 }
 
 test("ULC M6 first provider-write preflight verifies inventory but remains blocked before the production-preparation gate", () => {
-  const result = evaluateUlcLinzM6FirstProviderWritePreflight(validEvidence(), {
-    now: NOW,
-  });
-
+  const result = evaluateUlcLinzM6FirstProviderWritePreflight(validEvidence(), { now: NOW });
   assert.equal(result.phase, "production-preparation");
-  assert.equal(
-    result.status,
-    "provider-inventory-verified-blocked-before-production-preparation-gate",
-  );
+  assert.equal(result.status, "provider-inventory-verified-blocked-before-production-preparation-gate");
   assert.equal(result.providerInventoryVerified, true);
   assert.equal(result.providerCreateScopeVerified, true);
   assert.equal(result.noExistingProductionResourceCandidate, true);
+  assert.equal(result.existingExactProductionResourceVerified, false);
+  assert.equal(result.firstProviderWriteRequired, true);
+  assert.equal(result.firstProviderWriteAlreadySatisfied, false);
   assert.equal(result.targetRegionAvailable, true);
   assert.equal(result.targetRegionVerificationDeferredUntilPostCreate, false);
   assert.equal(result.postCreateRegionVerificationRequired, true);
@@ -67,6 +64,7 @@ test("ULC M6 first provider-write preflight verifies inventory but remains block
     explicitRegionSelectionRequired: true,
     providerDefaultRegionAllowed: false,
     existingProductionCandidateAllowed: false,
+    exactExistingTargetMaySatisfyStep: true,
     postCreateRegionVerificationRequired: true,
   });
   assert.equal(Object.isFrozen(result), true);
@@ -76,7 +74,6 @@ test("ULC M6 first provider-write preflight verifies inventory but remains block
 test("ULC M6 provider preflight permits provider-404 region inventory only by deferring exact verification until after create", () => {
   const evidence = validEvidence();
   evidence.neon.targetRegionAvailable = null;
-
   const result = evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW });
   assert.equal(result.targetRegionAvailable, null);
   assert.equal(result.targetRegionVerificationDeferredUntilPostCreate, true);
@@ -87,7 +84,6 @@ test("ULC M6 provider preflight permits provider-404 region inventory only by de
 
 test("ULC M6 provider-write safety contract separates preparation from Production Ready", () => {
   const contract = ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT;
-
   assert.deepEqual(contract.productionPreparation, {
     requiredGateEvidence: ["M3_DONE"],
     m4RequiredBeforePreparationWrite: false,
@@ -107,14 +103,13 @@ test("ULC M6 provider-write safety contract separates preparation from Productio
     explicitRegionSelectionRequired: true,
     providerDefaultRegionAllowed: false,
     existingProductionCandidateAllowed: false,
+    exactExistingTargetMaySatisfyStep: true,
     postCreateRegionVerificationRequired: true,
   });
 });
 
 test("ULC M6 provider-write safety contract keeps workers.dev and Preview URLs closed before application code upload", () => {
-  const worker =
-    ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT.cloudflareWorkerCreation;
-
+  const worker = ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT.cloudflareWorkerCreation;
   assert.deepEqual(worker, {
     workerName: "appbasis-ulc-linz-production",
     workersDev: false,
@@ -127,45 +122,58 @@ test("ULC M6 provider-write safety contract keeps workers.dev and Preview URLs c
 
 test("ULC M6 provider preflight allows a distinct ULC preview project without treating it as production", () => {
   const evidence = validEvidence();
-  evidence.neon.projects.push({
-    name: "appbasis-ulc-linz-preview",
-    region: "aws-eu-central-1",
-  });
-
-  const result = evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-    now: NOW,
-  });
+  evidence.neon.projects.push({ name: "appbasis-ulc-linz-preview", region: "aws-eu-central-1" });
+  const result = evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW });
   assert.equal(result.noExistingProductionResourceCandidate, true);
 });
 
-test("ULC M6 provider preflight fails closed when the exact production project already exists", () => {
+test("ULC M6 provider preflight accepts exactly one exact production target in Frankfurt as an already satisfied database step", () => {
   const evidence = validEvidence();
   evidence.neon.projects.push({
     name: "appbasis-ulc-linz-production",
     region: "aws-eu-central-1",
   });
+  evidence.neon.targetRegionAvailable = null;
+  const result = evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW });
+  assert.equal(result.status, "existing-production-database-verified-blocked-before-production-preparation-gate");
+  assert.equal(result.noExistingProductionResourceCandidate, false);
+  assert.equal(result.existingExactProductionResourceVerified, true);
+  assert.equal(result.firstProviderWriteRequired, false);
+  assert.equal(result.firstProviderWriteAlreadySatisfied, true);
+  assert.equal(result.targetRegionVerificationDeferredUntilPostCreate, false);
+  assert.equal(result.providerWriteAllowed, false);
+  assert.equal(result.executionAuthorized, false);
+});
 
+test("ULC M6 provider preflight fails closed when the exact target exists outside Frankfurt", () => {
+  const evidence = validEvidence();
+  evidence.neon.projects.push({
+    name: "appbasis-ulc-linz-production",
+    region: "aws-us-east-1",
+  });
   assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
+    () => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }),
     errorWithCode("EXISTING_PRODUCTION_RESOURCE_CANDIDATE"),
   );
 });
 
 test("ULC M6 provider preflight fails closed on an ambiguous existing ULC production candidate", () => {
   const evidence = validEvidence();
-  evidence.neon.projects.push({
-    name: "legacy-ulc-linz-prod-db",
-    region: "aws-eu-central-1",
-  });
-
+  evidence.neon.projects.push({ name: "legacy-ulc-linz-prod-db", region: "aws-eu-central-1" });
   assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
+    () => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }),
+    errorWithCode("EXISTING_PRODUCTION_RESOURCE_CANDIDATE"),
+  );
+});
+
+test("ULC M6 provider preflight fails closed when multiple production candidates exist", () => {
+  const evidence = validEvidence();
+  evidence.neon.projects.push(
+    { name: "appbasis-ulc-linz-production", region: "aws-eu-central-1" },
+    { name: "legacy-ulc-linz-prod-db", region: "aws-eu-central-1" },
+  );
+  assert.throws(
+    () => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }),
     errorWithCode("EXISTING_PRODUCTION_RESOURCE_CANDIDATE"),
   );
 });
@@ -173,141 +181,66 @@ test("ULC M6 provider preflight fails closed on an ambiguous existing ULC produc
 test("ULC M6 provider preflight fails closed when Neon inventory is incomplete", () => {
   const evidence = validEvidence();
   evidence.neon.inventoryComplete = false;
-
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
-    errorWithCode("NEON_PREFLIGHT_INVALID"),
-  );
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }), errorWithCode("NEON_PREFLIGHT_INVALID"));
 });
 
 test("ULC M6 provider preflight fails closed when inventory and selected create scope differ", () => {
   const evidence = validEvidence();
   evidence.neon.inventoryMatchesSelectedCreateScope = false;
-
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
-    errorWithCode("NEON_PREFLIGHT_INVALID"),
-  );
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }), errorWithCode("NEON_PREFLIGHT_INVALID"));
 });
 
 test("ULC M6 provider preflight fails closed when Frankfurt is explicitly unavailable", () => {
   const evidence = validEvidence();
   evidence.neon.targetRegionAvailable = false;
-
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
-    errorWithCode("NEON_PREFLIGHT_INVALID"),
-  );
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }), errorWithCode("NEON_PREFLIGHT_INVALID"));
 });
 
 test("ULC M6 provider preflight fails closed when the selected create mechanism cannot explicitly select the region", () => {
   const evidence = validEvidence();
   evidence.neon.selectedCreateMethodSupportsExplicitRegion = false;
-
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
-    errorWithCode("NEON_PREFLIGHT_INVALID"),
-  );
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }), errorWithCode("NEON_PREFLIGHT_INVALID"));
 });
 
 test("ULC M6 provider preflight rejects stale or overlong evidence windows", () => {
   const stale = validEvidence();
   stale.observedAt = "2026-08-18T18:20:00.000Z";
   stale.validUntilOrReviewAt = "2026-08-18T18:50:00.000Z";
-
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(stale, {
-        now: NOW,
-      }),
-    errorWithCode("STALE_EVIDENCE"),
-  );
-
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(stale, { now: NOW }), errorWithCode("STALE_EVIDENCE"));
   const overlong = validEvidence();
   overlong.validUntilOrReviewAt = "2026-08-18T19:04:00.000Z";
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(overlong, {
-        now: NOW,
-      }),
-    errorWithCode("STALE_EVIDENCE"),
-  );
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(overlong, { now: NOW }), errorWithCode("STALE_EVIDENCE"));
 });
 
 test("ULC M6 provider preflight accepts only authoritative provider API evidence", () => {
   const evidence = validEvidence();
   evidence.source = "operator-assertion";
-
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
-    errorWithCode("INVALID_EVIDENCE"),
-  );
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }), errorWithCode("INVALID_EVIDENCE"));
 });
 
 test("ULC M6 provider preflight rejects unsafe provider inventory evidence", () => {
   const evidence = validEvidence();
   evidence.neon.projects[0].name = "postgres://example.invalid/secret";
-
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
-    errorWithCode("UNSAFE_EVIDENCE"),
-  );
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }), errorWithCode("UNSAFE_EVIDENCE"));
 });
 
 test("ULC M6 provider preflight rejects array prototype manipulation before using provider inventory", () => {
   const evidence = validEvidence();
   Object.setPrototypeOf(evidence.neon.projects, {
-    map() {
-      throw new Error("must not execute attacker-controlled map");
-    },
+    map() { throw new Error("must not execute attacker-controlled map"); },
   });
-
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
-    errorWithCode("UNSAFE_EVIDENCE"),
-  );
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }), errorWithCode("UNSAFE_EVIDENCE"));
 });
 
 test("ULC M6 provider preflight rejects extra evidence fields fail-closed", () => {
   const evidence = validEvidence();
   evidence.neon.connection = "opaque-but-unexpected";
-
-  assert.throws(
-    () =>
-      evaluateUlcLinzM6FirstProviderWritePreflight(evidence, {
-        now: NOW,
-      }),
-    errorWithCode("NEON_PREFLIGHT_INVALID"),
-  );
+  assert.throws(() => evaluateUlcLinzM6FirstProviderWritePreflight(evidence, { now: NOW }), errorWithCode("NEON_PREFLIGHT_INVALID"));
 });
 
 function errorWithCode(code) {
   return (error) => {
-    assert.equal(
-      error instanceof UlcLinzM6FirstProviderWritePreflightError,
-      true,
-    );
+    assert.equal(error instanceof UlcLinzM6FirstProviderWritePreflightError, true);
     assert.equal(error.code, code);
     return true;
   };
