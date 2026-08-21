@@ -128,7 +128,7 @@ export function evaluateUlcLinzM6FirstProviderWritePreflight(
   const existingExactProductionResource = productionCandidates[0] ?? null;
   if (
     existingExactProductionResource !== null &&
-    (existingExactProductionResource.name.toLowerCase() !== NEON_PROJECT_NAME ||
+    (existingExactProductionResource.name !== NEON_PROJECT_NAME ||
       existingExactProductionResource.region !== NEON_REGION)
   ) {
     fail("EXISTING_PRODUCTION_RESOURCE_CANDIDATE");
