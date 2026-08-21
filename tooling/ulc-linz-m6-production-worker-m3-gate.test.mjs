@@ -146,6 +146,57 @@ test("M6 worker gate rejects additional create-body fields", async () => {
   );
 });
 
+test("M6 worker gate rejects non-enumerable create-plan fields", async () => {
+  const plan = structuredClone(ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT);
+  Object.defineProperty(plan, "executor", { value: "unexpected", enumerable: false });
+  await assert.rejects(
+    () =>
+      evaluateUlcLinzM6ProductionWorkerM3Gate(plan, process.cwd(), {
+        fetchImpl: successfulAcceptanceFetch(),
+      }),
+    errorWithCode("INVALID_CREATE_PLAN"),
+  );
+});
+
+test("M6 worker gate rejects non-enumerable create-body fields", async () => {
+  const plan = structuredClone(ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT);
+  Object.defineProperty(plan.body, "script", { value: "unexpected", enumerable: false });
+  await assert.rejects(
+    () =>
+      evaluateUlcLinzM6ProductionWorkerM3Gate(plan, process.cwd(), {
+        fetchImpl: successfulAcceptanceFetch(),
+      }),
+    errorWithCode("INVALID_CREATE_PLAN"),
+  );
+});
+
+test("M6 worker gate rejects non-enumerable subdomain fields", async () => {
+  const plan = structuredClone(ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT);
+  Object.defineProperty(plan.body.subdomain, "route", { value: "unexpected", enumerable: false });
+  await assert.rejects(
+    () =>
+      evaluateUlcLinzM6ProductionWorkerM3Gate(plan, process.cwd(), {
+        fetchImpl: successfulAcceptanceFetch(),
+      }),
+    errorWithCode("INVALID_CREATE_PLAN"),
+  );
+});
+
+test("M6 worker gate rejects non-enumerable gate-evidence fields", async () => {
+  const plan = structuredClone(ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT);
+  Object.defineProperty(plan.requiredPreparationGateEvidence, "hidden", {
+    value: "unexpected",
+    enumerable: false,
+  });
+  await assert.rejects(
+    () =>
+      evaluateUlcLinzM6ProductionWorkerM3Gate(plan, process.cwd(), {
+        fetchImpl: successfulAcceptanceFetch(),
+      }),
+    errorWithCode("WORKER_M3_GATE_PRECONDITIONS_NOT_MET"),
+  );
+});
+
 test("M6 worker gate rejects accessor-backed create safety state", async () => {
   const plan = structuredClone(ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT);
   Object.defineProperty(plan, "providerWriteAllowed", {
