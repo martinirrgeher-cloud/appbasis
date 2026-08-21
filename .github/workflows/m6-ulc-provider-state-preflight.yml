@@ -102,6 +102,16 @@ jobs:
           import { evaluateUlcLinzM6ProductionWorkerPrewrite } from "./tooling/ulc-linz-m6-production-worker-prewrite.mjs";
 
           const providerState = JSON.parse(await readFile(process.env.RESULT_PATH, "utf8"));
+          if (providerState?.existingExactProductionResourceVerified !== true) {
+            if (
+              providerState?.firstProviderWriteRequired !== true ||
+              providerState?.firstProviderWriteAlreadySatisfied !== false
+            ) {
+              throw new Error("M6 provider preflight returned an inconsistent Neon readiness state.");
+            }
+            process.exit(0);
+          }
+
           const prewrite = evaluateUlcLinzM6ProductionWorkerPrewrite(providerState);
           if (
             prewrite?.stepId !== "production-worker" ||
@@ -122,7 +132,7 @@ jobs:
             throw new Error("M6 production worker target violated its pre-gate deny-by-default boundary.");
           }
           NODE
-          echo 'Next M6 target verified: production-worker remains blocked until separate M3 gate evidence is consumed; no Cloudflare write is authorized.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'M6 production worker prewrite evaluated safely; no Cloudflare write is authorized.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary provider evidence
         if: always()
