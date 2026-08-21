@@ -213,8 +213,8 @@ test("ULC M6 executable provider-state preflight follows Neon cursor pagination 
     fetchImpl,
     now: NOW,
   });
-  assert.equal(result.existingTargetProjectVerified, true);
-  assert.equal(result.neonProductionDatabaseStepAlreadySatisfied, true);
+  assert.equal(result.existingExactProductionResourceVerified, true);
+  assert.equal(result.firstProviderWriteAlreadySatisfied, true);
   assert.equal(
     requests.filter((request) => new URL(request.href).pathname.endsWith("/projects")).length,
     2,
