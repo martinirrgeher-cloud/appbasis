@@ -10,6 +10,33 @@ const APPLICATION = "ulc-linz";
 const ENVIRONMENT = "production";
 const TARGET_WORKER = "appbasis-ulc-linz-production";
 const CLOUDFLARE_CREATE_PATH = "/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/workers/workers";
+const CREATE_PLAN_FIELDS = Object.freeze([
+  "schemaVersion",
+  "application",
+  "environment",
+  "phase",
+  "stepId",
+  "provider",
+  "apiStatus",
+  "method",
+  "path",
+  "body",
+  "requiredPreparationGateEvidence",
+  "productionPreparationGateEvidenceConsumed",
+  "productionPreparationEligible",
+  "applicationCodeUploadAllowed",
+  "versionDeploymentAllowed",
+  "routeAttachmentAllowed",
+  "domainAttachmentAllowed",
+  "providerWriteAllowed",
+  "executionAuthorized",
+  "explicitApprovalRequired",
+  "publicExposureAllowed",
+  "productionReady",
+  "betaCapabilityReverificationRequired",
+]);
+const CREATE_BODY_FIELDS = Object.freeze(["name", "subdomain"]);
+const SUBDOMAIN_FIELDS = Object.freeze(["enabled", "previews_enabled"]);
 
 export class UlcLinzM6ProductionWorkerM3GateError extends Error {
   constructor(code) {
@@ -65,6 +92,7 @@ export async function evaluateUlcLinzM6ProductionWorkerM3Gate(
     publicExposureAllowed: false,
     productionReady: false,
     releaseAuthorized: false,
+    providerStateReverificationRequired: true,
     betaCapabilityReverificationRequired: true,
   });
 }
@@ -88,12 +116,13 @@ function blockedResult() {
     publicExposureAllowed: false,
     productionReady: false,
     releaseAuthorized: false,
+    providerStateReverificationRequired: true,
     betaCapabilityReverificationRequired: true,
   });
 }
 
 function assertSafeCreatePlan(value) {
-  const plan = requiredPlainRecord(value, "INVALID_CREATE_PLAN");
+  const plan = exactPlainRecord(value, CREATE_PLAN_FIELDS, "INVALID_CREATE_PLAN");
   if (
     ownData(plan, "schemaVersion", "INVALID_CREATE_PLAN") !== 1 ||
     ownData(plan, "application", "INVALID_CREATE_PLAN") !== APPLICATION ||
@@ -126,17 +155,21 @@ function assertSafeCreatePlan(value) {
   );
   if (
     gates.length !== 1 ||
+    Object.keys(gates).length !== 1 ||
+    Object.keys(gates)[0] !== "0" ||
     ownData(gates, "0", "INVALID_CREATE_PLAN") !== "M3_DONE"
   ) {
     fail("WORKER_M3_GATE_PRECONDITIONS_NOT_MET");
   }
 
-  const body = requiredPlainRecord(
+  const body = exactPlainRecord(
     ownData(plan, "body", "INVALID_CREATE_PLAN"),
+    CREATE_BODY_FIELDS,
     "INVALID_CREATE_PLAN",
   );
-  const subdomain = requiredPlainRecord(
+  const subdomain = exactPlainRecord(
     ownData(body, "subdomain", "INVALID_CREATE_PLAN"),
+    SUBDOMAIN_FIELDS,
     "INVALID_CREATE_PLAN",
   );
   if (
@@ -146,6 +179,19 @@ function assertSafeCreatePlan(value) {
   ) {
     fail("WORKER_M3_GATE_PRECONDITIONS_NOT_MET");
   }
+}
+
+function exactPlainRecord(value, expectedFields, code) {
+  const record = requiredPlainRecord(value, code);
+  const keys = Object.keys(record).sort();
+  const expected = [...expectedFields].sort();
+  if (
+    keys.length !== expected.length ||
+    keys.some((key, index) => key !== expected[index])
+  ) {
+    fail(code);
+  }
+  return record;
 }
 
 function requiredPlainRecord(value, code) {
