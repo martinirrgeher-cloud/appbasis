@@ -233,6 +233,7 @@ jobs:
 
           const seenWorkerNames = new Set();
           let expectedTotalPages;
+          let expectedPerPage;
           let inventoryComplete = false;
           for (let page = 1; page <= maxPages; page += 1) {
             const url = new URL(
@@ -285,11 +286,24 @@ jobs:
             ) {
               throw new Error("Cloudflare Beta Worker per_page is invalid.");
             }
+            if (expectedTotalPages !== undefined && totalPages === undefined) {
+              throw new Error("Cloudflare Beta Worker total_pages disappeared during inventory.");
+            }
             if (totalPages !== undefined) {
               if (expectedTotalPages === undefined) {
                 expectedTotalPages = totalPages;
               } else if (totalPages !== expectedTotalPages) {
                 throw new Error("Cloudflare Beta Worker total_pages changed during inventory.");
+              }
+            }
+            if (expectedPerPage !== undefined && returnedPerPage === undefined) {
+              throw new Error("Cloudflare Beta Worker per_page disappeared during inventory.");
+            }
+            if (returnedPerPage !== undefined) {
+              if (expectedPerPage === undefined) {
+                expectedPerPage = returnedPerPage;
+              } else if (returnedPerPage !== expectedPerPage) {
+                throw new Error("Cloudflare Beta Worker per_page changed during inventory.");
               }
             }
 
@@ -322,7 +336,7 @@ jobs:
                 throw new Error("Cloudflare Beta Worker inventory ended before total_pages.");
               }
             } else {
-              const effectivePerPage = returnedPerPage ?? perPage;
+              const effectivePerPage = expectedPerPage ?? perPage;
               if (payload.result.length < effectivePerPage) {
                 inventoryComplete = true;
                 break;
