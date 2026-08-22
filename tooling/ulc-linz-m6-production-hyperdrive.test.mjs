@@ -13,6 +13,8 @@ const ACCOUNT_ID = "0123456789abcdef0123456789abcdef";
 const API_TOKEN = "cloudflare-test-token-000000000000";
 const DATABASE_URL =
   "postgresql://neondb_owner:runtime-password@ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require";
+const WRONG_PROJECT_DATABASE_URL =
+  "postgresql://neondb_owner:runtime-password@ep-other-project.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require";
 const TARGET_ID = "abcdef0123456789abcdef0123456789";
 
 function targetConfig(overrides = {}) {
@@ -50,7 +52,7 @@ test("pins the ULC production Hyperdrive target", () => {
   assert.equal(Object.isFrozen(ULC_LINZ_M6_PRODUCTION_HYPERDRIVE), true);
 });
 
-test("accepts only the direct dedicated ULC production database URL", () => {
+test("accepts only the direct exact ULC production database URL", () => {
   assert.deepEqual(parseUlcLinzProductionDatabaseUrl(DATABASE_URL), {
     scheme: "postgres",
     host: "ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech",
@@ -74,6 +76,28 @@ test("accepts only the direct dedicated ULC production database URL", () => {
       ),
     /dedicated generated preview database/,
   );
+  assert.throws(
+    () => parseUlcLinzProductionDatabaseUrl(WRONG_PROJECT_DATABASE_URL),
+    /exact ULC production Neon origin/,
+  );
+});
+
+test("rejects a different direct Neon project before any Cloudflare request", async () => {
+  let requestCount = 0;
+  await assert.rejects(
+    ensureUlcLinzProductionHyperdrive({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      databaseUrl: WRONG_PROJECT_DATABASE_URL,
+      apply: true,
+      fetchImpl: async () => {
+        requestCount += 1;
+        return apiResponse([]);
+      },
+    }),
+    /exact ULC production Neon origin/,
+  );
+  assert.equal(requestCount, 0);
 });
 
 test("resolves and validates only the exact cache-disabled production target", async () => {
