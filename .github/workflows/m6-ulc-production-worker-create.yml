@@ -92,16 +92,16 @@ jobs:
           RESPONSE_PATH="$RESPONSE_PATH" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const response = JSON.parse(await readFile(process.env.RESPONSE_PATH, "utf8"));
-          const result = response?.result;
+          const existing = response?.result;
           if (
             response?.success !== true ||
-            result?.name !== "appbasis-ulc-linz-production" ||
-            result?.subdomain?.enabled !== false ||
-            result?.subdomain?.previews_enabled !== false ||
-            !Object.hasOwn(result ?? {}, "deployed_on") ||
-            result.deployed_on !== null ||
-            !Array.isArray(result?.references?.domains) ||
-            result.references.domains.length !== 0
+            existing?.name !== "appbasis-ulc-linz-production" ||
+            existing?.subdomain?.enabled !== false ||
+            existing?.subdomain?.previews_enabled !== false ||
+            !Object.hasOwn(existing ?? {}, "deployed_on") ||
+            existing.deployed_on !== null ||
+            !Array.isArray(existing?.references?.domains) ||
+            existing.references.domains.length !== 0
           ) {
             throw new Error("Existing exact ULC production Worker is not provably closed and undeployed.");
           }
