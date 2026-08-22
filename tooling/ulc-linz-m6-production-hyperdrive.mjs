@@ -46,6 +46,7 @@ export function ensureUlcLinzProductionHyperdrive(input = {}) {
   return ensureGeneratedPreviewHyperdrive({
     ...input,
     target: ULC_LINZ_M6_PRODUCTION_HYPERDRIVE,
+    reconcileExisting: true,
   });
 }
 
