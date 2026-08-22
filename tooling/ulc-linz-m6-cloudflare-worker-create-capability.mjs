@@ -21,8 +21,9 @@ export function verifyUlcLinzM6CloudflareWorkerCreateCapability(spec, plannedBod
   const requestSchema = own(jsonMedia, "schema", "JSON_SCHEMA_MISSING");
 
   const requiredExplicitByPath = new Map([
-    ["", new Set(["name", "subdomain"])],
+    ["", new Set(["name", "tags", "subdomain", "observability", "logpush", "tail_consumers"])],
     ["/subdomain", new Set(["enabled", "previews_enabled"])],
+    ["/observability", new Set(["enabled"])],
   ]);
   const branches = validateSchema(root, requestSchema, body, "", requiredExplicitByPath, true);
   if (branches.length === 0) fail("EXACT_CLOSED_BODY_NOT_ACCEPTED");
@@ -40,8 +41,14 @@ export function verifyUlcLinzM6CloudflareWorkerCreateCapability(spec, plannedBod
 
 function exactPlannedBody(value) {
   const body = plainRecord(value, "PLANNED_BODY_INVALID");
-  exactKeys(body, ["name", "subdomain"], "PLANNED_BODY_INVALID");
+  exactKeys(
+    body,
+    ["name", "tags", "subdomain", "observability", "logpush", "tail_consumers"],
+    "PLANNED_BODY_INVALID",
+  );
   if (own(body, "name", "PLANNED_BODY_INVALID") !== TARGET_WORKER) fail("PLANNED_BODY_INVALID");
+  exactEmptyArray(own(body, "tags", "PLANNED_BODY_INVALID"), "PLANNED_BODY_INVALID");
+
   const subdomain = plainRecord(own(body, "subdomain", "PLANNED_BODY_INVALID"), "PLANNED_BODY_INVALID");
   exactKeys(subdomain, ["enabled", "previews_enabled"], "PLANNED_BODY_INVALID");
   if (
@@ -50,6 +57,17 @@ function exactPlannedBody(value) {
   ) {
     fail("PLANNED_BODY_INVALID");
   }
+
+  const observability = plainRecord(
+    own(body, "observability", "PLANNED_BODY_INVALID"),
+    "PLANNED_BODY_INVALID",
+  );
+  exactKeys(observability, ["enabled"], "PLANNED_BODY_INVALID");
+  if (own(observability, "enabled", "PLANNED_BODY_INVALID") !== false) {
+    fail("PLANNED_BODY_INVALID");
+  }
+  if (own(body, "logpush", "PLANNED_BODY_INVALID") !== false) fail("PLANNED_BODY_INVALID");
+  exactEmptyArray(own(body, "tail_consumers", "PLANNED_BODY_INVALID"), "PLANNED_BODY_INVALID");
   return body;
 }
 
@@ -77,15 +95,6 @@ function validateSchemaRaw(
   requestProperty,
   refStack,
 ) {
-  if (
-    isPlainObject(schemaValue) &&
-    typeof schemaValue.$ref === "string" &&
-    !supportsSchemaKeywords(schemaValue)
-  ) {
-    return [];
-  }
-  if (requestProperty && isReadOnlyRequestProperty(root, schemaValue)) return [];
-
   const schema = resolveRef(root, schemaValue, refStack);
   if (typeof schema === "boolean") return schema ? [{ explicitKeys: new Set() }] : [];
   const record = plainRecord(schema, "SCHEMA_INVALID");
@@ -203,19 +212,13 @@ function localExplicitKeys(
 }
 
 function isReadOnlyRequestProperty(root, schemaValue) {
-  if (!isPlainObject(schemaValue)) return false;
-  if (typeof schemaValue.$ref === "string") {
-    if (!supportsSchemaKeywords(schemaValue)) return false;
-    const resolved = resolveRef(root, schemaValue, new Set());
-    if (schemaValue.readOnly === true) return true;
-    return isPlainObject(resolved) && resolved.readOnly === true;
-  }
-  return schemaValue.readOnly === true;
+  const schema = resolveRef(root, schemaValue, new Set());
+  return isPlainObject(schema) && schema.readOnly === true;
 }
 
 function acceptsLocalConstraints(schema, value) {
   if (schema.nullable === true && value === null) return true;
-  if (schema.const !== undefined && !Object.is(value, schema.const)) return false;
+  if (schema.const !== undefined && !Object.is(schema.const, value)) return false;
   if (schema.enum !== undefined) {
     if (!Array.isArray(schema.enum) || !schema.enum.some((item) => Object.is(item, value))) return false;
   }
@@ -335,6 +338,17 @@ function isPlainObject(value) {
 function plainStringArray(value) {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) fail("SCHEMA_INVALID");
   return value;
+}
+
+function exactEmptyArray(value, code) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 0 ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    fail(code);
+  }
 }
 
 function exactKeys(record, expected, code) {
