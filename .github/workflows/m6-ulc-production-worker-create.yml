@@ -96,8 +96,14 @@ jobs:
           if (
             response?.success !== true ||
             existing?.name !== "appbasis-ulc-linz-production" ||
+            !Array.isArray(existing?.tags) ||
+            existing.tags.length !== 0 ||
             existing?.subdomain?.enabled !== false ||
             existing?.subdomain?.previews_enabled !== false ||
+            existing?.observability?.enabled !== false ||
+            existing?.logpush !== false ||
+            !Array.isArray(existing?.tail_consumers) ||
+            existing.tail_consumers.length !== 0 ||
             !Object.hasOwn(existing ?? {}, "deployed_on") ||
             existing.deployed_on !== null ||
             !Array.isArray(existing?.references?.domains) ||
@@ -323,8 +329,14 @@ jobs:
           if (
             response?.success !== true ||
             result?.name !== "appbasis-ulc-linz-production" ||
+            !Array.isArray(result?.tags) ||
+            result.tags.length !== 0 ||
             result?.subdomain?.enabled !== false ||
             result?.subdomain?.previews_enabled !== false ||
+            result?.observability?.enabled !== false ||
+            result?.logpush !== false ||
+            !Array.isArray(result?.tail_consumers) ||
+            result.tail_consumers.length !== 0 ||
             !Object.hasOwn(result ?? {}, "deployed_on") ||
             result.deployed_on !== null ||
             !Array.isArray(result?.references?.domains) ||
@@ -361,8 +373,14 @@ jobs:
           if (
             response?.success !== true ||
             result?.name !== "appbasis-ulc-linz-production" ||
+            !Array.isArray(result?.tags) ||
+            result.tags.length !== 0 ||
             result?.subdomain?.enabled !== false ||
             result?.subdomain?.previews_enabled !== false ||
+            result?.observability?.enabled !== false ||
+            result?.logpush !== false ||
+            !Array.isArray(result?.tail_consumers) ||
+            result.tail_consumers.length !== 0 ||
             !Object.hasOwn(result ?? {}, "deployed_on") ||
             result.deployed_on !== null ||
             !Array.isArray(result?.references?.domains) ||
