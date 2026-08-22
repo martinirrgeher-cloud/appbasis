@@ -84,7 +84,14 @@ function validateSchemaRaw(
   if (!supportsSchemaKeywords(record)) return [];
   if (!acceptsLocalConstraints(record, value)) return [];
 
-  const localKeys = localExplicitKeys(record, value, root, path, requiredExplicitByPath);
+  const localKeys = localExplicitKeys(
+    record,
+    value,
+    root,
+    path,
+    requiredExplicitByPath,
+    requestProperty,
+  );
   if (localKeys === null) return [];
   let branches = [{ explicitKeys: localKeys }];
 
@@ -128,7 +135,14 @@ function validateSchemaRaw(
   return branches;
 }
 
-function localExplicitKeys(schema, value, root, path, requiredExplicitByPath) {
+function localExplicitKeys(
+  schema,
+  value,
+  root,
+  path,
+  requiredExplicitByPath,
+  requestProperty,
+) {
   const explicitKeys = new Set();
   if (!isPlainObject(value)) return explicitKeys;
   const properties = schema.properties === undefined
@@ -136,7 +150,15 @@ function localExplicitKeys(schema, value, root, path, requiredExplicitByPath) {
     : plainRecord(schema.properties, "SCHEMA_INVALID");
   const required = schema.required === undefined ? [] : plainStringArray(schema.required);
   for (const key of required) {
-    if (!Object.hasOwn(value, key)) return null;
+    if (Object.hasOwn(value, key)) continue;
+    if (
+      requestProperty &&
+      Object.hasOwn(properties, key) &&
+      isReadOnlyRequestProperty(root, properties[key])
+    ) {
+      continue;
+    }
+    return null;
   }
 
   for (const key of Object.keys(value)) {
@@ -169,6 +191,11 @@ function localExplicitKeys(schema, value, root, path, requiredExplicitByPath) {
     }
   }
   return explicitKeys;
+}
+
+function isReadOnlyRequestProperty(root, schemaValue) {
+  const schema = resolveRef(root, schemaValue, new Set());
+  return isPlainObject(schema) && schema.readOnly === true;
 }
 
 function acceptsLocalConstraints(schema, value) {
