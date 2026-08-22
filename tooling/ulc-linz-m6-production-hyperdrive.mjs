@@ -9,6 +9,9 @@ import {
   validateGeneratedPreviewHyperdrive,
 } from "./generated-preview-hyperdrive.mjs";
 
+const ULC_LINZ_M6_PRODUCTION_NEON_ORIGIN =
+  "ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech";
+
 export const ULC_LINZ_M6_PRODUCTION_HYPERDRIVE =
   defineGeneratedPreviewHyperdriveTarget({
     appId: "ulc-linz",
@@ -18,13 +21,20 @@ export const ULC_LINZ_M6_PRODUCTION_HYPERDRIVE =
   });
 
 export function parseUlcLinzProductionDatabaseUrl(value) {
-  return parseGeneratedPreviewDatabaseUrl(
+  const parsed = parseGeneratedPreviewDatabaseUrl(
     value,
     ULC_LINZ_M6_PRODUCTION_HYPERDRIVE,
   );
+  if (parsed.host !== ULC_LINZ_M6_PRODUCTION_NEON_ORIGIN) {
+    throw new Error(
+      "ULC_LINZ_PRODUCTION_DATABASE_URL does not select the exact ULC production Neon origin.",
+    );
+  }
+  return parsed;
 }
 
 export function resolveUlcLinzProductionHyperdrive(input = {}) {
+  parseUlcLinzProductionDatabaseUrl(input.databaseUrl);
   return resolveGeneratedPreviewHyperdrive({
     ...input,
     target: ULC_LINZ_M6_PRODUCTION_HYPERDRIVE,
@@ -32,6 +42,7 @@ export function resolveUlcLinzProductionHyperdrive(input = {}) {
 }
 
 export function ensureUlcLinzProductionHyperdrive(input = {}) {
+  parseUlcLinzProductionDatabaseUrl(input.databaseUrl);
   return ensureGeneratedPreviewHyperdrive({
     ...input,
     target: ULC_LINZ_M6_PRODUCTION_HYPERDRIVE,
@@ -39,6 +50,7 @@ export function ensureUlcLinzProductionHyperdrive(input = {}) {
 }
 
 export function validateUlcLinzProductionHyperdrive(config, databaseUrl) {
+  parseUlcLinzProductionDatabaseUrl(databaseUrl);
   return validateGeneratedPreviewHyperdrive(
     config,
     databaseUrl,
