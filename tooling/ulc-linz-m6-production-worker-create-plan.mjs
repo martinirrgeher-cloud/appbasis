@@ -15,10 +15,16 @@ export const ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT = deepFreeze({
   path: CLOUDFLARE_CREATE_PATH,
   body: {
     name: TARGET_WORKER,
+    tags: [],
     subdomain: {
       enabled: false,
       previews_enabled: false,
     },
+    observability: {
+      enabled: false,
+    },
+    logpush: false,
+    tail_consumers: [],
   },
   requiredPreparationGateEvidence: ["M3_DONE"],
   productionPreparationGateEvidenceConsumed: false,

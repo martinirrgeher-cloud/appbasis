@@ -35,8 +35,16 @@ const CREATE_PLAN_FIELDS = Object.freeze([
   "productionReady",
   "betaCapabilityReverificationRequired",
 ]);
-const CREATE_BODY_FIELDS = Object.freeze(["name", "subdomain"]);
+const CREATE_BODY_FIELDS = Object.freeze([
+  "name",
+  "tags",
+  "subdomain",
+  "observability",
+  "logpush",
+  "tail_consumers",
+]);
 const SUBDOMAIN_FIELDS = Object.freeze(["enabled", "previews_enabled"]);
+const OBSERVABILITY_FIELDS = Object.freeze(["enabled"]);
 
 export class UlcLinzM6ProductionWorkerM3GateError extends Error {
   constructor(code) {
@@ -174,13 +182,33 @@ function assertSafeCreatePlan(value) {
     SUBDOMAIN_FIELDS,
     "INVALID_CREATE_PLAN",
   );
+  const observability = exactPlainRecord(
+    ownData(body, "observability", "INVALID_CREATE_PLAN"),
+    OBSERVABILITY_FIELDS,
+    "INVALID_CREATE_PLAN",
+  );
   if (
     ownData(body, "name", "INVALID_CREATE_PLAN") !== TARGET_WORKER ||
+    !isExactEmptyArray(ownData(body, "tags", "INVALID_CREATE_PLAN")) ||
     ownData(subdomain, "enabled", "INVALID_CREATE_PLAN") !== false ||
-    ownData(subdomain, "previews_enabled", "INVALID_CREATE_PLAN") !== false
+    ownData(subdomain, "previews_enabled", "INVALID_CREATE_PLAN") !== false ||
+    ownData(observability, "enabled", "INVALID_CREATE_PLAN") !== false ||
+    ownData(body, "logpush", "INVALID_CREATE_PLAN") !== false ||
+    !isExactEmptyArray(ownData(body, "tail_consumers", "INVALID_CREATE_PLAN"))
   ) {
     fail("WORKER_M3_GATE_PRECONDITIONS_NOT_MET");
   }
+}
+
+function isExactEmptyArray(value) {
+  return (
+    Array.isArray(value) &&
+    value.length === 0 &&
+    Object.getPrototypeOf(value) === Array.prototype &&
+    Object.getOwnPropertySymbols(value).length === 0 &&
+    Object.getOwnPropertyNames(value).length === 1 &&
+    Object.getOwnPropertyNames(value)[0] === "length"
+  );
 }
 
 function exactPlainRecord(value, expectedFields, code) {

@@ -103,10 +103,22 @@ for (const mutate of [
     plan.betaCapabilityReverificationRequired = false;
   },
   (plan) => {
+    plan.body.tags.push("unexpected");
+  },
+  (plan) => {
     plan.body.subdomain.enabled = true;
   },
   (plan) => {
     plan.body.subdomain.previews_enabled = true;
+  },
+  (plan) => {
+    plan.body.observability.enabled = true;
+  },
+  (plan) => {
+    plan.body.logpush = true;
+  },
+  (plan) => {
+    plan.body.tail_consumers.push({ service: "unexpected" });
   },
 ]) {
   test("M6 worker gate rejects drifted or prematurely authorized create plan", async () => {
