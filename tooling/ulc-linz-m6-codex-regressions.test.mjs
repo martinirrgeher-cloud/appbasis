@@ -48,8 +48,19 @@ function cleanProjects(count, offset = 0) {
   }));
 }
 
-test("M6 Cloudflare create schema does not require read-only response fields in request bodies", () => {
-  const spec = {
+function closedWorkerBody() {
+  return {
+    name: "appbasis-ulc-linz-production",
+    tags: [],
+    subdomain: { enabled: false, previews_enabled: false },
+    observability: { enabled: false },
+    logpush: false,
+    tail_consumers: [],
+  };
+}
+
+function currentWorkerCreateSchema(extraRequired = [], extraProperties = {}) {
+  return {
     paths: {
       "/accounts/{account_id}/workers/workers": {
         post: {
@@ -58,19 +69,47 @@ test("M6 Cloudflare create schema does not require read-only response fields in 
               "application/json": {
                 schema: {
                   type: "object",
-                  required: ["name", "subdomain"],
+                  required: [
+                    "id",
+                    "name",
+                    "created_on",
+                    "updated_on",
+                    "tags",
+                    "subdomain",
+                    "observability",
+                    "logpush",
+                    "tail_consumers",
+                    "references",
+                    "deployed_on",
+                    ...extraRequired,
+                  ],
                   properties: {
+                    id: { type: "string", readOnly: true },
                     name: { type: "string" },
+                    created_on: { type: "string", format: "date-time", readOnly: true },
+                    updated_on: { type: "string", format: "date-time", readOnly: true },
+                    tags: { type: "array", items: { type: "string" }, default: [] },
                     subdomain: {
                       type: "object",
                       required: ["enabled", "previews_enabled", "preview_url_suffix", "url"],
                       properties: {
-                        enabled: { type: "boolean" },
-                        previews_enabled: { type: "boolean" },
+                        enabled: { type: "boolean", default: true },
+                        previews_enabled: { type: "boolean", default: true },
                         preview_url_suffix: { type: "string", readOnly: true },
-                        url: { type: "string", format: "uri", readOnly: true },
+                        url: { type: "string", readOnly: true },
                       },
                     },
+                    observability: {
+                      type: "object",
+                      properties: {
+                        enabled: { type: "boolean", default: false },
+                      },
+                    },
+                    logpush: { type: "boolean", default: false },
+                    tail_consumers: { type: "array", default: [], items: { type: "object" } },
+                    references: { type: "object", readOnly: true },
+                    deployed_on: { type: "string", format: "date-time", readOnly: true },
+                    ...extraProperties,
                   },
                 },
               },
@@ -80,157 +119,26 @@ test("M6 Cloudflare create schema does not require read-only response fields in 
       },
     },
   };
-  const plannedBody = {
-    name: "appbasis-ulc-linz-production",
-    subdomain: { enabled: false, previews_enabled: false },
-  };
+}
 
-  const result = verifyUlcLinzM6CloudflareWorkerCreateCapability(spec, plannedBody);
+test("M6 Cloudflare create schema accepts the explicit closed body and ignores only read-only response fields", () => {
+  const result = verifyUlcLinzM6CloudflareWorkerCreateCapability(
+    currentWorkerCreateSchema(),
+    closedWorkerBody(),
+  );
   assert.equal(result.exactClosedBodyAccepted, true);
   assert.equal(result.atomicSubdomainDisableVerified, true);
   assert.equal(result.writableFalseValuesVerified, true);
 });
 
-test("M6 Cloudflare create schema honors read-only annotations beside local refs", () => {
-  const spec = {
-    components: {
-      schemas: {
-        ServerGeneratedUrl: { type: "string", format: "uri" },
-      },
-    },
-    paths: {
-      "/accounts/{account_id}/workers/workers": {
-        post: {
-          requestBody: {
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["name", "subdomain"],
-                  properties: {
-                    name: { type: "string" },
-                    subdomain: {
-                      type: "object",
-                      required: ["enabled", "previews_enabled", "url"],
-                      properties: {
-                        enabled: { type: "boolean" },
-                        previews_enabled: { type: "boolean" },
-                        url: {
-                          $ref: "#/components/schemas/ServerGeneratedUrl",
-                          readOnly: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  };
-  const plannedBody = {
-    name: "appbasis-ulc-linz-production",
-    subdomain: { enabled: false, previews_enabled: false },
-  };
-
-  const result = verifyUlcLinzM6CloudflareWorkerCreateCapability(spec, plannedBody);
-  assert.equal(result.exactClosedBodyAccepted, true);
-});
-
-test("M6 Cloudflare create schema does not treat writable refs as optional request fields", () => {
-  const spec = {
-    components: {
-      schemas: {
-        WritableUrl: { type: "string", format: "uri" },
-      },
-    },
-    paths: {
-      "/accounts/{account_id}/workers/workers": {
-        post: {
-          requestBody: {
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["name", "subdomain"],
-                  properties: {
-                    name: { type: "string" },
-                    subdomain: {
-                      type: "object",
-                      required: ["enabled", "previews_enabled", "url"],
-                      properties: {
-                        enabled: { type: "boolean" },
-                        previews_enabled: { type: "boolean" },
-                        url: { $ref: "#/components/schemas/WritableUrl" },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  };
-  const plannedBody = {
-    name: "appbasis-ulc-linz-production",
-    subdomain: { enabled: false, previews_enabled: false },
-  };
-
+test("M6 Cloudflare create schema fails closed if a new writable required field appears", () => {
   assert.throws(
-    () => verifyUlcLinzM6CloudflareWorkerCreateCapability(spec, plannedBody),
-    (error) => error?.code === "EXACT_CLOSED_BODY_NOT_ACCEPTED",
-  );
-});
-
-test("M6 Cloudflare create schema rejects read-only ref siblings when sent in requests", () => {
-  const spec = {
-    components: {
-      schemas: {
-        ReadOnlyFlag: { type: "boolean" },
-      },
-    },
-    paths: {
-      "/accounts/{account_id}/workers/workers": {
-        post: {
-          requestBody: {
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["name", "subdomain"],
-                  properties: {
-                    name: { type: "string" },
-                    subdomain: {
-                      type: "object",
-                      required: ["enabled", "previews_enabled"],
-                      properties: {
-                        enabled: {
-                          $ref: "#/components/schemas/ReadOnlyFlag",
-                          readOnly: true,
-                        },
-                        previews_enabled: { type: "boolean" },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  };
-  const plannedBody = {
-    name: "appbasis-ulc-linz-production",
-    subdomain: { enabled: false, previews_enabled: false },
-  };
-
-  assert.throws(
-    () => verifyUlcLinzM6CloudflareWorkerCreateCapability(spec, plannedBody),
+    () => verifyUlcLinzM6CloudflareWorkerCreateCapability(
+      currentWorkerCreateSchema(["future_required_setting"], {
+        future_required_setting: { type: "boolean", default: false },
+      }),
+      closedWorkerBody(),
+    ),
     (error) => error?.code === "EXACT_CLOSED_BODY_NOT_ACCEPTED",
   );
 });
