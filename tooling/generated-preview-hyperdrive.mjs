@@ -136,6 +136,7 @@ export async function ensureGeneratedPreviewHyperdrive({
   apiToken,
   databaseUrl,
   apply = false,
+  reconcileExisting = false,
   fetchImpl = globalThis.fetch,
 } = {}) {
   const deployment = validateDeploymentInputs({
@@ -154,8 +155,33 @@ export async function ensureGeneratedPreviewHyperdrive({
     throw new Error("Dedicated generated preview Hyperdrive name is not unique.");
   }
   if (matches.length === 1) {
-    return validateTargetConfiguration(
+    const existing = validateTargetConfiguration(
       matches[0],
+      deployment.origin,
+      deployment.target,
+    );
+    if (reconcileExisting !== true) return existing;
+    if (apply !== true) {
+      throw new Error(
+        "Dedicated generated preview Hyperdrive credential reconciliation was not explicitly confirmed.",
+      );
+    }
+
+    const payload = await cloudflareJson(
+      deployment.fetchImpl,
+      `${deployment.configsUrl}/${encodeURIComponent(existing.id)}`,
+      {
+        method: "PUT",
+        headers: cloudflareHeaders(deployment.apiToken, true),
+        body: JSON.stringify(hyperdriveWritePayload(deployment)),
+      },
+      "replace",
+    );
+    if (!isRecord(payload.result)) {
+      throw new Error("Cloudflare Hyperdrive replacement returned an invalid target.");
+    }
+    return validateTargetConfiguration(
+      payload.result,
       deployment.origin,
       deployment.target,
     );
@@ -172,18 +198,7 @@ export async function ensureGeneratedPreviewHyperdrive({
     {
       method: "POST",
       headers: cloudflareHeaders(deployment.apiToken, true),
-      body: JSON.stringify({
-        name: deployment.target.name,
-        origin: {
-          scheme: deployment.origin.scheme,
-          host: deployment.origin.host,
-          port: deployment.origin.port,
-          database: deployment.origin.database,
-          user: deployment.origin.user,
-          password: deployment.origin.password,
-        },
-        caching: { disabled: true },
-      }),
+      body: JSON.stringify(hyperdriveWritePayload(deployment)),
     },
     "create",
   );
@@ -234,6 +249,21 @@ function validateDeploymentInputs({ target, accountId, apiToken, databaseUrl, fe
     fetchImpl,
     configsUrl,
   });
+}
+
+function hyperdriveWritePayload(deployment) {
+  return {
+    name: deployment.target.name,
+    origin: {
+      scheme: deployment.origin.scheme,
+      host: deployment.origin.host,
+      port: deployment.origin.port,
+      database: deployment.origin.database,
+      user: deployment.origin.user,
+      password: deployment.origin.password,
+    },
+    caching: { disabled: true },
+  };
 }
 
 async function listHyperdrives(deployment) {
