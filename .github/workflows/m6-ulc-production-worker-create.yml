@@ -128,7 +128,7 @@ jobs:
           );
           NODE
 
-      - name: Reverify complete Beta Worker inventory immediately before create
+      - name: Reverify live Beta create contract and complete Worker inventory
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -141,6 +141,88 @@ jobs:
           const target = "appbasis-ulc-linz-production";
           const maxPages = 100;
           const perPage = 100;
+          const schemaUrl = "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json";
+          const createPath = "/accounts/{account_id}/workers/workers";
+
+          function decodePointer(part) {
+            return part.replaceAll("~1", "/").replaceAll("~0", "~");
+          }
+
+          function resolveRef(root, value, seen = new Set()) {
+            let current = value;
+            while (current && typeof current === "object" && typeof current.$ref === "string") {
+              if (!current.$ref.startsWith("#/")) throw new Error("Cloudflare OpenAPI contains an external create-schema reference.");
+              if (seen.has(current.$ref)) throw new Error("Cloudflare OpenAPI create-schema reference loop detected.");
+              seen.add(current.$ref);
+              current = current.$ref
+                .slice(2)
+                .split("/")
+                .map(decodePointer)
+                .reduce((node, key) => node?.[key], root);
+            }
+            return current;
+          }
+
+          function propertySchemas(root, schema, propertyName, seen = new Set()) {
+            const resolved = resolveRef(root, schema, new Set(seen));
+            if (!resolved || typeof resolved !== "object") return [];
+            if (seen.has(resolved)) return [];
+            const nextSeen = new Set(seen).add(resolved);
+            const found = [];
+            if (resolved.properties && typeof resolved.properties === "object" && resolved.properties[propertyName]) {
+              found.push(resolved.properties[propertyName]);
+            }
+            for (const keyword of ["allOf", "anyOf", "oneOf"]) {
+              if (Array.isArray(resolved[keyword])) {
+                for (const child of resolved[keyword]) {
+                  found.push(...propertySchemas(root, child, propertyName, nextSeen));
+                }
+              }
+            }
+            return found;
+          }
+
+          const schemaResponse = await fetch(schemaUrl, {
+            headers: { Accept: "application/json" },
+            signal: AbortSignal.timeout(15_000),
+            cache: "no-store",
+          });
+          if (!schemaResponse.ok) {
+            throw new Error(`Cloudflare OpenAPI capability check failed with HTTP ${schemaResponse.status}.`);
+          }
+          const spec = await schemaResponse.json();
+          const operation = spec?.paths?.[createPath]?.post;
+          const requestSchema = operation?.requestBody?.content?.["application/json"]?.schema;
+          if (!operation || !requestSchema) {
+            throw new Error("Cloudflare OpenAPI no longer exposes the Beta Worker create JSON contract.");
+          }
+          if (propertySchemas(spec, requestSchema, "name").length === 0) {
+            throw new Error("Cloudflare Beta Worker create no longer exposes the name field.");
+          }
+          const subdomainSchemas = propertySchemas(spec, requestSchema, "subdomain");
+          if (
+            subdomainSchemas.length === 0 ||
+            !subdomainSchemas.some(
+              (subdomainSchema) =>
+                propertySchemas(spec, subdomainSchema, "enabled").length > 0 &&
+                propertySchemas(spec, subdomainSchema, "previews_enabled").length > 0,
+            )
+          ) {
+            throw new Error("Cloudflare Beta Worker create no longer proves the atomic closed subdomain contract.");
+          }
+
+          function isUlcProductionCandidate(name) {
+            if (typeof name !== "string" || name.length < 1 || name.length > 128 || name !== name.trim()) {
+              throw new Error("Cloudflare Beta Worker inventory contains an invalid worker name.");
+            }
+            const normalized = name.toLowerCase();
+            if (normalized === target) return true;
+            if (normalized === "ulc-linz" || normalized === "appbasis-ulc-linz") return true;
+            return (
+              normalized.includes("ulc-linz") &&
+              (normalized.includes("production") || /(?:^|-)prod(?:-|$)/.test(normalized))
+            );
+          }
 
           for (let page = 1; page <= maxPages; page += 1) {
             const url = new URL(
@@ -153,6 +235,8 @@ jobs:
 
             const response = await fetch(url, {
               headers: { Authorization: `Bearer ${token}` },
+              signal: AbortSignal.timeout(15_000),
+              cache: "no-store",
             });
             if (!response.ok) {
               throw new Error(`Cloudflare Beta Worker inventory failed with HTTP ${response.status}.`);
@@ -162,8 +246,10 @@ jobs:
             if (payload?.success !== true || !Array.isArray(payload?.result)) {
               throw new Error("Cloudflare Beta Worker inventory response is invalid.");
             }
-            if (payload.result.some((worker) => worker?.name === target)) {
-              throw new Error("Target Cloudflare Worker already exists in Beta Worker inventory.");
+            for (const worker of payload.result) {
+              if (!worker || typeof worker !== "object" || isUlcProductionCandidate(worker.name)) {
+                throw new Error("A colliding ULC production Worker candidate exists in Beta Worker inventory.");
+              }
             }
 
             const totalPages = payload?.result_info?.total_pages;
@@ -188,7 +274,7 @@ jobs:
             }
           }
           NODE
-          echo 'Fresh provider state, M3 gate and complete Beta Worker inventory verified; closed Worker create is the only authorized mutation in this run.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Fresh provider state, M3 gate, live Beta create contract and complete Worker inventory verified; closed Worker create is the only authorized mutation in this run.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create closed Cloudflare Worker without code or public exposure
         shell: bash
@@ -199,7 +285,8 @@ jobs:
           set -euo pipefail
           BODY_PATH="$RUNNER_TEMP/m6-worker-create-body.json"
           RESPONSE_PATH="$RUNNER_TEMP/m6-worker-create-response.json"
-          STATUS="$(curl --silent --show-error --output "$RESPONSE_PATH" --write-out '%{http_code}' \
+          touch "$RUNNER_TEMP/m6-worker-post-attempted"
+          STATUS="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$RESPONSE_PATH" --write-out '%{http_code}' \
             --request POST \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             --header 'Content-Type: application/json' \
@@ -218,7 +305,8 @@ jobs:
             result?.name !== "appbasis-ulc-linz-production" ||
             result?.subdomain?.enabled !== false ||
             result?.subdomain?.previews_enabled !== false ||
-            result?.deployed_on != null ||
+            !Object.hasOwn(result ?? {}, "deployed_on") ||
+            result.deployed_on !== null ||
             !Array.isArray(result?.references?.domains) ||
             result.references.domains.length !== 0
           ) {
@@ -226,19 +314,24 @@ jobs:
           }
           NODE
 
-      - name: Read back closed Worker state
+      - name: Read back closed Worker state after any attempted create
+        if: always()
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
+          if [ ! -f "$RUNNER_TEMP/m6-worker-post-attempted" ]; then
+            echo 'No Worker create POST was attempted; read-back is not applicable.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           RESPONSE_PATH="$RUNNER_TEMP/m6-worker-readback.json"
-          STATUS="$(curl --silent --show-error --output "$RESPONSE_PATH" --write-out '%{http_code}' \
+          STATUS="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$RESPONSE_PATH" --write-out '%{http_code}' \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER")"
           test "$STATUS" -ge 200 -a "$STATUS" -lt 300 || {
-            echo "Cloudflare Worker read-back failed with HTTP $STATUS." >&2
+            echo "Cloudflare Worker read-back after attempted create failed with HTTP $STATUS." >&2
             exit 1
           }
           RESPONSE_PATH="$RESPONSE_PATH" node --input-type=module <<'NODE'
@@ -250,14 +343,15 @@ jobs:
             result?.name !== "appbasis-ulc-linz-production" ||
             result?.subdomain?.enabled !== false ||
             result?.subdomain?.previews_enabled !== false ||
-            result?.deployed_on != null ||
+            !Object.hasOwn(result ?? {}, "deployed_on") ||
+            result.deployed_on !== null ||
             !Array.isArray(result?.references?.domains) ||
             result.references.domains.length !== 0
           ) {
             throw new Error("Cloudflare Worker read-back did not prove the closed undeployed target state.");
           }
           NODE
-          echo 'Closed ULC production Worker created and read-back verified; no code, deployment, route, domain or public exposure was added.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Closed ULC production Worker read-back verified after attempted create; no code, deployment, route, domain or public exposure was added.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary provider data
         if: always()
@@ -267,4 +361,5 @@ jobs:
             "$RUNNER_TEMP/m6-worker-create-preflight.json" \
             "$RUNNER_TEMP/m6-worker-create-body.json" \
             "$RUNNER_TEMP/m6-worker-create-response.json" \
-            "$RUNNER_TEMP/m6-worker-readback.json"
+            "$RUNNER_TEMP/m6-worker-readback.json" \
+            "$RUNNER_TEMP/m6-worker-post-attempted"
