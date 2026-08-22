@@ -54,7 +54,15 @@ function exactPlannedBody(value) {
 }
 
 function validateSchema(root, schemaValue, value, path, requiredExplicitByPath, requestProperty) {
-  const raw = validateSchemaRaw(root, schemaValue, value, path, requiredExplicitByPath, requestProperty, new Set());
+  const raw = validateSchemaRaw(
+    root,
+    schemaValue,
+    value,
+    path,
+    requiredExplicitByPath,
+    requestProperty,
+    new Set(),
+  );
   const requiredExplicit = requiredExplicitByPath.get(path);
   if (!requiredExplicit) return raw;
   return raw.filter((branch) => [...requiredExplicit].every((key) => branch.explicitKeys.has(key)));
@@ -76,8 +84,9 @@ function validateSchemaRaw(
   if (!supportsSchemaKeywords(record)) return [];
   if (!acceptsLocalConstraints(record, value)) return [];
 
-  let branches = [{ explicitKeys: localExplicitKeys(record, value, root, path, requiredExplicitByPath) }];
-  if (branches[0].explicitKeys === null) return [];
+  const localKeys = localExplicitKeys(record, value, root, path, requiredExplicitByPath);
+  if (localKeys === null) return [];
+  let branches = [{ explicitKeys: localKeys }];
 
   if (Array.isArray(record.allOf)) {
     for (const child of record.allOf) {
@@ -116,12 +125,6 @@ function validateSchemaRaw(
     if (branches.length === 0) return [];
   }
 
-  const requiredExplicit = requiredExplicitByPath.get(path);
-  if (requiredExplicit) {
-    branches = branches.filter((branch) =>
-      [...requiredExplicit].every((key) => branch.explicitKeys.has(key)),
-    );
-  }
   return branches;
 }
 
