@@ -136,51 +136,18 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          import { verifyUlcLinzM6CloudflareWorkerCreateCapability } from "./tooling/ulc-linz-m6-cloudflare-worker-create-capability.mjs";
+
           const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
           const token = process.env.CLOUDFLARE_API_TOKEN;
           const target = "appbasis-ulc-linz-production";
           const maxPages = 100;
           const perPage = 100;
           const schemaUrl = "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json";
-          const createPath = "/accounts/{account_id}/workers/workers";
-
-          function decodePointer(part) {
-            return part.replaceAll("~1", "/").replaceAll("~0", "~");
-          }
-
-          function resolveRef(root, value, seen = new Set()) {
-            let current = value;
-            while (current && typeof current === "object" && typeof current.$ref === "string") {
-              if (!current.$ref.startsWith("#/")) throw new Error("Cloudflare OpenAPI contains an external create-schema reference.");
-              if (seen.has(current.$ref)) throw new Error("Cloudflare OpenAPI create-schema reference loop detected.");
-              seen.add(current.$ref);
-              current = current.$ref
-                .slice(2)
-                .split("/")
-                .map(decodePointer)
-                .reduce((node, key) => node?.[key], root);
-            }
-            return current;
-          }
-
-          function propertySchemas(root, schema, propertyName, seen = new Set()) {
-            const resolved = resolveRef(root, schema, new Set(seen));
-            if (!resolved || typeof resolved !== "object") return [];
-            if (seen.has(resolved)) return [];
-            const nextSeen = new Set(seen).add(resolved);
-            const found = [];
-            if (resolved.properties && typeof resolved.properties === "object" && resolved.properties[propertyName]) {
-              found.push(resolved.properties[propertyName]);
-            }
-            for (const keyword of ["allOf", "anyOf", "oneOf"]) {
-              if (Array.isArray(resolved[keyword])) {
-                for (const child of resolved[keyword]) {
-                  found.push(...propertySchemas(root, child, propertyName, nextSeen));
-                }
-              }
-            }
-            return found;
-          }
+          const body = JSON.parse(
+            await readFile(process.env.RUNNER_TEMP + "/m6-worker-create-body.json", "utf8"),
+          );
 
           const schemaResponse = await fetch(schemaUrl, {
             headers: { Accept: "application/json" },
@@ -191,24 +158,13 @@ jobs:
             throw new Error(`Cloudflare OpenAPI capability check failed with HTTP ${schemaResponse.status}.`);
           }
           const spec = await schemaResponse.json();
-          const operation = spec?.paths?.[createPath]?.post;
-          const requestSchema = operation?.requestBody?.content?.["application/json"]?.schema;
-          if (!operation || !requestSchema) {
-            throw new Error("Cloudflare OpenAPI no longer exposes the Beta Worker create JSON contract.");
-          }
-          if (propertySchemas(spec, requestSchema, "name").length === 0) {
-            throw new Error("Cloudflare Beta Worker create no longer exposes the name field.");
-          }
-          const subdomainSchemas = propertySchemas(spec, requestSchema, "subdomain");
+          const capability = verifyUlcLinzM6CloudflareWorkerCreateCapability(spec, body);
           if (
-            subdomainSchemas.length === 0 ||
-            !subdomainSchemas.some(
-              (subdomainSchema) =>
-                propertySchemas(spec, subdomainSchema, "enabled").length > 0 &&
-                propertySchemas(spec, subdomainSchema, "previews_enabled").length > 0,
-            )
+            capability?.exactClosedBodyAccepted !== true ||
+            capability?.atomicSubdomainDisableVerified !== true ||
+            capability?.writableFalseValuesVerified !== true
           ) {
-            throw new Error("Cloudflare Beta Worker create no longer proves the atomic closed subdomain contract.");
+            throw new Error("Cloudflare Beta Worker create no longer accepts the exact atomic closed request body.");
           }
 
           function isUlcProductionCandidate(name) {
@@ -274,7 +230,7 @@ jobs:
             }
           }
           NODE
-          echo 'Fresh provider state, M3 gate, live Beta create contract and complete Worker inventory verified; closed Worker create is the only authorized mutation in this run.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Fresh provider state, M3 gate, exact live Beta create body contract and complete Worker inventory verified; closed Worker create is the only authorized mutation in this run.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create closed Cloudflare Worker without code or public exposure
         shell: bash
