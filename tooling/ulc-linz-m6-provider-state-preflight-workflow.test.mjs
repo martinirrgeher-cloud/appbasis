@@ -147,20 +147,38 @@ test("M6 worker create workflow reverifies provider state and M3 gate before the
   assert.match(workflow, /releaseAuthorized !== false/);
 });
 
-test("M6 worker create workflow fully paginates Beta Worker inventory before mutation", async () => {
+test("M6 worker create workflow reverifies the live atomic Beta create capability", async () => {
   const workflow = await readFile(createWorkflowPath, "utf8");
 
-  assert.match(workflow, /Reverify complete Beta Worker inventory immediately before create/);
+  assert.match(workflow, /Reverify live Beta create contract and complete Worker inventory/);
+  assert.match(
+    workflow,
+    /https:\/\/raw\.githubusercontent\.com\/cloudflare\/api-schemas\/main\/openapi\.json/,
+  );
+  assert.match(workflow, /const createPath = "\/accounts\/\{account_id\}\/workers\/workers"/);
+  assert.match(workflow, /spec\?\.paths\?\.\[createPath\]\?\.post/);
+  assert.match(workflow, /propertySchemas\(spec, requestSchema, "name"\)/);
+  assert.match(workflow, /propertySchemas\(spec, requestSchema, "subdomain"\)/);
+  assert.match(workflow, /propertySchemas\(spec, subdomainSchema, "enabled"\)/);
+  assert.match(workflow, /propertySchemas\(spec, subdomainSchema, "previews_enabled"\)/);
+  assert.match(workflow, /cache: "no-store"/);
+  assert.match(workflow, /AbortSignal\.timeout\(15_000\)/);
+});
+
+test("M6 worker create workflow fully paginates Beta inventory and rejects every production candidate", async () => {
+  const workflow = await readFile(createWorkflowPath, "utf8");
+
   assert.match(workflow, /const maxPages = 100;/);
   assert.match(workflow, /const perPage = 100;/);
   assert.match(workflow, /url\.searchParams\.set\("page", String\(page\)\)/);
   assert.match(workflow, /url\.searchParams\.set\("per_page", String\(perPage\)\)/);
   assert.match(workflow, /payload\?\.result_info\?\.total_pages/);
   assert.match(workflow, /totalPages > maxPages/);
-  assert.match(
-    workflow,
-    /payload\.result\.some\(\(worker\) => worker\?\.name === target\)/,
-  );
+  assert.match(workflow, /function isUlcProductionCandidate\(name\)/);
+  assert.match(workflow, /normalized === "ulc-linz" \|\| normalized === "appbasis-ulc-linz"/);
+  assert.match(workflow, /normalized\.includes\("production"\)/);
+  assert.match(workflow, /\(\?:\^\|-\)prod\(\?:-\|\$\)/);
+  assert.match(workflow, /isUlcProductionCandidate\(worker\.name\)/);
   assert.match(workflow, /page === totalPages/);
   assert.match(workflow, /payload\.result\.length === 0/);
 });
@@ -181,20 +199,26 @@ test("M6 worker create workflow allows only the exact closed Worker create mutat
   assert.doesNotMatch(workflow, /\/domains\b/);
 });
 
-test("M6 worker create workflow proves closed, undeployed and domainless state in create response and read-back", async () => {
+test("M6 worker create workflow proves deployed_on is present and null in response and read-back", async () => {
   const workflow = await readFile(createWorkflowPath, "utf8");
 
-  assert.match(workflow, /workers\/workers\/\$TARGET_WORKER/);
+  assert.equal((workflow.match(/Object\.hasOwn\(result \?\? \{\}, "deployed_on"\)/g) ?? []).length, 2);
+  assert.equal((workflow.match(/result\.deployed_on !== null/g) ?? []).length, 2);
+  assert.doesNotMatch(workflow, /result\?\.deployed_on != null/);
   assert.equal((workflow.match(/result\?\.subdomain\?\.enabled !== false/g) ?? []).length, 2);
   assert.equal((workflow.match(/result\?\.subdomain\?\.previews_enabled !== false/g) ?? []).length, 2);
-  assert.equal((workflow.match(/result\?\.deployed_on != null/g) ?? []).length, 2);
   assert.equal((workflow.match(/!Array\.isArray\(result\?\.references\?\.domains\)/g) ?? []).length, 2);
   assert.equal((workflow.match(/result\.references\.domains\.length !== 0/g) ?? []).length, 2);
-  assert.match(
-    workflow,
-    /no code, deployment, route, domain or public exposure was added/,
-  );
-  assert.match(workflow, /if: always\(\)/);
+});
+
+test("M6 worker create workflow always reads back after any possibly committed POST", async () => {
+  const workflow = await readFile(createWorkflowPath, "utf8");
+
+  assert.match(workflow, /touch "\$RUNNER_TEMP\/m6-worker-post-attempted"/);
+  assert.match(workflow, /- name: Read back closed Worker state after any attempted create\n\s+if: always\(\)/);
+  assert.match(workflow, /if \[ ! -f "\$RUNNER_TEMP\/m6-worker-post-attempted" \]; then/);
+  assert.match(workflow, /Cloudflare Worker read-back after attempted create failed with HTTP \$STATUS/);
+  assert.match(workflow, /m6-worker-post-attempted/);
   assert.match(workflow, /m6-worker-create-response\.json/);
   assert.match(workflow, /m6-worker-readback\.json/);
   assert.doesNotMatch(workflow, /upload-artifact/);
