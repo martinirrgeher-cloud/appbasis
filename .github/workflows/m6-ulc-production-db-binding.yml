@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Type CREATE-ULC-PRODUCTION-HYPERDRIVE to create the dedicated production database binding when absent'
+        description: 'Type CREATE-ULC-PRODUCTION-HYPERDRIVE to create or reconcile the dedicated production database binding'
         required: true
         type: string
 
@@ -74,7 +74,7 @@ jobs:
           HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs ensure)"
           test -n "$HYPERDRIVE_ID" || { echo 'Production Hyperdrive ensure did not return an ID.' >&2; exit 1; }
           echo "::add-mask::$HYPERDRIVE_ID"
-          echo 'Exact ULC production Hyperdrive is ready.'
+          echo 'Exact ULC production Hyperdrive is ready with the approved current credentials.'
 
       - name: Read back exact production Hyperdrive
         shell: bash
