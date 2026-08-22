@@ -217,9 +217,12 @@ jobs:
             response?.success !== true ||
             result?.name !== "appbasis-ulc-linz-production" ||
             result?.subdomain?.enabled !== false ||
-            result?.subdomain?.previews_enabled !== false
+            result?.subdomain?.previews_enabled !== false ||
+            result?.deployed_on != null ||
+            !Array.isArray(result?.references?.domains) ||
+            result.references.domains.length !== 0
           ) {
-            throw new Error("Cloudflare Worker create response did not prove the exact closed target worker.");
+            throw new Error("Cloudflare Worker create response did not prove the exact closed undeployed target worker.");
           }
           NODE
 
@@ -246,12 +249,15 @@ jobs:
             response?.success !== true ||
             result?.name !== "appbasis-ulc-linz-production" ||
             result?.subdomain?.enabled !== false ||
-            result?.subdomain?.previews_enabled !== false
+            result?.subdomain?.previews_enabled !== false ||
+            result?.deployed_on != null ||
+            !Array.isArray(result?.references?.domains) ||
+            result.references.domains.length !== 0
           ) {
-            throw new Error("Cloudflare Worker read-back did not prove the closed target state.");
+            throw new Error("Cloudflare Worker read-back did not prove the closed undeployed target state.");
           }
           NODE
-          echo 'Closed ULC production Worker created and read-back verified; no code, route, domain or public exposure was added.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Closed ULC production Worker created and read-back verified; no code, deployment, route, domain or public exposure was added.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary provider data
         if: always()
