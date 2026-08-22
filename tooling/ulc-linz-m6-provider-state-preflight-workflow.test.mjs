@@ -147,6 +147,22 @@ test("M6 worker create workflow reverifies provider state and M3 gate before the
   assert.match(workflow, /releaseAuthorized !== false/);
 });
 
+test("M6 worker create workflow reverifies Beta Worker inventory immediately before mutation", async () => {
+  const workflow = await readFile(createWorkflowPath, "utf8");
+
+  assert.match(workflow, /Reverify Beta Worker inventory immediately before create/);
+  assert.match(
+    workflow,
+    /https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\/\$CLOUDFLARE_ACCOUNT_ID\/workers\/workers/,
+  );
+  assert.match(workflow, /!Array\.isArray\(response\?\.result\)/);
+  assert.match(
+    workflow,
+    /response\.result\.some\(\(worker\) => worker\?\.name === "appbasis-ulc-linz-production"\)/,
+  );
+  assert.match(workflow, /m6-beta-worker-inventory\.json/);
+});
+
 test("M6 worker create workflow allows only the exact closed Worker create mutation", async () => {
   const workflow = await readFile(createWorkflowPath, "utf8");
   const posts = workflow.match(/--request POST/g) ?? [];
@@ -171,8 +187,9 @@ test("M6 worker create workflow read-back proves exact closed state and cleans e
   assert.match(workflow, /result\?\.subdomain\?\.enabled !== false/);
   assert.match(workflow, /result\?\.subdomain\?\.previews_enabled !== false/);
   assert.match(workflow, /if: always\(\)/);
+  assert.match(workflow, /m6-beta-worker-inventory\.json/);
   assert.match(workflow, /m6-worker-create-response\.json/);
   assert.match(workflow, /m6-worker-readback\.json/);
   assert.doesNotMatch(workflow, /upload-artifact/);
-  assert.doesNotMatch(workflow, /cat\s+[^\n]*(?:preflight|response|readback)\.json/);
+  assert.doesNotMatch(workflow, /cat\s+[^\n]*(?:preflight|response|readback|inventory)\.json/);
 });
