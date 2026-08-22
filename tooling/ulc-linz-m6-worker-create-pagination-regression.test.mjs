@@ -10,19 +10,21 @@ const workflowPath = resolve(
   ".github/workflows/m6-ulc-production-worker-create.yml",
 );
 
-test("M6 Worker inventory validates returned page identity and stable pagination", async () => {
+test("M6 Worker inventory accepts optional pagination metadata without weakening completeness checks", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.match(workflow, /const seenPages = new Set\(\);/);
+  assert.match(workflow, /const seenWorkerNames = new Set\(\);/);
   assert.match(workflow, /let expectedTotalPages;/);
-  assert.match(workflow, /const returnedPage = payload\?\.result_info\?\.page;/);
-  assert.match(workflow, /!Number\.isInteger\(returnedPage\)/);
-  assert.match(workflow, /returnedPage !== page/);
-  assert.match(workflow, /seenPages\.has\(returnedPage\)/);
-  assert.match(workflow, /seenPages\.add\(returnedPage\)/);
-  assert.match(workflow, /totalPages !== expectedTotalPages/);
-  assert.match(workflow, /pagination metadata is invalid, duplicated or misaligned/);
-  assert.match(workflow, /total_pages changed during inventory/);
+  assert.match(workflow, /const resultInfo = payload\?\.result_info;/);
+  assert.match(workflow, /returnedPage !== undefined/);
+  assert.match(workflow, /totalPages !== undefined/);
+  assert.match(workflow, /returnedPerPage !== undefined/);
+  assert.match(workflow, /seenWorkerNames\.has\(worker\.name\)/);
+  assert.match(workflow, /effectivePerPage = returnedPerPage \?\? perPage/);
+  assert.match(workflow, /payload\.result\.length < effectivePerPage/);
+  assert.match(workflow, /Cloudflare Beta Worker inventory repeated a Worker across pages/);
+  assert.match(workflow, /Cloudflare Beta Worker inventory exceeded the safe pagination bound/);
+  assert.doesNotMatch(workflow, /!Number\.isInteger\(returnedPage\) \|\|\s*returnedPage !== page/);
 });
 
 test("M6 Worker create reconciles interrupted exact-target creates before create gates", async () => {
