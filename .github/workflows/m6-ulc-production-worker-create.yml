@@ -19,7 +19,7 @@ jobs:
   create-worker:
     name: Create closed ULC production worker
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       ULC_LINZ_M6_NEON_CREATE_METHOD: neon-api-v2-project-create-region-id
       TARGET_WORKER: appbasis-ulc-linz-production
@@ -68,7 +68,50 @@ jobs:
           echo "::add-mask::$CLOUDFLARE_API_TOKEN"
           echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
 
+      - name: Reconcile an already-existing exact Worker before create gates
+        id: reconcile
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          RESPONSE_PATH="$RUNNER_TEMP/m6-worker-reconcile.json"
+          STATUS="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$RESPONSE_PATH" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER")"
+          if [ "$STATUS" = "404" ]; then
+            echo 'mode=create' >> "$GITHUB_OUTPUT"
+            echo 'No exact ULC production Worker exists; guarded create gates will run.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          test "$STATUS" -ge 200 -a "$STATUS" -lt 300 || {
+            echo "Cloudflare Worker reconciliation failed with HTTP $STATUS." >&2
+            exit 1
+          }
+          RESPONSE_PATH="$RESPONSE_PATH" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const response = JSON.parse(await readFile(process.env.RESPONSE_PATH, "utf8"));
+          const result = response?.result;
+          if (
+            response?.success !== true ||
+            result?.name !== "appbasis-ulc-linz-production" ||
+            result?.subdomain?.enabled !== false ||
+            result?.subdomain?.previews_enabled !== false ||
+            !Object.hasOwn(result ?? {}, "deployed_on") ||
+            result.deployed_on !== null ||
+            !Array.isArray(result?.references?.domains) ||
+            result.references.domains.length !== 0
+          ) {
+            throw new Error("Existing exact ULC production Worker is not provably closed and undeployed.");
+          }
+          NODE
+          echo 'mode=reconciled' >> "$GITHUB_OUTPUT"
+          echo 'Existing exact ULC production Worker reconciled read-only as closed and undeployed; no create POST is needed.' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Reverify provider state and M3 preparation gate
+        if: steps.reconcile.outputs.mode == 'create'
+        timeout-minutes: 4
         shell: bash
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
@@ -129,6 +172,8 @@ jobs:
           NODE
 
       - name: Reverify live Beta create contract and complete Worker inventory
+        if: steps.reconcile.outputs.mode == 'create'
+        timeout-minutes: 4
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -251,6 +296,7 @@ jobs:
           echo 'Fresh provider state, M3 gate, exact live Beta create body contract and complete Worker inventory verified; closed Worker create is the only authorized mutation in this run.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create closed Cloudflare Worker without code or public exposure
+        if: steps.reconcile.outputs.mode == 'create'
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -289,7 +335,7 @@ jobs:
           NODE
 
       - name: Read back closed Worker state after any attempted create
-        if: always()
+        if: always() && steps.reconcile.outputs.mode == 'create'
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -332,6 +378,7 @@ jobs:
         shell: bash
         run: |
           rm -f \
+            "$RUNNER_TEMP/m6-worker-reconcile.json" \
             "$RUNNER_TEMP/m6-worker-create-preflight.json" \
             "$RUNNER_TEMP/m6-worker-create-body.json" \
             "$RUNNER_TEMP/m6-worker-create-response.json" \
