@@ -128,32 +128,67 @@ jobs:
           );
           NODE
 
-      - name: Reverify Beta Worker inventory immediately before create
+      - name: Reverify complete Beta Worker inventory immediately before create
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          RESPONSE_PATH="$RUNNER_TEMP/m6-beta-worker-inventory.json"
-          STATUS="$(curl --silent --show-error --output "$RESPONSE_PATH" --write-out '%{http_code}' \
-            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers")"
-          test "$STATUS" -ge 200 -a "$STATUS" -lt 300 || {
-            echo "Cloudflare Beta Worker inventory failed with HTTP $STATUS." >&2
-            exit 1
-          }
-          RESPONSE_PATH="$RESPONSE_PATH" node --input-type=module <<'NODE'
-          import { readFile } from "node:fs/promises";
-          const response = JSON.parse(await readFile(process.env.RESPONSE_PATH, "utf8"));
-          if (response?.success !== true || !Array.isArray(response?.result)) {
-            throw new Error("Cloudflare Beta Worker inventory response is invalid.");
-          }
-          if (response.result.some((worker) => worker?.name === "appbasis-ulc-linz-production")) {
-            throw new Error("Target Cloudflare Worker already exists in Beta Worker inventory.");
+          node --input-type=module <<'NODE'
+          const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const target = "appbasis-ulc-linz-production";
+          const maxPages = 100;
+          const perPage = 100;
+
+          for (let page = 1; page <= maxPages; page += 1) {
+            const url = new URL(
+              `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/workers`,
+            );
+            url.searchParams.set("page", String(page));
+            url.searchParams.set("per_page", String(perPage));
+            url.searchParams.set("order_by", "name");
+            url.searchParams.set("order", "asc");
+
+            const response = await fetch(url, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!response.ok) {
+              throw new Error(`Cloudflare Beta Worker inventory failed with HTTP ${response.status}.`);
+            }
+
+            const payload = await response.json();
+            if (payload?.success !== true || !Array.isArray(payload?.result)) {
+              throw new Error("Cloudflare Beta Worker inventory response is invalid.");
+            }
+            if (payload.result.some((worker) => worker?.name === target)) {
+              throw new Error("Target Cloudflare Worker already exists in Beta Worker inventory.");
+            }
+
+            const totalPages = payload?.result_info?.total_pages;
+            if (!Number.isInteger(totalPages) || totalPages < 0 || totalPages > maxPages) {
+              throw new Error("Cloudflare Beta Worker pagination metadata is invalid or exceeds the safe bound.");
+            }
+            if (totalPages === 0) {
+              if (page !== 1 || payload.result.length !== 0) {
+                throw new Error("Cloudflare Beta Worker zero-page pagination state is inconsistent.");
+              }
+              break;
+            }
+            if (page > totalPages) {
+              throw new Error("Cloudflare Beta Worker pagination advanced beyond total_pages.");
+            }
+            if (page === totalPages) break;
+            if (payload.result.length === 0) {
+              throw new Error("Cloudflare Beta Worker inventory ended before total_pages.");
+            }
+            if (page === maxPages) {
+              throw new Error("Cloudflare Beta Worker inventory exceeded the safe pagination bound.");
+            }
           }
           NODE
-          echo 'Fresh provider state, M3 gate and Beta Worker inventory verified; closed Worker create is the only authorized mutation in this run.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Fresh provider state, M3 gate and complete Beta Worker inventory verified; closed Worker create is the only authorized mutation in this run.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create closed Cloudflare Worker without code or public exposure
         shell: bash
@@ -224,7 +259,6 @@ jobs:
         run: |
           rm -f \
             "$RUNNER_TEMP/m6-worker-create-preflight.json" \
-            "$RUNNER_TEMP/m6-beta-worker-inventory.json" \
             "$RUNNER_TEMP/m6-worker-create-body.json" \
             "$RUNNER_TEMP/m6-worker-create-response.json" \
             "$RUNNER_TEMP/m6-worker-readback.json"
