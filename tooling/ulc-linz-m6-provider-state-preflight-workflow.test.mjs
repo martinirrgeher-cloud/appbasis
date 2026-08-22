@@ -244,7 +244,6 @@ test("Cloudflare capability follows an internal requestBody ref", () => {
 test("Cloudflare capability allows allOf fragments to jointly prove the atomic pair", () => {
   const schema = {
     type: "object",
-    additionalProperties: false,
     allOf: [
       {
         properties: { enabled: { type: "boolean", enum: [false] } },
