@@ -77,6 +77,15 @@ function validateSchemaRaw(
   requestProperty,
   refStack,
 ) {
+  if (
+    isPlainObject(schemaValue) &&
+    typeof schemaValue.$ref === "string" &&
+    !supportsSchemaKeywords(schemaValue)
+  ) {
+    return [];
+  }
+  if (requestProperty && isReadOnlyRequestProperty(root, schemaValue)) return [];
+
   const schema = resolveRef(root, schemaValue, refStack);
   if (typeof schema === "boolean") return schema ? [{ explicitKeys: new Set() }] : [];
   const record = plainRecord(schema, "SCHEMA_INVALID");
@@ -194,8 +203,14 @@ function localExplicitKeys(
 }
 
 function isReadOnlyRequestProperty(root, schemaValue) {
-  const schema = resolveRef(root, schemaValue, new Set());
-  return isPlainObject(schema) && schema.readOnly === true;
+  if (!isPlainObject(schemaValue)) return false;
+  if (typeof schemaValue.$ref === "string") {
+    if (!supportsSchemaKeywords(schemaValue)) return false;
+    const resolved = resolveRef(root, schemaValue, new Set());
+    if (schemaValue.readOnly === true) return true;
+    return isPlainObject(resolved) && resolved.readOnly === true;
+  }
+  return schemaValue.readOnly === true;
 }
 
 function acceptsLocalConstraints(schema, value) {
