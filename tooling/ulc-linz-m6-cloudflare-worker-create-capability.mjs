@@ -113,6 +113,21 @@ function validateSchemaRaw(
   if (localKeys === null) return [];
   let branches = [{ explicitKeys: localKeys }];
 
+  if (Array.isArray(value) && record.items !== undefined) {
+    for (const [index, item] of value.entries()) {
+      const itemBranches = validateSchemaRaw(
+        root,
+        record.items,
+        item,
+        `${path}/${index}`,
+        requiredExplicitByPath,
+        true,
+        new Set(refStack),
+      );
+      if (itemBranches.length === 0) return [];
+    }
+  }
+
   if (Array.isArray(record.allOf)) {
     for (const child of record.allOf) {
       const childBranches = validateSchemaRaw(
@@ -236,6 +251,14 @@ function acceptsLocalConstraints(schema, value) {
       }
     }
   }
+  if (Array.isArray(value)) {
+    if (schema.minItems !== undefined && (!Number.isInteger(schema.minItems) || value.length < schema.minItems)) return false;
+    if (schema.maxItems !== undefined && (!Number.isInteger(schema.maxItems) || value.length > schema.maxItems)) return false;
+    if (schema.uniqueItems !== undefined) {
+      if (typeof schema.uniqueItems !== "boolean") return false;
+      if (schema.uniqueItems && new Set(value.map((item) => JSON.stringify(item))).size !== value.length) return false;
+    }
+  }
   if (isPlainObject(value)) {
     const count = Object.keys(value).length;
     if (schema.minProperties !== undefined && (!Number.isInteger(schema.minProperties) || count < schema.minProperties)) return false;
@@ -267,6 +290,10 @@ function supportsSchemaKeywords(schema) {
     "properties",
     "required",
     "additionalProperties",
+    "items",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
     "minProperties",
     "maxProperties",
     "minLength",
