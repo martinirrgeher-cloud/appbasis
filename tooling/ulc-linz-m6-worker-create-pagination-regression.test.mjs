@@ -24,7 +24,7 @@ test("M6 Worker inventory accepts optional pagination metadata without weakening
   assert.match(workflow, /payload\.result\.length < effectivePerPage/);
   assert.match(workflow, /Cloudflare Beta Worker inventory repeated a Worker across pages/);
   assert.match(workflow, /Cloudflare Beta Worker inventory exceeded the safe pagination bound/);
-  assert.doesNotMatch(workflow, /!Number\.isInteger\(returnedPage\) \|\|\s*returnedPage !== page/);
+  assert.match(workflow, /if \(!inventoryComplete\)/);
 });
 
 test("M6 Worker create reconciles interrupted exact-target creates before create gates", async () => {
