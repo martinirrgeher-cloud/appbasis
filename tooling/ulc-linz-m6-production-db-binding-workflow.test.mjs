@@ -16,6 +16,7 @@ test("requires an exact explicit main-only production binding approval", async (
 
   assert.match(source, /GITHUB_REF.*refs\/heads\/main/);
   assert.match(source, /CREATE-ULC-PRODUCTION-HYPERDRIVE/);
+  assert.match(source, /create or reconcile the dedicated production database binding/);
   assert.match(source, /Exact production database-binding confirmation is required/);
   assert.doesNotMatch(source, /apply:\s*true/);
 });
@@ -52,6 +53,10 @@ test("runs the single idempotent ensure only after the approval gate and verifie
   assert.match(
     source.slice(ensureIndex, readbackIndex),
     /ulc-linz-m6-production-hyperdrive\.mjs ensure/,
+  );
+  assert.match(
+    source.slice(ensureIndex, readbackIndex),
+    /approved current credentials/,
   );
   assert.match(
     source.slice(readbackIndex),
