@@ -180,6 +180,8 @@ jobs:
             );
           }
 
+          const seenPages = new Set();
+          let expectedTotalPages;
           for (let page = 1; page <= maxPages; page += 1) {
             const url = new URL(
               `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/workers`,
@@ -202,16 +204,32 @@ jobs:
             if (payload?.success !== true || !Array.isArray(payload?.result)) {
               throw new Error("Cloudflare Beta Worker inventory response is invalid.");
             }
+
+            const returnedPage = payload?.result_info?.page;
+            const totalPages = payload?.result_info?.total_pages;
+            if (
+              !Number.isInteger(returnedPage) ||
+              returnedPage !== page ||
+              seenPages.has(returnedPage) ||
+              !Number.isInteger(totalPages) ||
+              totalPages < 0 ||
+              totalPages > maxPages
+            ) {
+              throw new Error("Cloudflare Beta Worker pagination metadata is invalid, duplicated or misaligned.");
+            }
+            seenPages.add(returnedPage);
+            if (expectedTotalPages === undefined) {
+              expectedTotalPages = totalPages;
+            } else if (totalPages !== expectedTotalPages) {
+              throw new Error("Cloudflare Beta Worker total_pages changed during inventory.");
+            }
+
             for (const worker of payload.result) {
               if (!worker || typeof worker !== "object" || isUlcProductionCandidate(worker.name)) {
                 throw new Error("A colliding ULC production Worker candidate exists in Beta Worker inventory.");
               }
             }
 
-            const totalPages = payload?.result_info?.total_pages;
-            if (!Number.isInteger(totalPages) || totalPages < 0 || totalPages > maxPages) {
-              throw new Error("Cloudflare Beta Worker pagination metadata is invalid or exceeds the safe bound.");
-            }
             if (totalPages === 0) {
               if (page !== 1 || payload.result.length !== 0) {
                 throw new Error("Cloudflare Beta Worker zero-page pagination state is inconsistent.");
