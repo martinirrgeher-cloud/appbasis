@@ -1,0 +1,253 @@
+name: M6 ULC Production Runtime Configuration
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type CONFIGURE-ULC-PRODUCTION-RUNTIME to bind the selected origin, Hyperdrive and auth secret without deployment or public ingress'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  configure-runtime:
+    name: Configure closed ULC production runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TARGET_WORKER: appbasis-ulc-linz-production
+      TARGET_BASE_URL: https://app.ulc-linz.at
+
+    steps:
+      - name: Require explicit main dispatch
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'M6 production runtime configuration must be dispatched from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = "CONFIGURE-ULC-PRODUCTION-RUNTIME" || {
+            echo 'Exact production runtime-configuration confirmation is required.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Validate and mask protected inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID.' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN.' >&2; exit 1; }
+          test -n "$ULC_LINZ_PRODUCTION_DATABASE_URL" || { echo 'Missing ULC_LINZ_PRODUCTION_DATABASE_URL.' >&2; exit 1; }
+          test -n "$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET" || { echo 'Missing ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET.' >&2; exit 1; }
+          node -e 'const value = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET?.trim() ?? ""; if (value.length < 32 || value !== process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET) process.exit(1);' || {
+            echo 'Production Better Auth secret must be trimmed and at least 32 characters.' >&2
+            exit 1
+          }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET"
+
+      - name: Require exact closed undeployed production Worker
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          RESPONSE_PATH="$RUNNER_TEMP/m6-runtime-worker-before.json"
+          STATUS="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$RESPONSE_PATH" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER")"
+          test "$STATUS" -ge 200 -a "$STATUS" -lt 300 || { echo "Production Worker lookup failed with HTTP $STATUS." >&2; exit 1; }
+          RESPONSE_PATH="$RESPONSE_PATH" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const response = JSON.parse(await readFile(process.env.RESPONSE_PATH, "utf8"));
+          const worker = response?.result;
+          if (
+            response?.success !== true ||
+            worker?.name !== "appbasis-ulc-linz-production" ||
+            worker?.subdomain?.enabled !== false ||
+            worker?.subdomain?.previews_enabled !== false ||
+            !Object.hasOwn(worker ?? {}, "deployed_on") ||
+            worker.deployed_on !== null ||
+            !Array.isArray(worker?.references?.domains) ||
+            worker.references.domains.length !== 0
+          ) {
+            throw new Error("ULC production Worker is not provably closed and undeployed.");
+          }
+          NODE
+
+      - name: Resolve exact dedicated production Hyperdrive
+        id: hyperdrive
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          test -n "$HYPERDRIVE_ID" || { echo 'Exact ULC production Hyperdrive could not be resolved.' >&2; exit 1; }
+          echo "::add-mask::$HYPERDRIVE_ID"
+          echo "id=$HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Fail closed on unexpected existing runtime bindings
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+        run: |
+          set -euo pipefail
+          RESPONSE_PATH="$RUNNER_TEMP/m6-runtime-settings-before.json"
+          STATUS="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$RESPONSE_PATH" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/settings")"
+          if [ "$STATUS" = "404" ]; then
+            echo 'No script/version settings exist yet; runtime configuration will create the first settings state.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          test "$STATUS" -ge 200 -a "$STATUS" -lt 300 || { echo "Runtime settings preflight failed with HTTP $STATUS." >&2; exit 1; }
+          RESPONSE_PATH="$RESPONSE_PATH" HYPERDRIVE_ID="$HYPERDRIVE_ID" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const response = JSON.parse(await readFile(process.env.RESPONSE_PATH, "utf8"));
+          const bindings = response?.result?.bindings;
+          if (response?.success !== true || !Array.isArray(bindings)) {
+            throw new Error("Existing production runtime settings are invalid.");
+          }
+          for (const binding of bindings) {
+            if (binding?.name === "APPBASIS_BASE_URL" && binding?.type === "plain_text" && binding?.text === "https://app.ulc-linz.at") continue;
+            if (binding?.name === "HYPERDRIVE" && binding?.type === "hyperdrive" && binding?.id === process.env.HYPERDRIVE_ID) continue;
+            if (binding?.name === "BETTER_AUTH_SECRET" && binding?.type === "secret_text") continue;
+            throw new Error("Unexpected or drifting binding exists on the closed production Worker.");
+          }
+          NODE
+
+      - name: Reconcile non-secret runtime bindings without deployment
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+        run: |
+          set -euo pipefail
+          SETTINGS_JSON="$(HYPERDRIVE_ID="$HYPERDRIVE_ID" node -e 'process.stdout.write(JSON.stringify({bindings:[{name:"APPBASIS_BASE_URL",type:"plain_text",text:"https://app.ulc-linz.at"},{name:"HYPERDRIVE",type:"hyperdrive",id:process.env.HYPERDRIVE_ID}]}))')"
+          RESPONSE_PATH="$RUNNER_TEMP/m6-runtime-settings-write.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --request PATCH \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/settings" \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --form-string "settings=$SETTINGS_JSON" \
+            > "$RESPONSE_PATH"
+          RESPONSE_PATH="$RESPONSE_PATH" HYPERDRIVE_ID="$HYPERDRIVE_ID" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const response = JSON.parse(await readFile(process.env.RESPONSE_PATH, "utf8"));
+          const bindings = response?.result?.bindings;
+          if (response?.success !== true || !Array.isArray(bindings)) throw new Error("Cloudflare settings patch returned an invalid response.");
+          const base = bindings.find((entry) => entry?.name === "APPBASIS_BASE_URL");
+          const hyperdrive = bindings.find((entry) => entry?.name === "HYPERDRIVE");
+          if (base?.type !== "plain_text" || base?.text !== "https://app.ulc-linz.at" || hyperdrive?.type !== "hyperdrive" || hyperdrive?.id !== process.env.HYPERDRIVE_ID) {
+            throw new Error("Cloudflare settings patch did not return the exact approved runtime bindings.");
+          }
+          NODE
+
+      - name: Install dedicated production Better Auth secret
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          RESPONSE_PATH="$RUNNER_TEMP/m6-runtime-secret-write.json"
+          node -e 'process.stdout.write(JSON.stringify({name:"BETTER_AUTH_SECRET",text:process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET,type:"secret_text"}))' \
+            | curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+              --request PUT \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/secrets" \
+              --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              --header 'Content-Type: application/json' \
+              --data-binary @- \
+              > "$RESPONSE_PATH"
+          RESPONSE_PATH="$RESPONSE_PATH" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const response = JSON.parse(await readFile(process.env.RESPONSE_PATH, "utf8"));
+          if (response?.success !== true || response?.result?.name !== "BETTER_AUTH_SECRET" || response?.result?.type !== "secret_text") {
+            throw new Error("Cloudflare production secret write returned an unexpected response.");
+          }
+          NODE
+
+      - name: Read back exact runtime configuration and closed state
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+        run: |
+          set -euo pipefail
+          SETTINGS_PATH="$RUNNER_TEMP/m6-runtime-settings-after.json"
+          WORKER_PATH="$RUNNER_TEMP/m6-runtime-worker-after.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/settings" \
+            > "$SETTINGS_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER" \
+            > "$WORKER_PATH"
+          SETTINGS_PATH="$SETTINGS_PATH" WORKER_PATH="$WORKER_PATH" HYPERDRIVE_ID="$HYPERDRIVE_ID" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const settingsResponse = JSON.parse(await readFile(process.env.SETTINGS_PATH, "utf8"));
+          const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
+          const bindings = settingsResponse?.result?.bindings;
+          if (settingsResponse?.success !== true || !Array.isArray(bindings) || bindings.length !== 3) {
+            throw new Error("Final production runtime binding inventory is not exact.");
+          }
+          const base = bindings.find((entry) => entry?.name === "APPBASIS_BASE_URL");
+          const hyperdrive = bindings.find((entry) => entry?.name === "HYPERDRIVE");
+          const secret = bindings.find((entry) => entry?.name === "BETTER_AUTH_SECRET");
+          if (
+            base?.type !== "plain_text" || base?.text !== "https://app.ulc-linz.at" ||
+            hyperdrive?.type !== "hyperdrive" || hyperdrive?.id !== process.env.HYPERDRIVE_ID ||
+            secret?.type !== "secret_text"
+          ) {
+            throw new Error("Final production runtime configuration does not match the approved contract.");
+          }
+          const worker = workerResponse?.result;
+          if (
+            workerResponse?.success !== true ||
+            worker?.name !== "appbasis-ulc-linz-production" ||
+            worker?.subdomain?.enabled !== false ||
+            worker?.subdomain?.previews_enabled !== false ||
+            worker?.deployed_on !== null ||
+            !Array.isArray(worker?.references?.domains) ||
+            worker.references.domains.length !== 0
+          ) {
+            throw new Error("Production Worker gained deployment or public ingress during runtime configuration.");
+          }
+          NODE
+          echo 'ULC production runtime configuration is exact and the Worker remains closed and undeployed.' >> "$GITHUB_STEP_SUMMARY"
