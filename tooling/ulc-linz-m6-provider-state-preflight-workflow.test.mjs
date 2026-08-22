@@ -4,6 +4,11 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  UlcLinzM6CloudflareCreateCapabilityError,
+  verifyUlcLinzM6CloudflareWorkerCreateCapability,
+} from "./ulc-linz-m6-cloudflare-worker-create-capability.mjs";
+
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workflowPath = resolve(
   repositoryRoot,
@@ -29,6 +34,56 @@ const forbiddenMutationPatterns = [
   /\bmethod\s*:\s*["'](?:POST|PUT|PATCH|DELETE)["']/i,
   /\b(?:create|delete|update)\s+(?:project|worker|hyperdrive|domain)\b/i,
 ];
+
+const exactClosedBody = {
+  name: "appbasis-ulc-linz-production",
+  subdomain: { enabled: false, previews_enabled: false },
+};
+
+function createCapabilitySpec(subdomainSchema, { requestBodyRef = false } = {}) {
+  const requestBody = {
+    content: {
+      "application/json": {
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name", "subdomain"],
+          properties: {
+            name: { type: "string", enum: ["appbasis-ulc-linz-production"] },
+            subdomain: subdomainSchema,
+          },
+        },
+      },
+    },
+  };
+  return {
+    paths: {
+      "/accounts/{account_id}/workers/workers": {
+        post: {
+          requestBody: requestBodyRef
+            ? { $ref: "#/components/requestBodies/WorkerCreate" }
+            : requestBody,
+        },
+      },
+    },
+    components: requestBodyRef
+      ? { requestBodies: { WorkerCreate: requestBody } }
+      : {},
+  };
+}
+
+function exactSubdomainSchema(overrides = {}) {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["enabled", "previews_enabled"],
+    properties: {
+      enabled: { type: "boolean" },
+      previews_enabled: { type: "boolean" },
+    },
+    ...overrides,
+  };
+}
 
 test("M6 provider preflight workflow is manual, main-only and read-only", async () => {
   const workflow = await readFile(workflowPath, "utf8");
@@ -147,7 +202,7 @@ test("M6 worker create workflow reverifies provider state and M3 gate before the
   assert.match(workflow, /releaseAuthorized !== false/);
 });
 
-test("M6 worker create workflow reverifies the live atomic Beta create capability", async () => {
+test("M6 worker create workflow validates the exact planned body against the live Beta request schema", async () => {
   const workflow = await readFile(createWorkflowPath, "utf8");
 
   assert.match(workflow, /Reverify live Beta create contract and complete Worker inventory/);
@@ -155,14 +210,118 @@ test("M6 worker create workflow reverifies the live atomic Beta create capabilit
     workflow,
     /https:\/\/raw\.githubusercontent\.com\/cloudflare\/api-schemas\/main\/openapi\.json/,
   );
-  assert.match(workflow, /const createPath = "\/accounts\/\{account_id\}\/workers\/workers"/);
-  assert.match(workflow, /spec\?\.paths\?\.\[createPath\]\?\.post/);
-  assert.match(workflow, /propertySchemas\(spec, requestSchema, "name"\)/);
-  assert.match(workflow, /propertySchemas\(spec, requestSchema, "subdomain"\)/);
-  assert.match(workflow, /propertySchemas\(spec, subdomainSchema, "enabled"\)/);
-  assert.match(workflow, /propertySchemas\(spec, subdomainSchema, "previews_enabled"\)/);
+  assert.match(
+    workflow,
+    /verifyUlcLinzM6CloudflareWorkerCreateCapability } from "\.\/tooling\/ulc-linz-m6-cloudflare-worker-create-capability\.mjs"/,
+  );
+  assert.match(workflow, /m6-worker-create-body\.json/);
+  assert.match(workflow, /verifyUlcLinzM6CloudflareWorkerCreateCapability\(spec, body\)/);
+  assert.match(workflow, /exactClosedBodyAccepted !== true/);
+  assert.match(workflow, /atomicSubdomainDisableVerified !== true/);
+  assert.match(workflow, /writableFalseValuesVerified !== true/);
   assert.match(workflow, /cache: "no-store"/);
   assert.match(workflow, /AbortSignal\.timeout\(15_000\)/);
+});
+
+test("Cloudflare capability accepts one writable branch containing both false fields", () => {
+  const result = verifyUlcLinzM6CloudflareWorkerCreateCapability(
+    createCapabilitySpec(exactSubdomainSchema()),
+    exactClosedBody,
+  );
+  assert.equal(result.exactClosedBodyAccepted, true);
+  assert.equal(result.atomicSubdomainDisableVerified, true);
+  assert.equal(result.writableFalseValuesVerified, true);
+});
+
+test("Cloudflare capability follows an internal requestBody ref", () => {
+  const result = verifyUlcLinzM6CloudflareWorkerCreateCapability(
+    createCapabilitySpec(exactSubdomainSchema(), { requestBodyRef: true }),
+    exactClosedBody,
+  );
+  assert.equal(result.exactClosedBodyAccepted, true);
+});
+
+test("Cloudflare capability allows allOf fragments to jointly prove the atomic pair", () => {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    allOf: [
+      {
+        properties: { enabled: { type: "boolean", enum: [false] } },
+        required: ["enabled"],
+      },
+      {
+        properties: { previews_enabled: { type: "boolean", enum: [false] } },
+        required: ["previews_enabled"],
+      },
+    ],
+  };
+  const result = verifyUlcLinzM6CloudflareWorkerCreateCapability(
+    createCapabilitySpec(schema),
+    exactClosedBody,
+  );
+  assert.equal(result.exactClosedBodyAccepted, true);
+});
+
+test("Cloudflare capability rejects readOnly or true-only closed flags", () => {
+  for (const properties of [
+    {
+      enabled: { type: "boolean", readOnly: true },
+      previews_enabled: { type: "boolean" },
+    },
+    {
+      enabled: { type: "boolean", enum: [true] },
+      previews_enabled: { type: "boolean" },
+    },
+    {
+      enabled: { type: "boolean" },
+      previews_enabled: { type: "boolean", enum: [true] },
+    },
+  ]) {
+    assert.throws(
+      () =>
+        verifyUlcLinzM6CloudflareWorkerCreateCapability(
+          createCapabilitySpec({
+            type: "object",
+            additionalProperties: false,
+            required: ["enabled", "previews_enabled"],
+            properties,
+          }),
+          exactClosedBody,
+        ),
+      (error) =>
+        error instanceof UlcLinzM6CloudflareCreateCapabilityError &&
+        error.code === "EXACT_CLOSED_BODY_NOT_ACCEPTED",
+    );
+  }
+});
+
+test("Cloudflare capability rejects mutually exclusive oneOf branches for the two closed flags", () => {
+  const schema = {
+    type: "object",
+    oneOf: [
+      {
+        additionalProperties: false,
+        properties: { enabled: { type: "boolean", enum: [false] } },
+        required: ["enabled"],
+      },
+      {
+        additionalProperties: false,
+        properties: { previews_enabled: { type: "boolean", enum: [false] } },
+        required: ["previews_enabled"],
+      },
+    ],
+  };
+  assert.throws(
+    () =>
+      verifyUlcLinzM6CloudflareWorkerCreateCapability(
+        createCapabilitySpec(schema),
+        exactClosedBody,
+      ),
+    (error) =>
+      error instanceof UlcLinzM6CloudflareCreateCapabilityError &&
+      error.code === "EXACT_CLOSED_BODY_NOT_ACCEPTED",
+  );
 });
 
 test("M6 worker create workflow fully paginates Beta inventory and rejects every production candidate", async () => {
