@@ -147,20 +147,22 @@ test("M6 worker create workflow reverifies provider state and M3 gate before the
   assert.match(workflow, /releaseAuthorized !== false/);
 });
 
-test("M6 worker create workflow reverifies Beta Worker inventory immediately before mutation", async () => {
+test("M6 worker create workflow fully paginates Beta Worker inventory before mutation", async () => {
   const workflow = await readFile(createWorkflowPath, "utf8");
 
-  assert.match(workflow, /Reverify Beta Worker inventory immediately before create/);
+  assert.match(workflow, /Reverify complete Beta Worker inventory immediately before create/);
+  assert.match(workflow, /const maxPages = 100;/);
+  assert.match(workflow, /const perPage = 100;/);
+  assert.match(workflow, /url\.searchParams\.set\("page", String\(page\)\)/);
+  assert.match(workflow, /url\.searchParams\.set\("per_page", String\(perPage\)\)/);
+  assert.match(workflow, /payload\?\.result_info\?\.total_pages/);
+  assert.match(workflow, /totalPages > maxPages/);
   assert.match(
     workflow,
-    /https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\/\$CLOUDFLARE_ACCOUNT_ID\/workers\/workers/,
+    /payload\.result\.some\(\(worker\) => worker\?\.name === target\)/,
   );
-  assert.match(workflow, /!Array\.isArray\(response\?\.result\)/);
-  assert.match(
-    workflow,
-    /response\.result\.some\(\(worker\) => worker\?\.name === "appbasis-ulc-linz-production"\)/,
-  );
-  assert.match(workflow, /m6-beta-worker-inventory\.json/);
+  assert.match(workflow, /page === totalPages/);
+  assert.match(workflow, /payload\.result\.length === 0/);
 });
 
 test("M6 worker create workflow allows only the exact closed Worker create mutation", async () => {
@@ -179,15 +181,13 @@ test("M6 worker create workflow allows only the exact closed Worker create mutat
   assert.doesNotMatch(workflow, /\/domains\b/);
 });
 
-test("M6 worker create workflow read-back proves exact closed state and cleans evidence", async () => {
+test("M6 worker create workflow proves closed state in create response and read-back", async () => {
   const workflow = await readFile(createWorkflowPath, "utf8");
 
   assert.match(workflow, /workers\/workers\/\$TARGET_WORKER/);
-  assert.match(workflow, /result\?\.name !== "appbasis-ulc-linz-production"/);
-  assert.match(workflow, /result\?\.subdomain\?\.enabled !== false/);
-  assert.match(workflow, /result\?\.subdomain\?\.previews_enabled !== false/);
+  assert.equal((workflow.match(/result\?\.subdomain\?\.enabled !== false/g) ?? []).length, 2);
+  assert.equal((workflow.match(/result\?\.subdomain\?\.previews_enabled !== false/g) ?? []).length, 2);
   assert.match(workflow, /if: always\(\)/);
-  assert.match(workflow, /m6-beta-worker-inventory\.json/);
   assert.match(workflow, /m6-worker-create-response\.json/);
   assert.match(workflow, /m6-worker-readback\.json/);
   assert.doesNotMatch(workflow, /upload-artifact/);
