@@ -41,3 +41,21 @@ test("M6 Worker create reconciles interrupted exact-target creates before create
   assert.equal((workflow.match(/timeout-minutes: 4/g) ?? []).length, 2);
   assert.match(workflow, /m6-worker-reconcile\.json/);
 });
+
+test("M6 Worker reconciliation, create response and read-back prove every closed writable field", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /!Array\.isArray\(existing\?\.tags\)/);
+  assert.match(workflow, /existing\.tags\.length !== 0/);
+  assert.match(workflow, /existing\?\.observability\?\.enabled !== false/);
+  assert.match(workflow, /existing\?\.logpush !== false/);
+  assert.match(workflow, /!Array\.isArray\(existing\?\.tail_consumers\)/);
+  assert.match(workflow, /existing\.tail_consumers\.length !== 0/);
+
+  assert.equal((workflow.match(/!Array\.isArray\(result\?\.tags\)/g) ?? []).length, 2);
+  assert.equal((workflow.match(/result\.tags\.length !== 0/g) ?? []).length, 2);
+  assert.equal((workflow.match(/result\?\.observability\?\.enabled !== false/g) ?? []).length, 2);
+  assert.equal((workflow.match(/result\?\.logpush !== false/g) ?? []).length, 2);
+  assert.equal((workflow.match(/!Array\.isArray\(result\?\.tail_consumers\)/g) ?? []).length, 2);
+  assert.equal((workflow.match(/result\.tail_consumers\.length !== 0/g) ?? []).length, 2);
+});
