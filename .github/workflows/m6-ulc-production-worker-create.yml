@@ -231,8 +231,10 @@ jobs:
             );
           }
 
-          const seenPages = new Set();
+          const seenWorkerNames = new Set();
           let expectedTotalPages;
+          let expectedPerPage;
+          let inventoryComplete = false;
           for (let page = 1; page <= maxPages; page += 1) {
             const url = new URL(
               `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/workers`,
@@ -256,47 +258,96 @@ jobs:
               throw new Error("Cloudflare Beta Worker inventory response is invalid.");
             }
 
-            const returnedPage = payload?.result_info?.page;
-            const totalPages = payload?.result_info?.total_pages;
+            const resultInfo = payload?.result_info;
             if (
-              !Number.isInteger(returnedPage) ||
-              returnedPage !== page ||
-              seenPages.has(returnedPage) ||
-              !Number.isInteger(totalPages) ||
-              totalPages < 0 ||
-              totalPages > maxPages
+              resultInfo !== undefined &&
+              (resultInfo === null || typeof resultInfo !== "object" || Array.isArray(resultInfo))
             ) {
-              throw new Error("Cloudflare Beta Worker pagination metadata is invalid, duplicated or misaligned.");
+              throw new Error("Cloudflare Beta Worker pagination metadata is invalid.");
             }
-            seenPages.add(returnedPage);
-            if (expectedTotalPages === undefined) {
-              expectedTotalPages = totalPages;
-            } else if (totalPages !== expectedTotalPages) {
-              throw new Error("Cloudflare Beta Worker total_pages changed during inventory.");
+            const returnedPage = resultInfo?.page;
+            const totalPages = resultInfo?.total_pages;
+            const returnedPerPage = resultInfo?.per_page;
+            if (
+              returnedPage !== undefined &&
+              (!Number.isInteger(returnedPage) || returnedPage !== page)
+            ) {
+              throw new Error("Cloudflare Beta Worker returned page is invalid or misaligned.");
+            }
+            if (
+              totalPages !== undefined &&
+              (!Number.isInteger(totalPages) || totalPages < 0 || totalPages > maxPages)
+            ) {
+              throw new Error("Cloudflare Beta Worker total_pages is invalid.");
+            }
+            if (
+              returnedPerPage !== undefined &&
+              (!Number.isInteger(returnedPerPage) || returnedPerPage < 1 || returnedPerPage > perPage)
+            ) {
+              throw new Error("Cloudflare Beta Worker per_page is invalid.");
+            }
+            if (expectedTotalPages !== undefined && totalPages === undefined) {
+              throw new Error("Cloudflare Beta Worker total_pages disappeared during inventory.");
+            }
+            if (totalPages !== undefined) {
+              if (expectedTotalPages === undefined) {
+                expectedTotalPages = totalPages;
+              } else if (totalPages !== expectedTotalPages) {
+                throw new Error("Cloudflare Beta Worker total_pages changed during inventory.");
+              }
+            }
+            if (expectedPerPage !== undefined && returnedPerPage === undefined) {
+              throw new Error("Cloudflare Beta Worker per_page disappeared during inventory.");
+            }
+            if (returnedPerPage !== undefined) {
+              if (expectedPerPage === undefined) {
+                expectedPerPage = returnedPerPage;
+              } else if (returnedPerPage !== expectedPerPage) {
+                throw new Error("Cloudflare Beta Worker per_page changed during inventory.");
+              }
             }
 
             for (const worker of payload.result) {
               if (!worker || typeof worker !== "object" || isUlcProductionCandidate(worker.name)) {
                 throw new Error("A colliding ULC production Worker candidate exists in Beta Worker inventory.");
               }
+              if (seenWorkerNames.has(worker.name)) {
+                throw new Error("Cloudflare Beta Worker inventory repeated a Worker across pages.");
+              }
+              seenWorkerNames.add(worker.name);
             }
 
             if (totalPages === 0) {
               if (page !== 1 || payload.result.length !== 0) {
                 throw new Error("Cloudflare Beta Worker zero-page pagination state is inconsistent.");
               }
+              inventoryComplete = true;
               break;
             }
-            if (page > totalPages) {
-              throw new Error("Cloudflare Beta Worker pagination advanced beyond total_pages.");
-            }
-            if (page === totalPages) break;
-            if (payload.result.length === 0) {
-              throw new Error("Cloudflare Beta Worker inventory ended before total_pages.");
+            if (totalPages !== undefined) {
+              if (page > totalPages) {
+                throw new Error("Cloudflare Beta Worker pagination advanced beyond total_pages.");
+              }
+              if (page === totalPages) {
+                inventoryComplete = true;
+                break;
+              }
+              if (payload.result.length === 0) {
+                throw new Error("Cloudflare Beta Worker inventory ended before total_pages.");
+              }
+            } else {
+              const effectivePerPage = expectedPerPage ?? perPage;
+              if (payload.result.length < effectivePerPage) {
+                inventoryComplete = true;
+                break;
+              }
             }
             if (page === maxPages) {
               throw new Error("Cloudflare Beta Worker inventory exceeded the safe pagination bound.");
             }
+          }
+          if (!inventoryComplete) {
+            throw new Error("Cloudflare Beta Worker inventory completeness was not proven.");
           }
           NODE
           echo 'Fresh provider state, M3 gate, exact live Beta create body contract and complete Worker inventory verified; closed Worker create is the only authorized mutation in this run.' >> "$GITHUB_STEP_SUMMARY"
