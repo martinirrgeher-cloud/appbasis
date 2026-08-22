@@ -181,12 +181,19 @@ test("M6 worker create workflow allows only the exact closed Worker create mutat
   assert.doesNotMatch(workflow, /\/domains\b/);
 });
 
-test("M6 worker create workflow proves closed state in create response and read-back", async () => {
+test("M6 worker create workflow proves closed, undeployed and domainless state in create response and read-back", async () => {
   const workflow = await readFile(createWorkflowPath, "utf8");
 
   assert.match(workflow, /workers\/workers\/\$TARGET_WORKER/);
   assert.equal((workflow.match(/result\?\.subdomain\?\.enabled !== false/g) ?? []).length, 2);
   assert.equal((workflow.match(/result\?\.subdomain\?\.previews_enabled !== false/g) ?? []).length, 2);
+  assert.equal((workflow.match(/result\?\.deployed_on != null/g) ?? []).length, 2);
+  assert.equal((workflow.match(/!Array\.isArray\(result\?\.references\?\.domains\)/g) ?? []).length, 2);
+  assert.equal((workflow.match(/result\.references\.domains\.length !== 0/g) ?? []).length, 2);
+  assert.match(
+    workflow,
+    /no code, deployment, route, domain or public exposure was added/,
+  );
   assert.match(workflow, /if: always\(\)/);
   assert.match(workflow, /m6-worker-create-response\.json/);
   assert.match(workflow, /m6-worker-readback\.json/);
