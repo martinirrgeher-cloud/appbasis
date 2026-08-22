@@ -342,7 +342,8 @@ test("M6 worker create workflow fully paginates Beta inventory and rejects every
   assert.match(workflow, /const perPage = 100;/);
   assert.match(workflow, /url\.searchParams\.set\("page", String\(page\)\)/);
   assert.match(workflow, /url\.searchParams\.set\("per_page", String\(perPage\)\)/);
-  assert.match(workflow, /payload\?\.result_info\?\.total_pages/);
+  assert.match(workflow, /const resultInfo = payload\?\.result_info;/);
+  assert.match(workflow, /const totalPages = resultInfo === undefined \? undefined : resultInfo\.total_pages;/);
   assert.match(workflow, /totalPages > maxPages/);
   assert.match(workflow, /function isUlcProductionCandidate\(name\)/);
   assert.match(workflow, /normalized === "ulc-linz" \|\| normalized === "appbasis-ulc-linz"/);
@@ -350,7 +351,7 @@ test("M6 worker create workflow fully paginates Beta inventory and rejects every
   assert.match(workflow, /\(\?:\^\|-\)prod\(\?:-\|\$\)/);
   assert.match(workflow, /isUlcProductionCandidate\(worker\.name\)/);
   assert.match(workflow, /page === totalPages/);
-  assert.match(workflow, /payload\.result\.length === 0/);
+  assert.match(workflow, /payload\.result\.length < effectivePerPage/);
 });
 
 test("M6 worker create workflow allows only the exact closed Worker create mutation", async () => {
