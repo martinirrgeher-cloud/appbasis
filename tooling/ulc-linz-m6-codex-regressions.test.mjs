@@ -15,6 +15,7 @@ import {
   createUlcLinzM6ExecutionBoundPlanFingerprint,
   evaluateUlcLinzM6MigrationSmokeRehearsal,
 } from "./ulc-linz-m6-migration-smoke-rehearsal.mjs";
+import { verifyUlcLinzM6CloudflareWorkerCreateCapability } from "./ulc-linz-m6-cloudflare-worker-create-capability.mjs";
 
 const NOW = new Date("2026-08-20T10:30:00.000Z");
 
@@ -46,6 +47,49 @@ function cleanProjects(count, offset = 0) {
     region_id: "aws-us-east-1",
   }));
 }
+
+test("M6 Cloudflare create schema does not require read-only response fields in request bodies", () => {
+  const spec = {
+    paths: {
+      "/accounts/{account_id}/workers/workers": {
+        post: {
+          requestBody: {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["name", "subdomain"],
+                  properties: {
+                    name: { type: "string" },
+                    subdomain: {
+                      type: "object",
+                      required: ["enabled", "previews_enabled", "preview_url_suffix", "url"],
+                      properties: {
+                        enabled: { type: "boolean" },
+                        previews_enabled: { type: "boolean" },
+                        preview_url_suffix: { type: "string", readOnly: true },
+                        url: { type: "string", format: "uri", readOnly: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+  const plannedBody = {
+    name: "appbasis-ulc-linz-production",
+    subdomain: { enabled: false, previews_enabled: false },
+  };
+
+  const result = verifyUlcLinzM6CloudflareWorkerCreateCapability(spec, plannedBody);
+  assert.equal(result.exactClosedBodyAccepted, true);
+  assert.equal(result.atomicSubdomainDisableVerified, true);
+  assert.equal(result.writableFalseValuesVerified, true);
+});
 
 test("M6 Neon inventory fails closed when a full page omits pagination", async () => {
   let calls = 0;
