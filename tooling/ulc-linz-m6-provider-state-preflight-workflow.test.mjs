@@ -9,6 +9,10 @@ const workflowPath = resolve(
   repositoryRoot,
   ".github/workflows/m6-ulc-provider-state-preflight.yml",
 );
+const createWorkflowPath = resolve(
+  repositoryRoot,
+  ".github/workflows/m6-ulc-production-worker-create.yml",
+);
 
 const requiredProtectedInputs = [
   "NEON_API_KEY",
@@ -109,4 +113,66 @@ test("workflow never prints the raw provider evidence snapshot", async () => {
     workflow,
     /M6 read-only provider inventory verified; no provider write is authorized\./,
   );
+});
+
+test("M6 worker create workflow is manual, main-only and exact-confirmation gated", async () => {
+  const workflow = await readFile(createWorkflowPath, "utf8");
+
+  assert.match(workflow, /^name: M6 ULC Production Worker Create$/m);
+  assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/m);
+  assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request|schedule):/m);
+  assert.match(workflow, /^permissions:\n\s{2}contents: read$/m);
+  assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/main"/);
+  assert.match(workflow, /test "\$CONFIRMATION" = "CREATE-CLOSED-ULC-WORKER"/);
+});
+
+test("M6 worker create workflow reverifies provider state and M3 gate before the POST", async () => {
+  const workflow = await readFile(createWorkflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /node \.\/tooling\/ulc-linz-m6-provider-state-preflight\.mjs > "\$RESULT_PATH"/,
+  );
+  assert.match(workflow, /existingExactProductionResourceVerified !== true/);
+  assert.match(workflow, /noExistingCloudflareWorkerCandidate !== true/);
+  assert.match(workflow, /evaluateUlcLinzM6ProductionWorkerPrewrite\(providerState\)/);
+  assert.match(workflow, /planUlcLinzM6ProductionWorkerCreate\(prewrite\)/);
+  assert.match(workflow, /evaluateUlcLinzM6ProductionWorkerM3Gate\(plan\)/);
+  assert.match(workflow, /productionPreparationGateEvidenceConsumed !== true/);
+  assert.match(workflow, /productionPreparationEligible !== true/);
+  assert.match(workflow, /providerWriteAllowed !== false/);
+  assert.match(workflow, /executionAuthorized !== false/);
+  assert.match(workflow, /publicExposureAllowed !== false/);
+  assert.match(workflow, /productionReady !== false/);
+  assert.match(workflow, /releaseAuthorized !== false/);
+});
+
+test("M6 worker create workflow allows only the exact closed Worker create mutation", async () => {
+  const workflow = await readFile(createWorkflowPath, "utf8");
+  const posts = workflow.match(/--request POST/g) ?? [];
+
+  assert.equal(posts.length, 1);
+  assert.match(
+    workflow,
+    /https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\/\$CLOUDFLARE_ACCOUNT_ID\/workers\/workers/,
+  );
+  assert.match(workflow, /--data-binary "@\$BODY_PATH"/);
+  assert.doesNotMatch(workflow, /wrangler\s+deploy/i);
+  assert.doesNotMatch(workflow, /wrangler\s+secret\s+put/i);
+  assert.doesNotMatch(workflow, /\/routes\b/);
+  assert.doesNotMatch(workflow, /\/domains\b/);
+});
+
+test("M6 worker create workflow read-back proves exact closed state and cleans evidence", async () => {
+  const workflow = await readFile(createWorkflowPath, "utf8");
+
+  assert.match(workflow, /workers\/workers\/\$TARGET_WORKER/);
+  assert.match(workflow, /result\?\.name !== "appbasis-ulc-linz-production"/);
+  assert.match(workflow, /result\?\.subdomain\?\.enabled !== false/);
+  assert.match(workflow, /result\?\.subdomain\?\.previews_enabled !== false/);
+  assert.match(workflow, /if: always\(\)/);
+  assert.match(workflow, /m6-worker-create-response\.json/);
+  assert.match(workflow, /m6-worker-readback\.json/);
+  assert.doesNotMatch(workflow, /upload-artifact/);
+  assert.doesNotMatch(workflow, /cat\s+[^\n]*(?:preflight|response|readback)\.json/);
 });
