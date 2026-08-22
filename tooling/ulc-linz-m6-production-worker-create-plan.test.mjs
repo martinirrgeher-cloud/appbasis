@@ -52,10 +52,16 @@ test("M6 worker create plan uses metadata-only closed Cloudflare beta create con
     path: "/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/workers/workers",
     body: {
       name: "appbasis-ulc-linz-production",
+      tags: [],
       subdomain: {
         enabled: false,
         previews_enabled: false,
       },
+      observability: {
+        enabled: false,
+      },
+      logpush: false,
+      tail_consumers: [],
     },
     requiredPreparationGateEvidence: ["M3_DONE"],
     productionPreparationGateEvidenceConsumed: false,
@@ -73,7 +79,10 @@ test("M6 worker create plan uses metadata-only closed Cloudflare beta create con
   });
   assert.equal(Object.isFrozen(plan), true);
   assert.equal(Object.isFrozen(plan.body), true);
+  assert.equal(Object.isFrozen(plan.body.tags), true);
   assert.equal(Object.isFrozen(plan.body.subdomain), true);
+  assert.equal(Object.isFrozen(plan.body.observability), true);
+  assert.equal(Object.isFrozen(plan.body.tail_consumers), true);
   assert.equal(Object.isFrozen(plan.requiredPreparationGateEvidence), true);
 });
 
