@@ -37,7 +37,11 @@ const forbiddenMutationPatterns = [
 
 const exactClosedBody = {
   name: "appbasis-ulc-linz-production",
+  tags: [],
   subdomain: { enabled: false, previews_enabled: false },
+  observability: { enabled: false },
+  logpush: false,
+  tail_consumers: [],
 };
 
 function createCapabilitySpec(subdomainSchema, { requestBodyRef = false } = {}) {
@@ -47,10 +51,18 @@ function createCapabilitySpec(subdomainSchema, { requestBodyRef = false } = {}) 
         schema: {
           type: "object",
           additionalProperties: false,
-          required: ["name", "subdomain"],
+          required: ["name", "tags", "subdomain", "observability", "logpush", "tail_consumers"],
           properties: {
             name: { type: "string", enum: ["appbasis-ulc-linz-production"] },
+            tags: { type: "array", items: { type: "string" }, maxItems: 8, default: [] },
             subdomain: subdomainSchema,
+            observability: {
+              type: "object",
+              additionalProperties: false,
+              properties: { enabled: { type: "boolean", enum: [false] } },
+            },
+            logpush: { type: "boolean", enum: [false] },
+            tail_consumers: { type: "array", items: { type: "object" }, default: [] },
           },
         },
       },
