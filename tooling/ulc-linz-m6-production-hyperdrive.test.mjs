@@ -42,6 +42,21 @@ function apiResponse(result) {
   return Response.json({ success: true, result });
 }
 
+function expectedWriteBody() {
+  return {
+    name: "appbasis-ulc-linz-production-db",
+    origin: {
+      scheme: "postgres",
+      host: "ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech",
+      port: 5432,
+      database: "neondb",
+      user: "neondb_owner",
+      password: "runtime-password",
+    },
+    caching: { disabled: true },
+  };
+}
+
 test("pins the ULC production Hyperdrive target", () => {
   assert.deepEqual(ULC_LINZ_M6_PRODUCTION_HYPERDRIVE, {
     appId: "ulc-linz",
@@ -82,19 +97,20 @@ test("accepts only the direct exact ULC production database URL", () => {
   );
 });
 
-test("rejects a different direct Neon project before any Cloudflare request", async () => {
+test("rejects a different direct Neon project before any Cloudflare request", () => {
   let requestCount = 0;
-  await assert.rejects(
-    ensureUlcLinzProductionHyperdrive({
-      accountId: ACCOUNT_ID,
-      apiToken: API_TOKEN,
-      databaseUrl: WRONG_PROJECT_DATABASE_URL,
-      apply: true,
-      fetchImpl: async () => {
-        requestCount += 1;
-        return apiResponse([]);
-      },
-    }),
+  assert.throws(
+    () =>
+      ensureUlcLinzProductionHyperdrive({
+        accountId: ACCOUNT_ID,
+        apiToken: API_TOKEN,
+        databaseUrl: WRONG_PROJECT_DATABASE_URL,
+        apply: true,
+        fetchImpl: async () => {
+          requestCount += 1;
+          return apiResponse([]);
+        },
+      }),
     /exact ULC production Neon origin/,
   );
   assert.equal(requestCount, 0);
@@ -162,6 +178,25 @@ test("does not create a missing production Hyperdrive without explicit approval"
   assert.equal(requestCount, 1);
 });
 
+test("does not reconcile an existing production Hyperdrive without explicit approval", async () => {
+  let requestCount = 0;
+  await assert.rejects(
+    ensureUlcLinzProductionHyperdrive({
+      accountId: ACCOUNT_ID,
+      apiToken: API_TOKEN,
+      databaseUrl: DATABASE_URL,
+      apply: false,
+      fetchImpl: async (_url, options) => {
+        requestCount += 1;
+        assert.equal(options.method, "GET");
+        return apiResponse([targetConfig()]);
+      },
+    }),
+    /credential reconciliation was not explicitly confirmed/,
+  );
+  assert.equal(requestCount, 1);
+});
+
 test("creates the exact cache-disabled production Hyperdrive only after approval", async () => {
   const requests = [];
   const result = await ensureUlcLinzProductionHyperdrive({
@@ -179,34 +214,26 @@ test("creates the exact cache-disabled production Hyperdrive only after approval
   assert.equal(result.id, TARGET_ID);
   assert.equal(requests.length, 2);
   assert.equal(requests[1].options.method, "POST");
-  assert.deepEqual(JSON.parse(requests[1].options.body), {
-    name: "appbasis-ulc-linz-production-db",
-    origin: {
-      scheme: "postgres",
-      host: "ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech",
-      port: 5432,
-      database: "neondb",
-      user: "neondb_owner",
-      password: "runtime-password",
-    },
-    caching: { disabled: true },
-  });
+  assert.deepEqual(JSON.parse(requests[1].options.body), expectedWriteBody());
 });
 
-test("reuses a valid existing production Hyperdrive without mutation", async () => {
-  let requestCount = 0;
+test("reconciles an existing production Hyperdrive with the approved current credentials", async () => {
+  const requests = [];
   const result = await ensureUlcLinzProductionHyperdrive({
     accountId: ACCOUNT_ID,
     apiToken: API_TOKEN,
     databaseUrl: DATABASE_URL,
     apply: true,
-    fetchImpl: async (_url, options) => {
-      requestCount += 1;
-      assert.equal(options.method, "GET");
-      return apiResponse([targetConfig()]);
+    fetchImpl: async (url, options) => {
+      requests.push({ url: String(url), options });
+      if (options.method === "GET") return apiResponse([targetConfig()]);
+      return apiResponse(targetConfig());
     },
   });
 
   assert.equal(result.id, TARGET_ID);
-  assert.equal(requestCount, 1);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].options.method, "PUT");
+  assert.match(requests[1].url, new RegExp(`/hyperdrive/configs/${TARGET_ID}$`));
+  assert.deepEqual(JSON.parse(requests[1].options.body), expectedWriteBody());
 });
