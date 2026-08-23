@@ -62,7 +62,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await administrativeConnection.client.end();
     });
 
-    it("persists the normalized security envelope and retains it through the exact twelve-month boundary", async () => {
+    it("persists the normalized security envelope with an exact twelve-calendar-month boundary", async () => {
       const connection = requiredConnection();
       const logger = createPostgresUlcLinzSecurityEventLogger(connection.client);
       logger.record(event);
@@ -95,24 +95,32 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       expect(new Date(String(rows[0]?.retained_until)).toISOString()).toBe(
         "2027-08-23T05:30:00.000Z",
       );
+    });
 
-      await purgeExpiredUlcLinzSecurityEvents(
-        connection.client,
-        new Date("2027-08-23T05:30:00.000Z"),
-      );
-      let count = await connection.client.unsafe(
-        `SELECT count(*)::int AS count FROM ulc_linz_security_event_log`,
-      );
-      expect(count[0]?.count).toBe(1);
+    it("uses only PostgreSQL server time and removes only already-expired rows", async () => {
+      const connection = requiredConnection();
+      await connection.client.unsafe(`TRUNCATE ulc_linz_security_event_log RESTART IDENTITY`);
 
-      await purgeExpiredUlcLinzSecurityEvents(
-        connection.client,
-        new Date("2027-08-23T05:30:00.001Z"),
+      const serverTimeRows = await connection.client.unsafe(
+        `SELECT statement_timestamp() AS now`,
       );
-      count = await connection.client.unsafe(
-        `SELECT count(*)::int AS count FROM ulc_linz_security_event_log`,
+      const serverNow = new Date(String(serverTimeRows[0]?.now));
+      const recentOccurredAt = new Date(serverNow);
+      recentOccurredAt.setUTCMonth(recentOccurredAt.getUTCMonth() - 1);
+      const expiredOccurredAt = new Date(serverNow);
+      expiredOccurredAt.setUTCFullYear(expiredOccurredAt.getUTCFullYear() - 2);
+
+      const logger = createPostgresUlcLinzSecurityEventLogger(connection.client);
+      logger.record({ ...event, occurredAt: recentOccurredAt.toISOString(), targetId: "recent" });
+      logger.record({ ...event, occurredAt: expiredOccurredAt.toISOString(), targetId: "expired" });
+      await logger.flush();
+
+      await purgeExpiredUlcLinzSecurityEvents(connection.client);
+
+      const remaining = await connection.client.unsafe(
+        `SELECT target_id FROM ulc_linz_security_event_log ORDER BY target_id`,
       );
-      expect(count[0]?.count).toBe(0);
+      expect(remaining).toEqual([{ target_id: "recent" }]);
     });
 
     function requiredConnection() {
