@@ -30,6 +30,7 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "worker/security-events.ts",
     "worker/security-events-postgres.ts",
     "migrations/0002_ulc_linz_security_event_log.sql",
+    "migrations/0003_ulc_linz_security_event_access.sql",
     PRODUCTION_BOOTSTRAP_CONFIG_PATH,
   ]);
 
@@ -118,6 +119,7 @@ test("checked ULC generated deployment files stay byte-identical to createAppSke
     "migrations/0000_ulc_linz_lifecycle_scope.sql",
     "migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "migrations/0002_ulc_linz_security_event_log.sql",
+    "migrations/0003_ulc_linz_security_event_access.sql",
     "test/worker.test.ts",
   ]) {
     assert.equal(
