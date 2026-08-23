@@ -32,7 +32,12 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
       FROM public.ulc_linz_security_event_log
       WHERE app_id = 'ulc-linz'
         AND schema_version = 1
-    `);
+        AND category = 'security'
+        AND event_type IN ('identity.request.denied', 'authorization.denied')
+        AND occurred_at >= $1::timestamptz
+        AND recorded_at >= $1::timestamptz
+        AND recorded_at <= statement_timestamp()
+    `, [deployed.toISOString()]);
     if (!Array.isArray(rows) || rows.length !== 1) {
       throw new Error("ULC M5-F production delivery observation is invalid.");
     }
