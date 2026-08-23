@@ -142,7 +142,7 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
     expect(calls).toBe(0);
   });
 
-  it("owns the retention cutoff inside PostgreSQL and preserves the exact boundary", async () => {
+  it("delegates retention to the fixed database-owned cleanup function without a caller cutoff", async () => {
     const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
     const client: UlcLinzSecurityEventSqlClient = {
       async unsafe(query, parameters) {
@@ -157,8 +157,8 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
     const call = calls[0];
     if (call === undefined) throw new Error("Expected one retention cleanup statement.");
     expect(call.parameters).toBeUndefined();
-    expect(call.query).toContain("retained_until < statement_timestamp()");
-    expect(call.query).not.toContain("<=");
+    expect(call.query).toContain("public.appbasis_ulc_linz_purge_expired_security_events()");
+    expect(call.query).not.toContain("DELETE");
     expect(call.query).not.toContain("$1");
   });
 });
