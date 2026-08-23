@@ -68,22 +68,24 @@ test("runtime configuration uploads bindings and secret atomically as one undepl
   assert.doesNotMatch(workflow, /--request PUT/);
 });
 
-test("runtime configuration reconciles only one exact existing current version with current auth secret", async () => {
+test("runtime configuration accepts only recognized undeployed history and one current version", async () => {
   const workflow = await source();
-  assert.match(workflow, /allows only zero versions or one exact reconcilable version/);
-  assert.match(workflow, /not bound to the exact current runtime and auth secret and cannot be reconciled/);
-  assert.match(workflow, /annotations\?\.\["workers\/tag"\] !== process\.env\.TARGET_VERSION_TAG/);
-  assert.match(workflow, /annotations\?\.\["workers\/message"\] !== expectedMessage/);
+  assert.match(workflow, /historicalMessagePattern/);
+  assert.match(workflow, /AppBasis ulc-linz production runtime \[0-9a-f\]\{40\} auth-hmac:\[0-9a-f\]\{64\}/);
+  assert.match(workflow, /version history contains an unrecognized version/);
+  assert.match(workflow, /const currentVersions = versions\.filter/);
+  assert.match(workflow, /currentVersions\.length > 1/);
+  assert.match(workflow, /duplicate current versions/);
   assert.match(workflow, /printf 'existing_id=%s\\n' "\$EXISTING_VERSION_ID"/);
   assert.match(workflow, /if: steps\.preflight\.outputs\.existing_id == ''/);
   assert.match(workflow, /VERSION_ID="\$\{EXISTING_VERSION_ID:-\$UPLOADED_VERSION_ID\}"/);
   assert.match(workflow, /current auth-secret HMAC found; this run will reconcile it read-only instead of uploading again/);
+  assert.match(workflow, /currentVersions\.length !== 1 \|\| currentVersions\[0\]\?\.id !== process\.env\.VERSION_ID/);
 });
 
 test("runtime configuration preserves closed zero-deployment worker and fails closed on drift", async () => {
   const workflow = await source();
   assert.match(workflow, /requires zero existing deployments/);
-  assert.match(workflow, /versionsResponse\.result\.length !== 1/);
   assert.match(workflow, /deploymentsResponse\.result\.deployments\.length !== 0/);
   assert.match(workflow, /subdomain\?\.enabled !== false/);
   assert.match(workflow, /subdomain\?\.previews_enabled !== false/);
