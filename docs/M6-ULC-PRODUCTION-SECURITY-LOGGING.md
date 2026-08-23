@@ -2,6 +2,8 @@
 
 Stand: 2026-08-23
 
+Verbindliche Architekturentscheidung: `docs/M6-ADR-ULC-SECURITY-EVENT-PERSISTENCE.md` – Variante 2.
+
 ## Ziel
 
 Dieser Slice materialisiert den ersten konkreten persistenten Production-Security-Logging-Sink für `ulc-linz`, ohne eine zweite Logging-Plattform, eine zusätzliche Providerressource oder einen öffentlichen Log-Endpunkt einzuführen.
@@ -19,6 +21,14 @@ Der erste Sink liegt in der **dedizierten ULC-Produktionsdatenbank**. Das ist f�
 - keine öffentliche Read-API.
 
 Die App besitzt weiterhin keinen `/api/security-events`- oder `/api/admin/audit`-Endpunkt. Lesen und Retention-Operationen bleiben Betreiber-/Control-Plane-Aufgaben.
+
+## Generatorvertrag
+
+`createAppSkeleton()` bleibt der kanonische Generator-/Publikationspfad. Die ULC-spezifische Security-Logging-Runtime wird deshalb durch den Generator erzeugt und nicht als driftender Hand-Patch nur in `apps/ulc-linz` gepflegt.
+
+Die Generatorerweiterung ist bewusst auf den realen Verbraucher `appId=ulc-linz` plus die bestehende Identity-/Permissions-Komposition begrenzt. Andere erzeugte Apps werden nicht stillschweigend auf denselben Sink umgestellt. Eine generische Security-Logging-Plattform wird erst bei weiteren realen Verbrauchern abstrahiert.
+
+Für generatorverwaltete ULC-Runtime-Dateien bleibt Byte-Identität zwischen Generatorausgabe und eingechecktem Ziel verpflichtend; Drift blockiert CI.
 
 ## Persistenter Vertrag
 
