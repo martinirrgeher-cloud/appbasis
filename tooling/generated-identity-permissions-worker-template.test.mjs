@@ -25,14 +25,19 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "worker/app.ts",
     "worker/index.ts",
     "worker/postgres.ts",
+    "worker/security-events.ts",
     "worker/security-events-postgres.ts",
     "migrations/0002_ulc_linz_security_event_log.sql",
     PRODUCTION_BOOTSTRAP_CONFIG_PATH,
   ]);
 
+  const app = content(template, "worker/app.ts");
   const worker = content(template, "worker/index.ts");
   const postgres = content(template, "worker/postgres.ts");
 
+  assert.match(app, /securityEvents\?: UlcLinzSecurityEventLogger/);
+  assert.match(app, /identityResponseWithSecurityLogging/);
+  assert.match(app, /recordUlcLinzSecurityEvent/);
   assert.match(worker, /createGeneratedPostgresApplicationRuntime/);
   assert.match(worker, /HYPERDRIVE/);
   assert.match(worker, /APPBASIS_BASE_URL/);
@@ -98,11 +103,12 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
   );
 });
 
-test("checked ULC deployment files stay byte-identical to createAppSkeleton's canonical runtime generator", () => {
+test("checked ULC security logging deployment files stay byte-identical to createAppSkeleton's canonical runtime generator", () => {
   const template = createIdentityRuntimeTemplate(ulcInput);
   for (const path of [
     "worker/index.ts",
     "worker/postgres.ts",
+    "worker/security-events.ts",
     "worker/security-events-postgres.ts",
     "migrations/0002_ulc_linz_security_event_log.sql",
     "test/worker.test.ts",
