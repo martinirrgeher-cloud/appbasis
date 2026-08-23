@@ -1,0 +1,254 @@
+name: M5 ULC Production Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type VERIFY-ULC-M5-PRODUCTION to run the correlated production evidence and isolated restore rehearsal'
+        required: true
+        type: string
+      apply_restore:
+        description: 'Write only to the configured isolated restore database; production source remains read-only'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  production-evidence:
+    name: Verify all ULC M5 production owners on one snapshot
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment: m4-dr
+
+    steps:
+      - name: Require exact controlled restore approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          APPLY_RESTORE: ${{ inputs.apply_restore }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'ULC M5 production evidence must run from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = "VERIFY-ULC-M5-PRODUCTION" || {
+            echo 'Exact ULC M5 production evidence confirmation is required.' >&2
+            exit 1
+          }
+          test "$APPLY_RESTORE" = "true" || {
+            echo 'M5 High-Privacy evidence requires the explicitly approved isolated restore rehearsal.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository and canonical ULC backup contract
+        run: |
+          pnpm run verify:repo
+          node ./tooling/ulc-linz-m5-backup-contract.mjs
+
+      - name: Validate and mask protected inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          for name in \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_API_TOKEN \
+            NEON_API_KEY \
+            NEON_ORG_ID \
+            ULC_LINZ_PRODUCTION_DATABASE_URL \
+            APPBASIS_M4_RESTORE_DATABASE_URL; do
+            test -n "${!name:-}" || { echo "Missing protected ULC M5 input: $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+
+      - name: Create restricted temporary evidence workspace
+        id: workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORK="$RUNNER_TEMP/appbasis-ulc-m5-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$WORK"
+          mkdir -p "$WORK"
+          printf 'path=%s\n' "$WORK" >> "$GITHUB_OUTPUT"
+
+      - name: Verify isolated restore target is empty and separate
+        shell: bash
+        env:
+          APPBASIS_M4_SOURCE_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+        run: node ./tooling/m4-r2-restore-target.mjs verify-empty
+
+      - name: Capture sanitized source fingerprint
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: node ./tooling/ulc-linz-m5-restore-fingerprint.mjs > "$WORK/source-fingerprint.json"
+
+      - name: Create temporary custom dump from production source read-only
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --env ULC_LINZ_PRODUCTION_DATABASE_URL \
+            --volume "$WORK:/evidence" \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'pg_dump --format=custom --no-owner --no-acl --dbname="$ULC_LINZ_PRODUCTION_DATABASE_URL" --file=/evidence/production.pgdump'
+          test -s "$WORK/production.pgdump" || {
+            echo 'ULC production dump was not created.' >&2
+            exit 1
+          }
+
+      - name: Restore production dump atomically into isolated target
+        shell: bash
+        env:
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --env APPBASIS_M4_RESTORE_DATABASE_URL \
+            --volume "$WORK:/evidence:ro" \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'pg_restore --single-transaction --no-owner --no-acl --exit-on-error --dbname="$APPBASIS_M4_RESTORE_DATABASE_URL" /evidence/production.pgdump'
+
+      - name: Capture and compare sanitized restored fingerprint
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-m5-restore-fingerprint.mjs > "$WORK/restore-fingerprint.json"
+          cmp -s "$WORK/source-fingerprint.json" "$WORK/restore-fingerprint.json" || {
+            echo 'ULC production restore fingerprint does not match the production source.' >&2
+            exit 1
+          }
+
+      - name: Verify ULC auth permissions lifecycle export retention and security logging on restore environment
+        env:
+          DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+        run: pnpm --filter @appbasis/app-ulc-linz test:postgres
+
+      - name: Record sanitized controlled restore observation
+        shell: bash
+        env:
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          RESTORE_TARGET_BINDING_ID="$(node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          const url = new URL(process.env.APPBASIS_M4_RESTORE_DATABASE_URL);
+          const port = url.port || "5432";
+          const identity = `${url.hostname.toLowerCase()}:${port}${url.pathname}`;
+          process.stdout.write(`sha256-${createHash("sha256").update(identity).digest("hex")}`);
+          NODE
+          )"
+          echo "::add-mask::$RESTORE_TARGET_BINDING_ID"
+          RESTORE_TESTED_AT="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
+          RESTORE_TARGET_BINDING_ID="$RESTORE_TARGET_BINDING_ID" RESTORE_TESTED_AT="$RESTORE_TESTED_AT" node --input-type=module <<'NODE' > "$WORK/restore-observation.json"
+          const value = {
+            restoreTargetBindingId: process.env.RESTORE_TARGET_BINDING_ID,
+            restoreTestedAt: process.env.RESTORE_TESTED_AT,
+            restoreSucceeded: true,
+            dataIntegrityVerified: true,
+            authVerified: true,
+            permissionsVerified: true,
+            applicationSmokeVerified: true,
+            restoreReconciliationVerified: true,
+          };
+          process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+          NODE
+
+      - name: Observe exact current providers and compose one correlated owner bundle
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-m5-production-evidence-observer.mjs "$WORK/restore-observation.json" > "$WORK/m5-bundle.json"
+
+      - name: Require canonical M5 Security and Privacy Ready 12 of 12
+        shell: bash
+        env:
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-m5-production-evidence-runner.mjs "$WORK/m5-bundle.json" --require-ready > "$WORK/m5-result.json"
+          RESULT_PATH="$WORK/m5-result.json" node --input-type=module <<'NODE'
+          import { appendFile, readFile } from "node:fs/promises";
+          const result = JSON.parse(await readFile(process.env.RESULT_PATH, "utf8"));
+          if (
+            result?.application !== "ulc-linz" ||
+            result?.environment !== "production" ||
+            result?.securityPrivacyReady !== true ||
+            result?.verifiedCount !== 12 ||
+            result?.requiredCount !== 12 ||
+            result?.productionReleaseAuthorized !== false ||
+            !Array.isArray(result?.criteria) ||
+            result.criteria.length !== 12 ||
+            result.criteria.some((criterion) => criterion?.status !== "verified")
+          ) {
+            throw new Error("ULC M5 production evidence did not reach canonical 12/12 readiness.");
+          }
+          await appendFile(
+            process.env.GITHUB_STEP_SUMMARY,
+            `ULC Linz Security & Privacy Ready: 12/12 verified on one correlated production snapshot. Production release remains unauthorized.\n`,
+          );
+          NODE
+
+      - name: Remove temporary production and restore evidence
+        if: always()
+        shell: bash
+        env:
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${WORK:-}" && "$WORK" == "$RUNNER_TEMP"/appbasis-ulc-m5-* ]]; then
+            rm -rf -- "$WORK"
+          fi
