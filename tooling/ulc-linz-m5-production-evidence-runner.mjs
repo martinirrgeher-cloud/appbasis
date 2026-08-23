@@ -39,11 +39,14 @@ export async function evaluateUlcLinzM5ProductionEvidenceBundle(
     { now: nowDate },
   );
   const readiness = evaluateProductionReadiness(evidence);
-  const resourceBindingEvidence = root.ownerInputs?.providerBoundEvidenceInput?.resourceBindingEvidence;
-  const resourceBindingFingerprint = deriveUlcLinzM5GResourceBindingFingerprint(
-    resourceBindingEvidence,
-    { now: nowDate },
-  );
+  const providerBoundEvidenceInput = root.ownerInputs?.providerBoundEvidenceInput;
+  const resourceBindingFingerprint =
+    providerBoundEvidenceInput === undefined
+      ? null
+      : deriveUlcLinzM5GResourceBindingFingerprint(
+          providerBoundEvidenceInput.resourceBindingEvidence,
+          { now: nowDate },
+        );
 
   return deepFreeze({
     schemaVersion: 1,
