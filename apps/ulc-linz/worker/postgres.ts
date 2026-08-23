@@ -8,9 +8,15 @@ import {
   type PermissionStore,
 } from "@appbasis/permissions";
 
+import {
+  createPostgresUlcLinzSecurityEventLogger,
+  type BufferedUlcLinzSecurityEventLogger,
+} from "./security-events-postgres";
+
 export interface GeneratedPostgresApplicationRuntime {
   identity: IdentityHttpService;
   permissions: PermissionStore;
+  securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
 }
 
@@ -27,9 +33,11 @@ export async function createGeneratedPostgresApplicationRuntime(
 
   try {
     const permissions = createPermissionStore(identityRuntime.sql);
+    const securityEvents = createPostgresUlcLinzSecurityEventLogger(identityRuntime.sql);
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
+      securityEvents,
       async close() {
         await identityRuntime.close();
       },
