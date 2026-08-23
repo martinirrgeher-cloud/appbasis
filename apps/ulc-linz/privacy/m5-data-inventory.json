@@ -43,20 +43,23 @@
     },
     {
       "id": "ulc-linz-lifecycle",
-      "schemaVersion": 2,
+      "schemaVersion": 3,
       "migrations": [
         "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
-        "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql"
+        "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
+        "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql"
       ],
       "lifecycleStatus": "verified-current-scope",
       "notes": [
-        "app-owned-membership-subject-scope-and-lifecycle-audit-persistence",
+        "app-owned-membership-subject-scope-lifecycle-audit-and-security-event-persistence",
         "member-contact-retention-12-calendar-months",
         "retention-exceptions-require-authenticated-active-same-org-admin-with-actor-reason-created-at-future-review",
         "retention-exception-state-and-audit-event-are-atomic",
         "retention-deletion-claim-atomically-excludes-late-retention-exceptions",
         "completed-app-delete-and-audit-event-are-atomic",
         "app-lifecycle-audit-retention-12-months",
+        "security-event-retention-exactly-12-months-from-occurred-at",
+        "security-events-use-normalized-fields-without-free-payload-storage",
         "admin-membership-must-be-demoted-before-inactivation-or-deletion-db-enforced",
         "delete-marker-retention-35-days",
         "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion"
@@ -82,7 +85,8 @@
     { "id": "ulc_linz_membership", "owner": "ulc-linz-lifecycle", "privacyClass": "membership-lifecycle-data", "retentionPolicy": "12-months-after-exit-or-purpose-end", "deletionEvidence": "verified", "retentionEvidence": "verified" },
     { "id": "ulc_linz_subject_scope", "owner": "ulc-linz-lifecycle", "privacyClass": "subject-access-link", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
     { "id": "ulc_linz_lifecycle_deletion", "owner": "ulc-linz-lifecycle", "privacyClass": "minimal-delete-reconciliation-state", "retentionPolicy": "35-days", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" },
-    { "id": "ulc_linz_lifecycle_audit", "owner": "ulc-linz-lifecycle", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" }
+    { "id": "ulc_linz_lifecycle_audit", "owner": "ulc-linz-lifecycle", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" },
+    { "id": "ulc_linz_security_event_log", "owner": "ulc-linz-lifecycle", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" }
   ],
   "runtimeModules": [],
   "backingStores": {
