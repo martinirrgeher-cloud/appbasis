@@ -25,7 +25,16 @@ const CONTRACT_FILES = Object.freeze([
   ["apps/ulc-linz/worker/app.ts", new URL("../apps/ulc-linz/worker/app.ts", import.meta.url), "3acdcd47bf696c23334c15a11fe80c70368d608c"],
   ["apps/ulc-linz/worker/authorization.ts", new URL("../apps/ulc-linz/worker/authorization.ts", import.meta.url), "a39b41853b120e56d55a14bb75d4aa231c22843b"],
   ["apps/ulc-linz/worker/security-events.ts", new URL("../apps/ulc-linz/worker/security-events.ts", import.meta.url), "cc3a972b65ffd09350d752236827c8df922d9b77"],
+  ["apps/ulc-linz/worker/security-events-postgres.ts", new URL("../apps/ulc-linz/worker/security-events-postgres.ts", import.meta.url), "43e311436e6c5499b047a58923e1235543d49675"],
+  ["apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", new URL("../apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", import.meta.url), "0dea6b9c751e559b06e14d2d2e603bb9a99372d4"],
 ]);
+const CONTROLLED_RETENTION_CONTRACT_FILES = Object.freeze([
+  ["apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", new URL("../apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", import.meta.url)],
+  ["apps/ulc-linz/worker/security-events-postgres.ts", new URL("../apps/ulc-linz/worker/security-events-postgres.ts", import.meta.url)],
+]);
+
+export const ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST =
+  digestContract(CONTROLLED_RETENTION_CONTRACT_FILES);
 
 export function deriveUlcLinzM5FAuditSecurityLoggingEvidence(input, { now = new Date() } = {}) {
   try {
@@ -83,7 +92,8 @@ function retentionVerified(mode, evidence, nowDate) {
       nowDate.getTime() - cleanupLastSucceededAt.getTime() < MAX_AGE_MS &&
       value.cleanupResultVerified === true &&
       value.boundaryEventPreserved === true &&
-      value.clientCutoffOverridePresent === false
+      value.clientCutoffOverridePresent === false &&
+      value.enforcementContractDigest === ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST
     );
   }
   return false;
@@ -99,6 +109,18 @@ function assertCurrentContract() {
       .digest("hex");
     if (actual !== expected) throw new Error("M5-F contract drifted");
   }
+}
+
+function digestContract(files) {
+  const hash = createHash("sha256");
+  for (const [path, url] of files) {
+    const content = readFileSync(url, "utf8").replaceAll("\r\n", "\n");
+    hash.update(path, "utf8");
+    hash.update("\0", "utf8");
+    hash.update(content, "utf8");
+    hash.update("\0", "utf8");
+  }
+  return `sha256:${hash.digest("hex")}`;
 }
 
 function exactRecord(value, fields) {
