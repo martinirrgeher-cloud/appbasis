@@ -21,7 +21,7 @@ const PUBLIC_RUNTIME_FILES = Object.freeze([
   Object.freeze({
     path: "apps/ulc-linz/worker/index.ts",
     url: new URL("../apps/ulc-linz/worker/index.ts", import.meta.url),
-    gitBlobSha: "ec682291fb90cb3b5fa5eaaf5bd552b5742d411c",
+    gitBlobSha: "1b86c35d8f912be25efe6da67cc4d51047da5495",
   }),
 ]);
 
