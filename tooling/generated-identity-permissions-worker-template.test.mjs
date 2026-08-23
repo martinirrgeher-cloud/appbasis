@@ -25,6 +25,8 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "worker/app.ts",
     "worker/index.ts",
     "worker/postgres.ts",
+    "worker/security-events-postgres.ts",
+    "migrations/0002_ulc_linz_security_event_log.sql",
     PRODUCTION_BOOTSTRAP_CONFIG_PATH,
   ]);
 
@@ -36,13 +38,15 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
   assert.match(worker, /APPBASIS_BASE_URL/);
   assert.match(worker, /BETTER_AUTH_SECRET/);
   assert.match(worker, /RUNTIME_NOT_CONFIGURED/);
-  assert.match(worker, /env: unknown/);
+  assert.match(worker, /securityEvents: runtime\.securityEvents/);
+  assert.match(worker, /SECURITY_EVENT_FLUSH_ERROR/);
   assert.doesNotMatch(worker, /interface\s+.*Env/);
   assert.doesNotMatch(worker, /tasks/i);
 
   assert.match(postgres, /createPostgresIdentityApplicationRuntime/);
   assert.match(postgres, /PostgresPermissionStore/);
   assert.match(postgres, /permissions: PermissionStore/);
+  assert.match(postgres, /createPostgresUlcLinzSecurityEventLogger/);
   assert.doesNotMatch(postgres, /@appbasis\/tasks/);
   assert.doesNotMatch(postgres, /PostgresTaskRepository/);
   assert.doesNotMatch(postgres, /@appbasis\/database/);
@@ -99,6 +103,8 @@ test("checked ULC deployment files stay byte-identical to createAppSkeleton's ca
   for (const path of [
     "worker/index.ts",
     "worker/postgres.ts",
+    "worker/security-events-postgres.ts",
+    "migrations/0002_ulc_linz_security_event_log.sql",
     "test/worker.test.ts",
   ]) {
     assert.equal(
