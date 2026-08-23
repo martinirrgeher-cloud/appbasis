@@ -98,12 +98,12 @@ function withDedicatedSecurityLogConnection(content) {
   next = replaceRequired(
     next,
     `  const identityRuntime = await createPostgresIdentityApplicationRuntime(options);\n\n  try {\n    const permissions = createPermissionStore(identityRuntime.sql);\n    const securityEvents = createPostgresUlcLinzSecurityEventLogger(identityRuntime.sql);`,
-    `  const identityRuntime = await createPostgresIdentityApplicationRuntime(options);\n  let securityLogConnection:\n    | ReturnType<typeof createPostgresDatabase>\n    | undefined;\n\n  try {\n    securityLogConnection = createPostgresDatabase(\n      requiredSecurityLogConnectionString(options.securityLogConnectionString),\n    );\n    const permissions = createPermissionStore(identityRuntime.sql);\n    const securityEvents = createPostgresUlcLinzSecurityEventLogger(\n      securityLogConnection.client,\n    );`,
+    `  const identityRuntime = await createPostgresIdentityApplicationRuntime(options);\n  let securityLogConnection:\n    | ReturnType<typeof createPostgresDatabase>\n    | undefined;\n\n  try {\n    securityLogConnection = createPostgresDatabase(\n      requiredSecurityLogConnectionString(options.securityLogConnectionString),\n    );\n    const securityConnection = securityLogConnection;\n    const permissions = createPermissionStore(identityRuntime.sql);\n    const securityEvents = createPostgresUlcLinzSecurityEventLogger(\n      securityConnection.client,\n    );`,
   );
   next = replaceRequired(
     next,
     `      securityEvents,\n      async close() {\n        await identityRuntime.close();\n      },`,
-    `      securityEvents,\n      async close() {\n        let closeError: unknown = null;\n        try {\n          await securityLogConnection.client.end();\n        } catch (error) {\n          closeError = error;\n        }\n        try {\n          await identityRuntime.close();\n        } catch (error) {\n          closeError ??= error;\n        }\n        if (closeError !== null) throw closeError;\n      },`,
+    `      securityEvents,\n      async close() {\n        let closeError: unknown = null;\n        try {\n          await securityConnection.client.end();\n        } catch (error) {\n          closeError = error;\n        }\n        try {\n          await identityRuntime.close();\n        } catch (error) {\n          closeError ??= error;\n        }\n        if (closeError !== null) throw closeError;\n      },`,
   );
   next = replaceRequired(
     next,
@@ -119,6 +119,11 @@ function withDedicatedSecurityLogWorkerTests(content) {
     content,
     `  HYPERDRIVE: Object.freeze({\n    connectionString: "postgresql://user:password@database.example.test/appbasis",\n  }),\n  APPBASIS_BASE_URL:`,
     `  HYPERDRIVE: Object.freeze({\n    connectionString: "postgresql://user:password@database.example.test/appbasis",\n  }),\n  SECURITY_LOG_HYPERDRIVE: Object.freeze({\n    connectionString:\n      "postgresql://security_ingest:password@database.example.test/appbasis",\n  }),\n  APPBASIS_BASE_URL:`,
+  );
+  next = replaceRequired(
+    next,
+    `        HYPERDRIVE: { connectionString: validEnv.HYPERDRIVE.connectionString },\n        APPBASIS_BASE_URL: validEnv.APPBASIS_BASE_URL,`,
+    `        HYPERDRIVE: { connectionString: validEnv.HYPERDRIVE.connectionString },\n        APPBASIS_BASE_URL: validEnv.APPBASIS_BASE_URL,\n        BETTER_AUTH_SECRET: validEnv.BETTER_AUTH_SECRET,`,
   );
   next = replaceRequired(
     next,
