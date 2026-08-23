@@ -32,6 +32,19 @@ const MODULE_DATABASE_OWNERS = Object.freeze({
   }),
 });
 
+const APP_DATABASE_OWNERS = Object.freeze({
+  "ulc-linz": databaseOwner({
+    id: "ulc-linz-lifecycle",
+    root: "apps/ulc-linz",
+    schemaVersion: 3,
+    migrations: [
+      "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
+      "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
+      "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
+    ],
+  }),
+});
+
 export function createGeneratedDatabaseManifest(definition) {
   if (!isPlainObject(definition)) {
     throw new Error("Generated database manifest requires an app definition object.");
@@ -67,6 +80,10 @@ export function createGeneratedDatabaseManifest(definition) {
       );
     }
     owners.push(cloneOwner(MODULE_DATABASE_OWNERS[moduleName]));
+  }
+
+  if (Object.hasOwn(APP_DATABASE_OWNERS, appId)) {
+    owners.push(cloneOwner(APP_DATABASE_OWNERS[appId]));
   }
 
   if (owners.length === 0) return null;
