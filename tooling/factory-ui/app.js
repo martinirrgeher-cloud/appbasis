@@ -1,4 +1,5 @@
 import { previewAccentForeground } from "./preview-theme.mjs";
+import { factoryLifecycleCardCopy } from "./fc1-lifecycle-card-status.mjs";
 import {
   factoryLifecycleCopy,
   productionReadinessCopy,
@@ -138,6 +139,11 @@ function renderApps() {
   }
 
   for (const app of apps) {
+    const lifecycleCard = factoryLifecycleCardCopy(
+      app.previewReadiness,
+      app.productionReadiness,
+      app.productionReleaseReadiness,
+    );
     const card = document.createElement("article");
     card.className = "factory-app-card ab-surface";
 
@@ -158,7 +164,8 @@ function renderApps() {
 
     const status = document.createElement("span");
     status.className = "ab-badge";
-    status.textContent = "Im Repository";
+    status.textContent = lifecycleCard.label;
+    status.title = lifecycleCard.heading;
     header.append(mark, title, status);
 
     const details = document.createElement("div");
@@ -166,12 +173,15 @@ function renderApps() {
     details.append(
       detailRow("Module", app.modules, moduleLabel),
       detailRow("Dienste", app.platformServices, serviceLabel),
+      detailRow("Status", [lifecycleCard.heading]),
+      detailRow("Nächster Schritt", [lifecycleCard.nextStep]),
     );
 
     const footer = document.createElement("div");
     footer.className = "factory-app-card__footer";
-    const preview = document.createElement("span");
-    preview.textContent = previewReadinessLabel(app.previewReadiness);
+    const nextStep = document.createElement("span");
+    nextStep.textContent = `Nächster Schritt: ${lifecycleCard.nextStep}`;
+    nextStep.title = lifecycleCard.detail;
     const button = document.createElement("button");
     button.className = "ab-button ab-button--ghost";
     button.type = "button";
@@ -179,7 +189,7 @@ function renderApps() {
     button.dataset.appId = app.appId;
     button.setAttribute("aria-label", `${app.displayName} öffnen`);
     button.addEventListener("click", () => openAppDetail(app.appId));
-    footer.append(preview, button);
+    footer.append(nextStep, button);
 
     card.append(header, details, footer);
     elements.appsList.append(card);
@@ -426,285 +436,222 @@ function returnToApps(appIdToRestore = state.selectedAppId) {
   scheduleAppsFocus(appIdToRestore);
 }
 
-function restoreListFocusAfterRender(appId) {
-  if (appId === null || !isPanelVisible("apps")) return;
-  scheduleAppsFocus(appId);
-}
-
-function scheduleAppsFocus(appId) {
-  requestAnimationFrame(() => {
-    if (appId !== null && focusAppOpenButton(appId)) return;
-    focusAppsTab();
-  });
-}
-
-function focusedAppButtonId() {
-  const appId = document.activeElement?.dataset?.appId;
-  return typeof appId === "string" && appId.length > 0 ? appId : null;
-}
-
-function focusAppOpenButton(appId) {
-  const button = [...document.querySelectorAll("button[data-app-id]")].find(
-    (candidate) => candidate.dataset.appId === appId,
-  );
-  if (button === undefined) return false;
-  button.focus();
-  return true;
-}
-
-function focusAppsTab() {
-  document.querySelector("button[data-tab='apps']")?.focus();
-}
-
-function captureDraftCatalogState() {
-  return {
-    modules: checkedValues("module"),
-    services: checkedValues("service"),
-    focus: focusedDraftOption(),
-  };
-}
-
-function focusedDraftOption() {
-  const active = document.activeElement;
-  const name = active?.getAttribute?.("name");
-  const value = active?.value;
-  if ((name === "module" || name === "service") && typeof value === "string") {
-    return { name, value };
-  }
-  return null;
-}
-
-function restoreDraftCatalogFocus(focus) {
-  if (focus === null || !isPanelVisible("create")) return;
-  requestAnimationFrame(() => {
-    const input = [...document.querySelectorAll(`input[name='${focus.name}']`)].find(
-      (candidate) => candidate.value === focus.value,
-    );
-    if (input !== undefined) {
-      input.focus();
-      return;
-    }
-    document.querySelector("button[data-tab='create']")?.focus();
-  });
-}
-
-function isPanelVisible(panelName) {
-  const panel = document.querySelector(`[data-panel='${panelName}']`);
-  return panel !== null && !panel.hidden;
-}
-
-function renderCatalog(draftState = { modules: [], services: [], focus: null }) {
-  renderCheckboxes(
-    elements.moduleOptions,
-    state.snapshot?.catalog?.modules ?? [],
-    "module",
-    moduleLabel,
-    draftState.modules,
-  );
-  renderCheckboxes(
-    elements.serviceOptions,
-    state.snapshot?.catalog?.platformServices ?? [],
-    "service",
-    serviceLabel,
-    draftState.services,
-  );
-}
-
-function renderCheckboxes(container, ids, groupName, labelFor, selectedIds = []) {
-  if (!container) return;
-
-  container.replaceChildren();
-  if (ids.length === 0) {
-    container.append(emptyState("Aktuell keine Auswahl verfügbar."));
-    return;
-  }
-
-  for (const id of ids) {
-    const label = document.createElement("label");
-    label.className = "factory-option";
-
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.name = groupName;
-    input.value = id;
-    input.checked = selectedIds.includes(id);
-    input.addEventListener("change", () => {
-      if (groupName === "service") enforceServiceDependencies(input);
-      renderDraftPreview();
-    });
-
-    const copy = document.createElement("span");
-    const strong = document.createElement("strong");
-    strong.textContent = labelFor(id);
-    const code = document.createElement("code");
-    code.textContent = id;
-    copy.append(strong, code);
-
-    label.append(input, copy);
-    container.append(label);
-  }
-}
-
-function enforceServiceDependencies(changedInput) {
-  const identity = elements.serviceOptions?.querySelector("input[value='identity']");
-  const permissions = elements.serviceOptions?.querySelector("input[value='permissions']");
-  if (!identity || !permissions) return;
-
-  if (changedInput === permissions && permissions.checked) {
-    identity.checked = true;
-  }
-  if (changedInput === identity && !identity.checked && permissions.checked) {
-    permissions.checked = false;
-  }
-}
-
-function renderDraftPreview() {
-  const name = elements.displayName?.value.trim() || "Neue App";
-  const appId = elements.appId?.value.trim() || "app-id";
-  const mark = elements.brandMark?.value.trim() || firstLetter(name);
-  const accent = elements.accentColor?.value || "#2457e6";
-  const accentLabel = accent.toLocaleUpperCase("de-DE");
-  const modules = checkedValues("module");
-  const services = checkedValues("service");
-
-  if (elements.previewName) elements.previewName.textContent = name;
-  if (elements.previewId) elements.previewId.textContent = appId;
-  if (elements.previewMark) {
-    elements.previewMark.textContent = mark;
-    elements.previewMark.style.backgroundColor = accent;
-    elements.previewMark.style.color = previewAccentForeground(accent);
-  }
-  if (elements.previewAccent) elements.previewAccent.style.backgroundColor = accent;
-  if (elements.accentColorValue) elements.accentColorValue.textContent = accentLabel;
-  if (elements.previewTheme) elements.previewTheme.textContent = `Akzent ${accentLabel}`;
-  if (elements.previewModules) {
-    elements.previewModules.textContent = listLabels(modules, moduleLabel);
-  }
-  if (elements.previewServices) {
-    elements.previewServices.textContent = listLabels(services, serviceLabel);
-  }
-}
-
-function checkedValues(name) {
-  return [...document.querySelectorAll(`input[name='${name}']:checked`)].map(
-    (input) => input.value,
-  );
-}
-
-function validateAppId() {
-  if (!elements.appId) return;
-  const value = elements.appId.value;
-  const valid = value.length === 0 || /^[a-z][a-z0-9-]*$/.test(value);
-  elements.appId.setAttribute("aria-invalid", valid ? "false" : "true");
-}
-
 function selectTab(tab) {
-  state.selectedAppId = null;
+  if (tab === "apps") state.selectedAppId = null;
   setActiveTab(tab);
   showPanel(tab);
 }
 
 function setActiveTab(tab) {
   for (const button of document.querySelectorAll("[data-tab]")) {
-    const active = button.dataset.tab === tab;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-selected", String(active));
+    const selected = button.dataset.tab === tab;
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-selected", String(selected));
   }
 }
 
-function showPanel(panelName) {
-  for (const panel of document.querySelectorAll("[data-panel]")) {
-    panel.hidden = panel.dataset.panel !== panelName;
+function showPanel(panel) {
+  for (const candidate of document.querySelectorAll("[data-panel]")) {
+    candidate.hidden = candidate.dataset.panel !== panel;
   }
 }
 
-function detailRow(labelText, values, labelFor) {
+function renderCatalog(previousState = null) {
+  const catalog = state.snapshot?.catalog;
+  if (!catalog) return;
+
+  renderCheckboxes(
+    elements.moduleOptions,
+    catalog.modules,
+    moduleLabel,
+    previousState?.modules,
+  );
+  renderCheckboxes(
+    elements.serviceOptions,
+    catalog.platformServices,
+    serviceLabel,
+    previousState?.services,
+  );
+}
+
+function renderCheckboxes(container, values, labelFor, selectedIds = []) {
+  if (!container) return;
+  container.replaceChildren();
+
+  for (const value of values) {
+    const label = document.createElement("label");
+    label.className = "factory-check";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = value;
+    input.checked = selectedIds.includes(value);
+    input.addEventListener("change", renderDraftPreview);
+    const text = document.createElement("span");
+    text.textContent = labelFor(value);
+    label.append(input, text);
+    container.append(label);
+  }
+}
+
+function renderDraftPreview() {
+  if (!elements.previewName) return;
+  const name = elements.displayName?.value.trim() || "Neue App";
+  const id = elements.appId?.value.trim() || "app-id";
+  const mark = elements.brandMark?.value.trim() || firstLetter(name);
+  const accent = elements.accentColor?.value ?? "#2563eb";
+  const selectedModules = selectedValues(elements.moduleOptions);
+  const selectedServices = selectedValues(elements.serviceOptions);
+
+  elements.previewName.textContent = name;
+  elements.previewId.textContent = id;
+  elements.previewMark.textContent = mark;
+  elements.previewAccent.style.background = accent;
+  elements.previewAccent.style.color = previewAccentForeground(accent);
+  elements.previewAccent.textContent = accent.toUpperCase();
+  elements.previewTheme.textContent = themeLabel(accent);
+  elements.previewModules.textContent = selectedModules.length > 0
+    ? selectedModules.map(moduleLabel).join(", ")
+    : "Noch keine Module gewählt";
+  elements.previewServices.textContent = selectedServices.length > 0
+    ? selectedServices.map(serviceLabel).join(", ")
+    : "Keine zusätzlichen Dienste";
+  if (elements.accentColorValue) elements.accentColorValue.textContent = accent.toUpperCase();
+}
+
+function selectedValues(container) {
+  if (!container) return [];
+  return [...container.querySelectorAll("input:checked")].map((input) => input.value);
+}
+
+function validateAppId() {
+  if (!elements.appId) return;
+  const valid = /^[a-z][a-z0-9-]{1,62}$/.test(elements.appId.value);
+  elements.appId.setCustomValidity(
+    valid || elements.appId.value.length === 0
+      ? ""
+      : "Kleinbuchstaben, Zahlen und Bindestriche; Start mit Buchstabe.",
+  );
+}
+
+function appIdFromName(value) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("de-DE")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63);
+}
+
+function firstLetter(value) {
+  return [...value.trim()][0]?.toLocaleUpperCase("de-DE") ?? "A";
+}
+
+function detailRow(label, values, labelFor = (value) => value) {
   const row = document.createElement("div");
-  const label = document.createElement("span");
-  label.textContent = labelText;
-  const value = document.createElement("div");
-  value.className = "factory-chip-list";
-  appendValueChips(value, values, labelFor);
-  row.append(label, value);
+  const heading = document.createElement("strong");
+  heading.textContent = label;
+  const content = document.createElement("span");
+  content.textContent = values.length > 0 ? values.map(labelFor).join(", ") : "—";
+  row.append(heading, content);
   return row;
 }
 
 function replaceWithValueChips(container, values, labelFor) {
   if (!container) return;
   container.replaceChildren();
-  appendValueChips(container, values, labelFor);
-}
-
-function appendValueChips(container, values, labelFor) {
   if (values.length === 0) {
-    const empty = document.createElement("span");
-    empty.className = "factory-muted";
-    empty.textContent = "Keine";
-    container.append(empty);
+    container.textContent = "—";
     return;
   }
-
-  for (const id of values) {
+  for (const value of values) {
     const chip = document.createElement("span");
-    chip.className = "ab-badge";
-    chip.textContent = labelFor(id);
+    chip.className = "ab-chip";
+    chip.textContent = labelFor(value);
     container.append(chip);
   }
 }
 
-function emptyState(message) {
-  const element = document.createElement("div");
-  element.className = "ab-empty-state";
-  const strong = document.createElement("strong");
-  strong.textContent = message;
-  element.append(strong);
+function moduleLabel(moduleId) {
+  const labels = {
+    tasks: "Aufgaben",
+  };
+  return labels[moduleId] ?? moduleId;
+}
+
+function serviceLabel(serviceId) {
+  const labels = {
+    identity: "Benutzer",
+    permissions: "Rollen & Rechte",
+  };
+  return labels[serviceId] ?? serviceId;
+}
+
+function themeLabel(accent) {
+  return accent.toLowerCase() === "#2563eb" ? "AppBasis Standard" : "Individuelle Akzentfarbe";
+}
+
+function emptyState(text) {
+  const element = document.createElement("p");
+  element.className = "factory-empty";
+  element.textContent = text;
   return element;
 }
 
 function showError(message) {
   if (!elements.error) return;
-  elements.error.hidden = message.length === 0;
   elements.error.textContent = message;
+  elements.error.hidden = message.length === 0;
 }
 
-function appIdFromName(value) {
-  return value
-    .trim()
-    .toLocaleLowerCase("de-DE")
-    .replace(/ä/g, "ae")
-    .replace(/ö/g, "oe")
-    .replace(/ü/g, "ue")
-    .replace(/ß/g, "ss")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/^[^a-z]+/, "");
+function captureDraftCatalogState() {
+  return {
+    modules: selectedValues(elements.moduleOptions),
+    services: selectedValues(elements.serviceOptions),
+    focus: focusedDraftOption(),
+  };
 }
 
-function listLabels(ids, labelFor) {
-  return ids.length === 0 ? "Keine" : ids.map(labelFor).join(", ");
+function focusedDraftOption() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLInputElement)) return null;
+  if (!elements.moduleOptions?.contains(active) && !elements.serviceOptions?.contains(active)) {
+    return null;
+  }
+  return { value: active.value, kind: elements.moduleOptions?.contains(active) ? "module" : "service" };
 }
 
-function firstLetter(value) {
-  return value.trim().charAt(0).toLocaleUpperCase("de-DE") || "A";
+function restoreDraftCatalogFocus(focus) {
+  if (!focus) return;
+  const container = focus.kind === "module" ? elements.moduleOptions : elements.serviceOptions;
+  const candidate = [...(container?.querySelectorAll("input") ?? [])].find(
+    (input) => input.value === focus.value,
+  );
+  candidate?.focus();
 }
 
-function moduleLabel(id) {
-  if (id === "tasks") return "Aufgaben";
-  return humanizeIdentifier(id);
+function focusedAppButtonId() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLButtonElement)) return null;
+  return active.dataset.appId ?? null;
 }
 
-function serviceLabel(id) {
-  if (id === "identity") return "Benutzer & Login";
-  if (id === "permissions") return "Rollen & Rechte";
-  return humanizeIdentifier(id);
+function restoreListFocusAfterRender(appId) {
+  if (appId === null) return;
+  focusAppOpenButton(appId);
 }
 
-function humanizeIdentifier(id) {
-  return id
-    .split("-")
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
+function scheduleAppsFocus(appId) {
+  queueMicrotask(() => {
+    if (appId !== null && focusAppOpenButton(appId)) return;
+    document.querySelector("button[data-tab='apps']")?.focus();
+  });
+}
+
+function focusAppOpenButton(appId) {
+  const candidate = [...(elements.appsList?.querySelectorAll("button[data-app-id]") ?? [])].find(
+    (button) => button.dataset.appId === appId,
+  );
+  candidate?.focus();
+  return candidate !== undefined;
 }
