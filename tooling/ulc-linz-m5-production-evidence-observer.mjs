@@ -65,8 +65,10 @@ export async function collectUlcLinzM5ProductionEvidenceBundle(
   }
   const restore = validateRestoreObservation(restoreObservation, nowDate);
 
-  const observedAt = nowDate.toISOString();
-  const validUntilOrReviewAt = new Date(nowDate.getTime() + EVIDENCE_WINDOW_MS).toISOString();
+  const observedAt = restore.restoreTestedAt;
+  const validUntilOrReviewAt = new Date(
+    new Date(observedAt).getTime() + EVIDENCE_WINDOW_MS,
+  ).toISOString();
 
   const [neon, cloudflare, definition, lifecycleContractDigest] = await Promise.all([
     observeNeon({ apiKey: safeNeonKey, orgId: safeOrgId, fetchImpl }),
