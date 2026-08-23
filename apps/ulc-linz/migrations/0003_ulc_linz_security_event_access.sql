@@ -12,6 +12,12 @@ BEGIN
 END
 $appbasis$;
 --> statement-breakpoint
+ALTER ROLE ulc_linz_security_event_ingest NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+--> statement-breakpoint
+ALTER ROLE ulc_linz_security_event_cleanup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+--> statement-breakpoint
+ALTER ROLE ulc_linz_security_event_read NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+--> statement-breakpoint
 REVOKE ALL ON TABLE public.ulc_linz_security_event_log FROM PUBLIC;
 --> statement-breakpoint
 REVOKE ALL ON SEQUENCE public.ulc_linz_security_event_log_id_seq FROM PUBLIC;
