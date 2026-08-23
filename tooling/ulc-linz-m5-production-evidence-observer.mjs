@@ -168,22 +168,28 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
   );
   const version = versionResponse.result;
   const bindings = array(version?.resources?.bindings);
-  if (version?.id !== versionId || bindings.length !== 3) {
+  if (version?.id !== versionId || bindings.length !== 4) {
     throw new Error("ULC production Worker version bindings are not exact.");
   }
 
   const base = bindings.find((binding) => binding?.name === "APPBASIS_BASE_URL");
   const hyperdrive = bindings.find((binding) => binding?.name === "HYPERDRIVE");
+  const securityLogHyperdrive = bindings.find(
+    (binding) => binding?.name === "SECURITY_LOG_HYPERDRIVE",
+  );
   const secret = bindings.find((binding) => binding?.name === "BETTER_AUTH_SECRET");
   if (
     base?.type !== "plain_text" ||
     base?.text !== TARGET_BASE_URL ||
     hyperdrive?.type !== "hyperdrive" ||
+    securityLogHyperdrive?.type !== "hyperdrive" ||
+    securityLogHyperdrive.id === hyperdrive.id ||
     secret?.type !== "secret_text"
   ) {
     throw new Error("ULC production Worker bindings drifted from the approved runtime contract.");
   }
   requiredOpaque(hyperdrive.id, "Cloudflare Hyperdrive ID");
+  requiredOpaque(securityLogHyperdrive.id, "Cloudflare security-log Hyperdrive ID");
 
   const message = version?.annotations?.["workers/message"];
   if (
