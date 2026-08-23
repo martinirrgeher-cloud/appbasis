@@ -3,8 +3,13 @@ import type {
   UlcLinzSecurityEventLogger,
 } from "./security-events";
 
+export type UlcLinzSecurityEventSqlParameter = string | number | boolean | null;
+
 export interface UlcLinzSecurityEventSqlClient {
-  unsafe(query: string, parameters?: readonly unknown[]): PromiseLike<unknown>;
+  unsafe(
+    query: string,
+    parameters?: UlcLinzSecurityEventSqlParameter[],
+  ): PromiseLike<unknown>;
 }
 
 export interface BufferedUlcLinzSecurityEventLogger
@@ -92,7 +97,9 @@ async function persistEvent(
   }
 }
 
-function eventParameters(event: UlcLinzSecurityEvent): readonly unknown[] {
+function eventParameters(
+  event: UlcLinzSecurityEvent,
+): UlcLinzSecurityEventSqlParameter[] {
   if (event.eventType === "identity.request.denied") {
     return [
       event.schemaVersion,
