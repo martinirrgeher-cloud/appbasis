@@ -62,7 +62,7 @@ function controlledRetentionEvidence() {
   return {
     source: "controlled-calendar-enforcement",
     providerMinimumRetentionVerified: true,
-    cutoffSemantics: "created-at-strictly-older-than-12-calendar-months",
+    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
     cleanupExecutionBound: true,
     cleanupLastSucceededAt: "2026-08-18T15:50:00.000Z",
     cleanupResultVerified: true,
@@ -138,6 +138,7 @@ test("rejects day-based or unverified provider retention as twelve calendar mont
 test("rejects controlled retention without exact boundary, fresh cleanup or exact implementation binding", () => {
   for (const mutate of [
     (value) => { value.providerMinimumRetentionVerified = false; },
+    (value) => { value.cutoffSemantics = "created-at-strictly-older-than-12-calendar-months"; },
     (value) => { value.cutoffSemantics = "older-than-365-days"; },
     (value) => { value.cleanupExecutionBound = false; },
     (value) => { value.cleanupLastSucceededAt = "2026-08-17T15:00:00.000Z"; },
