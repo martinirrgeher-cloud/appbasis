@@ -3,10 +3,10 @@ import { renderGeneratedPrivateWorkerBootstrapConfig } from "./generated-private
 import { createIdentityRuntimeTemplate as createCoreIdentityRuntimeTemplate } from "./generated-runtime-template-core.mjs";
 import { extendUlcLinzDatabaseAssetsTemplate } from "./generated-ulc-linz-database-assets.mjs";
 import { extendUlcLinzSecurityLoggingTemplate } from "./generated-ulc-linz-security-logging-template.mjs";
+import { extendUlcLinzSecurityRetentionTemplate } from "./generated-ulc-linz-security-retention-template.mjs";
 
 const POSTGRES_E2E_PATH = "test/app.postgres.e2e.ts";
 const WORKER_ENTRYPOINT_PATH = "worker/index.ts";
-const ULC_SECURITY_EVENT_POSTGRES_PATH = "worker/security-events-postgres.ts";
 const PRODUCTION_WORKER_BOOTSTRAP_CONFIG_PATH = "wrangler.production.bootstrap.jsonc";
 const PERMISSION_FOUNDATION_BLOCK = `const permissionMigrationUrl = new URL(
   "../../../packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
@@ -33,13 +33,16 @@ const APPLY_PRINCIPAL_PERMISSION_AUDIT =
   "  await applyMigration(principalPermissionAdministrationAuditMigrationUrl);";
 
 export function createIdentityRuntimeTemplate(input) {
-  const generated = extendUlcLinzSecurityLoggingTemplate(
+  const generated = extendUlcLinzSecurityRetentionTemplate(
     input,
-    extendUlcLinzDatabaseAssetsTemplate(
+    extendUlcLinzSecurityLoggingTemplate(
       input,
-      extendIdentityPermissionsWorkerTemplate(
+      extendUlcLinzDatabaseAssetsTemplate(
         input,
-        createCoreIdentityRuntimeTemplate(input),
+        extendIdentityPermissionsWorkerTemplate(
+          input,
+          createCoreIdentityRuntimeTemplate(input),
+        ),
       ),
     ),
   );
@@ -48,12 +51,6 @@ export function createIdentityRuntimeTemplate(input) {
       return Object.freeze({
         ...entry,
         content: withPermissionMigrations(entry.content),
-      });
-    }
-    if (input?.appId === "ulc-linz" && entry.path === ULC_SECURITY_EVENT_POSTGRES_PATH) {
-      return Object.freeze({
-        ...entry,
-        content: withServerOwnedUlcSecurityRetention(entry.content),
       });
     }
     return entry;
@@ -72,46 +69,6 @@ export function createIdentityRuntimeTemplate(input) {
     ...generated,
     files: Object.freeze(files),
   });
-}
-
-function withServerOwnedUlcSecurityRetention(content) {
-  const oldCleanup = `const PURGE_SECURITY_EVENT_SQL = \`
-DELETE FROM ulc_linz_security_event_log
-WHERE retained_until < $1::timestamptz
-\`;
-
-export function createPostgresUlcLinzSecurityEventLogger(`;
-  const newCleanup = `const PURGE_SECURITY_EVENT_SQL = \`
-DELETE FROM ulc_linz_security_event_log
-WHERE retained_until < statement_timestamp()
-\`;
-
-export function createPostgresUlcLinzSecurityEventLogger(`;
-  const oldFunction = `export async function purgeExpiredUlcLinzSecurityEvents(
-  client: UlcLinzSecurityEventSqlClient,
-  now: Date,
-): Promise<void> {
-  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
-    throw new Error("A valid retention evaluation time is required.");
-  }
-  await client.unsafe(PURGE_SECURITY_EVENT_SQL, [now.toISOString()]);
-}`;
-  const newFunction = `/**
- * Deletes only events whose database-enforced twelve-calendar-month boundary is
- * strictly older than the PostgreSQL server's statement timestamp. There is no
- * caller-supplied clock or cutoff, so an HTTP/request/operator value cannot
- * shorten the retention period.
- */
-export async function purgeExpiredUlcLinzSecurityEvents(
-  client: UlcLinzSecurityEventSqlClient,
-): Promise<void> {
-  await client.unsafe(PURGE_SECURITY_EVENT_SQL);
-}`;
-
-  if (!content.includes(oldCleanup) || !content.includes(oldFunction)) {
-    throw new Error("Generated ULC security retention source drifted before server-owned cutoff hardening.");
-  }
-  return content.replace(oldCleanup, newCleanup).replace(oldFunction, newFunction);
 }
 
 function withPermissionMigrations(content) {
