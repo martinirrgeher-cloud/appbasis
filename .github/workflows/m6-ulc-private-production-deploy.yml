@@ -1,0 +1,371 @@
+name: M6 ULC Private Production Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type DEPLOY-ULC-PRIVATE-PRODUCTION to deploy the exact configured version while keeping public ingress disabled'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  deploy-private-runtime:
+    name: Deploy exact ULC production version privately
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TARGET_WORKER: appbasis-ulc-linz-production
+      TARGET_BASE_URL: https://app.ulc-linz.at
+      TARGET_VERSION_TAG: ulc-linz-production-runtime-v1
+
+    steps:
+      - name: Require explicit main dispatch
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'Private production deployment must be dispatched from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = "DEPLOY-ULC-PRIVATE-PRODUCTION" || {
+            echo 'Exact private production deployment confirmation is required.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and mask protected inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID.' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN.' >&2; exit 1; }
+          test -n "$ULC_LINZ_PRODUCTION_DATABASE_URL" || { echo 'Missing ULC_LINZ_PRODUCTION_DATABASE_URL.' >&2; exit 1; }
+          test -n "$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET" || { echo 'Missing ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET.' >&2; exit 1; }
+          node -e 'const value = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET?.trim() ?? ""; if (value.length < 32 || value !== process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET) process.exit(1);' || {
+            echo 'Production Better Auth secret must be trimmed and at least 32 characters.' >&2
+            exit 1
+          }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET"
+
+      - name: Derive current auth-secret HMAC fingerprint
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          AUTH_SECRET_FINGERPRINT="$(node --input-type=module <<'NODE'
+          import { createHmac } from "node:crypto";
+          const secret = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET;
+          const context = "appbasis:ulc-linz:production:better-auth-secret:v1";
+          process.stdout.write(createHmac("sha256", secret).update(context).digest("hex"));
+          NODE
+          )"
+          [[ "$AUTH_SECRET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || {
+            echo 'Production Better Auth secret fingerprint derivation failed.' >&2
+            exit 1
+          }
+          echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
+          printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
+
+      - name: Resolve exact dedicated production Hyperdrive
+        id: hyperdrive
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          test -n "$HYPERDRIVE_ID" || { echo 'Exact ULC production Hyperdrive could not be resolved.' >&2; exit 1; }
+          echo "::add-mask::$HYPERDRIVE_ID"
+          printf 'id=%s\n' "$HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Require exact closed worker and exact current undeployed version
+        id: preflight
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          WORKER_PATH="$RUNNER_TEMP/m6-private-deploy-worker-before.json"
+          VERSIONS_PATH="$RUNNER_TEMP/m6-private-deploy-versions-before.json"
+          DEPLOYMENTS_PATH="$RUNNER_TEMP/m6-private-deploy-deployments-before.json"
+          ROUTES_PATH="$RUNNER_TEMP/m6-private-deploy-routes-before.json"
+
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER" \
+            > "$WORKER_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" \
+            > "$VERSIONS_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
+            > "$DEPLOYMENTS_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
+            > "$ROUTES_PATH"
+
+          VERSION_ID="$(
+            WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" ROUTES_PATH="$ROUTES_PATH" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" TARGET_WORKER="$TARGET_WORKER" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
+          const versionsResponse = JSON.parse(await readFile(process.env.VERSIONS_PATH, "utf8"));
+          const deploymentsResponse = JSON.parse(await readFile(process.env.DEPLOYMENTS_PATH, "utf8"));
+          const routesResponse = JSON.parse(await readFile(process.env.ROUTES_PATH, "utf8"));
+          const worker = workerResponse?.result;
+          if (
+            workerResponse?.success !== true ||
+            worker?.name !== "appbasis-ulc-linz-production" ||
+            worker?.subdomain?.enabled !== false ||
+            worker?.subdomain?.previews_enabled !== false ||
+            !Object.hasOwn(worker ?? {}, "deployed_on") ||
+            worker.deployed_on !== null ||
+            !Array.isArray(worker?.references?.domains) ||
+            worker.references.domains.length !== 0
+          ) {
+            throw new Error("ULC production Worker is not provably closed and undeployed.");
+          }
+          if (
+            routesResponse?.success !== true ||
+            !Array.isArray(routesResponse?.result)
+          ) {
+            throw new Error("Private production Worker route inventory is invalid.");
+          }
+          const matchingScripts = routesResponse.result.filter(
+            (candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate) && candidate.id === process.env.TARGET_WORKER,
+          );
+          if (matchingScripts.length !== 1) {
+            throw new Error("Private production Worker route inventory could not identify the Worker exactly once.");
+          }
+          const routes = matchingScripts[0].routes;
+          if (routes !== undefined && routes !== null && !Array.isArray(routes)) {
+            throw new Error("Private production Worker route inventory is invalid.");
+          }
+          if (Array.isArray(routes) && routes.length !== 0) {
+            throw new Error("Private production Worker has a public Worker route.");
+          }
+          if (
+            deploymentsResponse?.success !== true ||
+            !Array.isArray(deploymentsResponse?.result?.deployments) ||
+            deploymentsResponse.result.deployments.length !== 0
+          ) {
+            throw new Error("Private production deploy requires zero existing deployments.");
+          }
+          if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result)) {
+            throw new Error("Private production deploy version inventory is invalid.");
+          }
+          if (!/^[0-9a-f]{64}$/.test(process.env.AUTH_SECRET_FINGERPRINT ?? "")) {
+            throw new Error("Current auth-secret fingerprint is invalid.");
+          }
+          const versionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const historicalMessagePattern = /^AppBasis ulc-linz production runtime [0-9a-f]{40} auth-hmac:[0-9a-f]{64}$/;
+          const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
+          for (const version of versionsResponse.result) {
+            const message = version?.annotations?.["workers/message"];
+            if (
+              !versionIdPattern.test(version?.id ?? "") ||
+              version?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
+              typeof message !== "string" ||
+              !historicalMessagePattern.test(message)
+            ) {
+              throw new Error("Private production deploy encountered an unrecognized version in history.");
+            }
+          }
+          const currentVersions = versionsResponse.result.filter(
+            (version) => version?.annotations?.["workers/message"] === expectedMessage,
+          );
+          if (currentVersions.length !== 1) {
+            throw new Error("Private production deploy requires exactly one version bound to the current runtime and auth secret.");
+          }
+          process.stdout.write(currentVersions[0].id);
+          NODE
+          )"
+          echo "::add-mask::$VERSION_ID"
+          printf 'id=%s\n' "$VERSION_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact current version bindings before deployment
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERSION_ID: ${{ steps.preflight.outputs.id }}
+          HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+        run: |
+          set -euo pipefail
+          VERSION_PATH="$RUNNER_TEMP/m6-private-deploy-version-before.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/versions/$VERSION_ID" \
+            > "$VERSION_PATH"
+
+          VERSION_PATH="$VERSION_PATH" VERSION_ID="$VERSION_ID" HYPERDRIVE_ID="$HYPERDRIVE_ID" TARGET_BASE_URL="$TARGET_BASE_URL" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const response = JSON.parse(await readFile(process.env.VERSION_PATH, "utf8"));
+          const bindings = response?.result?.resources?.bindings;
+          if (
+            response?.success !== true ||
+            response?.result?.id !== process.env.VERSION_ID ||
+            !Array.isArray(bindings) ||
+            bindings.length !== 3
+          ) {
+            throw new Error("Private production deploy version detail or binding inventory is invalid.");
+          }
+          const base = bindings.find((entry) => entry?.name === "APPBASIS_BASE_URL");
+          const hyperdrive = bindings.find((entry) => entry?.name === "HYPERDRIVE");
+          const secret = bindings.find((entry) => entry?.name === "BETTER_AUTH_SECRET");
+          if (
+            base?.type !== "plain_text" ||
+            base?.text !== process.env.TARGET_BASE_URL ||
+            hyperdrive?.type !== "hyperdrive" ||
+            hyperdrive?.id !== process.env.HYPERDRIVE_ID ||
+            secret?.type !== "secret_text"
+          ) {
+            throw new Error("Private production deploy bindings drifted from the approved runtime contract.");
+          }
+          NODE
+
+      - name: Deploy exact configured version at 100 percent
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERSION_ID: ${{ steps.preflight.outputs.id }}
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler versions deploy "$VERSION_ID@100%" \
+            --name "$TARGET_WORKER" \
+            --message "AppBasis private ULC production deploy ${GITHUB_SHA}" \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            -y
+
+      - name: Verify deployment and closed ingress state
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERSION_ID: ${{ steps.preflight.outputs.id }}
+        run: |
+          set -euo pipefail
+          WORKER_PATH="$RUNNER_TEMP/m6-private-deploy-worker-after.json"
+          DEPLOYMENTS_PATH="$RUNNER_TEMP/m6-private-deploy-deployments-after.json"
+          ROUTES_PATH="$RUNNER_TEMP/m6-private-deploy-routes-after.json"
+
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER" \
+            > "$WORKER_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
+            > "$DEPLOYMENTS_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
+            > "$ROUTES_PATH"
+
+          WORKER_PATH="$WORKER_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" ROUTES_PATH="$ROUTES_PATH" VERSION_ID="$VERSION_ID" TARGET_WORKER="$TARGET_WORKER" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
+          const deploymentsResponse = JSON.parse(await readFile(process.env.DEPLOYMENTS_PATH, "utf8"));
+          const routesResponse = JSON.parse(await readFile(process.env.ROUTES_PATH, "utf8"));
+          const worker = workerResponse?.result;
+          if (
+            workerResponse?.success !== true ||
+            worker?.name !== "appbasis-ulc-linz-production" ||
+            worker?.subdomain?.enabled !== false ||
+            worker?.subdomain?.previews_enabled !== false ||
+            !Array.isArray(worker?.references?.domains) ||
+            worker.references.domains.length !== 0
+          ) {
+            throw new Error("ULC production Worker became publicly reachable after private deployment.");
+          }
+          if (
+            routesResponse?.success !== true ||
+            !Array.isArray(routesResponse?.result)
+          ) {
+            throw new Error("Post-deploy private production Worker route inventory is invalid.");
+          }
+          const matchingScripts = routesResponse.result.filter(
+            (candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate) && candidate.id === process.env.TARGET_WORKER,
+          );
+          if (matchingScripts.length !== 1) {
+            throw new Error("Post-deploy route inventory could not identify the private production Worker exactly once.");
+          }
+          const routes = matchingScripts[0].routes;
+          if (routes !== undefined && routes !== null && !Array.isArray(routes)) {
+            throw new Error("Post-deploy private production Worker route inventory is invalid.");
+          }
+          if (Array.isArray(routes) && routes.length !== 0) {
+            throw new Error("ULC production Worker has a public Worker route after private deployment.");
+          }
+          const deployments = deploymentsResponse?.result?.deployments;
+          if (
+            deploymentsResponse?.success !== true ||
+            !Array.isArray(deployments) ||
+            deployments.length !== 1
+          ) {
+            throw new Error("Private production deployment inventory is not exact.");
+          }
+          const deployment = deployments[0];
+          const versions = deployment?.versions;
+          if (
+            !Array.isArray(versions) ||
+            versions.length !== 1 ||
+            versions[0]?.version_id !== process.env.VERSION_ID ||
+            versions[0]?.percentage !== 100
+          ) {
+            throw new Error("Private production deployment does not point 100 percent to the approved version.");
+          }
+          NODE
+
+          echo 'Exact ULC production version is deployed while workers.dev, Preview URLs, custom domains and Worker routes remain disabled.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary deployment evidence
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP"/m6-private-deploy-*.json
