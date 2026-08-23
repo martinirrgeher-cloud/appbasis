@@ -47,13 +47,26 @@ WHERE retained_until < statement_timestamp()
   const protectedCleanup = `const PURGE_SECURITY_EVENT_SQL = \`
 SELECT public.appbasis_ulc_linz_purge_expired_security_events() AS deleted_rows
 \`;`;
+  const directComment = `/**
+ * Deletes only events whose database-enforced twelve-calendar-month boundary is
+ * strictly older than the PostgreSQL server's statement timestamp. There is no
+ * caller-supplied clock or cutoff, so an HTTP/request/operator value cannot
+ * shorten the retention period.
+ */`;
+  const protectedComment = `/**
+ * Invokes the database-owned cleanup function. The cleanup principal needs no
+ * table DELETE privilege and cannot supply a clock or cutoff; PostgreSQL owns
+ * the exact twelve-calendar-month boundary.
+ */`;
 
-  if (!content.includes(directCleanup)) {
+  if (!content.includes(directCleanup) || !content.includes(directComment)) {
     throw new Error(
       "Generated ULC security cleanup source drifted before least-privilege hardening.",
     );
   }
-  return content.replace(directCleanup, protectedCleanup);
+  return content
+    .replace(directCleanup, protectedCleanup)
+    .replace(directComment, protectedComment);
 }
 
 function securityEventAccessMigration() {
