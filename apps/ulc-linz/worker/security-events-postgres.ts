@@ -54,6 +54,11 @@ VALUES (
 )
 `;
 
+const PURGE_SECURITY_EVENT_SQL = `
+DELETE FROM ulc_linz_security_event_log
+WHERE retained_until < $1::timestamptz
+`;
+
 /**
  * Request-scoped production sink for the already-normalized ULC security event
  * envelope. It never accepts raw request bodies, cookies, credentials or
@@ -83,6 +88,16 @@ export function createPostgresUlcLinzSecurityEventLogger(
       }
     },
   });
+}
+
+export async function purgeExpiredUlcLinzSecurityEvents(
+  client: UlcLinzSecurityEventSqlClient,
+  now: Date,
+): Promise<void> {
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    throw new Error("A valid retention evaluation time is required.");
+  }
+  await client.unsafe(PURGE_SECURITY_EVENT_SQL, [now.toISOString()]);
 }
 
 async function persistEvent(
