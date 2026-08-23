@@ -18,6 +18,7 @@ test("private production deploy requires exact main-only approval", async () => 
   assert.match(workflow, /TARGET_WORKER: appbasis-ulc-linz-production/);
   assert.match(workflow, /TARGET_BASE_URL: https:\/\/app\.ulc-linz\.at/);
   assert.match(workflow, /TARGET_VERSION_TAG: ulc-linz-production-runtime-v1/);
+  assert.match(workflow, /group: m6-ulc-production-runtime-config/);
 });
 
 test("private production deploy binds to current auth secret, database binding and recognized version history", async () => {
