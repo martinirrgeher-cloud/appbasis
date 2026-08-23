@@ -39,7 +39,9 @@ test("runtime configuration derives a non-secret HMAC fingerprint for auth-secre
   assert.match(workflow, /\^\[0-9a-f\]\{64\}\$/);
   assert.match(workflow, /auth-hmac:\$\{AUTH_SECRET_FINGERPRINT\}/);
   assert.match(workflow, /auth-hmac:\$\{process\.env\.AUTH_SECRET_FINGERPRINT\}/);
-  assert.doesNotMatch(workflow, /echo .*ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET/);
+  assert.match(workflow, /echo "::add-mask::\$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET"/);
+  assert.doesNotMatch(workflow, /printf .*ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET/);
+  assert.doesNotMatch(workflow, /process\.stdout\.write\([^\n]*ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET/);
 });
 
 test("runtime configuration uploads bindings and secret atomically as one undeployed version", async () => {
