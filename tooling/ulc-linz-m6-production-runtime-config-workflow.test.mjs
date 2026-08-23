@@ -20,6 +20,7 @@ test("runtime configuration requires exact main-only operator approval", async (
   assert.match(workflow, /TARGET_WORKER: appbasis-ulc-linz-production/);
   assert.match(workflow, /TARGET_BASE_URL: https:\/\/app\.ulc-linz\.at/);
   assert.match(workflow, /TARGET_VERSION_TAG: ulc-linz-production-runtime-v1/);
+  assert.match(workflow, /group: m6-ulc-production-runtime-config/);
 });
 
 test("runtime configuration consumes only dedicated production inputs", async () => {
