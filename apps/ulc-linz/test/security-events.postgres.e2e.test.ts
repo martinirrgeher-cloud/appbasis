@@ -110,9 +110,12 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         `SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
                 rolreplication, rolbypassrls
            FROM pg_catalog.pg_roles
-          WHERE rolname = ANY($1::text[])
+          WHERE rolname IN (
+            'ulc_linz_security_event_ingest',
+            'ulc_linz_security_event_cleanup',
+            'ulc_linz_security_event_read'
+          )
           ORDER BY rolname`,
-        [[INGEST_ROLE, CLEANUP_ROLE, READ_ROLE] as unknown as string],
       );
       expect(roles).toEqual([
         roleRow(CLEANUP_ROLE),
