@@ -45,6 +45,10 @@ function githubFetch(latestRun = run(), mainSha = MAIN_SHA) {
   return { fetchImpl, calls };
 }
 
+function options(fetchImpl, now = () => NOW) {
+  return { expectedHeadSha: MAIN_SHA, fetchImpl, now };
+}
+
 function jsonResponse(value) {
   return new Response(JSON.stringify(value), {
     status: 200,
@@ -52,12 +56,9 @@ function jsonResponse(value) {
   });
 }
 
-test("reads only a fresh successful retention run on the exact current main head", async () => {
+test("reads only a fresh successful retention run on the exact expected current main head", async () => {
   const { fetchImpl, calls } = githubFetch();
-  const evidence = await readUlcLinzM5SecurityLogRetentionRunEvidence({
-    fetchImpl,
-    now: () => NOW,
-  });
+  const evidence = await readUlcLinzM5SecurityLogRetentionRunEvidence(options(fetchImpl));
 
   assert.deepEqual(evidence, {
     schemaVersion: 1,
@@ -79,7 +80,16 @@ test("reads only a fresh successful retention run on the exact current main head
   assert.equal(runsUrl.searchParams.get("per_page"), "1");
 });
 
-test("fails closed on main drift, stale evidence, reruns, failures or workflow identity drift", async () => {
+test("fails closed when the local expected head and remote current main differ", async () => {
+  const { fetchImpl, calls } = githubFetch(run(), "b".repeat(40));
+  assert.deepEqual(
+    await readUlcLinzM5SecurityLogRetentionRunEvidence(options(fetchImpl)),
+    {},
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("fails closed on run-head drift, stale evidence, reruns, failures or workflow identity drift", async () => {
   const cases = [
     { latestRun: run({ head_sha: "b".repeat(40) }) },
     { latestRun: run({ updated_at: "2026-08-22T15:59:59.999Z" }) },
@@ -96,7 +106,7 @@ test("fails closed on main drift, stale evidence, reruns, failures or workflow i
   for (const value of cases) {
     const { fetchImpl } = githubFetch(value.latestRun);
     assert.deepEqual(
-      await readUlcLinzM5SecurityLogRetentionRunEvidence({ fetchImpl, now: () => NOW }),
+      await readUlcLinzM5SecurityLogRetentionRunEvidence(options(fetchImpl)),
       {},
     );
   }
@@ -104,8 +114,8 @@ test("fails closed on main drift, stale evidence, reruns, failures or workflow i
 
 test("uses only the newest run and never falls back to an older success", async () => {
   const calls = [];
-  const fetchImpl = async (url, options) => {
-    calls.push({ url: String(url), options });
+  const fetchImpl = async (url, requestOptions) => {
+    calls.push({ url: String(url), options: requestOptions });
     if (String(url).endsWith("/commits/main")) return jsonResponse({ sha: MAIN_SHA });
     return jsonResponse({
       total_count: 2,
@@ -114,10 +124,26 @@ test("uses only the newest run and never falls back to an older success", async 
   };
 
   assert.deepEqual(
-    await readUlcLinzM5SecurityLogRetentionRunEvidence({ fetchImpl, now: () => NOW }),
+    await readUlcLinzM5SecurityLogRetentionRunEvidence(options(fetchImpl)),
     {},
   );
   assert.equal(calls.length, 2);
+});
+
+test("fails closed before any GitHub request for missing or malformed expected head", async () => {
+  for (const expectedHeadSha of [undefined, "", "not-a-sha", "A".repeat(40)]) {
+    let calls = 0;
+    const { fetchImpl } = githubFetch();
+    const countingFetch = async (...args) => {
+      calls += 1;
+      return fetchImpl(...args);
+    };
+    assert.deepEqual(
+      await readUlcLinzM5SecurityLogRetentionRunEvidence({ expectedHeadSha, fetchImpl: countingFetch, now: () => NOW }),
+      {},
+    );
+    assert.equal(calls, 0);
+  }
 });
 
 test("fails closed before the run lookup for invalid current main evidence", async () => {
@@ -128,7 +154,7 @@ test("fails closed before the run lookup for invalid current main evidence", asy
       return jsonResponse(mainPayload);
     };
     assert.deepEqual(
-      await readUlcLinzM5SecurityLogRetentionRunEvidence({ fetchImpl, now: () => NOW }),
+      await readUlcLinzM5SecurityLogRetentionRunEvidence(options(fetchImpl)),
       {},
     );
     assert.equal(calls, 1);
@@ -137,24 +163,18 @@ test("fails closed before the run lookup for invalid current main evidence", asy
 
 test("fails closed on unavailable, non-json or malformed GitHub evidence and invalid clocks", async () => {
   assert.deepEqual(
-    await readUlcLinzM5SecurityLogRetentionRunEvidence({
-      fetchImpl: async () => new Response("down", { status: 503 }),
-      now: () => NOW,
-    }),
+    await readUlcLinzM5SecurityLogRetentionRunEvidence(options(async () => new Response("down", { status: 503 }))),
     {},
   );
   assert.deepEqual(
-    await readUlcLinzM5SecurityLogRetentionRunEvidence({
-      fetchImpl: async () => new Response("html", { status: 200, headers: { "content-type": "text/html" } }),
-      now: () => NOW,
-    }),
+    await readUlcLinzM5SecurityLogRetentionRunEvidence(options(async () => new Response("html", { status: 200, headers: { "content-type": "text/html" } }))),
     {},
   );
   assert.deepEqual(
-    await readUlcLinzM5SecurityLogRetentionRunEvidence({ fetchImpl: async () => { throw new Error("network"); }, now: () => NOW }),
+    await readUlcLinzM5SecurityLogRetentionRunEvidence(options(async () => { throw new Error("network"); })),
     {},
   );
   const { fetchImpl } = githubFetch();
-  assert.deepEqual(await readUlcLinzM5SecurityLogRetentionRunEvidence({ fetchImpl, now: () => Number.NaN }), {});
-  assert.deepEqual(await readUlcLinzM5SecurityLogRetentionRunEvidence({ fetchImpl, now: () => { throw new Error("clock"); } }), {});
+  assert.deepEqual(await readUlcLinzM5SecurityLogRetentionRunEvidence(options(fetchImpl, () => Number.NaN)), {});
+  assert.deepEqual(await readUlcLinzM5SecurityLogRetentionRunEvidence(options(fetchImpl, () => { throw new Error("clock"); })), {});
 });
