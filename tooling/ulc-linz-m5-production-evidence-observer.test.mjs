@@ -66,8 +66,8 @@ function restoreObservation() {
   };
 }
 
-test("provider-bound observation feeds the canonical owner gate to twelve of twelve", async () => {
-  const bundle = await collectUlcLinzM5ProductionEvidenceBundle(
+function collect(options = {}) {
+  return collectUlcLinzM5ProductionEvidenceBundle(
     {
       repositoryRoot: process.cwd(),
       cloudflareAccountId: "account-1",
@@ -77,17 +77,40 @@ test("provider-bound observation feeds the canonical owner gate to twelve of twe
       githubSha: GITHUB_SHA,
       restoreObservation: restoreObservation(),
     },
-    { fetchImpl: providerFetch, now: NOW },
+    { fetchImpl: providerFetch, now: NOW, ...options },
   );
-  const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle, { now: NOW });
-  assert.equal(result.securityPrivacyReady, true);
-  assert.equal(result.verifiedCount, 12);
+}
+
+test("provider and restore preflight cannot synthesize unobserved M5 owner evidence", async () => {
+  const bundle = await collect();
+  assert.deepEqual(bundle.ownerInputs, {});
+
+  const result = await evaluateUlcLinzM5ProductionEvidenceBundle(
+    process.cwd(),
+    bundle,
+    { now: NOW },
+  );
+
+  assert.equal(result.securityPrivacyReady, false);
   assert.equal(result.productionReleaseAuthorized, false);
-  assert.equal(bundle.ownerInputs.backupRestoreEvidenceInput.automaticBackupsEnabled, true);
-  assert.equal(bundle.ownerInputs.providerBoundEvidenceInput.complianceEvidence.providers.cloudflare.routeBound, false);
+  assert.equal(result.resourceBindingFingerprint, null);
+  assert.equal(result.verifiedCount < result.requiredCount, true);
+  for (const id of [
+    "auditSecurityLogging",
+    "dataRegion",
+    "dpa",
+    "encryption",
+    "subprocessors",
+    "deletionConcept",
+    "retention",
+    "privilegedControlPlaneIsolation",
+    "highPrivacyProfile",
+  ]) {
+    assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "open");
+  }
 });
 
-test("observer fails closed on public ingress, stale restore evidence or missing backup history", async () => {
+test("observer fails closed on public ingress or stale restore evidence", async () => {
   const publicFetch = async (url, options) => {
     const result = await providerFetch(url, options);
     if (String(url).endsWith("/workers/workers/appbasis-ulc-linz-production")) {
@@ -98,14 +121,36 @@ test("observer fails closed on public ingress, stale restore evidence or missing
     return result;
   };
   await assert.rejects(
-    () => collectUlcLinzM5ProductionEvidenceBundle({ repositoryRoot: process.cwd(), cloudflareAccountId: "account-1", cloudflareApiToken: "provider-token-value", neonApiKey: "neon-api-key-value", neonOrgId: "org-1", githubSha: GITHUB_SHA, restoreObservation: restoreObservation() }, { fetchImpl: publicFetch, now: NOW }),
+    () => collectUlcLinzM5ProductionEvidenceBundle(
+      {
+        repositoryRoot: process.cwd(),
+        cloudflareAccountId: "account-1",
+        cloudflareApiToken: "provider-token-value",
+        neonApiKey: "neon-api-key-value",
+        neonOrgId: "org-1",
+        githubSha: GITHUB_SHA,
+        restoreObservation: restoreObservation(),
+      },
+      { fetchImpl: publicFetch, now: NOW },
+    ),
     /public ingress is not closed/,
   );
 
   const stale = restoreObservation();
   stale.restoreTestedAt = "2026-08-23T13:00:00.000Z";
   await assert.rejects(
-    () => collectUlcLinzM5ProductionEvidenceBundle({ repositoryRoot: process.cwd(), cloudflareAccountId: "account-1", cloudflareApiToken: "provider-token-value", neonApiKey: "neon-api-key-value", neonOrgId: "org-1", githubSha: GITHUB_SHA, restoreObservation: stale }, { fetchImpl: providerFetch, now: NOW }),
+    () => collectUlcLinzM5ProductionEvidenceBundle(
+      {
+        repositoryRoot: process.cwd(),
+        cloudflareAccountId: "account-1",
+        cloudflareApiToken: "provider-token-value",
+        neonApiKey: "neon-api-key-value",
+        neonOrgId: "org-1",
+        githubSha: GITHUB_SHA,
+        restoreObservation: stale,
+      },
+      { fetchImpl: providerFetch, now: NOW },
+    ),
     /outside the M5 evidence window/,
   );
 });
@@ -121,7 +166,18 @@ test("observer binds Cloudflare deployment to the current exact main SHA", async
     return result;
   };
   await assert.rejects(
-    () => collectUlcLinzM5ProductionEvidenceBundle({ repositoryRoot: process.cwd(), cloudflareAccountId: "account-1", cloudflareApiToken: "provider-token-value", neonApiKey: "neon-api-key-value", neonOrgId: "org-1", githubSha: GITHUB_SHA, restoreObservation: restoreObservation() }, { fetchImpl: driftFetch, now: NOW }),
+    () => collectUlcLinzM5ProductionEvidenceBundle(
+      {
+        repositoryRoot: process.cwd(),
+        cloudflareAccountId: "account-1",
+        cloudflareApiToken: "provider-token-value",
+        neonApiKey: "neon-api-key-value",
+        neonOrgId: "org-1",
+        githubSha: GITHUB_SHA,
+        restoreObservation: restoreObservation(),
+      },
+      { fetchImpl: driftFetch, now: NOW },
+    ),
     /not bound to the current main runtime/,
   );
 });
