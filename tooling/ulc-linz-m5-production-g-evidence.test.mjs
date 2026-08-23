@@ -8,6 +8,13 @@ const OBSERVED_AT = "2026-08-23T21:55:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:10:00.000Z";
 const PRODUCTION_URL =
   "postgresql://app_owner:pw@ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require";
+const BASE_DATA_FLOWS = [
+  { from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" },
+  { from: "cloudflare", to: "neon-postgresql", purpose: "application-persistence", status: "verified" },
+  { from: "appbasis-control-plane", to: "cloudflare", purpose: "provider-evidence-read", status: "verified" },
+  { from: "appbasis-control-plane", to: "neon-postgresql", purpose: "provider-evidence-read", status: "verified" },
+  { from: "neon-postgresql", to: "neon-postgresql", purpose: "managed-backup-recovery", status: "verified" },
+];
 
 function bundle() {
   const resourceBindingEvidence = {
@@ -88,7 +95,7 @@ function bundle() {
             },
           },
           legalEvidence: [],
-          dataFlows: [],
+          dataFlows: structuredClone(BASE_DATA_FLOWS),
         },
         complianceResourceBindingFingerprint: `sha256:${"2".repeat(64)}`,
       },
@@ -193,7 +200,7 @@ async function complete({ value = bundle(), input = inputs(), fetchImpl = provid
   });
 }
 
-test("completes G only from exact live provider binding, secure transport and legal evidence", async () => {
+test("completes G only from exact live provider binding, secure transport, legal evidence and the real security-log flow", async () => {
   const result = await complete();
   const compliance = result.ownerInputs.providerBoundEvidenceInput.complianceEvidence;
   assert.equal(compliance.providers.cloudflare.transportEncryptionObserved, true);
@@ -206,9 +213,34 @@ test("completes G only from exact live provider binding, secure transport and le
     true,
   );
   assert.equal(compliance.legalEvidence.length, 3);
+  assert.equal(compliance.dataFlows.length, 6);
+  assert.deepEqual(
+    compliance.dataFlows.find((flow) => flow.purpose === "security-log-persistence"),
+    {
+      from: "cloudflare",
+      to: "neon-postgresql",
+      purpose: "security-log-persistence",
+      status: "verified",
+    },
+  );
   assert.equal(JSON.stringify(result).includes("cf-token"), false);
   assert.equal(JSON.stringify(result).includes("neon-key"), false);
   assert.equal(JSON.stringify(result).includes("postgresql://"), false);
+});
+
+test("fails closed when the base flow inventory is missing, decorated or already includes unowned flow evidence", async () => {
+  for (const mutate of [
+    (value) => { value.ownerInputs.providerBoundEvidenceInput.complianceEvidence.dataFlows.pop(); },
+    (value) => { value.ownerInputs.providerBoundEvidenceInput.complianceEvidence.dataFlows.push({ from: "x", to: "y", purpose: "unknown", status: "verified" }); },
+    (value) => { value.ownerInputs.providerBoundEvidenceInput.complianceEvidence.dataFlowInventoryComplete = false; },
+  ]) {
+    const value = bundle();
+    mutate(value);
+    await assert.rejects(
+      () => complete({ value }),
+      /base evidence must be unclaimed and exact/,
+    );
+  }
 });
 
 test("fails closed on insecure direct database TLS or Hyperdrive TLS drift", async () => {
