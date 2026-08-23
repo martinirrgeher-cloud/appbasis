@@ -1,3 +1,21 @@
+const ULC_APP_ID = "ulc-linz";
+
+export function extendUlcLinzDatabaseAssetsTemplate(input, generated) {
+  if (input?.appId !== ULC_APP_ID) return generated;
+
+  const assets = generatedUlcLinzDatabaseAssets();
+  for (const asset of assets) {
+    if (generated.files.some((entry) => entry.path === asset.path)) {
+      throw new Error(`ULC Linz database asset path is already generated: ${asset.path}.`);
+    }
+  }
+
+  return Object.freeze({
+    ...generated,
+    files: Object.freeze([...generated.files, ...assets]),
+  });
+}
+
 export function generatedUlcLinzDatabaseAssets() {
   return Object.freeze([
     file("migrations/0000_ulc_linz_lifecycle_scope.sql", lifecycleScopeMigration()),
