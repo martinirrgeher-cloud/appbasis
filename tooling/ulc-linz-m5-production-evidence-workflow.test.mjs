@@ -61,16 +61,18 @@ test("production evidence workflow cannot activate ingress, release production o
   assert.doesNotMatch(source, /CREATE TABLE|ALTER TABLE|DROP TABLE/);
 });
 
-test("M5-F production retention is a separate main-only explicitly approved delete workflow", async () => {
+test("M5-F production retention is a separate main-only explicitly approved least-privilege delete workflow", async () => {
   const source = await retentionWorkflow();
   assert.match(source, /workflow_dispatch:/);
   assert.match(source, /github\.ref == 'refs\/heads\/main'/);
   assert.match(source, /PURGE-ULC-M5-SECURITY-LOG-RETENTION/);
   assert.match(source, /test "\$CONFIRMATION" = "PURGE-ULC-M5-SECURITY-LOG-RETENTION"/);
   assert.match(source, /group: m6-ulc-production-runtime-config/);
-  assert.match(source, /ULC_LINZ_PRODUCTION_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
+  assert.match(source, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \}\}/);
+  assert.doesNotMatch(source, /secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL/);
   assert.match(source, /parseUlcLinzProductionDatabaseUrl/);
   assert.match(source, /ulc-linz-m5-security-log-retention-run\.mjs/);
+  assert.match(source, /cleanupAccessVerified !== true/);
   assert.match(source, /productionReleaseAuthorized !== false/);
   assert.doesNotMatch(source, /schedule:/);
   assert.doesNotMatch(source, /pull_request:/);
@@ -79,11 +81,21 @@ test("M5-F production retention is a separate main-only explicitly approved dele
   assert.doesNotMatch(source, /CREATE TABLE|ALTER TABLE|DROP TABLE/);
 });
 
-test("M5-F retention runner verifies no expired rows remain and emits only sanitized evidence", async () => {
+test("M5-F retention runner verifies dedicated cleanup access and emits only sanitized evidence", async () => {
   let snapshotCalls = 0;
   let purgeCalls = 0;
   const client = {
     async unsafe(query) {
+      if (query.includes("pg_has_role")) {
+        return [{
+          cleanup_member: true,
+          cleanup_execute: true,
+          direct_delete: false,
+          direct_insert: false,
+          retention_read: true,
+          event_read: false,
+        }];
+      }
       assert.match(query, /ulc_linz_security_event_log/);
       assert.match(query, /retained_until < statement_timestamp\(\)/);
       snapshotCalls += 1;
@@ -108,6 +120,7 @@ test("M5-F retention runner verifies no expired rows remain and emits only sanit
     environment: "production",
     evidenceSource: "controlled-production-retention-run",
     observedAt: "2026-08-23T15:50:01.000Z",
+    cleanupAccessVerified: true,
     cleanupSucceeded: true,
     cleanupResultVerified: true,
     expiredRowsRemaining: false,
@@ -118,10 +131,42 @@ test("M5-F retention runner verifies no expired rows remain and emits only sanit
   assert.equal(JSON.stringify(result).includes("expired_rows"), false);
 });
 
+test("M5-F retention runner fails closed for overprivileged cleanup credentials", async () => {
+  const client = {
+    async unsafe(query) {
+      if (query.includes("pg_has_role")) {
+        return [{
+          cleanup_member: true,
+          cleanup_execute: true,
+          direct_delete: true,
+          direct_insert: false,
+          retention_read: true,
+          event_read: false,
+        }];
+      }
+      throw new Error("snapshot must not run after access failure");
+    },
+  };
+  await assert.rejects(
+    () => runUlcLinzM5SecurityLogRetention(client, async () => {}),
+    /cleanup principal is not least privilege/,
+  );
+});
+
 test("M5-F retention runner fails closed when cleanup leaves expired rows", async () => {
   let snapshotCalls = 0;
   const client = {
-    async unsafe() {
+    async unsafe(query) {
+      if (query.includes("pg_has_role")) {
+        return [{
+          cleanup_member: true,
+          cleanup_execute: true,
+          direct_delete: false,
+          direct_insert: false,
+          retention_read: true,
+          event_read: false,
+        }];
+      }
       snapshotCalls += 1;
       return [{
         observed_at: "2026-08-23T15:50:00.000Z",
