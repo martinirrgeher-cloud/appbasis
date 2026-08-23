@@ -40,6 +40,10 @@ const validEnv = Object.freeze({
   HYPERDRIVE: Object.freeze({
     connectionString: "postgresql://user:password@database.example.test/appbasis",
   }),
+  SECURITY_LOG_HYPERDRIVE: Object.freeze({
+    connectionString:
+      "postgresql://security_ingest:password@database.example.test/appbasis",
+  }),
   APPBASIS_BASE_URL: "https://ulc.example.test",
   BETTER_AUTH_SECRET: "worker-runtime-test-secret-00000000000000",
 });
@@ -96,6 +100,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       {
         HYPERDRIVE: { connectionString: validEnv.HYPERDRIVE.connectionString },
         APPBASIS_BASE_URL: validEnv.APPBASIS_BASE_URL,
+        BETTER_AUTH_SECRET: validEnv.BETTER_AUTH_SECRET,
       },
     );
 
@@ -103,6 +108,26 @@ describe("generated identity+permissions Worker entrypoint", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "RUNTIME_NOT_CONFIGURED" },
     });
+    expect(runtimeCalls).toBe(0);
+  });
+
+  it("rejects reuse of the application database credential for security-event ingest", async () => {
+    let runtimeCalls = 0;
+    const worker = createGeneratedWorker(() => {
+      runtimeCalls += 1;
+      return runtime();
+    });
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/auth/session"),
+      {
+        ...validEnv,
+        SECURITY_LOG_HYPERDRIVE: {
+          connectionString: validEnv.HYPERDRIVE.connectionString,
+        },
+      },
+    );
+
+    expect(response.status).toBe(503);
     expect(runtimeCalls).toBe(0);
   });
 
@@ -132,6 +157,8 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(response.status).toBe(200);
     expect(receivedOptions).toEqual({
       connectionString: validEnv.HYPERDRIVE.connectionString,
+      securityLogConnectionString:
+        validEnv.SECURITY_LOG_HYPERDRIVE.connectionString,
       baseURL: validEnv.APPBASIS_BASE_URL,
       secret: validEnv.BETTER_AUTH_SECRET,
     });
