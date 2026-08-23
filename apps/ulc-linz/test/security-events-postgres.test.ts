@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createPostgresUlcLinzSecurityEventLogger,
+  purgeExpiredUlcLinzSecurityEvents,
   type UlcLinzSecurityEventSqlClient,
 } from "../worker/security-events-postgres";
 import type { UlcLinzSecurityEvent } from "../worker/security-events";
@@ -139,5 +140,25 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
 
     await logger.flush();
     expect(calls).toBe(0);
+  });
+
+  it("owns the retention cutoff inside PostgreSQL and preserves the exact boundary", async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const client: UlcLinzSecurityEventSqlClient = {
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [];
+      },
+    };
+
+    await purgeExpiredUlcLinzSecurityEvents(client);
+
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (call === undefined) throw new Error("Expected one retention cleanup statement.");
+    expect(call.parameters).toBeUndefined();
+    expect(call.query).toContain("retained_until < statement_timestamp()");
+    expect(call.query).not.toContain("<=");
+    expect(call.query).not.toContain("$1");
   });
 });
