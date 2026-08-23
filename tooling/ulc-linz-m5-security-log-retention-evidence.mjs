@@ -52,7 +52,7 @@ export async function readUlcLinzM5SecurityLogRetentionRunEvidence(
     cleanupExecutionBound: true,
     cleanupLastSucceededAt: observedAt,
     cleanupResultVerified: true,
-    cutoffSemantics: "created-at-strictly-older-than-12-calendar-months",
+    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
     boundaryEventPreserved: true,
     clientCutoffOverridePresent: false,
     enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
