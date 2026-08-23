@@ -40,11 +40,16 @@ test("M5 production restore reads production and writes only the isolated restor
   assert.doesNotMatch(source, /psql[^\n]*ULC_LINZ_PRODUCTION_DATABASE_URL[^\n]*(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)/i);
 });
 
-test("one correlated run completes F then feeds canonical G H I J owners and requires twelve of twelve", async () => {
+test("one correlated run completes G then F before canonical J requires twelve of twelve", async () => {
   const source = await workflow();
   assert.match(source, /ulc-linz-m5-backup-contract\.mjs/);
   assert.match(source, /ulc-linz-m5-production-evidence-observer\.mjs/);
-  assert.match(source, /ulc-linz-m5-production-f-evidence\.mjs "\$WORK\/m5-base-bundle\.json"/);
+  assert.match(source, /ulc-linz-m5-production-g-evidence\.mjs "\$WORK\/m5-base-bundle\.json" > "\$WORK\/m5-g-bundle\.json"/);
+  assert.match(source, /ulc-linz-m5-production-f-evidence\.mjs "\$WORK\/m5-g-bundle\.json" > "\$WORK\/m5-bundle\.json"/);
+  assert.ok(
+    source.indexOf("ulc-linz-m5-production-g-evidence.mjs") <
+      source.indexOf("ulc-linz-m5-production-f-evidence.mjs"),
+  );
   assert.match(source, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \}\}/);
   assert.match(source, /ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \}\}/);
   assert.match(source, /ulc-linz-m5-production-evidence-runner\.mjs "\$WORK\/m5-bundle\.json" --require-ready/);
