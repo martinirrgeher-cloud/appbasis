@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { safeRestoreSmokeError } from "./m4-restored-functional-smoke.mjs";
+import { safeRestoreSmokeError } from "./m4-restored-functional-smoke-error.mjs";
 
 test("safeRestoreSmokeError preserves structured diagnostics and redacts sensitive values", () => {
   const root = Object.assign(
