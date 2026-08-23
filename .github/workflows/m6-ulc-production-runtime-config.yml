@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Type CONFIGURE-ULC-PRODUCTION-RUNTIME to upload the selected origin, Hyperdrive and auth secret as an undeployed production version'
+        description: 'Type CONFIGURE-ULC-PRODUCTION-RUNTIME to upload or reconcile the exact undeployed production runtime version'
         required: true
         type: string
 
@@ -84,7 +84,8 @@ jobs:
           echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
           echo "::add-mask::$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET"
 
-      - name: Require exact closed undeployed production Worker and pristine version state
+      - name: Require exact closed undeployed production Worker and safe version state
+        id: preflight
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -108,7 +109,8 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
             > "$DEPLOYMENTS_PATH"
 
-          WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" node --input-type=module <<'NODE'
+          EXISTING_VERSION_ID="$(
+            WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
           const versionsResponse = JSON.parse(await readFile(process.env.VERSIONS_PATH, "utf8"));
@@ -126,9 +128,6 @@ jobs:
           ) {
             throw new Error("ULC production Worker is not provably closed and undeployed.");
           }
-          if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result) || versionsResponse.result.length !== 0) {
-            throw new Error("ULC production runtime configuration requires a Worker with no existing versions.");
-          }
           if (
             deploymentsResponse?.success !== true ||
             !Array.isArray(deploymentsResponse?.result?.deployments) ||
@@ -136,7 +135,31 @@ jobs:
           ) {
             throw new Error("ULC production runtime configuration requires zero existing deployments.");
           }
+          if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result)) {
+            throw new Error("Cloudflare Worker versions inventory is invalid.");
+          }
+          const versions = versionsResponse.result;
+          if (versions.length === 0) process.exit(0);
+          if (versions.length !== 1) {
+            throw new Error("ULC production runtime configuration allows only zero versions or one exact reconcilable version.");
+          }
+          const version = versions[0];
+          const versionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          if (
+            !versionIdPattern.test(version?.id ?? "") ||
+            version?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
+            version?.annotations?.["workers/message"] !== `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA}`
+          ) {
+            throw new Error("Existing ULC production version is not the exact current runtime version and cannot be reconciled.");
+          }
+          process.stdout.write(version.id);
           NODE
+          )"
+          if [ -n "$EXISTING_VERSION_ID" ]; then
+            echo "::add-mask::$EXISTING_VERSION_ID"
+            echo 'Exact existing undeployed version found; this run will reconcile it read-only instead of uploading again.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          printf 'existing_id=%s\n' "$EXISTING_VERSION_ID" >> "$GITHUB_OUTPUT"
 
       - name: Resolve exact dedicated production Hyperdrive
         id: hyperdrive
@@ -169,7 +192,8 @@ jobs:
           NODE
 
       - name: Upload exact runtime configuration as one undeployed Worker version
-        id: version
+        id: upload
+        if: steps.preflight.outputs.existing_id == ''
         working-directory: apps/reference
         shell: bash
         env:
@@ -221,6 +245,22 @@ jobs:
           echo "::add-mask::$VERSION_ID"
           printf 'id=%s\n' "$VERSION_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve exact configured production version
+        id: version
+        shell: bash
+        env:
+          EXISTING_VERSION_ID: ${{ steps.preflight.outputs.existing_id }}
+          UPLOADED_VERSION_ID: ${{ steps.upload.outputs.id }}
+        run: |
+          set -euo pipefail
+          VERSION_ID="${EXISTING_VERSION_ID:-$UPLOADED_VERSION_ID}"
+          [[ "$VERSION_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
+            echo 'No canonical ULC production version ID is available for final verification.' >&2
+            exit 1
+          }
+          echo "::add-mask::$VERSION_ID"
+          printf 'id=%s\n' "$VERSION_ID" >> "$GITHUB_OUTPUT"
+
       - name: Read back exact undeployed version bindings and closed state
         shell: bash
         env:
@@ -261,7 +301,7 @@ jobs:
 
           const bindings = versionResponse?.result?.resources?.bindings;
           if (versionResponse?.success !== true || versionResponse?.result?.id !== process.env.VERSION_ID || !Array.isArray(bindings) || bindings.length !== 3) {
-            throw new Error("Uploaded production version detail is invalid or binding inventory is not exact.");
+            throw new Error("Production version detail is invalid or binding inventory is not exact.");
           }
           const base = bindings.find((entry) => entry?.name === "APPBASIS_BASE_URL");
           const hyperdrive = bindings.find((entry) => entry?.name === "HYPERDRIVE");
@@ -271,7 +311,7 @@ jobs:
             hyperdrive?.type !== "hyperdrive" || hyperdrive?.id !== process.env.HYPERDRIVE_ID ||
             secret?.type !== "secret_text"
           ) {
-            throw new Error("Uploaded production version bindings do not match the approved runtime contract.");
+            throw new Error("Production version bindings do not match the approved runtime contract.");
           }
 
           if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result) || versionsResponse.result.length !== 1) {
@@ -283,7 +323,7 @@ jobs:
             listedVersion?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
             listedVersion?.annotations?.["workers/message"] !== `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA}`
           ) {
-            throw new Error("ULC production Worker version provenance does not match the approved runtime upload.");
+            throw new Error("ULC production Worker version provenance does not match the approved runtime version.");
           }
 
           const worker = workerResponse?.result;
@@ -306,7 +346,7 @@ jobs:
             throw new Error("Runtime configuration unexpectedly created a Worker deployment.");
           }
           NODE
-          echo 'ULC production runtime bindings and secret are stored together on one exact undeployed version; Worker remains closed with zero deployments.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'ULC production runtime version is exact; Worker remains closed with zero deployments.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove generated production version config
         if: always()
