@@ -18,21 +18,30 @@ export const ULC_LINZ_M5_F_RETENTION_RUN_POLICY = Object.freeze({
 });
 
 export async function readUlcLinzM5SecurityLogRetentionRunEvidence(
-  { fetchImpl = fetch, now = Date.now } = {},
+  { expectedHeadSha, fetchImpl = fetch, now = Date.now } = {},
 ) {
-  if (typeof fetchImpl !== "function" || typeof now !== "function") return Object.freeze({});
+  if (
+    typeof expectedHeadSha !== "string" ||
+    !SHA_PATTERN.test(expectedHeadSha) ||
+    typeof fetchImpl !== "function" ||
+    typeof now !== "function"
+  ) {
+    return Object.freeze({});
+  }
 
   const currentTime = readCurrentTime(now);
   if (currentTime === null) return Object.freeze({});
 
   const trustedHeadSha = await fetchCurrentMainHeadSha(fetchImpl);
-  if (trustedHeadSha === null) return Object.freeze({});
+  if (trustedHeadSha === null || trustedHeadSha !== expectedHeadSha) {
+    return Object.freeze({});
+  }
 
   const payload = await fetchJson(fetchImpl, latestEvidenceRunsUrl());
   if (payload === null) return Object.freeze({});
 
   const run = latestRunFromPayload(payload);
-  const observedAt = verifiedRunObservedAt(run, currentTime, trustedHeadSha);
+  const observedAt = verifiedRunObservedAt(run, currentTime, expectedHeadSha);
   if (observedAt === null) return Object.freeze({});
 
   return Object.freeze({
