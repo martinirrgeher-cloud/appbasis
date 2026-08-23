@@ -11,7 +11,13 @@ import {
 import type { UlcLinzSecurityEvent } from "../worker/security-events";
 
 const databaseUrl = process.env.DATABASE_URL;
-const migrationPath = "../migrations/0002_ulc_linz_security_event_log.sql";
+const migrationPaths = [
+  "../migrations/0002_ulc_linz_security_event_log.sql",
+  "../migrations/0003_ulc_linz_security_event_access.sql",
+];
+const INGEST_ROLE = "ulc_linz_security_event_ingest";
+const CLEANUP_ROLE = "ulc_linz_security_event_cleanup";
+const READ_ROLE = "ulc_linz_security_event_read";
 const occurredAt = "2026-08-23T05:30:00.000Z";
 const event: UlcLinzSecurityEvent = Object.freeze({
   schemaVersion: 1,
@@ -43,9 +49,11 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await administrativeConnection.client.unsafe(`CREATE DATABASE ${databaseName}`);
       created = true;
       isolated = createPostgresDatabase(isolatedDatabaseUrl);
-      const migration = await readFile(new URL(migrationPath, import.meta.url), "utf8");
-      for (const statement of migration.split("--> statement-breakpoint")) {
-        if (statement.trim() !== "") await requiredConnection().client.unsafe(statement);
+      for (const migrationPath of migrationPaths) {
+        const migration = await readFile(new URL(migrationPath, import.meta.url), "utf8");
+        for (const statement of migration.split("--> statement-breakpoint")) {
+          if (statement.trim() !== "") await requiredConnection().client.unsafe(statement);
+        }
       }
     });
 
@@ -97,14 +105,112 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       );
     });
 
+    it("defines three non-login least-privilege roles without elevated cluster privileges", async () => {
+      const roles = await requiredConnection().client.unsafe(
+        `SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
+                rolreplication, rolbypassrls
+           FROM pg_catalog.pg_roles
+          WHERE rolname = ANY($1::text[])
+          ORDER BY rolname`,
+        [[INGEST_ROLE, CLEANUP_ROLE, READ_ROLE] as unknown as string],
+      );
+      expect(roles).toEqual([
+        roleRow(CLEANUP_ROLE),
+        roleRow(INGEST_ROLE),
+        roleRow(READ_ROLE),
+      ]);
+    });
+
+    it("allows ingest only to append normalized events", async () => {
+      const connection = requiredConnection();
+      await connection.client.unsafe(`TRUNCATE ulc_linz_security_event_log RESTART IDENTITY`);
+
+      await withRole(INGEST_ROLE, async () => {
+        const logger = createPostgresUlcLinzSecurityEventLogger(connection.client);
+        logger.record({ ...event, targetId: "ingest-only" });
+        await logger.flush();
+        await expect(
+          connection.client.unsafe(`SELECT * FROM ulc_linz_security_event_log`),
+        ).rejects.toThrow();
+        await expect(
+          connection.client.unsafe(`DELETE FROM ulc_linz_security_event_log`),
+        ).rejects.toThrow();
+        await expect(
+          connection.client.unsafe(
+            `UPDATE ulc_linz_security_event_log SET target_id = 'changed'`,
+          ),
+        ).rejects.toThrow();
+      });
+
+      const rows = await connection.client.unsafe(
+        `SELECT target_id FROM ulc_linz_security_event_log`,
+      );
+      expect(rows).toEqual([{ target_id: "ingest-only" }]);
+    });
+
+    it("allows cleanup only through the fixed server-owned retention function", async () => {
+      const connection = requiredConnection();
+      await connection.client.unsafe(`TRUNCATE ulc_linz_security_event_log RESTART IDENTITY`);
+      const serverNow = await readServerNow();
+      const expiredOccurredAt = new Date(serverNow);
+      expiredOccurredAt.setUTCFullYear(expiredOccurredAt.getUTCFullYear() - 2);
+      const recentOccurredAt = new Date(serverNow);
+      recentOccurredAt.setUTCMonth(recentOccurredAt.getUTCMonth() - 1);
+
+      const logger = createPostgresUlcLinzSecurityEventLogger(connection.client);
+      logger.record({ ...event, occurredAt: expiredOccurredAt.toISOString(), targetId: "expired" });
+      logger.record({ ...event, occurredAt: recentOccurredAt.toISOString(), targetId: "recent" });
+      await logger.flush();
+
+      await withRole(CLEANUP_ROLE, async () => {
+        await purgeExpiredUlcLinzSecurityEvents(connection.client);
+        const retentionRows = await connection.client.unsafe(
+          `SELECT retained_until FROM ulc_linz_security_event_log`,
+        );
+        expect(retentionRows).toHaveLength(1);
+        await expect(
+          connection.client.unsafe(`SELECT target_id FROM ulc_linz_security_event_log`),
+        ).rejects.toThrow();
+        await expect(
+          connection.client.unsafe(`DELETE FROM ulc_linz_security_event_log`),
+        ).rejects.toThrow();
+        await expect(
+          connection.client.unsafe(
+            `INSERT INTO ulc_linz_security_event_log (schema_version, app_id, category, event_type, occurred_at, action, target_type, reason_code, retained_until)
+             VALUES (1, 'ulc-linz', 'security', 'authorization.denied', statement_timestamp(), 'view', 'module', 'scope-denied', statement_timestamp() + interval '12 months')`,
+          ),
+        ).rejects.toThrow();
+      });
+
+      const remaining = await connection.client.unsafe(
+        `SELECT target_id FROM ulc_linz_security_event_log`,
+      );
+      expect(remaining).toEqual([{ target_id: "recent" }]);
+    });
+
+    it("allows the protected read role to query but never mutate security events", async () => {
+      const connection = requiredConnection();
+      await withRole(READ_ROLE, async () => {
+        const rows = await connection.client.unsafe(
+          `SELECT target_id FROM ulc_linz_security_event_log`,
+        );
+        expect(rows).toEqual([{ target_id: "recent" }]);
+        await expect(
+          connection.client.unsafe(`DELETE FROM ulc_linz_security_event_log`),
+        ).rejects.toThrow();
+        await expect(
+          connection.client.unsafe(
+            `UPDATE ulc_linz_security_event_log SET target_id = 'changed'`,
+          ),
+        ).rejects.toThrow();
+      });
+    });
+
     it("uses only PostgreSQL server time and removes only already-expired rows", async () => {
       const connection = requiredConnection();
       await connection.client.unsafe(`TRUNCATE ulc_linz_security_event_log RESTART IDENTITY`);
 
-      const serverTimeRows = await connection.client.unsafe(
-        `SELECT statement_timestamp() AS now`,
-      );
-      const serverNow = new Date(String(serverTimeRows[0]?.now));
+      const serverNow = await readServerNow();
       const recentOccurredAt = new Date(serverNow);
       recentOccurredAt.setUTCMonth(recentOccurredAt.getUTCMonth() - 1);
       const expiredOccurredAt = new Date(serverNow);
@@ -123,11 +229,40 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       expect(remaining).toEqual([{ target_id: "recent" }]);
     });
 
+    async function readServerNow() {
+      const rows = await requiredConnection().client.unsafe(
+        `SELECT statement_timestamp() AS now`,
+      );
+      return new Date(String(rows[0]?.now));
+    }
+
+    async function withRole(role: string, run: () => Promise<void>) {
+      const connection = requiredConnection();
+      await connection.client.unsafe(`SET ROLE ${role}`);
+      try {
+        await run();
+      } finally {
+        await connection.client.unsafe(`RESET ROLE`);
+      }
+    }
+
     function requiredConnection() {
       if (isolated === null) throw new Error("ULC security-event database is not ready.");
       return isolated;
     }
   });
+}
+
+function roleRow(role: string) {
+  return {
+    rolname: role,
+    rolcanlogin: false,
+    rolsuper: false,
+    rolcreatedb: false,
+    rolcreaterole: false,
+    rolreplication: false,
+    rolbypassrls: false,
+  };
 }
 
 function databaseUrlForName(connectionString: string, databaseName: string) {
