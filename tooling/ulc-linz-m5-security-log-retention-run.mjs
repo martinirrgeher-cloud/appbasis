@@ -4,10 +4,20 @@ import { pathToFileURL } from "node:url";
 import { ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
+const ACCESS_SQL = `
+SELECT
+  pg_has_role(current_user, 'ulc_linz_security_event_cleanup', 'member') AS cleanup_member,
+  has_function_privilege(current_user, 'public.appbasis_ulc_linz_purge_expired_security_events()', 'EXECUTE') AS cleanup_execute,
+  has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'DELETE') AS direct_delete,
+  has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'INSERT') AS direct_insert,
+  has_column_privilege(current_user, 'public.ulc_linz_security_event_log', 'retained_until', 'SELECT') AS retention_read,
+  has_column_privilege(current_user, 'public.ulc_linz_security_event_log', 'target_id', 'SELECT') AS event_read
+`;
+
 const SNAPSHOT_SQL = `
 SELECT
   statement_timestamp() AS observed_at,
-  COUNT(*) FILTER (WHERE retained_until < statement_timestamp())::text AS expired_rows
+  COUNT(retained_until) FILTER (WHERE retained_until < statement_timestamp())::text AS expired_rows
 FROM ulc_linz_security_event_log
 `;
 
@@ -22,6 +32,7 @@ export async function runUlcLinzM5SecurityLogRetention(
     throw new Error("ULC M5-F retention cleanup executor is invalid.");
   }
 
+  await verifyCleanupPrincipal(client);
   await readSnapshot(client);
   await purgeExpiredSecurityEvents(client);
   const after = await readSnapshot(client);
@@ -35,12 +46,32 @@ export async function runUlcLinzM5SecurityLogRetention(
     environment: "production",
     evidenceSource: "controlled-production-retention-run",
     observedAt: after.observedAt,
+    cleanupAccessVerified: true,
     cleanupSucceeded: true,
     cleanupResultVerified: true,
     expiredRowsRemaining: false,
     enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
     productionReleaseAuthorized: false,
   });
+}
+
+async function verifyCleanupPrincipal(client) {
+  const rows = await client.unsafe(ACCESS_SQL);
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new Error("ULC M5-F cleanup access evidence is invalid.");
+  }
+  const row = rows[0];
+  if (
+    row === null || typeof row !== "object" ||
+    row.cleanup_member !== true ||
+    row.cleanup_execute !== true ||
+    row.direct_delete !== false ||
+    row.direct_insert !== false ||
+    row.retention_read !== true ||
+    row.event_read !== false
+  ) {
+    throw new Error("ULC M5-F cleanup principal is not least privilege.");
+  }
 }
 
 async function readSnapshot(client) {
@@ -79,7 +110,7 @@ function isMainModule() {
 if (isMainModule()) {
   let connection;
   try {
-    const databaseUrl = process.env.ULC_LINZ_PRODUCTION_DATABASE_URL;
+    const databaseUrl = process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL;
     parseUlcLinzProductionDatabaseUrl(databaseUrl);
 
     const [{ createPostgresDatabase }, { purgeExpiredUlcLinzSecurityEvents }] = await Promise.all([
