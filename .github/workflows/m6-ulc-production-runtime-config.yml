@@ -162,21 +162,29 @@ jobs:
             throw new Error("Current auth-secret fingerprint is invalid.");
           }
           const versions = versionsResponse.result;
-          if (versions.length === 0) process.exit(0);
-          if (versions.length !== 1) {
-            throw new Error("ULC production runtime configuration allows only zero versions or one exact reconcilable version.");
-          }
-          const version = versions[0];
           const versionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const historicalMessagePattern = /^AppBasis ulc-linz production runtime [0-9a-f]{40} auth-hmac:[0-9a-f]{64}$/;
           const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
-          if (
-            !versionIdPattern.test(version?.id ?? "") ||
-            version?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
-            version?.annotations?.["workers/message"] !== expectedMessage
-          ) {
-            throw new Error("Existing ULC production version is not bound to the exact current runtime and auth secret and cannot be reconciled.");
+          for (const version of versions) {
+            const message = version?.annotations?.["workers/message"];
+            if (
+              !versionIdPattern.test(version?.id ?? "") ||
+              version?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
+              typeof message !== "string" ||
+              !historicalMessagePattern.test(message)
+            ) {
+              throw new Error("ULC production version history contains an unrecognized version.");
+            }
           }
-          process.stdout.write(version.id);
+          const currentVersions = versions.filter(
+            (version) => version?.annotations?.["workers/message"] === expectedMessage,
+          );
+          if (currentVersions.length > 1) {
+            throw new Error("ULC production version history contains duplicate current versions.");
+          }
+          if (currentVersions.length === 1) {
+            process.stdout.write(currentVersions[0].id);
+          }
           NODE
           )"
           if [ -n "$EXISTING_VERSION_ID" ]; then
@@ -338,20 +346,31 @@ jobs:
             throw new Error("Production version bindings do not match the approved runtime contract.");
           }
 
-          if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result) || versionsResponse.result.length !== 1) {
-            throw new Error("ULC production Worker does not contain exactly one configured version.");
+          if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result)) {
+            throw new Error("ULC production Worker version inventory is invalid after configuration.");
           }
           if (!/^[0-9a-f]{64}$/.test(process.env.AUTH_SECRET_FINGERPRINT ?? "")) {
             throw new Error("Current auth-secret fingerprint is invalid during final verification.");
           }
-          const listedVersion = versionsResponse.result[0];
+          const versionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const historicalMessagePattern = /^AppBasis ulc-linz production runtime [0-9a-f]{40} auth-hmac:[0-9a-f]{64}$/;
           const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
-          if (
-            listedVersion?.id !== process.env.VERSION_ID ||
-            listedVersion?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
-            listedVersion?.annotations?.["workers/message"] !== expectedMessage
-          ) {
-            throw new Error("ULC production Worker version provenance is not bound to the approved runtime and current auth secret.");
+          for (const listedVersion of versionsResponse.result) {
+            const message = listedVersion?.annotations?.["workers/message"];
+            if (
+              !versionIdPattern.test(listedVersion?.id ?? "") ||
+              listedVersion?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
+              typeof message !== "string" ||
+              !historicalMessagePattern.test(message)
+            ) {
+              throw new Error("ULC production version history contains an unrecognized version after configuration.");
+            }
+          }
+          const currentVersions = versionsResponse.result.filter(
+            (listedVersion) => listedVersion?.annotations?.["workers/message"] === expectedMessage,
+          );
+          if (currentVersions.length !== 1 || currentVersions[0]?.id !== process.env.VERSION_ID) {
+            throw new Error("ULC production Worker does not contain exactly one approved current version.");
           }
 
           const worker = workerResponse?.result;
