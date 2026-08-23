@@ -28,6 +28,7 @@ const STATIC_ROUTES = new Map([
   ["/", { path: join(FACTORY_UI_DIRECTORY, "index.html"), contentType: "text/html; charset=utf-8" }],
   ["/app.js", { path: join(FACTORY_UI_DIRECTORY, "app.js"), contentType: "text/javascript; charset=utf-8" }],
   ["/create-app.js", { path: join(FACTORY_UI_DIRECTORY, "create-app.js"), contentType: "text/javascript; charset=utf-8" }],
+  ["/fc1-lifecycle-card-status.mjs", { path: join(FACTORY_UI_DIRECTORY, "fc1-lifecycle-card-status.mjs"), contentType: "text/javascript; charset=utf-8" }],
   ["/production-readiness-status.js", { path: join(FACTORY_UI_DIRECTORY, "production-readiness-status.js"), contentType: "text/javascript; charset=utf-8" }],
   ["/production-readiness.mjs", { path: join(FACTORY_UI_DIRECTORY, "production-readiness.mjs"), contentType: "text/javascript; charset=utf-8" }],
   ["/production-release-readiness.mjs", { path: join(FACTORY_UI_DIRECTORY, "production-release-readiness.mjs"), contentType: "text/javascript; charset=utf-8" }],
@@ -182,42 +183,30 @@ async function handleCreateAppRequest(
 }
 
 function hasValidFactoryOrigin(request) {
-  return isValidFactoryOrigin({
-    localAddress: request.socket.localAddress,
-    localPort: request.socket.localPort,
-    originHeader: request.headers.origin,
-  });
-}
+  const origin = request.headers.origin;
+  const host = request.headers.host;
+  if (typeof origin !== "string" || typeof host !== "string") return false;
 
-export function isValidFactoryOrigin({ localAddress, localPort, originHeader }) {
-  if (!isLoopbackAddress(localAddress)) return false;
-  if (!Number.isInteger(localPort)) return false;
-  if (typeof originHeader !== "string") return false;
-
-  let origin;
+  let parsedOrigin;
   try {
-    origin = new URL(originHeader);
+    parsedOrigin = new URL(origin);
   } catch {
     return false;
   }
 
-  const originPort = origin.port === "" && origin.protocol === "http:"
-    ? 80
-    : Number(origin.port);
+  if (parsedOrigin.protocol !== "http:") return false;
+  if (!LOOPBACK_ORIGIN_HOSTS.has(parsedOrigin.hostname)) return false;
+
+  let parsedRequestOrigin;
+  try {
+    parsedRequestOrigin = new URL(`http://${host}`);
+  } catch {
+    return false;
+  }
 
   return (
-    origin.protocol === "http:" &&
-    LOOPBACK_ORIGIN_HOSTS.has(origin.hostname) &&
-    originPort === localPort &&
-    origin.origin === originHeader
-  );
-}
-
-function isLoopbackAddress(address) {
-  return (
-    address === "127.0.0.1" ||
-    address === "::1" ||
-    address === "::ffff:127.0.0.1"
+    LOOPBACK_ORIGIN_HOSTS.has(parsedRequestOrigin.hostname) &&
+    parsedOrigin.host === parsedRequestOrigin.host
   );
 }
 
@@ -228,109 +217,87 @@ function hasJsonContentType(request) {
 }
 
 async function readCreateAppInput(request) {
+  let size = 0;
   const chunks = [];
-  let bytes = 0;
-  let tooLarge = false;
-
   for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    bytes += buffer.length;
-    if (bytes > MAX_CREATE_REQUEST_BYTES) {
-      tooLarge = true;
-      continue;
-    }
-    chunks.push(buffer);
-  }
-
-  if (tooLarge) {
-    throw new FactoryRequestError(
-      413,
-      "REQUEST_TOO_LARGE",
-      "App creation request is too large.",
-    );
-  }
-
-  let value;
-  try {
-    value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    throw new FactoryRequestError(
-      400,
-      "INVALID_JSON",
-      "App creation request must contain valid JSON.",
-    );
-  }
-
-  if (!isPlainObject(value)) {
-    throw new FactoryRequestError(
-      400,
-      "INVALID_APP_REQUEST",
-      "App creation request must be a JSON object.",
-    );
-  }
-
-  for (const key of Object.keys(value)) {
-    if (!CREATE_APP_KEYS.has(key)) {
+    size += chunk.length;
+    if (size > MAX_CREATE_REQUEST_BYTES) {
       throw new FactoryRequestError(
-        400,
-        "INVALID_APP_REQUEST",
-        `Unknown app creation field: ${key}.`,
+        413,
+        "REQUEST_TOO_LARGE",
+        "App creation request is too large.",
       );
     }
+    chunks.push(chunk);
   }
 
+  let parsed;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new FactoryRequestError(400, "INVALID_JSON", "App creation request is not valid JSON.");
+  }
+
+  return validateCreateAppInput(parsed);
+}
+
+function validateCreateAppInput(input) {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw invalidAppRequest();
+  }
+  if (Object.keys(input).some((key) => !CREATE_APP_KEYS.has(key))) {
+    throw invalidAppRequest();
+  }
+
+  const { appId, displayName, modules, platformServices } = input;
   if (
-    typeof value.appId === "string" &&
-    value.appId.length > MAX_FACTORY_APP_ID_LENGTH
+    typeof appId !== "string" ||
+    appId.length > MAX_FACTORY_APP_ID_LENGTH ||
+    !/^[a-z][a-z0-9-]{1,62}$/.test(appId) ||
+    typeof displayName !== "string" ||
+    displayName.trim().length === 0 ||
+    !Array.isArray(modules) ||
+    !modules.every((value) => typeof value === "string") ||
+    !Array.isArray(platformServices) ||
+    !platformServices.every((value) => typeof value === "string")
   ) {
-    throw new FactoryRequestError(
-      400,
-      "INVALID_APP_REQUEST",
-      `App-ID must contain at most ${MAX_FACTORY_APP_ID_LENGTH} characters.`,
-    );
+    throw invalidAppRequest();
   }
 
-  return value;
+  return { appId, displayName, modules, platformServices };
+}
+
+function invalidAppRequest() {
+  return new FactoryRequestError(
+    400,
+    "INVALID_APP_REQUEST",
+    "App creation request does not match the supported Factory contract.",
+  );
 }
 
 function mapCreateAppError(error) {
-  const message = error instanceof Error ? error.message : "";
-
-  if (message.startsWith("App destination already exists:")) {
+  if (error?.code === "EEXIST") {
     return {
       status: 409,
       code: "APP_ALREADY_EXISTS",
-      message: "An app with this App-ID already exists.",
+      message: "An app with this ID already exists. No deployment was started.",
     };
   }
-
-  if (
-    message.startsWith("App definition ") ||
-    message.startsWith("Unknown AppBasis module:") ||
-    message.includes(" references unsupported platform service ") ||
-    message === "Generated permissions runtime requires the identity platform service."
-  ) {
-    return {
-      status: 400,
-      code: "INVALID_APP_REQUEST",
-      message,
-    };
-  }
-
   return {
-    status: 500,
+    status: 400,
     code: "APP_CREATION_FAILED",
-    message: "The app skeleton could not be created. No deployment was started.",
+    message: error instanceof Error ? error.message : "App creation failed. No deployment was started.",
   };
 }
 
-function isPlainObject(value) {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
+function respondJson(response, status, payload, headOnly = false) {
+  response.writeHead(status, {
+    "cache-control": "no-store",
+    "content-type": "application/json; charset=utf-8",
+    "x-content-type-options": "nosniff",
+    ...FACTORY_DOCUMENT_SECURITY_HEADERS,
+  });
+  response.end(headOnly ? undefined : `${JSON.stringify(payload)}\n`);
 }
 
 class FactoryRequestError extends Error {
@@ -339,28 +306,4 @@ class FactoryRequestError extends Error {
     this.status = status;
     this.code = code;
   }
-}
-
-function respondJson(response, status, value, headOnly = false) {
-  const body = `${JSON.stringify(value)}\n`;
-  response.writeHead(status, {
-    "cache-control": "no-store",
-    "content-type": "application/json; charset=utf-8",
-    "x-content-type-options": "nosniff",
-  });
-  response.end(headOnly ? undefined : body);
-}
-
-async function runCli() {
-  const server = await startFactoryServer();
-  const address = server.address();
-  const port = typeof address === "object" && address !== null ? address.port : DEFAULT_PORT;
-  console.log(`AppBasis Factory: http://${DEFAULT_HOST}:${port}`);
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  runCli().catch((error) => {
-    console.error(error instanceof Error ? error.message : "Factory console failed to start.");
-    process.exitCode = 1;
-  });
 }
