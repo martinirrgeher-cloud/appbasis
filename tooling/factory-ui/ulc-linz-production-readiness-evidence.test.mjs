@@ -209,8 +209,15 @@ function auditSecurityLoggingEvidenceInput(resource) {
       sinkIdentitySource: "provider-api",
       structuredEventCaptureEnabled: true,
       protectedOperationalAccess: true,
-      retentionMonths: 12,
-      retentionSource: "provider-api",
+      retentionMode: "provider-native-calendar",
+      retentionEvidence: {
+        source: "provider-api-and-authoritative-contract",
+        retentionValue: 12,
+        retentionUnit: "calendar-months",
+        calendarSemanticsVerified: true,
+        noEarlyDeleteVerified: true,
+        noUncontrolledOverRetentionVerified: true,
+      },
       sinkInventoryComplete: true,
       publicReadEndpointPresent: false,
     },
@@ -385,7 +392,8 @@ test("M5-J rejects lifecycle activation when its schema and reconciliation contr
 
 test("M5-J keeps F, E and High Privacy open when logging retention evidence is insufficient", async () => {
   const inputs = completeOwnerInputs();
-  inputs.auditSecurityLoggingEvidenceInput.loggingEvidence.retentionMonths = 1;
+  inputs.auditSecurityLoggingEvidenceInput.loggingEvidence.retentionEvidence.retentionUnit = "days";
+  inputs.auditSecurityLoggingEvidenceInput.loggingEvidence.retentionEvidence.retentionValue = 365;
   const readiness = evaluateProductionReadiness(
     await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
   );
