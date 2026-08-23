@@ -90,6 +90,8 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
   requireAll(text.neonSecurity, [
     "Neon’s Security & Compliance",
     "Data Processing Agreements",
+    "TLS 1.2+",
+    "All stored data is encrypted using AES-256",
   ], "Neon security baseline");
 
   const cloudflareScope = ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES.cloudflare;
