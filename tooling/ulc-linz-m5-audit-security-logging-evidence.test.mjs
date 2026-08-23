@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { deriveUlcLinzM5FAuditSecurityLoggingEvidence } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
+import {
+  deriveUlcLinzM5FAuditSecurityLoggingEvidence,
+  ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
+} from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST } from "./ulc-linz-m6-production-resource-binding.mjs";
 
 const NOW = new Date("2026-08-18T16:00:00.000Z");
@@ -65,7 +68,7 @@ function controlledRetentionEvidence() {
     cleanupResultVerified: true,
     boundaryEventPreserved: true,
     clientCutoffOverridePresent: false,
-    enforcementContractDigest: `sha256:${"a".repeat(64)}`,
+    enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
   };
 }
 
@@ -132,7 +135,7 @@ test("rejects day-based or unverified provider retention as twelve calendar mont
   }
 });
 
-test("rejects controlled retention without exact boundary, fresh cleanup or server-side cutoff", () => {
+test("rejects controlled retention without exact boundary, fresh cleanup or exact implementation binding", () => {
   for (const mutate of [
     (value) => { value.providerMinimumRetentionVerified = false; },
     (value) => { value.cutoffSemantics = "older-than-365-days"; },
@@ -142,6 +145,7 @@ test("rejects controlled retention without exact boundary, fresh cleanup or serv
     (value) => { value.boundaryEventPreserved = false; },
     (value) => { value.clientCutoffOverridePresent = true; },
     (value) => { value.enforcementContractDigest = "not-a-digest"; },
+    (value) => { value.enforcementContractDigest = `sha256:${"a".repeat(64)}`; },
   ]) {
     const retention = controlledRetentionEvidence();
     mutate(retention);
