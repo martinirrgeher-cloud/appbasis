@@ -135,6 +135,15 @@ test("M5-F retention runner fails closed when cleanup leaves expired rows", asyn
   );
 });
 
+test("M5-F cleanup CLI dependencies load under the pinned Node runtime", async () => {
+  const [{ createPostgresDatabase }, { purgeExpiredUlcLinzSecurityEvents }] = await Promise.all([
+    import("../packages/database/src/client.ts"),
+    import("../apps/ulc-linz/worker/security-events-postgres.ts"),
+  ]);
+  assert.equal(typeof createPostgresDatabase, "function");
+  assert.equal(typeof purgeExpiredUlcLinzSecurityEvents, "function");
+});
+
 test("canonical backup contract requires provider-observed backup history and current production restore", async () => {
   const source = await readFile(backupContractUrl, "utf8");
   assert.match(source, /history_retention_seconds > 0/);
