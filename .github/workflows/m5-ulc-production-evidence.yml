@@ -83,6 +83,8 @@ jobs:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
           APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
         run: |
           set -euo pipefail
@@ -92,6 +94,8 @@ jobs:
             NEON_API_KEY \
             NEON_ORG_ID \
             ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \
             APPBASIS_M4_RESTORE_DATABASE_URL; do
             test -n "${!name:-}" || { echo "Missing protected ULC M5 input: $name." >&2; exit 1; }
             echo "::add-mask::${!name}"
@@ -209,10 +213,14 @@ jobs:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
           WORK: ${{ steps.workspace.outputs.path }}
         run: |
           set -euo pipefail
-          node ./tooling/ulc-linz-m5-production-evidence-observer.mjs "$WORK/restore-observation.json" > "$WORK/m5-bundle.json"
+          node ./tooling/ulc-linz-m5-production-evidence-observer.mjs "$WORK/restore-observation.json" > "$WORK/m5-base-bundle.json"
+          node ./tooling/ulc-linz-m5-production-f-evidence.mjs "$WORK/m5-base-bundle.json" > "$WORK/m5-bundle.json"
+          rm -f -- "$WORK/m5-base-bundle.json"
 
       - name: Require canonical M5 Security and Privacy Ready 12 of 12
         shell: bash
