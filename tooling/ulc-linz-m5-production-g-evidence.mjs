@@ -10,6 +10,19 @@ const NEON_API = "https://console.neon.tech/api/v2";
 const TARGET_NEON_REGION = "aws-eu-central-1";
 const SAFE_SSL_MODES = Object.freeze(["require", "verify-ca", "verify-full"]);
 const OPAQUE_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
+const BASE_DATA_FLOWS = Object.freeze([
+  Object.freeze({ from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" }),
+  Object.freeze({ from: "cloudflare", to: "neon-postgresql", purpose: "application-persistence", status: "verified" }),
+  Object.freeze({ from: "appbasis-control-plane", to: "cloudflare", purpose: "provider-evidence-read", status: "verified" }),
+  Object.freeze({ from: "appbasis-control-plane", to: "neon-postgresql", purpose: "provider-evidence-read", status: "verified" }),
+  Object.freeze({ from: "neon-postgresql", to: "neon-postgresql", purpose: "managed-backup-recovery", status: "verified" }),
+]);
+const SECURITY_LOG_DATA_FLOW = Object.freeze({
+  from: "cloudflare",
+  to: "neon-postgresql",
+  purpose: "security-log-persistence",
+  status: "verified",
+});
 
 export async function completeUlcLinzM5ProductionGBundle(
   bundle,
@@ -50,9 +63,11 @@ export async function completeUlcLinzM5ProductionGBundle(
     compliance.legalEvidence.length !== 0 ||
     compliance.providers?.cloudflare?.transportEncryptionObserved !== false ||
     compliance.providers?.["neon-postgresql"]?.transportEncryptionObserved !== false ||
-    compliance.providers?.["neon-postgresql"]?.atRestEncryptionObserved !== false
+    compliance.providers?.["neon-postgresql"]?.atRestEncryptionObserved !== false ||
+    compliance.dataFlowInventoryComplete !== true ||
+    !matchesExactBaseDataFlows(compliance.dataFlows)
   ) {
-    throw new Error("ULC M5-G base evidence must be unclaimed before live completion.");
+    throw new Error("ULC M5-G base evidence must be unclaimed and exact before live completion.");
   }
 
   const parsedDatabase = parseUlcLinzProductionDatabaseUrl(safeDatabaseUrl);
@@ -101,6 +116,7 @@ export async function completeUlcLinzM5ProductionGBundle(
         ...root.ownerInputs.providerBoundEvidenceInput,
         complianceEvidence: {
           ...compliance,
+          dataFlowInventoryComplete: true,
           providers: {
             cloudflare: {
               ...compliance.providers.cloudflare,
@@ -113,10 +129,24 @@ export async function completeUlcLinzM5ProductionGBundle(
             },
           },
           legalEvidence,
+          dataFlows: [...BASE_DATA_FLOWS, SECURITY_LOG_DATA_FLOW],
         },
       },
     },
   });
+}
+
+function matchesExactBaseDataFlows(value) {
+  if (!Array.isArray(value) || value.length !== BASE_DATA_FLOWS.length) return false;
+  return BASE_DATA_FLOWS.every((expected) =>
+    value.some(
+      (flow) =>
+        flow?.from === expected.from &&
+        flow?.to === expected.to &&
+        flow?.purpose === expected.purpose &&
+        flow?.status === expected.status,
+    ),
+  );
 }
 
 async function observeCloudflareDatabaseBinding({
