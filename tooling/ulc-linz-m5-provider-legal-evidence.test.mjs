@@ -24,7 +24,7 @@ const SOURCE_TEXT = Object.freeze({
   "www.databricks.com/legal/databricks-subprocessors":
     "Last Updated: June 9, 2026 Amazon Web Services",
   "neon.com/security":
-    "Neon’s Security & Compliance. We offer Data Processing Agreements (DPA).",
+    "Neon’s Security & Compliance. We offer Data Processing Agreements (DPA). Neon enforces TLS 1.2+ encryption. All stored data is encrypted using AES-256.",
 });
 
 function legalFetch(url) {
