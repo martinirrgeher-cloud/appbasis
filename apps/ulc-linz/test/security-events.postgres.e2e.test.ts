@@ -7,6 +7,7 @@ import { createPostgresDatabase } from "../../../packages/database/src/client.ts
 import {
   createPostgresUlcLinzSecurityEventLogger,
   purgeExpiredUlcLinzSecurityEvents,
+  type UlcLinzSecurityEventSqlClient,
 } from "../worker/security-events-postgres";
 import type { UlcLinzSecurityEvent } from "../worker/security-events";
 
@@ -128,22 +129,17 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       const connection = requiredConnection();
       await connection.client.unsafe(`TRUNCATE ulc_linz_security_event_log RESTART IDENTITY`);
 
-      await withRole(INGEST_ROLE, async () => {
-        const logger = createPostgresUlcLinzSecurityEventLogger(connection.client);
+      await asRole(INGEST_ROLE, async (client) => {
+        const logger = createPostgresUlcLinzSecurityEventLogger(client);
         logger.record({ ...event, targetId: "ingest-only" });
         await logger.flush();
-        await expect(
-          connection.client.unsafe(`SELECT * FROM ulc_linz_security_event_log`),
-        ).rejects.toThrow();
-        await expect(
-          connection.client.unsafe(`DELETE FROM ulc_linz_security_event_log`),
-        ).rejects.toThrow();
-        await expect(
-          connection.client.unsafe(
-            `UPDATE ulc_linz_security_event_log SET target_id = 'changed'`,
-          ),
-        ).rejects.toThrow();
       });
+      await expectDenied(INGEST_ROLE, `SELECT * FROM ulc_linz_security_event_log`);
+      await expectDenied(INGEST_ROLE, `DELETE FROM ulc_linz_security_event_log`);
+      await expectDenied(
+        INGEST_ROLE,
+        `UPDATE ulc_linz_security_event_log SET target_id = 'changed'`,
+      );
 
       const rows = await connection.client.unsafe(
         `SELECT target_id FROM ulc_linz_security_event_log`,
@@ -165,25 +161,20 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       logger.record({ ...event, occurredAt: recentOccurredAt.toISOString(), targetId: "recent" });
       await logger.flush();
 
-      await withRole(CLEANUP_ROLE, async () => {
-        await purgeExpiredUlcLinzSecurityEvents(connection.client);
-        const retentionRows = await connection.client.unsafe(
+      await asRole(CLEANUP_ROLE, async (client) => {
+        await purgeExpiredUlcLinzSecurityEvents(client);
+        const retentionRows = await client.unsafe(
           `SELECT retained_until FROM ulc_linz_security_event_log`,
         );
-        expect(retentionRows).toHaveLength(1);
-        await expect(
-          connection.client.unsafe(`SELECT target_id FROM ulc_linz_security_event_log`),
-        ).rejects.toThrow();
-        await expect(
-          connection.client.unsafe(`DELETE FROM ulc_linz_security_event_log`),
-        ).rejects.toThrow();
-        await expect(
-          connection.client.unsafe(
-            `INSERT INTO ulc_linz_security_event_log (schema_version, app_id, category, event_type, occurred_at, action, target_type, reason_code, retained_until)
-             VALUES (1, 'ulc-linz', 'security', 'authorization.denied', statement_timestamp(), 'view', 'module', 'scope-denied', statement_timestamp() + interval '12 months')`,
-          ),
-        ).rejects.toThrow();
+        expect(Array.from(retentionRows as ArrayLike<unknown>)).toHaveLength(1);
       });
+      await expectDenied(CLEANUP_ROLE, `SELECT target_id FROM ulc_linz_security_event_log`);
+      await expectDenied(CLEANUP_ROLE, `DELETE FROM ulc_linz_security_event_log`);
+      await expectDenied(
+        CLEANUP_ROLE,
+        `INSERT INTO ulc_linz_security_event_log (schema_version, app_id, category, event_type, occurred_at, action, target_type, reason_code, retained_until)
+         VALUES (1, 'ulc-linz', 'security', 'authorization.denied', statement_timestamp(), 'view', 'module', 'scope-denied', statement_timestamp() + interval '12 months')`,
+      );
 
       const remaining = await connection.client.unsafe(
         `SELECT target_id FROM ulc_linz_security_event_log`,
@@ -192,21 +183,17 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
     });
 
     it("allows the protected read role to query but never mutate security events", async () => {
-      const connection = requiredConnection();
-      await withRole(READ_ROLE, async () => {
-        const rows = await connection.client.unsafe(
+      await asRole(READ_ROLE, async (client) => {
+        const rows = await client.unsafe(
           `SELECT target_id FROM ulc_linz_security_event_log`,
         );
         expect(rows).toEqual([{ target_id: "recent" }]);
-        await expect(
-          connection.client.unsafe(`DELETE FROM ulc_linz_security_event_log`),
-        ).rejects.toThrow();
-        await expect(
-          connection.client.unsafe(
-            `UPDATE ulc_linz_security_event_log SET target_id = 'changed'`,
-          ),
-        ).rejects.toThrow();
       });
+      await expectDenied(READ_ROLE, `DELETE FROM ulc_linz_security_event_log`);
+      await expectDenied(
+        READ_ROLE,
+        `UPDATE ulc_linz_security_event_log SET target_id = 'changed'`,
+      );
     });
 
     it("uses only PostgreSQL server time and removes only already-expired rows", async () => {
@@ -239,14 +226,23 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       return new Date(String(rows[0]?.now));
     }
 
-    async function withRole(role: string, run: () => Promise<void>) {
+    async function asRole(
+      role: string,
+      run: (client: UlcLinzSecurityEventSqlClient) => Promise<void>,
+    ) {
       const connection = requiredConnection();
-      await connection.client.unsafe(`SET ROLE ${role}`);
-      try {
-        await run();
-      } finally {
-        await connection.client.unsafe(`RESET ROLE`);
-      }
+      await connection.client.begin(async (transaction) => {
+        await transaction.unsafe(`SET LOCAL ROLE ${role}`);
+        await run(transaction);
+      });
+    }
+
+    async function expectDenied(role: string, statement: string) {
+      await expect(
+        asRole(role, async (client) => {
+          await client.unsafe(statement);
+        }),
+      ).rejects.toThrow();
     }
 
     function requiredConnection() {
