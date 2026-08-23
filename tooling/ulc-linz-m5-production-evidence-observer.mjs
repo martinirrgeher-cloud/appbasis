@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { deriveUlcLinzLifecycleContractDigest } from "./factory-ui/ulc-linz-lifecycle-evidence.mjs";
 import { verifyUlcLinzM5BackupContract } from "./ulc-linz-m5-backup-contract.mjs";
 import { deriveUlcLinzM5GResourceBindingFingerprint } from "./ulc-linz-m5-provider-bound-evidence.mjs";
@@ -19,6 +20,7 @@ const EVIDENCE_WINDOW_MS = 15 * 60 * 1000;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OPAQUE_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
+const TABLE_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
 const RESTORE_FIELDS = Object.freeze([
   "restoreTargetBindingId",
   "restoreTestedAt",
@@ -70,10 +72,15 @@ export async function collectUlcLinzM5ProductionEvidenceBundle(
     cloudflareApiToken,
     neonApiKey,
     neonOrgId,
+    productionDatabaseUrl,
     githubSha,
     restoreObservation,
   },
-  { fetchImpl = fetch, now = new Date() } = {},
+  {
+    fetchImpl = fetch,
+    now = new Date(),
+    readProductionTables = readProductionLifecycleTables,
+  } = {},
 ) {
   const root = resolve(repositoryRoot);
   const nowDate = requiredDate(now);
@@ -81,18 +88,36 @@ export async function collectUlcLinzM5ProductionEvidenceBundle(
   const apiToken = requiredCredential(cloudflareApiToken, "Cloudflare API token");
   const safeNeonKey = requiredCredential(neonApiKey, "Neon API key");
   const safeOrgId = requiredOpaque(neonOrgId, "Neon organization ID");
+  const safeProductionDatabaseUrl = requiredCredential(
+    productionDatabaseUrl,
+    "ULC production database URL",
+  );
   if (typeof githubSha !== "string" || !SHA_PATTERN.test(githubSha)) {
     throw new Error("Current GitHub SHA is invalid.");
   }
 
   const restore = validateRestoreObservation(restoreObservation, nowDate);
-  const [neon, cloudflare, lifecycleContractDigest, backupContract] = await Promise.all([
+  const [
+    neon,
+    cloudflare,
+    lifecycleContractDigest,
+    backupContract,
+    definition,
+    lifecycleInventory,
+  ] = await Promise.all([
     observeNeon({ apiKey: safeNeonKey, orgId: safeOrgId, fetchImpl }),
     observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }),
     deriveUlcLinzLifecycleContractDigest(root),
     verifyUlcLinzM5BackupContract(root),
+    readJson(resolve(root, "apps/ulc-linz/appbasis.app.json")),
+    readJson(resolve(root, "apps/ulc-linz/privacy/m5-data-inventory.json")),
   ]);
-  const definition = await readJson(resolve(root, "apps/ulc-linz/appbasis.app.json"));
+  await verifyProductionLifecycleInventory(
+    safeProductionDatabaseUrl,
+    lifecycleInventory,
+    readProductionTables,
+  );
+
   const observedAt = restore.restoreTestedAt;
   const validUntilOrReviewAt = new Date(
     new Date(observedAt).getTime() + EVIDENCE_WINDOW_MS,
@@ -198,6 +223,25 @@ export async function collectUlcLinzM5ProductionEvidenceBundle(
         privilegedComponents: [],
       },
     },
+    lifecycleActivationEvidenceInput: {
+      resourceBindingEvidence,
+      activationEvidence: {
+        schemaVersion: 1,
+        application: "ulc-linz",
+        environment: "production",
+        observedAt,
+        validUntilOrReviewAt,
+        evidenceSource: "controlled-production-activation-run",
+        executionBoundary: "protected-operations",
+        lifecycleContractDigest,
+        activationInventoryComplete: true,
+        deletionExecutorBound: true,
+        retentionExecutorBound: true,
+        restoreReconciliationExecutorBound:
+          restore.restoreReconciliationVerified === true,
+        publicIngressPresent: false,
+      },
+    },
     backupRestoreEvidenceInput: {
       schemaVersion: 1,
       application: "ulc-linz",
@@ -228,6 +272,48 @@ export async function collectUlcLinzM5ProductionEvidenceBundle(
     definition,
     ownerInputs,
   });
+}
+
+async function verifyProductionLifecycleInventory(databaseUrl, inventory, reader) {
+  if (
+    inventory?.schemaVersion !== 2 ||
+    inventory?.application !== "ulc-linz" ||
+    !Array.isArray(inventory?.persistentTables)
+  ) {
+    throw new Error("ULC production lifecycle inventory contract is invalid.");
+  }
+  const expected = inventory.persistentTables
+    .map((entry) => requiredTableName(entry?.id))
+    .sort();
+  if (new Set(expected).size !== expected.length) {
+    throw new Error("ULC production lifecycle inventory contract is invalid.");
+  }
+  const actual = (await reader(databaseUrl)).map(requiredTableName).sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((tableName, index) => tableName !== expected[index])
+  ) {
+    throw new Error("ULC production lifecycle persistence inventory is not exact.");
+  }
+}
+
+async function readProductionLifecycleTables(databaseUrl) {
+  const database = createPostgresDatabase(databaseUrl);
+  try {
+    const rows = await database.client.unsafe(`
+      SELECT c.relname AS table_name
+      FROM pg_catalog.pg_class AS c
+      JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+      ORDER BY c.relname
+    `);
+    if (!Array.isArray(rows)) {
+      throw new Error("ULC production lifecycle persistence inventory is invalid.");
+    }
+    return rows.map((row) => requiredTableName(row?.table_name));
+  } finally {
+    await database.client.end().catch(() => {});
+  }
 }
 
 async function observeNeon({ apiKey, orgId, fetchImpl }) {
@@ -555,6 +641,13 @@ function exactRecord(value, fields, label) {
   return value;
 }
 
+function requiredTableName(value) {
+  if (typeof value !== "string" || !TABLE_PATTERN.test(value)) {
+    throw new Error("ULC production lifecycle table name is invalid.");
+  }
+  return value;
+}
+
 function requiredOpaque(value, label) {
   if (
     typeof value !== "string" ||
@@ -631,6 +724,7 @@ async function main(argv = process.argv.slice(2)) {
     cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN,
     neonApiKey: process.env.NEON_API_KEY,
     neonOrgId: process.env.NEON_ORG_ID,
+    productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
     githubSha: process.env.GITHUB_SHA,
     restoreObservation,
   });
