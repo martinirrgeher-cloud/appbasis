@@ -38,6 +38,17 @@ test("private production deploy binds to current auth secret, database binding a
   assert.match(workflow, /secret\?\.type !== "secret_text"/);
 });
 
+test("private production deploy proves routes are absent before and after deployment", async () => {
+  const workflow = await source();
+  assert.ok((workflow.match(/workers\/scripts"/g) ?? []).length >= 2);
+  assert.match(workflow, /ROUTES_PATH=.*routes-before\.json/);
+  assert.match(workflow, /ROUTES_PATH=.*routes-after\.json/);
+  assert.match(workflow, /matchingScripts\.length !== 1/);
+  assert.ok((workflow.match(/Array\.isArray\(routes\) && routes\.length !== 0/g) ?? []).length >= 2);
+  assert.match(workflow, /has a public Worker route/);
+  assert.match(workflow, /has a public Worker route after private deployment/);
+});
+
 test("private production deploy consumes only the already configured exact version", async () => {
   const workflow = await source();
   assert.match(workflow, /wrangler versions deploy "\$VERSION_ID@100%"/);
