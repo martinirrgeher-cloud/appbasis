@@ -9,6 +9,7 @@ const NOW = new Date("2026-08-23T22:00:00.000Z");
 const OBSERVED_AT = "2026-08-23T21:55:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:10:00.000Z";
 const VERSION = "12345678-1234-4123-8123-123456789abc";
+const DEPLOYED_AT = "2026-08-23T21:30:00.000Z";
 
 function resourceBindingEvidence() {
   return {
@@ -93,6 +94,7 @@ function cloudflareFetch(url) {
       success: true,
       result: {
         id: VERSION,
+        metadata: { created_on: DEPLOYED_AT },
         annotations: {
           "workers/tag": "ulc-linz-production-runtime-v1",
           "workers/message": `AppBasis ulc-linz production runtime ${SHA} auth-hmac:${"b".repeat(64)}`,
@@ -148,18 +150,30 @@ const validAccess = Object.freeze({
   protectedOperationalAccessVerified: true,
   providerMinimumRetentionVerified: true,
 });
+const validDelivery = Object.freeze({ runtimeDeliveryVerified: true });
 
-async function complete({ fetchImpl = cloudflareFetch, access = validAccess, retention = retentionEvidence() } = {}) {
+async function complete({
+  fetchImpl = cloudflareFetch,
+  access = validAccess,
+  delivery = validDelivery,
+  retention = retentionEvidence(),
+} = {}) {
   return completeUlcLinzM5ProductionFBundle(bundle(), inputs(), {
     fetchImpl,
     githubFetchImpl: async () => { throw new Error("not used by injected reader"); },
     now: NOW,
     accessCollector: async () => access,
+    deliveryCollector: async (input, options) => {
+      assert.equal(input.productionDatabaseUrl, inputs().productionDatabaseUrl);
+      assert.equal(input.deployedAt, DEPLOYED_AT);
+      assert.equal(options.now, NOW);
+      return delivery;
+    },
     retentionEvidenceReader: async () => retention,
   });
 }
 
-test("adds M5-F only after exact deployed sink, least privilege and controlled retention evidence", async () => {
+test("adds M5-F only after exact deployed sink, least privilege, real delivery and controlled retention evidence", async () => {
   const result = await complete();
   const f = result.ownerInputs.auditSecurityLoggingEvidenceInput;
   assert.equal(f.resourceBindingEvidence, result.ownerInputs.providerBoundEvidenceInput.resourceBindingEvidence);
@@ -204,6 +218,13 @@ test("fails closed without real least-privilege access evidence", async () => {
   }
 });
 
+test("fails closed without real runtime-to-sink delivery evidence", async () => {
+  await assert.rejects(
+    () => complete({ delivery: {} }),
+    /real production sink delivery evidence is unavailable/,
+  );
+});
+
 test("fails closed without the exact successful retention contract", async () => {
   for (const retention of [
     {},
@@ -215,13 +236,16 @@ test("fails closed without the exact successful retention contract", async () =>
   }
 });
 
-test("fails closed on stale Worker head, missing dedicated binding or wrong Hyperdrive origin", async () => {
+test("fails closed on stale Worker head, missing dedicated binding, missing deploy timestamp or wrong Hyperdrive origin", async () => {
   const mutations = [
     (body, url) => {
       if (url.includes("/versions/")) body.result.annotations["workers/message"] = `AppBasis ulc-linz production runtime ${"c".repeat(40)} auth-hmac:x`;
     },
     (body, url) => {
       if (url.includes("/versions/")) body.result.resources.bindings = body.result.resources.bindings.filter((entry) => entry.name !== "SECURITY_LOG_HYPERDRIVE");
+    },
+    (body, url) => {
+      if (url.includes("/versions/")) delete body.result.metadata.created_on;
     },
     (body, url) => {
       if (url.includes("/hyperdrive/configs/")) body.result.origin.database = "other";
@@ -246,6 +270,7 @@ test("rejects pre-injected or cross-resource F evidence", async () => {
       fetchImpl: cloudflareFetch,
       now: NOW,
       accessCollector: async () => validAccess,
+      deliveryCollector: async () => validDelivery,
       retentionEvidenceReader: async () => retentionEvidence(),
     }),
     /already present/,
@@ -258,6 +283,7 @@ test("rejects pre-injected or cross-resource F evidence", async () => {
       fetchImpl: cloudflareFetch,
       now: NOW,
       accessCollector: async () => validAccess,
+      deliveryCollector: async () => validDelivery,
       retentionEvidenceReader: async () => retentionEvidence(),
     }),
     /resource binding evidence is invalid/,
