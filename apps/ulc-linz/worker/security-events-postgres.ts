@@ -30,8 +30,7 @@ VALUES (
 `;
 
 const PURGE_SECURITY_EVENT_SQL = `
-DELETE FROM ulc_linz_security_event_log
-WHERE retained_until < statement_timestamp()
+SELECT public.appbasis_ulc_linz_purge_expired_security_events() AS deleted_rows
 `;
 
 export function createPostgresUlcLinzSecurityEventLogger(
@@ -55,10 +54,9 @@ export function createPostgresUlcLinzSecurityEventLogger(
 }
 
 /**
- * Deletes only events whose database-enforced twelve-calendar-month boundary is
- * strictly older than the PostgreSQL server's statement timestamp. There is no
- * caller-supplied clock or cutoff, so an HTTP/request/operator value cannot
- * shorten the retention period.
+ * Invokes the database-owned cleanup function. The cleanup principal needs no
+ * table DELETE privilege and cannot supply a clock or cutoff; PostgreSQL owns
+ * the exact twelve-calendar-month boundary.
  */
 export async function purgeExpiredUlcLinzSecurityEvents(
   client: UlcLinzSecurityEventSqlClient,
