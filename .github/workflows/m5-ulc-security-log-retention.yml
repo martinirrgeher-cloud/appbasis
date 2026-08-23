@@ -62,27 +62,27 @@ jobs:
       - name: Verify exact repository contracts before production delete
         run: pnpm run verify:repo
 
-      - name: Validate and mask exact ULC production database
+      - name: Validate and mask dedicated ULC security-log cleanup database credential
         shell: bash
         env:
-          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
         run: |
           set -euo pipefail
-          test -n "$ULC_LINZ_PRODUCTION_DATABASE_URL" || {
-            echo 'Missing ULC_LINZ_PRODUCTION_DATABASE_URL.' >&2
+          test -n "$ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL" || {
+            echo 'Missing ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL.' >&2
             exit 1
           }
-          echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
+          echo "::add-mask::$ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL"
           node --input-type=module <<'NODE'
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
-          parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL);
           NODE
 
       - name: Run exact server-owned twelve-calendar-month cleanup
         id: retention
         shell: bash
         env:
-          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
         run: |
           set -euo pipefail
           umask 077
@@ -96,6 +96,7 @@ jobs:
             result?.application !== 'ulc-linz' ||
             result?.environment !== 'production' ||
             result?.evidenceSource !== 'controlled-production-retention-run' ||
+            result?.cleanupAccessVerified !== true ||
             result?.cleanupSucceeded !== true ||
             result?.cleanupResultVerified !== true ||
             result?.expiredRowsRemaining !== false ||
@@ -111,4 +112,4 @@ jobs:
       - name: Record sanitized retention outcome
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz M5-F security-log retention cleanup completed with the server-owned exact 12-calendar-month contract. This does not authorize production release.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz M5-F security-log retention cleanup completed with a dedicated least-privilege cleanup credential and the server-owned exact 12-calendar-month contract. This does not authorize production release.' >> "$GITHUB_STEP_SUMMARY"
