@@ -84,6 +84,26 @@ jobs:
           echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
           echo "::add-mask::$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET"
 
+      - name: Derive non-secret auth-secret HMAC fingerprint
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          AUTH_SECRET_FINGERPRINT="$(node --input-type=module <<'NODE'
+          import { createHmac } from "node:crypto";
+          const secret = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET;
+          const context = "appbasis:ulc-linz:production:better-auth-secret:v1";
+          process.stdout.write(createHmac("sha256", secret).update(context).digest("hex"));
+          NODE
+          )"
+          [[ "$AUTH_SECRET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || {
+            echo 'Production Better Auth secret fingerprint derivation failed.' >&2
+            exit 1
+          }
+          echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
+          printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
+
       - name: Require exact closed undeployed production Worker and safe version state
         id: preflight
         shell: bash
@@ -110,7 +130,7 @@ jobs:
             > "$DEPLOYMENTS_PATH"
 
           EXISTING_VERSION_ID="$(
-            WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" node --input-type=module <<'NODE'
+            WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
           const versionsResponse = JSON.parse(await readFile(process.env.VERSIONS_PATH, "utf8"));
@@ -138,6 +158,9 @@ jobs:
           if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result)) {
             throw new Error("Cloudflare Worker versions inventory is invalid.");
           }
+          if (!/^[0-9a-f]{64}$/.test(process.env.AUTH_SECRET_FINGERPRINT ?? "")) {
+            throw new Error("Current auth-secret fingerprint is invalid.");
+          }
           const versions = versionsResponse.result;
           if (versions.length === 0) process.exit(0);
           if (versions.length !== 1) {
@@ -145,19 +168,20 @@ jobs:
           }
           const version = versions[0];
           const versionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
           if (
             !versionIdPattern.test(version?.id ?? "") ||
             version?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
-            version?.annotations?.["workers/message"] !== `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA}`
+            version?.annotations?.["workers/message"] !== expectedMessage
           ) {
-            throw new Error("Existing ULC production version is not the exact current runtime version and cannot be reconciled.");
+            throw new Error("Existing ULC production version is not bound to the exact current runtime and auth secret and cannot be reconciled.");
           }
           process.stdout.write(version.id);
           NODE
           )"
           if [ -n "$EXISTING_VERSION_ID" ]; then
             echo "::add-mask::$EXISTING_VERSION_ID"
-            echo 'Exact existing undeployed version found; this run will reconcile it read-only instead of uploading again.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Exact existing undeployed version with current auth-secret HMAC found; this run will reconcile it read-only instead of uploading again.' >> "$GITHUB_STEP_SUMMARY"
           fi
           printf 'existing_id=%s\n' "$EXISTING_VERSION_ID" >> "$GITHUB_OUTPUT"
 
@@ -233,7 +257,7 @@ jobs:
             --secrets-file "$secrets_file" \
             --strict \
             --tag "$TARGET_VERSION_TAG" \
-            --message "AppBasis ulc-linz production runtime ${GITHUB_SHA}" \
+            --message "AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${AUTH_SECRET_FINGERPRINT}" \
             --experimental-provision=false \
             --experimental-auto-create=false
 
@@ -292,7 +316,7 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
             > "$DEPLOYMENTS_PATH"
 
-          VERSION_PATH="$VERSION_PATH" VERSIONS_PATH="$VERSIONS_PATH" WORKER_PATH="$WORKER_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" HYPERDRIVE_ID="$HYPERDRIVE_ID" VERSION_ID="$VERSION_ID" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" node --input-type=module <<'NODE'
+          VERSION_PATH="$VERSION_PATH" VERSIONS_PATH="$VERSIONS_PATH" WORKER_PATH="$WORKER_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" HYPERDRIVE_ID="$HYPERDRIVE_ID" VERSION_ID="$VERSION_ID" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const versionResponse = JSON.parse(await readFile(process.env.VERSION_PATH, "utf8"));
           const versionsResponse = JSON.parse(await readFile(process.env.VERSIONS_PATH, "utf8"));
@@ -317,13 +341,17 @@ jobs:
           if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result) || versionsResponse.result.length !== 1) {
             throw new Error("ULC production Worker does not contain exactly one configured version.");
           }
+          if (!/^[0-9a-f]{64}$/.test(process.env.AUTH_SECRET_FINGERPRINT ?? "")) {
+            throw new Error("Current auth-secret fingerprint is invalid during final verification.");
+          }
           const listedVersion = versionsResponse.result[0];
+          const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
           if (
             listedVersion?.id !== process.env.VERSION_ID ||
             listedVersion?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
-            listedVersion?.annotations?.["workers/message"] !== `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA}`
+            listedVersion?.annotations?.["workers/message"] !== expectedMessage
           ) {
-            throw new Error("ULC production Worker version provenance does not match the approved runtime version.");
+            throw new Error("ULC production Worker version provenance is not bound to the approved runtime and current auth secret.");
           }
 
           const worker = workerResponse?.result;
@@ -346,7 +374,7 @@ jobs:
             throw new Error("Runtime configuration unexpectedly created a Worker deployment.");
           }
           NODE
-          echo 'ULC production runtime version is exact; Worker remains closed with zero deployments.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'ULC production runtime version is exact and bound to the current auth secret; Worker remains closed with zero deployments.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove generated production version config
         if: always()
