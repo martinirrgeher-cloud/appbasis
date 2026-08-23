@@ -1,0 +1,255 @@
+import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evidence.mjs";
+
+const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+const SOURCES = Object.freeze({
+  cloudflareDpa: "https://www.cloudflare.com/cloudflare-customer-dpa/",
+  cloudflareGdpr: "https://www.cloudflare.com/trust-hub/gdpr/",
+  cloudflareSubprocessors:
+    "https://www.cloudflare.com/gdpr/subprocessors/cloudflare-services/",
+  cloudflareHyperdriveTls:
+    "https://developers.cloudflare.com/hyperdrive/reference/supported-databases-and-features/",
+  neonSchedule: "https://neon.com/platform-terms",
+  databricksMcsa: "https://www.databricks.com/legal/mcsa",
+  databricksDpa: "https://www.databricks.com/legal/dpa",
+  databricksSubprocessors:
+    "https://www.databricks.com/legal/databricks-subprocessors",
+  neonSecurity: "https://neon.com/security",
+});
+
+export async function collectUlcLinzM5ProviderLegalEvidence(
+  {
+    cloudflareAccountBound,
+    neonProjectBound,
+    observedAt,
+    validUntilOrReviewAt,
+  },
+  { fetchImpl = fetch } = {},
+) {
+  if (cloudflareAccountBound !== true || neonProjectBound !== true) {
+    throw new Error("ULC M5-G authenticated provider account binding is incomplete.");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("ULC M5-G legal evidence fetch implementation is invalid.");
+  }
+  const observed = canonicalTimestamp(observedAt, "observedAt");
+  const validUntil = canonicalTimestamp(
+    validUntilOrReviewAt,
+    "validUntilOrReviewAt",
+  );
+  if (
+    validUntil.getTime() <= observed.getTime() ||
+    validUntil.getTime() - observed.getTime() > REVIEW_WINDOW_MS
+  ) {
+    throw new Error("ULC M5-G legal evidence window is invalid.");
+  }
+
+  const entries = await Promise.all(
+    Object.entries(SOURCES).map(async ([key, url]) => [key, await officialText(url, fetchImpl)]),
+  );
+  const text = Object.fromEntries(entries);
+
+  requireAll(text.cloudflareDpa, [
+    "Version 6.4",
+    "effective April 3, 2026",
+    "forms part of the Main Agreement",
+  ], "Cloudflare DPA");
+  requireAll(text.cloudflareGdpr, [
+    "incorporated by reference into our Self-Serve Subscription Agreement",
+    "standard DPA",
+  ], "Cloudflare GDPR contract binding");
+  requireAll(text.cloudflareSubprocessors, [
+    "Last Updated: October 1, 2025",
+    "Cloudflare Developer Platform",
+    "Google LLC",
+    "Oracle America, Inc.",
+  ], "Cloudflare subprocessors");
+  requireAll(text.cloudflareHyperdriveTls, [
+    "Hyperdrive does not support insecure plain text connections",
+    "TLS is required",
+    "require",
+  ], "Cloudflare Hyperdrive TLS");
+
+  requireAll(text.neonSchedule, [
+    "Last Updated: August 5, 2026",
+    "By accessing the Platform Services, Customer agrees to the terms of this Schedule",
+    "then-current Databricks Master Cloud Services Agreement",
+    "Grafana Labs",
+  ], "Neon Product Specific Schedule");
+  requireAll(text.databricksMcsa, [
+    "The terms of the DPA are incorporated by reference",
+    "PayGo Customer’s continued use",
+  ], "Databricks MCSA");
+  requireAll(text.databricksDpa, [
+    "DATA PROCESSING ADDENDUM",
+    "forms an integral part",
+  ], "Databricks DPA");
+  requireAll(text.databricksSubprocessors, [
+    "Last Updated: June 9, 2026",
+    "Amazon Web Services",
+  ], "Databricks subprocessors");
+  requireAll(text.neonSecurity, [
+    "Neon’s Security & Compliance",
+    "Data Processing Agreements",
+  ], "Neon security baseline");
+
+  const cloudflareScope = ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES.cloudflare;
+  const neonScope = ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES["neon-databricks"];
+  const common = { observedAt, validUntilOrReviewAt };
+
+  return Object.freeze([
+    legal("cloudflare", "dpa", SOURCES.cloudflareDpa, "6.4 / 2026-04-03", cloudflareScope, common),
+    legal(
+      "cloudflare",
+      "dpa-account-binding",
+      SOURCES.cloudflareGdpr,
+      "current-self-serve-or-enterprise-incorporation",
+      cloudflareScope,
+      common,
+      { accountSpecific: true, publicBaseline: false },
+    ),
+    legal(
+      "cloudflare",
+      "security",
+      SOURCES.cloudflareHyperdriveTls,
+      "2026-04-21",
+      cloudflareScope,
+      common,
+    ),
+    legal(
+      "cloudflare",
+      "subprocessors",
+      SOURCES.cloudflareSubprocessors,
+      "2025-10-01",
+      cloudflareScope,
+      common,
+      { transferModelConsistentWithAdr022: true },
+    ),
+    legal(
+      "neon-databricks",
+      "terms",
+      SOURCES.neonSchedule,
+      "2026-08-05",
+      neonScope,
+      common,
+    ),
+    legal(
+      "neon-databricks",
+      "dpa",
+      SOURCES.databricksDpa,
+      "Databricks DPA v3",
+      neonScope,
+      common,
+    ),
+    legal(
+      "neon-databricks",
+      "dpa-account-binding",
+      SOURCES.neonSchedule,
+      "2026-08-05 schedule + current MCSA",
+      neonScope,
+      common,
+      { accountSpecific: true, publicBaseline: false },
+    ),
+    legal(
+      "neon-databricks",
+      "security",
+      SOURCES.neonSecurity,
+      "current-Neon-security-baseline",
+      neonScope,
+      common,
+    ),
+    legal(
+      "neon-databricks",
+      "subprocessors",
+      SOURCES.databricksSubprocessors,
+      "2026-06-09 + Neon schedule 2026-08-05",
+      neonScope,
+      common,
+      { transferModelConsistentWithAdr022: true },
+    ),
+  ]);
+}
+
+function legal(
+  provider,
+  documentType,
+  canonicalSource,
+  documentVersionOrUpdatedAt,
+  serviceScope,
+  common,
+  {
+    accountSpecific = false,
+    publicBaseline = true,
+    transferModelConsistentWithAdr022 = null,
+  } = {},
+) {
+  return Object.freeze({
+    provider,
+    documentType,
+    canonicalSource,
+    documentVersionOrUpdatedAt,
+    serviceScope,
+    observedAt: common.observedAt,
+    validUntilOrReviewAt: common.validUntilOrReviewAt,
+    accountSpecific,
+    publicBaseline,
+    transferModelConsistentWithAdr022,
+  });
+}
+
+async function officialText(url, fetchImpl) {
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "GET",
+      headers: { accept: "text/html, text/plain;q=0.9" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new Error("ULC M5-G official legal evidence request failed.");
+  }
+  if (!response?.ok || typeof response.text !== "function") {
+    throw new Error("ULC M5-G official legal evidence request failed.");
+  }
+  const finalUrl = new URL(response.url || url);
+  const expected = new URL(url);
+  if (
+    finalUrl.protocol !== "https:" ||
+    finalUrl.hostname !== expected.hostname
+  ) {
+    throw new Error("ULC M5-G official legal evidence redirected outside its trusted host.");
+  }
+  const body = await response.text();
+  if (typeof body !== "string" || body.length < 100) {
+    throw new Error("ULC M5-G official legal evidence body is invalid.");
+  }
+  return normalize(body);
+}
+
+function requireAll(text, needles, label) {
+  if (typeof text !== "string" || needles.some((needle) => !text.includes(needle))) {
+    throw new Error(`ULC M5-G ${label} drifted from the reviewed official baseline.`);
+  }
+}
+
+function normalize(value) {
+  return value
+    .replaceAll(/<[^>]*>/gu, " ")
+    .replaceAll(/&nbsp;|&#160;/gu, " ")
+    .replaceAll(/&amp;/gu, "&")
+    .replaceAll(/&#39;|&apos;/gu, "'")
+    .replaceAll(/&quot;/gu, '"')
+    .replaceAll(/\s+/gu, " ")
+    .trim();
+}
+
+function canonicalTimestamp(value, label) {
+  if (typeof value !== "string") {
+    throw new Error(`ULC M5-G ${label} is invalid.`);
+  }
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new Error(`ULC M5-G ${label} is invalid.`);
+  }
+  return parsed;
+}
