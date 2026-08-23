@@ -28,6 +28,17 @@ function providerFetch(url) {
   if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
     return Promise.resolve(response({ success: true, result: { deployments: [{ versions: [{ version_id: "12345678-1234-4123-8123-123456789abc", percentage: 100 }] }] } }));
   }
+  if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/script-settings")) {
+    return Promise.resolve(response({
+      success: true,
+      result: {
+        logpush: false,
+        observability: { enabled: false },
+        tags: [],
+        tail_consumers: [],
+      },
+    }));
+  }
   if (value.endsWith("/workers/scripts")) {
     return Promise.resolve(response({ success: true, result: [{ id: "appbasis-ulc-linz-production", routes: [] }] }));
   }
@@ -82,9 +93,13 @@ function collect(options = {}) {
   );
 }
 
-test("provider and restore preflight cannot synthesize unobserved M5 owner evidence", async () => {
+test("observer derives only authoritative provider recovery and control-plane owner evidence", async () => {
   const bundle = await collect();
-  assert.deepEqual(bundle.ownerInputs, {});
+  assert.deepEqual(Object.keys(bundle.ownerInputs).sort(), [
+    "backupRestoreEvidenceInput",
+    "controlPlaneEvidenceInput",
+    "providerBoundEvidenceInput",
+  ]);
 
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(
     process.cwd(),
@@ -94,17 +109,20 @@ test("provider and restore preflight cannot synthesize unobserved M5 owner evide
 
   assert.equal(result.securityPrivacyReady, false);
   assert.equal(result.productionReleaseAuthorized, false);
-  assert.equal(result.resourceBindingFingerprint, null);
-  assert.equal(result.verifiedCount < result.requiredCount, true);
+  assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(result.criteria.find((criterion) => criterion.id === "dataRegion")?.status, "verified");
+  assert.equal(
+    result.criteria.find((criterion) => criterion.id === "privilegedControlPlaneIsolation")?.status,
+    "verified",
+  );
   for (const id of [
     "auditSecurityLogging",
-    "dataRegion",
     "dpa",
     "encryption",
     "subprocessors",
     "deletionConcept",
     "retention",
-    "privilegedControlPlaneIsolation",
+    "dataExport",
     "highPrivacyProfile",
   ]) {
     assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "open");
@@ -210,5 +228,32 @@ test("observer requires a distinct dedicated security-log Hyperdrive binding", a
       { fetchImpl: sharedBindingFetch, now: NOW },
     ),
     /bindings drifted from the approved runtime contract/,
+  );
+});
+
+test("observer refuses to claim the current five-flow scope when Cloudflare telemetry persists data", async () => {
+  const telemetryFetch = async (url, options) => {
+    const result = await providerFetch(url, options);
+    if (String(url).endsWith("/script-settings")) {
+      const body = await result.json();
+      body.result.observability = { enabled: true };
+      return response(body);
+    }
+    return result;
+  };
+  await assert.rejects(
+    () => collectUlcLinzM5ProductionEvidenceBundle(
+      {
+        repositoryRoot: process.cwd(),
+        cloudflareAccountId: "account-1",
+        cloudflareApiToken: "provider-token-value",
+        neonApiKey: "neon-api-key-value",
+        neonOrgId: "org-1",
+        githubSha: GITHUB_SHA,
+        restoreObservation: restoreObservation(),
+      },
+      { fetchImpl: telemetryFetch, now: NOW },
+    ),
+    /production resource binding evidence is not valid/,
   );
 });
