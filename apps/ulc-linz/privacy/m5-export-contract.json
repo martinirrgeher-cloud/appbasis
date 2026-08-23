@@ -64,7 +64,8 @@
     { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_membership", "privacyClass": "membership-lifecycle-data" },
     { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_subject_scope", "privacyClass": "subject-access-link" },
     { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_lifecycle_deletion", "privacyClass": "minimal-delete-reconciliation-state" },
-    { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_lifecycle_audit", "privacyClass": "audit-security-data" }
+    { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_lifecycle_audit", "privacyClass": "audit-security-data" },
+    { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_security_event_log", "privacyClass": "audit-security-data" }
   ],
   "excludedPrivacyClasses": [
     "authentication-credential-data",
