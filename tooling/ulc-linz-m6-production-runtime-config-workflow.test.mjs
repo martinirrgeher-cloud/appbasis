@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import "./ulc-linz-m6-private-production-deploy-workflow.test.mjs";
+
 const workflowUrl = new URL(
   "../.github/workflows/m6-ulc-production-runtime-config.yml",
   import.meta.url,
