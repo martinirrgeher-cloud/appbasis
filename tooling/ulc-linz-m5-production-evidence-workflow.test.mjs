@@ -40,16 +40,21 @@ test("M5 production restore reads production and writes only the isolated restor
   assert.doesNotMatch(source, /psql[^\n]*ULC_LINZ_PRODUCTION_DATABASE_URL[^\n]*(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)/i);
 });
 
-test("one correlated run feeds canonical F G H I J owners and requires twelve of twelve", async () => {
+test("one correlated run completes F then feeds canonical G H I J owners and requires twelve of twelve", async () => {
   const source = await workflow();
   assert.match(source, /ulc-linz-m5-backup-contract\.mjs/);
   assert.match(source, /ulc-linz-m5-production-evidence-observer\.mjs/);
+  assert.match(source, /ulc-linz-m5-production-f-evidence\.mjs "\$WORK\/m5-base-bundle\.json"/);
+  assert.match(source, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \}\}/);
+  assert.match(source, /ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \}\}/);
   assert.match(source, /ulc-linz-m5-production-evidence-runner\.mjs "\$WORK\/m5-bundle\.json" --require-ready/);
   assert.match(source, /securityPrivacyReady !== true/);
   assert.match(source, /verifiedCount !== 12/);
   assert.match(source, /requiredCount !== 12/);
   assert.match(source, /productionReleaseAuthorized !== false/);
   assert.match(source, /Production release remains unauthorized/);
+  assert.doesNotMatch(source, /ulc-linz-m5-security-log-retention-run\.mjs/);
+  assert.doesNotMatch(source, /PURGE-ULC-M5-SECURITY-LOG-RETENTION/);
 });
 
 test("production evidence workflow cannot activate ingress, release production or mutate the source schema", async () => {
