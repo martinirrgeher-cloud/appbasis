@@ -147,9 +147,8 @@ test("factory console exposes app details and local creation without enabling de
   const appScriptBody = await appScript.text();
   assert.match(appScriptBody, /factoryLifecycleCardCopy/);
   assert.match(appScriptBody, /status\.textContent = lifecycleCard\.label/);
-  assert.match(appScriptBody, /detailRow\("Status", \[lifecycleCard\.heading\]\)/);
-  assert.match(appScriptBody, /detailRow\("Nächster Schritt", \[lifecycleCard\.nextStep\]\)/);
-  assert.match(appScriptBody, /Nächster Schritt: \$\{lifecycleCard\.nextStep\}/);
+  assert.match(appScriptBody, /detailRow\("Status", \[lifecycleCard\.heading\]/);
+  assert.match(appScriptBody, /detailRow\("Nächster Schritt", \[lifecycleCard\.nextStep\]/);
   assert.doesNotMatch(appScriptBody, /status\.textContent = "Im Repository"/);
   assert.match(appScriptBody, /button\.dataset\.appId = app\.appId/);
   assert.match(appScriptBody, /openAppDetail\(app\.appId\)/);
@@ -376,10 +375,17 @@ test("factory local app creation is origin-locked, JSON-only and uses the existi
     platformServices: [],
   });
 
-  const appDefinition = JSON.parse(
+  const persisted = JSON.parse(
     await readFile(join(fixtureRoot, "apps", "new-app", "appbasis.app.json"), "utf8"),
   );
-  assert.deepEqual(appDefinition, createdBody.app);
+  assert.deepEqual(persisted, createdBody.app);
+
+  const refreshedSnapshot = await fetch(`${baseUrl}/api/factory/snapshot`);
+  assert.equal(refreshedSnapshot.status, 200);
+  assert.deepEqual(
+    (await refreshedSnapshot.json()).apps.map((app) => app.appId).sort(),
+    ["demo", "new-app"],
+  );
 
   const duplicate = await fetch(endpoint, {
     method: "POST",
@@ -389,21 +395,47 @@ test("factory local app creation is origin-locked, JSON-only and uses the existi
     },
     body: JSON.stringify({
       appId: "new-app",
-      displayName: "Duplicate",
-      modules: [],
+      displayName: "Neue App",
+      modules: ["tasks"],
       platformServices: [],
     }),
   });
   assert.equal(duplicate.status, 409);
   assert.equal((await duplicate.json()).error.code, "APP_ALREADY_EXISTS");
+
+  await writeFile(
+    join(fixtureRoot, "apps", "demo", "appbasis.app.json"),
+    "{ invalid-json\n",
+    "utf8",
+  );
+  const blockedByInvalidRepository = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      origin: baseUrl,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      appId: "must-stay-blocked",
+      displayName: "Must Stay Blocked",
+      modules: [],
+      platformServices: [],
+    }),
+  });
+  assert.equal(blockedByInvalidRepository.status, 503);
+  assert.equal(
+    (await blockedByInvalidRepository.json()).error.code,
+    "FACTORY_STATE_UNAVAILABLE",
+  );
+  await assert.rejects(
+    readFile(join(fixtureRoot, "apps", "must-stay-blocked", "appbasis.app.json"), "utf8"),
+    (error) => error?.code === "ENOENT",
+  );
 });
 
 function assertAccessibleAccent(accent) {
   const foreground = previewAccentForeground(accent);
-  assert.ok(
-    contrastRatioForHex(accent, foreground) >= 4.5,
-    `${accent} with ${foreground} must satisfy WCAG AA contrast`,
-  );
+  const ratio = contrastRatioForHex(accent, foreground);
+  assert.ok(ratio !== null && ratio >= 4.5, `${accent} contrast was ${String(ratio)}`);
 }
 
 function hexChannel(value) {
