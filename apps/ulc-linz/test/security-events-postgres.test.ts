@@ -52,9 +52,11 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
     await logger.flush();
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].query).toContain("INSERT INTO ulc_linz_security_event_log");
-    expect(calls[0].query).toContain("interval '12 months'");
-    expect(calls[0].parameters).toEqual([
+    const call = calls[0];
+    if (call === undefined) throw new Error("Expected one persisted security event.");
+    expect(call.query).toContain("INSERT INTO ulc_linz_security_event_log");
+    expect(call.query).toContain("interval '12 months'");
+    expect(call.parameters).toEqual([
       1,
       "ulc-linz",
       "security",
@@ -70,8 +72,8 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
       "INVALID_CREDENTIALS",
       null,
     ]);
-    expect(calls[0].parameters).not.toContain("password");
-    expect(calls[0].parameters).not.toContain("cookie");
+    expect(call.parameters).not.toContain("password");
+    expect(call.parameters).not.toContain("cookie");
   });
 
   it("maps authorization denials without a raw payload column", async () => {
@@ -88,8 +90,10 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
     await logger.flush();
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].query).not.toContain("payload");
-    expect(calls[0].parameters).toEqual([
+    const call = calls[0];
+    if (call === undefined) throw new Error("Expected one persisted security event.");
+    expect(call.query).not.toContain("payload");
+    expect(call.parameters).toEqual([
       1,
       "ulc-linz",
       "security",
