@@ -31,7 +31,7 @@ VALUES (
 
 const PURGE_SECURITY_EVENT_SQL = `
 DELETE FROM ulc_linz_security_event_log
-WHERE retained_until < $1::timestamptz
+WHERE retained_until < statement_timestamp()
 `;
 
 export function createPostgresUlcLinzSecurityEventLogger(
@@ -54,14 +54,16 @@ export function createPostgresUlcLinzSecurityEventLogger(
   });
 }
 
+/**
+ * Deletes only events whose database-enforced twelve-calendar-month boundary is
+ * strictly older than the PostgreSQL server's statement timestamp. There is no
+ * caller-supplied clock or cutoff, so an HTTP/request/operator value cannot
+ * shorten the retention period.
+ */
 export async function purgeExpiredUlcLinzSecurityEvents(
   client: UlcLinzSecurityEventSqlClient,
-  now: Date,
 ): Promise<void> {
-  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
-    throw new Error("A valid retention evaluation time is required.");
-  }
-  await client.unsafe(PURGE_SECURITY_EVENT_SQL, [now.toISOString()]);
+  await client.unsafe(PURGE_SECURITY_EVENT_SQL);
 }
 
 async function persistEvent(
