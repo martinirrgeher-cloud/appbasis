@@ -52,42 +52,40 @@ function collect(overrides = {}, options = {}) {
   );
 }
 
-test("collects exact live public and account-bound legal evidence for both providers", async () => {
+test("collects exact public legal/security baselines but never invents provider-account DPA binding", async () => {
   const result = await collect();
-  assert.equal(result.length, 9);
+  assert.equal(result.length, 7);
   const cloudflareDpa = result.find(
     (entry) => entry.provider === "cloudflare" && entry.documentType === "dpa",
   );
-  const cloudflareBinding = result.find(
-    (entry) =>
-      entry.provider === "cloudflare" &&
-      entry.documentType === "dpa-account-binding",
-  );
-  const neonBinding = result.find(
-    (entry) =>
-      entry.provider === "neon-databricks" &&
-      entry.documentType === "dpa-account-binding",
+  const neonDpa = result.find(
+    (entry) => entry.provider === "neon-databricks" && entry.documentType === "dpa",
   );
   assert.equal(cloudflareDpa.documentVersionOrUpdatedAt, "6.4 / 2026-04-03");
   assert.equal(cloudflareDpa.publicBaseline, true);
   assert.equal(cloudflareDpa.accountSpecific, false);
-  assert.equal(cloudflareBinding.accountSpecific, true);
-  assert.equal(cloudflareBinding.publicBaseline, false);
-  assert.equal(neonBinding.accountSpecific, true);
-  assert.equal(neonBinding.publicBaseline, false);
+  assert.equal(neonDpa.publicBaseline, true);
+  assert.equal(neonDpa.accountSpecific, false);
+  assert.equal(
+    result.some((entry) => entry.documentType === "dpa-account-binding"),
+    false,
+  );
+  assert.equal(result.some((entry) => entry.accountSpecific === true), false);
   assert.ok(result.every((entry) => entry.observedAt === OBSERVED_AT));
   assert.ok(result.every((entry) => entry.validUntilOrReviewAt === VALID_UNTIL));
 });
 
-test("fails closed without both authenticated provider bindings", async () => {
+test("requires both authenticated provider resources but does not confuse resource binding with legal operator binding", async () => {
   await assert.rejects(
     () => collect({ cloudflareAccountBound: false }),
-    /account binding is incomplete/,
+    /resource binding is incomplete/,
   );
   await assert.rejects(
     () => collect({ neonProjectBound: false }),
-    /account binding is incomplete/,
+    /resource binding is incomplete/,
   );
+  const result = await collect();
+  assert.equal(result.some((entry) => entry.documentType === "dpa-account-binding"), false);
 });
 
 test("fails closed on any reviewed official source drift", async () => {
