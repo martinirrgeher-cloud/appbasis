@@ -25,11 +25,13 @@ const CONTRACT_FILES = Object.freeze([
   ["apps/ulc-linz/worker/app.ts", new URL("../apps/ulc-linz/worker/app.ts", import.meta.url), "3acdcd47bf696c23334c15a11fe80c70368d608c"],
   ["apps/ulc-linz/worker/authorization.ts", new URL("../apps/ulc-linz/worker/authorization.ts", import.meta.url), "a39b41853b120e56d55a14bb75d4aa231c22843b"],
   ["apps/ulc-linz/worker/security-events.ts", new URL("../apps/ulc-linz/worker/security-events.ts", import.meta.url), "cc3a972b65ffd09350d752236827c8df922d9b77"],
-  ["apps/ulc-linz/worker/security-events-postgres.ts", new URL("../apps/ulc-linz/worker/security-events-postgres.ts", import.meta.url), "43e311436e6c5499b047a58923e1235543d49675"],
+  ["apps/ulc-linz/worker/security-events-postgres.ts", new URL("../apps/ulc-linz/worker/security-events-postgres.ts", import.meta.url), "f8a30cca9a7379cc59543d2d7abdd5d26281f605"],
   ["apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", new URL("../apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", import.meta.url), "0dea6b9c751e559b06e14d2d2e603bb9a99372d4"],
+  ["apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", new URL("../apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", import.meta.url), "649e8cd3aea89d685a84e0c77afb9636d72e4467"],
 ]);
 const CONTROLLED_RETENTION_CONTRACT_FILES = Object.freeze([
   ["apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", new URL("../apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", import.meta.url)],
+  ["apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", new URL("../apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", import.meta.url)],
   ["apps/ulc-linz/worker/security-events-postgres.ts", new URL("../apps/ulc-linz/worker/security-events-postgres.ts", import.meta.url)],
 ]);
 
