@@ -53,9 +53,20 @@ test("runtime configuration uploads bindings and secret atomically as one undepl
   assert.doesNotMatch(workflow, /--request PUT/);
 });
 
-test("runtime configuration requires pristine state and preserves closed zero-deployment worker", async () => {
+test("runtime configuration reconciles only one exact existing current version without re-upload", async () => {
   const workflow = await source();
-  assert.match(workflow, /requires a Worker with no existing versions/);
+  assert.match(workflow, /allows only zero versions or one exact reconcilable version/);
+  assert.match(workflow, /Existing ULC production version is not the exact current runtime version and cannot be reconciled/);
+  assert.match(workflow, /annotations\?\.\["workers\/tag"\] !== process\.env\.TARGET_VERSION_TAG/);
+  assert.match(workflow, /annotations\?\.\["workers\/message"\] !== `AppBasis ulc-linz production runtime \$\{process\.env\.GITHUB_SHA\}`/);
+  assert.match(workflow, /printf 'existing_id=%s\\n' "\$EXISTING_VERSION_ID"/);
+  assert.match(workflow, /if: steps\.preflight\.outputs\.existing_id == ''/);
+  assert.match(workflow, /VERSION_ID="\$\{EXISTING_VERSION_ID:-\$UPLOADED_VERSION_ID\}"/);
+  assert.match(workflow, /reconcile it read-only instead of uploading again/);
+});
+
+test("runtime configuration preserves closed zero-deployment worker and fails closed on drift", async () => {
+  const workflow = await source();
   assert.match(workflow, /requires zero existing deployments/);
   assert.match(workflow, /versionsResponse\.result\.length !== 1/);
   assert.match(workflow, /deploymentsResponse\.result\.deployments\.length !== 0/);
