@@ -44,6 +44,7 @@ function providerFetch(url) {
           bindings: [
             { name: "APPBASIS_BASE_URL", type: "plain_text", text: "https://app.ulc-linz.at" },
             { name: "HYPERDRIVE", type: "hyperdrive", id: "hyperdrive-1" },
+            { name: "SECURITY_LOG_HYPERDRIVE", type: "hyperdrive", id: "hyperdrive-security-1" },
             { name: "BETTER_AUTH_SECRET", type: "secret_text" },
           ],
         },
@@ -179,5 +180,35 @@ test("observer binds Cloudflare deployment to the current exact main SHA", async
       { fetchImpl: driftFetch, now: NOW },
     ),
     /not bound to the current main runtime/,
+  );
+});
+
+test("observer requires a distinct dedicated security-log Hyperdrive binding", async () => {
+  const sharedBindingFetch = async (url, options) => {
+    const result = await providerFetch(url, options);
+    if (String(url).includes("/versions/12345678-1234-4123-8123-123456789abc")) {
+      const body = await result.json();
+      const securityBinding = body.result.resources.bindings.find(
+        (binding) => binding.name === "SECURITY_LOG_HYPERDRIVE",
+      );
+      securityBinding.id = "hyperdrive-1";
+      return response(body);
+    }
+    return result;
+  };
+  await assert.rejects(
+    () => collectUlcLinzM5ProductionEvidenceBundle(
+      {
+        repositoryRoot: process.cwd(),
+        cloudflareAccountId: "account-1",
+        cloudflareApiToken: "provider-token-value",
+        neonApiKey: "neon-api-key-value",
+        neonOrgId: "org-1",
+        githubSha: GITHUB_SHA,
+        restoreObservation: restoreObservation(),
+      },
+      { fetchImpl: sharedBindingFetch, now: NOW },
+    ),
+    /bindings drifted from the approved runtime contract/,
   );
 });
