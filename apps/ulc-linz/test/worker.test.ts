@@ -44,7 +44,10 @@ const validEnv = Object.freeze({
   BETTER_AUTH_SECRET: "worker-runtime-test-secret-00000000000000",
 });
 
-function runtime(close = async () => {}) {
+function runtime(
+  close = async () => {},
+  flush = async () => {},
+): GeneratedPostgresApplicationRuntime {
   return {
     identity,
     permissions: new InMemoryPermissionStore({
@@ -52,8 +55,12 @@ function runtime(close = async () => {}) {
       roles: [],
       principals: [],
     }),
+    securityEvents: {
+      record() {},
+      flush,
+    },
     close,
-  } satisfies GeneratedPostgresApplicationRuntime;
+  };
 }
 
 describe("generated identity+permissions Worker entrypoint", () => {
@@ -99,14 +106,20 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(runtimeCalls).toBe(0);
   });
 
-  it("maps validated bindings into one request-scoped runtime and closes it", async () => {
+  it("maps validated bindings into one request-scoped runtime, flushes security events and closes it", async () => {
+    let flushCalls = 0;
     let closeCalls = 0;
     let receivedOptions: unknown = null;
     const worker = createGeneratedWorker(async (options) => {
       receivedOptions = options;
-      return runtime(async () => {
-        closeCalls += 1;
-      });
+      return runtime(
+        async () => {
+          closeCalls += 1;
+        },
+        async () => {
+          flushCalls += 1;
+        },
+      );
     });
 
     const response = await worker.fetch(
@@ -122,6 +135,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       baseURL: validEnv.APPBASIS_BASE_URL,
       secret: validEnv.BETTER_AUTH_SECRET,
     });
+    expect(flushCalls).toBe(1);
     expect(closeCalls).toBe(1);
   });
 
@@ -145,6 +159,40 @@ describe("generated identity+permissions Worker entrypoint", () => {
       expect(body).not.toContain("secret-host");
       expect(logged.join("\n")).toContain("UNEXPECTED_RUNTIME_ERROR");
       expect(logged.join("\n")).not.toContain("secret-host");
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("keeps a successful response when security-event flush fails and still closes the runtime", async () => {
+    const originalError = console.error;
+    const logged: string[] = [];
+    let closeCalls = 0;
+    console.error = (...values: unknown[]) => {
+      logged.push(values.map(String).join(" "));
+    };
+    try {
+      const worker = createGeneratedWorker(() =>
+        runtime(
+          async () => {
+            closeCalls += 1;
+          },
+          async () => {
+            throw new Error("postgresql://security-log-secret/private");
+          },
+        ),
+      );
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test/api/auth/session", {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+
+      expect(response.status).toBe(200);
+      expect(closeCalls).toBe(1);
+      expect(logged.join("\n")).toContain("SECURITY_EVENT_FLUSH_ERROR");
+      expect(logged.join("\n")).not.toContain("security-log-secret");
     } finally {
       console.error = originalError;
     }

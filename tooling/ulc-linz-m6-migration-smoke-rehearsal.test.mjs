@@ -16,6 +16,7 @@ const EXPECTED_MIGRATIONS = [
   "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
   "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
   "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
+  "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
 ];
 
 test("ULC M6 migration rehearsal loads the exact canonical production plan without authorizing a database write", async () => {
@@ -34,7 +35,7 @@ test("ULC M6 migration rehearsal loads the exact canonical production plan witho
   assert.equal(result.productionSmokeExecutionAuthorized, false);
   assert.equal(result.releaseAuthorized, false);
   assert.equal(result.explicitApprovalStillRequired, true);
-  assert.equal(result.migration.migrationCount, 8);
+  assert.equal(result.migration.migrationCount, 9);
   assert.equal(result.migration.statementCount > 0, true);
   assert.deepEqual(
     result.migration.files.map((entry) => entry.relativePath),

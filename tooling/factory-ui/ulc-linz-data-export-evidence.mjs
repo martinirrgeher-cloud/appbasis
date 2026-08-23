@@ -12,20 +12,20 @@ export const ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY = Object.freeze({
   appId: "ulc-linz",
   modules: Object.freeze([]),
   platformServices: Object.freeze(["identity", "permissions"]),
-  inventoryGitBlobSha: "900d3a2ea53bbe94fc6a8cf9afb79bfb4d15de7f",
+  inventoryGitBlobSha: "2cbb63f2fa0fd3ecafde828423a1784be1ac3a84",
   requiredPostgresTest: "./test/data-export.postgres.e2e.test.ts",
   requiredRepositoryEvidenceTest:
     "./tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs",
   evidenceFiles: Object.freeze([
-    Object.freeze({ path: "apps/ulc-linz/privacy/m5-export-contract.json", gitBlobSha: "1fc2f45a75ae464e2fac9324ef27f8a03d5b65f4" }),
+    Object.freeze({ path: "apps/ulc-linz/privacy/m5-export-contract.json", gitBlobSha: "c929f89d0ba54414d557a76408356b35b3d2058c" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export.ts", gitBlobSha: "539c2f7455a0b847e0afda39ddfe0acd471cb8d2" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export-service.ts", gitBlobSha: "0bb1fefba10668348a6a18e4e296e5fb21497e75" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export-postgres.ts", gitBlobSha: "b1123c3d7f628c594159f79764a6a66fa600bd9b" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export.test.ts", gitBlobSha: "de2d4b4d9c6a17b89d115cbcf7e8a141494e9dcf" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export-service.test.ts", gitBlobSha: "b238266283fa945671f80ae9359ec56505284151" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export-fail-closed.test.ts", gitBlobSha: "d73b5e2d30c30fa2c94547e1b003fb6c0093f649" }),
-    Object.freeze({ path: "apps/ulc-linz/test/data-export.postgres.e2e.test.ts", gitBlobSha: "1cbb00a0d7a09de5293a613c52d53921d252969f" }),
-    Object.freeze({ path: "apps/ulc-linz/test/m5-export-contract.test.ts", gitBlobSha: "61268a2884d63b399912fafbe2e94f14fa5b08ab" }),
+    Object.freeze({ path: "apps/ulc-linz/test/data-export.postgres.e2e.test.ts", gitBlobSha: "db628d441fd819aa021a09e3309e045f1df4be22" }),
+    Object.freeze({ path: "apps/ulc-linz/test/m5-export-contract.test.ts", gitBlobSha: "6673e39b195e9529c4d734024e162a36333581f2" }),
     Object.freeze({ path: "tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs", gitBlobSha: "51d815eae660b113869f806a4baffac3edd8980a" }),
   ]),
 });
@@ -102,7 +102,7 @@ function isCurrentInventory(inventory) {
     inventory.application === "ulc-linz" &&
     inventory.scope === "current-materialized-v0.1" &&
     Array.isArray(inventory.persistentTables) &&
-    inventory.persistentTables.length === 19 &&
+    inventory.persistentTables.length === 20 &&
     inventory.runtimeModules?.length === 0 &&
     inventory.backingStores?.memberships?.status === "bound" &&
     inventory.backingStores?.subjectScopes?.status === "bound" &&

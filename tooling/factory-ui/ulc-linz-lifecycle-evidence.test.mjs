@@ -197,7 +197,7 @@ test("fails closed when the current app-owned database contract drifts", async (
     const activation = await lifecycleActivationEvidence(root);
     const manifest = createExpectedUlcLinzDatabaseManifest(VALID_ULC_DEFINITION);
     const changed = JSON.parse(JSON.stringify(manifest));
-    changed.owners.find((owner) => owner.id === "ulc-linz-lifecycle").schemaVersion = 3;
+    changed.owners.find((owner) => owner.id === "ulc-linz-lifecycle").schemaVersion = 4;
     await writeFile(
       join(root, "apps", "ulc-linz", "appbasis.database.json"),
       `${JSON.stringify(changed, null, 2)}\n`,

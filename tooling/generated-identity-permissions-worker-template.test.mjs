@@ -25,24 +25,39 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "worker/app.ts",
     "worker/index.ts",
     "worker/postgres.ts",
+    "migrations/0000_ulc_linz_lifecycle_scope.sql",
+    "migrations/0001_ulc_linz_retention_deletion_claim.sql",
+    "worker/security-events.ts",
+    "worker/security-events-postgres.ts",
+    "migrations/0002_ulc_linz_security_event_log.sql",
     PRODUCTION_BOOTSTRAP_CONFIG_PATH,
   ]);
 
+  const app = content(template, "worker/app.ts");
   const worker = content(template, "worker/index.ts");
   const postgres = content(template, "worker/postgres.ts");
+  const securityEvents = content(template, "worker/security-events.ts");
 
+  assert.match(app, /securityEvents\?: UlcLinzSecurityEventLogger/);
+  assert.match(app, /identityResponseWithSecurityLogging/);
+  assert.match(app, /recordUlcLinzSecurityEvent/);
+  assert.match(securityEvents, /identity\.request\.denied/);
+  assert.match(securityEvents, /authorization\.denied/);
+  assert.match(securityEvents, /safeLogIdentifier/);
   assert.match(worker, /createGeneratedPostgresApplicationRuntime/);
   assert.match(worker, /HYPERDRIVE/);
   assert.match(worker, /APPBASIS_BASE_URL/);
   assert.match(worker, /BETTER_AUTH_SECRET/);
   assert.match(worker, /RUNTIME_NOT_CONFIGURED/);
-  assert.match(worker, /env: unknown/);
+  assert.match(worker, /securityEvents: runtime\.securityEvents/);
+  assert.match(worker, /SECURITY_EVENT_FLUSH_ERROR/);
   assert.doesNotMatch(worker, /interface\s+.*Env/);
   assert.doesNotMatch(worker, /tasks/i);
 
   assert.match(postgres, /createPostgresIdentityApplicationRuntime/);
   assert.match(postgres, /PostgresPermissionStore/);
   assert.match(postgres, /permissions: PermissionStore/);
+  assert.match(postgres, /createPostgresUlcLinzSecurityEventLogger/);
   assert.doesNotMatch(postgres, /@appbasis\/tasks/);
   assert.doesNotMatch(postgres, /PostgresTaskRepository/);
   assert.doesNotMatch(postgres, /@appbasis\/database/);
@@ -94,11 +109,15 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
   );
 });
 
-test("checked ULC deployment files stay byte-identical to createAppSkeleton's canonical runtime generator", () => {
+test("checked ULC generated deployment files stay byte-identical to createAppSkeleton's canonical runtime generator", () => {
   const template = createIdentityRuntimeTemplate(ulcInput);
   for (const path of [
     "worker/index.ts",
     "worker/postgres.ts",
+    "worker/security-events-postgres.ts",
+    "migrations/0000_ulc_linz_lifecycle_scope.sql",
+    "migrations/0001_ulc_linz_retention_deletion_claim.sql",
+    "migrations/0002_ulc_linz_security_event_log.sql",
     "test/worker.test.ts",
   ]) {
     assert.equal(

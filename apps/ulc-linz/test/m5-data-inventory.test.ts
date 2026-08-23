@@ -175,7 +175,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(19);
+    expect(inventory.persistentTables).toHaveLength(20);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -212,6 +212,16 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(
       inventory.persistentTables.find(
         (table) => table.id === "ulc_linz_lifecycle_audit",
+      ),
+    ).toMatchObject({
+      privacyClass: "audit-security-data",
+      retentionPolicy: "12-months",
+      deletionEvidence: "retained-by-policy",
+      retentionEvidence: "verified",
+    });
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "ulc_linz_security_event_log",
       ),
     ).toMatchObject({
       privacyClass: "audit-security-data",

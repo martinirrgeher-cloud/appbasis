@@ -1,0 +1,39 @@
+const ULC_APP_ID = "ulc-linz";
+
+export function extendUlcLinzDatabaseAssetsTemplate(input, generated) {
+  if (input?.appId !== ULC_APP_ID) return generated;
+
+  const assets = generatedUlcLinzDatabaseAssets();
+  for (const asset of assets) {
+    if (generated.files.some((entry) => entry.path === asset.path)) {
+      throw new Error(`ULC Linz database asset path is already generated: ${asset.path}.`);
+    }
+  }
+
+  return Object.freeze({
+    ...generated,
+    files: Object.freeze([...generated.files, ...assets]),
+  });
+}
+
+export function generatedUlcLinzDatabaseAssets() {
+  return Object.freeze([
+    file("migrations/0000_ulc_linz_lifecycle_scope.sql", lifecycleScopeMigration()),
+    file(
+      "migrations/0001_ulc_linz_retention_deletion_claim.sql",
+      retentionDeletionClaimMigration(),
+    ),
+  ]);
+}
+
+function lifecycleScopeMigration() {
+  return `CREATE TABLE "ulc_linz_membership" (\n  "identity_id" text PRIMARY KEY NOT NULL,\n  "organization_id" text NOT NULL,\n  "subject_id" text NOT NULL,\n  "source_role" text NOT NULL,\n  "active" boolean DEFAULT true NOT NULL,\n  "ended_at" timestamp with time zone,\n  "retention_exception_reason" text,\n  "retention_exception_actor" text,\n  "retention_exception_created_at" timestamp with time zone,\n  "retention_review_at" timestamp with time zone,\n  "created_at" timestamp with time zone DEFAULT now() NOT NULL,\n  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,\n  CONSTRAINT "ulc_linz_membership_source_role_check"\n    CHECK ("source_role" IN ('admin', 'trainer', 'athlete', 'parent')),\n  CONSTRAINT "ulc_linz_membership_lifecycle_state_check"\n    CHECK (\n      ("active" = true AND "ended_at" IS NULL)\n      OR\n      ("active" = false AND "ended_at" IS NOT NULL AND "source_role" <> 'admin')\n    ),\n  CONSTRAINT "ulc_linz_membership_retention_exception_check"\n    CHECK (\n      (\n        "retention_exception_reason" IS NULL\n        AND "retention_exception_actor" IS NULL\n        AND "retention_exception_created_at" IS NULL\n        AND "retention_review_at" IS NULL\n      )\n      OR\n      (\n        "active" = false\n        AND "source_role" <> 'admin'\n        AND "retention_exception_reason" IS NOT NULL\n        AND "retention_exception_actor" IS NOT NULL\n        AND "retention_exception_created_at" IS NOT NULL\n        AND "retention_review_at" IS NOT NULL\n        AND "retention_review_at" > "retention_exception_created_at"\n      )\n    )\n);\n--> statement-breakpoint\nCREATE UNIQUE INDEX "ulc_linz_membership_subject_id_unique"\n  ON "ulc_linz_membership" ("subject_id");\n--> statement-breakpoint\nCREATE INDEX "ulc_linz_membership_retention_idx"\n  ON "ulc_linz_membership" ("active", "ended_at");\n--> statement-breakpoint\nCREATE TABLE "ulc_linz_subject_scope" (\n  "identity_id" text NOT NULL,\n  "organization_id" text NOT NULL,\n  "subject_id" text NOT NULL,\n  "relation_type" text NOT NULL,\n  "created_at" timestamp with time zone DEFAULT now() NOT NULL,\n  CONSTRAINT "ulc_linz_subject_scope_relation_type_check"\n    CHECK ("relation_type" IN ('self', 'managed')),\n  CONSTRAINT "ulc_linz_subject_scope_pk"\n    PRIMARY KEY ("identity_id", "organization_id", "subject_id", "relation_type")\n);\n--> statement-breakpoint\nCREATE INDEX "ulc_linz_subject_scope_subject_idx"\n  ON "ulc_linz_subject_scope" ("organization_id", "subject_id");\n--> statement-breakpoint\nCREATE TABLE "ulc_linz_lifecycle_deletion" (\n  "identity_id" text PRIMARY KEY NOT NULL,\n  "organization_id" text NOT NULL,\n  "subject_id" text NOT NULL,\n  "source_role" text NOT NULL,\n  "completed_at" timestamp with time zone NOT NULL,\n  "purge_after" timestamp with time zone NOT NULL,\n  CONSTRAINT "ulc_linz_lifecycle_deletion_source_role_check"\n    CHECK ("source_role" IN ('trainer', 'athlete', 'parent')),\n  CONSTRAINT "ulc_linz_lifecycle_deletion_purge_after_check"\n    CHECK ("purge_after" = "completed_at" + interval '35 days')\n);\n--> statement-breakpoint\nCREATE INDEX "ulc_linz_lifecycle_deletion_purge_idx"\n  ON "ulc_linz_lifecycle_deletion" ("purge_after");\n--> statement-breakpoint\nCREATE TABLE "ulc_linz_lifecycle_audit" (\n  "event_id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  "event_type" text NOT NULL,\n  "actor_principal_id" text NOT NULL,\n  "target_identity_id" text NOT NULL,\n  "organization_id" text NOT NULL,\n  "reason" text NOT NULL,\n  "review_at" timestamp with time zone,\n  "created_at" timestamp with time zone NOT NULL,\n  CONSTRAINT "ulc_linz_lifecycle_audit_event_type_check"\n    CHECK ("event_type" IN ('identity.delete.completed', 'retention.exception.set')),\n  CONSTRAINT "ulc_linz_lifecycle_audit_shape_check"\n    CHECK (\n      ("event_type" = 'identity.delete.completed' AND "review_at" IS NULL)\n      OR\n      ("event_type" = 'retention.exception.set' AND "review_at" IS NOT NULL AND "review_at" > "created_at")\n    )\n);\n--> statement-breakpoint\nCREATE INDEX "ulc_linz_lifecycle_audit_created_idx"\n  ON "ulc_linz_lifecycle_audit" ("created_at");\n--> statement-breakpoint\nCREATE INDEX "ulc_linz_lifecycle_audit_target_idx"\n  ON "ulc_linz_lifecycle_audit" ("target_identity_id", "created_at");\n`;
+}
+
+function retentionDeletionClaimMigration() {
+  return `ALTER TABLE "ulc_linz_membership"\n  ADD COLUMN "retention_deletion_claimed_at" timestamp with time zone;\n--> statement-breakpoint\nALTER TABLE "ulc_linz_membership"\n  ADD CONSTRAINT "ulc_linz_membership_retention_deletion_claim_check"\n  CHECK (\n    "retention_deletion_claimed_at" IS NULL\n    OR (\n      "active" = false\n      AND "ended_at" IS NOT NULL\n      AND "source_role" <> 'admin'\n      AND "ended_at" + interval '12 months' < "retention_deletion_claimed_at"\n      AND (\n        "retention_review_at" IS NULL\n        OR "retention_review_at" <= "retention_deletion_claimed_at"\n      )\n    )\n  );\n`;
+}
+
+function file(path, content) {
+  return Object.freeze({ path, content });
+}

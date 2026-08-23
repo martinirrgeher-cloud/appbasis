@@ -11,7 +11,10 @@ type GeneratedRuntimeFactory = (
   | GeneratedPostgresApplicationRuntime
   | PromiseLike<GeneratedPostgresApplicationRuntime>;
 
-type WorkerErrorKind = "UNEXPECTED_RUNTIME_ERROR" | "RUNTIME_CLOSE_ERROR";
+type WorkerErrorKind =
+  | "UNEXPECTED_RUNTIME_ERROR"
+  | "SECURITY_EVENT_FLUSH_ERROR"
+  | "RUNTIME_CLOSE_ERROR";
 
 export function createGeneratedWorker(
   runtimeFactory: GeneratedRuntimeFactory =
@@ -44,6 +47,7 @@ export function createGeneratedWorker(
         const app = createGeneratedApp({
           identity: runtime.identity,
           secureCookies: url.protocol === "https:",
+          securityEvents: runtime.securityEvents,
         });
         response = await app.fetch(request);
       } catch {
@@ -60,6 +64,7 @@ export function createGeneratedWorker(
       }
 
       if (runtime !== null) {
+        await flushSecurityEventsSafely(runtime);
         await closeRuntimeSafely(runtime);
       }
       return response;
@@ -86,6 +91,19 @@ function runtimeConfiguration(
   }
 
   return Object.freeze({ connectionString, baseURL, secret });
+}
+
+async function flushSecurityEventsSafely(
+  runtime: GeneratedPostgresApplicationRuntime,
+): Promise<void> {
+  try {
+    await runtime.securityEvents.flush();
+  } catch {
+    logWorkerError(
+      "generated_worker_security_event_flush_failed",
+      "SECURITY_EVENT_FLUSH_ERROR",
+    );
+  }
 }
 
 async function closeRuntimeSafely(

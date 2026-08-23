@@ -1,6 +1,8 @@
 import { extendIdentityPermissionsWorkerTemplate } from "./generated-identity-permissions-worker-template.mjs";
 import { renderGeneratedPrivateWorkerBootstrapConfig } from "./generated-private-worker-config.mjs";
 import { createIdentityRuntimeTemplate as createCoreIdentityRuntimeTemplate } from "./generated-runtime-template-core.mjs";
+import { extendUlcLinzDatabaseAssetsTemplate } from "./generated-ulc-linz-database-assets.mjs";
+import { extendUlcLinzSecurityLoggingTemplate } from "./generated-ulc-linz-security-logging-template.mjs";
 
 const POSTGRES_E2E_PATH = "test/app.postgres.e2e.ts";
 const WORKER_ENTRYPOINT_PATH = "worker/index.ts";
@@ -30,9 +32,15 @@ const APPLY_PRINCIPAL_PERMISSION_AUDIT =
   "  await applyMigration(principalPermissionAdministrationAuditMigrationUrl);";
 
 export function createIdentityRuntimeTemplate(input) {
-  const generated = extendIdentityPermissionsWorkerTemplate(
+  const generated = extendUlcLinzSecurityLoggingTemplate(
     input,
-    createCoreIdentityRuntimeTemplate(input),
+    extendUlcLinzDatabaseAssetsTemplate(
+      input,
+      extendIdentityPermissionsWorkerTemplate(
+        input,
+        createCoreIdentityRuntimeTemplate(input),
+      ),
+    ),
   );
   const files = generated.files.map((entry) => {
     if (entry.path !== POSTGRES_E2E_PATH) return entry;
