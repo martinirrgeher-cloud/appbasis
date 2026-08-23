@@ -320,6 +320,28 @@ async function readJson(response, label) {
   }
 }
 
+function safeRestoreSmokeError(error) {
+  const details = [];
+  let current = error;
+  const seen = new Set();
+  for (let depth = 0; depth < 4 && current !== null && typeof current === "object"; depth += 1) {
+    if (seen.has(current)) break;
+    seen.add(current);
+    const name = typeof current.name === "string" ? current.name : "Error";
+    const message = typeof current.message === "string" ? current.message : "unknown failure";
+    const code = typeof current.code === "string" ? current.code : null;
+    const severity = typeof current.severity === "string" ? current.severity : null;
+    const routine = typeof current.routine === "string" ? current.routine : null;
+    details.push(
+      [name, code === null ? null : `code=${code}`, severity === null ? null : `severity=${severity}`, routine === null ? null : `routine=${routine}`, message]
+        .filter((value) => value !== null)
+        .join(" | "),
+    );
+    current = current.cause;
+  }
+  return details.length === 0 ? "M4 restored functional smoke failed." : details.join(" <- caused by: ");
+}
+
 const invokedPath = process.argv[1];
 if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   try {
@@ -330,7 +352,7 @@ if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).
       `M4 restored functional smoke passed: auth, permission deny-by-default and tasks persistence (${result.taskId}).`,
     );
   } catch (error) {
-    console.error(error instanceof Error ? error.message : "M4 restored functional smoke failed.");
+    console.error(safeRestoreSmokeError(error));
     process.exitCode = 1;
   }
 }
