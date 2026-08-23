@@ -87,7 +87,7 @@ function retentionVerified(mode, evidence, nowDate) {
     return (
       value.source === "controlled-calendar-enforcement" &&
       value.providerMinimumRetentionVerified === true &&
-      value.cutoffSemantics === "created-at-strictly-older-than-12-calendar-months" &&
+      value.cutoffSemantics === "occurred-at-strictly-older-than-12-calendar-months" &&
       value.cleanupExecutionBound === true &&
       cleanupLastSucceededAt !== null &&
       cleanupLastSucceededAt <= nowDate &&
