@@ -68,7 +68,7 @@ test("reads only a fresh successful retention run on the exact expected current 
     cleanupExecutionBound: true,
     cleanupLastSucceededAt: UPDATED_AT,
     cleanupResultVerified: true,
-    cutoffSemantics: "created-at-strictly-older-than-12-calendar-months",
+    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
     boundaryEventPreserved: true,
     clientCutoffOverridePresent: false,
     enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
