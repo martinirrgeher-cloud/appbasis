@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { collectUlcLinzM5SecurityLogAccessEvidence } from "./ulc-linz-m5-security-log-access-evidence.mjs";
+import { collectUlcLinzM5SecurityLogDeliveryEvidence } from "./ulc-linz-m5-security-log-delivery-evidence.mjs";
 import { readUlcLinzM5SecurityLogRetentionRunEvidence } from "./ulc-linz-m5-security-log-retention-evidence.mjs";
 
 const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
@@ -30,6 +31,7 @@ export async function completeUlcLinzM5ProductionFBundle(
     githubFetchImpl = fetch,
     now = new Date(),
     accessCollector = collectUlcLinzM5SecurityLogAccessEvidence,
+    deliveryCollector = collectUlcLinzM5SecurityLogDeliveryEvidence,
     retentionEvidenceReader = readUlcLinzM5SecurityLogRetentionRunEvidence,
   } = {},
 ) {
@@ -53,6 +55,10 @@ export async function completeUlcLinzM5ProductionFBundle(
     throw new Error("M5-F resource binding evidence is invalid.");
   }
 
+  const safeProductionDatabaseUrl = credential(
+    productionDatabaseUrl,
+    "ULC production database URL",
+  );
   const sink = await observeSecurityLogHyperdrive({
     accountId,
     apiToken,
@@ -60,7 +66,7 @@ export async function completeUlcLinzM5ProductionFBundle(
     fetchImpl,
   });
   const access = await accessCollector({
-    productionDatabaseUrl: credential(productionDatabaseUrl, "ULC production database URL"),
+    productionDatabaseUrl: safeProductionDatabaseUrl,
     cleanupDatabaseUrl: credential(cleanupDatabaseUrl, "ULC security cleanup database URL"),
     readDatabaseUrl: credential(readDatabaseUrl, "ULC security read database URL"),
     ingestUsername: sink.ingestUsername,
@@ -71,6 +77,17 @@ export async function completeUlcLinzM5ProductionFBundle(
     access?.providerMinimumRetentionVerified !== true
   ) {
     throw new Error("M5-F security-log access evidence is incomplete.");
+  }
+
+  const delivery = await deliveryCollector(
+    {
+      productionDatabaseUrl: safeProductionDatabaseUrl,
+      deployedAt: sink.deployedAt,
+    },
+    { now: nowDate },
+  );
+  if (delivery?.runtimeDeliveryVerified !== true) {
+    throw new Error("M5-F real production sink delivery evidence is unavailable.");
   }
 
   const retention = await retentionEvidenceReader({
@@ -132,6 +149,10 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
   );
   const version = versionResponse.result;
   const message = version?.annotations?.["workers/message"];
+  const deployedAt = canonicalTimestamp(
+    version?.metadata?.created_on,
+    "Worker version created_on",
+  );
   if (
     version?.id !== versionId ||
     version?.annotations?.["workers/tag"] !== TARGET_VERSION_TAG ||
@@ -171,6 +192,7 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
   return Object.freeze({
     hyperdriveId,
     ingestUsername: databaseRole(origin.user),
+    deployedAt: deployedAt.toISOString(),
   });
 }
 
@@ -261,6 +283,14 @@ function credential(value, label) {
     throw new Error(`${label} is invalid.`);
   }
   return value;
+}
+function canonicalTimestamp(value, label) {
+  if (typeof value !== "string") throw new Error(`M5-F ${label} is invalid.`);
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new Error(`M5-F ${label} is invalid.`);
+  }
+  return parsed;
 }
 function requiredDate(value) {
   if (!(value instanceof Date) || !Number.isFinite(value.getTime())) throw new Error("M5-F evidence clock is invalid.");
