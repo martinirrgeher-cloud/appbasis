@@ -129,6 +129,7 @@ jobs:
           WORKER_PATH="$RUNNER_TEMP/m6-private-deploy-worker-before.json"
           VERSIONS_PATH="$RUNNER_TEMP/m6-private-deploy-versions-before.json"
           DEPLOYMENTS_PATH="$RUNNER_TEMP/m6-private-deploy-deployments-before.json"
+          ROUTES_PATH="$RUNNER_TEMP/m6-private-deploy-routes-before.json"
 
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -142,13 +143,18 @@ jobs:
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
             > "$DEPLOYMENTS_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
+            > "$ROUTES_PATH"
 
           VERSION_ID="$(
-            WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" node --input-type=module <<'NODE'
+            WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" ROUTES_PATH="$ROUTES_PATH" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" TARGET_WORKER="$TARGET_WORKER" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
           const versionsResponse = JSON.parse(await readFile(process.env.VERSIONS_PATH, "utf8"));
           const deploymentsResponse = JSON.parse(await readFile(process.env.DEPLOYMENTS_PATH, "utf8"));
+          const routesResponse = JSON.parse(await readFile(process.env.ROUTES_PATH, "utf8"));
           const worker = workerResponse?.result;
           if (
             workerResponse?.success !== true ||
@@ -161,6 +167,25 @@ jobs:
             worker.references.domains.length !== 0
           ) {
             throw new Error("ULC production Worker is not provably closed and undeployed.");
+          }
+          if (
+            routesResponse?.success !== true ||
+            !Array.isArray(routesResponse?.result)
+          ) {
+            throw new Error("Private production Worker route inventory is invalid.");
+          }
+          const matchingScripts = routesResponse.result.filter(
+            (candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate) && candidate.id === process.env.TARGET_WORKER,
+          );
+          if (matchingScripts.length !== 1) {
+            throw new Error("Private production Worker route inventory could not identify the Worker exactly once.");
+          }
+          const routes = matchingScripts[0].routes;
+          if (routes !== undefined && routes !== null && !Array.isArray(routes)) {
+            throw new Error("Private production Worker route inventory is invalid.");
+          }
+          if (Array.isArray(routes) && routes.length !== 0) {
+            throw new Error("Private production Worker has a public Worker route.");
           }
           if (
             deploymentsResponse?.success !== true ||
@@ -268,6 +293,7 @@ jobs:
           set -euo pipefail
           WORKER_PATH="$RUNNER_TEMP/m6-private-deploy-worker-after.json"
           DEPLOYMENTS_PATH="$RUNNER_TEMP/m6-private-deploy-deployments-after.json"
+          ROUTES_PATH="$RUNNER_TEMP/m6-private-deploy-routes-after.json"
 
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -277,11 +303,16 @@ jobs:
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
             > "$DEPLOYMENTS_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
+            > "$ROUTES_PATH"
 
-          WORKER_PATH="$WORKER_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" VERSION_ID="$VERSION_ID" node --input-type=module <<'NODE'
+          WORKER_PATH="$WORKER_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" ROUTES_PATH="$ROUTES_PATH" VERSION_ID="$VERSION_ID" TARGET_WORKER="$TARGET_WORKER" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
           const deploymentsResponse = JSON.parse(await readFile(process.env.DEPLOYMENTS_PATH, "utf8"));
+          const routesResponse = JSON.parse(await readFile(process.env.ROUTES_PATH, "utf8"));
           const worker = workerResponse?.result;
           if (
             workerResponse?.success !== true ||
@@ -292,6 +323,25 @@ jobs:
             worker.references.domains.length !== 0
           ) {
             throw new Error("ULC production Worker became publicly reachable after private deployment.");
+          }
+          if (
+            routesResponse?.success !== true ||
+            !Array.isArray(routesResponse?.result)
+          ) {
+            throw new Error("Post-deploy private production Worker route inventory is invalid.");
+          }
+          const matchingScripts = routesResponse.result.filter(
+            (candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate) && candidate.id === process.env.TARGET_WORKER,
+          );
+          if (matchingScripts.length !== 1) {
+            throw new Error("Post-deploy route inventory could not identify the private production Worker exactly once.");
+          }
+          const routes = matchingScripts[0].routes;
+          if (routes !== undefined && routes !== null && !Array.isArray(routes)) {
+            throw new Error("Post-deploy private production Worker route inventory is invalid.");
+          }
+          if (Array.isArray(routes) && routes.length !== 0) {
+            throw new Error("ULC production Worker has a public Worker route after private deployment.");
           }
           const deployments = deploymentsResponse?.result?.deployments;
           if (
@@ -313,7 +363,7 @@ jobs:
           }
           NODE
 
-          echo 'Exact ULC production version is deployed while public ingress remains disabled.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Exact ULC production version is deployed while workers.dev, Preview URLs, custom domains and Worker routes remain disabled.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary deployment evidence
         if: always()
