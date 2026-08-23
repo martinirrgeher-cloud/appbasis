@@ -34,11 +34,13 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     PRODUCTION_BOOTSTRAP_CONFIG_PATH,
   ]);
 
+  const packageJson = JSON.parse(content(template, "package.json"));
   const app = content(template, "worker/app.ts");
   const worker = content(template, "worker/index.ts");
   const postgres = content(template, "worker/postgres.ts");
   const securityEvents = content(template, "worker/security-events.ts");
 
+  assert.equal(packageJson.dependencies["@appbasis/database"], "workspace:*");
   assert.match(app, /securityEvents\?: UlcLinzSecurityEventLogger/);
   assert.match(app, /identityResponseWithSecurityLogging/);
   assert.match(app, /recordUlcLinzSecurityEvent/);
@@ -47,6 +49,7 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
   assert.match(securityEvents, /safeLogIdentifier/);
   assert.match(worker, /createGeneratedPostgresApplicationRuntime/);
   assert.match(worker, /HYPERDRIVE/);
+  assert.match(worker, /SECURITY_LOG_HYPERDRIVE/);
   assert.match(worker, /APPBASIS_BASE_URL/);
   assert.match(worker, /BETTER_AUTH_SECRET/);
   assert.match(worker, /RUNTIME_NOT_CONFIGURED/);
@@ -56,12 +59,13 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
   assert.doesNotMatch(worker, /tasks/i);
 
   assert.match(postgres, /createPostgresIdentityApplicationRuntime/);
+  assert.match(postgres, /@appbasis\/database\/postgres-runtime/);
   assert.match(postgres, /PostgresPermissionStore/);
   assert.match(postgres, /permissions: PermissionStore/);
   assert.match(postgres, /createPostgresUlcLinzSecurityEventLogger/);
+  assert.match(postgres, /securityLogConnectionString/);
   assert.doesNotMatch(postgres, /@appbasis\/tasks/);
   assert.doesNotMatch(postgres, /PostgresTaskRepository/);
-  assert.doesNotMatch(postgres, /@appbasis\/database/);
 });
 
 test("keeps identity-only and guarded tasks generator contracts unchanged", () => {
