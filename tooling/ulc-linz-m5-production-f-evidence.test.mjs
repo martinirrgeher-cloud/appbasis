@@ -166,7 +166,7 @@ async function complete({
     deliveryCollector: async (input, options) => {
       assert.equal(input.productionDatabaseUrl, inputs().productionDatabaseUrl);
       assert.equal(input.deployedAt, DEPLOYED_AT);
-      assert.equal(options.now, NOW);
+      assert.equal(options.now.toISOString(), NOW.toISOString());
       return delivery;
     },
     retentionEvidenceReader: async () => retention,
