@@ -1,0 +1,381 @@
+name: M6 ULC Production Runtime Configuration
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type CONFIGURE-ULC-PRODUCTION-RUNTIME to upload or reconcile the exact undeployed production runtime version'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  configure-runtime:
+    name: Configure closed ULC production runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TARGET_WORKER: appbasis-ulc-linz-production
+      TARGET_BASE_URL: https://app.ulc-linz.at
+      TARGET_VERSION_TAG: ulc-linz-production-runtime-v1
+
+    steps:
+      - name: Require explicit main dispatch
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'M6 production runtime configuration must be dispatched from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = "CONFIGURE-ULC-PRODUCTION-RUNTIME" || {
+            echo 'Exact production runtime-configuration confirmation is required.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and mask protected inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID.' >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN.' >&2; exit 1; }
+          test -n "$ULC_LINZ_PRODUCTION_DATABASE_URL" || { echo 'Missing ULC_LINZ_PRODUCTION_DATABASE_URL.' >&2; exit 1; }
+          test -n "$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET" || { echo 'Missing ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET.' >&2; exit 1; }
+          node -e 'const value = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET?.trim() ?? ""; if (value.length < 32 || value !== process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET) process.exit(1);' || {
+            echo 'Production Better Auth secret must be trimmed and at least 32 characters.' >&2
+            exit 1
+          }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET"
+
+      - name: Derive non-secret auth-secret HMAC fingerprint
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          AUTH_SECRET_FINGERPRINT="$(node --input-type=module <<'NODE'
+          import { createHmac } from "node:crypto";
+          const secret = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET;
+          const context = "appbasis:ulc-linz:production:better-auth-secret:v1";
+          process.stdout.write(createHmac("sha256", secret).update(context).digest("hex"));
+          NODE
+          )"
+          [[ "$AUTH_SECRET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || {
+            echo 'Production Better Auth secret fingerprint derivation failed.' >&2
+            exit 1
+          }
+          echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
+          printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
+
+      - name: Require exact closed undeployed production Worker and safe version state
+        id: preflight
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          WORKER_PATH="$RUNNER_TEMP/m6-runtime-worker-before.json"
+          VERSIONS_PATH="$RUNNER_TEMP/m6-runtime-versions-before.json"
+          DEPLOYMENTS_PATH="$RUNNER_TEMP/m6-runtime-deployments-before.json"
+
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER" \
+            > "$WORKER_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" \
+            > "$VERSIONS_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
+            > "$DEPLOYMENTS_PATH"
+
+          EXISTING_VERSION_ID="$(
+            WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
+          const versionsResponse = JSON.parse(await readFile(process.env.VERSIONS_PATH, "utf8"));
+          const deploymentsResponse = JSON.parse(await readFile(process.env.DEPLOYMENTS_PATH, "utf8"));
+          const worker = workerResponse?.result;
+          if (
+            workerResponse?.success !== true ||
+            worker?.name !== "appbasis-ulc-linz-production" ||
+            worker?.subdomain?.enabled !== false ||
+            worker?.subdomain?.previews_enabled !== false ||
+            !Object.hasOwn(worker ?? {}, "deployed_on") ||
+            worker.deployed_on !== null ||
+            !Array.isArray(worker?.references?.domains) ||
+            worker.references.domains.length !== 0
+          ) {
+            throw new Error("ULC production Worker is not provably closed and undeployed.");
+          }
+          if (
+            deploymentsResponse?.success !== true ||
+            !Array.isArray(deploymentsResponse?.result?.deployments) ||
+            deploymentsResponse.result.deployments.length !== 0
+          ) {
+            throw new Error("ULC production runtime configuration requires zero existing deployments.");
+          }
+          if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result)) {
+            throw new Error("Cloudflare Worker versions inventory is invalid.");
+          }
+          if (!/^[0-9a-f]{64}$/.test(process.env.AUTH_SECRET_FINGERPRINT ?? "")) {
+            throw new Error("Current auth-secret fingerprint is invalid.");
+          }
+          const versions = versionsResponse.result;
+          if (versions.length === 0) process.exit(0);
+          if (versions.length !== 1) {
+            throw new Error("ULC production runtime configuration allows only zero versions or one exact reconcilable version.");
+          }
+          const version = versions[0];
+          const versionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
+          if (
+            !versionIdPattern.test(version?.id ?? "") ||
+            version?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
+            version?.annotations?.["workers/message"] !== expectedMessage
+          ) {
+            throw new Error("Existing ULC production version is not bound to the exact current runtime and auth secret and cannot be reconciled.");
+          }
+          process.stdout.write(version.id);
+          NODE
+          )"
+          if [ -n "$EXISTING_VERSION_ID" ]; then
+            echo "::add-mask::$EXISTING_VERSION_ID"
+            echo 'Exact existing undeployed version with current auth-secret HMAC found; this run will reconcile it read-only instead of uploading again.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          printf 'existing_id=%s\n' "$EXISTING_VERSION_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve exact dedicated production Hyperdrive
+        id: hyperdrive
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          test -n "$HYPERDRIVE_ID" || { echo 'Exact ULC production Hyperdrive could not be resolved.' >&2; exit 1; }
+          echo "::add-mask::$HYPERDRIVE_ID"
+          printf 'id=%s\n' "$HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Render exact private production version config
+        env:
+          HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeGeneratedProductionWranglerConfig } from "./tooling/generated-production-deploy-config.mjs";
+
+          await writeGeneratedProductionWranglerConfig({
+            appId: "ulc-linz",
+            hyperdriveId: process.env.HYPERDRIVE_ID,
+            baseURL: "https://app.ulc-linz.at",
+            entrypoint: "./worker/index.ts",
+            outputPath: "./apps/ulc-linz/wrangler.production.generated.json",
+          });
+          NODE
+
+      - name: Upload exact runtime configuration as one undeployed Worker version
+        id: upload
+        if: steps.preflight.outputs.existing_id == ''
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          temporary_directory="$(mktemp -d)"
+          trap 'rm -rf "$temporary_directory"' EXIT
+          secrets_file="$temporary_directory/secrets.json"
+          output_file="$temporary_directory/wrangler-output.json"
+
+          SECRETS_FILE="$secrets_file" node --input-type=module <<'NODE'
+          import { writeFile } from "node:fs/promises";
+          await writeFile(
+            process.env.SECRETS_FILE,
+            `${JSON.stringify({ BETTER_AUTH_SECRET: process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET })}\n`,
+            { encoding: "utf8", mode: 0o600, flag: "wx" },
+          );
+          NODE
+
+          pnpm exec wrangler versions upload \
+            --cwd ../ulc-linz \
+            --config wrangler.production.generated.json \
+            --name "$TARGET_WORKER" \
+            --secrets-file "$secrets_file" \
+            --strict \
+            --dry-run \
+            --experimental-provision=false \
+            --experimental-auto-create=false
+
+          WRANGLER_OUTPUT_FILE_PATH="$output_file" pnpm exec wrangler versions upload \
+            --cwd ../ulc-linz \
+            --config wrangler.production.generated.json \
+            --name "$TARGET_WORKER" \
+            --secrets-file "$secrets_file" \
+            --strict \
+            --tag "$TARGET_VERSION_TAG" \
+            --message "AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${AUTH_SECRET_FINGERPRINT}" \
+            --experimental-provision=false \
+            --experimental-auto-create=false
+
+          VERSION_ID="$(jq -r 'select(.type == "version-upload") | .version_id // empty' "$output_file" | tail -n 1)"
+          [[ "$VERSION_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
+            echo 'Wrangler did not return a canonical ULC production version ID.' >&2
+            exit 1
+          }
+          echo "::add-mask::$VERSION_ID"
+          printf 'id=%s\n' "$VERSION_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve exact configured production version
+        id: version
+        shell: bash
+        env:
+          EXISTING_VERSION_ID: ${{ steps.preflight.outputs.existing_id }}
+          UPLOADED_VERSION_ID: ${{ steps.upload.outputs.id }}
+        run: |
+          set -euo pipefail
+          VERSION_ID="${EXISTING_VERSION_ID:-$UPLOADED_VERSION_ID}"
+          [[ "$VERSION_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
+            echo 'No canonical ULC production version ID is available for final verification.' >&2
+            exit 1
+          }
+          echo "::add-mask::$VERSION_ID"
+          printf 'id=%s\n' "$VERSION_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Read back exact undeployed version bindings and closed state
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+          VERSION_ID: ${{ steps.version.outputs.id }}
+        run: |
+          set -euo pipefail
+          VERSION_PATH="$RUNNER_TEMP/m6-runtime-version-after.json"
+          VERSIONS_PATH="$RUNNER_TEMP/m6-runtime-versions-after.json"
+          WORKER_PATH="$RUNNER_TEMP/m6-runtime-worker-after.json"
+          DEPLOYMENTS_PATH="$RUNNER_TEMP/m6-runtime-deployments-after.json"
+
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/versions/$VERSION_ID" \
+            > "$VERSION_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" \
+            > "$VERSIONS_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER" \
+            > "$WORKER_PATH"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
+            > "$DEPLOYMENTS_PATH"
+
+          VERSION_PATH="$VERSION_PATH" VERSIONS_PATH="$VERSIONS_PATH" WORKER_PATH="$WORKER_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" HYPERDRIVE_ID="$HYPERDRIVE_ID" VERSION_ID="$VERSION_ID" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const versionResponse = JSON.parse(await readFile(process.env.VERSION_PATH, "utf8"));
+          const versionsResponse = JSON.parse(await readFile(process.env.VERSIONS_PATH, "utf8"));
+          const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
+          const deploymentsResponse = JSON.parse(await readFile(process.env.DEPLOYMENTS_PATH, "utf8"));
+
+          const bindings = versionResponse?.result?.resources?.bindings;
+          if (versionResponse?.success !== true || versionResponse?.result?.id !== process.env.VERSION_ID || !Array.isArray(bindings) || bindings.length !== 3) {
+            throw new Error("Production version detail is invalid or binding inventory is not exact.");
+          }
+          const base = bindings.find((entry) => entry?.name === "APPBASIS_BASE_URL");
+          const hyperdrive = bindings.find((entry) => entry?.name === "HYPERDRIVE");
+          const secret = bindings.find((entry) => entry?.name === "BETTER_AUTH_SECRET");
+          if (
+            base?.type !== "plain_text" || base?.text !== "https://app.ulc-linz.at" ||
+            hyperdrive?.type !== "hyperdrive" || hyperdrive?.id !== process.env.HYPERDRIVE_ID ||
+            secret?.type !== "secret_text"
+          ) {
+            throw new Error("Production version bindings do not match the approved runtime contract.");
+          }
+
+          if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result) || versionsResponse.result.length !== 1) {
+            throw new Error("ULC production Worker does not contain exactly one configured version.");
+          }
+          if (!/^[0-9a-f]{64}$/.test(process.env.AUTH_SECRET_FINGERPRINT ?? "")) {
+            throw new Error("Current auth-secret fingerprint is invalid during final verification.");
+          }
+          const listedVersion = versionsResponse.result[0];
+          const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
+          if (
+            listedVersion?.id !== process.env.VERSION_ID ||
+            listedVersion?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
+            listedVersion?.annotations?.["workers/message"] !== expectedMessage
+          ) {
+            throw new Error("ULC production Worker version provenance is not bound to the approved runtime and current auth secret.");
+          }
+
+          const worker = workerResponse?.result;
+          if (
+            workerResponse?.success !== true ||
+            worker?.name !== "appbasis-ulc-linz-production" ||
+            worker?.subdomain?.enabled !== false ||
+            worker?.subdomain?.previews_enabled !== false ||
+            worker?.deployed_on !== null ||
+            !Array.isArray(worker?.references?.domains) ||
+            worker.references.domains.length !== 0
+          ) {
+            throw new Error("Production Worker gained deployment or public ingress during runtime configuration.");
+          }
+          if (
+            deploymentsResponse?.success !== true ||
+            !Array.isArray(deploymentsResponse?.result?.deployments) ||
+            deploymentsResponse.result.deployments.length !== 0
+          ) {
+            throw new Error("Runtime configuration unexpectedly created a Worker deployment.");
+          }
+          NODE
+          echo 'ULC production runtime version is exact and bound to the current auth secret; Worker remains closed with zero deployments.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove generated production version config
+        if: always()
+        run: rm -f ./apps/ulc-linz/wrangler.production.generated.json
