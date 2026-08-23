@@ -9,8 +9,17 @@ const ROOT_FIELDS = Object.freeze(["resourceBindingEvidence", "loggingEvidence"]
 const LOGGING_FIELDS = Object.freeze([
   "schemaVersion", "application", "environment", "observedAt", "validUntilOrReviewAt",
   "inventorySource", "runtimeBindingId", "sinkBindingId", "sinkIdentitySource",
-  "structuredEventCaptureEnabled", "protectedOperationalAccess", "retentionMonths",
-  "retentionSource", "sinkInventoryComplete", "publicReadEndpointPresent",
+  "structuredEventCaptureEnabled", "protectedOperationalAccess", "retentionMode",
+  "retentionEvidence", "sinkInventoryComplete", "publicReadEndpointPresent",
+]);
+const PROVIDER_NATIVE_RETENTION_FIELDS = Object.freeze([
+  "source", "retentionValue", "retentionUnit", "calendarSemanticsVerified",
+  "noEarlyDeleteVerified", "noUncontrolledOverRetentionVerified",
+]);
+const CONTROLLED_RETENTION_FIELDS = Object.freeze([
+  "source", "providerMinimumRetentionVerified", "cutoffSemantics",
+  "cleanupExecutionBound", "cleanupLastSucceededAt", "cleanupResultVerified",
+  "boundaryEventPreserved", "clientCutoffOverridePresent", "enforcementContractDigest",
 ]);
 const CONTRACT_FILES = Object.freeze([
   ["apps/ulc-linz/worker/app.ts", new URL("../apps/ulc-linz/worker/app.ts", import.meta.url), "3acdcd47bf696c23334c15a11fe80c70368d608c"],
@@ -28,10 +37,9 @@ export function deriveUlcLinzM5FAuditSecurityLoggingEvidence(input, { now = new 
     if (
       logging.schemaVersion !== 1 || logging.application !== "ulc-linz" ||
       logging.environment !== "production" || logging.inventorySource !== "provider-api" ||
-      logging.sinkIdentitySource !== "provider-api" || logging.retentionSource !== "provider-api" ||
+      logging.sinkIdentitySource !== "provider-api" ||
       logging.structuredEventCaptureEnabled !== true || logging.protectedOperationalAccess !== true ||
-      logging.retentionMonths !== 12 || logging.sinkInventoryComplete !== true ||
-      logging.publicReadEndpointPresent !== false
+      logging.sinkInventoryComplete !== true || logging.publicReadEndpointPresent !== false
     ) return EMPTY;
     if (
       logging.observedAt !== root.resourceBindingEvidence.observedAt ||
@@ -40,12 +48,45 @@ export function deriveUlcLinzM5FAuditSecurityLoggingEvidence(input, { now = new 
     ) return EMPTY;
     opaque(logging.runtimeBindingId);
     opaque(logging.sinkBindingId);
+    if (!retentionVerified(logging.retentionMode, logging.retentionEvidence, nowDate)) return EMPTY;
     const observedAt = timestamp(logging.observedAt);
     if (!observedAt || nowDate < observedAt || nowDate.getTime() - observedAt.getTime() >= MAX_AGE_MS) return EMPTY;
     return VERIFIED;
   } catch {
     return EMPTY;
   }
+}
+
+function retentionVerified(mode, evidence, nowDate) {
+  if (mode === "provider-native-calendar") {
+    const value = exactRecord(evidence, PROVIDER_NATIVE_RETENTION_FIELDS);
+    return (
+      value.source === "provider-api-and-authoritative-contract" &&
+      value.retentionValue === 12 &&
+      value.retentionUnit === "calendar-months" &&
+      value.calendarSemanticsVerified === true &&
+      value.noEarlyDeleteVerified === true &&
+      value.noUncontrolledOverRetentionVerified === true
+    );
+  }
+  if (mode === "controlled-calendar-enforcement") {
+    const value = exactRecord(evidence, CONTROLLED_RETENTION_FIELDS);
+    const cleanupLastSucceededAt = timestamp(value.cleanupLastSucceededAt);
+    opaqueDigest(value.enforcementContractDigest);
+    return (
+      value.source === "controlled-calendar-enforcement" &&
+      value.providerMinimumRetentionVerified === true &&
+      value.cutoffSemantics === "created-at-strictly-older-than-12-calendar-months" &&
+      value.cleanupExecutionBound === true &&
+      cleanupLastSucceededAt !== null &&
+      cleanupLastSucceededAt <= nowDate &&
+      nowDate.getTime() - cleanupLastSucceededAt.getTime() < MAX_AGE_MS &&
+      value.cleanupResultVerified === true &&
+      value.boundaryEventPreserved === true &&
+      value.clientCutoffOverridePresent === false
+    );
+  }
+  return false;
 }
 
 function assertCurrentContract() {
@@ -71,6 +112,9 @@ function exactRecord(value, fields) {
 
 function opaque(value) {
   if (typeof value !== "string" || value.length < 1 || value.length > 200 || value !== value.trim() || !/^[A-Za-z0-9._:-]+$/.test(value)) throw new Error("invalid M5-F identifier");
+}
+function opaqueDigest(value) {
+  if (typeof value !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value)) throw new Error("invalid M5-F enforcement digest");
 }
 function timestamp(value) {
   if (typeof value !== "string") return null;
