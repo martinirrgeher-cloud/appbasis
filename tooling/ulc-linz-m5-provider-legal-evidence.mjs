@@ -26,7 +26,7 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
   { fetchImpl = fetch } = {},
 ) {
   if (cloudflareAccountBound !== true || neonProjectBound !== true) {
-    throw new Error("ULC M5-G authenticated provider account binding is incomplete.");
+    throw new Error("ULC M5-G authenticated provider resource binding is incomplete.");
   }
   if (typeof fetchImpl !== "function") {
     throw new Error("ULC M5-G legal evidence fetch implementation is invalid.");
@@ -56,7 +56,7 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
   requireAll(text.cloudflareGdpr, [
     "incorporated by reference into our Self-Serve Subscription Agreement",
     "standard DPA",
-  ], "Cloudflare GDPR contract binding");
+  ], "Cloudflare GDPR contract baseline");
   requireAll(text.cloudflareSubprocessors, [
     "Last Updated: October 1, 2025",
     "Cloudflare Developer Platform",
@@ -98,17 +98,12 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
   const neonScope = ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES["neon-databricks"];
   const common = { observedAt, validUntilOrReviewAt };
 
+  // Public provider terms prove the applicable contractual baseline only.
+  // They do not prove that the authenticated provider account is legally held
+  // by the ULC/Verein operator. Account-specific DPA evidence therefore remains
+  // absent until an independent operator-to-provider-account binding is supplied.
   return Object.freeze([
     legal("cloudflare", "dpa", SOURCES.cloudflareDpa, "6.4 / 2026-04-03", cloudflareScope, common),
-    legal(
-      "cloudflare",
-      "dpa-account-binding",
-      SOURCES.cloudflareGdpr,
-      "current-self-serve-or-enterprise-incorporation",
-      cloudflareScope,
-      common,
-      { accountSpecific: true, publicBaseline: false },
-    ),
     legal(
       "cloudflare",
       "security",
@@ -141,15 +136,6 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
       "Databricks DPA v3",
       neonScope,
       common,
-    ),
-    legal(
-      "neon-databricks",
-      "dpa-account-binding",
-      SOURCES.neonSchedule,
-      "2026-08-05 schedule + current MCSA",
-      neonScope,
-      common,
-      { accountSpecific: true, publicBaseline: false },
     ),
     legal(
       "neon-databricks",
