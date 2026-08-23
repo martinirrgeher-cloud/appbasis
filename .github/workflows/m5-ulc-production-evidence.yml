@@ -219,8 +219,9 @@ jobs:
         run: |
           set -euo pipefail
           node ./tooling/ulc-linz-m5-production-evidence-observer.mjs "$WORK/restore-observation.json" > "$WORK/m5-base-bundle.json"
-          node ./tooling/ulc-linz-m5-production-f-evidence.mjs "$WORK/m5-base-bundle.json" > "$WORK/m5-bundle.json"
-          rm -f -- "$WORK/m5-base-bundle.json"
+          node ./tooling/ulc-linz-m5-production-g-evidence.mjs "$WORK/m5-base-bundle.json" > "$WORK/m5-g-bundle.json"
+          node ./tooling/ulc-linz-m5-production-f-evidence.mjs "$WORK/m5-g-bundle.json" > "$WORK/m5-bundle.json"
+          rm -f -- "$WORK/m5-base-bundle.json" "$WORK/m5-g-bundle.json"
 
       - name: Require canonical M5 Security and Privacy Ready 12 of 12
         shell: bash
