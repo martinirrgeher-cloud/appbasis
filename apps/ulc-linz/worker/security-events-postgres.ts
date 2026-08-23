@@ -37,16 +37,16 @@ WHERE retained_until < $1::timestamptz
 export function createPostgresUlcLinzSecurityEventLogger(
   client: UlcLinzSecurityEventSqlClient,
 ): BufferedUlcLinzSecurityEventLogger {
-  let pending: Array<Promise<boolean>> = [];
+  let pending: UlcLinzSecurityEvent[] = [];
   return Object.freeze({
     record(event: UlcLinzSecurityEvent): void {
-      pending.push(persistEvent(client, event));
+      pending.push(event);
     },
     async flush(): Promise<void> {
       const batch = pending;
       pending = [];
       if (batch.length === 0) return;
-      const results = await Promise.all(batch);
+      const results = await Promise.all(batch.map((event) => persistEvent(client, event)));
       if (results.some((result) => result !== true)) {
         throw new Error("ULC Linz security-event persistence failed.");
       }
