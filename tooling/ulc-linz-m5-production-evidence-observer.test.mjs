@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { collectUlcLinzM5ProductionEvidenceBundle } from "./ulc-linz-m5-production-evidence-observer.mjs";
@@ -6,6 +7,13 @@ import { evaluateUlcLinzM5ProductionEvidenceBundle } from "./ulc-linz-m5-product
 
 const NOW = new Date("2026-08-23T14:10:00.000Z");
 const GITHUB_SHA = "a".repeat(40);
+const INVENTORY = JSON.parse(
+  await readFile(
+    new URL("../apps/ulc-linz/privacy/m5-data-inventory.json", import.meta.url),
+    "utf8",
+  ),
+);
+const PRODUCTION_TABLES = INVENTORY.persistentTables.map((entry) => entry.id);
 
 function response(value) {
   return { ok: true, async json() { return structuredClone(value); } };
@@ -78,7 +86,7 @@ function restoreObservation() {
   };
 }
 
-function collect(options = {}) {
+function collect(options = {}, inputOverrides = {}) {
   return collectUlcLinzM5ProductionEvidenceBundle(
     {
       repositoryRoot: process.cwd(),
@@ -86,18 +94,27 @@ function collect(options = {}) {
       cloudflareApiToken: "provider-token-value",
       neonApiKey: "neon-api-key-value",
       neonOrgId: "org-1",
+      productionDatabaseUrl:
+        "postgresql://readonly:password@database.example.test/appbasis?sslmode=require",
       githubSha: GITHUB_SHA,
       restoreObservation: restoreObservation(),
+      ...inputOverrides,
     },
-    { fetchImpl: providerFetch, now: NOW, ...options },
+    {
+      fetchImpl: providerFetch,
+      now: NOW,
+      readProductionTables: async () => PRODUCTION_TABLES,
+      ...options,
+    },
   );
 }
 
-test("observer derives only authoritative provider recovery and control-plane owner evidence", async () => {
+test("observer derives authoritative provider lifecycle recovery and control-plane owner evidence", async () => {
   const bundle = await collect();
   assert.deepEqual(Object.keys(bundle.ownerInputs).sort(), [
     "backupRestoreEvidenceInput",
     "controlPlaneEvidenceInput",
+    "lifecycleActivationEvidenceInput",
     "providerBoundEvidenceInput",
   ]);
 
@@ -110,18 +127,19 @@ test("observer derives only authoritative provider recovery and control-plane ow
   assert.equal(result.securityPrivacyReady, false);
   assert.equal(result.productionReleaseAuthorized, false);
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
-  assert.equal(result.criteria.find((criterion) => criterion.id === "dataRegion")?.status, "verified");
-  assert.equal(
-    result.criteria.find((criterion) => criterion.id === "privilegedControlPlaneIsolation")?.status,
-    "verified",
-  );
+  for (const id of [
+    "dataRegion",
+    "deletionConcept",
+    "retention",
+    "privilegedControlPlaneIsolation",
+  ]) {
+    assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "verified");
+  }
   for (const id of [
     "auditSecurityLogging",
     "dpa",
     "encryption",
     "subprocessors",
-    "deletionConcept",
-    "retention",
     "dataExport",
     "highPrivacyProfile",
   ]) {
@@ -140,36 +158,14 @@ test("observer fails closed on public ingress or stale restore evidence", async 
     return result;
   };
   await assert.rejects(
-    () => collectUlcLinzM5ProductionEvidenceBundle(
-      {
-        repositoryRoot: process.cwd(),
-        cloudflareAccountId: "account-1",
-        cloudflareApiToken: "provider-token-value",
-        neonApiKey: "neon-api-key-value",
-        neonOrgId: "org-1",
-        githubSha: GITHUB_SHA,
-        restoreObservation: restoreObservation(),
-      },
-      { fetchImpl: publicFetch, now: NOW },
-    ),
+    () => collect({ fetchImpl: publicFetch }),
     /public ingress is not closed/,
   );
 
   const stale = restoreObservation();
   stale.restoreTestedAt = "2026-08-23T13:00:00.000Z";
   await assert.rejects(
-    () => collectUlcLinzM5ProductionEvidenceBundle(
-      {
-        repositoryRoot: process.cwd(),
-        cloudflareAccountId: "account-1",
-        cloudflareApiToken: "provider-token-value",
-        neonApiKey: "neon-api-key-value",
-        neonOrgId: "org-1",
-        githubSha: GITHUB_SHA,
-        restoreObservation: stale,
-      },
-      { fetchImpl: providerFetch, now: NOW },
-    ),
+    () => collect({}, { restoreObservation: stale }),
     /outside the M5 evidence window/,
   );
 });
@@ -185,18 +181,7 @@ test("observer binds Cloudflare deployment to the current exact main SHA", async
     return result;
   };
   await assert.rejects(
-    () => collectUlcLinzM5ProductionEvidenceBundle(
-      {
-        repositoryRoot: process.cwd(),
-        cloudflareAccountId: "account-1",
-        cloudflareApiToken: "provider-token-value",
-        neonApiKey: "neon-api-key-value",
-        neonOrgId: "org-1",
-        githubSha: GITHUB_SHA,
-        restoreObservation: restoreObservation(),
-      },
-      { fetchImpl: driftFetch, now: NOW },
-    ),
+    () => collect({ fetchImpl: driftFetch }),
     /not bound to the current main runtime/,
   );
 });
@@ -215,18 +200,7 @@ test("observer requires a distinct dedicated security-log Hyperdrive binding", a
     return result;
   };
   await assert.rejects(
-    () => collectUlcLinzM5ProductionEvidenceBundle(
-      {
-        repositoryRoot: process.cwd(),
-        cloudflareAccountId: "account-1",
-        cloudflareApiToken: "provider-token-value",
-        neonApiKey: "neon-api-key-value",
-        neonOrgId: "org-1",
-        githubSha: GITHUB_SHA,
-        restoreObservation: restoreObservation(),
-      },
-      { fetchImpl: sharedBindingFetch, now: NOW },
-    ),
+    () => collect({ fetchImpl: sharedBindingFetch }),
     /bindings drifted from the approved runtime contract/,
   );
 });
@@ -242,18 +216,18 @@ test("observer refuses to claim the current five-flow scope when Cloudflare tele
     return result;
   };
   await assert.rejects(
-    () => collectUlcLinzM5ProductionEvidenceBundle(
-      {
-        repositoryRoot: process.cwd(),
-        cloudflareAccountId: "account-1",
-        cloudflareApiToken: "provider-token-value",
-        neonApiKey: "neon-api-key-value",
-        neonOrgId: "org-1",
-        githubSha: GITHUB_SHA,
-        restoreObservation: restoreObservation(),
-      },
-      { fetchImpl: telemetryFetch, now: NOW },
-    ),
+    () => collect({ fetchImpl: telemetryFetch }),
     /production resource binding evidence is not valid/,
+  );
+});
+
+test("observer refuses lifecycle activation when the real production table inventory drifts", async () => {
+  await assert.rejects(
+    () => collect({ readProductionTables: async () => PRODUCTION_TABLES.slice(1) }),
+    /lifecycle persistence inventory is not exact/,
+  );
+  await assert.rejects(
+    () => collect({ readProductionTables: async () => [...PRODUCTION_TABLES, "unexpected_personal_data"] }),
+    /lifecycle persistence inventory is not exact/,
   );
 });
