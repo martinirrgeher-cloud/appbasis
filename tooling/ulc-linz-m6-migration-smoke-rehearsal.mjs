@@ -36,6 +36,7 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
   "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
   "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
+  "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
 ]);
 const EXPECTED_PUBLIC_ROUTES = Object.freeze([
   Object.freeze({ method: "GET", path: "/api/health" }),
