@@ -48,6 +48,7 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
     const logger = createPostgresUlcLinzSecurityEventLogger(client);
 
     logger.record(identityDeniedEvent);
+    expect(calls).toHaveLength(0);
     await logger.flush();
 
     expect(calls).toHaveLength(1);
@@ -83,6 +84,7 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
     });
 
     logger.record(authorizationDeniedEvent);
+    expect(calls).toHaveLength(0);
     await logger.flush();
 
     expect(calls).toHaveLength(1);
@@ -106,16 +108,20 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
   });
 
   it("buffers sink failures until flush without throwing from record", async () => {
+    let calls = 0;
     const logger = createPostgresUlcLinzSecurityEventLogger({
       async unsafe() {
+        calls += 1;
         throw new Error("postgresql://secret-host/private");
       },
     });
 
     expect(() => logger.record(identityDeniedEvent)).not.toThrow();
+    expect(calls).toBe(0);
     await expect(logger.flush()).rejects.toThrow(
       "ULC Linz security-event persistence failed.",
     );
+    expect(calls).toBe(1);
   });
 
   it("flushes an empty buffer without touching PostgreSQL", async () => {
