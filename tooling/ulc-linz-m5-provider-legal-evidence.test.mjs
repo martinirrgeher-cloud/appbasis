@@ -8,21 +8,21 @@ const VALID_UNTIL = "2026-08-23T22:15:00.000Z";
 
 const SOURCE_TEXT = Object.freeze({
   "www.cloudflare.com/cloudflare-customer-dpa/":
-    "Version 6.4, effective April 3, 2026. This DPA forms part of the Main Agreement.",
+    "Version 6.4, effective April 3, 2026. This DPA forms part of the Main Agreement and establishes the reviewed data-processing baseline for Cloudflare customer services.",
   "www.cloudflare.com/trust-hub/gdpr/":
-    "Our standard DPA is incorporated by reference into our Self-Serve Subscription Agreement.",
+    "Our standard DPA is incorporated by reference into our Self-Serve Subscription Agreement and is available to customers as part of the current GDPR contractual framework.",
   "www.cloudflare.com/gdpr/subprocessors/cloudflare-services/":
-    "Last Updated: October 1, 2025 Cloudflare Developer Platform Google LLC Oracle America, Inc.",
+    "Last Updated: October 1, 2025 Cloudflare Developer Platform Google LLC Oracle America, Inc. This fixture represents the reviewed official service-specific subprocessor baseline.",
   "developers.cloudflare.com/hyperdrive/reference/supported-databases-and-features/":
-    "Hyperdrive does not support insecure plain text connections. TLS is required. require is the default.",
+    "Hyperdrive does not support insecure plain text connections. TLS is required. require is the default. This fixture represents the reviewed secure-transport documentation baseline.",
   "neon.com/platform-terms":
     "Last Updated: August 5, 2026. By accessing the Platform Services, Customer agrees to the terms of this Schedule. This Schedule is subject to the terms of the then-current Databricks Master Cloud Services Agreement. Grafana Labs.",
   "www.databricks.com/legal/mcsa":
-    "The terms of the DPA are incorporated by reference. PayGo Customer’s continued use constitutes consent.",
+    "The terms of the DPA are incorporated by reference. PayGo Customer’s continued use constitutes consent. This fixture represents the reviewed current Databricks contractual chain for Neon Platform Services.",
   "www.databricks.com/legal/dpa":
-    "DATA PROCESSING ADDENDUM forms an integral part of the Databricks Master Cloud Services Agreement.",
+    "DATA PROCESSING ADDENDUM forms an integral part of the Databricks Master Cloud Services Agreement. This fixture represents the reviewed current public DPA baseline.",
   "www.databricks.com/legal/databricks-subprocessors":
-    "Last Updated: June 9, 2026 Amazon Web Services",
+    "Last Updated: June 9, 2026 Amazon Web Services. This fixture represents the reviewed current Databricks subprocessor baseline used together with the Neon Product Specific Schedule.",
   "neon.com/security":
     "Neon’s Security & Compliance. We offer Data Processing Agreements (DPA). Neon enforces TLS 1.2+ encryption. All stored data is encrypted using AES-256.",
 });
@@ -96,7 +96,9 @@ test("fails closed on any reviewed official source drift", async () => {
     if (String(url).includes("cloudflare-customer-dpa")) {
       return {
         ...response,
-        async text() { return "<html><body>Version 7.0 changed contract</body></html>"; },
+        async text() {
+          return "<html><body>Version 7.0 changed contract. This deliberately long drift fixture is otherwise structurally valid but omits every reviewed Version 6.4 and April 3, 2026 contract anchor.</body></html>";
+        },
       };
     }
     return response;
