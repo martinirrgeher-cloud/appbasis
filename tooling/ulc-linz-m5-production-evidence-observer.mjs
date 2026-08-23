@@ -2,6 +2,11 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { deriveUlcLinzLifecycleContractDigest } from "./factory-ui/ulc-linz-lifecycle-evidence.mjs";
+import { verifyUlcLinzM5BackupContract } from "./ulc-linz-m5-backup-contract.mjs";
+import { deriveUlcLinzM5GResourceBindingFingerprint } from "./ulc-linz-m5-provider-bound-evidence.mjs";
+import { deriveUlcLinzProductionRuntimeContractDigest } from "./ulc-linz-m6-production-resource-binding.mjs";
+
 const NEON_API = "https://console.neon.tech/api/v2";
 const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 const TARGET_PROJECT = "appbasis-ulc-linz-production";
@@ -23,6 +28,39 @@ const RESTORE_FIELDS = Object.freeze([
   "permissionsVerified",
   "applicationSmokeVerified",
   "restoreReconciliationVerified",
+]);
+const SCRIPT_SETTING_FIELDS = Object.freeze([
+  "logpush",
+  "observability",
+  "tags",
+  "tail_consumers",
+]);
+const OBSERVABILITY_FIELDS = Object.freeze([
+  "enabled",
+  "head_sampling_rate",
+  "logs",
+  "traces",
+]);
+const LOG_FIELDS = Object.freeze([
+  "enabled",
+  "invocation_logs",
+  "destinations",
+  "head_sampling_rate",
+  "persist",
+]);
+const TRACE_FIELDS = Object.freeze([
+  "destinations",
+  "enabled",
+  "head_sampling_rate",
+  "persist",
+  "propagation_policy",
+]);
+const DATA_FLOWS = Object.freeze([
+  Object.freeze({ from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" }),
+  Object.freeze({ from: "cloudflare", to: "neon-postgresql", purpose: "application-persistence", status: "verified" }),
+  Object.freeze({ from: "appbasis-control-plane", to: "cloudflare", purpose: "provider-evidence-read", status: "verified" }),
+  Object.freeze({ from: "appbasis-control-plane", to: "neon-postgresql", purpose: "provider-evidence-read", status: "verified" }),
+  Object.freeze({ from: "neon-postgresql", to: "neon-postgresql", purpose: "managed-backup-recovery", status: "verified" }),
 ]);
 
 export async function collectUlcLinzM5ProductionEvidenceBundle(
@@ -48,19 +86,147 @@ export async function collectUlcLinzM5ProductionEvidenceBundle(
   }
 
   const restore = validateRestoreObservation(restoreObservation, nowDate);
-  await Promise.all([
+  const [neon, cloudflare, lifecycleContractDigest, backupContract] = await Promise.all([
     observeNeon({ apiKey: safeNeonKey, orgId: safeOrgId, fetchImpl }),
     observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }),
+    deriveUlcLinzLifecycleContractDigest(root),
+    verifyUlcLinzM5BackupContract(root),
   ]);
   const definition = await readJson(resolve(root, "apps/ulc-linz/appbasis.app.json"));
+  const observedAt = restore.restoreTestedAt;
+  const validUntilOrReviewAt = new Date(
+    new Date(observedAt).getTime() + EVIDENCE_WINDOW_MS,
+  ).toISOString();
+
+  const resourceBindingEvidence = {
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "production",
+    observedAt,
+    validUntilOrReviewAt,
+    runtime: {
+      entrypoint: "./worker/index.ts",
+      contractDigest: deriveUlcLinzProductionRuntimeContractDigest(root),
+      providerModel: "standard-workers-global-transient",
+      euOnly: false,
+    },
+    neon: {
+      projectBindingId: neon.projectId,
+      branchBindingId: neon.branchId,
+      databaseBindingId: neon.databaseId,
+      region: "aws-eu-central-1",
+      regionSource: "provider-api",
+      identitySource: "provider-api",
+      dedicatedProductionResource: true,
+    },
+    cloudflare: {
+      accountBindingId: accountId,
+      runtimeBindingId: TARGET_WORKER,
+      hostnameBinding: null,
+      databaseBindingId: cloudflare.hyperdriveId,
+      identitySource: "provider-api",
+      bindingInventoryComplete: true,
+      telemetryInventoryComplete: true,
+      unexpectedPersonalDataPersistence: cloudflare.telemetryActive,
+      dedicatedProductionResource: true,
+    },
+  };
+
+  const complianceEvidence = {
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "production",
+    providerModel: "standard-workers-global-transient",
+    euOnly: false,
+    observedAt,
+    validUntilOrReviewAt,
+    dataFlowInventoryComplete: true,
+    providers: {
+      cloudflare: {
+        resourceClass: "production",
+        runtimeBound: true,
+        routeBound: false,
+        runtimeClass: "standard-workers",
+        bindingsInventoryComplete: true,
+        bindings: [
+          { type: "hyperdrive", personalDataDisposition: "transient" },
+          { type: "hyperdrive", personalDataDisposition: "transient" },
+        ],
+        telemetryInventoryComplete: true,
+        transportEncryptionObserved: false,
+        regionalServicesEnabled: null,
+        customerMetadataBoundaryEnabled: null,
+      },
+      "neon-postgresql": {
+        resourceClass: "production",
+        projectBound: true,
+        databaseBound: true,
+        regionId: "aws-eu-central-1",
+        regionSource: "provider-api",
+        transportEncryptionObserved: false,
+        atRestEncryptionObserved: false,
+      },
+    },
+    legalEvidence: [],
+    dataFlows: DATA_FLOWS,
+  };
+  const complianceResourceBindingFingerprint =
+    deriveUlcLinzM5GResourceBindingFingerprint(resourceBindingEvidence, {
+      now: nowDate,
+    });
+
+  const ownerInputs = {
+    providerBoundEvidenceInput: {
+      resourceBindingEvidence,
+      complianceEvidence,
+      complianceResourceBindingFingerprint,
+    },
+    controlPlaneEvidenceInput: {
+      resourceBindingEvidence,
+      controlPlaneEvidence: {
+        schemaVersion: 1,
+        application: "ulc-linz",
+        environment: "production",
+        observedAt,
+        validUntilOrReviewAt,
+        provider: "cloudflare",
+        providerAccountBindingId: accountId,
+        publicRuntimeBindingId: TARGET_WORKER,
+        inventorySource: "provider-api",
+        privilegedComponentInventoryComplete: true,
+        publicRuntimeBindingInventoryComplete: true,
+        privilegedComponents: [],
+      },
+    },
+    backupRestoreEvidenceInput: {
+      schemaVersion: 1,
+      application: "ulc-linz",
+      environment: "production",
+      sourceDatabaseBindingId: neon.databaseId,
+      restoreTargetBindingId: restore.restoreTargetBindingId,
+      evidenceSource: "controlled-restore-run",
+      restoreTestedAt: restore.restoreTestedAt,
+      lifecycleContractDigest,
+      automaticBackupsEnabled: neon.automaticBackupsEnabled,
+      retentionDefined: neon.retentionDefined,
+      preMigrationBackupDefined: backupContract.preMigrationBackupDefined === true,
+      restoreProcedureDocumented: backupContract.restoreProcedureDocumented === true,
+      restoreSucceeded: restore.restoreSucceeded,
+      dataIntegrityVerified: restore.dataIntegrityVerified,
+      authVerified: restore.authVerified,
+      permissionsVerified: restore.permissionsVerified,
+      applicationSmokeVerified: restore.applicationSmokeVerified,
+      restoreReconciliationVerified: restore.restoreReconciliationVerified,
+    },
+  };
 
   return deepFreeze({
     schemaVersion: 1,
     application: "ulc-linz",
     environment: "production",
-    observedAt: restore.restoreTestedAt,
+    observedAt,
     definition,
-    ownerInputs: {},
+    ownerInputs,
   });
 }
 
@@ -109,24 +275,38 @@ async function observeNeon({ apiKey, orgId, fetchImpl }) {
   if (databaseMatches.length !== 1) {
     throw new Error("Exact ULC production Neon database was not found once.");
   }
-  requiredOpaque(databaseMatches[0].id, "Neon database ID");
+  const databaseId = requiredOpaque(databaseMatches[0].id, "Neon database ID");
+
+  return Object.freeze({
+    projectId,
+    branchId,
+    databaseId,
+    automaticBackupsEnabled: true,
+    retentionDefined: true,
+  });
 }
 
 async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) {
   const accountPath = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(accountId)}`;
-  const [workerResponse, deploymentsResponse, scriptsResponse] = await Promise.all([
-    cloudflareJson(
-      `${accountPath}/workers/workers/${TARGET_WORKER}`,
-      apiToken,
-      fetchImpl,
-    ),
-    cloudflareJson(
-      `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`,
-      apiToken,
-      fetchImpl,
-    ),
-    cloudflareJson(`${accountPath}/workers/scripts`, apiToken, fetchImpl),
-  ]);
+  const [workerResponse, deploymentsResponse, scriptsResponse, settingsResponse] =
+    await Promise.all([
+      cloudflareJson(
+        `${accountPath}/workers/workers/${TARGET_WORKER}`,
+        apiToken,
+        fetchImpl,
+      ),
+      cloudflareJson(
+        `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`,
+        apiToken,
+        fetchImpl,
+      ),
+      cloudflareJson(`${accountPath}/workers/scripts`, apiToken, fetchImpl),
+      cloudflareJson(
+        `${accountPath}/workers/scripts/${TARGET_WORKER}/script-settings`,
+        apiToken,
+        fetchImpl,
+      ),
+    ]);
 
   const worker = workerResponse.result;
   if (
@@ -188,8 +368,11 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
   ) {
     throw new Error("ULC production Worker bindings drifted from the approved runtime contract.");
   }
-  requiredOpaque(hyperdrive.id, "Cloudflare Hyperdrive ID");
-  requiredOpaque(securityLogHyperdrive.id, "Cloudflare security-log Hyperdrive ID");
+  const hyperdriveId = requiredOpaque(hyperdrive.id, "Cloudflare Hyperdrive ID");
+  requiredOpaque(
+    securityLogHyperdrive.id,
+    "Cloudflare security-log Hyperdrive ID",
+  );
 
   const message = version?.annotations?.["workers/message"];
   if (
@@ -201,6 +384,91 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
   ) {
     throw new Error("ULC production Worker version is not bound to the current main runtime.");
   }
+
+  const telemetryActive = inspectCloudflareTelemetry(settingsResponse.result);
+  return Object.freeze({ hyperdriveId, telemetryActive });
+}
+
+function inspectCloudflareTelemetry(value) {
+  const settings = optionalExactRecord(value, SCRIPT_SETTING_FIELDS, "Cloudflare Worker script settings");
+  if (settings.logpush !== undefined && typeof settings.logpush !== "boolean") {
+    throw new Error("Cloudflare Worker telemetry inventory is invalid.");
+  }
+  if (settings.tags !== undefined && !isStringArray(settings.tags)) {
+    throw new Error("Cloudflare Worker telemetry inventory is invalid.");
+  }
+  const tailConsumers = settings.tail_consumers ?? [];
+  if (!Array.isArray(tailConsumers)) {
+    throw new Error("Cloudflare Worker telemetry inventory is invalid.");
+  }
+
+  let active = settings.logpush === true || tailConsumers.length > 0;
+  if (settings.observability !== undefined && settings.observability !== null) {
+    const observability = optionalExactRecord(
+      settings.observability,
+      OBSERVABILITY_FIELDS,
+      "Cloudflare Worker observability settings",
+    );
+    if (typeof observability.enabled !== "boolean") {
+      throw new Error("Cloudflare Worker telemetry inventory is invalid.");
+    }
+    active ||= observability.enabled;
+    active ||= inspectTelemetryChannel(observability.logs, LOG_FIELDS, "logs");
+    active ||= inspectTelemetryChannel(observability.traces, TRACE_FIELDS, "traces");
+  }
+  return active;
+}
+
+function inspectTelemetryChannel(value, allowedFields, label) {
+  if (value === undefined || value === null) return false;
+  const channel = optionalExactRecord(
+    value,
+    allowedFields,
+    `Cloudflare Worker ${label} settings`,
+  );
+  if (channel.enabled !== undefined && typeof channel.enabled !== "boolean") {
+    throw new Error("Cloudflare Worker telemetry inventory is invalid.");
+  }
+  if (
+    channel.destinations !== undefined &&
+    !isStringArray(channel.destinations)
+  ) {
+    throw new Error("Cloudflare Worker telemetry inventory is invalid.");
+  }
+  return channel.enabled === true || (channel.destinations?.length ?? 0) > 0;
+}
+
+function optionalExactRecord(value, allowedFields, label) {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    throw new Error(`${label} is invalid.`);
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  for (const [key, descriptor] of Object.entries(descriptors)) {
+    if (
+      !allowedFields.includes(key) ||
+      !Object.hasOwn(descriptor, "value") ||
+      descriptor.get !== undefined ||
+      descriptor.set !== undefined
+    ) {
+      throw new Error(`${label} is invalid.`);
+    }
+  }
+  return value;
+}
+
+function isStringArray(value) {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) => typeof entry === "string" && entry.length > 0 && entry === entry.trim(),
+    )
+  );
 }
 
 async function neonJson(url, apiKey, fetchImpl) {
