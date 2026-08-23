@@ -4,6 +4,8 @@ import test from "node:test";
 import { completeUlcLinzM5ProductionGBundle } from "./ulc-linz-m5-production-g-evidence.mjs";
 import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evidence.mjs";
 
+const SHA = "a".repeat(40);
+const VERSION = "12345678-1234-4123-8123-123456789abc";
 const OBSERVED_AT = "2026-08-23T21:55:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:10:00.000Z";
 const PRODUCTION_URL =
@@ -107,23 +109,54 @@ function response(value) {
   return { ok: true, async json() { return structuredClone(value); } };
 }
 
+function hyperdrive(id, user) {
+  return {
+    success: true,
+    result: {
+      id,
+      origin: {
+        scheme: "postgresql",
+        host: "ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech",
+        port: 5432,
+        database: "neondb",
+        user,
+      },
+      caching: { disabled: true },
+    },
+  };
+}
+
 function providerFetch(url) {
   const value = String(url);
-  if (value.endsWith("/accounts/account-1/hyperdrive/configs/hyperdrive-main")) {
+  if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
+    return Promise.resolve(response({
+      success: true,
+      result: { deployments: [{ versions: [{ version_id: VERSION, percentage: 100 }] }] },
+    }));
+  }
+  if (value.endsWith(`/workers/scripts/appbasis-ulc-linz-production/versions/${VERSION}`)) {
     return Promise.resolve(response({
       success: true,
       result: {
-        id: "hyperdrive-main",
-        origin: {
-          scheme: "postgresql",
-          host: "ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech",
-          port: 5432,
-          database: "neondb",
-          user: "app_owner",
+        id: VERSION,
+        annotations: {
+          "workers/tag": "ulc-linz-production-runtime-v1",
+          "workers/message": `AppBasis ulc-linz production runtime ${SHA} auth-hmac:${"b".repeat(64)}`,
         },
-        caching: { disabled: true },
+        resources: {
+          bindings: [
+            { name: "HYPERDRIVE", type: "hyperdrive", id: "hyperdrive-main" },
+            { name: "SECURITY_LOG_HYPERDRIVE", type: "hyperdrive", id: "hyperdrive-security" },
+          ],
+        },
       },
     }));
+  }
+  if (value.endsWith("/accounts/account-1/hyperdrive/configs/hyperdrive-main")) {
+    return Promise.resolve(response(hyperdrive("hyperdrive-main", "app_owner")));
+  }
+  if (value.endsWith("/accounts/account-1/hyperdrive/configs/hyperdrive-security")) {
+    return Promise.resolve(response(hyperdrive("hyperdrive-security", "ulc_security_ingest_login")));
   }
   if (value.endsWith("/projects/project-1")) {
     return Promise.resolve(response({
@@ -183,6 +216,7 @@ function inputs(overrides = {}) {
     cloudflareApiToken: "cf-token",
     neonApiKey: "neon-key",
     productionDatabaseUrl: PRODUCTION_URL,
+    githubSha: SHA,
     ...overrides,
   };
 }
@@ -200,7 +234,7 @@ async function complete({ value = bundle(), input = inputs(), fetchImpl = provid
   });
 }
 
-test("completes G only from exact live provider binding, secure transport, legal evidence and the real security-log flow", async () => {
+test("completes G only from exact deployed app and security Hyperdrives, secure transport, legal evidence and the real security-log flow", async () => {
   const result = await complete();
   const compliance = result.ownerInputs.providerBoundEvidenceInput.complianceEvidence;
   assert.equal(compliance.providers.cloudflare.transportEncryptionObserved, true);
@@ -223,6 +257,7 @@ test("completes G only from exact live provider binding, secure transport, legal
       status: "verified",
     },
   );
+  assert.equal(JSON.stringify(result).includes("ulc_security_ingest_login"), false);
   assert.equal(JSON.stringify(result).includes("cf-token"), false);
   assert.equal(JSON.stringify(result).includes("neon-key"), false);
   assert.equal(JSON.stringify(result).includes("postgresql://"), false);
@@ -243,28 +278,72 @@ test("fails closed when the base flow inventory is missing, decorated or already
   }
 });
 
-test("fails closed on insecure direct database TLS or Hyperdrive TLS drift", async () => {
+test("fails closed on insecure direct database TLS or either Hyperdrive TLS drift", async () => {
   await assert.rejects(
     () => complete({ input: inputs({ productionDatabaseUrl: PRODUCTION_URL.replace("sslmode=require", "sslmode=disable") }) }),
     /TLS configuration is invalid/,
   );
 
-  const fetchImpl = async (url) => {
+  for (const target of ["hyperdrive-main", "hyperdrive-security"]) {
+    const fetchImpl = async (url) => {
+      const result = await providerFetch(url);
+      if (String(url).endsWith(`/hyperdrive/configs/${target}`)) {
+        const body = await result.json();
+        body.result.mtls = { sslmode: "none" };
+        return response(body);
+      }
+      return result;
+    };
+    await assert.rejects(
+      () => complete({ fetchImpl }),
+      /Hyperdrive binding is invalid/,
+    );
+  }
+});
+
+test("fails closed when security Hyperdrive points elsewhere or reuses the app database role", async () => {
+  for (const mutate of [
+    (body) => { body.result.origin.host = "other.example.neon.tech"; },
+    (body) => { body.result.origin.user = "app_owner"; },
+  ]) {
+    const fetchImpl = async (url) => {
+      const result = await providerFetch(url);
+      if (String(url).endsWith("/hyperdrive/configs/hyperdrive-security")) {
+        const body = await result.json();
+        mutate(body);
+        return response(body);
+      }
+      return result;
+    };
+    await assert.rejects(() => complete({ fetchImpl }));
+  }
+});
+
+test("fails closed on stale Worker head, missing dedicated binding, cross-account, wrong Neon project or preclaimed G evidence", async () => {
+  const staleWorker = async (url) => {
     const result = await providerFetch(url);
-    if (String(url).includes("/hyperdrive/configs/")) {
+    if (String(url).includes("/versions/")) {
       const body = await result.json();
-      body.result.mtls = { sslmode: "none" };
+      body.result.annotations["workers/message"] = `AppBasis ulc-linz production runtime ${"c".repeat(40)} auth-hmac:x`;
       return response(body);
     }
     return result;
   };
-  await assert.rejects(
-    () => complete({ fetchImpl }),
-    /Hyperdrive binding is invalid/,
-  );
-});
+  await assert.rejects(() => complete({ fetchImpl: staleWorker }), /not bound to current main/);
 
-test("fails closed on cross-account, wrong Neon project or preclaimed G evidence", async () => {
+  const missingBinding = async (url) => {
+    const result = await providerFetch(url);
+    if (String(url).includes("/versions/")) {
+      const body = await result.json();
+      body.result.resources.bindings = body.result.resources.bindings.filter(
+        (entry) => entry.name !== "SECURITY_LOG_HYPERDRIVE",
+      );
+      return response(body);
+    }
+    return result;
+  };
+  await assert.rejects(() => complete({ fetchImpl: missingBinding }), /bindings are not exact/);
+
   await assert.rejects(
     () => complete({ input: inputs({ cloudflareAccountId: "other-account" }) }),
     /bound production evidence is invalid/,
