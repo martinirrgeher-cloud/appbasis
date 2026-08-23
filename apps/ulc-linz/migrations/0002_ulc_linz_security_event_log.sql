@@ -37,9 +37,9 @@ CREATE TABLE IF NOT EXISTS ulc_linz_security_event_log (
       AND reason_code IS NOT NULL)
   )
 );
-
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS ulc_linz_security_event_log_retention_idx
   ON ulc_linz_security_event_log (retained_until);
-
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS ulc_linz_security_event_log_occurred_at_idx
   ON ulc_linz_security_event_log (occurred_at DESC);
