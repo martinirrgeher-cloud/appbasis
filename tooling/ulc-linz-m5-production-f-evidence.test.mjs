@@ -164,7 +164,7 @@ async function complete({
     now: NOW,
     accessCollector: async () => access,
     deliveryCollector: async (input, options) => {
-      assert.equal(input.productionDatabaseUrl, inputs().productionDatabaseUrl);
+      assert.equal(input.productionDatabaseUrl, inputs().readDatabaseUrl);
       assert.equal(input.deployedAt, DEPLOYED_AT);
       assert.equal(options.now.toISOString(), NOW.toISOString());
       return delivery;
