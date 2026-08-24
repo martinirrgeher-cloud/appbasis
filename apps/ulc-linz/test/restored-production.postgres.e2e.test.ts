@@ -61,7 +61,11 @@ describe("ULC restored production database evidence", () => {
         expect(deniedAuth.status).toBeLessThan(500);
         await runtime.securityEvents.flush();
 
-        const permissionAllowed = await runtime.permissions.evaluatePermission({
+        const evaluatePermission = runtime.permissions.evaluatePermission;
+        if (evaluatePermission === undefined) {
+          throw new Error("Restored production runtime is missing the permission evaluator.");
+        }
+        const permissionAllowed = await evaluatePermission({
           principalId: principalId(`m5-restore-missing-${randomUUID()}`),
           capability: capabilityId("ulc-linz:module:__restore_probe__:view"),
         });
