@@ -128,7 +128,6 @@ test("observer derives authoritative provider lifecycle recovery and control-pla
   assert.equal(result.productionReleaseAuthorized, false);
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
   for (const id of [
-    "dataRegion",
     "deletionConcept",
     "retention",
     "privilegedControlPlaneIsolation",
@@ -137,6 +136,7 @@ test("observer derives authoritative provider lifecycle recovery and control-pla
   }
   for (const id of [
     "auditSecurityLogging",
+    "dataRegion",
     "dpa",
     "encryption",
     "subprocessors",
