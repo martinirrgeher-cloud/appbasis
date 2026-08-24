@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { access } from "node:fs/promises";
 
 import { createPostgresDatabase } from "@appbasis/database";
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
@@ -11,14 +12,21 @@ import { exportUlcLinzDataWithCanonicalAuthorization } from "../worker/data-expo
 import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim() ?? "";
+const RECONCILIATION_EVIDENCE_PATH =
+  process.env.APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH?.trim() ?? "";
 const RESTORE_BASE_URL = "https://m5-restore-export.invalid";
 const ORGANIZATION_ID = "ulc-linz";
-const runOnRestore = DATABASE_URL.length > 0 ? it : it.skip;
+const runOnRestore =
+  DATABASE_URL.length > 0 && RECONCILIATION_EVIDENCE_PATH.length > 0 ? it : it.skip;
 
 describe("ULC restored production export evidence", () => {
   runOnRestore(
     "executes the canonical authorized PostgreSQL export and rejects cross-organization access on the exact restored database",
     async () => {
+      // The companion restore smoke reconciles the same isolated database. Wait for
+      // its evidence before adding export fixtures so both test files cannot race.
+      await waitForReconciliationEvidence(RECONCILIATION_EVIDENCE_PATH);
+
       const connection = createPostgresDatabase(DATABASE_URL);
       const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
       const bootstrapUsername = `m5.restore.export.bootstrap.${suffix}`;
@@ -157,6 +165,18 @@ describe("ULC restored production export evidence", () => {
     30_000,
   );
 });
+
+async function waitForReconciliationEvidence(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      await access(path);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  throw new Error("Restore reconciliation evidence was not produced before export verification.");
+}
 
 async function signInCookie(
   auth: ReturnType<typeof createBetterAuthRuntime>,
