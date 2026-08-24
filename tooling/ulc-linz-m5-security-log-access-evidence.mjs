@@ -381,8 +381,9 @@ async function aclBoundary(client, users) {
          JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
          JOIN pg_catalog.pg_roles member ON member.oid = membership.member
         WHERE parent.rolname = ANY($1::text[])
+           OR member.rolname = ANY($1::text[])
         ORDER BY parent.rolname, member.rolname`,
-      [Object.values(GROUPS)],
+      [protectedRoles],
     ),
   ]);
   if (!Array.isArray(grantRows) || !Array.isArray(ownerRows) || ownerRows.length !== 1 ||
