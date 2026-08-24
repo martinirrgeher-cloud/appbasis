@@ -5,8 +5,6 @@ const ROOT_KEYS = Object.freeze([
   "application",
   "environment",
   "evidenceSource",
-  "observedAt",
-  "validUntilOrReviewAt",
   "cloudflare",
   "neon",
 ]);
@@ -32,14 +30,15 @@ export function deriveUlcLinzM5AccountBoundDpaEvidence(
     value.schemaVersion !== 1 ||
     value.application !== "ulc-linz" ||
     value.environment !== "production" ||
-    value.evidenceSource !== "protected-operator-contract-record" ||
-    value.observedAt !== observedAt ||
-    value.validUntilOrReviewAt !== validUntilOrReviewAt
+    value.evidenceSource !== "protected-operator-contract-record"
   ) {
     throw new Error("ULC M5-G account DPA evidence root binding is invalid.");
   }
-  canonicalTimestamp(value.observedAt, "observedAt");
-  canonicalTimestamp(value.validUntilOrReviewAt, "validUntilOrReviewAt");
+  const observed = canonicalTimestamp(observedAt, "observedAt");
+  const validUntil = canonicalTimestamp(validUntilOrReviewAt, "validUntilOrReviewAt");
+  if (validUntil.getTime() <= observed.getTime()) {
+    throw new Error("ULC M5-G account DPA evidence window is invalid.");
+  }
 
   const cloudflare = providerEvidence(
     value.cloudflare,
