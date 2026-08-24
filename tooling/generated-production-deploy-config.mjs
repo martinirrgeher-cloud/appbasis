@@ -16,6 +16,13 @@ export function renderGeneratedProductionWranglerConfig(input = {}) {
   });
   const { secrets: _requiredSecretMetadata, ...runtimeConfig } = previewContract;
   const workerName = requiredProductionWorkerName(input.appId);
+  const securityLogHyperdriveId = requiredProviderId(
+    input.securityLogHyperdriveId,
+    "securityLogHyperdriveId",
+  );
+  if (securityLogHyperdriveId === input.hyperdriveId) {
+    throw new Error("Production security-log Hyperdrive must be distinct from the application Hyperdrive.");
+  }
 
   return Object.freeze({
     ...runtimeConfig,
@@ -23,6 +30,13 @@ export function renderGeneratedProductionWranglerConfig(input = {}) {
     workers_dev: false,
     preview_urls: false,
     keep_vars: true,
+    hyperdrive: Object.freeze([
+      ...runtimeConfig.hyperdrive,
+      Object.freeze({
+        binding: "SECURITY_LOG_HYPERDRIVE",
+        id: securityLogHyperdriveId,
+      }),
+    ]),
   });
 }
 
@@ -66,4 +80,20 @@ function requiredProductionWorkerName(appId) {
     throw new Error("Derived Cloudflare production Worker name is invalid.");
   }
   return workerName;
+}
+
+function requiredProviderId(value, field) {
+  if (typeof value !== "string") {
+    throw new Error(`${field} is required.`);
+  }
+  const normalized = value.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length > 256 ||
+    normalized !== value ||
+    /[\u0000-\u001f\u007f\s]/u.test(normalized)
+  ) {
+    throw new Error(`${field} is invalid.`);
+  }
+  return normalized;
 }
