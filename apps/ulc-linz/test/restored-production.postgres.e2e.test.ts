@@ -294,7 +294,9 @@ describe("ULC restored production database evidence", () => {
   );
 });
 
-async function verifyRestoredSecurityAcl(client: { unsafe: (query: string, parameters?: unknown[]) => Promise<any[]> }) {
+async function verifyRestoredSecurityAcl(
+  client: ReturnType<typeof createPostgresDatabase>["client"],
+) {
   const grantRows = await client.unsafe(`
     WITH acl_rows AS (
       SELECT 'table'::text AS object_kind, relation.relname::text AS object_name,
