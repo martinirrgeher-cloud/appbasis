@@ -126,23 +126,25 @@ export function evaluateUlcLinzM5SecurityLogAccessSnapshot(value) {
 
   exactBooleanShape(root.cleanupPrivileges, [
     "tableSelect", "tableInsert", "tableDelete", "tableUpdate", "tableTruncate", "anyColumnInsert", "anyColumnUpdate",
-    "retainedUntilSelect", "forbiddenColumnSelect", "eventDataSelect", "sequenceUsage", "sequenceUpdate", "cleanupExecute",
+    "retainedUntilSelect", "forbiddenColumnSelect", "eventDataSelect", "sequenceUsage", "sequenceSelect", "sequenceUpdate",
+    "cleanupExecute",
   ]);
   const cleanup = root.cleanupPrivileges;
   if (cleanup.tableSelect || cleanup.tableInsert || cleanup.tableDelete || cleanup.tableUpdate || cleanup.tableTruncate ||
       cleanup.anyColumnInsert || cleanup.anyColumnUpdate || !cleanup.retainedUntilSelect ||
-      cleanup.forbiddenColumnSelect || cleanup.eventDataSelect || cleanup.sequenceUsage || cleanup.sequenceUpdate ||
-      !cleanup.cleanupExecute) {
+      cleanup.forbiddenColumnSelect || cleanup.eventDataSelect || cleanup.sequenceUsage || cleanup.sequenceSelect ||
+      cleanup.sequenceUpdate || !cleanup.cleanupExecute) {
     throw new Error("ULC M5-F cleanup privilege boundary is invalid.");
   }
 
   exactBooleanShape(root.readPrivileges, [
     "tableSelect", "tableInsert", "tableDelete", "tableUpdate", "tableTruncate",
-    "anyColumnInsert", "anyColumnUpdate", "sequenceUsage", "sequenceUpdate", "cleanupExecute",
+    "anyColumnInsert", "anyColumnUpdate", "sequenceUsage", "sequenceSelect", "sequenceUpdate", "cleanupExecute",
   ]);
   const read = root.readPrivileges;
   if (!read.tableSelect || read.tableInsert || read.tableDelete || read.tableUpdate || read.tableTruncate ||
-      read.anyColumnInsert || read.anyColumnUpdate || read.sequenceUsage || read.sequenceUpdate || read.cleanupExecute) {
+      read.anyColumnInsert || read.anyColumnUpdate || read.sequenceUsage || read.sequenceSelect || read.sequenceUpdate ||
+      read.cleanupExecute) {
     throw new Error("ULC M5-F operational read privilege boundary is invalid.");
   }
 
@@ -262,14 +264,16 @@ async function privileges(client, username, kind) {
       retainedUntilSelect: await columnPrivilege(client, safe, "retained_until", "SELECT"),
       forbiddenColumnSelect: await forbiddenColumnPrivilege(client, safe, "SELECT", ["retained_until"]),
       eventDataSelect: await columnPrivilege(client, safe, "target_id", "SELECT"),
-      sequenceUsage: row.sequence_usage, sequenceUpdate: row.sequence_update, cleanupExecute: row.cleanup_execute,
+      sequenceUsage: row.sequence_usage, sequenceSelect: row.sequence_select, sequenceUpdate: row.sequence_update,
+      cleanupExecute: row.cleanup_execute,
     };
   }
   return {
     tableSelect: row.table_select, tableInsert: row.table_insert, tableDelete: row.table_delete,
     tableUpdate: row.table_update, tableTruncate: row.table_truncate,
     anyColumnInsert: row.any_column_insert, anyColumnUpdate: row.any_column_update,
-    sequenceUsage: row.sequence_usage, sequenceUpdate: row.sequence_update, cleanupExecute: row.cleanup_execute,
+    sequenceUsage: row.sequence_usage, sequenceSelect: row.sequence_select, sequenceUpdate: row.sequence_update,
+    cleanupExecute: row.cleanup_execute,
   };
 }
 
