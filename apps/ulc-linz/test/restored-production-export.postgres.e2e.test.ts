@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { access } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 import { createPostgresDatabase } from "@appbasis/database";
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
@@ -16,6 +16,8 @@ const RECONCILIATION_EVIDENCE_PATH =
   process.env.APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH?.trim() ?? "";
 const RESTORE_BASE_URL = "https://m5-restore-export.invalid";
 const ORGANIZATION_ID = "ulc-linz";
+const RECONCILIATION_WAIT_MS = 35_000;
+const RECONCILIATION_POLL_MS = 100;
 const runOnRestore =
   DATABASE_URL.length > 0 && RECONCILIATION_EVIDENCE_PATH.length > 0 ? it : it.skip;
 
@@ -23,9 +25,7 @@ describe("ULC restored production export evidence", () => {
   runOnRestore(
     "executes the canonical authorized PostgreSQL export and rejects cross-organization access on the exact restored database",
     async () => {
-      // The companion restore smoke reconciles the same isolated database. Wait for
-      // its evidence before adding export fixtures so both test files cannot race.
-      await waitForReconciliationEvidence(RECONCILIATION_EVIDENCE_PATH);
+      await requireCompletedReconciliationEvidence(RECONCILIATION_EVIDENCE_PATH);
 
       const connection = createPostgresDatabase(DATABASE_URL);
       const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
@@ -162,20 +162,42 @@ describe("ULC restored production export evidence", () => {
         await connection.client.end();
       }
     },
-    30_000,
+    60_000,
   );
 });
 
-async function waitForReconciliationEvidence(path: string): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+async function requireCompletedReconciliationEvidence(path: string): Promise<void> {
+  const deadline = Date.now() + RECONCILIATION_WAIT_MS;
+  while (Date.now() < deadline) {
     try {
-      await access(path);
-      return;
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      const raw = await readFile(path, "utf8");
+      const evidence = JSON.parse(raw) as Record<string, unknown>;
+      if (
+        evidence.schemaVersion === 1 &&
+        evidence.application === "ulc-linz" &&
+        evidence.authoritativeSourceBound === true &&
+        evidence.restoredTargetBound === true &&
+        Number.isSafeInteger(evidence.requiredDeletionCount) &&
+        Number(evidence.requiredDeletionCount) >= 0 &&
+        evidence.reconciledIdentityCount === evidence.requiredDeletionCount &&
+        evidence.positiveAuthenticationVerified === true &&
+        evidence.securityAclVerified === true &&
+        evidence.restoreReconciliationVerified === true
+      ) {
+        return;
+      }
+      throw new Error("Restore reconciliation evidence is incomplete or invalid.");
+    } catch (error) {
+      if (
+        error instanceof SyntaxError ||
+        (error instanceof Error && error.message === "Restore reconciliation evidence is incomplete or invalid.")
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, RECONCILIATION_POLL_MS));
     }
   }
-  throw new Error("Restore reconciliation evidence was not produced before export verification.");
+  throw new Error("Restore reconciliation evidence was not produced within the companion restore test budget.");
 }
 
 async function signInCookie(
