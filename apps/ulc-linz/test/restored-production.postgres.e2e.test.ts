@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
 import { createPostgresDatabase } from "@appbasis/database";
+import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
+import { createIdentityRuntime } from "@appbasis/identity/server";
 import {
   PostgresPermissionStore,
   PostgresPrincipalAccessAdministration,
@@ -25,6 +27,7 @@ const DATABASE_URL = process.env.DATABASE_URL?.trim() ?? "";
 const AUTHORITATIVE_DATABASE_URL = process.env.ULC_LINZ_PRODUCTION_DATABASE_URL?.trim() ?? "";
 const RECONCILIATION_EVIDENCE_PATH =
   process.env.APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH?.trim() ?? "";
+const RESTORE_BASE_URL = "https://m5-restore-smoke.invalid";
 const runOnRestore =
   DATABASE_URL.length > 0 &&
   AUTHORITATIVE_DATABASE_URL.length > 0 &&
@@ -44,7 +47,7 @@ const INVENTORY = JSON.parse(
 
 describe("ULC restored production database evidence", () => {
   runOnRestore(
-    "exercises auth, permissions, reconciliation, inventory, retention and security ACLs on the exact restored database",
+    "exercises positive auth, permissions, reconciliation, inventory, retention and security ACLs on the exact restored database",
     async () => {
       const target = new URL(DATABASE_URL);
       const source = new URL(AUTHORITATIVE_DATABASE_URL);
@@ -57,11 +60,17 @@ describe("ULC restored production database evidence", () => {
       expect(INVENTORY.application).toBe("ulc-linz");
 
       const startedAt = new Date();
+      const identitySecret = `restore-smoke-${randomUUID()}-${randomUUID()}`;
+      const controlledIdentity = await provisionControlledRestoreIdentity({
+        connectionString: DATABASE_URL,
+        baseURL: RESTORE_BASE_URL,
+        secret: identitySecret,
+      });
       const runtime = await createGeneratedPostgresApplicationRuntime({
         connectionString: DATABASE_URL,
         securityLogConnectionString: DATABASE_URL,
-        baseURL: "https://m5-restore-smoke.invalid",
-        secret: `restore-smoke-${randomUUID()}-${randomUUID()}`,
+        baseURL: RESTORE_BASE_URL,
+        secret: identitySecret,
       });
       let reconciliationResult:
         | Awaited<ReturnType<typeof reconcileUlcLinzRestoredDatabase>>
@@ -76,6 +85,26 @@ describe("ULC restored production database evidence", () => {
         const health = await app.request("/api/health");
         expect(health.status).toBe(200);
         expect(await health.json()).toEqual({ status: "ok", appId: "ulc-linz" });
+
+        const successfulAuth = await app.request("/api/auth/sign-in", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            username: controlledIdentity.username,
+            password: controlledIdentity.password,
+          }),
+        });
+        expect(successfulAuth.status).toBe(200);
+        expect(await successfulAuth.json()).toMatchObject({
+          identity: {
+            identityId: controlledIdentity.identityId,
+            username: controlledIdentity.username,
+            accountStatus: "active",
+            mustChangePassword: true,
+          },
+          access: "password-change-required",
+        });
+        expect(successfulAuth.headers.get("set-cookie")).toContain("HttpOnly");
 
         const deniedAuth = await app.request("/api/auth/sign-in", {
           method: "POST",
@@ -240,6 +269,7 @@ describe("ULC restored production database evidence", () => {
             restoredTargetBound: true,
             requiredDeletionCount: reconciliationResult.requiredDeletionCount,
             reconciledIdentityCount: reconciliationResult.reconciledIdentityIds.length,
+            positiveAuthenticationVerified: true,
             securityAclVerified: true,
             restoreReconciliationVerified: true,
           })}\n`,
@@ -252,6 +282,76 @@ describe("ULC restored production database evidence", () => {
     30_000,
   );
 });
+
+async function provisionControlledRestoreIdentity(input: {
+  connectionString: string;
+  baseURL: string;
+  secret: string;
+}): Promise<{ identityId: string; username: string; password: string }> {
+  const connection = createPostgresDatabase(input.connectionString);
+  try {
+    const auth = createBetterAuthRuntime({
+      database: connection.database,
+      baseURL: input.baseURL,
+      secret: input.secret,
+    });
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const adminUsername = `m5.restore.admin.${suffix}`;
+    const adminPassword = `M5!Admin-${randomUUID()}Aa7`;
+    const username = `m5.restore.user.${suffix}`;
+    const password = `M5!User-${randomUUID()}Aa7`;
+
+    await auth.api.createUser({
+      body: {
+        email: `${adminUsername}@identity.invalid`,
+        password: adminPassword,
+        name: "M5 Restore Controlled Admin",
+        role: "admin",
+        data: { username: adminUsername, displayUsername: adminUsername },
+      },
+    });
+    const administrativeSessionToken = await signInSessionCookie(
+      auth,
+      input.baseURL,
+      adminUsername,
+      adminPassword,
+    );
+    const identityRuntime = createIdentityRuntime({
+      auth,
+      sql: connection.client,
+      baseURL: input.baseURL,
+      administrativeSessionToken,
+    });
+    const identity = await identityRuntime.service.createInitialUser({
+      username,
+      temporaryPassword: password,
+      displayName: "M5 Restore Authentication Probe",
+      contactEmail: `${username}@identity.invalid`,
+    });
+    return { identityId: identity.identityId, username, password };
+  } finally {
+    await connection.client.end();
+  }
+}
+
+async function signInSessionCookie(
+  auth: ReturnType<typeof createBetterAuthRuntime>,
+  baseURL: string,
+  username: string,
+  password: string,
+): Promise<string> {
+  const response = await auth.handler(
+    new Request(`${baseURL}/api/auth/sign-in/username`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }),
+  );
+  if (!response.ok) throw new Error("Controlled restore administrator sign-in failed.");
+  const cookie = response.headers.get("set-cookie");
+  if (cookie === null) throw new Error("Controlled restore administrator returned no session cookie.");
+  return cookie.split(";", 1)[0] ?? cookie;
+}
 
 function requireLifecycleIdentityOwner(value: unknown): UlcLinzIdentityLifecycleOwner {
   if (
