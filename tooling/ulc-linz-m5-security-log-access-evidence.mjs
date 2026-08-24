@@ -124,11 +124,11 @@ export function evaluateUlcLinzM5SecurityLogAccessSnapshot(value) {
   }
 
   exactBooleanShape(root.cleanupPrivileges, [
-    "tableSelect", "tableInsert", "tableDelete", "tableUpdate", "anyColumnInsert", "anyColumnUpdate",
+    "tableSelect", "tableInsert", "tableDelete", "tableUpdate", "tableTruncate", "anyColumnInsert", "anyColumnUpdate",
     "retainedUntilSelect", "forbiddenColumnSelect", "eventDataSelect", "sequenceUsage", "cleanupExecute",
   ]);
   const cleanup = root.cleanupPrivileges;
-  if (cleanup.tableSelect || cleanup.tableInsert || cleanup.tableDelete || cleanup.tableUpdate ||
+  if (cleanup.tableSelect || cleanup.tableInsert || cleanup.tableDelete || cleanup.tableUpdate || cleanup.tableTruncate ||
       cleanup.anyColumnInsert || cleanup.anyColumnUpdate || !cleanup.retainedUntilSelect ||
       cleanup.forbiddenColumnSelect || cleanup.eventDataSelect || cleanup.sequenceUsage || !cleanup.cleanupExecute) {
     throw new Error("ULC M5-F cleanup privilege boundary is invalid.");
@@ -251,7 +251,8 @@ async function privileges(client, username, kind) {
   if (kind === "cleanup") {
     return {
       tableSelect: row.table_select, tableInsert: row.table_insert, tableDelete: row.table_delete,
-      tableUpdate: row.table_update, anyColumnInsert: row.any_column_insert, anyColumnUpdate: row.any_column_update,
+      tableUpdate: row.table_update, tableTruncate: row.table_truncate,
+      anyColumnInsert: row.any_column_insert, anyColumnUpdate: row.any_column_update,
       retainedUntilSelect: await columnPrivilege(client, safe, "retained_until", "SELECT"),
       forbiddenColumnSelect: await forbiddenColumnPrivilege(client, safe, "SELECT", ["retained_until"]),
       eventDataSelect: await columnPrivilege(client, safe, "target_id", "SELECT"),
