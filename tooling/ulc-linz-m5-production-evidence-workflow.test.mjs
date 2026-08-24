@@ -16,6 +16,33 @@ async function retentionWorkflow() {
   return readFile(retentionWorkflowUrl, "utf8");
 }
 
+function validCleanupAccess(overrides = {}) {
+  return {
+    cleanup_member: true,
+    superuser: false,
+    create_db: false,
+    create_role: false,
+    replication: false,
+    bypass_rls: false,
+    membership_count: 1,
+    cleanup_admin_option: false,
+    cleanup_execute: true,
+    cleanup_execute_grant_option: false,
+    direct_select: false,
+    direct_delete: false,
+    direct_insert: false,
+    direct_update: false,
+    direct_truncate: false,
+    retention_read: true,
+    retention_read_grant_option: false,
+    event_read: false,
+    sequence_usage: false,
+    sequence_select: false,
+    sequence_update: false,
+    ...overrides,
+  };
+}
+
 test("M5 production evidence is main-only, explicitly approved and serialized with production runtime mutation", async () => {
   const source = await workflow();
   assert.match(source, /github\.ref == 'refs\/heads\/main'/);
@@ -117,14 +144,7 @@ test("M5-F retention runner verifies dedicated cleanup access and emits only san
   const client = {
     async unsafe(query) {
       if (query.includes("pg_has_role")) {
-        return [{
-          cleanup_member: true,
-          cleanup_execute: true,
-          direct_delete: false,
-          direct_insert: false,
-          retention_read: true,
-          event_read: false,
-        }];
+        return [validCleanupAccess()];
       }
       assert.match(query, /ulc_linz_security_event_log/);
       assert.match(query, /retained_until < statement_timestamp\(\)/);
@@ -161,42 +181,50 @@ test("M5-F retention runner verifies dedicated cleanup access and emits only san
   assert.equal(JSON.stringify(result).includes("expired_rows"), false);
 });
 
-test("M5-F retention runner fails closed for overprivileged cleanup credentials", async () => {
-  const client = {
-    async unsafe(query) {
-      if (query.includes("pg_has_role")) {
-        return [{
-          cleanup_member: true,
-          cleanup_execute: true,
-          direct_delete: true,
-          direct_insert: false,
-          retention_read: true,
-          event_read: false,
-        }];
-      }
-      throw new Error("snapshot must not run after access failure");
-    },
-  };
-  await assert.rejects(
-    () => runUlcLinzM5SecurityLogRetention(client, async () => {}),
-    /cleanup principal is not least privilege/,
-  );
+test("M5-F retention runner fails closed for every privilege-escalation class", async () => {
+  const overprivileged = [
+    { cleanup_member: false },
+    { superuser: true },
+    { create_db: true },
+    { create_role: true },
+    { replication: true },
+    { bypass_rls: true },
+    { membership_count: 2 },
+    { cleanup_admin_option: true },
+    { cleanup_execute: false },
+    { cleanup_execute_grant_option: true },
+    { direct_select: true },
+    { direct_delete: true },
+    { direct_insert: true },
+    { direct_update: true },
+    { direct_truncate: true },
+    { retention_read: false },
+    { retention_read_grant_option: true },
+    { event_read: true },
+    { sequence_usage: true },
+    { sequence_select: true },
+    { sequence_update: true },
+  ];
+
+  for (const drift of overprivileged) {
+    const client = {
+      async unsafe(query) {
+        if (query.includes("pg_has_role")) return [validCleanupAccess(drift)];
+        throw new Error("snapshot must not run after access failure");
+      },
+    };
+    await assert.rejects(
+      () => runUlcLinzM5SecurityLogRetention(client, async () => {}),
+      /cleanup principal is not least privilege/,
+    );
+  }
 });
 
 test("M5-F retention runner fails closed when cleanup leaves expired rows", async () => {
   let snapshotCalls = 0;
   const client = {
     async unsafe(query) {
-      if (query.includes("pg_has_role")) {
-        return [{
-          cleanup_member: true,
-          cleanup_execute: true,
-          direct_delete: false,
-          direct_insert: false,
-          retention_read: true,
-          event_read: false,
-        }];
-      }
+      if (query.includes("pg_has_role")) return [validCleanupAccess()];
       snapshotCalls += 1;
       return [{
         observed_at: "2026-08-23T15:50:00.000Z",
