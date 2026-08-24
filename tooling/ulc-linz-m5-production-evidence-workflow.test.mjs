@@ -102,14 +102,8 @@ test("one correlated run completes G, account-bound DPA and F before canonical J
   assert.match(source, /ulc-linz-m5-production-g-evidence\.mjs "\$WORK\/m5-base-bundle\.json" > "\$WORK\/m5-g-baseline-bundle\.json"/);
   assert.match(source, /ulc-linz-m5-production-dpa-evidence\.mjs "\$WORK\/m5-g-baseline-bundle\.json" > "\$WORK\/m5-g-bundle\.json"/);
   assert.match(source, /ulc-linz-m5-production-f-evidence\.mjs "\$WORK\/m5-g-bundle\.json" > "\$WORK\/m5-bundle\.json"/);
-  assert.ok(
-    source.indexOf("ulc-linz-m5-production-g-evidence.mjs") <
-      source.indexOf("ulc-linz-m5-production-dpa-evidence.mjs"),
-  );
-  assert.ok(
-    source.indexOf("ulc-linz-m5-production-dpa-evidence.mjs") <
-      source.indexOf("ulc-linz-m5-production-f-evidence.mjs"),
-  );
+  assert.ok(source.indexOf("ulc-linz-m5-production-g-evidence.mjs") < source.indexOf("ulc-linz-m5-production-dpa-evidence.mjs"));
+  assert.ok(source.indexOf("ulc-linz-m5-production-dpa-evidence.mjs") < source.indexOf("ulc-linz-m5-production-f-evidence.mjs"));
   assert.match(source, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \}\}/);
   assert.match(source, /ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \}\}/);
   assert.match(source, /ulc-linz-m5-production-evidence-runner\.mjs "\$WORK\/m5-bundle\.json" --require-ready/);
@@ -149,38 +143,33 @@ test("M5-F production retention is a separate main-only explicitly approved leas
   assert.doesNotMatch(source, /CREATE TABLE|ALTER TABLE|DROP TABLE/);
 });
 
-test("M5-F retention runner verifies dedicated cleanup access and emits only sanitized evidence", async () => {
-  let snapshotCalls = 0;
+test("M5-F retention runner verifies at the purge cutoff and emits only sanitized evidence", async () => {
+  let verificationCalls = 0;
   let purgeCalls = 0;
+  const cutoff = "2026-08-23T15:50:00.000Z";
   const client = {
-    async unsafe(query) {
-      if (query.includes("pg_has_role")) {
-        return [validCleanupAccess()];
-      }
-      assert.match(query, /ulc_linz_security_event_log/);
-      assert.match(query, /retained_until < statement_timestamp\(\)/);
-      snapshotCalls += 1;
-      return [{
-        observed_at: snapshotCalls === 1
-          ? "2026-08-23T15:50:00.000Z"
-          : "2026-08-23T15:50:01.000Z",
-        expired_rows: snapshotCalls === 1 ? "3" : "0",
-      }];
+    async unsafe(query, params) {
+      if (query.includes("pg_has_role")) return [validCleanupAccess()];
+      assert.match(query, /retained_until < \$1::timestamptz/);
+      assert.deepEqual(params, [cutoff]);
+      verificationCalls += 1;
+      return [{ expired_rows: "0" }];
     },
   };
   const result = await runUlcLinzM5SecurityLogRetention(client, async (receivedClient) => {
     assert.equal(receivedClient, client);
     purgeCalls += 1;
+    return { cutoff, deletedRows: 3n };
   });
 
-  assert.equal(snapshotCalls, 2);
+  assert.equal(verificationCalls, 1);
   assert.equal(purgeCalls, 1);
   assert.deepEqual(result, {
     schemaVersion: 1,
     application: "ulc-linz",
     environment: "production",
     evidenceSource: "controlled-production-retention-run",
-    observedAt: "2026-08-23T15:50:01.000Z",
+    observedAt: cutoff,
     cleanupAccessVerified: true,
     cleanupSucceeded: true,
     cleanupResultVerified: true,
@@ -194,59 +183,42 @@ test("M5-F retention runner verifies dedicated cleanup access and emits only san
 
 test("M5-F retention runner fails closed for every privilege-escalation class", async () => {
   const overprivileged = [
-    { cleanup_member: false },
-    { superuser: true },
-    { create_db: true },
-    { create_role: true },
-    { replication: true },
-    { bypass_rls: true },
-    { membership_count: 2 },
-    { cleanup_admin_option: true },
-    { cleanup_execute: false },
-    { cleanup_execute_grant_option: true },
-    { direct_select: true },
-    { direct_delete: true },
-    { direct_insert: true },
-    { direct_update: true },
-    { direct_truncate: true },
-    { retention_read: false },
-    { retention_read_grant_option: true },
-    { event_read: true },
-    { sequence_usage: true },
-    { sequence_select: true },
-    { sequence_update: true },
+    { cleanup_member: false }, { superuser: true }, { create_db: true }, { create_role: true },
+    { replication: true }, { bypass_rls: true }, { membership_count: 2 }, { cleanup_admin_option: true },
+    { cleanup_execute: false }, { cleanup_execute_grant_option: true }, { direct_select: true },
+    { direct_delete: true }, { direct_insert: true }, { direct_update: true }, { direct_truncate: true },
+    { retention_read: false }, { retention_read_grant_option: true }, { event_read: true },
+    { sequence_usage: true }, { sequence_select: true }, { sequence_update: true },
   ];
-
   for (const drift of overprivileged) {
-    const client = {
-      async unsafe(query) {
-        if (query.includes("pg_has_role")) return [validCleanupAccess(drift)];
-        throw new Error("snapshot must not run after access failure");
-      },
-    };
-    await assert.rejects(
-      () => runUlcLinzM5SecurityLogRetention(client, async () => {}),
-      /cleanup principal is not least privilege/,
-    );
+    const client = { async unsafe(query) {
+      if (query.includes("pg_has_role")) return [validCleanupAccess(drift)];
+      throw new Error("verification must not run after access failure");
+    } };
+    await assert.rejects(() => runUlcLinzM5SecurityLogRetention(client, async () => ({
+      cutoff: "2026-08-23T15:50:00.000Z", deletedRows: 0n,
+    })), /cleanup principal is not least privilege/);
   }
 });
 
-test("M5-F retention runner fails closed when cleanup leaves expired rows", async () => {
-  let snapshotCalls = 0;
-  const client = {
-    async unsafe(query) {
-      if (query.includes("pg_has_role")) return [validCleanupAccess()];
-      snapshotCalls += 1;
-      return [{
-        observed_at: "2026-08-23T15:50:00.000Z",
-        expired_rows: snapshotCalls === 1 ? "2" : "1",
-      }];
-    },
-  };
-  await assert.rejects(
-    () => runUlcLinzM5SecurityLogRetention(client, async () => {}),
-    /left expired security events behind/,
-  );
+test("M5-F retention runner fails closed when cleanup leaves rows expired at its own cutoff", async () => {
+  const cutoff = "2026-08-23T15:50:00.000Z";
+  const client = { async unsafe(query, params) {
+    if (query.includes("pg_has_role")) return [validCleanupAccess()];
+    assert.deepEqual(params, [cutoff]);
+    return [{ expired_rows: "1" }];
+  } };
+  await assert.rejects(() => runUlcLinzM5SecurityLogRetention(client, async () => ({ cutoff, deletedRows: 2n })), /left expired security events behind/);
+});
+
+test("M5-F retention runner rejects malformed purge evidence before verification", async () => {
+  const client = { async unsafe(query) {
+    if (query.includes("pg_has_role")) return [validCleanupAccess()];
+    throw new Error("verification must not run for malformed purge evidence");
+  } };
+  for (const purgeResult of [null, {}, { cutoff: "bad", deletedRows: 0n }, { cutoff: "2026-08-23T15:50:00.000Z", deletedRows: -1n }]) {
+    await assert.rejects(() => runUlcLinzM5SecurityLogRetention(client, async () => purgeResult));
+  }
 });
 
 test("M5-F cleanup CLI dependencies load under the pinned Node runtime", async () => {
