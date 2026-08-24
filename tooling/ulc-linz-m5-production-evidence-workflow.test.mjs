@@ -57,6 +57,10 @@ test("M5 production restore reads one authorized production snapshot, preserves 
   const source = await workflow();
   assert.match(source, /APPBASIS_M4_SOURCE_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
   assert.match(source, /APPBASIS_M4_RESTORE_DATABASE_URL: \$\{\{ secrets\.APPBASIS_M4_RESTORE_DATABASE_URL \}\}/);
+  assert.match(source, /APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL: \$\{\{ secrets\.APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL \}\}/);
+  assert.match(source, /APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL: \$\{\{ secrets\.APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL \}\}/);
+  assert.match(source, /APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: \$\{\{ secrets\.APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL \}\}/);
+  assert.match(source, /restore owner, application, ingest and read credentials must use distinct principals/);
   assert.match(source, /m4-r2-restore-target\.mjs verify-empty/);
   assert.match(source, /ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \}\}/);
   assert.match(source, /ulc-linz-m5-exported-snapshot\.mjs/);
@@ -68,6 +72,7 @@ test("M5 production restore reads one authorized production snapshot, preserves 
   assert.doesNotMatch(source, /pg_restore[^\n]*--no-acl/);
   assert.match(source, /cmp -s "\$WORK\/source-fingerprint\.json" "\$WORK\/restore-fingerprint\.json"/);
   assert.match(source, /ULC_LINZ_PRODUCTION_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
+  assert.match(source, /DATABASE_URL: \$\{\{ secrets\.APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL \}\}/);
   assert.match(source, /APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH:/);
   assert.match(source, /exec vitest run \.\/test\/restored-production\.postgres\.e2e\.test\.ts/);
   assert.match(source, /restore-reconciliation\.json/);
@@ -254,5 +259,8 @@ test("canonical backup contract requires provider-observed backup history and cu
   assert.match(source, /exact current ULC Linz production database/);
   assert.match(source, /restore target was empty before the write/);
   assert.match(source, /per-table row-count inventories match without exporting row values/);
+  assert.match(source, /separate credentials on the exact same isolated restore database/);
+  assert.match(source, /dedicated security-log ingest credential/);
+  assert.match(source, /dedicated security-log read credential/);
   assert.match(source, /MUST NOT contain database URLs, credentials, cookies, authorization headers, secrets/);
 });
