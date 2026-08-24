@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { evaluateUlcLinzM5SecurityLogAccessSnapshot } from "./ulc-linz-m5-security-log-access-evidence.mjs";
 
-function role(name, { login = false, memberships = [] } = {}) {
+function role(name, { login = false, memberships = [], membershipAdminOption = false } = {}) {
   return {
     name,
     login,
@@ -13,6 +13,7 @@ function role(name, { login = false, memberships = [] } = {}) {
     createRole: false,
     replication: false,
     bypassRls: false,
+    membershipAdminOption,
     memberships,
   };
 }
@@ -97,6 +98,12 @@ function validSnapshot() {
       sequenceUpdate: false,
       cleanupExecute: false,
     },
+    aclBoundary: {
+      missingExpectedGrantCount: 0,
+      unexpectedProtectedGrantCount: 0,
+      protectedGrantOptionCount: 0,
+      protectedOwnerCount: 0,
+    },
     retentionContract: {
       calendarConstraintVerified: true,
       cleanupFunctionVerified: true,
@@ -138,12 +145,14 @@ test("rejects any application-role access to the security-event owner", () => {
   }
 });
 
-test("rejects elevated, login-enabled or cross-group role boundaries", () => {
+test("rejects elevated, delegated or cross-group role boundaries", () => {
   for (const mutate of [
     (value) => { value.groupRoles.ingest.login = true; },
     (value) => { value.groupRoles.cleanup.superuser = true; },
     (value) => { value.groupRoles.read.createRole = true; },
+    (value) => { value.groupRoles.read.membershipAdminOption = true; },
     (value) => { value.loginRoles.ingest.bypassRls = true; },
+    (value) => { value.loginRoles.ingest.membershipAdminOption = true; },
     (value) => { value.loginRoles.cleanup.memberships.push("ulc_linz_security_event_read"); },
     (value) => { value.loginRoles.read.memberships = []; },
     (value) => { value.loginRoles.read.name = value.loginRoles.cleanup.name; },
@@ -220,6 +229,22 @@ test("rejects operational read credentials with any mutation or cleanup authorit
   }
 });
 
+test("rejects missing, unexpected, delegable or runtime-owned ACL grants", () => {
+  for (const field of [
+    "missingExpectedGrantCount",
+    "unexpectedProtectedGrantCount",
+    "protectedGrantOptionCount",
+    "protectedOwnerCount",
+  ]) {
+    const value = validSnapshot();
+    value.aclBoundary[field] = 1;
+    assert.throws(
+      () => evaluateUlcLinzM5SecurityLogAccessSnapshot(value),
+      /ACL delegation boundary is invalid/,
+    );
+  }
+});
+
 test("rejects early-delete escape hatches or an unverified server calendar contract", () => {
   for (const mutate of [
     (value) => { value.retentionContract.calendarConstraintVerified = false; },
@@ -231,6 +256,20 @@ test("rejects early-delete escape hatches or an unverified server calendar contr
     mutate(value);
     assert.throws(() => evaluateUlcLinzM5SecurityLogAccessSnapshot(value));
   }
+});
+
+test("ACL inventory covers delegation, object ownership and all protected object ACLs", async () => {
+  const source = await readFile(new URL("./ulc-linz-m5-security-log-access-evidence.mjs", import.meta.url), "utf8");
+  assert.match(source, /m\.admin_option AS admin_option/);
+  assert.match(source, /pg_catalog\.aclexplode/);
+  assert.match(source, /attribute\.attacl/);
+  assert.match(source, /acl\.is_grantable/);
+  assert.match(source, /protectedGrantOptionCount/);
+  assert.match(source, /protectedOwnerCount/);
+  assert.match(source, /relation\.relowner AS owner_oid/);
+  assert.match(source, /procedure\.proowner AS owner_oid/);
+  assert.match(source, /unexpectedProtectedGrantCount/);
+  assert.match(source, /missingExpectedGrantCount/);
 });
 
 test("forbidden-column inventory uses an unfiltered PostgreSQL catalog", async () => {
