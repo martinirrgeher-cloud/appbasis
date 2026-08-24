@@ -22,7 +22,7 @@ const ROLE_FIELDS = Object.freeze([
 ]);
 const ACL_BOUNDARY_FIELDS = Object.freeze([
   "missingExpectedGrantCount", "unexpectedProtectedGrantCount", "protectedGrantOptionCount",
-  "protectedOwnerCount",
+  "protectedOwnerCount", "unexpectedGroupMemberCount", "groupMembershipAdminOptionCount",
 ]);
 
 export async function collectUlcLinzM5SecurityLogAccessEvidence(
@@ -298,11 +298,12 @@ async function aclBoundary(client, users) {
   if (new Set(protectedRoles).size !== protectedRoles.length) {
     throw new Error("ULC M5-F protected ACL role inventory is invalid.");
   }
-  const [grantRows, ownerRows] = await Promise.all([
+  const [grantRows, ownerRows, groupMemberRows] = await Promise.all([
     client.unsafe(
       `WITH acl_rows AS (
          SELECT 'table'::text AS object_kind, relation.relname::text AS object_name,
-                NULL::text AS column_name, acl.grantee, acl.privilege_type, acl.is_grantable
+                NULL::text AS column_name, relation.relowner AS owner_oid,
+                acl.grantee, acl.privilege_type, acl.is_grantable
            FROM pg_catalog.pg_class relation
            JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
            CROSS JOIN LATERAL pg_catalog.aclexplode(
@@ -311,7 +312,7 @@ async function aclBoundary(client, users) {
           WHERE namespace.nspname = 'public'
             AND relation.relname = 'ulc_linz_security_event_log'
          UNION ALL
-         SELECT 'sequence'::text, relation.relname::text, NULL::text,
+         SELECT 'sequence'::text, relation.relname::text, NULL::text, relation.relowner,
                 acl.grantee, acl.privilege_type, acl.is_grantable
            FROM pg_catalog.pg_class relation
            JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
@@ -321,7 +322,7 @@ async function aclBoundary(client, users) {
           WHERE namespace.nspname = 'public'
             AND relation.relname = 'ulc_linz_security_event_log_id_seq'
          UNION ALL
-         SELECT 'column'::text, relation.relname::text, attribute.attname::text,
+         SELECT 'column'::text, relation.relname::text, attribute.attname::text, relation.relowner,
                 acl.grantee, acl.privilege_type, acl.is_grantable
            FROM pg_catalog.pg_attribute attribute
            JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
@@ -334,7 +335,7 @@ async function aclBoundary(client, users) {
             AND attribute.attnum > 0
             AND NOT attribute.attisdropped
          UNION ALL
-         SELECT 'function'::text, procedure.proname::text, NULL::text,
+         SELECT 'function'::text, procedure.proname::text, NULL::text, procedure.proowner,
                 acl.grantee, acl.privilege_type, acl.is_grantable
            FROM pg_catalog.pg_proc procedure
            JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
@@ -349,10 +350,8 @@ async function aclBoundary(client, users) {
               CASE WHEN grantee = 0 THEN 'PUBLIC' ELSE pg_catalog.pg_get_userbyid(grantee) END AS grantee,
               privilege_type, is_grantable
          FROM acl_rows
-        WHERE grantee = 0
-           OR pg_catalog.pg_get_userbyid(grantee) = ANY($1::text[])
+        WHERE grantee = 0 OR grantee <> owner_oid
         ORDER BY object_kind, object_name, column_name, grantee, privilege_type`,
-      [protectedRoles],
     ),
     client.unsafe(
       `WITH protected_objects AS (
@@ -375,8 +374,19 @@ async function aclBoundary(client, users) {
         WHERE owner.rolname = ANY($1::text[])`,
       [protectedRoles],
     ),
+    client.unsafe(
+      `SELECT parent.rolname AS group_role, member.rolname AS member_role,
+              membership.admin_option AS admin_option
+         FROM pg_catalog.pg_auth_members membership
+         JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
+         JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+        WHERE parent.rolname = ANY($1::text[])
+        ORDER BY parent.rolname, member.rolname`,
+      [Object.values(GROUPS)],
+    ),
   ]);
-  if (!Array.isArray(grantRows) || !Array.isArray(ownerRows) || ownerRows.length !== 1) {
+  if (!Array.isArray(grantRows) || !Array.isArray(ownerRows) || ownerRows.length !== 1 ||
+      !Array.isArray(groupMemberRows)) {
     throw new Error("ULC M5-F ACL inventory is invalid.");
   }
 
@@ -395,11 +405,32 @@ async function aclBoundary(client, users) {
   for (const key of expected) {
     if (!actual.has(key)) missingExpectedGrantCount += 1;
   }
+
+  const expectedMembers = new Map(Object.entries(GROUPS).map(([key, group]) => [group, users[key]]));
+  const seenGroups = new Set();
+  let unexpectedGroupMemberCount = 0;
+  let groupMembershipAdminOptionCount = 0;
+  for (const row of groupMemberRows) {
+    const group = roleName(row.group_role);
+    const member = roleName(row.member_role);
+    const expectedMember = expectedMembers.get(group);
+    if (expectedMember === undefined || member !== expectedMember || seenGroups.has(group)) {
+      unexpectedGroupMemberCount += 1;
+    }
+    seenGroups.add(group);
+    if (bool(row.admin_option)) groupMembershipAdminOptionCount += 1;
+  }
+  for (const group of expectedMembers.keys()) {
+    if (!seenGroups.has(group)) unexpectedGroupMemberCount += 1;
+  }
+
   return {
     missingExpectedGrantCount,
     unexpectedProtectedGrantCount,
     protectedGrantOptionCount,
     protectedOwnerCount: integer(ownerRows[0].owner_count),
+    unexpectedGroupMemberCount,
+    groupMembershipAdminOptionCount,
   };
 }
 
