@@ -49,6 +49,7 @@ function validSnapshot() {
       anyColumnUpdate: false,
       sequenceUsage: false,
       sequenceSelect: false,
+      sequenceUpdate: false,
       cleanupExecute: false,
     },
     ingestPrivileges: {
@@ -64,6 +65,7 @@ function validSnapshot() {
       recordedAtColumnInsert: false,
       sequenceUsage: true,
       sequenceSelect: false,
+      sequenceUpdate: false,
       cleanupExecute: false,
     },
     cleanupPrivileges: {
@@ -78,6 +80,7 @@ function validSnapshot() {
       forbiddenColumnSelect: false,
       eventDataSelect: false,
       sequenceUsage: false,
+      sequenceUpdate: false,
       cleanupExecute: true,
     },
     readPrivileges: {
@@ -89,6 +92,7 @@ function validSnapshot() {
       anyColumnInsert: false,
       anyColumnUpdate: false,
       sequenceUsage: false,
+      sequenceUpdate: false,
       cleanupExecute: false,
     },
     retentionContract: {
@@ -120,6 +124,7 @@ test("rejects any application-role access to the security-event owner", () => {
     "anyColumnUpdate",
     "sequenceUsage",
     "sequenceSelect",
+    "sequenceUpdate",
     "cleanupExecute",
   ]) {
     const value = validSnapshot();
@@ -161,6 +166,7 @@ test("rejects ingest rights outside the approved column-only append boundary", (
     (value) => { value.ingestPrivileges.recordedAtColumnInsert = true; },
     (value) => { value.ingestPrivileges.sequenceUsage = false; },
     (value) => { value.ingestPrivileges.sequenceSelect = true; },
+    (value) => { value.ingestPrivileges.sequenceUpdate = true; },
     (value) => { value.ingestPrivileges.cleanupExecute = true; },
   ]) {
     const value = validSnapshot();
@@ -182,6 +188,7 @@ test("rejects cleanup rights beyond retained-until read plus server cleanup exec
     (value) => { value.cleanupPrivileges.forbiddenColumnSelect = true; },
     (value) => { value.cleanupPrivileges.eventDataSelect = true; },
     (value) => { value.cleanupPrivileges.sequenceUsage = true; },
+    (value) => { value.cleanupPrivileges.sequenceUpdate = true; },
     (value) => { value.cleanupPrivileges.cleanupExecute = false; },
   ]) {
     const value = validSnapshot();
@@ -200,6 +207,7 @@ test("rejects operational read credentials with any mutation or cleanup authorit
     (value) => { value.readPrivileges.anyColumnInsert = true; },
     (value) => { value.readPrivileges.anyColumnUpdate = true; },
     (value) => { value.readPrivileges.sequenceUsage = true; },
+    (value) => { value.readPrivileges.sequenceUpdate = true; },
     (value) => { value.readPrivileges.cleanupExecute = true; },
   ]) {
     const value = validSnapshot();
