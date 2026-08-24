@@ -12,7 +12,7 @@ export const ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY = Object.freeze({
   appId: "ulc-linz",
   modules: Object.freeze([]),
   platformServices: Object.freeze(["identity", "permissions"]),
-  inventoryGitBlobSha: "2cbb63f2fa0fd3ecafde828423a1784be1ac3a84",
+  inventoryGitBlobSha: "8d51de15ba60e314d090c34d43a7e0776f96943f",
   requiredPostgresTest: "./test/data-export.postgres.e2e.test.ts",
   requiredRepositoryEvidenceTest:
     "./tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs",
