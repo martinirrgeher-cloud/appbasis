@@ -20,6 +20,7 @@ function role(name, { login = false, memberships = [], membershipAdminOption = f
 
 function validSnapshot() {
   return {
+    applicationRole: role("ulc_application_login", { login: true }),
     groupRoles: {
       ingest: role("ulc_linz_security_event_ingest"),
       cleanup: role("ulc_linz_security_event_cleanup"),
@@ -121,6 +122,26 @@ test("accepts only the exact three-principal least-privilege M5-F access boundar
     protectedOperationalAccessVerified: true,
     providerMinimumRetentionVerified: true,
   });
+});
+
+test("rejects an elevated or delegated application database role before ACL evidence can pass", () => {
+  for (const mutate of [
+    (value) => { value.applicationRole.login = false; },
+    (value) => { value.applicationRole.superuser = true; },
+    (value) => { value.applicationRole.createDb = true; },
+    (value) => { value.applicationRole.createRole = true; },
+    (value) => { value.applicationRole.replication = true; },
+    (value) => { value.applicationRole.bypassRls = true; },
+    (value) => { value.applicationRole.membershipAdminOption = true; },
+    (value) => { value.applicationRole.memberships.push("unexpected_parent") },
+  ]) {
+    const value = validSnapshot();
+    mutate(value);
+    assert.throws(
+      () => evaluateUlcLinzM5SecurityLogAccessSnapshot(value),
+      /application database role is not least privilege/,
+    );
+  }
 });
 
 test("rejects any application-role access to the security-event owner", () => {
