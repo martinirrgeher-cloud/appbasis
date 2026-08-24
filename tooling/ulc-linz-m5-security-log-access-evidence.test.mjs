@@ -103,6 +103,8 @@ function validSnapshot() {
       unexpectedProtectedGrantCount: 0,
       protectedGrantOptionCount: 0,
       protectedOwnerCount: 0,
+      unexpectedGroupMemberCount: 0,
+      groupMembershipAdminOptionCount: 0,
     },
     retentionContract: {
       calendarConstraintVerified: true,
@@ -229,12 +231,14 @@ test("rejects operational read credentials with any mutation or cleanup authorit
   }
 });
 
-test("rejects missing, unexpected, delegable or runtime-owned ACL grants", () => {
+test("rejects missing, unexpected, delegable, runtime-owned or extra-member ACL boundaries", () => {
   for (const field of [
     "missingExpectedGrantCount",
     "unexpectedProtectedGrantCount",
     "protectedGrantOptionCount",
     "protectedOwnerCount",
+    "unexpectedGroupMemberCount",
+    "groupMembershipAdminOptionCount",
   ]) {
     const value = validSnapshot();
     value.aclBoundary[field] = 1;
@@ -258,18 +262,23 @@ test("rejects early-delete escape hatches or an unverified server calendar contr
   }
 });
 
-test("ACL inventory covers delegation, object ownership and all protected object ACLs", async () => {
+test("ACL inventory covers all non-owner grants, delegation, ownership and protected group membership", async () => {
   const source = await readFile(new URL("./ulc-linz-m5-security-log-access-evidence.mjs", import.meta.url), "utf8");
   assert.match(source, /m\.admin_option AS admin_option/);
   assert.match(source, /pg_catalog\.aclexplode/);
   assert.match(source, /attribute\.attacl/);
   assert.match(source, /acl\.is_grantable/);
+  assert.match(source, /WHERE grantee = 0 OR grantee <> owner_oid/);
+  assert.doesNotMatch(source, /pg_catalog\.pg_get_userbyid\(grantee\) = ANY/);
   assert.match(source, /protectedGrantOptionCount/);
   assert.match(source, /protectedOwnerCount/);
   assert.match(source, /relation\.relowner AS owner_oid/);
   assert.match(source, /procedure\.proowner AS owner_oid/);
   assert.match(source, /unexpectedProtectedGrantCount/);
   assert.match(source, /missingExpectedGrantCount/);
+  assert.match(source, /unexpectedGroupMemberCount/);
+  assert.match(source, /groupMembershipAdminOptionCount/);
+  assert.match(source, /WHERE parent\.rolname = ANY/);
 });
 
 test("forbidden-column inventory uses an unfiltered PostgreSQL catalog", async () => {
