@@ -270,10 +270,10 @@ jobs:
           APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
           APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH: ${{ steps.workspace.outputs.path }}/restore-reconciliation.json
-        run: >-
-          pnpm --filter @appbasis/app-ulc-linz exec vitest run
-          ./test/restored-production.postgres.e2e.test.ts
-          ./test/restored-production-export.postgres.e2e.test.ts
+        run: |
+          set -euo pipefail
+          pnpm --filter @appbasis/app-ulc-linz exec vitest run ./test/restored-production.postgres.e2e.test.ts
+          pnpm --filter @appbasis/app-ulc-linz exec vitest run ./test/restored-production-export.postgres.e2e.test.ts
 
       - name: Record sanitized controlled restore observation
         shell: bash
