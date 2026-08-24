@@ -18,7 +18,7 @@ function validSnapshot() {
   };
 }
 
-test("collector reads only canonical current-runtime security deliveries without payloads", async () => {
+test("collector binds the delivery snapshot and observation time to the same database statement", async () => {
   let ended = 0;
   const calls = [];
   const databaseFactory = () => ({
@@ -27,7 +27,8 @@ test("collector reads only canonical current-runtime security deliveries without
         calls.push({ query, params });
         return [{
           event_count: "1",
-          latest_recorded_at: "2026-08-23T21:59:00.000Z",
+          latest_recorded_at: "2026-08-23T22:00:00.500Z",
+          observed_at: "2026-08-23T22:00:01.000Z",
         }];
       },
       async end() { ended += 1; },
@@ -55,6 +56,8 @@ test("collector reads only canonical current-runtime security deliveries without
   assert.match(calls[0].query, /authorization\.denied/);
   assert.match(calls[0].query, /occurred_at >= \$1::timestamptz/);
   assert.match(calls[0].query, /recorded_at >= \$1::timestamptz/);
+  assert.match(calls[0].query, /statement_timestamp\(\) AS observed_at/);
+  assert.match(calls[0].query, /recorded_at <= statement_timestamp\(\)/);
   assert.doesNotMatch(calls[0].query, /actor_principal_id\s*,|organization_id\s*,|target_id\s*,/);
 });
 
@@ -84,6 +87,31 @@ test("rejects pre-deployment, future or stale delivery evidence", () => {
     const value = validSnapshot();
     value.latestRecordedAt = latestRecordedAt;
     assert.throws(() => evaluateUlcLinzM5SecurityLogDeliverySnapshot(value));
+  }
+});
+
+test("rejects missing or malformed database observation time", async () => {
+  for (const observedAt of [undefined, "not-a-time"]) {
+    const databaseFactory = () => ({
+      client: {
+        async unsafe() {
+          return [{
+            event_count: "1",
+            latest_recorded_at: "2026-08-23T21:59:00.000Z",
+            observed_at: observedAt,
+          }];
+        },
+        async end() {},
+      },
+    });
+    await assert.rejects(() => collectUlcLinzM5SecurityLogDeliveryEvidence(
+      {
+        productionDatabaseUrl:
+          "postgresql://app_owner:pw@ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech/neondb",
+        deployedAt: DEPLOYED_AT,
+      },
+      { databaseFactory, now: OBSERVED_AT },
+    ));
   }
 });
 
