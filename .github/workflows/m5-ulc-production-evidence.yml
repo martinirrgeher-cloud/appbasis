@@ -83,6 +83,7 @@ jobs:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
           ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE: ${{ secrets.ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE }}
@@ -95,6 +96,7 @@ jobs:
             NEON_API_KEY \
             NEON_ORG_ID \
             ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \
             ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \
             ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \
             ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE \
@@ -102,6 +104,14 @@ jobs:
             test -n "${!name:-}" || { echo "Missing protected ULC M5 input: $name." >&2; exit 1; }
             echo "::add-mask::${!name}"
           done
+          node --input-type=module <<'NODE'
+          const app = new URL(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          const backup = new URL(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL);
+          const endpoint = (url) => `${url.hostname.toLowerCase()}:${url.port || "5432"}${url.pathname}`;
+          if (endpoint(app) !== endpoint(backup) || app.username === backup.username) {
+            throw new Error("ULC M5 backup credential must target the production database with a dedicated principal.");
+          }
+          NODE
 
       - name: Create restricted temporary evidence workspace
         id: workspace
@@ -121,29 +131,59 @@ jobs:
           APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
         run: node ./tooling/m4-r2-restore-target.mjs verify-empty
 
-      - name: Capture sanitized source fingerprint
+      - name: Capture one exported source snapshot and create authorized backup
         shell: bash
         env:
-          DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
-          WORK: ${{ steps.workspace.outputs.path }}
-        run: node ./tooling/ulc-linz-m5-restore-fingerprint.mjs > "$WORK/source-fingerprint.json"
-
-      - name: Create temporary custom dump from production source read-only
-        shell: bash
-        env:
-          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
           WORK: ${{ steps.workspace.outputs.path }}
         run: |
           set -euo pipefail
+          SNAPSHOT_PATH="$WORK/source.snapshot"
+          RELEASE_PATH="$WORK/source.snapshot.release"
+          APPBASIS_M5_SNAPSHOT_PATH="$SNAPSHOT_PATH" \
+          APPBASIS_M5_SNAPSHOT_RELEASE_PATH="$RELEASE_PATH" \
+            node ./tooling/ulc-linz-m5-exported-snapshot.mjs &
+          SNAPSHOT_PID=$!
+          release_snapshot() {
+            touch "$RELEASE_PATH" 2>/dev/null || true
+            wait "$SNAPSHOT_PID" 2>/dev/null || true
+          }
+          trap release_snapshot EXIT
+          for _ in $(seq 1 300); do
+            if test -s "$SNAPSHOT_PATH"; then
+              break
+            fi
+            if ! kill -0 "$SNAPSHOT_PID" 2>/dev/null; then
+              wait "$SNAPSHOT_PID"
+              exit 1
+            fi
+            sleep 0.1
+          done
+          test -s "$SNAPSHOT_PATH" || {
+            echo 'ULC M5 exported snapshot was not created.' >&2
+            exit 1
+          }
+          DATABASE_SNAPSHOT="$(tr -d '\r\n' < "$SNAPSHOT_PATH")"
+          test -n "$DATABASE_SNAPSHOT"
+          echo "::add-mask::$DATABASE_SNAPSHOT"
+
+          DATABASE_URL="$ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL" \
+          DATABASE_SNAPSHOT="$DATABASE_SNAPSHOT" \
+            node ./tooling/ulc-linz-m5-restore-fingerprint.mjs > "$WORK/source-fingerprint.json"
+
           docker run --rm \
-            --env ULC_LINZ_PRODUCTION_DATABASE_URL \
+            --env ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \
+            --env DATABASE_SNAPSHOT \
             --volume "$WORK:/evidence" \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            sh -ceu 'pg_dump --format=custom --no-owner --dbname="$ULC_LINZ_PRODUCTION_DATABASE_URL" --file=/evidence/production.pgdump'
+            sh -ceu 'pg_dump --format=custom --no-owner --snapshot="$DATABASE_SNAPSHOT" --dbname="$ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL" --file=/evidence/production.pgdump'
           test -s "$WORK/production.pgdump" || {
             echo 'ULC production dump was not created.' >&2
             exit 1
           }
+          touch "$RELEASE_PATH"
+          wait "$SNAPSHOT_PID"
+          trap - EXIT
 
       - name: Restore production dump atomically into isolated target
         shell: bash
@@ -167,7 +207,7 @@ jobs:
           set -euo pipefail
           node ./tooling/ulc-linz-m5-restore-fingerprint.mjs > "$WORK/restore-fingerprint.json"
           cmp -s "$WORK/source-fingerprint.json" "$WORK/restore-fingerprint.json" || {
-            echo 'ULC production restore fingerprint does not match the production source.' >&2
+            echo 'ULC production restore fingerprint does not match the production source snapshot.' >&2
             exit 1
           }
 
@@ -208,6 +248,7 @@ jobs:
             !Number.isSafeInteger(reconciliation?.requiredDeletionCount) ||
             reconciliation.requiredDeletionCount < 0 ||
             reconciliation?.reconciledIdentityCount !== reconciliation.requiredDeletionCount ||
+            reconciliation?.positiveAuthenticationVerified !== true ||
             reconciliation?.securityAclVerified !== true ||
             reconciliation?.restoreReconciliationVerified !== true
           ) {
@@ -218,7 +259,7 @@ jobs:
             restoreTestedAt: process.env.RESTORE_TESTED_AT,
             restoreSucceeded: true,
             dataIntegrityVerified: true,
-            authVerified: true,
+            authVerified: reconciliation.positiveAuthenticationVerified,
             permissionsVerified: true,
             applicationSmokeVerified: true,
             restoreReconciliationVerified: reconciliation.restoreReconciliationVerified,
