@@ -68,11 +68,10 @@ WHERE current_role.rolname = current_user
   AND cleanup_group.rolname = 'ulc_linz_security_event_cleanup'
 `;
 
-const SNAPSHOT_SQL = `
-SELECT
-  statement_timestamp() AS observed_at,
-  COUNT(retained_until) FILTER (WHERE retained_until < statement_timestamp())::text AS expired_rows
+const VERIFY_PURGE_SQL = `
+SELECT COUNT(retained_until)::text AS expired_rows
 FROM ulc_linz_security_event_log
+WHERE retained_until < $1::timestamptz
 `;
 
 export async function runUlcLinzM5SecurityLogRetention(
@@ -87,10 +86,9 @@ export async function runUlcLinzM5SecurityLogRetention(
   }
 
   await verifyCleanupPrincipal(client);
-  await readSnapshot(client);
-  await purgeExpiredSecurityEvents(client);
-  const after = await readSnapshot(client);
-  if (after.expiredRows !== 0n) {
+  const purge = parsePurgeResult(await purgeExpiredSecurityEvents(client));
+  const expiredRows = await countExpiredRowsAtCutoff(client, purge.cutoff);
+  if (expiredRows !== 0n) {
     throw new Error("ULC M5-F retention cleanup left expired security events behind.");
   }
 
@@ -99,7 +97,7 @@ export async function runUlcLinzM5SecurityLogRetention(
     application: "ulc-linz",
     environment: "production",
     evidenceSource: "controlled-production-retention-run",
-    observedAt: after.observedAt,
+    observedAt: purge.cutoff,
     cleanupAccessVerified: true,
     cleanupSucceeded: true,
     cleanupResultVerified: true,
@@ -143,18 +141,39 @@ async function verifyCleanupPrincipal(client) {
   }
 }
 
-async function readSnapshot(client) {
-  const rows = await client.unsafe(SNAPSHOT_SQL);
+function parsePurgeResult(value) {
+  if (
+    value === null || typeof value !== "object" || Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    Object.keys(value).length !== 2 ||
+    !Object.hasOwn(value, "cutoff") || !Object.hasOwn(value, "deletedRows")
+  ) {
+    throw new Error("ULC M5-F retention purge result is invalid.");
+  }
+  const cutoff = new Date(value.cutoff);
+  if (typeof value.cutoff !== "string" || !Number.isFinite(cutoff.getTime()) || cutoff.toISOString() !== value.cutoff) {
+    throw new Error("ULC M5-F retention purge cutoff is invalid.");
+  }
+  let deletedRows;
+  try {
+    deletedRows = BigInt(value.deletedRows);
+  } catch {
+    throw new Error("ULC M5-F retention purge count is invalid.");
+  }
+  if (deletedRows < 0n) {
+    throw new Error("ULC M5-F retention purge count is invalid.");
+  }
+  return Object.freeze({ cutoff: cutoff.toISOString(), deletedRows });
+}
+
+async function countExpiredRowsAtCutoff(client, cutoff) {
+  const rows = await client.unsafe(VERIFY_PURGE_SQL, [cutoff]);
   if (!Array.isArray(rows) || rows.length !== 1) {
-    throw new Error("ULC M5-F retention snapshot is invalid.");
+    throw new Error("ULC M5-F retention verification is invalid.");
   }
   const row = rows[0];
   if (row === null || typeof row !== "object") {
-    throw new Error("ULC M5-F retention snapshot is invalid.");
-  }
-  const observedAt = new Date(row.observed_at);
-  if (!Number.isFinite(observedAt.getTime())) {
-    throw new Error("ULC M5-F retention database clock is invalid.");
+    throw new Error("ULC M5-F retention verification is invalid.");
   }
   let expiredRows;
   try {
@@ -165,10 +184,7 @@ async function readSnapshot(client) {
   if (expiredRows < 0n) {
     throw new Error("ULC M5-F retention expired-row count is invalid.");
   }
-  return Object.freeze({
-    observedAt: observedAt.toISOString(),
-    expiredRows,
-  });
+  return expiredRows;
 }
 
 function isMainModule() {
