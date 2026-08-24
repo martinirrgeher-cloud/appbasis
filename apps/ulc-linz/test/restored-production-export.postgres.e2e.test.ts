@@ -169,35 +169,54 @@ describe("ULC restored production export evidence", () => {
 async function requireCompletedReconciliationEvidence(path: string): Promise<void> {
   const deadline = Date.now() + RECONCILIATION_WAIT_MS;
   while (Date.now() < deadline) {
+    let raw: string;
     try {
-      const raw = await readFile(path, "utf8");
-      const evidence = JSON.parse(raw) as Record<string, unknown>;
-      if (
-        evidence.schemaVersion === 1 &&
-        evidence.application === "ulc-linz" &&
-        evidence.authoritativeSourceBound === true &&
-        evidence.restoredTargetBound === true &&
-        Number.isSafeInteger(evidence.requiredDeletionCount) &&
-        Number(evidence.requiredDeletionCount) >= 0 &&
-        evidence.reconciledIdentityCount === evidence.requiredDeletionCount &&
-        evidence.positiveAuthenticationVerified === true &&
-        evidence.securityAclVerified === true &&
-        evidence.restoreReconciliationVerified === true
-      ) {
-        return;
-      }
-      throw new Error("Restore reconciliation evidence is incomplete or invalid.");
+      raw = await readFile(path, "utf8");
     } catch (error) {
-      if (
-        error instanceof SyntaxError ||
-        (error instanceof Error && error.message === "Restore reconciliation evidence is incomplete or invalid.")
-      ) {
-        throw error;
+      if (isMissingFile(error)) {
+        await new Promise((resolve) => setTimeout(resolve, RECONCILIATION_POLL_MS));
+        continue;
       }
-      await new Promise((resolve) => setTimeout(resolve, RECONCILIATION_POLL_MS));
+      throw error;
     }
+
+    let evidence: Record<string, unknown>;
+    try {
+      evidence = JSON.parse(raw) as Record<string, unknown>;
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        await new Promise((resolve) => setTimeout(resolve, RECONCILIATION_POLL_MS));
+        continue;
+      }
+      throw error;
+    }
+
+    if (
+      evidence.schemaVersion === 1 &&
+      evidence.application === "ulc-linz" &&
+      evidence.authoritativeSourceBound === true &&
+      evidence.restoredTargetBound === true &&
+      Number.isSafeInteger(evidence.requiredDeletionCount) &&
+      Number(evidence.requiredDeletionCount) >= 0 &&
+      evidence.reconciledIdentityCount === evidence.requiredDeletionCount &&
+      evidence.positiveAuthenticationVerified === true &&
+      evidence.securityAclVerified === true &&
+      evidence.restoreReconciliationVerified === true
+    ) {
+      return;
+    }
+    throw new Error("Restore reconciliation evidence is incomplete or invalid.");
   }
   throw new Error("Restore reconciliation evidence was not produced within the companion restore test budget.");
+}
+
+function isMissingFile(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT"
+  );
 }
 
 async function signInCookie(
