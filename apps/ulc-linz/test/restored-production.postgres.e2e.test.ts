@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import { createPostgresDatabase } from "@appbasis/database";
 import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
 import {
   PostgresPermissionStore,
