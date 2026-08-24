@@ -13,7 +13,7 @@ const ALLOWED_INGEST_COLUMNS = Object.freeze([
   "operation", "http_status", "error_code", "reason_code", "retained_until",
 ]);
 const ROOT_FIELDS = Object.freeze([
-  "groupRoles", "loginRoles", "ingestPrivileges", "cleanupPrivileges",
+  "groupRoles", "loginRoles", "applicationPrivileges", "ingestPrivileges", "cleanupPrivileges",
   "readPrivileges", "retentionContract",
 ]);
 const ROLE_FIELDS = Object.freeze([
@@ -43,17 +43,23 @@ export async function collectUlcLinzM5SecurityLogAccessEvidence(
   const cleanupConnection = databaseFactory(cleanupDatabaseUrl);
   const readConnection = databaseFactory(readDatabaseUrl);
   try {
-    const [cleanupCurrentUser, readCurrentUser] = await Promise.all([
+    const [applicationCurrentUser, cleanupCurrentUser, readCurrentUser] = await Promise.all([
+      currentUser(admin.client),
       currentUser(cleanupConnection.client),
       currentUser(readConnection.client),
     ]);
-    if (cleanupCurrentUser !== users.cleanup || readCurrentUser !== users.read) {
+    if (
+      applicationCurrentUser !== users.application ||
+      cleanupCurrentUser !== users.cleanup ||
+      readCurrentUser !== users.read
+    ) {
       throw new Error("ULC M5-F protected database credential identity is invalid.");
     }
 
     const snapshot = {
       groupRoles: {},
       loginRoles: {},
+      applicationPrivileges: await applicationPrivileges(admin.client, users.application),
       ingestPrivileges: await privileges(admin.client, users.ingest, "ingest"),
       cleanupPrivileges: await privileges(admin.client, users.cleanup, "cleanup"),
       readPrivileges: await privileges(admin.client, users.read, "read"),
@@ -88,6 +94,20 @@ export function evaluateUlcLinzM5SecurityLogAccessSnapshot(value) {
   }
   if (new Set(Object.values(logins).map((entry) => entry.name)).size !== 3) {
     throw new Error("ULC M5-F login roles must be distinct.");
+  }
+
+  exactBooleanShape(root.applicationPrivileges, [
+    "tableSelect", "tableInsert", "tableDelete", "tableUpdate", "tableTruncate",
+    "anyColumnSelect", "anyColumnInsert", "anyColumnUpdate", "sequenceUsage", "sequenceSelect", "cleanupExecute",
+  ]);
+  const application = root.applicationPrivileges;
+  if (
+    application.tableSelect || application.tableInsert || application.tableDelete ||
+    application.tableUpdate || application.tableTruncate || application.anyColumnSelect ||
+    application.anyColumnInsert || application.anyColumnUpdate || application.sequenceUsage ||
+    application.sequenceSelect || application.cleanupExecute
+  ) {
+    throw new Error("ULC M5-F application role can access the security log.");
   }
 
   exactBooleanShape(root.ingestPrivileges, [
@@ -158,6 +178,39 @@ async function role(client, name) {
     createDb: bool(rows[0].create_db), createRole: bool(rows[0].create_role),
     replication: bool(rows[0].replication), bypassRls: bool(rows[0].bypass_rls),
     memberships: membershipRows.map((row) => roleName(row.role_name)),
+  };
+}
+
+async function applicationPrivileges(client, username) {
+  const safe = roleName(username);
+  const rows = await client.unsafe(
+    `SELECT
+       has_table_privilege($1, 'public.ulc_linz_security_event_log', 'SELECT') AS table_select,
+       has_table_privilege($1, 'public.ulc_linz_security_event_log', 'INSERT') AS table_insert,
+       has_table_privilege($1, 'public.ulc_linz_security_event_log', 'DELETE') AS table_delete,
+       has_table_privilege($1, 'public.ulc_linz_security_event_log', 'UPDATE') AS table_update,
+       has_table_privilege($1, 'public.ulc_linz_security_event_log', 'TRUNCATE') AS table_truncate,
+       has_any_column_privilege($1, 'public.ulc_linz_security_event_log', 'SELECT') AS any_column_select,
+       has_any_column_privilege($1, 'public.ulc_linz_security_event_log', 'INSERT') AS any_column_insert,
+       has_any_column_privilege($1, 'public.ulc_linz_security_event_log', 'UPDATE') AS any_column_update,
+       has_sequence_privilege($1, 'public.ulc_linz_security_event_log_id_seq', 'USAGE') AS sequence_usage,
+       has_sequence_privilege($1, 'public.ulc_linz_security_event_log_id_seq', 'SELECT') AS sequence_select,
+       has_function_privilege($1, 'public.appbasis_ulc_linz_purge_expired_security_events()', 'EXECUTE') AS cleanup_execute`,
+    [safe],
+  );
+  if (!Array.isArray(rows) || rows.length !== 1) throw new Error("ULC M5-F application privilege inventory is invalid.");
+  return {
+    tableSelect: bool(rows[0].table_select),
+    tableInsert: bool(rows[0].table_insert),
+    tableDelete: bool(rows[0].table_delete),
+    tableUpdate: bool(rows[0].table_update),
+    tableTruncate: bool(rows[0].table_truncate),
+    anyColumnSelect: bool(rows[0].any_column_select),
+    anyColumnInsert: bool(rows[0].any_column_insert),
+    anyColumnUpdate: bool(rows[0].any_column_update),
+    sequenceUsage: bool(rows[0].sequence_usage),
+    sequenceSelect: bool(rows[0].sequence_select),
+    cleanupExecute: bool(rows[0].cleanup_execute),
   };
 }
 
