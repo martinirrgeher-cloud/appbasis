@@ -45,8 +45,6 @@ function accountEvidence() {
     application: "ulc-linz",
     environment: "production",
     evidenceSource: "protected-operator-contract-record",
-    observedAt: OBSERVED_AT,
-    validUntilOrReviewAt: VALID_UNTIL,
     cloudflare: {
       resourceBindingId: "account-1",
       documentReference: "urn:appbasis:operator-contract-record:cloudflare",
@@ -69,6 +67,13 @@ test("adds only the two resource-bound account DPA entries after live legal base
     [
       ["cloudflare", "dpa-account-binding"],
       ["neon-databricks", "dpa-account-binding"],
+    ],
+  );
+  assert.deepEqual(
+    legal.slice(1).map((entry) => [entry.observedAt, entry.validUntilOrReviewAt]),
+    [
+      [OBSERVED_AT, VALID_UNTIL],
+      [OBSERVED_AT, VALID_UNTIL],
     ],
   );
   const serialized = JSON.stringify(result);
