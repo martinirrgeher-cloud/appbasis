@@ -173,7 +173,7 @@ jobs:
 
           docker run --rm \
             --env ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \
-            --env DATABASE_SNAPSHOT \
+            --env DATABASE_SNAPSHOT="$DATABASE_SNAPSHOT" \
             --volume "$WORK:/evidence" \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
             sh -ceu 'pg_dump --format=custom --no-owner --snapshot="$DATABASE_SNAPSHOT" --dbname="$ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL" --file=/evidence/production.pgdump'
