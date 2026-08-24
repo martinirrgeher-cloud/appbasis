@@ -14,11 +14,15 @@ const ALLOWED_INGEST_COLUMNS = Object.freeze([
 ]);
 const ROOT_FIELDS = Object.freeze([
   "groupRoles", "loginRoles", "applicationPrivileges", "ingestPrivileges", "cleanupPrivileges",
-  "readPrivileges", "retentionContract",
+  "readPrivileges", "aclBoundary", "retentionContract",
 ]);
 const ROLE_FIELDS = Object.freeze([
   "name", "login", "superuser", "createDb", "createRole", "replication",
-  "bypassRls", "memberships",
+  "bypassRls", "membershipAdminOption", "memberships",
+]);
+const ACL_BOUNDARY_FIELDS = Object.freeze([
+  "missingExpectedGrantCount", "unexpectedProtectedGrantCount", "protectedGrantOptionCount",
+  "protectedOwnerCount",
 ]);
 
 export async function collectUlcLinzM5SecurityLogAccessEvidence(
@@ -63,6 +67,7 @@ export async function collectUlcLinzM5SecurityLogAccessEvidence(
       ingestPrivileges: await privileges(admin.client, users.ingest, "ingest"),
       cleanupPrivileges: await privileges(admin.client, users.cleanup, "cleanup"),
       readPrivileges: await privileges(admin.client, users.read, "read"),
+      aclBoundary: await aclBoundary(admin.client, users),
       retentionContract: await retentionContract(admin.client),
     };
     for (const [key, group] of Object.entries(GROUPS)) {
@@ -84,11 +89,13 @@ export function evaluateUlcLinzM5SecurityLogAccessSnapshot(value) {
 
   for (const [key, expected] of Object.entries(GROUPS)) {
     const group = exact(groups[key], ROLE_FIELDS);
-    if (group.name !== expected || group.login !== false || elevated(group) || memberships(group).length !== 0) {
+    if (group.name !== expected || group.login !== false || elevated(group) ||
+        group.membershipAdminOption !== false || memberships(group).length !== 0) {
       throw new Error("ULC M5-F group role is not least privilege.");
     }
     const login = exact(logins[key], ROLE_FIELDS);
-    if (login.login !== true || elevated(login) || !same(memberships(login), [expected])) {
+    if (login.login !== true || elevated(login) || login.membershipAdminOption !== false ||
+        !same(memberships(login), [expected])) {
       throw new Error("ULC M5-F login role is not least privilege.");
     }
   }
@@ -148,6 +155,11 @@ export function evaluateUlcLinzM5SecurityLogAccessSnapshot(value) {
     throw new Error("ULC M5-F operational read privilege boundary is invalid.");
   }
 
+  const acl = exact(root.aclBoundary, ACL_BOUNDARY_FIELDS);
+  if (ACL_BOUNDARY_FIELDS.some((field) => integer(acl[field]) !== 0)) {
+    throw new Error("ULC M5-F ACL delegation boundary is invalid.");
+  }
+
   const retention = exact(root.retentionContract, [
     "calendarConstraintVerified", "cleanupFunctionVerified", "publicFunctionExecute", "unexpectedTriggerCount",
   ]);
@@ -174,7 +186,7 @@ async function role(client, name) {
   );
   if (!Array.isArray(rows) || rows.length !== 1) throw new Error("ULC M5-F database role inventory is incomplete.");
   const membershipRows = await client.unsafe(
-    `SELECT parent.rolname AS role_name
+    `SELECT parent.rolname AS role_name, m.admin_option AS admin_option
        FROM pg_catalog.pg_auth_members m
        JOIN pg_catalog.pg_roles member ON member.oid = m.member
        JOIN pg_catalog.pg_roles parent ON parent.oid = m.roleid
@@ -185,6 +197,7 @@ async function role(client, name) {
     name: roleName(rows[0].name), login: bool(rows[0].login), superuser: bool(rows[0].superuser),
     createDb: bool(rows[0].create_db), createRole: bool(rows[0].create_role),
     replication: bool(rows[0].replication), bypassRls: bool(rows[0].bypass_rls),
+    membershipAdminOption: membershipRows.some((row) => bool(row.admin_option)),
     memberships: membershipRows.map((row) => roleName(row.role_name)),
   };
 }
@@ -275,6 +288,144 @@ async function privileges(client, username, kind) {
     sequenceUsage: row.sequence_usage, sequenceSelect: row.sequence_select, sequenceUpdate: row.sequence_update,
     cleanupExecute: row.cleanup_execute,
   };
+}
+
+async function aclBoundary(client, users) {
+  const protectedRoles = [
+    ...Object.values(users).map(roleName),
+    ...Object.values(GROUPS).map(roleName),
+  ];
+  if (new Set(protectedRoles).size !== protectedRoles.length) {
+    throw new Error("ULC M5-F protected ACL role inventory is invalid.");
+  }
+  const [grantRows, ownerRows] = await Promise.all([
+    client.unsafe(
+      `WITH acl_rows AS (
+         SELECT 'table'::text AS object_kind, relation.relname::text AS object_name,
+                NULL::text AS column_name, acl.grantee, acl.privilege_type, acl.is_grantable
+           FROM pg_catalog.pg_class relation
+           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+           CROSS JOIN LATERAL pg_catalog.aclexplode(
+             COALESCE(relation.relacl, pg_catalog.acldefault('r', relation.relowner))
+           ) acl
+          WHERE namespace.nspname = 'public'
+            AND relation.relname = 'ulc_linz_security_event_log'
+         UNION ALL
+         SELECT 'sequence'::text, relation.relname::text, NULL::text,
+                acl.grantee, acl.privilege_type, acl.is_grantable
+           FROM pg_catalog.pg_class relation
+           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+           CROSS JOIN LATERAL pg_catalog.aclexplode(
+             COALESCE(relation.relacl, pg_catalog.acldefault('S', relation.relowner))
+           ) acl
+          WHERE namespace.nspname = 'public'
+            AND relation.relname = 'ulc_linz_security_event_log_id_seq'
+         UNION ALL
+         SELECT 'column'::text, relation.relname::text, attribute.attname::text,
+                acl.grantee, acl.privilege_type, acl.is_grantable
+           FROM pg_catalog.pg_attribute attribute
+           JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
+           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+           CROSS JOIN LATERAL pg_catalog.aclexplode(
+             COALESCE(attribute.attacl, ARRAY[]::aclitem[])
+           ) acl
+          WHERE namespace.nspname = 'public'
+            AND relation.relname = 'ulc_linz_security_event_log'
+            AND attribute.attnum > 0
+            AND NOT attribute.attisdropped
+         UNION ALL
+         SELECT 'function'::text, procedure.proname::text, NULL::text,
+                acl.grantee, acl.privilege_type, acl.is_grantable
+           FROM pg_catalog.pg_proc procedure
+           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+           CROSS JOIN LATERAL pg_catalog.aclexplode(
+             COALESCE(procedure.proacl, pg_catalog.acldefault('f', procedure.proowner))
+           ) acl
+          WHERE namespace.nspname = 'public'
+            AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+            AND procedure.pronargs = 0
+       )
+       SELECT object_kind, object_name, column_name,
+              CASE WHEN grantee = 0 THEN 'PUBLIC' ELSE pg_catalog.pg_get_userbyid(grantee) END AS grantee,
+              privilege_type, is_grantable
+         FROM acl_rows
+        WHERE grantee = 0
+           OR pg_catalog.pg_get_userbyid(grantee) = ANY($1::text[])
+        ORDER BY object_kind, object_name, column_name, grantee, privilege_type`,
+      [protectedRoles],
+    ),
+    client.unsafe(
+      `WITH protected_objects AS (
+         SELECT relation.relowner AS owner_oid
+           FROM pg_catalog.pg_class relation
+           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+          WHERE namespace.nspname = 'public'
+            AND relation.relname IN ('ulc_linz_security_event_log', 'ulc_linz_security_event_log_id_seq')
+         UNION ALL
+         SELECT procedure.proowner AS owner_oid
+           FROM pg_catalog.pg_proc procedure
+           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+          WHERE namespace.nspname = 'public'
+            AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+            AND procedure.pronargs = 0
+       )
+       SELECT count(*)::integer AS owner_count
+         FROM protected_objects object
+         JOIN pg_catalog.pg_roles owner ON owner.oid = object.owner_oid
+        WHERE owner.rolname = ANY($1::text[])`,
+      [protectedRoles],
+    ),
+  ]);
+  if (!Array.isArray(grantRows) || !Array.isArray(ownerRows) || ownerRows.length !== 1) {
+    throw new Error("ULC M5-F ACL inventory is invalid.");
+  }
+
+  const expected = expectedGrantKeys();
+  const actual = new Set();
+  let unexpectedProtectedGrantCount = 0;
+  let protectedGrantOptionCount = 0;
+  for (const row of grantRows) {
+    const key = grantKey(row.object_kind, row.object_name, row.column_name, row.grantee, row.privilege_type);
+    if (actual.has(key)) throw new Error("ULC M5-F ACL inventory contains duplicate grants.");
+    actual.add(key);
+    if (!expected.has(key)) unexpectedProtectedGrantCount += 1;
+    if (bool(row.is_grantable)) protectedGrantOptionCount += 1;
+  }
+  let missingExpectedGrantCount = 0;
+  for (const key of expected) {
+    if (!actual.has(key)) missingExpectedGrantCount += 1;
+  }
+  return {
+    missingExpectedGrantCount,
+    unexpectedProtectedGrantCount,
+    protectedGrantOptionCount,
+    protectedOwnerCount: integer(ownerRows[0].owner_count),
+  };
+}
+
+function expectedGrantKeys() {
+  const keys = new Set();
+  for (const column of ALLOWED_INGEST_COLUMNS) {
+    keys.add(grantKey("column", "ulc_linz_security_event_log", column, GROUPS.ingest, "INSERT"));
+  }
+  keys.add(grantKey("sequence", "ulc_linz_security_event_log_id_seq", null, GROUPS.ingest, "USAGE"));
+  keys.add(grantKey("column", "ulc_linz_security_event_log", "retained_until", GROUPS.cleanup, "SELECT"));
+  keys.add(grantKey("function", "appbasis_ulc_linz_purge_expired_security_events", null, GROUPS.cleanup, "EXECUTE"));
+  keys.add(grantKey("table", "ulc_linz_security_event_log", null, GROUPS.read, "SELECT"));
+  return keys;
+}
+
+function grantKey(objectKind, objectName, column, grantee, privilege) {
+  const kind = String(objectKind ?? "");
+  if (!["table", "column", "sequence", "function"].includes(kind)) {
+    throw new Error("ULC M5-F ACL object kind is invalid.");
+  }
+  const object = roleName(objectName);
+  const columnNameOrEmpty = column === null || column === undefined ? "" : columnName(column);
+  const principal = roleName(grantee);
+  const right = String(privilege ?? "");
+  if (!/^[A-Z][A-Z_ ]{0,31}$/.test(right)) throw new Error("ULC M5-F ACL privilege is invalid.");
+  return `${kind}:${object}:${columnNameOrEmpty}:${principal}:${right}`;
 }
 
 async function columnPrivilege(client, user, column, privilege) {
