@@ -24,7 +24,7 @@ export const ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY = Object.freeze({
     Object.freeze({ path: "apps/ulc-linz/test/data-export.test.ts", gitBlobSha: "de2d4b4d9c6a17b89d115cbcf7e8a141494e9dcf" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export-service.test.ts", gitBlobSha: "b238266283fa945671f80ae9359ec56505284151" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export-fail-closed.test.ts", gitBlobSha: "d73b5e2d30c30fa2c94547e1b003fb6c0093f649" }),
-    Object.freeze({ path: "apps/ulc-linz/test/data-export.postgres.e2e.test.ts", gitBlobSha: "db628d441fd819aa021a09e3309e045f1df4be22" }),
+    Object.freeze({ path: "apps/ulc-linz/test/data-export.postgres.e2e.test.ts", gitBlobSha: "677fc91c4ba841a487c4ac7e227eeda510264701" }),
     Object.freeze({ path: "apps/ulc-linz/test/m5-export-contract.test.ts", gitBlobSha: "6673e39b195e9529c4d734024e162a36333581f2" }),
     Object.freeze({ path: "tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs", gitBlobSha: "51d815eae660b113869f806a4baffac3edd8980a" }),
   ]),
