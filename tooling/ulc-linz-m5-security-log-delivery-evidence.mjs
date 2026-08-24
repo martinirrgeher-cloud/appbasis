@@ -18,8 +18,8 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
   }
   parseUlcLinzProductionDatabaseUrl(productionDatabaseUrl);
   const deployed = canonicalTimestamp(deployedAt, "deployedAt");
-  const observed = requiredDate(now);
-  if (deployed.getTime() > observed.getTime()) {
+  const invocationObserved = requiredDate(now);
+  if (deployed.getTime() > invocationObserved.getTime()) {
     throw new Error("ULC M5-F deployed runtime timestamp is in the future.");
   }
 
@@ -28,7 +28,8 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
     const rows = await database.client.unsafe(`
       SELECT
         count(*)::bigint AS event_count,
-        max(recorded_at) AS latest_recorded_at
+        max(recorded_at) AS latest_recorded_at,
+        statement_timestamp() AS observed_at
       FROM public.ulc_linz_security_event_log
       WHERE app_id = 'ulc-linz'
         AND schema_version = 1
@@ -46,11 +47,12 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
       rows[0]?.latest_recorded_at === null
         ? null
         : canonicalTimestamp(rows[0]?.latest_recorded_at, "latestRecordedAt").toISOString();
+    const observedAt = canonicalTimestamp(rows[0]?.observed_at, "observedAt").toISOString();
     return evaluateUlcLinzM5SecurityLogDeliverySnapshot({
       eventCount: count,
       latestRecordedAt,
       deployedAt: deployed.toISOString(),
-      observedAt: observed.toISOString(),
+      observedAt,
     });
   } finally {
     await database.client.end().catch(() => {});
