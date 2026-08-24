@@ -26,7 +26,7 @@ test("M5 production evidence is main-only, explicitly approved and serialized wi
   assert.match(source, /environment: m4-dr/);
 });
 
-test("M5 production restore reads production and writes only the isolated restore target", async () => {
+test("M5 production restore reads production and verifies the exact isolated restored database", async () => {
   const source = await workflow();
   assert.match(source, /APPBASIS_M4_SOURCE_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
   assert.match(source, /APPBASIS_M4_RESTORE_DATABASE_URL: \$\{\{ secrets\.APPBASIS_M4_RESTORE_DATABASE_URL \}\}/);
@@ -35,19 +35,27 @@ test("M5 production restore reads production and writes only the isolated restor
   assert.match(source, /pg_restore --single-transaction --no-owner --no-acl --exit-on-error/);
   assert.match(source, /ulc-linz-m5-restore-fingerprint\.mjs/);
   assert.match(source, /cmp -s "\$WORK\/source-fingerprint\.json" "\$WORK\/restore-fingerprint\.json"/);
-  assert.match(source, /@appbasis\/app-ulc-linz test:postgres/);
+  assert.match(source, /exec vitest run \.\/test\/restored-production\.postgres\.e2e\.test\.ts/);
+  assert.doesNotMatch(source, /@appbasis\/app-ulc-linz test:postgres/);
   assert.doesNotMatch(source, /pg_restore[^\n]*ULC_LINZ_PRODUCTION_DATABASE_URL/);
+  assert.doesNotMatch(source, /CREATE DATABASE/);
   assert.doesNotMatch(source, /psql[^\n]*ULC_LINZ_PRODUCTION_DATABASE_URL[^\n]*(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)/i);
 });
 
-test("one correlated run completes G then F before canonical J requires twelve of twelve", async () => {
+test("one correlated run completes G, account-bound DPA and F before canonical J requires twelve of twelve", async () => {
   const source = await workflow();
   assert.match(source, /ulc-linz-m5-backup-contract\.mjs/);
   assert.match(source, /ulc-linz-m5-production-evidence-observer\.mjs/);
-  assert.match(source, /ulc-linz-m5-production-g-evidence\.mjs "\$WORK\/m5-base-bundle\.json" > "\$WORK\/m5-g-bundle\.json"/);
+  assert.match(source, /ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE: \$\{\{ secrets\.ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE \}\}/);
+  assert.match(source, /ulc-linz-m5-production-g-evidence\.mjs "\$WORK\/m5-base-bundle\.json" > "\$WORK\/m5-g-baseline-bundle\.json"/);
+  assert.match(source, /ulc-linz-m5-production-dpa-evidence\.mjs "\$WORK\/m5-g-baseline-bundle\.json" > "\$WORK\/m5-g-bundle\.json"/);
   assert.match(source, /ulc-linz-m5-production-f-evidence\.mjs "\$WORK\/m5-g-bundle\.json" > "\$WORK\/m5-bundle\.json"/);
   assert.ok(
     source.indexOf("ulc-linz-m5-production-g-evidence.mjs") <
+      source.indexOf("ulc-linz-m5-production-dpa-evidence.mjs"),
+  );
+  assert.ok(
+    source.indexOf("ulc-linz-m5-production-dpa-evidence.mjs") <
       source.indexOf("ulc-linz-m5-production-f-evidence.mjs"),
   );
   assert.match(source, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \}\}/);
@@ -84,9 +92,7 @@ test("M5-F production retention is a separate main-only explicitly approved leas
   assert.match(source, /ulc-linz-m5-security-log-retention-run\.mjs/);
   assert.match(source, /cleanupAccessVerified !== true/);
   assert.match(source, /productionReleaseAuthorized !== false/);
-  assert.doesNotMatch(source, /schedule:/);
-  assert.doesNotMatch(source, /pull_request:/);
-  assert.doesNotMatch(source, /push:/);
+  assert.doesNotMatch(source, /schedule:|pull_request:|push:/);
   assert.doesNotMatch(source, /wrangler\s+(?:deploy|versions deploy|versions upload|secret put)/);
   assert.doesNotMatch(source, /CREATE TABLE|ALTER TABLE|DROP TABLE/);
 });
