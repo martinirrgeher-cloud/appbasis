@@ -285,11 +285,12 @@ async function forbiddenColumnPrivilege(client, user, privilege, allowedColumns)
   const rows = await client.unsafe(
     `SELECT EXISTS (
        SELECT 1
-       FROM information_schema.columns
-       WHERE table_schema = 'public'
-         AND table_name = 'ulc_linz_security_event_log'
-         AND NOT (column_name = ANY($2::text[]))
-         AND has_column_privilege($1, 'public.ulc_linz_security_event_log', column_name, $3)
+       FROM pg_catalog.pg_attribute attribute
+       WHERE attribute.attrelid = 'public.ulc_linz_security_event_log'::regclass
+         AND attribute.attnum > 0
+         AND NOT attribute.attisdropped
+         AND NOT (attribute.attname = ANY($2::text[]))
+         AND has_column_privilege($1, 'public.ulc_linz_security_event_log', attribute.attname, $3)
      ) AS forbidden`,
     [safeUser, allowed, safePrivilege],
   );
