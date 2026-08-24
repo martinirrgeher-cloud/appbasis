@@ -37,6 +37,19 @@ function validSnapshot() {
         memberships: ["ulc_linz_security_event_read"],
       }),
     },
+    applicationPrivileges: {
+      tableSelect: false,
+      tableInsert: false,
+      tableDelete: false,
+      tableUpdate: false,
+      tableTruncate: false,
+      anyColumnSelect: false,
+      anyColumnInsert: false,
+      anyColumnUpdate: false,
+      sequenceUsage: false,
+      sequenceSelect: false,
+      cleanupExecute: false,
+    },
     ingestPrivileges: {
       tableSelect: false,
       tableDelete: false,
@@ -83,6 +96,29 @@ test("accepts only the exact three-principal least-privilege M5-F access boundar
     protectedOperationalAccessVerified: true,
     providerMinimumRetentionVerified: true,
   });
+});
+
+test("rejects any application-role access to the security-event owner", () => {
+  for (const field of [
+    "tableSelect",
+    "tableInsert",
+    "tableDelete",
+    "tableUpdate",
+    "tableTruncate",
+    "anyColumnSelect",
+    "anyColumnInsert",
+    "anyColumnUpdate",
+    "sequenceUsage",
+    "sequenceSelect",
+    "cleanupExecute",
+  ]) {
+    const value = validSnapshot();
+    value.applicationPrivileges[field] = true;
+    assert.throws(
+      () => evaluateUlcLinzM5SecurityLogAccessSnapshot(value),
+      /application role can access the security log/,
+    );
+  }
 });
 
 test("rejects elevated, login-enabled or cross-group role boundaries", () => {
