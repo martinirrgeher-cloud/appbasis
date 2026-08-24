@@ -26,16 +26,25 @@ test("M5 production evidence is main-only, explicitly approved and serialized wi
   assert.match(source, /environment: m4-dr/);
 });
 
-test("M5 production restore reads production and verifies the exact isolated restored database", async () => {
+test("M5 production restore reads production, preserves ACLs and verifies reconciliation on the exact isolated restored database", async () => {
   const source = await workflow();
   assert.match(source, /APPBASIS_M4_SOURCE_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
   assert.match(source, /APPBASIS_M4_RESTORE_DATABASE_URL: \$\{\{ secrets\.APPBASIS_M4_RESTORE_DATABASE_URL \}\}/);
   assert.match(source, /m4-r2-restore-target\.mjs verify-empty/);
-  assert.match(source, /pg_dump --format=custom --no-owner --no-acl/);
-  assert.match(source, /pg_restore --single-transaction --no-owner --no-acl --exit-on-error/);
+  assert.match(source, /pg_dump --format=custom --no-owner --dbname=/);
+  assert.match(source, /pg_restore --single-transaction --no-owner --exit-on-error/);
+  assert.doesNotMatch(source, /pg_dump[^\n]*--no-acl/);
+  assert.doesNotMatch(source, /pg_restore[^\n]*--no-acl/);
   assert.match(source, /ulc-linz-m5-restore-fingerprint\.mjs/);
   assert.match(source, /cmp -s "\$WORK\/source-fingerprint\.json" "\$WORK\/restore-fingerprint\.json"/);
+  assert.match(source, /ULC_LINZ_PRODUCTION_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
+  assert.match(source, /APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH:/);
   assert.match(source, /exec vitest run \.\/test\/restored-production\.postgres\.e2e\.test\.ts/);
+  assert.match(source, /restore-reconciliation\.json/);
+  assert.match(source, /securityAclVerified !== true/);
+  assert.match(source, /restoreReconciliationVerified !== true/);
+  assert.match(source, /restoreReconciliationVerified: reconciliation\.restoreReconciliationVerified/);
+  assert.doesNotMatch(source, /restoreReconciliationVerified:\s*true/);
   assert.doesNotMatch(source, /@appbasis\/app-ulc-linz test:postgres/);
   assert.doesNotMatch(source, /pg_restore[^\n]*ULC_LINZ_PRODUCTION_DATABASE_URL/);
   assert.doesNotMatch(source, /CREATE DATABASE/);
