@@ -20,6 +20,15 @@ For the initial production schema materialization, this requirement is satisfied
 
 M5 High-Privacy evidence MUST come from a fresh controlled restore of the exact current ULC Linz production database into a different isolated restore database. The source is read-only. The target MUST be proven empty before restore. Restore uses a custom PostgreSQL dump, a single-transaction `pg_restore`, and no public runtime or route.
 
+The restore rehearsal MUST use separate credentials on the exact same isolated restore database for each security boundary:
+
+- a protected restore/owner credential used only for restore mechanics and owner-level restore inspection;
+- a least-privileged application credential used for normal ULC auth, permissions, lifecycle and reconciliation operations and forbidden from owning or directly accessing the protected audit objects;
+- a dedicated security-log ingest credential with only the canonical ingest-role membership and no administrative delegation capability;
+- a dedicated security-log read credential with only the canonical read-role membership and no administrative delegation capability.
+
+The four restore principals MUST be distinct. The application, ingest and read credentials MUST NOT inherit owner-level access. Audit writes during the runtime smoke MUST use only the restored ingest principal; audit reads, retention observations and ACL verification MUST use only the restored read principal.
+
 The rehearsal MUST verify all of the following before emitting evidence:
 
 - source and restore target are distinct encrypted PostgreSQL endpoints;
@@ -28,6 +37,7 @@ The rehearsal MUST verify all of the following before emitting evidence:
 - source and restored schema fingerprints match;
 - source and restored per-table row-count inventories match without exporting row values;
 - ULC PostgreSQL identity/auth, deny-by-default permissions, lifecycle, export, retention and security-event tests pass against the restore environment;
+- restore application ownership/access isolation and restored ingest/read least-privilege memberships are verified fail-closed;
 - restore reconciliation behavior is covered by the same current lifecycle contract digest;
 - temporary dumps and evidence workspaces are removed even after failure.
 
