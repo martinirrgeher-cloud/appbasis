@@ -28,6 +28,16 @@ const AUTHORITATIVE_DATABASE_URL = process.env.ULC_LINZ_PRODUCTION_DATABASE_URL?
 const RECONCILIATION_EVIDENCE_PATH =
   process.env.APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH?.trim() ?? "";
 const RESTORE_BASE_URL = "https://m5-restore-smoke.invalid";
+const SECURITY_GROUPS = [
+  "ulc_linz_security_event_ingest",
+  "ulc_linz_security_event_cleanup",
+  "ulc_linz_security_event_read",
+] as const;
+const ALLOWED_INGEST_COLUMNS = [
+  "schema_version", "app_id", "category", "event_type", "occurred_at",
+  "actor_principal_id", "organization_id", "action", "target_type", "target_id",
+  "operation", "http_status", "error_code", "reason_code", "retained_until",
+] as const;
 const runOnRestore =
   DATABASE_URL.length > 0 &&
   AUTHORITATIVE_DATABASE_URL.length > 0 &&
@@ -259,6 +269,7 @@ describe("ULC restored production database evidence", () => {
             public_cleanup_execute: false,
           },
         ]);
+        await verifyRestoredSecurityAcl(database.client);
 
         await writeFile(
           RECONCILIATION_EVIDENCE_PATH,
@@ -282,6 +293,88 @@ describe("ULC restored production database evidence", () => {
     30_000,
   );
 });
+
+async function verifyRestoredSecurityAcl(client: { unsafe: (query: string, parameters?: unknown[]) => Promise<any[]> }) {
+  const grantRows = await client.unsafe(`
+    WITH acl_rows AS (
+      SELECT 'table'::text AS object_kind, relation.relname::text AS object_name,
+             NULL::text AS column_name, relation.relowner AS owner_oid,
+             acl.grantee, acl.privilege_type, acl.is_grantable
+      FROM pg_catalog.pg_class relation
+      JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(relation.relacl, pg_catalog.acldefault('r', relation.relowner))) acl
+      WHERE namespace.nspname = 'public' AND relation.relname = 'ulc_linz_security_event_log'
+      UNION ALL
+      SELECT 'sequence'::text, relation.relname::text, NULL::text, relation.relowner,
+             acl.grantee, acl.privilege_type, acl.is_grantable
+      FROM pg_catalog.pg_class relation
+      JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(relation.relacl, pg_catalog.acldefault('S', relation.relowner))) acl
+      WHERE namespace.nspname = 'public' AND relation.relname = 'ulc_linz_security_event_log_id_seq'
+      UNION ALL
+      SELECT 'column'::text, relation.relname::text, attribute.attname::text, relation.relowner,
+             acl.grantee, acl.privilege_type, acl.is_grantable
+      FROM pg_catalog.pg_attribute attribute
+      JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
+      JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(attribute.attacl, ARRAY[]::aclitem[])) acl
+      WHERE namespace.nspname = 'public' AND relation.relname = 'ulc_linz_security_event_log'
+        AND attribute.attnum > 0 AND NOT attribute.attisdropped
+      UNION ALL
+      SELECT 'function'::text, procedure.proname::text, NULL::text, procedure.proowner,
+             acl.grantee, acl.privilege_type, acl.is_grantable
+      FROM pg_catalog.pg_proc procedure
+      JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(procedure.proacl, pg_catalog.acldefault('f', procedure.proowner))) acl
+      WHERE namespace.nspname = 'public'
+        AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+        AND procedure.pronargs = 0
+    )
+    SELECT object_kind, object_name, column_name,
+           CASE WHEN grantee = 0 THEN 'PUBLIC' ELSE pg_catalog.pg_get_userbyid(grantee) END AS grantee,
+           privilege_type, is_grantable
+    FROM acl_rows
+    WHERE grantee = 0 OR grantee <> owner_oid
+    ORDER BY object_kind, object_name, column_name, grantee, privilege_type
+  `);
+  const expected = new Set<string>();
+  for (const column of ALLOWED_INGEST_COLUMNS) {
+    expected.add(`column:ulc_linz_security_event_log:${column}:ulc_linz_security_event_ingest:INSERT`);
+  }
+  expected.add("sequence:ulc_linz_security_event_log_id_seq::ulc_linz_security_event_ingest:USAGE");
+  expected.add("column:ulc_linz_security_event_log:retained_until:ulc_linz_security_event_cleanup:SELECT");
+  expected.add("function:appbasis_ulc_linz_purge_expired_security_events::ulc_linz_security_event_cleanup:EXECUTE");
+  expected.add("table:ulc_linz_security_event_log::ulc_linz_security_event_read:SELECT");
+
+  const actual = new Set<string>();
+  for (const row of grantRows) {
+    expect(row.is_grantable).toBe(false);
+    actual.add(`${String(row.object_kind)}:${String(row.object_name)}:${row.column_name === null ? "" : String(row.column_name)}:${String(row.grantee)}:${String(row.privilege_type)}`);
+  }
+  expect(actual).toEqual(expected);
+
+  const membershipRows = await client.unsafe(
+    `SELECT parent.rolname AS group_role, member.rolname AS member_role, membership.admin_option
+       FROM pg_catalog.pg_auth_members membership
+       JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
+       JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+      WHERE parent.rolname = ANY($1::text[]) OR member.rolname = ANY($1::text[])
+      ORDER BY parent.rolname, member.rolname`,
+    [[...SECURITY_GROUPS]],
+  );
+  expect(membershipRows).toHaveLength(SECURITY_GROUPS.length);
+  const seenGroups = new Set<string>();
+  const seenMembers = new Set<string>();
+  for (const row of membershipRows) {
+    expect(SECURITY_GROUPS).toContain(String(row.group_role));
+    expect(SECURITY_GROUPS).not.toContain(String(row.member_role));
+    expect(row.admin_option).toBe(false);
+    seenGroups.add(String(row.group_role));
+    seenMembers.add(String(row.member_role));
+  }
+  expect(seenGroups).toEqual(new Set(SECURITY_GROUPS));
+  expect(seenMembers.size).toBe(SECURITY_GROUPS.length);
+}
 
 async function provisionControlledRestoreIdentity(input: {
   connectionString: string;
