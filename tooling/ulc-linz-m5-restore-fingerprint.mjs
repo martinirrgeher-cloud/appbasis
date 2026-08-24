@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 
 const TABLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+const SNAPSHOT_ID = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{8}-[1-9][0-9]*$/;
 
 export function fingerprintUlcLinzRestoreInventory(inventory) {
   const canonical = canonicalInventory(inventory);
@@ -22,74 +23,88 @@ export function fingerprintUlcLinzRestoreInventory(inventory) {
   });
 }
 
-export async function readUlcLinzRestoreFingerprint(databaseUrl) {
+export async function readUlcLinzRestoreFingerprint(
+  databaseUrl,
+  { snapshotId } = {},
+) {
   if (typeof databaseUrl !== "string" || databaseUrl.length < 1) {
     throw new Error("ULC restore fingerprint database URL is required.");
   }
+  const safeSnapshotId = snapshotId === undefined ? undefined : requiredSnapshotId(snapshotId);
   const database = createPostgresDatabase(databaseUrl);
   try {
-    const tables = await database.client.unsafe(`
-      SELECT c.relname AS table_name
-      FROM pg_catalog.pg_class AS c
-      JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
-      ORDER BY c.relname
-    `);
-    const names = tables.map((row) => requiredTableName(row.table_name));
-    const columns = await database.client.unsafe(`
-      SELECT table_name, column_name, data_type, is_nullable,
-             COALESCE(column_default, '') AS column_default
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-      ORDER BY table_name, ordinal_position
-    `);
-    const constraints = await database.client.unsafe(`
-      SELECT c.relname AS table_name, con.conname AS constraint_name,
-             con.contype AS constraint_type
-      FROM pg_catalog.pg_constraint AS con
-      JOIN pg_catalog.pg_class AS c ON c.oid = con.conrelid
-      JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'public'
-      ORDER BY c.relname, con.conname
-    `);
-    const indexes = await database.client.unsafe(`
-      SELECT tablename AS table_name, indexname AS index_name, indexdef AS index_definition
-      FROM pg_catalog.pg_indexes
-      WHERE schemaname = 'public'
-      ORDER BY tablename, indexname
-    `);
-    const rowCounts = [];
-    for (const tableName of names) {
-      const rows = await database.client.unsafe(`SELECT count(*)::bigint AS row_count FROM public.${tableName}`);
-      if (!Array.isArray(rows) || rows.length !== 1 || typeof rows[0]?.row_count !== "string") {
-        throw new Error("ULC restore row-count inventory is invalid.");
+    return await database.client.begin(async (sql) => {
+      await sql.unsafe("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
+      if (safeSnapshotId !== undefined) {
+        await sql.unsafe(`SET TRANSACTION SNAPSHOT '${safeSnapshotId}'`);
       }
-      rowCounts.push({ tableName, rowCount: rows[0].row_count });
-    }
-    return fingerprintUlcLinzRestoreInventory({
-      tables: names,
-      columns: columns.map((row) => ({
-        tableName: requiredTableName(row.table_name),
-        columnName: requiredIdentifier(row.column_name),
-        dataType: requiredText(row.data_type),
-        nullable: row.is_nullable === "YES",
-        defaultExpression: requiredText(row.column_default),
-      })),
-      constraints: constraints.map((row) => ({
-        tableName: requiredTableName(row.table_name),
-        constraintName: requiredIdentifier(row.constraint_name),
-        constraintType: requiredText(row.constraint_type),
-      })),
-      indexes: indexes.map((row) => ({
-        tableName: requiredTableName(row.table_name),
-        indexName: requiredIdentifier(row.index_name),
-        indexDefinition: requiredText(row.index_definition),
-      })),
-      rowCounts,
+      return fingerprintUlcLinzRestoreInventory(await readInventory(sql));
     });
   } finally {
     await database.client.end().catch(() => {});
   }
+}
+
+async function readInventory(sql) {
+  const tables = await sql.unsafe(`
+    SELECT c.relname AS table_name
+    FROM pg_catalog.pg_class AS c
+    JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+    ORDER BY c.relname
+  `);
+  const names = tables.map((row) => requiredTableName(row.table_name));
+  const columns = await sql.unsafe(`
+    SELECT table_name, column_name, data_type, is_nullable,
+           COALESCE(column_default, '') AS column_default
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    ORDER BY table_name, ordinal_position
+  `);
+  const constraints = await sql.unsafe(`
+    SELECT c.relname AS table_name, con.conname AS constraint_name,
+           con.contype AS constraint_type
+    FROM pg_catalog.pg_constraint AS con
+    JOIN pg_catalog.pg_class AS c ON c.oid = con.conrelid
+    JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+    ORDER BY c.relname, con.conname
+  `);
+  const indexes = await sql.unsafe(`
+    SELECT tablename AS table_name, indexname AS index_name, indexdef AS index_definition
+    FROM pg_catalog.pg_indexes
+    WHERE schemaname = 'public'
+    ORDER BY tablename, indexname
+  `);
+  const rowCounts = [];
+  for (const tableName of names) {
+    const rows = await sql.unsafe(`SELECT count(*)::bigint AS row_count FROM public.${tableName}`);
+    if (!Array.isArray(rows) || rows.length !== 1 || typeof rows[0]?.row_count !== "string") {
+      throw new Error("ULC restore row-count inventory is invalid.");
+    }
+    rowCounts.push({ tableName, rowCount: rows[0].row_count });
+  }
+  return {
+    tables: names,
+    columns: columns.map((row) => ({
+      tableName: requiredTableName(row.table_name),
+      columnName: requiredIdentifier(row.column_name),
+      dataType: requiredText(row.data_type),
+      nullable: row.is_nullable === "YES",
+      defaultExpression: requiredText(row.column_default),
+    })),
+    constraints: constraints.map((row) => ({
+      tableName: requiredTableName(row.table_name),
+      constraintName: requiredIdentifier(row.constraint_name),
+      constraintType: requiredText(row.constraint_type),
+    })),
+    indexes: indexes.map((row) => ({
+      tableName: requiredTableName(row.table_name),
+      indexName: requiredIdentifier(row.index_name),
+      indexDefinition: requiredText(row.index_definition),
+    })),
+    rowCounts,
+  };
 }
 
 function canonicalInventory(value) {
@@ -159,8 +174,17 @@ function requiredCount(value) {
   return text;
 }
 
+function requiredSnapshotId(value) {
+  if (typeof value !== "string" || !SNAPSHOT_ID.test(value)) {
+    throw new Error("ULC restore snapshot ID is invalid.");
+  }
+  return value;
+}
+
 async function main() {
-  const result = await readUlcLinzRestoreFingerprint(process.env.DATABASE_URL);
+  const result = await readUlcLinzRestoreFingerprint(process.env.DATABASE_URL, {
+    snapshotId: process.env.DATABASE_SNAPSHOT || undefined,
+  });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
