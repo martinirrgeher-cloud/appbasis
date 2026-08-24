@@ -14,6 +14,10 @@ const retentionRunUrl = new URL(
   "./ulc-linz-m5-security-log-retention-run.mjs",
   import.meta.url,
 );
+const accessEvidenceUrl = new URL(
+  "./ulc-linz-m5-security-log-access-evidence.mjs",
+  import.meta.url,
+);
 
 const protectedRoles = [
   "ulc_linz_security_event_ingest",
@@ -57,4 +61,13 @@ test("destructive retention gate checks grant options on both login and cleanup 
   assert.match(source, /retention_read_grant_option/);
   assert.match(source, /sequence_update/);
   assert.match(source, /direct_truncate/);
+});
+
+test("access evidence rejects every membership edge touching a protected runtime role unless explicitly expected", async () => {
+  const source = await readFile(accessEvidenceUrl, "utf8");
+  assert.match(source, /WHERE parent\.rolname = ANY\(\$1::text\[\]\)/);
+  assert.match(source, /OR member\.rolname = ANY\(\$1::text\[\]\)/);
+  assert.match(source, /\[protectedRoles\]/);
+  assert.match(source, /unexpectedGroupMemberCount/);
+  assert.match(source, /groupMembershipAdminOptionCount/);
 });
