@@ -13,7 +13,7 @@ const ALLOWED_INGEST_COLUMNS = Object.freeze([
   "operation", "http_status", "error_code", "reason_code", "retained_until",
 ]);
 const ROOT_FIELDS = Object.freeze([
-  "groupRoles", "loginRoles", "applicationPrivileges", "ingestPrivileges", "cleanupPrivileges",
+  "applicationRole", "groupRoles", "loginRoles", "applicationPrivileges", "ingestPrivileges", "cleanupPrivileges",
   "readPrivileges", "aclBoundary", "retentionContract",
 ]);
 const ROLE_FIELDS = Object.freeze([
@@ -61,6 +61,7 @@ export async function collectUlcLinzM5SecurityLogAccessEvidence(
     }
 
     const snapshot = {
+      applicationRole: await role(admin.client, users.application),
       groupRoles: {},
       loginRoles: {},
       applicationPrivileges: await applicationPrivileges(admin.client, users.application),
@@ -84,6 +85,15 @@ export async function collectUlcLinzM5SecurityLogAccessEvidence(
 
 export function evaluateUlcLinzM5SecurityLogAccessSnapshot(value) {
   const root = exact(value, ROOT_FIELDS);
+  const applicationRole = exact(root.applicationRole, ROLE_FIELDS);
+  if (
+    applicationRole.login !== true || elevated(applicationRole) ||
+    applicationRole.membershipAdminOption !== false || memberships(applicationRole).length !== 0
+  ) {
+    throw new Error("ULC M5-F application database role is not least privilege.");
+  }
+  roleName(applicationRole.name);
+
   const groups = exact(root.groupRoles, Object.keys(GROUPS));
   const logins = exact(root.loginRoles, Object.keys(GROUPS));
 
