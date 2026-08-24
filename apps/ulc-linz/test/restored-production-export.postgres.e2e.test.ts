@@ -16,8 +16,6 @@ const RECONCILIATION_EVIDENCE_PATH =
   process.env.APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH?.trim() ?? "";
 const RESTORE_BASE_URL = "https://m5-restore-export.invalid";
 const ORGANIZATION_ID = "ulc-linz";
-const RECONCILIATION_WAIT_MS = 35_000;
-const RECONCILIATION_POLL_MS = 100;
 const runOnRestore =
   DATABASE_URL.length > 0 && RECONCILIATION_EVIDENCE_PATH.length > 0 ? it : it.skip;
 
@@ -162,61 +160,26 @@ describe("ULC restored production export evidence", () => {
         await connection.client.end();
       }
     },
-    60_000,
+    30_000,
   );
 });
 
 async function requireCompletedReconciliationEvidence(path: string): Promise<void> {
-  const deadline = Date.now() + RECONCILIATION_WAIT_MS;
-  while (Date.now() < deadline) {
-    let raw: string;
-    try {
-      raw = await readFile(path, "utf8");
-    } catch (error) {
-      if (isMissingFile(error)) {
-        await new Promise((resolve) => setTimeout(resolve, RECONCILIATION_POLL_MS));
-        continue;
-      }
-      throw error;
-    }
-
-    let evidence: Record<string, unknown>;
-    try {
-      evidence = JSON.parse(raw) as Record<string, unknown>;
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        await new Promise((resolve) => setTimeout(resolve, RECONCILIATION_POLL_MS));
-        continue;
-      }
-      throw error;
-    }
-
-    if (
-      evidence.schemaVersion === 1 &&
-      evidence.application === "ulc-linz" &&
-      evidence.authoritativeSourceBound === true &&
-      evidence.restoredTargetBound === true &&
-      Number.isSafeInteger(evidence.requiredDeletionCount) &&
-      Number(evidence.requiredDeletionCount) >= 0 &&
-      evidence.reconciledIdentityCount === evidence.requiredDeletionCount &&
-      evidence.positiveAuthenticationVerified === true &&
-      evidence.securityAclVerified === true &&
-      evidence.restoreReconciliationVerified === true
-    ) {
-      return;
-    }
+  const evidence = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  if (
+    evidence.schemaVersion !== 1 ||
+    evidence.application !== "ulc-linz" ||
+    evidence.authoritativeSourceBound !== true ||
+    evidence.restoredTargetBound !== true ||
+    !Number.isSafeInteger(evidence.requiredDeletionCount) ||
+    Number(evidence.requiredDeletionCount) < 0 ||
+    evidence.reconciledIdentityCount !== evidence.requiredDeletionCount ||
+    evidence.positiveAuthenticationVerified !== true ||
+    evidence.securityAclVerified !== true ||
+    evidence.restoreReconciliationVerified !== true
+  ) {
     throw new Error("Restore reconciliation evidence is incomplete or invalid.");
   }
-  throw new Error("Restore reconciliation evidence was not produced within the companion restore test budget.");
-}
-
-function isMissingFile(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "ENOENT"
-  );
 }
 
 async function signInCookie(
