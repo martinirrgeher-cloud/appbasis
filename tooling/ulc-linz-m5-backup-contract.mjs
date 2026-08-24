@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const CONTRACT_PATH = "docs/ULC-LINZ-PRODUCTION-BACKUP-RESTORE.md";
-const CONTRACT_GIT_BLOB_SHA = "f0c037cd3e32540eafc2138bd2a91602c12628ba";
+const CONTRACT_GIT_BLOB_SHA = "7363464b8e34e0d39d1ec1bb9e93f1c5bfb05ef3";
 
 export async function verifyUlcLinzM5BackupContract(repositoryRoot) {
   const content = await readFile(resolve(repositoryRoot, CONTRACT_PATH));
