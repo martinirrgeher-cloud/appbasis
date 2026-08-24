@@ -80,6 +80,7 @@ function validSnapshot() {
       forbiddenColumnSelect: false,
       eventDataSelect: false,
       sequenceUsage: false,
+      sequenceSelect: false,
       sequenceUpdate: false,
       cleanupExecute: true,
     },
@@ -92,6 +93,7 @@ function validSnapshot() {
       anyColumnInsert: false,
       anyColumnUpdate: false,
       sequenceUsage: false,
+      sequenceSelect: false,
       sequenceUpdate: false,
       cleanupExecute: false,
     },
@@ -188,6 +190,7 @@ test("rejects cleanup rights beyond retained-until read plus server cleanup exec
     (value) => { value.cleanupPrivileges.forbiddenColumnSelect = true; },
     (value) => { value.cleanupPrivileges.eventDataSelect = true; },
     (value) => { value.cleanupPrivileges.sequenceUsage = true; },
+    (value) => { value.cleanupPrivileges.sequenceSelect = true; },
     (value) => { value.cleanupPrivileges.sequenceUpdate = true; },
     (value) => { value.cleanupPrivileges.cleanupExecute = false; },
   ]) {
@@ -207,6 +210,7 @@ test("rejects operational read credentials with any mutation or cleanup authorit
     (value) => { value.readPrivileges.anyColumnInsert = true; },
     (value) => { value.readPrivileges.anyColumnUpdate = true; },
     (value) => { value.readPrivileges.sequenceUsage = true; },
+    (value) => { value.readPrivileges.sequenceSelect = true; },
     (value) => { value.readPrivileges.sequenceUpdate = true; },
     (value) => { value.readPrivileges.cleanupExecute = true; },
   ]) {
