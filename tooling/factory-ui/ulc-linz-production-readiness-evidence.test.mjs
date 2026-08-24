@@ -114,6 +114,7 @@ function complianceEvidence() {
     dataFlows: [
       { from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" },
       { from: "cloudflare", to: "neon-postgresql", purpose: "application-persistence", status: "verified" },
+      { from: "cloudflare", to: "neon-postgresql", purpose: "security-log-persistence", status: "verified" },
       { from: "appbasis-control-plane", to: "cloudflare", purpose: "provider-evidence-read", status: "verified" },
       { from: "appbasis-control-plane", to: "neon-postgresql", purpose: "provider-evidence-read", status: "verified" },
       { from: "neon-postgresql", to: "neon-postgresql", purpose: "managed-backup-recovery", status: "verified" },
