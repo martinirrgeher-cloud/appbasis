@@ -21,8 +21,6 @@ function evidence() {
     application: "ulc-linz",
     environment: "production",
     evidenceSource: "protected-operator-contract-record",
-    observedAt: OBSERVED_AT,
-    validUntilOrReviewAt: VALID_UNTIL,
     cloudflare: {
       resourceBindingId: "account-1",
       documentReference: "urn:appbasis:operator-contract-record:ulc-cloudflare-2026",
@@ -36,15 +34,17 @@ function evidence() {
   };
 }
 
-test("derives only account-specific DPA entries from an exact protected contract record", () => {
+test("derives only account-specific DPA entries from an exact protected contract record and live window", () => {
   const result = deriveUlcLinzM5AccountBoundDpaEvidence(evidence(), bindings);
   assert.equal(result.length, 2);
   assert.deepEqual(
-    result.map(({ provider, documentType, accountSpecific, publicBaseline }) => ({
+    result.map(({ provider, documentType, accountSpecific, publicBaseline, observedAt, validUntilOrReviewAt }) => ({
       provider,
       documentType,
       accountSpecific,
       publicBaseline,
+      observedAt,
+      validUntilOrReviewAt,
     })),
     [
       {
@@ -52,12 +52,16 @@ test("derives only account-specific DPA entries from an exact protected contract
         documentType: "dpa-account-binding",
         accountSpecific: true,
         publicBaseline: false,
+        observedAt: OBSERVED_AT,
+        validUntilOrReviewAt: VALID_UNTIL,
       },
       {
         provider: "neon-databricks",
         documentType: "dpa-account-binding",
         accountSpecific: true,
         publicBaseline: false,
+        observedAt: OBSERVED_AT,
+        validUntilOrReviewAt: VALID_UNTIL,
       },
     ],
   );
@@ -94,17 +98,30 @@ test("fails closed on boolean-style, uncorrelated or weak evidence", () => {
       ...evidence(),
       neon: { ...evidence().neon, documentReference: "https://console.neon.tech/" },
     },
+    {
+      ...evidence(),
+      observedAt: OBSERVED_AT,
+      validUntilOrReviewAt: VALID_UNTIL,
+    },
   ]) {
     assert.throws(() => deriveUlcLinzM5AccountBoundDpaEvidence(value, bindings));
   }
 });
 
-test("requires the contract record to share the correlated production evidence window", () => {
-  const value = evidence();
-  value.observedAt = "2026-08-24T03:59:59.000Z";
+test("requires a canonical positive live production evidence window", () => {
   assert.throws(
-    () => deriveUlcLinzM5AccountBoundDpaEvidence(value, bindings),
-    /root binding is invalid/,
+    () => deriveUlcLinzM5AccountBoundDpaEvidence(evidence(), {
+      ...bindings,
+      observedAt: "2026-08-24T04:00:00Z",
+    }),
+    /observedAt is invalid/,
+  );
+  assert.throws(
+    () => deriveUlcLinzM5AccountBoundDpaEvidence(evidence(), {
+      ...bindings,
+      validUntilOrReviewAt: OBSERVED_AT,
+    }),
+    /window is invalid/,
   );
 });
 
