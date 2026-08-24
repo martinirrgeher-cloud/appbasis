@@ -1,15 +1,34 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
-import { capabilityId, principalId } from "@appbasis/permissions";
+import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
+import {
+  PostgresPrincipalAccessAdministration,
+  PostgresPrincipalLifecycleAdministration,
+  capabilityId,
+  principalId,
+} from "@appbasis/permissions";
 import { describe, expect, it } from "vitest";
 
 import { createGeneratedApp } from "../worker/app";
 import { createGeneratedPostgresApplicationRuntime } from "../worker/postgres";
+import {
+  PostgresUlcLinzDeletionReconciliationSource,
+  reconcileUlcLinzRestoredDatabase,
+} from "../worker/restore-reconciliation";
+import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim() ?? "";
-const runOnRestore = DATABASE_URL.length > 0 ? it : it.skip;
+const AUTHORITATIVE_DATABASE_URL = process.env.ULC_LINZ_PRODUCTION_DATABASE_URL?.trim() ?? "";
+const RECONCILIATION_EVIDENCE_PATH =
+  process.env.APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH?.trim() ?? "";
+const runOnRestore =
+  DATABASE_URL.length > 0 &&
+  AUTHORITATIVE_DATABASE_URL.length > 0 &&
+  RECONCILIATION_EVIDENCE_PATH.length > 0
+    ? it
+    : it.skip;
 const INVENTORY = JSON.parse(
   await readFile(
     new URL("../privacy/m5-data-inventory.json", import.meta.url),
@@ -23,11 +42,15 @@ const INVENTORY = JSON.parse(
 
 describe("ULC restored production database evidence", () => {
   runOnRestore(
-    "exercises auth, permissions, lifecycle/export inventory, retention and security logging on the exact restored database",
+    "exercises auth, permissions, reconciliation, inventory, retention and security ACLs on the exact restored database",
     async () => {
       const target = new URL(DATABASE_URL);
+      const source = new URL(AUTHORITATIVE_DATABASE_URL);
       const expectedDatabase = target.pathname.replace(/^\//, "");
       expect(expectedDatabase.length).toBeGreaterThan(0);
+      expect(`${target.hostname.toLowerCase()}:${target.port || "5432"}${target.pathname}`).not.toBe(
+        `${source.hostname.toLowerCase()}:${source.port || "5432"}${source.pathname}`,
+      );
       expect(INVENTORY.schemaVersion).toBe(2);
       expect(INVENTORY.application).toBe("ulc-linz");
 
@@ -38,6 +61,9 @@ describe("ULC restored production database evidence", () => {
         baseURL: "https://m5-restore-smoke.invalid",
         secret: `restore-smoke-${randomUUID()}-${randomUUID()}`,
       });
+      let reconciliationResult:
+        | Awaited<ReturnType<typeof reconcileUlcLinzRestoredDatabase>>
+        | undefined;
       try {
         const app = createGeneratedApp({
           identity: runtime.identity,
@@ -70,8 +96,41 @@ describe("ULC restored production database evidence", () => {
           capability: capabilityId("ulc-linz:module:__restore_probe__:view"),
         });
         expect(permissionAllowed).toBe(false);
+
+        const authoritative = createPostgresDatabase(AUTHORITATIVE_DATABASE_URL);
+        const restored = createPostgresDatabase(DATABASE_URL);
+        try {
+          const reconciliationSource = new PostgresUlcLinzDeletionReconciliationSource(
+            authoritative.client,
+          );
+          const restoredScopes = new PostgresUlcLinzScopePersistence(restored.client);
+          reconciliationResult = await reconcileUlcLinzRestoredDatabase(
+            reconciliationSource,
+            {
+              identity: runtime.identity,
+              identityDeletion: new PostgresIdentityDeletion(restored.client),
+              permissions: runtime.permissions,
+              accessAdministration: new PostgresPrincipalAccessAdministration(restored.client),
+              principalLifecycle: new PostgresPrincipalLifecycleAdministration(restored.client),
+              scopes: restoredScopes,
+            },
+          );
+          expect(reconciliationResult.requiredDeletionCount).toBeGreaterThanOrEqual(0);
+          expect(reconciliationResult.reconciledIdentityIds).toHaveLength(
+            reconciliationResult.requiredDeletionCount,
+          );
+        } finally {
+          await Promise.allSettled([
+            authoritative.client.end(),
+            restored.client.end(),
+          ]);
+        }
       } finally {
         await runtime.close();
+      }
+
+      if (reconciliationResult === undefined) {
+        throw new Error("Restore reconciliation did not produce evidence.");
       }
 
       const database = createPostgresDatabase(DATABASE_URL);
@@ -125,7 +184,27 @@ describe("ULC restored production database evidence", () => {
             to_regrole('ulc_linz_security_event_ingest') IS NOT NULL AS ingest_role,
             to_regrole('ulc_linz_security_event_cleanup') IS NOT NULL AS cleanup_role,
             to_regrole('ulc_linz_security_event_read') IS NOT NULL AS read_role,
-            to_regprocedure('public.appbasis_ulc_linz_purge_expired_security_events()') IS NOT NULL AS cleanup_function
+            to_regprocedure('public.appbasis_ulc_linz_purge_expired_security_events()') IS NOT NULL AS cleanup_function,
+            has_table_privilege('ulc_linz_security_event_ingest', 'public.ulc_linz_security_event_log', 'SELECT') AS ingest_select,
+            has_column_privilege('ulc_linz_security_event_ingest', 'public.ulc_linz_security_event_log', 'schema_version', 'INSERT') AS ingest_column_insert,
+            has_column_privilege('ulc_linz_security_event_ingest', 'public.ulc_linz_security_event_log', 'id', 'INSERT') AS ingest_identity_insert,
+            has_sequence_privilege('ulc_linz_security_event_ingest', 'public.ulc_linz_security_event_log_id_seq', 'USAGE') AS ingest_sequence_usage,
+            has_function_privilege('ulc_linz_security_event_ingest', 'public.appbasis_ulc_linz_purge_expired_security_events()', 'EXECUTE') AS ingest_cleanup_execute,
+            has_table_privilege('ulc_linz_security_event_cleanup', 'public.ulc_linz_security_event_log', 'DELETE') AS cleanup_delete,
+            has_column_privilege('ulc_linz_security_event_cleanup', 'public.ulc_linz_security_event_log', 'retained_until', 'SELECT') AS cleanup_retention_select,
+            has_column_privilege('ulc_linz_security_event_cleanup', 'public.ulc_linz_security_event_log', 'target_id', 'SELECT') AS cleanup_event_select,
+            has_function_privilege('ulc_linz_security_event_cleanup', 'public.appbasis_ulc_linz_purge_expired_security_events()', 'EXECUTE') AS cleanup_execute,
+            has_table_privilege('ulc_linz_security_event_read', 'public.ulc_linz_security_event_log', 'SELECT') AS read_select,
+            has_table_privilege('ulc_linz_security_event_read', 'public.ulc_linz_security_event_log', 'INSERT') AS read_insert,
+            has_function_privilege('ulc_linz_security_event_read', 'public.appbasis_ulc_linz_purge_expired_security_events()', 'EXECUTE') AS read_cleanup_execute,
+            EXISTS (
+              SELECT 1
+              FROM pg_catalog.pg_proc p,
+                   LATERAL pg_catalog.aclexplode(COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))) acl
+              WHERE p.oid = 'public.appbasis_ulc_linz_purge_expired_security_events()'::regprocedure
+                AND acl.grantee = 0
+                AND acl.privilege_type = 'EXECUTE'
+            ) AS public_cleanup_execute
         `);
         expect(accessRows).toEqual([
           {
@@ -133,8 +212,36 @@ describe("ULC restored production database evidence", () => {
             cleanup_role: true,
             read_role: true,
             cleanup_function: true,
+            ingest_select: false,
+            ingest_column_insert: true,
+            ingest_identity_insert: false,
+            ingest_sequence_usage: true,
+            ingest_cleanup_execute: false,
+            cleanup_delete: false,
+            cleanup_retention_select: true,
+            cleanup_event_select: false,
+            cleanup_execute: true,
+            read_select: true,
+            read_insert: false,
+            read_cleanup_execute: false,
+            public_cleanup_execute: false,
           },
         ]);
+
+        await writeFile(
+          RECONCILIATION_EVIDENCE_PATH,
+          `${JSON.stringify({
+            schemaVersion: 1,
+            application: "ulc-linz",
+            authoritativeSourceBound: true,
+            restoredTargetBound: true,
+            requiredDeletionCount: reconciliationResult.requiredDeletionCount,
+            reconciledIdentityCount: reconciliationResult.reconciledIdentityIds.length,
+            securityAclVerified: true,
+            restoreReconciliationVerified: true,
+          })}\n`,
+          { encoding: "utf8", mode: 0o600, flag: "wx" },
+        );
       } finally {
         await database.client.end();
       }
