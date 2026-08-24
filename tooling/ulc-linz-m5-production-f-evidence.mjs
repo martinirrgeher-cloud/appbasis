@@ -59,6 +59,10 @@ export async function completeUlcLinzM5ProductionFBundle(
     productionDatabaseUrl,
     "ULC production database URL",
   );
+  const safeReadDatabaseUrl = credential(
+    readDatabaseUrl,
+    "ULC security read database URL",
+  );
   const sink = await observeSecurityLogHyperdrive({
     accountId,
     apiToken,
@@ -68,7 +72,7 @@ export async function completeUlcLinzM5ProductionFBundle(
   const access = await accessCollector({
     productionDatabaseUrl: safeProductionDatabaseUrl,
     cleanupDatabaseUrl: credential(cleanupDatabaseUrl, "ULC security cleanup database URL"),
-    readDatabaseUrl: credential(readDatabaseUrl, "ULC security read database URL"),
+    readDatabaseUrl: safeReadDatabaseUrl,
     ingestUsername: sink.ingestUsername,
   });
   if (
@@ -81,7 +85,7 @@ export async function completeUlcLinzM5ProductionFBundle(
 
   const delivery = await deliveryCollector(
     {
-      productionDatabaseUrl: safeProductionDatabaseUrl,
+      productionDatabaseUrl: safeReadDatabaseUrl,
       deployedAt: sink.deployedAt,
     },
     { now: nowDate },
