@@ -73,7 +73,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
-      gitBlobSha: "2cbb63f2fa0fd3ecafde828423a1784be1ac3a84",
+      gitBlobSha: "8d51de15ba60e314d090c34d43a7e0776f96943f",
     }),
     Object.freeze({
       path: "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
