@@ -89,6 +89,8 @@ jobs:
           ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE: ${{ secrets.ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE }}
           APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
           APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL }}
+          APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL }}
+          APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL }}
         run: |
           set -euo pipefail
           for name in \
@@ -102,7 +104,9 @@ jobs:
             ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \
             ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE \
             APPBASIS_M4_RESTORE_DATABASE_URL \
-            APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL; do
+            APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL \
+            APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL \
+            APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL; do
             test -n "${!name:-}" || { echo "Missing protected ULC M5 input: $name." >&2; exit 1; }
             echo "::add-mask::${!name}"
           done
@@ -111,12 +115,18 @@ jobs:
           const backup = new URL(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL);
           const restoreOwner = new URL(process.env.APPBASIS_M4_RESTORE_DATABASE_URL);
           const restoreApp = new URL(process.env.APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL);
+          const restoreIngest = new URL(process.env.APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL);
+          const restoreRead = new URL(process.env.APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL);
           const endpoint = (url) => `${url.hostname.toLowerCase()}:${url.port || "5432"}${url.pathname}`;
           if (endpoint(app) !== endpoint(backup) || app.username === backup.username) {
             throw new Error("ULC M5 backup credential must target the production database with a dedicated principal.");
           }
-          if (endpoint(restoreOwner) !== endpoint(restoreApp) || restoreOwner.username === restoreApp.username) {
-            throw new Error("ULC M5 restore application credential must target the restore database with a dedicated non-owner principal.");
+          const restoreCredentials = [restoreOwner, restoreApp, restoreIngest, restoreRead];
+          if (restoreCredentials.some((url) => endpoint(url) !== endpoint(restoreOwner))) {
+            throw new Error("All ULC M5 restore credentials must target the exact same isolated restore database.");
+          }
+          if (new Set(restoreCredentials.map((url) => url.username)).size !== restoreCredentials.length) {
+            throw new Error("ULC M5 restore owner, application, ingest and read credentials must use distinct principals.");
           }
           NODE
 
@@ -256,6 +266,8 @@ jobs:
       - name: Verify ULC auth permissions reconciliation retention and security ACLs on the exact restored database
         env:
           DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL }}
+          APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL }}
+          APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
           APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH: ${{ steps.workspace.outputs.path }}/restore-reconciliation.json
         run: pnpm --filter @appbasis/app-ulc-linz exec vitest run ./test/restored-production.postgres.e2e.test.ts
