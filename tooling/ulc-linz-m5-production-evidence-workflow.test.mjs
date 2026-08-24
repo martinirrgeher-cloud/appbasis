@@ -74,7 +74,8 @@ test("M5 production restore reads one authorized production snapshot, preserves 
   assert.match(source, /ULC_LINZ_PRODUCTION_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
   assert.match(source, /DATABASE_URL: \$\{\{ secrets\.APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL \}\}/);
   assert.match(source, /APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH:/);
-  assert.match(source, /exec vitest run \.\/test\/restored-production\.postgres\.e2e\.test\.ts/);
+  assert.match(source, /exec vitest run[\s\S]*\.\/test\/restored-production\.postgres\.e2e\.test\.ts/);
+  assert.match(source, /\.\/test\/restored-production-export\.postgres\.e2e\.test\.ts/);
   assert.match(source, /restore-reconciliation\.json/);
   assert.match(source, /positiveAuthenticationVerified !== true/);
   assert.match(source, /securityAclVerified !== true/);
