@@ -24,10 +24,15 @@ import {
 import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim() ?? "";
+const SECURITY_LOG_INGEST_DATABASE_URL =
+  process.env.APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL?.trim() ?? "";
+const SECURITY_LOG_READ_DATABASE_URL =
+  process.env.APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL?.trim() ?? "";
 const AUTHORITATIVE_DATABASE_URL = process.env.ULC_LINZ_PRODUCTION_DATABASE_URL?.trim() ?? "";
 const RECONCILIATION_EVIDENCE_PATH =
   process.env.APPBASIS_M5_RESTORE_RECONCILIATION_EVIDENCE_PATH?.trim() ?? "";
 const RESTORE_BASE_URL = "https://m5-restore-smoke.invalid";
+const SECURITY_EVENT_TABLE = "ulc_linz_security_event_log";
 const SECURITY_GROUPS = [
   "ulc_linz_security_event_ingest",
   "ulc_linz_security_event_cleanup",
@@ -40,6 +45,8 @@ const ALLOWED_INGEST_COLUMNS = [
 ] as const;
 const runOnRestore =
   DATABASE_URL.length > 0 &&
+  SECURITY_LOG_INGEST_DATABASE_URL.length > 0 &&
+  SECURITY_LOG_READ_DATABASE_URL.length > 0 &&
   AUTHORITATIVE_DATABASE_URL.length > 0 &&
   RECONCILIATION_EVIDENCE_PATH.length > 0
     ? it
@@ -60,12 +67,17 @@ describe("ULC restored production database evidence", () => {
     "exercises positive auth, permissions, reconciliation, inventory, retention and security ACLs on the exact restored database",
     async () => {
       const target = new URL(DATABASE_URL);
+      const ingestTarget = new URL(SECURITY_LOG_INGEST_DATABASE_URL);
+      const readTarget = new URL(SECURITY_LOG_READ_DATABASE_URL);
       const source = new URL(AUTHORITATIVE_DATABASE_URL);
+      const endpoint = (url: URL) =>
+        `${url.hostname.toLowerCase()}:${url.port || "5432"}${url.pathname}`;
       const expectedDatabase = target.pathname.replace(/^\//, "");
       expect(expectedDatabase.length).toBeGreaterThan(0);
-      expect(`${target.hostname.toLowerCase()}:${target.port || "5432"}${target.pathname}`).not.toBe(
-        `${source.hostname.toLowerCase()}:${source.port || "5432"}${source.pathname}`,
-      );
+      expect(endpoint(target)).not.toBe(endpoint(source));
+      expect(endpoint(ingestTarget)).toBe(endpoint(target));
+      expect(endpoint(readTarget)).toBe(endpoint(target));
+      expect(new Set([target.username, ingestTarget.username, readTarget.username]).size).toBe(3);
       expect(INVENTORY.schemaVersion).toBe(2);
       expect(INVENTORY.application).toBe("ulc-linz");
 
@@ -78,7 +90,7 @@ describe("ULC restored production database evidence", () => {
       });
       const runtime = await createGeneratedPostgresApplicationRuntime({
         connectionString: DATABASE_URL,
-        securityLogConnectionString: DATABASE_URL,
+        securityLogConnectionString: SECURITY_LOG_INGEST_DATABASE_URL,
         baseURL: RESTORE_BASE_URL,
         secret: identitySecret,
       });
@@ -176,6 +188,7 @@ describe("ULC restored production database evidence", () => {
       }
 
       const database = createPostgresDatabase(DATABASE_URL);
+      const securityReadDatabase = createPostgresDatabase(SECURITY_LOG_READ_DATABASE_URL);
       try {
         const databaseRows = await database.client.unsafe(
           "SELECT current_database() AS database_name",
@@ -197,10 +210,14 @@ describe("ULC restored production database evidence", () => {
           if (!/^[a-z][a-z0-9_]{0,62}$/.test(tableName)) {
             throw new Error("Restore inventory contains an unsafe table name.");
           }
+          if (tableName === SECURITY_EVENT_TABLE) continue;
           await database.client.unsafe(`SELECT * FROM public.${tableName} LIMIT 0`);
         }
+        await securityReadDatabase.client.unsafe(
+          `SELECT * FROM public.${SECURITY_EVENT_TABLE} LIMIT 0`,
+        );
 
-        const eventRows = await database.client.unsafe(
+        const eventRows = await securityReadDatabase.client.unsafe(
           `SELECT occurred_at, retained_until
            FROM public.ulc_linz_security_event_log
            WHERE event_type = 'identity.request.denied'
@@ -221,7 +238,7 @@ describe("ULC restored production database evidence", () => {
         );
         expect(boundaryRows[0]?.exact_boundary).toBe(true);
 
-        const accessRows = await database.client.unsafe(`
+        const accessRows = await securityReadDatabase.client.unsafe(`
           SELECT
             to_regrole('ulc_linz_security_event_ingest') IS NOT NULL AS ingest_role,
             to_regrole('ulc_linz_security_event_cleanup') IS NOT NULL AS cleanup_role,
@@ -269,7 +286,15 @@ describe("ULC restored production database evidence", () => {
             public_cleanup_execute: false,
           },
         ]);
-        await verifyRestoredSecurityAcl(database.client);
+        await verifyRestoredSecurityAcl(securityReadDatabase.client);
+        await verifyRestoreOperationalPrincipal(
+          SECURITY_LOG_INGEST_DATABASE_URL,
+          "ulc_linz_security_event_ingest",
+        );
+        await verifyRestoreOperationalPrincipal(
+          SECURITY_LOG_READ_DATABASE_URL,
+          "ulc_linz_security_event_read",
+        );
 
         await writeFile(
           RECONCILIATION_EVIDENCE_PATH,
@@ -287,7 +312,10 @@ describe("ULC restored production database evidence", () => {
           { encoding: "utf8", mode: 0o600, flag: "wx" },
         );
       } finally {
-        await database.client.end();
+        await Promise.allSettled([
+          database.client.end(),
+          securityReadDatabase.client.end(),
+        ]);
       }
     },
     30_000,
@@ -376,6 +404,50 @@ async function verifyRestoredSecurityAcl(
   }
   expect(seenGroups).toEqual(new Set(SECURITY_GROUPS));
   expect(seenMembers.size).toBe(SECURITY_GROUPS.length);
+}
+
+async function verifyRestoreOperationalPrincipal(
+  connectionString: string,
+  expectedGroup: (typeof SECURITY_GROUPS)[number],
+) {
+  const connection = createPostgresDatabase(connectionString);
+  try {
+    const rows = await connection.client.unsafe(
+      `SELECT role.rolsuper AS superuser,
+              role.rolcreatedb AS create_db,
+              role.rolcreaterole AS create_role,
+              role.rolreplication AS replication,
+              role.rolbypassrls AS bypass_rls,
+              pg_catalog.pg_has_role(current_user, $1::name, 'MEMBER') AS expected_member,
+              (SELECT count(*)::int
+                 FROM pg_catalog.pg_auth_members membership
+                WHERE membership.member = role.oid) AS membership_count,
+              EXISTS (
+                SELECT 1
+                  FROM pg_catalog.pg_auth_members membership
+                 WHERE membership.member = role.oid
+                   AND membership.roleid = to_regrole($1)
+                   AND membership.admin_option
+              ) AS admin_option
+         FROM pg_catalog.pg_roles role
+        WHERE role.rolname = current_user`,
+      [expectedGroup],
+    );
+    expect(rows).toEqual([
+      {
+        superuser: false,
+        create_db: false,
+        create_role: false,
+        replication: false,
+        bypass_rls: false,
+        expected_member: true,
+        membership_count: 1,
+        admin_option: false,
+      },
+    ]);
+  } finally {
+    await connection.client.end();
+  }
 }
 
 async function provisionControlledRestoreIdentity(input: {
