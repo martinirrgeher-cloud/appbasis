@@ -38,7 +38,7 @@ SELECT
     WHERE namespace.nspname = 'public'
       AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
       AND procedure.pronargs = 0
-      AND acl.grantee = current_role.oid
+      AND acl.grantee IN (current_role.oid, cleanup_group.oid)
       AND acl.privilege_type = 'EXECUTE'
       AND acl.is_grantable
   ) AS cleanup_execute_grant_option,
@@ -54,7 +54,7 @@ SELECT
     CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(attribute.attacl, ARRAY[]::aclitem[])) acl
     WHERE attribute.attrelid = 'public.ulc_linz_security_event_log'::regclass
       AND attribute.attname = 'retained_until'
-      AND acl.grantee = current_role.oid
+      AND acl.grantee IN (current_role.oid, cleanup_group.oid)
       AND acl.privilege_type = 'SELECT'
       AND acl.is_grantable
   ) AS retention_read_grant_option,
@@ -63,7 +63,9 @@ SELECT
   has_sequence_privilege(current_user, 'public.ulc_linz_security_event_log_id_seq', 'SELECT') AS sequence_select,
   has_sequence_privilege(current_user, 'public.ulc_linz_security_event_log_id_seq', 'UPDATE') AS sequence_update
 FROM pg_catalog.pg_roles current_role
+CROSS JOIN pg_catalog.pg_roles cleanup_group
 WHERE current_role.rolname = current_user
+  AND cleanup_group.rolname = 'ulc_linz_security_event_cleanup'
 `;
 
 const SNAPSHOT_SQL = `
