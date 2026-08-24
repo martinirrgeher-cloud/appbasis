@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { evaluateUlcLinzM5SecurityLogAccessSnapshot } from "./ulc-linz-m5-security-log-access-evidence.mjs";
@@ -216,6 +217,15 @@ test("rejects early-delete escape hatches or an unverified server calendar contr
     mutate(value);
     assert.throws(() => evaluateUlcLinzM5SecurityLogAccessSnapshot(value));
   }
+});
+
+test("forbidden-column inventory uses an unfiltered PostgreSQL catalog", async () => {
+  const source = await readFile(new URL("./ulc-linz-m5-security-log-access-evidence.mjs", import.meta.url), "utf8");
+  assert.match(source, /FROM pg_catalog\.pg_attribute attribute/);
+  assert.match(source, /attribute\.attrelid = 'public\.ulc_linz_security_event_log'::regclass/);
+  assert.match(source, /attribute\.attnum > 0/);
+  assert.match(source, /NOT attribute\.attisdropped/);
+  assert.doesNotMatch(source, /FROM information_schema\.columns/);
 });
 
 test("rejects decorated or accessor-based access evidence", () => {
