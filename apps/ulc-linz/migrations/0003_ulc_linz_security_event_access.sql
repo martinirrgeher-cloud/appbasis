@@ -1,13 +1,34 @@
 DO $appbasis$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'ulc_linz_security_event_ingest') THEN
-    CREATE ROLE ulc_linz_security_event_ingest NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    BEGIN
+      CREATE ROLE ulc_linz_security_event_ingest NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    EXCEPTION
+      WHEN duplicate_object OR unique_violation THEN
+        IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'ulc_linz_security_event_ingest') THEN
+          RAISE;
+        END IF;
+    END;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'ulc_linz_security_event_cleanup') THEN
-    CREATE ROLE ulc_linz_security_event_cleanup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    BEGIN
+      CREATE ROLE ulc_linz_security_event_cleanup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    EXCEPTION
+      WHEN duplicate_object OR unique_violation THEN
+        IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'ulc_linz_security_event_cleanup') THEN
+          RAISE;
+        END IF;
+    END;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'ulc_linz_security_event_read') THEN
-    CREATE ROLE ulc_linz_security_event_read NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    BEGIN
+      CREATE ROLE ulc_linz_security_event_read NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    EXCEPTION
+      WHEN duplicate_object OR unique_violation THEN
+        IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'ulc_linz_security_event_read') THEN
+          RAISE;
+        END IF;
+    END;
   END IF;
 END
 $appbasis$;
