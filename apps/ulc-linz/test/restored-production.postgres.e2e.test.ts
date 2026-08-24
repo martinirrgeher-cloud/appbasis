@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
 import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
 import {
+  PostgresPermissionStore,
   PostgresPrincipalAccessAdministration,
   PostgresPrincipalLifecycleAdministration,
   capabilityId,
@@ -12,6 +13,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { createGeneratedApp } from "../worker/app";
+import type { UlcLinzIdentityLifecycleOwner } from "../worker/lifecycle";
 import { createGeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import {
   PostgresUlcLinzDeletionReconciliationSource,
@@ -104,12 +106,13 @@ describe("ULC restored production database evidence", () => {
             authoritative.client,
           );
           const restoredScopes = new PostgresUlcLinzScopePersistence(restored.client);
+          const restoredPermissions = new PostgresPermissionStore(restored.client);
           reconciliationResult = await reconcileUlcLinzRestoredDatabase(
             reconciliationSource,
             {
-              identity: runtime.identity,
+              identity: requireLifecycleIdentityOwner(runtime.identity),
               identityDeletion: new PostgresIdentityDeletion(restored.client),
-              permissions: runtime.permissions,
+              permissions: restoredPermissions,
               accessAdministration: new PostgresPrincipalAccessAdministration(restored.client),
               principalLifecycle: new PostgresPrincipalLifecycleAdministration(restored.client),
               scopes: restoredScopes,
@@ -249,3 +252,14 @@ describe("ULC restored production database evidence", () => {
     30_000,
   );
 });
+
+function requireLifecycleIdentityOwner(value: unknown): UlcLinzIdentityLifecycleOwner {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    typeof (value as { disableIdentity?: unknown }).disableIdentity !== "function"
+  ) {
+    throw new Error("Restored production runtime is missing the lifecycle identity owner.");
+  }
+  return value as UlcLinzIdentityLifecycleOwner;
+}
