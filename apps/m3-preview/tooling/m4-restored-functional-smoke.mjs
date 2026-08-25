@@ -14,6 +14,7 @@ import { provisionPostgresPermissions } from "@appbasis/permissions/provisioning
 
 import { createGeneratedApp } from "../worker/app.ts";
 import { createGeneratedPostgresApplicationRuntime } from "../worker/postgres.ts";
+import { safeRestoreSmokeError } from "./m4-restored-functional-smoke-error.mjs";
 
 const BASE_URL = "https://m4-restore-smoke.invalid";
 
@@ -330,7 +331,7 @@ if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).
       `M4 restored functional smoke passed: auth, permission deny-by-default and tasks persistence (${result.taskId}).`,
     );
   } catch (error) {
-    console.error(error instanceof Error ? error.message : "M4 restored functional smoke failed.");
+    console.error(safeRestoreSmokeError(error));
     process.exitCode = 1;
   }
 }
