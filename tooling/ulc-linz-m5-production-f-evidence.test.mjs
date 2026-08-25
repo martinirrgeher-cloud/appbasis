@@ -156,7 +156,7 @@ const validAccess = Object.freeze({
   protectedOperationalAccessVerified: true,
   providerMinimumRetentionVerified: true,
 });
-const validDelivery = Object.freeze({ runtimeDeliveryVerified: true });
+const validDelivery = Object.freeze({ postDeploymentSinkActivityObserved: true });
 
 async function complete({
   fetchImpl = cloudflareFetch,
@@ -179,7 +179,7 @@ async function complete({
   });
 }
 
-test("adds M5-F only after exact deployed sink, least privilege, real delivery and controlled retention evidence", async () => {
+test("adds M5-F only after exact deployed sink, least privilege, post-deployment sink activity and controlled retention evidence", async () => {
   const result = await complete();
   const f = result.ownerInputs.auditSecurityLoggingEvidenceInput;
   assert.equal(f.resourceBindingEvidence, result.ownerInputs.providerBoundEvidenceInput.resourceBindingEvidence);
@@ -224,10 +224,10 @@ test("fails closed without real least-privilege access evidence", async () => {
   }
 });
 
-test("fails closed without real runtime-to-sink delivery evidence", async () => {
+test("fails closed without post-deployment sink activity evidence", async () => {
   await assert.rejects(
     () => complete({ delivery: {} }),
-    /real production sink delivery evidence is unavailable/,
+    /post-deployment production sink activity evidence is unavailable/,
   );
 });
 
