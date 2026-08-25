@@ -14,10 +14,8 @@ export function extendUlcLinzSecurityAccessTemplate(input, generated) {
   const files = generated.files.map((entry) => {
     if (entry.path !== SECURITY_EVENT_POSTGRES_PATH) return entry;
     sourceFound = true;
-    return Object.freeze({
-      ...entry,
-      content: withLeastPrivilegeCleanup(entry.content),
-    });
+    assertLeastPrivilegeCleanupRuntime(entry.content);
+    return entry;
   });
 
   if (!sourceFound) {
@@ -39,37 +37,21 @@ export function extendUlcLinzSecurityAccessTemplate(input, generated) {
   });
 }
 
-function withLeastPrivilegeCleanup(content) {
-  const directCleanup = `const PURGE_SECURITY_EVENT_SQL = \`
-DELETE FROM ulc_linz_security_event_log
-WHERE retained_until < statement_timestamp()
-\`;`;
-  const protectedCleanup = `export interface UlcLinzSecurityEventPurgeResult {
+function assertLeastPrivilegeCleanupRuntime(content) {
+  const protectedInterface = `export interface UlcLinzSecurityEventPurgeResult {
   cutoff: string;
   deletedRows: bigint;
-}
-
-const PURGE_SECURITY_EVENT_SQL = \`
+}`;
+  const protectedCleanup = `const PURGE_SECURITY_EVENT_SQL = \`
 SELECT
   statement_timestamp() AS cutoff,
   public.appbasis_ulc_linz_purge_expired_security_events()::text AS deleted_rows
 \`;`;
-  const directComment = `/**
- * Deletes only events whose database-enforced twelve-calendar-month boundary is
- * strictly older than the PostgreSQL server's statement timestamp. There is no
- * caller-supplied clock or cutoff, so an HTTP/request/operator value cannot
- * shorten the retention period.
- */`;
   const protectedComment = `/**
  * Invokes the database-owned cleanup function and returns the exact database
  * statement clock used by that purge. The cleanup principal cannot supply or
  * override the cutoff; PostgreSQL owns the twelve-calendar-month boundary.
  */`;
-  const directFunction = `export async function purgeExpiredUlcLinzSecurityEvents(
-  client: UlcLinzSecurityEventSqlClient,
-): Promise<void> {
-  await client.unsafe(PURGE_SECURITY_EVENT_SQL);
-}`;
   const protectedFunction = `export async function purgeExpiredUlcLinzSecurityEvents(
   client: UlcLinzSecurityEventSqlClient,
 ): Promise<UlcLinzSecurityEventPurgeResult> {
@@ -98,18 +80,15 @@ SELECT
 }`;
 
   if (
-    !content.includes(directCleanup) ||
-    !content.includes(directComment) ||
-    !content.includes(directFunction)
+    !content.includes(protectedInterface) ||
+    !content.includes(protectedCleanup) ||
+    !content.includes(protectedComment) ||
+    !content.includes(protectedFunction)
   ) {
     throw new Error(
-      "Generated ULC security cleanup source drifted before least-privilege hardening.",
+      "Generated ULC security cleanup runtime drifted before least-privilege access binding.",
     );
   }
-  return content
-    .replace(directCleanup, protectedCleanup)
-    .replace(directComment, protectedComment)
-    .replace(directFunction, protectedFunction);
 }
 
 function securityEventAccessMigration() {
