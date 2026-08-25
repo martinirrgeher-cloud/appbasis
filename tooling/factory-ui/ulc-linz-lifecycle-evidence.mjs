@@ -285,8 +285,8 @@ function isProductionLifecycleActivationVerified(input, lifecycleContractDigest,
       activation.executionBoundary !== "protected-operations" ||
       activation.lifecycleContractDigest !== lifecycleContractDigest ||
       activation.activationInventoryComplete !== true ||
-      activation.deletionExecutorBound !== false ||
-      activation.retentionExecutorBound !== false ||
+      activation.deletionExecutorBound !== true ||
+      activation.retentionExecutorBound !== true ||
       activation.restoreReconciliationExecutorBound !== true ||
       activation.publicIngressPresent !== false ||
       activation.observedAt !== resourceBinding.observedAt ||
