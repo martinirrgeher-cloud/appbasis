@@ -83,15 +83,15 @@ export async function completeUlcLinzM5ProductionFBundle(
     throw new Error("M5-F security-log access evidence is incomplete.");
   }
 
-  const delivery = await deliveryCollector(
+  const sinkActivity = await deliveryCollector(
     {
       productionDatabaseUrl: safeReadDatabaseUrl,
       deployedAt: sink.deployedAt,
     },
     { now: nowDate },
   );
-  if (delivery?.runtimeDeliveryVerified !== true) {
-    throw new Error("M5-F real production sink delivery evidence is unavailable.");
+  if (sinkActivity?.postDeploymentSinkActivityObserved !== true) {
+    throw new Error("M5-F post-deployment production sink activity evidence is unavailable.");
   }
 
   const retention = await retentionEvidenceReader({
