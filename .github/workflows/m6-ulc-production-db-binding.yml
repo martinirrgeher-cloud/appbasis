@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: m6-ulc-production-db-binding
+  group: m6-ulc-production-runtime-config
   cancel-in-progress: false
 
 jobs:
