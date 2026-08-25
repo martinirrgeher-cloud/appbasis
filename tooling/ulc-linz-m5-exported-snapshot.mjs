@@ -89,24 +89,24 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       SELECT oid, datdba, datacl
       FROM pg_catalog.pg_database
       WHERE datname = current_database()
-    ), public_schema AS (
-      SELECT oid, nspowner, nspacl
+    ), user_schemas AS (
+      SELECT oid, nspname, nspowner, nspacl
       FROM pg_catalog.pg_namespace
-      WHERE nspname = 'public'
-    ), public_relations AS (
-      SELECT c.oid, c.relkind, c.relacl
+      WHERE nspname <> 'information_schema'
+        AND nspname !~ '^pg_'
+    ), user_relations AS (
+      SELECT c.oid, c.relkind, c.relowner, c.relacl
       FROM pg_catalog.pg_class AS c
-      JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'S')
-    ), public_functions AS (
-      SELECT p.oid, p.proacl
+      JOIN user_schemas AS n ON n.oid = c.relnamespace
+      WHERE c.relkind IN ('r', 'p', 'S')
+    ), user_functions AS (
+      SELECT p.oid, p.proowner, p.proacl
       FROM pg_catalog.pg_proc AS p
-      JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'public'
-    ), public_columns AS (
+      JOIN user_schemas AS n ON n.oid = p.pronamespace
+    ), user_columns AS (
       SELECT a.attrelid, a.attacl
       FROM pg_catalog.pg_attribute AS a
-      JOIN public_relations AS relation ON relation.oid = a.attrelid
+      JOIN user_relations AS relation ON relation.oid = a.attrelid
       WHERE a.attnum > 0 AND NOT a.attisdropped
     )
     SELECT
@@ -118,10 +118,7 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       role.rolbypassrls,
       role.session_user_matches,
       pg_catalog.pg_get_userbyid(database_record.datdba) = role.rolname AS owns_database,
-      pg_catalog.pg_get_userbyid(schema_record.nspowner) = role.rolname AS owns_public_schema,
       pg_catalog.has_database_privilege(role.rolname, current_database(), 'CREATE') AS database_create,
-      pg_catalog.has_schema_privilege(role.rolname, 'public', 'USAGE') AS public_schema_usage,
-      pg_catalog.has_schema_privilege(role.rolname, 'public', 'CREATE') AS public_schema_create,
       (SELECT count(*)::int
        FROM pg_catalog.pg_auth_members AS membership
        WHERE membership.member = role.oid) AS membership_count,
@@ -132,17 +129,30 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
        FROM pg_catalog.pg_auth_members AS membership
        WHERE membership.roleid = role.oid) AS reverse_membership_count,
       (SELECT count(*)::int
-       FROM public_relations AS relation
-       WHERE pg_catalog.pg_get_userbyid((SELECT relowner FROM pg_catalog.pg_class WHERE oid = relation.oid)) = role.rolname) AS owned_relation_count,
+       FROM user_schemas AS schema_record
+       WHERE pg_catalog.pg_get_userbyid(schema_record.nspowner) = role.rolname) AS owned_schema_count,
       (SELECT count(*)::int
-       FROM public_functions AS function
-       WHERE pg_catalog.pg_get_userbyid((SELECT proowner FROM pg_catalog.pg_proc WHERE oid = function.oid)) = role.rolname) AS owned_function_count,
+       FROM user_schemas AS schema_record
+       WHERE NOT pg_catalog.has_schema_privilege(role.rolname, schema_record.oid, 'USAGE')) AS unusable_schema_count,
       (SELECT count(*)::int
-       FROM public_relations AS relation
+       FROM user_schemas AS schema_record
+       WHERE pg_catalog.has_schema_privilege(role.rolname, schema_record.oid, 'CREATE')) AS creatable_schema_count,
+      (SELECT count(*)::int
+       FROM user_relations AS relation
+       WHERE pg_catalog.pg_get_userbyid(relation.relowner) = role.rolname) AS owned_relation_count,
+      (SELECT count(*)::int
+       FROM user_functions AS function
+       WHERE pg_catalog.pg_get_userbyid(function.proowner) = role.rolname) AS owned_function_count,
+      (SELECT count(*)::int
+       FROM user_relations AS relation
        WHERE relation.relkind IN ('r', 'p')
          AND NOT pg_catalog.has_table_privilege(role.rolname, relation.oid, 'SELECT')) AS unreadable_table_count,
       (SELECT count(*)::int
-       FROM public_relations AS relation
+       FROM user_relations AS relation
+       WHERE relation.relkind = 'S'
+         AND NOT pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'SELECT')) AS unreadable_sequence_count,
+      (SELECT count(*)::int
+       FROM user_relations AS relation
        WHERE relation.relkind IN ('r', 'p')
          AND (
            pg_catalog.has_table_privilege(role.rolname, relation.oid, 'INSERT') OR
@@ -153,7 +163,7 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
            pg_catalog.has_table_privilege(role.rolname, relation.oid, 'REFERENCES')
          )) AS writable_table_count,
       (SELECT count(*)::int
-       FROM public_relations AS relation
+       FROM user_relations AS relation
        WHERE relation.relkind IN ('r', 'p')
          AND (
            pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'INSERT') OR
@@ -161,14 +171,14 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
            pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'REFERENCES')
          )) AS writable_column_count,
       (SELECT count(*)::int
-       FROM public_relations AS relation
+       FROM user_relations AS relation
        WHERE relation.relkind = 'S'
          AND (
            pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'USAGE') OR
            pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'UPDATE')
          )) AS writable_sequence_count,
       (SELECT count(*)::int
-       FROM public_functions AS function
+       FROM user_functions AS function
        WHERE pg_catalog.has_function_privilege(role.rolname, function.oid, 'EXECUTE')) AS executable_function_count,
       (
         SELECT count(*)::int
@@ -179,22 +189,22 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
           WHERE acl.grantee = role.oid
           UNION ALL
           SELECT acl.is_grantable
-          FROM public_schema AS schema_acl
+          FROM user_schemas AS schema_acl
           CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(schema_acl.nspacl, '{}'::aclitem[])) AS acl
           WHERE acl.grantee = role.oid
           UNION ALL
           SELECT acl.is_grantable
-          FROM public_relations AS relation
+          FROM user_relations AS relation
           CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(relation.relacl, '{}'::aclitem[])) AS acl
           WHERE acl.grantee = role.oid
           UNION ALL
           SELECT acl.is_grantable
-          FROM public_columns AS column_acl
+          FROM user_columns AS column_acl
           CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(column_acl.attacl, '{}'::aclitem[])) AS acl
           WHERE acl.grantee = role.oid
           UNION ALL
           SELECT acl.is_grantable
-          FROM public_functions AS function
+          FROM user_functions AS function
           CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(function.proacl, '{}'::aclitem[])) AS acl
           WHERE acl.grantee = role.oid
         ) AS explicit_acl
@@ -202,7 +212,6 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       ) AS grantable_acl_count
     FROM current_role AS role
     CROSS JOIN current_database_record AS database_record
-    CROSS JOIN public_schema AS schema_record
   `);
   if (!Array.isArray(rows) || rows.length !== 1) {
     throw new Error("ULC M5 backup principal inventory is invalid.");
@@ -217,16 +226,17 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
     role.rolbypassrls !== false ||
     role.session_user_matches !== true ||
     role.owns_database !== false ||
-    role.owns_public_schema !== false ||
     role.database_create !== false ||
-    role.public_schema_usage !== true ||
-    role.public_schema_create !== false ||
     role.membership_count !== 0 ||
     role.admin_membership_count !== 0 ||
     role.reverse_membership_count !== 0 ||
+    role.owned_schema_count !== 0 ||
+    role.unusable_schema_count !== 0 ||
+    role.creatable_schema_count !== 0 ||
     role.owned_relation_count !== 0 ||
     role.owned_function_count !== 0 ||
     role.unreadable_table_count !== 0 ||
+    role.unreadable_sequence_count !== 0 ||
     role.writable_table_count !== 0 ||
     role.writable_column_count !== 0 ||
     role.writable_sequence_count !== 0 ||
