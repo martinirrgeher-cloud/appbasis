@@ -42,18 +42,22 @@ test("bindUlcLinzSecurityLogRoles provisions only missing exact memberships in o
           },
           async (callback) => {
             beginCalls += 1;
-            return callback({
-              async unsafe(sql) {
-                statements.push(sql);
-                const match = /^GRANT "([^"]+)" TO "([^"]+)"$/.exec(sql);
-                assert.ok(match);
-                memberships = [
-                  ...memberships,
-                  { parent: match[1], member: match[2], admin_option: false },
-                ];
-                return [];
+            const transaction = Object.assign(
+              function reservedTransactionClient() {},
+              {
+                async unsafe(sql) {
+                  statements.push(sql);
+                  const match = /^GRANT "([^"]+)" TO "([^"]+)"$/.exec(sql);
+                  assert.ok(match);
+                  memberships = [
+                    ...memberships,
+                    { parent: match[1], member: match[2], admin_option: false },
+                  ];
+                  return [];
+                },
               },
-            });
+            );
+            return callback(transaction);
           },
         );
       },
