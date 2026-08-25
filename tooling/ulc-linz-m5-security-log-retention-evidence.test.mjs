@@ -5,11 +5,52 @@ import {
   readUlcLinzM5SecurityLogRetentionRunEvidence,
   ULC_LINZ_M5_F_RETENTION_RUN_POLICY,
 } from "./ulc-linz-m5-security-log-retention-evidence.mjs";
+import { runUlcLinzM5SecurityLogRetention } from "./ulc-linz-m5-security-log-retention-run.mjs";
 import { ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 
 const MAIN_SHA = "a".repeat(40);
 const NOW = Date.parse("2026-08-23T16:00:00.000Z");
 const UPDATED_AT = "2026-08-23T15:55:00.000Z";
+const RETENTION_CUTOFF = "2026-08-23T15:54:30.000Z";
+
+const VALID_CLEANUP_ACCESS = Object.freeze({
+  cleanup_member: true,
+  login: true,
+  superuser: false,
+  create_db: false,
+  create_role: false,
+  replication: false,
+  bypass_rls: false,
+  cleanup_group_login: false,
+  cleanup_group_superuser: false,
+  cleanup_group_create_db: false,
+  cleanup_group_create_role: false,
+  cleanup_group_replication: false,
+  cleanup_group_bypass_rls: false,
+  membership_count: 1,
+  cleanup_admin_option: false,
+  reverse_membership_count: 0,
+  cleanup_group_membership_count: 0,
+  cleanup_group_member_count: 1,
+  cleanup_group_admin_member_count: 0,
+  cleanup_execute: true,
+  direct_select: false,
+  direct_delete: false,
+  direct_insert: false,
+  direct_update: false,
+  direct_truncate: false,
+  direct_trigger: false,
+  direct_references: false,
+  retention_read: true,
+  forbidden_column_select: false,
+  forbidden_column_mutation: false,
+  sequence_usage: false,
+  sequence_select: false,
+  sequence_update: false,
+  protected_object_owner_count: 0,
+  expected_cleanup_acl_count: 2,
+  unexpected_cleanup_acl_count: 0,
+});
 
 function run(overrides = {}) {
   return {
@@ -56,6 +97,21 @@ function jsonResponse(value) {
   });
 }
 
+function retentionClient(access = VALID_CLEANUP_ACCESS, expiredRows = "0") {
+  const queries = [];
+  return {
+    queries,
+    client: {
+      async unsafe(query) {
+        queries.push(query);
+        if (query.includes("WITH protected_acl AS")) return [structuredClone(access)];
+        if (query.includes("COUNT(retained_until)")) return [{ expired_rows: expiredRows }];
+        throw new Error("unexpected retention test query");
+      },
+    },
+  };
+}
+
 test("reads only a fresh successful retention run on the exact expected current main head", async () => {
   const { fetchImpl, calls } = githubFetch();
   const evidence = await readUlcLinzM5SecurityLogRetentionRunEvidence(options(fetchImpl));
@@ -78,6 +134,96 @@ test("reads only a fresh successful retention run on the exact expected current 
   assert.equal(runsUrl.searchParams.get("branch"), "main");
   assert.equal(runsUrl.searchParams.get("event"), "workflow_dispatch");
   assert.equal(runsUrl.searchParams.get("per_page"), "1");
+});
+
+test("retention runner accepts only the exact non-delegable cleanup boundary", async () => {
+  const { client, queries } = retentionClient();
+  const result = await runUlcLinzM5SecurityLogRetention(
+    client,
+    async () => ({ cutoff: RETENTION_CUTOFF, deletedRows: "3" }),
+  );
+
+  assert.equal(result.cleanupAccessVerified, true);
+  assert.equal(result.cleanupSucceeded, true);
+  assert.equal(result.cleanupResultVerified, true);
+  assert.equal(result.expiredRowsRemaining, false);
+  assert.equal(result.productionReleaseAuthorized, false);
+  assert.equal(queries.length, 2);
+  assert.match(queries[0], /forbidden_column_mutation/);
+  assert.match(queries[0], /attribute\.attname[\s\S]*'UPDATE'/);
+  assert.match(queries[0], /attribute\.attname[\s\S]*'REFERENCES'/);
+  assert.match(queries[0], /protected_object_owner_count/);
+  assert.match(queries[0], /expected_cleanup_acl_count/);
+  assert.match(queries[0], /unexpected_cleanup_acl_count/);
+  assert.match(queries[0], /cleanup_group_member_count/);
+  assert.match(queries[0], /reverse_membership_count/);
+  assert.match(queries[0], /pg_catalog\.aclexplode/);
+});
+
+test("retention runner fails closed for every adjacent cleanup privilege-escalation class", async () => {
+  const invalidAccessRows = [
+    { ...VALID_CLEANUP_ACCESS, cleanup_member: false },
+    { ...VALID_CLEANUP_ACCESS, login: false },
+    { ...VALID_CLEANUP_ACCESS, superuser: true },
+    { ...VALID_CLEANUP_ACCESS, create_db: true },
+    { ...VALID_CLEANUP_ACCESS, create_role: true },
+    { ...VALID_CLEANUP_ACCESS, replication: true },
+    { ...VALID_CLEANUP_ACCESS, bypass_rls: true },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_login: true },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_superuser: true },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_create_db: true },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_create_role: true },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_replication: true },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_bypass_rls: true },
+    { ...VALID_CLEANUP_ACCESS, membership_count: 2 },
+    { ...VALID_CLEANUP_ACCESS, cleanup_admin_option: true },
+    { ...VALID_CLEANUP_ACCESS, reverse_membership_count: 1 },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_membership_count: 1 },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_member_count: 2 },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_admin_member_count: 1 },
+    { ...VALID_CLEANUP_ACCESS, cleanup_execute: false },
+    { ...VALID_CLEANUP_ACCESS, direct_select: true },
+    { ...VALID_CLEANUP_ACCESS, direct_delete: true },
+    { ...VALID_CLEANUP_ACCESS, direct_insert: true },
+    { ...VALID_CLEANUP_ACCESS, direct_update: true },
+    { ...VALID_CLEANUP_ACCESS, direct_truncate: true },
+    { ...VALID_CLEANUP_ACCESS, direct_trigger: true },
+    { ...VALID_CLEANUP_ACCESS, direct_references: true },
+    { ...VALID_CLEANUP_ACCESS, retention_read: false },
+    { ...VALID_CLEANUP_ACCESS, forbidden_column_select: true },
+    { ...VALID_CLEANUP_ACCESS, forbidden_column_mutation: true },
+    { ...VALID_CLEANUP_ACCESS, sequence_usage: true },
+    { ...VALID_CLEANUP_ACCESS, sequence_select: true },
+    { ...VALID_CLEANUP_ACCESS, sequence_update: true },
+    { ...VALID_CLEANUP_ACCESS, protected_object_owner_count: 1 },
+    { ...VALID_CLEANUP_ACCESS, expected_cleanup_acl_count: 1 },
+    { ...VALID_CLEANUP_ACCESS, expected_cleanup_acl_count: 3 },
+    { ...VALID_CLEANUP_ACCESS, unexpected_cleanup_acl_count: 1 },
+  ];
+
+  for (const access of invalidAccessRows) {
+    const { client } = retentionClient(access);
+    let purgeCalls = 0;
+    await assert.rejects(
+      () => runUlcLinzM5SecurityLogRetention(client, async () => {
+        purgeCalls += 1;
+        return { cutoff: RETENTION_CUTOFF, deletedRows: "0" };
+      }),
+      /cleanup principal is not least privilege/,
+    );
+    assert.equal(purgeCalls, 0);
+  }
+});
+
+test("retention runner fails closed when cleanup leaves rows expired at its own cutoff", async () => {
+  const { client } = retentionClient(VALID_CLEANUP_ACCESS, "1");
+  await assert.rejects(
+    () => runUlcLinzM5SecurityLogRetention(
+      client,
+      async () => ({ cutoff: RETENTION_CUTOFF, deletedRows: "0" }),
+    ),
+    /left expired security events behind/,
+  );
 });
 
 test("fails closed when the local expected head and remote current main differ", async () => {
