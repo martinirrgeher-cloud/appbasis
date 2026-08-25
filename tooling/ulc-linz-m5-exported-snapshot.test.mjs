@@ -10,6 +10,12 @@ const validBackupPrincipal = Object.freeze({
   rolcreaterole: false,
   rolreplication: false,
   rolbypassrls: false,
+  session_user_matches: true,
+  owns_database: false,
+  owns_public_schema: false,
+  database_create: false,
+  public_schema_usage: true,
+  public_schema_create: false,
   membership_count: 0,
   admin_membership_count: 0,
   owned_relation_count: 0,
@@ -80,15 +86,17 @@ test("holds one least-privileged read-only repeatable-read exported snapshot unt
   assert.equal(result, snapshotId);
   assert.equal(queries.length, 3);
   assert.equal(queries[0], "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
+  assert.match(queries[1], /session_user_matches/);
+  assert.match(queries[1], /owns_database/);
+  assert.match(queries[1], /owns_public_schema/);
+  assert.match(queries[1], /database_create/);
+  assert.match(queries[1], /public_schema_usage/);
+  assert.match(queries[1], /public_schema_create/);
   assert.match(queries[1], /membership_count/);
-  assert.match(queries[1], /admin_membership_count/);
   assert.match(queries[1], /writable_column_count/);
   assert.match(queries[1], /grantable_acl_count/);
   assert.match(queries[1], /pg_catalog\.aclexplode/);
-  assert.match(queries[1], /unreadable_table_count/);
-  assert.match(queries[1], /writable_table_count/);
-  assert.match(queries[1], /executable_function_count/);
-  assert.equal(queries[2], "SELECT pg_export_snapshot() AS snapshot_id");
+  assert.equal(queries[2], "SELECT pg_catalog.pg_export_snapshot() AS snapshot_id");
   assert.deepEqual(writes, [{
     path: "/tmp/source.snapshot",
     content: `${snapshotId}\n`,
@@ -104,6 +112,12 @@ test("fails closed when the production backup credential is not least-privileged
     { ...validBackupPrincipal, rolcreaterole: true },
     { ...validBackupPrincipal, rolreplication: true },
     { ...validBackupPrincipal, rolbypassrls: true },
+    { ...validBackupPrincipal, session_user_matches: false },
+    { ...validBackupPrincipal, owns_database: true },
+    { ...validBackupPrincipal, owns_public_schema: true },
+    { ...validBackupPrincipal, database_create: true },
+    { ...validBackupPrincipal, public_schema_usage: false },
+    { ...validBackupPrincipal, public_schema_create: true },
     { ...validBackupPrincipal, membership_count: 1 },
     { ...validBackupPrincipal, admin_membership_count: 1 },
     { ...validBackupPrincipal, owned_relation_count: 1 },
