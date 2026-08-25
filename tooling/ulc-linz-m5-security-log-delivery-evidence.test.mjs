@@ -18,7 +18,7 @@ function validSnapshot() {
   };
 }
 
-test("collector binds the delivery snapshot and observation time to the same database statement", async () => {
+test("collector binds post-deployment sink activity and observation time to the same database statement", async () => {
   let ended = 0;
   const calls = [];
   const databaseFactory = () => ({
@@ -44,7 +44,7 @@ test("collector binds the delivery snapshot and observation time to the same dat
       },
       { databaseFactory, now: OBSERVED_AT },
     ),
-    { runtimeDeliveryVerified: true },
+    { postDeploymentSinkActivityObserved: true },
   );
   assert.equal(ended, 1);
   assert.equal(calls.length, 1);
@@ -61,13 +61,13 @@ test("collector binds the delivery snapshot and observation time to the same dat
   assert.doesNotMatch(calls[0].query, /actor_principal_id\s*,|organization_id\s*,|target_id\s*,/);
 });
 
-test("verifies only a fresh real sink event produced after the deployed runtime version", () => {
+test("observes only fresh matching sink activity after the deployed runtime version", () => {
   assert.deepEqual(evaluateUlcLinzM5SecurityLogDeliverySnapshot(validSnapshot()), {
-    runtimeDeliveryVerified: true,
+    postDeploymentSinkActivityObserved: true,
   });
 });
 
-test("rejects an empty sink or missing latest delivery timestamp", () => {
+test("rejects an empty sink or missing latest activity timestamp", () => {
   for (const mutate of [
     (value) => { value.eventCount = 0n; value.latestRecordedAt = null; },
     (value) => { value.latestRecordedAt = null; },
@@ -78,7 +78,7 @@ test("rejects an empty sink or missing latest delivery timestamp", () => {
   }
 });
 
-test("rejects pre-deployment, future or stale delivery evidence", () => {
+test("rejects pre-deployment, future or stale sink activity evidence", () => {
   for (const latestRecordedAt of [
     "2026-08-23T21:29:59.999Z",
     "2026-08-23T22:00:00.001Z",
@@ -115,7 +115,7 @@ test("rejects missing or malformed database observation time", async () => {
   }
 });
 
-test("rejects decorated or malformed delivery evidence", () => {
+test("rejects decorated or malformed sink activity evidence", () => {
   const extra = validSnapshot();
   extra.extra = true;
   assert.throws(() => evaluateUlcLinzM5SecurityLogDeliverySnapshot(extra));
