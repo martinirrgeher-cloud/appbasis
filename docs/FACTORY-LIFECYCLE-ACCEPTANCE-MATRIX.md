@@ -84,4 +84,4 @@ Ein empfohlener nächster Schritt ist keine Ausführungsautorisierung.
 
 ## Integrationsregel
 
-Der aktuelle `main` ist maßgeblich. Der bestehende Factory-Lifecycle-Adapter und die kanonischen M5-/M6-/Recovery-Verträge werden wiederverwendet. Veraltete Zwischen-PRs oder historische Evidence-Pfade werden nicht als Architekturgrundlage reaktiviert.
+Der bestehende Factory-Lifecycle-Adapter und die kanonischen Preview-/M5-/M6-/Recovery-Verträge bleiben die dauerhaften Wahrheitsquellen. Diese Matrix enthält bewusst keinen Pull-Request-, Branch-, Commit- oder sonstigen flüchtigen Integrationsstatus. Historische Zwischenimplementierungen oder Evidence-Pfade dürfen daraus nicht als parallele Architekturgrundlage reaktiviert werden.
