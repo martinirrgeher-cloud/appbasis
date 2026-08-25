@@ -35,8 +35,8 @@ export async function holdUlcLinzM5ExportedSnapshot(
   const database = databaseFactory(safeDatabaseUrl);
   try {
     return await database.client.begin(async (sql) => {
-      await assertBackupPrincipalLeastPrivilege(sql);
       await sql.unsafe("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
+      await assertBackupPrincipalLeastPrivilege(sql);
       const rows = await sql.unsafe("SELECT pg_export_snapshot() AS snapshot_id");
       if (!Array.isArray(rows) || rows.length !== 1) {
         throw new Error("ULC M5 exported snapshot response is invalid.");
@@ -97,6 +97,9 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       role.rolbypassrls,
       (SELECT count(*)::int
        FROM pg_catalog.pg_auth_members AS membership
+       WHERE membership.member = role.oid) AS membership_count,
+      (SELECT count(*)::int
+       FROM pg_catalog.pg_auth_members AS membership
        WHERE membership.member = role.oid AND membership.admin_option) AS admin_membership_count,
       (SELECT count(*)::int
        FROM public_relations AS relation
@@ -142,6 +145,7 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
     role.rolcreaterole !== false ||
     role.rolreplication !== false ||
     role.rolbypassrls !== false ||
+    role.membership_count !== 0 ||
     role.admin_membership_count !== 0 ||
     role.owned_relation_count !== 0 ||
     role.owned_function_count !== 0 ||
