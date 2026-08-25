@@ -84,13 +84,16 @@ test("FC1 card status preserves the canonical post-preparation M5 transition", (
     evaluateProductionReadiness(),
     evaluateM6ProductionReleaseReadiness(completedProductionPreparationEvidence()),
   );
+  const expectedOpenM5Labels = REQUIRED_PRODUCTION_READINESS_CRITERIA
+    .map((criterion) => criterion.label)
+    .join(" · ");
 
   assert.deepEqual(copy, {
     stageId: "production-ready",
     label: "Production Ready",
     heading: "Gesperrt",
     nextStep: "M4/M5-Evidence abschließen",
-    detail: "M5 noch offen: Rollen & Berechtigungen · Löschung & Retention · Audit & Security Logging · Data Export · Privilegierte Control Plane · Provider-DPA / AVV · Provider-Subprozessoren · Verschlüsselung · Backup/Restore · High-Privacy-Freigabe · Lifecycle-Evidence · Produktionsfreigabe-Gate. Backup/Recovery liegt vor dem finalen M5-Gate; Domain und Public Ingress bleiben bis M4 + M5 geschlossen.",
+    detail: `M5 noch offen: ${expectedOpenM5Labels}. Backup/Recovery liegt vor dem finalen M5-Gate; Domain und Public Ingress bleiben bis M4 + M5 geschlossen.`,
   });
 });
 
