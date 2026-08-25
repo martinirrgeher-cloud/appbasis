@@ -37,7 +37,7 @@ export async function holdUlcLinzM5ExportedSnapshot(
     return await database.client.begin(async (sql) => {
       await sql.unsafe("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
       await assertBackupPrincipalLeastPrivilege(sql);
-      const rows = await sql.unsafe("SELECT pg_export_snapshot() AS snapshot_id");
+      const rows = await sql.unsafe("SELECT pg_catalog.pg_export_snapshot() AS snapshot_id");
       if (!Array.isArray(rows) || rows.length !== 1) {
         throw new Error("ULC M5 exported snapshot response is invalid.");
       }
@@ -74,9 +74,25 @@ export async function holdUlcLinzM5ExportedSnapshot(
 async function assertBackupPrincipalLeastPrivilege(sql) {
   const rows = await sql.unsafe(`
     WITH current_role AS (
-      SELECT oid, rolname, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+      SELECT
+        oid,
+        rolname,
+        rolsuper,
+        rolcreatedb,
+        rolcreaterole,
+        rolreplication,
+        rolbypassrls,
+        current_user = session_user AS session_user_matches
       FROM pg_catalog.pg_roles
       WHERE rolname = current_user
+    ), current_database_record AS (
+      SELECT oid, datdba, datacl
+      FROM pg_catalog.pg_database
+      WHERE datname = current_database()
+    ), public_schema AS (
+      SELECT oid, nspowner, nspacl
+      FROM pg_catalog.pg_namespace
+      WHERE nspname = 'public'
     ), public_relations AS (
       SELECT c.oid, c.relkind, c.relacl
       FROM pg_catalog.pg_class AS c
@@ -100,6 +116,12 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       role.rolcreaterole,
       role.rolreplication,
       role.rolbypassrls,
+      role.session_user_matches,
+      pg_catalog.pg_get_userbyid(database_record.datdba) = role.rolname AS owns_database,
+      pg_catalog.pg_get_userbyid(schema_record.nspowner) = role.rolname AS owns_public_schema,
+      pg_catalog.has_database_privilege(role.rolname, current_database(), 'CREATE') AS database_create,
+      pg_catalog.has_schema_privilege(role.rolname, 'public', 'USAGE') AS public_schema_usage,
+      pg_catalog.has_schema_privilege(role.rolname, 'public', 'CREATE') AS public_schema_create,
       (SELECT count(*)::int
        FROM pg_catalog.pg_auth_members AS membership
        WHERE membership.member = role.oid) AS membership_count,
@@ -149,6 +171,16 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
         SELECT count(*)::int
         FROM (
           SELECT acl.is_grantable
+          FROM current_database_record AS database_acl
+          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(database_acl.datacl, '{}'::aclitem[])) AS acl
+          WHERE acl.grantee = role.oid
+          UNION ALL
+          SELECT acl.is_grantable
+          FROM public_schema AS schema_acl
+          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(schema_acl.nspacl, '{}'::aclitem[])) AS acl
+          WHERE acl.grantee = role.oid
+          UNION ALL
+          SELECT acl.is_grantable
           FROM public_relations AS relation
           CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(relation.relacl, '{}'::aclitem[])) AS acl
           WHERE acl.grantee = role.oid
@@ -166,6 +198,8 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
         WHERE explicit_acl.is_grantable
       ) AS grantable_acl_count
     FROM current_role AS role
+    CROSS JOIN current_database_record AS database_record
+    CROSS JOIN public_schema AS schema_record
   `);
   if (!Array.isArray(rows) || rows.length !== 1) {
     throw new Error("ULC M5 backup principal inventory is invalid.");
@@ -178,6 +212,12 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
     role.rolcreaterole !== false ||
     role.rolreplication !== false ||
     role.rolbypassrls !== false ||
+    role.session_user_matches !== true ||
+    role.owns_database !== false ||
+    role.owns_public_schema !== false ||
+    role.database_create !== false ||
+    role.public_schema_usage !== true ||
+    role.public_schema_create !== false ||
     role.membership_count !== 0 ||
     role.admin_membership_count !== 0 ||
     role.owned_relation_count !== 0 ||
