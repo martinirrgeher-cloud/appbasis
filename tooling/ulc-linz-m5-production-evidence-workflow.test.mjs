@@ -140,16 +140,24 @@ test("production evidence workflow cannot activate ingress, release production o
   assert.doesNotMatch(source, /CREATE TABLE|ALTER TABLE|DROP TABLE/);
 });
 
-test("M5-F production retention is a separate main-only explicitly approved least-privilege delete workflow", async () => {
+test("M5-F production retention is a separate main-only explicitly approved canonical protected-access delete workflow", async () => {
   const source = await retentionWorkflow();
   assert.match(source, /workflow_dispatch:/);
   assert.match(source, /github\.ref == 'refs\/heads\/main'/);
   assert.match(source, /PURGE-ULC-M5-SECURITY-LOG-RETENTION/);
   assert.match(source, /test "\$CONFIRMATION" = "PURGE-ULC-M5-SECURITY-LOG-RETENTION"/);
   assert.match(source, /group: m6-ulc-production-runtime-config/);
+  assert.match(source, /ULC_LINZ_PRODUCTION_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
+  assert.match(source, /ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \}\}/);
   assert.match(source, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \}\}/);
-  assert.doesNotMatch(source, /secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL/);
-  assert.match(source, /parseUlcLinzProductionDatabaseUrl/);
+  assert.match(source, /ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \}\}/);
+  assert.match(source, /production security-log principals must be distinct/);
+  assert.match(source, /collectUlcLinzM5SecurityLogAccessEvidence/);
+  assert.match(source, /ingestUsername: ingest\.user/);
+  assert.match(source, /leastPrivilegeAccessVerified !== true/);
+  assert.match(source, /protectedOperationalAccessVerified !== true/);
+  assert.match(source, /providerMinimumRetentionVerified !== true/);
+  assert.ok(source.indexOf("collectUlcLinzM5SecurityLogAccessEvidence") < source.indexOf("ulc-linz-m5-security-log-retention-run.mjs"));
   assert.match(source, /ulc-linz-m5-security-log-retention-run\.mjs/);
   assert.match(source, /cleanupAccessVerified !== true/);
   assert.match(source, /productionReleaseAuthorized !== false/);
