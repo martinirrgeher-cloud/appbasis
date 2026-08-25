@@ -68,7 +68,7 @@ export async function bindUlcLinzSecurityLogRoles(
         throw new Error("ULC security-log role-binding transaction API is unavailable.");
       }
       await database.client.begin(async (transaction) => {
-        if (transaction === null || typeof transaction !== "object" || typeof transaction.unsafe !== "function") {
+        if (transaction == null || typeof transaction.unsafe !== "function") {
           throw new Error("ULC security-log role-binding transaction client is invalid.");
         }
         for (const [key, principal] of missing) {
