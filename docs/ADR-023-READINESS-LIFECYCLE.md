@@ -16,7 +16,7 @@ ADR-023 trennt drei fachliche Readiness-/Release-Begriffe verbindlich voneinande
 
 2. **Production Ready**
    - bezeichnet den vollständigen technischen Pre-Release-Zustand einer konkreten App,
-   - setzt mindestens geprüfte Preview, Security & Privacy Ready, Backup/Recovery inklusive realem Restore, dedizierte Produktionsressourcen, kontrollierte Migrationen und Deployment, grüne Post-Deploy-Smokes sowie das Fehlen relevanter Security-/Privacy-/Recovery-/Review-Blocker voraus,
+   - entsteht ausschließlich aus dem kanonischen technischen Gesamtvertrag des Factory-Lifecycles; die dort geforderte vollständige M6-Evidence umfasst Preview-Acceptance, dedizierte Produktionsressourcen, Backup/Recovery, Security & Privacy, kontrollierte Migrationen und Deployment, produktive Benutzer/Rechte, Domain sowie Post-Deploy-Smokes,
    - setzt **nicht** `releaseAuthorized=true`.
 
 3. **Produktion freigegeben**
@@ -80,4 +80,4 @@ Diese Entscheidung lockert kein Gate:
 
 ## Strukturelle Integrationsregel
 
-Diese ADR beschreibt ausschließlich dauerhafte Architektur- und Lifecycle-Verträge. Flüchtige Pull-Request-, Branch-, Commit-, CI-, Review- oder Integrationsstatus gehören nicht in diese Entscheidung. Bestehende kanonische Preview-/M5-/M6-/Recovery-/Factory-Verträge werden wiederverwendet; parallele oder historische Evidence- und Lifecycle-Implementierungen dürfen daraus nicht erneut als zweite Wahrheitsquelle abgeleitet werden.
+Diese ADR beschreibt ausschließlich dauerhafte Architektur- und Lifecycle-Verträge. Flüchtige Pull-Request-, Branch-, Commit-, CI-, Review- oder Integrationsstatus gehören nicht in diese Entscheidung und beeinflussen die Produkt-Readiness nur dort, wo ein kanonischer technischer Vertrag sie ausdrücklich als Evidence modelliert. Bestehende kanonische Preview-/M5-/M6-/Recovery-/Factory-Verträge werden wiederverwendet; parallele oder historische Evidence- und Lifecycle-Implementierungen dürfen daraus nicht erneut als zweite Wahrheitsquelle abgeleitet werden.
