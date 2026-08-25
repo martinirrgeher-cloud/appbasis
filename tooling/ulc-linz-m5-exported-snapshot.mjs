@@ -98,7 +98,6 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       SELECT c.oid, c.relkind, c.relowner, c.relacl
       FROM pg_catalog.pg_class AS c
       JOIN user_schemas AS n ON n.oid = c.relnamespace
-      WHERE c.relkind IN ('r', 'p', 'S')
     ), user_functions AS (
       SELECT p.oid, p.proowner, p.proacl
       FROM pg_catalog.pg_proc AS p
@@ -145,7 +144,7 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
        WHERE pg_catalog.pg_get_userbyid(function.proowner) = role.rolname) AS owned_function_count,
       (SELECT count(*)::int
        FROM user_relations AS relation
-       WHERE relation.relkind IN ('r', 'p')
+       WHERE relation.relkind IN ('r', 'p', 'm')
          AND NOT pg_catalog.has_table_privilege(role.rolname, relation.oid, 'SELECT')) AS unreadable_table_count,
       (SELECT count(*)::int
        FROM user_relations AS relation
@@ -153,7 +152,7 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
          AND NOT pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'SELECT')) AS unreadable_sequence_count,
       (SELECT count(*)::int
        FROM user_relations AS relation
-       WHERE relation.relkind IN ('r', 'p')
+       WHERE relation.relkind IN ('r', 'p', 'v', 'm', 'f')
          AND (
            pg_catalog.has_table_privilege(role.rolname, relation.oid, 'INSERT') OR
            pg_catalog.has_table_privilege(role.rolname, relation.oid, 'UPDATE') OR
@@ -164,7 +163,7 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
          )) AS writable_table_count,
       (SELECT count(*)::int
        FROM user_relations AS relation
-       WHERE relation.relkind IN ('r', 'p')
+       WHERE relation.relkind IN ('r', 'p', 'v', 'm', 'f')
          AND (
            pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'INSERT') OR
            pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'UPDATE') OR
