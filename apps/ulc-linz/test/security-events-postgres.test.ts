@@ -147,16 +147,26 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
     const client: UlcLinzSecurityEventSqlClient = {
       async unsafe(query, parameters) {
         calls.push({ query, parameters });
-        return [];
+        return [
+          {
+            cutoff: "2026-08-25T04:12:34.000Z",
+            deleted_rows: "2",
+          },
+        ];
       },
     };
 
-    await purgeExpiredUlcLinzSecurityEvents(client);
+    const result = await purgeExpiredUlcLinzSecurityEvents(client);
 
+    expect(result).toEqual({
+      cutoff: "2026-08-25T04:12:34.000Z",
+      deletedRows: 2n,
+    });
     expect(calls).toHaveLength(1);
     const call = calls[0];
     if (call === undefined) throw new Error("Expected one retention cleanup statement.");
     expect(call.parameters).toBeUndefined();
+    expect(call.query).toContain("statement_timestamp() AS cutoff");
     expect(call.query).toContain("public.appbasis_ulc_linz_purge_expired_security_events()");
     expect(call.query).not.toContain("DELETE");
     expect(call.query).not.toContain("$1");
