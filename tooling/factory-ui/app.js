@@ -1,4 +1,5 @@
 import { previewAccentForeground } from "./preview-theme.mjs";
+import { factoryLifecycleCardCopy } from "./fc1-lifecycle-card-status.mjs";
 import {
   factoryLifecycleCopy,
   productionReadinessCopy,
@@ -138,6 +139,11 @@ function renderApps() {
   }
 
   for (const app of apps) {
+    const lifecycleCard = factoryLifecycleCardCopy(
+      app.previewReadiness,
+      app.productionReadiness,
+      app.productionReleaseReadiness,
+    );
     const card = document.createElement("article");
     card.className = "factory-app-card ab-surface";
 
@@ -158,7 +164,8 @@ function renderApps() {
 
     const status = document.createElement("span");
     status.className = "ab-badge";
-    status.textContent = "Im Repository";
+    status.textContent = lifecycleCard.label;
+    status.title = lifecycleCard.heading;
     header.append(mark, title, status);
 
     const details = document.createElement("div");
@@ -166,12 +173,15 @@ function renderApps() {
     details.append(
       detailRow("Module", app.modules, moduleLabel),
       detailRow("Dienste", app.platformServices, serviceLabel),
+      detailRow("Status", [lifecycleCard.heading], (value) => value),
+      detailRow("Nächster Schritt", [lifecycleCard.nextStep], (value) => value),
     );
 
     const footer = document.createElement("div");
     footer.className = "factory-app-card__footer";
     const preview = document.createElement("span");
     preview.textContent = previewReadinessLabel(app.previewReadiness);
+    preview.title = lifecycleCard.detail;
     const button = document.createElement("button");
     button.className = "ab-button ab-button--ghost";
     button.type = "button";

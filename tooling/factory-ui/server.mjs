@@ -28,6 +28,7 @@ const STATIC_ROUTES = new Map([
   ["/", { path: join(FACTORY_UI_DIRECTORY, "index.html"), contentType: "text/html; charset=utf-8" }],
   ["/app.js", { path: join(FACTORY_UI_DIRECTORY, "app.js"), contentType: "text/javascript; charset=utf-8" }],
   ["/create-app.js", { path: join(FACTORY_UI_DIRECTORY, "create-app.js"), contentType: "text/javascript; charset=utf-8" }],
+  ["/fc1-lifecycle-card-status.mjs", { path: join(FACTORY_UI_DIRECTORY, "fc1-lifecycle-card-status.mjs"), contentType: "text/javascript; charset=utf-8" }],
   ["/production-readiness-status.js", { path: join(FACTORY_UI_DIRECTORY, "production-readiness-status.js"), contentType: "text/javascript; charset=utf-8" }],
   ["/production-readiness.mjs", { path: join(FACTORY_UI_DIRECTORY, "production-readiness.mjs"), contentType: "text/javascript; charset=utf-8" }],
   ["/production-release-readiness.mjs", { path: join(FACTORY_UI_DIRECTORY, "production-release-readiness.mjs"), contentType: "text/javascript; charset=utf-8" }],

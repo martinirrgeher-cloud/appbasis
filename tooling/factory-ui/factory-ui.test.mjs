@@ -145,6 +145,11 @@ test("factory console exposes app details and local creation without enabling de
   const appScript = await fetch(`${baseUrl}/app.js`);
   assert.equal(appScript.status, 200);
   const appScriptBody = await appScript.text();
+  assert.match(appScriptBody, /factoryLifecycleCardCopy/);
+  assert.match(appScriptBody, /status\.textContent = lifecycleCard\.label/);
+  assert.match(appScriptBody, /detailRow\("Status", \[lifecycleCard\.heading\]/);
+  assert.match(appScriptBody, /detailRow\("Nächster Schritt", \[lifecycleCard\.nextStep\]/);
+  assert.doesNotMatch(appScriptBody, /status\.textContent = "Im Repository"/);
   assert.match(appScriptBody, /button\.dataset\.appId = app\.appId/);
   assert.match(appScriptBody, /openAppDetail\(app\.appId\)/);
   assert.match(appScriptBody, /showPanel\("detail"\)/);
@@ -187,6 +192,11 @@ test("factory console exposes app details and local creation without enabling de
     appScriptBody,
     /catch \{[\s\S]*?selectTab\("apps"\)[\s\S]*?showError\("Die Factory-Daten konnten nicht gelesen werden/,
   );
+
+  const lifecycleCardScript = await fetch(`${baseUrl}/fc1-lifecycle-card-status.mjs`);
+  assert.equal(lifecycleCardScript.status, 200);
+  assert.match(lifecycleCardScript.headers.get("content-type") ?? "", /^text\/javascript/);
+  assert.match(await lifecycleCardScript.text(), /factoryLifecycleCardCopy/);
 
   const createScript = await fetch(`${baseUrl}/create-app.js`);
   assert.equal(createScript.status, 200);
