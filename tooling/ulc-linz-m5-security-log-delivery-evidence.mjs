@@ -40,7 +40,7 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
         AND recorded_at <= statement_timestamp()
     `, [deployed.toISOString()]);
     if (!Array.isArray(rows) || rows.length !== 1) {
-      throw new Error("ULC M5-F production delivery observation is invalid.");
+      throw new Error("ULC M5-F production sink activity observation is invalid.");
     }
     const count = requiredCount(rows[0]?.event_count);
     const latestRecordedAt =
@@ -65,10 +65,10 @@ export function evaluateUlcLinzM5SecurityLogDeliverySnapshot(value) {
   const deployedAt = canonicalTimestamp(root.deployedAt, "deployedAt");
   const observedAt = canonicalTimestamp(root.observedAt, "observedAt");
   if (deployedAt.getTime() > observedAt.getTime()) {
-    throw new Error("ULC M5-F delivery evidence window is invalid.");
+    throw new Error("ULC M5-F sink activity evidence window is invalid.");
   }
   if (eventCount === 0n || root.latestRecordedAt === null) {
-    throw new Error("ULC M5-F has no real production sink delivery evidence.");
+    throw new Error("ULC M5-F has no post-deployment production sink activity evidence.");
   }
   const latestRecordedAt = canonicalTimestamp(
     root.latestRecordedAt,
@@ -79,9 +79,9 @@ export function evaluateUlcLinzM5SecurityLogDeliverySnapshot(value) {
     latestRecordedAt.getTime() > observedAt.getTime() ||
     observedAt.getTime() - latestRecordedAt.getTime() >= MAX_AGE_MS
   ) {
-    throw new Error("ULC M5-F production sink delivery evidence is stale or pre-deployment.");
+    throw new Error("ULC M5-F production sink activity evidence is stale or pre-deployment.");
   }
-  return Object.freeze({ runtimeDeliveryVerified: true });
+  return Object.freeze({ postDeploymentSinkActivityObserved: true });
 }
 
 function exactRecord(value, fields) {
@@ -92,7 +92,7 @@ function exactRecord(value, fields) {
     Object.getPrototypeOf(value) !== Object.prototype ||
     Object.getOwnPropertySymbols(value).length !== 0
   ) {
-    throw new Error("ULC M5-F delivery evidence is invalid.");
+    throw new Error("ULC M5-F sink activity evidence is invalid.");
   }
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const keys = Object.keys(descriptors);
@@ -108,7 +108,7 @@ function exactRecord(value, fields) {
         descriptor.set !== undefined,
     )
   ) {
-    throw new Error("ULC M5-F delivery evidence is invalid.");
+    throw new Error("ULC M5-F sink activity evidence is invalid.");
   }
   return value;
 }
@@ -127,7 +127,7 @@ function canonicalTimestamp(value, label) {
 
 function requiredDate(value) {
   if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
-    throw new Error("ULC M5-F delivery evidence clock is invalid.");
+    throw new Error("ULC M5-F sink activity evidence clock is invalid.");
   }
   return new Date(value.getTime());
 }
@@ -135,7 +135,7 @@ function requiredDate(value) {
 function requiredCount(value) {
   const text = typeof value === "bigint" ? value.toString() : String(value);
   if (!/^(0|[1-9][0-9]*)$/.test(text)) {
-    throw new Error("ULC M5-F delivery event count is invalid.");
+    throw new Error("ULC M5-F sink activity event count is invalid.");
   }
   return BigInt(text);
 }
