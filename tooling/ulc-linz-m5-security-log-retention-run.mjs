@@ -10,6 +10,7 @@ WITH protected_acl AS (
     'table'::text AS object_kind,
     relation.relname::text AS object_name,
     NULL::text AS column_name,
+    relation.relowner AS owner_oid,
     acl.grantee,
     acl.privilege_type,
     acl.is_grantable
@@ -25,6 +26,7 @@ WITH protected_acl AS (
     'sequence'::text,
     relation.relname::text,
     NULL::text,
+    relation.relowner,
     acl.grantee,
     acl.privilege_type,
     acl.is_grantable
@@ -40,6 +42,7 @@ WITH protected_acl AS (
     'column'::text,
     relation.relname::text,
     attribute.attname::text,
+    relation.relowner,
     acl.grantee,
     acl.privilege_type,
     acl.is_grantable
@@ -56,6 +59,7 @@ WITH protected_acl AS (
     'function'::text,
     procedure.proname::text,
     NULL::text,
+    procedure.proowner,
     acl.grantee,
     acl.privilege_type,
     acl.is_grantable
@@ -207,32 +211,114 @@ SELECT
       )
   ) AS expected_cleanup_acl_count,
   (
-    SELECT count(*)::integer
-    FROM protected_acl acl
-    WHERE acl.grantee IN (0, current_role.oid, cleanup_group.oid)
-      AND NOT (
-        acl.grantee = cleanup_group.oid
-        AND acl.is_grantable = false
-        AND (
-          (
-            acl.object_kind = 'column'
-            AND acl.object_name = 'ulc_linz_security_event_log'
-            AND acl.column_name = 'retained_until'
-            AND acl.privilege_type = 'SELECT'
-          ) OR
-          (
-            acl.object_kind = 'function'
-            AND acl.object_name = 'appbasis_ulc_linz_purge_expired_security_events'
-            AND acl.column_name IS NULL
-            AND acl.privilege_type = 'EXECUTE'
+    SELECT CASE
+      WHEN count(*) FILTER (
+        WHERE acl.grantee <> acl.owner_oid
+          AND acl.is_grantable = false
+          AND (
+            (
+              acl.grantee = ingest_group.oid
+              AND acl.object_kind = 'column'
+              AND acl.object_name = 'ulc_linz_security_event_log'
+              AND acl.column_name IN (
+                'schema_version', 'app_id', 'category', 'event_type', 'occurred_at',
+                'actor_principal_id', 'organization_id', 'action', 'target_type',
+                'target_id', 'operation', 'http_status', 'error_code', 'reason_code',
+                'retained_until'
+              )
+              AND acl.privilege_type = 'INSERT'
+            ) OR
+            (
+              acl.grantee = ingest_group.oid
+              AND acl.object_kind = 'sequence'
+              AND acl.object_name = 'ulc_linz_security_event_log_id_seq'
+              AND acl.column_name IS NULL
+              AND acl.privilege_type = 'USAGE'
+            ) OR
+            (
+              acl.grantee = cleanup_group.oid
+              AND acl.object_kind = 'column'
+              AND acl.object_name = 'ulc_linz_security_event_log'
+              AND acl.column_name = 'retained_until'
+              AND acl.privilege_type = 'SELECT'
+            ) OR
+            (
+              acl.grantee = cleanup_group.oid
+              AND acl.object_kind = 'function'
+              AND acl.object_name = 'appbasis_ulc_linz_purge_expired_security_events'
+              AND acl.column_name IS NULL
+              AND acl.privilege_type = 'EXECUTE'
+            ) OR
+            (
+              acl.grantee = read_group.oid
+              AND acl.object_kind = 'table'
+              AND acl.object_name = 'ulc_linz_security_event_log'
+              AND acl.column_name IS NULL
+              AND acl.privilege_type = 'SELECT'
+            )
           )
-        )
-      )
+      ) = 19
+      AND count(*) FILTER (
+        WHERE acl.grantee <> acl.owner_oid
+          AND NOT (
+            acl.is_grantable = false
+            AND (
+              (
+                acl.grantee = ingest_group.oid
+                AND acl.object_kind = 'column'
+                AND acl.object_name = 'ulc_linz_security_event_log'
+                AND acl.column_name IN (
+                  'schema_version', 'app_id', 'category', 'event_type', 'occurred_at',
+                  'actor_principal_id', 'organization_id', 'action', 'target_type',
+                  'target_id', 'operation', 'http_status', 'error_code', 'reason_code',
+                  'retained_until'
+                )
+                AND acl.privilege_type = 'INSERT'
+              ) OR
+              (
+                acl.grantee = ingest_group.oid
+                AND acl.object_kind = 'sequence'
+                AND acl.object_name = 'ulc_linz_security_event_log_id_seq'
+                AND acl.column_name IS NULL
+                AND acl.privilege_type = 'USAGE'
+              ) OR
+              (
+                acl.grantee = cleanup_group.oid
+                AND acl.object_kind = 'column'
+                AND acl.object_name = 'ulc_linz_security_event_log'
+                AND acl.column_name = 'retained_until'
+                AND acl.privilege_type = 'SELECT'
+              ) OR
+              (
+                acl.grantee = cleanup_group.oid
+                AND acl.object_kind = 'function'
+                AND acl.object_name = 'appbasis_ulc_linz_purge_expired_security_events'
+                AND acl.column_name IS NULL
+                AND acl.privilege_type = 'EXECUTE'
+              ) OR
+              (
+                acl.grantee = read_group.oid
+                AND acl.object_kind = 'table'
+                AND acl.object_name = 'ulc_linz_security_event_log'
+                AND acl.column_name IS NULL
+                AND acl.privilege_type = 'SELECT'
+              )
+            )
+          )
+      ) = 0
+      THEN 0
+      ELSE 1
+    END::integer
+    FROM protected_acl acl
   ) AS unexpected_cleanup_acl_count
 FROM pg_catalog.pg_roles current_role
 CROSS JOIN pg_catalog.pg_roles cleanup_group
+CROSS JOIN pg_catalog.pg_roles ingest_group
+CROSS JOIN pg_catalog.pg_roles read_group
 WHERE current_role.rolname = current_user
   AND cleanup_group.rolname = 'ulc_linz_security_event_cleanup'
+  AND ingest_group.rolname = 'ulc_linz_security_event_ingest'
+  AND read_group.rolname = 'ulc_linz_security_event_read'
 `;
 
 const VERIFY_PURGE_SQL = `
