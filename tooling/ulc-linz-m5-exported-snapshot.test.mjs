@@ -94,12 +94,17 @@ test("holds one isolated least-privileged whole-database read-only repeatable-re
   assert.match(queries[1], /user_schemas/);
   assert.match(queries[1], /nspname <> 'information_schema'/);
   assert.match(queries[1], /nspname !~ '\^pg_'/);
+  assert.match(queries[1], /user_relations AS \([\s\S]*JOIN user_schemas AS n ON n\.oid = c\.relnamespace[\s\S]*\), user_functions AS/);
+  assert.doesNotMatch(queries[1], /JOIN user_schemas AS n ON n\.oid = c\.relnamespace\s+WHERE c\.relkind/);
   assert.match(queries[1], /owned_schema_count/);
   assert.match(queries[1], /unusable_schema_count/);
   assert.match(queries[1], /creatable_schema_count/);
+  assert.match(queries[1], /owned_relation_count/);
   assert.match(queries[1], /membership_count/);
   assert.match(queries[1], /reverse_membership_count/);
   assert.match(queries[1], /membership\.roleid = role\.oid/);
+  assert.match(queries[1], /relation\.relkind IN \('r', 'p', 'm'\)/);
+  assert.match(queries[1], /relation\.relkind IN \('r', 'p', 'v', 'm', 'f'\)/);
   assert.match(queries[1], /unreadable_sequence_count/);
   assert.match(queries[1], /writable_column_count/);
   assert.match(queries[1], /grantable_acl_count/);
