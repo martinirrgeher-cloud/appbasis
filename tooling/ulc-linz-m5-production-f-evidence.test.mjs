@@ -10,6 +10,7 @@ const OBSERVED_AT = "2026-08-23T21:55:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:10:00.000Z";
 const VERSION = "12345678-1234-4123-8123-123456789abc";
 const DEPLOYED_AT = "2026-08-23T21:30:00.000Z";
+const VERSION_CREATED_AT = "2026-08-23T19:30:00.000Z";
 
 function resourceBindingEvidence() {
   return {
@@ -86,7 +87,12 @@ function cloudflareFetch(url) {
   if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
     return Promise.resolve(json({
       success: true,
-      result: { deployments: [{ versions: [{ version_id: VERSION, percentage: 100 }] }] },
+      result: {
+        deployments: [{
+          created_on: DEPLOYED_AT,
+          versions: [{ version_id: VERSION, percentage: 100 }],
+        }],
+      },
     }));
   }
   if (value.endsWith(`/workers/scripts/appbasis-ulc-linz-production/versions/${VERSION}`)) {
@@ -94,7 +100,7 @@ function cloudflareFetch(url) {
       success: true,
       result: {
         id: VERSION,
-        metadata: { created_on: DEPLOYED_AT },
+        metadata: { created_on: VERSION_CREATED_AT },
         annotations: {
           "workers/tag": "ulc-linz-production-runtime-v1",
           "workers/message": `AppBasis ulc-linz production runtime ${SHA} auth-hmac:${"b".repeat(64)}`,
@@ -245,7 +251,7 @@ test("fails closed on stale Worker head, missing dedicated binding, missing depl
       if (url.includes("/versions/")) body.result.resources.bindings = body.result.resources.bindings.filter((entry) => entry.name !== "SECURITY_LOG_HYPERDRIVE");
     },
     (body, url) => {
-      if (url.includes("/versions/")) delete body.result.metadata.created_on;
+      if (url.endsWith("/deployments")) delete body.result.deployments[0].created_on;
     },
     (body, url) => {
       if (url.includes("/hyperdrive/configs/")) body.result.origin.database = "other";
