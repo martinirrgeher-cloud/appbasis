@@ -71,6 +71,31 @@ WITH protected_acl AS (
   WHERE namespace.nspname = 'public'
     AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
     AND procedure.pronargs = 0
+), protected_group_membership AS (
+  SELECT
+    parent.rolname AS group_role,
+    count(*)::integer AS member_count,
+    count(*) FILTER (WHERE membership.admin_option)::integer AS admin_member_count
+  FROM pg_catalog.pg_auth_members membership
+  JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
+  WHERE parent.rolname IN (
+    'ulc_linz_security_event_ingest',
+    'ulc_linz_security_event_cleanup',
+    'ulc_linz_security_event_read'
+  )
+  GROUP BY parent.rolname
+), protected_group_parent_membership AS (
+  SELECT
+    member.rolname AS group_role,
+    count(*)::integer AS parent_membership_count
+  FROM pg_catalog.pg_auth_members membership
+  JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+  WHERE member.rolname IN (
+    'ulc_linz_security_event_ingest',
+    'ulc_linz_security_event_cleanup',
+    'ulc_linz_security_event_read'
+  )
+  GROUP BY member.rolname
 )
 SELECT
   pg_has_role(current_user, 'ulc_linz_security_event_cleanup', 'member') AS cleanup_member,
@@ -319,6 +344,51 @@ WHERE current_role.rolname = current_user
   AND cleanup_group.rolname = 'ulc_linz_security_event_cleanup'
   AND ingest_group.rolname = 'ulc_linz_security_event_ingest'
   AND read_group.rolname = 'ulc_linz_security_event_read'
+  AND COALESCE((
+    SELECT member_count
+    FROM protected_group_membership
+    WHERE group_role = ingest_group.rolname
+  ), 0) = 1
+  AND COALESCE((
+    SELECT admin_member_count
+    FROM protected_group_membership
+    WHERE group_role = ingest_group.rolname
+  ), 0) = 0
+  AND COALESCE((
+    SELECT parent_membership_count
+    FROM protected_group_parent_membership
+    WHERE group_role = ingest_group.rolname
+  ), 0) = 0
+  AND COALESCE((
+    SELECT member_count
+    FROM protected_group_membership
+    WHERE group_role = cleanup_group.rolname
+  ), 0) = 1
+  AND COALESCE((
+    SELECT admin_member_count
+    FROM protected_group_membership
+    WHERE group_role = cleanup_group.rolname
+  ), 0) = 0
+  AND COALESCE((
+    SELECT parent_membership_count
+    FROM protected_group_parent_membership
+    WHERE group_role = cleanup_group.rolname
+  ), 0) = 0
+  AND COALESCE((
+    SELECT member_count
+    FROM protected_group_membership
+    WHERE group_role = read_group.rolname
+  ), 0) = 1
+  AND COALESCE((
+    SELECT admin_member_count
+    FROM protected_group_membership
+    WHERE group_role = read_group.rolname
+  ), 0) = 0
+  AND COALESCE((
+    SELECT parent_membership_count
+    FROM protected_group_parent_membership
+    WHERE group_role = read_group.rolname
+  ), 0) = 0
 `;
 
 const VERIFY_PURGE_SQL = `
