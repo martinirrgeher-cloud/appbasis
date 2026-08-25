@@ -10,6 +10,7 @@ const validBackupPrincipal = Object.freeze({
   rolcreaterole: false,
   rolreplication: false,
   rolbypassrls: false,
+  membership_count: 0,
   admin_membership_count: 0,
   owned_relation_count: 0,
   owned_function_count: 0,
@@ -76,11 +77,12 @@ test("holds one least-privileged read-only repeatable-read exported snapshot unt
 
   assert.equal(result, snapshotId);
   assert.equal(queries.length, 3);
-  assert.match(queries[0], /admin_membership_count/);
-  assert.match(queries[0], /unreadable_table_count/);
-  assert.match(queries[0], /writable_table_count/);
-  assert.match(queries[0], /executable_function_count/);
-  assert.equal(queries[1], "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
+  assert.equal(queries[0], "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
+  assert.match(queries[1], /membership_count/);
+  assert.match(queries[1], /admin_membership_count/);
+  assert.match(queries[1], /unreadable_table_count/);
+  assert.match(queries[1], /writable_table_count/);
+  assert.match(queries[1], /executable_function_count/);
   assert.equal(queries[2], "SELECT pg_export_snapshot() AS snapshot_id");
   assert.deepEqual(writes, [{
     path: "/tmp/source.snapshot",
@@ -97,6 +99,7 @@ test("fails closed when the production backup credential is not least-privileged
     { ...validBackupPrincipal, rolcreaterole: true },
     { ...validBackupPrincipal, rolreplication: true },
     { ...validBackupPrincipal, rolbypassrls: true },
+    { ...validBackupPrincipal, membership_count: 1 },
     { ...validBackupPrincipal, admin_membership_count: 1 },
     { ...validBackupPrincipal, owned_relation_count: 1 },
     { ...validBackupPrincipal, owned_function_count: 1 },
