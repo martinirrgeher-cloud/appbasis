@@ -33,6 +33,17 @@ function allM6Evidence() {
   );
 }
 
+function completedProductionPreparationEvidence() {
+  return {
+    previewAccepted: true,
+    productionDatabaseReady: true,
+    productionWorkerReady: true,
+    productionMigrationsApplied: true,
+    productionDeploymentCompleted: true,
+    productionUsersAndPermissionsReady: true,
+  };
+}
+
 test("FC1 card status reuses the canonical Factory lifecycle before preview acceptance", () => {
   const copy = factoryLifecycleCardCopy(
     repositoryReadyPreview(),
@@ -65,6 +76,22 @@ test("FC1 card status surfaces controlled production preparation without authori
   assert.equal(copy.nextStep, "Produktionsvorbereitung vervollständigen");
   assert.match(copy.detail, /freigabepflichtig/);
   assert.match(copy.detail, /Public Ingress bleiben geschlossen/);
+});
+
+test("FC1 card status preserves the canonical post-preparation M5 transition", () => {
+  const copy = factoryLifecycleCardCopy(
+    repositoryReadyPreview(),
+    evaluateProductionReadiness(),
+    evaluateM6ProductionReleaseReadiness(completedProductionPreparationEvidence()),
+  );
+
+  assert.deepEqual(copy, {
+    stageId: "production-ready",
+    label: "Production Ready",
+    heading: "Gesperrt",
+    nextStep: "M4/M5-Evidence abschließen",
+    detail: "M5 noch offen: Rollen & Berechtigungen · Löschung & Retention · Audit & Security Logging · Data Export · Privilegierte Control Plane · Provider-DPA / AVV · Provider-Subprozessoren · Verschlüsselung · Backup/Restore · High-Privacy-Freigabe · Lifecycle-Evidence · Produktionsfreigabe-Gate. Backup/Recovery liegt vor dem finalen M5-Gate; Domain und Public Ingress bleiben bis M4 + M5 geschlossen.",
+  });
 });
 
 test("FC1 card status reaches only the explicit release gate after complete technical evidence", () => {
