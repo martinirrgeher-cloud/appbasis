@@ -18,6 +18,7 @@ const validBackupPrincipal = Object.freeze({
   public_schema_create: false,
   membership_count: 0,
   admin_membership_count: 0,
+  reverse_membership_count: 0,
   owned_relation_count: 0,
   owned_function_count: 0,
   unreadable_table_count: 0,
@@ -50,7 +51,7 @@ function databaseFactoryFor(snapshotId, queries, backupPrincipal = validBackupPr
   });
 }
 
-test("holds one least-privileged read-only repeatable-read exported snapshot until the workflow releases it", async () => {
+test("holds one isolated least-privileged read-only repeatable-read exported snapshot until the workflow releases it", async () => {
   const queries = [];
   const writes = [];
   let accessCalls = 0;
@@ -93,6 +94,8 @@ test("holds one least-privileged read-only repeatable-read exported snapshot unt
   assert.match(queries[1], /public_schema_usage/);
   assert.match(queries[1], /public_schema_create/);
   assert.match(queries[1], /membership_count/);
+  assert.match(queries[1], /reverse_membership_count/);
+  assert.match(queries[1], /membership\.roleid = role\.oid/);
   assert.match(queries[1], /writable_column_count/);
   assert.match(queries[1], /grantable_acl_count/);
   assert.match(queries[1], /pg_catalog\.aclexplode/);
@@ -105,7 +108,7 @@ test("holds one least-privileged read-only repeatable-read exported snapshot unt
   assert.equal(accessCalls, 2);
 });
 
-test("fails closed when the production backup credential is not least-privileged read-only", async () => {
+test("fails closed when the production backup credential is not isolated least-privileged read-only", async () => {
   for (const backupPrincipal of [
     { ...validBackupPrincipal, rolsuper: true },
     { ...validBackupPrincipal, rolcreatedb: true },
@@ -120,6 +123,7 @@ test("fails closed when the production backup credential is not least-privileged
     { ...validBackupPrincipal, public_schema_create: true },
     { ...validBackupPrincipal, membership_count: 1 },
     { ...validBackupPrincipal, admin_membership_count: 1 },
+    { ...validBackupPrincipal, reverse_membership_count: 1 },
     { ...validBackupPrincipal, owned_relation_count: 1 },
     { ...validBackupPrincipal, owned_function_count: 1 },
     { ...validBackupPrincipal, unreadable_table_count: 1 },
