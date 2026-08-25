@@ -42,7 +42,7 @@ Das interne M5-Feld `productionReady` bleibt aus Kompatibilitätsgründen zuläs
 | **Repository erzeugt** | kanonischer Generator-/Repositoryvertrag erfolgreich vorliegt | fehlende/ungültige Repository- oder Manifestbestandteile | Repository-/Generatorstatus klären | aus Repository-Erfolg Preview oder Produktion ableiten |
 | **Preview vorbereitet** | Preview-Voraussetzungen, Runtime-/Package-/DB-Manifest-Verträge und notwendige Preview-Konfiguration vollständig vorbereitet sind | konkrete fehlende Preview-Voraussetzungen | Preview-Deployment vorbereiten bzw. freigeben | „deployed“ ohne reale Deployment-Evidence anzeigen |
 | **Preview deployed** | Preview real bereitgestellt und an getrennte Preview-/Test-Infrastruktur gebunden ist | fehlende Deployment-/Binding-/Health-Evidence | Preview prüfen | Preview als Production-Deployment umetikettieren |
-| **Preview geprüft** | reale Preview mit vorgesehenen Tests/Smokes geprüft und akzeptiert ist | fehlende oder fehlgeschlagene Preview-Prüfungen | offene Readiness-Gates bearbeiten | aus Preview automatisch spätere Gates ableiten |
+| **Preview geprüft** | reale Preview mit vorgesehenen Tests/Smokes geprüft und akzeptiert ist | fehlende oder fehlgeschlagene Preview-Prüfungen | kontrollierte Produktionsvorbereitung beginnen; jeder mutierende Schritt bleibt einzeln freigabepflichtig | aus Preview automatisch spätere Gates ableiten |
 | **Security & Privacy Ready** | alle zwölf kanonischen M5-Kriterien auf realer, gültiger und gemeinsam vertrauenswürdig gebundener Evidence erfüllt sind | vom kanonischen M5-Gate gemeldete offene Punkte | verbleibende Production-Readiness-Voraussetzungen bearbeiten | M5 allein als umfassendes Production Ready ausgeben |
 | **Production Ready** | Preview geprüft, Security & Privacy Ready, Backup/Recovery inkl. realem Restore, dedizierte Produktionsressourcen, kontrollierte Migrationen und Deployment, produktive Benutzer/Rechte, grüne Post-Deploy-Smokes sowie alle weiteren kanonischen technischen Pre-Release-Gates erfüllt sind; keine relevanten Blocker offen | alle vom kanonischen Gesamtvertrag noch offenen Voraussetzungen | bei vollständiger technischer Readiness finale Release-Freigabe einholen | aus M5 allein oder Teil-M6-Evidence ableiten; Release automatisch autorisieren |
 | **Produktion freigegeben** | Production Ready erfüllt ist und das separate Release-Gate eine ausdrückliche finale Release-Freigabe besitzt | fehlende technische Evidence oder fehlende finale Release-Autorisierung | bei vollständiger Readiness ausdrückliche Release-Freigabe; sonst offenen Nachweis schließen | aus technischer Evidence automatisch freigeben |
@@ -55,6 +55,8 @@ Bei nicht validierbarer Evidence gilt `Status klären` statt Teilerfolg. Securit
 
 ## Nächster sicherer Schritt
 
+Die operative Reihenfolge folgt dem bestehenden kanonischen Factory-Lifecycle. Insbesondere können reale Produktionsvorbereitung und Backup/Recovery Voraussetzungen für den finalen M5-Nachweis sein; das M5-Gate wird deshalb nicht künstlich vor diese Evidence gezogen.
+
 Priorität:
 
 1. inkonsistenten/ungültigen Status klären,
@@ -62,9 +64,11 @@ Priorität:
 3. Preview vorbereiten,
 4. Preview deployen,
 5. Preview prüfen,
-6. offene M5-/Security-&-Privacy-Kriterien schließen,
-7. verbleibende Recovery-/Produktionsressourcen-/Migrations-/Deployment-/Smoke-Gates schließen,
-8. erst bei vollständigem Production Ready die separate finale Release-Freigabe einholen.
+6. kontrollierte, nicht öffentliche Produktionsvorbereitung nach den jeweiligen Einzelfreigaben durchführen,
+7. Backup/Recovery einschließlich realem Restore nachweisen,
+8. danach die verbleibenden M5-/Security-&-Privacy-Kriterien auf gemeinsam gebundener Evidence abschließen,
+9. verbleibende Domain-/Public-Ingress-/Post-Deploy-Smoke- und sonstige technische Production-Ready-Gates schließen,
+10. erst bei vollständigem Production Ready die separate finale Release-Freigabe einholen.
 
 Ein empfohlener nächster Schritt ist keine Ausführungsautorisierung.
 
