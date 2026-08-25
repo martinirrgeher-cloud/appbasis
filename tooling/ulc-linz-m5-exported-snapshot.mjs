@@ -78,15 +78,20 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       FROM pg_catalog.pg_roles
       WHERE rolname = current_user
     ), public_relations AS (
-      SELECT c.oid, c.relkind
+      SELECT c.oid, c.relkind, c.relacl
       FROM pg_catalog.pg_class AS c
       JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'S')
     ), public_functions AS (
-      SELECT p.oid
+      SELECT p.oid, p.proacl
       FROM pg_catalog.pg_proc AS p
       JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public'
+    ), public_columns AS (
+      SELECT a.attrelid, a.attacl
+      FROM pg_catalog.pg_attribute AS a
+      JOIN public_relations AS relation ON relation.oid = a.attrelid
+      WHERE a.attnum > 0 AND NOT a.attisdropped
     )
     SELECT
       role.rolname AS role_name,
@@ -124,6 +129,14 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
          )) AS writable_table_count,
       (SELECT count(*)::int
        FROM public_relations AS relation
+       WHERE relation.relkind IN ('r', 'p')
+         AND (
+           pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'INSERT') OR
+           pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'UPDATE') OR
+           pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'REFERENCES')
+         )) AS writable_column_count,
+      (SELECT count(*)::int
+       FROM public_relations AS relation
        WHERE relation.relkind = 'S'
          AND (
            pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'USAGE') OR
@@ -131,7 +144,27 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
          )) AS writable_sequence_count,
       (SELECT count(*)::int
        FROM public_functions AS function
-       WHERE pg_catalog.has_function_privilege(role.rolname, function.oid, 'EXECUTE')) AS executable_function_count
+       WHERE pg_catalog.has_function_privilege(role.rolname, function.oid, 'EXECUTE')) AS executable_function_count,
+      (
+        SELECT count(*)::int
+        FROM (
+          SELECT acl.is_grantable
+          FROM public_relations AS relation
+          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(relation.relacl, '{}'::aclitem[])) AS acl
+          WHERE acl.grantee = role.oid
+          UNION ALL
+          SELECT acl.is_grantable
+          FROM public_columns AS column_acl
+          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(column_acl.attacl, '{}'::aclitem[])) AS acl
+          WHERE acl.grantee = role.oid
+          UNION ALL
+          SELECT acl.is_grantable
+          FROM public_functions AS function
+          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(function.proacl, '{}'::aclitem[])) AS acl
+          WHERE acl.grantee = role.oid
+        ) AS explicit_acl
+        WHERE explicit_acl.is_grantable
+      ) AS grantable_acl_count
     FROM current_role AS role
   `);
   if (!Array.isArray(rows) || rows.length !== 1) {
@@ -151,8 +184,10 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
     role.owned_function_count !== 0 ||
     role.unreadable_table_count !== 0 ||
     role.writable_table_count !== 0 ||
+    role.writable_column_count !== 0 ||
     role.writable_sequence_count !== 0 ||
-    role.executable_function_count !== 0
+    role.executable_function_count !== 0 ||
+    role.grantable_acl_count !== 0
   ) {
     throw new Error("ULC M5 backup principal is not least-privileged read-only.");
   }
