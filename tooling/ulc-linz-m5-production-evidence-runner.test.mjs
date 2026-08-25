@@ -186,8 +186,8 @@ function ownerInputs() {
         executionBoundary: "protected-operations",
         lifecycleContractDigest: lifecycleDigest,
         activationInventoryComplete: true,
-        deletionExecutorBound: false,
-        retentionExecutorBound: false,
+        deletionExecutorBound: true,
+        retentionExecutorBound: true,
         restoreReconciliationExecutorBound: true,
         publicIngressPresent: false,
       },
@@ -226,7 +226,7 @@ function bundle() {
   };
 }
 
-test("sanitized production bundle can close all twelve M5 criteria without authorizing release", async () => {
+test("sanitized production bundle can close all twelve M5 criteria only with bound lifecycle executors and without authorizing release", async () => {
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle(), { now: NOW });
   assert.equal(result.securityPrivacyReady, true);
   assert.equal(result.verifiedCount, 12);
