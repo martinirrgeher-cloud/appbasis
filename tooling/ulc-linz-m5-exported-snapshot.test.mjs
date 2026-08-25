@@ -3,13 +3,32 @@ import test from "node:test";
 
 import { holdUlcLinzM5ExportedSnapshot } from "./ulc-linz-m5-exported-snapshot.mjs";
 
-function databaseFactoryFor(snapshotId, queries) {
+const validBackupPrincipal = Object.freeze({
+  role_name: "ulc_backup_reader",
+  rolsuper: false,
+  rolcreatedb: false,
+  rolcreaterole: false,
+  rolreplication: false,
+  rolbypassrls: false,
+  admin_membership_count: 0,
+  owned_relation_count: 0,
+  owned_function_count: 0,
+  unreadable_table_count: 0,
+  writable_table_count: 0,
+  writable_sequence_count: 0,
+  executable_function_count: 0,
+});
+
+function databaseFactoryFor(snapshotId, queries, backupPrincipal = validBackupPrincipal) {
   return () => ({
     client: {
       async begin(callback) {
         return callback({
           async unsafe(query) {
             queries.push(query);
+            if (query.includes("WITH current_role AS")) {
+              return [structuredClone(backupPrincipal)];
+            }
             if (query.includes("pg_export_snapshot")) {
               return [{ snapshot_id: snapshotId }];
             }
@@ -22,7 +41,7 @@ function databaseFactoryFor(snapshotId, queries) {
   });
 }
 
-test("holds one read-only repeatable-read exported snapshot until the workflow releases it", async () => {
+test("holds one least-privileged read-only repeatable-read exported snapshot until the workflow releases it", async () => {
   const queries = [];
   const writes = [];
   let accessCalls = 0;
@@ -56,16 +75,54 @@ test("holds one read-only repeatable-read exported snapshot until the workflow r
   );
 
   assert.equal(result, snapshotId);
-  assert.deepEqual(queries, [
-    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
-    "SELECT pg_export_snapshot() AS snapshot_id",
-  ]);
+  assert.equal(queries.length, 3);
+  assert.match(queries[0], /admin_membership_count/);
+  assert.match(queries[0], /unreadable_table_count/);
+  assert.match(queries[0], /writable_table_count/);
+  assert.match(queries[0], /executable_function_count/);
+  assert.equal(queries[1], "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
+  assert.equal(queries[2], "SELECT pg_export_snapshot() AS snapshot_id");
   assert.deepEqual(writes, [{
     path: "/tmp/source.snapshot",
     content: `${snapshotId}\n`,
     options: { encoding: "utf8", mode: 0o600, flag: "wx" },
   }]);
   assert.equal(accessCalls, 2);
+});
+
+test("fails closed when the production backup credential is not least-privileged read-only", async () => {
+  for (const backupPrincipal of [
+    { ...validBackupPrincipal, rolsuper: true },
+    { ...validBackupPrincipal, rolcreatedb: true },
+    { ...validBackupPrincipal, rolcreaterole: true },
+    { ...validBackupPrincipal, rolreplication: true },
+    { ...validBackupPrincipal, rolbypassrls: true },
+    { ...validBackupPrincipal, admin_membership_count: 1 },
+    { ...validBackupPrincipal, owned_relation_count: 1 },
+    { ...validBackupPrincipal, owned_function_count: 1 },
+    { ...validBackupPrincipal, unreadable_table_count: 1 },
+    { ...validBackupPrincipal, writable_table_count: 1 },
+    { ...validBackupPrincipal, writable_sequence_count: 1 },
+    { ...validBackupPrincipal, executable_function_count: 1 },
+  ]) {
+    await assert.rejects(
+      () => holdUlcLinzM5ExportedSnapshot(
+        {
+          databaseUrl: "postgresql://backup:pw@origin.example/neondb",
+          snapshotPath: "/tmp/source.snapshot",
+          releasePath: "/tmp/source.snapshot.release",
+        },
+        {
+          databaseFactory: databaseFactoryFor("00000003-0000001B-1", [], backupPrincipal),
+          fileWrite: async () => {
+            throw new Error("must not export with privileged backup principal");
+          },
+          fileAccess: async () => {},
+        },
+      ),
+      /backup principal is not least-privileged read-only/,
+    );
+  }
 });
 
 test("rejects malformed provider snapshot IDs before exposing them to the workflow", async () => {
