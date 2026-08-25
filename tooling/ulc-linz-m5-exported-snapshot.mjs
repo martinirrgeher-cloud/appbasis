@@ -35,6 +35,7 @@ export async function holdUlcLinzM5ExportedSnapshot(
   const database = databaseFactory(safeDatabaseUrl);
   try {
     return await database.client.begin(async (sql) => {
+      await assertBackupPrincipalLeastPrivilege(sql);
       await sql.unsafe("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
       const rows = await sql.unsafe("SELECT pg_export_snapshot() AS snapshot_id");
       if (!Array.isArray(rows) || rows.length !== 1) {
@@ -67,6 +68,89 @@ export async function holdUlcLinzM5ExportedSnapshot(
     });
   } finally {
     await database.client.end().catch(() => {});
+  }
+}
+
+async function assertBackupPrincipalLeastPrivilege(sql) {
+  const rows = await sql.unsafe(`
+    WITH current_role AS (
+      SELECT oid, rolname, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+      FROM pg_catalog.pg_roles
+      WHERE rolname = current_user
+    ), public_relations AS (
+      SELECT c.oid, c.relkind
+      FROM pg_catalog.pg_class AS c
+      JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'S')
+    ), public_functions AS (
+      SELECT p.oid
+      FROM pg_catalog.pg_proc AS p
+      JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+    )
+    SELECT
+      role.rolname AS role_name,
+      role.rolsuper,
+      role.rolcreatedb,
+      role.rolcreaterole,
+      role.rolreplication,
+      role.rolbypassrls,
+      (SELECT count(*)::int
+       FROM pg_catalog.pg_auth_members AS membership
+       WHERE membership.member = role.oid AND membership.admin_option) AS admin_membership_count,
+      (SELECT count(*)::int
+       FROM public_relations AS relation
+       WHERE pg_catalog.pg_get_userbyid((SELECT relowner FROM pg_catalog.pg_class WHERE oid = relation.oid)) = role.rolname) AS owned_relation_count,
+      (SELECT count(*)::int
+       FROM public_functions AS function
+       WHERE pg_catalog.pg_get_userbyid((SELECT proowner FROM pg_catalog.pg_proc WHERE oid = function.oid)) = role.rolname) AS owned_function_count,
+      (SELECT count(*)::int
+       FROM public_relations AS relation
+       WHERE relation.relkind IN ('r', 'p')
+         AND NOT pg_catalog.has_table_privilege(role.rolname, relation.oid, 'SELECT')) AS unreadable_table_count,
+      (SELECT count(*)::int
+       FROM public_relations AS relation
+       WHERE relation.relkind IN ('r', 'p')
+         AND (
+           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'INSERT') OR
+           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'UPDATE') OR
+           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'DELETE') OR
+           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'TRUNCATE') OR
+           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'TRIGGER') OR
+           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'REFERENCES')
+         )) AS writable_table_count,
+      (SELECT count(*)::int
+       FROM public_relations AS relation
+       WHERE relation.relkind = 'S'
+         AND (
+           pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'USAGE') OR
+           pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'UPDATE')
+         )) AS writable_sequence_count,
+      (SELECT count(*)::int
+       FROM public_functions AS function
+       WHERE pg_catalog.has_function_privilege(role.rolname, function.oid, 'EXECUTE')) AS executable_function_count
+    FROM current_role AS role
+  `);
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new Error("ULC M5 backup principal inventory is invalid.");
+  }
+  const role = rows[0];
+  if (
+    typeof role?.role_name !== "string" || role.role_name.length === 0 ||
+    role.rolsuper !== false ||
+    role.rolcreatedb !== false ||
+    role.rolcreaterole !== false ||
+    role.rolreplication !== false ||
+    role.rolbypassrls !== false ||
+    role.admin_membership_count !== 0 ||
+    role.owned_relation_count !== 0 ||
+    role.owned_function_count !== 0 ||
+    role.unreadable_table_count !== 0 ||
+    role.writable_table_count !== 0 ||
+    role.writable_sequence_count !== 0 ||
+    role.executable_function_count !== 0
+  ) {
+    throw new Error("ULC M5 backup principal is not least-privileged read-only.");
   }
 }
 
