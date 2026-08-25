@@ -54,7 +54,7 @@ Die Factory muss:
 - keinen Auto-Release und keinen ungesicherten Produktionsbutton einführen,
 - Provider-IDs, Datenbankadressen und Secretwerte aus der normalen Nutzeroberfläche heraushalten.
 
-Der aktuelle Factory-Lifecycle-Adapter konsumiert den bestehenden kanonischen Lifecycle-Vertrag; diese ADR erzeugt keinen zweiten Readiness-Evaluator.
+Der Factory-Lifecycle-Adapter konsumiert die bestehenden kanonischen Lifecycle- und Readiness-Verträge; diese ADR erzeugt keinen zweiten Readiness-Evaluator.
 
 ## Sicherheitswirkung
 
@@ -65,6 +65,6 @@ Diese Entscheidung lockert kein Gate:
 - mutierende Produktionsschritte bleiben einzeln freigabepflichtig,
 - der finale Release bleibt separat freigabepflichtig.
 
-## Aktueller Integrationsstand
+## Strukturelle Integrationsregel
 
-Die frühere Planung, diese Terminologie über die alten Zwischen-PRs #134/#136/#166 zu integrieren, ist überholt. Maßgeblich ist der jeweils aktuelle `main`-Vertrag. Bestehende M5-/M6-/Recovery-/Factory-Verträge werden wiederverwendet; veraltete parallele Evidence- oder Lifecycle-Implementierungen werden nicht wiederbelebt.
+Diese ADR beschreibt ausschließlich dauerhafte Architektur- und Lifecycle-Verträge. Flüchtige Pull-Request-, Branch-, Commit- oder Integrationsstatus gehören nicht in diese Entscheidung. Bestehende kanonische M5-/M6-/Recovery-/Factory-Verträge werden wiederverwendet; parallele oder historische Evidence- und Lifecycle-Implementierungen dürfen daraus nicht erneut als zweite Wahrheitsquelle abgeleitet werden.
