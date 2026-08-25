@@ -117,15 +117,11 @@ test("bindUlcLinzSecurityLogRoles fails closed when a reserved transaction canno
       { ...urls, apply: true },
       {
         databaseFactory() {
-          let membershipReads = 0;
           return fakeDatabase(async (sql) => {
             if (sql.includes("FROM pg_catalog.pg_roles")) return roleRows;
-            if (sql.includes("FROM pg_catalog.pg_auth_members")) {
-              membershipReads += 1;
-              return membershipReads === 1 ? [] : [];
-            }
+            if (sql.includes("FROM pg_catalog.pg_auth_members")) return [];
             throw new Error(`Unexpected SQL: ${sql}`);
-          }, undefined);
+          });
         },
       },
     ),
@@ -149,11 +145,11 @@ function role(rolname, rolcanlogin) {
   });
 }
 
-function fakeDatabase(unsafe, begin = async (callback) => callback({ unsafe })) {
+function fakeDatabase(unsafe, begin = null) {
   return {
     client: {
       unsafe,
-      ...(begin === undefined ? {} : { begin }),
+      ...(typeof begin === "function" ? { begin } : {}),
       async end() {},
     },
   };
