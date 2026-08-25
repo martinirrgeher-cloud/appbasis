@@ -64,18 +64,19 @@ export async function bindUlcLinzSecurityLogRoles(
     );
 
     if (missing.length > 0) {
-      await database.client.unsafe("BEGIN");
-      try {
+      if (typeof database.client.begin !== "function") {
+        throw new Error("ULC security-log role-binding transaction API is unavailable.");
+      }
+      await database.client.begin(async (transaction) => {
+        if (transaction === null || typeof transaction !== "object" || typeof transaction.unsafe !== "function") {
+          throw new Error("ULC security-log role-binding transaction client is invalid.");
+        }
         for (const [key, principal] of missing) {
-          await database.client.unsafe(
+          await transaction.unsafe(
             `GRANT ${quoteIdentifier(PROTECTED_GROUPS[key])} TO ${quoteIdentifier(principal.user)}`,
           );
         }
-        await database.client.unsafe("COMMIT");
-      } catch (error) {
-        await database.client.unsafe("ROLLBACK").catch(() => {});
-        throw error;
-      }
+      });
     }
 
     const after = await readMemberships(database.client, principals);
