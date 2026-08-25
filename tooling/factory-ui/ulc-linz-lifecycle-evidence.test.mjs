@@ -103,8 +103,8 @@ async function lifecycleActivationEvidence(root, resource = resourceBindingEvide
       executionBoundary: "protected-operations",
       lifecycleContractDigest: await deriveUlcLinzLifecycleContractDigest(root),
       activationInventoryComplete: true,
-      deletionExecutorBound: true,
-      retentionExecutorBound: true,
+      deletionExecutorBound: false,
+      retentionExecutorBound: false,
       restoreReconciliationExecutorBound: true,
       publicIngressPresent: false,
     },
@@ -120,7 +120,7 @@ async function deriveWithActivation(root, activation) {
   );
 }
 
-test("emits M5-C/D evidence only for exact repository contracts plus protected production activation", async () => {
+test("emits M5-C/D evidence only for exact repository contracts plus truthful protected production activation inventory", async () => {
   const root = await createFixture();
   try {
     assert.deepEqual(await deriveWithActivation(root), {
@@ -146,12 +146,13 @@ test("keeps C/D fail closed without real production lifecycle activation", async
   }
 });
 
-test("rejects public, incomplete or lifecycle-contract-drifted production activation", async () => {
+test("rejects public, invented-executor or lifecycle-contract-drifted production activation", async () => {
   const root = await createFixture();
   try {
     for (const mutate of [
       (value) => { value.activationEvidence.publicIngressPresent = true; },
-      (value) => { value.activationEvidence.retentionExecutorBound = false; },
+      (value) => { value.activationEvidence.retentionExecutorBound = true; },
+      (value) => { value.activationEvidence.deletionExecutorBound = true; },
       (value) => { value.activationEvidence.lifecycleContractDigest = `sha256:${"0".repeat(64)}`; },
     ]) {
       const activation = await lifecycleActivationEvidence(root);
