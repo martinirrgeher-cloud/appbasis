@@ -62,20 +62,67 @@ jobs:
       - name: Verify exact repository contracts before production delete
         run: pnpm run verify:repo
 
-      - name: Validate and mask dedicated ULC security-log cleanup database credential
+      - name: Validate and mask protected ULC security-log database credentials
         shell: bash
         env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
         run: |
           set -euo pipefail
-          test -n "$ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL" || {
-            echo 'Missing ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL.' >&2
-            exit 1
-          }
-          echo "::add-mask::$ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL"
+          for name in \
+            ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL
+          do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
           node --input-type=module <<'NODE'
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
-          parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL);
+          const urls = [
+            process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+            process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
+            process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
+            process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
+          ].map((value) => parseUlcLinzProductionDatabaseUrl(value));
+          if (new Set(urls.map((entry) => entry.user)).size !== 4) {
+            throw new Error('ULC M5-F production security-log principals must be distinct.');
+          }
+          NODE
+
+      - name: Verify canonical protected audit access boundary before production delete
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { collectUlcLinzM5SecurityLogAccessEvidence } from './tooling/ulc-linz-m5-security-log-access-evidence.mjs';
+          import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+
+          const ingest = parseUlcLinzProductionDatabaseUrl(
+            process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
+          );
+          const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
+            productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+            cleanupDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
+            readDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
+            ingestUsername: ingest.user,
+          });
+          if (
+            evidence?.leastPrivilegeAccessVerified !== true ||
+            evidence?.protectedOperationalAccessVerified !== true ||
+            evidence?.providerMinimumRetentionVerified !== true
+          ) {
+            throw new Error('ULC M5-F canonical security-log access boundary is incomplete.');
+          }
           NODE
 
       - name: Run exact server-owned twelve-calendar-month cleanup
@@ -112,4 +159,4 @@ jobs:
       - name: Record sanitized retention outcome
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz M5-F security-log retention cleanup completed with a dedicated least-privilege cleanup credential and the server-owned exact 12-calendar-month contract. This does not authorize production release.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz M5-F security-log retention cleanup completed after the canonical protected audit access boundary was verified and the server-owned exact 12-calendar-month contract executed. This does not authorize production release.' >> "$GITHUB_STEP_SUMMARY"
