@@ -16,8 +16,10 @@ const validBackupPrincipal = Object.freeze({
   owned_function_count: 0,
   unreadable_table_count: 0,
   writable_table_count: 0,
+  writable_column_count: 0,
   writable_sequence_count: 0,
   executable_function_count: 0,
+  grantable_acl_count: 0,
 });
 
 function databaseFactoryFor(snapshotId, queries, backupPrincipal = validBackupPrincipal) {
@@ -80,6 +82,9 @@ test("holds one least-privileged read-only repeatable-read exported snapshot unt
   assert.equal(queries[0], "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
   assert.match(queries[1], /membership_count/);
   assert.match(queries[1], /admin_membership_count/);
+  assert.match(queries[1], /writable_column_count/);
+  assert.match(queries[1], /grantable_acl_count/);
+  assert.match(queries[1], /pg_catalog\.aclexplode/);
   assert.match(queries[1], /unreadable_table_count/);
   assert.match(queries[1], /writable_table_count/);
   assert.match(queries[1], /executable_function_count/);
@@ -105,8 +110,10 @@ test("fails closed when the production backup credential is not least-privileged
     { ...validBackupPrincipal, owned_function_count: 1 },
     { ...validBackupPrincipal, unreadable_table_count: 1 },
     { ...validBackupPrincipal, writable_table_count: 1 },
+    { ...validBackupPrincipal, writable_column_count: 1 },
     { ...validBackupPrincipal, writable_sequence_count: 1 },
     { ...validBackupPrincipal, executable_function_count: 1 },
+    { ...validBackupPrincipal, grantable_acl_count: 1 },
   ]) {
     await assert.rejects(
       () => holdUlcLinzM5ExportedSnapshot(
