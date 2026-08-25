@@ -20,8 +20,9 @@ const roleRows = Object.freeze([
   role("read_login", true),
 ]);
 
-test("bindUlcLinzSecurityLogRoles provisions only missing exact memberships", async () => {
+test("bindUlcLinzSecurityLogRoles provisions only missing exact memberships in one reserved transaction", async () => {
   const statements = [];
+  let beginCalls = 0;
   let memberships = [
     { parent: "ulc_linz_security_event_ingest", member: "ingest_login", admin_option: false },
   ];
@@ -29,29 +30,41 @@ test("bindUlcLinzSecurityLogRoles provisions only missing exact memberships", as
     { ...urls, apply: true },
     {
       databaseFactory() {
-        return fakeDatabase(async (sql) => {
-          statements.push(sql);
-          if (sql.includes("FROM pg_catalog.pg_roles")) return roleRows;
-          if (sql.includes("FROM pg_catalog.pg_auth_members")) return memberships;
-          if (sql.startsWith("GRANT ")) {
-            const match = /^GRANT "([^"]+)" TO "([^"]+)"$/.exec(sql);
-            assert.ok(match);
-            memberships = [
-              ...memberships,
-              { parent: match[1], member: match[2], admin_option: false },
-            ];
-            return [];
-          }
-          if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return [];
-          throw new Error(`Unexpected SQL: ${sql}`);
-        });
+        return fakeDatabase(
+          async (sql) => {
+            statements.push(sql);
+            if (sql.includes("FROM pg_catalog.pg_roles")) return roleRows;
+            if (sql.includes("FROM pg_catalog.pg_auth_members")) return memberships;
+            if (sql.startsWith("GRANT ")) {
+              throw new Error("GRANT must use the reserved transaction client.");
+            }
+            throw new Error(`Unexpected SQL: ${sql}`);
+          },
+          async (callback) => {
+            beginCalls += 1;
+            return callback({
+              async unsafe(sql) {
+                statements.push(sql);
+                const match = /^GRANT "([^"]+)" TO "([^"]+)"$/.exec(sql);
+                assert.ok(match);
+                memberships = [
+                  ...memberships,
+                  { parent: match[1], member: match[2], admin_option: false },
+                ];
+                return [];
+              },
+            });
+          },
+        );
       },
     },
   );
   assert.equal(result.membershipBindingsVerified, true);
   assert.equal(result.changedBindings, 2);
   assert.equal(result.productionReleaseAuthorized, false);
+  assert.equal(beginCalls, 1);
   assert.equal(statements.filter((sql) => sql.startsWith("GRANT ")).length, 2);
+  assert.equal(statements.some((sql) => sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK"), false);
 });
 
 test("bindUlcLinzSecurityLogRoles rejects unexpected or delegated memberships", async () => {
@@ -98,6 +111,28 @@ test("bindUlcLinzSecurityLogRoles rejects privileged login roles", async () => {
   );
 });
 
+test("bindUlcLinzSecurityLogRoles fails closed when a reserved transaction cannot be opened", async () => {
+  await assert.rejects(
+    bindUlcLinzSecurityLogRoles(
+      { ...urls, apply: true },
+      {
+        databaseFactory() {
+          let membershipReads = 0;
+          return fakeDatabase(async (sql) => {
+            if (sql.includes("FROM pg_catalog.pg_roles")) return roleRows;
+            if (sql.includes("FROM pg_catalog.pg_auth_members")) {
+              membershipReads += 1;
+              return membershipReads === 1 ? [] : [];
+            }
+            throw new Error(`Unexpected SQL: ${sql}`);
+          }, undefined);
+        },
+      },
+    ),
+    /transaction API is unavailable/i,
+  );
+});
+
 function databaseUrl(user) {
   return `postgresql://${user}:secret@${HOST}:5432/neondb?sslmode=require`;
 }
@@ -114,10 +149,11 @@ function role(rolname, rolcanlogin) {
   });
 }
 
-function fakeDatabase(unsafe) {
+function fakeDatabase(unsafe, begin = async (callback) => callback({ unsafe })) {
   return {
     client: {
       unsafe,
+      ...(begin === undefined ? {} : { begin }),
       async end() {},
     },
   };
