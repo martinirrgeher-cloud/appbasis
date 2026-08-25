@@ -235,8 +235,8 @@ export async function collectUlcLinzM5ProductionEvidenceBundle(
         executionBoundary: "protected-operations",
         lifecycleContractDigest,
         activationInventoryComplete: true,
-        deletionExecutorBound: true,
-        retentionExecutorBound: true,
+        deletionExecutorBound: false,
+        retentionExecutorBound: false,
         restoreReconciliationExecutorBound:
           restore.restoreReconciliationVerified === true,
         publicIngressPresent: false,
