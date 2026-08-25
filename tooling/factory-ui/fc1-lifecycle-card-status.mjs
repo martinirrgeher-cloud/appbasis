@@ -24,11 +24,16 @@ export function factoryLifecycleCardCopy(
   }
 
   const currentStages = lifecycle.stages.filter((stage) => stage.state === "current");
-  if (currentStages.length !== 1) {
+  if (currentStages.length > 1) {
     return failClosedCard();
   }
 
-  const current = currentStages[0];
+  const current =
+    currentStages[0] ?? canonicalPostPreparationTarget(lifecycle.stages);
+  if (current === null) {
+    return failClosedCard();
+  }
+
   return Object.freeze({
     stageId: current.id,
     label: current.label,
@@ -36,6 +41,22 @@ export function factoryLifecycleCardCopy(
     nextStep: lifecycle.nextStep.heading,
     detail: lifecycle.nextStep.detail,
   });
+}
+
+function canonicalPostPreparationTarget(stages) {
+  const preparation = stages[2];
+  const productionReady = stages[3];
+  const productionRelease = stages[4];
+
+  if (
+    preparation.state === "complete" &&
+    productionReady.state === "locked" &&
+    productionRelease.state === "locked"
+  ) {
+    return productionReady;
+  }
+
+  return null;
 }
 
 function isCanonicalLifecycle(lifecycle) {
