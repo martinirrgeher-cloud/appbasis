@@ -129,6 +129,9 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
        FROM pg_catalog.pg_auth_members AS membership
        WHERE membership.member = role.oid AND membership.admin_option) AS admin_membership_count,
       (SELECT count(*)::int
+       FROM pg_catalog.pg_auth_members AS membership
+       WHERE membership.roleid = role.oid) AS reverse_membership_count,
+      (SELECT count(*)::int
        FROM public_relations AS relation
        WHERE pg_catalog.pg_get_userbyid((SELECT relowner FROM pg_catalog.pg_class WHERE oid = relation.oid)) = role.rolname) AS owned_relation_count,
       (SELECT count(*)::int
@@ -220,6 +223,7 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
     role.public_schema_create !== false ||
     role.membership_count !== 0 ||
     role.admin_membership_count !== 0 ||
+    role.reverse_membership_count !== 0 ||
     role.owned_relation_count !== 0 ||
     role.owned_function_count !== 0 ||
     role.unreadable_table_count !== 0 ||
