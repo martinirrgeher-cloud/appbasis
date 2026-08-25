@@ -84,6 +84,7 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
     );
     expect(cloudflare?.responsibilities).toEqual([
       "edge-runtime",
+      "hyperdrive-database-connectivity",
       "tls-termination",
       "worker-execution",
     ]);
@@ -143,6 +144,12 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
         from: "cloudflare",
         to: "neon-postgresql",
         purpose: "application-persistence",
+        evidenceStatus: "open",
+      },
+      {
+        from: "cloudflare",
+        to: "neon-postgresql",
+        purpose: "security-log-persistence",
         evidenceStatus: "open",
       },
       {

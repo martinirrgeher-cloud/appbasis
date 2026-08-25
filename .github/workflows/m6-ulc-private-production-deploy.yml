@@ -68,20 +68,34 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
         run: |
           set -euo pipefail
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID.' >&2; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN.' >&2; exit 1; }
           test -n "$ULC_LINZ_PRODUCTION_DATABASE_URL" || { echo 'Missing ULC_LINZ_PRODUCTION_DATABASE_URL.' >&2; exit 1; }
+          test -n "$ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL" || { echo 'Missing ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL.' >&2; exit 1; }
           test -n "$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET" || { echo 'Missing ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET.' >&2; exit 1; }
           node -e 'const value = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET?.trim() ?? ""; if (value.length < 32 || value !== process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET) process.exit(1);' || {
             echo 'Production Better Auth secret must be trimmed and at least 32 characters.' >&2
             exit 1
           }
+          node --input-type=module <<'NODE'
+          import {
+            parseUlcLinzProductionDatabaseUrl,
+            parseUlcLinzSecurityLogIngestDatabaseUrl,
+          } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          const app = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          const security = parseUlcLinzSecurityLogIngestDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL);
+          if (app.user === security.user) {
+            throw new Error('Production app and security-log ingest database roles must be distinct.');
+          }
+          NODE
           echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
           echo "::add-mask::$CLOUDFLARE_API_TOKEN"
           echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
+          echo "::add-mask::$ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL"
           echo "::add-mask::$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET"
 
       - name: Derive current auth-secret HMAC fingerprint
@@ -104,19 +118,28 @@ jobs:
           echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
           printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
 
-      - name: Resolve exact dedicated production Hyperdrive
+      - name: Resolve exact dedicated production Hyperdrives
         id: hyperdrive
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
         run: |
           set -euo pipefail
           HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          SECURITY_LOG_HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
           test -n "$HYPERDRIVE_ID" || { echo 'Exact ULC production Hyperdrive could not be resolved.' >&2; exit 1; }
+          test -n "$SECURITY_LOG_HYPERDRIVE_ID" || { echo 'Exact ULC security-log Hyperdrive could not be resolved.' >&2; exit 1; }
+          test "$HYPERDRIVE_ID" != "$SECURITY_LOG_HYPERDRIVE_ID" || {
+            echo 'Application and security-log Hyperdrive IDs must be distinct.' >&2
+            exit 1
+          }
           echo "::add-mask::$HYPERDRIVE_ID"
+          echo "::add-mask::$SECURITY_LOG_HYPERDRIVE_ID"
           printf 'id=%s\n' "$HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
+          printf 'security_log_id=%s\n' "$SECURITY_LOG_HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
 
       - name: Require exact closed worker and exact current undeployed version
         id: preflight
@@ -233,6 +256,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VERSION_ID: ${{ steps.preflight.outputs.id }}
           HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+          SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.security_log_id }}
         run: |
           set -euo pipefail
           VERSION_PATH="$RUNNER_TEMP/m6-private-deploy-version-before.json"
@@ -241,7 +265,7 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/versions/$VERSION_ID" \
             > "$VERSION_PATH"
 
-          VERSION_PATH="$VERSION_PATH" VERSION_ID="$VERSION_ID" HYPERDRIVE_ID="$HYPERDRIVE_ID" TARGET_BASE_URL="$TARGET_BASE_URL" node --input-type=module <<'NODE'
+          VERSION_PATH="$VERSION_PATH" VERSION_ID="$VERSION_ID" HYPERDRIVE_ID="$HYPERDRIVE_ID" SECURITY_LOG_HYPERDRIVE_ID="$SECURITY_LOG_HYPERDRIVE_ID" TARGET_BASE_URL="$TARGET_BASE_URL" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const response = JSON.parse(await readFile(process.env.VERSION_PATH, "utf8"));
           const bindings = response?.result?.resources?.bindings;
@@ -249,18 +273,22 @@ jobs:
             response?.success !== true ||
             response?.result?.id !== process.env.VERSION_ID ||
             !Array.isArray(bindings) ||
-            bindings.length !== 3
+            bindings.length !== 4
           ) {
             throw new Error("Private production deploy version detail or binding inventory is invalid.");
           }
           const base = bindings.find((entry) => entry?.name === "APPBASIS_BASE_URL");
           const hyperdrive = bindings.find((entry) => entry?.name === "HYPERDRIVE");
+          const securityHyperdrive = bindings.find((entry) => entry?.name === "SECURITY_LOG_HYPERDRIVE");
           const secret = bindings.find((entry) => entry?.name === "BETTER_AUTH_SECRET");
           if (
             base?.type !== "plain_text" ||
             base?.text !== process.env.TARGET_BASE_URL ||
             hyperdrive?.type !== "hyperdrive" ||
             hyperdrive?.id !== process.env.HYPERDRIVE_ID ||
+            securityHyperdrive?.type !== "hyperdrive" ||
+            securityHyperdrive?.id !== process.env.SECURITY_LOG_HYPERDRIVE_ID ||
+            securityHyperdrive.id === hyperdrive.id ||
             secret?.type !== "secret_text"
           ) {
             throw new Error("Private production deploy bindings drifted from the approved runtime contract.");
@@ -363,7 +391,7 @@ jobs:
           }
           NODE
 
-          echo 'Exact ULC production version is deployed while workers.dev, Preview URLs, custom domains and Worker routes remain disabled.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Exact ULC production version is deployed with distinct app/security-log Hyperdrives while workers.dev, Preview URLs, custom domains and Worker routes remain disabled.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary deployment evidence
         if: always()

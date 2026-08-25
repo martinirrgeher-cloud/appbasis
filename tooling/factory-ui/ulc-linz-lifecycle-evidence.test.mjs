@@ -120,7 +120,7 @@ async function deriveWithActivation(root, activation) {
   );
 }
 
-test("emits M5-C/D evidence only for exact repository contracts plus protected production activation", async () => {
+test("emits M5-C/D evidence only for exact repository contracts plus truthful protected production activation inventory", async () => {
   const root = await createFixture();
   try {
     assert.deepEqual(await deriveWithActivation(root), {
@@ -146,12 +146,13 @@ test("keeps C/D fail closed without real production lifecycle activation", async
   }
 });
 
-test("rejects public, incomplete or lifecycle-contract-drifted production activation", async () => {
+test("rejects public, missing-executor or lifecycle-contract-drifted production activation", async () => {
   const root = await createFixture();
   try {
     for (const mutate of [
       (value) => { value.activationEvidence.publicIngressPresent = true; },
       (value) => { value.activationEvidence.retentionExecutorBound = false; },
+      (value) => { value.activationEvidence.deletionExecutorBound = false; },
       (value) => { value.activationEvidence.lifecycleContractDigest = `sha256:${"0".repeat(64)}`; },
     ]) {
       const activation = await lifecycleActivationEvidence(root);
@@ -197,7 +198,7 @@ test("fails closed when the current app-owned database contract drifts", async (
     const activation = await lifecycleActivationEvidence(root);
     const manifest = createExpectedUlcLinzDatabaseManifest(VALID_ULC_DEFINITION);
     const changed = JSON.parse(JSON.stringify(manifest));
-    changed.owners.find((owner) => owner.id === "ulc-linz-lifecycle").schemaVersion = 4;
+    changed.owners.find((owner) => owner.id === "ulc-linz-lifecycle").schemaVersion = 5;
     await writeFile(
       join(root, "apps", "ulc-linz", "appbasis.database.json"),
       `${JSON.stringify(changed, null, 2)}\n`,

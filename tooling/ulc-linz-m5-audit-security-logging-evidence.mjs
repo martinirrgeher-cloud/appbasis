@@ -9,14 +9,34 @@ const ROOT_FIELDS = Object.freeze(["resourceBindingEvidence", "loggingEvidence"]
 const LOGGING_FIELDS = Object.freeze([
   "schemaVersion", "application", "environment", "observedAt", "validUntilOrReviewAt",
   "inventorySource", "runtimeBindingId", "sinkBindingId", "sinkIdentitySource",
-  "structuredEventCaptureEnabled", "protectedOperationalAccess", "retentionMonths",
-  "retentionSource", "sinkInventoryComplete", "publicReadEndpointPresent",
+  "structuredEventCaptureEnabled", "protectedOperationalAccess", "retentionMode",
+  "retentionEvidence", "sinkInventoryComplete", "publicReadEndpointPresent",
+]);
+const PROVIDER_NATIVE_RETENTION_FIELDS = Object.freeze([
+  "source", "retentionValue", "retentionUnit", "calendarSemanticsVerified",
+  "noEarlyDeleteVerified", "noUncontrolledOverRetentionVerified",
+]);
+const CONTROLLED_RETENTION_FIELDS = Object.freeze([
+  "source", "providerMinimumRetentionVerified", "cutoffSemantics",
+  "cleanupExecutionBound", "cleanupLastSucceededAt", "cleanupResultVerified",
+  "boundaryEventPreserved", "clientCutoffOverridePresent", "enforcementContractDigest",
 ]);
 const CONTRACT_FILES = Object.freeze([
   ["apps/ulc-linz/worker/app.ts", new URL("../apps/ulc-linz/worker/app.ts", import.meta.url), "3acdcd47bf696c23334c15a11fe80c70368d608c"],
   ["apps/ulc-linz/worker/authorization.ts", new URL("../apps/ulc-linz/worker/authorization.ts", import.meta.url), "a39b41853b120e56d55a14bb75d4aa231c22843b"],
   ["apps/ulc-linz/worker/security-events.ts", new URL("../apps/ulc-linz/worker/security-events.ts", import.meta.url), "cc3a972b65ffd09350d752236827c8df922d9b77"],
+  ["apps/ulc-linz/worker/security-events-postgres.ts", new URL("../apps/ulc-linz/worker/security-events-postgres.ts", import.meta.url), "b1deaf9ea5c725835f6b0418ed9646b753850f1c"],
+  ["apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", new URL("../apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", import.meta.url), "0dea6b9c751e559b06e14d2d2e603bb9a99372d4"],
+  ["apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", new URL("../apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", import.meta.url), "37a3bf875952d4076e9202349fb9c9901a4ea2ab"],
 ]);
+const CONTROLLED_RETENTION_CONTRACT_FILES = Object.freeze([
+  ["apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", new URL("../apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", import.meta.url)],
+  ["apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", new URL("../apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", import.meta.url)],
+  ["apps/ulc-linz/worker/security-events-postgres.ts", new URL("../apps/ulc-linz/worker/security-events-postgres.ts", import.meta.url)],
+]);
+
+export const ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST =
+  digestContract(CONTROLLED_RETENTION_CONTRACT_FILES);
 
 export function deriveUlcLinzM5FAuditSecurityLoggingEvidence(input, { now = new Date() } = {}) {
   try {
@@ -28,10 +48,9 @@ export function deriveUlcLinzM5FAuditSecurityLoggingEvidence(input, { now = new 
     if (
       logging.schemaVersion !== 1 || logging.application !== "ulc-linz" ||
       logging.environment !== "production" || logging.inventorySource !== "provider-api" ||
-      logging.sinkIdentitySource !== "provider-api" || logging.retentionSource !== "provider-api" ||
+      logging.sinkIdentitySource !== "provider-api" ||
       logging.structuredEventCaptureEnabled !== true || logging.protectedOperationalAccess !== true ||
-      logging.retentionMonths !== 12 || logging.sinkInventoryComplete !== true ||
-      logging.publicReadEndpointPresent !== false
+      logging.sinkInventoryComplete !== true || logging.publicReadEndpointPresent !== false
     ) return EMPTY;
     if (
       logging.observedAt !== root.resourceBindingEvidence.observedAt ||
@@ -40,12 +59,46 @@ export function deriveUlcLinzM5FAuditSecurityLoggingEvidence(input, { now = new 
     ) return EMPTY;
     opaque(logging.runtimeBindingId);
     opaque(logging.sinkBindingId);
+    if (!retentionVerified(logging.retentionMode, logging.retentionEvidence, nowDate)) return EMPTY;
     const observedAt = timestamp(logging.observedAt);
     if (!observedAt || nowDate < observedAt || nowDate.getTime() - observedAt.getTime() >= MAX_AGE_MS) return EMPTY;
     return VERIFIED;
   } catch {
     return EMPTY;
   }
+}
+
+function retentionVerified(mode, evidence, nowDate) {
+  if (mode === "provider-native-calendar") {
+    const value = exactRecord(evidence, PROVIDER_NATIVE_RETENTION_FIELDS);
+    return (
+      value.source === "provider-api-and-authoritative-contract" &&
+      value.retentionValue === 12 &&
+      value.retentionUnit === "calendar-months" &&
+      value.calendarSemanticsVerified === true &&
+      value.noEarlyDeleteVerified === true &&
+      value.noUncontrolledOverRetentionVerified === true
+    );
+  }
+  if (mode === "controlled-calendar-enforcement") {
+    const value = exactRecord(evidence, CONTROLLED_RETENTION_FIELDS);
+    const cleanupLastSucceededAt = timestamp(value.cleanupLastSucceededAt);
+    opaqueDigest(value.enforcementContractDigest);
+    return (
+      value.source === "controlled-calendar-enforcement" &&
+      value.providerMinimumRetentionVerified === true &&
+      value.cutoffSemantics === "occurred-at-strictly-older-than-12-calendar-months" &&
+      value.cleanupExecutionBound === true &&
+      cleanupLastSucceededAt !== null &&
+      cleanupLastSucceededAt <= nowDate &&
+      nowDate.getTime() - cleanupLastSucceededAt.getTime() < MAX_AGE_MS &&
+      value.cleanupResultVerified === true &&
+      value.boundaryEventPreserved === true &&
+      value.clientCutoffOverridePresent === false &&
+      value.enforcementContractDigest === ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST
+    );
+  }
+  return false;
 }
 
 function assertCurrentContract() {
@@ -60,6 +113,18 @@ function assertCurrentContract() {
   }
 }
 
+function digestContract(files) {
+  const hash = createHash("sha256");
+  for (const [path, url] of files) {
+    const content = readFileSync(url, "utf8").replaceAll("\r\n", "\n");
+    hash.update(path, "utf8");
+    hash.update("\0", "utf8");
+    hash.update(content, "utf8");
+    hash.update("\0", "utf8");
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
 function exactRecord(value, fields) {
   if (value === null || typeof value !== "object" || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype || Object.getOwnPropertySymbols(value).length !== 0) throw new Error("invalid M5-F evidence");
   const descriptors = Object.getOwnPropertyDescriptors(value);
@@ -71,6 +136,9 @@ function exactRecord(value, fields) {
 
 function opaque(value) {
   if (typeof value !== "string" || value.length < 1 || value.length > 200 || value !== value.trim() || !/^[A-Za-z0-9._:-]+$/.test(value)) throw new Error("invalid M5-F identifier");
+}
+function opaqueDigest(value) {
+  if (typeof value !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value)) throw new Error("invalid M5-F enforcement digest");
 }
 function timestamp(value) {
   if (typeof value !== "string") return null;

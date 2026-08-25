@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { deriveUlcLinzM5FAuditSecurityLoggingEvidence } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
+import {
+  deriveUlcLinzM5FAuditSecurityLoggingEvidence,
+  ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
+} from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST } from "./ulc-linz-m6-production-resource-binding.mjs";
 
 const NOW = new Date("2026-08-18T16:00:00.000Z");
@@ -44,7 +47,32 @@ function resourceBindingEvidence() {
   };
 }
 
-function loggingEvidence() {
+function providerNativeRetentionEvidence() {
+  return {
+    source: "provider-api-and-authoritative-contract",
+    retentionValue: 12,
+    retentionUnit: "calendar-months",
+    calendarSemanticsVerified: true,
+    noEarlyDeleteVerified: true,
+    noUncontrolledOverRetentionVerified: true,
+  };
+}
+
+function controlledRetentionEvidence() {
+  return {
+    source: "controlled-calendar-enforcement",
+    providerMinimumRetentionVerified: true,
+    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
+    cleanupExecutionBound: true,
+    cleanupLastSucceededAt: "2026-08-18T15:50:00.000Z",
+    cleanupResultVerified: true,
+    boundaryEventPreserved: true,
+    clientCutoffOverridePresent: false,
+    enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
+  };
+}
+
+function loggingEvidence(retentionMode = "provider-native-calendar", retentionEvidence = providerNativeRetentionEvidence()) {
   return {
     schemaVersion: 1,
     application: "ulc-linz",
@@ -57,34 +85,88 @@ function loggingEvidence() {
     sinkIdentitySource: "provider-api",
     structuredEventCaptureEnabled: true,
     protectedOperationalAccess: true,
-    retentionMonths: 12,
-    retentionSource: "provider-api",
+    retentionMode,
+    retentionEvidence,
     sinkInventoryComplete: true,
     publicReadEndpointPresent: false,
   };
 }
 
-function input() {
+function input(retentionMode, retentionEvidence) {
   return {
     resourceBindingEvidence: resourceBindingEvidence(),
-    loggingEvidence: loggingEvidence(),
+    loggingEvidence: loggingEvidence(retentionMode, retentionEvidence),
   };
 }
 
-test("verifies M5-F only from a fresh production-bound protected retained sink", () => {
+test("verifies M5-F with authoritative provider-native calendar retention", () => {
   assert.deepEqual(
     deriveUlcLinzM5FAuditSecurityLoggingEvidence(input(), { now: NOW }),
     { auditSecurityLogging: true },
   );
 });
 
-test("keeps M5-F fail-closed for missing retention, access, capture or runtime binding", () => {
+test("verifies M5-F with controlled exact calendar enforcement", () => {
+  assert.deepEqual(
+    deriveUlcLinzM5FAuditSecurityLoggingEvidence(
+      input("controlled-calendar-enforcement", controlledRetentionEvidence()),
+      { now: NOW },
+    ),
+    { auditSecurityLogging: true },
+  );
+});
+
+test("rejects day-based or unverified provider retention as twelve calendar months", () => {
   for (const mutate of [
-    (value) => { value.loggingEvidence.retentionMonths = 1; },
+    (value) => { value.retentionValue = 365; value.retentionUnit = "days"; },
+    (value) => { value.calendarSemanticsVerified = false; },
+    (value) => { value.noEarlyDeleteVerified = false; },
+    (value) => { value.noUncontrolledOverRetentionVerified = false; },
+  ]) {
+    const retention = providerNativeRetentionEvidence();
+    mutate(retention);
+    assert.deepEqual(
+      deriveUlcLinzM5FAuditSecurityLoggingEvidence(
+        input("provider-native-calendar", retention),
+        { now: NOW },
+      ),
+      {},
+    );
+  }
+});
+
+test("rejects controlled retention without exact boundary, fresh cleanup or exact implementation binding", () => {
+  for (const mutate of [
+    (value) => { value.providerMinimumRetentionVerified = false; },
+    (value) => { value.cutoffSemantics = "created-at-strictly-older-than-12-calendar-months"; },
+    (value) => { value.cutoffSemantics = "older-than-365-days"; },
+    (value) => { value.cleanupExecutionBound = false; },
+    (value) => { value.cleanupLastSucceededAt = "2026-08-17T15:00:00.000Z"; },
+    (value) => { value.cleanupResultVerified = false; },
+    (value) => { value.boundaryEventPreserved = false; },
+    (value) => { value.clientCutoffOverridePresent = true; },
+    (value) => { value.enforcementContractDigest = "not-a-digest"; },
+    (value) => { value.enforcementContractDigest = `sha256:${"a".repeat(64)}`; },
+  ]) {
+    const retention = controlledRetentionEvidence();
+    mutate(retention);
+    assert.deepEqual(
+      deriveUlcLinzM5FAuditSecurityLoggingEvidence(
+        input("controlled-calendar-enforcement", retention),
+        { now: NOW },
+      ),
+      {},
+    );
+  }
+});
+
+test("keeps M5-F fail-closed for missing access, capture or runtime binding", () => {
+  for (const mutate of [
     (value) => { value.loggingEvidence.protectedOperationalAccess = false; },
     (value) => { value.loggingEvidence.structuredEventCaptureEnabled = false; },
     (value) => { value.loggingEvidence.runtimeBindingId = "other-runtime"; },
     (value) => { value.loggingEvidence.publicReadEndpointPresent = true; },
+    (value) => { value.loggingEvidence.retentionMode = "unknown"; },
   ]) {
     const value = input();
     mutate(value);
@@ -115,6 +197,13 @@ test("rejects stale, cross-app and decorated M5-F evidence", () => {
   decorated.loggingEvidence.extra = true;
   assert.deepEqual(
     deriveUlcLinzM5FAuditSecurityLoggingEvidence(decorated, { now: NOW }),
+    {},
+  );
+
+  const decoratedRetention = input();
+  decoratedRetention.loggingEvidence.retentionEvidence.extra = true;
+  assert.deepEqual(
+    deriveUlcLinzM5FAuditSecurityLoggingEvidence(decoratedRetention, { now: NOW }),
     {},
   );
 });

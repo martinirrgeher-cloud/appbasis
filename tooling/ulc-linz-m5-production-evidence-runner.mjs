@@ -1,0 +1,158 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { deriveUlcLinzM5GResourceBindingFingerprint } from "./ulc-linz-m5-provider-bound-evidence.mjs";
+import { evaluateProductionReadiness } from "./factory-ui/production-readiness.mjs";
+import { deriveUlcLinzM5JProductionEvidence } from "./factory-ui/ulc-linz-production-readiness-evidence.mjs";
+
+const ROOT_FIELDS = Object.freeze(["schemaVersion", "application", "environment", "observedAt", "definition", "ownerInputs"]);
+const UNSAFE_KEY = /authorization|cookie|password|secret|token|credential|connection.?string|database.?url|api[_-]?key|private.?key|request.?body|response.?body/i;
+const UNSAFE_VALUE = [/^postgres(?:ql)?:\/\//i, /^bearer\s+/i, /^basic\s+/i, /-----BEGIN [A-Z ]*PRIVATE KEY-----/];
+
+export async function evaluateUlcLinzM5ProductionEvidenceBundle(
+  repositoryRoot,
+  bundle,
+  { now = new Date() } = {},
+) {
+  const root = exactRecord(bundle, ROOT_FIELDS, "ULC production M5 evidence bundle");
+  assertSafeTree(root);
+  if (
+    root.schemaVersion !== 1 ||
+    root.application !== "ulc-linz" ||
+    root.environment !== "production" ||
+    root.definition?.appId !== "ulc-linz"
+  ) {
+    throw new Error("ULC production M5 evidence bundle target is invalid.");
+  }
+
+  const observedAt = canonicalTimestamp(root.observedAt, "observedAt");
+  const nowDate = requiredDate(now);
+  if (observedAt.getTime() > nowDate.getTime()) {
+    throw new Error("ULC production M5 evidence bundle is from the future.");
+  }
+
+  const evidence = await deriveUlcLinzM5JProductionEvidence(
+    resolve(repositoryRoot),
+    root.definition,
+    root.ownerInputs,
+    { now: nowDate },
+  );
+  const readiness = evaluateProductionReadiness(evidence);
+  const providerBoundEvidenceInput = root.ownerInputs?.providerBoundEvidenceInput;
+  const resourceBindingFingerprint =
+    providerBoundEvidenceInput === undefined
+      ? null
+      : deriveUlcLinzM5GResourceBindingFingerprint(
+          providerBoundEvidenceInput.resourceBindingEvidence,
+          { now: nowDate },
+        );
+
+  return deepFreeze({
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "production",
+    observedAt: root.observedAt,
+    resourceBindingFingerprint,
+    status: readiness.status,
+    securityPrivacyReady: readiness.productionReady,
+    verifiedCount: readiness.verifiedCount,
+    requiredCount: readiness.requiredCount,
+    criteria: readiness.criteria.map(({ id, status }) => ({ id, status })),
+    productionReleaseAuthorized: false,
+  });
+}
+
+function exactRecord(value, fields, label) {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    throw new Error(`${label} is invalid.`);
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Object.keys(descriptors);
+  if (
+    keys.length !== fields.length ||
+    fields.some((field) => !Object.hasOwn(descriptors, field)) ||
+    keys.some((field) => !fields.includes(field)) ||
+    Object.values(descriptors).some(
+      (descriptor) =>
+        !Object.hasOwn(descriptor, "value") ||
+        descriptor.get !== undefined ||
+        descriptor.set !== undefined,
+    )
+  ) {
+    throw new Error(`${label} is invalid.`);
+  }
+  return value;
+}
+
+function assertSafeTree(value, seen = new Set()) {
+  if (value === null || typeof value === "boolean" || typeof value === "number") return;
+  if (typeof value === "string") {
+    if (value.includes("\0") || UNSAFE_VALUE.some((pattern) => pattern.test(value))) {
+      throw new Error("ULC production M5 evidence bundle contains sensitive data.");
+    }
+    return;
+  }
+  if (typeof value !== "object" || seen.has(value) || Object.getOwnPropertySymbols(value).length !== 0) {
+    throw new Error("ULC production M5 evidence bundle is unsafe.");
+  }
+  seen.add(value);
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  for (const [key, descriptor] of Object.entries(descriptors)) {
+    if (UNSAFE_KEY.test(key)) {
+      throw new Error("ULC production M5 evidence bundle contains sensitive data.");
+    }
+    if (!Object.hasOwn(descriptor, "value") || descriptor.get !== undefined || descriptor.set !== undefined) {
+      throw new Error("ULC production M5 evidence bundle is unsafe.");
+    }
+    assertSafeTree(descriptor.value, seen);
+  }
+  seen.delete(value);
+}
+
+function canonicalTimestamp(value, label) {
+  if (typeof value !== "string") throw new Error(`${label} is invalid.`);
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new Error(`${label} is invalid.`);
+  }
+  return parsed;
+}
+
+function requiredDate(value) {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new Error("ULC production M5 evidence clock is invalid.");
+  }
+  return new Date(value.getTime());
+}
+
+function deepFreeze(value) {
+  if (value !== null && typeof value === "object") {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+async function main(argv = process.argv.slice(2)) {
+  if (argv.length < 1 || argv.length > 2 || (argv[1] !== undefined && argv[1] !== "--require-ready")) {
+    throw new Error("Usage: node tooling/ulc-linz-m5-production-evidence-runner.mjs <bundle.json> [--require-ready]");
+  }
+  const bundle = JSON.parse(await readFile(resolve(argv[0]), "utf8"));
+  const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle, { now: new Date() });
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  if (argv[1] === "--require-ready" && result.securityPrivacyReady !== true) process.exitCode = 2;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : "ULC production M5 evidence evaluation failed.");
+    process.exitCode = 1;
+  });
+}

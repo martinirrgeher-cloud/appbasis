@@ -73,7 +73,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
-      gitBlobSha: "2cbb63f2fa0fd3ecafde828423a1784be1ac3a84",
+      gitBlobSha: "8d51de15ba60e314d090c34d43a7e0776f96943f",
     }),
     Object.freeze({
       path: "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
@@ -89,7 +89,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/package.json",
-      gitBlobSha: "3ca3d5f79511023bcf97197c50535a8d4bfee0bd",
+      gitBlobSha: "44043d0352f1411d7f6fa22a1a19b3ddee11189c",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/app.ts",
@@ -153,11 +153,11 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle.postgres.e2e.test.ts",
-      gitBlobSha: "1b3a14b70a687a03c6f3bc0392bdebe81bcbb882",
+      gitBlobSha: "4ccc2a838a10e45572dbc2e9a3fe39b0f7253a10",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle-persistence.postgres.e2e.test.ts",
-      gitBlobSha: "9fba4b3cee1178c364e60eef35321ff4ad4e2849",
+      gitBlobSha: "f0a834894867a37a28b830ee20be4bd2b89f621e",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle-audit.postgres.e2e.test.ts",
@@ -165,7 +165,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/retention-claim.postgres.e2e.test.ts",
-      gitBlobSha: "8e5aca5b8891d547ec3837e3914b87349c352a90",
+      gitBlobSha: "fd193208f50ac8360209fd7f99811c534f744574",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/retention-state.test.ts",

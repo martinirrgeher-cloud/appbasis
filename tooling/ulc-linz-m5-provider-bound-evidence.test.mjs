@@ -141,6 +141,12 @@ function complianceEvidence() {
         status: "verified",
       },
       {
+        from: "cloudflare",
+        to: "neon-postgresql",
+        purpose: "security-log-persistence",
+        status: "verified",
+      },
+      {
         from: "appbasis-control-plane",
         to: "cloudflare",
         purpose: "provider-evidence-read",

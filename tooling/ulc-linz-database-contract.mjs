@@ -5,11 +5,12 @@ import { createGeneratedDatabaseManifest } from "./generated-database-manifest.m
 export const ULC_LINZ_LIFECYCLE_DATABASE_OWNER = Object.freeze({
   id: "ulc-linz-lifecycle",
   root: "apps/ulc-linz",
-  schemaVersion: 3,
+  schemaVersion: 4,
   migrations: Object.freeze([
     "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
     "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
+    "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
   ]),
 });
 

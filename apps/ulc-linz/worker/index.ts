@@ -79,18 +79,33 @@ function runtimeConfiguration(
 ): GeneratedPostgresApplicationRuntimeOptions | null {
   if (!isRecord(env)) return null;
   const hyperdrive = env.HYPERDRIVE;
-  if (!isRecord(hyperdrive)) return null;
+  const securityLogHyperdrive = env.SECURITY_LOG_HYPERDRIVE;
+  if (!isRecord(hyperdrive) || !isRecord(securityLogHyperdrive)) return null;
 
   const connectionString = normalizedPostgresConnectionString(
     hyperdrive.connectionString,
   );
+  const securityLogConnectionString = normalizedPostgresConnectionString(
+    securityLogHyperdrive.connectionString,
+  );
   const baseURL = normalizedHttpsOrigin(env.APPBASIS_BASE_URL);
   const secret = normalizedSecret(env.BETTER_AUTH_SECRET);
-  if (connectionString === null || baseURL === null || secret === null) {
+  if (
+    connectionString === null ||
+    securityLogConnectionString === null ||
+    connectionString === securityLogConnectionString ||
+    baseURL === null ||
+    secret === null
+  ) {
     return null;
   }
 
-  return Object.freeze({ connectionString, baseURL, secret });
+  return Object.freeze({
+    connectionString,
+    securityLogConnectionString,
+    baseURL,
+    secret,
+  });
 }
 
 async function flushSecurityEventsSafely(
