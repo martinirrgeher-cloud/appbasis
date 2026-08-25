@@ -109,7 +109,7 @@ function collect(options = {}, inputOverrides = {}) {
   );
 }
 
-test("observer derives authoritative provider lifecycle recovery and control-plane owner evidence", async () => {
+test("observer derives authoritative provider recovery/control-plane evidence and reports lifecycle executors truthfully unbound", async () => {
   const bundle = await collect();
   assert.deepEqual(Object.keys(bundle.ownerInputs).sort(), [
     "backupRestoreEvidenceInput",
@@ -117,6 +117,14 @@ test("observer derives authoritative provider lifecycle recovery and control-pla
     "lifecycleActivationEvidenceInput",
     "providerBoundEvidenceInput",
   ]);
+  assert.equal(
+    bundle.ownerInputs.lifecycleActivationEvidenceInput.activationEvidence.deletionExecutorBound,
+    false,
+  );
+  assert.equal(
+    bundle.ownerInputs.lifecycleActivationEvidenceInput.activationEvidence.retentionExecutorBound,
+    false,
+  );
 
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(
     process.cwd(),
@@ -127,14 +135,13 @@ test("observer derives authoritative provider lifecycle recovery and control-pla
   assert.equal(result.securityPrivacyReady, false);
   assert.equal(result.productionReleaseAuthorized, false);
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(
+    result.criteria.find((criterion) => criterion.id === "privilegedControlPlaneIsolation")?.status,
+    "verified",
+  );
   for (const id of [
     "deletionConcept",
     "retention",
-    "privilegedControlPlaneIsolation",
-  ]) {
-    assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "verified");
-  }
-  for (const id of [
     "auditSecurityLogging",
     "dataRegion",
     "dpa",
