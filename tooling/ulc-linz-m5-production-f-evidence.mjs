@@ -145,6 +145,10 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
   ) {
     throw new Error("M5-F deployed Worker inventory is not exact.");
   }
+  const deployedAt = canonicalTimestamp(
+    entries[0]?.created_on,
+    "Worker deployment created_on",
+  );
   const versionId = versionIdValue(entries[0].versions[0].version_id);
   const versionResponse = await cloudflareJson(
     `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${versionId}`,
@@ -153,10 +157,6 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
   );
   const version = versionResponse.result;
   const message = version?.annotations?.["workers/message"];
-  const deployedAt = canonicalTimestamp(
-    version?.metadata?.created_on,
-    "Worker version created_on",
-  );
   if (
     version?.id !== versionId ||
     version?.annotations?.["workers/tag"] !== TARGET_VERSION_TAG ||
