@@ -49,16 +49,18 @@ test("security access role creation tolerates only a concurrently-created identi
   assert.equal((generator.match(/WHEN duplicate_object OR unique_violation THEN/g) ?? []).length, 3);
 });
 
-test("destructive retention gate checks grant options on both login and cleanup group", async () => {
+test("destructive retention gate enforces the exact non-delegable cleanup ACL on login, cleanup group and PUBLIC", async () => {
   const source = await readFile(retentionRunUrl, "utf8");
   assert.match(source, /CROSS JOIN pg_catalog\.pg_roles cleanup_group/);
   assert.match(source, /cleanup_group\.rolname = 'ulc_linz_security_event_cleanup'/);
-  assert.equal(
-    (source.match(/acl\.grantee IN \(current_role\.oid, cleanup_group\.oid\)/g) ?? []).length,
-    2,
-  );
-  assert.match(source, /cleanup_execute_grant_option/);
-  assert.match(source, /retention_read_grant_option/);
+  assert.match(source, /WITH protected_acl AS/);
+  assert.match(source, /acl\.grantee = cleanup_group\.oid/);
+  assert.match(source, /acl\.grantee IN \(0, current_role\.oid, cleanup_group\.oid\)/);
+  assert.match(source, /acl\.is_grantable = false/);
+  assert.match(source, /expected_cleanup_acl_count/);
+  assert.match(source, /unexpected_cleanup_acl_count/);
+  assert.match(source, /forbidden_column_mutation/);
+  assert.match(source, /protected_object_owner_count/);
   assert.match(source, /sequence_update/);
   assert.match(source, /direct_truncate/);
 });
