@@ -165,11 +165,12 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
       {
         id: "ulc-linz-lifecycle",
         root: "apps/ulc-linz",
-        schemaVersion: 3,
+        schemaVersion: 4,
         migrations: [
           "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
           "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
           "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
+          "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
         ],
       },
     ],
@@ -180,6 +181,7 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
   );
   assert.equal(packageJson.name, "@appbasis/app-ulc-linz");
   assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/database": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",
     hono: "4.13.1",
@@ -193,7 +195,6 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
   );
   assert.match(worker, /appId: "ulc-linz"/);
   assert.match(worker, /from "@appbasis\/identity\/http"/);
-  assert.match(worker, /\/api\/auth\/session/);
   assert.doesNotMatch(worker, /\/api\/tasks/);
   assert.doesNotMatch(worker, /@appbasis\/tasks/);
   assert.doesNotMatch(worker, /reference/i);

@@ -2,7 +2,10 @@ import { extendIdentityPermissionsWorkerTemplate } from "./generated-identity-pe
 import { renderGeneratedPrivateWorkerBootstrapConfig } from "./generated-private-worker-config.mjs";
 import { createIdentityRuntimeTemplate as createCoreIdentityRuntimeTemplate } from "./generated-runtime-template-core.mjs";
 import { extendUlcLinzDatabaseAssetsTemplate } from "./generated-ulc-linz-database-assets.mjs";
+import { extendUlcLinzSecurityAccessTemplate } from "./generated-ulc-linz-security-access-template.mjs";
+import { extendUlcLinzSecurityIngestTemplate } from "./generated-ulc-linz-security-ingest-template.mjs";
 import { extendUlcLinzSecurityLoggingTemplate } from "./generated-ulc-linz-security-logging-template.mjs";
+import { extendUlcLinzSecurityRetentionTemplate } from "./generated-ulc-linz-security-retention-template.mjs";
 
 const POSTGRES_E2E_PATH = "test/app.postgres.e2e.ts";
 const WORKER_ENTRYPOINT_PATH = "worker/index.ts";
@@ -32,22 +35,33 @@ const APPLY_PRINCIPAL_PERMISSION_AUDIT =
   "  await applyMigration(principalPermissionAdministrationAuditMigrationUrl);";
 
 export function createIdentityRuntimeTemplate(input) {
-  const generated = extendUlcLinzSecurityLoggingTemplate(
+  const generated = extendUlcLinzSecurityIngestTemplate(
     input,
-    extendUlcLinzDatabaseAssetsTemplate(
+    extendUlcLinzSecurityAccessTemplate(
       input,
-      extendIdentityPermissionsWorkerTemplate(
+      extendUlcLinzSecurityRetentionTemplate(
         input,
-        createCoreIdentityRuntimeTemplate(input),
+        extendUlcLinzSecurityLoggingTemplate(
+          input,
+          extendUlcLinzDatabaseAssetsTemplate(
+            input,
+            extendIdentityPermissionsWorkerTemplate(
+              input,
+              createCoreIdentityRuntimeTemplate(input),
+            ),
+          ),
+        ),
       ),
     ),
   );
   const files = generated.files.map((entry) => {
-    if (entry.path !== POSTGRES_E2E_PATH) return entry;
-    return Object.freeze({
-      ...entry,
-      content: withPermissionMigrations(entry.content),
-    });
+    if (entry.path === POSTGRES_E2E_PATH) {
+      return Object.freeze({
+        ...entry,
+        content: withPermissionMigrations(entry.content),
+      });
+    }
+    return entry;
   });
 
   if (files.some((entry) => entry.path === WORKER_ENTRYPOINT_PATH)) {

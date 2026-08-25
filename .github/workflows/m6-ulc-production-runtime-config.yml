@@ -68,20 +68,34 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
         run: |
           set -euo pipefail
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID.' >&2; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN.' >&2; exit 1; }
           test -n "$ULC_LINZ_PRODUCTION_DATABASE_URL" || { echo 'Missing ULC_LINZ_PRODUCTION_DATABASE_URL.' >&2; exit 1; }
+          test -n "$ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL" || { echo 'Missing ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL.' >&2; exit 1; }
           test -n "$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET" || { echo 'Missing ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET.' >&2; exit 1; }
           node -e 'const value = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET?.trim() ?? ""; if (value.length < 32 || value !== process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET) process.exit(1);' || {
             echo 'Production Better Auth secret must be trimmed and at least 32 characters.' >&2
             exit 1
           }
+          node --input-type=module <<'NODE'
+          import {
+            parseUlcLinzProductionDatabaseUrl,
+            parseUlcLinzSecurityLogIngestDatabaseUrl,
+          } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          const app = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          const security = parseUlcLinzSecurityLogIngestDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL);
+          if (app.user === security.user) {
+            throw new Error('Production app and security-log ingest database roles must be distinct.');
+          }
+          NODE
           echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
           echo "::add-mask::$CLOUDFLARE_API_TOKEN"
           echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
+          echo "::add-mask::$ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL"
           echo "::add-mask::$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET"
 
       - name: Derive non-secret auth-secret HMAC fingerprint
@@ -162,21 +176,29 @@ jobs:
             throw new Error("Current auth-secret fingerprint is invalid.");
           }
           const versions = versionsResponse.result;
-          if (versions.length === 0) process.exit(0);
-          if (versions.length !== 1) {
-            throw new Error("ULC production runtime configuration allows only zero versions or one exact reconcilable version.");
-          }
-          const version = versions[0];
           const versionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const historicalMessagePattern = /^AppBasis ulc-linz production runtime [0-9a-f]{40} auth-hmac:[0-9a-f]{64}$/;
           const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
-          if (
-            !versionIdPattern.test(version?.id ?? "") ||
-            version?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
-            version?.annotations?.["workers/message"] !== expectedMessage
-          ) {
-            throw new Error("Existing ULC production version is not bound to the exact current runtime and auth secret and cannot be reconciled.");
+          for (const version of versions) {
+            const message = version?.annotations?.["workers/message"];
+            if (
+              !versionIdPattern.test(version?.id ?? "") ||
+              version?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
+              typeof message !== "string" ||
+              !historicalMessagePattern.test(message)
+            ) {
+              throw new Error("ULC production version history contains an unrecognized version.");
+            }
           }
-          process.stdout.write(version.id);
+          const currentVersions = versions.filter(
+            (version) => version?.annotations?.["workers/message"] === expectedMessage,
+          );
+          if (currentVersions.length > 1) {
+            throw new Error("ULC production version history contains duplicate current versions.");
+          }
+          if (currentVersions.length === 1) {
+            process.stdout.write(currentVersions[0].id);
+          }
           NODE
           )"
           if [ -n "$EXISTING_VERSION_ID" ]; then
@@ -185,23 +207,33 @@ jobs:
           fi
           printf 'existing_id=%s\n' "$EXISTING_VERSION_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve exact dedicated production Hyperdrive
+      - name: Resolve exact dedicated production Hyperdrives
         id: hyperdrive
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
         run: |
           set -euo pipefail
           HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          SECURITY_LOG_HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
           test -n "$HYPERDRIVE_ID" || { echo 'Exact ULC production Hyperdrive could not be resolved.' >&2; exit 1; }
+          test -n "$SECURITY_LOG_HYPERDRIVE_ID" || { echo 'Exact ULC security-log Hyperdrive could not be resolved.' >&2; exit 1; }
+          test "$HYPERDRIVE_ID" != "$SECURITY_LOG_HYPERDRIVE_ID" || {
+            echo 'Application and security-log Hyperdrive IDs must be distinct.' >&2
+            exit 1
+          }
           echo "::add-mask::$HYPERDRIVE_ID"
+          echo "::add-mask::$SECURITY_LOG_HYPERDRIVE_ID"
           printf 'id=%s\n' "$HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
+          printf 'security_log_id=%s\n' "$SECURITY_LOG_HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
 
       - name: Render exact private production version config
         env:
           HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+          SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.security_log_id }}
         run: |
           node --input-type=module <<'NODE'
           import { writeGeneratedProductionWranglerConfig } from "./tooling/generated-production-deploy-config.mjs";
@@ -209,6 +241,7 @@ jobs:
           await writeGeneratedProductionWranglerConfig({
             appId: "ulc-linz",
             hyperdriveId: process.env.HYPERDRIVE_ID,
+            securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID,
             baseURL: "https://app.ulc-linz.at",
             entrypoint: "./worker/index.ts",
             outputPath: "./apps/ulc-linz/wrangler.production.generated.json",
@@ -291,6 +324,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+          SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.security_log_id }}
           VERSION_ID: ${{ steps.version.outputs.id }}
         run: |
           set -euo pipefail
@@ -316,7 +350,7 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
             > "$DEPLOYMENTS_PATH"
 
-          VERSION_PATH="$VERSION_PATH" VERSIONS_PATH="$VERSIONS_PATH" WORKER_PATH="$WORKER_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" HYPERDRIVE_ID="$HYPERDRIVE_ID" VERSION_ID="$VERSION_ID" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" node --input-type=module <<'NODE'
+          VERSION_PATH="$VERSION_PATH" VERSIONS_PATH="$VERSIONS_PATH" WORKER_PATH="$WORKER_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" HYPERDRIVE_ID="$HYPERDRIVE_ID" SECURITY_LOG_HYPERDRIVE_ID="$SECURITY_LOG_HYPERDRIVE_ID" VERSION_ID="$VERSION_ID" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const versionResponse = JSON.parse(await readFile(process.env.VERSION_PATH, "utf8"));
           const versionsResponse = JSON.parse(await readFile(process.env.VERSIONS_PATH, "utf8"));
@@ -324,34 +358,48 @@ jobs:
           const deploymentsResponse = JSON.parse(await readFile(process.env.DEPLOYMENTS_PATH, "utf8"));
 
           const bindings = versionResponse?.result?.resources?.bindings;
-          if (versionResponse?.success !== true || versionResponse?.result?.id !== process.env.VERSION_ID || !Array.isArray(bindings) || bindings.length !== 3) {
+          if (versionResponse?.success !== true || versionResponse?.result?.id !== process.env.VERSION_ID || !Array.isArray(bindings) || bindings.length !== 4) {
             throw new Error("Production version detail is invalid or binding inventory is not exact.");
           }
           const base = bindings.find((entry) => entry?.name === "APPBASIS_BASE_URL");
           const hyperdrive = bindings.find((entry) => entry?.name === "HYPERDRIVE");
+          const securityHyperdrive = bindings.find((entry) => entry?.name === "SECURITY_LOG_HYPERDRIVE");
           const secret = bindings.find((entry) => entry?.name === "BETTER_AUTH_SECRET");
           if (
             base?.type !== "plain_text" || base?.text !== "https://app.ulc-linz.at" ||
             hyperdrive?.type !== "hyperdrive" || hyperdrive?.id !== process.env.HYPERDRIVE_ID ||
+            securityHyperdrive?.type !== "hyperdrive" || securityHyperdrive?.id !== process.env.SECURITY_LOG_HYPERDRIVE_ID ||
+            securityHyperdrive.id === hyperdrive.id ||
             secret?.type !== "secret_text"
           ) {
             throw new Error("Production version bindings do not match the approved runtime contract.");
           }
 
-          if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result) || versionsResponse.result.length !== 1) {
-            throw new Error("ULC production Worker does not contain exactly one configured version.");
+          if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result)) {
+            throw new Error("ULC production Worker version inventory is invalid after configuration.");
           }
           if (!/^[0-9a-f]{64}$/.test(process.env.AUTH_SECRET_FINGERPRINT ?? "")) {
             throw new Error("Current auth-secret fingerprint is invalid during final verification.");
           }
-          const listedVersion = versionsResponse.result[0];
+          const versionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const historicalMessagePattern = /^AppBasis ulc-linz production runtime [0-9a-f]{40} auth-hmac:[0-9a-f]{64}$/;
           const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
-          if (
-            listedVersion?.id !== process.env.VERSION_ID ||
-            listedVersion?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
-            listedVersion?.annotations?.["workers/message"] !== expectedMessage
-          ) {
-            throw new Error("ULC production Worker version provenance is not bound to the approved runtime and current auth secret.");
+          for (const listedVersion of versionsResponse.result) {
+            const message = listedVersion?.annotations?.["workers/message"];
+            if (
+              !versionIdPattern.test(listedVersion?.id ?? "") ||
+              listedVersion?.annotations?.["workers/tag"] !== process.env.TARGET_VERSION_TAG ||
+              typeof message !== "string" ||
+              !historicalMessagePattern.test(message)
+            ) {
+              throw new Error("ULC production version history contains an unrecognized version after configuration.");
+            }
+          }
+          const currentVersions = versionsResponse.result.filter(
+            (listedVersion) => listedVersion?.annotations?.["workers/message"] === expectedMessage,
+          );
+          if (currentVersions.length !== 1 || currentVersions[0]?.id !== process.env.VERSION_ID) {
+            throw new Error("ULC production Worker does not contain exactly one approved current version.");
           }
 
           const worker = workerResponse?.result;
@@ -374,7 +422,7 @@ jobs:
             throw new Error("Runtime configuration unexpectedly created a Worker deployment.");
           }
           NODE
-          echo 'ULC production runtime version is exact and bound to the current auth secret; Worker remains closed with zero deployments.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'ULC production runtime version is exact with distinct app/security-log Hyperdrives and the current auth secret; Worker remains closed with zero deployments.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove generated production version config
         if: always()

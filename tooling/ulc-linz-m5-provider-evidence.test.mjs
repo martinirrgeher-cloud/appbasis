@@ -141,6 +141,12 @@ function completeEvidence() {
         status: "verified",
       },
       {
+        from: "cloudflare",
+        to: "neon-postgresql",
+        purpose: "security-log-persistence",
+        status: "verified",
+      },
+      {
         from: "appbasis-control-plane",
         to: "cloudflare",
         purpose: "provider-evidence-read",
@@ -374,8 +380,12 @@ test("known persistent personal-data Cloudflare bindings block all criteria with
   assert.equal(JSON.stringify(compliance).includes("r2_bucket"), false);
 });
 
-test("a missing required control-plane or backup data flow blocks all criteria", () => {
-  for (const purpose of ["provider-evidence-read", "managed-backup-recovery"]) {
+test("a missing required control-plane, backup or security-log data flow blocks all criteria", () => {
+  for (const purpose of [
+    "provider-evidence-read",
+    "managed-backup-recovery",
+    "security-log-persistence",
+  ]) {
     const evidence = completeEvidence();
     const index = evidence.dataFlows.findIndex((flow) => flow.purpose === purpose);
     evidence.dataFlows.splice(index, 1);

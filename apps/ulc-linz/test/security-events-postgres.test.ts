@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createPostgresUlcLinzSecurityEventLogger,
+  purgeExpiredUlcLinzSecurityEvents,
   type UlcLinzSecurityEventSqlClient,
 } from "../worker/security-events-postgres";
 import type { UlcLinzSecurityEvent } from "../worker/security-events";
@@ -139,5 +140,35 @@ describe("ULC Linz PostgreSQL security-event sink", () => {
 
     await logger.flush();
     expect(calls).toBe(0);
+  });
+
+  it("delegates retention to the fixed database-owned cleanup function without a caller cutoff", async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const client: UlcLinzSecurityEventSqlClient = {
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [
+          {
+            cutoff: "2026-08-25T04:12:34.000Z",
+            deleted_rows: "2",
+          },
+        ];
+      },
+    };
+
+    const result = await purgeExpiredUlcLinzSecurityEvents(client);
+
+    expect(result).toEqual({
+      cutoff: "2026-08-25T04:12:34.000Z",
+      deletedRows: 2n,
+    });
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (call === undefined) throw new Error("Expected one retention cleanup statement.");
+    expect(call.parameters).toBeUndefined();
+    expect(call.query).toContain("statement_timestamp() AS cutoff");
+    expect(call.query).toContain("public.appbasis_ulc_linz_purge_expired_security_events()");
+    expect(call.query).not.toContain("DELETE");
+    expect(call.query).not.toContain("$1");
   });
 });

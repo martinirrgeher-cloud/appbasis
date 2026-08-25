@@ -1,0 +1,118 @@
+name: M5 ULC Security Log Role Binding
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type BIND-ULC-M5-SECURITY-LOG-ROLES to bind the dedicated production login roles to their exact protected groups'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  bind-roles:
+    name: Bind ULC production security-log roles
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Require explicit production role-binding approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'ULC M5 security-log role binding must run from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = "BIND-ULC-M5-SECURITY-LOG-ROLES" || {
+            echo 'Exact ULC M5 security-log role-binding confirmation is required.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify exact repository contracts before production role binding
+        run: pnpm run verify:repo
+
+      - name: Validate and mask protected database credentials
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_OWNER_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_OWNER_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          for name in \
+            ULC_LINZ_PRODUCTION_OWNER_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL
+          do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+
+      - name: Bind exact least-privilege security-log memberships
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_OWNER_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_OWNER_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+          ULC_LINZ_APPLY_SECURITY_LOG_ROLE_BINDING: '1'
+        run: |
+          set -euo pipefail
+          RESULT="$RUNNER_TEMP/ulc-m5-security-role-binding-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.json"
+          node ./tooling/ulc-linz-m5-security-log-role-binding.mjs > "$RESULT"
+          RESULT="$RESULT" node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const value = JSON.parse(await readFile(process.env.RESULT, 'utf8'));
+          if (
+            value?.schemaVersion !== 1 ||
+            value?.application !== 'ulc-linz' ||
+            value?.environment !== 'production' ||
+            value?.membershipBindingsVerified !== true ||
+            !Number.isInteger(value?.changedBindings) ||
+            value.changedBindings < 0 ||
+            value.changedBindings > 3 ||
+            value?.productionReleaseAuthorized !== false
+          ) {
+            throw new Error('ULC security-log role-binding result is invalid.');
+          }
+          NODE
+          rm -f -- "$RESULT"
+
+      - name: Record sanitized role-binding outcome
+        shell: bash
+        run: |
+          printf '%s\n' 'ULC Linz security-log login roles are bound to their exact protected groups without ADMIN OPTION. Production release remains unauthorized.' >> "$GITHUB_STEP_SUMMARY"

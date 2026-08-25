@@ -12,6 +12,7 @@ import {
 const input = Object.freeze({
   appId: "ulc-linz",
   hyperdriveId: "provider-hyperdrive-id",
+  securityLogHyperdriveId: "provider-security-log-hyperdrive-id",
   baseURL: "https://app.ulc-linz.example.test",
 });
 
@@ -29,10 +30,41 @@ test("renders the final production deployment bindings without public ingress", 
   });
   assert.deepEqual(config.hyperdrive, [
     { binding: "HYPERDRIVE", id: "provider-hyperdrive-id" },
+    {
+      binding: "SECURITY_LOG_HYPERDRIVE",
+      id: "provider-security-log-hyperdrive-id",
+    },
   ]);
   assert.equal("secrets" in config, false);
   assert.equal("routes" in config, false);
   assert.equal("route" in config, false);
+});
+
+test("requires a distinct dedicated security-log Hyperdrive", () => {
+  assert.throws(
+    () =>
+      renderGeneratedProductionWranglerConfig({
+        ...input,
+        securityLogHyperdriveId: undefined,
+      }),
+    /securityLogHyperdriveId is required/,
+  );
+  assert.throws(
+    () =>
+      renderGeneratedProductionWranglerConfig({
+        ...input,
+        securityLogHyperdriveId: input.hyperdriveId,
+      }),
+    /must be distinct/,
+  );
+  assert.throws(
+    () =>
+      renderGeneratedProductionWranglerConfig({
+        ...input,
+        securityLogHyperdriveId: "bad id",
+      }),
+    /securityLogHyperdriveId is invalid/,
+  );
 });
 
 test("pins the same compatibility date as the production bootstrap contract", () => {
@@ -97,6 +129,13 @@ test("writes only an owner-readable runtime deployment artifact", async () => {
     assert.equal(written.compatibility_date, "2026-08-21");
     assert.equal(written.workers_dev, false);
     assert.equal(written.preview_urls, false);
+    assert.deepEqual(written.hyperdrive, [
+      { binding: "HYPERDRIVE", id: "provider-hyperdrive-id" },
+      {
+        binding: "SECURITY_LOG_HYPERDRIVE",
+        id: "provider-security-log-hyperdrive-id",
+      },
+    ]);
     assert.equal("secrets" in written, false);
     assert.equal((await stat(outputPath)).mode & 0o777, 0o600);
   } finally {

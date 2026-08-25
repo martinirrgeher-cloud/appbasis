@@ -69,6 +69,9 @@ jobs:
       - name: Run ULC lifecycle PostgreSQL E2E tests
         run: pnpm --filter @appbasis/app-ulc-linz test:postgres
 
+      - name: Run M5 exported snapshot PostgreSQL regression
+        run: node --test ./tooling/ulc-linz-m5-exported-snapshot.postgres.test.mjs
+
       - name: Run real PostgreSQL tasks E2E tests
         run: pnpm --filter @appbasis/reference test:postgres
 

@@ -6,6 +6,7 @@
       "id": "cloudflare",
       "responsibilities": [
         "edge-runtime",
+        "hyperdrive-database-connectivity",
         "tls-termination",
         "worker-execution"
       ],
@@ -31,6 +32,12 @@
       "from": "cloudflare",
       "to": "neon-postgresql",
       "purpose": "application-persistence",
+      "evidenceStatus": "open"
+    },
+    {
+      "from": "cloudflare",
+      "to": "neon-postgresql",
+      "purpose": "security-log-persistence",
       "evidenceStatus": "open"
     },
     {
