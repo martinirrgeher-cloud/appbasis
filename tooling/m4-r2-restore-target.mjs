@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { validateM4RestoreDatabaseSeparation } from "./m4-r2-restore-plan.mjs";
+import { verifyUlcLinzM5IsolatedRestoreTargetEmpty } from "./ulc-linz-m5-restore-target.mjs";
 
 const STRONG_SSL_MODES = new Set(["require", "verify-ca", "verify-full"]);
 const EMPTY_TARGET_QUERY = `
@@ -107,6 +108,14 @@ function normalizeProviderHostname(value) {
   return labels.join(".");
 }
 
+function isUlcLinzProductionSource(value) {
+  try {
+    return new URL(value).username === "ulc_linz_application";
+  } catch {
+    return false;
+  }
+}
+
 function isMainModule() {
   if (typeof process.argv[1] !== "string") return false;
   return import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
@@ -117,10 +126,11 @@ if (isMainModule()) {
     if (process.argv[2] !== "verify-empty") {
       throw new Error("Expected command mode verify-empty.");
     }
-    const result = await verifyM4IsolatedRestoreTargetEmpty({
-      sourceUrl: process.env.APPBASIS_M4_SOURCE_DATABASE_URL,
-      restoreUrl: process.env.APPBASIS_M4_RESTORE_DATABASE_URL,
-    });
+    const sourceUrl = process.env.APPBASIS_M4_SOURCE_DATABASE_URL;
+    const restoreUrl = process.env.APPBASIS_M4_RESTORE_DATABASE_URL;
+    const result = isUlcLinzProductionSource(sourceUrl)
+      ? await verifyUlcLinzM5IsolatedRestoreTargetEmpty({ sourceUrl, restoreUrl })
+      : await verifyM4IsolatedRestoreTargetEmpty({ sourceUrl, restoreUrl });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
     console.error(
