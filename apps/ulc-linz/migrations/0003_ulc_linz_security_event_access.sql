@@ -33,11 +33,41 @@ BEGIN
 END
 $appbasis$;
 --> statement-breakpoint
-ALTER ROLE ulc_linz_security_event_ingest NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
---> statement-breakpoint
-ALTER ROLE ulc_linz_security_event_cleanup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
---> statement-breakpoint
-ALTER ROLE ulc_linz_security_event_read NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+DO $appbasis$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles
+    WHERE rolname IN (
+      'ulc_linz_security_event_ingest',
+      'ulc_linz_security_event_cleanup',
+      'ulc_linz_security_event_read'
+    )
+      AND (
+        rolcanlogin OR
+        rolsuper OR
+        rolcreatedb OR
+        rolcreaterole OR
+        rolreplication OR
+        rolbypassrls
+      )
+  ) THEN
+    RAISE EXCEPTION 'ULC Linz protected security-event role is privileged.';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM pg_catalog.pg_roles
+    WHERE rolname IN (
+      'ulc_linz_security_event_ingest',
+      'ulc_linz_security_event_cleanup',
+      'ulc_linz_security_event_read'
+    )
+  ) <> 3 THEN
+    RAISE EXCEPTION 'ULC Linz protected security-event role is unavailable.';
+  END IF;
+END
+$appbasis$;
 --> statement-breakpoint
 REVOKE ALL ON TABLE public.ulc_linz_security_event_log FROM PUBLIC;
 --> statement-breakpoint

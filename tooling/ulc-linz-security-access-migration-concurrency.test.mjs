@@ -25,7 +25,16 @@ const protectedRoles = [
   "ulc_linz_security_event_read",
 ];
 
-test("security access role creation tolerates only a concurrently-created identical role", async () => {
+const forbiddenRoleAttributes = [
+  "rolcanlogin",
+  "rolsuper",
+  "rolcreatedb",
+  "rolcreaterole",
+  "rolreplication",
+  "rolbypassrls",
+];
+
+test("security access role creation validates safe attributes without provider-blocked ALTER ROLE", async () => {
   const [migration, generator] = await Promise.all([
     readFile(sourceMigrationUrl, "utf8"),
     readFile(generatorUrl, "utf8"),
@@ -33,6 +42,16 @@ test("security access role creation tolerates only a concurrently-created identi
 
   for (const source of [migration, generator]) {
     assert.match(source, /WHEN duplicate_object OR unique_violation THEN/);
+    assert.doesNotMatch(source, /ALTER ROLE ulc_linz_security_event_/);
+    assert.match(source, /RAISE EXCEPTION 'ULC Linz protected security-event role is privileged\.'/);
+    assert.match(source, /RAISE EXCEPTION 'ULC Linz protected security-event role is unavailable\.'/);
+    assert.match(source, /SELECT count\(\*\)/);
+    assert.match(source, /<> 3 THEN/);
+
+    for (const attribute of forbiddenRoleAttributes) {
+      assert.match(source, new RegExp(attribute));
+    }
+
     for (const role of protectedRoles) {
       assert.match(
         source,
