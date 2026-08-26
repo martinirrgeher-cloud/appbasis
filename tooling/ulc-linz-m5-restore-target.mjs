@@ -2,10 +2,10 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
-import { validateM4RestoreDatabaseSeparation } from "./m4-r2-restore-plan.mjs";
-import { verifyUlcLinzM5IsolatedRestoreTargetEmpty } from "./ulc-linz-m5-restore-target.mjs";
+import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
 const STRONG_SSL_MODES = new Set(["require", "verify-ca", "verify-full"]);
+const SOURCE_ROLE = "ulc_linz_application";
 const EMPTY_TARGET_QUERY = `
 SELECT
   (
@@ -36,21 +36,20 @@ SELECT
   ) AS public_type_count
 `;
 
-export async function verifyM4IsolatedRestoreTargetEmpty({
+export async function verifyUlcLinzM5IsolatedRestoreTargetEmpty({
   sourceUrl,
   restoreUrl,
   createDatabase = createPostgresDatabase,
 } = {}) {
-  validateM4RestoreDatabaseSeparation({ sourceUrl, restoreUrl });
-  assertEncryptedDatabaseTransport(sourceUrl, "M4 source database URL");
-  assertEncryptedDatabaseTransport(restoreUrl, "M4 restore database URL");
-  if (databaseAliasIdentity(sourceUrl) === databaseAliasIdentity(restoreUrl)) {
+  const source = requiredUlcLinzProductionDatabaseUrl(sourceUrl);
+  const restore = requiredEncryptedDatabaseUrl(restoreUrl, "ULC M5 restore database URL");
+  if (databaseAliasIdentity(source) === databaseAliasIdentity(restore)) {
     throw new Error(
-      "M4 restore target must be a different database endpoint from source, including Neon pooler aliases.",
+      "ULC M5 restore target must be a different database endpoint from production, including Neon pooler aliases.",
     );
   }
   if (typeof createDatabase !== "function") {
-    throw new Error("M4 restore target database dependency is invalid.");
+    throw new Error("ULC M5 restore target database dependency is invalid.");
   }
 
   let database;
@@ -72,10 +71,10 @@ export async function verifyM4IsolatedRestoreTargetEmpty({
     ) {
       throw new Error("restore target is not empty");
     }
-    return Object.freeze({ status: "restore-target-empty", appId: "m3-preview" });
+    return Object.freeze({ status: "restore-target-empty", appId: "ulc-linz" });
   } catch {
     throw new Error(
-      "M4 restore target is not empty or could not be inspected; use a fresh isolated target.",
+      "ULC M5 restore target is not empty or could not be inspected; use a fresh isolated target.",
     );
   } finally {
     if (database?.client && typeof database.client.end === "function") {
@@ -84,18 +83,40 @@ export async function verifyM4IsolatedRestoreTargetEmpty({
   }
 }
 
-function assertEncryptedDatabaseTransport(value, name) {
-  const url = new URL(value);
-  const sslModes = url.searchParams.getAll("sslmode");
-  if (sslModes.length !== 1 || !STRONG_SSL_MODES.has(sslModes[0])) {
+function requiredUlcLinzProductionDatabaseUrl(value) {
+  const url = requiredEncryptedDatabaseUrl(value, "ULC production database URL");
+  if (url.username !== SOURCE_ROLE) {
     throw new Error(
-      `${name} must require encrypted transport with exactly one strong sslmode.`,
+      "ULC M5 source database URL is not the dedicated production application principal.",
     );
   }
+  try {
+    parseUlcLinzProductionDatabaseUrl(value);
+  } catch {
+    throw new Error(
+      "ULC M5 source database URL is not the canonical ULC production Neon origin.",
+    );
+  }
+  return url;
+}
+
+function requiredEncryptedDatabaseUrl(value, name) {
+  const url = new URL(value);
+  if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
+    throw new Error(`${name} must be PostgreSQL.`);
+  }
+  const sslModes = url.searchParams.getAll("sslmode");
+  if (sslModes.length !== 1 || !STRONG_SSL_MODES.has(sslModes[0])) {
+    throw new Error(`${name} must require encrypted transport with exactly one strong sslmode.`);
+  }
+  if (!url.hostname || !url.username || url.pathname.length <= 1) {
+    throw new Error(`${name} is invalid.`);
+  }
+  return url;
 }
 
 function databaseAliasIdentity(value) {
-  const url = new URL(value);
+  const url = value instanceof URL ? value : new URL(value);
   const port = url.port === "" ? "5432" : url.port;
   return `${normalizeProviderHostname(url.hostname)}:${port}${url.pathname}`;
 }
@@ -108,14 +129,6 @@ function normalizeProviderHostname(value) {
   return labels.join(".");
 }
 
-function isUlcLinzProductionSource(value) {
-  try {
-    return new URL(value).username === "ulc_linz_application";
-  } catch {
-    return false;
-  }
-}
-
 function isMainModule() {
   if (typeof process.argv[1] !== "string") return false;
   return import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
@@ -126,15 +139,14 @@ if (isMainModule()) {
     if (process.argv[2] !== "verify-empty") {
       throw new Error("Expected command mode verify-empty.");
     }
-    const sourceUrl = process.env.APPBASIS_M4_SOURCE_DATABASE_URL;
-    const restoreUrl = process.env.APPBASIS_M4_RESTORE_DATABASE_URL;
-    const result = isUlcLinzProductionSource(sourceUrl)
-      ? await verifyUlcLinzM5IsolatedRestoreTargetEmpty({ sourceUrl, restoreUrl })
-      : await verifyM4IsolatedRestoreTargetEmpty({ sourceUrl, restoreUrl });
+    const result = await verifyUlcLinzM5IsolatedRestoreTargetEmpty({
+      sourceUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+      restoreUrl: process.env.APPBASIS_M4_RESTORE_DATABASE_URL,
+    });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
     console.error(
-      error instanceof Error ? error.message : "M4 restore target verification failed.",
+      error instanceof Error ? error.message : "ULC M5 restore target verification failed.",
     );
     process.exitCode = 1;
   }
