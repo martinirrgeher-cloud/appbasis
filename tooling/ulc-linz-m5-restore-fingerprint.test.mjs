@@ -39,6 +39,27 @@ test("restore fingerprint is order independent and contains no row values", () =
   assert.equal(JSON.stringify(first).includes("session_pkey"), false);
 });
 
+test("restore fingerprint keeps prefix-related production table names in one deterministic order", () => {
+  const productionShape = {
+    tables: [
+      "appbasis_permission_principal",
+      "appbasis_permission_principal_grant",
+      "appbasis_permission_principal_revoke",
+      "appbasis_permission_principal_role",
+    ],
+    columns: [],
+    constraints: [],
+    indexes: [],
+    rowCounts: [
+      { tableName: "appbasis_permission_principal_grant", rowCount: "1" },
+      { tableName: "appbasis_permission_principal", rowCount: "2" },
+      { tableName: "appbasis_permission_principal_role", rowCount: "3" },
+      { tableName: "appbasis_permission_principal_revoke", rowCount: "4" },
+    ],
+  };
+  assert.doesNotThrow(() => fingerprintUlcLinzRestoreInventory(productionShape));
+});
+
 test("restore fingerprint rejects incomplete row counts and unsafe identifiers", () => {
   const missing = inventory();
   missing.rowCounts.pop();

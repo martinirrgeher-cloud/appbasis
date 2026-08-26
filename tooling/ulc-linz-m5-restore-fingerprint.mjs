@@ -111,7 +111,7 @@ function canonicalInventory(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("ULC restore inventory is invalid.");
   }
-  const tables = [...value.tables].map(requiredTableName).sort();
+  const tables = [...value.tables].map(requiredTableName).sort(compareText);
   if (new Set(tables).size !== tables.length) throw new Error("ULC restore inventory contains duplicate tables.");
   const columns = [...value.columns].map((entry) => ({
     tableName: requiredTableName(entry.tableName),
@@ -141,7 +141,13 @@ function canonicalInventory(value) {
 }
 
 function compareObjects(left, right) {
-  return JSON.stringify(left).localeCompare(JSON.stringify(right));
+  return compareText(JSON.stringify(left), JSON.stringify(right));
+}
+
+function compareText(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 function requiredTableName(value) {
