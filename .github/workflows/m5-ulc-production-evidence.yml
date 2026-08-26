@@ -308,8 +308,12 @@ jobs:
             AND NOT pg_catalog.has_table_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log'"'"', '"'"'UPDATE'"'"')
             AND NOT pg_catalog.has_table_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log'"'"', '"'"'DELETE'"'"')
             AND NOT pg_catalog.has_table_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log'"'"', '"'"'TRUNCATE'"'"')
+            AND pg_catalog.has_sequence_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log_id_seq'"'"', '"'"'SELECT'"'"')
+            AND NOT pg_catalog.has_sequence_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log_id_seq'"'"', '"'"'USAGE'"'"')
+            AND NOT pg_catalog.has_sequence_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log_id_seq'"'"', '"'"'UPDATE'"'"')
           THEN '"'"'verified'"'"' ELSE '"'"'unsafe'"'"' END;
           SELECT format('"'"'REVOKE SELECT ON TABLE public.ulc_linz_security_event_log FROM %I'"'"', :'"'"'backup_role'"'"') \gexec
+          SELECT format('"'"'REVOKE SELECT ON SEQUENCE public.ulc_linz_security_event_log_id_seq FROM %I'"'"', :'"'"'backup_role'"'"') \gexec
           SQL')"
           test "$(printf '%s\n' "$RESULT" | head -n 1)" = "verified" || {
             echo 'Restored production backup audit ACL is missing or unsafe.' >&2
