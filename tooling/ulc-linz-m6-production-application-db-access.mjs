@@ -1,4 +1,6 @@
-const APPLICATION = "ulc-linz";
+import { ULC_LINZ_M5_TARGET_POLICY } from "./ulc-linz-m5-target-policy.mjs";
+
+const APPLICATION = ULC_LINZ_M5_TARGET_POLICY.appId;
 const ENVIRONMENT = "production";
 const CONNECTION_PATH = "cloudflare-hyperdrive";
 const IDENTITY_SOURCE = "postgres-system-catalog";
@@ -60,6 +62,7 @@ export function evaluateUlcLinzM6ProductionApplicationDbAccess(
   evidence,
   { now = new Date() } = {},
 ) {
+  assertCanonicalContract();
   assertSafeEvidenceTree(evidence);
   const root = exactRecord(evidence, ROOT_FIELDS, "INVALID_EVIDENCE");
   if (
@@ -138,6 +141,15 @@ export function evaluateUlcLinzM6ProductionApplicationDbAccess(
     requiredApplicationAccessVerified: true,
     scopeComplete: true,
   });
+}
+
+function assertCanonicalContract() {
+  if (
+    APPLICATION !== "ulc-linz" ||
+    ULC_LINZ_M5_TARGET_POLICY.productionDatabaseRegionTarget !== "EU / Frankfurt"
+  ) {
+    fail("CONTRACT_DRIFT");
+  }
 }
 
 function exactRecord(value, fields, code) {
