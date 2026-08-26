@@ -2,11 +2,10 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
+import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
 const STRONG_SSL_MODES = new Set(["require", "verify-ca", "verify-full"]);
-const TARGET_DATABASE = "neondb";
 const SOURCE_ROLE = "ulc_linz_application";
-const SOURCE_REGION_SUFFIX = ".eu-central-1.aws.neon.tech";
 const EMPTY_TARGET_QUERY = `
 SELECT
   (
@@ -86,12 +85,17 @@ export async function verifyUlcLinzM5IsolatedRestoreTargetEmpty({
 
 function requiredUlcLinzProductionDatabaseUrl(value) {
   const url = requiredEncryptedDatabaseUrl(value, "ULC production database URL");
-  if (
-    url.username !== SOURCE_ROLE ||
-    url.pathname !== `/${TARGET_DATABASE}` ||
-    !normalizeProviderHostname(url.hostname).endsWith(SOURCE_REGION_SUFFIX)
-  ) {
-    throw new Error("ULC M5 source database URL is not the dedicated Frankfurt production application database.");
+  if (url.username !== SOURCE_ROLE) {
+    throw new Error(
+      "ULC M5 source database URL is not the dedicated production application principal.",
+    );
+  }
+  try {
+    parseUlcLinzProductionDatabaseUrl(value);
+  } catch {
+    throw new Error(
+      "ULC M5 source database URL is not the canonical ULC production Neon origin.",
+    );
   }
   return url;
 }
