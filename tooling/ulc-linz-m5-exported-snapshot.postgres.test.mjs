@@ -151,7 +151,7 @@ test("M5 least-privilege snapshot, pg_dump and pg_restore rehearse the canonical
         to_regclass('m5_runtime.snapshot_fixture_id_seq') IS NOT NULL AS sequence_restored,
         (SELECT relacl IS NULL FROM pg_catalog.pg_class WHERE oid = to_regclass('m5_runtime.snapshot_fixture_pkey')) AS index_acl_is_null
     `);
-    assert.deepEqual(catalogRows, [{
+    assert.deepEqual(Array.from(catalogRows, (row) => ({ ...row })), [{
       ulc_security_log_restored: true,
       ulc_cleanup_function_restored: true,
       primary_index_restored: true,
