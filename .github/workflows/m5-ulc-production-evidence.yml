@@ -202,6 +202,54 @@ jobs:
           wait "$SNAPSHOT_PID"
           trap - EXIT
 
+      - name: Prepare inert backup ACL principal in isolated restore target
+        shell: bash
+        env:
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          BACKUP_ROLE="$(node --input-type=module <<'NODE'
+          const role = new URL(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL).username;
+          if (!/^[a-z_][a-z0-9_]*$/.test(role)) {
+            throw new Error("ULC production backup principal is not a canonical PostgreSQL role name.");
+          }
+          process.stdout.write(role);
+          NODE
+          )"
+          test -n "$BACKUP_ROLE"
+          docker run --rm \
+            --env APPBASIS_M4_RESTORE_DATABASE_URL \
+            --env BACKUP_ROLE \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'psql "$APPBASIS_M4_RESTORE_DATABASE_URL" -v ON_ERROR_STOP=1 -v backup_role="$BACKUP_ROLE" <<'"'"'SQL'"'"'
+          SELECT format(
+            '"'"'CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS'"'"',
+            :'"'"'backup_role'"'"'
+          )
+          WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = :'"'"'backup_role'"'"')
+          \gexec
+
+          SELECT CASE WHEN
+            NOT rolcanlogin
+            AND NOT rolsuper
+            AND NOT rolcreatedb
+            AND NOT rolcreaterole
+            AND NOT rolinherit
+            AND NOT rolreplication
+            AND NOT rolbypassrls
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_catalog.pg_auth_members
+              WHERE roleid = pg_roles.oid OR member = pg_roles.oid
+            )
+          THEN '"'"'inert'"'"' ELSE '"'"'unsafe'"'"' END
+          FROM pg_catalog.pg_roles
+          WHERE rolname = :'"'"'backup_role'"'"';
+          SQL' | grep -qx 'inert' || {
+            echo 'Isolated restore backup ACL principal is missing or unsafe.' >&2
+            exit 1
+          }
+
       - name: Restore production dump atomically into isolated target
         shell: bash
         env:
