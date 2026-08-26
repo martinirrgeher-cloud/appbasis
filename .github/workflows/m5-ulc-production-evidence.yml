@@ -237,7 +237,7 @@ jobs:
           ), memberships AS (
             SELECT membership.*,
                    member.rolname AS member_name,
-                   grantor.rolsuper AS grantor_superuser
+                   grantor.rolname AS grantor_name
             FROM backup
             JOIN pg_catalog.pg_auth_members membership
               ON membership.roleid = backup.oid OR membership.member = backup.oid
@@ -260,7 +260,7 @@ jobs:
                 AND memberships.admin_option
                 AND NOT memberships.inherit_option
                 AND NOT memberships.set_option
-                AND memberships.grantor_superuser
+                AND memberships.grantor_name = current_user
               )
             )
             AND (SELECT count(*) FROM memberships) <= 1
