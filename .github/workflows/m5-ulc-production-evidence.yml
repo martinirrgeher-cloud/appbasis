@@ -222,7 +222,7 @@ jobs:
             --env APPBASIS_M4_RESTORE_DATABASE_URL \
             --env BACKUP_ROLE \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            sh -ceu 'psql "$APPBASIS_M4_RESTORE_DATABASE_URL" -v ON_ERROR_STOP=1 -v backup_role="$BACKUP_ROLE" <<'"'"'SQL'"'"'
+            sh -ceu 'psql "$APPBASIS_M4_RESTORE_DATABASE_URL" -v ON_ERROR_STOP=1 -Atq -v backup_role="$BACKUP_ROLE" <<'"'"'SQL'"'"'
           SELECT format(
             '"'"'CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS'"'"',
             :'"'"'backup_role'"'"'
