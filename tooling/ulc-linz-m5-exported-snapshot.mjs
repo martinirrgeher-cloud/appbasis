@@ -98,6 +98,10 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       SELECT c.oid, c.relkind, c.relowner, c.relacl
       FROM pg_catalog.pg_class AS c
       JOIN user_schemas AS n ON n.oid = c.relnamespace
+    ), user_sequences AS MATERIALIZED (
+      SELECT relation.oid, relation.relowner, relation.relacl
+      FROM user_relations AS relation
+      WHERE relation.relkind = 'S'
     ), user_functions AS (
       SELECT p.oid, p.proowner, p.proacl
       FROM pg_catalog.pg_proc AS p
@@ -147,9 +151,8 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
        WHERE relation.relkind IN ('r', 'p', 'm')
          AND NOT pg_catalog.has_table_privilege(role.rolname, relation.oid, 'SELECT')) AS unreadable_table_count,
       (SELECT count(*)::int
-       FROM user_relations AS relation
-       WHERE relation.relkind = 'S'
-         AND NOT pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'SELECT')) AS unreadable_sequence_count,
+       FROM user_sequences AS sequence_record
+       WHERE NOT pg_catalog.has_sequence_privilege(role.rolname, sequence_record.oid, 'SELECT')) AS unreadable_sequence_count,
       (SELECT count(*)::int
        FROM user_relations AS relation
        WHERE relation.relkind IN ('r', 'p', 'v', 'm', 'f')
@@ -170,12 +173,9 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
            pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'REFERENCES')
          )) AS writable_column_count,
       (SELECT count(*)::int
-       FROM user_relations AS relation
-       WHERE relation.relkind = 'S'
-         AND (
-           pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'USAGE') OR
-           pg_catalog.has_sequence_privilege(role.rolname, relation.oid, 'UPDATE')
-         )) AS writable_sequence_count,
+       FROM user_sequences AS sequence_record
+       WHERE pg_catalog.has_sequence_privilege(role.rolname, sequence_record.oid, 'USAGE')
+          OR pg_catalog.has_sequence_privilege(role.rolname, sequence_record.oid, 'UPDATE')) AS writable_sequence_count,
       (SELECT count(*)::int
        FROM user_functions AS function
        WHERE pg_catalog.has_function_privilege(role.rolname, function.oid, 'EXECUTE')) AS executable_function_count,
