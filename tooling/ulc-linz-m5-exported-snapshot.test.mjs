@@ -96,8 +96,11 @@ test("holds one isolated least-privileged whole-database read-only repeatable-re
   assert.match(queries[1], /user_schemas/);
   assert.match(queries[1], /nspname <> 'information_schema'/);
   assert.match(queries[1], /nspname !~ '\^pg_'/);
-  assert.match(queries[1], /user_relations AS \([\s\S]*JOIN user_schemas AS n ON n\.oid = c\.relnamespace[\s\S]*\), user_functions AS/);
+  assert.match(queries[1], /user_relations AS \([\s\S]*JOIN user_schemas AS n ON n\.oid = c\.relnamespace[\s\S]*\), user_tables AS MATERIALIZED/);
   assert.doesNotMatch(queries[1], /JOIN user_schemas AS n ON n\.oid = c\.relnamespace\s+WHERE c\.relkind/);
+  assert.match(queries[1], /user_tables AS MATERIALIZED \([\s\S]*relation\.relkind IN \('r', 'p', 'v', 'm', 'f'\)/);
+  assert.match(queries[1], /user_sequences AS MATERIALIZED \([\s\S]*relation\.relkind = 'S'/);
+  assert.match(queries[1], /JOIN user_tables AS relation ON relation\.oid = a\.attrelid/);
   assert.match(queries[1], /owned_schema_count/);
   assert.match(queries[1], /unusable_schema_count/);
   assert.match(queries[1], /creatable_schema_count/);
@@ -105,12 +108,22 @@ test("holds one isolated least-privileged whole-database read-only repeatable-re
   assert.match(queries[1], /membership_count/);
   assert.match(queries[1], /reverse_membership_count/);
   assert.match(queries[1], /membership\.roleid = role\.oid/);
-  assert.match(queries[1], /relation\.relkind IN \('r', 'p', 'm'\)/);
-  assert.match(queries[1], /relation\.relkind IN \('r', 'p', 'v', 'm', 'f'\)/);
+  assert.match(queries[1], /FROM user_tables AS relation\s+WHERE relation\.relkind IN \('r', 'p', 'm'\)/);
+  assert.match(queries[1], /FROM user_tables AS relation\s+WHERE\s+pg_catalog\.has_table_privilege/);
+  assert.match(queries[1], /FROM user_tables AS relation\s+WHERE\s+pg_catalog\.has_any_column_privilege/);
+  assert.doesNotMatch(queries[1], /FROM user_relations AS relation[\s\S]{0,200}has_table_privilege/);
+  assert.doesNotMatch(queries[1], /FROM user_relations AS relation[\s\S]{0,200}has_any_column_privilege/);
   assert.match(queries[1], /unreadable_sequence_count/);
   assert.match(queries[1], /writable_column_count/);
   assert.match(queries[1], /grantable_acl_count/);
   assert.match(queries[1], /pg_catalog\.aclexplode/);
+  assert.equal((queries[1].match(/pg_catalog\.aclexplode\(/g) ?? []).length, 5);
+  assert.doesNotMatch(queries[1], /aclexplode\(COALESCE/);
+  assert.match(queries[1], /aclexplode\(database_acl\.datacl\)/);
+  assert.match(queries[1], /aclexplode\(schema_acl\.nspacl\)/);
+  assert.match(queries[1], /aclexplode\(relation\.relacl\)/);
+  assert.match(queries[1], /aclexplode\(column_acl\.attacl\)/);
+  assert.match(queries[1], /aclexplode\(function\.proacl\)/);
   assert.doesNotMatch(queries[1], /WHERE n\.nspname = 'public'/);
   assert.equal(queries[2], "SELECT pg_catalog.pg_export_snapshot() AS snapshot_id");
   assert.deepEqual(writes, [{
