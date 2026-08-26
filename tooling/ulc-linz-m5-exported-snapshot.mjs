@@ -115,6 +115,16 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       FROM pg_catalog.pg_attribute AS a
       JOIN user_tables AS relation ON relation.oid = a.attrelid
       WHERE a.attnum > 0 AND NOT a.attisdropped
+    ), reverse_memberships AS (
+      SELECT
+        membership.member,
+        membership.admin_option,
+        membership.inherit_option,
+        membership.set_option,
+        grantor_role.rolsuper AS grantor_is_superuser
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS grantor_role ON grantor_role.oid = membership.grantor
+      JOIN backup_role AS role ON membership.roleid = role.oid
     )
     SELECT
       role.rolname AS role_name,
@@ -133,8 +143,21 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
        FROM pg_catalog.pg_auth_members AS membership
        WHERE membership.member = role.oid AND membership.admin_option) AS admin_membership_count,
       (SELECT count(*)::int
-       FROM pg_catalog.pg_auth_members AS membership
-       WHERE membership.roleid = role.oid) AS reverse_membership_count,
+       FROM reverse_memberships AS membership
+       WHERE membership.member = database_record.datdba
+         AND membership.grantor_is_superuser
+         AND membership.admin_option
+         AND NOT membership.inherit_option
+         AND NOT membership.set_option) AS automatic_owner_reverse_membership_count,
+      (SELECT count(*)::int
+       FROM reverse_memberships AS membership
+       WHERE NOT (
+         membership.member = database_record.datdba
+         AND membership.grantor_is_superuser
+         AND membership.admin_option
+         AND NOT membership.inherit_option
+         AND NOT membership.set_option
+       )) AS unsafe_reverse_membership_count,
       (SELECT count(*)::int
        FROM user_schemas AS schema_record
        WHERE pg_catalog.pg_get_userbyid(schema_record.nspowner) = role.rolname) AS owned_schema_count,
@@ -228,7 +251,10 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
     role.database_create !== false ||
     role.membership_count !== 0 ||
     role.admin_membership_count !== 0 ||
-    role.reverse_membership_count !== 0 ||
+    !Number.isInteger(role.automatic_owner_reverse_membership_count) ||
+    role.automatic_owner_reverse_membership_count < 0 ||
+    role.automatic_owner_reverse_membership_count > 1 ||
+    role.unsafe_reverse_membership_count !== 0 ||
     role.owned_schema_count !== 0 ||
     role.unusable_schema_count !== 0 ||
     role.creatable_schema_count !== 0 ||
