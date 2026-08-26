@@ -184,27 +184,27 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
         FROM (
           SELECT acl.is_grantable
           FROM current_database_record AS database_acl
-          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(database_acl.datacl, '{}'::aclitem[])) AS acl
+          CROSS JOIN LATERAL pg_catalog.aclexplode(database_acl.datacl) AS acl
           WHERE acl.grantee = role.oid
           UNION ALL
           SELECT acl.is_grantable
           FROM user_schemas AS schema_acl
-          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(schema_acl.nspacl, '{}'::aclitem[])) AS acl
+          CROSS JOIN LATERAL pg_catalog.aclexplode(schema_acl.nspacl) AS acl
           WHERE acl.grantee = role.oid
           UNION ALL
           SELECT acl.is_grantable
           FROM user_relations AS relation
-          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(relation.relacl, '{}'::aclitem[])) AS acl
+          CROSS JOIN LATERAL pg_catalog.aclexplode(relation.relacl) AS acl
           WHERE acl.grantee = role.oid
           UNION ALL
           SELECT acl.is_grantable
           FROM user_columns AS column_acl
-          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(column_acl.attacl, '{}'::aclitem[])) AS acl
+          CROSS JOIN LATERAL pg_catalog.aclexplode(column_acl.attacl) AS acl
           WHERE acl.grantee = role.oid
           UNION ALL
           SELECT acl.is_grantable
           FROM user_functions AS function
-          CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(function.proacl, '{}'::aclitem[])) AS acl
+          CROSS JOIN LATERAL pg_catalog.aclexplode(function.proacl) AS acl
           WHERE acl.grantee = role.oid
         ) AS explicit_acl
         WHERE explicit_acl.is_grantable
