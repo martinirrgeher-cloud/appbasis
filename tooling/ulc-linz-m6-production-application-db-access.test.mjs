@@ -17,11 +17,16 @@ function validEvidence() {
     validUntilOrReviewAt: "2026-08-26T08:44:00.000Z",
     runtime: {
       connectionPath: "cloudflare-hyperdrive",
+      bindingIdentity: "hyperdrive-production-opaque-1",
       productionBindingVerified: true,
       localFallbackPersistenceAbsent: true,
     },
     databasePrincipal: {
       identitySource: "postgres-system-catalog",
+      observedBindingIdentity: "hyperdrive-production-opaque-1",
+      inventoryScope: "current-database-all-user-objects",
+      ownershipInventoryComplete: true,
+      directGrantInventoryComplete: true,
       roleIdentity: "app-runtime-opaque-1",
       migrationRoleIdentity: "migration-opaque-1",
       login: true,
@@ -31,6 +36,10 @@ function validEvidence() {
       createRole: false,
       replication: false,
       unexpectedRoleMembershipAbsent: true,
+      unexpectedDatabaseOwnershipAbsent: true,
+      unexpectedSchemaOwnershipAbsent: true,
+      unexpectedRelationOwnershipAbsent: true,
+      unexpectedDirectObjectPrivilegesAbsent: true,
       requiredApplicationAccessVerified: true,
     },
   };
@@ -50,7 +59,7 @@ function expectBlocked(evidence, code) {
   );
 }
 
-test("accepts only the dedicated least-privilege production application database path and emits no role identifiers", () => {
+test("accepts only the bound least-privilege production application database path and emits no provider or role identifiers", () => {
   const result = evaluateUlcLinzM6ProductionApplicationDbAccess(validEvidence(), {
     now: NOW,
   });
@@ -62,17 +71,27 @@ test("accepts only the dedicated least-privilege production application database
     observedAt: "2026-08-26T07:44:00.000Z",
     validUntilOrReviewAt: "2026-08-26T08:44:00.000Z",
     productionDatabasePathVerified: true,
+    productionBindingPrincipalObserved: true,
     localFallbackPersistenceAbsent: true,
     dedicatedApplicationPrincipalVerified: true,
     migrationPrincipalSeparated: true,
     privilegedDatabaseCapabilitiesAbsent: true,
+    unexpectedDatabaseOwnershipAbsent: true,
+    unexpectedSchemaOwnershipAbsent: true,
+    unexpectedRelationOwnershipAbsent: true,
+    unexpectedDirectObjectPrivilegesAbsent: true,
     requiredApplicationAccessVerified: true,
     scopeComplete: true,
   });
   assert.ok(Object.isFrozen(result));
   const serialized = JSON.stringify(result);
-  assert.equal(serialized.includes("app-runtime-opaque-1"), false);
-  assert.equal(serialized.includes("migration-opaque-1"), false);
+  for (const internal of [
+    "hyperdrive-production-opaque-1",
+    "app-runtime-opaque-1",
+    "migration-opaque-1",
+  ]) {
+    assert.equal(serialized.includes(internal), false);
+  }
 });
 
 test("fails closed unless production runtime uses the verified Hyperdrive binding with no local fallback persistence", () => {
@@ -80,10 +99,38 @@ test("fails closed unless production runtime uses the verified Hyperdrive bindin
     (evidence) => (evidence.runtime.connectionPath = "direct-postgres"),
     (evidence) => (evidence.runtime.productionBindingVerified = false),
     (evidence) => (evidence.runtime.localFallbackPersistenceAbsent = false),
+    (evidence) => (evidence.runtime.bindingIdentity = ""),
   ]) {
     const evidence = validEvidence();
     mutate(evidence);
     expectBlocked(evidence, "RUNTIME_DATABASE_PATH_MISMATCH");
+  }
+});
+
+test("binds catalog principal observation to the exact verified production database binding", () => {
+  const evidence = validEvidence();
+  evidence.databasePrincipal.observedBindingIdentity = "different-hyperdrive-binding";
+  expectBlocked(evidence, "APPLICATION_PRINCIPAL_MISMATCH");
+});
+
+test("fails closed unless ownership and direct-grant inventory covers all user objects and finds no unexpected privilege", () => {
+  for (const mutate of [
+    (evidence) =>
+      (evidence.databasePrincipal.inventoryScope = "selected-application-tables"),
+    (evidence) => (evidence.databasePrincipal.ownershipInventoryComplete = false),
+    (evidence) => (evidence.databasePrincipal.directGrantInventoryComplete = false),
+    (evidence) =>
+      (evidence.databasePrincipal.unexpectedDatabaseOwnershipAbsent = false),
+    (evidence) =>
+      (evidence.databasePrincipal.unexpectedSchemaOwnershipAbsent = false),
+    (evidence) =>
+      (evidence.databasePrincipal.unexpectedRelationOwnershipAbsent = false),
+    (evidence) =>
+      (evidence.databasePrincipal.unexpectedDirectObjectPrivilegesAbsent = false),
+  ]) {
+    const evidence = validEvidence();
+    mutate(evidence);
+    expectBlocked(evidence, "APPLICATION_PRINCIPAL_MISMATCH");
   }
 });
 
