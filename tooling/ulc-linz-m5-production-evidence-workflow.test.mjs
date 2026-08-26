@@ -147,6 +147,7 @@ test("M5-F production retention is a separate main-only explicitly approved cano
   assert.match(source, /PURGE-ULC-M5-SECURITY-LOG-RETENTION/);
   assert.match(source, /test "\$CONFIRMATION" = "PURGE-ULC-M5-SECURITY-LOG-RETENTION"/);
   assert.match(source, /group: m6-ulc-production-runtime-config/);
+  assert.match(source, /environment: m4-dr/);
   assert.match(source, /ULC_LINZ_PRODUCTION_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
   assert.match(source, /ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \}\}/);
   assert.match(source, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \}\}/);
