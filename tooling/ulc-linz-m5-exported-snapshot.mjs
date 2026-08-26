@@ -98,6 +98,10 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
       SELECT c.oid, c.relkind, c.relowner, c.relacl
       FROM pg_catalog.pg_class AS c
       JOIN user_schemas AS n ON n.oid = c.relnamespace
+    ), user_tables AS MATERIALIZED (
+      SELECT relation.oid, relation.relkind, relation.relowner, relation.relacl
+      FROM user_relations AS relation
+      WHERE relation.relkind IN ('r', 'p', 'v', 'm', 'f')
     ), user_sequences AS MATERIALIZED (
       SELECT relation.oid, relation.relowner, relation.relacl
       FROM user_relations AS relation
@@ -109,7 +113,7 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
     ), user_columns AS (
       SELECT a.attrelid, a.attacl
       FROM pg_catalog.pg_attribute AS a
-      JOIN user_relations AS relation ON relation.oid = a.attrelid
+      JOIN user_tables AS relation ON relation.oid = a.attrelid
       WHERE a.attnum > 0 AND NOT a.attisdropped
     )
     SELECT
@@ -147,31 +151,27 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
        FROM user_functions AS function
        WHERE pg_catalog.pg_get_userbyid(function.proowner) = role.rolname) AS owned_function_count,
       (SELECT count(*)::int
-       FROM user_relations AS relation
+       FROM user_tables AS relation
        WHERE relation.relkind IN ('r', 'p', 'm')
          AND NOT pg_catalog.has_table_privilege(role.rolname, relation.oid, 'SELECT')) AS unreadable_table_count,
       (SELECT count(*)::int
        FROM user_sequences AS sequence_record
        WHERE NOT pg_catalog.has_sequence_privilege(role.rolname, sequence_record.oid, 'SELECT')) AS unreadable_sequence_count,
       (SELECT count(*)::int
-       FROM user_relations AS relation
-       WHERE relation.relkind IN ('r', 'p', 'v', 'm', 'f')
-         AND (
-           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'INSERT') OR
-           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'UPDATE') OR
-           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'DELETE') OR
-           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'TRUNCATE') OR
-           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'TRIGGER') OR
-           pg_catalog.has_table_privilege(role.rolname, relation.oid, 'REFERENCES')
-         )) AS writable_table_count,
+       FROM user_tables AS relation
+       WHERE
+         pg_catalog.has_table_privilege(role.rolname, relation.oid, 'INSERT') OR
+         pg_catalog.has_table_privilege(role.rolname, relation.oid, 'UPDATE') OR
+         pg_catalog.has_table_privilege(role.rolname, relation.oid, 'DELETE') OR
+         pg_catalog.has_table_privilege(role.rolname, relation.oid, 'TRUNCATE') OR
+         pg_catalog.has_table_privilege(role.rolname, relation.oid, 'TRIGGER') OR
+         pg_catalog.has_table_privilege(role.rolname, relation.oid, 'REFERENCES')) AS writable_table_count,
       (SELECT count(*)::int
-       FROM user_relations AS relation
-       WHERE relation.relkind IN ('r', 'p', 'v', 'm', 'f')
-         AND (
-           pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'INSERT') OR
-           pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'UPDATE') OR
-           pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'REFERENCES')
-         )) AS writable_column_count,
+       FROM user_tables AS relation
+       WHERE
+         pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'INSERT') OR
+         pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'UPDATE') OR
+         pg_catalog.has_any_column_privilege(role.rolname, relation.oid, 'REFERENCES')) AS writable_column_count,
       (SELECT count(*)::int
        FROM user_sequences AS sequence_record
        WHERE pg_catalog.has_sequence_privilege(role.rolname, sequence_record.oid, 'USAGE')
