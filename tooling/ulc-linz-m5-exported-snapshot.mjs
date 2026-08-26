@@ -73,7 +73,7 @@ export async function holdUlcLinzM5ExportedSnapshot(
 
 async function assertBackupPrincipalLeastPrivilege(sql) {
   const rows = await sql.unsafe(`
-    WITH current_role AS (
+    WITH backup_role AS (
       SELECT
         oid,
         rolname,
@@ -209,7 +209,7 @@ async function assertBackupPrincipalLeastPrivilege(sql) {
         ) AS explicit_acl
         WHERE explicit_acl.is_grantable
       ) AS grantable_acl_count
-    FROM current_role AS role
+    FROM backup_role AS role
     CROSS JOIN current_database_record AS database_record
   `);
   if (!Array.isArray(rows) || rows.length !== 1) {
