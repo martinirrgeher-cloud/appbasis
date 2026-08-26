@@ -27,7 +27,7 @@ const CONTRACT_FILES = Object.freeze([
   ["apps/ulc-linz/worker/security-events.ts", new URL("../apps/ulc-linz/worker/security-events.ts", import.meta.url), "cc3a972b65ffd09350d752236827c8df922d9b77"],
   ["apps/ulc-linz/worker/security-events-postgres.ts", new URL("../apps/ulc-linz/worker/security-events-postgres.ts", import.meta.url), "b1deaf9ea5c725835f6b0418ed9646b753850f1c"],
   ["apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", new URL("../apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", import.meta.url), "0dea6b9c751e559b06e14d2d2e603bb9a99372d4"],
-  ["apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", new URL("../apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", import.meta.url), "37a3bf875952d4076e9202349fb9c9901a4ea2ab"],
+  ["apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", new URL("../apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql", import.meta.url), "1d1ef22e037fedbe8aa3206ce931e44a9ea2c672"],
 ]);
 const CONTROLLED_RETENTION_CONTRACT_FILES = Object.freeze([
   ["apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", new URL("../apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql", import.meta.url)],
