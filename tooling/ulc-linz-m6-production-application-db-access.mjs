@@ -4,6 +4,7 @@ const APPLICATION = ULC_LINZ_M5_TARGET_POLICY.appId;
 const ENVIRONMENT = "production";
 const CONNECTION_PATH = "cloudflare-hyperdrive";
 const IDENTITY_SOURCE = "postgres-system-catalog";
+const INVENTORY_SCOPE = "current-database-all-user-objects";
 
 const ROOT_FIELDS = Object.freeze([
   "schemaVersion",
@@ -16,11 +17,16 @@ const ROOT_FIELDS = Object.freeze([
 ]);
 const RUNTIME_FIELDS = Object.freeze([
   "connectionPath",
+  "bindingIdentity",
   "productionBindingVerified",
   "localFallbackPersistenceAbsent",
 ]);
 const DATABASE_PRINCIPAL_FIELDS = Object.freeze([
   "identitySource",
+  "observedBindingIdentity",
+  "inventoryScope",
+  "ownershipInventoryComplete",
+  "directGrantInventoryComplete",
   "roleIdentity",
   "migrationRoleIdentity",
   "login",
@@ -30,6 +36,10 @@ const DATABASE_PRINCIPAL_FIELDS = Object.freeze([
   "createRole",
   "replication",
   "unexpectedRoleMembershipAbsent",
+  "unexpectedDatabaseOwnershipAbsent",
+  "unexpectedSchemaOwnershipAbsent",
+  "unexpectedRelationOwnershipAbsent",
+  "unexpectedDirectObjectPrivilegesAbsent",
   "requiredApplicationAccessVerified",
 ]);
 
@@ -48,6 +58,7 @@ export const ULC_LINZ_M6_PRODUCTION_APPLICATION_DB_ACCESS_CONTRACT =
     environment: ENVIRONMENT,
     connectionPath: CONNECTION_PATH,
     identitySource: IDENTITY_SOURCE,
+    inventoryScope: INVENTORY_SCOPE,
   });
 
 export class UlcLinzM6ProductionApplicationDbAccessError extends Error {
@@ -89,6 +100,7 @@ export function evaluateUlcLinzM6ProductionApplicationDbAccess(
     RUNTIME_FIELDS,
     "RUNTIME_DATABASE_PATH_MISMATCH",
   );
+  requireOpaqueIdentifier(runtime.bindingIdentity, "RUNTIME_DATABASE_PATH_MISMATCH");
   if (
     runtime.connectionPath !== CONNECTION_PATH ||
     runtime.productionBindingVerified !== true ||
@@ -106,6 +118,10 @@ export function evaluateUlcLinzM6ProductionApplicationDbAccess(
     fail("APPLICATION_PRINCIPAL_MISMATCH");
   }
   requireOpaqueIdentifier(
+    principal.observedBindingIdentity,
+    "APPLICATION_PRINCIPAL_MISMATCH",
+  );
+  requireOpaqueIdentifier(
     principal.roleIdentity,
     "APPLICATION_PRINCIPAL_MISMATCH",
   );
@@ -114,6 +130,10 @@ export function evaluateUlcLinzM6ProductionApplicationDbAccess(
     "APPLICATION_PRINCIPAL_MISMATCH",
   );
   if (
+    principal.observedBindingIdentity !== runtime.bindingIdentity ||
+    principal.inventoryScope !== INVENTORY_SCOPE ||
+    principal.ownershipInventoryComplete !== true ||
+    principal.directGrantInventoryComplete !== true ||
     principal.roleIdentity === principal.migrationRoleIdentity ||
     principal.login !== true ||
     principal.superuser !== false ||
@@ -122,6 +142,10 @@ export function evaluateUlcLinzM6ProductionApplicationDbAccess(
     principal.createRole !== false ||
     principal.replication !== false ||
     principal.unexpectedRoleMembershipAbsent !== true ||
+    principal.unexpectedDatabaseOwnershipAbsent !== true ||
+    principal.unexpectedSchemaOwnershipAbsent !== true ||
+    principal.unexpectedRelationOwnershipAbsent !== true ||
+    principal.unexpectedDirectObjectPrivilegesAbsent !== true ||
     principal.requiredApplicationAccessVerified !== true
   ) {
     fail("APPLICATION_PRINCIPAL_MISMATCH");
@@ -134,10 +158,15 @@ export function evaluateUlcLinzM6ProductionApplicationDbAccess(
     observedAt: observedAt.toISOString(),
     validUntilOrReviewAt: validUntilOrReviewAt.toISOString(),
     productionDatabasePathVerified: true,
+    productionBindingPrincipalObserved: true,
     localFallbackPersistenceAbsent: true,
     dedicatedApplicationPrincipalVerified: true,
     migrationPrincipalSeparated: true,
     privilegedDatabaseCapabilitiesAbsent: true,
+    unexpectedDatabaseOwnershipAbsent: true,
+    unexpectedSchemaOwnershipAbsent: true,
+    unexpectedRelationOwnershipAbsent: true,
+    unexpectedDirectObjectPrivilegesAbsent: true,
     requiredApplicationAccessVerified: true,
     scopeComplete: true,
   });
