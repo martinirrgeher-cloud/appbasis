@@ -15,7 +15,8 @@ const validBackupPrincipal = Object.freeze({
   database_create: false,
   membership_count: 0,
   admin_membership_count: 0,
-  reverse_membership_count: 0,
+  automatic_owner_reverse_membership_count: 0,
+  unsafe_reverse_membership_count: 0,
   owned_schema_count: 0,
   unusable_schema_count: 0,
   creatable_schema_count: 0,
@@ -101,13 +102,21 @@ test("holds one isolated least-privileged whole-database read-only repeatable-re
   assert.match(queries[1], /user_tables AS MATERIALIZED \([\s\S]*relation\.relkind IN \('r', 'p', 'v', 'm', 'f'\)/);
   assert.match(queries[1], /user_sequences AS MATERIALIZED \([\s\S]*relation\.relkind = 'S'/);
   assert.match(queries[1], /JOIN user_tables AS relation ON relation\.oid = a\.attrelid/);
+  assert.match(queries[1], /reverse_memberships AS \(/);
+  assert.match(queries[1], /JOIN pg_catalog\.pg_roles AS grantor_role ON grantor_role\.oid = membership\.grantor/);
+  assert.match(queries[1], /membership\.roleid = role\.oid/);
+  assert.match(queries[1], /membership\.member = database_record\.datdba/);
+  assert.match(queries[1], /membership\.grantor_is_superuser/);
+  assert.match(queries[1], /membership\.admin_option/);
+  assert.match(queries[1], /NOT membership\.inherit_option/);
+  assert.match(queries[1], /NOT membership\.set_option/);
+  assert.match(queries[1], /automatic_owner_reverse_membership_count/);
+  assert.match(queries[1], /unsafe_reverse_membership_count/);
   assert.match(queries[1], /owned_schema_count/);
   assert.match(queries[1], /unusable_schema_count/);
   assert.match(queries[1], /creatable_schema_count/);
   assert.match(queries[1], /owned_relation_count/);
   assert.match(queries[1], /membership_count/);
-  assert.match(queries[1], /reverse_membership_count/);
-  assert.match(queries[1], /membership\.roleid = role\.oid/);
   assert.match(queries[1], /FROM user_tables AS relation\s+WHERE relation\.relkind IN \('r', 'p', 'm'\)/);
   assert.match(queries[1], /FROM user_tables AS relation\s+WHERE\s+pg_catalog\.has_table_privilege/);
   assert.match(queries[1], /FROM user_tables AS relation\s+WHERE\s+pg_catalog\.has_any_column_privilege/);
@@ -134,6 +143,27 @@ test("holds one isolated least-privileged whole-database read-only repeatable-re
   assert.equal(accessCalls, 2);
 });
 
+test("allows one superuser-created non-inheritable non-settable admin back-reference to the database owner", async () => {
+  const writes = [];
+  const result = await holdUlcLinzM5ExportedSnapshot(
+    {
+      databaseUrl: "postgresql://backup:pw@origin.example/neondb",
+      snapshotPath: "/tmp/source.snapshot",
+      releasePath: "/tmp/source.snapshot.release",
+    },
+    {
+      databaseFactory: databaseFactoryFor("00000003-0000001B-1", [], {
+        ...validBackupPrincipal,
+        automatic_owner_reverse_membership_count: 1,
+      }),
+      fileWrite: async (...args) => writes.push(args),
+      fileAccess: async () => {},
+    },
+  );
+  assert.equal(result, "00000003-0000001B-1");
+  assert.equal(writes.length, 1);
+});
+
 test("fails closed when the production backup credential is not isolated least-privileged read-only across the whole database", async () => {
   for (const backupPrincipal of [
     { ...validBackupPrincipal, rolsuper: true },
@@ -146,7 +176,8 @@ test("fails closed when the production backup credential is not isolated least-p
     { ...validBackupPrincipal, database_create: true },
     { ...validBackupPrincipal, membership_count: 1 },
     { ...validBackupPrincipal, admin_membership_count: 1 },
-    { ...validBackupPrincipal, reverse_membership_count: 1 },
+    { ...validBackupPrincipal, automatic_owner_reverse_membership_count: 2 },
+    { ...validBackupPrincipal, unsafe_reverse_membership_count: 1 },
     { ...validBackupPrincipal, owned_schema_count: 1 },
     { ...validBackupPrincipal, unusable_schema_count: 1 },
     { ...validBackupPrincipal, creatable_schema_count: 1 },
