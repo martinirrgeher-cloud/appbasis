@@ -111,6 +111,13 @@ test("holds one isolated least-privileged whole-database read-only repeatable-re
   assert.match(queries[1], /writable_column_count/);
   assert.match(queries[1], /grantable_acl_count/);
   assert.match(queries[1], /pg_catalog\.aclexplode/);
+  assert.equal((queries[1].match(/pg_catalog\.aclexplode\(/g) ?? []).length, 5);
+  assert.doesNotMatch(queries[1], /aclexplode\(COALESCE/);
+  assert.match(queries[1], /aclexplode\(database_acl\.datacl\)/);
+  assert.match(queries[1], /aclexplode\(schema_acl\.nspacl\)/);
+  assert.match(queries[1], /aclexplode\(relation\.relacl\)/);
+  assert.match(queries[1], /aclexplode\(column_acl\.attacl\)/);
+  assert.match(queries[1], /aclexplode\(function\.proacl\)/);
   assert.doesNotMatch(queries[1], /WHERE n\.nspname = 'public'/);
   assert.equal(queries[2], "SELECT pg_catalog.pg_export_snapshot() AS snapshot_id");
   assert.deepEqual(writes, [{
