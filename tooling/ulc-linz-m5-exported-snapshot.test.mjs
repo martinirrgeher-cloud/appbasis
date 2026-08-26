@@ -37,7 +37,7 @@ function databaseFactoryFor(snapshotId, queries, backupPrincipal = validBackupPr
         return callback({
           async unsafe(query) {
             queries.push(query);
-            if (query.includes("WITH current_role AS")) {
+            if (query.includes("WITH backup_role AS")) {
               return [structuredClone(backupPrincipal)];
             }
             if (query.includes("pg_export_snapshot")) {
@@ -88,6 +88,8 @@ test("holds one isolated least-privileged whole-database read-only repeatable-re
   assert.equal(result, snapshotId);
   assert.equal(queries.length, 3);
   assert.equal(queries[0], "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
+  assert.match(queries[1], /WITH backup_role AS/);
+  assert.doesNotMatch(queries[1], /WITH current_role AS/);
   assert.match(queries[1], /session_user_matches/);
   assert.match(queries[1], /owns_database/);
   assert.match(queries[1], /database_create/);
