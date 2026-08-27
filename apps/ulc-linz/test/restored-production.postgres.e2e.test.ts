@@ -285,7 +285,13 @@ describe("ULC restored production database evidence", () => {
             public_cleanup_execute: false,
           },
         ]);
-        await verifyRestoredSecurityAcl(securityReadDatabase.client);
+        await verifyRestoredSecurityAcl(securityReadDatabase.client, {
+          restoreOwner: target.username,
+          operationalMembers: [
+            ["ulc_linz_security_event_ingest", ingestTarget.username],
+            ["ulc_linz_security_event_read", readTarget.username],
+          ],
+        });
         await verifyRestoreOperationalPrincipal(
           SECURITY_LOG_INGEST_DATABASE_URL,
           "ulc_linz_security_event_ingest",
@@ -323,6 +329,12 @@ describe("ULC restored production database evidence", () => {
 
 async function verifyRestoredSecurityAcl(
   client: ReturnType<typeof createPostgresDatabase>["client"],
+  membershipBoundary: {
+    restoreOwner: string;
+    operationalMembers: ReadonlyArray<
+      readonly [(typeof SECURITY_GROUPS)[number], string]
+    >;
+  },
 ) {
   const grantRows = await client.unsafe(`
     WITH acl_rows AS (
@@ -383,26 +395,51 @@ async function verifyRestoredSecurityAcl(
   expect(actual).toEqual(expected);
 
   const membershipRows = await client.unsafe(
-    `SELECT parent.rolname AS group_role, member.rolname AS member_role, membership.admin_option
+    `SELECT parent.rolname AS group_role,
+            member.rolname AS member_role,
+            grantor.rolsuper AS grantor_superuser,
+            membership.admin_option,
+            membership.inherit_option,
+            membership.set_option
        FROM pg_catalog.pg_auth_members membership
        JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
        JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+       JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
       WHERE parent.rolname = ANY($1::text[]) OR member.rolname = ANY($1::text[])
       ORDER BY parent.rolname, member.rolname`,
     [[...SECURITY_GROUPS]],
   );
-  expect(membershipRows).toHaveLength(SECURITY_GROUPS.length);
-  const seenGroups = new Set<string>();
-  const seenMembers = new Set<string>();
+  const expectedOperationalMembers = new Map(membershipBoundary.operationalMembers);
+  expect(expectedOperationalMembers.size).toBe(membershipBoundary.operationalMembers.length);
+  const seenOperationalGroups = new Set<string>();
+  const seenOperationalMembers = new Set<string>();
+  const seenCreatorBackReferences = new Set<string>();
   for (const row of membershipRows) {
-    expect(SECURITY_GROUPS).toContain(String(row.group_role));
-    expect(SECURITY_GROUPS).not.toContain(String(row.member_role));
+    const group = String(row.group_role);
+    const member = String(row.member_role);
+    expect(SECURITY_GROUPS).toContain(group);
+    expect(SECURITY_GROUPS).not.toContain(member);
+
+    if (member === membershipBoundary.restoreOwner) {
+      expect(row.grantor_superuser).toBe(true);
+      expect(row.admin_option).toBe(true);
+      expect(row.inherit_option).toBe(false);
+      expect(row.set_option).toBe(false);
+      expect(seenCreatorBackReferences.has(group)).toBe(false);
+      seenCreatorBackReferences.add(group);
+      continue;
+    }
+
+    expect(expectedOperationalMembers.get(group as (typeof SECURITY_GROUPS)[number])).toBe(member);
     expect(row.admin_option).toBe(false);
-    seenGroups.add(String(row.group_role));
-    seenMembers.add(String(row.member_role));
+    expect(row.inherit_option).toBe(true);
+    expect(row.set_option).toBe(true);
+    expect(seenOperationalGroups.has(group)).toBe(false);
+    seenOperationalGroups.add(group);
+    seenOperationalMembers.add(member);
   }
-  expect(seenGroups).toEqual(new Set(SECURITY_GROUPS));
-  expect(seenMembers.size).toBe(SECURITY_GROUPS.length);
+  expect(seenOperationalGroups).toEqual(new Set(expectedOperationalMembers.keys()));
+  expect(seenOperationalMembers).toEqual(new Set(expectedOperationalMembers.values()));
 }
 
 async function verifyRestoreOperationalPrincipal(
