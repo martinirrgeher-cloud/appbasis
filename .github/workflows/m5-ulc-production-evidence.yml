@@ -110,6 +110,7 @@ jobs:
             test -n "${!name:-}" || { echo "Missing protected ULC M5 input: $name." >&2; exit 1; }
             echo "::add-mask::${!name}"
           done
+          node ./tooling/ulc-linz-m5-restore-credential-preflight.mjs
           node --input-type=module <<'NODE'
           const app = new URL(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
           const backup = new URL(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL);

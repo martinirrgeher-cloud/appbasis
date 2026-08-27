@@ -120,6 +120,9 @@ jobs:
       - name: Verify repository and toolchain
         run: pnpm run verify:repo
 
+      - name: Test M5 restore credential preflight
+        run: node --test ./tooling/ulc-linz-m5-restore-credential-preflight.test.mjs
+
       - name: Typecheck
         run: pnpm run typecheck
 
