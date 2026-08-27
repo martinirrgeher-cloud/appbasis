@@ -346,7 +346,7 @@ async function verifyRestoredSecurityAcl(
       FROM pg_catalog.pg_attribute attribute
       JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-      CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(attribute.attacl, ARRAY[]::aclitem[])) acl
+      CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl
       WHERE namespace.nspname = 'public' AND relation.relname = 'ulc_linz_security_event_log'
         AND attribute.attnum > 0 AND NOT attribute.attisdropped
       UNION ALL
