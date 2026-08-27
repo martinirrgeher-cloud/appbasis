@@ -285,8 +285,12 @@ describe("ULC restored production database evidence", () => {
             public_cleanup_execute: false,
           },
         ]);
+        const restoreOwner = await readRestoredAuditObjectOwner(securityReadDatabase.client);
+        expect(restoreOwner).not.toBe(target.username);
+        expect(restoreOwner).not.toBe(ingestTarget.username);
+        expect(restoreOwner).not.toBe(readTarget.username);
         await verifyRestoredSecurityAcl(securityReadDatabase.client, {
-          restoreOwner: target.username,
+          restoreOwner,
           operationalMembers: [
             ["ulc_linz_security_event_ingest", ingestTarget.username],
             ["ulc_linz_security_event_read", readTarget.username],
@@ -326,6 +330,49 @@ describe("ULC restored production database evidence", () => {
     30_000,
   );
 });
+
+async function readRestoredAuditObjectOwner(
+  client: ReturnType<typeof createPostgresDatabase>["client"],
+): Promise<string> {
+  const rows = await client.unsafe(`
+    SELECT
+      (
+        SELECT pg_catalog.pg_get_userbyid(relation.relowner)
+        FROM pg_catalog.pg_class relation
+        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND relation.relname = 'ulc_linz_security_event_log'
+          AND relation.relkind IN ('r', 'p')
+      ) AS table_owner,
+      (
+        SELECT pg_catalog.pg_get_userbyid(relation.relowner)
+        FROM pg_catalog.pg_class relation
+        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND relation.relname = 'ulc_linz_security_event_log_id_seq'
+          AND relation.relkind = 'S'
+      ) AS sequence_owner,
+      (
+        SELECT pg_catalog.pg_get_userbyid(procedure.proowner)
+        FROM pg_catalog.pg_proc procedure
+        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+        WHERE namespace.nspname = 'public'
+          AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+          AND procedure.pronargs = 0
+      ) AS function_owner
+  `);
+  expect(rows).toHaveLength(1);
+  const owners = [rows[0]?.table_owner, rows[0]?.sequence_owner, rows[0]?.function_owner];
+  for (const owner of owners) {
+    expect(typeof owner).toBe("string");
+    expect(String(owner).length).toBeGreaterThan(0);
+  }
+  const uniqueOwners = new Set(owners.map((owner) => String(owner)));
+  expect(uniqueOwners.size).toBe(1);
+  const restoreOwner = String(owners[0]);
+  expect(SECURITY_GROUPS).not.toContain(restoreOwner);
+  return restoreOwner;
+}
 
 async function verifyRestoredSecurityAcl(
   client: ReturnType<typeof createPostgresDatabase>["client"],
