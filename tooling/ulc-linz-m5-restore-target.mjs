@@ -254,7 +254,11 @@ function assertCanonicalSingleHostAuthority(value, url, name) {
     .filter((index) => index >= 0);
   const authorityEnd = boundaryIndexes.length > 0 ? Math.min(...boundaryIndexes) : value.length;
   const authority = value.slice(authorityStart, authorityEnd);
-  const atIndex = authority.lastIndexOf("@");
+  const rawAtCount = [...authority].filter((character) => character === "@").length;
+  if (rawAtCount !== 1) {
+    throw new Error(`${name} must contain exactly one canonical user-info delimiter.`);
+  }
+  const atIndex = authority.indexOf("@");
   const hostPort = authority.slice(atIndex + 1);
   if (
     !hostPort ||
