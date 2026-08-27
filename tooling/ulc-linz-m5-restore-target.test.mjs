@@ -89,20 +89,24 @@ test("canonicalizes or rejects equivalent production endpoint spellings before a
           return emptyDatabase();
         },
       }),
-      /different database endpoint|canonical direct Neon endpoint/,
+      /different database endpoint|canonical direct Neon endpoint|canonical database host/,
     );
     assert.equal(createCalls, 0, `must reject before connecting to ${restoreUrl}`);
   }
 });
 
 test("destructive reset accepts only one canonical direct Neon owner endpoint", async () => {
+  const productionHost = new URL(SOURCE).hostname;
+  const restoreHost = new URL(RESTORE).hostname;
   const unsafeRestoreUrls = [
-    RESTORE.replace("ep-restore.us-east-2.aws.neon.tech", "restore.example.test"),
+    RESTORE.replace(restoreHost, "restore.example.test"),
     RESTORE.replace("ep-restore", "ep-restore-pooler"),
     RESTORE.replace(".neon.tech/", ".neon.tech./"),
     RESTORE.replace("/neondb?", "/n%65ondb?"),
     RESTORE.replace(".neon.tech/", ".neon.tech:5433/"),
     RESTORE.replace("neondb_owner", "ulc_linz_application"),
+    RESTORE.replace(restoreHost, `${productionHost},${restoreHost}`),
+    RESTORE.replace(restoreHost, `${productionHost}%2C${restoreHost}`),
     `${RESTORE}#alternate`,
   ];
 
@@ -117,7 +121,7 @@ test("destructive reset accepts only one canonical direct Neon owner endpoint", 
           return emptyDatabase();
         },
       }),
-      /canonical direct Neon endpoint/,
+      /canonical direct Neon endpoint|canonical database host|valid URL|Invalid URL/,
     );
     assert.equal(createCalls, 0);
   }
