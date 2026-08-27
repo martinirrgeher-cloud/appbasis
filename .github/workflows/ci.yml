@@ -123,6 +123,9 @@ jobs:
       - name: Test M5 restore credential preflight
         run: node --test ./tooling/ulc-linz-m5-restore-credential-preflight.test.mjs
 
+      - name: Test M5 restore authority regressions
+        run: node --test ./tooling/ulc-linz-m5-restore-authority-regression.test.mjs
+
       - name: Typecheck
         run: pnpm run typecheck
 
