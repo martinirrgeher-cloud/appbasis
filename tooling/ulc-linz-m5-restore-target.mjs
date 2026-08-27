@@ -204,6 +204,7 @@ function requiredUlcLinzProductionDatabaseUrl(value) {
 
 function requiredUlcLinzRestoreDatabaseUrl(value) {
   const url = requiredEncryptedDatabaseUrl(value, "ULC M5 restore database URL");
+  assertCanonicalSingleHostAuthority(value, url, "ULC M5 restore database URL");
   const hostname = url.hostname.toLowerCase();
   const databaseName = canonicalDatabaseName(url);
   const port = url.port || "5432";
@@ -237,6 +238,33 @@ function requiredEncryptedDatabaseUrl(value, name) {
     throw new Error(`${name} is invalid.`);
   }
   return url;
+}
+
+function assertCanonicalSingleHostAuthority(value, url, name) {
+  if (typeof value !== "string") {
+    throw new Error(`${name} must be a canonical single-host connection string.`);
+  }
+  const schemeIndex = value.indexOf("://");
+  if (schemeIndex <= 0) {
+    throw new Error(`${name} must be a canonical single-host connection string.`);
+  }
+  const authorityStart = schemeIndex + 3;
+  const boundaryIndexes = ["/", "?", "#"]
+    .map((separator) => value.indexOf(separator, authorityStart))
+    .filter((index) => index >= 0);
+  const authorityEnd = boundaryIndexes.length > 0 ? Math.min(...boundaryIndexes) : value.length;
+  const authority = value.slice(authorityStart, authorityEnd);
+  const atIndex = authority.lastIndexOf("@");
+  const hostPort = authority.slice(atIndex + 1);
+  if (
+    !hostPort ||
+    hostPort.includes(",") ||
+    /%2c/i.test(hostPort) ||
+    hostPort.includes("%") ||
+    hostPort.toLowerCase() !== url.host.toLowerCase()
+  ) {
+    throw new Error(`${name} must contain exactly one canonical database host.`);
+  }
 }
 
 function databaseAliasIdentity(value) {
