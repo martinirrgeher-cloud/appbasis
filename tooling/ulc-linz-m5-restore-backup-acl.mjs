@@ -71,6 +71,7 @@ export async function prepareInertRestoreBackupAclPrincipal(
         granted.rolname AS granted_role,
         member.rolname AS member_name,
         grantor.rolname AS grantor_name,
+        grantor.rolsuper AS grantor_superuser,
         membership.admin_option,
         membership.inherit_option,
         membership.set_option
@@ -150,7 +151,7 @@ function assertInertRole(role, record, memberships) {
   const safeCreatorBackReference =
     membership.granted_role === role &&
     membership.member_name === record.current_user &&
-    membership.grantor_name === record.current_user &&
+    membership.grantor_superuser === true &&
     membership.admin_option === true &&
     membership.inherit_option === false &&
     membership.set_option === false;
