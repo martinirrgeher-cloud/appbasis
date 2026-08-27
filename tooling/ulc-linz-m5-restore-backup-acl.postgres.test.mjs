@@ -35,7 +35,7 @@ if (!databaseUrl) {
 
       const memberships = await context.superDatabase.client.unsafe(`
         SELECT granted.rolname AS granted_role, member.rolname AS member_name,
-               grantor.rolname AS grantor_name, membership.admin_option,
+               grantor.rolsuper AS grantor_superuser, membership.admin_option,
                membership.inherit_option, membership.set_option
         FROM pg_catalog.pg_auth_members membership
         JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
@@ -46,7 +46,7 @@ if (!databaseUrl) {
       assert.deepEqual(memberships, [{
         granted_role: context.backupRole,
         member_name: context.ownerRole,
-        grantor_name: context.ownerRole,
+        grantor_superuser: true,
         admin_option: true,
         inherit_option: false,
         set_option: false,
