@@ -4,12 +4,19 @@ import test from "node:test";
 
 import { verifyRestoreCredentials } from "./ulc-linz-m5-restore-credential-preflight.mjs";
 
+const RESTORE_HOST = "ep-restore.us-east-2.aws.neon.tech";
+const RESTORE_DATABASE = "neondb";
+
+function credential(user, password, host = RESTORE_HOST) {
+  return `postgresql://${user}:${password}@${host}/${RESTORE_DATABASE}?sslmode=require`;
+}
+
 function env(overrides = {}) {
   return {
-    APPBASIS_M4_RESTORE_DATABASE_URL: "postgresql://owner:owner-pass@restore.example/db",
-    APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL: "postgresql://application:app-pass@restore.example/db",
-    APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL: "postgresql://ingest:ingest-pass@restore.example/db",
-    APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: "postgresql://reader:read-pass@restore.example/db",
+    APPBASIS_M4_RESTORE_DATABASE_URL: credential("owner", "owner-pass"),
+    APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL: credential("application", "app-pass"),
+    APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL: credential("ingest", "ingest-pass"),
+    APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: credential("reader", "read-pass"),
     ...overrides,
   };
 }
@@ -41,7 +48,7 @@ test("verifies all four distinct restore credentials before M5 work", async () =
 test("accepts URL-encoded PostgreSQL principals and compares decoded current_user", async () => {
   const opened = [];
   const result = await verifyRestoreCredentials(env({
-    APPBASIS_M4_RESTORE_DATABASE_URL: "postgresql://owner%40tenant:owner-pass@restore.example/db",
+    APPBASIS_M4_RESTORE_DATABASE_URL: credential("owner%40tenant", "owner-pass"),
   }), { databaseFactory: successfulFactory(opened) });
   assert.equal(opened[0], "owner@tenant");
   assert.deepEqual(result, { restoreCredentialPreflightVerified: true });
@@ -51,7 +58,8 @@ test("fails before connecting when any restore credential has no password", asyn
   let opened = false;
   await assert.rejects(
     () => verifyRestoreCredentials(env({
-      APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL: "postgresql://application@restore.example/db",
+      APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL:
+        `postgresql://application@${RESTORE_HOST}/${RESTORE_DATABASE}?sslmode=require`,
     }), { databaseFactory: () => { opened = true; throw new Error("must not connect"); } }),
     /application credential must include host, database, username and password/,
   );
@@ -62,23 +70,44 @@ test("fails before connecting on endpoint drift or duplicate decoded principals"
   const factory = () => { throw new Error("must not connect"); };
   await assert.rejects(
     () => verifyRestoreCredentials(env({
-      APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: "postgresql://reader:read-pass@other.example/db",
+      APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL:
+        credential("reader", "read-pass", "ep-other.us-east-2.aws.neon.tech"),
     }), { databaseFactory: factory }),
     /exact same isolated restore database/,
   );
   await assert.rejects(
     () => verifyRestoreCredentials(env({
-      APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: "postgresql://application:read-pass@restore.example/db",
+      APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: credential("application", "read-pass"),
     }), { databaseFactory: factory }),
     /must use distinct principals/,
   );
   await assert.rejects(
     () => verifyRestoreCredentials(env({
-      APPBASIS_M4_RESTORE_DATABASE_URL: "postgresql://owner%40tenant:owner-pass@restore.example/db",
-      APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: "postgresql://owner%40tenant:read-pass@restore.example/db",
+      APPBASIS_M4_RESTORE_DATABASE_URL: credential("owner%40tenant", "owner-pass"),
+      APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: credential("owner%40tenant", "read-pass"),
     }), { databaseFactory: factory }),
     /must use distinct principals/,
   );
+});
+
+test("fails closed before connecting for multi-host or non-canonical restore credentials", async () => {
+  const unsafe = [
+    credential("owner", "owner-pass", `${RESTORE_HOST},ep-other.us-east-2.aws.neon.tech`),
+    credential("owner", "owner-pass", `${RESTORE_HOST}%2Cep-other.us-east-2.aws.neon.tech`),
+    credential("owner", "owner-pass", "ep-restore-pooler.us-east-2.aws.neon.tech"),
+    credential("owner", "owner-pass", "restore.example.test"),
+  ];
+
+  for (const restoreUrl of unsafe) {
+    let opened = false;
+    await assert.rejects(
+      () => verifyRestoreCredentials(env({
+        APPBASIS_M4_RESTORE_DATABASE_URL: restoreUrl,
+      }), { databaseFactory: () => { opened = true; throw new Error("must not connect"); } }),
+      /canonical|exactly one canonical database host|valid PostgreSQL URL/,
+    );
+    assert.equal(opened, false);
+  }
 });
 
 test("reports all login failures without exposing credentials", async () => {
