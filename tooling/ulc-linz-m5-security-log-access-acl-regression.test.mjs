@@ -36,6 +36,12 @@ test("restore ACL inventory distinguishes operational memberships from safe crea
   assert.match(restoreE2e, /expect\(row\.inherit_option\)\.toBe\(false\)/);
   assert.match(restoreE2e, /expect\(row\.set_option\)\.toBe\(false\)/);
   assert.match(restoreE2e, /expectedOperationalMembers/);
+  assert.match(restoreE2e, /readRestoredAuditObjectOwner/);
+  assert.match(restoreE2e, /pg_catalog\.pg_get_userbyid\(relation\.relowner\)/);
+  assert.match(restoreE2e, /pg_catalog\.pg_get_userbyid\(procedure\.proowner\)/);
+  assert.match(restoreE2e, /expect\(uniqueOwners\.size\)\.toBe\(1\)/);
+  assert.match(restoreE2e, /restoreOwner,\s*\n\s*operationalMembers:/);
+  assert.doesNotMatch(restoreE2e, /restoreOwner:\s*target\.username/);
   assert.doesNotMatch(
     restoreE2e,
     /expect\(membershipRows\)\.toHaveLength\(SECURITY_GROUPS\.length\)/,
