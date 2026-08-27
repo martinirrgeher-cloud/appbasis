@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { verifyM4IsolatedRestoreTargetEmpty } from "./m4-r2-restore-target.mjs";
+import {
+  shouldResetUlcLinzM5RestoreTarget,
+  verifyM4IsolatedRestoreTargetEmpty,
+} from "./m4-r2-restore-target.mjs";
 
 const sourceUrl =
   "postgresql://source:secret@source.example.test/appbasis_m3_preview?sslmode=require";
@@ -218,4 +221,32 @@ test("sanitizes restore target connection failures", async () => {
     },
   );
   assert.equal(database.closed, 1);
+});
+
+test("ULC restore reset is enabled only inside the exact main workflow_dispatch evidence run", () => {
+  const ulcSource =
+    "postgresql://ulc_linz_application:secret@ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require";
+  const approved = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_WORKFLOW: "M5 ULC Production Evidence",
+    GITHUB_EVENT_NAME: "workflow_dispatch",
+    GITHUB_REF: "refs/heads/main",
+  };
+
+  assert.equal(shouldResetUlcLinzM5RestoreTarget({ sourceUrl: ulcSource, env: approved }), true);
+  for (const drift of [
+    { GITHUB_ACTIONS: "false" },
+    { GITHUB_WORKFLOW: "M4 R2 Restore Rehearsal" },
+    { GITHUB_EVENT_NAME: "push" },
+    { GITHUB_REF: "refs/heads/feature" },
+  ]) {
+    assert.equal(
+      shouldResetUlcLinzM5RestoreTarget({ sourceUrl: ulcSource, env: { ...approved, ...drift } }),
+      false,
+    );
+  }
+  assert.equal(
+    shouldResetUlcLinzM5RestoreTarget({ sourceUrl, env: approved }),
+    false,
+  );
 });
