@@ -16,12 +16,13 @@ function env(overrides = {}) {
 function successfulFactory(opened) {
   return (value) => {
     const url = new URL(value);
-    opened.push(url.username);
+    const username = decodeURIComponent(url.username);
+    opened.push(username);
     return {
       client: {
         unsafe: async (query) => {
           assert.equal(query, "SELECT current_user AS current_user");
-          return [{ current_user: url.username }];
+          return [{ current_user: username }];
         },
         end: async () => {},
       },
@@ -36,6 +37,15 @@ test("verifies all four distinct restore credentials before M5 work", async () =
   assert.deepEqual(result, { restoreCredentialPreflightVerified: true });
 });
 
+test("accepts URL-encoded PostgreSQL principals and compares decoded current_user", async () => {
+  const opened = [];
+  const result = await verifyRestoreCredentials(env({
+    APPBASIS_M4_RESTORE_DATABASE_URL: "postgresql://owner%40tenant:owner-pass@restore.example/db",
+  }), { databaseFactory: successfulFactory(opened) });
+  assert.equal(opened[0], "owner@tenant");
+  assert.deepEqual(result, { restoreCredentialPreflightVerified: true });
+});
+
 test("fails before connecting when any restore credential has no password", async () => {
   let opened = false;
   await assert.rejects(
@@ -47,7 +57,7 @@ test("fails before connecting when any restore credential has no password", asyn
   assert.equal(opened, false);
 });
 
-test("fails before connecting on endpoint drift or duplicate principals", async () => {
+test("fails before connecting on endpoint drift or duplicate decoded principals", async () => {
   const factory = () => { throw new Error("must not connect"); };
   await assert.rejects(
     () => verifyRestoreCredentials(env({
@@ -61,6 +71,13 @@ test("fails before connecting on endpoint drift or duplicate principals", async 
     }), { databaseFactory: factory }),
     /must use distinct principals/,
   );
+  await assert.rejects(
+    () => verifyRestoreCredentials(env({
+      APPBASIS_M4_RESTORE_DATABASE_URL: "postgresql://owner%40tenant:owner-pass@restore.example/db",
+      APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL: "postgresql://owner%40tenant:read-pass@restore.example/db",
+    }), { databaseFactory: factory }),
+    /must use distinct principals/,
+  );
 });
 
 test("reports all login failures without exposing credentials", async () => {
@@ -71,7 +88,7 @@ test("reports all login failures without exposing credentials", async () => {
       client: {
         unsafe: async () => {
           if (failing.has(url.username)) throw new Error(`password=${url.password}`);
-          return [{ current_user: url.username }];
+          return [{ current_user: decodeURIComponent(url.username) }];
         },
         end: async () => {},
       },
