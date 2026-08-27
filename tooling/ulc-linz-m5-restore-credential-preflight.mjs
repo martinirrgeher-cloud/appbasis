@@ -9,6 +9,7 @@ const RESTORE_CREDENTIALS = [
   ["security-log-ingest", "APPBASIS_M4_RESTORE_SECURITY_LOG_INGEST_DATABASE_URL"],
   ["security-log-read", "APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL"],
 ];
+const IDENTITY_QUERY = "SELECT current_database() AS current_database, current_user AS current_user";
 
 export async function verifyRestoreCredentials(env = process.env, { databaseFactory = createPostgresDatabase } = {}) {
   const parsed = RESTORE_CREDENTIALS.map(([label, name]) => ({
@@ -26,13 +27,19 @@ export async function verifyRestoreCredentials(env = process.env, { databaseFact
     throw new Error("ULC M5 restore owner, application, ingest and read credentials must use distinct principals.");
   }
 
+  const expectedDatabase = decodeDatabaseName(parsed[0].url);
   const failures = [];
   for (const [index, credential] of parsed.entries()) {
     const database = databaseFactory(credential.url.toString());
     try {
-      const rows = await database.client.unsafe("SELECT current_user AS current_user");
-      if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.current_user !== decodedPrincipals[index]) {
-        failures.push(`${credential.label}: authenticated principal mismatch`);
+      const rows = await database.client.unsafe(IDENTITY_QUERY);
+      if (
+        !Array.isArray(rows) ||
+        rows.length !== 1 ||
+        rows[0]?.current_user !== decodedPrincipals[index] ||
+        rows[0]?.current_database !== expectedDatabase
+      ) {
+        failures.push(`${credential.label}: effective database identity mismatch`);
       }
     } catch {
       failures.push(`${credential.label}: login failed`);
@@ -64,6 +71,7 @@ function parseCredential(value, label) {
   }
   const url = parseUlcLinzM5RestoreDatabaseUrl(value);
   decodePrincipal(url.username);
+  decodeDatabaseName(url);
   return url;
 }
 
@@ -75,8 +83,16 @@ function decodePrincipal(username) {
   }
 }
 
+function decodeDatabaseName(url) {
+  try {
+    return decodeURIComponent(url.pathname.slice(1));
+  } catch {
+    throw new Error("ULC M5 restore credential contains an invalid URL-encoded database name.");
+  }
+}
+
 function endpointKey(url) {
-  return `${url.hostname.toLowerCase()}:${url.port || "5432"}${url.pathname}`;
+  return `${url.hostname.toLowerCase()}:${url.port || "5432"}/${decodeDatabaseName(url)}`;
 }
 
 async function main() {
