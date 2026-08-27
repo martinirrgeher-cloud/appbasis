@@ -202,6 +202,12 @@ jobs:
           wait "$SNAPSHOT_PID"
           trap - EXIT
 
+      - name: Prepare inert backup ACL principal in isolated restore target
+        env:
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-m5-restore-backup-acl.mjs prepare
+
       - name: Restore production dump atomically into isolated target
         shell: bash
         env:
@@ -214,6 +220,12 @@ jobs:
             --volume "$WORK:/evidence:ro" \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
             sh -ceu 'pg_restore --single-transaction --no-owner --exit-on-error --dbname="$APPBASIS_M4_RESTORE_DATABASE_URL" /evidence/production.pgdump'
+
+      - name: Verify restored backup audit ACL before operational ACL checks
+        env:
+          APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-m5-restore-backup-acl.mjs verify-cleanup
 
       - name: Capture and compare sanitized restored fingerprint
         shell: bash
