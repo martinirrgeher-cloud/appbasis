@@ -144,7 +144,7 @@ describe("ULC restored production database evidence", () => {
         if (evaluatePermission === undefined) {
           throw new Error("Restored production runtime is missing the permission evaluator.");
         }
-        const permissionAllowed = await evaluatePermission({
+        const permissionAllowed = await evaluatePermission.call(runtime.permissions, {
           principalId: principalId(`m5-restore-missing-${randomUUID()}`),
           capability: capabilityId("ulc-linz:module:__restore_probe__:view"),
         });
@@ -237,7 +237,6 @@ describe("ULC restored production database evidence", () => {
           [occurredAt.toISOString(), retainedUntil.toISOString()],
         );
         expect(boundaryRows[0]?.exact_boundary).toBe(true);
-
         const accessRows = await securityReadDatabase.client.unsafe(`
           SELECT
             to_regrole('ulc_linz_security_event_ingest') IS NOT NULL AS ingest_role,
