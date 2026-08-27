@@ -5,7 +5,9 @@ import { createPostgresDatabase } from "../packages/database/src/node-runtime.mj
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
 const STRONG_SSL_MODES = new Set(["require", "verify-ca", "verify-full"]);
+const SAFE_CHANNEL_BINDING_MODES = new Set(["disable", "prefer", "require"]);
 const SOURCE_ROLE = "ulc_linz_application";
+const CONNECTION_IDENTITY_QUERY = "SELECT current_database() AS current_database, current_user AS current_user";
 const EMPTY_TARGET_QUERY = `
 SELECT
   (
@@ -53,20 +55,19 @@ export async function verifyUlcLinzM5IsolatedRestoreTargetEmpty({
   restoreUrl,
   createDatabase = createPostgresDatabase,
 } = {}) {
-  validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase });
+  const restore = validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase });
 
   let database;
   try {
     database = createDatabase(restoreUrl);
     const client = requiredInspectableClient(database?.client);
+    await verifyEffectiveConnectionIdentity(client, restore);
     const state = requiredTargetState(await client.unsafe(EMPTY_TARGET_QUERY));
-    if (!isEmptyTargetState(state)) {
-      throw new Error("restore target is not empty");
-    }
+    if (!isEmptyTargetState(state)) throw new Error("restore target is not empty");
     return Object.freeze({ status: "restore-target-empty", appId: "ulc-linz" });
   } catch {
     throw new Error(
-      "ULC M5 restore target is not empty or could not be inspected; use a fresh isolated target.",
+      "ULC M5 restore target is not empty, has an unexpected effective database identity, or could not be inspected; use a fresh isolated target.",
     );
   } finally {
     await closeDatabase(database);
@@ -78,16 +79,15 @@ export async function resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
   restoreUrl,
   createDatabase = createPostgresDatabase,
 } = {}) {
-  validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase });
+  const restore = validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase });
 
   let database;
   try {
     database = createDatabase(restoreUrl);
     const client = requiredInspectableClient(database?.client);
-    if (typeof client.begin !== "function") {
-      throw new Error("database transaction boundary is invalid");
-    }
+    if (typeof client.begin !== "function") throw new Error("database transaction boundary is invalid");
 
+    await verifyEffectiveConnectionIdentity(client, restore);
     const before = requiredTargetState(await client.unsafe(EMPTY_TARGET_QUERY));
     if (before.extra_schema_count !== 0) {
       throw new Error("restore target contains an unexpected non-public schema");
@@ -99,6 +99,7 @@ export async function resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
         if (!transaction || typeof transaction.unsafe !== "function") {
           throw new Error("database transaction client is invalid");
         }
+        await verifyEffectiveConnectionIdentity(transaction, restore);
         for (const statement of RESET_PUBLIC_SCHEMA_STATEMENTS) {
           await transaction.unsafe(statement);
         }
@@ -106,16 +107,13 @@ export async function resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
       resetApplied = true;
     }
 
+    await verifyEffectiveConnectionIdentity(client, restore);
     const after = requiredTargetState(await client.unsafe(EMPTY_TARGET_QUERY));
     if (!isEmptyTargetState(after)) {
       throw new Error("restore target reset did not produce an empty target");
     }
 
-    return Object.freeze({
-      status: "restore-target-empty",
-      appId: "ulc-linz",
-      resetApplied,
-    });
+    return Object.freeze({ status: "restore-target-empty", appId: "ulc-linz", resetApplied });
   } catch {
     throw new Error(
       "ULC M5 isolated restore target reset was refused or failed; no production source mutation was attempted.",
@@ -128,6 +126,7 @@ export async function resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
 export function parseUlcLinzM5RestoreDatabaseUrl(value) {
   const url = requiredEncryptedDatabaseUrl(value, "ULC M5 restore database URL");
   assertCanonicalSingleHostAuthority(value, url, "ULC M5 restore database URL");
+  assertSafeRestoreQuery(url, "ULC M5 restore database URL");
   const hostname = url.hostname.toLowerCase();
   const databaseName = canonicalDatabaseName(url);
   const port = url.port || "5432";
@@ -139,7 +138,7 @@ export function parseUlcLinzM5RestoreDatabaseUrl(value) {
     port !== "5432" ||
     url.pathname !== `/${databaseName}` ||
     url.hash !== "" ||
-    url.username === SOURCE_ROLE
+    decodePrincipal(url.username) === SOURCE_ROLE
   ) {
     throw new Error(
       "ULC M5 restore database URL must use one canonical direct Neon endpoint, canonical database name, default PostgreSQL port and a non-production principal.",
@@ -159,22 +158,30 @@ function validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase }) {
   if (typeof createDatabase !== "function") {
     throw new Error("ULC M5 restore target database dependency is invalid.");
   }
+  return restore;
+}
+
+async function verifyEffectiveConnectionIdentity(client, expectedUrl) {
+  const rows = await client.unsafe(CONNECTION_IDENTITY_QUERY);
+  const expectedDatabase = canonicalDatabaseName(expectedUrl);
+  const expectedUser = decodePrincipal(expectedUrl.username);
+  if (
+    !Array.isArray(rows) ||
+    rows.length !== 1 ||
+    rows[0]?.current_database !== expectedDatabase ||
+    rows[0]?.current_user !== expectedUser
+  ) {
+    throw new Error("effective restore database identity does not match the approved target");
+  }
 }
 
 function requiredInspectableClient(client) {
-  if (!client || typeof client.unsafe !== "function") {
-    throw new Error("database client is invalid");
-  }
+  if (!client || typeof client.unsafe !== "function") throw new Error("database client is invalid");
   return client;
 }
 
 function requiredTargetState(rows) {
-  if (
-    !Array.isArray(rows) ||
-    rows.length !== 1 ||
-    rows[0] === null ||
-    typeof rows[0] !== "object"
-  ) {
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0] === null || typeof rows[0] !== "object") {
     throw new Error("restore target inspection result is invalid");
   }
   const state = rows[0];
@@ -193,13 +200,11 @@ function requiredTargetState(rows) {
 }
 
 function isEmptyTargetState(state) {
-  return (
-    state.public_schema_count === 1 &&
+  return state.public_schema_count === 1 &&
     state.extra_schema_count === 0 &&
     state.public_relation_count === 0 &&
     state.public_routine_count === 0 &&
-    state.public_type_count === 0
-  );
+    state.public_type_count === 0;
 }
 
 async function closeDatabase(database) {
@@ -210,17 +215,14 @@ async function closeDatabase(database) {
 
 function requiredUlcLinzProductionDatabaseUrl(value) {
   const url = requiredEncryptedDatabaseUrl(value, "ULC production database URL");
-  if (url.username !== SOURCE_ROLE) {
-    throw new Error(
-      "ULC M5 source database URL is not the dedicated production application principal.",
-    );
+  assertNoConnectionIdentityOverrides(url, "ULC production database URL");
+  if (decodePrincipal(url.username) !== SOURCE_ROLE) {
+    throw new Error("ULC M5 source database URL is not the dedicated production application principal.");
   }
   try {
     parseUlcLinzProductionDatabaseUrl(value);
   } catch {
-    throw new Error(
-      "ULC M5 source database URL is not the canonical ULC production Neon origin.",
-    );
+    throw new Error("ULC M5 source database URL is not the canonical ULC production Neon origin.");
   }
   return url;
 }
@@ -234,20 +236,41 @@ function requiredEncryptedDatabaseUrl(value, name) {
   if (sslModes.length !== 1 || !STRONG_SSL_MODES.has(sslModes[0])) {
     throw new Error(`${name} must require encrypted transport with exactly one strong sslmode.`);
   }
-  if (!url.hostname || !url.username || url.pathname.length <= 1) {
-    throw new Error(`${name} is invalid.`);
-  }
+  if (!url.hostname || !url.username || url.pathname.length <= 1) throw new Error(`${name} is invalid.`);
   return url;
 }
 
+function assertSafeRestoreQuery(url, name) {
+  assertNoConnectionIdentityOverrides(url, name);
+  const allowed = new Set(["sslmode", "channel_binding"]);
+  const seen = new Set();
+  for (const [key, value] of url.searchParams.entries()) {
+    if (!allowed.has(key) || seen.has(key)) {
+      throw new Error(`${name} contains a duplicate or unsupported connection parameter.`);
+    }
+    seen.add(key);
+    if (key === "channel_binding" && !SAFE_CHANNEL_BINDING_MODES.has(value)) {
+      throw new Error(`${name} contains an unsupported channel_binding mode.`);
+    }
+  }
+}
+
+function assertNoConnectionIdentityOverrides(url, name) {
+  const forbidden = new Set([
+    "database", "dbname", "host", "hostname", "port", "user", "username", "password",
+    "service", "servicefile", "target_session_attrs",
+  ]);
+  for (const key of url.searchParams.keys()) {
+    if (forbidden.has(key.toLowerCase())) {
+      throw new Error(`${name} must not override connection identity through query parameters.`);
+    }
+  }
+}
+
 function assertCanonicalSingleHostAuthority(value, url, name) {
-  if (typeof value !== "string") {
-    throw new Error(`${name} must be a canonical single-host connection string.`);
-  }
+  if (typeof value !== "string") throw new Error(`${name} must be a canonical single-host connection string.`);
   const schemeIndex = value.indexOf("://");
-  if (schemeIndex <= 0) {
-    throw new Error(`${name} must be a canonical single-host connection string.`);
-  }
+  if (schemeIndex <= 0) throw new Error(`${name} must be a canonical single-host connection string.`);
   const authorityStart = schemeIndex + 3;
   const boundaryIndexes = ["/", "?", "#"]
     .map((separator) => value.indexOf(separator, authorityStart))
@@ -258,8 +281,7 @@ function assertCanonicalSingleHostAuthority(value, url, name) {
   if (rawAtCount !== 1) {
     throw new Error(`${name} must contain exactly one canonical user-info delimiter.`);
   }
-  const atIndex = authority.indexOf("@");
-  const hostPort = authority.slice(atIndex + 1);
+  const hostPort = authority.slice(authority.indexOf("@") + 1);
   if (
     !hostPort ||
     hostPort.includes(",") ||
@@ -279,9 +301,7 @@ function databaseAliasIdentity(value) {
 
 function canonicalDatabaseName(url) {
   const encodedName = url.pathname.slice(1);
-  if (!encodedName || encodedName.includes("/")) {
-    throw new Error("database URL must identify exactly one database name");
-  }
+  if (!encodedName || encodedName.includes("/")) throw new Error("database URL must identify exactly one database name");
   let decodedName;
   try {
     decodedName = decodeURIComponent(encodedName);
@@ -292,6 +312,14 @@ function canonicalDatabaseName(url) {
     throw new Error("database URL contains an invalid database name");
   }
   return decodedName;
+}
+
+function decodePrincipal(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new Error("database URL contains an invalid encoded PostgreSQL principal");
+  }
 }
 
 function normalizeProviderHostname(value) {
@@ -323,9 +351,7 @@ if (isMainModule()) {
         : (() => { throw new Error("Expected command mode verify-empty or reset-and-verify."); })();
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
-    console.error(
-      error instanceof Error ? error.message : "ULC M5 restore target operation failed.",
-    );
+    console.error(error instanceof Error ? error.message : "ULC M5 restore target operation failed.");
     process.exitCode = 1;
   }
 }
