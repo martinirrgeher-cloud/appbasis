@@ -130,7 +130,7 @@ function validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase }) {
   const restore = requiredEncryptedDatabaseUrl(restoreUrl, "ULC M5 restore database URL");
   if (databaseAliasIdentity(source) === databaseAliasIdentity(restore)) {
     throw new Error(
-      "ULC M5 restore target must be a different database endpoint from production, including Neon pooler aliases.",
+      "ULC M5 restore target must be a different database endpoint from production, including equivalent URL and Neon pooler aliases.",
     );
   }
   if (typeof createDatabase !== "function") {
@@ -220,11 +220,30 @@ function requiredEncryptedDatabaseUrl(value, name) {
 function databaseAliasIdentity(value) {
   const url = value instanceof URL ? value : new URL(value);
   const port = url.port === "" ? "5432" : url.port;
-  return `${normalizeProviderHostname(url.hostname)}:${port}${url.pathname}`;
+  return `${normalizeProviderHostname(url.hostname)}:${port}/${canonicalDatabaseName(url)}`;
+}
+
+function canonicalDatabaseName(url) {
+  const encodedName = url.pathname.slice(1);
+  if (!encodedName || encodedName.includes("/")) {
+    throw new Error("database URL must identify exactly one database name");
+  }
+  let decodedName;
+  try {
+    decodedName = decodeURIComponent(encodedName);
+  } catch {
+    throw new Error("database URL contains an invalid encoded database name");
+  }
+  if (!decodedName || decodedName.includes("/") || decodedName.includes("\\") || decodedName.includes("\0")) {
+    throw new Error("database URL contains an invalid database name");
+  }
+  return decodedName;
 }
 
 function normalizeProviderHostname(value) {
-  const hostname = value.toLowerCase();
+  let hostname = value.toLowerCase();
+  while (hostname.endsWith(".")) hostname = hostname.slice(0, -1);
+  if (!hostname) throw new Error("database URL hostname is invalid");
   if (!hostname.endsWith(".neon.tech")) return hostname;
   const labels = hostname.split(".");
   labels[0] = labels[0].replace(/-pooler$/, "");
