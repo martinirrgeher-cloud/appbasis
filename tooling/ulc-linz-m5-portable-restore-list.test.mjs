@@ -32,23 +32,56 @@ const toc = [
   "",
 ].join("\n");
 
-test("filters only the exact Neon provider default ACL TOC entries", async () => {
+const snapshotId = "00000003-0000001B-1";
+
+test("filters only the exact Neon provider default ACL TOC entries on the exported snapshot", async () => {
   let closed = false;
+  const queries = [];
+  const sql = {
+    unsafe: async (query) => {
+      queries.push(query.trim());
+      if (query.includes("pg_default_acl")) return inventory;
+      return [];
+    },
+  };
   const output = await createPortableRestoreList(
-    { databaseUrl: "postgresql://backup:secret@example.invalid/app", tocText: toc },
+    {
+      databaseUrl: "postgresql://backup:secret@example.invalid/app",
+      snapshotId,
+      tocText: toc,
+    },
     {
       databaseFactory: () => ({
         client: {
-          unsafe: async () => inventory,
+          begin: async (callback) => callback(sql),
           end: async () => { closed = true; },
         },
       }),
     },
   );
   assert.equal(closed, true);
+  assert.equal(queries[0], "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
+  assert.equal(queries[1], `SET TRANSACTION SNAPSHOT '${snapshotId}'`);
+  assert.match(queries[2], /pg_default_acl/);
   assert.match(output, /ACL public TABLE appbasis_permission/);
   assert.match(output, /ACL public SEQUENCE appbasis_permission_id_seq/);
   assert.doesNotMatch(output, /DEFAULT ACL/);
+});
+
+test("rejects invalid snapshot IDs before connecting", async () => {
+  let opened = false;
+  await assert.rejects(
+    () => createPortableRestoreList(
+      {
+        databaseUrl: "postgresql://backup:secret@example.invalid/app",
+        snapshotId: "not-a-snapshot'; RESET ROLE; --",
+        tocText: toc,
+      },
+      { databaseFactory: () => { opened = true; throw new Error("must not connect"); } },
+    ),
+    /snapshot ID is invalid/,
+  );
+  assert.equal(opened, false);
 });
 
 test("fails closed when production default ACL inventory drifts", () => {
