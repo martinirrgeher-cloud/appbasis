@@ -59,16 +59,28 @@ if (!databaseUrl) {
     }
   });
 
-  test("unsafe existing backup roles and unexpected memberships fail closed", async () => {
-    const collision = await createContext();
+  test("unsafe existing backup roles, ownership and unexpected memberships fail closed", async () => {
+    const elevated = await createContext();
     try {
-      await collision.superDatabase.client.unsafe(`CREATE ROLE ${collision.backupRole} LOGIN NOINHERIT`);
+      await elevated.superDatabase.client.unsafe(`CREATE ROLE ${elevated.backupRole} LOGIN NOINHERIT`);
       await assert.rejects(
-        () => prepareInertRestoreBackupAclPrincipal(collision.input),
+        () => prepareInertRestoreBackupAclPrincipal(elevated.input),
         /missing or unsafe/,
       );
     } finally {
-      await collision.cleanup();
+      await elevated.cleanup();
+    }
+
+    const ownership = await createContext();
+    try {
+      await ownership.superDatabase.client.unsafe(`CREATE ROLE ${ownership.backupRole} NOLOGIN NOINHERIT`);
+      await ownership.superDatabase.client.unsafe(`ALTER SCHEMA ${ownership.schema} OWNER TO ${ownership.backupRole}`);
+      await assert.rejects(
+        () => prepareInertRestoreBackupAclPrincipal(ownership.input),
+        /missing or unsafe/,
+      );
+    } finally {
+      await ownership.cleanup();
     }
 
     const membership = await createContext();
