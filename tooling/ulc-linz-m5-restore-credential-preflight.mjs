@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 
 const RESTORE_CREDENTIALS = [
@@ -65,7 +67,7 @@ async function main() {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
-if (import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
     console.error(error?.message ?? String(error));
     process.exitCode = 1;
