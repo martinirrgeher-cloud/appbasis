@@ -131,7 +131,9 @@ test("M5 workflow filters only the validated portable TOC and never disables ACL
   assert.match(source, /"\$WORK\/production\.restore\.list"/);
   assert.match(source, /"\$WORK\/production\.restore\.filtered\.list"/);
   assert.match(source, /pg_restore --single-transaction --no-owner --exit-on-error --use-list=\/evidence\/production\.restore\.filtered\.list/);
-  assert.ok(source.indexOf("ulc-linz-m5-portable-restore-list.mjs") < source.indexOf('touch "$RELEASE_PATH"'));
+  const filterIndex = source.indexOf("ulc-linz-m5-portable-restore-list.mjs");
+  const finalReleaseIndex = source.indexOf('touch "$RELEASE_PATH"\n          wait "$SNAPSHOT_PID"', filterIndex);
+  assert.ok(filterIndex >= 0 && finalReleaseIndex > filterIndex);
   assert.doesNotMatch(source, /pg_dump[^\n]*--no-(?:acl|privileges)/);
   assert.doesNotMatch(source, /pg_restore[^\n]*--no-(?:acl|privileges)/);
 });
