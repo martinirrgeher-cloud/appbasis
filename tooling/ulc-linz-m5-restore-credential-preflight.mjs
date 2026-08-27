@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
+import { parseUlcLinzM5RestoreDatabaseUrl } from "./ulc-linz-m5-restore-target.mjs";
 
 const RESTORE_CREDENTIALS = [
   ["owner", "APPBASIS_M4_RESTORE_DATABASE_URL"],
@@ -49,18 +50,19 @@ function parseCredential(value, label) {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`ULC M5 restore ${label} credential is missing.`);
   }
-  let url;
+  let preliminary;
   try {
-    url = new URL(value);
+    preliminary = new URL(value);
   } catch {
     throw new Error(`ULC M5 restore ${label} credential is not a valid PostgreSQL URL.`);
   }
-  if (!new Set(["postgres:", "postgresql:"]).has(url.protocol)) {
+  if (!new Set(["postgres:", "postgresql:"]).has(preliminary.protocol)) {
     throw new Error(`ULC M5 restore ${label} credential must use PostgreSQL.`);
   }
-  if (!url.hostname || !url.pathname || url.pathname === "/" || !url.username || !url.password) {
+  if (!preliminary.hostname || !preliminary.pathname || preliminary.pathname === "/" || !preliminary.username || !preliminary.password) {
     throw new Error(`ULC M5 restore ${label} credential must include host, database, username and password.`);
   }
+  const url = parseUlcLinzM5RestoreDatabaseUrl(value);
   decodePrincipal(url.username);
   return url;
 }
