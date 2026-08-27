@@ -40,8 +40,16 @@ test("restore ACL inventory distinguishes operational memberships from safe crea
   assert.match(restoreE2e, /pg_catalog\.pg_get_userbyid\(relation\.relowner\)/);
   assert.match(restoreE2e, /pg_catalog\.pg_get_userbyid\(procedure\.proowner\)/);
   assert.match(restoreE2e, /expect\(uniqueOwners\.size\)\.toBe\(1\)/);
+  assert.match(restoreE2e, /decodeCredentialPrincipal\(target\.username\)/);
+  assert.match(restoreE2e, /decodeCredentialPrincipal\(ingestTarget\.username\)/);
+  assert.match(restoreE2e, /decodeCredentialPrincipal\(readTarget\.username\)/);
+  assert.match(restoreE2e, /return decodeURIComponent\(username\)/);
   assert.match(restoreE2e, /restoreOwner,\s*\n\s*operationalMembers:/);
+  assert.match(restoreE2e, /\["ulc_linz_security_event_ingest", ingestPrincipal\]/);
+  assert.match(restoreE2e, /\["ulc_linz_security_event_read", readPrincipal\]/);
   assert.doesNotMatch(restoreE2e, /restoreOwner:\s*target\.username/);
+  assert.doesNotMatch(restoreE2e, /operationalMembers:[\s\S]*ingestTarget\.username/);
+  assert.doesNotMatch(restoreE2e, /operationalMembers:[\s\S]*readTarget\.username/);
   assert.doesNotMatch(
     restoreE2e,
     /expect\(membershipRows\)\.toHaveLength\(SECURITY_GROUPS\.length\)/,
