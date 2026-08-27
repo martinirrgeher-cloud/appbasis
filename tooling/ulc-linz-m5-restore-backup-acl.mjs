@@ -43,16 +43,24 @@ export async function prepareInertRestoreBackupAclPrincipal(
 
     const [roleRecord] = await sql.unsafe(`
       SELECT
+        role.oid,
         current_user AS current_user,
-        rolcanlogin,
-        rolsuper,
-        rolcreatedb,
-        rolcreaterole,
-        rolinherit,
-        rolreplication,
-        rolbypassrls
-      FROM pg_catalog.pg_roles
-      WHERE rolname = '${role}'
+        role.rolcanlogin,
+        role.rolsuper,
+        role.rolcreatedb,
+        role.rolcreaterole,
+        role.rolinherit,
+        role.rolreplication,
+        role.rolbypassrls,
+        (
+          (SELECT count(*) FROM pg_catalog.pg_database database_record WHERE database_record.datdba = role.oid) +
+          (SELECT count(*) FROM pg_catalog.pg_namespace namespace
+             WHERE namespace.nspowner = role.oid
+               AND namespace.nspname !~ '^pg_'
+               AND namespace.nspname <> 'information_schema')
+        ) AS protected_ownership_count
+      FROM pg_catalog.pg_roles role
+      WHERE role.rolname = '${role}'
     `);
     if (!roleRecord) {
       throw new Error("Isolated restore backup ACL principal is missing.");
@@ -132,7 +140,8 @@ function assertInertRole(role, record, memberships) {
     record.rolcreaterole ||
     record.rolinherit ||
     record.rolreplication ||
-    record.rolbypassrls;
+    record.rolbypassrls ||
+    Number(record.protected_ownership_count) !== 0;
   if (elevated || !Array.isArray(memberships) || memberships.length > 1) {
     throw new Error("Isolated restore backup ACL principal is missing or unsafe.");
   }
