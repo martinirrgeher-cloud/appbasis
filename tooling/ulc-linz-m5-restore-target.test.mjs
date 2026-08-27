@@ -69,7 +69,7 @@ test("rejects owner, wrong database, wrong project, wrong region and same-target
   );
 });
 
-test("canonicalizes equivalent production endpoint spellings before allowing reset", async () => {
+test("canonicalizes or rejects equivalent production endpoint spellings before allowing reset", async () => {
   const productionOwner = SOURCE.replace("ulc_linz_application", "neondb_owner");
   const equivalentRestoreUrls = [
     productionOwner.replace("/neondb?", "/n%65ondb?"),
@@ -89,9 +89,37 @@ test("canonicalizes equivalent production endpoint spellings before allowing res
           return emptyDatabase();
         },
       }),
-      /different database endpoint/,
+      /different database endpoint|canonical direct Neon endpoint/,
     );
     assert.equal(createCalls, 0, `must reject before connecting to ${restoreUrl}`);
+  }
+});
+
+test("destructive reset accepts only one canonical direct Neon owner endpoint", async () => {
+  const unsafeRestoreUrls = [
+    RESTORE.replace("ep-restore.us-east-2.aws.neon.tech", "restore.example.test"),
+    RESTORE.replace("ep-restore", "ep-restore-pooler"),
+    RESTORE.replace(".neon.tech/", ".neon.tech./"),
+    RESTORE.replace("/neondb?", "/n%65ondb?"),
+    RESTORE.replace(".neon.tech/", ".neon.tech:5433/"),
+    RESTORE.replace("neondb_owner", "ulc_linz_application"),
+    `${RESTORE}#alternate`,
+  ];
+
+  for (const restoreUrl of unsafeRestoreUrls) {
+    let createCalls = 0;
+    await assert.rejects(
+      () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
+        sourceUrl: SOURCE,
+        restoreUrl,
+        createDatabase: () => {
+          createCalls += 1;
+          return emptyDatabase();
+        },
+      }),
+      /canonical direct Neon endpoint/,
+    );
+    assert.equal(createCalls, 0);
   }
 });
 
