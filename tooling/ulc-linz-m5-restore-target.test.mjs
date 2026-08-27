@@ -69,6 +69,56 @@ test("rejects owner, wrong database, wrong project, wrong region and same-target
   );
 });
 
+test("canonicalizes equivalent production endpoint spellings before allowing reset", async () => {
+  const productionOwner = SOURCE.replace("ulc_linz_application", "neondb_owner");
+  const equivalentRestoreUrls = [
+    productionOwner.replace("/neondb?", "/n%65ondb?"),
+    productionOwner.replace(".neon.tech/", ".neon.tech./"),
+    productionOwner.replace("ep-crimson-boat-b1aqfjwf.c-5", "ep-crimson-boat-b1aqfjwf-pooler.c-5"),
+    productionOwner.replace("/neondb?", "/%6Eeondb?"),
+  ];
+
+  for (const restoreUrl of equivalentRestoreUrls) {
+    let createCalls = 0;
+    await assert.rejects(
+      () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
+        sourceUrl: SOURCE,
+        restoreUrl,
+        createDatabase: () => {
+          createCalls += 1;
+          return emptyDatabase();
+        },
+      }),
+      /different database endpoint/,
+    );
+    assert.equal(createCalls, 0, `must reject before connecting to ${restoreUrl}`);
+  }
+});
+
+test("rejects malformed encoded database identities before connecting", async () => {
+  const malformedRestoreUrls = [
+    RESTORE.replace("/neondb?", "/neo%2Fndb?"),
+    RESTORE.replace("/neondb?", "/neo%5Cndb?"),
+    RESTORE.replace("/neondb?", "/neo%00ndb?"),
+    RESTORE.replace("/neondb?", "/neo%ZZndb?"),
+  ];
+
+  for (const restoreUrl of malformedRestoreUrls) {
+    let createCalls = 0;
+    await assert.rejects(
+      () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
+        sourceUrl: SOURCE,
+        restoreUrl,
+        createDatabase: () => {
+          createCalls += 1;
+          return emptyDatabase();
+        },
+      }),
+    );
+    assert.equal(createCalls, 0);
+  }
+});
+
 test("rejects weak transport and non-empty restore targets fail closed", async () => {
   await assert.rejects(
     () => verifyUlcLinzM5IsolatedRestoreTargetEmpty({
