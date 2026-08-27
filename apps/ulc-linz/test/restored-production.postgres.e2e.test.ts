@@ -72,12 +72,15 @@ describe("ULC restored production database evidence", () => {
       const source = new URL(AUTHORITATIVE_DATABASE_URL);
       const endpoint = (url: URL) =>
         `${url.hostname.toLowerCase()}:${url.port || "5432"}${url.pathname}`;
+      const targetPrincipal = decodeCredentialPrincipal(target.username);
+      const ingestPrincipal = decodeCredentialPrincipal(ingestTarget.username);
+      const readPrincipal = decodeCredentialPrincipal(readTarget.username);
       const expectedDatabase = target.pathname.replace(/^\//, "");
       expect(expectedDatabase.length).toBeGreaterThan(0);
       expect(endpoint(target)).not.toBe(endpoint(source));
       expect(endpoint(ingestTarget)).toBe(endpoint(target));
       expect(endpoint(readTarget)).toBe(endpoint(target));
-      expect(new Set([target.username, ingestTarget.username, readTarget.username]).size).toBe(3);
+      expect(new Set([targetPrincipal, ingestPrincipal, readPrincipal]).size).toBe(3);
       expect(INVENTORY.schemaVersion).toBe(2);
       expect(INVENTORY.application).toBe("ulc-linz");
 
@@ -286,14 +289,14 @@ describe("ULC restored production database evidence", () => {
           },
         ]);
         const restoreOwner = await readRestoredAuditObjectOwner(securityReadDatabase.client);
-        expect(restoreOwner).not.toBe(target.username);
-        expect(restoreOwner).not.toBe(ingestTarget.username);
-        expect(restoreOwner).not.toBe(readTarget.username);
+        expect(restoreOwner).not.toBe(targetPrincipal);
+        expect(restoreOwner).not.toBe(ingestPrincipal);
+        expect(restoreOwner).not.toBe(readPrincipal);
         await verifyRestoredSecurityAcl(securityReadDatabase.client, {
           restoreOwner,
           operationalMembers: [
-            ["ulc_linz_security_event_ingest", ingestTarget.username],
-            ["ulc_linz_security_event_read", readTarget.username],
+            ["ulc_linz_security_event_ingest", ingestPrincipal],
+            ["ulc_linz_security_event_read", readPrincipal],
           ],
         });
         await verifyRestoreOperationalPrincipal(
@@ -330,6 +333,14 @@ describe("ULC restored production database evidence", () => {
     30_000,
   );
 });
+
+function decodeCredentialPrincipal(username: string): string {
+  try {
+    return decodeURIComponent(username);
+  } catch {
+    throw new Error("ULC M5 restore credential contains an invalid URL-encoded PostgreSQL principal.");
+  }
+}
 
 async function readRestoredAuditObjectOwner(
   client: ReturnType<typeof createPostgresDatabase>["client"],
