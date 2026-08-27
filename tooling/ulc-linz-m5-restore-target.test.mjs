@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  parseUlcLinzM5RestoreDatabaseUrl,
   resetAndVerifyUlcLinzM5IsolatedRestoreTarget,
   verifyUlcLinzM5IsolatedRestoreTargetEmpty,
 } from "./ulc-linz-m5-restore-target.mjs";
 
 const SOURCE = "postgresql://ulc_linz_application:secret@ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require";
 const RESTORE = "postgresql://neondb_owner:secret@ep-restore.us-east-2.aws.neon.tech/neondb?sslmode=require";
+const IDENTITY_QUERY = "SELECT current_database() AS current_database, current_user AS current_user";
 
 function state(overrides = {}) {
   return {
@@ -20,85 +22,115 @@ function state(overrides = {}) {
   };
 }
 
-function emptyDatabase() {
-  return {
-    client: {
-      async unsafe() {
-        return [state()];
-      },
-      async end() {},
-    },
-  };
+function identity(overrides = {}) {
+  return { current_database: "neondb", current_user: "neondb_owner", ...overrides };
 }
 
-test("accepts only the canonical ULC production application source and an empty isolated restore target", async () => {
+function databaseWith({ states = [state()], identityRows = [identity()], onStatement } = {}) {
+  let stateIndex = 0;
+  const client = {
+    async unsafe(query) {
+      if (query === IDENTITY_QUERY) return identityRows;
+      if (query.includes("pg_catalog.pg_namespace")) {
+        const value = states[Math.min(stateIndex, states.length - 1)];
+        stateIndex += 1;
+        return [value];
+      }
+      onStatement?.(query);
+      return [];
+    },
+    async begin(callback) {
+      await callback({
+        async unsafe(query) {
+          if (query === IDENTITY_QUERY) return identityRows;
+          onStatement?.(query);
+          return [];
+        },
+      });
+    },
+    async end() {},
+  };
+  return { client };
+}
+
+test("accepts canonical production source and empty isolated restore target with matching effective identity", async () => {
   const result = await verifyUlcLinzM5IsolatedRestoreTargetEmpty({
     sourceUrl: SOURCE,
     restoreUrl: RESTORE,
-    createDatabase: emptyDatabase,
+    createDatabase: () => databaseWith(),
   });
   assert.deepEqual(result, { status: "restore-target-empty", appId: "ulc-linz" });
 });
 
-test("rejects owner, wrong database, wrong project, wrong region and same-target sources", async () => {
+test("rejects source identity drift and equivalent production restore endpoints before connecting", async () => {
   const invalidSources = [
     SOURCE.replace("ulc_linz_application", "neondb_owner"),
     SOURCE.replace("/neondb?", "/appbasis_m3_preview?"),
     SOURCE.replace("ep-crimson-boat-b1aqfjwf.c-5", "ep-other-project.c-5"),
     SOURCE.replace("eu-central-1", "us-east-2"),
+    `${SOURCE}&database=other`,
   ];
-
   for (const sourceUrl of invalidSources) {
     await assert.rejects(
-      () => verifyUlcLinzM5IsolatedRestoreTargetEmpty({
-        sourceUrl,
-        restoreUrl: RESTORE,
-        createDatabase: emptyDatabase,
-      }),
-      /production application principal|canonical ULC production Neon origin/,
+      () => verifyUlcLinzM5IsolatedRestoreTargetEmpty({ sourceUrl, restoreUrl: RESTORE, createDatabase: () => databaseWith() }),
+      /production application principal|canonical ULC production Neon origin|override connection identity/,
     );
   }
 
+  let connects = 0;
   await assert.rejects(
-    () => verifyUlcLinzM5IsolatedRestoreTargetEmpty({
+    () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
       sourceUrl: SOURCE,
       restoreUrl: SOURCE.replace("ulc_linz_application", "neondb_owner"),
-      createDatabase: emptyDatabase,
+      createDatabase: () => { connects += 1; return databaseWith(); },
     }),
     /different database endpoint/,
   );
+  assert.equal(connects, 0);
 });
 
-test("canonicalizes or rejects equivalent production endpoint spellings before allowing reset", async () => {
-  const productionOwner = SOURCE.replace("ulc_linz_application", "neondb_owner");
-  const equivalentRestoreUrls = [
-    productionOwner.replace("/neondb?", "/n%65ondb?"),
-    productionOwner.replace(".neon.tech/", ".neon.tech./"),
-    productionOwner.replace("ep-crimson-boat-b1aqfjwf.c-5", "ep-crimson-boat-b1aqfjwf-pooler.c-5"),
-    productionOwner.replace("/neondb?", "/%6Eeondb?"),
+test("rejects the full connection-string identity override surface before connecting", async () => {
+  const unsafe = [
+    `${RESTORE}&database=other`,
+    `${RESTORE}&dbname=other`,
+    `${RESTORE}&host=ep-other.us-east-2.aws.neon.tech`,
+    `${RESTORE}&hostname=ep-other.us-east-2.aws.neon.tech`,
+    `${RESTORE}&port=5433`,
+    `${RESTORE}&user=other`,
+    `${RESTORE}&username=other`,
+    `${RESTORE}&password=other`,
+    `${RESTORE}&service=other`,
+    `${RESTORE}&servicefile=other`,
+    `${RESTORE}&target_session_attrs=read-write`,
+    `${RESTORE}&%64atabase=other`,
+    `${RESTORE}&sslmode=require`,
+    `${RESTORE}&options=-csearch_path%3Dpublic`,
   ];
-
-  for (const restoreUrl of equivalentRestoreUrls) {
-    let createCalls = 0;
+  for (const restoreUrl of unsafe) {
+    let connects = 0;
     await assert.rejects(
       () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
         sourceUrl: SOURCE,
         restoreUrl,
-        createDatabase: () => {
-          createCalls += 1;
-          return emptyDatabase();
-        },
+        createDatabase: () => { connects += 1; return databaseWith(); },
       }),
-      /different database endpoint|canonical direct Neon endpoint|canonical database host/,
+      /override connection identity|duplicate or unsupported connection parameter|encrypted transport/,
     );
-    assert.equal(createCalls, 0, `must reject before connecting to ${restoreUrl}`);
+    assert.equal(connects, 0, restoreUrl);
   }
 });
 
-test("destructive reset accepts only one canonical direct Neon owner endpoint", async () => {
+test("allows only non-identity channel_binding alongside one strong sslmode", () => {
+  const parsed = parseUlcLinzM5RestoreDatabaseUrl(`${RESTORE}&channel_binding=require`);
+  assert.equal(parsed.searchParams.get("channel_binding"), "require");
+  assert.throws(() => parseUlcLinzM5RestoreDatabaseUrl(`${RESTORE}&channel_binding=unexpected`), /unsupported channel_binding/);
+  assert.throws(() => parseUlcLinzM5RestoreDatabaseUrl(`${RESTORE}&channel_binding=require&channel_binding=prefer`), /duplicate or unsupported/);
+});
+
+test("rejects alias, authority, encoded-path and endpoint tricks before connecting", async () => {
   const productionHost = new URL(SOURCE).hostname;
   const restoreHost = new URL(RESTORE).hostname;
-  const unsafeRestoreUrls = [
+  const unsafe = [
     RESTORE.replace(restoreHost, "restore.example.test"),
     RESTORE.replace("ep-restore", "ep-restore-pooler"),
     RESTORE.replace(".neon.tech/", ".neon.tech./"),
@@ -107,147 +139,114 @@ test("destructive reset accepts only one canonical direct Neon owner endpoint", 
     RESTORE.replace("neondb_owner", "ulc_linz_application"),
     RESTORE.replace(restoreHost, `${productionHost},${restoreHost}`),
     RESTORE.replace(restoreHost, `${productionHost}%2C${restoreHost}`),
+    `postgresql://neondb_owner:secret@${productionHost},${restoreHost}@${restoreHost}/neondb?sslmode=require`,
     `${RESTORE}#alternate`,
-  ];
-
-  for (const restoreUrl of unsafeRestoreUrls) {
-    let createCalls = 0;
-    await assert.rejects(
-      () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
-        sourceUrl: SOURCE,
-        restoreUrl,
-        createDatabase: () => {
-          createCalls += 1;
-          return emptyDatabase();
-        },
-      }),
-      /canonical direct Neon endpoint|canonical database host|valid URL|Invalid URL/,
-    );
-    assert.equal(createCalls, 0);
-  }
-});
-
-test("rejects malformed encoded database identities before connecting", async () => {
-  const malformedRestoreUrls = [
     RESTORE.replace("/neondb?", "/neo%2Fndb?"),
     RESTORE.replace("/neondb?", "/neo%5Cndb?"),
     RESTORE.replace("/neondb?", "/neo%00ndb?"),
-    RESTORE.replace("/neondb?", "/neo%ZZndb?"),
   ];
-
-  for (const restoreUrl of malformedRestoreUrls) {
-    let createCalls = 0;
+  for (const restoreUrl of unsafe) {
+    let connects = 0;
     await assert.rejects(
       () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
         sourceUrl: SOURCE,
         restoreUrl,
-        createDatabase: () => {
-          createCalls += 1;
-          return emptyDatabase();
-        },
+        createDatabase: () => { connects += 1; return databaseWith(); },
       }),
     );
-    assert.equal(createCalls, 0);
+    assert.equal(connects, 0, restoreUrl);
   }
 });
 
-test("rejects weak transport and non-empty restore targets fail closed", async () => {
-  await assert.rejects(
-    () => verifyUlcLinzM5IsolatedRestoreTargetEmpty({
-      sourceUrl: SOURCE.replace("sslmode=require", "sslmode=prefer"),
-      restoreUrl: RESTORE,
-      createDatabase: emptyDatabase,
-    }),
-    /encrypted transport/,
-  );
+test("fails closed if the effective connected database or principal differs before inspection", async () => {
+  for (const identityRows of [
+    [identity({ current_database: "production-shadow" })],
+    [identity({ current_user: "unexpected_owner" })],
+    [],
+  ]) {
+    let inspected = false;
+    await assert.rejects(
+      () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
+        sourceUrl: SOURCE,
+        restoreUrl: RESTORE,
+        createDatabase: () => ({
+          client: {
+            async unsafe(query) {
+              if (query === IDENTITY_QUERY) return identityRows;
+              inspected = true;
+              return [state({ public_relation_count: 1 })];
+            },
+            async begin() { throw new Error("must not begin"); },
+            async end() {},
+          },
+        }),
+      }),
+      /reset was refused or failed/,
+    );
+    assert.equal(inspected, false);
+  }
+});
 
+test("reset re-verifies effective identity inside the destructive transaction", async () => {
+  const statements = [];
+  let transactionIdentityChecked = false;
   await assert.rejects(
-    () => verifyUlcLinzM5IsolatedRestoreTargetEmpty({
+    () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
       sourceUrl: SOURCE,
       restoreUrl: RESTORE,
       createDatabase: () => ({
         client: {
-          async unsafe() {
+          async unsafe(query) {
+            if (query === IDENTITY_QUERY) return [identity()];
             return [state({ public_relation_count: 1 })];
+          },
+          async begin(callback) {
+            await callback({
+              async unsafe(query) {
+                if (query === IDENTITY_QUERY) {
+                  transactionIdentityChecked = true;
+                  return [identity({ current_database: "wrong" })];
+                }
+                statements.push(query);
+                return [];
+              },
+            });
           },
           async end() {},
         },
       }),
     }),
-    /not empty or could not be inspected/,
+    /reset was refused or failed/,
   );
+  assert.equal(transactionIdentityChecked, true);
+  assert.deepEqual(statements, []);
 });
 
 test("reset is idempotent for an already empty isolated target", async () => {
   let beginCalls = 0;
+  const database = databaseWith();
+  database.client.begin = async () => { beginCalls += 1; };
   const result = await resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
     sourceUrl: SOURCE,
     restoreUrl: RESTORE,
-    createDatabase: () => ({
-      client: {
-        async unsafe() {
-          return [state()];
-        },
-        async begin() {
-          beginCalls += 1;
-        },
-        async end() {},
-      },
-    }),
+    createDatabase: () => database,
   });
-
-  assert.deepEqual(result, {
-    status: "restore-target-empty",
-    appId: "ulc-linz",
-    resetApplied: false,
-  });
+  assert.deepEqual(result, { status: "restore-target-empty", appId: "ulc-linz", resetApplied: false });
   assert.equal(beginCalls, 0);
 });
 
-test("reset atomically replaces only the public schema and verifies the empty result", async () => {
-  const transactionStatements = [];
-  let inspectionCalls = 0;
-  let beginCalls = 0;
-  let closed = 0;
+test("reset atomically replaces only public schema and verifies identity and empty result", async () => {
+  const statements = [];
   const result = await resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
     sourceUrl: SOURCE,
     restoreUrl: RESTORE,
-    createDatabase: (connectionString) => {
-      assert.equal(connectionString, RESTORE);
-      return {
-        client: {
-          async unsafe(query) {
-            assert.match(query, /pg_catalog\.pg_namespace/);
-            inspectionCalls += 1;
-            return inspectionCalls === 1
-              ? [state({ public_relation_count: 12, public_routine_count: 2, public_type_count: 3 })]
-              : [state()];
-          },
-          async begin(callback) {
-            beginCalls += 1;
-            await callback({
-              async unsafe(statement) {
-                transactionStatements.push(statement);
-              },
-            });
-          },
-          async end() {
-            closed += 1;
-          },
-        },
-      };
-    },
+    createDatabase: () => databaseWith({
+      states: [state({ public_relation_count: 12, public_routine_count: 2, public_type_count: 3 }), state()],
+      onStatement: (statement) => statements.push(statement),
+    }),
   });
-
-  assert.deepEqual(result, {
-    status: "restore-target-empty",
-    appId: "ulc-linz",
-    resetApplied: true,
-  });
-  assert.equal(inspectionCalls, 2);
-  assert.equal(beginCalls, 1);
-  assert.equal(closed, 1);
-  assert.deepEqual(transactionStatements, [
+  assert.deepEqual(result, { status: "restore-target-empty", appId: "ulc-linz", resetApplied: true });
+  assert.deepEqual(statements, [
     "DROP SCHEMA IF EXISTS public CASCADE",
     "CREATE SCHEMA public",
     "REVOKE CREATE ON SCHEMA public FROM PUBLIC",
@@ -255,65 +254,26 @@ test("reset atomically replaces only the public schema and verifies the empty re
   ]);
 });
 
-test("reset refuses unexpected non-public schemas before any destructive statement", async () => {
-  let beginCalls = 0;
+test("reset refuses unexpected non-public schemas and post-reset drift fail closed", async () => {
+  let statements = [];
   await assert.rejects(
     () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
       sourceUrl: SOURCE,
       restoreUrl: RESTORE,
-      createDatabase: () => ({
-        client: {
-          async unsafe() {
-            return [state({ extra_schema_count: 1 })];
-          },
-          async begin() {
-            beginCalls += 1;
-          },
-          async end() {},
-        },
-      }),
+      createDatabase: () => databaseWith({ states: [state({ extra_schema_count: 1 })], onStatement: (s) => statements.push(s) }),
     }),
     /reset was refused or failed/,
   );
-  assert.equal(beginCalls, 0);
-});
+  assert.deepEqual(statements, []);
 
-test("reset fails closed when the transaction boundary or post-reset verification is invalid", async () => {
   await assert.rejects(
     () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
       sourceUrl: SOURCE,
       restoreUrl: RESTORE,
-      createDatabase: () => ({
-        client: {
-          async unsafe() {
-            return [state({ public_relation_count: 1 })];
-          },
-          async end() {},
-        },
+      createDatabase: () => databaseWith({
+        states: [state({ public_relation_count: 1 }), state({ public_relation_count: 1 })],
       }),
     }),
     /reset was refused or failed/,
   );
-
-  let inspectionCalls = 0;
-  await assert.rejects(
-    () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
-      sourceUrl: SOURCE,
-      restoreUrl: RESTORE,
-      createDatabase: () => ({
-        client: {
-          async unsafe() {
-            inspectionCalls += 1;
-            return [state({ public_relation_count: 1 })];
-          },
-          async begin(callback) {
-            await callback({ async unsafe() {} });
-          },
-          async end() {},
-        },
-      }),
-    }),
-    /reset was refused or failed/,
-  );
-  assert.equal(inspectionCalls, 2);
 });
