@@ -23,3 +23,21 @@ test("column ACL inventory preserves PostgreSQL null ACL semantics", async () =>
     assert.doesNotMatch(implementation, DIMENSIONLESS_EMPTY_ACL_PATTERN);
   }
 });
+
+test("restore ACL inventory distinguishes operational memberships from safe creator back-references", async () => {
+  const restoreE2e = await readFile(RESTORE_E2E_URL, "utf8");
+
+  assert.match(restoreE2e, /grantor\.rolsuper AS grantor_superuser/);
+  assert.match(restoreE2e, /membership\.inherit_option/);
+  assert.match(restoreE2e, /membership\.set_option/);
+  assert.match(restoreE2e, /member === membershipBoundary\.restoreOwner/);
+  assert.match(restoreE2e, /expect\(row\.grantor_superuser\)\.toBe\(true\)/);
+  assert.match(restoreE2e, /expect\(row\.admin_option\)\.toBe\(true\)/);
+  assert.match(restoreE2e, /expect\(row\.inherit_option\)\.toBe\(false\)/);
+  assert.match(restoreE2e, /expect\(row\.set_option\)\.toBe\(false\)/);
+  assert.match(restoreE2e, /expectedOperationalMembers/);
+  assert.doesNotMatch(
+    restoreE2e,
+    /expect\(membershipRows\)\.toHaveLength\(SECURITY_GROUPS\.length\)/,
+  );
+});
