@@ -72,6 +72,9 @@ jobs:
       - name: Run M5 exported snapshot PostgreSQL regression
         run: node --test ./tooling/ulc-linz-m5-exported-snapshot.postgres.test.mjs
 
+      - name: Run M5 restore backup ACL PostgreSQL 18 regression
+        run: node --test ./tooling/ulc-linz-m5-restore-backup-acl.postgres.test.mjs
+
       - name: Run real PostgreSQL tasks E2E tests
         run: pnpm --filter @appbasis/reference test:postgres
 
