@@ -125,9 +125,32 @@ export async function resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
   }
 }
 
+export function parseUlcLinzM5RestoreDatabaseUrl(value) {
+  const url = requiredEncryptedDatabaseUrl(value, "ULC M5 restore database URL");
+  assertCanonicalSingleHostAuthority(value, url, "ULC M5 restore database URL");
+  const hostname = url.hostname.toLowerCase();
+  const databaseName = canonicalDatabaseName(url);
+  const port = url.port || "5432";
+  if (
+    hostname.endsWith(".") ||
+    !hostname.endsWith(".neon.tech") ||
+    !hostname.split(".")[0]?.startsWith("ep-") ||
+    hostname.split(".")[0]?.endsWith("-pooler") ||
+    port !== "5432" ||
+    url.pathname !== `/${databaseName}` ||
+    url.hash !== "" ||
+    url.username === SOURCE_ROLE
+  ) {
+    throw new Error(
+      "ULC M5 restore database URL must use one canonical direct Neon endpoint, canonical database name, default PostgreSQL port and a non-production principal.",
+    );
+  }
+  return url;
+}
+
 function validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase }) {
   const source = requiredUlcLinzProductionDatabaseUrl(sourceUrl);
-  const restore = requiredUlcLinzRestoreDatabaseUrl(restoreUrl);
+  const restore = parseUlcLinzM5RestoreDatabaseUrl(restoreUrl);
   if (databaseAliasIdentity(source) === databaseAliasIdentity(restore)) {
     throw new Error(
       "ULC M5 restore target must be a different database endpoint from production, including equivalent URL and Neon pooler aliases.",
@@ -197,29 +220,6 @@ function requiredUlcLinzProductionDatabaseUrl(value) {
   } catch {
     throw new Error(
       "ULC M5 source database URL is not the canonical ULC production Neon origin.",
-    );
-  }
-  return url;
-}
-
-function requiredUlcLinzRestoreDatabaseUrl(value) {
-  const url = requiredEncryptedDatabaseUrl(value, "ULC M5 restore database URL");
-  assertCanonicalSingleHostAuthority(value, url, "ULC M5 restore database URL");
-  const hostname = url.hostname.toLowerCase();
-  const databaseName = canonicalDatabaseName(url);
-  const port = url.port || "5432";
-  if (
-    hostname.endsWith(".") ||
-    !hostname.endsWith(".neon.tech") ||
-    !hostname.split(".")[0]?.startsWith("ep-") ||
-    hostname.split(".")[0]?.endsWith("-pooler") ||
-    port !== "5432" ||
-    url.pathname !== `/${databaseName}` ||
-    url.hash !== "" ||
-    url.username === SOURCE_ROLE
-  ) {
-    throw new Error(
-      "ULC M5 restore database URL must use one canonical direct Neon endpoint, canonical database name, default PostgreSQL port and a non-production principal.",
     );
   }
   return url;
