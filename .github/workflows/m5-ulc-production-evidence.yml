@@ -203,73 +203,10 @@ jobs:
           trap - EXIT
 
       - name: Prepare inert backup ACL principal in isolated restore target
-        shell: bash
         env:
           APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          BACKUP_ROLE="$(node --input-type=module <<'NODE'
-          const role = new URL(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL).username;
-          if (!/^[a-z_][a-z0-9_]*$/.test(role)) {
-            throw new Error("ULC production backup principal is not a canonical PostgreSQL role name.");
-          }
-          process.stdout.write(role);
-          NODE
-          )"
-          test -n "$BACKUP_ROLE"
-          docker run --rm \
-            --env APPBASIS_M4_RESTORE_DATABASE_URL \
-            --env BACKUP_ROLE \
-            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            sh -ceu 'psql "$APPBASIS_M4_RESTORE_DATABASE_URL" -v ON_ERROR_STOP=1 -Atq -v backup_role="$BACKUP_ROLE" <<'"'"'SQL'"'"'
-          SELECT format(
-            '"'"'CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS'"'"',
-            :'"'"'backup_role'"'"'
-          )
-          WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = :'"'"'backup_role'"'"')
-          \gexec
-
-          WITH backup AS (
-            SELECT oid, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit, rolreplication, rolbypassrls
-            FROM pg_catalog.pg_roles
-            WHERE rolname = :'"'"'backup_role'"'"'
-          ), memberships AS (
-            SELECT membership.*,
-                   member.rolname AS member_name,
-                   grantor.rolname AS grantor_name
-            FROM backup
-            JOIN pg_catalog.pg_auth_members membership
-              ON membership.roleid = backup.oid OR membership.member = backup.oid
-            JOIN pg_catalog.pg_roles member ON member.oid = membership.member
-            JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
-          )
-          SELECT CASE WHEN
-            NOT backup.rolcanlogin
-            AND NOT backup.rolsuper
-            AND NOT backup.rolcreatedb
-            AND NOT backup.rolcreaterole
-            AND NOT backup.rolinherit
-            AND NOT backup.rolreplication
-            AND NOT backup.rolbypassrls
-            AND NOT EXISTS (
-              SELECT 1 FROM memberships
-              WHERE NOT (
-                memberships.roleid = backup.oid
-                AND memberships.member_name = current_user
-                AND memberships.admin_option
-                AND NOT memberships.inherit_option
-                AND NOT memberships.set_option
-                AND memberships.grantor_name = current_user
-              )
-            )
-            AND (SELECT count(*) FROM memberships) <= 1
-          THEN '"'"'inert'"'"' ELSE '"'"'unsafe'"'"' END
-          FROM backup;
-          SQL' | grep -qx 'inert' || {
-            echo 'Isolated restore backup ACL principal is missing or unsafe.' >&2
-            exit 1
-          }
+        run: node ./tooling/ulc-linz-m5-restore-backup-acl.mjs prepare
 
       - name: Restore production dump atomically into isolated target
         shell: bash
@@ -285,40 +222,10 @@ jobs:
             sh -ceu 'pg_restore --single-transaction --no-owner --exit-on-error --dbname="$APPBASIS_M4_RESTORE_DATABASE_URL" /evidence/production.pgdump'
 
       - name: Verify restored backup audit ACL before operational ACL checks
-        shell: bash
         env:
           APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          BACKUP_ROLE="$(node --input-type=module <<'NODE'
-          const role = new URL(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL).username;
-          if (!/^[a-z_][a-z0-9_]*$/.test(role)) throw new Error("Unsafe backup role name.");
-          process.stdout.write(role);
-          NODE
-          )"
-          RESULT="$(docker run --rm \
-            --env APPBASIS_M4_RESTORE_DATABASE_URL \
-            --env BACKUP_ROLE \
-            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            sh -ceu 'psql "$APPBASIS_M4_RESTORE_DATABASE_URL" -v ON_ERROR_STOP=1 -Atq -v backup_role="$BACKUP_ROLE" <<'"'"'SQL'"'"'
-          SELECT CASE WHEN
-            pg_catalog.has_table_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log'"'"', '"'"'SELECT'"'"')
-            AND NOT pg_catalog.has_table_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log'"'"', '"'"'INSERT'"'"')
-            AND NOT pg_catalog.has_table_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log'"'"', '"'"'UPDATE'"'"')
-            AND NOT pg_catalog.has_table_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log'"'"', '"'"'DELETE'"'"')
-            AND NOT pg_catalog.has_table_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log'"'"', '"'"'TRUNCATE'"'"')
-            AND pg_catalog.has_sequence_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log_id_seq'"'"', '"'"'SELECT'"'"')
-            AND NOT pg_catalog.has_sequence_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log_id_seq'"'"', '"'"'USAGE'"'"')
-            AND NOT pg_catalog.has_sequence_privilege(:'"'"'backup_role'"'"', '"'"'public.ulc_linz_security_event_log_id_seq'"'"', '"'"'UPDATE'"'"')
-          THEN '"'"'verified'"'"' ELSE '"'"'unsafe'"'"' END;
-          SELECT format('"'"'REVOKE SELECT ON TABLE public.ulc_linz_security_event_log FROM %I'"'"', :'"'"'backup_role'"'"') \gexec
-          SELECT format('"'"'REVOKE SELECT ON SEQUENCE public.ulc_linz_security_event_log_id_seq FROM %I'"'"', :'"'"'backup_role'"'"') \gexec
-          SQL')"
-          test "$(printf '%s\n' "$RESULT" | head -n 1)" = "verified" || {
-            echo 'Restored production backup audit ACL is missing or unsafe.' >&2
-            exit 1
-          }
+        run: node ./tooling/ulc-linz-m5-restore-backup-acl.mjs verify-cleanup
 
       - name: Capture and compare sanitized restored fingerprint
         shell: bash
