@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -7,6 +8,7 @@ import {
   filterExactProviderDefaultAclToc,
 } from "./ulc-linz-m5-portable-restore-list.mjs";
 
+const workflowUrl = new URL("../.github/workflows/m5-ulc-production-evidence.yml", import.meta.url);
 const inventory = [
   {
     owner_role: "cloud_admin",
@@ -103,7 +105,7 @@ test("fails closed when production default ACL inventory drifts", () => {
   );
 });
 
-test("fails closed on missing extra or differently owned DEFAULT ACL TOC entries", () => {
+test("fails closed on missing extra duplicate or differently owned DEFAULT ACL TOC entries", () => {
   assert.throws(
     () => filterExactProviderDefaultAclToc(toc.replace(/\n31;[^\n]+/, "")),
     /exact provider default ACL entries/,
@@ -113,7 +115,23 @@ test("fails closed on missing extra or differently owned DEFAULT ACL TOC entries
     /unexpected default ACL entry/,
   );
   assert.throws(
+    () => filterExactProviderDefaultAclToc(`${toc}51; 826 203 DEFAULT ACL public DEFAULT PRIVILEGES FOR TABLES cloud_admin\n`),
+    /exact provider default ACL entries/,
+  );
+  assert.throws(
     () => filterExactProviderDefaultAclToc(toc.replace("TABLES cloud_admin", "TABLES app_owner")),
     /unexpected default ACL entry/,
   );
+});
+
+test("M5 workflow filters only the validated portable TOC and never disables ACL restoration globally", async () => {
+  const source = await readFile(workflowUrl, "utf8");
+  assert.match(source, /pg_restore --list \/evidence\/production\.pgdump > \/evidence\/production\.restore\.list/);
+  assert.match(source, /ulc-linz-m5-portable-restore-list\.mjs/);
+  assert.match(source, /"\$WORK\/production\.restore\.list"/);
+  assert.match(source, /"\$WORK\/production\.restore\.filtered\.list"/);
+  assert.match(source, /pg_restore --single-transaction --no-owner --exit-on-error --use-list=\/evidence\/production\.restore\.filtered\.list/);
+  assert.ok(source.indexOf("ulc-linz-m5-portable-restore-list.mjs") < source.indexOf('touch "$RELEASE_PATH"'));
+  assert.doesNotMatch(source, /pg_dump[^\n]*--no-(?:acl|privileges)/);
+  assert.doesNotMatch(source, /pg_restore[^\n]*--no-(?:acl|privileges)/);
 });
