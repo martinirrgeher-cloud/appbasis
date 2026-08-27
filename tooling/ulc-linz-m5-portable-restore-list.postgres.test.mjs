@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
-import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { promisify } from "node:util";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { createPortableRestoreList } from "./ulc-linz-m5-portable-restore-list.mjs";
@@ -49,12 +49,15 @@ if (!databaseUrl) {
       const sourceUrl = databaseUrlFor(databaseUrl, sourceDatabaseName);
       const source = createPostgresDatabase(sourceUrl);
       try {
-        await source.client.unsafe(
-          "ALTER DEFAULT PRIVILEGES FOR ROLE cloud_admin IN SCHEMA public GRANT ALL ON TABLES TO neon_superuser WITH GRANT OPTION",
-        );
-        await source.client.unsafe(
-          "ALTER DEFAULT PRIVILEGES FOR ROLE cloud_admin IN SCHEMA public GRANT ALL ON SEQUENCES TO neon_superuser WITH GRANT OPTION",
-        );
+        await source.client.begin(async (sql) => {
+          await sql.unsafe("SET LOCAL ROLE cloud_admin");
+          await sql.unsafe(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO neon_superuser WITH GRANT OPTION",
+          );
+          await sql.unsafe(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO neon_superuser WITH GRANT OPTION",
+          );
+        });
         await source.client.unsafe("CREATE TABLE public.evidence_table (id integer PRIMARY KEY)");
         await source.client.unsafe("INSERT INTO public.evidence_table (id) VALUES (1)");
         await source.client.unsafe(`GRANT SELECT ON TABLE public.evidence_table TO ${readerRole}`);
