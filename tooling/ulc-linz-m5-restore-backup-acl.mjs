@@ -123,8 +123,36 @@ export async function verifyAndCleanupRestoredBackupAuditAcl(
       throw new Error("Restored production backup audit ACL is missing or unsafe.");
     }
 
+    const columnAclRows = await sql.unsafe(`
+      SELECT
+        pg_catalog.quote_ident(attribute.attname) AS quoted_column,
+        acl.privilege_type,
+        acl.is_grantable
+      FROM pg_catalog.pg_attribute attribute
+      JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
+      JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl
+      JOIN pg_catalog.pg_roles grantee ON grantee.oid = acl.grantee
+      WHERE namespace.nspname = '${table.schema}'
+        AND relation.relname = '${table.name}'
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+        AND grantee.rolname = '${role}'
+      ORDER BY attribute.attnum, acl.privilege_type
+    `);
+    const columnAcl = [...columnAclRows];
+    if (columnAcl.some((entry) => entry.privilege_type !== "SELECT" || entry.is_grantable !== false)) {
+      throw new Error("Restored production backup audit column ACL is unsafe.");
+    }
+    const columnIdentifiers = [...new Set(columnAcl.map((entry) => entry.quoted_column))];
+
     await sql.begin(async (transaction) => {
       await transaction.unsafe(`REVOKE SELECT ON TABLE ${table.identifier} FROM ${role}`);
+      if (columnIdentifiers.length > 0) {
+        await transaction.unsafe(
+          `REVOKE SELECT (${columnIdentifiers.join(", ")}) ON TABLE ${table.identifier} FROM ${role}`,
+        );
+      }
       await transaction.unsafe(`REVOKE SELECT ON SEQUENCE ${sequence.identifier} FROM ${role}`);
     });
     return { role, verified: true, cleaned: true };
@@ -180,6 +208,8 @@ function canonicalObject(value, label) {
   const match = CANONICAL_OBJECT.exec(text);
   if (!match) throw new Error(`ULC M5 ${label} is not canonical.`);
   return {
+    schema: match[1],
+    name: match[2],
     literal: `${match[1]}.${match[2]}`,
     identifier: `"${match[1]}"."${match[2]}"`,
   };
