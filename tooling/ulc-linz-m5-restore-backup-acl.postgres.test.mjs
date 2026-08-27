@@ -23,7 +23,7 @@ if (!databaseUrl) {
         SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit, rolreplication, rolbypassrls
         FROM pg_catalog.pg_roles WHERE rolname = '${context.backupRole}'
       `);
-      assert.deepEqual(roleRows, [{
+      assert.deepEqual([...roleRows], [{
         rolcanlogin: false,
         rolsuper: false,
         rolcreatedb: false,
@@ -43,7 +43,7 @@ if (!databaseUrl) {
         JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
         WHERE granted.rolname = '${context.backupRole}' OR member.rolname = '${context.backupRole}'
       `);
-      assert.deepEqual(memberships, [{
+      assert.deepEqual([...memberships], [{
         granted_role: context.backupRole,
         member_name: context.ownerRole,
         grantor_superuser: true,
