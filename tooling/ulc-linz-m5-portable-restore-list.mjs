@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
@@ -125,10 +126,21 @@ async function main() {
   if (!inputPath || !outputPath) {
     throw new Error("Usage: node ulc-linz-m5-portable-restore-list.mjs <input-list> <output-list>");
   }
-  const tocText = await readFile(inputPath, "utf8");
+  if (
+    basename(inputPath) !== "production.restore.list" ||
+    basename(outputPath) !== "production.restore.filtered.list" ||
+    dirname(inputPath) !== dirname(outputPath)
+  ) {
+    throw new Error("ULC M5 portable restore list paths must use the canonical evidence workspace.");
+  }
+  const snapshotPath = join(dirname(inputPath), "source.snapshot");
+  const [tocText, snapshotText] = await Promise.all([
+    readFile(inputPath, "utf8"),
+    readFile(snapshotPath, "utf8"),
+  ]);
   const filtered = await createPortableRestoreList({
     databaseUrl: process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
-    snapshotId: process.env.DATABASE_SNAPSHOT,
+    snapshotId: snapshotText.trim(),
     tocText,
   });
   await writeFile(outputPath, filtered, { encoding: "utf8", mode: 0o600, flag: "wx" });
