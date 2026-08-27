@@ -198,6 +198,17 @@ jobs:
             echo 'ULC production dump was not created.' >&2
             exit 1
           }
+          docker run --rm \
+            --volume "$WORK:/evidence" \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'pg_restore --list /evidence/production.pgdump > /evidence/production.restore.list'
+          node ./tooling/ulc-linz-m5-portable-restore-list.mjs \
+            "$WORK/production.restore.list" \
+            "$WORK/production.restore.filtered.list"
+          test -s "$WORK/production.restore.filtered.list" || {
+            echo 'ULC portable production restore list was not created.' >&2
+            exit 1
+          }
           touch "$RELEASE_PATH"
           wait "$SNAPSHOT_PID"
           trap - EXIT
@@ -219,7 +230,7 @@ jobs:
             --env APPBASIS_M4_RESTORE_DATABASE_URL \
             --volume "$WORK:/evidence:ro" \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            sh -ceu 'pg_restore --single-transaction --no-owner --exit-on-error --dbname="$APPBASIS_M4_RESTORE_DATABASE_URL" /evidence/production.pgdump'
+            sh -ceu 'pg_restore --single-transaction --no-owner --exit-on-error --use-list=/evidence/production.restore.filtered.list --dbname="$APPBASIS_M4_RESTORE_DATABASE_URL" /evidence/production.pgdump'
 
       - name: Verify restored backup audit ACL before operational ACL checks
         env:
