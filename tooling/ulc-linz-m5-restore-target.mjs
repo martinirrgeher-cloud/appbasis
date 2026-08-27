@@ -11,6 +11,11 @@ SELECT
   (
     SELECT COUNT(*)::int
     FROM pg_catalog.pg_namespace AS n
+    WHERE n.nspname = 'public'
+  ) AS public_schema_count,
+  (
+    SELECT COUNT(*)::int
+    FROM pg_catalog.pg_namespace AS n
     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'public')
       AND n.nspname !~ '^pg_toast(?:_|$)'
       AND n.nspname !~ '^pg_temp_'
@@ -36,11 +41,91 @@ SELECT
   ) AS public_type_count
 `;
 
+const RESET_PUBLIC_SCHEMA_STATEMENTS = Object.freeze([
+  "DROP SCHEMA IF EXISTS public CASCADE",
+  "CREATE SCHEMA public",
+  "REVOKE CREATE ON SCHEMA public FROM PUBLIC",
+  "GRANT USAGE ON SCHEMA public TO PUBLIC",
+]);
+
 export async function verifyUlcLinzM5IsolatedRestoreTargetEmpty({
   sourceUrl,
   restoreUrl,
   createDatabase = createPostgresDatabase,
 } = {}) {
+  validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase });
+
+  let database;
+  try {
+    database = createDatabase(restoreUrl);
+    const client = requiredInspectableClient(database?.client);
+    const state = requiredTargetState(await client.unsafe(EMPTY_TARGET_QUERY));
+    if (!isEmptyTargetState(state)) {
+      throw new Error("restore target is not empty");
+    }
+    return Object.freeze({ status: "restore-target-empty", appId: "ulc-linz" });
+  } catch {
+    throw new Error(
+      "ULC M5 restore target is not empty or could not be inspected; use a fresh isolated target.",
+    );
+  } finally {
+    await closeDatabase(database);
+  }
+}
+
+export async function resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
+  sourceUrl,
+  restoreUrl,
+  createDatabase = createPostgresDatabase,
+} = {}) {
+  validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase });
+
+  let database;
+  try {
+    database = createDatabase(restoreUrl);
+    const client = requiredInspectableClient(database?.client);
+    if (typeof client.begin !== "function") {
+      throw new Error("database transaction boundary is invalid");
+    }
+
+    const before = requiredTargetState(await client.unsafe(EMPTY_TARGET_QUERY));
+    if (before.extra_schema_count !== 0) {
+      throw new Error("restore target contains an unexpected non-public schema");
+    }
+
+    let resetApplied = false;
+    if (!isEmptyTargetState(before)) {
+      await client.begin(async (transaction) => {
+        if (!transaction || typeof transaction.unsafe !== "function") {
+          throw new Error("database transaction client is invalid");
+        }
+        for (const statement of RESET_PUBLIC_SCHEMA_STATEMENTS) {
+          await transaction.unsafe(statement);
+        }
+      });
+      resetApplied = true;
+    }
+
+    const after = requiredTargetState(await client.unsafe(EMPTY_TARGET_QUERY));
+    if (!isEmptyTargetState(after)) {
+      throw new Error("restore target reset did not produce an empty target");
+    }
+
+    return Object.freeze({
+      status: "restore-target-empty",
+      appId: "ulc-linz",
+      resetApplied,
+    });
+  } catch {
+    throw new Error(
+      "ULC M5 isolated restore target reset was refused or failed; no production source mutation was attempted.",
+    );
+  } finally {
+    await closeDatabase(database);
+  }
+}
+
+function validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase }) {
   const source = requiredUlcLinzProductionDatabaseUrl(sourceUrl);
   const restore = requiredEncryptedDatabaseUrl(restoreUrl, "ULC M5 restore database URL");
   if (databaseAliasIdentity(source) === databaseAliasIdentity(restore)) {
@@ -51,35 +136,52 @@ export async function verifyUlcLinzM5IsolatedRestoreTargetEmpty({
   if (typeof createDatabase !== "function") {
     throw new Error("ULC M5 restore target database dependency is invalid.");
   }
+}
 
-  let database;
-  try {
-    database = createDatabase(restoreUrl);
-    if (!database?.client || typeof database.client.unsafe !== "function") {
-      throw new Error("database client is invalid");
+function requiredInspectableClient(client) {
+  if (!client || typeof client.unsafe !== "function") {
+    throw new Error("database client is invalid");
+  }
+  return client;
+}
+
+function requiredTargetState(rows) {
+  if (
+    !Array.isArray(rows) ||
+    rows.length !== 1 ||
+    rows[0] === null ||
+    typeof rows[0] !== "object"
+  ) {
+    throw new Error("restore target inspection result is invalid");
+  }
+  const state = rows[0];
+  for (const key of [
+    "public_schema_count",
+    "extra_schema_count",
+    "public_relation_count",
+    "public_routine_count",
+    "public_type_count",
+  ]) {
+    if (!Number.isInteger(state[key]) || state[key] < 0) {
+      throw new Error("restore target inspection result is invalid");
     }
-    const rows = await database.client.unsafe(EMPTY_TARGET_QUERY);
-    if (
-      !Array.isArray(rows) ||
-      rows.length !== 1 ||
-      rows[0] === null ||
-      typeof rows[0] !== "object" ||
-      rows[0].extra_schema_count !== 0 ||
-      rows[0].public_relation_count !== 0 ||
-      rows[0].public_routine_count !== 0 ||
-      rows[0].public_type_count !== 0
-    ) {
-      throw new Error("restore target is not empty");
-    }
-    return Object.freeze({ status: "restore-target-empty", appId: "ulc-linz" });
-  } catch {
-    throw new Error(
-      "ULC M5 restore target is not empty or could not be inspected; use a fresh isolated target.",
-    );
-  } finally {
-    if (database?.client && typeof database.client.end === "function") {
-      await database.client.end().catch(() => {});
-    }
+  }
+  return state;
+}
+
+function isEmptyTargetState(state) {
+  return (
+    state.public_schema_count === 1 &&
+    state.extra_schema_count === 0 &&
+    state.public_relation_count === 0 &&
+    state.public_routine_count === 0 &&
+    state.public_type_count === 0
+  );
+}
+
+async function closeDatabase(database) {
+  if (database?.client && typeof database.client.end === "function") {
+    await database.client.end().catch(() => {});
   }
 }
 
@@ -136,17 +238,20 @@ function isMainModule() {
 
 if (isMainModule()) {
   try {
-    if (process.argv[2] !== "verify-empty") {
-      throw new Error("Expected command mode verify-empty.");
-    }
-    const result = await verifyUlcLinzM5IsolatedRestoreTargetEmpty({
+    const mode = process.argv[2];
+    const options = {
       sourceUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
       restoreUrl: process.env.APPBASIS_M4_RESTORE_DATABASE_URL,
-    });
+    };
+    const result = mode === "verify-empty"
+      ? await verifyUlcLinzM5IsolatedRestoreTargetEmpty(options)
+      : mode === "reset-and-verify"
+        ? await resetAndVerifyUlcLinzM5IsolatedRestoreTarget(options)
+        : (() => { throw new Error("Expected command mode verify-empty or reset-and-verify."); })();
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
     console.error(
-      error instanceof Error ? error.message : "ULC M5 restore target verification failed.",
+      error instanceof Error ? error.message : "ULC M5 restore target operation failed.",
     );
     process.exitCode = 1;
   }
