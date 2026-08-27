@@ -97,15 +97,16 @@ if (!databaseUrl) {
     }
   });
 
-  test("restored table and sequence read ACLs are verified exactly and cleaned atomically", async () => {
+  test("restored table, column and sequence read ACLs are verified and cleaned atomically", async () => {
     const context = await createContext();
     try {
       await prepareInertRestoreBackupAclPrincipal(context.input);
       const ownerDatabase = createPostgresDatabase(context.ownerDatabaseUrl);
       try {
-        await ownerDatabase.client.unsafe(`CREATE TABLE ${context.schema}.audit_log (id bigint PRIMARY KEY)`);
+        await ownerDatabase.client.unsafe(`CREATE TABLE ${context.schema}.audit_log (id bigint PRIMARY KEY, detail text)`);
         await ownerDatabase.client.unsafe(`CREATE SEQUENCE ${context.schema}.audit_log_id_seq`);
         await ownerDatabase.client.unsafe(`GRANT SELECT ON TABLE ${context.schema}.audit_log TO ${context.backupRole}`);
+        await ownerDatabase.client.unsafe(`GRANT SELECT (detail) ON TABLE ${context.schema}.audit_log TO ${context.backupRole}`);
         await ownerDatabase.client.unsafe(`GRANT SELECT ON SEQUENCE ${context.schema}.audit_log_id_seq TO ${context.backupRole}`);
       } finally {
         await ownerDatabase.client.end().catch(() => {});
@@ -121,14 +122,16 @@ if (!databaseUrl) {
       const [after] = await context.superDatabase.client.unsafe(`
         SELECT
           pg_catalog.has_table_privilege('${context.backupRole}', '${context.schema}.audit_log', 'SELECT') AS table_select,
+          pg_catalog.has_column_privilege('${context.backupRole}', '${context.schema}.audit_log', 'detail', 'SELECT') AS column_select,
           pg_catalog.has_sequence_privilege('${context.backupRole}', '${context.schema}.audit_log_id_seq', 'SELECT') AS sequence_select
       `);
-      assert.deepEqual(after, { table_select: false, sequence_select: false });
+      assert.deepEqual(after, { table_select: false, column_select: false, sequence_select: false });
 
       const ownerDatabase2 = createPostgresDatabase(context.ownerDatabaseUrl);
       try {
         await ownerDatabase2.client.unsafe(`GRANT SELECT ON TABLE ${context.schema}.audit_log TO ${context.backupRole}`);
-        await ownerDatabase2.client.unsafe(`GRANT SELECT, USAGE ON SEQUENCE ${context.schema}.audit_log_id_seq TO ${context.backupRole}`);
+        await ownerDatabase2.client.unsafe(`GRANT UPDATE (detail) ON TABLE ${context.schema}.audit_log TO ${context.backupRole}`);
+        await ownerDatabase2.client.unsafe(`GRANT SELECT ON SEQUENCE ${context.schema}.audit_log_id_seq TO ${context.backupRole}`);
       } finally {
         await ownerDatabase2.client.end().catch(() => {});
       }
@@ -139,15 +142,15 @@ if (!databaseUrl) {
           auditTable: `${context.schema}.audit_log`,
           auditSequence: `${context.schema}.audit_log_id_seq`,
         }),
-        /missing or unsafe/,
+        /column ACL is unsafe/,
       );
       const [failedClosed] = await context.superDatabase.client.unsafe(`
         SELECT
           pg_catalog.has_table_privilege('${context.backupRole}', '${context.schema}.audit_log', 'SELECT') AS table_select,
-          pg_catalog.has_sequence_privilege('${context.backupRole}', '${context.schema}.audit_log_id_seq', 'SELECT') AS sequence_select,
-          pg_catalog.has_sequence_privilege('${context.backupRole}', '${context.schema}.audit_log_id_seq', 'USAGE') AS sequence_usage
+          pg_catalog.has_column_privilege('${context.backupRole}', '${context.schema}.audit_log', 'detail', 'UPDATE') AS column_update,
+          pg_catalog.has_sequence_privilege('${context.backupRole}', '${context.schema}.audit_log_id_seq', 'SELECT') AS sequence_select
       `);
-      assert.deepEqual(failedClosed, { table_select: true, sequence_select: true, sequence_usage: true });
+      assert.deepEqual(failedClosed, { table_select: true, column_update: true, sequence_select: true });
     } finally {
       await context.cleanup();
     }
