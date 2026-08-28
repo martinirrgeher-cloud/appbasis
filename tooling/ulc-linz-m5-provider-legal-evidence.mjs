@@ -1,18 +1,10 @@
-import { inflateSync } from "node:zlib";
+import { createHash } from "node:crypto";
 
 import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evidence.mjs";
 
 const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
-const MAX_DATABRICKS_DPA_INFLATED_STREAM_BYTES = 10_000_000;
-const MAX_DATABRICKS_DPA_EXTRACTED_BYTES = 20_000_000;
 const DATARBRICKS_DPA_PDF_MARKER = "Databricks DPA v3 (2023-07-21)";
-const DATABRICKS_DPA_PDF_ANCHORS = Object.freeze([
-  "DATA PROCESSING ADDENDUM",
-  "forms an integral part of the Databricks Master Cloud Services Agreement",
-  "Databricks DPA v3 (2023-07-21)",
-  "Standard Contractual Clauses",
-  "ANNEX A",
-]);
+const DATABRICKS_DPA_PDF_SHA256 = "f7501e724b91d8bdb737b34d7f9807b996fe88a86db782063f3c09ee5ce2aa2c";
 const SOURCES = Object.freeze({
   cloudflareDpa: "https://www.cloudflare.com/cloudflare-customer-dpa/",
   cloudflareGdpr: "https://www.cloudflare.com/trust-hub/gdpr/",
@@ -36,19 +28,16 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
     observedAt,
     validUntilOrReviewAt,
   },
-  { fetchImpl = fetch } = {},
+  { fetchImpl = fetch, sha256Impl = sha256 } = {},
 ) {
   if (cloudflareAccountBound !== true || neonProjectBound !== true) {
     throw new Error("ULC M5-G authenticated provider resource binding is incomplete.");
   }
-  if (typeof fetchImpl !== "function") {
+  if (typeof fetchImpl !== "function" || typeof sha256Impl !== "function") {
     throw new Error("ULC M5-G legal evidence fetch implementation is invalid.");
   }
   const observed = canonicalTimestamp(observedAt, "observedAt");
-  const validUntil = canonicalTimestamp(
-    validUntilOrReviewAt,
-    "validUntilOrReviewAt",
-  );
+  const validUntil = canonicalTimestamp(validUntilOrReviewAt, "validUntilOrReviewAt");
   if (
     validUntil.getTime() <= observed.getTime() ||
     validUntil.getTime() - observed.getTime() > REVIEW_WINDOW_MS
@@ -60,7 +49,7 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
     Object.entries(SOURCES).map(async ([key, url]) => [
       key,
       key === "databricksDpa"
-        ? await officialDatabricksDpaPdf(url, fetchImpl)
+        ? await officialDatabricksDpaPdf(url, fetchImpl, sha256Impl)
         : await officialText(url, fetchImpl),
     ]),
   );
@@ -86,7 +75,6 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
     "TLS is required",
     "require",
   ], "Cloudflare Hyperdrive TLS");
-
   requireAll(text.neonSchedule, [
     "Last Updated: August 5, 2026",
     "By accessing the Platform Services, Customer agrees to the terms of this Schedule",
@@ -121,14 +109,7 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
   // absent until an independent operator-to-provider-account binding is supplied.
   return Object.freeze([
     legal("cloudflare", "dpa", SOURCES.cloudflareDpa, "6.4 / 2026-04-03", cloudflareScope, common),
-    legal(
-      "cloudflare",
-      "security",
-      SOURCES.cloudflareHyperdriveTls,
-      "2026-04-21",
-      cloudflareScope,
-      common,
-    ),
+    legal("cloudflare", "security", SOURCES.cloudflareHyperdriveTls, "2026-04-21", cloudflareScope, common),
     legal(
       "cloudflare",
       "subprocessors",
@@ -138,22 +119,8 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
       common,
       { transferModelConsistentWithAdr022: true },
     ),
-    legal(
-      "neon-databricks",
-      "terms",
-      SOURCES.neonSchedule,
-      "2026-08-05",
-      neonScope,
-      common,
-    ),
-    legal(
-      "neon-databricks",
-      "dpa",
-      SOURCES.databricksDpa,
-      "Databricks DPA v3",
-      neonScope,
-      common,
-    ),
+    legal("neon-databricks", "terms", SOURCES.neonSchedule, "2026-08-05", neonScope, common),
+    legal("neon-databricks", "dpa", SOURCES.databricksDpa, "Databricks DPA v3", neonScope, common),
     legal(
       "neon-databricks",
       "security",
@@ -224,7 +191,7 @@ async function officialText(url, fetchImpl) {
   return normalize(body);
 }
 
-async function officialDatabricksDpaPdf(url, fetchImpl) {
+async function officialDatabricksDpaPdf(url, fetchImpl, sha256Impl) {
   let response;
   try {
     response = await fetchImpl(url, {
@@ -262,182 +229,16 @@ async function officialDatabricksDpaPdf(url, fetchImpl) {
   if (!header.startsWith("%PDF-") || !trailer.includes("%%EOF")) {
     throw new Error("ULC M5-G Databricks DPA PDF body is invalid.");
   }
-  requireDatabricksDpaPdfBaseline(bytes);
+  if (sha256Impl(bytes) !== DATABRICKS_DPA_PDF_SHA256) {
+    throw new Error("ULC M5-G Databricks DPA drifted from the reviewed official baseline.");
+  }
   return DATARBRICKS_DPA_PDF_MARKER;
 }
 
-function requireDatabricksDpaPdfBaseline(bytes) {
-  const compactText = compactPdfSearchText(extractPdfSearchText(bytes));
-  const missingAnchor = DATABRICKS_DPA_PDF_ANCHORS.find(
-    (anchor) => !compactText.includes(compactPdfSearchText(anchor)),
-  );
-  if (missingAnchor !== undefined) {
-    throw new Error("ULC M5-G Databricks DPA drifted from the reviewed official baseline.");
-  }
-}
-
-function extractPdfSearchText(bytes) {
-  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const chunks = [];
-  const streamStart = Buffer.from("stream\n", "ascii");
-  const streamStartCrLf = Buffer.from("stream\r\n", "ascii");
-  const streamEnd = Buffer.from("\nendstream", "ascii");
-  const streamEndCrLf = Buffer.from("\r\nendstream", "ascii");
-  let extractedBytes = 0;
-  let offset = 0;
-
-  while (offset < buffer.length) {
-    const lfStart = buffer.indexOf(streamStart, offset);
-    const crlfStart = buffer.indexOf(streamStartCrLf, offset);
-    let marker = streamStart;
-    let start = lfStart;
-    if (start === -1 || (crlfStart !== -1 && crlfStart < start)) {
-      marker = streamStartCrLf;
-      start = crlfStart;
-    }
-    if (start === -1) break;
-
-    const contentStart = start + marker.length;
-    const lfEnd = buffer.indexOf(streamEnd, contentStart);
-    const crlfEnd = buffer.indexOf(streamEndCrLf, contentStart);
-    let contentEnd = lfEnd;
-    let endMarkerLength = streamEnd.length;
-    if (contentEnd === -1 || (crlfEnd !== -1 && crlfEnd < contentEnd)) {
-      contentEnd = crlfEnd;
-      endMarkerLength = streamEndCrLf.length;
-    }
-    if (contentEnd === -1) break;
-
-    const dictionaryStart = Math.max(0, start - 1024);
-    const dictionary = buffer.subarray(dictionaryStart, start).toString("latin1");
-    const streamBytes = buffer.subarray(contentStart, contentEnd);
-    let extracted;
-    if (/\/FlateDecode\b/u.test(dictionary)) {
-      try {
-        extracted = inflateSync(streamBytes, {
-          maxOutputLength: MAX_DATABRICKS_DPA_INFLATED_STREAM_BYTES,
-        });
-      } catch {
-        // Not every stream must be text-bearing. Unsupported, corrupt or
-        // over-expanding streams do not establish the mandatory baseline.
-        offset = contentEnd + endMarkerLength;
-        continue;
-      }
-    } else {
-      extracted = streamBytes;
-    }
-    if (extractedBytes + extracted.byteLength > MAX_DATABRICKS_DPA_EXTRACTED_BYTES) {
-      throw new Error("ULC M5-G Databricks DPA PDF extraction exceeds its safety bound.");
-    }
-    extractedBytes += extracted.byteLength;
-    chunks.push(extractPdfDisplayedText(extracted.toString("latin1")));
-    offset = contentEnd + endMarkerLength;
-  }
-
-  return chunks.join(" ");
-}
-
-function extractPdfDisplayedText(value) {
-  const displayed = [];
-  for (const textObject of value.matchAll(/\bBT\b([\s\S]*?)\bET\b/gu)) {
-    const body = stripPdfComments(textObject[1]);
-    for (const direct of body.matchAll(/(\((?:\\[\s\S]|[^\\()])*\))\s*(?:Tj|'|")(?=\s|$)/gu)) {
-      displayed.push(extractPdfLiteralStrings(direct[1]));
-    }
-    for (const array of body.matchAll(/\[([\s\S]*?)\]\s*TJ\b/gu)) {
-      displayed.push(extractPdfLiteralStrings(array[1]));
-    }
-  }
-  return displayed.join(" ");
-}
-
-function stripPdfComments(value) {
-  let result = "";
-  let depth = 0;
-  let escaped = false;
-  let inComment = false;
-  for (const char of value) {
-    if (inComment) {
-      if (char === "\n" || char === "\r") {
-        inComment = false;
-        result += char;
-      }
-      continue;
-    }
-    if (depth > 0) {
-      result += char;
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === "(") {
-        depth += 1;
-      } else if (char === ")") {
-        depth -= 1;
-      }
-      continue;
-    }
-    if (char === "(") {
-      depth = 1;
-      result += char;
-    } else if (char === "%") {
-      inComment = true;
-    } else {
-      result += char;
-    }
-  }
-  return result;
-}
-
-function extractPdfLiteralStrings(value) {
-  const strings = [];
-  let current = "";
-  let depth = 0;
-  let escaped = false;
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
-    if (depth === 0) {
-      if (char === "(") {
-        depth = 1;
-        current = "";
-      }
-      continue;
-    }
-    if (escaped) {
-      if (/[0-7]/u.test(char)) {
-        let octal = char;
-        while (octal.length < 3 && /[0-7]/u.test(value[index + 1] ?? "")) {
-          index += 1;
-          octal += value[index];
-        }
-        current += String.fromCharCode(Number.parseInt(octal, 8));
-      } else if (char === "n") current += "\n";
-      else if (char === "r") current += "\r";
-      else if (char === "t") current += "\t";
-      else if (char === "b") current += "\b";
-      else if (char === "f") current += "\f";
-      else current += char;
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-    } else if (char === "(") {
-      depth += 1;
-      current += char;
-    } else if (char === ")") {
-      depth -= 1;
-      if (depth === 0) strings.push(current);
-      else current += char;
-    } else {
-      current += char;
-    }
-  }
-  return strings.join(" ");
-}
-
-function compactPdfSearchText(value) {
-  return value.toLowerCase().replaceAll(/[^a-z0-9]+/gu, "");
+function sha256(bytes) {
+  return createHash("sha256")
+    .update(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength))
+    .digest("hex");
 }
 
 function requireTrustedFinalUrl(value, expectedValue) {
