@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare-current-deployment.mjs";
 import { collectUlcLinzM5ProviderLegalEvidence } from "./ulc-linz-m5-provider-legal-evidence.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
@@ -175,17 +176,11 @@ async function observeCloudflareDatabaseBindings({
     apiToken,
     fetchImpl,
   );
-  const entries = deployments?.result?.deployments;
-  if (
-    !Array.isArray(entries) ||
-    entries.length !== 1 ||
-    !Array.isArray(entries[0]?.versions) ||
-    entries[0].versions.length !== 1 ||
-    entries[0].versions[0]?.percentage !== 100
-  ) {
-    throw new Error("ULC M5-G deployed Worker inventory is not exact.");
-  }
-  const versionId = versionIdValue(entries[0].versions[0].version_id);
+  const current = requireCurrentUlcLinzCloudflareDeployment(
+    deployments?.result?.deployments,
+    { label: "ULC M5-G deployed Worker inventory" },
+  );
+  const versionId = versionIdValue(current.version.version_id);
   const versionResponse = await cloudflareJson(
     `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${versionId}`,
     apiToken,
