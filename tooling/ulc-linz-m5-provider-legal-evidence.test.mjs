@@ -5,6 +5,7 @@ import { collectUlcLinzM5ProviderLegalEvidence } from "./ulc-linz-m5-provider-le
 
 const OBSERVED_AT = "2026-08-23T22:00:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:15:00.000Z";
+const DATABRICKS_DPA_PATH = "/sites/default/files/legal/dpa-20230721.pdf";
 
 const SOURCE_TEXT = Object.freeze({
   "www.cloudflare.com/cloudflare-customer-dpa/":
@@ -19,16 +20,32 @@ const SOURCE_TEXT = Object.freeze({
     "Last Updated: August 5, 2026. By accessing the Platform Services, Customer agrees to the terms of this Schedule. This Schedule is subject to the terms of the then-current Databricks Master Cloud Services Agreement. Grafana Labs.",
   "www.databricks.com/legal/mcsa":
     "The terms of the DPA are incorporated by reference. PayGo Customer’s continued use constitutes consent. This fixture represents the reviewed current Databricks contractual chain for Neon Platform Services.",
-  "www.databricks.com/legal/dpa":
-    "DATA PROCESSING ADDENDUM forms an integral part of the Databricks Master Cloud Services Agreement. This fixture represents the reviewed current public DPA baseline.",
   "www.databricks.com/legal/databricks-subprocessors":
     "Last Updated: June 9, 2026 Amazon Web Services. This fixture represents the reviewed current Databricks subprocessor baseline used together with the Neon Product Specific Schedule.",
   "neon.com/security":
     "Neon’s Security & Compliance. We offer Data Processing Agreements (DPA). Neon enforces TLS 1.2+ encryption. All stored data is encrypted using AES-256.",
 });
 
+function reviewedPdfBytes() {
+  const body = Buffer.alloc(12_000, 0x20);
+  body.write("%PDF-1.7\n", 0, "latin1");
+  body.write("\n%%EOF\n", body.length - 8, "latin1");
+  return body;
+}
+
 function legalFetch(url) {
   const parsed = new URL(url);
+  if (parsed.hostname === "www.databricks.com" && parsed.pathname === DATABRICKS_DPA_PATH) {
+    const body = reviewedPdfBytes();
+    return Promise.resolve({
+      ok: true,
+      url: parsed.href,
+      headers: { get: (name) => name.toLowerCase() === "content-type" ? "application/pdf" : null },
+      async arrayBuffer() {
+        return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
+      },
+    });
+  }
   const key = `${parsed.hostname}${parsed.pathname}`;
   const body = SOURCE_TEXT[key];
   if (body === undefined) throw new Error(`Unexpected legal source: ${key}`);
@@ -67,6 +84,10 @@ test("collects exact public legal/security baselines but never invents provider-
   assert.equal(neonDpa.publicBaseline, true);
   assert.equal(neonDpa.accountSpecific, false);
   assert.equal(
+    neonDpa.canonicalSource,
+    "https://www.databricks.com/sites/default/files/legal/dpa-20230721.pdf",
+  );
+  assert.equal(
     result.some((entry) => entry.documentType === "dpa-account-binding"),
     false,
   );
@@ -88,7 +109,7 @@ test("requires both authenticated provider resources but does not confuse resour
   assert.equal(result.some((entry) => entry.documentType === "dpa-account-binding"), false);
 });
 
-test("fails closed on any reviewed official source drift", async () => {
+test("fails closed on any reviewed official text source drift", async () => {
   const fetchImpl = async (url) => {
     const response = await legalFetch(url);
     if (String(url).includes("cloudflare-customer-dpa")) {
@@ -107,14 +128,63 @@ test("fails closed on any reviewed official source drift", async () => {
   );
 });
 
+test("accepts only the reviewed versioned Databricks DPA PDF shape", async () => {
+  const wrongTypeFetch = async (url) => {
+    const response = await legalFetch(url);
+    if (String(url).includes(DATABRICKS_DPA_PATH)) {
+      return {
+        ...response,
+        headers: { get: () => "text/html" },
+      };
+    }
+    return response;
+  };
+  await assert.rejects(
+    () => collect({}, { fetchImpl: wrongTypeFetch }),
+    /Databricks DPA is not the reviewed PDF asset/,
+  );
+
+  const malformedPdfFetch = async (url) => {
+    const response = await legalFetch(url);
+    if (String(url).includes(DATABRICKS_DPA_PATH)) {
+      const body = Buffer.alloc(12_000, 0x20);
+      return {
+        ...response,
+        async arrayBuffer() {
+          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
+        },
+      };
+    }
+    return response;
+  };
+  await assert.rejects(
+    () => collect({}, { fetchImpl: malformedPdfFetch }),
+    /Databricks DPA PDF body is invalid/,
+  );
+});
+
 test("rejects redirects outside each trusted official host", async () => {
   const fetchImpl = async (url) => {
     const response = await legalFetch(url);
-    return { ...response, url: "https://example.com/legal", async text() { return response.text(); } };
+    return { ...response, url: "https://example.com/legal" };
   };
   await assert.rejects(
     () => collect({}, { fetchImpl }),
     /redirected outside its trusted host/,
+  );
+});
+
+test("rejects a same-host Databricks DPA redirect away from the reviewed versioned asset", async () => {
+  const fetchImpl = async (url) => {
+    const response = await legalFetch(url);
+    if (String(url).includes(DATABRICKS_DPA_PATH)) {
+      return { ...response, url: "https://www.databricks.com/legal/dpa" };
+    }
+    return response;
+  };
+  await assert.rejects(
+    () => collect({}, { fetchImpl }),
+    /redirected away from the reviewed versioned asset/,
   );
 });
 
