@@ -255,8 +255,8 @@ async function officialDatabricksDpaPdf(url, fetchImpl) {
   if (bytes.byteLength < 10_000 || bytes.byteLength > 5_000_000) {
     throw new Error("ULC M5-G Databricks DPA PDF body is invalid.");
   }
-  const header = new TextDecoder("latin1").decode(bytes.subarray(0, Math.min(bytes.length, 16)));
-  const trailer = new TextDecoder("latin1").decode(bytes.subarray(Math.max(0, bytes.length - 1024)));
+  const header = Buffer.from(bytes.subarray(0, Math.min(bytes.length, 16))).toString("latin1");
+  const trailer = Buffer.from(bytes.subarray(Math.max(0, bytes.length - 1024))).toString("latin1");
   if (!header.startsWith("%PDF-") || !trailer.includes("%%EOF")) {
     throw new Error("ULC M5-G Databricks DPA PDF body is invalid.");
   }
@@ -275,23 +275,53 @@ function requireDatabricksDpaPdfBaseline(bytes) {
 }
 
 function extractPdfSearchText(bytes) {
-  const decoder = new TextDecoder("latin1");
-  const raw = decoder.decode(bytes);
+  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const raw = buffer.toString("latin1");
   const chunks = [raw];
-  const streamPattern = /stream\r?\n([\s\S]*?)\r?\nendstream/gu;
-  for (const match of raw.matchAll(streamPattern)) {
-    const dictionary = raw.slice(Math.max(0, match.index - 1024), match.index);
+  const streamStart = Buffer.from("stream\n", "ascii");
+  const streamStartCrLf = Buffer.from("stream\r\n", "ascii");
+  const streamEnd = Buffer.from("\nendstream", "ascii");
+  const streamEndCrLf = Buffer.from("\r\nendstream", "ascii");
+  let offset = 0;
+
+  while (offset < buffer.length) {
+    const lfStart = buffer.indexOf(streamStart, offset);
+    const crlfStart = buffer.indexOf(streamStartCrLf, offset);
+    let marker = streamStart;
+    let start = lfStart;
+    if (start === -1 || (crlfStart !== -1 && crlfStart < start)) {
+      marker = streamStartCrLf;
+      start = crlfStart;
+    }
+    if (start === -1) break;
+
+    const contentStart = start + marker.length;
+    const lfEnd = buffer.indexOf(streamEnd, contentStart);
+    const crlfEnd = buffer.indexOf(streamEndCrLf, contentStart);
+    let contentEnd = lfEnd;
+    let endMarkerLength = streamEnd.length;
+    if (contentEnd === -1 || (crlfEnd !== -1 && crlfEnd < contentEnd)) {
+      contentEnd = crlfEnd;
+      endMarkerLength = streamEndCrLf.length;
+    }
+    if (contentEnd === -1) break;
+
+    const dictionaryStart = Math.max(0, start - 1024);
+    const dictionary = buffer.subarray(dictionaryStart, start).toString("latin1");
+    const streamBytes = buffer.subarray(contentStart, contentEnd);
     if (/\/FlateDecode\b/u.test(dictionary)) {
       try {
-        chunks.push(inflateSync(Buffer.from(match[1], "latin1")).toString("latin1"));
+        chunks.push(inflateSync(streamBytes).toString("latin1"));
       } catch {
         // Not every stream must be text-bearing. Unsupported/corrupt streams do
         // not establish the baseline; the mandatory anchors below still fail closed.
       }
     } else {
-      chunks.push(match[1]);
+      chunks.push(streamBytes.toString("latin1"));
     }
+    offset = contentEnd + endMarkerLength;
   }
+
   return chunks.map((chunk) => `${chunk} ${extractPdfLiteralStrings(chunk)}`).join(" ");
 }
 
