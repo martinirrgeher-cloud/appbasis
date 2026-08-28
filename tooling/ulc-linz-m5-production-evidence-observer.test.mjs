@@ -28,7 +28,7 @@ function providerFetch(url) {
     return Promise.resolve(response({ branches: [{ id: "branch-1", name: "production", primary: true }] }));
   }
   if (value.endsWith("/projects/project-1/branches/branch-1/databases")) {
-    return Promise.resolve(response({ databases: [{ id: "database-1", name: "neondb" }] }));
+    return Promise.resolve(response({ databases: [{ id: 123, name: "neondb" }] }));
   }
   if (value.endsWith("/workers/workers/appbasis-ulc-linz-production")) {
     return Promise.resolve(response({ success: true, result: { name: "appbasis-ulc-linz-production", subdomain: { enabled: false, previews_enabled: false }, references: { domains: [] } } }));
@@ -118,6 +118,14 @@ test("observer derives authoritative provider recovery/control-plane evidence an
     "providerBoundEvidenceInput",
   ]);
   assert.equal(
+    bundle.ownerInputs.providerBoundEvidenceInput.resourceBindingEvidence.neon.databaseBindingId,
+    "123",
+  );
+  assert.equal(
+    bundle.ownerInputs.backupRestoreEvidenceInput.sourceDatabaseBindingId,
+    "123",
+  );
+  assert.equal(
     bundle.ownerInputs.lifecycleActivationEvidenceInput.activationEvidence.deletionExecutorBound,
     false,
   );
@@ -151,6 +159,22 @@ test("observer derives authoritative provider recovery/control-plane evidence an
     "highPrivacyProfile",
   ]) {
     assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "open");
+  }
+});
+
+test("observer accepts only the native positive safe-integer Neon database ID shape", async () => {
+  for (const invalidId of ["123", 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const invalidDatabaseFetch = async (url, options) => {
+      const result = await providerFetch(url, options);
+      if (String(url).endsWith("/projects/project-1/branches/branch-1/databases")) {
+        return response({ databases: [{ id: invalidId, name: "neondb" }] });
+      }
+      return result;
+    };
+    await assert.rejects(
+      () => collect({ fetchImpl: invalidDatabaseFetch }),
+      /Neon database ID is invalid/,
+    );
   }
 });
 
