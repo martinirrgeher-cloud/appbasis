@@ -339,16 +339,13 @@ function isMainModule() {
 
 if (isMainModule()) {
   try {
-    const mode = process.argv[2];
-    const options = {
+    if (process.argv[2] !== "verify-empty") {
+      throw new Error("Expected command mode verify-empty; destructive reset is available only through the guarded M4/M5 workflow path.");
+    }
+    const result = await verifyUlcLinzM5IsolatedRestoreTargetEmpty({
       sourceUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
       restoreUrl: process.env.APPBASIS_M4_RESTORE_DATABASE_URL,
-    };
-    const result = mode === "verify-empty"
-      ? await verifyUlcLinzM5IsolatedRestoreTargetEmpty(options)
-      : mode === "reset-and-verify"
-        ? await resetAndVerifyUlcLinzM5IsolatedRestoreTarget(options)
-        : (() => { throw new Error("Expected command mode verify-empty or reset-and-verify."); })();
+    });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
     console.error(error instanceof Error ? error.message : "ULC M5 restore target operation failed.");
