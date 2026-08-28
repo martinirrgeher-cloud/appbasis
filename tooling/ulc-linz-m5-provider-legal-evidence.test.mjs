@@ -210,6 +210,28 @@ test("rejects a structurally valid but content-unrelated Databricks DPA PDF", as
   );
 });
 
+test("rejects an over-expanding Databricks DPA Flate stream", async () => {
+  const fetchImpl = async (url) => {
+    const response = await legalFetch(url);
+    if (String(url).includes(DATABRICKS_DPA_PATH)) {
+      const body = reviewedPdfBytes(
+        `${REVIEWED_DATABRICKS_DPA_TEXT} ${"A".repeat(10_100_000)}`,
+      );
+      return {
+        ...response,
+        async arrayBuffer() {
+          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
+        },
+      };
+    }
+    return response;
+  };
+  await assert.rejects(
+    () => collect({}, { fetchImpl }),
+    /Databricks DPA drifted from the reviewed official baseline/,
+  );
+});
+
 test("rejects redirects outside each trusted official host", async () => {
   const fetchImpl = async (url) => {
     const response = await legalFetch(url);
