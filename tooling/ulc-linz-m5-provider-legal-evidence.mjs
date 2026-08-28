@@ -340,7 +340,7 @@ function extractPdfSearchText(bytes) {
 function extractPdfDisplayedText(value) {
   const displayed = [];
   for (const textObject of value.matchAll(/\bBT\b([\s\S]*?)\bET\b/gu)) {
-    const body = textObject[1];
+    const body = stripPdfComments(textObject[1]);
     for (const direct of body.matchAll(/(\((?:\\[\s\S]|[^\\()])*\))\s*(?:Tj|'|")(?=\s|$)/gu)) {
       displayed.push(extractPdfLiteralStrings(direct[1]));
     }
@@ -349,6 +349,44 @@ function extractPdfDisplayedText(value) {
     }
   }
   return displayed.join(" ");
+}
+
+function stripPdfComments(value) {
+  let result = "";
+  let depth = 0;
+  let escaped = false;
+  let inComment = false;
+  for (const char of value) {
+    if (inComment) {
+      if (char === "\n" || char === "\r") {
+        inComment = false;
+        result += char;
+      }
+      continue;
+    }
+    if (depth > 0) {
+      result += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "(") {
+        depth += 1;
+      } else if (char === ")") {
+        depth -= 1;
+      }
+      continue;
+    }
+    if (char === "(") {
+      depth = 1;
+      result += char;
+    } else if (char === "%") {
+      inComment = true;
+    } else {
+      result += char;
+    }
+  }
+  return result;
 }
 
 function extractPdfLiteralStrings(value) {
