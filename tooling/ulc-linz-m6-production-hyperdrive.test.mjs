@@ -237,3 +237,28 @@ test("reconciles an existing production Hyperdrive with the approved current cre
   assert.match(requests[1].url, new RegExp(`/hyperdrive/configs/${TARGET_ID}$`));
   assert.deepEqual(JSON.parse(requests[1].options.body), expectedWriteBody());
 });
+
+test("reconciles a stale existing production Hyperdrive only after explicit approval", async () => {
+  const requests = [];
+  const stale = targetConfig({
+    origin: { user: "legacy_runtime_role" },
+    caching: { disabled: false },
+  });
+  const result = await ensureUlcLinzProductionHyperdrive({
+    accountId: ACCOUNT_ID,
+    apiToken: API_TOKEN,
+    databaseUrl: DATABASE_URL,
+    apply: true,
+    fetchImpl: async (url, options) => {
+      requests.push({ url: String(url), options });
+      if (options.method === "GET") return apiResponse([stale]);
+      return apiResponse(targetConfig());
+    },
+  });
+
+  assert.equal(result.id, TARGET_ID);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].options.method, "PUT");
+  assert.match(requests[1].url, new RegExp(`/hyperdrive/configs/${TARGET_ID}$`));
+  assert.deepEqual(JSON.parse(requests[1].options.body), expectedWriteBody());
+});
