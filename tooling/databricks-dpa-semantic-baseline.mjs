@@ -4,6 +4,7 @@ const MAX_INFLATED_STREAM_BYTES = 10_000_000;
 const MAX_EXTRACTED_BYTES = 20_000_000;
 const MAX_PDF_OBJECTS = 10_000;
 const MAX_PAGES = 100;
+const MAX_OBJECT_STREAM_OBJECTS = 10_000;
 
 const REVIEWED_SUBSTANTIVE_CLAUSES = Object.freeze([
   "Databricks agrees that when Databricks processes Customer Personal Data in its capacity as a processor on behalf of the Customer Databricks will comply with Applicable Data Protection Laws and process the Customer Personal Data as necessary to perform its obligations under the Agreement and only in accordance with Customer's documented instructions",
@@ -22,9 +23,7 @@ export function verifyReviewedDatabricksDpaSemanticBaseline(bytes) {
   const compactText = compact(displayedText);
   if (
     compactText.length === 0 ||
-    REVIEWED_SUBSTANTIVE_CLAUSES.some(
-      (clause) => !compactText.includes(compact(clause)),
-    )
+    REVIEWED_SUBSTANTIVE_CLAUSES.some((clause) => !compactText.includes(compact(clause)))
   ) {
     throw driftError();
   }
@@ -34,15 +33,15 @@ export function verifyReviewedDatabricksDpaSemanticBaseline(bytes) {
 function extractActivePageDisplayedText(bytes) {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const objects = parseIndirectObjects(buffer);
-  const rootRef = parseTrailerRootRef(buffer);
+  expandObjectStreams(objects);
+  const rootRef = parseActiveRootRef(buffer, objects);
   const catalog = requireObject(objects, rootRef);
   if (!/\/Type\s*\/Catalog\b/u.test(catalog.dictionary)) throw driftError();
   const pagesRef = parseSingleRef(catalog.dictionary, "Pages");
   if (pagesRef === null) throw driftError();
 
   const pageRefs = [];
-  const visited = new Set();
-  walkPageTree(objects, pagesRef, visited, pageRefs);
+  walkPageTree(objects, pagesRef, new Set(), pageRefs);
   if (pageRefs.length === 0 || pageRefs.length > MAX_PAGES) throw driftError();
 
   let extractedBytes = 0;
@@ -61,19 +60,12 @@ function extractActivePageDisplayedText(bytes) {
       if (decoded === null) continue;
       extractedBytes += decoded.byteLength;
       if (extractedBytes > MAX_EXTRACTED_BYTES) {
-        throw new Error(
-          "ULC M5-G Databricks DPA PDF extraction exceeds its safety bound.",
-        );
+        throw new Error("ULC M5-G Databricks DPA PDF extraction exceeds its safety bound.");
       }
       pageStreams.push(decoded);
     }
     if (pageStreams.length === 0) throw driftError();
-    chunks.push(
-      extractDisplayedTextOperators(
-        Buffer.concat(pageStreams).toString("latin1"),
-        fontMaps,
-      ),
-    );
+    chunks.push(extractDisplayedTextOperators(Buffer.concat(pageStreams).toString("latin1"), fontMaps));
   }
   return chunks.join(" ");
 }
@@ -123,13 +115,70 @@ function parseObjectBody(bodyBuffer) {
   });
 }
 
-function parseTrailerRootRef(buffer) {
-  const tail = buffer.subarray(Math.max(0, buffer.byteLength - 65_536)).toString("latin1");
+function expandObjectStreams(objects) {
+  const objectStreams = [...objects.entries()].filter(([, value]) => /\/Type\s*\/ObjStm\b/u.test(value.dictionary));
+  for (const [, objectStream] of objectStreams) {
+    if (objectStream.stream === null) throw driftError();
+    const count = parseRequiredInteger(objectStream.dictionary, "N");
+    const first = parseRequiredInteger(objectStream.dictionary, "First");
+    if (count < 1 || count > MAX_OBJECT_STREAM_OBJECTS || first < 0) throw driftError();
+    const decoded = decodeStream(objectStream.dictionary, objectStream.stream);
+    if (decoded === null || first > decoded.byteLength) throw driftError();
+    const header = decoded.subarray(0, first).toString("latin1").trim();
+    const tokens = header.length === 0 ? [] : header.split(/\s+/u);
+    if (tokens.length !== count * 2) throw driftError();
+    const entries = [];
+    for (let index = 0; index < count; index += 1) {
+      const objectNumber = Number.parseInt(tokens[index * 2], 10);
+      const offset = Number.parseInt(tokens[index * 2 + 1], 10);
+      if (!Number.isSafeInteger(objectNumber) || objectNumber < 1 || !Number.isSafeInteger(offset) || offset < 0) throw driftError();
+      entries.push({ objectNumber, offset });
+    }
+    for (let index = 0; index < entries.length; index += 1) {
+      const start = first + entries[index].offset;
+      const end = index + 1 < entries.length ? first + entries[index + 1].offset : decoded.byteLength;
+      if (start < first || end < start || end > decoded.byteLength) throw driftError();
+      const key = `${entries[index].objectNumber} 0`;
+      if (objects.has(key)) continue;
+      if (objects.size >= MAX_PDF_OBJECTS) throw driftError();
+      const body = decoded.subarray(start, end).toString("latin1").trim();
+      if (body.length === 0 || /\bstream\b/u.test(body)) throw driftError();
+      objects.set(key, Object.freeze({ dictionary: body, stream: null }));
+    }
+  }
+}
+
+function parseActiveRootRef(buffer, objects) {
+  const tailStart = Math.max(0, buffer.byteLength - 65_536);
+  const tail = buffer.subarray(tailStart).toString("latin1");
+  const startXrefMatches = [...tail.matchAll(/\bstartxref\s+(\d+)\s*%%EOF/gu)];
+  if (startXrefMatches.length === 0) throw driftError();
+  const offset = Number.parseInt(startXrefMatches.at(-1)[1], 10);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset >= buffer.byteLength) throw driftError();
+  const fromOffset = buffer.subarray(offset).toString("latin1");
+  const header = fromOffset.match(/^(\d+)\s+(\d+)\s+obj\b/u);
+  if (header !== null) {
+    const ref = `${header[1]} ${header[2]}`;
+    const xrefObject = requireObject(objects, ref);
+    if (/\/Type\s*\/XRef\b/u.test(xrefObject.dictionary)) {
+      return parseRootRefFromDictionary(xrefObject.dictionary);
+    }
+  }
   const trailers = [...tail.matchAll(/\btrailer\s*<<(.*?)>>/gsu)];
   if (trailers.length === 0) throw driftError();
-  const root = trailers.at(-1)[1].match(/\/Root\s+(\d+)\s+(\d+)\s+R\b/u);
+  return parseRootRefFromDictionary(trailers.at(-1)[1]);
+}
+
+function parseRootRefFromDictionary(dictionary) {
+  const root = dictionary.match(/\/Root\s+(\d+)\s+(\d+)\s+R\b/u);
   if (root === null) throw driftError();
   return `${root[1]} ${root[2]}`;
+}
+
+function parseRequiredInteger(dictionary, key) {
+  const match = dictionary.match(new RegExp(`\\/${key}\\s+(\\d+)\\b`, "u"));
+  if (match === null) throw driftError();
+  return Number.parseInt(match[1], 10);
 }
 
 function walkPageTree(objects, ref, visited, pages) {
@@ -147,7 +196,7 @@ function walkPageTree(objects, ref, visited, pages) {
 }
 
 function parseContentsRefs(dictionary) {
-  const array = parseRefArray(dictionary, "Contents", { optional: true });
+  const array = parseRefArray(dictionary, "Contents");
   if (array.length > 0) return array;
   const single = parseSingleRef(dictionary, "Contents");
   return single === null ? [] : [single];
@@ -231,9 +280,7 @@ function parseToUnicodeCmap(value) {
 function decodeUnicodeHex(hex) {
   if (hex.length % 4 !== 0) return Buffer.from(hex, "hex").toString("latin1");
   let result = "";
-  for (let index = 0; index < hex.length; index += 4) {
-    result += String.fromCharCode(Number.parseInt(hex.slice(index, index + 4), 16));
-  }
+  for (let index = 0; index < hex.length; index += 4) result += String.fromCharCode(Number.parseInt(hex.slice(index, index + 4), 16));
   return result;
 }
 
@@ -242,9 +289,9 @@ function parseSingleRef(dictionary, key) {
   return match === null ? null : `${match[1]} ${match[2]}`;
 }
 
-function parseRefArray(dictionary, key, { optional = false } = {}) {
+function parseRefArray(dictionary, key) {
   const match = dictionary.match(new RegExp(`\\/${key}\\s*\\[([\\s\\S]*?)\\]`, "u"));
-  if (match === null) return optional ? [] : [];
+  if (match === null) return [];
   return [...match[1].matchAll(/(\d+)\s+(\d+)\s+R\b/gu)].map((ref) => `${ref[1]} ${ref[2]}`);
 }
 
@@ -266,35 +313,53 @@ function decodeStream(dictionary, streamBytes) {
 
 function extractDisplayedTextOperators(value, fontMaps) {
   const displayed = [];
-  for (const textObject of value.matchAll(/\bBT\b([\s\S]*?)\bET\b/gu)) {
-    const body = stripPdfComments(textObject[1]);
-    let activeFont = null;
-    let renderingMode = 0;
-    const tokenPattern = /\/([A-Za-z0-9_.+-]+)\s+[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s+Tf\b|([0-7])\s+Tr\b|(\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>)\s*(Tj|'|")|\[([\s\S]*?)\]\s*TJ\b/gu;
-    for (const token of body.matchAll(tokenPattern)) {
-      if (token[1] !== undefined) {
-        activeFont = token[1];
-      } else if (token[2] !== undefined) {
-        renderingMode = Number.parseInt(token[2], 10);
-      } else if (token[3] !== undefined) {
-        if (renderingMode !== 3 && renderingMode !== 7) {
-          displayed.push(decodePdfTextOperand(token[3], fontMaps.get(activeFont)));
-        }
-      } else if (token[5] !== undefined) {
-        if (renderingMode !== 3 && renderingMode !== 7) {
-          displayed.push(decodePdfTextArray(token[5], fontMaps.get(activeFont)));
-        }
+  const source = stripPdfComments(value);
+  const stateStack = [];
+  let state = { renderingMode: 0, activeFont: null, clipSafe: true };
+  let insideText = false;
+  let pendingClip = false;
+  const tokenPattern = /\bBT\b|\bET\b|\bq\b|\bQ\b|\bW\*?\b|\bn\b|\/([A-Za-z0-9_.+-]+)\s+[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s+Tf\b|([0-7])\s+Tr\b|(\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>)\s*(Tj|'|")|\[([\s\S]*?)\]\s*TJ\b/gu;
+  for (const token of source.matchAll(tokenPattern)) {
+    const raw = token[0];
+    if (raw === "q") {
+      stateStack.push({ ...state });
+      pendingClip = false;
+    } else if (raw === "Q") {
+      if (stateStack.length === 0) throw driftError();
+      state = stateStack.pop();
+      pendingClip = false;
+    } else if (raw === "BT") {
+      if (insideText) throw driftError();
+      insideText = true;
+    } else if (raw === "ET") {
+      if (!insideText) throw driftError();
+      insideText = false;
+    } else if (raw === "W" || raw === "W*") {
+      pendingClip = true;
+    } else if (raw === "n") {
+      if (pendingClip) state.clipSafe = false;
+      pendingClip = false;
+    } else if (token[1] !== undefined) {
+      if (insideText) state.activeFont = token[1];
+    } else if (token[2] !== undefined) {
+      if (insideText) state.renderingMode = Number.parseInt(token[2], 10);
+    } else if (token[3] !== undefined) {
+      if (insideText && state.clipSafe && state.renderingMode !== 3 && state.renderingMode !== 7) {
+        displayed.push(decodePdfTextOperand(token[3], fontMaps.get(state.activeFont)));
+      }
+    } else if (token[5] !== undefined) {
+      if (insideText && state.clipSafe && state.renderingMode !== 3 && state.renderingMode !== 7) {
+        displayed.push(decodePdfTextArray(token[5], fontMaps.get(state.activeFont)));
       }
     }
   }
+  if (insideText || stateStack.length !== 0) throw driftError();
   return displayed.join(" ");
 }
 
 function decodePdfTextArray(value, cmap) {
   const parts = [];
-  for (const operand of value.matchAll(/\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>/gu)) {
-    parts.push(decodePdfTextOperand(operand[0], cmap));
-  }
+  for (const operand of value.matchAll(/\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>/gu)) parts.push(decodePdfTextOperand(operand[0], cmap));
   return parts.join("");
 }
 
@@ -305,9 +370,7 @@ function decodePdfTextOperand(operand, cmap) {
   if (cmap instanceof Map && cmap.size > 0) return decodeWithCmap(bytes, cmap);
   if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
     let result = "";
-    for (let index = 2; index + 1 < bytes.length; index += 2) {
-      result += String.fromCharCode(bytes.readUInt16BE(index));
-    }
+    for (let index = 2; index + 1 < bytes.length; index += 2) result += String.fromCharCode(bytes.readUInt16BE(index));
     return result;
   }
   return bytes.toString("latin1");
@@ -362,11 +425,8 @@ function stripPdfComments(value) {
     if (char === "(") {
       depth = 1;
       result += char;
-    } else if (char === "%") {
-      inComment = true;
-    } else {
-      result += char;
-    }
+    } else if (char === "%") inComment = true;
+    else result += char;
   }
   return result;
 }
@@ -411,11 +471,7 @@ function extractPdfLiteralBytes(value) {
 }
 
 function compact(value) {
-  return value
-    .normalize("NFKD")
-    .replaceAll(/[’‘]/gu, "'")
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/gu, "");
+  return value.normalize("NFKD").replaceAll(/[’‘]/gu, "'").toLowerCase().replaceAll(/[^a-z0-9]+/gu, "");
 }
 
 function driftError() {
