@@ -10,26 +10,15 @@ const VALID_UNTIL = "2026-08-23T22:15:00.000Z";
 const DATABRICKS_DPA_PATH = "/sites/default/files/legal/dpa-20230721.pdf";
 const REVIEWED_DATABRICKS_DPA_SHA256 = "f7501e724b91d8bdb737b34d7f9807b996fe88a86db782063f3c09ee5ce2aa2c";
 const REVIEWED_DATABRICKS_DPA_SEMANTIC_TEXT = [
-  "DATA PROCESSING ADDENDUM",
-  "Databricks Master Cloud Services Agreement",
-  "Applicable Data Protection Laws",
-  "PROCESSING OF PERSONAL DATA",
-  "CONFIDENTIALITY",
-  "SUBPROCESSING",
-  "Data Protection Impact Assessments",
-  "SECURITY",
-  "AUDITS AND RECORDS",
-  "TRANSFER OF PERSONAL DATA",
-  "BACKUP, DELETION & RETURN",
-  "CCPA COMPLIANCE",
-  "ANNEX A",
-  "Categories of personal data transferred",
-  "Sensitive data transferred",
-  "Period for which the personal data will be retained",
-  "ANNEX B",
-  "STANDARD CONTRACTUAL CLAUSES",
-  "Modules 2 and 3",
-  "Databricks DPA v3 (2023-07-21)",
+  "Databricks agrees that when Databricks processes Customer Personal Data in its capacity as a processor on behalf of the Customer Databricks will comply with Applicable Data Protection Laws and process the Customer Personal Data as necessary to perform its obligations under the Agreement and only in accordance with Customer's documented instructions",
+  "Databricks shall enter into a written agreement with its Subprocessors which includes data protection and security measures no less protective than the measures set forth in this DPA and remain fully liable for any breach of the Agreement and this DPA that is caused by an act error or omission of its Subprocessors",
+  "In the event of a Security Breach Databricks will notify Customer in writing without undue delay and in no event later than seventy-two 72 hours after becoming aware of the Security Breach and promptly take reasonable steps to contain investigate and mitigate any adverse effects resulting from the Security Breach",
+  "Where the transfer of Customer Personal Data to Databricks is a Restricted Transfer such transfer shall be governed by the Standard Contractual Clauses which shall be deemed incorporated into and form an integral part of the Agreement in accordance with Annex B of this DPA",
+  "The Databricks Services do not include backup services or disaster recovery for Customer Personal Data Databricks does provide functionality within the Databricks Services that may permit Customer to backup certain Customer Personal Data on its own It is the Customer's obligation to backup any Customer Personal Data if desired",
+  "Databricks will delete or assist Customer in deleting any Customer Personal Data within its possession or control within thirty 30 days following such request",
+  "Module Two terms shall apply where Customer is the controller of Customer Personal Data and the Module Three terms shall apply where Customer is the processor of Customer Personal Data",
+  "in Clause 9 option 2 general authorization is selected and the process and time period for prior notice of Sub-processor changes shall be as set out in Section 4.3 of the DPA",
+  "Databricks DPA v3 2023-07-21",
 ].join(" ");
 
 const SOURCE_TEXT = Object.freeze({
