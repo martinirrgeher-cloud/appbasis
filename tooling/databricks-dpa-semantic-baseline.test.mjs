@@ -85,6 +85,68 @@ function xrefStreamPdf(content) {
   ]);
 }
 
+function xrefEntry(type, field2, field3) {
+  const entry = Buffer.alloc(7);
+  entry.writeUInt8(type, 0);
+  entry.writeUInt32BE(field2, 1);
+  entry.writeUInt16BE(field3, 5);
+  return entry;
+}
+
+function xrefStreamWithStaleReviewedCatalog(activeContent) {
+  const chunks = [Buffer.from("%PDF-1.7\n", "latin1")];
+  let length = chunks[0].byteLength;
+  const offsets = new Map();
+  const append = (number, value) => {
+    offsets.set(number, length);
+    chunks.push(value);
+    length += value.byteLength;
+  };
+
+  append(1, Buffer.from("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n", "latin1"));
+  append(2, Buffer.from("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n", "latin1"));
+  append(3, Buffer.from("3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>\nendobj\n", "latin1"));
+  append(4, streamObject(4, `BT\n(${literal(REVIEWED_TEXT)}) Tj\nET`));
+
+  const bodies = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /Contents 7 0 R >>",
+  ];
+  let objectOffset = 0;
+  const pairs = [];
+  for (let index = 0; index < bodies.length; index += 1) {
+    pairs.push(`${index + 1} ${objectOffset}`);
+    objectOffset += Buffer.byteLength(`${bodies[index]} `, "latin1");
+  }
+  const objectHeader = `${pairs.join(" ")} `;
+  append(5, streamObject(5, `${objectHeader}${bodies.join(" ")}`, {
+    dictionary: ` /Type /ObjStm /N 3 /First ${Buffer.byteLength(objectHeader, "latin1")}`,
+  }));
+  append(7, streamObject(7, activeContent));
+
+  const xrefOffset = length;
+  const entries = Buffer.concat([
+    xrefEntry(0, 0, 65535),
+    xrefEntry(2, 5, 0),
+    xrefEntry(2, 5, 1),
+    xrefEntry(2, 5, 2),
+    xrefEntry(1, offsets.get(4), 0),
+    xrefEntry(1, offsets.get(5), 0),
+    xrefEntry(1, xrefOffset, 0),
+    xrefEntry(1, offsets.get(7), 0),
+  ]);
+  append(6, streamObject(6, entries, {
+    compressed: false,
+    dictionary: " /Type /XRef /Root 1 0 R /Size 8 /W [1 4 2] /Index [0 8]",
+  }));
+
+  return Buffer.concat([
+    ...chunks,
+    Buffer.from(`startxref\n${xrefOffset}\n%%EOF\n`, "latin1"),
+  ]);
+}
+
 function literal(value) {
   return value.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
 }
@@ -126,39 +188,23 @@ test("accepts a ToUnicode-mapped glyph stream on the active page", () => {
 });
 
 test("accepts a text object split across ordered page content streams", () => {
-  const bytes = pdfWithContentArray([
-    "BT\n",
-    `(${literal(REVIEWED_TEXT)}) Tj\nET`,
-  ]);
+  const bytes = pdfWithContentArray(["BT\n", `(${literal(REVIEWED_TEXT)}) Tj\nET`]);
   assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
 });
 
 test("rejects reviewed clauses painted with invisible text rendering mode", () => {
-  const bytes = basePdf(
-    `BT\n(UNRELATED VISIBLE CONTRACT) Tj\n3 Tr\n(${literal(REVIEWED_TEXT)}) Tj\nET`,
-  );
-  assert.throws(
-    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
-    /drifted from the reviewed official baseline/,
-  );
+  const bytes = basePdf(`BT\n(UNRELATED VISIBLE CONTRACT) Tj\n3 Tr\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(bytes), /drifted from the reviewed official baseline/);
 });
 
 test("rejects reviewed clauses used only as a clipping text path", () => {
-  const bytes = basePdf(
-    `BT\n(UNRELATED VISIBLE CONTRACT) Tj\n7 Tr\n(${literal(REVIEWED_TEXT)}) Tj\nET`,
-  );
-  assert.throws(
-    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
-    /drifted from the reviewed official baseline/,
-  );
+  const bytes = basePdf(`BT\n(UNRELATED VISIBLE CONTRACT) Tj\n7 Tr\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(bytes), /drifted from the reviewed official baseline/);
 });
 
 test("rejects invisible rendering mode persisted across text objects", () => {
   const bytes = basePdf(`BT\n3 Tr\nET\nBT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
-  assert.throws(
-    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
-    /drifted from the reviewed official baseline/,
-  );
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(bytes), /drifted from the reviewed official baseline/);
 });
 
 test("restores rendering state through q and Q", () => {
@@ -168,15 +214,28 @@ test("restores rendering state through q and Q", () => {
 
 test("rejects reviewed clauses under an unknown clipping path", () => {
   const bytes = basePdf(`q\n0 0 m\nW n\nBT\n(${literal(REVIEWED_TEXT)}) Tj\nET\nQ`);
-  assert.throws(
-    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
-    /drifted from the reviewed official baseline/,
-  );
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(bytes), /drifted from the reviewed official baseline/);
+});
+
+test("rejects reviewed clauses after a clipping path finalized by fill", () => {
+  const bytes = basePdf(`0 0 0 0 re W f\nBT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(bytes), /drifted from the reviewed official baseline/);
+});
+
+test("applies text clipping when ET closes the text object", () => {
+  const bytes = basePdf(`BT\n7 Tr\n(X) Tj\nET\nBT\n0 Tr\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(bytes), /drifted from the reviewed official baseline/);
 });
 
 test("accepts a cross-reference stream with catalog objects in an object stream", () => {
   const bytes = xrefStreamPdf(`BT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
   assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
+});
+
+test("uses active compressed objects from xref entries instead of stale direct objects", () => {
+  const changed = REVIEWED_TEXT.replace("in no event later than seventy-two 72 hours", "within a commercially reasonable period");
+  const bytes = xrefStreamWithStaleReviewedCatalog(`BT\n(${literal(changed)}) Tj\nET`);
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(bytes), /drifted from the reviewed official baseline/);
 });
 
 test("rejects substantive clauses hidden in an unreferenced stream", () => {
