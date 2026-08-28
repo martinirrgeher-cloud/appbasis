@@ -104,7 +104,7 @@ function collect(settingsResult) {
   );
 }
 
-test("observer accepts the current Cloudflare nullable tags and query-redaction telemetry shape", async () => {
+test("observer accepts the current Cloudflare nullable tags and log query-redaction shape", async () => {
   const bundle = await collect({
     logpush: false,
     observability: {
@@ -116,7 +116,6 @@ test("observer accepts the current Cloudflare nullable tags and query-redaction 
       },
       traces: {
         enabled: false,
-        redact_query_string: true,
       },
     },
     tags: null,
@@ -129,7 +128,7 @@ test("observer accepts the current Cloudflare nullable tags and query-redaction 
   );
 });
 
-test("observer still fails closed on unknown Cloudflare telemetry fields", async () => {
+test("observer still fails closed on unknown or malformed Cloudflare telemetry fields", async () => {
   await assert.rejects(
     () => collect({
       logpush: false,
@@ -146,5 +145,22 @@ test("observer still fails closed on unknown Cloudflare telemetry fields", async
       tail_consumers: [],
     }),
     /Cloudflare Worker logs settings is invalid/,
+  );
+
+  await assert.rejects(
+    () => collect({
+      logpush: false,
+      observability: {
+        enabled: false,
+        logs: {
+          enabled: false,
+          invocation_logs: false,
+          redact_query_string: "true",
+        },
+      },
+      tags: null,
+      tail_consumers: [],
+    }),
+    /Cloudflare Worker telemetry inventory is invalid/,
   );
 });
