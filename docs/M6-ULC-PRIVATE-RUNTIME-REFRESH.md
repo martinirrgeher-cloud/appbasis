@@ -73,7 +73,9 @@ Ist die aktuelle Version bereits exakt privat deployt, bleibt der Workflow idemp
 
 ## Wiederverwendeter Vertrag
 
-`tooling/ulc-linz-cloudflare-current-deployment.mjs` verwendet die dokumentierte Cloudflare-Ordering-Semantik: `deployments[0]` ist das aktuelle, Traffic bedienende Deployment. Der Vertrag validiert ausschließlich dessen Single-Version-100%-Zustand und wird sowohl vom M6-Refresh als auch vom M5-Production-Evidence-Observer verwendet, damit die beiden Gates nicht auseinanderdriften.
+`tooling/ulc-linz-cloudflare-current-deployment.mjs` verwendet die dokumentierte Cloudflare-Ordering-Semantik: `deployments[0]` ist das aktuelle, Traffic bedienende Deployment. Der Vertrag validiert ausschließlich dessen Single-Version-100%-Zustand und wird vom M6-Refresh sowie durchgängig in der M5-Production-Evidence-Kette (Observer, G und F) verwendet, damit Refresh- und Evidence-Gates bei wachsender Deployment-Historie nicht auseinanderdriften.
+
+Die verpflichtenden M5-Tests führen Observer, G und F jeweils mit zusätzlicher älterer Deployment-Historie aus. Dadurch bleibt abgesichert, dass nur der erste aktive Eintrag maßgeblich ist und spätere Historie einen aktiven Drift nicht positiv überstimmen kann.
 
 `tooling/ulc-linz-m6-private-runtime-refresh.mjs` bleibt der kleine Validator für die zwei realen Refresh-Workflow-Verbraucher. Er ersetzt keine bestehenden M6-Providerverträge und enthält selbst keinen Provider-Write.
 
