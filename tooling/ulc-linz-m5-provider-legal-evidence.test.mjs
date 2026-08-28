@@ -210,6 +210,34 @@ test("rejects a structurally valid but content-unrelated Databricks DPA PDF", as
   );
 });
 
+test("rejects reviewed Databricks anchors hidden outside displayed PDF text", async () => {
+  const fetchImpl = async (url) => {
+    const response = await legalFetch(url);
+    if (String(url).includes(DATABRICKS_DPA_PATH)) {
+      const visiblePdf = reviewedPdfBytes(
+        "UNRELATED DOCUMENT This is the only displayed text in this PDF fixture.",
+      );
+      const hiddenComment = Buffer.from(`% ${REVIEWED_DATABRICKS_DPA_TEXT}\n`, "latin1");
+      const body = Buffer.concat([
+        visiblePdf.subarray(0, 9),
+        hiddenComment,
+        visiblePdf.subarray(9),
+      ]);
+      return {
+        ...response,
+        async arrayBuffer() {
+          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
+        },
+      };
+    }
+    return response;
+  };
+  await assert.rejects(
+    () => collect({}, { fetchImpl }),
+    /Databricks DPA drifted from the reviewed official baseline/,
+  );
+});
+
 test("rejects an over-expanding Databricks DPA Flate stream", async () => {
   const fetchImpl = async (url) => {
     const response = await legalFetch(url);
