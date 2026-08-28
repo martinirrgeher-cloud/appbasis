@@ -27,22 +27,37 @@ const REVIEWED_TEXT = [
   "Databricks DPA v3 (2023-07-21)",
 ].join(" ");
 
-function pdfWithContent(content, { compressed = true } = {}) {
+function streamObject(number, content, { compressed = true } = {}) {
   const stream = compressed ? deflateSync(Buffer.from(content, "latin1")) : Buffer.from(content, "latin1");
   const filter = compressed ? " /Filter /FlateDecode" : "";
-  const prefix = Buffer.from(
-    `%PDF-1.7\n1 0 obj\n<< /Length ${stream.byteLength}${filter} >>\nstream\n`,
-    "latin1",
-  );
-  const suffix = Buffer.from("\nendstream\nendobj\n%%EOF\n", "latin1");
-  return Buffer.concat([prefix, stream, suffix]);
+  return Buffer.concat([
+    Buffer.from(
+      `${number} 0 obj\n<< /Length ${stream.byteLength}${filter} >>\nstream\n`,
+      "latin1",
+    ),
+    stream,
+    Buffer.from("\nendstream\nendobj\n", "latin1"),
+  ]);
+}
+
+function pdfWithContent(content, { unreferencedContent = null } = {}) {
+  const parts = [
+    Buffer.from("%PDF-1.7\n", "latin1"),
+    Buffer.from("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n", "latin1"),
+    Buffer.from("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n", "latin1"),
+    Buffer.from("3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>\nendobj\n", "latin1"),
+    streamObject(4, content),
+  ];
+  if (unreferencedContent !== null) parts.push(streamObject(5, unreferencedContent));
+  parts.push(Buffer.from("trailer\n<< /Root 1 0 R >>\nstartxref\n0\n%%EOF\n", "latin1"));
+  return Buffer.concat(parts);
 }
 
 function literal(value) {
   return value.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
 }
 
-test("accepts the reviewed anchors only when they are displayed by a PDF text operator", () => {
+test("accepts reviewed anchors only from the active page tree", () => {
   const bytes = pdfWithContent(`BT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
   assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
 });
@@ -74,12 +89,22 @@ test("rejects reviewed anchors inside a text object without a text-showing opera
   );
 });
 
-test("accepts TJ-array displayed literals without weakening displayed-text semantics", () => {
+test("rejects anchors placed in an unreferenced indirect stream", () => {
+  const bytes = pdfWithContent("BT\n(UNRELATED DOCUMENT) Tj\nET", {
+    unreferencedContent: `BT\n(${literal(REVIEWED_TEXT)}) Tj\nET`,
+  });
+  assert.throws(
+    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
+    /drifted from the reviewed official baseline/,
+  );
+});
+
+test("accepts TJ-array displayed literals on an active page", () => {
   const bytes = pdfWithContent(`BT\n[(${literal(REVIEWED_TEXT)})] TJ\nET`);
   assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
 });
 
-test("fails closed when a Flate stream expands beyond the per-stream safety bound", () => {
+test("fails closed when a page Flate stream expands beyond the safety bound", () => {
   const oversized = `BT\n(${literal(REVIEWED_TEXT)} ${"A".repeat(10_100_000)}) Tj\nET`;
   const bytes = pdfWithContent(oversized);
   assert.throws(
