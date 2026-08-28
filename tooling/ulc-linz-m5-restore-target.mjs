@@ -2,21 +2,13 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
+import { verifyUlcLinzM5NeonBranchIsolation } from "./ulc-linz-m5-neon-branch-isolation.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
 const STRONG_SSL_MODES = new Set(["require", "verify-ca", "verify-full"]);
 const SAFE_CHANNEL_BINDING_MODES = new Set(["disable", "prefer", "require"]);
 const SOURCE_ROLE = "ulc_linz_application";
-const PROVIDER_ID_PATTERN = /^[a-z0-9-]{1,60}$/;
 const CONNECTION_IDENTITY_QUERY = "SELECT current_database() AS current_database, current_user AS current_user";
-const ATTESTATION_KEYS = Object.freeze({
-  sourceProject: "APPBASIS_M5_NEON_SOURCE_PROJECT_ID",
-  sourceBranch: "APPBASIS_M5_NEON_SOURCE_BRANCH_ID",
-  sourceEndpoint: "APPBASIS_M5_NEON_SOURCE_ENDPOINT_ID",
-  restoreProject: "APPBASIS_M5_NEON_RESTORE_PROJECT_ID",
-  restoreBranch: "APPBASIS_M5_NEON_RESTORE_BRANCH_ID",
-  restoreEndpoint: "APPBASIS_M5_NEON_RESTORE_ENDPOINT_ID",
-});
 const EMPTY_TARGET_QUERY = `
 SELECT
   (
@@ -88,7 +80,13 @@ export async function resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
   restoreUrl,
   createDatabase = createPostgresDatabase,
 } = {}) {
-  assertGuardedDestructiveResetContext({ sourceUrl, restoreUrl });
+  assertGuardedDestructiveResetWorkflowContext();
+  await verifyUlcLinzM5NeonBranchIsolation({
+    sourceUrl,
+    restoreUrls: [restoreUrl],
+    apiKey: process.env.NEON_API_KEY,
+    orgId: process.env.NEON_ORG_ID,
+  });
   const restore = validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase });
 
   let database;
@@ -157,7 +155,7 @@ export function parseUlcLinzM5RestoreDatabaseUrl(value) {
   return url;
 }
 
-function assertGuardedDestructiveResetContext({ sourceUrl, restoreUrl, env = process.env } = {}) {
+function assertGuardedDestructiveResetWorkflowContext(env = process.env) {
   if (
     env?.GITHUB_ACTIONS !== "true" ||
     env?.GITHUB_WORKFLOW !== "M5 ULC Production Evidence" ||
@@ -165,25 +163,6 @@ function assertGuardedDestructiveResetContext({ sourceUrl, restoreUrl, env = pro
     env?.GITHUB_REF !== "refs/heads/main"
   ) {
     throw new Error("ULC M5 destructive restore reset requires the exact guarded production-evidence workflow context.");
-  }
-
-  const source = requiredUlcLinzProductionDatabaseUrl(sourceUrl);
-  const restore = parseUlcLinzM5RestoreDatabaseUrl(restoreUrl);
-  const sourceProject = requiredAttestationValue(env, ATTESTATION_KEYS.sourceProject);
-  const sourceBranch = requiredAttestationValue(env, ATTESTATION_KEYS.sourceBranch);
-  const sourceEndpoint = requiredAttestationValue(env, ATTESTATION_KEYS.sourceEndpoint);
-  const restoreProject = requiredAttestationValue(env, ATTESTATION_KEYS.restoreProject);
-  const restoreBranch = requiredAttestationValue(env, ATTESTATION_KEYS.restoreBranch);
-  const restoreEndpoint = requiredAttestationValue(env, ATTESTATION_KEYS.restoreEndpoint);
-
-  if (
-    providerEndpointId(source) !== sourceEndpoint ||
-    providerEndpointId(restore) !== restoreEndpoint
-  ) {
-    throw new Error("ULC M5 destructive restore reset attestation does not match the active database endpoints.");
-  }
-  if (sourceProject === restoreProject && sourceBranch === restoreBranch) {
-    throw new Error("ULC M5 destructive restore reset attestation resolves restore to the production branch.");
   }
 }
 
@@ -360,18 +339,6 @@ function decodePrincipal(value) {
   } catch {
     throw new Error("database URL contains an invalid encoded PostgreSQL principal");
   }
-}
-
-function providerEndpointId(url) {
-  return normalizeProviderHostname(url.hostname).split(".")[0];
-}
-
-function requiredAttestationValue(env, key) {
-  const value = env?.[key];
-  if (typeof value !== "string" || !PROVIDER_ID_PATTERN.test(value)) {
-    throw new Error("ULC M5 destructive restore reset attestation is missing or invalid.");
-  }
-  return value;
 }
 
 function normalizeProviderHostname(value) {
