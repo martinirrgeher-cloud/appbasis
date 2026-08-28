@@ -37,20 +37,31 @@ globalThis.fetch = async (input) => {
     return jsonResponse({ projects: [{ id: "project-production" }, { id: "project-restore" }] });
   }
   if (url.pathname === "/api/v2/projects/project-production/endpoints") {
-    return jsonResponse({ endpoints: [{
+    const endpoints = [{
       id: "ep-crimson-boat-b1aqfjwf",
       host: new URL(SOURCE).hostname,
       project_id: "project-production",
       branch_id: "br-production",
       type: "read_write",
-    }] });
+    }];
+    if (providerProofMode === "production-branch") {
+      endpoints.push({
+        id: "ep-restore",
+        host: new URL(RESTORE).hostname,
+        project_id: "project-production",
+        branch_id: "br-production",
+        type: "read_write",
+      });
+    }
+    return jsonResponse({ endpoints });
   }
   if (url.pathname === "/api/v2/projects/project-restore/endpoints") {
+    if (providerProofMode === "production-branch") return jsonResponse({ endpoints: [] });
     return jsonResponse({ endpoints: [{
       id: "ep-restore",
       host: new URL(RESTORE).hostname,
-      project_id: providerProofMode === "production-branch" ? "project-production" : "project-restore",
-      branch_id: providerProofMode === "production-branch" ? "br-production" : "br-restore",
+      project_id: "project-restore",
+      branch_id: "br-restore",
       type: "read_write",
     }] });
   }
