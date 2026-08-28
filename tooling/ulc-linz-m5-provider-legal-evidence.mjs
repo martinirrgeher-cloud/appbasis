@@ -237,7 +237,12 @@ async function officialDatabricksDpaPdf(url, fetchImpl) {
   if (contentType !== "application/pdf") {
     throw new Error("ULC M5-G Databricks DPA is not the reviewed PDF asset.");
   }
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  let bytes;
+  try {
+    bytes = new Uint8Array(await response.arrayBuffer());
+  } catch {
+    throw new Error("ULC M5-G official legal evidence request failed.");
+  }
   if (bytes.byteLength < 10_000 || bytes.byteLength > 5_000_000) {
     throw new Error("ULC M5-G Databricks DPA PDF body is invalid.");
   }
