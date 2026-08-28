@@ -157,6 +157,7 @@ jobs:
 
       - name: Deploy exact current version privately
         if: steps.state.outputs.deployment_required == 'true'
+        working-directory: apps/reference
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
