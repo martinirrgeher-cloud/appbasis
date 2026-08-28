@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare-current-deployment.mjs";
+
 const TARGET_WORKER = "appbasis-ulc-linz-production";
 const TARGET_VERSION_TAG = "ulc-linz-production-runtime-v1";
 const TARGET_BASE_URL = "https://app.ulc-linz.at";
@@ -159,18 +161,14 @@ function requireVersionHistory(response) {
 }
 
 function requireSinglePrivateDeployment(response) {
-  const deployments = response?.result?.deployments;
-  if (
-    response?.success !== true ||
-    !Array.isArray(deployments) ||
-    deployments.length !== 1 ||
-    !Array.isArray(deployments[0]?.versions) ||
-    deployments[0].versions.length !== 1 ||
-    deployments[0].versions[0]?.percentage !== 100
-  ) {
-    throw new Error("ULC production refresh requires exactly one 100% private deployment.");
+  if (response?.success !== true) {
+    throw new Error("ULC production refresh deployment inventory is invalid.");
   }
-  const versionId = deployments[0].versions[0].version_id;
+  const { version } = requireCurrentUlcLinzCloudflareDeployment(
+    response?.result?.deployments,
+    { label: "ULC production refresh deployment inventory" },
+  );
+  const versionId = version.version_id;
   requireVersionId(versionId);
   return Object.freeze({ versionId });
 }
