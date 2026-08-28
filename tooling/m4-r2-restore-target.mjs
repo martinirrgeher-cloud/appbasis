@@ -3,7 +3,11 @@ import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { validateM4RestoreDatabaseSeparation } from "./m4-r2-restore-plan.mjs";
-import { verifyUlcLinzM5IsolatedRestoreTargetEmpty } from "./ulc-linz-m5-restore-target.mjs";
+import { assertUlcLinzM5NeonBranchIsolationAttestation } from "./ulc-linz-m5-neon-branch-isolation.mjs";
+import {
+  resetAndVerifyUlcLinzM5IsolatedRestoreTarget,
+  verifyUlcLinzM5IsolatedRestoreTargetEmpty,
+} from "./ulc-linz-m5-restore-target.mjs";
 
 const STRONG_SSL_MODES = new Set(["require", "verify-ca", "verify-full"]);
 const EMPTY_TARGET_QUERY = `
@@ -84,6 +88,16 @@ export async function verifyM4IsolatedRestoreTargetEmpty({
   }
 }
 
+export function shouldResetUlcLinzM5RestoreTarget({ sourceUrl, env = process.env } = {}) {
+  return Boolean(
+    isUlcLinzProductionSource(sourceUrl) &&
+    env?.GITHUB_ACTIONS === "true" &&
+    env?.GITHUB_WORKFLOW === "M5 ULC Production Evidence" &&
+    env?.GITHUB_EVENT_NAME === "workflow_dispatch" &&
+    env?.GITHUB_REF === "refs/heads/main",
+  );
+}
+
 function assertEncryptedDatabaseTransport(value, name) {
   const url = new URL(value);
   const sslModes = url.searchParams.getAll("sslmode");
@@ -128,9 +142,21 @@ if (isMainModule()) {
     }
     const sourceUrl = process.env.APPBASIS_M4_SOURCE_DATABASE_URL;
     const restoreUrl = process.env.APPBASIS_M4_RESTORE_DATABASE_URL;
-    const result = isUlcLinzProductionSource(sourceUrl)
-      ? await verifyUlcLinzM5IsolatedRestoreTargetEmpty({ sourceUrl, restoreUrl })
-      : await verifyM4IsolatedRestoreTargetEmpty({ sourceUrl, restoreUrl });
+    let result;
+    if (isUlcLinzProductionSource(sourceUrl)) {
+      if (shouldResetUlcLinzM5RestoreTarget({ sourceUrl })) {
+        assertUlcLinzM5NeonBranchIsolationAttestation({
+          sourceUrl,
+          restoreUrl,
+          env: process.env,
+        });
+        result = await resetAndVerifyUlcLinzM5IsolatedRestoreTarget({ sourceUrl, restoreUrl });
+      } else {
+        result = await verifyUlcLinzM5IsolatedRestoreTargetEmpty({ sourceUrl, restoreUrl });
+      }
+    } else {
+      result = await verifyM4IsolatedRestoreTargetEmpty({ sourceUrl, restoreUrl });
+    }
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
     console.error(

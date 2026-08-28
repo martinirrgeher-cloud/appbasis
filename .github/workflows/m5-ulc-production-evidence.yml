@@ -145,6 +145,8 @@ jobs:
       - name: Verify isolated restore target is empty and separate
         shell: bash
         env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
           APPBASIS_M4_SOURCE_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
           APPBASIS_M4_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_M4_RESTORE_DATABASE_URL }}
         run: node ./tooling/m4-r2-restore-target.mjs verify-empty
