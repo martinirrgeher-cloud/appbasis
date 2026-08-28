@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   parseUlcLinzM5RestoreDatabaseUrl,
@@ -52,6 +54,20 @@ function databaseWith({ states = [state()], identityRows = [identity()], onState
   };
   return { client };
 }
+
+test("direct CLI rejects destructive reset mode before database access", () => {
+  const target = fileURLToPath(new URL("./ulc-linz-m5-restore-target.mjs", import.meta.url));
+  const result = spawnSync(process.execPath, [target, "reset-and-verify"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ULC_LINZ_PRODUCTION_DATABASE_URL: SOURCE,
+      APPBASIS_M4_RESTORE_DATABASE_URL: RESTORE,
+    },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /destructive reset is available only through the guarded M4\/M5 workflow path/);
+});
 
 test("accepts canonical production source and empty isolated restore target with matching effective identity", async () => {
   const result = await verifyUlcLinzM5IsolatedRestoreTargetEmpty({
