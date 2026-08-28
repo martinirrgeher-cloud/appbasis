@@ -278,13 +278,12 @@ function requireDatabricksDpaPdfBaseline(bytes) {
 
 function extractPdfSearchText(bytes) {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const raw = buffer.toString("latin1");
-  const chunks = [raw];
+  const chunks = [];
   const streamStart = Buffer.from("stream\n", "ascii");
   const streamStartCrLf = Buffer.from("stream\r\n", "ascii");
   const streamEnd = Buffer.from("\nendstream", "ascii");
   const streamEndCrLf = Buffer.from("\r\nendstream", "ascii");
-  let extractedBytes = buffer.byteLength;
+  let extractedBytes = 0;
   let offset = 0;
 
   while (offset < buffer.length) {
@@ -331,11 +330,19 @@ function extractPdfSearchText(bytes) {
       throw new Error("ULC M5-G Databricks DPA PDF extraction exceeds its safety bound.");
     }
     extractedBytes += extracted.byteLength;
-    chunks.push(extracted.toString("latin1"));
+    chunks.push(extractPdfDisplayedText(extracted.toString("latin1")));
     offset = contentEnd + endMarkerLength;
   }
 
-  return chunks.map((chunk) => `${chunk} ${extractPdfLiteralStrings(chunk)}`).join(" ");
+  return chunks.join(" ");
+}
+
+function extractPdfDisplayedText(value) {
+  const displayed = [];
+  for (const match of value.matchAll(/\bBT\b([\s\S]*?)\bET\b/gu)) {
+    displayed.push(extractPdfLiteralStrings(match[1]));
+  }
+  return displayed.join(" ");
 }
 
 function extractPdfLiteralStrings(value) {
