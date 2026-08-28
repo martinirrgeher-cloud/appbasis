@@ -39,6 +39,20 @@ function basePdf(content, { pageDictionary = "", extraObjects = [] } = {}) {
   ]);
 }
 
+function pdfWithContentArray(contents, { pageDictionary = "", extraObjects = [] } = {}) {
+  const refs = contents.map((_, index) => `${4 + index} 0 R`).join(" ");
+  const streams = contents.map((content, index) => streamObject(4 + index, content));
+  return Buffer.concat([
+    Buffer.from("%PDF-1.7\n", "latin1"),
+    Buffer.from("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n", "latin1"),
+    Buffer.from("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n", "latin1"),
+    Buffer.from(`3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents [${refs}]${pageDictionary} >>\nendobj\n`, "latin1"),
+    ...streams,
+    ...extraObjects,
+    Buffer.from("trailer\n<< /Root 1 0 R >>\nstartxref\n0\n%%EOF\n", "latin1"),
+  ]);
+}
+
 function literal(value) {
   return value.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
 }
@@ -77,6 +91,34 @@ test("accepts a ToUnicode-mapped glyph stream on the active page", () => {
     extraObjects: [font, cmapObject],
   });
   assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
+});
+
+test("accepts a text object split across ordered page content streams", () => {
+  const bytes = pdfWithContentArray([
+    "BT\n",
+    `(${literal(REVIEWED_TEXT)}) Tj\nET`,
+  ]);
+  assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
+});
+
+test("rejects reviewed clauses painted with invisible text rendering mode", () => {
+  const bytes = basePdf(
+    `BT\n(UNRELATED VISIBLE CONTRACT) Tj\n3 Tr\n(${literal(REVIEWED_TEXT)}) Tj\nET`,
+  );
+  assert.throws(
+    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
+    /drifted from the reviewed official baseline/,
+  );
+});
+
+test("rejects reviewed clauses used only as a clipping text path", () => {
+  const bytes = basePdf(
+    `BT\n(UNRELATED VISIBLE CONTRACT) Tj\n7 Tr\n(${literal(REVIEWED_TEXT)}) Tj\nET`,
+  );
+  assert.throws(
+    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
+    /drifted from the reviewed official baseline/,
+  );
 });
 
 test("rejects substantive clauses hidden in an unreferenced stream", () => {
