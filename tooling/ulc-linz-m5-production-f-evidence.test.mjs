@@ -9,6 +9,7 @@ const NOW = new Date("2026-08-23T22:00:00.000Z");
 const OBSERVED_AT = "2026-08-23T21:55:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:10:00.000Z";
 const VERSION = "12345678-1234-4123-8123-123456789abc";
+const HISTORICAL_VERSION = "22345678-1234-4123-8123-123456789abc";
 const DEPLOYED_AT = "2026-08-23T21:30:00.000Z";
 const VERSION_CREATED_AT = "2026-08-23T19:30:00.000Z";
 
@@ -88,10 +89,16 @@ function cloudflareFetch(url) {
     return Promise.resolve(json({
       success: true,
       result: {
-        deployments: [{
-          created_on: DEPLOYED_AT,
-          versions: [{ version_id: VERSION, percentage: 100 }],
-        }],
+        deployments: [
+          {
+            created_on: DEPLOYED_AT,
+            versions: [{ version_id: VERSION, percentage: 100 }],
+          },
+          {
+            created_on: "2026-08-22T21:30:00.000Z",
+            versions: [{ version_id: HISTORICAL_VERSION, percentage: 100 }],
+          },
+        ],
       },
     }));
   }
@@ -179,7 +186,7 @@ async function complete({
   });
 }
 
-test("adds M5-F only after exact deployed sink, least privilege, post-deployment sink activity and controlled retention evidence", async () => {
+test("adds M5-F from the active Cloudflare deployment even when older deployment history exists", async () => {
   const result = await complete();
   const f = result.ownerInputs.auditSecurityLoggingEvidenceInput;
   assert.equal(f.resourceBindingEvidence, result.ownerInputs.providerBoundEvidenceInput.resourceBindingEvidence);
@@ -242,7 +249,7 @@ test("fails closed without the exact successful retention contract", async () =>
   }
 });
 
-test("fails closed on stale Worker head, missing dedicated binding, missing deploy timestamp or wrong Hyperdrive origin", async () => {
+test("fails closed on stale Worker head, missing dedicated binding, missing active deploy timestamp or wrong Hyperdrive origin", async () => {
   const mutations = [
     (body, url) => {
       if (url.includes("/versions/")) body.result.annotations["workers/message"] = `AppBasis ulc-linz production runtime ${"c".repeat(40)} auth-hmac:x`;

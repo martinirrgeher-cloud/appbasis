@@ -120,6 +120,9 @@ jobs:
       - name: Verify repository and toolchain
         run: pnpm run verify:repo
 
+      - name: Test ULC private runtime refresh safety contract
+        run: node --test ./tooling/ulc-linz-m6-private-runtime-refresh.test.mjs
+
       - name: Test M5 restore credential preflight
         run: node --test ./tooling/ulc-linz-m5-restore-credential-preflight.test.mjs
 

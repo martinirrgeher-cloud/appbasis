@@ -1,0 +1,192 @@
+name: M6 ULC Private Production Refresh Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type REFRESH-DEPLOY-ULC-PRIVATE-PRODUCTION to deploy the exact configured current runtime while keeping public ingress disabled'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  refresh-private-deploy:
+    name: Deploy exact current runtime privately
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TARGET_WORKER: appbasis-ulc-linz-production
+
+    steps:
+      - name: Require explicit main dispatch
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'Private production refresh deployment must be dispatched from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = "REFRESH-DEPLOY-ULC-PRIVATE-PRODUCTION" || {
+            echo 'Exact private production refresh deployment confirmation is required.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and mask protected inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN ULC_LINZ_PRODUCTION_DATABASE_URL ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET; do
+            test -n "${!name:-}" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+          node -e 'const value = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET?.trim() ?? ""; if (value.length < 32 || value !== process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET) process.exit(1);' || {
+            echo 'Production Better Auth secret must be trimmed and at least 32 characters.' >&2
+            exit 1
+          }
+          node --input-type=module <<'NODE'
+          import {
+            parseUlcLinzProductionDatabaseUrl,
+            parseUlcLinzSecurityLogIngestDatabaseUrl,
+          } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          const app = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          const security = parseUlcLinzSecurityLogIngestDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL);
+          if (app.user === security.user) throw new Error('Production app and security-log ingest roles must be distinct.');
+          NODE
+
+      - name: Derive current auth-secret HMAC fingerprint
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          AUTH_SECRET_FINGERPRINT="$(node --input-type=module <<'NODE'
+          import { createHmac } from 'node:crypto';
+          process.stdout.write(createHmac('sha256', process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET).update('appbasis:ulc-linz:production:better-auth-secret:v1').digest('hex'));
+          NODE
+          )"
+          [[ "$AUTH_SECRET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
+          printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
+
+      - name: Resolve exact dedicated production Hyperdrives
+        id: hyperdrive
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          app="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          security="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
+          test -n "$app" && test -n "$security" && test "$app" != "$security"
+          echo "::add-mask::$app"; echo "::add-mask::$security"
+          printf 'id=%s\nsecurity_log_id=%s\n' "$app" "$security" >> "$GITHUB_OUTPUT"
+
+      - name: Require exact closed runtime and exact current configured version
+        id: state
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          worker="$RUNNER_TEMP/worker.json"; versions="$RUNNER_TEMP/versions.json"; deployments="$RUNNER_TEMP/deployments.json"; scripts="$RUNNER_TEMP/scripts.json"
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/workers/$TARGET_WORKER" > "$worker"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" > "$versions"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/scripts/$TARGET_WORKER/deployments" > "$deployments"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/scripts" > "$scripts"
+          state="$(node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs deploy-state "$worker" "$versions" "$deployments" "$scripts")"
+          current_id="$(jq -r '.currentVersionId' <<<"$state")"
+          deployed_id="$(jq -r '.deployedVersionId' <<<"$state")"
+          deployment_required="$(jq -r '.deploymentRequired' <<<"$state")"
+          test -n "$current_id" && test -n "$deployed_id"
+          echo "::add-mask::$current_id"; echo "::add-mask::$deployed_id"
+          printf 'current_id=%s\ndeployed_id=%s\ndeployment_required=%s\n' "$current_id" "$deployed_id" "$deployment_required" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact current version bindings before deployment
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERSION_ID: ${{ steps.state.outputs.current_id }}
+          HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+          SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.security_log_id }}
+        run: |
+          set -euo pipefail
+          detail="$RUNNER_TEMP/current-version.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/versions/$VERSION_ID" > "$detail"
+          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs bindings "$detail"
+
+      - name: Deploy exact current version privately
+        if: steps.state.outputs.deployment_required == 'true'
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERSION_ID: ${{ steps.state.outputs.current_id }}
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler versions deploy "$VERSION_ID@100%" \
+            --name "$TARGET_WORKER" \
+            --message "AppBasis private ULC production refresh deploy ${GITHUB_SHA}" \
+            --experimental-provision=false \
+            --experimental-auto-create=false \
+            -y
+
+      - name: Verify exact current deployment remains private
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          EXPECTED_VERSION_ID: ${{ steps.state.outputs.current_id }}
+        run: |
+          set -euo pipefail
+          worker="$RUNNER_TEMP/worker-after.json"; versions="$RUNNER_TEMP/versions-after.json"; deployments="$RUNNER_TEMP/deployments-after.json"; scripts="$RUNNER_TEMP/scripts-after.json"
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/workers/$TARGET_WORKER" > "$worker"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" > "$versions"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/scripts/$TARGET_WORKER/deployments" > "$deployments"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/scripts" > "$scripts"
+          state="$(node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs post-deploy-state "$worker" "$versions" "$deployments" "$scripts")"
+          test "$(jq -r '.currentVersionId' <<<"$state")" = "$EXPECTED_VERSION_ID" || { echo 'Post-deploy current version drifted.' >&2; exit 1; }
+          test "$(jq -r '.deployedVersionId' <<<"$state")" = "$EXPECTED_VERSION_ID" || { echo 'Post-deploy runtime is not the exact current version.' >&2; exit 1; }
+          echo 'Exact current main runtime is the sole 100% deployment; public routes, workers.dev and previews remain disabled.' >> "$GITHUB_STEP_SUMMARY"

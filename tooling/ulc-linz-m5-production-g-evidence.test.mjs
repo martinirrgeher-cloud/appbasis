@@ -6,6 +6,7 @@ import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evide
 
 const SHA = "a".repeat(40);
 const VERSION = "12345678-1234-4123-8123-123456789abc";
+const HISTORICAL_VERSION = "22345678-1234-4123-8123-123456789abc";
 const OBSERVED_AT = "2026-08-23T21:55:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:10:00.000Z";
 const PRODUCTION_URL =
@@ -131,7 +132,12 @@ function providerFetch(url) {
   if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
     return Promise.resolve(response({
       success: true,
-      result: { deployments: [{ versions: [{ version_id: VERSION, percentage: 100 }] }] },
+      result: {
+        deployments: [
+          { versions: [{ version_id: VERSION, percentage: 100 }] },
+          { versions: [{ version_id: HISTORICAL_VERSION, percentage: 100 }] },
+        ],
+      },
     }));
   }
   if (value.endsWith(`/workers/scripts/appbasis-ulc-linz-production/versions/${VERSION}`)) {
@@ -234,7 +240,7 @@ async function complete({ value = bundle(), input = inputs(), fetchImpl = provid
   });
 }
 
-test("completes G only from exact deployed app and security Hyperdrives, secure transport, legal evidence and the real security-log flow", async () => {
+test("completes G from the active Cloudflare deployment even when older deployment history exists", async () => {
   const result = await complete();
   const compliance = result.ownerInputs.providerBoundEvidenceInput.complianceEvidence;
   assert.equal(compliance.providers.cloudflare.transportEncryptionObserved, true);

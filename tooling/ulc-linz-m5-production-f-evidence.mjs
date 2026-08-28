@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare-current-deployment.mjs";
 import { ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { collectUlcLinzM5SecurityLogAccessEvidence } from "./ulc-linz-m5-security-log-access-evidence.mjs";
 import { collectUlcLinzM5SecurityLogDeliveryEvidence } from "./ulc-linz-m5-security-log-delivery-evidence.mjs";
@@ -137,19 +138,15 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
     apiToken,
     fetchImpl,
   );
-  const entries = deployments?.result?.deployments;
-  if (
-    !Array.isArray(entries) || entries.length !== 1 ||
-    !Array.isArray(entries[0]?.versions) || entries[0].versions.length !== 1 ||
-    entries[0].versions[0]?.percentage !== 100
-  ) {
-    throw new Error("M5-F deployed Worker inventory is not exact.");
-  }
+  const current = requireCurrentUlcLinzCloudflareDeployment(
+    deployments?.result?.deployments,
+    { label: "M5-F deployed Worker inventory" },
+  );
   const deployedAt = canonicalTimestamp(
-    entries[0]?.created_on,
+    current.deployment.created_on,
     "Worker deployment created_on",
   );
-  const versionId = versionIdValue(entries[0].versions[0].version_id);
+  const versionId = versionIdValue(current.version.version_id);
   const versionResponse = await cloudflareJson(
     `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${versionId}`,
     apiToken,
