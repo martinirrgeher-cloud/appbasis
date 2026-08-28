@@ -1,7 +1,16 @@
+import { inflateSync } from "node:zlib";
+
 import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evidence.mjs";
 
 const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DATARBRICKS_DPA_PDF_MARKER = "Databricks DPA v3 (2023-07-21)";
+const DATABRICKS_DPA_PDF_ANCHORS = Object.freeze([
+  "DATA PROCESSING ADDENDUM",
+  "forms an integral part of the Databricks Master Cloud Services Agreement",
+  "Databricks DPA v3 (2023-07-21)",
+  "Standard Contractual Clauses",
+  "ANNEX A",
+]);
 const SOURCES = Object.freeze({
   cloudflareDpa: "https://www.cloudflare.com/cloudflare-customer-dpa/",
   cloudflareGdpr: "https://www.cloudflare.com/trust-hub/gdpr/",
@@ -251,7 +260,90 @@ async function officialDatabricksDpaPdf(url, fetchImpl) {
   if (!header.startsWith("%PDF-") || !trailer.includes("%%EOF")) {
     throw new Error("ULC M5-G Databricks DPA PDF body is invalid.");
   }
+  requireDatabricksDpaPdfBaseline(bytes);
   return DATARBRICKS_DPA_PDF_MARKER;
+}
+
+function requireDatabricksDpaPdfBaseline(bytes) {
+  const compactText = compactPdfSearchText(extractPdfSearchText(bytes));
+  const missingAnchor = DATABRICKS_DPA_PDF_ANCHORS.find(
+    (anchor) => !compactText.includes(compactPdfSearchText(anchor)),
+  );
+  if (missingAnchor !== undefined) {
+    throw new Error("ULC M5-G Databricks DPA drifted from the reviewed official baseline.");
+  }
+}
+
+function extractPdfSearchText(bytes) {
+  const decoder = new TextDecoder("latin1");
+  const raw = decoder.decode(bytes);
+  const chunks = [raw];
+  const streamPattern = /stream\r?\n([\s\S]*?)\r?\nendstream/gu;
+  for (const match of raw.matchAll(streamPattern)) {
+    const dictionary = raw.slice(Math.max(0, match.index - 1024), match.index);
+    if (/\/FlateDecode\b/u.test(dictionary)) {
+      try {
+        chunks.push(inflateSync(Buffer.from(match[1], "latin1")).toString("latin1"));
+      } catch {
+        // Not every stream must be text-bearing. Unsupported/corrupt streams do
+        // not establish the baseline; the mandatory anchors below still fail closed.
+      }
+    } else {
+      chunks.push(match[1]);
+    }
+  }
+  return chunks.map((chunk) => `${chunk} ${extractPdfLiteralStrings(chunk)}`).join(" ");
+}
+
+function extractPdfLiteralStrings(value) {
+  const strings = [];
+  let current = "";
+  let depth = 0;
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (depth === 0) {
+      if (char === "(") {
+        depth = 1;
+        current = "";
+      }
+      continue;
+    }
+    if (escaped) {
+      if (/[0-7]/u.test(char)) {
+        let octal = char;
+        while (octal.length < 3 && /[0-7]/u.test(value[index + 1] ?? "")) {
+          index += 1;
+          octal += value[index];
+        }
+        current += String.fromCharCode(Number.parseInt(octal, 8));
+      } else if (char === "n") current += "\n";
+      else if (char === "r") current += "\r";
+      else if (char === "t") current += "\t";
+      else if (char === "b") current += "\b";
+      else if (char === "f") current += "\f";
+      else current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+    } else if (char === "(") {
+      depth += 1;
+      current += char;
+    } else if (char === ")") {
+      depth -= 1;
+      if (depth === 0) strings.push(current);
+      else current += char;
+    } else {
+      current += char;
+    }
+  }
+  return strings.join(" ");
+}
+
+function compactPdfSearchText(value) {
+  return value.toLowerCase().replaceAll(/[^a-z0-9]+/gu, "");
 }
 
 function requireTrustedFinalUrl(value, expectedValue) {
