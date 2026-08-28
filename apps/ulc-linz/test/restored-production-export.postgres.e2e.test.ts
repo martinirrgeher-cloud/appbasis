@@ -27,9 +27,9 @@ describe("ULC restored production export evidence", () => {
 
       const connection = createPostgresDatabase(DATABASE_URL);
       const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
-      const bootstrapUsername = `m5.restore.export.bootstrap.${suffix}`;
+      const bootstrapUsername = `m5rexpboot-${suffix}`;
       const bootstrapPassword = `M5!RestoreExportBootstrap-${randomUUID()}Aa7`;
-      const username = `m5.restore.export.admin.${suffix}`;
+      const username = `m5rexpadmin-${suffix}`;
       const temporaryPassword = `M5!RestoreExportAdmin-${randomUUID()}Aa7`;
       const authSecret = `restore-export-${randomUUID()}-${randomUUID()}`;
 
