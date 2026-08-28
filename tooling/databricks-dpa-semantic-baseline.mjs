@@ -5,27 +5,16 @@ const MAX_EXTRACTED_BYTES = 20_000_000;
 const MAX_PDF_OBJECTS = 10_000;
 const MAX_PAGES = 100;
 
-const REVIEWED_DISPLAYED_TEXT_ANCHORS = Object.freeze([
-  "DATA PROCESSING ADDENDUM",
-  "Databricks Master Cloud Services Agreement",
-  "Applicable Data Protection Laws",
-  "PROCESSING OF PERSONAL DATA",
-  "CONFIDENTIALITY",
-  "SUBPROCESSING",
-  "Data Protection Impact Assessments",
-  "SECURITY",
-  "AUDITS AND RECORDS",
-  "TRANSFER OF PERSONAL DATA",
-  "BACKUP, DELETION & RETURN",
-  "CCPA COMPLIANCE",
-  "ANNEX A",
-  "Categories of personal data transferred",
-  "Sensitive data transferred",
-  "Period for which the personal data will be retained",
-  "ANNEX B",
-  "STANDARD CONTRACTUAL CLAUSES",
-  "Modules 2 and 3",
-  "Databricks DPA v3 (2023-07-21)",
+const REVIEWED_SUBSTANTIVE_CLAUSES = Object.freeze([
+  "Databricks agrees that when Databricks processes Customer Personal Data in its capacity as a processor on behalf of the Customer Databricks will comply with Applicable Data Protection Laws and process the Customer Personal Data as necessary to perform its obligations under the Agreement and only in accordance with Customer's documented instructions",
+  "Databricks shall enter into a written agreement with its Subprocessors which includes data protection and security measures no less protective than the measures set forth in this DPA and remain fully liable for any breach of the Agreement and this DPA that is caused by an act error or omission of its Subprocessors",
+  "In the event of a Security Breach Databricks will notify Customer in writing without undue delay and in no event later than seventy-two 72 hours after becoming aware of the Security Breach and promptly take reasonable steps to contain investigate and mitigate any adverse effects resulting from the Security Breach",
+  "Where the transfer of Customer Personal Data to Databricks is a Restricted Transfer such transfer shall be governed by the Standard Contractual Clauses which shall be deemed incorporated into and form an integral part of the Agreement in accordance with Annex B of this DPA",
+  "The Databricks Services do not include backup services or disaster recovery for Customer Personal Data Databricks does provide functionality within the Databricks Services that may permit Customer to backup certain Customer Personal Data on its own It is the Customer's obligation to backup any Customer Personal Data if desired",
+  "Databricks will delete or assist Customer in deleting any Customer Personal Data within its possession or control within thirty 30 days following such request",
+  "Module Two terms shall apply where Customer is the controller of Customer Personal Data and the Module Three terms shall apply where Customer is the processor of Customer Personal Data",
+  "in Clause 9 option 2 general authorization is selected and the process and time period for prior notice of Sub-processor changes shall be as set out in Section 4.3 of the DPA",
+  "Databricks DPA v3 2023-07-21",
 ]);
 
 export function verifyReviewedDatabricksDpaSemanticBaseline(bytes) {
@@ -33,13 +22,11 @@ export function verifyReviewedDatabricksDpaSemanticBaseline(bytes) {
   const compactText = compact(displayedText);
   if (
     compactText.length === 0 ||
-    REVIEWED_DISPLAYED_TEXT_ANCHORS.some(
-      (anchor) => !compactText.includes(compact(anchor)),
+    REVIEWED_SUBSTANTIVE_CLAUSES.some(
+      (clause) => !compactText.includes(compact(clause)),
     )
   ) {
-    throw new Error(
-      "ULC M5-G Databricks DPA drifted from the reviewed official baseline.",
-    );
+    throw driftError();
   }
   return true;
 }
@@ -49,9 +36,7 @@ function extractActivePageDisplayedText(bytes) {
   const objects = parseIndirectObjects(buffer);
   const rootRef = parseTrailerRootRef(buffer);
   const catalog = requireObject(objects, rootRef);
-  if (!/\/Type\s*\/Catalog\b/u.test(catalog.dictionary)) {
-    throw driftError();
-  }
+  if (!/\/Type\s*\/Catalog\b/u.test(catalog.dictionary)) throw driftError();
   const pagesRef = parseSingleRef(catalog.dictionary, "Pages");
   if (pagesRef === null) throw driftError();
 
@@ -65,6 +50,7 @@ function extractActivePageDisplayedText(bytes) {
   for (const pageRef of pageRefs) {
     const page = requireObject(objects, pageRef);
     if (!/\/Type\s*\/Page\b/u.test(page.dictionary)) throw driftError();
+    const fontMaps = resolvePageFontMaps(objects, pageRef);
     const contentRefs = parseContentsRefs(page.dictionary);
     if (contentRefs.length === 0) throw driftError();
     for (const contentRef of contentRefs) {
@@ -78,7 +64,7 @@ function extractActivePageDisplayedText(bytes) {
           "ULC M5-G Databricks DPA PDF extraction exceeds its safety bound.",
         );
       }
-      chunks.push(extractDisplayedTextOperators(decoded.toString("latin1")));
+      chunks.push(extractDisplayedTextOperators(decoded.toString("latin1"), fontMaps));
     }
   }
   return chunks.join(" ");
@@ -96,11 +82,7 @@ function parseIndirectObjects(buffer) {
     if (end === -1) throw driftError();
     const key = `${match[1]} ${match[2]}`;
     if (objects.has(key)) throw driftError();
-    const bodyStart = objectStart;
-    const bodyEnd = end;
-    const bodyBuffer = buffer.subarray(bodyStart, bodyEnd);
-    const parsed = parseObjectBody(bodyBuffer);
-    objects.set(key, parsed);
+    objects.set(key, parseObjectBody(buffer.subarray(objectStart, end)));
     header.lastIndex = end + "endobj".length;
   }
   if (objects.size === 0) throw driftError();
@@ -119,19 +101,13 @@ function parseObjectBody(bodyBuffer) {
     marker = crlfMarker;
   }
   if (start === -1) {
-    return Object.freeze({
-      dictionary: bodyBuffer.toString("latin1"),
-      stream: null,
-    });
+    return Object.freeze({ dictionary: bodyBuffer.toString("latin1"), stream: null });
   }
-
   const contentStart = start + marker.byteLength;
   const lfEnd = bodyBuffer.indexOf(Buffer.from("\nendstream", "ascii"), contentStart);
   const crlfEnd = bodyBuffer.indexOf(Buffer.from("\r\nendstream", "ascii"), contentStart);
   let contentEnd = lfEnd;
-  if (contentEnd === -1 || (crlfEnd !== -1 && crlfEnd < contentEnd)) {
-    contentEnd = crlfEnd;
-  }
+  if (contentEnd === -1 || (crlfEnd !== -1 && crlfEnd < contentEnd)) contentEnd = crlfEnd;
   if (contentEnd === -1) throw driftError();
   return Object.freeze({
     dictionary: bodyBuffer.subarray(0, start).toString("latin1"),
@@ -140,13 +116,10 @@ function parseObjectBody(bodyBuffer) {
 }
 
 function parseTrailerRootRef(buffer) {
-  const tail = buffer
-    .subarray(Math.max(0, buffer.byteLength - 65_536))
-    .toString("latin1");
+  const tail = buffer.subarray(Math.max(0, buffer.byteLength - 65_536)).toString("latin1");
   const trailers = [...tail.matchAll(/\btrailer\s*<<(.*?)>>/gsu)];
   if (trailers.length === 0) throw driftError();
-  const trailer = trailers.at(-1)[1];
-  const root = trailer.match(/\/Root\s+(\d+)\s+(\d+)\s+R\b/u);
+  const root = trailers.at(-1)[1].match(/\/Root\s+(\d+)\s+(\d+)\s+R\b/u);
   if (root === null) throw driftError();
   return `${root[1]} ${root[2]}`;
 }
@@ -155,13 +128,12 @@ function walkPageTree(objects, ref, visited, pages) {
   if (visited.has(ref) || visited.size >= MAX_PDF_OBJECTS) throw driftError();
   visited.add(ref);
   const object = requireObject(objects, ref);
-  const dictionary = object.dictionary;
-  if (/\/Type\s*\/Page\b/u.test(dictionary)) {
+  if (/\/Type\s*\/Page\b/u.test(object.dictionary)) {
     pages.push(ref);
     return;
   }
-  if (!/\/Type\s*\/Pages\b/u.test(dictionary)) throw driftError();
-  const kids = parseRefArray(dictionary, "Kids");
+  if (!/\/Type\s*\/Pages\b/u.test(object.dictionary)) throw driftError();
+  const kids = parseRefArray(object.dictionary, "Kids");
   if (kids.length === 0) throw driftError();
   for (const kid of kids) walkPageTree(objects, kid, visited, pages);
 }
@@ -173,23 +145,99 @@ function parseContentsRefs(dictionary) {
   return single === null ? [] : [single];
 }
 
+function resolvePageFontMaps(objects, pageRef) {
+  const resources = resolveInheritedResources(objects, pageRef, new Set());
+  if (resources === null) return new Map();
+  const fontDictionary = extractNamedDictionary(resources, "Font");
+  if (fontDictionary === null) return new Map();
+  const result = new Map();
+  for (const match of fontDictionary.matchAll(/\/([A-Za-z0-9_.+-]+)\s+(\d+)\s+(\d+)\s+R\b/gu)) {
+    const font = requireObject(objects, `${match[2]} ${match[3]}`);
+    const toUnicodeRef = parseSingleRef(font.dictionary, "ToUnicode");
+    if (toUnicodeRef === null) continue;
+    const cmapObject = requireObject(objects, toUnicodeRef);
+    if (cmapObject.stream === null) continue;
+    const decoded = decodeStream(cmapObject.dictionary, cmapObject.stream);
+    if (decoded === null) continue;
+    const cmap = parseToUnicodeCmap(decoded.toString("latin1"));
+    if (cmap.size > 0) result.set(match[1], cmap);
+  }
+  return result;
+}
+
+function resolveInheritedResources(objects, ref, visited) {
+  if (visited.has(ref)) throw driftError();
+  visited.add(ref);
+  const object = requireObject(objects, ref);
+  const inline = extractNamedDictionary(object.dictionary, "Resources");
+  if (inline !== null) return inline;
+  const resourceRef = parseSingleRef(object.dictionary, "Resources");
+  if (resourceRef !== null) return requireObject(objects, resourceRef).dictionary;
+  const parent = parseSingleRef(object.dictionary, "Parent");
+  return parent === null ? null : resolveInheritedResources(objects, parent, visited);
+}
+
+function extractNamedDictionary(dictionary, key) {
+  const token = `/${key}`;
+  const keyIndex = dictionary.indexOf(token);
+  if (keyIndex === -1) return null;
+  const start = dictionary.indexOf("<<", keyIndex + token.length);
+  if (start === -1) return null;
+  let depth = 0;
+  for (let index = start; index < dictionary.length - 1; index += 1) {
+    const pair = dictionary.slice(index, index + 2);
+    if (pair === "<<") {
+      depth += 1;
+      index += 1;
+    } else if (pair === ">>") {
+      depth -= 1;
+      if (depth === 0) return dictionary.slice(start + 2, index);
+      index += 1;
+    }
+  }
+  return null;
+}
+
+function parseToUnicodeCmap(value) {
+  const map = new Map();
+  for (const block of value.matchAll(/beginbfchar([\s\S]*?)endbfchar/gu)) {
+    for (const entry of block[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/gu)) {
+      map.set(entry[1].toUpperCase(), decodeUnicodeHex(entry[2]));
+    }
+  }
+  for (const block of value.matchAll(/beginbfrange([\s\S]*?)endbfrange/gu)) {
+    for (const entry of block[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/gu)) {
+      const start = Number.parseInt(entry[1], 16);
+      const end = Number.parseInt(entry[2], 16);
+      const target = Number.parseInt(entry[3], 16);
+      const width = entry[1].length;
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end < start || end - start > 4096) continue;
+      for (let code = start; code <= end; code += 1) {
+        map.set(code.toString(16).toUpperCase().padStart(width, "0"), String.fromCodePoint(target + code - start));
+      }
+    }
+  }
+  return map;
+}
+
+function decodeUnicodeHex(hex) {
+  if (hex.length % 4 !== 0) return Buffer.from(hex, "hex").toString("latin1");
+  let result = "";
+  for (let index = 0; index < hex.length; index += 4) {
+    result += String.fromCharCode(Number.parseInt(hex.slice(index, index + 4), 16));
+  }
+  return result;
+}
+
 function parseSingleRef(dictionary, key) {
-  const match = dictionary.match(
-    new RegExp(`\\/${key}\\s+(\\d+)\\s+(\\d+)\\s+R\\b`, "u"),
-  );
+  const match = dictionary.match(new RegExp(`\\/${key}\\s+(\\d+)\\s+(\\d+)\\s+R\\b`, "u"));
   return match === null ? null : `${match[1]} ${match[2]}`;
 }
 
 function parseRefArray(dictionary, key, { optional = false } = {}) {
-  const match = dictionary.match(
-    new RegExp(`\\/${key}\\s*\\[([\\s\\S]*?)\\]`, "u"),
-  );
+  const match = dictionary.match(new RegExp(`\\/${key}\\s*\\[([\\s\\S]*?)\\]`, "u"));
   if (match === null) return optional ? [] : [];
-  const refs = [];
-  for (const ref of match[1].matchAll(/(\d+)\s+(\d+)\s+R\b/gu)) {
-    refs.push(`${ref[1]} ${ref[2]}`);
-  }
-  return refs;
+  return [...match[1].matchAll(/(\d+)\s+(\d+)\s+R\b/gu)].map((ref) => `${ref[1]} ${ref[2]}`);
 }
 
 function requireObject(objects, ref) {
@@ -199,33 +247,80 @@ function requireObject(objects, ref) {
 }
 
 function decodeStream(dictionary, streamBytes) {
-  if (/\/Filter\b/u.test(dictionary) && !/\/FlateDecode\b/u.test(dictionary)) {
-    return null;
-  }
+  if (/\/Filter\b/u.test(dictionary) && !/\/FlateDecode\b/u.test(dictionary)) return null;
   if (!/\/FlateDecode\b/u.test(dictionary)) return streamBytes;
   try {
-    return inflateSync(streamBytes, {
-      maxOutputLength: MAX_INFLATED_STREAM_BYTES,
-    });
+    return inflateSync(streamBytes, { maxOutputLength: MAX_INFLATED_STREAM_BYTES });
   } catch {
     return null;
   }
 }
 
-function extractDisplayedTextOperators(value) {
+function extractDisplayedTextOperators(value, fontMaps) {
   const displayed = [];
   for (const textObject of value.matchAll(/\bBT\b([\s\S]*?)\bET\b/gu)) {
     const body = stripPdfComments(textObject[1]);
-    for (const direct of body.matchAll(
-      /(\((?:\\[\s\S]|[^\\()])*\))\s*(?:Tj|'|")(?=\s|$)/gu,
-    )) {
-      displayed.push(extractPdfLiteralStrings(direct[1]));
-    }
-    for (const array of body.matchAll(/\[([\s\S]*?)\]\s*TJ\b/gu)) {
-      displayed.push(extractPdfLiteralStrings(array[1]));
+    let activeFont = null;
+    const tokenPattern = /\/([A-Za-z0-9_.+-]+)\s+[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s+Tf\b|(\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>)\s*(Tj|'|")|\[([\s\S]*?)\]\s*TJ\b/gu;
+    for (const token of body.matchAll(tokenPattern)) {
+      if (token[1] !== undefined) {
+        activeFont = token[1];
+      } else if (token[2] !== undefined) {
+        displayed.push(decodePdfTextOperand(token[2], fontMaps.get(activeFont)));
+      } else if (token[4] !== undefined) {
+        displayed.push(decodePdfTextArray(token[4], fontMaps.get(activeFont)));
+      }
     }
   }
   return displayed.join(" ");
+}
+
+function decodePdfTextArray(value, cmap) {
+  const parts = [];
+  for (const operand of value.matchAll(/\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>/gu)) {
+    parts.push(decodePdfTextOperand(operand[0], cmap));
+  }
+  return parts.join("");
+}
+
+function decodePdfTextOperand(operand, cmap) {
+  const bytes = operand.startsWith("<")
+    ? Buffer.from(operand.slice(1, -1).replaceAll(/\s+/gu, ""), "hex")
+    : extractPdfLiteralBytes(operand);
+  if (cmap instanceof Map && cmap.size > 0) return decodeWithCmap(bytes, cmap);
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    let result = "";
+    for (let index = 2; index + 1 < bytes.length; index += 2) {
+      result += String.fromCharCode(bytes.readUInt16BE(index));
+    }
+    return result;
+  }
+  return bytes.toString("latin1");
+}
+
+function decodeWithCmap(bytes, cmap) {
+  const keysByLength = [...new Set([...cmap.keys()].map((key) => key.length / 2))].sort((a, b) => b - a);
+  let result = "";
+  let index = 0;
+  while (index < bytes.length) {
+    let matched = false;
+    for (const byteLength of keysByLength) {
+      if (index + byteLength > bytes.length) continue;
+      const key = bytes.subarray(index, index + byteLength).toString("hex").toUpperCase();
+      const mapped = cmap.get(key);
+      if (mapped !== undefined) {
+        result += mapped;
+        index += byteLength;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      result += String.fromCharCode(bytes[index]);
+      index += 1;
+    }
+  }
+  return result;
 }
 
 function stripPdfComments(value) {
@@ -261,18 +356,14 @@ function stripPdfComments(value) {
   return result;
 }
 
-function extractPdfLiteralStrings(value) {
-  const strings = [];
-  let current = "";
+function extractPdfLiteralBytes(value) {
+  const bytes = [];
   let depth = 0;
   let escaped = false;
   for (let index = 0; index < value.length; index += 1) {
     const char = value[index];
     if (depth === 0) {
-      if (char === "(") {
-        depth = 1;
-        current = "";
-      }
+      if (char === "(") depth = 1;
       continue;
     }
     if (escaped) {
@@ -282,35 +373,36 @@ function extractPdfLiteralStrings(value) {
           index += 1;
           octal += value[index];
         }
-        current += String.fromCharCode(Number.parseInt(octal, 8));
-      } else if (char === "n") current += "\n";
-      else if (char === "r") current += "\r";
-      else if (char === "t") current += "\t";
-      else if (char === "b") current += "\b";
-      else if (char === "f") current += "\f";
-      else current += char;
+        bytes.push(Number.parseInt(octal, 8));
+      } else if (char === "n") bytes.push(0x0a);
+      else if (char === "r") bytes.push(0x0d);
+      else if (char === "t") bytes.push(0x09);
+      else if (char === "b") bytes.push(0x08);
+      else if (char === "f") bytes.push(0x0c);
+      else bytes.push(char.charCodeAt(0) & 0xff);
       escaped = false;
       continue;
     }
     if (char === "\\") escaped = true;
     else if (char === "(") {
       depth += 1;
-      current += char;
+      bytes.push(char.charCodeAt(0));
     } else if (char === ")") {
       depth -= 1;
-      if (depth === 0) strings.push(current);
-      else current += char;
-    } else current += char;
+      if (depth > 0) bytes.push(char.charCodeAt(0));
+    } else bytes.push(char.charCodeAt(0) & 0xff);
   }
-  return strings.join(" ");
+  return Buffer.from(bytes);
 }
 
 function compact(value) {
-  return value.toLowerCase().replaceAll(/[^a-z0-9]+/gu, "");
+  return value
+    .normalize("NFKD")
+    .replaceAll(/[’‘]/gu, "'")
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/gu, "");
 }
 
 function driftError() {
-  return new Error(
-    "ULC M5-G Databricks DPA drifted from the reviewed official baseline.",
-  );
+  return new Error("ULC M5-G Databricks DPA drifted from the reviewed official baseline.");
 }
