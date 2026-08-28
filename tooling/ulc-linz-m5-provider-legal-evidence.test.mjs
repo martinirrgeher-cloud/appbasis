@@ -238,6 +238,48 @@ test("rejects reviewed Databricks anchors hidden outside displayed PDF text", as
   );
 });
 
+test("rejects Databricks anchors in a text object without a text-showing operator", async () => {
+  const fetchImpl = async (url) => {
+    const response = await legalFetch(url);
+    if (String(url).includes(DATABRICKS_DPA_PATH)) {
+      const escapedText = REVIEWED_DATABRICKS_DPA_TEXT
+        .replaceAll("\\", "\\\\")
+        .replaceAll("(", "\\(")
+        .replaceAll(")", "\\)");
+      const content = Buffer.from(`BT\n(${escapedText})\nET`, "latin1");
+      const compressed = deflateSync(content);
+      const prefix = Buffer.from(
+        `%PDF-1.7\n1 0 obj\n<< /Length ${compressed.byteLength} /Filter /FlateDecode >>\nstream\n`,
+        "latin1",
+      );
+      const suffix = Buffer.from("\nendstream\nendobj\n", "latin1");
+      const eof = Buffer.from("\n%%EOF\n", "latin1");
+      const paddingLength = Math.max(
+        0,
+        12_000 - prefix.byteLength - compressed.byteLength - suffix.byteLength - eof.byteLength,
+      );
+      const body = Buffer.concat([
+        prefix,
+        compressed,
+        suffix,
+        Buffer.alloc(paddingLength, 0x20),
+        eof,
+      ]);
+      return {
+        ...response,
+        async arrayBuffer() {
+          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
+        },
+      };
+    }
+    return response;
+  };
+  await assert.rejects(
+    () => collect({}, { fetchImpl }),
+    /Databricks DPA drifted from the reviewed official baseline/,
+  );
+});
+
 test("rejects an over-expanding Databricks DPA Flate stream", async () => {
   const fetchImpl = async (url) => {
     const response = await legalFetch(url);
