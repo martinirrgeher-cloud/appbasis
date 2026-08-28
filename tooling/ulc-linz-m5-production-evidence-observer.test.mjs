@@ -42,8 +42,8 @@ function workerVersion(id, sha = GITHUB_SHA) {
   };
 }
 
-function deployment(versionId, createdOn, percentage = 100) {
-  return { created_on: createdOn, versions: [{ version_id: versionId, percentage }] };
+function deployment(versionId, percentage = 100) {
+  return { versions: [{ version_id: versionId, percentage }] };
 }
 
 function providerFetch(url) {
@@ -64,7 +64,7 @@ function providerFetch(url) {
     return Promise.resolve(response({
       success: true,
       result: {
-        deployments: [deployment(CURRENT_VERSION, "2026-08-23T14:00:00.000Z")],
+        deployments: [deployment(CURRENT_VERSION)],
       },
     }));
   }
@@ -177,7 +177,7 @@ test("observer derives authoritative provider recovery/control-plane evidence an
   }
 });
 
-test("observer accepts deployment history when the uniquely newest deployment is the trusted current runtime", async () => {
+test("observer accepts Cloudflare deployment history when the first active deployment is the trusted current runtime", async () => {
   const historyFetch = async (url, options) => {
     const result = await providerFetch(url, options);
     if (String(url).endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
@@ -185,8 +185,8 @@ test("observer accepts deployment history when the uniquely newest deployment is
         success: true,
         result: {
           deployments: [
-            deployment(OTHER_VERSION, "2026-08-23T13:00:00.000Z"),
-            deployment(CURRENT_VERSION, "2026-08-23T14:00:00.000Z"),
+            deployment(CURRENT_VERSION),
+            deployment(OTHER_VERSION),
           ],
         },
       });
@@ -200,7 +200,7 @@ test("observer accepts deployment history when the uniquely newest deployment is
   );
 });
 
-test("observer never lets an older matching deployment hide a newer runtime drift", async () => {
+test("observer never lets a later matching deployment hide active runtime drift", async () => {
   const driftFetch = async (url, options) => {
     const value = String(url);
     if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
@@ -208,8 +208,8 @@ test("observer never lets an older matching deployment hide a newer runtime drif
         success: true,
         result: {
           deployments: [
-            deployment(CURRENT_VERSION, "2026-08-23T13:00:00.000Z"),
-            deployment(OTHER_VERSION, "2026-08-23T14:00:00.000Z"),
+            deployment(OTHER_VERSION),
+            deployment(CURRENT_VERSION),
           ],
         },
       });
@@ -225,15 +225,18 @@ test("observer never lets an older matching deployment hide a newer runtime drif
   );
 });
 
-test("observer fails closed when Cloudflare deployment history has no uniquely newest entry", async () => {
-  const ambiguousFetch = async (url, options) => {
+test("observer fails closed when the active Cloudflare deployment is malformed or split", async () => {
+  const malformedFetch = async (url, options) => {
     if (String(url).endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
       return response({
         success: true,
         result: {
           deployments: [
-            deployment(CURRENT_VERSION, "2026-08-23T14:00:00.000Z"),
-            deployment(OTHER_VERSION, "2026-08-23T14:00:00.000Z"),
+            { versions: [
+              { version_id: CURRENT_VERSION, percentage: 50 },
+              { version_id: OTHER_VERSION, percentage: 50 },
+            ] },
+            deployment(CURRENT_VERSION),
           ],
         },
       });
@@ -241,8 +244,8 @@ test("observer fails closed when Cloudflare deployment history has no uniquely n
     return providerFetch(url, options);
   };
   await assert.rejects(
-    () => collect({ fetchImpl: ambiguousFetch }),
-    /no uniquely newest deployment/,
+    () => collect({ fetchImpl: malformedFetch }),
+    /current deployment is not a single-version deployment/,
   );
 });
 
