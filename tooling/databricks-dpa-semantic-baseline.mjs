@@ -53,6 +53,7 @@ function extractActivePageDisplayedText(bytes) {
     const fontMaps = resolvePageFontMaps(objects, pageRef);
     const contentRefs = parseContentsRefs(page.dictionary);
     if (contentRefs.length === 0) throw driftError();
+    const pageStreams = [];
     for (const contentRef of contentRefs) {
       const content = requireObject(objects, contentRef);
       if (content.stream === null) throw driftError();
@@ -64,8 +65,15 @@ function extractActivePageDisplayedText(bytes) {
           "ULC M5-G Databricks DPA PDF extraction exceeds its safety bound.",
         );
       }
-      chunks.push(extractDisplayedTextOperators(decoded.toString("latin1"), fontMaps));
+      pageStreams.push(decoded);
     }
+    if (pageStreams.length === 0) throw driftError();
+    chunks.push(
+      extractDisplayedTextOperators(
+        Buffer.concat(pageStreams).toString("latin1"),
+        fontMaps,
+      ),
+    );
   }
   return chunks.join(" ");
 }
@@ -261,14 +269,21 @@ function extractDisplayedTextOperators(value, fontMaps) {
   for (const textObject of value.matchAll(/\bBT\b([\s\S]*?)\bET\b/gu)) {
     const body = stripPdfComments(textObject[1]);
     let activeFont = null;
-    const tokenPattern = /\/([A-Za-z0-9_.+-]+)\s+[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s+Tf\b|(\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>)\s*(Tj|'|")|\[([\s\S]*?)\]\s*TJ\b/gu;
+    let renderingMode = 0;
+    const tokenPattern = /\/([A-Za-z0-9_.+-]+)\s+[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s+Tf\b|([0-7])\s+Tr\b|(\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>)\s*(Tj|'|")|\[([\s\S]*?)\]\s*TJ\b/gu;
     for (const token of body.matchAll(tokenPattern)) {
       if (token[1] !== undefined) {
         activeFont = token[1];
       } else if (token[2] !== undefined) {
-        displayed.push(decodePdfTextOperand(token[2], fontMaps.get(activeFont)));
-      } else if (token[4] !== undefined) {
-        displayed.push(decodePdfTextArray(token[4], fontMaps.get(activeFont)));
+        renderingMode = Number.parseInt(token[2], 10);
+      } else if (token[3] !== undefined) {
+        if (renderingMode !== 3 && renderingMode !== 7) {
+          displayed.push(decodePdfTextOperand(token[3], fontMaps.get(activeFont)));
+        }
+      } else if (token[5] !== undefined) {
+        if (renderingMode !== 3 && renderingMode !== 7) {
+          displayed.push(decodePdfTextArray(token[5], fontMaps.get(activeFont)));
+        }
       }
     }
   }
