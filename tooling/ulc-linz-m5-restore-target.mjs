@@ -135,13 +135,17 @@ export async function resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
   }
 }
 
-export function parseUlcLinzM5RestoreDatabaseUrl(value) {
+export function parseUlcLinzM5RestoreDatabaseUrl(value, { expectedPrincipalKind = "owner" } = {}) {
+  if (expectedPrincipalKind !== "owner" && expectedPrincipalKind !== "application") {
+    throw new Error("ULC M5 restore database URL principal kind is invalid.");
+  }
   const url = requiredEncryptedDatabaseUrl(value, "ULC M5 restore database URL");
   assertCanonicalSingleHostAuthority(value, url, "ULC M5 restore database URL");
   assertSafeRestoreQuery(url, "ULC M5 restore database URL");
   const hostname = url.hostname.toLowerCase();
   const databaseName = canonicalDatabaseName(url);
   const port = url.port || "5432";
+  const principal = decodePrincipal(url.username);
   if (
     hostname.endsWith(".") ||
     !hostname.endsWith(".neon.tech") ||
@@ -149,10 +153,11 @@ export function parseUlcLinzM5RestoreDatabaseUrl(value) {
     hostname.split(".")[0]?.endsWith("-pooler") ||
     port !== "5432" ||
     url.pathname !== `/${databaseName}` ||
-    url.hash !== ""
+    url.hash !== "" ||
+    (principal === SOURCE_ROLE && expectedPrincipalKind !== "application")
   ) {
     throw new Error(
-      "ULC M5 restore database URL must use one canonical direct Neon endpoint, canonical database name and default PostgreSQL port.",
+      "ULC M5 restore database URL must use one canonical direct Neon endpoint, canonical database name, default PostgreSQL port and an allowed restore principal.",
     );
   }
   return url;
