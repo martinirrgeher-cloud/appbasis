@@ -3,6 +3,8 @@ import { inflateSync } from "node:zlib";
 import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evidence.mjs";
 
 const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MAX_DATABRICKS_DPA_INFLATED_STREAM_BYTES = 10_000_000;
+const MAX_DATABRICKS_DPA_EXTRACTED_BYTES = 20_000_000;
 const DATARBRICKS_DPA_PDF_MARKER = "Databricks DPA v3 (2023-07-21)";
 const DATABRICKS_DPA_PDF_ANCHORS = Object.freeze([
   "DATA PROCESSING ADDENDUM",
@@ -282,6 +284,7 @@ function extractPdfSearchText(bytes) {
   const streamStartCrLf = Buffer.from("stream\r\n", "ascii");
   const streamEnd = Buffer.from("\nendstream", "ascii");
   const streamEndCrLf = Buffer.from("\r\nendstream", "ascii");
+  let extractedBytes = buffer.byteLength;
   let offset = 0;
 
   while (offset < buffer.length) {
@@ -309,16 +312,26 @@ function extractPdfSearchText(bytes) {
     const dictionaryStart = Math.max(0, start - 1024);
     const dictionary = buffer.subarray(dictionaryStart, start).toString("latin1");
     const streamBytes = buffer.subarray(contentStart, contentEnd);
+    let extracted;
     if (/\/FlateDecode\b/u.test(dictionary)) {
       try {
-        chunks.push(inflateSync(streamBytes).toString("latin1"));
+        extracted = inflateSync(streamBytes, {
+          maxOutputLength: MAX_DATABRICKS_DPA_INFLATED_STREAM_BYTES,
+        });
       } catch {
-        // Not every stream must be text-bearing. Unsupported/corrupt streams do
-        // not establish the baseline; the mandatory anchors below still fail closed.
+        // Not every stream must be text-bearing. Unsupported, corrupt or
+        // over-expanding streams do not establish the mandatory baseline.
+        offset = contentEnd + endMarkerLength;
+        continue;
       }
     } else {
-      chunks.push(streamBytes.toString("latin1"));
+      extracted = streamBytes;
     }
+    if (extractedBytes + extracted.byteLength > MAX_DATABRICKS_DPA_EXTRACTED_BYTES) {
+      throw new Error("ULC M5-G Databricks DPA PDF extraction exceeds its safety bound.");
+    }
+    extractedBytes += extracted.byteLength;
+    chunks.push(extracted.toString("latin1"));
     offset = contentEnd + endMarkerLength;
   }
 
