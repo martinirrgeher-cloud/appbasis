@@ -55,15 +55,15 @@ function versionsResponse({ includeCurrent = false, oldHmac = HMAC } = {}) {
   };
 }
 
-function deployment(versionId, createdOn, percentage = 100) {
-  return { created_on: createdOn, versions: [{ version_id: versionId, percentage }] };
+function deployment(versionId, percentage = 100) {
+  return { versions: [{ version_id: versionId, percentage }] };
 }
 
 function deploymentsResponse(versionId = OLD_VERSION, percentage = 100) {
   return {
     success: true,
     result: {
-      deployments: [deployment(versionId, "2026-08-23T12:00:00.000Z", percentage)],
+      deployments: [deployment(versionId, percentage)],
     },
   };
 }
@@ -122,13 +122,13 @@ test("refresh state is idempotent once the exact current runtime is privately de
   assert.equal(result.deploymentRequired, false);
 });
 
-test("refresh selects the uniquely newest Cloudflare deployment and ignores older history", () => {
+test("refresh treats the first Cloudflare deployment as active and ignores later history", () => {
   const result = evaluateUlcLinzPrivateRuntimeRefreshState(
     input({
       versionsResponse: versionsResponse({ includeCurrent: true }),
       deploymentsResponse: deploymentHistory(
-        deployment(CURRENT_VERSION, "2026-08-23T12:05:00.000Z"),
-        deployment(OLD_VERSION, "2026-08-23T12:00:00.000Z"),
+        deployment(CURRENT_VERSION),
+        deployment(OLD_VERSION),
       ),
     }),
     { requireCurrentVersion: true, requireCurrentDeployment: true },
@@ -137,14 +137,14 @@ test("refresh selects the uniquely newest Cloudflare deployment and ignores olde
   assert.equal(result.currentDeployment, true);
 });
 
-test("refresh never lets an older matching deployment hide a newer wrong deployment", () => {
+test("refresh never lets a later matching history entry hide an active deployment drift", () => {
   assert.throws(
     () => evaluateUlcLinzPrivateRuntimeRefreshState(
       input({
         versionsResponse: versionsResponse({ includeCurrent: true }),
         deploymentsResponse: deploymentHistory(
-          deployment(CURRENT_VERSION, "2026-08-23T12:00:00.000Z"),
-          deployment(OLD_VERSION, "2026-08-23T12:05:00.000Z"),
+          deployment(OLD_VERSION),
+          deployment(CURRENT_VERSION),
         ),
       }),
       { requireCurrentVersion: true, requireCurrentDeployment: true },
@@ -153,28 +153,27 @@ test("refresh never lets an older matching deployment hide a newer wrong deploym
   );
 });
 
-test("refresh fails closed on ambiguous, malformed or split current deployment history", () => {
+test("refresh fails closed on malformed or split active deployment history", () => {
   assert.throws(
     () => evaluateUlcLinzPrivateRuntimeRefreshState(input({
-      deploymentsResponse: deploymentHistory(
-        deployment(OLD_VERSION, "2026-08-23T12:00:00.000Z"),
-        deployment(OLD_VERSION, "2026-08-23T12:00:00.000Z"),
-      ),
+      deploymentsResponse: deploymentHistory(null, deployment(OLD_VERSION)),
     })),
-    /no uniquely newest deployment/,
-  );
-  const malformed = deployment(OLD_VERSION, "not-a-date");
-  assert.throws(
-    () => evaluateUlcLinzPrivateRuntimeRefreshState(input({
-      deploymentsResponse: deploymentHistory(malformed),
-    })),
-    /invalid created_on timestamp/,
+    /invalid deployment/,
   );
   assert.throws(
     () => evaluateUlcLinzPrivateRuntimeRefreshState(input({
       deploymentsResponse: deploymentsResponse(OLD_VERSION, 50),
     })),
     /does not route 100% to one version/,
+  );
+  assert.throws(
+    () => evaluateUlcLinzPrivateRuntimeRefreshState(input({
+      deploymentsResponse: deploymentHistory({ versions: [
+        { version_id: OLD_VERSION, percentage: 50 },
+        { version_id: CURRENT_VERSION, percentage: 50 },
+      ] }),
+    })),
+    /not a single-version deployment/,
   );
 });
 
