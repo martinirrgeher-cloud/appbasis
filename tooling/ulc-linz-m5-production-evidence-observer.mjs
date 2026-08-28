@@ -50,6 +50,7 @@ const LOG_FIELDS = Object.freeze([
   "destinations",
   "head_sampling_rate",
   "persist",
+  "redact_query_string",
 ]);
 const TRACE_FIELDS = Object.freeze([
   "destinations",
@@ -476,7 +477,11 @@ function inspectCloudflareTelemetry(value) {
   if (settings.logpush !== undefined && typeof settings.logpush !== "boolean") {
     throw new Error("Cloudflare Worker telemetry inventory is invalid.");
   }
-  if (settings.tags !== undefined && !isStringArray(settings.tags)) {
+  if (
+    settings.tags !== undefined &&
+    settings.tags !== null &&
+    !isStringArray(settings.tags)
+  ) {
     throw new Error("Cloudflare Worker telemetry inventory is invalid.");
   }
   const tailConsumers = settings.tail_consumers ?? [];
@@ -514,6 +519,12 @@ function inspectTelemetryChannel(value, allowedFields, label) {
   if (
     channel.destinations !== undefined &&
     !isStringArray(channel.destinations)
+  ) {
+    throw new Error("Cloudflare Worker telemetry inventory is invalid.");
+  }
+  if (
+    channel.redact_query_string !== undefined &&
+    typeof channel.redact_query_string !== "boolean"
   ) {
     throw new Error("Cloudflare Worker telemetry inventory is invalid.");
   }
