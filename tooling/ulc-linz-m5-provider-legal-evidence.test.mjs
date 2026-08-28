@@ -68,22 +68,38 @@ function semanticPdfBytes(text = REVIEWED_DATABRICKS_DPA_SEMANTIC_TEXT) {
     .replaceAll(")", "\\)");
   const content = Buffer.from(`BT\n(${escaped}) Tj\nET`, "latin1");
   const compressed = deflateSync(content);
-  const prefix = Buffer.from(
-    `%PDF-1.7\n1 0 obj\n<< /Length ${compressed.byteLength} /Filter /FlateDecode >>\nstream\n`,
+  const streamPrefix = Buffer.from(
+    `4 0 obj\n<< /Length ${compressed.byteLength} /Filter /FlateDecode >>\nstream\n`,
     "latin1",
   );
-  const suffix = Buffer.from("\nendstream\nendobj\n", "latin1");
-  const eof = Buffer.from("\n%%EOF\n", "latin1");
+  const streamSuffix = Buffer.from("\nendstream\nendobj\n", "latin1");
+  const prefix = Buffer.from(
+    "%PDF-1.7\n" +
+      "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" +
+      "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n" +
+      "3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>\nendobj\n",
+    "latin1",
+  );
+  const trailer = Buffer.from(
+    "trailer\n<< /Root 1 0 R >>\nstartxref\n0\n%%EOF\n",
+    "latin1",
+  );
   const paddingLength = Math.max(
     0,
-    12_000 - prefix.byteLength - compressed.byteLength - suffix.byteLength - eof.byteLength,
+    12_000 -
+      prefix.byteLength -
+      streamPrefix.byteLength -
+      compressed.byteLength -
+      streamSuffix.byteLength -
+      trailer.byteLength,
   );
   return Buffer.concat([
     prefix,
+    streamPrefix,
     compressed,
-    suffix,
+    streamSuffix,
     Buffer.alloc(paddingLength, 0x20),
-    eof,
+    trailer,
   ]);
 }
 
@@ -219,7 +235,7 @@ test("accepts only the reviewed versioned Databricks DPA PDF shape", async () =>
   );
 });
 
-test("accepts a byte-different Databricks PDF only when its displayed semantic baseline remains reviewed", async () => {
+test("accepts a byte-different Databricks PDF only when its active page-tree semantic baseline remains reviewed", async () => {
   const fetchImpl = async (url) => {
     const response = await legalFetch(url);
     if (String(url).includes(DATABRICKS_DPA_PATH)) {
@@ -242,7 +258,7 @@ test("accepts a byte-different Databricks PDF only when its displayed semantic b
   );
 });
 
-test("rejects any structurally valid Databricks PDF whose bytes and displayed semantic baseline are unreviewed", async () => {
+test("rejects any structurally valid Databricks PDF whose bytes and active page-tree baseline are unreviewed", async () => {
   await assert.rejects(
     () => collect({}, { sha256Impl: actualSha256 }),
     /Databricks DPA drifted from the reviewed official baseline/,
