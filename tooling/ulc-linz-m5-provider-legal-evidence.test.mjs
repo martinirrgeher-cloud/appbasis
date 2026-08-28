@@ -1,19 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deflateSync } from "node:zlib";
+import { createHash } from "node:crypto";
 
 import { collectUlcLinzM5ProviderLegalEvidence } from "./ulc-linz-m5-provider-legal-evidence.mjs";
 
 const OBSERVED_AT = "2026-08-23T22:00:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:15:00.000Z";
 const DATABRICKS_DPA_PATH = "/sites/default/files/legal/dpa-20230721.pdf";
-const REVIEWED_DATABRICKS_DPA_TEXT = [
-  "DATA PROCESSING ADDENDUM",
-  "forms an integral part of the Databricks Master Cloud Services Agreement",
-  "Databricks DPA v3 (2023-07-21)",
-  "Standard Contractual Clauses",
-  "ANNEX A",
-].join(" ");
+const REVIEWED_DATABRICKS_DPA_SHA256 = "f7501e724b91d8bdb737b34d7f9807b996fe88a86db782063f3c09ee5ce2aa2c";
 
 const SOURCE_TEXT = Object.freeze({
   "www.cloudflare.com/cloudflare-customer-dpa/":
@@ -34,26 +28,12 @@ const SOURCE_TEXT = Object.freeze({
     "Neon’s Security & Compliance. We offer Data Processing Agreements (DPA). Neon enforces TLS 1.2+ encryption. All stored data is encrypted using AES-256.",
 });
 
-function reviewedPdfBytes(text = REVIEWED_DATABRICKS_DPA_TEXT) {
-  const escapedText = text.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
-  const content = Buffer.from(`BT\n(${escapedText}) Tj\nET`, "latin1");
-  const compressed = deflateSync(content);
-  const prefix = Buffer.from(
-    `%PDF-1.7\n1 0 obj\n<< /Length ${compressed.byteLength} /Filter /FlateDecode >>\nstream\n`,
-    "latin1",
-  );
-  const suffix = Buffer.from("\nendstream\nendobj\n", "latin1");
+function pdfBytes(label = "reviewed fixture") {
+  const prefix = Buffer.from(`%PDF-1.7\n${label}\n`, "latin1");
   const eof = Buffer.from("\n%%EOF\n", "latin1");
-  const minimumLength = 12_000;
-  const paddingLength = Math.max(
-    0,
-    minimumLength - prefix.byteLength - compressed.byteLength - suffix.byteLength - eof.byteLength,
-  );
   return Buffer.concat([
     prefix,
-    compressed,
-    suffix,
-    Buffer.alloc(paddingLength, 0x20),
+    Buffer.alloc(12_000 - prefix.byteLength - eof.byteLength, 0x20),
     eof,
   ]);
 }
@@ -61,11 +41,13 @@ function reviewedPdfBytes(text = REVIEWED_DATABRICKS_DPA_TEXT) {
 function legalFetch(url) {
   const parsed = new URL(url);
   if (parsed.hostname === "www.databricks.com" && parsed.pathname === DATABRICKS_DPA_PATH) {
-    const body = reviewedPdfBytes();
+    const body = pdfBytes();
     return Promise.resolve({
       ok: true,
       url: parsed.href,
-      headers: { get: (name) => name.toLowerCase() === "content-type" ? "application/pdf" : null },
+      headers: {
+        get: (name) => name.toLowerCase() === "content-type" ? "application/pdf" : null,
+      },
       async arrayBuffer() {
         return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
       },
@@ -77,8 +59,20 @@ function legalFetch(url) {
   return Promise.resolve({
     ok: true,
     url: parsed.href,
-    async text() { return `<html><body>${body}</body></html>`; },
+    async text() {
+      return `<html><body>${body}</body></html>`;
+    },
   });
+}
+
+function reviewedSha256() {
+  return REVIEWED_DATABRICKS_DPA_SHA256;
+}
+
+function actualSha256(bytes) {
+  return createHash("sha256")
+    .update(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength))
+    .digest("hex");
 }
 
 function collect(overrides = {}, options = {}) {
@@ -90,7 +84,7 @@ function collect(overrides = {}, options = {}) {
       validUntilOrReviewAt: VALID_UNTIL,
       ...overrides,
     },
-    { fetchImpl: legalFetch, ...options },
+    { fetchImpl: legalFetch, sha256Impl: reviewedSha256, ...options },
   );
 }
 
@@ -112,24 +106,15 @@ test("collects exact public legal/security baselines but never invents provider-
     neonDpa.canonicalSource,
     "https://www.databricks.com/sites/default/files/legal/dpa-20230721.pdf",
   );
-  assert.equal(
-    result.some((entry) => entry.documentType === "dpa-account-binding"),
-    false,
-  );
+  assert.equal(result.some((entry) => entry.documentType === "dpa-account-binding"), false);
   assert.equal(result.some((entry) => entry.accountSpecific === true), false);
   assert.ok(result.every((entry) => entry.observedAt === OBSERVED_AT));
   assert.ok(result.every((entry) => entry.validUntilOrReviewAt === VALID_UNTIL));
 });
 
 test("requires both authenticated provider resources but does not confuse resource binding with legal operator binding", async () => {
-  await assert.rejects(
-    () => collect({ cloudflareAccountBound: false }),
-    /resource binding is incomplete/,
-  );
-  await assert.rejects(
-    () => collect({ neonProjectBound: false }),
-    /resource binding is incomplete/,
-  );
+  await assert.rejects(() => collect({ cloudflareAccountBound: false }), /resource binding is incomplete/);
+  await assert.rejects(() => collect({ neonProjectBound: false }), /resource binding is incomplete/);
   const result = await collect();
   assert.equal(result.some((entry) => entry.documentType === "dpa-account-binding"), false);
 });
@@ -157,10 +142,7 @@ test("accepts only the reviewed versioned Databricks DPA PDF shape", async () =>
   const wrongTypeFetch = async (url) => {
     const response = await legalFetch(url);
     if (String(url).includes(DATABRICKS_DPA_PATH)) {
-      return {
-        ...response,
-        headers: { get: () => "text/html" },
-      };
+      return { ...response, headers: { get: () => "text/html" } };
     }
     return response;
   };
@@ -188,161 +170,9 @@ test("accepts only the reviewed versioned Databricks DPA PDF shape", async () =>
   );
 });
 
-test("rejects a structurally valid but content-unrelated Databricks DPA PDF", async () => {
-  const fetchImpl = async (url) => {
-    const response = await legalFetch(url);
-    if (String(url).includes(DATABRICKS_DPA_PATH)) {
-      const body = reviewedPdfBytes(
-        "UNRELATED DOCUMENT This is a valid PDF-shaped fixture but it is not the reviewed Databricks contractual baseline.",
-      );
-      return {
-        ...response,
-        async arrayBuffer() {
-          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
-        },
-      };
-    }
-    return response;
-  };
+test("rejects any structurally valid Databricks PDF whose bytes do not match the reviewed digest", async () => {
   await assert.rejects(
-    () => collect({}, { fetchImpl }),
-    /Databricks DPA drifted from the reviewed official baseline/,
-  );
-});
-
-test("rejects reviewed Databricks anchors hidden outside displayed PDF text", async () => {
-  const fetchImpl = async (url) => {
-    const response = await legalFetch(url);
-    if (String(url).includes(DATABRICKS_DPA_PATH)) {
-      const visiblePdf = reviewedPdfBytes(
-        "UNRELATED DOCUMENT This is the only displayed text in this PDF fixture.",
-      );
-      const hiddenComment = Buffer.from(`% ${REVIEWED_DATABRICKS_DPA_TEXT}\n`, "latin1");
-      const body = Buffer.concat([
-        visiblePdf.subarray(0, 9),
-        hiddenComment,
-        visiblePdf.subarray(9),
-      ]);
-      return {
-        ...response,
-        async arrayBuffer() {
-          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
-        },
-      };
-    }
-    return response;
-  };
-  await assert.rejects(
-    () => collect({}, { fetchImpl }),
-    /Databricks DPA drifted from the reviewed official baseline/,
-  );
-});
-
-test("rejects Databricks anchors in a text object without a text-showing operator", async () => {
-  const fetchImpl = async (url) => {
-    const response = await legalFetch(url);
-    if (String(url).includes(DATABRICKS_DPA_PATH)) {
-      const escapedText = REVIEWED_DATABRICKS_DPA_TEXT
-        .replaceAll("\\", "\\\\")
-        .replaceAll("(", "\\(")
-        .replaceAll(")", "\\)");
-      const content = Buffer.from(`BT\n(${escapedText})\nET`, "latin1");
-      const compressed = deflateSync(content);
-      const prefix = Buffer.from(
-        `%PDF-1.7\n1 0 obj\n<< /Length ${compressed.byteLength} /Filter /FlateDecode >>\nstream\n`,
-        "latin1",
-      );
-      const suffix = Buffer.from("\nendstream\nendobj\n", "latin1");
-      const eof = Buffer.from("\n%%EOF\n", "latin1");
-      const paddingLength = Math.max(
-        0,
-        12_000 - prefix.byteLength - compressed.byteLength - suffix.byteLength - eof.byteLength,
-      );
-      const body = Buffer.concat([
-        prefix,
-        compressed,
-        suffix,
-        Buffer.alloc(paddingLength, 0x20),
-        eof,
-      ]);
-      return {
-        ...response,
-        async arrayBuffer() {
-          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
-        },
-      };
-    }
-    return response;
-  };
-  await assert.rejects(
-    () => collect({}, { fetchImpl }),
-    /Databricks DPA drifted from the reviewed official baseline/,
-  );
-});
-
-test("rejects Databricks anchors hidden in a PDF content-stream comment", async () => {
-  const fetchImpl = async (url) => {
-    const response = await legalFetch(url);
-    if (String(url).includes(DATABRICKS_DPA_PATH)) {
-      const escapedText = REVIEWED_DATABRICKS_DPA_TEXT
-        .replaceAll("\\", "\\\\")
-        .replaceAll("(", "\\(")
-        .replaceAll(")", "\\)");
-      const content = Buffer.from(
-        `BT\n% (${escapedText}) Tj\n(UNRELATED DOCUMENT) Tj\nET`,
-        "latin1",
-      );
-      const compressed = deflateSync(content);
-      const prefix = Buffer.from(
-        `%PDF-1.7\n1 0 obj\n<< /Length ${compressed.byteLength} /Filter /FlateDecode >>\nstream\n`,
-        "latin1",
-      );
-      const suffix = Buffer.from("\nendstream\nendobj\n", "latin1");
-      const eof = Buffer.from("\n%%EOF\n", "latin1");
-      const paddingLength = Math.max(
-        0,
-        12_000 - prefix.byteLength - compressed.byteLength - suffix.byteLength - eof.byteLength,
-      );
-      const body = Buffer.concat([
-        prefix,
-        compressed,
-        suffix,
-        Buffer.alloc(paddingLength, 0x20),
-        eof,
-      ]);
-      return {
-        ...response,
-        async arrayBuffer() {
-          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
-        },
-      };
-    }
-    return response;
-  };
-  await assert.rejects(
-    () => collect({}, { fetchImpl }),
-    /Databricks DPA drifted from the reviewed official baseline/,
-  );
-});
-
-test("rejects an over-expanding Databricks DPA Flate stream", async () => {
-  const fetchImpl = async (url) => {
-    const response = await legalFetch(url);
-    if (String(url).includes(DATABRICKS_DPA_PATH)) {
-      const body = reviewedPdfBytes(
-        `${REVIEWED_DATABRICKS_DPA_TEXT} ${"A".repeat(10_100_000)}`,
-      );
-      return {
-        ...response,
-        async arrayBuffer() {
-          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
-        },
-      };
-    }
-    return response;
-  };
-  await assert.rejects(
-    () => collect({}, { fetchImpl }),
+    () => collect({}, { sha256Impl: actualSha256 }),
     /Databricks DPA drifted from the reviewed official baseline/,
   );
 });
@@ -369,6 +199,13 @@ test("rejects a same-host Databricks DPA redirect away from the reviewed version
   await assert.rejects(
     () => collect({}, { fetchImpl }),
     /redirected away from the reviewed versioned asset/,
+  );
+});
+
+test("rejects invalid digest implementations instead of silently weakening verification", async () => {
+  await assert.rejects(
+    () => collect({}, { sha256Impl: null }),
+    /legal evidence fetch implementation is invalid/,
   );
 });
 
