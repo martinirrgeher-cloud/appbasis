@@ -154,7 +154,7 @@ test("rejects source identity drift and equivalent production restore endpoints 
       restoreUrl: SOURCE.replace("ulc_linz_application", "neondb_owner"),
       createDatabase: () => { connects += 1; return databaseWith(); },
     }),
-    /different database endpoint/,
+    /attestation does not match the active database endpoints|different database endpoint/,
   );
   assert.equal(connects, 0);
 });
