@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { deriveUlcLinzLifecycleContractDigest } from "./factory-ui/ulc-linz-lifecycle-evidence.mjs";
+import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare-current-deployment.mjs";
 import { verifyUlcLinzM5BackupContract } from "./ulc-linz-m5-backup-contract.mjs";
 import { deriveUlcLinzM5GResourceBindingFingerprint } from "./ulc-linz-m5-provider-bound-evidence.mjs";
 import { deriveUlcLinzProductionRuntimeContractDigest } from "./ulc-linz-m6-production-resource-binding.mjs";
@@ -416,17 +417,12 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
     throw new Error("ULC production Worker route inventory is not closed.");
   }
 
-  const deployments = array(deploymentsResponse?.result?.deployments);
-  if (
-    deployments.length !== 1 ||
-    !Array.isArray(deployments[0]?.versions) ||
-    deployments[0].versions.length !== 1 ||
-    deployments[0].versions[0]?.percentage !== 100
-  ) {
-    throw new Error("ULC production Worker deployment inventory is not exact.");
-  }
-
-  const versionId = requiredVersionId(deployments[0].versions[0].version_id);
+  const { version: currentDeploymentVersion } =
+    requireCurrentUlcLinzCloudflareDeployment(
+      deploymentsResponse?.result?.deployments,
+      { label: "ULC production Worker deployment inventory" },
+    );
+  const versionId = requiredVersionId(currentDeploymentVersion.version_id);
   const versionResponse = await cloudflareJson(
     `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${versionId}`,
     apiToken,
