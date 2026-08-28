@@ -14,6 +14,7 @@ const RESTORE_CREDENTIALS = [
   ["security-log-read", "APPBASIS_M4_RESTORE_SECURITY_LOG_READ_DATABASE_URL"],
 ];
 const IDENTITY_QUERY = "SELECT current_database() AS current_database, current_user AS current_user";
+const CREDENTIAL_ONLY_MODE = "credentials-only";
 
 export async function verifyRestoreCredentials(env = process.env, { databaseFactory = createPostgresDatabase } = {}) {
   const parsed = RESTORE_CREDENTIALS.map(([label, name]) => ({
@@ -55,6 +56,12 @@ export async function verifyRestoreCredentials(env = process.env, { databaseFact
     throw new Error(`ULC M5 restore credential preflight failed (${failures.join(", ")}).`);
   }
   return { restoreCredentialPreflightVerified: true };
+}
+
+export function isCredentialOnlyPreflightMode(value) {
+  if (value === undefined || value === null || value === "") return false;
+  if (value === CREDENTIAL_ONLY_MODE) return true;
+  throw new Error(`Unsupported ULC M5 restore credential preflight mode: ${value}.`);
 }
 
 function parseCredential(value, label) {
@@ -101,6 +108,10 @@ function endpointKey(url) {
 
 async function main() {
   const credentialResult = await verifyRestoreCredentials();
+  if (isCredentialOnlyPreflightMode(process.argv[2])) {
+    process.stdout.write(`${JSON.stringify(credentialResult)}\n`);
+    return;
+  }
   const proof = await verifyUlcLinzM5NeonBranchIsolation({
     sourceUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
     restoreUrls: RESTORE_CREDENTIALS.map(([, name]) => process.env[name]),
