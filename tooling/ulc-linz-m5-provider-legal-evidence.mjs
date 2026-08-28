@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { verifyReviewedDatabricksDpaSemanticBaseline } from "./databricks-dpa-semantic-baseline.mjs";
 import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evidence.mjs";
 
 const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -231,7 +230,7 @@ async function officialDatabricksDpaPdf(url, fetchImpl, sha256Impl) {
     throw new Error("ULC M5-G Databricks DPA PDF body is invalid.");
   }
   if (sha256Impl(bytes) !== DATABRICKS_DPA_PDF_SHA256) {
-    verifyReviewedDatabricksDpaSemanticBaseline(bytes);
+    throw new Error("ULC M5-G Databricks DPA drifted from the reviewed official baseline.");
   }
   return DATARBRICKS_DPA_PDF_MARKER;
 }
