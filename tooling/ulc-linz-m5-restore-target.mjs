@@ -2,7 +2,10 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
-import { verifyUlcLinzM5NeonBranchIsolation } from "./ulc-linz-m5-neon-branch-isolation.mjs";
+import {
+  assertUlcLinzM5NeonBranchIsolationAttestation,
+  verifyUlcLinzM5NeonBranchIsolation,
+} from "./ulc-linz-m5-neon-branch-isolation.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
 const STRONG_SSL_MODES = new Set(["require", "verify-ca", "verify-full"]);
@@ -87,6 +90,7 @@ export async function resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
     apiKey: process.env.NEON_API_KEY,
     orgId: process.env.NEON_ORG_ID,
   });
+  assertUlcLinzM5NeonBranchIsolationAttestation({ sourceUrl, restoreUrl, env: process.env });
   const restore = validateTargetBoundary({ sourceUrl, restoreUrl, createDatabase });
 
   let database;
