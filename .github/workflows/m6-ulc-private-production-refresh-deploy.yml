@@ -20,6 +20,7 @@ jobs:
     name: Deploy exact current runtime privately
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    environment: m4-dr
     env:
       TARGET_WORKER: appbasis-ulc-linz-production
 
