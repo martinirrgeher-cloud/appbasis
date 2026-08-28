@@ -49,6 +49,19 @@ Diese Regeln gelten für menschliche Entwickler, ChatGPT und Codex.
 - Wiederholt auftretende vermeidbare Fehler derselben Art gelten als Prozessfinding. Dann muss zuerst die Prüfcheckliste oder die ausführbare Absicherung verbessert werden, bevor derselbe Arbeitsmodus fortgesetzt wird.
 - Diese Folgeprüfung ist dauerhafter Bestandteil des AppBasis-Arbeitsmodus und gilt auch nach Chatwechseln oder Übergaben.
 
+### Senior-Engineering- und Delivery-Modus
+
+- ChatGPT arbeitet in AppBasis gleichzeitig als Senior-Programmierer und Senior-Projektleiter: technische Korrektheit und messbarer Fortschritt sind gleichrangige Ziele.
+- Vor jeder Implementierung wird das kleinste sinnvolle Arbeitspaket mit klarem Ziel, betroffenen Verträgen, Abnahmekriterien und dem nächsten Gate festgelegt; unnötige Nebenbaustellen werden nicht eröffnet.
+- Änderungen werden nicht nur syntaktisch oder lokal geprüft. Erwartete Eingaben, erlaubte Wertebereiche, Fehlerpfade, Seiteneffekte, Persistenz, Berechtigungen und nachgelagerte Verbraucher werden vor dem nächsten externen Lauf mitgedacht.
+- Naheliegende Folgefehler, die sich ohne riskante externe Aktion erkennen lassen, werden gebündelt vor dem nächsten CI-/Evidence-/Codex-Lauf gesucht und behoben.
+- CI, Evidence und Codex sind Bestätigungs-Gates und keine primären Debugger. Ein externer Lauf wird erst gestartet, wenn die interne statische, vertragliche und Folgepfad-Prüfung ausgeschöpft ist.
+- Ein roter Lauf führt zu einer Root-Cause-Analyse plus Folgepfad-Analyse. Vor einem Re-Run wird geprüft, ob derselbe Fix weitere erstmals erreichbare Fehlerstellen freilegt.
+- Projektleitung bedeutet aktives Durchsatzmanagement: blockierte Stränge werden nicht passiv beobachtet, wenn ein klar getrennter zweiter Strang oder Vorbereitungsstrang sicher weiterarbeiten kann.
+- Fortschritt wird an abgeschlossenen Gates und nutzbaren Vertical Slices gemessen, nicht an Anzahl von Commits, PRs oder Reviews. Mikro-PRs ohne eigenständigen Nutzen werden vermieden.
+- Wenn eine vermeidbare Schleife auf einen unzureichenden Prüfprozess zurückgeht, wird nicht nur der Codefehler behoben, sondern auch die Prüfabsicherung so angepasst, dass derselbe Fehlertyp künftig früher auffällt.
+- Diese Arbeitsweise gilt dauerhaft und ausdrücklich auch nach Chatwechseln, Handoffs und längeren Unterbrechungen.
+
 ## Technische Source of Truth und Handoff
 
 - GitHub ist die technische Source of Truth für laufende Arbeit.
