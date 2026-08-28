@@ -53,6 +53,38 @@ function pdfWithContentArray(contents, { pageDictionary = "", extraObjects = [] 
   ]);
 }
 
+function xrefStreamPdf(content) {
+  const catalog = "<< /Type /Catalog /Pages 2 0 R >>";
+  const pages = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>";
+  const page = "<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>";
+  const bodies = [catalog, pages, page];
+  let offset = 0;
+  const pairs = [];
+  for (let index = 0; index < bodies.length; index += 1) {
+    pairs.push(`${index + 1} ${offset}`);
+    offset += Buffer.byteLength(`${bodies[index]} `, "latin1");
+  }
+  const header = `${pairs.join(" ")} `;
+  const objectStreamBody = `${header}${bodies.join(" ")}`;
+  const prefix = Buffer.concat([
+    Buffer.from("%PDF-1.7\n", "latin1"),
+    streamObject(4, content),
+    streamObject(5, objectStreamBody, {
+      dictionary: ` /Type /ObjStm /N 3 /First ${Buffer.byteLength(header, "latin1")}`,
+    }),
+  ]);
+  const xrefOffset = prefix.byteLength;
+  const xref = streamObject(6, Buffer.alloc(0), {
+    compressed: false,
+    dictionary: " /Type /XRef /Root 1 0 R /Size 7",
+  });
+  return Buffer.concat([
+    prefix,
+    xref,
+    Buffer.from(`startxref\n${xrefOffset}\n%%EOF\n`, "latin1"),
+  ]);
+}
+
 function literal(value) {
   return value.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
 }
@@ -119,6 +151,32 @@ test("rejects reviewed clauses used only as a clipping text path", () => {
     () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
     /drifted from the reviewed official baseline/,
   );
+});
+
+test("rejects invisible rendering mode persisted across text objects", () => {
+  const bytes = basePdf(`BT\n3 Tr\nET\nBT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
+  assert.throws(
+    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
+    /drifted from the reviewed official baseline/,
+  );
+});
+
+test("restores rendering state through q and Q", () => {
+  const bytes = basePdf(`q\nBT\n3 Tr\nET\nQ\nBT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
+  assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
+});
+
+test("rejects reviewed clauses under an unknown clipping path", () => {
+  const bytes = basePdf(`q\n0 0 m\nW n\nBT\n(${literal(REVIEWED_TEXT)}) Tj\nET\nQ`);
+  assert.throws(
+    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
+    /drifted from the reviewed official baseline/,
+  );
+});
+
+test("accepts a cross-reference stream with catalog objects in an object stream", () => {
+  const bytes = xrefStreamPdf(`BT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
+  assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
 });
 
 test("rejects substantive clauses hidden in an unreferenced stream", () => {
