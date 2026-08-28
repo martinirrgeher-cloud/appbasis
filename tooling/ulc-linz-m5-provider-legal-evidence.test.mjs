@@ -35,7 +35,8 @@ const SOURCE_TEXT = Object.freeze({
 });
 
 function reviewedPdfBytes(text = REVIEWED_DATABRICKS_DPA_TEXT) {
-  const content = Buffer.from(`BT\n(${text}) Tj\nET`, "latin1");
+  const escapedText = text.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+  const content = Buffer.from(`BT\n(${escapedText}) Tj\nET`, "latin1");
   const compressed = deflateSync(content);
   const prefix = Buffer.from(
     `%PDF-1.7\n1 0 obj\n<< /Length ${compressed.byteLength} /Filter /FlateDecode >>\nstream\n`,
