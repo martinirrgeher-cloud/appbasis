@@ -149,11 +149,10 @@ export function parseUlcLinzM5RestoreDatabaseUrl(value) {
     hostname.split(".")[0]?.endsWith("-pooler") ||
     port !== "5432" ||
     url.pathname !== `/${databaseName}` ||
-    url.hash !== "" ||
-    decodePrincipal(url.username) === SOURCE_ROLE
+    url.hash !== ""
   ) {
     throw new Error(
-      "ULC M5 restore database URL must use one canonical direct Neon endpoint, canonical database name, default PostgreSQL port and a non-production principal.",
+      "ULC M5 restore database URL must use one canonical direct Neon endpoint, canonical database name and default PostgreSQL port.",
     );
   }
   return url;
