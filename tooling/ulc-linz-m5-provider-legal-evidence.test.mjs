@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
-import { deflateSync } from "node:zlib";
 
 import { collectUlcLinzM5ProviderLegalEvidence } from "./ulc-linz-m5-provider-legal-evidence.mjs";
 
@@ -9,17 +8,6 @@ const OBSERVED_AT = "2026-08-23T22:00:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:15:00.000Z";
 const DATABRICKS_DPA_PATH = "/sites/default/files/legal/dpa-20230721.pdf";
 const REVIEWED_DATABRICKS_DPA_SHA256 = "f7501e724b91d8bdb737b34d7f9807b996fe88a86db782063f3c09ee5ce2aa2c";
-const REVIEWED_DATABRICKS_DPA_SEMANTIC_TEXT = [
-  "Databricks agrees that when Databricks processes Customer Personal Data in its capacity as a processor on behalf of the Customer Databricks will comply with Applicable Data Protection Laws and process the Customer Personal Data as necessary to perform its obligations under the Agreement and only in accordance with Customer's documented instructions",
-  "Databricks shall enter into a written agreement with its Subprocessors which includes data protection and security measures no less protective than the measures set forth in this DPA and remain fully liable for any breach of the Agreement and this DPA that is caused by an act error or omission of its Subprocessors",
-  "In the event of a Security Breach Databricks will notify Customer in writing without undue delay and in no event later than seventy-two 72 hours after becoming aware of the Security Breach and promptly take reasonable steps to contain investigate and mitigate any adverse effects resulting from the Security Breach",
-  "Where the transfer of Customer Personal Data to Databricks is a Restricted Transfer such transfer shall be governed by the Standard Contractual Clauses which shall be deemed incorporated into and form an integral part of the Agreement in accordance with Annex B of this DPA",
-  "The Databricks Services do not include backup services or disaster recovery for Customer Personal Data Databricks does provide functionality within the Databricks Services that may permit Customer to backup certain Customer Personal Data on its own It is the Customer's obligation to backup any Customer Personal Data if desired",
-  "Databricks will delete or assist Customer in deleting any Customer Personal Data within its possession or control within thirty 30 days following such request",
-  "Module Two terms shall apply where Customer is the controller of Customer Personal Data and the Module Three terms shall apply where Customer is the processor of Customer Personal Data",
-  "in Clause 9 option 2 general authorization is selected and the process and time period for prior notice of Sub-processor changes shall be as set out in Section 4.3 of the DPA",
-  "Databricks DPA v3 2023-07-21",
-].join(" ");
 
 const SOURCE_TEXT = Object.freeze({
   "www.cloudflare.com/cloudflare-customer-dpa/":
@@ -47,48 +35,6 @@ function pdfBytes(label = "reviewed fixture") {
     prefix,
     Buffer.alloc(12_000 - prefix.byteLength - eof.byteLength, 0x20),
     eof,
-  ]);
-}
-
-function semanticPdfBytes(text = REVIEWED_DATABRICKS_DPA_SEMANTIC_TEXT) {
-  const escaped = text
-    .replaceAll("\\", "\\\\")
-    .replaceAll("(", "\\(")
-    .replaceAll(")", "\\)");
-  const content = Buffer.from(`BT\n(${escaped}) Tj\nET`, "latin1");
-  const compressed = deflateSync(content);
-  const streamPrefix = Buffer.from(
-    `4 0 obj\n<< /Length ${compressed.byteLength} /Filter /FlateDecode >>\nstream\n`,
-    "latin1",
-  );
-  const streamSuffix = Buffer.from("\nendstream\nendobj\n", "latin1");
-  const prefix = Buffer.from(
-    "%PDF-1.7\n" +
-      "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" +
-      "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n" +
-      "3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>\nendobj\n",
-    "latin1",
-  );
-  const trailer = Buffer.from(
-    "trailer\n<< /Root 1 0 R >>\nstartxref\n0\n%%EOF\n",
-    "latin1",
-  );
-  const paddingLength = Math.max(
-    0,
-    12_000 -
-      prefix.byteLength -
-      streamPrefix.byteLength -
-      compressed.byteLength -
-      streamSuffix.byteLength -
-      trailer.byteLength,
-  );
-  return Buffer.concat([
-    prefix,
-    streamPrefix,
-    compressed,
-    streamSuffix,
-    Buffer.alloc(paddingLength, 0x20),
-    trailer,
   ]);
 }
 
@@ -224,30 +170,7 @@ test("accepts only the reviewed versioned Databricks DPA PDF shape", async () =>
   );
 });
 
-test("accepts a byte-different Databricks PDF only when its active page-tree semantic baseline remains reviewed", async () => {
-  const fetchImpl = async (url) => {
-    const response = await legalFetch(url);
-    if (String(url).includes(DATABRICKS_DPA_PATH)) {
-      const body = semanticPdfBytes();
-      return {
-        ...response,
-        async arrayBuffer() {
-          return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
-        },
-      };
-    }
-    return response;
-  };
-  const result = await collect({}, { fetchImpl, sha256Impl: actualSha256 });
-  assert.equal(
-    result.some(
-      (entry) => entry.provider === "neon-databricks" && entry.documentType === "dpa",
-    ),
-    true,
-  );
-});
-
-test("rejects any structurally valid Databricks PDF whose bytes and active page-tree baseline are unreviewed", async () => {
+test("rejects any structurally valid Databricks PDF whose bytes do not match the reviewed digest", async () => {
   await assert.rejects(
     () => collect({}, { sha256Impl: actualSha256 }),
     /Databricks DPA drifted from the reviewed official baseline/,
