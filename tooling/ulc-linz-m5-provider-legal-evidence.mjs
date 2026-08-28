@@ -339,8 +339,14 @@ function extractPdfSearchText(bytes) {
 
 function extractPdfDisplayedText(value) {
   const displayed = [];
-  for (const match of value.matchAll(/\bBT\b([\s\S]*?)\bET\b/gu)) {
-    displayed.push(extractPdfLiteralStrings(match[1]));
+  for (const textObject of value.matchAll(/\bBT\b([\s\S]*?)\bET\b/gu)) {
+    const body = textObject[1];
+    for (const direct of body.matchAll(/(\((?:\\[\s\S]|[^\\()])*\))\s*(?:Tj|'|")(?=\s|$)/gu)) {
+      displayed.push(extractPdfLiteralStrings(direct[1]));
+    }
+    for (const array of body.matchAll(/\[([\s\S]*?)\]\s*TJ\b/gu)) {
+      displayed.push(extractPdfLiteralStrings(array[1]));
+    }
   }
   return displayed.join(" ");
 }
