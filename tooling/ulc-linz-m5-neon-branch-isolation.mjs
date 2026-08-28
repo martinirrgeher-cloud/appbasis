@@ -2,6 +2,8 @@ import { appendFile } from "node:fs/promises";
 
 const NEON_API_ORIGIN = "https://console.neon.tech/api/v2";
 const PROVIDER_ID_PATTERN = /^[a-z0-9-]{1,60}$/;
+const PROJECT_PAGE_LIMIT = 400;
+const MAX_PROJECT_PAGES = 20;
 const ATTESTATION_KEYS = Object.freeze({
   sourceProject: "APPBASIS_M5_NEON_SOURCE_PROJECT_ID",
   sourceBranch: "APPBASIS_M5_NEON_SOURCE_BRANCH_ID",
@@ -168,15 +170,19 @@ function parseDatabaseReference(value, name) {
 
 async function listAllProjects({ apiKey, orgId, fetchImpl }) {
   const projects = [];
-  let cursor = null;
-  for (let page = 0; page < 20; page += 1) {
+  const seenCursors = new Set();
+  let cursor;
+  for (let page = 0; page < MAX_PROJECT_PAGES; page += 1) {
     const url = new URL(`${NEON_API_ORIGIN}/projects`);
     url.searchParams.set("org_id", orgId);
-    url.searchParams.set("limit", "400");
-    if (cursor) url.searchParams.set("cursor", cursor);
+    url.searchParams.set("limit", String(PROJECT_PAGE_LIMIT));
+    if (cursor !== undefined) url.searchParams.set("cursor", cursor);
     const body = await getJson(url, { apiKey, fetchImpl });
-    if (!Array.isArray(body?.projects)) {
+    if (!Array.isArray(body?.projects) || body.projects.length > PROJECT_PAGE_LIMIT) {
       throw new Error("ULC M5 Neon projects response is invalid.");
+    }
+    if (Array.isArray(body?.unavailable_project_ids) && body.unavailable_project_ids.length > 0) {
+      throw new Error("ULC M5 Neon project inventory is incomplete.");
     }
     for (const project of body.projects) {
       if (!project || !PROVIDER_ID_PATTERN.test(project.id ?? "")) {
@@ -184,12 +190,13 @@ async function listAllProjects({ apiKey, orgId, fetchImpl }) {
       }
       projects.push({ id: project.id });
     }
-    const next = body?.pagination?.next;
-    if (next === null || next === undefined || next === "") return projects;
-    if (typeof next !== "string" || next === cursor) {
+    if (body.projects.length < PROJECT_PAGE_LIMIT) return projects;
+    const nextCursor = body?.pagination?.cursor;
+    if (typeof nextCursor !== "string" || nextCursor.length === 0 || nextCursor === cursor || seenCursors.has(nextCursor)) {
       throw new Error("ULC M5 Neon project pagination is invalid.");
     }
-    cursor = next;
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
   }
   throw new Error("ULC M5 Neon project pagination exceeded the safe limit.");
 }
