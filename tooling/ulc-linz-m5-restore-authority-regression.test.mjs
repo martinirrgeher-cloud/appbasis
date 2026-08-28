@@ -5,7 +5,10 @@ import {
   assertUlcLinzM5NeonBranchIsolationAttestation,
   verifyUlcLinzM5NeonBranchIsolation,
 } from "./ulc-linz-m5-neon-branch-isolation.mjs";
-import { verifyRestoreCredentials } from "./ulc-linz-m5-restore-credential-preflight.mjs";
+import {
+  isCredentialOnlyPreflightMode,
+  verifyRestoreCredentials,
+} from "./ulc-linz-m5-restore-credential-preflight.mjs";
 import { parseUlcLinzM5RestoreDatabaseUrl } from "./ulc-linz-m5-restore-target.mjs";
 
 const PRODUCTION_HOST = "ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech";
@@ -38,7 +41,7 @@ function providerFetch({
     if (url.pathname === "/api/v2/projects") {
       return {
         ok: true,
-        json: async () => ({ projects: projects.map((id) => ({ id })), pagination: { next: null } }),
+        json: async () => ({ projects: projects.map((id) => ({ id })), pagination: { cursor: null } }),
       };
     }
     const projectId = url.pathname.split("/")[4];
@@ -76,6 +79,15 @@ function providerFetch({
     throw new Error(`unexpected provider URL ${url}`);
   };
 }
+
+test("standalone restore credential preflight uses an explicit credential-only mode", () => {
+  assert.equal(isCredentialOnlyPreflightMode(undefined), false);
+  assert.equal(isCredentialOnlyPreflightMode("credentials-only"), true);
+  assert.throws(
+    () => isCredentialOnlyPreflightMode("skip-provider-check"),
+    /Unsupported ULC M5 restore credential preflight mode/,
+  );
+});
 
 test("rejects multiple raw user-info delimiters before any restore connection", () => {
   assert.throws(
@@ -152,6 +164,71 @@ test("provider isolation accepts same project only when restore branch is differ
   assert.equal(proof.restore.projectId, "project-shared");
   assert.equal(proof.restore.branchId, "br-restore");
   assert.equal(proof.restoreCredentialCount, 4);
+});
+
+test("provider isolation follows Neon cursor pagination before resolving endpoints", async () => {
+  const firstPageProjects = Array.from({ length: 400 }, (_, index) => ({ id: `project-page1-${index}` }));
+  const requests = [];
+  const fetchImpl = async (input) => {
+    const url = new URL(input);
+    requests.push(url.toString());
+    if (url.pathname === "/api/v2/projects") {
+      if (!url.searchParams.has("cursor")) {
+        return {
+          ok: true,
+          json: async () => ({ projects: firstPageProjects, pagination: { cursor: "cursor-page-2" } }),
+        };
+      }
+      assert.equal(url.searchParams.get("cursor"), "cursor-page-2");
+      return {
+        ok: true,
+        json: async () => ({
+          projects: [{ id: "project-production" }, { id: "project-restore" }],
+          pagination: { cursor: null },
+        }),
+      };
+    }
+    const projectId = url.pathname.split("/")[4];
+    if (url.pathname.endsWith("/endpoints")) {
+      if (projectId === "project-production") {
+        return {
+          ok: true,
+          json: async () => ({ endpoints: [{
+            host: PRODUCTION_HOST,
+            id: "ep-crimson-boat-b1aqfjwf",
+            project_id: "project-production",
+            branch_id: "br-production",
+            type: "read_write",
+          }] }),
+        };
+      }
+      if (projectId === "project-restore") {
+        return {
+          ok: true,
+          json: async () => ({ endpoints: [{
+            host: RESTORE_HOST,
+            id: "ep-restore",
+            project_id: "project-restore",
+            branch_id: "br-restore",
+            type: "read_write",
+          }] }),
+        };
+      }
+      return { ok: true, json: async () => ({ endpoints: [] }) };
+    }
+    throw new Error(`unexpected provider URL ${url}`);
+  };
+
+  const proof = await verifyUlcLinzM5NeonBranchIsolation({
+    sourceUrl: SOURCE,
+    restoreUrls: [credential("owner", "owner-pass")],
+    apiKey: "test-key",
+    orgId: ORG_ID,
+    fetchImpl,
+  });
+  assert.equal(proof.source.projectId, "project-production");
+  assert.equal(proof.restore.projectId, "project-restore");
+  assert.ok(requests.some((value) => value.includes("cursor=cursor-page-2")));
 });
 
 test("provider isolation binds every restore credential to one provider branch", async () => {
