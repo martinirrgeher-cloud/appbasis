@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Type REFRESH-CONFIGURE-ULC-PRODUCTION-RUNTIME to upload the exact current runtime as an undeployed private version'
+        description: "Type REFRESH-CONFIGURE-ULC-PRODUCTION-RUNTIME to upload the exact current runtime as an undeployed version"
         required: true
         type: string
 
@@ -16,13 +16,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  production-runtime-refresh-config:
+  refresh-config:
     name: Upload exact current runtime without changing deployment
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment: m4-dr
-
     env:
       TARGET_WORKER: appbasis-ulc-linz-production
       TARGET_VERSION_TAG: ulc-linz-production-runtime-v1
@@ -119,23 +118,19 @@ jobs:
         run: |
           set -euo pipefail
           STATE_FILE="$RUNNER_TEMP/ulc-linz-refresh-state.json"
-          CURRENT_FILE="$RUNNER_TEMP/ulc-linz-refresh-current.json"
           node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs observe > "$STATE_FILE"
-          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs current "$STATE_FILE" > "$CURRENT_FILE"
-          CURRENT_ID="$(node --input-type=module "$CURRENT_FILE" <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const value = JSON.parse(readFileSync(process.argv[1], 'utf8'));
-          if (value.currentVersionId !== null && typeof value.currentVersionId !== 'string') process.exit(1);
+          CURRENT_RESULT="$(node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs validate-upload "$STATE_FILE")"
+          CURRENT_ID="$(CURRENT_RESULT="$CURRENT_RESULT" node --input-type=module <<'NODE'
+          const value = JSON.parse(process.env.CURRENT_RESULT);
           process.stdout.write(value.currentVersionId ?? '');
           NODE
           )"
-          DEPLOYED_ID="$(node --input-type=module "$CURRENT_FILE" <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const value = JSON.parse(readFileSync(process.argv[1], 'utf8'));
-          if (typeof value.deployedVersionId !== 'string' || value.deployedVersionId.length === 0) process.exit(1);
+          DEPLOYED_ID="$(CURRENT_RESULT="$CURRENT_RESULT" node --input-type=module <<'NODE'
+          const value = JSON.parse(process.env.CURRENT_RESULT);
           process.stdout.write(value.deployedVersionId);
           NODE
           )"
+          test -n "$DEPLOYED_ID"
           printf 'current_id=%s\n' "$CURRENT_ID" >> "$GITHUB_OUTPUT"
           printf 'deployed_id=%s\n' "$DEPLOYED_ID" >> "$GITHUB_OUTPUT"
 
@@ -169,15 +164,25 @@ jobs:
         if: steps.state.outputs.current_id == ''
         shell: bash
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
           AUTH_SECRET_FINGERPRINT: ${{ steps.auth.outputs.fingerprint }}
         run: |
           set -euo pipefail
           VERSION_MESSAGE="AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${AUTH_SECRET_FINGERPRINT}"
-          pnpm exec wrangler versions upload --dry-run --config "$RUNNER_TEMP/ulc-linz-production-runtime.json" --name "$TARGET_WORKER"
-          pnpm exec wrangler versions upload --config "$RUNNER_TEMP/ulc-linz-production-runtime.json" --name "$TARGET_WORKER" --tag "$TARGET_VERSION_TAG" --message "$VERSION_MESSAGE"
+          pnpm exec wrangler versions upload \
+            --dry-run \
+            --config "$RUNNER_TEMP/ulc-linz-production-runtime.json" \
+            --name "$TARGET_WORKER" \
+            --tag "$TARGET_VERSION_TAG" \
+            --message "$VERSION_MESSAGE"
+          printf '%s' "$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET" | pnpm exec wrangler versions secret put BETTER_AUTH_SECRET \
+            --config "$RUNNER_TEMP/ulc-linz-production-runtime.json" \
+            --name "$TARGET_WORKER" \
+            --tag "$TARGET_VERSION_TAG" \
+            --message "$VERSION_MESSAGE" \
+            >/dev/null
 
       - name: Verify exact current version and unchanged private deployment
         shell: bash
@@ -187,4 +192,8 @@ jobs:
           EXPECTED_SOURCE_REVISION: ${{ github.sha }}
           EXPECTED_AUTH_SECRET_FINGERPRINT: ${{ steps.auth.outputs.fingerprint }}
           EXPECTED_DEPLOYED_VERSION_ID: ${{ steps.state.outputs.deployed_id }}
-        run: node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs verify-upload
+        run: |
+          set -euo pipefail
+          STATE_FILE="$RUNNER_TEMP/ulc-linz-refresh-state-after.json"
+          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs observe > "$STATE_FILE"
+          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs validate-upload "$STATE_FILE" --require-current >/dev/null
