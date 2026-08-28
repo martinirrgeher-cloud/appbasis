@@ -20,6 +20,7 @@ jobs:
     name: Bind ULC production databases
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    environment: m4-dr
 
     steps:
       - name: Require explicit main dispatch

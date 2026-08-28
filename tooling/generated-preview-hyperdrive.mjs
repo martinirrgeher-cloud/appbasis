@@ -155,12 +155,17 @@ export async function ensureGeneratedPreviewHyperdrive({
     throw new Error("Dedicated generated preview Hyperdrive name is not unique.");
   }
   if (matches.length === 1) {
-    const existing = validateTargetConfiguration(
+    if (reconcileExisting !== true) {
+      return validateTargetConfiguration(
+        matches[0],
+        deployment.origin,
+        deployment.target,
+      );
+    }
+    const existing = requireReplaceableHyperdriveIdentity(
       matches[0],
-      deployment.origin,
       deployment.target,
     );
-    if (reconcileExisting !== true) return existing;
     if (apply !== true) {
       throw new Error(
         "Dedicated generated preview Hyperdrive credential reconciliation was not explicitly confirmed.",
@@ -295,6 +300,23 @@ async function listHyperdrives(deployment) {
     }
   }
   throw new Error("Cloudflare Hyperdrive list exceeded the bounded pagination limit.");
+}
+
+function requireReplaceableHyperdriveIdentity(config, target) {
+  if (!isRecord(config)) {
+    throw new Error("Dedicated generated preview Hyperdrive configuration is invalid.");
+  }
+  const id = config.id;
+  if (
+    typeof id !== "string" ||
+    id.length === 0 ||
+    id.length > 256 ||
+    /[\s\u0000-\u001f\u007f]/u.test(id) ||
+    config.name !== target.name
+  ) {
+    throw new Error("Dedicated generated preview Hyperdrive configuration is invalid.");
+  }
+  return Object.freeze({ id, name: target.name });
 }
 
 function validateTargetConfiguration(config, expectedOrigin, target) {
