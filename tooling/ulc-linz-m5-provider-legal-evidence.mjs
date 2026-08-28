@@ -1,6 +1,10 @@
+import { createHash } from "node:crypto";
+
 import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evidence.mjs";
 
 const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DATARBRICKS_DPA_PDF_MARKER = "Databricks DPA v3 (2023-07-21)";
+const DATABRICKS_DPA_PDF_SHA256 = "f7501e724b91d8bdb737b34d7f9807b996fe88a86db782063f3c09ee5ce2aa2c";
 const SOURCES = Object.freeze({
   cloudflareDpa: "https://www.cloudflare.com/cloudflare-customer-dpa/",
   cloudflareGdpr: "https://www.cloudflare.com/trust-hub/gdpr/",
@@ -10,7 +14,8 @@ const SOURCES = Object.freeze({
     "https://developers.cloudflare.com/hyperdrive/reference/supported-databases-and-features/",
   neonSchedule: "https://neon.com/platform-terms",
   databricksMcsa: "https://www.databricks.com/legal/mcsa",
-  databricksDpa: "https://www.databricks.com/legal/dpa",
+  databricksDpa:
+    "https://www.databricks.com/sites/default/files/legal/dpa-20230721.pdf",
   databricksSubprocessors:
     "https://www.databricks.com/legal/databricks-subprocessors",
   neonSecurity: "https://neon.com/security",
@@ -23,19 +28,16 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
     observedAt,
     validUntilOrReviewAt,
   },
-  { fetchImpl = fetch } = {},
+  { fetchImpl = fetch, sha256Impl = sha256 } = {},
 ) {
   if (cloudflareAccountBound !== true || neonProjectBound !== true) {
     throw new Error("ULC M5-G authenticated provider resource binding is incomplete.");
   }
-  if (typeof fetchImpl !== "function") {
+  if (typeof fetchImpl !== "function" || typeof sha256Impl !== "function") {
     throw new Error("ULC M5-G legal evidence fetch implementation is invalid.");
   }
   const observed = canonicalTimestamp(observedAt, "observedAt");
-  const validUntil = canonicalTimestamp(
-    validUntilOrReviewAt,
-    "validUntilOrReviewAt",
-  );
+  const validUntil = canonicalTimestamp(validUntilOrReviewAt, "validUntilOrReviewAt");
   if (
     validUntil.getTime() <= observed.getTime() ||
     validUntil.getTime() - observed.getTime() > REVIEW_WINDOW_MS
@@ -44,7 +46,12 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
   }
 
   const entries = await Promise.all(
-    Object.entries(SOURCES).map(async ([key, url]) => [key, await officialText(url, fetchImpl)]),
+    Object.entries(SOURCES).map(async ([key, url]) => [
+      key,
+      key === "databricksDpa"
+        ? await officialDatabricksDpaPdf(url, fetchImpl, sha256Impl)
+        : await officialText(url, fetchImpl),
+    ]),
   );
   const text = Object.fromEntries(entries);
 
@@ -68,7 +75,6 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
     "TLS is required",
     "require",
   ], "Cloudflare Hyperdrive TLS");
-
   requireAll(text.neonSchedule, [
     "Last Updated: August 5, 2026",
     "By accessing the Platform Services, Customer agrees to the terms of this Schedule",
@@ -79,10 +85,9 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
     "The terms of the DPA are incorporated by reference",
     "PayGo Customer’s continued use",
   ], "Databricks MCSA");
-  requireAll(text.databricksDpa, [
-    "DATA PROCESSING ADDENDUM",
-    "forms an integral part",
-  ], "Databricks DPA");
+  if (text.databricksDpa !== DATARBRICKS_DPA_PDF_MARKER) {
+    throw new Error("ULC M5-G Databricks DPA drifted from the reviewed official baseline.");
+  }
   requireAll(text.databricksSubprocessors, [
     "Last Updated: June 9, 2026",
     "Amazon Web Services",
@@ -104,14 +109,7 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
   // absent until an independent operator-to-provider-account binding is supplied.
   return Object.freeze([
     legal("cloudflare", "dpa", SOURCES.cloudflareDpa, "6.4 / 2026-04-03", cloudflareScope, common),
-    legal(
-      "cloudflare",
-      "security",
-      SOURCES.cloudflareHyperdriveTls,
-      "2026-04-21",
-      cloudflareScope,
-      common,
-    ),
+    legal("cloudflare", "security", SOURCES.cloudflareHyperdriveTls, "2026-04-21", cloudflareScope, common),
     legal(
       "cloudflare",
       "subprocessors",
@@ -121,22 +119,8 @@ export async function collectUlcLinzM5ProviderLegalEvidence(
       common,
       { transferModelConsistentWithAdr022: true },
     ),
-    legal(
-      "neon-databricks",
-      "terms",
-      SOURCES.neonSchedule,
-      "2026-08-05",
-      neonScope,
-      common,
-    ),
-    legal(
-      "neon-databricks",
-      "dpa",
-      SOURCES.databricksDpa,
-      "Databricks DPA v3",
-      neonScope,
-      common,
-    ),
+    legal("neon-databricks", "terms", SOURCES.neonSchedule, "2026-08-05", neonScope, common),
+    legal("neon-databricks", "dpa", SOURCES.databricksDpa, "Databricks DPA v3", neonScope, common),
     legal(
       "neon-databricks",
       "security",
@@ -199,19 +183,71 @@ async function officialText(url, fetchImpl) {
   if (!response?.ok || typeof response.text !== "function") {
     throw new Error("ULC M5-G official legal evidence request failed.");
   }
-  const finalUrl = new URL(response.url || url);
-  const expected = new URL(url);
-  if (
-    finalUrl.protocol !== "https:" ||
-    finalUrl.hostname !== expected.hostname
-  ) {
-    throw new Error("ULC M5-G official legal evidence redirected outside its trusted host.");
-  }
+  requireTrustedFinalUrl(response.url || url, url);
   const body = await response.text();
   if (typeof body !== "string" || body.length < 100) {
     throw new Error("ULC M5-G official legal evidence body is invalid.");
   }
   return normalize(body);
+}
+
+async function officialDatabricksDpaPdf(url, fetchImpl, sha256Impl) {
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "GET",
+      headers: { accept: "application/pdf" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new Error("ULC M5-G official legal evidence request failed.");
+  }
+  if (!response?.ok || typeof response.arrayBuffer !== "function") {
+    throw new Error("ULC M5-G official legal evidence request failed.");
+  }
+  const finalUrl = requireTrustedFinalUrl(response.url || url, url);
+  const expected = new URL(url);
+  if (finalUrl.href !== expected.href) {
+    throw new Error("ULC M5-G Databricks DPA redirected away from the reviewed versioned asset.");
+  }
+  const contentType = response.headers?.get?.("content-type")?.split(";", 1)[0]?.trim()?.toLowerCase();
+  if (contentType !== "application/pdf") {
+    throw new Error("ULC M5-G Databricks DPA is not the reviewed PDF asset.");
+  }
+  let bytes;
+  try {
+    bytes = new Uint8Array(await response.arrayBuffer());
+  } catch {
+    throw new Error("ULC M5-G official legal evidence request failed.");
+  }
+  if (bytes.byteLength < 10_000 || bytes.byteLength > 5_000_000) {
+    throw new Error("ULC M5-G Databricks DPA PDF body is invalid.");
+  }
+  const header = Buffer.from(bytes.subarray(0, Math.min(bytes.length, 16))).toString("latin1");
+  const trailer = Buffer.from(bytes.subarray(Math.max(0, bytes.length - 1024))).toString("latin1");
+  if (!header.startsWith("%PDF-") || !trailer.includes("%%EOF")) {
+    throw new Error("ULC M5-G Databricks DPA PDF body is invalid.");
+  }
+  if (sha256Impl(bytes) !== DATABRICKS_DPA_PDF_SHA256) {
+    throw new Error("ULC M5-G Databricks DPA drifted from the reviewed official baseline.");
+  }
+  return DATARBRICKS_DPA_PDF_MARKER;
+}
+
+function sha256(bytes) {
+  return createHash("sha256")
+    .update(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength))
+    .digest("hex");
+}
+
+function requireTrustedFinalUrl(value, expectedValue) {
+  const finalUrl = new URL(value);
+  const expected = new URL(expectedValue);
+  if (finalUrl.protocol !== "https:" || finalUrl.hostname !== expected.hostname) {
+    throw new Error("ULC M5-G official legal evidence redirected outside its trusted host.");
+  }
+  return finalUrl;
 }
 
 function requireAll(text, needles, label) {
