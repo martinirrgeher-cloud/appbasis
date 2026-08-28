@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Type REFRESH-CONFIGURE-ULC-PRODUCTION-RUNTIME to upload the exact current runtime while preserving the existing private deployment'
+        description: 'Type REFRESH-CONFIGURE-ULC-PRODUCTION-RUNTIME to upload the exact current runtime as an undeployed private version'
         required: true
         type: string
 
@@ -16,10 +16,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  refresh-runtime-config:
+  production-runtime-refresh-config:
     name: Upload exact current runtime without changing deployment
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    environment: m4-dr
+
     env:
       TARGET_WORKER: appbasis-ulc-linz-production
       TARGET_VERSION_TAG: ulc-linz-production-runtime-v1
@@ -90,6 +93,7 @@ jobs:
           NODE
 
       - name: Derive current auth-secret HMAC fingerprint
+        id: auth
         shell: bash
         env:
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
@@ -97,12 +101,12 @@ jobs:
           set -euo pipefail
           AUTH_SECRET_FINGERPRINT="$(node --input-type=module <<'NODE'
           import { createHmac } from 'node:crypto';
-          process.stdout.write(createHmac('sha256', process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET).update('appbasis:ulc-linz:production:better-auth-secret:v1').digest('hex'));
+          const secret = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET;
+          process.stdout.write(createHmac('sha256', secret).update('appbasis-ulc-linz-production-auth-secret-v1').digest('hex'));
           NODE
           )"
-          [[ "$AUTH_SECRET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || exit 1
           echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
-          printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
+          printf 'fingerprint=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_OUTPUT"
 
       - name: Read and validate current closed private runtime state
         id: state
@@ -110,25 +114,30 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          EXPECTED_SOURCE_REVISION: ${{ github.sha }}
+          EXPECTED_AUTH_SECRET_FINGERPRINT: ${{ steps.auth.outputs.fingerprint }}
         run: |
           set -euo pipefail
-          worker="$RUNNER_TEMP/worker.json"
-          versions="$RUNNER_TEMP/versions.json"
-          deployments="$RUNNER_TEMP/deployments.json"
-          scripts="$RUNNER_TEMP/scripts.json"
-          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/workers/$TARGET_WORKER" > "$worker"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" > "$versions"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/scripts/$TARGET_WORKER/deployments" > "$deployments"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/scripts" > "$scripts"
-          state="$(node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs state "$worker" "$versions" "$deployments" "$scripts")"
-          current_id="$(jq -r '.currentVersionId // empty' <<<"$state")"
-          deployed_id="$(jq -r '.deployedVersionId' <<<"$state")"
-          test -n "$deployed_id" || { echo 'Trusted private deployment identity is missing.' >&2; exit 1; }
-          echo "::add-mask::$deployed_id"
-          if [ -n "$current_id" ]; then echo "::add-mask::$current_id"; fi
-          printf 'current_id=%s\n' "$current_id" >> "$GITHUB_OUTPUT"
-          printf 'deployed_id=%s\n' "$deployed_id" >> "$GITHUB_OUTPUT"
+          STATE_FILE="$RUNNER_TEMP/ulc-linz-refresh-state.json"
+          CURRENT_FILE="$RUNNER_TEMP/ulc-linz-refresh-current.json"
+          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs observe > "$STATE_FILE"
+          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs current "$STATE_FILE" > "$CURRENT_FILE"
+          CURRENT_ID="$(node --input-type=module "$CURRENT_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const value = JSON.parse(readFileSync(process.argv[1], 'utf8'));
+          if (value.currentVersionId !== null && typeof value.currentVersionId !== 'string') process.exit(1);
+          process.stdout.write(value.currentVersionId ?? '');
+          NODE
+          )"
+          DEPLOYED_ID="$(node --input-type=module "$CURRENT_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const value = JSON.parse(readFileSync(process.argv[1], 'utf8'));
+          if (typeof value.deployedVersionId !== 'string' || value.deployedVersionId.length === 0) process.exit(1);
+          process.stdout.write(value.deployedVersionId);
+          NODE
+          )"
+          printf 'current_id=%s\n' "$CURRENT_ID" >> "$GITHUB_OUTPUT"
+          printf 'deployed_id=%s\n' "$DEPLOYED_ID" >> "$GITHUB_OUTPUT"
 
       - name: Resolve exact dedicated production Hyperdrives
         id: hyperdrive
@@ -140,68 +149,42 @@ jobs:
           ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
         run: |
           set -euo pipefail
-          app="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
-          security="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
-          test -n "$app" && test -n "$security" && test "$app" != "$security"
-          echo "::add-mask::$app"; echo "::add-mask::$security"
-          printf 'id=%s\nsecurity_log_id=%s\n' "$app" "$security" >> "$GITHUB_OUTPUT"
+          APP_HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-app)"
+          SECURITY_LOG_HYPERDRIVE_ID="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
+          test -n "$APP_HYPERDRIVE_ID" && test -n "$SECURITY_LOG_HYPERDRIVE_ID"
+          test "$APP_HYPERDRIVE_ID" != "$SECURITY_LOG_HYPERDRIVE_ID"
+          echo "::add-mask::$APP_HYPERDRIVE_ID"
+          echo "::add-mask::$SECURITY_LOG_HYPERDRIVE_ID"
+          printf 'app_id=%s\n' "$APP_HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
+          printf 'security_log_id=%s\n' "$SECURITY_LOG_HYPERDRIVE_ID" >> "$GITHUB_OUTPUT"
 
       - name: Render exact private production version config
+        shell: bash
         env:
-          HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
+          APP_HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.app_id }}
           SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.security_log_id }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { writeGeneratedProductionWranglerConfig } from './tooling/generated-production-deploy-config.mjs';
-          await writeGeneratedProductionWranglerConfig({ appId: 'ulc-linz', hyperdriveId: process.env.HYPERDRIVE_ID, securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID, baseURL: 'https://app.ulc-linz.at', entrypoint: './worker/index.ts', outputPath: './apps/ulc-linz/wrangler.production.generated.json' });
-          NODE
+        run: node ./tooling/ulc-linz-m6-production-runtime-config.mjs render "$RUNNER_TEMP/ulc-linz-production-runtime.json"
 
       - name: Upload exact current runtime as an undeployed version
-        id: upload
         if: steps.state.outputs.current_id == ''
-        working-directory: apps/reference
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          AUTH_SECRET_FINGERPRINT: ${{ steps.auth.outputs.fingerprint }}
         run: |
           set -euo pipefail
-          temporary_directory="$(mktemp -d)"; trap 'rm -rf "$temporary_directory"' EXIT
-          secrets_file="$temporary_directory/secrets.json"; output_file="$temporary_directory/wrangler-output.json"
-          SECRETS_FILE="$secrets_file" node --input-type=module <<'NODE'
-          import { writeFile } from 'node:fs/promises';
-          await writeFile(process.env.SECRETS_FILE, `${JSON.stringify({ BETTER_AUTH_SECRET: process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET })}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-          NODE
-          pnpm exec wrangler versions upload --cwd ../ulc-linz --config wrangler.production.generated.json --name "$TARGET_WORKER" --secrets-file "$secrets_file" --strict --dry-run --experimental-provision=false --experimental-auto-create=false
-          WRANGLER_OUTPUT_FILE_PATH="$output_file" pnpm exec wrangler versions upload --cwd ../ulc-linz --config wrangler.production.generated.json --name "$TARGET_WORKER" --secrets-file "$secrets_file" --strict --tag "$TARGET_VERSION_TAG" --message "AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${AUTH_SECRET_FINGERPRINT}" --experimental-provision=false --experimental-auto-create=false
-          id="$(jq -r 'select(.type == "version-upload") | .version_id // empty' "$output_file" | tail -n 1)"
-          test -n "$id" || { echo 'Wrangler did not report a version ID.' >&2; exit 1; }
-          echo "::add-mask::$id"; printf 'id=%s\n' "$id" >> "$GITHUB_OUTPUT"
+          VERSION_MESSAGE="AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${AUTH_SECRET_FINGERPRINT}"
+          pnpm exec wrangler versions upload --dry-run --config "$RUNNER_TEMP/ulc-linz-production-runtime.json" --name "$TARGET_WORKER"
+          pnpm exec wrangler versions upload --config "$RUNNER_TEMP/ulc-linz-production-runtime.json" --name "$TARGET_WORKER" --tag "$TARGET_VERSION_TAG" --message "$VERSION_MESSAGE"
 
       - name: Verify exact current version and unchanged private deployment
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.id }}
-          SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrive.outputs.security_log_id }}
-          BEFORE_DEPLOYED_ID: ${{ steps.state.outputs.deployed_id }}
-          EXISTING_CURRENT_ID: ${{ steps.state.outputs.current_id }}
-          UPLOADED_ID: ${{ steps.upload.outputs.id }}
-        run: |
-          set -euo pipefail
-          version_id="${EXISTING_CURRENT_ID:-${UPLOADED_ID:-}}"
-          test -n "$version_id" || { echo 'Current runtime version identity is missing.' >&2; exit 1; }
-          worker="$RUNNER_TEMP/worker-after.json"; versions="$RUNNER_TEMP/versions-after.json"; deployments="$RUNNER_TEMP/deployments-after.json"; scripts="$RUNNER_TEMP/scripts-after.json"; detail="$RUNNER_TEMP/version-detail.json"
-          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/workers/$TARGET_WORKER" > "$worker"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" > "$versions"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/scripts/$TARGET_WORKER/deployments" > "$deployments"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/scripts" > "$scripts"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/workers/scripts/$TARGET_WORKER/versions/$version_id" > "$detail"
-          state="$(node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs deploy-state "$worker" "$versions" "$deployments" "$scripts")"
-          test "$(jq -r '.currentVersionId' <<<"$state")" = "$version_id" || { echo 'Current version post-check drifted.' >&2; exit 1; }
-          test "$(jq -r '.deployedVersionId' <<<"$state")" = "$BEFORE_DEPLOYED_ID" || { echo 'Runtime configuration changed the private deployment unexpectedly.' >&2; exit 1; }
-          VERSION_ID="$version_id" node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs bindings "$detail"
-          echo 'Exact current runtime version is configured; the previous private deployment was not changed.' >> "$GITHUB_STEP_SUMMARY"
+          EXPECTED_SOURCE_REVISION: ${{ github.sha }}
+          EXPECTED_AUTH_SECRET_FINGERPRINT: ${{ steps.auth.outputs.fingerprint }}
+          EXPECTED_DEPLOYED_VERSION_ID: ${{ steps.state.outputs.deployed_id }}
+        run: node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs verify-upload
