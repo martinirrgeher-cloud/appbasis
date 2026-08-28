@@ -14,12 +14,12 @@ Ein Runtime-Refresh ist weiterhin reine nicht öffentliche Produktionsvorbereitu
 - `workers.dev`/Subdomain deaktiviert,
 - Preview URLs deaktiviert,
 - keine Worker-Routen und keine Domains,
-- die Cloudflare-Deployment-Historie muss einen eindeutig neuesten Eintrag über `created_on` bestimmen lassen,
-- ausschließlich dieser aktuelle Deployment-Eintrag muss genau eine Version mit 100 % Traffic enthalten,
-- ältere Deployment-Historie darf den aktuellen Zustand weder ersetzen noch positiv überstimmen,
-- deployte aktuelle Version muss aus der kanonisch markierten ULC-Production-Versionhistorie stammen,
-- deployte aktuelle Version muss an denselben aktuellen Better-Auth-Secret-HMAC gebunden sein,
-- keine Traffic-Splits im aktuellen Deployment,
+- Cloudflare liefert den aktuell Traffic bedienenden Deployment-Eintrag an Position `deployments[0]`,
+- ausschließlich dieser aktive Deployment-Eintrag muss genau eine Version mit 100 % Traffic enthalten,
+- nachfolgende Deployment-Historie darf den aktiven Zustand weder ersetzen noch positiv überstimmen,
+- deployte aktive Version muss aus der kanonisch markierten ULC-Production-Versionhistorie stammen,
+- deployte aktive Version muss an denselben aktuellen Better-Auth-Secret-HMAC gebunden sein,
+- keine Traffic-Splits im aktiven Deployment,
 - keine unbekannten Versionen,
 - exakt die vier zugelassenen Runtime-Bindings,
 - Application- und Security-Log-Hyperdrive bleiben getrennt,
@@ -43,12 +43,12 @@ Der Workflow:
 
 1. liest Worker, Versionen, Deployment-Historie und Routen,
 2. akzeptiert nur den geschlossenen privaten Ist-Zustand,
-3. bestimmt über `created_on` eindeutig das aktuelle Deployment und verifiziert dessen einzige 100%-Version als bekannte historische ULC-Version mit aktuellem Auth-Secret-HMAC,
+3. behandelt `deployments[0]` gemäß Cloudflare-API als aktives Deployment und verifiziert dessen einzige 100%-Version als bekannte historische ULC-Version mit aktuellem Auth-Secret-HMAC,
 4. löst die beiden bestehenden dedizierten Hyperdrives über den bestehenden Vertrag auf,
 5. rendert die bestehende Produktions-Wrangler-Konfiguration,
 6. lädt nur dann eine neue Version hoch, wenn für den exakten aktuellen `main`-SHA und HMAC noch keine existiert,
 7. prüft anschließend die exakten vier Bindings,
-8. beweist, dass das aktuelle private Deployment durch diesen Schritt **nicht** verändert wurde.
+8. beweist, dass das aktive private Deployment durch diesen Schritt **nicht** verändert wurde.
 
 Der Schritt deployt die neue Version nicht.
 
@@ -67,21 +67,21 @@ Der Workflow:
 3. prüft erneut die exakten Runtime-Bindings,
 4. deployt ausschließlich diese Version mit 100%,
 5. liest den Providerzustand erneut,
-6. akzeptiert nur, wenn der eindeutig neueste Deployment-Eintrag exakt diese Version mit 100 % Traffic enthält und der Ingress weiterhin geschlossen ist.
+6. akzeptiert nur, wenn `deployments[0]` exakt diese Version mit 100 % Traffic enthält und der Ingress weiterhin geschlossen ist.
 
 Ist die aktuelle Version bereits exakt privat deployt, bleibt der Workflow idempotent und führt keinen zweiten Deployment-Write aus.
 
 ## Wiederverwendeter Vertrag
 
-`tooling/ulc-linz-cloudflare-current-deployment.mjs` bestimmt den eindeutig neuesten Cloudflare-Deployment-Eintrag fail-closed über `created_on` und validiert ausschließlich dessen Single-Version-100%-Zustand. Der Vertrag wird sowohl vom M6-Refresh als auch vom M5-Production-Evidence-Observer verwendet, damit die beiden Gates nicht auseinanderdriften.
+`tooling/ulc-linz-cloudflare-current-deployment.mjs` verwendet die dokumentierte Cloudflare-Ordering-Semantik: `deployments[0]` ist das aktuelle, Traffic bedienende Deployment. Der Vertrag validiert ausschließlich dessen Single-Version-100%-Zustand und wird sowohl vom M6-Refresh als auch vom M5-Production-Evidence-Observer verwendet, damit die beiden Gates nicht auseinanderdriften.
 
 `tooling/ulc-linz-m6-private-runtime-refresh.mjs` bleibt der kleine Validator für die zwei realen Refresh-Workflow-Verbraucher. Er ersetzt keine bestehenden M6-Providerverträge und enthält selbst keinen Provider-Write.
 
 Die Verträge blockieren insbesondere bei:
 
 - öffentlicher Route/Domain/Subdomain/Preview-URL,
-- leerer, zeitlich nicht eindeutig bestimmbarer oder malformed Deployment-Historie,
-- gesplittetem aktuellem Deployment,
+- leerer oder malformed Deployment-Historie,
+- gesplittetem aktiven Deployment,
 - unbekannter Versionshistorie,
 - Auth-Secret-HMAC-Drift,
 - fehlender/duplizierter aktueller Version,
