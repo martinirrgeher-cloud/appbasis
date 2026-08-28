@@ -361,7 +361,7 @@ async function observeNeon({ apiKey, orgId, fetchImpl }) {
   if (databaseMatches.length !== 1) {
     throw new Error("Exact ULC production Neon database was not found once.");
   }
-  const databaseId = requiredOpaque(databaseMatches[0].id, "Neon database ID");
+  const databaseId = requiredNeonDatabaseBindingId(databaseMatches[0].id);
 
   return Object.freeze({
     projectId,
@@ -657,6 +657,13 @@ function requiredOpaque(value, label) {
     throw new Error(`${label} is invalid.`);
   }
   return value;
+}
+
+function requiredNeonDatabaseBindingId(value) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("Neon database ID is invalid.");
+  }
+  return String(value);
 }
 
 function requiredVersionId(value) {
