@@ -20,6 +20,7 @@ jobs:
     name: Upload exact current runtime without changing deployment
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    environment: m4-dr
     env:
       TARGET_WORKER: appbasis-ulc-linz-production
       TARGET_VERSION_TAG: ulc-linz-production-runtime-v1
