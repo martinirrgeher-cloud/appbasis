@@ -8,10 +8,33 @@ const workflowUrl = new URL(
   "../.github/workflows/m6-ulc-production-runtime-config.yml",
   import.meta.url,
 );
+const refreshConfigWorkflowUrl = new URL(
+  "../.github/workflows/m6-ulc-production-runtime-refresh-config.yml",
+  import.meta.url,
+);
+const refreshDeployWorkflowUrl = new URL(
+  "../.github/workflows/m6-ulc-private-production-refresh-deploy.yml",
+  import.meta.url,
+);
 
 async function source() {
   return readFile(workflowUrl, "utf8");
 }
+
+test("runtime refresh workflows remain bound to the protected environment", async () => {
+  const [refreshConfigWorkflow, refreshDeployWorkflow] = await Promise.all([
+    readFile(refreshConfigWorkflowUrl, "utf8"),
+    readFile(refreshDeployWorkflowUrl, "utf8"),
+  ]);
+  assert.match(
+    refreshConfigWorkflow,
+    /refresh-runtime-config:[\s\S]*?environment: m4-dr[\s\S]*?steps:/,
+  );
+  assert.match(
+    refreshDeployWorkflow,
+    /refresh-private-deploy:[\s\S]*?environment: m4-dr[\s\S]*?steps:/,
+  );
+});
 
 test("runtime configuration requires exact main-only operator approval", async () => {
   const workflow = await source();
