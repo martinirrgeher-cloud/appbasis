@@ -49,6 +49,15 @@ test("verifies all four distinct restore credentials against effective database 
   assert.deepEqual(result, { restoreCredentialPreflightVerified: true });
 });
 
+test("accepts the production application role name on a distinct isolated restore endpoint", async () => {
+  const opened = [];
+  const result = await verifyRestoreCredentials(env({
+    APPBASIS_M4_RESTORE_APPLICATION_DATABASE_URL: credential("ulc_linz_application", "app-pass"),
+  }), { databaseFactory: successfulFactory(opened) });
+  assert.deepEqual(opened, ["owner", "ulc_linz_application", "ingest", "reader"]);
+  assert.deepEqual(result, { restoreCredentialPreflightVerified: true });
+});
+
 test("accepts URL-encoded PostgreSQL principals and compares decoded current_user", async () => {
   const opened = [];
   const result = await verifyRestoreCredentials(env({
