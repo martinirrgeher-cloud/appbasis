@@ -58,7 +58,6 @@ const TRACE_FIELDS = Object.freeze([
   "head_sampling_rate",
   "persist",
   "propagation_policy",
-  "redact_query_string",
 ]);
 const DATA_FLOWS = Object.freeze([
   Object.freeze({ from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" }),
@@ -520,6 +519,12 @@ function inspectTelemetryChannel(value, allowedFields, label) {
   if (
     channel.destinations !== undefined &&
     !isStringArray(channel.destinations)
+  ) {
+    throw new Error("Cloudflare Worker telemetry inventory is invalid.");
+  }
+  if (
+    channel.redact_query_string !== undefined &&
+    typeof channel.redact_query_string !== "boolean"
   ) {
     throw new Error("Cloudflare Worker telemetry inventory is invalid.");
   }
