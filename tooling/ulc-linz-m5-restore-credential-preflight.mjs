@@ -80,7 +80,9 @@ function parseCredential(value, label) {
   if (!preliminary.hostname || !preliminary.pathname || preliminary.pathname === "/" || !preliminary.username || !preliminary.password) {
     throw new Error(`ULC M5 restore ${label} credential must include host, database, username and password.`);
   }
-  const url = parseUlcLinzM5RestoreDatabaseUrl(value);
+  const url = parseUlcLinzM5RestoreDatabaseUrl(value, {
+    expectedPrincipalKind: label === "application" ? "application" : "owner",
+  });
   decodePrincipal(url.username);
   decodeDatabaseName(url);
   return url;
