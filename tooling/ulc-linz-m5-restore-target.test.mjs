@@ -12,6 +12,20 @@ import {
 const SOURCE = "postgresql://ulc_linz_application:secret@ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require";
 const RESTORE = "postgresql://neondb_owner:secret@ep-restore.us-east-2.aws.neon.tech/neondb?sslmode=require";
 const IDENTITY_QUERY = "SELECT current_database() AS current_database, current_user AS current_user";
+const GUARDED_RESET_ENV = Object.freeze({
+  GITHUB_ACTIONS: "true",
+  GITHUB_WORKFLOW: "M5 ULC Production Evidence",
+  GITHUB_EVENT_NAME: "workflow_dispatch",
+  GITHUB_REF: "refs/heads/main",
+  APPBASIS_M5_NEON_SOURCE_PROJECT_ID: "project-production",
+  APPBASIS_M5_NEON_SOURCE_BRANCH_ID: "br-production",
+  APPBASIS_M5_NEON_SOURCE_ENDPOINT_ID: "ep-crimson-boat-b1aqfjwf",
+  APPBASIS_M5_NEON_RESTORE_PROJECT_ID: "project-restore",
+  APPBASIS_M5_NEON_RESTORE_BRANCH_ID: "br-restore",
+  APPBASIS_M5_NEON_RESTORE_ENDPOINT_ID: "ep-restore",
+});
+
+Object.assign(process.env, GUARDED_RESET_ENV);
 
 function state(overrides = {}) {
   return {
@@ -67,6 +81,46 @@ test("direct CLI rejects destructive reset mode before database access", () => {
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /destructive reset is available only through the guarded M4\/M5 workflow path/);
+});
+
+test("imported destructive reset primitive requires guarded workflow context before database access", async () => {
+  const previous = process.env.GITHUB_WORKFLOW;
+  delete process.env.GITHUB_WORKFLOW;
+  let connects = 0;
+  try {
+    await assert.rejects(
+      () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
+        sourceUrl: SOURCE,
+        restoreUrl: RESTORE,
+        createDatabase: () => { connects += 1; return databaseWith(); },
+      }),
+      /requires the exact guarded production-evidence workflow context/,
+    );
+    assert.equal(connects, 0);
+  } finally {
+    process.env.GITHUB_WORKFLOW = previous;
+  }
+});
+
+test("imported destructive reset primitive requires matching branch attestation before database access", async () => {
+  const previous = process.env.APPBASIS_M5_NEON_RESTORE_BRANCH_ID;
+  process.env.APPBASIS_M5_NEON_RESTORE_BRANCH_ID = process.env.APPBASIS_M5_NEON_SOURCE_BRANCH_ID;
+  process.env.APPBASIS_M5_NEON_RESTORE_PROJECT_ID = process.env.APPBASIS_M5_NEON_SOURCE_PROJECT_ID;
+  let connects = 0;
+  try {
+    await assert.rejects(
+      () => resetAndVerifyUlcLinzM5IsolatedRestoreTarget({
+        sourceUrl: SOURCE,
+        restoreUrl: RESTORE,
+        createDatabase: () => { connects += 1; return databaseWith(); },
+      }),
+      /resolves restore to the production branch/,
+    );
+    assert.equal(connects, 0);
+  } finally {
+    process.env.APPBASIS_M5_NEON_RESTORE_BRANCH_ID = previous;
+    process.env.APPBASIS_M5_NEON_RESTORE_PROJECT_ID = GUARDED_RESET_ENV.APPBASIS_M5_NEON_RESTORE_PROJECT_ID;
+  }
 });
 
 test("accepts canonical production source and empty isolated restore target with matching effective identity", async () => {
