@@ -1,6 +1,10 @@
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
+import {
+  persistUlcLinzM5NeonBranchIsolationAttestation,
+  verifyUlcLinzM5NeonBranchIsolation,
+} from "./ulc-linz-m5-neon-branch-isolation.mjs";
 import { parseUlcLinzM5RestoreDatabaseUrl } from "./ulc-linz-m5-restore-target.mjs";
 
 const RESTORE_CREDENTIALS = [
@@ -96,8 +100,18 @@ function endpointKey(url) {
 }
 
 async function main() {
-  const result = await verifyRestoreCredentials();
-  process.stdout.write(`${JSON.stringify(result)}\n`);
+  const credentialResult = await verifyRestoreCredentials();
+  const proof = await verifyUlcLinzM5NeonBranchIsolation({
+    sourceUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+    restoreUrls: RESTORE_CREDENTIALS.map(([, name]) => process.env[name]),
+    apiKey: process.env.NEON_API_KEY,
+    orgId: process.env.NEON_ORG_ID,
+  });
+  await persistUlcLinzM5NeonBranchIsolationAttestation(proof);
+  process.stdout.write(`${JSON.stringify({
+    ...credentialResult,
+    neonBranchIsolationVerified: true,
+  })}\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
