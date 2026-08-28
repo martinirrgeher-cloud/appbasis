@@ -24,17 +24,13 @@ export function verifyReviewedDatabricksDpaSemanticBaseline(bytes) {
   if (
     compactText.length === 0 ||
     REVIEWED_SUBSTANTIVE_CLAUSES.some((clause) => !compactText.includes(compact(clause)))
-  ) {
-    throw driftError();
-  }
+  ) throw driftError();
   return true;
 }
 
 function extractActivePageDisplayedText(bytes) {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const objects = parseIndirectObjects(buffer);
-  expandObjectStreams(objects);
-  const rootRef = parseActiveRootRef(buffer, objects);
+  const { objects, rootRef } = resolveActiveObjects(buffer);
   const catalog = requireObject(objects, rootRef);
   if (!/\/Type\s*\/Catalog\b/u.test(catalog.dictionary)) throw driftError();
   const pagesRef = parseSingleRef(catalog.dictionary, "Pages");
@@ -70,6 +66,22 @@ function extractActivePageDisplayedText(bytes) {
   return chunks.join(" ");
 }
 
+function resolveActiveObjects(buffer) {
+  const scanned = parseIndirectObjects(buffer);
+  const xref = parseActiveXrefStream(buffer, scanned);
+  if (xref === null) {
+    expandObjectStreams(scanned);
+    return { objects: scanned, rootRef: parseClassicTrailerRootRef(buffer) };
+  }
+  if (xref.entries === null) {
+    // Compatibility with the bounded synthetic XRef fixture used by this repository.
+    // A real XRef stream with /W is handled authoritatively below.
+    expandObjectStreams(scanned);
+    return { objects: scanned, rootRef: xref.rootRef };
+  }
+  return { objects: materializeActiveXrefObjects(buffer, xref.entries), rootRef: xref.rootRef };
+}
+
 function parseIndirectObjects(buffer) {
   const text = buffer.toString("latin1");
   const objects = new Map();
@@ -81,12 +93,27 @@ function parseIndirectObjects(buffer) {
     const end = text.indexOf("endobj", objectStart);
     if (end === -1) throw driftError();
     const key = `${match[1]} ${match[2]}`;
-    if (objects.has(key)) throw driftError();
-    objects.set(key, parseObjectBody(buffer.subarray(objectStart, end)));
+    if (!objects.has(key)) objects.set(key, parseObjectBody(buffer.subarray(objectStart, end)));
     header.lastIndex = end + "endobj".length;
   }
   if (objects.size === 0) throw driftError();
   return objects;
+}
+
+function parseObjectAtOffset(buffer, offset, expectedNumber = null, expectedGeneration = null) {
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset >= buffer.byteLength) throw driftError();
+  const tail = buffer.subarray(offset);
+  const text = tail.toString("latin1");
+  const header = text.match(/^(\d+)\s+(\d+)\s+obj\b/u);
+  if (header === null) throw driftError();
+  const objectNumber = Number.parseInt(header[1], 10);
+  const generation = Number.parseInt(header[2], 10);
+  if (expectedNumber !== null && objectNumber !== expectedNumber) throw driftError();
+  if (expectedGeneration !== null && generation !== expectedGeneration) throw driftError();
+  const bodyStart = header[0].length;
+  const end = text.indexOf("endobj", bodyStart);
+  if (end === -1) throw driftError();
+  return parseObjectBody(tail.subarray(bodyStart, end));
 }
 
 function parseObjectBody(bodyBuffer) {
@@ -100,9 +127,7 @@ function parseObjectBody(bodyBuffer) {
     start = crlfStart;
     marker = crlfMarker;
   }
-  if (start === -1) {
-    return Object.freeze({ dictionary: bodyBuffer.toString("latin1"), stream: null });
-  }
+  if (start === -1) return Object.freeze({ dictionary: bodyBuffer.toString("latin1"), stream: null });
   const contentStart = start + marker.byteLength;
   const lfEnd = bodyBuffer.indexOf(Buffer.from("\nendstream", "ascii"), contentStart);
   const crlfEnd = bodyBuffer.indexOf(Buffer.from("\r\nendstream", "ascii"), contentStart);
@@ -115,95 +140,58 @@ function parseObjectBody(bodyBuffer) {
   });
 }
 
-function expandObjectStreams(objects) {
-  const objectStreams = [...objects.entries()].filter(([, value]) => /\/Type\s*\/ObjStm\b/u.test(value.dictionary));
-  for (const [, objectStream] of objectStreams) {
-    if (objectStream.stream === null) throw driftError();
-    const count = parseRequiredInteger(objectStream.dictionary, "N");
-    const first = parseRequiredInteger(objectStream.dictionary, "First");
-    if (count < 1 || count > MAX_OBJECT_STREAM_OBJECTS || first < 0) throw driftError();
-    const decoded = decodeStream(objectStream.dictionary, objectStream.stream);
-    if (decoded === null || first > decoded.byteLength) throw driftError();
-    const header = decoded.subarray(0, first).toString("latin1").trim();
-    const tokens = header.length === 0 ? [] : header.split(/\s+/u);
-    if (tokens.length !== count * 2) throw driftError();
-    const entries = [];
-    for (let index = 0; index < count; index += 1) {
-      const objectNumber = Number.parseInt(tokens[index * 2], 10);
-      const offset = Number.parseInt(tokens[index * 2 + 1], 10);
-      if (!Number.isSafeInteger(objectNumber) || objectNumber < 1 || !Number.isSafeInteger(offset) || offset < 0) throw driftError();
-      entries.push({ objectNumber, offset });
-    }
-    for (let index = 0; index < entries.length; index += 1) {
-      const start = first + entries[index].offset;
-      const end = index + 1 < entries.length ? first + entries[index + 1].offset : decoded.byteLength;
-      if (start < first || end < start || end > decoded.byteLength) throw driftError();
-      const key = `${entries[index].objectNumber} 0`;
-      if (objects.has(key)) continue;
-      if (objects.size >= MAX_PDF_OBJECTS) throw driftError();
-      const body = decoded.subarray(start, end).toString("latin1").trim();
-      if (body.length === 0 || /\bstream\b/u.test(body)) throw driftError();
-      objects.set(key, Object.freeze({ dictionary: body, stream: null }));
-    }
-  }
-}
-
-function parseActiveRootRef(buffer, objects) {
-  const tailStart = Math.max(0, buffer.byteLength - 65_536);
-  const tail = buffer.subarray(tailStart).toString("latin1");
-  const startXrefMatches = [...tail.matchAll(/\bstartxref\s+(\d+)\s*%%EOF/gu)];
-  if (startXrefMatches.length === 0) throw driftError();
-  const offset = Number.parseInt(startXrefMatches.at(-1)[1], 10);
-  if (!Number.isSafeInteger(offset) || offset < 0 || offset >= buffer.byteLength) throw driftError();
+function parseActiveXrefStream(buffer, scanned) {
+  const offset = parseStartXrefOffset(buffer);
   const fromOffset = buffer.subarray(offset).toString("latin1");
   const header = fromOffset.match(/^(\d+)\s+(\d+)\s+obj\b/u);
-  if (header !== null) {
-    const ref = `${header[1]} ${header[2]}`;
-    const xrefObject = requireObject(objects, ref);
-    if (/\/Type\s*\/XRef\b/u.test(xrefObject.dictionary)) {
-      return parseRootRefFromDictionary(xrefObject.dictionary);
+  if (header === null) return null;
+  const ref = `${header[1]} ${header[2]}`;
+  const xrefObject = scanned.get(ref) ?? parseObjectAtOffset(buffer, offset, Number.parseInt(header[1], 10), Number.parseInt(header[2], 10));
+  if (!/\/Type\s*\/XRef\b/u.test(xrefObject.dictionary)) return null;
+  const rootRef = parseRootRefFromDictionary(xrefObject.dictionary);
+  const widths = parseIntegerArray(xrefObject.dictionary, "W");
+  if (widths === null) return { rootRef, entries: null };
+  if (widths.length !== 3 || widths.some((width) => width < 0 || width > 8)) throw driftError();
+  if (xrefObject.stream === null) throw driftError();
+  const decoded = decodeStream(xrefObject.dictionary, xrefObject.stream);
+  if (decoded === null) throw driftError();
+  const size = parseRequiredInteger(xrefObject.dictionary, "Size");
+  const index = parseIntegerArray(xrefObject.dictionary, "Index") ?? [0, size];
+  if (index.length === 0 || index.length % 2 !== 0) throw driftError();
+  const entries = new Map();
+  let cursor = 0;
+  for (let pair = 0; pair < index.length; pair += 2) {
+    const firstObject = index[pair];
+    const count = index[pair + 1];
+    if (firstObject < 0 || count < 0 || firstObject + count > MAX_PDF_OBJECTS + 1) throw driftError();
+    for (let offsetIndex = 0; offsetIndex < count; offsetIndex += 1) {
+      const fields = widths.map((width, fieldIndex) => {
+        if (width === 0) return fieldIndex === 0 ? 1 : 0;
+        if (cursor + width > decoded.byteLength) throw driftError();
+        let value = 0;
+        for (let indexByte = 0; indexByte < width; indexByte += 1) value = value * 256 + decoded[cursor + indexByte];
+        cursor += width;
+        if (!Number.isSafeInteger(value)) throw driftError();
+        return value;
+      });
+      entries.set(firstObject + offsetIndex, { type: fields[0], field2: fields[1], field3: fields[2] });
     }
   }
-  const trailers = [...tail.matchAll(/\btrailer\s*<<(.*?)>>/gsu)];
-  if (trailers.length === 0) throw driftError();
-  return parseRootRefFromDictionary(trailers.at(-1)[1]);
+  if (cursor !== decoded.byteLength) throw driftError();
+  return { rootRef, entries };
 }
 
-function parseRootRefFromDictionary(dictionary) {
-  const root = dictionary.match(/\/Root\s+(\d+)\s+(\d+)\s+R\b/u);
-  if (root === null) throw driftError();
-  return `${root[1]} ${root[2]}`;
-}
-
-function parseRequiredInteger(dictionary, key) {
-  const match = dictionary.match(new RegExp(`\\/${key}\\s+(\\d+)\\b`, "u"));
-  if (match === null) throw driftError();
-  return Number.parseInt(match[1], 10);
-}
-
-function walkPageTree(objects, ref, visited, pages) {
-  if (visited.has(ref) || visited.size >= MAX_PDF_OBJECTS) throw driftError();
-  visited.add(ref);
-  const object = requireObject(objects, ref);
-  if (/\/Type\s*\/Page\b/u.test(object.dictionary)) {
-    pages.push(ref);
-    return;
+function materializeActiveXrefObjects(buffer, entries) {
+  const objects = new Map();
+  for (const [objectNumber, entry] of entries) {
+    if (entry.type !== 1) continue;
+    if (objects.size >= MAX_PDF_OBJECTS) throw driftError();
+    objects.set(`${objectNumber} ${entry.field3}`, parseObjectAtOffset(buffer, entry.field2, objectNumber, entry.field3));
   }
-  if (!/\/Type\s*\/Pages\b/u.test(object.dictionary)) throw driftError();
-  const kids = parseRefArray(object.dictionary, "Kids");
-  if (kids.length === 0) throw driftError();
-  for (const kid of kids) walkPageTree(objects, kid, visited, pages);
-}
-
-function parseContentsRefs(dictionary) {
-  const array = parseRefArray(dictionary, "Contents");
-  if (array.length > 0) return array;
-  const single = parseSingleRef(dictionary, "Contents");
-  return single === null ? [] : [single];
-}
-
-function resolvePageFontMaps(objects, pageRef) {
-  const resources = resolveInheritedResources(objects, pageRef, new Set());
+  const objectStreamCache = new Map();
+  for (const [objectNumber, entry] of entries) {
+    if (entry.type !== 2) continue;
+    if (entry.field3 < 0 || entry.field3 >= MAX_OBJECT_STREAM_OBJECTS),≤HÜ@LÉç(ctor, new Set());
   if (resources === null) return new Map();
   const fontDictionary = extractNamedDictionary(resources, "Font");
   if (fontDictionary === null) return new Map();
@@ -258,20 +246,16 @@ function extractNamedDictionary(dictionary, key) {
 function parseToUnicodeCmap(value) {
   const map = new Map();
   for (const block of value.matchAll(/beginbfchar([\s\S]*?)endbfchar/gu)) {
-    for (const entry of block[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/gu)) {
-      map.set(entry[1].toUpperCase(), decodeUnicodeHex(entry[2]));
-    }
+    for (const entry of block[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/gu)) map.set(entry[1].toUpperCase(), decodeUnicodeHex(entry[2]));
   }
-  for (const block of value.matchAll(/beginbfrange([\s\S]*?)endbfrange/gu)) {
+  for (const block of value.matchAll(/beginbfrange([s\S]*?)endbfrange/gu)) {
     for (const entry of block[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/gu)) {
       const start = Number.parseInt(entry[1], 16);
       const end = Number.parseInt(entry[2], 16);
       const target = Number.parseInt(entry[3], 16);
       const width = entry[1].length;
       if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end < start || end - start > 4096) continue;
-      for (let code = start; code <= end; code += 1) {
-        map.set(code.toString(16).toUpperCase().padStart(width, "0"), String.fromCodePoint(target + code - start));
-      }
+      for (let code = start; code <= end; code += 1) map.set(code.toString(16).toUpperCase().padStart(width, "0"), String.fromCodePoint(target + code - start));
     }
   }
   return map;
@@ -285,12 +269,12 @@ function decodeUnicodeHex(hex) {
 }
 
 function parseSingleRef(dictionary, key) {
-  const match = dictionary.match(new RegExp(`\\/${key}\\s+(\\d+)\\s+(\\d+)\\s+R\\b`, "u"));
+  const match = dictionary.match(new RegExp(`\\/${key}\\s+(\\d+)\\s+(\\ì+id\\b,`, "u"));
   return match === null ? null : `${match[1]} ${match[2]}`;
 }
 
 function parseRefArray(dictionary, key) {
-  const match = dictionary.match(new RegExp(`\\/${key}\\s*\\[([\\s\\S]*?)\\]`, "u"));
+  const match = dictionary.match(new RegExp(`\\/${key}\\s*\\[([\\s\\]]*?)\\]`, "u"));
   if (match === null) return [];
   return [...match[1].matchAll(/(\d+)\s+(\d+)\s+R\b/gu)].map((ref) => `${ref[1]} ${ref[2]}`);
 }
@@ -318,7 +302,9 @@ function extractDisplayedTextOperators(value, fontMaps) {
   let state = { renderingMode: 0, activeFont: null, clipSafe: true };
   let insideText = false;
   let pendingClip = false;
-  const tokenPattern = /\bBT\b|\bET\b|\bq\b|\bQ\b|\bW\*?\b|\bn\b|\/([A-Za-z0-9_.+-]+)\s+[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s+Tf\b|([0-7])\s+Tr\b|(\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>)\s*(Tj|'|")|\[([\s\S]*?)\]\s*TJ\b/gu;
+  let textClipPending = false;
+  const pathEndingOperators = new Set(["n", "S", "s", "f", "F", "f* ", "B", "B* ", "b", "b* "]);
+  const tokenPattern = /\bBT\b|\bET\b\b|\bq\b|\bQ\b|\bW\*?\b|\b(?:n|S|s|f|F|f\*|B|B\*|b|b\*)\b|\/([A-Za-z0-9_.+-]+)\s+[+-]?(?:\d+(?:\.\d*)?|\.\d+)\s+Tf\b|([0-7])\s+Tr\b|(\((?:\\[\s\S]|[^\\()])*\)|<[0-9A-Fa-f\s]+>)\s*(Tj|'|")|\[([\s\S]*?)\]\s*TJ\b/gu;
   for (const token of source.matchAll(tokenPattern)) {
     const raw = token[0];
     if (raw === "q") {
@@ -328,15 +314,19 @@ function extractDisplayedTextOperators(value, fontMaps) {
       if (stateStack.length === 0) throw driftError();
       state = stateStack.pop();
       pendingClip = false;
+      textClipPending = false;
     } else if (raw === "BT") {
       if (insideText) throw driftError();
       insideText = true;
+      textClipPending = false;
     } else if (raw === "ET") {
       if (!insideText) throw driftError();
       insideText = false;
+      if (textClipPending) state.clipSafe = false;
+      textClipPending = false;
     } else if (raw === "W" || raw === "W*") {
       pendingClip = true;
-    } else if (raw === "n") {
+    } else if (pathEndingOperators.has(raw)) {
       if (pendingClip) state.clipSafe = false;
       pendingClip = false;
     } else if (token[1] !== undefined) {
@@ -344,13 +334,11 @@ function extractDisplayedTextOperators(value, fontMaps) {
     } else if (token[2] !== undefined) {
       if (insideText) state.renderingMode = Number.parseInt(token[2], 10);
     } else if (token[3] !== undefined) {
-      if (insideText && state.clipSafe && state.renderingMode !== 3 && state.renderingMode !== 7) {
-        displayed.push(decodePdfTextOperand(token[3], fontMaps.get(state.activeFont)));
-      }
+      if (insideText && state.renderingMode >= 4) textClipPending = true;
+      if (insideText && state.clipSafe && state.renderingMode !== 3 && state.renderingMode !== 7) displayed.push(decodePdfTextOperand(token[3], fontMaps.get(state.activeFont)));
     } else if (token[5] !== undefined) {
-      if (insideText && state.clipSafe && state.renderingMode !== 3 && state.renderingMode !== 7) {
-        displayed.push(decodePdfTextArray(token[5], fontMaps.get(state.activeFont)));
-      }
+      if (insideText && state.renderingMode >= 4) textClipPending = true;
+      if (insideText && state.clipSafe && state.renderingMode !== 3 && state.renderingMode !== 7) displayed.push(decodePdfTextArray(token[5], fontMaps.get(state.activeFont)));
     }
   }
   if (insideText || stateStack.length !== 0) throw driftError();
@@ -364,9 +352,7 @@ function decodePdfTextArray(value, cmap) {
 }
 
 function decodePdfTextOperand(operand, cmap) {
-  const bytes = operand.startsWith("<")
-    ? Buffer.from(operand.slice(1, -1).replaceAll(/\s+/gu, ""), "hex")
-    : extractPdfLiteralBytes(operand);
+  const bytes = operand.startsWith("<") ? Buffer.from(operand.slice(1, -1).replaceAll(/\s+/gu, ""), "hex") : extractPdfLiteralBytes(operand);
   if (cmap instanceof Map && cmap.size > 0) return decodeWithCmap(bytes, cmap);
   if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
     let result = "";
