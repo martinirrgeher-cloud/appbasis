@@ -5,110 +5,92 @@ import { deflateSync } from "node:zlib";
 import { verifyReviewedDatabricksDpaSemanticBaseline } from "./databricks-dpa-semantic-baseline.mjs";
 
 const REVIEWED_TEXT = [
-  "DATA PROCESSING ADDENDUM",
-  "Databricks Master Cloud Services Agreement",
-  "Applicable Data Protection Laws",
-  "PROCESSING OF PERSONAL DATA",
-  "CONFIDENTIALITY",
-  "SUBPROCESSING",
-  "Data Protection Impact Assessments",
-  "SECURITY",
-  "AUDITS AND RECORDS",
-  "TRANSFER OF PERSONAL DATA",
-  "BACKUP, DELETION & RETURN",
-  "CCPA COMPLIANCE",
-  "ANNEX A",
-  "Categories of personal data transferred",
-  "Sensitive data transferred",
-  "Period for which the personal data will be retained",
-  "ANNEX B",
-  "STANDARD CONTRACTUAL CLAUSES",
-  "Modules 2 and 3",
-  "Databricks DPA v3 (2023-07-21)",
+  "Databricks agrees that when Databricks processes Customer Personal Data in its capacity as a processor on behalf of the Customer Databricks will comply with Applicable Data Protection Laws and process the Customer Personal Data as necessary to perform its obligations under the Agreement and only in accordance with Customer's documented instructions",
+  "Databricks shall enter into a written agreement with its Subprocessors which includes data protection and security measures no less protective than the measures set forth in this DPA and remain fully liable for any breach of the Agreement and this DPA that is caused by an act error or omission of its Subprocessors",
+  "In the event of a Security Breach Databricks will notify Customer in writing without undue delay and in no event later than seventy-two 72 hours after becoming aware of the Security Breach and promptly take reasonable steps to contain investigate and mitigate any adverse effects resulting from the Security Breach",
+  "Where the transfer of Customer Personal Data to Databricks is a Restricted Transfer such transfer shall be governed by the Standard Contractual Clauses which shall be deemed incorporated into and form an integral part of the Agreement in accordance with Annex B of this DPA",
+  "The Databricks Services do not include backup services or disaster recovery for Customer Personal Data Databricks does provide functionality within the Databricks Services that may permit Customer to backup certain Customer Personal Data on its own It is the Customer's obligation to backup any Customer Personal Data if desired",
+  "Databricks will delete or assist Customer in deleting any Customer Personal Data within its possession or control within thirty 30 days following such request",
+  "Module Two terms shall apply where Customer is the controller of Customer Personal Data and the Module Three terms shall apply where Customer is the processor of Customer Personal Data",
+  "in Clause 9 option 2 general authorization is selected and the process and time period for prior notice of Sub-processor changes shall be as set out in Section 4.3 of the DPA",
+  "Databricks DPA v3 2023-07-21",
 ].join(" ");
 
-function streamObject(number, content, { compressed = true } = {}) {
-  const stream = compressed ? deflateSync(Buffer.from(content, "latin1")) : Buffer.from(content, "latin1");
+function streamObject(number, content, { compressed = true, dictionary = "" } = {}) {
+  const raw = Buffer.isBuffer(content) ? content : Buffer.from(content, "latin1");
+  const stream = compressed ? deflateSync(raw) : raw;
   const filter = compressed ? " /Filter /FlateDecode" : "";
   return Buffer.concat([
-    Buffer.from(
-      `${number} 0 obj\n<< /Length ${stream.byteLength}${filter} >>\nstream\n`,
-      "latin1",
-    ),
+    Buffer.from(`${number} 0 obj\n<< /Length ${stream.byteLength}${filter}${dictionary} >>\nstream\n`, "latin1"),
     stream,
     Buffer.from("\nendstream\nendobj\n", "latin1"),
   ]);
 }
 
-function pdfWithContent(content, { unreferencedContent = null } = {}) {
-  const parts = [
+function basePdf(content, { pageDictionary = "", extraObjects = [] } = {}) {
+  return Buffer.concat([
     Buffer.from("%PDF-1.7\n", "latin1"),
     Buffer.from("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n", "latin1"),
     Buffer.from("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n", "latin1"),
-    Buffer.from("3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>\nendobj\n", "latin1"),
+    Buffer.from(`3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 4 0 R${pageDictionary} >>\nendobj\n`, "latin1"),
     streamObject(4, content),
-  ];
-  if (unreferencedContent !== null) parts.push(streamObject(5, unreferencedContent));
-  parts.push(Buffer.from("trailer\n<< /Root 1 0 R >>\nstartxref\n0\n%%EOF\n", "latin1"));
-  return Buffer.concat(parts);
+    ...extraObjects,
+    Buffer.from("trailer\n<< /Root 1 0 R >>\nstartxref\n0\n%%EOF\n", "latin1"),
+  ]);
 }
 
 function literal(value) {
   return value.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
 }
 
-test("accepts reviewed anchors only from the active page tree", () => {
-  const bytes = pdfWithContent(`BT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
+function hex(value) {
+  return Buffer.from(value, "latin1").toString("hex").toUpperCase();
+}
+
+test("accepts the reviewed substantive clauses from active page content", () => {
+  const bytes = basePdf(`BT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
   assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
 });
 
-test("rejects a semantic fallback missing one reviewed section anchor", () => {
-  const incomplete = REVIEWED_TEXT.replace("CCPA COMPLIANCE", "UNRELATED SECTION");
-  const bytes = pdfWithContent(`BT\n(${literal(incomplete)}) Tj\nET`);
+test("rejects changed operative language even when headings and version could remain unchanged", () => {
+  const changed = REVIEWED_TEXT.replace("in no event later than seventy-two 72 hours", "within a commercially reasonable period");
   assert.throws(
-    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
+    () => verifyReviewedDatabricksDpaSemanticBaseline(basePdf(`BT\n(${literal(changed)}) Tj\nET`)),
     /drifted from the reviewed official baseline/,
   );
 });
 
-test("rejects reviewed anchors hidden only in PDF comments", () => {
-  const bytes = pdfWithContent(
-    `BT\n% (${literal(REVIEWED_TEXT)}) Tj\n(UNRELATED DOCUMENT) Tj\nET`,
-  );
-  assert.throws(
-    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
-    /drifted from the reviewed official baseline/,
-  );
+test("accepts hexadecimal Tj operands for semantically identical text", () => {
+  const bytes = basePdf(`BT\n<${hex(REVIEWED_TEXT)}> Tj\nET`);
+  assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
 });
 
-test("rejects reviewed anchors inside a text object without a text-showing operator", () => {
-  const bytes = pdfWithContent(`BT\n(${literal(REVIEWED_TEXT)})\nET`);
-  assert.throws(
-    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
-    /drifted from the reviewed official baseline/,
-  );
-});
-
-test("rejects anchors placed in an unreferenced indirect stream", () => {
-  const bytes = pdfWithContent("BT\n(UNRELATED DOCUMENT) Tj\nET", {
-    unreferencedContent: `BT\n(${literal(REVIEWED_TEXT)}) Tj\nET`,
+test("accepts a ToUnicode-mapped glyph stream on the active page", () => {
+  const source = Buffer.from(REVIEWED_TEXT, "latin1");
+  const pairs = [...source].map((byte) => `<${byte.toString(16).padStart(2, "0")}> <${byte.toString(16).padStart(4, "0")}>`).join("\n");
+  const cmap = `begincmap\n${source.length} beginbfchar\n${pairs}\nendbfchar\nendcmap`;
+  const font = Buffer.from("5 0 obj\n<< /Type /Font /Subtype /Type0 /ToUnicode 6 0 R >>\nendobj\n", "latin1");
+  const cmapObject = streamObject(6, cmap);
+  const pageDictionary = " /Resources << /Font << /F1 5 0 R >> >>";
+  const bytes = basePdf(`BT\n/F1 10 Tf\n<${hex(REVIEWED_TEXT)}> Tj\nET`, {
+    pageDictionary,
+    extraObjects: [font, cmapObject],
   });
-  assert.throws(
-    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
-    /drifted from the reviewed official baseline/,
-  );
+  assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
 });
 
-test("accepts TJ-array displayed literals on an active page", () => {
-  const bytes = pdfWithContent(`BT\n[(${literal(REVIEWED_TEXT)})] TJ\nET`);
-  assert.equal(verifyReviewedDatabricksDpaSemanticBaseline(bytes), true);
+test("rejects substantive clauses hidden in an unreferenced stream", () => {
+  const hidden = streamObject(5, `BT\n(${literal(REVIEWED_TEXT)}) Tj\nET`);
+  const bytes = basePdf("BT\n(UNRELATED DOCUMENT) Tj\nET", { extraObjects: [hidden] });
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(bytes), /drifted from the reviewed official baseline/);
+});
+
+test("rejects substantive clauses hidden only in PDF comments", () => {
+  const bytes = basePdf(`BT\n% (${literal(REVIEWED_TEXT)}) Tj\n(UNRELATED DOCUMENT) Tj\nET`);
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(bytes), /drifted from the reviewed official baseline/);
 });
 
 test("fails closed when a page Flate stream expands beyond the safety bound", () => {
   const oversized = `BT\n(${literal(REVIEWED_TEXT)} ${"A".repeat(10_100_000)}) Tj\nET`;
-  const bytes = pdfWithContent(oversized);
-  assert.throws(
-    () => verifyReviewedDatabricksDpaSemanticBaseline(bytes),
-    /drifted from the reviewed official baseline/,
-  );
+  assert.throws(() => verifyReviewedDatabricksDpaSemanticBaseline(basePdf(oversized)), /drifted from the reviewed official baseline/);
 });
