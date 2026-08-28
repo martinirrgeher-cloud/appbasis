@@ -50,6 +50,7 @@ const LOG_FIELDS = Object.freeze([
   "destinations",
   "head_sampling_rate",
   "persist",
+  "redact_query_string",
 ]);
 const TRACE_FIELDS = Object.freeze([
   "destinations",
@@ -57,6 +58,7 @@ const TRACE_FIELDS = Object.freeze([
   "head_sampling_rate",
   "persist",
   "propagation_policy",
+  "redact_query_string",
 ]);
 const DATA_FLOWS = Object.freeze([
   Object.freeze({ from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" }),
@@ -476,7 +478,11 @@ function inspectCloudflareTelemetry(value) {
   if (settings.logpush !== undefined && typeof settings.logpush !== "boolean") {
     throw new Error("Cloudflare Worker telemetry inventory is invalid.");
   }
-  if (settings.tags !== undefined && !isStringArray(settings.tags)) {
+  if (
+    settings.tags !== undefined &&
+    settings.tags !== null &&
+    !isStringArray(settings.tags)
+  ) {
     throw new Error("Cloudflare Worker telemetry inventory is invalid.");
   }
   const tailConsumers = settings.tail_consumers ?? [];
