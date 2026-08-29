@@ -70,18 +70,37 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
         run: |
           set -euo pipefail
-          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET; do
+          for name in \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_API_TOKEN \
+            ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET
+          do
             value="${!name:-}"
             test -n "$value" || { echo "Missing $name." >&2; exit 1; }
             echo "::add-mask::$value"
           done
           node --input-type=module <<'NODE'
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
-          parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL);
+          const urls = [
+            process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+            process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
+            process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
+            process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
+          ].map((value) => parseUlcLinzProductionDatabaseUrl(value));
+          if (new Set(urls.map((entry) => entry.user)).size !== 4) {
+            throw new Error('ULC M5-F production security-log principals must be distinct.');
+          }
           const secret = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET ?? '';
           if (secret.length < 32 || secret !== secret.trim()) {
             throw new Error('ULC production Better Auth secret is invalid.');
@@ -269,6 +288,37 @@ jobs:
           }
           NODE
 
+      - name: Verify canonical protected audit access boundary
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { collectUlcLinzM5SecurityLogAccessEvidence } from './tooling/ulc-linz-m5-security-log-access-evidence.mjs';
+          import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+
+          const ingest = parseUlcLinzProductionDatabaseUrl(
+            process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
+          );
+          const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
+            productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+            cleanupDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
+            readDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
+            ingestUsername: ingest.user,
+          });
+          if (
+            evidence?.leastPrivilegeAccessVerified !== true ||
+            evidence?.protectedOperationalAccessVerified !== true ||
+            evidence?.providerMinimumRetentionVerified !== true
+          ) {
+            throw new Error('ULC M5-F canonical security-log access boundary is incomplete.');
+          }
+          NODE
+
       - name: Verify resulting security event with protected read principal
         shell: bash
         env:
@@ -281,4 +331,4 @@ jobs:
       - name: Record sanitized smoke outcome
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime using the Hyperdrive IDs bound to the exact active private production version. The pre-existing workers.dev account subdomain remained unchanged; no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime using the Hyperdrive IDs bound to the exact active private production version. The canonical least-privilege security-log access boundary was verified, the pre-existing workers.dev account subdomain remained unchanged, and no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
