@@ -66,14 +66,15 @@ export async function collectUlcLinzM5AclSemanticDiagnostic(
     for (const row of grantRows) {
       const grantee = row.grantee === "PUBLIC" ? "PUBLIC" : requiredRoleName(row.grantee);
       const key = grantKey(row.object_kind, row.object_name, row.column_name, grantee, row.privilege_type);
-      if (expectedGrants.has(key)) continue;
+      const grantable = boolean(row.is_grantable);
+      if (expectedGrants.has(key) && grantable === false) continue;
       unexpectedGrants.push(Object.freeze({
         objectKind: objectKind(row.object_kind),
         objectName: objectNameClass(row.object_name),
         columnName: columnNameClass(row.column_name),
         granteeClass: grantee === "PUBLIC" ? "PUBLIC" : classifyRole(grantee),
         privilege: privilege(row.privilege_type),
-        grantable: boolean(row.is_grantable),
+        grantable,
       }));
     }
 
