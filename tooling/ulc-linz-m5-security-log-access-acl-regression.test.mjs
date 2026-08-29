@@ -75,15 +75,20 @@ test("live and restore ACL inventories distinguish operational memberships from 
   );
 });
 
-test("live ACL evidence binds the dedicated backup principal to its exact read-only grants", async () => {
+test("live ACL evidence recognizes only the dedicated backup read-only shape", async () => {
   const source = await readFile(SOURCE_URL, "utf8");
 
-  assert.match(source, /backupDatabaseUrl/);
-  assert.match(source, /const backup = parseUlcLinzProductionDatabaseUrl\(backupDatabaseUrl\)/);
+  assert.match(source, /backupDatabaseUrl === undefined \? null : parseUlcLinzProductionDatabaseUrl\(backupDatabaseUrl\)/);
   assert.match(source, /backup\.host !== production\.host \|\| backup\.database !== production\.database/);
-  assert.match(source, /backup: roleName\(backup\.user\)/);
-  assert.match(source, /new Set\(Object\.values\(users\)\)\.size !== 5/);
-  assert.match(source, /const expected = expectedGrantKeys\(users\)/);
-  assert.match(source, /grantKey\("table", "ulc_linz_security_event_log", null, backup, "SELECT"\)/);
-  assert.match(source, /grantKey\("sequence", "ulc_linz_security_event_log_id_seq", null, backup, "SELECT"\)/);
+  assert.match(source, /const backupUsername = backup === null \? null : roleName\(backup\.user\)/);
+  assert.match(source, /const implicitBackupGrantKeys = backupUsername === null/);
+  assert.match(source, /verifyImplicitBackupReadOnlyGrants\(client, unexpectedGrantRows, protectedRoles\)/);
+  assert.match(source, /rows\.length !== 2/);
+  assert.match(source, /grantKey\("table", "ulc_linz_security_event_log", null, candidate, "SELECT"\)/);
+  assert.match(source, /grantKey\("sequence", "ulc_linz_security_event_log_id_seq", null, candidate, "SELECT"\)/);
+  assert.match(source, /rows\.some\(\(row\) => bool\(row\.is_grantable\)\)/);
+  assert.match(source, /role\.rolcanlogin !== true/);
+  assert.match(source, /role\.rolsuper !== false/);
+  assert.match(source, /integer\(role\.membership_count\) !== 0/);
+  assert.match(source, /integer\(role\.admin_membership_count\) !== 0/);
 });
