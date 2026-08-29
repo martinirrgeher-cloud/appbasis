@@ -109,6 +109,6 @@ test("all exact ULC production database credentials reject a noncanonical port",
     () => parseUlcLinzProductionDatabaseUrl(
       "postgresql://backup:pw@ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech:6432/neondb",
     ),
-    /exact ULC production Neon endpoint/,
+    /exact ULC production Neon origin/,
   );
 });
