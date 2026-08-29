@@ -309,13 +309,13 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
         run: |
           set -euo pipefail
           smoke_secret="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(32).toString('hex'))")"
           probe_token="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(32).toString('hex'))")"
           echo "::add-mask::$smoke_secret"
           echo "::add-mask::$probe_token"
-          started_at="$(date -u +'%Y-%m-%dT%H:%M:%S.%3NZ')"
           log="$RUNNER_TEMP/m5-security-smoke-wrangler.log"
           pnpm --dir apps/reference exec wrangler dev --remote \
             --config "$SMOKE_WRANGLER_CONFIG" \
@@ -346,17 +346,55 @@ jobs:
             echo 'Remote application-database Hyperdrive probe did not succeed.' >&2
             exit 1
           }
+          baseline_count="$(node --input-type=module <<'NODE'
+          import { createPostgresDatabase } from '@appbasis/database/postgres-runtime';
+          const database = createPostgresDatabase(process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL);
+          try {
+            const rows = await database.client.unsafe(`
+              SELECT count(*)::bigint AS event_count
+              FROM public.ulc_linz_security_event_log
+              WHERE app_id = 'ulc-linz'
+                AND schema_version = 1
+                AND category = 'security'
+                AND event_type = 'identity.request.denied'
+                AND operation = 'session'
+                AND action = 'session'
+                AND target_type = 'identity-endpoint'
+                AND target_id = 'session'
+                AND http_status = 401
+                AND error_code = 'SESSION_INVALID'
+            `);
+            const value = rows?.[0]?.event_count;
+            const normalized = typeof value === 'bigint' ? value.toString() : String(value ?? '');
+            if (!/^[0-9]+$/.test(normalized)) {
+              throw new Error('ULC security smoke baseline count is invalid.');
+            }
+            process.stdout.write(normalized);
+          } finally {
+            await database.client.end().catch(() => {});
+          }
+          NODE
+          )"
+          [[ "$baseline_count" =~ ^[0-9]+$ ]] || exit 1
+          started_at="$(date -u +'%Y-%m-%dT%H:%M:%S.%3NZ')"
           headers="$RUNNER_TEMP/m5-security-smoke-headers.txt"
           body="$RUNNER_TEMP/m5-security-smoke-body.json"
           status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 -D "$headers" -o "$body" -w '%{http_code}' http://127.0.0.1:8787/api/auth/session)"
           test "$status" = "401" || { echo 'Remote denied-request smoke did not return the expected 401 denial.' >&2; exit 1; }
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/m5-security-smoke-body.json', 'utf8'));
+          if (payload?.error?.code !== 'SESSION_INVALID') {
+            throw new Error('Remote denied-request smoke did not return SESSION_INVALID.');
+          }
+          NODE
           if grep -qi '^set-cookie:' "$headers"; then
             echo 'Remote denied-request smoke unexpectedly established a session.' >&2
             exit 1
           fi
           cleanup
           trap - EXIT
-          printf 'ULC_LINZ_SECURITY_SMOKE_STARTED_AT=%s\n' "$started_at" >> "$GITHUB_ENV"
+          printf 'ULC_LINZ_SECURITY_SMOKE_BASELINE_COUNT=%s\nULC_LINZ_SECURITY_SMOKE_STARTED_AT=%s\n' "$baseline_count" "$started_at" >> "$GITHUB_ENV"
 
       - name: Verify workers.dev account subdomain remained unchanged
         shell: bash
@@ -421,4 +459,4 @@ jobs:
       - name: Record sanitized smoke outcome
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime. Both production Hyperdrives matched their canonical protected contracts and the exact active private production version bindings, the application Hyperdrive completed a token-guarded read-only database probe, the security-log path emitted and exposed the expected denied identity event through its least-privilege principals, the canonical runtime compatibility settings and access boundary were verified, the pre-existing workers.dev account subdomain remained unchanged, and no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime. Both production Hyperdrives matched their canonical protected contracts and the exact active private production version bindings, the application Hyperdrive completed a token-guarded read-only database probe, and the denied identity request produced exactly one matching 401 SESSION_INVALID security event relative to an immediate protected-read baseline. The canonical runtime compatibility settings and least-privilege access boundary were verified, the pre-existing workers.dev account subdomain remained unchanged, and no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
