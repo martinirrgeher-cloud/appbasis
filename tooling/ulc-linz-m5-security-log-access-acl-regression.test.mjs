@@ -7,6 +7,10 @@ const RESTORE_E2E_URL = new URL(
   "../apps/ulc-linz/test/restored-production.postgres.e2e.test.ts",
   import.meta.url,
 );
+const PRIVATE_SMOKE_WORKFLOW_URL = new URL(
+  "../.github/workflows/m5-ulc-private-security-smoke.yml",
+  import.meta.url,
+);
 const DIRECT_NULL_ACL_PATTERN =
   /CROSS JOIN LATERAL pg_catalog\.aclexplode\(attribute\.attacl\) acl/;
 const DIMENSIONLESS_EMPTY_ACL_PATTERN =
@@ -75,20 +79,25 @@ test("live and restore ACL inventories distinguish operational memberships from 
   );
 });
 
-test("live ACL evidence recognizes only the dedicated backup read-only shape", async () => {
-  const source = await readFile(SOURCE_URL, "utf8");
+test("live ACL evidence binds the exact dedicated backup principal and grants", async () => {
+  const [source, workflow] = await Promise.all([
+    readFile(SOURCE_URL, "utf8"),
+    readFile(PRIVATE_SMOKE_WORKFLOW_URL, "utf8"),
+  ]);
 
-  assert.match(source, /backupDatabaseUrl === undefined \? null : parseUlcLinzProductionDatabaseUrl\(backupDatabaseUrl\)/);
+  assert.match(source, /const backup = parseUlcLinzProductionDatabaseUrl\(backupDatabaseUrl\)/);
   assert.match(source, /backup\.host !== production\.host \|\| backup\.database !== production\.database/);
-  assert.match(source, /const backupUsername = backup === null \? null : roleName\(backup\.user\)/);
-  assert.match(source, /const implicitBackupGrantKeys = backupUsername === null/);
-  assert.match(source, /verifyImplicitBackupReadOnlyGrants\(client, unexpectedGrantRows, protectedRoles\)/);
-  assert.match(source, /rows\.length !== 2/);
-  assert.match(source, /grantKey\("table", "ulc_linz_security_event_log", null, candidate, "SELECT"\)/);
-  assert.match(source, /grantKey\("sequence", "ulc_linz_security_event_log_id_seq", null, candidate, "SELECT"\)/);
-  assert.match(source, /rows\.some\(\(row\) => bool\(row\.is_grantable\)\)/);
-  assert.match(source, /role\.rolcanlogin !== true/);
-  assert.match(source, /role\.rolsuper !== false/);
-  assert.match(source, /integer\(role\.membership_count\) !== 0/);
-  assert.match(source, /integer\(role\.admin_membership_count\) !== 0/);
+  assert.match(source, /backup: roleName\(backup\.user\)/);
+  assert.match(source, /new Set\(Object\.values\(users\)\)\.size !== 5/);
+  assert.match(source, /role\(client, users\.backup\)/);
+  assert.match(source, /backupRole\.login !== true \|\| elevated\(backupRole\)/);
+  assert.match(source, /memberships\(backupRole\)\.length !== 0/);
+  assert.match(source, /grantKey\("table", "ulc_linz_security_event_log", null, backup, "SELECT"\)/);
+  assert.match(source, /grantKey\("sequence", "ulc_linz_security_event_log_id_seq", null, backup, "SELECT"\)/);
+  assert.doesNotMatch(source, /verifyImplicitBackupReadOnlyGrants/);
+
+  assert.match(workflow, /ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: \$\{\{ secrets\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \}\}/);
+  assert.match(workflow, /parseUlcLinzProductionDatabaseUrl\(process\.env\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL\)/);
+  assert.match(workflow, /new Set\(urls\.map\(\(entry\) => entry\.user\)\)\.size !== 5/);
+  assert.match(workflow, /backupDatabaseUrl: process\.env\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL/);
 });
