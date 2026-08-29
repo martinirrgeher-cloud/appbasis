@@ -104,7 +104,7 @@ function parseExactProductionDatabaseUrl(value, target, variableName) {
     parsed.port !== ULC_LINZ_M6_PRODUCTION_NEON_PORT
   ) {
     throw new Error(
-      `${variableName} does not select the exact ULC production Neon endpoint.`,
+      `${variableName} does not select the exact ULC production Neon origin or port.`,
     );
   }
   return parsed;
