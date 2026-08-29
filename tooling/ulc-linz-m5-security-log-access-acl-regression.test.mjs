@@ -24,8 +24,25 @@ test("column ACL inventory preserves PostgreSQL null ACL semantics", async () =>
   }
 });
 
-test("restore ACL inventory distinguishes operational memberships from safe creator back-references", async () => {
-  const restoreE2e = await readFile(RESTORE_E2E_URL, "utf8");
+test("live and restore ACL inventories distinguish operational memberships from safe creator back-references", async () => {
+  const [source, restoreE2e] = await Promise.all([
+    readFile(SOURCE_URL, "utf8"),
+    readFile(RESTORE_E2E_URL, "utf8"),
+  ]);
+
+  assert.match(source, /grantor\.rolsuper AS grantor_superuser/);
+  assert.match(source, /membership\.inherit_option AS inherit_option/);
+  assert.match(source, /membership\.set_option AS set_option/);
+  assert.match(source, /count\(DISTINCT owner\.rolname\)::integer AS distinct_owner_count/);
+  assert.match(source, /const protectedOwner = roleName\(ownerRows\[0\]\.owner_name\)/);
+  assert.match(source, /member === protectedOwner/);
+  assert.match(source, /bool\(row\.grantor_superuser\) === true/);
+  assert.match(source, /bool\(row\.admin_option\) === true/);
+  assert.match(source, /bool\(row\.inherit_option\) === false/);
+  assert.match(source, /bool\(row\.set_option\) === false/);
+  assert.match(source, /bool\(row\.admin_option\) === false/);
+  assert.match(source, /bool\(row\.inherit_option\) === true/);
+  assert.match(source, /bool\(row\.set_option\) === true/);
 
   assert.match(restoreE2e, /grantor\.rolsuper AS grantor_superuser/);
   assert.match(restoreE2e, /membership\.inherit_option/);
