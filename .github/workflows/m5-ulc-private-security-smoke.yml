@@ -91,13 +91,16 @@ jobs:
             echo "::add-mask::$value"
           done
           node --input-type=module <<'NODE'
-          import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          import {
+            parseUlcLinzProductionDatabaseUrl,
+            parseUlcLinzSecurityLogIngestDatabaseUrl,
+          } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
           const urls = [
-            process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
-            process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
-            process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
-            process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
-          ].map((value) => parseUlcLinzProductionDatabaseUrl(value));
+            parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL),
+            parseUlcLinzSecurityLogIngestDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL),
+            parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL),
+            parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL),
+          ];
           if (new Set(urls.map((entry) => entry.user)).size !== 4) {
             throw new Error('ULC M5-F production security-log principals must be distinct.');
           }
@@ -122,7 +125,7 @@ jobs:
           echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
           printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
 
-      - name: Resolve exact active production version and bindings
+      - name: Resolve exact active private production version
         id: runtime
         shell: bash
         env:
@@ -146,56 +149,64 @@ jobs:
           test -n "$version_id" && test "$version_id" != null
           echo "::add-mask::$version_id"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/scripts/$TARGET_WORKER/versions/$version_id" > "$detail"
-          VERSION_ID="$version_id" DETAIL_PATH="$detail" node --input-type=module <<'NODE' > "$RUNNER_TEMP/runtime-bindings.env"
-          import { readFileSync } from 'node:fs';
-          const response = JSON.parse(readFileSync(process.env.DETAIL_PATH, 'utf8'));
-          const result = response?.result;
-          const bindings = result?.resources?.bindings;
-          const runtime = result?.resources?.script_runtime;
-          const exact = (name) => {
-            const matches = Array.isArray(bindings) ? bindings.filter((entry) => entry?.name === name) : [];
-            if (matches.length !== 1) throw new Error('Active production binding inventory is not exact.');
-            return matches[0];
-          };
-          if (response?.success !== true || result?.id !== process.env.VERSION_ID || !Array.isArray(bindings) || bindings.length !== 4) {
-            throw new Error('Active production version detail is invalid.');
-          }
-          const base = exact('APPBASIS_BASE_URL');
-          const app = exact('HYPERDRIVE');
-          const security = exact('SECURITY_LOG_HYPERDRIVE');
-          const secret = exact('BETTER_AUTH_SECRET');
-          const opaque = (value) => typeof value === 'string' && /^[A-Za-z0-9._:-]{1,200}$/.test(value);
-          if (base.type !== 'plain_text' || base.text !== 'https://app.ulc-linz.at' || app.type !== 'hyperdrive' || security.type !== 'hyperdrive' || secret.type !== 'secret_text' || !opaque(app.id) || !opaque(security.id) || app.id === security.id) {
-            throw new Error('Active production bindings drifted from the private runtime contract.');
-          }
-          const date = runtime?.compatibility_date;
-          const flags = runtime?.compatibility_flags ?? [];
-          if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Array.isArray(flags) || flags.some((flag) => typeof flag !== 'string')) {
-            throw new Error('Active production runtime compatibility contract is invalid.');
-          }
-          process.stdout.write(`APP_HYPERDRIVE_ID=${app.id}\nSECURITY_HYPERDRIVE_ID=${security.id}\nCOMPATIBILITY_DATE=${date}\nCOMPATIBILITY_FLAGS_JSON=${JSON.stringify(flags)}\n`);
-          NODE
-          cat "$RUNNER_TEMP/runtime-bindings.env" >> "$GITHUB_ENV"
           printf 'version_id=%s\n' "$version_id" >> "$GITHUB_OUTPUT"
 
-      - name: Verify deployed security-log Hyperdrive matches protected ingest contract
+      - name: Resolve canonical dedicated production Hyperdrives
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
         run: |
           set -euo pipefail
-          expected_id="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
-          test -n "$expected_id" || {
-            echo 'Canonical security-log Hyperdrive contract did not resolve an ID.' >&2
+          app="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          security="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
+          test -n "$app" && test -n "$security" && test "$app" != "$security" || {
+            echo 'Canonical production Hyperdrive contracts did not resolve distinct IDs.' >&2
             exit 1
           }
-          echo "::add-mask::$expected_id"
-          test "$expected_id" = "$SECURITY_HYPERDRIVE_ID" || {
-            echo 'Deployed SECURITY_LOG_HYPERDRIVE does not match the protected ingest Hyperdrive contract.' >&2
-            exit 1
+          echo "::add-mask::$app"
+          echo "::add-mask::$security"
+          printf 'APP_HYPERDRIVE_ID=%s\nSECURITY_HYPERDRIVE_ID=%s\n' "$app" "$security" >> "$GITHUB_ENV"
+
+      - name: Verify exact active production bindings and runtime config
+        shell: bash
+        env:
+          VERSION_ID: ${{ steps.runtime.outputs.version_id }}
+        run: |
+          set -euo pipefail
+          detail="$RUNNER_TEMP/version-detail.json"
+          HYPERDRIVE_ID="$APP_HYPERDRIVE_ID" \
+          SECURITY_LOG_HYPERDRIVE_ID="$SECURITY_HYPERDRIVE_ID" \
+          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs bindings "$detail"
+          DETAIL_PATH="$detail" node --input-type=module <<'NODE' > "$RUNNER_TEMP/runtime-config.env"
+          import { readFileSync } from 'node:fs';
+          import { renderGeneratedProductionWranglerConfig } from './tooling/generated-production-deploy-config.mjs';
+
+          const response = JSON.parse(readFileSync(process.env.DETAIL_PATH, 'utf8'));
+          const runtime = response?.result?.resources?.script_runtime;
+          const expected = renderGeneratedProductionWranglerConfig({
+            appId: 'ulc-linz',
+            hyperdriveId: process.env.APP_HYPERDRIVE_ID,
+            securityLogHyperdriveId: process.env.SECURITY_HYPERDRIVE_ID,
+            baseURL: 'https://app.ulc-linz.at',
+            entrypoint: './worker/index.ts',
+          });
+          const actualFlags = runtime?.compatibility_flags ?? [];
+          if (
+            runtime?.compatibility_date !== expected.compatibility_date ||
+            !Array.isArray(actualFlags) ||
+            actualFlags.length !== expected.compatibility_flags.length ||
+            actualFlags.some((flag, index) => flag !== expected.compatibility_flags[index])
+          ) {
+            throw new Error('Active production runtime compatibility settings drifted from the canonical production config.');
           }
+          process.stdout.write(
+            `COMPATIBILITY_DATE=${expected.compatibility_date}\nCOMPATIBILITY_FLAGS_JSON=${JSON.stringify(expected.compatibility_flags)}\n`,
+          );
+          NODE
+          cat "$RUNNER_TEMP/runtime-config.env" >> "$GITHUB_ENV"
 
       - name: Require existing workers.dev account subdomain
         shell: bash
@@ -278,7 +289,7 @@ jobs:
           headers="$RUNNER_TEMP/m5-security-smoke-headers.txt"
           body="$RUNNER_TEMP/m5-security-smoke-body.json"
           status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 -D "$headers" -o "$body" -w '%{http_code}' http://127.0.0.1:8787/api/auth/session)"
-          [[ "$status" =~ ^4[0-9][0-9]$ ]] || { echo 'Remote denied-request smoke did not fail closed.' >&2; exit 1; }
+          test "$status" = "401" || { echo 'Remote denied-request smoke did not return the expected 401 denial.' >&2; exit 1; }
           if grep -qi '^set-cookie:' "$headers"; then
             echo 'Remote denied-request smoke unexpectedly established a session.' >&2
             exit 1
@@ -318,9 +329,9 @@ jobs:
           set -euo pipefail
           node --input-type=module <<'NODE'
           import { collectUlcLinzM5SecurityLogAccessEvidence } from './tooling/ulc-linz-m5-security-log-access-evidence.mjs';
-          import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          import { parseUlcLinzSecurityLogIngestDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
 
-          const ingest = parseUlcLinzProductionDatabaseUrl(
+          const ingest = parseUlcLinzSecurityLogIngestDatabaseUrl(
             process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
           );
           const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
@@ -350,4 +361,4 @@ jobs:
       - name: Record sanitized smoke outcome
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime using the Hyperdrive IDs bound to the exact active private production version. The deployed security-log Hyperdrive was matched to the canonical protected ingest contract, the canonical least-privilege security-log access boundary was verified, the pre-existing workers.dev account subdomain remained unchanged, and no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime. Both production Hyperdrives matched their canonical protected contracts and the exact active private production version bindings, the canonical runtime compatibility settings and least-privilege security-log access boundary were verified, the intended session request returned 401, the pre-existing workers.dev account subdomain remained unchanged, and no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
