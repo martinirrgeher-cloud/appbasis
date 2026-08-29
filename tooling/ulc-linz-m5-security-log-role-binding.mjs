@@ -75,7 +75,7 @@ export async function bindUlcLinzSecurityLogRoles(
         }
         for (const [key, principal] of needsBinding) {
           await transaction.unsafe(
-            `GRANT ${quoteIdentifier(PROTECTED_GROUPS[key])} TO ${quoteIdentifier(principal.user)} WITH INHERIT TRUE SET TRUE`,
+            `GRANT ${quoteIdentifier(PROTECTED_GROUPS[key])} TO ${quoteIdentifier(principal.user)} WITH INHERIT TRUE, SET TRUE`,
           );
         }
       });
