@@ -71,13 +71,60 @@ WITH protected_acl AS (
   WHERE namespace.nspname = 'public'
     AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
     AND procedure.pronargs = 0
+), protected_object_owner AS (
+  SELECT CASE
+    WHEN count(*) = 3 AND count(DISTINCT owner_oid) = 1 THEN min(owner_oid)
+    ELSE NULL
+  END AS owner_oid
+  FROM (
+    SELECT relation.relowner AS owner_oid
+    FROM pg_catalog.pg_class relation
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND relation.relname IN ('ulc_linz_security_event_log', 'ulc_linz_security_event_log_id_seq')
+    UNION ALL
+    SELECT procedure.proowner
+    FROM pg_catalog.pg_proc procedure
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+    WHERE namespace.nspname = 'public'
+      AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+      AND procedure.pronargs = 0
+  ) protected_owner
 ), protected_group_membership AS (
   SELECT
     parent.rolname AS group_role,
-    count(*)::integer AS member_count,
-    count(*) FILTER (WHERE membership.admin_option)::integer AS admin_member_count
+    count(*) FILTER (
+      WHERE membership.admin_option = false
+        AND membership.inherit_option = true
+        AND membership.set_option = true
+    )::integer AS operational_member_count,
+    count(*) FILTER (
+      WHERE member.oid = protected_object_owner.owner_oid
+        AND grantor.rolsuper = true
+        AND membership.admin_option = true
+        AND membership.inherit_option = false
+        AND membership.set_option = false
+    )::integer AS creator_back_reference_count,
+    count(*) FILTER (
+      WHERE NOT (
+        (
+          membership.admin_option = false
+          AND membership.inherit_option = true
+          AND membership.set_option = true
+        ) OR (
+          member.oid = protected_object_owner.owner_oid
+          AND grantor.rolsuper = true
+          AND membership.admin_option = true
+          AND membership.inherit_option = false
+          AND membership.set_option = false
+        )
+      )
+    )::integer AS unexpected_member_count
   FROM pg_catalog.pg_auth_members membership
   JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
+  JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+  JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+  CROSS JOIN protected_object_owner
   WHERE parent.rolname IN (
     'ulc_linz_security_event_ingest',
     'ulc_linz_security_event_cleanup',
@@ -133,17 +180,21 @@ SELECT
     FROM pg_catalog.pg_auth_members membership
     WHERE membership.member = cleanup_group.oid
   ) AS cleanup_group_membership_count,
-  (
-    SELECT count(*)::integer
-    FROM pg_catalog.pg_auth_members membership
-    WHERE membership.roleid = cleanup_group.oid
-  ) AS cleanup_group_member_count,
-  (
-    SELECT count(*)::integer
-    FROM pg_catalog.pg_auth_members membership
-    WHERE membership.roleid = cleanup_group.oid
-      AND membership.admin_option
-  ) AS cleanup_group_admin_member_count,
+  COALESCE((
+    SELECT operational_member_count
+    FROM protected_group_membership
+    WHERE group_role = cleanup_group.rolname
+  ), 0) AS cleanup_group_operational_member_count,
+  COALESCE((
+    SELECT creator_back_reference_count
+    FROM protected_group_membership
+    WHERE group_role = cleanup_group.rolname
+  ), 0) AS cleanup_group_creator_back_reference_count,
+  COALESCE((
+    SELECT unexpected_member_count
+    FROM protected_group_membership
+    WHERE group_role = cleanup_group.rolname
+  ), 0) AS cleanup_group_unexpected_member_count,
   has_function_privilege(current_user, 'public.appbasis_ulc_linz_purge_expired_security_events()', 'EXECUTE') AS cleanup_execute,
   has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'SELECT') AS direct_select,
   has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'DELETE') AS direct_delete,
@@ -188,7 +239,7 @@ SELECT
         ) OR
         pg_catalog.has_column_privilege(
           current_user,
-          'public.ulc_linz_security_event_log',
+          'public.ulc-linz_security_event_log',
           attribute.attname,
           'REFERENCES'
         )
@@ -345,12 +396,17 @@ WHERE current_role.rolname = current_user
   AND ingest_group.rolname = 'ulc_linz_security_event_ingest'
   AND read_group.rolname = 'ulc_linz_security_event_read'
   AND COALESCE((
-    SELECT member_count
+    SELECT operational_member_count
     FROM protected_group_membership
     WHERE group_role = ingest_group.rolname
   ), 0) = 1
   AND COALESCE((
-    SELECT admin_member_count
+    SELECT creator_back_reference_count
+    FROM protected_group_membership
+    WHERE group_role = ingest_group.rolname
+  ), 0) <= 1
+  AND COALESCE((
+    SELECT unexpected_member_count
     FROM protected_group_membership
     WHERE group_role = ingest_group.rolname
   ), 0) = 0
@@ -360,12 +416,17 @@ WHERE current_role.rolname = current_user
     WHERE group_role = ingest_group.rolname
   ), 0) = 0
   AND COALESCE((
-    SELECT member_count
+    SELECT operational_member_count
     FROM protected_group_membership
     WHERE group_role = cleanup_group.rolname
   ), 0) = 1
   AND COALESCE((
-    SELECT admin_member_count
+    SELECT creator_back_reference_count
+    FROM protected_group_membership
+    WHERE group_role = cleanup_group.rolname
+  ), 0) <= 1
+  AND COALESCE((
+    SELECT unexpected_member_count
     FROM protected_group_membership
     WHERE group_role = cleanup_group.rolname
   ), 0) = 0
@@ -375,12 +436,17 @@ WHERE current_role.rolname = current_user
     WHERE group_role = cleanup_group.rolname
   ), 0) = 0
   AND COALESCE((
-    SELECT member_count
+    SELECT operational_member_count
     FROM protected_group_membership
     WHERE group_role = read_group.rolname
   ), 0) = 1
   AND COALESCE((
-    SELECT admin_member_count
+    SELECT creator_back_reference_count
+    FROM protected_group_membership
+    WHERE group_role = read_group.rolname
+  ), 0) <= 1
+  AND COALESCE((
+    SELECT unexpected_member_count
     FROM protected_group_membership
     WHERE group_role = read_group.rolname
   ), 0) = 0
@@ -455,8 +521,9 @@ async function verifyCleanupPrincipal(client) {
     row.cleanup_admin_option !== false ||
     Number(row.reverse_membership_count) !== 0 ||
     Number(row.cleanup_group_membership_count) !== 0 ||
-    Number(row.cleanup_group_member_count) !== 1 ||
-    Number(row.cleanup_group_admin_member_count) !== 0 ||
+    Number(row.cleanup_group_operational_member_count) !== 1 ||
+    ![0, 1].includes(Number(row.cleanup_group_creator_back_reference_count)) ||
+    Number(row.cleanup_group_unexpected_member_count) !== 0 ||
     row.cleanup_execute !== true ||
     row.direct_select !== false ||
     row.direct_delete !== false ||
