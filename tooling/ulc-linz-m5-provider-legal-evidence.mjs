@@ -229,8 +229,14 @@ async function officialDatabricksDpaPdf(url, fetchImpl, sha256Impl) {
   if (!header.startsWith("%PDF-") || !trailer.includes("%%EOF")) {
     throw new Error("ULC M5-G Databricks DPA PDF body is invalid.");
   }
-  if (sha256Impl(bytes) !== DATABRICKS_DPA_PDF_SHA256) {
-    throw new Error("ULC M5-G Databricks DPA drifted from the reviewed official baseline.");
+  const observedSha256 = sha256Impl(bytes);
+  if (!/^[0-9a-f]{64}$/u.test(observedSha256)) {
+    throw new Error("ULC M5-G Databricks DPA digest result is invalid.");
+  }
+  if (observedSha256 !== DATABRICKS_DPA_PDF_SHA256) {
+    throw new Error(
+      `ULC M5-G Databricks DPA drifted from the reviewed official baseline (observed sha256: ${observedSha256}).`,
+    );
   }
   return DATARBRICKS_DPA_PDF_MARKER;
 }
