@@ -67,6 +67,7 @@ jobs:
         shell: bash
         env:
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
@@ -74,6 +75,7 @@ jobs:
           set -euo pipefail
           for name in \
             ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \
             ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \
             ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \
             ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL
@@ -86,12 +88,16 @@ jobs:
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
           const urls = [
             process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+            process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
             process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
             process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
             process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
           ].map((value) => parseUlcLinzProductionDatabaseUrl(value));
-          if (new Set(urls.map((entry) => entry.user)).size !== 4) {
-            throw new Error('ULC M5-F production security-log principals must be distinct.');
+          if (new Set(urls.map((entry) => entry.user)).size !== 5) {
+            throw new Error('ULC M5-F production and backup principals must be distinct.');
+          }
+          if (urls.some((entry) => entry.host !== urls[0].host || entry.database !== urls[0].database)) {
+            throw new Error('ULC M5-F production and backup principals must select one production database.');
           }
           NODE
 
@@ -99,6 +105,7 @@ jobs:
         shell: bash
         env:
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
@@ -113,6 +120,7 @@ jobs:
           );
           const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
             productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+            backupDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
             cleanupDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
             readDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
             ingestUsername: ingest.user,
