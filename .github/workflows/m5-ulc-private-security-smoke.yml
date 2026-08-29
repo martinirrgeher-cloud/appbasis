@@ -231,7 +231,6 @@ jobs:
         shell: bash
         env:
           ULC_LINZ_PRIVATE_SECURITY_SMOKE: RUN-ULC-M5-PRIVATE-SECURITY-SMOKE
-          ULC_LINZ_SECURITY_SMOKE_STARTED_AT: ${{ env.ULC_LINZ_SECURITY_SMOKE_STARTED_AT }}
           ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
         run: |
           set -euo pipefail
