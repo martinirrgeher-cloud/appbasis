@@ -23,6 +23,7 @@ export async function completeUlcLinzM5ProductionFBundle(
     cloudflareAccountId,
     cloudflareApiToken,
     productionDatabaseUrl,
+    backupDatabaseUrl,
     cleanupDatabaseUrl,
     readDatabaseUrl,
     githubSha,
@@ -60,6 +61,10 @@ export async function completeUlcLinzM5ProductionFBundle(
     productionDatabaseUrl,
     "ULC production database URL",
   );
+  const safeBackupDatabaseUrl = credential(
+    backupDatabaseUrl,
+    "ULC production backup database URL",
+  );
   const safeReadDatabaseUrl = credential(
     readDatabaseUrl,
     "ULC security read database URL",
@@ -72,6 +77,7 @@ export async function completeUlcLinzM5ProductionFBundle(
   });
   const access = await accessCollector({
     productionDatabaseUrl: safeProductionDatabaseUrl,
+    backupDatabaseUrl: safeBackupDatabaseUrl,
     cleanupDatabaseUrl: credential(cleanupDatabaseUrl, "ULC security cleanup database URL"),
     readDatabaseUrl: safeReadDatabaseUrl,
     ingestUsername: sink.ingestUsername,
@@ -314,6 +320,7 @@ async function main(argv = process.argv.slice(2)) {
     cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN,
     productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+    backupDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
     cleanupDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
     readDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
     githubSha: process.env.GITHUB_SHA,
