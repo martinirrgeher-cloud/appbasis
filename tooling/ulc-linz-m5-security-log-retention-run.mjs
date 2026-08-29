@@ -99,7 +99,8 @@ WITH protected_acl AS (
         AND membership.set_option = true
     )::integer AS operational_member_count,
     count(*) FILTER (
-      WHERE member.oid = protected_object_owner.owner_oid
+      WHERE protected_object_owner.owner_oid IS NOT NULL
+        AND member.oid = protected_object_owner.owner_oid
         AND grantor.rolsuper = true
         AND membership.admin_option = true
         AND membership.inherit_option = false
@@ -112,7 +113,8 @@ WITH protected_acl AS (
           AND membership.inherit_option = true
           AND membership.set_option = true
         ) OR (
-          member.oid = protected_object_owner.owner_oid
+          protected_object_owner.owner_oid IS NOT NULL
+          AND member.oid = protected_object_owner.owner_oid
           AND grantor.rolsuper = true
           AND membership.admin_option = true
           AND membership.inherit_option = false
@@ -239,7 +241,7 @@ SELECT
         ) OR
         pg_catalog.has_column_privilege(
           current_user,
-          'public.ulc-linz_security_event_log',
+          'public.ulc_linz_security_event_log',
           attribute.attname,
           'REFERENCES'
         )
