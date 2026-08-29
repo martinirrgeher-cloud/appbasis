@@ -6,9 +6,17 @@ const workflowUrl = new URL(
   "../../../.github/workflows/m5-ulc-private-security-smoke.yml",
   import.meta.url,
 );
+const evidenceTestUrl = new URL(
+  "./private-production-security-smoke.test.ts",
+  import.meta.url,
+);
 
 function workflowText(): string {
   return readFileSync(workflowUrl, "utf8");
+}
+
+function evidenceTestText(): string {
+  return readFileSync(evidenceTestUrl, "utf8");
 }
 
 describe("M5 private production security smoke workflow", () => {
@@ -48,12 +56,15 @@ describe("M5 private production security smoke workflow", () => {
 
   test("correlates the denied event by exact baseline delta and response contract", () => {
     const workflow = workflowText();
+    const evidenceTest = evidenceTestText();
     expect(workflow).toContain("AND http_status = 401");
     expect(workflow).toContain("AND error_code = 'SESSION_INVALID'");
     expect(workflow).toContain("ULC_LINZ_SECURITY_SMOKE_BASELINE_COUNT");
-    expect(workflow).toContain("ULC_LINZ_SECURITY_SMOKE_STARTED_AT");
     expect(workflow).toContain("payload?.error?.code !== 'SESSION_INVALID'");
     expect(workflow).toContain("grep -qi '^set-cookie:'");
+    expect(evidenceTest).toContain("expect(totalCount).toBe(baselineCount + 1n)");
+    expect(evidenceTest).not.toContain("smoke_window_count");
+    expect(evidenceTest).not.toContain("ULC_LINZ_SECURITY_SMOKE_STARTED_AT");
   });
 
   test("does not persist a probe route in the production Worker", () => {
