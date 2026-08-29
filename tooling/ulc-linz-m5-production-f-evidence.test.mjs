@@ -152,6 +152,7 @@ function inputs() {
     cloudflareAccountId: "account-1",
     cloudflareApiToken: "cloudflare-token",
     productionDatabaseUrl: "postgresql://app_owner:pw@origin.example/neondb",
+    backupDatabaseUrl: "postgresql://backup:pw@origin.example/neondb",
     cleanupDatabaseUrl: "postgresql://cleanup:pw@origin.example/neondb",
     readDatabaseUrl: "postgresql://reader:pw@origin.example/neondb",
     githubSha: SHA,
@@ -175,7 +176,10 @@ async function complete({
     fetchImpl,
     githubFetchImpl: async () => { throw new Error("not used by injected reader"); },
     now: NOW,
-    accessCollector: async () => access,
+    accessCollector: async (input) => {
+      assert.equal(input.backupDatabaseUrl, inputs().backupDatabaseUrl);
+      return access;
+    },
     deliveryCollector: async (input, options) => {
       assert.equal(input.productionDatabaseUrl, inputs().readDatabaseUrl);
       assert.equal(input.deployedAt, DEPLOYED_AT);
