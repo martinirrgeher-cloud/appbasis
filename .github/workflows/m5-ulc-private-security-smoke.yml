@@ -1,0 +1,117 @@
+name: M5 ULC Private Security Logging Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RUN-ULC-M5-PRIVATE-SECURITY-SMOKE to execute one denied identity request through the exact private production runtime and verify its security-log sink'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  private-security-smoke:
+    name: Verify private ULC production security logging
+    if: github.ref == 'refs/heads/main'
+    environment: m4-dr
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Require explicit private production smoke approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'ULC private production security smoke must run from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = "RUN-ULC-M5-PRIVATE-SECURITY-SMOKE" || {
+            echo 'Exact ULC private production security-smoke confirmation is required.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify exact repository contracts before production smoke
+        run: pnpm run verify:repo
+
+      - name: Validate and mask protected production inputs
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          for name in \
+            ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET
+          do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+          node --input-type=module <<'NODE'
+          import {
+            parseUlcLinzProductionDatabaseUrl,
+            parseUlcLinzSecurityLogIngestDatabaseUrl,
+          } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          const app = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          const ingest = parseUlcLinzSecurityLogIngestDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL);
+          const read = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL);
+          if (new Set([app.user, ingest.user, read.user]).size !== 3) {
+            throw new Error('ULC private security smoke requires distinct application, ingest and read principals.');
+          }
+          const secret = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET ?? '';
+          if (secret.length < 32 || secret !== secret.trim()) {
+            throw new Error('ULC production Better Auth secret is invalid.');
+          }
+          NODE
+
+      - name: Execute one exact private denied-request security smoke
+        shell: bash
+        env:
+          ULC_LINZ_PRIVATE_SECURITY_SMOKE: RUN-ULC-M5-PRIVATE-SECURITY-SMOKE
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          pnpm --filter @appbasis/app-ulc-linz exec vitest run ./test/private-production-security-smoke.test.ts
+
+      - name: Record sanitized smoke outcome
+        shell: bash
+        run: |
+          printf '%s\n' 'ULC Linz private production security logging smoke passed through the exact generated runtime code without enabling workers.dev, Preview URLs, routes, domains or production release.' >> "$GITHUB_STEP_SUMMARY"
