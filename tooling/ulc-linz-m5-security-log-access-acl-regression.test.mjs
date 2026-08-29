@@ -35,11 +35,13 @@ test("live and restore ACL inventories distinguish operational memberships from 
   assert.match(source, /membership\.set_option AS set_option/);
   assert.match(source, /count\(DISTINCT owner\.rolname\)::integer AS distinct_owner_count/);
   assert.match(source, /const protectedOwner = roleName\(ownerRows\[0\]\.owner_name\)/);
-  assert.match(source, /member === protectedOwner/);
+  assert.match(source, /const protectedParentRoles = new Set\(protectedRoles\)/);
+  assert.match(source, /member === protectedOwner && protectedParentRoles\.has\(parent\)/);
   assert.match(source, /bool\(row\.grantor_superuser\) === true/);
   assert.match(source, /bool\(row\.admin_option\) === true/);
   assert.match(source, /bool\(row\.inherit_option\) === false/);
   assert.match(source, /bool\(row\.set_option\) === false/);
+  assert.match(source, /!seenCreatorBackReferences\.has\(parent\)/);
   assert.match(source, /bool\(row\.admin_option\) === false/);
   assert.match(source, /bool\(row\.inherit_option\) === true/);
   assert.match(source, /bool\(row\.set_option\) === true/);
@@ -71,4 +73,17 @@ test("live and restore ACL inventories distinguish operational memberships from 
     restoreE2e,
     /expect\(membershipRows\)\.toHaveLength\(SECURITY_GROUPS\.length\)/,
   );
+});
+
+test("live ACL evidence binds the dedicated backup principal to its exact read-only grants", async () => {
+  const source = await readFile(SOURCE_URL, "utf8");
+
+  assert.match(source, /backupDatabaseUrl/);
+  assert.match(source, /const backup = parseUlcLinzProductionDatabaseUrl\(backupDatabaseUrl\)/);
+  assert.match(source, /backup\.host !== production\.host \|\| backup\.database !== production\.database/);
+  assert.match(source, /backup: roleName\(backup\.user\)/);
+  assert.match(source, /new Set\(Object\.values\(users\)\)\.size !== 5/);
+  assert.match(source, /const expected = expectedGrantKeys\(users\)/);
+  assert.match(source, /grantKey\("table", "ulc_linz_security_event_log", null, backup, "SELECT"\)/);
+  assert.match(source, /grantKey\("sequence", "ulc_linz_security_event_log_id_seq", null, backup, "SELECT"\)/);
 });
