@@ -54,16 +54,17 @@ export async function bindUlcLinzSecurityLogRoles(
     const before = await readMemberships(database.client, principals);
     validateMemberships(before, principals, true);
 
-    const missing = Object.entries(principals).filter(([key, principal]) =>
+    const needsBinding = Object.entries(principals).filter(([key, principal]) =>
       !before.some(
         (edge) =>
           edge.member === principal.user &&
           edge.parent === PROTECTED_GROUPS[key] &&
-          edge.admin_option === false,
+          edge.admin_option === false &&
+          edge.inherit_option === true,
       ),
     );
 
-    if (missing.length > 0) {
+    if (needsBinding.length > 0) {
       if (typeof database.client.begin !== "function") {
         throw new Error("ULC security-log role-binding transaction API is unavailable.");
       }
@@ -71,9 +72,9 @@ export async function bindUlcLinzSecurityLogRoles(
         if (transaction == null || typeof transaction.unsafe !== "function") {
           throw new Error("ULC security-log role-binding transaction client is invalid.");
         }
-        for (const [key, principal] of missing) {
+        for (const [key, principal] of needsBinding) {
           await transaction.unsafe(
-            `GRANT ${quoteIdentifier(PROTECTED_GROUPS[key])} TO ${quoteIdentifier(principal.user)}`,
+            `GRANT ${quoteIdentifier(PROTECTED_GROUPS[key])} TO ${quoteIdentifier(principal.user)} WITH INHERIT TRUE`,
           );
         }
       });
@@ -86,7 +87,7 @@ export async function bindUlcLinzSecurityLogRoles(
       application: "ulc-linz",
       environment: "production",
       membershipBindingsVerified: true,
-      changedBindings: missing.length,
+      changedBindings: needsBinding.length,
       productionReleaseAuthorized: false,
     });
   } finally {
@@ -147,7 +148,8 @@ function validateRoleInventory(rows, principals) {
 async function readMemberships(client, principals) {
   const users = Object.values(principals).map((entry) => entry.user);
   return client.unsafe(
-    `SELECT parent.rolname AS parent, member.rolname AS member, membership.admin_option
+    `SELECT parent.rolname AS parent, member.rolname AS member,
+            membership.admin_option, membership.inherit_option
      FROM pg_catalog.pg_auth_members AS membership
      JOIN pg_catalog.pg_roles AS parent ON parent.oid = membership.roleid
      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
@@ -157,7 +159,7 @@ async function readMemberships(client, principals) {
   );
 }
 
-function validateMemberships(rows, principals, allowMissing) {
+function validateMemberships(rows, principals, allowRepairable) {
   if (!Array.isArray(rows)) {
     throw new Error("ULC security-log membership inventory is invalid.");
   }
@@ -169,8 +171,14 @@ function validateMemberships(rows, principals, allowMissing) {
     if (edges.some((edge) => edge?.parent !== PROTECTED_GROUPS[key])) {
       throw new Error("ULC security-log login has an unexpected role membership.");
     }
-    if (edges.length > 1 || (!allowMissing && edges.length !== 1)) {
+    if (edges.some((edge) => edge?.inherit_option !== true && (!allowRepairable || edge?.inherit_option !== false))) {
+      throw new Error("ULC security-log membership inheritance is invalid.");
+    }
+    if (edges.length > 1 || (!allowRepairable && edges.length !== 1)) {
       throw new Error("ULC security-log login membership is not exact.");
+    }
+    if (!allowRepairable && edges.some((edge) => edge.inherit_option !== true)) {
+      throw new Error("ULC security-log membership inheritance is not effective.");
     }
   }
 }
