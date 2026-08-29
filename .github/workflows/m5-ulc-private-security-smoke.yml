@@ -1,0 +1,462 @@
+name: M5 ULC Private Security Logging Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RUN-ULC-M5-PRIVATE-SECURITY-SMOKE to execute one denied identity request through Cloudflare remote runtime using the active production Hyperdrive bindings'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  private-security-smoke:
+    name: Verify private ULC production security logging
+    if: github.ref == 'refs/heads/main'
+    environment: m4-dr
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TARGET_WORKER: appbasis-ulc-linz-production
+
+    steps:
+      - name: Require explicit private production smoke approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'ULC private production security smoke must run from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = "RUN-ULC-M5-PRIVATE-SECURITY-SMOKE" || {
+            echo 'Exact ULC private production security-smoke confirmation is required.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify exact repository contracts before production smoke
+        run: pnpm run verify:repo
+
+      - name: Validate and mask protected production inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          for name in \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_API_TOKEN \
+            ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET
+          do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+          node --input-type=module <<'NODE'
+          import {
+            parseUlcLinzProductionDatabaseUrl,
+            parseUlcLinzSecurityLogIngestDatabaseUrl,
+          } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          const urls = [
+            parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL),
+            parseUlcLinzSecurityLogIngestDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL),
+            parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL),
+            parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL),
+          ];
+          if (new Set(urls.map((entry) => entry.user)).size !== 4) {
+            throw new Error('ULC M5-F production security-log principals must be distinct.');
+          }
+          const secret = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET ?? '';
+          if (secret.length < 32 || secret !== secret.trim()) {
+            throw new Error('ULC production Better Auth secret is invalid.');
+          }
+          NODE
+
+      - name: Derive current auth-secret HMAC fingerprint
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          AUTH_SECRET_FINGERPRINT="$(node --input-type=module <<'NODE'
+          import { createHmac } from 'node:crypto';
+          process.stdout.write(createHmac('sha256', process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET).update('appbasis:ulc-linz:production:better-auth-secret:v1').digest('hex'));
+          NODE
+          )"
+          [[ "$AUTH_SECRET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
+          printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
+
+      - name: Resolve exact active private production version
+        id: runtime
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
+          worker="$RUNNER_TEMP/worker.json"
+          versions="$RUNNER_TEMP/versions.json"
+          deployments="$RUNNER_TEMP/deployments.json"
+          scripts="$RUNNER_TEMP/scripts.json"
+          detail="$RUNNER_TEMP/version-detail.json"
+          auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/workers/$TARGET_WORKER" > "$worker"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" > "$versions"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/scripts/$TARGET_WORKER/deployments" > "$deployments"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/scripts" > "$scripts"
+          state="$(node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs post-deploy-state "$worker" "$versions" "$deployments" "$scripts")"
+          version_id="$(jq -r '.currentVersionId' <<<"$state")"
+          test -n "$version_id" && test "$version_id" != null
+          echo "::add-mask::$version_id"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/scripts/$TARGET_WORKER/versions/$version_id" > "$detail"
+          printf 'version_id=%s\n' "$version_id" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve canonical dedicated production Hyperdrives
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          app="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          security="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
+          test -n "$app" && test -n "$security" && test "$app" != "$security" || {
+            echo 'Canonical production Hyperdrive contracts did not resolve distinct IDs.' >&2
+            exit 1
+          }
+          echo "::add-mask::$app"
+          echo "::add-mask::$security"
+          printf 'APP_HYPERDRIVE_ID=%s\nSECURITY_HYPERDRIVE_ID=%s\n' "$app" "$security" >> "$GITHUB_ENV"
+
+      - name: Verify exact active production bindings and runtime config
+        shell: bash
+        env:
+          VERSION_ID: ${{ steps.runtime.outputs.version_id }}
+        run: |
+          set -euo pipefail
+          detail="$RUNNER_TEMP/version-detail.json"
+          HYPERDRIVE_ID="$APP_HYPERDRIVE_ID" \
+          SECURITY_LOG_HYPERDRIVE_ID="$SECURITY_HYPERDRIVE_ID" \
+          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs bindings "$detail"
+          DETAIL_PATH="$detail" node --input-type=module <<'NODE' > "$RUNNER_TEMP/runtime-config.env"
+          import { readFileSync } from 'node:fs';
+          import { renderGeneratedProductionWranglerConfig } from './tooling/generated-production-deploy-config.mjs';
+
+          const response = JSON.parse(readFileSync(process.env.DETAIL_PATH, 'utf8'));
+          const runtime = response?.result?.resources?.script_runtime;
+          const expected = renderGeneratedProductionWranglerConfig({
+            appId: 'ulc-linz',
+            hyperdriveId: process.env.APP_HYPERDRIVE_ID,
+            securityLogHyperdriveId: process.env.SECURITY_HYPERDRIVE_ID,
+            baseURL: 'https://app.ulc-linz.at',
+            entrypoint: './worker/index.ts',
+          });
+          const actualFlags = runtime?.compatibility_flags ?? [];
+          if (
+            runtime?.compatibility_date !== expected.compatibility_date ||
+            !Array.isArray(actualFlags) ||
+            actualFlags.length !== expected.compatibility_flags.length ||
+            actualFlags.some((flag, index) => flag !== expected.compatibility_flags[index])
+          ) {
+            throw new Error('Active production runtime compatibility settings drifted from the canonical production config.');
+          }
+          process.stdout.write(
+            `COMPATIBILITY_DATE=${expected.compatibility_date}\nCOMPATIBILITY_FLAGS_JSON=${JSON.stringify(expected.compatibility_flags)}\n`,
+          );
+          NODE
+          cat "$RUNNER_TEMP/runtime-config.env" >> "$GITHUB_ENV"
+
+      - name: Require existing workers.dev account subdomain
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          state="$RUNNER_TEMP/workers-subdomain-before.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$state"
+          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE' > "$RUNNER_TEMP/workers-subdomain.env"
+          import { readFileSync } from 'node:fs';
+          const response = JSON.parse(readFileSync(process.env.SUBDOMAIN_STATE, 'utf8'));
+          const subdomain = response?.result?.subdomain;
+          if (response?.success !== true || typeof subdomain !== 'string' || !/^[A-Za-z0-9-]{1,63}$/.test(subdomain)) {
+            throw new Error('Remote security smoke refuses to run without an existing workers.dev account subdomain because Wrangler may otherwise register one.');
+          }
+          process.stdout.write(`WORKERS_DEV_SUBDOMAIN_BEFORE=${subdomain}\n`);
+          NODE
+          cat "$RUNNER_TEMP/workers-subdomain.env" >> "$GITHUB_ENV"
+
+      - name: Render isolated remote-smoke configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          HARNESS="$GITHUB_WORKSPACE/apps/ulc-linz/m5-security-smoke.generated.ts"
+          cat > "$HARNESS" <<'TS'
+          import { createPostgresDatabase } from '@appbasis/database/postgres-runtime';
+          import productionWorker from './worker/index';
+
+          type SmokeEnv = {
+            HYPERDRIVE?: { connectionString?: unknown };
+            M5_SMOKE_PROBE_TOKEN?: unknown;
+          };
+
+          export default {
+            async fetch(request: Request, env: SmokeEnv): Promise<Response> {
+              const url = new URL(request.url);
+              if (url.pathname !== '/__appbasis/m5/application-database-probe') {
+                return productionWorker.fetch(request, env);
+              }
+              const expectedToken = env.M5_SMOKE_PROBE_TOKEN;
+              const suppliedToken = request.headers.get('x-appbasis-m5-smoke-token');
+              if (
+                typeof expectedToken !== 'string' ||
+                expectedToken.length < 32 ||
+                suppliedToken !== expectedToken
+              ) {
+                return new Response(null, { status: 404 });
+              }
+              const connectionString = env.HYPERDRIVE?.connectionString;
+              if (typeof connectionString !== 'string' || connectionString.length === 0) {
+                return new Response(null, { status: 503 });
+              }
+              const database = createPostgresDatabase(connectionString);
+              try {
+                const rows = await database.client.unsafe(
+                  'SELECT current_database() AS database_name',
+                );
+                if (
+                  !Array.isArray(rows) ||
+                  rows.length !== 1 ||
+                  rows[0]?.database_name !== 'neondb'
+                ) {
+                  return new Response(null, { status: 503 });
+                }
+                return new Response(null, { status: 204 });
+              } catch {
+                return new Response(null, { status: 503 });
+              } finally {
+                await database.client.end().catch(() => {});
+              }
+            },
+          };
+          TS
+          CONFIG="$RUNNER_TEMP/m5-security-smoke.wrangler.json"
+          CONFIG="$CONFIG" HARNESS="$HARNESS" node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          const flags = JSON.parse(process.env.COMPATIBILITY_FLAGS_JSON);
+          const config = {
+            name: 'appbasis-ulc-linz-m5-security-smoke',
+            main: process.env.HARNESS,
+            compatibility_date: process.env.COMPATIBILITY_DATE,
+            compatibility_flags: flags,
+            vars: { APPBASIS_BASE_URL: 'https://app.ulc-linz.at' },
+            hyperdrive: [
+              { binding: 'HYPERDRIVE', id: process.env.APP_HYPERDRIVE_ID },
+              { binding: 'SECURITY_LOG_HYPERDRIVE', id: process.env.SECURITY_HYPERDRIVE_ID },
+            ],
+            dev: { ip: '127.0.0.1', port: 8787 },
+          };
+          writeFileSync(process.env.CONFIG, `${JSON.stringify(config)}\n`, { mode: 0o600 });
+          NODE
+          printf 'SMOKE_WRANGLER_CONFIG=%s\n' "$CONFIG" >> "$GITHUB_ENV"
+
+      - name: Exercise application database and emit one denied security event
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          smoke_secret="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(32).toString('hex'))")"
+          probe_token="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(32).toString('hex'))")"
+          echo "::add-mask::$smoke_secret"
+          echo "::add-mask::$probe_token"
+          log="$RUNNER_TEMP/m5-security-smoke-wrangler.log"
+          pnpm --dir apps/reference exec wrangler dev --remote \
+            --config "$SMOKE_WRANGLER_CONFIG" \
+            --ip 127.0.0.1 \
+            --port 8787 \
+            --var "BETTER_AUTH_SECRET:$smoke_secret" \
+            --var "M5_SMOKE_PROBE_TOKEN:$probe_token" > "$log" 2>&1 &
+          dev_pid=$!
+          cleanup() { kill "$dev_pid" 2>/dev/null || true; wait "$dev_pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+          ready=false
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error --connect-timeout 1 --max-time 2 http://127.0.0.1:8787/api/health > /dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$dev_pid" 2>/dev/null; then
+              sed -n '1,160p' "$log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$ready" = true || { sed -n '1,160p' "$log" >&2; exit 1; }
+          probe_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 -o /dev/null -w '%{http_code}' \
+            -H "x-appbasis-m5-smoke-token: $probe_token" \
+            http://127.0.0.1:8787/__appbasis/m5/application-database-probe)"
+          test "$probe_status" = "204" || {
+            echo 'Remote application-database Hyperdrive probe did not succeed.' >&2
+            exit 1
+          }
+          baseline_count="$(node --input-type=module <<'NODE'
+          import { createPostgresDatabase } from './packages/database/src/node-runtime.mjs';
+          const database = createPostgresDatabase(process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL);
+          try {
+            const rows = await database.client.unsafe(`
+              SELECT count(*)::bigint AS event_count
+              FROM public.ulc_linz_security_event_log
+              WHERE app_id = 'ulc-linz'
+                AND schema_version = 1
+                AND category = 'security'
+                AND event_type = 'identity.request.denied'
+                AND operation = 'session'
+                AND action = 'session'
+                AND target_type = 'identity-endpoint'
+                AND target_id = 'session'
+                AND http_status = 401
+                AND error_code = 'SESSION_INVALID'
+            `);
+            const value = rows?.[0]?.event_count;
+            const normalized = typeof value === 'bigint' ? value.toString() : String(value ?? '');
+            if (!/^[0-9]+$/.test(normalized)) {
+              throw new Error('ULC security smoke baseline count is invalid.');
+            }
+            process.stdout.write(normalized);
+          } finally {
+            await database.client.end().catch(() => {});
+          }
+          NODE
+          )"
+          [[ "$baseline_count" =~ ^[0-9]+$ ]] || exit 1
+          started_at="$(date -u +'%Y-%m-%dT%H:%M:%S.%3NZ')"
+          headers="$RUNNER_TEMP/m5-security-smoke-headers.txt"
+          body="$RUNNER_TEMP/m5-security-smoke-body.json"
+          status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 -D "$headers" -o "$body" -w '%{http_code}' http://127.0.0.1:8787/api/auth/session)"
+          test "$status" = "401" || { echo 'Remote denied-request smoke did not return the expected 401 denial.' >&2; exit 1; }
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/m5-security-smoke-body.json', 'utf8'));
+          if (payload?.error?.code !== 'SESSION_INVALID') {
+            throw new Error('Remote denied-request smoke did not return SESSION_INVALID.');
+          }
+          NODE
+          if grep -qi '^set-cookie:' "$headers"; then
+            echo 'Remote denied-request smoke unexpectedly established a session.' >&2
+            exit 1
+          fi
+          cleanup
+          trap - EXIT
+          printf 'ULC_LINZ_SECURITY_SMOKE_BASELINE_COUNT=%s\nULC_LINZ_SECURITY_SMOKE_STARTED_AT=%s\n' "$baseline_count" "$started_at" >> "$GITHUB_ENV"
+
+      - name: Verify workers.dev account subdomain remained unchanged
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          state="$RUNNER_TEMP/workers-subdomain-after.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$state"
+          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const response = JSON.parse(readFileSync(process.env.SUBDOMAIN_STATE, 'utf8'));
+          const subdomain = response?.result?.subdomain;
+          if (response?.success !== true || subdomain !== process.env.WORKERS_DEV_SUBDOMAIN_BEFORE) {
+            throw new Error('Remote security smoke changed the workers.dev account subdomain state.');
+          }
+          NODE
+
+      - name: Verify canonical protected audit access boundary
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { collectUlcLinzM5SecurityLogAccessEvidence } from './tooling/ulc-linz-m5-security-log-access-evidence.mjs';
+          import { parseUlcLinzSecurityLogIngestDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+
+          const ingest = parseUlcLinzSecurityLogIngestDatabaseUrl(
+            process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
+          );
+          const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
+            productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+            cleanupDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
+            readDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
+            ingestUsername: ingest.user,
+          });
+          if (
+            evidence?.leastPrivilegeAccessVerified !== true ||
+            evidence?.protectedOperationalAccessVerified !== true ||
+            evidence?.providerMinimumRetentionVerified !== true
+          ) {
+            throw new Error('ULC M5-F canonical security-log access boundary is incomplete.');
+          }
+          NODE
+
+      - name: Verify resulting security event with protected read principal
+        shell: bash
+        env:
+          ULC_LINZ_PRIVATE_SECURITY_SMOKE: RUN-ULC-M5-PRIVATE-SECURITY-SMOKE
+          ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          pnpm --filter @appbasis/app-ulc-linz exec vitest run ./test/private-production-security-smoke.test.ts
+
+      - name: Record sanitized smoke outcome
+        shell: bash
+        run: |
+          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime. Both production Hyperdrives matched their canonical protected contracts and the exact active private production version bindings, the application Hyperdrive completed a token-guarded read-only database probe, and the denied identity request produced exactly one matching 401 SESSION_INVALID security event relative to an immediate protected-read baseline. The canonical runtime compatibility settings and least-privilege access boundary were verified, the pre-existing workers.dev account subdomain remained unchanged, and no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
