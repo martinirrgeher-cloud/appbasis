@@ -71,6 +71,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
@@ -81,6 +82,7 @@ jobs:
             CLOUDFLARE_ACCOUNT_ID \
             CLOUDFLARE_API_TOKEN \
             ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \
             ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \
             ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \
             ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL \
@@ -97,12 +99,16 @@ jobs:
           } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
           const urls = [
             parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL),
+            parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL),
             parseUlcLinzSecurityLogIngestDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL),
             parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL),
             parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL),
           ];
-          if (new Set(urls.map((entry) => entry.user)).size !== 4) {
-            throw new Error('ULC M5-F production security-log principals must be distinct.');
+          if (new Set(urls.map((entry) => entry.user)).size !== 5) {
+            throw new Error('ULC M5-F production and backup principals must be distinct.');
+          }
+          if (urls.some((entry) => entry.host !== urls[0].host || entry.database !== urls[0].database)) {
+            throw new Error('ULC M5-F production and backup principals must select one production database.');
           }
           const secret = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET ?? '';
           if (secret.length < 32 || secret !== secret.trim()) {
@@ -189,7 +195,7 @@ jobs:
           const expected = renderGeneratedProductionWranglerConfig({
             appId: 'ulc-linz',
             hyperdriveId: process.env.APP_HYPERDRIVE_ID,
-            securityLogHyperdriveId: process.env.SECURITY_HYPERDRIVE_ID,
+            securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID,
             baseURL: 'https://app.ulc-linz.at',
             entrypoint: './worker/index.ts',
           });
@@ -407,7 +413,7 @@ jobs:
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$state"
-          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE'
+          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE' > "$RUNNER_TEMP/workers-subdomain.env"
           import { readFileSync } from 'node:fs';
           const response = JSON.parse(readFileSync(process.env.SUBDOMAIN_STATE, 'utf8'));
           const subdomain = response?.result?.subdomain;
@@ -420,6 +426,7 @@ jobs:
         shell: bash
         env:
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
@@ -434,6 +441,7 @@ jobs:
           );
           const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
             productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+            backupDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
             cleanupDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
             readDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
             ingestUsername: ingest.user,
