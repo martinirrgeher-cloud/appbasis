@@ -166,8 +166,12 @@ export function evaluateUlcLinzM5SecurityLogAccessSnapshot(value) {
   }
 
   const acl = exact(root.aclBoundary, ACL_BOUNDARY_FIELDS);
-  if (ACL_BOUNDARY_FIELDS.some((field) => integer(acl[field]) !== 0)) {
-    throw new Error("ULC M5-F ACL delegation boundary is invalid.");
+  const aclCounts = Object.fromEntries(
+    ACL_BOUNDARY_FIELDS.map((field) => [field, integer(acl[field])]),
+  );
+  if (ACL_BOUNDARY_FIELDS.some((field) => aclCounts[field] !== 0)) {
+    const sanitizedCounts = ACL_BOUNDARY_FIELDS.map((field) => `${field}=${aclCounts[field]}`).join(",");
+    throw new Error(`ULC M5-F ACL delegation boundary is invalid (${sanitizedCounts}).`);
   }
 
   const retention = exact(root.retentionContract, [
