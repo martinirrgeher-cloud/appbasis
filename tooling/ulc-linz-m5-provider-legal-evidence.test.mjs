@@ -8,6 +8,7 @@ const OBSERVED_AT = "2026-08-23T22:00:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:15:00.000Z";
 const DATABRICKS_DPA_PATH = "/sites/default/files/legal/dpa-20230721.pdf";
 const REVIEWED_DATABRICKS_DPA_SHA256 = "f7501e724b91d8bdb737b34d7f9807b996fe88a86db782063f3c09ee5ce2aa2c";
+const FIXTURE_DATABRICKS_DPA_SHA256 = "741b212cf54fb20d371f4c4b1abdbd39f1cca842878c8640e8a794cbcddffd93";
 
 const SOURCE_TEXT = Object.freeze({
   "www.cloudflare.com/cloudflare-customer-dpa/":
@@ -170,10 +171,12 @@ test("accepts only the reviewed versioned Databricks DPA PDF shape", async () =>
   );
 });
 
-test("rejects any structurally valid Databricks PDF whose bytes do not match the reviewed digest", async () => {
+test("rejects byte drift and reports the observed Databricks digest for explicit review", async () => {
   await assert.rejects(
     () => collect({}, { sha256Impl: actualSha256 }),
-    /Databricks DPA drifted from the reviewed official baseline/,
+    new RegExp(
+      `Databricks DPA drifted from the reviewed official baseline \\(observed sha256: ${FIXTURE_DATABRICKS_DPA_SHA256}\\)`,
+    ),
   );
 });
 
@@ -206,6 +209,10 @@ test("rejects invalid digest implementations instead of silently weakening verif
   await assert.rejects(
     () => collect({}, { sha256Impl: null }),
     /legal evidence fetch implementation is invalid/,
+  );
+  await assert.rejects(
+    () => collect({}, { sha256Impl: () => "not-a-sha256" }),
+    /Databricks DPA digest result is invalid/,
   );
 });
 
