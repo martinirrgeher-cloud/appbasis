@@ -20,11 +20,12 @@ const roleRows = Object.freeze([
   role("read_login", true),
 ]);
 
-test("bindUlcLinzSecurityLogRoles provisions only missing exact memberships in one reserved transaction", async () => {
+test("bindUlcLinzSecurityLogRoles provisions missing and non-inheriting exact memberships in one reserved transaction", async () => {
   const statements = [];
   let beginCalls = 0;
   let memberships = [
-    { parent: "ulc_linz_security_event_ingest", member: "ingest_login", admin_option: false },
+    membership("ulc_linz_security_event_ingest", "ingest_login", true),
+    membership("ulc_linz_security_event_read", "read_login", false),
   ];
   const result = await bindUlcLinzSecurityLogRoles(
     { ...urls, apply: true },
@@ -47,11 +48,11 @@ test("bindUlcLinzSecurityLogRoles provisions only missing exact memberships in o
               {
                 async unsafe(sql) {
                   statements.push(sql);
-                  const match = /^GRANT "([^"]+)" TO "([^"]+)"$/.exec(sql);
+                  const match = /^GRANT "([^"]+)" TO "([^"]+)" WITH INHERIT TRUE$/.exec(sql);
                   assert.ok(match);
                   memberships = [
-                    ...memberships,
-                    { parent: match[1], member: match[2], admin_option: false },
+                    ...memberships.filter((edge) => edge.member !== match[2]),
+                    membership(match[1], match[2], true),
                   ];
                   return [];
                 },
@@ -72,9 +73,9 @@ test("bindUlcLinzSecurityLogRoles provisions only missing exact memberships in o
 });
 
 test("bindUlcLinzSecurityLogRoles rejects unexpected or delegated memberships", async () => {
-  for (const membership of [
-    { parent: "unexpected_role", member: "ingest_login", admin_option: false },
-    { parent: "ulc_linz_security_event_ingest", member: "ingest_login", admin_option: true },
+  for (const edge of [
+    { ...membership("unexpected_role", "ingest_login", true) },
+    { ...membership("ulc_linz_security_event_ingest", "ingest_login", true), admin_option: true },
   ]) {
     await assert.rejects(
       bindUlcLinzSecurityLogRoles(
@@ -83,7 +84,7 @@ test("bindUlcLinzSecurityLogRoles rejects unexpected or delegated memberships", 
           databaseFactory() {
             return fakeDatabase(async (sql) => {
               if (sql.includes("FROM pg_catalog.pg_roles")) return roleRows;
-              if (sql.includes("FROM pg_catalog.pg_auth_members")) return [membership];
+              if (sql.includes("FROM pg_catalog.pg_auth_members")) return [edge];
               throw new Error(`Unexpected SQL: ${sql}`);
             });
           },
@@ -92,6 +93,26 @@ test("bindUlcLinzSecurityLogRoles rejects unexpected or delegated memberships", 
       /membership|delegation/i,
     );
   }
+});
+
+test("bindUlcLinzSecurityLogRoles rejects malformed membership inheritance evidence", async () => {
+  await assert.rejects(
+    bindUlcLinzSecurityLogRoles(
+      { ...urls, apply: true },
+      {
+        databaseFactory() {
+          return fakeDatabase(async (sql) => {
+            if (sql.includes("FROM pg_catalog.pg_roles")) return roleRows;
+            if (sql.includes("FROM pg_catalog.pg_auth_members")) {
+              return [{ parent: "ulc_linz_security_event_read", member: "read_login", admin_option: false }];
+            }
+            throw new Error(`Unexpected SQL: ${sql}`);
+          });
+        },
+      },
+    ),
+    /inheritance/i,
+  );
 });
 
 test("bindUlcLinzSecurityLogRoles rejects privileged login roles", async () => {
@@ -147,6 +168,10 @@ function role(rolname, rolcanlogin) {
     rolreplication: false,
     rolbypassrls: false,
   });
+}
+
+function membership(parent, member, inherit_option) {
+  return Object.freeze({ parent, member, admin_option: false, inherit_option });
 }
 
 function fakeDatabase(unsafe, begin = null) {
