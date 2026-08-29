@@ -94,7 +94,7 @@ jobs:
             process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
           ].map((value) => parseUlcLinzProductionDatabaseUrl(value));
           if (new Set(urls.map((entry) => entry.user)).size !== 5) {
-            throw new Error('ULC M5-F production and backup principals must be distinct.');
+            throw new Error('ULC M5-F production security-log principals must be distinct, including backup.');
           }
           if (urls.some((entry) => entry.host !== urls[0].host || entry.database !== urls[0].database)) {
             throw new Error('ULC M5-F production and backup principals must select one production database.');
