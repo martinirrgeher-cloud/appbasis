@@ -31,20 +31,21 @@ export async function collectUlcLinzM5SecurityLogAccessEvidence(
 ) {
   if (typeof databaseFactory !== "function") throw new Error("ULC M5-F database factory is invalid.");
   const production = parseUlcLinzProductionDatabaseUrl(productionDatabaseUrl);
-  const backup = parseUlcLinzProductionDatabaseUrl(backupDatabaseUrl);
+  const backup = backupDatabaseUrl === undefined ? null : parseUlcLinzProductionDatabaseUrl(backupDatabaseUrl);
   const cleanup = parseUlcLinzProductionDatabaseUrl(cleanupDatabaseUrl);
   const read = parseUlcLinzProductionDatabaseUrl(readDatabaseUrl);
-  if (backup.host !== production.host || backup.database !== production.database) {
+  if (backup !== null && (backup.host !== production.host || backup.database !== production.database)) {
     throw new Error("ULC M5-F backup credential must select the production database.");
   }
   const users = {
     application: roleName(production.user),
-    backup: roleName(backup.user),
     ingest: roleName(ingestUsername),
     cleanup: roleName(cleanup.user),
     read: roleName(read.user),
   };
-  if (new Set(Object.values(users)).size !== 5) {
+  const backupUsername = backup === null ? null : roleName(backup.user);
+  const principalNames = backupUsername === null ? Object.values(users) : [...Object.values(users), backupUsername];
+  if (new Set(principalNames).size !== principalNames.length) {
     throw new Error("ULC M5-F production database principals must be distinct.");
   }
 
@@ -73,7 +74,7 @@ export async function collectUlcLinzM5SecurityLogAccessEvidence(
       ingestPrivileges: await privileges(admin.client, users.ingest, "ingest"),
       cleanupPrivileges: await privileges(admin.client, users.cleanup, "cleanup"),
       readPrivileges: await privileges(admin.client, users.read, "read"),
-      aclBoundary: await aclBoundary(admin.client, users),
+      aclBoundary: await aclBoundary(admin.client, users, backupUsername),
       retentionContract: await retentionContract(admin.client),
     };
     for (const [key, group] of Object.entries(GROUPS)) {
@@ -309,10 +310,11 @@ async function privileges(client, username, kind) {
   };
 }
 
-async function aclBoundary(client, users) {
+async function aclBoundary(client, users, backupUsername) {
   const protectedRoles = [
     ...Object.values(users).map(roleName),
     ...Object.values(GROUPS).map(roleName),
+    ...(backupUsername === null ? [] : [roleName(backupUsername)]),
   ];
   if (new Set(protectedRoles).size !== protectedRoles.length) {
     throw new Error("ULC M5-F protected ACL role inventory is invalid.");
@@ -418,21 +420,29 @@ async function aclBoundary(client, users) {
   }
   const protectedOwner = roleName(ownerRows[0].owner_name);
 
-  const expected = expectedGrantKeys(users);
+  const expected = expectedGrantKeys(backupUsername);
   const actual = new Set();
-  let unexpectedProtectedGrantCount = 0;
+  const unexpectedGrantRows = [];
   let protectedGrantOptionCount = 0;
   for (const row of grantRows) {
     const key = grantKey(row.object_kind, row.object_name, row.column_name, row.grantee, row.privilege_type);
     if (actual.has(key)) throw new Error("ULC M5-F ACL inventory contains duplicate grants.");
     actual.add(key);
-    if (!expected.has(key)) unexpectedProtectedGrantCount += 1;
+    if (!expected.has(key)) unexpectedGrantRows.push(row);
     if (bool(row.is_grantable)) protectedGrantOptionCount += 1;
   }
   let missingExpectedGrantCount = 0;
   for (const key of expected) {
     if (!actual.has(key)) missingExpectedGrantCount += 1;
   }
+  const implicitBackupGrantKeys = backupUsername === null
+    ? await verifyImplicitBackupReadOnlyGrants(client, unexpectedGrantRows, protectedRoles)
+    : new Set();
+  const unexpectedProtectedGrantCount = unexpectedGrantRows.filter((row) =>
+    !implicitBackupGrantKeys.has(
+      grantKey(row.object_kind, row.object_name, row.column_name, row.grantee, row.privilege_type),
+    )
+  ).length;
 
   const expectedMembers = new Map(Object.entries(GROUPS).map(([key, group]) => [group, users[key]]));
   const protectedParentRoles = new Set(protectedRoles);
@@ -478,8 +488,7 @@ async function aclBoundary(client, users) {
   };
 }
 
-function expectedGrantKeys(users) {
-  const backup = roleName(users?.backup);
+function expectedGrantKeys(backupUsername) {
   const keys = new Set();
   for (const column of ALLOWED_INGEST_COLUMNS) {
     keys.add(grantKey("column", "ulc_linz_security_event_log", column, GROUPS.ingest, "INSERT"));
@@ -488,9 +497,49 @@ function expectedGrantKeys(users) {
   keys.add(grantKey("column", "ulc_linz_security_event_log", "retained_until", GROUPS.cleanup, "SELECT"));
   keys.add(grantKey("function", "appbasis_ulc_linz_purge_expired_security_events", null, GROUPS.cleanup, "EXECUTE"));
   keys.add(grantKey("table", "ulc_linz_security_event_log", null, GROUPS.read, "SELECT"));
-  keys.add(grantKey("table", "ulc_linz_security_event_log", null, backup, "SELECT"));
-  keys.add(grantKey("sequence", "ulc_linz_security_event_log_id_seq", null, backup, "SELECT"));
+  if (backupUsername !== null) {
+    const backup = roleName(backupUsername);
+    keys.add(grantKey("table", "ulc_linz_security_event_log", null, backup, "SELECT"));
+    keys.add(grantKey("sequence", "ulc_linz_security_event_log_id_seq", null, backup, "SELECT"));
+  }
   return keys;
+}
+
+async function verifyImplicitBackupReadOnlyGrants(client, rows, protectedRoles) {
+  if (!Array.isArray(rows) || rows.length !== 2) return new Set();
+  const grantees = rows.map((row) => roleName(row.grantee));
+  if (new Set(grantees).size !== 1 || grantees[0] === "PUBLIC" || protectedRoles.includes(grantees[0])) return new Set();
+  const candidate = grantees[0];
+  const keys = new Set(rows.map((row) =>
+    grantKey(row.object_kind, row.object_name, row.column_name, row.grantee, row.privilege_type)
+  ));
+  const expected = new Set([
+    grantKey("table", "ulc_linz_security_event_log", null, candidate, "SELECT"),
+    grantKey("sequence", "ulc_linz_security_event_log_id_seq", null, candidate, "SELECT"),
+  ]);
+  if (keys.size !== expected.size || [...expected].some((key) => !keys.has(key)) ||
+      rows.some((row) => bool(row.is_grantable))) return new Set();
+
+  const roleRows = await client.unsafe(
+    `SELECT role.rolcanlogin, role.rolsuper, role.rolcreatedb, role.rolcreaterole,
+            role.rolreplication, role.rolbypassrls,
+            count(membership.*)::integer AS membership_count,
+            count(membership.*) FILTER (WHERE membership.admin_option)::integer AS admin_membership_count
+       FROM pg_catalog.pg_roles role
+       LEFT JOIN pg_catalog.pg_auth_members membership ON membership.member = role.oid
+      WHERE role.rolname = $1
+      GROUP BY role.oid, role.rolcanlogin, role.rolsuper, role.rolcreatedb, role.rolcreaterole,
+               role.rolreplication, role.rolbypassrls`,
+    [candidate],
+  );
+  if (!Array.isArray(roleRows) || roleRows.length !== 1) return new Set();
+  const role = roleRows[0];
+  if (
+    role.rolcanlogin !== true || role.rolsuper !== false || role.rolcreatedb !== false ||
+    role.rolcreaterole !== false || role.rolreplication !== false || role.rolbypassrls !== false ||
+    integer(role.membership_count) !== 0 || integer(role.admin_membership_count) !== 0
+  ) return new Set();
+  return expected;
 }
 
 function grantKey(objectKind, objectName, column, grantee, privilege) {
