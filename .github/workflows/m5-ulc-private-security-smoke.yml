@@ -347,7 +347,7 @@ jobs:
             exit 1
           }
           baseline_count="$(node --input-type=module <<'NODE'
-          import { createPostgresDatabase } from '@appbasis/database/postgres-runtime';
+          import { createPostgresDatabase } from './packages/database/src/node-runtime.mjs';
           const database = createPostgresDatabase(process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL);
           try {
             const rows = await database.client.unsafe(`
