@@ -49,7 +49,7 @@ test("bindUlcLinzSecurityLogRoles repairs non-inheriting and SET-disabled exact 
               {
                 async unsafe(sql) {
                   statements.push(sql);
-                  const match = /^GRANT "([^"]+)" TO "([^"]+)" WITH INHERIT TRUE SET TRUE$/.exec(sql);
+                  const match = /^GRANT "([^"]+)" TO "([^"]+)" WITH INHERIT TRUE, SET TRUE$/.exec(sql);
                   assert.ok(match);
                   memberships = [
                     ...memberships.filter((edge) => edge.member !== match[2]),
