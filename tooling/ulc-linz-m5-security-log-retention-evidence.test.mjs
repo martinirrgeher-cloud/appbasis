@@ -31,8 +31,9 @@ const VALID_CLEANUP_ACCESS = Object.freeze({
   cleanup_admin_option: false,
   reverse_membership_count: 0,
   cleanup_group_membership_count: 0,
-  cleanup_group_member_count: 1,
-  cleanup_group_admin_member_count: 0,
+  cleanup_group_operational_member_count: 1,
+  cleanup_group_creator_back_reference_count: 0,
+  cleanup_group_unexpected_member_count: 0,
   cleanup_execute: true,
   direct_select: false,
   direct_delete: false,
@@ -155,9 +156,31 @@ test("retention runner accepts only the exact non-delegable cleanup boundary", a
   assert.match(queries[0], /protected_object_owner_count/);
   assert.match(queries[0], /expected_cleanup_acl_count/);
   assert.match(queries[0], /unexpected_cleanup_acl_count/);
-  assert.match(queries[0], /cleanup_group_member_count/);
+  assert.match(queries[0], /cleanup_group_operational_member_count/);
+  assert.match(queries[0], /creator_back_reference_count/);
+  assert.match(queries[0], /unexpected_member_count/);
+  assert.match(queries[0], /grantor\.rolsuper = true/);
+  assert.match(queries[0], /membership\.admin_option = true/);
+  assert.match(queries[0], /membership\.inherit_option = false/);
+  assert.match(queries[0], /membership\.set_option = false/);
+  assert.match(queries[0], /count\(DISTINCT owner_oid\) = 1/);
   assert.match(queries[0], /reverse_membership_count/);
   assert.match(queries[0], /pg_catalog\.aclexplode/);
+});
+
+test("retention runner accepts the canonical single creator back-reference", async () => {
+  const access = {
+    ...VALID_CLEANUP_ACCESS,
+    cleanup_group_creator_back_reference_count: 1,
+  };
+  const { client } = retentionClient(access);
+  const result = await runUlcLinzM5SecurityLogRetention(
+    client,
+    async () => ({ cutoff: RETENTION_CUTOFF, deletedRows: "0" }),
+  );
+
+  assert.equal(result.cleanupAccessVerified, true);
+  assert.equal(result.cleanupSucceeded, true);
 });
 
 test("retention runner fails closed for every adjacent cleanup privilege-escalation class", async () => {
@@ -179,8 +202,10 @@ test("retention runner fails closed for every adjacent cleanup privilege-escalat
     { ...VALID_CLEANUP_ACCESS, cleanup_admin_option: true },
     { ...VALID_CLEANUP_ACCESS, reverse_membership_count: 1 },
     { ...VALID_CLEANUP_ACCESS, cleanup_group_membership_count: 1 },
-    { ...VALID_CLEANUP_ACCESS, cleanup_group_member_count: 2 },
-    { ...VALID_CLEANUP_ACCESS, cleanup_group_admin_member_count: 1 },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_operational_member_count: 0 },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_operational_member_count: 2 },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_creator_back_reference_count: 2 },
+    { ...VALID_CLEANUP_ACCESS, cleanup_group_unexpected_member_count: 1 },
     { ...VALID_CLEANUP_ACCESS, cleanup_execute: false },
     { ...VALID_CLEANUP_ACCESS, direct_select: true },
     { ...VALID_CLEANUP_ACCESS, direct_delete: true },
