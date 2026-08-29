@@ -195,7 +195,7 @@ jobs:
           const expected = renderGeneratedProductionWranglerConfig({
             appId: 'ulc-linz',
             hyperdriveId: process.env.APP_HYPERDRIVE_ID,
-            securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID,
+            securityLogHyperdriveId: process.env.SECURITY_HYPERDRIVE_ID,
             baseURL: 'https://app.ulc-linz.at',
             entrypoint: './worker/index.ts',
           });
@@ -413,7 +413,7 @@ jobs:
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$state"
-          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE' > "$RUNNER_TEMP/workers-subdomain.env"
+          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const response = JSON.parse(readFileSync(process.env.SUBDOMAIN_STATE, 'utf8'));
           const subdomain = response?.result?.subdomain;
