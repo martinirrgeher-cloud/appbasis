@@ -159,6 +159,28 @@ jobs:
           cat "$RUNNER_TEMP/runtime-bindings.env" >> "$GITHUB_ENV"
           printf 'version_id=%s\n' "$version_id" >> "$GITHUB_OUTPUT"
 
+      - name: Require existing workers.dev account subdomain
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          state="$RUNNER_TEMP/workers-subdomain-before.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$state"
+          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE' > "$RUNNER_TEMP/workers-subdomain.env"
+          import { readFileSync } from 'node:fs';
+          const response = JSON.parse(readFileSync(process.env.SUBDOMAIN_STATE, 'utf8'));
+          const subdomain = response?.result?.subdomain;
+          if (response?.success !== true || typeof subdomain !== 'string' || !/^[A-Za-z0-9-]{1,63}$/.test(subdomain)) {
+            throw new Error('Remote security smoke refuses to run without an existing workers.dev account subdomain because Wrangler may otherwise register one.');
+          }
+          process.stdout.write(`WORKERS_DEV_SUBDOMAIN_BEFORE=${subdomain}\n`);
+          NODE
+          cat "$RUNNER_TEMP/workers-subdomain.env" >> "$GITHUB_ENV"
+
       - name: Render isolated remote-smoke configuration
         shell: bash
         run: |
@@ -227,6 +249,26 @@ jobs:
           trap - EXIT
           printf 'ULC_LINZ_SECURITY_SMOKE_STARTED_AT=%s\n' "$started_at" >> "$GITHUB_ENV"
 
+      - name: Verify workers.dev account subdomain remained unchanged
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          state="$RUNNER_TEMP/workers-subdomain-after.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$state"
+          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const response = JSON.parse(readFileSync(process.env.SUBDOMAIN_STATE, 'utf8'));
+          const subdomain = response?.result?.subdomain;
+          if (response?.success !== true || subdomain !== process.env.WORKERS_DEV_SUBDOMAIN_BEFORE) {
+            throw new Error('Remote security smoke changed the workers.dev account subdomain state.');
+          }
+          NODE
+
       - name: Verify resulting security event with protected read principal
         shell: bash
         env:
@@ -239,4 +281,4 @@ jobs:
       - name: Record sanitized smoke outcome
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime using the Hyperdrive IDs bound to the exact active private production version. No production route, workers.dev hostname, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime using the Hyperdrive IDs bound to the exact active private production version. The pre-existing workers.dev account subdomain remained unchanged; no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
