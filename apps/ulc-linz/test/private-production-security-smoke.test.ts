@@ -65,7 +65,7 @@ const shouldRun = process.env.ULC_LINZ_PRIVATE_SECURITY_SMOKE === RUN_FLAG;
       );
       expect(Array.isArray(rows)).toBe(true);
       expect(rows).toHaveLength(1);
-      expect(BigInt(rows[0]?.event_count ?? 0)).toBeGreaterThan(0n);
+      expect(requiredPositiveBigInt(rows[0]?.event_count)).toBeGreaterThan(0n);
     } finally {
       await database.client.end().catch(() => {});
     }
@@ -82,4 +82,21 @@ function requiredSecret(value: string | undefined, label: string): string {
     throw new Error(`${label} is invalid.`);
   }
   return value;
+}
+
+function requiredPositiveBigInt(value: unknown): bigint {
+  if (
+    (typeof value !== "string" &&
+      typeof value !== "number" &&
+      typeof value !== "bigint") ||
+    (typeof value === "string" && !/^[0-9]+$/.test(value)) ||
+    (typeof value === "number" && (!Number.isSafeInteger(value) || value < 0))
+  ) {
+    throw new Error("ULC security-log event count is invalid.");
+  }
+  const count = BigInt(value);
+  if (count < 0n) {
+    throw new Error("ULC security-log event count is invalid.");
+  }
+  return count;
 }
