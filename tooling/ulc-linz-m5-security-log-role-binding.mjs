@@ -60,7 +60,8 @@ export async function bindUlcLinzSecurityLogRoles(
           edge.member === principal.user &&
           edge.parent === PROTECTED_GROUPS[key] &&
           edge.admin_option === false &&
-          edge.inherit_option === true,
+          edge.inherit_option === true &&
+          edge.set_option === true,
       ),
     );
 
@@ -74,7 +75,7 @@ export async function bindUlcLinzSecurityLogRoles(
         }
         for (const [key, principal] of needsBinding) {
           await transaction.unsafe(
-            `GRANT ${quoteIdentifier(PROTECTED_GROUPS[key])} TO ${quoteIdentifier(principal.user)} WITH INHERIT TRUE`,
+            `GRANT ${quoteIdentifier(PROTECTED_GROUPS[key])} TO ${quoteIdentifier(principal.user)} WITH INHERIT TRUE, SET TRUE`,
           );
         }
       });
@@ -149,7 +150,7 @@ async function readMemberships(client, principals) {
   const users = Object.values(principals).map((entry) => entry.user);
   return client.unsafe(
     `SELECT parent.rolname AS parent, member.rolname AS member,
-            membership.admin_option, membership.inherit_option
+            membership.admin_option, membership.inherit_option, membership.set_option
      FROM pg_catalog.pg_auth_members AS membership
      JOIN pg_catalog.pg_roles AS parent ON parent.oid = membership.roleid
      JOIN pg_catalog.pg_roles AS member ON member.oid = membership.member
@@ -174,11 +175,14 @@ function validateMemberships(rows, principals, allowRepairable) {
     if (edges.some((edge) => edge?.inherit_option !== true && (!allowRepairable || edge?.inherit_option !== false))) {
       throw new Error("ULC security-log membership inheritance is invalid.");
     }
+    if (edges.some((edge) => edge?.set_option !== true && (!allowRepairable || edge?.set_option !== false))) {
+      throw new Error("ULC security-log membership SET authority is invalid.");
+    }
     if (edges.length > 1 || (!allowRepairable && edges.length !== 1)) {
       throw new Error("ULC security-log login membership is not exact.");
     }
-    if (!allowRepairable && edges.some((edge) => edge.inherit_option !== true)) {
-      throw new Error("ULC security-log membership inheritance is not effective.");
+    if (!allowRepairable && edges.some((edge) => edge.inherit_option !== true || edge.set_option !== true)) {
+      throw new Error("ULC security-log membership is not effective.");
     }
   }
 }

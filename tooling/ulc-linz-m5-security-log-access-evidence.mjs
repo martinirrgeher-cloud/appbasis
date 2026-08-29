@@ -376,18 +376,24 @@ async function aclBoundary(client, users) {
             AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
             AND procedure.pronargs = 0
        )
-       SELECT count(*)::integer AS owner_count
+       SELECT count(*)::integer AS object_count,
+              count(DISTINCT owner.rolname)::integer AS distinct_owner_count,
+              min(owner.rolname)::text AS owner_name,
+              count(*) FILTER (WHERE owner.rolname = ANY($1::text[]))::integer AS owner_count
          FROM protected_objects object
-         JOIN pg_catalog.pg_roles owner ON owner.oid = object.owner_oid
-        WHERE owner.rolname = ANY($1::text[])`,
+         JOIN pg_catalog.pg_roles owner ON owner.oid = object.owner_oid`,
       [protectedRoles],
     ),
     client.unsafe(
       `SELECT parent.rolname AS group_role, member.rolname AS member_role,
-              membership.admin_option AS admin_option
+              grantor.rolsuper AS grantor_superuser,
+              membership.admin_option AS admin_option,
+              membership.inherit_option AS inherit_option,
+              membership.set_option AS set_option
          FROM pg_catalog.pg_auth_members membership
          JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
          JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+         JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
         WHERE parent.rolname = ANY($1::text[])
            OR member.rolname = ANY($1::text[])
         ORDER BY parent.rolname, member.rolname`,
@@ -398,6 +404,10 @@ async function aclBoundary(client, users) {
       !Array.isArray(groupMemberRows)) {
     throw new Error("ULC M5-F ACL inventory is invalid.");
   }
+  if (integer(ownerRows[0].object_count) !== 3 || integer(ownerRows[0].distinct_owner_count) !== 1) {
+    throw new Error("ULC M5-F protected object ownership inventory is invalid.");
+  }
+  const protectedOwner = roleName(ownerRows[0].owner_name);
 
   const expected = expectedGrantKeys();
   const actual = new Set();
@@ -417,17 +427,28 @@ async function aclBoundary(client, users) {
 
   const expectedMembers = new Map(Object.entries(GROUPS).map(([key, group]) => [group, users[key]]));
   const seenGroups = new Set();
+  const seenCreatorBackReferences = new Set();
   let unexpectedGroupMemberCount = 0;
   let groupMembershipAdminOptionCount = 0;
   for (const row of groupMemberRows) {
     const group = roleName(row.group_role);
     const member = roleName(row.member_role);
     const expectedMember = expectedMembers.get(group);
-    if (expectedMember === undefined || member !== expectedMember || seenGroups.has(group)) {
-      unexpectedGroupMemberCount += 1;
+    if (member === protectedOwner && expectedMember !== undefined) {
+      const safeCreatorBackReference = bool(row.grantor_superuser) === true &&
+        bool(row.admin_option) === true && bool(row.inherit_option) === false &&
+        bool(row.set_option) === false && !seenCreatorBackReferences.has(group);
+      if (!safeCreatorBackReference) unexpectedGroupMemberCount += 1;
+      seenCreatorBackReferences.add(group);
+      continue;
     }
-    seenGroups.add(group);
+
+    const operationalMembershipValid = expectedMember !== undefined && member === expectedMember &&
+      !seenGroups.has(group) && bool(row.admin_option) === false &&
+      bool(row.inherit_option) === true && bool(row.set_option) === true;
+    if (!operationalMembershipValid) unexpectedGroupMemberCount += 1;
     if (bool(row.admin_option)) groupMembershipAdminOptionCount += 1;
+    seenGroups.add(group);
   }
   for (const group of expectedMembers.keys()) {
     if (!seenGroups.has(group)) unexpectedGroupMemberCount += 1;
