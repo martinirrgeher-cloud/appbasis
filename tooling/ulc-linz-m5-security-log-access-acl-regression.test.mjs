@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
+
 const SOURCE_URL = new URL("./ulc-linz-m5-security-log-access-evidence.mjs", import.meta.url);
 const RESTORE_E2E_URL = new URL(
   "../apps/ulc-linz/test/restored-production.postgres.e2e.test.ts",
@@ -100,4 +102,13 @@ test("live ACL evidence binds the exact dedicated backup principal and grants", 
   assert.match(workflow, /parseUlcLinzProductionDatabaseUrl\(process\.env\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL\)/);
   assert.match(workflow, /new Set\(urls\.map\(\(entry\) => entry\.user\)\)\.size !== 5/);
   assert.match(workflow, /backupDatabaseUrl: process\.env\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL/);
+});
+
+test("all exact ULC production database credentials reject a noncanonical port", () => {
+  assert.throws(
+    () => parseUlcLinzProductionDatabaseUrl(
+      "postgresql://backup:pw@ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech:6432/neondb",
+    ),
+    /exact ULC production Neon endpoint/,
+  );
 });
