@@ -20,12 +20,13 @@ const roleRows = Object.freeze([
   role("read_login", true),
 ]);
 
-test("bindUlcLinzSecurityLogRoles provisions missing and non-inheriting exact memberships in one reserved transaction", async () => {
+test("bindUlcLinzSecurityLogRoles repairs non-inheriting and SET-disabled exact memberships in one reserved transaction", async () => {
   const statements = [];
   let beginCalls = 0;
   let memberships = [
-    membership("ulc_linz_security_event_ingest", "ingest_login", true),
-    membership("ulc_linz_security_event_read", "read_login", false),
+    membership("ulc_linz_security_event_ingest", "ingest_login", true, true),
+    membership("ulc_linz_security_event_cleanup", "cleanup_login", true, false),
+    membership("ulc_linz_security_event_read", "read_login", false, true),
   ];
   const result = await bindUlcLinzSecurityLogRoles(
     { ...urls, apply: true },
@@ -48,11 +49,11 @@ test("bindUlcLinzSecurityLogRoles provisions missing and non-inheriting exact me
               {
                 async unsafe(sql) {
                   statements.push(sql);
-                  const match = /^GRANT "([^"]+)" TO "([^"]+)" WITH INHERIT TRUE$/.exec(sql);
+                  const match = /^GRANT "([^"]+)" TO "([^"]+)" WITH INHERIT TRUE SET TRUE$/.exec(sql);
                   assert.ok(match);
                   memberships = [
                     ...memberships.filter((edge) => edge.member !== match[2]),
-                    membership(match[1], match[2], true),
+                    membership(match[1], match[2], true, true),
                   ];
                   return [];
                 },
@@ -74,8 +75,8 @@ test("bindUlcLinzSecurityLogRoles provisions missing and non-inheriting exact me
 
 test("bindUlcLinzSecurityLogRoles rejects unexpected or delegated memberships", async () => {
   for (const edge of [
-    { ...membership("unexpected_role", "ingest_login", true) },
-    { ...membership("ulc_linz_security_event_ingest", "ingest_login", true), admin_option: true },
+    { ...membership("unexpected_role", "ingest_login", true, true) },
+    { ...membership("ulc_linz_security_event_ingest", "ingest_login", true, true), admin_option: true },
   ]) {
     await assert.rejects(
       bindUlcLinzSecurityLogRoles(
@@ -95,24 +96,27 @@ test("bindUlcLinzSecurityLogRoles rejects unexpected or delegated memberships", 
   }
 });
 
-test("bindUlcLinzSecurityLogRoles rejects malformed membership inheritance evidence", async () => {
-  await assert.rejects(
-    bindUlcLinzSecurityLogRoles(
-      { ...urls, apply: true },
-      {
-        databaseFactory() {
-          return fakeDatabase(async (sql) => {
-            if (sql.includes("FROM pg_catalog.pg_roles")) return roleRows;
-            if (sql.includes("FROM pg_catalog.pg_auth_members")) {
-              return [{ parent: "ulc_linz_security_event_read", member: "read_login", admin_option: false }];
-            }
-            throw new Error(`Unexpected SQL: ${sql}`);
-          });
+test("bindUlcLinzSecurityLogRoles rejects malformed membership option evidence", async () => {
+  for (const edge of [
+    { parent: "ulc_linz_security_event_read", member: "read_login", admin_option: false, set_option: true },
+    { parent: "ulc_linz_security_event_read", member: "read_login", admin_option: false, inherit_option: true },
+  ]) {
+    await assert.rejects(
+      bindUlcLinzSecurityLogRoles(
+        { ...urls, apply: true },
+        {
+          databaseFactory() {
+            return fakeDatabase(async (sql) => {
+              if (sql.includes("FROM pg_catalog.pg_roles")) return roleRows;
+              if (sql.includes("FROM pg_catalog.pg_auth_members")) return [edge];
+              throw new Error(`Unexpected SQL: ${sql}`);
+            });
+          },
         },
-      },
-    ),
-    /inheritance/i,
-  );
+      ),
+      /membership (inheritance|SET authority)/i,
+    );
+  }
 });
 
 test("bindUlcLinzSecurityLogRoles rejects privileged login roles", async () => {
@@ -170,8 +174,8 @@ function role(rolname, rolcanlogin) {
   });
 }
 
-function membership(parent, member, inherit_option) {
-  return Object.freeze({ parent, member, admin_option: false, inherit_option });
+function membership(parent, member, inherit_option, set_option) {
+  return Object.freeze({ parent, member, admin_option: false, inherit_option, set_option });
 }
 
 function fakeDatabase(unsafe, begin = null) {
