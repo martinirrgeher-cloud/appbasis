@@ -61,6 +61,7 @@ jobs:
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
 
           let connection;
+          let phase = 'binding';
           try {
             const observer = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
             const backup = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL);
@@ -71,29 +72,51 @@ jobs:
             ) {
               throw new Error('ULC M5-F diagnostic observer and backup credentials are not canonically bound.');
             }
+
+            phase = 'connect';
             connection = createPostgresDatabase(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+            await connection.client.unsafe('SELECT 1 AS diagnostic_probe');
+
+            phase = 'catalog-query';
             const snapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(connection.client, backup.user);
+
+            phase = 'classification';
             const classification = classifyUlcLinzM5RetentionBackupRoleSnapshot(snapshot);
+
+            phase = 'close';
+            await connection.client.end();
+            connection = undefined;
+
+            phase = 'complete';
             process.stdout.write(`${JSON.stringify({
               schemaVersion: 1,
               application: 'ulc-linz',
               environment: 'production',
               evidenceSource: 'read-only-backup-role-diagnostic',
+              phase,
               classification,
               productionMutationPerformed: false,
               productionReleaseAuthorized: false,
             })}\n`);
           } catch {
-            console.error('ULC Linz M5-F backup role diagnostic failed.');
-            process.exitCode = 1;
-          } finally {
             if (connection?.client !== undefined) {
               try {
                 await connection.client.end();
               } catch {
-                process.exitCode = 1;
+                // Preserve the original bounded failure phase without logging database details.
               }
             }
+            process.stdout.write(`${JSON.stringify({
+              schemaVersion: 1,
+              application: 'ulc-linz',
+              environment: 'production',
+              evidenceSource: 'read-only-backup-role-diagnostic',
+              failurePhase: phase,
+              productionMutationPerformed: false,
+              productionReleaseAuthorized: false,
+            })}\n`);
+            console.error('ULC Linz M5-F backup role diagnostic failed.');
+            process.exitCode = 1;
           }
           NODE
 
