@@ -226,26 +226,14 @@ function bundle() {
   };
 }
 
-test("sanitized production bundle remains separate from the canonical M5 12-of-12 gate", async () => {
+test("validated provider evidence can close canonical M5 without authorizing production release", async () => {
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle(), { now: NOW });
-  assert.equal(result.securityPrivacyReady, false);
-  assert.equal(result.verifiedCount, 8);
+  assert.equal(result.securityPrivacyReady, true);
+  assert.equal(result.verifiedCount, 12);
   assert.equal(result.requiredCount, 12);
   assert.equal(result.productionReleaseAuthorized, false);
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
   for (const id of ["dataRegion", "dpa", "encryption", "subprocessors"]) {
-    assert.equal(result.criteria.find(({ id: criterionId }) => criterionId === id)?.status, "open");
-  }
-  for (const id of [
-    "rolesAndPermissions",
-    "deletionConcept",
-    "retention",
-    "dataExport",
-    "auditSecurityLogging",
-    "highPrivacyProfile",
-    "secretsOutsideAppManifests",
-    "privilegedControlPlaneIsolation",
-  ]) {
     assert.equal(result.criteria.find(({ id: criterionId }) => criterionId === id)?.status, "verified");
   }
   const serialized = JSON.stringify(result);
@@ -254,13 +242,24 @@ test("sanitized production bundle remains separate from the canonical M5 12-of-1
   }
 });
 
-test("missing operational owner does not rewrite canonical repository M5 evidence", async () => {
+test("missing operational owner does not rewrite canonical M5 evidence", async () => {
   const value = bundle();
   delete value.ownerInputs.auditSecurityLoggingEvidenceInput;
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), value, { now: NOW });
+  assert.equal(result.securityPrivacyReady, true);
+  assert.equal(result.verifiedCount, 12);
+  assert.equal(result.criteria.find(({ id }) => id === "auditSecurityLogging")?.status, "verified");
+});
+
+test("missing validated provider evidence keeps exactly the four provider criteria open", async () => {
+  const value = bundle();
+  delete value.ownerInputs.providerBoundEvidenceInput;
+  const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), value, { now: NOW });
   assert.equal(result.securityPrivacyReady, false);
   assert.equal(result.verifiedCount, 8);
-  assert.equal(result.criteria.find(({ id }) => id === "auditSecurityLogging")?.status, "verified");
+  for (const id of ["dataRegion", "dpa", "encryption", "subprocessors"]) {
+    assert.equal(result.criteria.find(({ id: criterionId }) => criterionId === id)?.status, "open");
+  }
 });
 
 test("runner rejects credential-shaped or accessor evidence before owner evaluation", async () => {
