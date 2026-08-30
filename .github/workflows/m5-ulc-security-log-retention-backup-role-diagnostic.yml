@@ -60,7 +60,15 @@ jobs:
           } from './tooling/ulc-linz-m5-security-log-retention-backup-role-guard.mjs';
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
 
+          const observer = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
           const backup = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL);
+          if (
+            observer.host !== backup.host ||
+            observer.database !== backup.database ||
+            observer.user === backup.user
+          ) {
+            throw new Error('ULC M5-F diagnostic observer and backup credentials are not canonically bound.');
+          }
           const connection = createPostgresDatabase(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
           try {
             const snapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(connection.client, backup.user);
