@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
-const DIAGNOSTIC_SQL = `
+const DIAGNOSTIC_METADATA_SQL = `
 WITH protected_objects AS (
   SELECT
     to_regclass('public.ulc_linz_security_event_log') AS event_log,
@@ -11,9 +11,9 @@ WITH protected_objects AS (
     to_regprocedure('public.appbasis_ulc_linz_purge_expired_security_events()') AS purge_function
 ), metadata AS (
   SELECT
-    protected_objects.event_log IS NOT NULL AS event_log_exists,
-    protected_objects.event_sequence IS NOT NULL AS event_sequence_exists,
-    protected_objects.purge_function IS NOT NULL AS purge_function_exists,
+    protected_objects.event_log,
+    protected_objects.event_sequence,
+    protected_objects.purge_function,
     procedure.prosecdef AS purge_security_definer,
     procedure.proconfig = ARRAY['search_path=pg_catalog']::text[] AS purge_search_path_pinned,
     table_class.relowner = sequence_class.relowner
@@ -25,37 +25,38 @@ WITH protected_objects AS (
     ON sequence_class.oid = protected_objects.event_sequence
   LEFT JOIN pg_catalog.pg_proc procedure
     ON procedure.oid = protected_objects.purge_function
+), retention_attribute AS (
+  SELECT attribute.attnum
+  FROM metadata
+  JOIN pg_catalog.pg_attribute attribute
+    ON attribute.attrelid = metadata.event_log
+   AND attribute.attname = 'retained_until'
+   AND NOT attribute.attisdropped
 )
 SELECT
-  metadata.event_log_exists,
-  metadata.event_sequence_exists,
-  metadata.purge_function_exists,
+  metadata.event_log IS NOT NULL AS event_log_exists,
+  metadata.event_sequence IS NOT NULL AS event_sequence_exists,
+  metadata.purge_function IS NOT NULL AS purge_function_exists,
+  retention_attribute.attnum IS NOT NULL AS retention_column_exists,
   metadata.purge_security_definer,
   metadata.purge_search_path_pinned,
   metadata.protected_owner_aligned,
-  has_function_privilege(
-    current_user,
-    'public.appbasis_ulc_linz_purge_expired_security_events()',
-    'EXECUTE'
-  ) AS cleanup_execute,
-  has_column_privilege(
-    current_user,
-    'public.ulc_linz_security_event_log',
-    'retained_until',
-    'SELECT'
-  ) AS retention_read,
-  has_table_privilege(
-    current_user,
-    'public.ulc_linz_security_event_log',
-    'DELETE'
-  ) AS direct_delete,
+  COALESCE(has_function_privilege(current_user, metadata.purge_function, 'EXECUTE'), false) AS cleanup_execute,
+  COALESCE(has_column_privilege(current_user, metadata.event_log, retention_attribute.attnum, 'SELECT'), false) AS retention_read,
+  COALESCE(has_table_privilege(current_user, metadata.event_log, 'DELETE'), false) AS direct_delete,
+  statement_timestamp()::text AS observed_at
+FROM metadata
+LEFT JOIN retention_attribute ON true
+`;
+
+const DIAGNOSTIC_EXPIRED_ROWS_SQL = `
+SELECT
   EXISTS (
     SELECT 1
     FROM public.ulc_linz_security_event_log
     WHERE retained_until < statement_timestamp()
   ) AS expired_rows_present,
   statement_timestamp()::text AS observed_at
-FROM metadata
 `;
 
 export function evaluateUlcLinzM5RetentionDiagnostic(row) {
@@ -67,6 +68,7 @@ export function evaluateUlcLinzM5RetentionDiagnostic(row) {
     "event_log_exists",
     "event_sequence_exists",
     "purge_function_exists",
+    "retention_column_exists",
     "purge_security_definer",
     "purge_search_path_pinned",
     "protected_owner_aligned",
@@ -89,20 +91,43 @@ export async function collectUlcLinzM5RetentionDiagnostic(client) {
   if (client === null || typeof client !== "object" || typeof client.unsafe !== "function") {
     throw new Error("ULC M5-F retention diagnostic client is invalid.");
   }
-  const rows = await client.unsafe(DIAGNOSTIC_SQL);
-  if (!Array.isArray(rows) || rows.length !== 1) {
+  const metadataRows = await client.unsafe(DIAGNOSTIC_METADATA_SQL);
+  if (!Array.isArray(metadataRows) || metadataRows.length !== 1) {
     throw new Error("ULC M5-F retention diagnostic observation is invalid.");
   }
-  const evaluated = evaluateUlcLinzM5RetentionDiagnostic(rows[0]);
+
+  const metadataEvaluation = evaluateUlcLinzM5RetentionDiagnostic({
+    ...metadataRows[0],
+    expired_rows_present: false,
+  });
+  if (metadataEvaluation.classification === "invalid-observation") {
+    throw new Error("ULC M5-F retention diagnostic observation is invalid.");
+  }
+  if (metadataEvaluation.classification === "contract-drift") {
+    return diagnosticResult("contract-drift");
+  }
+
+  const expiredRows = await client.unsafe(DIAGNOSTIC_EXPIRED_ROWS_SQL);
+  if (!Array.isArray(expiredRows) || expiredRows.length !== 1) {
+    throw new Error("ULC M5-F retention diagnostic observation is invalid.");
+  }
+  const evaluated = evaluateUlcLinzM5RetentionDiagnostic({
+    ...metadataRows[0],
+    ...expiredRows[0],
+  });
   if (evaluated.classification === "invalid-observation") {
     throw new Error("ULC M5-F retention diagnostic observation is invalid.");
   }
+  return diagnosticResult(evaluated.classification);
+}
+
+function diagnosticResult(classification) {
   return Object.freeze({
     schemaVersion: 1,
     application: "ulc-linz",
     environment: "production",
     evidenceSource: "read-only-retention-diagnostic",
-    classification: evaluated.classification,
+    classification,
     productionMutationPerformed: false,
     productionReleaseAuthorized: false,
   });
