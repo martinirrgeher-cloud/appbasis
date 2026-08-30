@@ -63,42 +63,58 @@ FROM pg_catalog.pg_roles backup
 WHERE backup.rolname = $1
 `;
 
-export async function verifyUlcLinzM5RetentionBackupRole(client, backupUsername) {
+export async function collectUlcLinzM5RetentionBackupRoleSnapshot(client, backupUsername) {
   if (client === null || typeof client !== "object" || typeof client.unsafe !== "function") {
     throw new Error("ULC M5-F retention SQL client is invalid.");
   }
   if (typeof backupUsername !== "string" || !/^[a-z_][a-z0-9_]{0,62}$/.test(backupUsername)) {
     throw new Error("ULC M5-F backup role name is invalid.");
   }
-
   const rows = await client.unsafe(BACKUP_ROLE_SQL, [backupUsername]);
   if (!Array.isArray(rows) || rows.length !== 1) {
     throw new Error("ULC M5-F backup role evidence is invalid.");
   }
   const row = rows[0];
-  const membershipCount = Number(row?.membership_count);
-  const reverseMembershipCount = Number(row?.reverse_membership_count);
-  const safeCreatorBackReferenceCount = Number(row?.safe_creator_back_reference_count);
-  const unsafeReverseMembershipCount = Number(row?.unsafe_reverse_membership_count);
-  const databaseRecordCount = Number(row?.database_record_count);
+  return Object.freeze({
+    login: row?.login,
+    superuser: row?.superuser,
+    createDb: row?.create_db,
+    createRole: row?.create_role,
+    replication: row?.replication,
+    bypassRls: row?.bypass_rls,
+    membershipCount: Number(row?.membership_count),
+    reverseMembershipCount: Number(row?.reverse_membership_count),
+    safeCreatorBackReferenceCount: Number(row?.safe_creator_back_reference_count),
+    unsafeReverseMembershipCount: Number(row?.unsafe_reverse_membership_count),
+    databaseRecordCount: Number(row?.database_record_count),
+  });
+}
+
+export function classifyUlcLinzM5RetentionBackupRoleSnapshot(snapshot) {
+  if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot)) return "invalid-observation";
   if (
-    row === null || typeof row !== "object" ||
-    row.login !== true ||
-    row.superuser !== false ||
-    row.create_db !== false ||
-    row.create_role !== false ||
-    row.replication !== false ||
-    row.bypass_rls !== false ||
-    !Number.isInteger(membershipCount) || membershipCount !== 0 ||
-    !Number.isInteger(reverseMembershipCount) || reverseMembershipCount < 0 ||
-    !Number.isInteger(safeCreatorBackReferenceCount) || safeCreatorBackReferenceCount < 0 || safeCreatorBackReferenceCount > 1 ||
-    !Number.isInteger(unsafeReverseMembershipCount) || unsafeReverseMembershipCount !== 0 ||
-    databaseRecordCount !== 1 ||
-    reverseMembershipCount !== safeCreatorBackReferenceCount
-  ) {
+    snapshot.login !== true || snapshot.superuser !== false || snapshot.createDb !== false ||
+    snapshot.createRole !== false || snapshot.replication !== false || snapshot.bypassRls !== false
+  ) return "role-attributes";
+  if (!Number.isInteger(snapshot.membershipCount) || snapshot.membershipCount !== 0) return "incoming-membership";
+  if (!Number.isInteger(snapshot.databaseRecordCount) || snapshot.databaseRecordCount !== 1) return "database-record";
+  if (!Number.isInteger(snapshot.reverseMembershipCount) || snapshot.reverseMembershipCount < 0) return "reverse-membership-count";
+  if (
+    !Number.isInteger(snapshot.safeCreatorBackReferenceCount) ||
+    snapshot.safeCreatorBackReferenceCount < 0 || snapshot.safeCreatorBackReferenceCount > 1
+  ) return "safe-creator-back-reference";
+  if (!Number.isInteger(snapshot.unsafeReverseMembershipCount) || snapshot.unsafeReverseMembershipCount !== 0) {
+    return "unsafe-reverse-membership";
+  }
+  if (snapshot.reverseMembershipCount !== snapshot.safeCreatorBackReferenceCount) return "reverse-membership-mismatch";
+  return "ok";
+}
+
+export async function verifyUlcLinzM5RetentionBackupRole(client, backupUsername) {
+  const snapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(client, backupUsername);
+  if (classifyUlcLinzM5RetentionBackupRoleSnapshot(snapshot) !== "ok") {
     throw new Error("ULC M5-F backup role is not least privilege at retention delete time.");
   }
-
   return true;
 }
 
@@ -120,7 +136,21 @@ if (isMainModule()) {
 
     const { createPostgresDatabase } = await import("../packages/database/src/client.ts");
     connection = createPostgresDatabase(cleanupDatabaseUrl);
-    await verifyUlcLinzM5RetentionBackupRole(connection.client, backup.user);
+    const snapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(connection.client, backup.user);
+    const classification = classifyUlcLinzM5RetentionBackupRoleSnapshot(snapshot);
+    if (process.argv.includes("--diagnostic")) {
+      process.stdout.write(`${JSON.stringify({
+        schemaVersion: 1,
+        application: "ulc-linz",
+        environment: "production",
+        evidenceSource: "read-only-backup-role-diagnostic",
+        classification,
+        productionMutationPerformed: false,
+        productionReleaseAuthorized: false,
+      })}\n`);
+    } else if (classification !== "ok") {
+      throw new Error("ULC M5-F backup role is not least privilege at retention delete time.");
+    }
   } catch {
     console.error("ULC Linz M5-F backup role delete-time guard failed.");
     process.exitCode = 1;
