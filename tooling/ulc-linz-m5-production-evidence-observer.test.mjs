@@ -124,7 +124,7 @@ function collect(options = {}, inputOverrides = {}) {
   );
 }
 
-test("observer derives authoritative provider recovery/control-plane evidence and reports lifecycle executors truthfully unbound", async () => {
+test("observer keeps operational evidence separate from the canonical simplified M5 gate", async () => {
   const bundle = await collect();
   assert.deepEqual(Object.keys(bundle.ownerInputs).sort(), [
     "backupRestoreEvidenceInput",
@@ -157,22 +157,21 @@ test("observer derives authoritative provider recovery/control-plane evidence an
 
   assert.equal(result.securityPrivacyReady, false);
   assert.equal(result.productionReleaseAuthorized, false);
+  assert.equal(result.verifiedCount, 8);
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
-  assert.equal(
-    result.criteria.find((criterion) => criterion.id === "privilegedControlPlaneIsolation")?.status,
-    "verified",
-  );
   for (const id of [
+    "rolesAndPermissions",
     "deletionConcept",
     "retention",
-    "auditSecurityLogging",
-    "dataRegion",
-    "dpa",
-    "encryption",
-    "subprocessors",
     "dataExport",
+    "auditSecurityLogging",
     "highPrivacyProfile",
+    "secretsOutsideAppManifests",
+    "privilegedControlPlaneIsolation",
   ]) {
+    assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "verified");
+  }
+  for (const id of ["dataRegion", "dpa", "encryption", "subprocessors"]) {
     assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "open");
   }
 });
