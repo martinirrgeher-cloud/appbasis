@@ -4,24 +4,21 @@ import { pathToFileURL } from "node:url";
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
 const BACKUP_ROLE_SQL = `
-WITH protected_owner AS (
-  SELECT owner_oid
-  FROM (
-    SELECT relation.relowner AS owner_oid
-    FROM pg_catalog.pg_class relation
-    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-    WHERE namespace.nspname = 'public'
-      AND relation.relname IN ('ulc_linz_security_event_log', 'ulc_linz_security_event_log_id_seq')
-    UNION ALL
-    SELECT procedure.proowner AS owner_oid
-    FROM pg_catalog.pg_proc procedure
-    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
-    WHERE namespace.nspname = 'public'
-      AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
-      AND pg_catalog.pg_get_function_identity_arguments(procedure.oid) = ''
-  ) protected_objects
-  GROUP BY owner_oid
-  HAVING count(*) = 3
+WITH current_database_record AS (
+  SELECT datdba
+  FROM pg_catalog.pg_database
+  WHERE datname = current_database()
+), reverse_memberships AS (
+  SELECT
+    membership.member,
+    membership.admin_option,
+    membership.inherit_option,
+    membership.set_option,
+    grantor.rolsuper AS grantor_superuser
+  FROM pg_catalog.pg_auth_members membership
+  JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+  JOIN pg_catalog.pg_roles backup_role ON backup_role.oid = membership.roleid
+  WHERE backup_role.rolname = $1
 )
 SELECT
   backup.rolcanlogin AS login,
@@ -37,22 +34,31 @@ SELECT
   ) AS membership_count,
   (
     SELECT count(*)::integer
-    FROM pg_catalog.pg_auth_members membership
-    WHERE membership.roleid = backup.oid
+    FROM reverse_memberships
   ) AS reverse_membership_count,
   (
     SELECT count(*)::integer
-    FROM pg_catalog.pg_auth_members membership
-    JOIN pg_catalog.pg_roles member ON member.oid = membership.member
-    JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
-    JOIN protected_owner owner ON owner.owner_oid = member.oid
-    WHERE membership.roleid = backup.oid
-      AND grantor.rolsuper = true
+    FROM reverse_memberships membership
+    CROSS JOIN current_database_record database_record
+    WHERE membership.member = database_record.datdba
+      AND membership.grantor_superuser = true
       AND membership.admin_option = true
       AND membership.inherit_option = false
       AND membership.set_option = false
   ) AS safe_creator_back_reference_count,
-  (SELECT count(*)::integer FROM protected_owner) AS protected_owner_count
+  (
+    SELECT count(*)::integer
+    FROM reverse_memberships membership
+    CROSS JOIN current_database_record database_record
+    WHERE NOT (
+      membership.member = database_record.datdba
+      AND membership.grantor_superuser = true
+      AND membership.admin_option = true
+      AND membership.inherit_option = false
+      AND membership.set_option = false
+    )
+  ) AS unsafe_reverse_membership_count,
+  (SELECT count(*)::integer FROM current_database_record) AS database_record_count
 FROM pg_catalog.pg_roles backup
 WHERE backup.rolname = $1
 `;
@@ -73,7 +79,8 @@ export async function verifyUlcLinzM5RetentionBackupRole(client, backupUsername)
   const membershipCount = Number(row?.membership_count);
   const reverseMembershipCount = Number(row?.reverse_membership_count);
   const safeCreatorBackReferenceCount = Number(row?.safe_creator_back_reference_count);
-  const protectedOwnerCount = Number(row?.protected_owner_count);
+  const unsafeReverseMembershipCount = Number(row?.unsafe_reverse_membership_count);
+  const databaseRecordCount = Number(row?.database_record_count);
   if (
     row === null || typeof row !== "object" ||
     row.login !== true ||
@@ -85,7 +92,8 @@ export async function verifyUlcLinzM5RetentionBackupRole(client, backupUsername)
     !Number.isInteger(membershipCount) || membershipCount !== 0 ||
     !Number.isInteger(reverseMembershipCount) || reverseMembershipCount < 0 ||
     !Number.isInteger(safeCreatorBackReferenceCount) || safeCreatorBackReferenceCount < 0 || safeCreatorBackReferenceCount > 1 ||
-    protectedOwnerCount !== 1 ||
+    !Number.isInteger(unsafeReverseMembershipCount) || unsafeReverseMembershipCount !== 0 ||
+    databaseRecordCount !== 1 ||
     reverseMembershipCount !== safeCreatorBackReferenceCount
   ) {
     throw new Error("ULC M5-F backup role is not least privilege at retention delete time.");
