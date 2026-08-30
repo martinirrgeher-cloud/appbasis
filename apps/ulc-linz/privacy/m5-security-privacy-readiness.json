@@ -5,7 +5,7 @@
   "criteria": [
     {
       "id": "dataRegion",
-      "status": "verified",
+      "status": "open",
       "evidence": [
         "apps/ulc-linz/privacy/m5-provider-compliance-inventory.json",
         "tooling/ulc-linz-m5-provider-evidence.mjs"
@@ -13,15 +13,15 @@
     },
     {
       "id": "dpa",
-      "status": "verified",
+      "status": "open",
       "evidence": [
         "apps/ulc-linz/privacy/m5-provider-compliance-inventory.json",
-        "tooling/ulc-linz-m5-provider-evidence.mjs"
+        "tooling/ulc-linz-m5-provider-account-dpa-evidence.mjs"
       ]
     },
     {
       "id": "encryption",
-      "status": "verified",
+      "status": "open",
       "evidence": [
         "apps/ulc-linz/privacy/m5-provider-compliance-inventory.json",
         "tooling/ulc-linz-m5-provider-evidence.mjs"
@@ -74,10 +74,10 @@
     },
     {
       "id": "subprocessors",
-      "status": "verified",
+      "status": "open",
       "evidence": [
         "apps/ulc-linz/privacy/m5-provider-compliance-inventory.json",
-        "tooling/ulc-linz-m5-provider-evidence.mjs"
+        "tooling/ulc-linz-m5-provider-legal-evidence.mjs"
       ]
     },
     {
