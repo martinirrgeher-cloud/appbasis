@@ -119,11 +119,19 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
+          import { createPostgresDatabase } from './packages/database/src/node-runtime.mjs';
           import { collectUlcLinzM5SecurityLogAccessEvidence } from './tooling/ulc-linz-m5-security-log-access-evidence.mjs';
+          import {
+            classifyUlcLinzM5RetentionBackupRoleSnapshot,
+            collectUlcLinzM5RetentionBackupRoleSnapshot,
+          } from './tooling/ulc-linz-m5-security-log-retention-backup-role-guard.mjs';
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
 
           const ingest = parseUlcLinzProductionDatabaseUrl(
             process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
+          );
+          const backup = parseUlcLinzProductionDatabaseUrl(
+            process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
           );
           const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
             productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
@@ -139,6 +147,16 @@ jobs:
           ) {
             throw new Error('ULC M5-F canonical security-log access boundary is incomplete.');
           }
+
+          const observer = createPostgresDatabase(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          try {
+            const snapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(observer.client, backup.user);
+            if (classifyUlcLinzM5RetentionBackupRoleSnapshot(snapshot) !== 'ok') {
+              throw new Error('ULC M5-F backup role is not least privilege at retention delete time.');
+            }
+          } finally {
+            await observer.client.end();
+          }
           NODE
 
       - name: Run exact server-owned twelve-calendar-month cleanup
@@ -151,7 +169,6 @@ jobs:
           set -euo pipefail
           umask 077
           RESULT="$RUNNER_TEMP/ulc-m5-f-retention-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.json"
-          node ./tooling/ulc-linz-m5-security-log-retention-backup-role-guard.mjs
           node ./tooling/ulc-linz-m5-security-log-retention-run.mjs > "$RESULT"
           RESULT="$RESULT" node --input-type=module <<'NODE'
           import { readFile } from 'node:fs/promises';
@@ -177,4 +194,4 @@ jobs:
       - name: Record sanitized retention outcome
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz M5-F security-log retention cleanup completed after the canonical protected audit access boundary was verified and the server-owned exact 12-calendar-month contract executed. This does not authorize production release.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz M5-F security-log retention cleanup completed after the canonical protected audit access boundary and backup-role observer checks were verified and the server-owned exact 12-calendar-month contract executed. This does not authorize production release.' >> "$GITHUB_STEP_SUMMARY"
