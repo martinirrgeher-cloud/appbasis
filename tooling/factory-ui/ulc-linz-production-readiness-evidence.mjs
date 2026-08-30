@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import { deriveUlcLinzM5FAuditSecurityLoggingRepositoryEvidence } from "../ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { deriveUlcLinzM5HControlPlaneRepositoryEvidence } from "../ulc-linz-m5-control-plane-evidence.mjs";
-import { deriveUlcLinzM5ProviderProductionEvidence } from "../ulc-linz-m5-provider-evidence.mjs";
+import { deriveUlcLinzM5GBoundProductionEvidence } from "../ulc-linz-m5-provider-bound-evidence.mjs";
 import { bindUlcLinzM5TargetPolicy } from "../ulc-linz-m5-target-policy.mjs";
 import { HIGH_PRIVACY_PROFILE, isCanonicalHighPrivacyProfile } from "./high-privacy-profile.mjs";
 import { ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY } from "./ulc-linz-lifecycle-evidence.mjs";
@@ -231,29 +231,18 @@ async function ownerEvidenceFromSnapshot(
 }
 
 function deriveProviderOwnerEvidence(ownerInputs, now) {
-  const sourceEvidence = providerComplianceEvidenceFromInputs(ownerInputs);
-  if (sourceEvidence === undefined) return EMPTY_EVIDENCE;
+  if (!isPlainObject(ownerInputs) || Object.getOwnPropertySymbols(ownerInputs).length !== 0) {
+    return EMPTY_EVIDENCE;
+  }
+  const bound = safeDataProperty(ownerInputs, "providerBoundEvidenceInput");
+  if (!bound.found) return EMPTY_EVIDENCE;
   try {
-    return deriveUlcLinzM5ProviderProductionEvidence(sourceEvidence, {
+    return deriveUlcLinzM5GBoundProductionEvidence(bound.value, {
       now: canonicalNow(now),
     });
   } catch {
     return EMPTY_EVIDENCE;
   }
-}
-
-function providerComplianceEvidenceFromInputs(ownerInputs) {
-  if (!isPlainObject(ownerInputs) || Object.getOwnPropertySymbols(ownerInputs).length !== 0) {
-    return undefined;
-  }
-
-  const direct = safeDataProperty(ownerInputs, "providerComplianceEvidence");
-  if (direct.found) return direct.value;
-
-  const bound = safeDataProperty(ownerInputs, "providerBoundEvidenceInput");
-  if (!bound.found || !isPlainObject(bound.value)) return undefined;
-  const nested = safeDataProperty(bound.value, "complianceEvidence");
-  return nested.found ? nested.value : undefined;
 }
 
 function safeDataProperty(value, key) {
