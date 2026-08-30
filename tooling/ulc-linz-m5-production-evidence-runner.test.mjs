@@ -226,26 +226,41 @@ function bundle() {
   };
 }
 
-test("sanitized production bundle can close all twelve M5 criteria only with bound lifecycle executors and without authorizing release", async () => {
+test("sanitized production bundle remains separate from the canonical M5 12-of-12 gate", async () => {
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle(), { now: NOW });
-  assert.equal(result.securityPrivacyReady, true);
-  assert.equal(result.verifiedCount, 12);
+  assert.equal(result.securityPrivacyReady, false);
+  assert.equal(result.verifiedCount, 8);
   assert.equal(result.requiredCount, 12);
   assert.equal(result.productionReleaseAuthorized, false);
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
-  assert.equal(result.criteria.every(({ status }) => status === "verified"), true);
+  for (const id of ["dataRegion", "dpa", "encryption", "subprocessors"]) {
+    assert.equal(result.criteria.find(({ id: criterionId }) => criterionId === id)?.status, "open");
+  }
+  for (const id of [
+    "rolesAndPermissions",
+    "deletionConcept",
+    "retention",
+    "dataExport",
+    "auditSecurityLogging",
+    "highPrivacyProfile",
+    "secretsOutsideAppManifests",
+    "privilegedControlPlaneIsolation",
+  ]) {
+    assert.equal(result.criteria.find(({ id: criterionId }) => criterionId === id)?.status, "verified");
+  }
   const serialized = JSON.stringify(result);
   for (const internal of ["account-1", "worker-1", "project-1", "branch-1", "database-1", "hyperdrive-1", "restore-target-1"]) {
     assert.equal(serialized.includes(internal), false);
   }
 });
 
-test("one missing operational owner remains fail closed", async () => {
+test("missing operational owner does not rewrite canonical repository M5 evidence", async () => {
   const value = bundle();
   delete value.ownerInputs.auditSecurityLoggingEvidenceInput;
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), value, { now: NOW });
   assert.equal(result.securityPrivacyReady, false);
-  assert.equal(result.criteria.find(({ id }) => id === "auditSecurityLogging")?.status, "open");
+  assert.equal(result.verifiedCount, 8);
+  assert.equal(result.criteria.find(({ id }) => id === "auditSecurityLogging")?.status, "verified");
 });
 
 test("runner rejects credential-shaped or accessor evidence before owner evaluation", async () => {
