@@ -1,0 +1,60 @@
+name: M5 ULC Retention Backup Role Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    name: Diagnose ULC production retention backup role read-only
+    if: github.ref == 'refs/heads/main'
+    environment: m4-dr
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository contracts
+        run: pnpm run verify:repo
+
+      - name: Diagnose backup role without production mutation
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL"
+          echo "::add-mask::$ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL"
+          node ./tooling/ulc-linz-m5-security-log-retention-backup-role-guard.mjs --diagnostic
+
+      - name: Record diagnostic boundary
+        shell: bash
+        run: |
+          printf '%s\n' 'ULC Linz M5-F backup-role diagnostic completed read-only. No production mutation or release authorization was performed.' >> "$GITHUB_STEP_SUMMARY"
