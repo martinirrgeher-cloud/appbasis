@@ -71,11 +71,15 @@ export async function collectUlcLinzM5RetentionBackupRoleSnapshot(client, backup
     throw new Error("ULC M5-F backup role name is invalid.");
   }
   const rows = await client.unsafe(BACKUP_ROLE_SQL, [backupUsername]);
-  if (!Array.isArray(rows) || rows.length !== 1) {
+  if (!Array.isArray(rows) || rows.length > 1) {
     throw new Error("ULC M5-F backup role evidence is invalid.");
+  }
+  if (rows.length === 0) {
+    return Object.freeze({ rolePresent: false });
   }
   const row = rows[0];
   return Object.freeze({
+    rolePresent: true,
     login: row?.login,
     superuser: row?.superuser,
     createDb: row?.create_db,
@@ -92,6 +96,7 @@ export async function collectUlcLinzM5RetentionBackupRoleSnapshot(client, backup
 
 export function classifyUlcLinzM5RetentionBackupRoleSnapshot(snapshot) {
   if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot)) return "invalid-observation";
+  if (snapshot.rolePresent !== true) return snapshot.rolePresent === false ? "role-missing" : "invalid-observation";
   if (
     snapshot.login !== true || snapshot.superuser !== false || snapshot.createDb !== false ||
     snapshot.createRole !== false || snapshot.replication !== false || snapshot.bypassRls !== false
