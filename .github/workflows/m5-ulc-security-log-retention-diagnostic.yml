@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ulc-linz-m5-production-runtime
+  group: m6-ulc-production-runtime-config
   cancel-in-progress: false
 
 jobs:
