@@ -11,6 +11,7 @@ const VALID_ROW = Object.freeze({
   event_log_exists: true,
   event_sequence_exists: true,
   purge_function_exists: true,
+  retention_column_exists: true,
   purge_security_definer: true,
   purge_search_path_pinned: true,
   protected_owner_aligned: true,
@@ -26,7 +27,11 @@ test("classifies the safe read-only baseline without production mutation", async
   const client = {
     async unsafe(query) {
       queries.push(query);
-      return [structuredClone(VALID_ROW)];
+      if (queries.length === 1) {
+        const { expired_rows_present: _expired, ...metadata } = VALID_ROW;
+        return [structuredClone(metadata)];
+      }
+      return [{ expired_rows_present: false, observed_at: VALID_ROW.observed_at }];
     },
   };
 
@@ -34,9 +39,24 @@ test("classifies the safe read-only baseline without production mutation", async
   assert.equal(result.classification, "read-only-preconditions-ok");
   assert.equal(result.productionMutationPerformed, false);
   assert.equal(result.productionReleaseAuthorized, false);
+  assert.equal(queries.length, 2);
+  assert.doesNotMatch(queries.join("\n"), /\bDELETE\s+FROM\b/i);
+  assert.doesNotMatch(queries.join("\n"), /appbasis_ulc_linz_purge_expired_security_events\(\)\s*::/i);
+});
+
+test("structural drift is classified before any static event-table query", async () => {
+  const queries = [];
+  const client = {
+    async unsafe(query) {
+      queries.push(query);
+      return [{ ...VALID_ROW, event_log_exists: false, retention_column_exists: false }];
+    },
+  };
+
+  const result = await collectUlcLinzM5RetentionDiagnostic(client);
+  assert.equal(result.classification, "contract-drift");
   assert.equal(queries.length, 1);
-  assert.doesNotMatch(queries[0], /\bDELETE\s+FROM\b/i);
-  assert.doesNotMatch(queries[0], /appbasis_ulc_linz_purge_expired_security_events\(\)\s*::/i);
+  assert.doesNotMatch(queries[0], /FROM\s+public\.ulc_linz_security_event_log\b/i);
 });
 
 test("distinguishes expired rows from contract drift", () => {
@@ -67,11 +87,13 @@ test("fails closed on malformed observations", async () => {
   );
 });
 
-test("diagnostic source remains read-only and sanitized", async () => {
+test("diagnostic source remains read-only, sanitized and production-serialized", async () => {
   const source = await readFile(new URL("./ulc-linz-m5-security-log-retention-diagnostic.mjs", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../.github/workflows/m5-ulc-security-log-retention-diagnostic.yml", import.meta.url), "utf8");
   assert.doesNotMatch(source, /\bDELETE\s+FROM\b/i);
   assert.doesNotMatch(source, /purgeExpiredUlcLinzSecurityEvents/);
   assert.match(source, /productionMutationPerformed:\s*false/);
   assert.match(source, /productionReleaseAuthorized:\s*false/);
   assert.doesNotMatch(source, /process\.stdout\.write\([^\n]*databaseUrl/);
+  assert.match(workflow, /group:\s*m6-ulc-production-runtime-config/);
 });
