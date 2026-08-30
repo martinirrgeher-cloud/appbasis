@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 import { assertNoPublicWorkerIngressEvidence } from "./worker-public-ingress-contract.mjs";
 import { evaluateUlcLinzProductionResourceBinding } from "./ulc-linz-m6-production-resource-binding.mjs";
@@ -57,6 +58,15 @@ const SERVICE_BINDING_FIELDS = Object.freeze([
   "identitySource",
   "uniqueMatch",
 ]);
+
+export function deriveUlcLinzM5HControlPlaneRepositoryEvidence(repositoryRoot) {
+  try {
+    assertCurrentPublicRuntimeContract(resolve(repositoryRoot));
+    return VERIFIED_EVIDENCE;
+  } catch {
+    return EMPTY_EVIDENCE;
+  }
+}
 
 export function deriveUlcLinzM5HControlPlaneEvidence(
   input,
@@ -151,9 +161,11 @@ export function deriveUlcLinzM5HControlPlaneEvidence(
   }
 }
 
-function assertCurrentPublicRuntimeContract() {
+function assertCurrentPublicRuntimeContract(repositoryRoot) {
   for (const entry of PUBLIC_RUNTIME_FILES) {
-    const content = readFileSync(entry.url);
+    const content = repositoryRoot === undefined
+      ? readFileSync(entry.url)
+      : readFileSync(join(repositoryRoot, entry.path));
     const digest = createHash("sha1")
       .update(`blob ${content.length}\0`, "utf8")
       .update(content)
