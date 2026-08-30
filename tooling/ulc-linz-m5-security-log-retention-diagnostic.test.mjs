@@ -59,6 +59,21 @@ test("structural drift is classified before any static event-table query", async
   assert.doesNotMatch(queries[0], /FROM\s+public\.ulc_linz_security_event_log\b/i);
 });
 
+test("retention column type drift is rejected before the static comparison", async () => {
+  const queries = [];
+  const client = {
+    async unsafe(query) {
+      queries.push(query);
+      return [{ ...VALID_ROW, retention_column_exists: false }];
+    },
+  };
+
+  const result = await collectUlcLinzM5RetentionDiagnostic(client);
+  assert.equal(result.classification, "contract-drift");
+  assert.equal(queries.length, 1);
+  assert.match(queries[0], /attribute\.atttypid\s*=\s*'pg_catalog\.timestamptz'::regtype/);
+});
+
 test("distinguishes expired rows from contract drift", () => {
   assert.equal(
     evaluateUlcLinzM5RetentionDiagnostic({ ...VALID_ROW, expired_rows_present: true }).classification,
