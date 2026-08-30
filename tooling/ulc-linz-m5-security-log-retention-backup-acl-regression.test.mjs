@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   classifyUlcLinzM5RetentionBackupRoleSnapshot,
+  collectUlcLinzM5RetentionBackupRoleSnapshot,
   verifyUlcLinzM5RetentionBackupRole,
 } from "./ulc-linz-m5-security-log-retention-backup-role-guard.mjs";
 import { runUlcLinzM5SecurityLogRetention } from "./ulc-linz-m5-security-log-retention-run.mjs";
@@ -23,7 +24,7 @@ const VALID_CLEANUP_ACCESS = Object.freeze({
   cleanup_group_create_db: false,
   cleanup_group_create_role: false,
   cleanup_group_replication: false,
-  cleanup_group_bypass_rls: false,
+  cleanup_group_bypassrls: false,
   membership_count: 1,
   cleanup_admin_option: false,
   reverse_membership_count: 0,
@@ -65,6 +66,7 @@ const VALID_BACKUP_ROLE = Object.freeze({
 });
 
 const VALID_BACKUP_SNAPSHOT = Object.freeze({
+  rolePresent: true,
   login: true,
   superuser: false,
   createDb: false,
@@ -156,9 +158,10 @@ test("delete-time backup guard permits only the canonical database-owner creator
   }
 });
 
-test("backup-role diagnostic classifies guard failures without exposing identities", () => {
+test("backup-role diagnostic classifies guard failures without exposing identities", async () => {
   assert.equal(classifyUlcLinzM5RetentionBackupRoleSnapshot(VALID_BACKUP_SNAPSHOT), "ok");
   for (const [drift, expected] of [
+    [{ rolePresent: false }, "role-missing"],
     [{ superuser: true }, "role-attributes"],
     [{ membershipCount: 1 }, "incoming-membership"],
     [{ databaseRecordCount: 0 }, "database-record"],
@@ -172,6 +175,17 @@ test("backup-role diagnostic classifies guard failures without exposing identiti
       expected,
     );
   }
+
+  const missingSnapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(
+    { async unsafe() { return []; } },
+    BACKUP_USERNAME,
+  );
+  assert.deepEqual(missingSnapshot, { rolePresent: false });
+  assert.equal(classifyUlcLinzM5RetentionBackupRoleSnapshot(missingSnapshot), "role-missing");
+  await assert.rejects(
+    verifyUlcLinzM5RetentionBackupRole({ async unsafe() { return []; } }, BACKUP_USERNAME),
+    /not least privilege/,
+  );
 });
 
 test("production retention cleanup receives only sanitized backup identity", async () => {
