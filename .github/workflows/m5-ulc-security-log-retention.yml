@@ -64,6 +64,7 @@ jobs:
         run: pnpm run verify:repo
 
       - name: Validate and mask protected ULC security-log database credentials
+        id: credentials
         shell: bash
         env:
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
@@ -85,6 +86,7 @@ jobs:
             echo "::add-mask::$value"
           done
           node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
           const urls = [
             process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
@@ -99,6 +101,11 @@ jobs:
           if (urls.some((entry) => entry.host !== urls[0].host || entry.database !== urls[0].database)) {
             throw new Error('ULC M5-F production and backup principals must select one production database.');
           }
+          const sanitizedBackupUrl = new URL(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL);
+          sanitizedBackupUrl.password = 'sanitized';
+          const sanitized = sanitizedBackupUrl.toString();
+          console.log(`::add-mask::${sanitized}`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `sanitized_backup_database_url=${sanitized}\n`);
           NODE
 
       - name: Verify canonical protected audit access boundary before production delete
@@ -138,12 +145,13 @@ jobs:
         id: retention
         shell: bash
         env:
-          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ steps.credentials.outputs.sanitized_backup_database_url }}
           ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
         run: |
           set -euo pipefail
           umask 077
           RESULT="$RUNNER_TEMP/ulc-m5-f-retention-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.json"
+          node ./tooling/ulc-linz-m5-security-log-retention-backup-role-guard.mjs
           node ./tooling/ulc-linz-m5-security-log-retention-run.mjs > "$RESULT"
           RESULT="$RESULT" node --input-type=module <<'NODE'
           import { readFile } from 'node:fs/promises';
