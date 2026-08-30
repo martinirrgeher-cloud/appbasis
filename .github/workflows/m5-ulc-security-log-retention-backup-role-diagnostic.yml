@@ -46,15 +46,58 @@ jobs:
       - name: Diagnose backup role without production mutation
         shell: bash
         env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
-          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
         run: |
           set -euo pipefail
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
           echo "::add-mask::$ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL"
-          echo "::add-mask::$ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL"
-          node ./tooling/ulc-linz-m5-security-log-retention-backup-role-guard.mjs --diagnostic
+          node --input-type=module <<'NODE'
+          import { createPostgresDatabase } from './packages/database/src/node-runtime.mjs';
+          import {
+            classifyUlcLinzM5RetentionBackupRoleSnapshot,
+            collectUlcLinzM5RetentionBackupRoleSnapshot,
+          } from './tooling/ulc-linz-m5-security-log-retention-backup-role-guard.mjs';
+          import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+
+          let connection;
+          try {
+            const observer = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+            const backup = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL);
+            if (
+              observer.host !== backup.host ||
+              observer.database !== backup.database ||
+              observer.user === backup.user
+            ) {
+              throw new Error('ULC M5-F diagnostic observer and backup credentials are not canonically bound.');
+            }
+            connection = createPostgresDatabase(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+            const snapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(connection.client, backup.user);
+            const classification = classifyUlcLinzM5RetentionBackupRoleSnapshot(snapshot);
+            process.stdout.write(`${JSON.stringify({
+              schemaVersion: 1,
+              application: 'ulc-linz',
+              environment: 'production',
+              evidenceSource: 'read-only-backup-role-diagnostic',
+              classification,
+              productionMutationPerformed: false,
+              productionReleaseAuthorized: false,
+            })}\n`);
+          } catch {
+            console.error('ULC Linz M5-F backup role diagnostic failed.');
+            process.exitCode = 1;
+          } finally {
+            if (connection?.client !== undefined) {
+              try {
+                await connection.client.end();
+              } catch {
+                process.exitCode = 1;
+              }
+            }
+          }
+          NODE
 
       - name: Record diagnostic boundary
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz M5-F backup-role diagnostic completed read-only. No production mutation or release authorization was performed.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz M5-F backup-role diagnostic completed read-only through the protected production observer credential. No production mutation or release authorization was performed.' >> "$GITHUB_STEP_SUMMARY"

@@ -188,18 +188,25 @@ test("backup-role diagnostic classifies guard failures without exposing identiti
   );
 });
 
-test("production retention cleanup receives only sanitized backup identity", async () => {
+test("production retention observes backup role before handing only sanitized identity to cleanup", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/m5-ulc-security-log-retention.yml", import.meta.url),
     "utf8",
   );
+  const preflightStep = workflow.match(
+    /- name: Verify canonical protected audit access boundary before production delete[\s\S]*?- name: Run exact server-owned twelve-calendar-month cleanup/,
+  )?.[0] ?? "";
+  assert.match(preflightStep, /ULC_LINZ_PRODUCTION_DATABASE_URL:\s*\$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
+  assert.match(preflightStep, /collectUlcLinzM5RetentionBackupRoleSnapshot/);
+  assert.match(preflightStep, /classifyUlcLinzM5RetentionBackupRoleSnapshot/);
+  assert.match(preflightStep, /createPostgresDatabase\(process\.env\.ULC_LINZ_PRODUCTION_DATABASE_URL\)/);
+
   const cleanupStep = workflow.match(
     /- name: Run exact server-owned twelve-calendar-month cleanup[\s\S]*?- name: Record sanitized retention outcome/,
   )?.[0] ?? "";
-
   assert.match(cleanupStep, /ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL:\s*\$\{\{ steps\.credentials\.outputs\.sanitized_backup_database_url \}\}/);
   assert.match(cleanupStep, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL:\s*\$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \}\}/);
-  assert.match(cleanupStep, /ulc-linz-m5-security-log-retention-backup-role-guard\.mjs/);
+  assert.doesNotMatch(cleanupStep, /ulc-linz-m5-security-log-retention-backup-role-guard\.mjs/);
   assert.doesNotMatch(cleanupStep, /secrets\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL/);
   assert.doesNotMatch(cleanupStep, /ULC_LINZ_PRODUCTION_DATABASE_URL:/);
   assert.doesNotMatch(cleanupStep, /ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL:/);
@@ -211,4 +218,21 @@ test("production retention cleanup receives only sanitized backup identity", asy
   assert.match(credentialStep, /id: credentials/);
   assert.match(credentialStep, /sanitizedBackupUrl\.password = 'sanitized'/);
   assert.match(credentialStep, /sanitized_backup_database_url=/);
+});
+
+test("backup-role diagnostic uses protected observer and remains read-only", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/m5-ulc-security-log-retention-backup-role-diagnostic.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /ULC_LINZ_PRODUCTION_DATABASE_URL:\s*\$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
+  assert.match(workflow, /collectUlcLinzM5RetentionBackupRoleSnapshot/);
+  assert.match(workflow, /classifyUlcLinzM5RetentionBackupRoleSnapshot/);
+  assert.match(workflow, /const observer = parseUlcLinzProductionDatabaseUrl\(process\.env\.ULC_LINZ_PRODUCTION_DATABASE_URL\)/);
+  assert.match(workflow, /observer\.host !== backup\.host/);
+  assert.match(workflow, /observer\.database !== backup\.database/);
+  assert.match(workflow, /observer\.user === backup\.user/);
+  assert.match(workflow, /productionMutationPerformed:\s*false/);
+  assert.doesNotMatch(workflow, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL/);
+  assert.doesNotMatch(workflow, /ulc-linz-m5-security-log-retention-run\.mjs/);
 });
