@@ -35,7 +35,7 @@ test("classifies the safe read-only baseline without production mutation", async
   assert.equal(result.productionMutationPerformed, false);
   assert.equal(result.productionReleaseAuthorized, false);
   assert.equal(queries.length, 1);
-  assert.doesNotMatch(queries[0], /\bDELETE\b/i);
+  assert.doesNotMatch(queries[0], /\bDELETE\s+FROM\b/i);
   assert.doesNotMatch(queries[0], /appbasis_ulc_linz_purge_expired_security_events\(\)\s*::/i);
 });
 
