@@ -138,6 +138,7 @@ jobs:
         id: retention
         shell: bash
         env:
+          ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
         run: |
           set -euo pipefail
