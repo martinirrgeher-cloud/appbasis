@@ -9,6 +9,6 @@ test("backup-role diagnostic redacts observer database failures", async () => {
   );
 
   assert.match(workflow, /catch \{[\s\S]*ULC Linz M5-F backup role diagnostic failed\.[\s\S]*process\.exitCode = 1/);
-  assert.match(workflow, /connection\?\.client\.end\(\)\.catch\(\(\) => \{\}\)/);
+  assert.match(workflow, /if \(connection\?\.client !== undefined\)[\s\S]*await connection\.client\.end\(\)[\s\S]*catch \{[\s\S]*process\.exitCode = 1/);
   assert.doesNotMatch(workflow, /catch \([^)]*\) \{[\s\S]*console\.(?:error|log)\([^\n]*(?:error|message|stack)/);
 });
