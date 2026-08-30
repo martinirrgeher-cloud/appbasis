@@ -282,7 +282,7 @@ test("repository evidence does not infer app-specific high privacy binding", () 
   );
 });
 
-test("Factory snapshot keeps operational lifecycle and high privacy evidence open without production activation", async () => {
+test("Factory snapshot exposes the canonical ULC M5 8-of-12 baseline without authorizing production", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot);
 
   assert.ok(snapshot.apps.length > 0);
@@ -290,7 +290,7 @@ test("Factory snapshot keeps operational lifecycle and high privacy evidence ope
     const isUlcLinz = app.appId === "ulc-linz";
     assert.equal(app.productionReadiness.status, "blocked");
     assert.equal(app.productionReadiness.productionReady, false);
-    assert.equal(app.productionReadiness.verifiedCount, isUlcLinz ? 2 : 1);
+    assert.equal(app.productionReadiness.verifiedCount, isUlcLinz ? 8 : 1);
     assert.equal(app.productionReadiness.requiredCount, expectedIds.length);
     assert.deepEqual(
       app.productionReadiness.criteria.map((criterion) => criterion.id),
@@ -308,33 +308,18 @@ test("Factory snapshot keeps operational lifecycle and high privacy evidence ope
       )?.status,
       isUlcLinz ? "verified" : "open",
     );
-    assert.equal(
-      app.productionReadiness.criteria.find(
-        (criterion) => criterion.id === "deletionConcept",
-      )?.status,
-      "open",
-    );
-    assert.equal(
-      app.productionReadiness.criteria.find(
-        (criterion) => criterion.id === "retention",
-      )?.status,
-      "open",
-    );
-    assert.equal(
-      app.productionReadiness.criteria.find(
-        (criterion) => criterion.id === "highPrivacyProfile",
-      )?.status,
-      "open",
-    );
-    assert.ok(
-      app.productionReadiness.criteria
-        .filter(
-          (criterion) =>
-            criterion.id !== "secretsOutsideAppManifests" &&
-            (!isUlcLinz || criterion.id !== "rolesAndPermissions"),
-        )
-        .every((criterion) => criterion.status === "open"),
-    );
+    for (const id of ["deletionConcept", "retention", "dataExport", "auditSecurityLogging", "highPrivacyProfile", "privilegedControlPlaneIsolation"]) {
+      assert.equal(
+        app.productionReadiness.criteria.find((criterion) => criterion.id === id)?.status,
+        isUlcLinz ? "verified" : "open",
+      );
+    }
+    for (const id of ["dataRegion", "dpa", "encryption", "subprocessors"]) {
+      assert.equal(
+        app.productionReadiness.criteria.find((criterion) => criterion.id === id)?.status,
+        "open",
+      );
+    }
   }
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });
