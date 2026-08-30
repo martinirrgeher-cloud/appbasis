@@ -1,0 +1,86 @@
+name: M5 ULC Security Log Retention Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type DIAGNOSE-ULC-M5-SECURITY-LOG-RETENTION
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Diagnose ULC production retention read-only
+    runs-on: ubuntu-24.04
+    environment: m4-dr
+    timeout-minutes: 10
+    steps:
+      - name: Require explicit main diagnostic approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'ULC M5-F retention diagnostic must run from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = "DIAGNOSE-ULC-M5-SECURITY-LOG-RETENTION" || {
+            echo 'Exact ULC M5-F retention diagnostic confirmation is required.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify exact repository contracts before production diagnostic
+        run: pnpm run verify:repo
+
+      - name: Validate and mask protected cleanup credential
+        shell: bash
+        env:
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL" || {
+            echo 'Missing ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL.' >&2
+            exit 1
+          }
+          echo "::add-mask::$ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL"
+          node --input-type=module <<'NODE'
+          import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL);
+          NODE
+
+      - name: Run sanitized read-only retention diagnostic
+        shell: bash
+        env:
+          ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-m5-security-log-retention-diagnostic.mjs
