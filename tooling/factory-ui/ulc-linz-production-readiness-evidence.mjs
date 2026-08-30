@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { bindUlcLinzM5TargetPolicy } from "../ulc-linz-m5-target-policy.mjs";
+import { deriveUlcLinzM5GBoundProductionEvidence } from "../ulc-linz-m5-provider-bound-evidence.mjs";
 import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
 import { deriveUlcLinzDataExportEvidence } from "./ulc-linz-data-export-evidence.mjs";
@@ -26,12 +27,20 @@ export const ULC_LINZ_M5_J_OWNER_MATRIX = Object.freeze([
 export async function deriveUlcLinzM5JProductionEvidence(
   repositoryRoot,
   definition,
+  ownerInputs = {},
+  { now = new Date() } = {},
 ) {
   try {
     bindUlcLinzM5TargetPolicy(definition);
     const root = resolve(repositoryRoot);
     const snapshot = JSON.parse(await readFile(join(root, SNAPSHOT_PATH), "utf8"));
     const ownerEvidence = await ownerEvidenceFromSnapshot(root, definition, snapshot);
+    const providerBoundEvidenceInput = ownPlainValue(ownerInputs, "providerBoundEvidenceInput");
+    if (providerBoundEvidenceInput !== undefined) {
+      ownerEvidence.providerCompliance = await safelyDerive(() =>
+        deriveUlcLinzM5GBoundProductionEvidence(providerBoundEvidenceInput, { now }),
+      );
+    }
     return composeUlcLinzM5JProductionEvidence(ownerEvidence);
   } catch {
     return EMPTY_EVIDENCE;
@@ -159,11 +168,7 @@ async function ownerEvidenceFromSnapshot(repositoryRoot, definition, snapshot) {
     owners[owner][criterionId] = true;
   }
 
-  return Object.freeze(
-    Object.fromEntries(
-      Object.entries(owners).map(([owner, evidence]) => [owner, Object.freeze(evidence)]),
-    ),
-  );
+  return owners;
 }
 
 function ownerByCriterionMap() {
@@ -214,6 +219,28 @@ function normalizeCriterionEvidence(value, allowedCriteria) {
     if (descriptor.value === true) result[key] = true;
   }
   return Object.freeze(result);
+}
+
+function ownPlainValue(value, key) {
+  if (!isPlainObject(value) || Object.getOwnPropertySymbols(value).length !== 0) return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (
+    descriptor === undefined ||
+    !Object.hasOwn(descriptor, "value") ||
+    descriptor.enumerable !== true ||
+    descriptor.get !== undefined ||
+    descriptor.set !== undefined
+  ) return undefined;
+  return descriptor.value;
+}
+
+async function safelyDerive(derive) {
+  try {
+    const evidence = await derive();
+    return isPlainObject(evidence) ? evidence : EMPTY_EVIDENCE;
+  } catch {
+    return EMPTY_EVIDENCE;
+  }
 }
 
 function isExactRecord(value, expectedKeys) {
