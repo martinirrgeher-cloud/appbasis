@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { verifyUlcLinzM5RetentionBackupRole } from "./ulc-linz-m5-security-log-retention-backup-role-guard.mjs";
+import {
+  classifyUlcLinzM5RetentionBackupRoleSnapshot,
+  collectUlcLinzM5RetentionBackupRoleSnapshot,
+  verifyUlcLinzM5RetentionBackupRole,
+} from "./ulc-linz-m5-security-log-retention-backup-role-guard.mjs";
 import { runUlcLinzM5SecurityLogRetention } from "./ulc-linz-m5-security-log-retention-run.mjs";
 
 const BACKUP_USERNAME = "ulc_linz_backup_test";
@@ -59,6 +63,21 @@ const VALID_BACKUP_ROLE = Object.freeze({
   safe_creator_back_reference_count: 0,
   unsafe_reverse_membership_count: 0,
   database_record_count: 1,
+});
+
+const VALID_BACKUP_SNAPSHOT = Object.freeze({
+  rolePresent: true,
+  login: true,
+  superuser: false,
+  createDb: false,
+  createRole: false,
+  replication: false,
+  bypassRls: false,
+  membershipCount: 0,
+  reverseMembershipCount: 0,
+  safeCreatorBackReferenceCount: 0,
+  unsafeReverseMembershipCount: 0,
+  databaseRecordCount: 1,
 });
 
 test("retention runner binds the canonical backup principal into its defensive ACL check", async () => {
@@ -137,6 +156,36 @@ test("delete-time backup guard permits only the canonical database-owner creator
       /not least privilege/,
     );
   }
+});
+
+test("backup-role diagnostic classifies guard failures without exposing identities", async () => {
+  assert.equal(classifyUlcLinzM5RetentionBackupRoleSnapshot(VALID_BACKUP_SNAPSHOT), "ok");
+  for (const [drift, expected] of [
+    [{ rolePresent: false }, "role-missing"],
+    [{ superuser: true }, "role-attributes"],
+    [{ membershipCount: 1 }, "incoming-membership"],
+    [{ databaseRecordCount: 0 }, "database-record"],
+    [{ reverseMembershipCount: -1 }, "reverse-membership-count"],
+    [{ safeCreatorBackReferenceCount: 2 }, "safe-creator-back-reference"],
+    [{ unsafeReverseMembershipCount: 1 }, "unsafe-reverse-membership"],
+    [{ reverseMembershipCount: 1, safeCreatorBackReferenceCount: 0 }, "reverse-membership-mismatch"],
+  ]) {
+    assert.equal(
+      classifyUlcLinzM5RetentionBackupRoleSnapshot({ ...VALID_BACKUP_SNAPSHOT, ...drift }),
+      expected,
+    );
+  }
+
+  const missingSnapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(
+    { async unsafe() { return []; } },
+    BACKUP_USERNAME,
+  );
+  assert.deepEqual(missingSnapshot, { rolePresent: false });
+  assert.equal(classifyUlcLinzM5RetentionBackupRoleSnapshot(missingSnapshot), "role-missing");
+  await assert.rejects(
+    verifyUlcLinzM5RetentionBackupRole({ async unsafe() { return []; } }, BACKUP_USERNAME),
+    /not least privilege/,
+  );
 });
 
 test("production retention cleanup receives only sanitized backup identity", async () => {
