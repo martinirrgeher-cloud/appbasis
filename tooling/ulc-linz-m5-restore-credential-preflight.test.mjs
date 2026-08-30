@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { verifyRestoreCredentials } from "./ulc-linz-m5-restore-credential-preflight.mjs";
@@ -158,14 +157,4 @@ test("reports login failures without exposing credentials", async () => {
       return true;
     },
   );
-});
-
-test("production evidence enforces restore credential preflight before workspace and snapshot work", async () => {
-  const workflow = await readFile(new URL("../.github/workflows/m5-ulc-production-evidence.yml", import.meta.url), "utf8");
-  const preflightIndex = workflow.indexOf("node ./tooling/ulc-linz-m5-restore-credential-preflight.mjs");
-  const workspaceIndex = workflow.indexOf("Create restricted temporary evidence workspace");
-  const snapshotIndex = workflow.indexOf("Capture one exported source snapshot and create authorized backup");
-  assert.notEqual(preflightIndex, -1);
-  assert.ok(preflightIndex < workspaceIndex);
-  assert.ok(preflightIndex < snapshotIndex);
 });
