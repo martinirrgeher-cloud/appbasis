@@ -60,17 +60,18 @@ jobs:
           } from './tooling/ulc-linz-m5-security-log-retention-backup-role-guard.mjs';
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
 
-          const observer = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
-          const backup = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL);
-          if (
-            observer.host !== backup.host ||
-            observer.database !== backup.database ||
-            observer.user === backup.user
-          ) {
-            throw new Error('ULC M5-F diagnostic observer and backup credentials are not canonically bound.');
-          }
-          const connection = createPostgresDatabase(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          let connection;
           try {
+            const observer = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+            const backup = parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL);
+            if (
+              observer.host !== backup.host ||
+              observer.database !== backup.database ||
+              observer.user === backup.user
+            ) {
+              throw new Error('ULC M5-F diagnostic observer and backup credentials are not canonically bound.');
+            }
+            connection = createPostgresDatabase(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
             const snapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(connection.client, backup.user);
             const classification = classifyUlcLinzM5RetentionBackupRoleSnapshot(snapshot);
             process.stdout.write(`${JSON.stringify({
@@ -82,8 +83,11 @@ jobs:
               productionMutationPerformed: false,
               productionReleaseAuthorized: false,
             })}\n`);
+          } catch {
+            console.error('ULC Linz M5-F backup role diagnostic failed.');
+            process.exitCode = 1;
           } finally {
-            await connection.client.end();
+            await connection?.client.end().catch(() => {});
           }
           NODE
 
