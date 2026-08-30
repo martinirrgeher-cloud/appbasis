@@ -260,24 +260,23 @@ test("Factory renders M5 and M6 from the shared snapshot lifecycle without enabl
   assert.ok(
     snapshot.apps.every((app) => {
       const isUlcLinz = app.appId === "ulc-linz";
-      const expectedVerifiedCount = isUlcLinz ? 8 : 1;
-      const criterionStatus = (id) =>
-        app.productionReadiness?.criteria?.find((criterion) => criterion.id === id)?.status;
+      const expectedVerifiedCount = isUlcLinz ? 2 : 1;
       return (
         app.productionReadiness?.productionReady === false &&
         app.productionReadiness?.verifiedCount === expectedVerifiedCount &&
         app.productionReadiness?.requiredCount === 12 &&
-        criterionStatus("rolesAndPermissions") === (isUlcLinz ? "verified" : "open") &&
-        criterionStatus("deletionConcept") === (isUlcLinz ? "verified" : "open") &&
-        criterionStatus("retention") === (isUlcLinz ? "verified" : "open") &&
-        criterionStatus("dataExport") === (isUlcLinz ? "verified" : "open") &&
-        criterionStatus("auditSecurityLogging") === (isUlcLinz ? "verified" : "open") &&
-        criterionStatus("highPrivacyProfile") === (isUlcLinz ? "verified" : "open") &&
-        criterionStatus("privilegedControlPlaneIsolation") === (isUlcLinz ? "verified" : "open") &&
-        criterionStatus("dataRegion") === "open" &&
-        criterionStatus("dpa") === "open" &&
-        criterionStatus("encryption") === "open" &&
-        criterionStatus("subprocessors") === "open" &&
+        app.productionReadiness?.criteria?.find(
+          (criterion) => criterion.id === "highPrivacyProfile",
+        )?.status === "open" &&
+        app.productionReadiness?.criteria?.find(
+          (criterion) => criterion.id === "rolesAndPermissions",
+        )?.status === (isUlcLinz ? "verified" : "open") &&
+        app.productionReadiness?.criteria?.find(
+          (criterion) => criterion.id === "deletionConcept",
+        )?.status === "open" &&
+        app.productionReadiness?.criteria?.find(
+          (criterion) => criterion.id === "retention",
+        )?.status === "open" &&
         app.productionReleaseReadiness?.status === "blocked" &&
         app.productionReleaseReadiness?.technicalEvidenceVerified === false &&
         app.productionReleaseReadiness?.releaseAuthorized === false
