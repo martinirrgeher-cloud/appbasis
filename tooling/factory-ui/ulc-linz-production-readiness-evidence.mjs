@@ -1,7 +1,13 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
+import { deriveUlcLinzM5FAuditSecurityLoggingRepositoryEvidence } from "../ulc-linz-m5-audit-security-logging-evidence.mjs";
+import { deriveUlcLinzM5HControlPlaneRepositoryEvidence } from "../ulc-linz-m5-control-plane-evidence.mjs";
 import { bindUlcLinzM5TargetPolicy } from "../ulc-linz-m5-target-policy.mjs";
+import { HIGH_PRIVACY_PROFILE, isCanonicalHighPrivacyProfile } from "./high-privacy-profile.mjs";
+import { ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY } from "./ulc-linz-lifecycle-evidence.mjs";
 import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
 import { deriveUlcLinzDataExportEvidence } from "./ulc-linz-data-export-evidence.mjs";
@@ -11,6 +17,15 @@ const EMPTY_EVIDENCE = Object.freeze({});
 const SNAPSHOT_PATH = "apps/ulc-linz/privacy/m5-security-privacy-readiness.json";
 const SNAPSHOT_KEYS = Object.freeze(["schemaVersion", "application", "gate", "criteria"]);
 const CRITERION_KEYS = Object.freeze(["id", "status", "evidence"]);
+const HIGH_PRIVACY_ASSESSMENT = Object.freeze({
+  schemaVersion: 1,
+  application: "ulc-linz",
+  operatorProfile: "Verein",
+  highPrivacyProfileId: "appbasis-high-privacy-v0.1",
+  applicability: Object.freeze(["children"]),
+  decision: "high-privacy-required",
+  basis: Object.freeze(["children-and-youth-athlete-data"]),
+});
 
 export const ULC_LINZ_M5_J_OWNER_MATRIX = Object.freeze([
   Object.freeze({ owner: "providerCompliance", criteria: Object.freeze(["dataRegion", "dpa", "encryption", "subprocessors"]) }),
@@ -139,15 +154,33 @@ async function ownerEvidenceFromSnapshot(repositoryRoot, definition, snapshot) {
     if (criterion.status === "verified") verifiedCriteria.add(criterion.id);
   }
 
-  const [roleEvidence, exportEvidence, repositoryEvidence] = await Promise.all([
+  const [
+    roleEvidence,
+    lifecycleEvidence,
+    exportEvidence,
+    auditEvidence,
+    highPrivacyEvidence,
+    repositoryEvidence,
+    controlPlaneEvidence,
+  ] = await Promise.all([
     deriveUlcLinzRolesAndPermissionsEvidence(repositoryRoot, definition),
+    deriveLifecycleRepositoryEvidence(repositoryRoot, snapshot),
     deriveUlcLinzDataExportEvidence(repositoryRoot, definition, { auditSecurityLogging: true }),
+    Promise.resolve(deriveUlcLinzM5FAuditSecurityLoggingRepositoryEvidence(repositoryRoot)),
+    deriveHighPrivacyRepositoryEvidence(repositoryRoot, definition),
     Promise.resolve(deriveRepositoryProductionReadinessEvidence(definition)),
+    Promise.resolve(deriveUlcLinzM5HControlPlaneRepositoryEvidence(repositoryRoot)),
   ]);
   const staticOwnerChecks = Object.freeze({
     rolesAndPermissions: roleEvidence?.rolesAndPermissions === true,
+    deletionConcept: lifecycleEvidence.deletionConcept === true,
+    retention: lifecycleEvidence.retention === true,
     dataExport: exportEvidence?.dataExport === true,
+    auditSecurityLogging: auditEvidence.auditSecurityLogging === true,
+    highPrivacyProfile: highPrivacyEvidence.highPrivacyProfile === true,
     secretsOutsideAppManifests: repositoryEvidence?.secretsOutsideAppManifests === true,
+    privilegedControlPlaneIsolation:
+      controlPlaneEvidence.privilegedControlPlaneIsolation === true,
   });
 
   for (const criterionId of verifiedCriteria) {
@@ -164,6 +197,56 @@ async function ownerEvidenceFromSnapshot(repositoryRoot, definition, snapshot) {
       Object.entries(owners).map(([owner, evidence]) => [owner, Object.freeze(evidence)]),
     ),
   );
+}
+
+async function deriveLifecycleRepositoryEvidence(repositoryRoot, snapshot) {
+  const policyByPath = new Map(
+    ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.evidenceFiles.map(({ path, gitBlobSha }) => [
+      path,
+      gitBlobSha,
+    ]),
+  );
+  for (const criterionId of ["deletionConcept", "retention"]) {
+    const criterion = snapshot.criteria.find(({ id }) => id === criterionId);
+    if (criterion === undefined || criterion.evidence.length < 1) return EMPTY_EVIDENCE;
+    for (const path of criterion.evidence) {
+      const expectedSha = policyByPath.get(path);
+      if (expectedSha === undefined) return EMPTY_EVIDENCE;
+      const raw = await readFile(join(repositoryRoot, path), "utf8");
+      if (gitBlobSha(raw.replaceAll("\r\n", "\n")) !== expectedSha) return EMPTY_EVIDENCE;
+    }
+  }
+  return Object.freeze({ deletionConcept: true, retention: true });
+}
+
+async function deriveHighPrivacyRepositoryEvidence(repositoryRoot, definition) {
+  try {
+    const targetPolicy = bindUlcLinzM5TargetPolicy(definition);
+    if (
+      !isCanonicalHighPrivacyProfile(HIGH_PRIVACY_PROFILE) ||
+      targetPolicy.highPrivacyProfileId !== HIGH_PRIVACY_PROFILE.id
+    ) {
+      return EMPTY_EVIDENCE;
+    }
+    const assessment = JSON.parse(
+      await readFile(
+        join(repositoryRoot, "apps/ulc-linz/privacy/m5-high-privacy-assessment.json"),
+        "utf8",
+      ),
+    );
+    return isDeepStrictEqual(assessment, HIGH_PRIVACY_ASSESSMENT)
+      ? Object.freeze({ highPrivacyProfile: true })
+      : EMPTY_EVIDENCE;
+  } catch {
+    return EMPTY_EVIDENCE;
+  }
+}
+
+function gitBlobSha(content) {
+  return createHash("sha1")
+    .update(`blob ${Buffer.byteLength(content, "utf8")}\0`, "utf8")
+    .update(content, "utf8")
+    .digest("hex");
 }
 
 function ownerByCriterionMap() {
