@@ -23,6 +23,12 @@ const VALID_ULC_DEFINITION = Object.freeze({
   modules: Object.freeze([]),
   platformServices: Object.freeze(["identity", "permissions"]),
 });
+const OPEN_PROVIDER_CRITERIA = Object.freeze([
+  "dataRegion",
+  "dpa",
+  "encryption",
+  "subprocessors",
+]);
 
 function ownerEvidenceAllTrue() {
   return Object.fromEntries(
@@ -71,14 +77,20 @@ test("M5 generic composition remains strictly all-required", () => {
   }
 });
 
-test("ULC M5 derives 12/12 from the canonical version-controlled evidence snapshot", async () => {
+test("ULC M5 derives the truthful repository baseline without operational production gates", async () => {
   const readiness = evaluateProductionReadiness(
     await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION),
   );
-  assert.equal(readiness.productionReady, true);
-  assert.equal(readiness.verifiedCount, 12);
+  assert.equal(readiness.productionReady, false);
+  assert.equal(readiness.verifiedCount, 8);
   assert.equal(readiness.requiredCount, 12);
-  assert.ok(readiness.criteria.every((criterion) => criterion.status === "verified"));
+  for (const criterion of REQUIRED_PRODUCTION_READINESS_CRITERIA) {
+    assert.equal(
+      criterionStatus(readiness, criterion.id),
+      OPEN_PROVIDER_CRITERIA.includes(criterion.id) ? "open" : "verified",
+      criterion.id,
+    );
+  }
 });
 
 test("ULC M5 snapshot is exact, ordered, traceable and contains no operational production gate", async () => {
@@ -96,7 +108,11 @@ test("ULC M5 snapshot is exact, ordered, traceable and contains no operational p
     REQUIRED_PRODUCTION_READINESS_CRITERIA.map(({ id }) => id),
   );
   for (const criterion of snapshot.criteria) {
-    assert.equal(criterion.status, "verified", criterion.id);
+    assert.equal(
+      criterion.status,
+      OPEN_PROVIDER_CRITERIA.includes(criterion.id) ? "open" : "verified",
+      criterion.id,
+    );
     assert.ok(Array.isArray(criterion.evidence) && criterion.evidence.length > 0, criterion.id);
     assert.ok(criterion.evidence.every((path) => typeof path === "string" && path.length > 0), criterion.id);
   }
