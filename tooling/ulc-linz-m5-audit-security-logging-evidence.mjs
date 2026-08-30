@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { evaluateUlcLinzProductionResourceBinding } from "./ulc-linz-m6-production-resource-binding.mjs";
 
 const EMPTY = Object.freeze({});
@@ -38,15 +37,6 @@ const CONTROLLED_RETENTION_CONTRACT_FILES = Object.freeze([
 
 export const ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST =
   digestContract(CONTROLLED_RETENTION_CONTRACT_FILES);
-
-export function deriveUlcLinzM5FAuditSecurityLoggingRepositoryEvidence(repositoryRoot) {
-  try {
-    assertCurrentContract(resolve(repositoryRoot));
-    return VERIFIED;
-  } catch {
-    return EMPTY;
-  }
-}
 
 export function deriveUlcLinzM5FAuditSecurityLoggingEvidence(input, { now = new Date() } = {}) {
   try {
@@ -111,11 +101,9 @@ function retentionVerified(mode, evidence, nowDate) {
   return false;
 }
 
-function assertCurrentContract(repositoryRoot) {
-  for (const [path, url, expected] of CONTRACT_FILES) {
-    const raw = repositoryRoot === undefined
-      ? readFileSync(url, "utf8")
-      : readFileSync(join(repositoryRoot, path), "utf8");
+function assertCurrentContract() {
+  for (const [, url, expected] of CONTRACT_FILES) {
+    const raw = readFileSync(url, "utf8");
     const content = raw.replaceAll("\r\n", "\n");
     const actual = createHash("sha1")
       .update(`blob ${Buffer.byteLength(content, "utf8")}\0`, "utf8")
