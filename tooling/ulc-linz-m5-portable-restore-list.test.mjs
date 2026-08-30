@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -7,6 +8,7 @@ import {
   filterExactProviderDefaultAclToc,
 } from "./ulc-linz-m5-portable-restore-list.mjs";
 
+const workflowUrl = new URL("../.github/workflows/m5-ulc-production-evidence.yml", import.meta.url);
 const inventory = [
   {
     owner_role: "cloud_admin",
@@ -120,4 +122,18 @@ test("fails closed on missing extra duplicate or differently owned DEFAULT ACL T
     () => filterExactProviderDefaultAclToc(toc.replace("TABLES cloud_admin", "TABLES app_owner")),
     /unexpected default ACL entry/,
   );
+});
+
+test("M5 workflow filters only the validated portable TOC and never disables ACL restoration globally", async () => {
+  const source = await readFile(workflowUrl, "utf8");
+  assert.match(source, /pg_restore --list \/evidence\/production\.pgdump > \/evidence\/production\.restore\.list/);
+  assert.match(source, /ulc-linz-m5-portable-restore-list\.mjs/);
+  assert.match(source, /"\$WORK\/production\.restore\.list"/);
+  assert.match(source, /"\$WORK\/production\.restore\.filtered\.list"/);
+  assert.match(source, /pg_restore --single-transaction --no-owner --exit-on-error --use-list=\/evidence\/production\.restore\.filtered\.list/);
+  const filterIndex = source.indexOf("ulc-linz-m5-portable-restore-list.mjs");
+  const finalReleaseIndex = source.indexOf('touch "$RELEASE_PATH"\n          wait "$SNAPSHOT_PID"', filterIndex);
+  assert.ok(filterIndex >= 0 && finalReleaseIndex > filterIndex);
+  assert.doesNotMatch(source, /pg_dump[^\n]*--no-(?:acl|privileges)/);
+  assert.doesNotMatch(source, /pg_restore[^\n]*--no-(?:acl|privileges)/);
 });
