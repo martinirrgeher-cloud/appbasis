@@ -87,7 +87,13 @@ jobs:
             console.error('ULC Linz M5-F backup role diagnostic failed.');
             process.exitCode = 1;
           } finally {
-            await connection?.client.end().catch(() => {});
+            if (connection?.client !== undefined) {
+              try {
+                await connection.client.end();
+              } catch {
+                process.exitCode = 1;
+              }
+            }
           }
           NODE
 
