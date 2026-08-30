@@ -188,7 +188,7 @@ test("backup-role diagnostic classifies guard failures without exposing identiti
   );
 });
 
-test("production retention observes backup role before handing only sanitized identity to cleanup", async () => {
+test("production retention verifies backup principal through its established self-check before cleanup", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/m5-ulc-security-log-retention.yml", import.meta.url),
     "utf8",
@@ -196,10 +196,15 @@ test("production retention observes backup role before handing only sanitized id
   const preflightStep = workflow.match(
     /- name: Verify canonical protected audit access boundary before production delete[\s\S]*?- name: Run exact server-owned twelve-calendar-month cleanup/,
   )?.[0] ?? "";
-  assert.match(preflightStep, /ULC_LINZ_PRODUCTION_DATABASE_URL:\s*\$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
-  assert.match(preflightStep, /collectUlcLinzM5RetentionBackupRoleSnapshot/);
-  assert.match(preflightStep, /classifyUlcLinzM5RetentionBackupRoleSnapshot/);
-  assert.match(preflightStep, /createPostgresDatabase\(process\.env\.ULC_LINZ_PRODUCTION_DATABASE_URL\)/);
+  assert.match(preflightStep, /ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL:\s*\$\{\{ secrets\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \}\}/);
+  assert.match(preflightStep, /holdUlcLinzM5ExportedSnapshot/);
+  assert.match(preflightStep, /databaseUrl:\s*process\.env\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL/);
+  assert.match(preflightStep, /writeFile\(releasePath, 'release\\n'/);
+  assert.match(preflightStep, /mode:\s*0o600/);
+  assert.match(preflightStep, /rm\(value, \{ force: true \}\)/);
+  assert.doesNotMatch(preflightStep, /collectUlcLinzM5RetentionBackupRoleSnapshot/);
+  assert.doesNotMatch(preflightStep, /classifyUlcLinzM5RetentionBackupRoleSnapshot/);
+  assert.doesNotMatch(preflightStep, /createPostgresDatabase\(process\.env\.ULC_LINZ_PRODUCTION_DATABASE_URL\)/);
 
   const cleanupStep = workflow.match(
     /- name: Run exact server-owned twelve-calendar-month cleanup[\s\S]*?- name: Record sanitized retention outcome/,
