@@ -333,9 +333,23 @@ SELECT
               AND acl.object_name = 'ulc_linz_security_event_log'
               AND acl.column_name IS NULL
               AND acl.privilege_type = 'SELECT'
+            ) OR
+            (
+              acl.grantee = backup_role.oid
+              AND acl.object_kind = 'table'
+              AND acl.object_name = 'ulc_linz_security_event_log'
+              AND acl.column_name IS NULL
+              AND acl.privilege_type = 'SELECT'
+            ) OR
+            (
+              acl.grantee = backup_role.oid
+              AND acl.object_kind = 'sequence'
+              AND acl.object_name = 'ulc_linz_security_event_log_id_seq'
+              AND acl.column_name IS NULL
+              AND acl.privilege_type = 'SELECT'
             )
           )
-      ) = 19
+      ) = 21
       AND count(*) FILTER (
         WHERE acl.grantee <> acl.owner_oid
           AND NOT (
@@ -380,6 +394,20 @@ SELECT
                 AND acl.object_name = 'ulc_linz_security_event_log'
                 AND acl.column_name IS NULL
                 AND acl.privilege_type = 'SELECT'
+              ) OR
+              (
+                acl.grantee = backup_role.oid
+                AND acl.object_kind = 'table'
+                AND acl.object_name = 'ulc_linz_security_event_log'
+                AND acl.column_name IS NULL
+                AND acl.privilege_type = 'SELECT'
+              ) OR
+              (
+                acl.grantee = backup_role.oid
+                AND acl.object_kind = 'sequence'
+                AND acl.object_name = 'ulc_linz_security_event_log_id_seq'
+                AND acl.column_name IS NULL
+                AND acl.privilege_type = 'SELECT'
               )
             )
           )
@@ -393,10 +421,12 @@ FROM pg_catalog.pg_roles current_role
 CROSS JOIN pg_catalog.pg_roles cleanup_group
 CROSS JOIN pg_catalog.pg_roles ingest_group
 CROSS JOIN pg_catalog.pg_roles read_group
+CROSS JOIN pg_catalog.pg_roles backup_role
 WHERE current_role.rolname = current_user
   AND cleanup_group.rolname = 'ulc_linz_security_event_cleanup'
   AND ingest_group.rolname = 'ulc_linz_security_event_ingest'
   AND read_group.rolname = 'ulc_linz_security_event_read'
+  AND backup_role.rolname = $1
   AND COALESCE((
     SELECT operational_member_count
     FROM protected_group_membership
@@ -468,6 +498,7 @@ WHERE retained_until < $1::timestamptz
 export async function runUlcLinzM5SecurityLogRetention(
   client,
   purgeExpiredSecurityEvents,
+  backupUsername,
 ) {
   if (client === null || typeof client !== "object" || typeof client.unsafe !== "function") {
     throw new Error("ULC M5-F retention SQL client is invalid.");
@@ -476,7 +507,7 @@ export async function runUlcLinzM5SecurityLogRetention(
     throw new Error("ULC M5-F retention cleanup executor is invalid.");
   }
 
-  await verifyCleanupPrincipal(client);
+  await verifyCleanupPrincipal(client, backupUsername);
   const purge = parsePurgeResult(await purgeExpiredSecurityEvents(client));
   const expiredRows = await countExpiredRowsAtCutoff(client, purge.cutoff);
   if (expiredRows !== 0n) {
@@ -498,8 +529,8 @@ export async function runUlcLinzM5SecurityLogRetention(
   });
 }
 
-async function verifyCleanupPrincipal(client) {
-  const rows = await client.unsafe(ACCESS_SQL);
+async function verifyCleanupPrincipal(client, backupUsername) {
+  const rows = await client.unsafe(ACCESS_SQL, [backupUsername ?? null]);
   if (!Array.isArray(rows) || rows.length !== 1) {
     throw new Error("ULC M5-F cleanup access evidence is invalid.");
   }
@@ -603,7 +634,12 @@ if (isMainModule()) {
   let connection;
   try {
     const databaseUrl = process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL;
-    parseUlcLinzProductionDatabaseUrl(databaseUrl);
+    const backupDatabaseUrl = process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL;
+    const cleanup = parseUlcLinzProductionDatabaseUrl(databaseUrl);
+    const backup = parseUlcLinzProductionDatabaseUrl(backupDatabaseUrl);
+    if (cleanup.host !== backup.host || cleanup.database !== backup.database || cleanup.user === backup.user) {
+      throw new Error("ULC M5-F retention backup credential is not bound to the cleanup database.");
+    }
 
     const [{ createPostgresDatabase }, { purgeExpiredUlcLinzSecurityEvents }] = await Promise.all([
       import("../packages/database/src/client.ts"),
@@ -613,6 +649,7 @@ if (isMainModule()) {
     const result = await runUlcLinzM5SecurityLogRetention(
       connection.client,
       purgeExpiredUlcLinzSecurityEvents,
+      backup.user,
     );
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch {
