@@ -228,6 +228,10 @@ test("backup-role diagnostic uses protected observer and remains read-only", asy
   assert.match(workflow, /ULC_LINZ_PRODUCTION_DATABASE_URL:\s*\$\{\{ secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL \}\}/);
   assert.match(workflow, /collectUlcLinzM5RetentionBackupRoleSnapshot/);
   assert.match(workflow, /classifyUlcLinzM5RetentionBackupRoleSnapshot/);
+  assert.match(workflow, /const observer = parseUlcLinzProductionDatabaseUrl\(process\.env\.ULC_LINZ_PRODUCTION_DATABASE_URL\)/);
+  assert.match(workflow, /observer\.host !== backup\.host/);
+  assert.match(workflow, /observer\.database !== backup\.database/);
+  assert.match(workflow, /observer\.user === backup\.user/);
   assert.match(workflow, /productionMutationPerformed:\s*false/);
   assert.doesNotMatch(workflow, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL/);
   assert.doesNotMatch(workflow, /ulc-linz-m5-security-log-retention-run\.mjs/);
