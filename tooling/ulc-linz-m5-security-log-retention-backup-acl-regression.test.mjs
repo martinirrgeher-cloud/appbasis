@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { verifyUlcLinzM5RetentionBackupRole } from "./ulc-linz-m5-security-log-retention-backup-role-guard.mjs";
 import { runUlcLinzM5SecurityLogRetention } from "./ulc-linz-m5-security-log-retention-run.mjs";
 
 const BACKUP_USERNAME = "ulc_linz_backup_test";
@@ -46,6 +47,17 @@ const VALID_CLEANUP_ACCESS = Object.freeze({
   unexpected_cleanup_acl_count: 0,
 });
 
+const VALID_BACKUP_ROLE = Object.freeze({
+  login: true,
+  superuser: false,
+  create_db: false,
+  create_role: false,
+  replication: false,
+  bypass_rls: false,
+  membership_count: 0,
+  reverse_membership_count: 0,
+});
+
 test("retention runner binds the canonical backup principal into its defensive ACL check", async () => {
   const calls = [];
   const client = {
@@ -71,7 +83,39 @@ test("retention runner binds the canonical backup principal into its defensive A
   assert.match(calls[0].query, /\) = 21/);
 });
 
-test("production retention workflow passes the protected backup credential only to the cleanup step", async () => {
+test("delete-time backup guard rejects privilege or membership elevation", async () => {
+  const makeClient = (row) => ({
+    async unsafe(query, params) {
+      assert.match(query, /FROM pg_catalog\.pg_roles backup/);
+      assert.match(query, /membership\.member = backup\.oid/);
+      assert.match(query, /membership\.roleid = backup\.oid/);
+      assert.deepEqual(params, [BACKUP_USERNAME]);
+      return [row];
+    },
+  });
+
+  assert.equal(
+    await verifyUlcLinzM5RetentionBackupRole(makeClient(structuredClone(VALID_BACKUP_ROLE)), BACKUP_USERNAME),
+    true,
+  );
+
+  for (const drift of [
+    { superuser: true },
+    { create_role: true },
+    { membership_count: 1 },
+    { reverse_membership_count: 1 },
+  ]) {
+    await assert.rejects(
+      verifyUlcLinzM5RetentionBackupRole(
+        makeClient({ ...structuredClone(VALID_BACKUP_ROLE), ...drift }),
+        BACKUP_USERNAME,
+      ),
+      /not least privilege/,
+    );
+  }
+});
+
+test("production retention cleanup receives only sanitized backup identity", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/m5-ulc-security-log-retention.yml", import.meta.url),
     "utf8",
@@ -80,9 +124,18 @@ test("production retention workflow passes the protected backup credential only 
     /- name: Run exact server-owned twelve-calendar-month cleanup[\s\S]*?- name: Record sanitized retention outcome/,
   )?.[0] ?? "";
 
-  assert.match(cleanupStep, /ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL:\s*\$\{\{ secrets\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \}\}/);
+  assert.match(cleanupStep, /ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL:\s*\$\{\{ steps\.credentials\.outputs\.sanitized_backup_database_url \}\}/);
   assert.match(cleanupStep, /ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL:\s*\$\{\{ secrets\.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL \}\}/);
+  assert.match(cleanupStep, /ulc-linz-m5-security-log-retention-backup-role-guard\.mjs/);
+  assert.doesNotMatch(cleanupStep, /secrets\.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL/);
   assert.doesNotMatch(cleanupStep, /ULC_LINZ_PRODUCTION_DATABASE_URL:/);
   assert.doesNotMatch(cleanupStep, /ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL:/);
   assert.doesNotMatch(cleanupStep, /ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL:/);
+
+  const credentialStep = workflow.match(
+    /- name: Validate and mask protected ULC security-log database credentials[\s\S]*?- name: Verify canonical protected audit access boundary before production delete/,
+  )?.[0] ?? "";
+  assert.match(credentialStep, /id: credentials/);
+  assert.match(credentialStep, /sanitizedBackupUrl\.password = 'sanitized'/);
+  assert.match(credentialStep, /sanitized_backup_database_url=/);
 });
