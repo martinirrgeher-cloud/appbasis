@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, mkdtemp, readFile, rm, writeFile, copyFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { deriveUlcLinzM5FAuditSecurityLoggingRepositoryEvidence } from "../ulc-linz-m5-audit-security-logging-evidence.mjs";
+import { deriveUlcLinzM5HControlPlaneRepositoryEvidence } from "../ulc-linz-m5-control-plane-evidence.mjs";
 import {
   evaluateProductionReadiness,
   REQUIRED_PRODUCTION_READINESS_CRITERIA,
@@ -29,6 +32,18 @@ const OPEN_PROVIDER_CRITERIA = Object.freeze([
   "encryption",
   "subprocessors",
 ]);
+const AUDIT_CONTRACT_PATHS = Object.freeze([
+  "apps/ulc-linz/worker/app.ts",
+  "apps/ulc-linz/worker/authorization.ts",
+  "apps/ulc-linz/worker/security-events.ts",
+  "apps/ulc-linz/worker/security-events-postgres.ts",
+  "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
+  "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+]);
+const CONTROL_PLANE_CONTRACT_PATHS = Object.freeze([
+  "apps/ulc-linz/worker/app.ts",
+  "apps/ulc-linz/worker/index.ts",
+]);
 
 function ownerEvidenceAllTrue() {
   return Object.fromEntries(
@@ -41,6 +56,14 @@ function ownerEvidenceAllTrue() {
 
 function criterionStatus(readiness, id) {
   return readiness.criteria.find((criterion) => criterion.id === id)?.status;
+}
+
+async function copyRepositoryPaths(root, paths) {
+  for (const path of paths) {
+    const target = join(root, path);
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(join(repositoryRoot, path), target);
+  }
 }
 
 test("M5 ownership matrix covers every canonical criterion exactly once", () => {
@@ -91,6 +114,29 @@ test("ULC M5 derives the truthful repository baseline without operational produc
       criterion.id,
     );
   }
+});
+
+test("static audit and control-plane M5 evidence fails closed on implementation drift", async (t) => {
+  const auditRoot = await mkdtemp(join(tmpdir(), "appbasis-m5-audit-"));
+  const controlRoot = await mkdtemp(join(tmpdir(), "appbasis-m5-control-"));
+  t.after(() => Promise.all([
+    rm(auditRoot, { recursive: true, force: true }),
+    rm(controlRoot, { recursive: true, force: true }),
+  ]));
+
+  await copyRepositoryPaths(auditRoot, AUDIT_CONTRACT_PATHS);
+  assert.deepEqual(deriveUlcLinzM5FAuditSecurityLoggingRepositoryEvidence(auditRoot), {
+    auditSecurityLogging: true,
+  });
+  await writeFile(join(auditRoot, "apps/ulc-linz/worker/security-events.ts"), "", "utf8");
+  assert.deepEqual(deriveUlcLinzM5FAuditSecurityLoggingRepositoryEvidence(auditRoot), {});
+
+  await copyRepositoryPaths(controlRoot, CONTROL_PLANE_CONTRACT_PATHS);
+  assert.deepEqual(deriveUlcLinzM5HControlPlaneRepositoryEvidence(controlRoot), {
+    privilegedControlPlaneIsolation: true,
+  });
+  await writeFile(join(controlRoot, "apps/ulc-linz/worker/app.ts"), "", "utf8");
+  assert.deepEqual(deriveUlcLinzM5HControlPlaneRepositoryEvidence(controlRoot), {});
 });
 
 test("ULC M5 snapshot is exact, ordered, traceable and contains no operational production gate", async () => {
