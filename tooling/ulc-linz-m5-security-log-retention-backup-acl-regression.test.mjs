@@ -24,7 +24,7 @@ const VALID_CLEANUP_ACCESS = Object.freeze({
   cleanup_group_create_db: false,
   cleanup_group_create_role: false,
   cleanup_group_replication: false,
-  cleanup_group_bypassrls: false,
+  cleanup_group_bypass_rls: false,
   membership_count: 1,
   cleanup_admin_option: false,
   reverse_membership_count: 0,
