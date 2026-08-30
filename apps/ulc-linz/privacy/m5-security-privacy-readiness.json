@@ -66,6 +66,8 @@
       "id": "auditSecurityLogging",
       "status": "verified",
       "evidence": [
+        "apps/ulc-linz/worker/app.ts",
+        "apps/ulc-linz/worker/authorization.ts",
         "apps/ulc-linz/worker/security-events.ts",
         "apps/ulc-linz/worker/security-events-postgres.ts",
         "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
