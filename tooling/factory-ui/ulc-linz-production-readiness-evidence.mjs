@@ -3,6 +3,9 @@ import { join, resolve } from "node:path";
 
 import { bindUlcLinzM5TargetPolicy } from "../ulc-linz-m5-target-policy.mjs";
 import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
+import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
+import { deriveUlcLinzDataExportEvidence } from "./ulc-linz-data-export-evidence.mjs";
+import { deriveUlcLinzRolesAndPermissionsEvidence } from "./ulc-linz-roles-permissions-evidence.mjs";
 
 const EMPTY_EVIDENCE = Object.freeze({});
 const SNAPSHOT_PATH = "apps/ulc-linz/privacy/m5-security-privacy-readiness.json";
@@ -28,7 +31,7 @@ export async function deriveUlcLinzM5JProductionEvidence(
     bindUlcLinzM5TargetPolicy(definition);
     const root = resolve(repositoryRoot);
     const snapshot = JSON.parse(await readFile(join(root, SNAPSHOT_PATH), "utf8"));
-    const ownerEvidence = await ownerEvidenceFromSnapshot(root, snapshot);
+    const ownerEvidence = await ownerEvidenceFromSnapshot(root, definition, snapshot);
     return composeUlcLinzM5JProductionEvidence(ownerEvidence);
   } catch {
     return EMPTY_EVIDENCE;
@@ -91,7 +94,7 @@ export function isUlcLinzM5JOwnerMatrixComplete(
   return canonicalIds.every((criterionId) => assignedIds.includes(criterionId));
 }
 
-async function ownerEvidenceFromSnapshot(repositoryRoot, snapshot) {
+async function ownerEvidenceFromSnapshot(repositoryRoot, definition, snapshot) {
   if (!isExactRecord(snapshot, SNAPSHOT_KEYS)) throw new Error("M5 snapshot is invalid.");
   if (
     snapshot.schemaVersion !== 1 ||
@@ -107,6 +110,7 @@ async function ownerEvidenceFromSnapshot(repositoryRoot, snapshot) {
   const owners = Object.fromEntries(
     ULC_LINZ_M5_J_OWNER_MATRIX.map(({ owner }) => [owner, {}]),
   );
+  const verifiedCriteria = new Set();
 
   for (let index = 0; index < REQUIRED_PRODUCTION_READINESS_CRITERIA.length; index += 1) {
     const expected = REQUIRED_PRODUCTION_READINESS_CRITERIA[index];
@@ -132,12 +136,27 @@ async function ownerEvidenceFromSnapshot(repositoryRoot, snapshot) {
       seen.add(path);
       await readFile(join(repositoryRoot, path));
     }
+    if (criterion.status === "verified") verifiedCriteria.add(criterion.id);
+  }
 
-    if (criterion.status === "verified") {
-      const owner = ownerByCriterion.get(criterion.id);
-      if (owner === undefined) throw new Error("M5 criterion owner is missing.");
-      owners[owner][criterion.id] = true;
+  const [roleEvidence, exportEvidence, repositoryEvidence] = await Promise.all([
+    deriveUlcLinzRolesAndPermissionsEvidence(repositoryRoot, definition),
+    deriveUlcLinzDataExportEvidence(repositoryRoot, definition, { auditSecurityLogging: true }),
+    Promise.resolve(deriveRepositoryProductionReadinessEvidence(definition)),
+  ]);
+  const staticOwnerChecks = Object.freeze({
+    rolesAndPermissions: roleEvidence?.rolesAndPermissions === true,
+    dataExport: exportEvidence?.dataExport === true,
+    secretsOutsideAppManifests: repositoryEvidence?.secretsOutsideAppManifests === true,
+  });
+
+  for (const criterionId of verifiedCriteria) {
+    if (Object.hasOwn(staticOwnerChecks, criterionId) && staticOwnerChecks[criterionId] !== true) {
+      continue;
     }
+    const owner = ownerByCriterion.get(criterionId);
+    if (owner === undefined) throw new Error("M5 criterion owner is missing.");
+    owners[owner][criterionId] = true;
   }
 
   return Object.freeze(
