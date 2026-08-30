@@ -31,6 +31,7 @@ WITH protected_objects AS (
   JOIN pg_catalog.pg_attribute attribute
     ON attribute.attrelid = metadata.event_log
    AND attribute.attname = 'retained_until'
+   AND attribute.atttypid = 'pg_catalog.timestamptz'::regtype
    AND NOT attribute.attisdropped
 )
 SELECT
