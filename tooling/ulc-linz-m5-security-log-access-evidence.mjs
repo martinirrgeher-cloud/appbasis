@@ -26,20 +26,25 @@ const ACL_BOUNDARY_FIELDS = Object.freeze([
 ]);
 
 export async function collectUlcLinzM5SecurityLogAccessEvidence(
-  { productionDatabaseUrl, cleanupDatabaseUrl, readDatabaseUrl, ingestUsername },
+  { productionDatabaseUrl, backupDatabaseUrl, cleanupDatabaseUrl, readDatabaseUrl, ingestUsername },
   { databaseFactory = createPostgresDatabase } = {},
 ) {
   if (typeof databaseFactory !== "function") throw new Error("ULC M5-F database factory is invalid.");
   const production = parseUlcLinzProductionDatabaseUrl(productionDatabaseUrl);
+  const backup = parseUlcLinzProductionDatabaseUrl(backupDatabaseUrl);
   const cleanup = parseUlcLinzProductionDatabaseUrl(cleanupDatabaseUrl);
   const read = parseUlcLinzProductionDatabaseUrl(readDatabaseUrl);
+  if (backup.host !== production.host || backup.database !== production.database) {
+    throw new Error("ULC M5-F backup credential must select the production database.");
+  }
   const users = {
     application: roleName(production.user),
+    backup: roleName(backup.user),
     ingest: roleName(ingestUsername),
     cleanup: roleName(cleanup.user),
     read: roleName(read.user),
   };
-  if (new Set(Object.values(users)).size !== 4) {
+  if (new Set(Object.values(users)).size !== 5) {
     throw new Error("ULC M5-F production database principals must be distinct.");
   }
 
@@ -312,7 +317,7 @@ async function aclBoundary(client, users) {
   if (new Set(protectedRoles).size !== protectedRoles.length) {
     throw new Error("ULC M5-F protected ACL role inventory is invalid.");
   }
-  const [grantRows, ownerRows, groupMemberRows] = await Promise.all([
+  const [grantRows, ownerRows, groupMemberRows, backupRole] = await Promise.all([
     client.unsafe(
       `WITH acl_rows AS (
          SELECT 'table'::text AS object_kind, relation.relname::text AS object_name,
@@ -403,17 +408,24 @@ async function aclBoundary(client, users) {
         ORDER BY parent.rolname, member.rolname`,
       [protectedRoles],
     ),
+    role(client, users.backup),
   ]);
   if (!Array.isArray(grantRows) || !Array.isArray(ownerRows) || ownerRows.length !== 1 ||
       !Array.isArray(groupMemberRows)) {
     throw new Error("ULC M5-F ACL inventory is invalid.");
+  }
+  if (
+    backupRole.login !== true || elevated(backupRole) || backupRole.membershipAdminOption !== false ||
+    memberships(backupRole).length !== 0
+  ) {
+    throw new Error("ULC M5-F backup database role is not least privilege.");
   }
   if (integer(ownerRows[0].object_count) !== 3 || integer(ownerRows[0].distinct_owner_count) !== 1) {
     throw new Error("ULC M5-F protected object ownership inventory is invalid.");
   }
   const protectedOwner = roleName(ownerRows[0].owner_name);
 
-  const expected = expectedGrantKeys();
+  const expected = expectedGrantKeys(users.backup);
   const actual = new Set();
   let unexpectedProtectedGrantCount = 0;
   let protectedGrantOptionCount = 0;
@@ -430,29 +442,34 @@ async function aclBoundary(client, users) {
   }
 
   const expectedMembers = new Map(Object.entries(GROUPS).map(([key, group]) => [group, users[key]]));
+  const protectedParentRoles = new Set(protectedRoles);
   const seenGroups = new Set();
   const seenCreatorBackReferences = new Set();
   let unexpectedGroupMemberCount = 0;
   let groupMembershipAdminOptionCount = 0;
   for (const row of groupMemberRows) {
-    const group = roleName(row.group_role);
+    const parent = roleName(row.group_role);
     const member = roleName(row.member_role);
-    const expectedMember = expectedMembers.get(group);
-    if (member === protectedOwner && expectedMember !== undefined) {
+    const expectedMember = expectedMembers.get(parent);
+    if (member === protectedOwner && protectedParentRoles.has(parent)) {
       const safeCreatorBackReference = bool(row.grantor_superuser) === true &&
         bool(row.admin_option) === true && bool(row.inherit_option) === false &&
-        bool(row.set_option) === false && !seenCreatorBackReferences.has(group);
-      if (!safeCreatorBackReference) unexpectedGroupMemberCount += 1;
-      seenCreatorBackReferences.add(group);
+        bool(row.set_option) === false && !seenCreatorBackReferences.has(parent);
+      if (safeCreatorBackReference) {
+        seenCreatorBackReferences.add(parent);
+        continue;
+      }
+      unexpectedGroupMemberCount += 1;
+      if (bool(row.admin_option)) groupMembershipAdminOptionCount += 1;
       continue;
     }
 
     const operationalMembershipValid = expectedMember !== undefined && member === expectedMember &&
-      !seenGroups.has(group) && bool(row.admin_option) === false &&
+      !seenGroups.has(parent) && bool(row.admin_option) === false &&
       bool(row.inherit_option) === true && bool(row.set_option) === true;
     if (!operationalMembershipValid) unexpectedGroupMemberCount += 1;
     if (bool(row.admin_option)) groupMembershipAdminOptionCount += 1;
-    seenGroups.add(group);
+    if (expectedMember !== undefined) seenGroups.add(parent);
   }
   for (const group of expectedMembers.keys()) {
     if (!seenGroups.has(group)) unexpectedGroupMemberCount += 1;
@@ -468,7 +485,8 @@ async function aclBoundary(client, users) {
   };
 }
 
-function expectedGrantKeys() {
+function expectedGrantKeys(backupUsername) {
+  const backup = roleName(backupUsername);
   const keys = new Set();
   for (const column of ALLOWED_INGEST_COLUMNS) {
     keys.add(grantKey("column", "ulc_linz_security_event_log", column, GROUPS.ingest, "INSERT"));
@@ -477,6 +495,8 @@ function expectedGrantKeys() {
   keys.add(grantKey("column", "ulc_linz_security_event_log", "retained_until", GROUPS.cleanup, "SELECT"));
   keys.add(grantKey("function", "appbasis_ulc_linz_purge_expired_security_events", null, GROUPS.cleanup, "EXECUTE"));
   keys.add(grantKey("table", "ulc_linz_security_event_log", null, GROUPS.read, "SELECT"));
+  keys.add(grantKey("table", "ulc_linz_security_event_log", null, backup, "SELECT"));
+  keys.add(grantKey("sequence", "ulc_linz_security_event_log_id_seq", null, backup, "SELECT"));
   return keys;
 }
 

@@ -11,6 +11,7 @@ import {
 
 const ULC_LINZ_M6_PRODUCTION_NEON_ORIGIN =
   "ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech";
+const ULC_LINZ_M6_PRODUCTION_NEON_PORT = 5432;
 
 export const ULC_LINZ_M6_PRODUCTION_HYPERDRIVE =
   defineGeneratedPreviewHyperdriveTarget({
@@ -98,9 +99,12 @@ export function validateUlcLinzProductionSecurityLogHyperdrive(config, databaseU
 
 function parseExactProductionDatabaseUrl(value, target, variableName) {
   const parsed = parseGeneratedPreviewDatabaseUrl(value, target);
-  if (parsed.host !== ULC_LINZ_M6_PRODUCTION_NEON_ORIGIN) {
+  if (
+    parsed.host !== ULC_LINZ_M6_PRODUCTION_NEON_ORIGIN ||
+    parsed.port !== ULC_LINZ_M6_PRODUCTION_NEON_PORT
+  ) {
     throw new Error(
-      `${variableName} does not select the exact ULC production Neon origin.`,
+      `${variableName} does not select the exact ULC production Neon origin or port.`,
     );
   }
   return parsed;
