@@ -4,6 +4,25 @@ import { pathToFileURL } from "node:url";
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
 const BACKUP_ROLE_SQL = `
+WITH protected_owner AS (
+  SELECT owner_oid
+  FROM (
+    SELECT relation.relowner AS owner_oid
+    FROM pg_catalog.pg_class relation
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND relation.relname IN ('ulc_linz_security_event_log', 'ulc_linz_security_event_log_id_seq')
+    UNION ALL
+    SELECT procedure.proowner AS owner_oid
+    FROM pg_catalog.pg_proc procedure
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+    WHERE namespace.nspname = 'public'
+      AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+      AND pg_catalog.pg_get_function_identity_arguments(procedure.oid) = ''
+  ) protected_objects
+  GROUP BY owner_oid
+  HAVING count(*) = 3
+)
 SELECT
   backup.rolcanlogin AS login,
   backup.rolsuper AS superuser,
@@ -20,7 +39,20 @@ SELECT
     SELECT count(*)::integer
     FROM pg_catalog.pg_auth_members membership
     WHERE membership.roleid = backup.oid
-  ) AS reverse_membership_count
+  ) AS reverse_membership_count,
+  (
+    SELECT count(*)::integer
+    FROM pg_catalog.pg_auth_members membership
+    JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+    JOIN protected_owner owner ON owner.owner_oid = member.oid
+    WHERE membership.roleid = backup.oid
+      AND grantor.rolsuper = true
+      AND membership.admin_option = true
+      AND membership.inherit_option = false
+      AND membership.set_option = false
+  ) AS safe_creator_back_reference_count,
+  (SELECT count(*)::integer FROM protected_owner) AS protected_owner_count
 FROM pg_catalog.pg_roles backup
 WHERE backup.rolname = $1
 `;
@@ -38,6 +70,10 @@ export async function verifyUlcLinzM5RetentionBackupRole(client, backupUsername)
     throw new Error("ULC M5-F backup role evidence is invalid.");
   }
   const row = rows[0];
+  const membershipCount = Number(row?.membership_count);
+  const reverseMembershipCount = Number(row?.reverse_membership_count);
+  const safeCreatorBackReferenceCount = Number(row?.safe_creator_back_reference_count);
+  const protectedOwnerCount = Number(row?.protected_owner_count);
   if (
     row === null || typeof row !== "object" ||
     row.login !== true ||
@@ -46,8 +82,11 @@ export async function verifyUlcLinzM5RetentionBackupRole(client, backupUsername)
     row.create_role !== false ||
     row.replication !== false ||
     row.bypass_rls !== false ||
-    Number(row.membership_count) !== 0 ||
-    Number(row.reverse_membership_count) !== 0
+    !Number.isInteger(membershipCount) || membershipCount !== 0 ||
+    !Number.isInteger(reverseMembershipCount) || reverseMembershipCount < 0 ||
+    !Number.isInteger(safeCreatorBackReferenceCount) || safeCreatorBackReferenceCount < 0 || safeCreatorBackReferenceCount > 1 ||
+    protectedOwnerCount !== 1 ||
+    reverseMembershipCount !== safeCreatorBackReferenceCount
   ) {
     throw new Error("ULC M5-F backup role is not least privilege at retention delete time.");
   }

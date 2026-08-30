@@ -56,6 +56,8 @@ const VALID_BACKUP_ROLE = Object.freeze({
   bypass_rls: false,
   membership_count: 0,
   reverse_membership_count: 0,
+  safe_creator_back_reference_count: 0,
+  protected_owner_count: 1,
 });
 
 test("retention runner binds the canonical backup principal into its defensive ACL check", async () => {
@@ -83,12 +85,16 @@ test("retention runner binds the canonical backup principal into its defensive A
   assert.match(calls[0].query, /\) = 21/);
 });
 
-test("delete-time backup guard rejects privilege or membership elevation", async () => {
+test("delete-time backup guard permits only the canonical creator back-reference", async () => {
   const makeClient = (row) => ({
     async unsafe(query, params) {
-      assert.match(query, /FROM pg_catalog\.pg_roles backup/);
+      assert.match(query, /WITH protected_owner AS/);
       assert.match(query, /membership\.member = backup\.oid/);
       assert.match(query, /membership\.roleid = backup\.oid/);
+      assert.match(query, /grantor\.rolsuper = true/);
+      assert.match(query, /membership\.admin_option = true/);
+      assert.match(query, /membership\.inherit_option = false/);
+      assert.match(query, /membership\.set_option = false/);
       assert.deepEqual(params, [BACKUP_USERNAME]);
       return [row];
     },
@@ -98,12 +104,26 @@ test("delete-time backup guard rejects privilege or membership elevation", async
     await verifyUlcLinzM5RetentionBackupRole(makeClient(structuredClone(VALID_BACKUP_ROLE)), BACKUP_USERNAME),
     true,
   );
+  assert.equal(
+    await verifyUlcLinzM5RetentionBackupRole(
+      makeClient({
+        ...structuredClone(VALID_BACKUP_ROLE),
+        reverse_membership_count: 1,
+        safe_creator_back_reference_count: 1,
+      }),
+      BACKUP_USERNAME,
+    ),
+    true,
+  );
 
   for (const drift of [
     { superuser: true },
     { create_role: true },
     { membership_count: 1 },
-    { reverse_membership_count: 1 },
+    { reverse_membership_count: 1, safe_creator_back_reference_count: 0 },
+    { reverse_membership_count: 2, safe_creator_back_reference_count: 1 },
+    { reverse_membership_count: 2, safe_creator_back_reference_count: 2 },
+    { protected_owner_count: 0 },
   ]) {
     await assert.rejects(
       verifyUlcLinzM5RetentionBackupRole(
