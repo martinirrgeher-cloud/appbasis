@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -12,7 +12,6 @@ import { ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY } from "./ulc-linz-lifecycle-evidenc
 import { ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY } from "./ulc-linz-roles-permissions-evidence.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const M5_SNAPSHOT_PATH = "apps/ulc-linz/privacy/m5-security-privacy-readiness.json";
 const VALID_ULC_DEFINITION = Object.freeze({
   schemaVersion: 2,
   appId: "ulc-linz",
@@ -57,12 +56,7 @@ async function createFactoryFixture({ rolePolicy } = {}) {
     "utf8",
   );
 
-  const m5Snapshot = JSON.parse(
-    await readFile(join(repositoryRoot, M5_SNAPSHOT_PATH), "utf8"),
-  );
   const evidencePaths = new Set([
-    M5_SNAPSHOT_PATH,
-    ...m5Snapshot.criteria.flatMap(({ evidence }) => evidence),
     ...ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY.acceptanceTests.map(
       ({ path }) => path,
     ),
@@ -81,20 +75,22 @@ function criterion(app, id) {
   return app.productionReadiness.criteria.find((candidate) => candidate.id === id);
 }
 
-test("Factory keeps M5 static criteria independent from production lifecycle activation", async () => {
+test("Factory keeps C/D operationally open while current repository and B evidence are verified", async () => {
   const root = await createFactoryFixture();
   try {
     const snapshot = await loadFactorySnapshot(root);
     const app = snapshot.apps[0];
 
     assert.equal(app.appId, "ulc-linz");
-    assert.equal(app.productionReadiness.productionReady, false);
+    assert.equal(app.productionReadiness.verifiedCount, 2);
     assert.equal(app.productionReadiness.requiredCount, 12);
+    assert.equal(app.productionReadiness.productionReady, false);
     assert.equal(criterion(app, "secretsOutsideAppManifests").status, "verified");
     assert.equal(criterion(app, "rolesAndPermissions").status, "verified");
-    assert.equal(criterion(app, "deletionConcept").status, "verified");
-    assert.equal(criterion(app, "retention").status, "verified");
+    assert.equal(criterion(app, "deletionConcept").status, "open");
+    assert.equal(criterion(app, "retention").status, "open");
     assert.equal(criterion(app, "dataRegion").status, "open");
+    assert.equal(criterion(app, "dataExport").status, "open");
     assert.equal(snapshot.capabilities.releaseProduction, false);
     assert.equal(app.productionReleaseReadiness.technicalEvidenceVerified, false);
     assert.equal(app.productionReleaseReadiness.releaseAuthorized, false);
@@ -103,7 +99,7 @@ test("Factory keeps M5 static criteria independent from production lifecycle act
   }
 });
 
-test("Factory still fails the roles criterion closed on canonical B-policy drift", async () => {
+test("Factory keeps roles and C/D open on B drift without production lifecycle activation", async () => {
   const rolePolicy = JSON.parse(
     JSON.stringify(ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY),
   );
@@ -114,10 +110,11 @@ test("Factory still fails the roles criterion closed on canonical B-policy drift
     const snapshot = await loadFactorySnapshot(root);
     const app = snapshot.apps[0];
 
+    assert.equal(app.productionReadiness.verifiedCount, 1);
     assert.equal(criterion(app, "secretsOutsideAppManifests").status, "verified");
     assert.equal(criterion(app, "rolesAndPermissions").status, "open");
-    assert.equal(criterion(app, "deletionConcept").status, "verified");
-    assert.equal(criterion(app, "retention").status, "verified");
+    assert.equal(criterion(app, "deletionConcept").status, "open");
+    assert.equal(criterion(app, "retention").status, "open");
     assert.equal(app.productionReadiness.productionReady, false);
     assert.equal(snapshot.capabilities.releaseProduction, false);
   } finally {
