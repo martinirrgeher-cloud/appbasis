@@ -127,35 +127,45 @@ jobs:
           } from './tooling/ulc-linz-m5-security-log-retention-backup-role-guard.mjs';
           import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
 
-          const ingest = parseUlcLinzProductionDatabaseUrl(
-            process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
-          );
-          const backup = parseUlcLinzProductionDatabaseUrl(
-            process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
-          );
-          const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
-            productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
-            backupDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
-            cleanupDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
-            readDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
-            ingestUsername: ingest.user,
-          });
-          if (
-            evidence?.leastPrivilegeAccessVerified !== true ||
-            evidence?.protectedOperationalAccessVerified !== true ||
-            evidence?.providerMinimumRetentionVerified !== true
-          ) {
-            throw new Error('ULC M5-F canonical security-log access boundary is incomplete.');
-          }
-
-          const observer = createPostgresDatabase(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          let observer;
           try {
+            const ingest = parseUlcLinzProductionDatabaseUrl(
+              process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
+            );
+            const backup = parseUlcLinzProductionDatabaseUrl(
+              process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
+            );
+            const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
+              productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
+              backupDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
+              cleanupDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL,
+              readDatabaseUrl: process.env.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL,
+              ingestUsername: ingest.user,
+            });
+            if (
+              evidence?.leastPrivilegeAccessVerified !== true ||
+              evidence?.protectedOperationalAccessVerified !== true ||
+              evidence?.providerMinimumRetentionVerified !== true
+            ) {
+              throw new Error('ULC M5-F canonical security-log access boundary is incomplete.');
+            }
+
+            observer = createPostgresDatabase(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
             const snapshot = await collectUlcLinzM5RetentionBackupRoleSnapshot(observer.client, backup.user);
             if (classifyUlcLinzM5RetentionBackupRoleSnapshot(snapshot) !== 'ok') {
               throw new Error('ULC M5-F backup role is not least privilege at retention delete time.');
             }
+          } catch {
+            console.error('ULC Linz M5-F production retention pre-delete verification failed.');
+            process.exitCode = 1;
           } finally {
-            await observer.client.end();
+            if (observer?.client !== undefined) {
+              try {
+                await observer.client.end();
+              } catch {
+                process.exitCode = 1;
+              }
+            }
           }
           NODE
 
