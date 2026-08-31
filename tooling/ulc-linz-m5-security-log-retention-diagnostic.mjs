@@ -104,7 +104,12 @@ export function classifyUlcLinzM5RetentionDiagnosticFailure(error) {
 }
 
 export async function collectUlcLinzM5RetentionDiagnostic(client) {
-  if (client === null || typeof client !== "object" || typeof client.unsafe !== "function") {
+  const clientType = typeof client;
+  if (
+    client === null ||
+    (clientType !== "object" && clientType !== "function") ||
+    typeof client.unsafe !== "function"
+  ) {
     throw new Error("ULC M5-F retention diagnostic client is invalid.");
   }
 
