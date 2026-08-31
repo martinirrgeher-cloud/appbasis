@@ -64,6 +64,8 @@ const FAILURE_PHASES = Object.freeze({
   "ULC M5-F retention diagnostic metadata query failed.": "metadata-query",
   "ULC M5-F retention diagnostic expired-row query failed.": "expired-row-query",
   "ULC M5-F retention diagnostic observation is invalid.": "invalid-observation",
+  "ULC M5-F retention diagnostic database client import failed.": "database-client-import",
+  "ULC M5-F retention diagnostic database client creation failed.": "database-client-create",
 });
 
 export function evaluateUlcLinzM5RetentionDiagnostic(row) {
@@ -168,8 +170,20 @@ if (isMainModule()) {
   try {
     const databaseUrl = process.env.ULC_LINZ_SECURITY_LOG_CLEANUP_DATABASE_URL;
     parseUlcLinzProductionDatabaseUrl(databaseUrl);
-    const { createPostgresDatabase } = await import("../packages/database/src/client.ts");
-    connection = createPostgresDatabase(databaseUrl);
+
+    let createPostgresDatabase;
+    try {
+      ({ createPostgresDatabase } = await import("../packages/database/src/client.ts"));
+    } catch {
+      throw new Error("ULC M5-F retention diagnostic database client import failed.");
+    }
+
+    try {
+      connection = createPostgresDatabase(databaseUrl);
+    } catch {
+      throw new Error("ULC M5-F retention diagnostic database client creation failed.");
+    }
+
     const result = await collectUlcLinzM5RetentionDiagnostic(connection.client);
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
