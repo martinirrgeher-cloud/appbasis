@@ -32,15 +32,15 @@ WITH current_database_record AS (
   WHERE cleanup_role.rolname = current_user
 )
 SELECT
-  count(*)::integer AS reverse_membership_count,
-  count(*) FILTER (
+  count(membership.member)::integer AS reverse_membership_count,
+  count(membership.member) FILTER (
     WHERE membership.member = database_record.datdba
       AND membership.grantor_superuser = true
       AND membership.admin_option = true
       AND membership.inherit_option = false
       AND membership.set_option = false
   )::integer AS safe_creator_back_reference_count,
-  count(*) FILTER (
+  count(membership.member) FILTER (
     WHERE NOT (
       membership.member = database_record.datdba
       AND membership.grantor_superuser = true
