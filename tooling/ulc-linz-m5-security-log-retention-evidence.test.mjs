@@ -168,6 +168,28 @@ test("retention runner accepts only the exact non-delegable cleanup boundary", a
   assert.match(queries[0], /pg_catalog\.aclexplode/);
 });
 
+test("retention runner accepts the callable postgres-js client shape returned by the database factory", async () => {
+  const queries = [];
+  const client = function postgresJsClientShape() {};
+  client.unsafe = async (query) => {
+    queries.push(query);
+    if (query.includes("WITH protected_acl AS")) return [structuredClone(VALID_CLEANUP_ACCESS)];
+    if (query.includes("COUNT(retained_until)")) return [{ expired_rows: "0" }];
+    throw new Error("unexpected retention test query");
+  };
+
+  assert.equal(typeof client, "function");
+  const result = await runUlcLinzM5SecurityLogRetention(
+    client,
+    async () => ({ cutoff: RETENTION_CUTOFF, deletedRows: "0" }),
+  );
+
+  assert.equal(result.cleanupAccessVerified, true);
+  assert.equal(result.cleanupSucceeded, true);
+  assert.equal(result.cleanupResultVerified, true);
+  assert.equal(queries.length, 2);
+});
+
 test("retention runner accepts the canonical single creator back-reference", async () => {
   const access = {
     ...VALID_CLEANUP_ACCESS,
