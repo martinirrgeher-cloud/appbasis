@@ -16,6 +16,7 @@ SELECT
     WHERE relation.oid = 'public.ulc_linz_security_event_log'::regclass
   ) AS owner_matches_table,
   procedure.proconfig AS config,
+  procedure.prosrc AS body,
   pg_catalog.pg_get_functiondef(procedure.oid) AS definition,
   has_function_privilege(current_user, procedure.oid, 'EXECUTE') AS executable
 FROM pg_catalog.pg_proc procedure
@@ -24,6 +25,17 @@ WHERE namespace.nspname = 'public'
   AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
   AND procedure.pronargs = 0
 `;
+
+const CANONICAL_PURGE_BODY = `
+DECLARE
+  deleted_rows bigint;
+BEGIN
+  DELETE FROM public.ulc_linz_security_event_log
+  WHERE retained_until < statement_timestamp();
+  GET DIAGNOSTICS deleted_rows = ROW_COUNT;
+  RETURN deleted_rows;
+END
+`.replaceAll(/\s+/gu, " ").trim();
 
 const DATABASE_CLOCK_SQL = `
 SELECT statement_timestamp() AS cutoff
@@ -65,8 +77,8 @@ export async function collectUlcLinzM5RetentionExecutionDiagnostic(client, backu
     const rows = await client.unsafe(PURGE_CONTRACT_SQL);
     const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
     const config = row !== null && typeof row === "object" && Array.isArray(row.config) ? row.config : [];
-    const definition = row !== null && typeof row === "object"
-      ? String(row.definition ?? "").replaceAll(/\s+/gu, " ")
+    const body = row !== null && typeof row === "object"
+      ? String(row.body ?? "").replaceAll(/\s+/gu, " ").trim()
       : "";
     if (
       row === null ||
@@ -78,8 +90,7 @@ export async function collectUlcLinzM5RetentionExecutionDiagnostic(client, backu
       row.owner_matches_table !== true ||
       row.executable !== true ||
       !config.some((entry) => String(entry).replaceAll(" ", "") === "search_path=pg_catalog") ||
-      !definition.includes("DELETE FROM public.ulc_linz_security_event_log") ||
-      !definition.includes("retained_until < statement_timestamp()")
+      body !== CANONICAL_PURGE_BODY
     ) {
       throw new Error("invalid purge contract");
     }
