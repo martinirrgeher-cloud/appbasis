@@ -187,7 +187,8 @@ jobs:
           set -euo pipefail
           umask 077
           RESULT="$RUNNER_TEMP/ulc-m5-f-retention-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.json"
-          node ./tooling/ulc-linz-m5-security-log-retention-run.mjs > "$RESULT"
+          # Canonical delete implementation: ulc-linz-m5-security-log-retention-run.mjs; the controlled adapter only adds bounded sanitized failure-phase reporting.
+          node ./tooling/ulc-linz-m5-security-log-retention-controlled-run.mjs > "$RESULT"
           RESULT="$RESULT" node --input-type=module <<'NODE'
           import { readFile } from 'node:fs/promises';
           const result = JSON.parse(await readFile(process.env.RESULT, 'utf8'));
