@@ -4,9 +4,18 @@ import { pathToFileURL } from "node:url";
 import { runUlcLinzM5SecurityLogRetention } from "./ulc-linz-m5-security-log-retention-run.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
-const PURGE_PLAN_SQL = `
-EXPLAIN (FORMAT JSON)
-SELECT public.appbasis_ulc_linz_purge_expired_security_events()
+const PURGE_CONTRACT_SQL = `
+SELECT
+  count(*)::integer AS function_count,
+  bool_and(procedure.prosecdef) AS security_definer,
+  bool_and(procedure.provolatile = 'v') AS volatile,
+  bool_and(procedure.prokind = 'f') AS ordinary_function,
+  bool_and(has_function_privilege(current_user, procedure.oid, 'EXECUTE')) AS executable
+FROM pg_catalog.pg_proc procedure
+JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+WHERE namespace.nspname = 'public'
+  AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+  AND procedure.pronargs = 0
 `;
 
 const DATABASE_CLOCK_SQL = `
@@ -16,7 +25,7 @@ SELECT statement_timestamp() AS cutoff
 const FAILURE_PHASES = Object.freeze({
   "ULC M5-F retention execution diagnostic client is invalid.": "client",
   "ULC M5-F retention execution diagnostic backup principal is invalid.": "backup-principal",
-  "ULC M5-F retention execution diagnostic purge plan failed.": "purge-plan",
+  "ULC M5-F retention execution diagnostic purge contract failed.": "purge-contract",
   "ULC M5-F retention execution diagnostic database clock failed.": "database-clock",
   "ULC M5-F retention execution diagnostic cleanup path failed.": "cleanup-path",
   "ULC M5-F retention execution diagnostic database client import failed.": "database-client-import",
@@ -44,12 +53,21 @@ export async function collectUlcLinzM5RetentionExecutionDiagnostic(client, backu
   }
 
   try {
-    const plan = await client.unsafe(PURGE_PLAN_SQL);
-    if (!Array.isArray(plan) || plan.length !== 1) {
-      throw new Error("invalid plan");
+    const rows = await client.unsafe(PURGE_CONTRACT_SQL);
+    const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+    if (
+      row === null ||
+      typeof row !== "object" ||
+      Number(row.function_count) !== 1 ||
+      row.security_definer !== true ||
+      row.volatile !== true ||
+      row.ordinary_function !== true ||
+      row.executable !== true
+    ) {
+      throw new Error("invalid purge contract");
     }
   } catch {
-    throw new Error("ULC M5-F retention execution diagnostic purge plan failed.");
+    throw new Error("ULC M5-F retention execution diagnostic purge contract failed.");
   }
 
   let cutoff;
@@ -91,7 +109,7 @@ export async function collectUlcLinzM5RetentionExecutionDiagnostic(client, backu
     application: "ulc-linz",
     environment: "production",
     classification: "read-only-cleanup-path-ok",
-    purgePlanVerified: true,
+    purgeContractVerified: true,
     cleanupAccessVerified: true,
     cleanupResultVerificationVerified: true,
     productionMutationPerformed: false,
