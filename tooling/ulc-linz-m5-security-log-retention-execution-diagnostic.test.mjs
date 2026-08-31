@@ -8,16 +8,23 @@ import {
 } from "./ulc-linz-m5-security-log-retention-execution-diagnostic.mjs";
 
 const CUTOFF = "2026-08-31T14:06:47.000Z";
+const PURGE_BODY = `
+DECLARE
+  deleted_rows bigint;
+BEGIN
+  DELETE FROM public.ulc_linz_security_event_log
+  WHERE retained_until < statement_timestamp();
+  GET DIAGNOSTICS deleted_rows = ROW_COUNT;
+  RETURN deleted_rows;
+END
+`;
 const PURGE_DEFINITION = `CREATE OR REPLACE FUNCTION public.appbasis_ulc_linz_purge_expired_security_events()
 RETURNS bigint
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'pg_catalog'
 AS $function$
-BEGIN
-  DELETE FROM public.ulc_linz_security_event_log
-  WHERE retained_until < statement_timestamp();
-END
+${PURGE_BODY.trim()}
 $function$`;
 
 const VALID_CLEANUP_ACCESS = Object.freeze({
@@ -78,6 +85,7 @@ function diagnosticClient(overrides = {}) {
         returns_bigint: overrides.returnsBigint ?? true,
         owner_matches_table: overrides.ownerMatchesTable ?? true,
         config: overrides.config ?? ["search_path=pg_catalog"],
+        body: overrides.body ?? PURGE_BODY,
         definition: overrides.definition ?? PURGE_DEFINITION,
         executable: true,
       }];
@@ -113,6 +121,7 @@ test("proves the non-mutating cleanup runner path with the callable postgres-js 
   assert.equal(typeof client, "function");
   assert.equal(queries.length, 4);
   assert.match(queries[0], /FROM pg_catalog\.pg_proc procedure/);
+  assert.match(queries[0], /procedure\.prosrc AS body/);
   assert.match(queries[0], /pg_catalog\.pg_get_functiondef/);
   assert.match(queries[0], /has_function_privilege/);
   assert.match(queries[0], /procedure\.provolatile = 'v'/);
@@ -171,8 +180,11 @@ test("classifies purge-contract and cleanup-path failures without exposing raw d
     { returnsBigint: false },
     { ownerMatchesTable: false },
     { config: ["search_path=public"] },
-    { definition: PURGE_DEFINITION.replace("DELETE FROM public.ulc_linz_security_event_log", "DELETE FROM public.other_table") },
-    { definition: PURGE_DEFINITION.replace("retained_until < statement_timestamp()", "retained_until <= statement_timestamp()") },
+    { body: PURGE_BODY.replace("DELETE FROM public.ulc_linz_security_event_log", "DELETE FROM public.other_table") },
+    { body: PURGE_BODY.replace("retained_until < statement_timestamp()", "retained_until <= statement_timestamp()") },
+    { body: PURGE_BODY.replace("retained_until < statement_timestamp();", "retained_until < statement_timestamp() OR true;") },
+    { body: PURGE_BODY.replace("GET DIAGNOSTICS deleted_rows = ROW_COUNT;", "DELETE FROM public.ulc_linz_security_event_log;\n  GET DIAGNOSTICS deleted_rows = ROW_COUNT;") },
+    { body: `${PURGE_BODY}\n-- retained_until < statement_timestamp()` },
   ]) {
     const driftedContract = diagnosticClient(overrides);
     await assert.rejects(
@@ -219,6 +231,9 @@ test("diagnostic and workflow remain read-only, sanitized, bounded and productio
   assert.match(source, /read-only-cleanup-path-reachable-with-residual-rows/);
   assert.match(source, /procedure\.prorettype = 'pg_catalog\.int8'::regtype/);
   assert.match(source, /owner_matches_table/);
+  assert.match(source, /procedure\.prosrc AS body/);
+  assert.match(source, /body !== CANONICAL_PURGE_BODY/);
+  assert.doesNotMatch(source, /definition\.includes/);
   assert.doesNotMatch(source, /purgeExpiredUlcLinzSecurityEvents\s*\(/);
   assert.doesNotMatch(source, /SELECT\s+public\.appbasis_ulc_linz_purge_expired_security_events\s*\(/i);
   assert.doesNotMatch(source, /EXPLAIN/i);
