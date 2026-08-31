@@ -54,9 +54,15 @@ function diagnosticClient(overrides = {}) {
   const client = function postgresJsClientShape() {};
   client.unsafe = async (query) => {
     queries.push(query);
-    if (query.includes("EXPLAIN (FORMAT JSON)")) {
-      if (overrides.purgePlanError) throw new Error("database secret must not leak");
-      return [{ "QUERY PLAN": [] }];
+    if (query.includes("FROM pg_catalog.pg_proc procedure")) {
+      if (overrides.purgeContractError) throw new Error("database secret must not leak");
+      return [{
+        function_count: overrides.functionCount ?? 1,
+        security_definer: true,
+        volatile: true,
+        ordinary_function: true,
+        executable: true,
+      }];
     }
     if (query.includes("statement_timestamp() AS cutoff")) {
       if (overrides.clockError) throw new Error("database secret must not leak");
@@ -82,7 +88,7 @@ test("proves the non-mutating cleanup runner path with the callable postgres-js 
     application: "ulc-linz",
     environment: "production",
     classification: "read-only-cleanup-path-ok",
-    purgePlanVerified: true,
+    purgeContractVerified: true,
     cleanupAccessVerified: true,
     cleanupResultVerificationVerified: true,
     productionMutationPerformed: false,
@@ -90,21 +96,33 @@ test("proves the non-mutating cleanup runner path with the callable postgres-js 
   });
   assert.equal(typeof client, "function");
   assert.equal(queries.length, 4);
-  assert.match(queries[0], /^\s*EXPLAIN \(FORMAT JSON\)/);
+  assert.match(queries[0], /FROM pg_catalog\.pg_proc procedure/);
+  assert.match(queries[0], /has_function_privilege/);
+  assert.match(queries[0], /procedure\.provolatile = 'v'/);
   assert.match(queries[1], /statement_timestamp\(\) AS cutoff/);
   assert.match(queries[2], /WITH protected_acl AS/);
   assert.match(queries[3], /COUNT\(retained_until\)/);
   assert.doesNotMatch(queries.join("\n"), /DELETE\s+FROM/i);
-  assert.doesNotMatch(queries.join("\n"), /appbasis_ulc_linz_purge_expired_security_events\(\)\s*::/i);
+  assert.doesNotMatch(queries.join("\n"), /SELECT\s+public\.appbasis_ulc_linz_purge_expired_security_events\s*\(/i);
+  assert.doesNotMatch(queries.join("\n"), /EXPLAIN/i);
 });
 
-test("classifies purge-plan and cleanup-path failures without exposing raw database errors", async () => {
-  const purgePlan = diagnosticClient({ purgePlanError: true });
+test("classifies purge-contract and cleanup-path failures without exposing raw database errors", async () => {
+  const purgeContract = diagnosticClient({ purgeContractError: true });
   await assert.rejects(
-    () => collectUlcLinzM5RetentionExecutionDiagnostic(purgePlan.client, "backup_principal"),
+    () => collectUlcLinzM5RetentionExecutionDiagnostic(purgeContract.client, "backup_principal"),
     (error) => {
-      assert.equal(classifyUlcLinzM5RetentionExecutionDiagnosticFailure(error), "purge-plan");
+      assert.equal(classifyUlcLinzM5RetentionExecutionDiagnosticFailure(error), "purge-contract");
       assert.doesNotMatch(error.message, /secret/i);
+      return true;
+    },
+  );
+
+  const malformedContract = diagnosticClient({ functionCount: 0 });
+  await assert.rejects(
+    () => collectUlcLinzM5RetentionExecutionDiagnostic(malformedContract.client, "backup_principal"),
+    (error) => {
+      assert.equal(classifyUlcLinzM5RetentionExecutionDiagnosticFailure(error), "purge-contract");
       return true;
     },
   );
@@ -141,6 +159,8 @@ test("diagnostic and workflow remain read-only, sanitized and serialized with pr
   assert.match(source, /productionReleaseAuthorized:\s*false/);
   assert.doesNotMatch(source, /DELETE\s+FROM/i);
   assert.doesNotMatch(source, /purgeExpiredUlcLinzSecurityEvents\s*\(/);
+  assert.doesNotMatch(source, /SELECT\s+public\.appbasis_ulc_linz_purge_expired_security_events\s*\(/i);
+  assert.doesNotMatch(source, /EXPLAIN/i);
   assert.doesNotMatch(source, /console\.error\([^\n]*error\.message/);
   assert.match(workflow, /permissions:\s*\n\s*contents:\s*read/);
   assert.match(workflow, /group:\s*m6-ulc-production-runtime-config/);
