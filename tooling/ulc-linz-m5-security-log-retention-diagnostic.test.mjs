@@ -133,6 +133,9 @@ test("emits only bounded sanitized failure phases", async () => {
   );
 
   assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(new Error("unexpected secret")), "unknown");
+  assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(new Error("constructor")), "unknown");
+  assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(new Error("toString")), "unknown");
+  assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(new Error("__proto__")), "unknown");
   assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(null), "unknown");
 });
 
