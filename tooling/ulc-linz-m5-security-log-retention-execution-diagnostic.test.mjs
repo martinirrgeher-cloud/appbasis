@@ -8,6 +8,17 @@ import {
 } from "./ulc-linz-m5-security-log-retention-execution-diagnostic.mjs";
 
 const CUTOFF = "2026-08-31T14:06:47.000Z";
+const PURGE_DEFINITION = `CREATE OR REPLACE FUNCTION public.appbasis_ulc_linz_purge_expired_security_events()
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog'
+AS $function$
+BEGIN
+  DELETE FROM public.ulc_linz_security_event_log
+  WHERE retained_until < statement_timestamp();
+END
+$function$`;
 
 const VALID_CLEANUP_ACCESS = Object.freeze({
   cleanup_member: true,
@@ -59,11 +70,13 @@ function diagnosticClient(overrides = {}) {
     }
     if (query.includes("FROM pg_catalog.pg_proc procedure")) {
       if (overrides.purgeContractError) throw new Error("database secret must not leak");
+      if (overrides.functionMissing) return [];
       return [{
-        function_count: overrides.functionCount ?? 1,
         security_definer: true,
         volatile: true,
         ordinary_function: true,
+        config: overrides.config ?? ["search_path=pg_catalog"],
+        definition: overrides.definition ?? PURGE_DEFINITION,
         executable: true,
       }];
     }
@@ -97,6 +110,7 @@ test("proves the non-mutating cleanup runner path with the callable postgres-js 
   assert.equal(typeof client, "function");
   assert.equal(queries.length, 4);
   assert.match(queries[0], /FROM pg_catalog\.pg_proc procedure/);
+  assert.match(queries[0], /pg_catalog\.pg_get_functiondef/);
   assert.match(queries[0], /has_function_privilege/);
   assert.match(queries[0], /procedure\.provolatile = 'v'/);
   assert.match(queries[1], /statement_timestamp\(\) AS cutoff/);
@@ -118,14 +132,29 @@ test("classifies purge-contract and cleanup-path failures without exposing raw d
     },
   );
 
-  const malformedContract = diagnosticClient({ functionCount: 0 });
+  const missingContract = diagnosticClient({ functionMissing: true });
   await assert.rejects(
-    () => collectUlcLinzM5RetentionExecutionDiagnostic(malformedContract.client, "backup_principal"),
+    () => collectUlcLinzM5RetentionExecutionDiagnostic(missingContract.client, "backup_principal"),
     (error) => {
       assert.equal(classifyUlcLinzM5RetentionExecutionDiagnosticFailure(error), "purge-contract");
       return true;
     },
   );
+
+  for (const overrides of [
+    { config: ["search_path=public"] },
+    { definition: PURGE_DEFINITION.replace("DELETE FROM public.ulc_linz_security_event_log", "DELETE FROM public.other_table") },
+    { definition: PURGE_DEFINITION.replace("retained_until < statement_timestamp()", "retained_until <= statement_timestamp()") },
+  ]) {
+    const driftedContract = diagnosticClient(overrides);
+    await assert.rejects(
+      () => collectUlcLinzM5RetentionExecutionDiagnostic(driftedContract.client, "backup_principal"),
+      (error) => {
+        assert.equal(classifyUlcLinzM5RetentionExecutionDiagnosticFailure(error), "purge-contract");
+        return true;
+      },
+    );
+  }
 
   const cleanupPath = diagnosticClient({ expiredRows: "1" });
   await assert.rejects(
@@ -151,19 +180,20 @@ test("emits only bounded failure phases", () => {
   assert.equal(classifyUlcLinzM5RetentionExecutionDiagnosticFailure(null), "unknown");
 });
 
-test("diagnostic and workflow remain read-only, sanitized and serialized with production runtime mutation", async () => {
+test("diagnostic and workflow remain read-only, sanitized, bounded and production-serialized", async () => {
   const source = await readFile(new URL("./ulc-linz-m5-security-log-retention-execution-diagnostic.mjs", import.meta.url), "utf8");
   const workflow = await readFile(new URL("../.github/workflows/m5-ulc-security-log-retention-execution-diagnostic.yml", import.meta.url), "utf8");
 
   assert.match(source, /productionMutationPerformed:\s*false/);
   assert.match(source, /productionReleaseAuthorized:\s*false/);
-  assert.doesNotMatch(source, /DELETE\s+FROM/i);
   assert.doesNotMatch(source, /purgeExpiredUlcLinzSecurityEvents\s*\(/);
   assert.doesNotMatch(source, /SELECT\s+public\.appbasis_ulc_linz_purge_expired_security_events\s*\(/i);
   assert.doesNotMatch(source, /EXPLAIN/i);
+  assert.doesNotMatch(source, /client\.unsafe\(\s*`[^`]*DELETE\s+FROM/is);
   assert.doesNotMatch(source, /console\.error\([^\n]*error\.message/);
   assert.match(workflow, /permissions:\s*\n\s*contents:\s*read/);
   assert.match(workflow, /group:\s*m6-ulc-production-runtime-config/);
   assert.match(workflow, /environment:\s*m4-dr/);
+  assert.match(workflow, /timeout-minutes:\s*10/);
   assert.doesNotMatch(workflow, /PURGE-ULC-M5-SECURITY-LOG-RETENTION/);
 });
