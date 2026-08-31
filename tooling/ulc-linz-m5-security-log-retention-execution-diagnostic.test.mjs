@@ -82,6 +82,7 @@ function diagnosticClient(overrides = {}) {
         security_definer: true,
         volatile: true,
         ordinary_function: true,
+        plpgsql_language: overrides.plpgsqlLanguage ?? true,
         returns_bigint: overrides.returnsBigint ?? true,
         owner_matches_table: overrides.ownerMatchesTable ?? true,
         config: overrides.config ?? ["search_path=pg_catalog"],
@@ -121,6 +122,8 @@ test("proves the non-mutating cleanup runner path with the callable postgres-js 
   assert.equal(typeof client, "function");
   assert.equal(queries.length, 4);
   assert.match(queries[0], /FROM pg_catalog\.pg_proc procedure/);
+  assert.match(queries[0], /JOIN pg_catalog\.pg_language language ON language\.oid = procedure\.prolang/);
+  assert.match(queries[0], /language\.lanname = 'plpgsql' AS plpgsql_language/);
   assert.match(queries[0], /procedure\.prosrc AS body/);
   assert.match(queries[0], /pg_catalog\.pg_get_functiondef/);
   assert.match(queries[0], /has_function_privilege/);
@@ -177,6 +180,7 @@ test("classifies purge-contract and cleanup-path failures without exposing raw d
   );
 
   for (const overrides of [
+    { plpgsqlLanguage: false },
     { returnsBigint: false },
     { ownerMatchesTable: false },
     { config: ["search_path=public"] },
@@ -229,6 +233,8 @@ test("diagnostic and workflow remain read-only, sanitized, bounded and productio
   assert.match(source, /productionMutationPerformed:\s*false/);
   assert.match(source, /productionReleaseAuthorized:\s*false/);
   assert.match(source, /read-only-cleanup-path-reachable-with-residual-rows/);
+  assert.match(source, /language\.lanname = 'plpgsql' AS plpgsql_language/);
+  assert.match(source, /row\.plpgsql_language !== true/);
   assert.match(source, /procedure\.prorettype = 'pg_catalog\.int8'::regtype/);
   assert.match(source, /owner_matches_table/);
   assert.match(source, /procedure\.prosrc AS body/);
