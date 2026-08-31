@@ -23,6 +23,8 @@ const DATABASE_CLOCK_SQL = `
 SELECT statement_timestamp() AS cutoff
 `;
 
+const RESIDUAL_ROWS_ERROR = "ULC M5-F retention cleanup left expired security events behind.";
+
 const FAILURE_PHASES = Object.freeze({
   "ULC M5-F retention execution diagnostic client is invalid.": "client",
   "ULC M5-F retention execution diagnostic backup principal is invalid.": "backup-principal",
@@ -92,6 +94,7 @@ export async function collectUlcLinzM5RetentionExecutionDiagnostic(client, backu
     throw new Error("ULC M5-F retention execution diagnostic database clock failed.");
   }
 
+  let residualExpiredRowsPresent = false;
   try {
     const result = await runUlcLinzM5SecurityLogRetention(
       client,
@@ -107,18 +110,25 @@ export async function collectUlcLinzM5RetentionExecutionDiagnostic(client, backu
     ) {
       throw new Error("invalid result");
     }
-  } catch {
-    throw new Error("ULC M5-F retention execution diagnostic cleanup path failed.");
+  } catch (error) {
+    if (error !== null && typeof error === "object" && error.message === RESIDUAL_ROWS_ERROR) {
+      residualExpiredRowsPresent = true;
+    } else {
+      throw new Error("ULC M5-F retention execution diagnostic cleanup path failed.");
+    }
   }
 
   return Object.freeze({
     schemaVersion: 1,
     application: "ulc-linz",
     environment: "production",
-    classification: "read-only-cleanup-path-ok",
+    classification: residualExpiredRowsPresent
+      ? "read-only-cleanup-path-reachable-with-residual-rows"
+      : "read-only-cleanup-path-ok",
     purgeContractVerified: true,
     cleanupAccessVerified: true,
-    cleanupResultVerificationVerified: true,
+    cleanupResultVerificationReachable: true,
+    residualExpiredRowsPresent,
     productionMutationPerformed: false,
     productionReleaseAuthorized: false,
   });
