@@ -9,6 +9,7 @@ SELECT
   procedure.prosecdef AS security_definer,
   procedure.provolatile = 'v' AS volatile,
   procedure.prokind = 'f' AS ordinary_function,
+  language.lanname = 'plpgsql' AS plpgsql_language,
   procedure.prorettype = 'pg_catalog.int8'::regtype AS returns_bigint,
   procedure.proowner = (
     SELECT relation.relowner
@@ -21,6 +22,7 @@ SELECT
   has_function_privilege(current_user, procedure.oid, 'EXECUTE') AS executable
 FROM pg_catalog.pg_proc procedure
 JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+JOIN pg_catalog.pg_language language ON language.oid = procedure.prolang
 WHERE namespace.nspname = 'public'
   AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
   AND procedure.pronargs = 0
@@ -86,6 +88,7 @@ export async function collectUlcLinzM5RetentionExecutionDiagnostic(client, backu
       row.security_definer !== true ||
       row.volatile !== true ||
       row.ordinary_function !== true ||
+      row.plpgsql_language !== true ||
       row.returns_bigint !== true ||
       row.owner_matches_table !== true ||
       row.executable !== true ||
