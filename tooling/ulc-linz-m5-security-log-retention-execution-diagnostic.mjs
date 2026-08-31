@@ -9,6 +9,12 @@ SELECT
   procedure.prosecdef AS security_definer,
   procedure.provolatile = 'v' AS volatile,
   procedure.prokind = 'f' AS ordinary_function,
+  procedure.prorettype = 'pg_catalog.int8'::regtype AS returns_bigint,
+  procedure.proowner = (
+    SELECT relation.relowner
+    FROM pg_catalog.pg_class relation
+    WHERE relation.oid = 'public.ulc_linz_security_event_log'::regclass
+  ) AS owner_matches_table,
   procedure.proconfig AS config,
   pg_catalog.pg_get_functiondef(procedure.oid) AS definition,
   has_function_privilege(current_user, procedure.oid, 'EXECUTE') AS executable
@@ -68,6 +74,8 @@ export async function collectUlcLinzM5RetentionExecutionDiagnostic(client, backu
       row.security_definer !== true ||
       row.volatile !== true ||
       row.ordinary_function !== true ||
+      row.returns_bigint !== true ||
+      row.owner_matches_table !== true ||
       row.executable !== true ||
       !config.some((entry) => String(entry).replaceAll(" ", "") === "search_path=pg_catalog") ||
       !definition.includes("DELETE FROM public.ulc_linz_security_event_log") ||
