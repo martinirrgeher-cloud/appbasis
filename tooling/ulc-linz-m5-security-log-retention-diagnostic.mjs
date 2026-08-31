@@ -60,6 +60,12 @@ SELECT
   statement_timestamp()::text AS observed_at
 `;
 
+const FAILURE_PHASES = Object.freeze({
+  "ULC M5-F retention diagnostic metadata query failed.": "metadata-query",
+  "ULC M5-F retention diagnostic expired-row query failed.": "expired-row-query",
+  "ULC M5-F retention diagnostic observation is invalid.": "invalid-observation",
+});
+
 export function evaluateUlcLinzM5RetentionDiagnostic(row) {
   if (row === null || typeof row !== "object" || Array.isArray(row)) {
     return Object.freeze({ classification: "invalid-observation" });
@@ -88,11 +94,24 @@ export function evaluateUlcLinzM5RetentionDiagnostic(row) {
   return Object.freeze({ classification: "read-only-preconditions-ok" });
 }
 
+export function classifyUlcLinzM5RetentionDiagnosticFailure(error) {
+  if (error === null || typeof error !== "object" || typeof error.message !== "string") {
+    return "unknown";
+  }
+  return Object.hasOwn(FAILURE_PHASES, error.message) ? FAILURE_PHASES[error.message] : "unknown";
+}
+
 export async function collectUlcLinzM5RetentionDiagnostic(client) {
   if (client === null || typeof client !== "object" || typeof client.unsafe !== "function") {
     throw new Error("ULC M5-F retention diagnostic client is invalid.");
   }
-  const metadataRows = await client.unsafe(DIAGNOSTIC_METADATA_SQL);
+
+  let metadataRows;
+  try {
+    metadataRows = await client.unsafe(DIAGNOSTIC_METADATA_SQL);
+  } catch {
+    throw new Error("ULC M5-F retention diagnostic metadata query failed.");
+  }
   if (!Array.isArray(metadataRows) || metadataRows.length !== 1) {
     throw new Error("ULC M5-F retention diagnostic observation is invalid.");
   }
@@ -108,7 +127,12 @@ export async function collectUlcLinzM5RetentionDiagnostic(client) {
     return diagnosticResult("contract-drift");
   }
 
-  const expiredRows = await client.unsafe(DIAGNOSTIC_EXPIRED_ROWS_SQL);
+  let expiredRows;
+  try {
+    expiredRows = await client.unsafe(DIAGNOSTIC_EXPIRED_ROWS_SQL);
+  } catch {
+    throw new Error("ULC M5-F retention diagnostic expired-row query failed.");
+  }
   if (!Array.isArray(expiredRows) || expiredRows.length !== 1) {
     throw new Error("ULC M5-F retention diagnostic observation is invalid.");
   }
@@ -148,8 +172,9 @@ if (isMainModule()) {
     connection = createPostgresDatabase(databaseUrl);
     const result = await collectUlcLinzM5RetentionDiagnostic(connection.client);
     process.stdout.write(`${JSON.stringify(result)}\n`);
-  } catch {
-    console.error("ULC Linz M5-F retention diagnostic failed.");
+  } catch (error) {
+    const phase = classifyUlcLinzM5RetentionDiagnosticFailure(error);
+    console.error(`ULC Linz M5-F retention diagnostic failed: ${phase}.`);
     process.exitCode = 1;
   } finally {
     if (connection?.client !== undefined) {
