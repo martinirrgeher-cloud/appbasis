@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  classifyUlcLinzM5RetentionDiagnosticFailure,
   collectUlcLinzM5RetentionDiagnostic,
   evaluateUlcLinzM5RetentionDiagnostic,
 } from "./ulc-linz-m5-security-log-retention-diagnostic.mjs";
@@ -102,6 +103,39 @@ test("fails closed on malformed observations", async () => {
   );
 });
 
+test("emits only bounded sanitized failure phases", async () => {
+  await assert.rejects(
+    () => collectUlcLinzM5RetentionDiagnostic({ async unsafe() { throw new Error("postgres://secret"); } }),
+    (error) => {
+      assert.equal(error.message, "ULC M5-F retention diagnostic metadata query failed.");
+      assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(error), "metadata-query");
+      return true;
+    },
+  );
+
+  let calls = 0;
+  await assert.rejects(
+    () => collectUlcLinzM5RetentionDiagnostic({
+      async unsafe() {
+        calls += 1;
+        if (calls === 1) {
+          const { expired_rows_present: _expired, ...metadata } = VALID_ROW;
+          return [structuredClone(metadata)];
+        }
+        throw new Error("password=secret");
+      },
+    }),
+    (error) => {
+      assert.equal(error.message, "ULC M5-F retention diagnostic expired-row query failed.");
+      assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(error), "expired-row-query");
+      return true;
+    },
+  );
+
+  assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(new Error("unexpected secret")), "unknown");
+  assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(null), "unknown");
+});
+
 test("diagnostic source remains read-only, sanitized and production-serialized", async () => {
   const source = await readFile(new URL("./ulc-linz-m5-security-log-retention-diagnostic.mjs", import.meta.url), "utf8");
   const workflow = await readFile(new URL("../.github/workflows/m5-ulc-security-log-retention-diagnostic.yml", import.meta.url), "utf8");
@@ -110,5 +144,8 @@ test("diagnostic source remains read-only, sanitized and production-serialized",
   assert.match(source, /productionMutationPerformed:\s*false/);
   assert.match(source, /productionReleaseAuthorized:\s*false/);
   assert.doesNotMatch(source, /process\.stdout\.write\([^\n]*databaseUrl/);
+  assert.doesNotMatch(source, /console\.error\([^\n]*error\.message/);
+  assert.match(source, /metadata-query/);
+  assert.match(source, /expired-row-query/);
   assert.match(workflow, /group:\s*m6-ulc-production-runtime-config/);
 });
