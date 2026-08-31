@@ -7,8 +7,9 @@ import {
   ULC_LINZ_M5_RETENTION_FAILURE_PHASES,
 } from "./ulc-linz-m5-security-log-retention-controlled-run.mjs";
 
-const CLEANUP_URL = "postgresql://cleanup:secret@db.example.test/appbasis?sslmode=require";
-const BACKUP_URL = "postgresql://backup:sanitized@db.example.test/appbasis?sslmode=require";
+const PRODUCTION_HOST = "ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech:5432/neondb";
+const CLEANUP_URL = `postgresql://cleanup:secret@${PRODUCTION_HOST}?sslmode=require`;
+const BACKUP_URL = `postgresql://backup:sanitized@${PRODUCTION_HOST}?sslmode=require`;
 const CUTOFF = "2026-08-31T18:00:00.000Z";
 
 const VALID_ACCESS = Object.freeze({
