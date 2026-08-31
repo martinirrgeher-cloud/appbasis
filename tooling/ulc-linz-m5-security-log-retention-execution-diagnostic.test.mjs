@@ -103,7 +103,8 @@ test("proves the non-mutating cleanup runner path with the callable postgres-js 
     classification: "read-only-cleanup-path-ok",
     purgeContractVerified: true,
     cleanupAccessVerified: true,
-    cleanupResultVerificationVerified: true,
+    cleanupResultVerificationReachable: true,
+    residualExpiredRowsPresent: false,
     productionMutationPerformed: false,
     productionReleaseAuthorized: false,
   });
@@ -119,6 +120,27 @@ test("proves the non-mutating cleanup runner path with the callable postgres-js 
   assert.doesNotMatch(queries.join("\n"), /DELETE\s+FROM/i);
   assert.doesNotMatch(queries.join("\n"), /SELECT\s+public\.appbasis_ulc_linz_purge_expired_security_events\s*\(/i);
   assert.doesNotMatch(queries.join("\n"), /EXPLAIN/i);
+});
+
+test("reports residual expired rows as a successful read-only observation", async () => {
+  const { client, queries } = diagnosticClient({ expiredRows: "1" });
+  const result = await collectUlcLinzM5RetentionExecutionDiagnostic(client, "backup_principal");
+
+  assert.deepEqual(result, {
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "production",
+    classification: "read-only-cleanup-path-reachable-with-residual-rows",
+    purgeContractVerified: true,
+    cleanupAccessVerified: true,
+    cleanupResultVerificationReachable: true,
+    residualExpiredRowsPresent: true,
+    productionMutationPerformed: false,
+    productionReleaseAuthorized: false,
+  });
+  assert.equal(queries.length, 4);
+  assert.match(queries[2], /WITH protected_acl AS/);
+  assert.match(queries[3], /COUNT\(retained_until\)/);
 });
 
 test("classifies purge-contract and cleanup-path failures without exposing raw database errors", async () => {
@@ -156,9 +178,11 @@ test("classifies purge-contract and cleanup-path failures without exposing raw d
     );
   }
 
-  const cleanupPath = diagnosticClient({ expiredRows: "1" });
+  const invalidAccess = diagnosticClient({
+    access: { ...VALID_CLEANUP_ACCESS, cleanup_execute: false },
+  });
   await assert.rejects(
-    () => collectUlcLinzM5RetentionExecutionDiagnostic(cleanupPath.client, "backup_principal"),
+    () => collectUlcLinzM5RetentionExecutionDiagnostic(invalidAccess.client, "backup_principal"),
     (error) => {
       assert.equal(classifyUlcLinzM5RetentionExecutionDiagnosticFailure(error), "cleanup-path");
       return true;
@@ -186,6 +210,7 @@ test("diagnostic and workflow remain read-only, sanitized, bounded and productio
 
   assert.match(source, /productionMutationPerformed:\s*false/);
   assert.match(source, /productionReleaseAuthorized:\s*false/);
+  assert.match(source, /read-only-cleanup-path-reachable-with-residual-rows/);
   assert.doesNotMatch(source, /purgeExpiredUlcLinzSecurityEvents\s*\(/);
   assert.doesNotMatch(source, /SELECT\s+public\.appbasis_ulc_linz_purge_expired_security_events\s*\(/i);
   assert.doesNotMatch(source, /EXPLAIN/i);
