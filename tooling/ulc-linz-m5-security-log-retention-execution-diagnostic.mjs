@@ -6,11 +6,12 @@ import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hype
 
 const PURGE_CONTRACT_SQL = `
 SELECT
-  count(*)::integer AS function_count,
-  bool_and(procedure.prosecdef) AS security_definer,
-  bool_and(procedure.provolatile = 'v') AS volatile,
-  bool_and(procedure.prokind = 'f') AS ordinary_function,
-  bool_and(has_function_privilege(current_user, procedure.oid, 'EXECUTE')) AS executable
+  procedure.prosecdef AS security_definer,
+  procedure.provolatile = 'v' AS volatile,
+  procedure.prokind = 'f' AS ordinary_function,
+  procedure.proconfig AS config,
+  pg_catalog.pg_get_functiondef(procedure.oid) AS definition,
+  has_function_privilege(current_user, procedure.oid, 'EXECUTE') AS executable
 FROM pg_catalog.pg_proc procedure
 JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
 WHERE namespace.nspname = 'public'
@@ -55,14 +56,20 @@ export async function collectUlcLinzM5RetentionExecutionDiagnostic(client, backu
   try {
     const rows = await client.unsafe(PURGE_CONTRACT_SQL);
     const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+    const config = row !== null && typeof row === "object" && Array.isArray(row.config) ? row.config : [];
+    const definition = row !== null && typeof row === "object"
+      ? String(row.definition ?? "").replaceAll(/\s+/gu, " ")
+      : "";
     if (
       row === null ||
       typeof row !== "object" ||
-      Number(row.function_count) !== 1 ||
       row.security_definer !== true ||
       row.volatile !== true ||
       row.ordinary_function !== true ||
-      row.executable !== true
+      row.executable !== true ||
+      !config.some((entry) => String(entry).replaceAll(" ", "") === "search_path=pg_catalog") ||
+      !definition.includes("DELETE FROM public.ulc_linz_security_event_log") ||
+      !definition.includes("retained_until < statement_timestamp()")
     ) {
       throw new Error("invalid purge contract");
     }
