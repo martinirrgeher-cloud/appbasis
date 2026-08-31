@@ -45,6 +45,24 @@ test("classifies the safe read-only baseline without production mutation", async
   assert.doesNotMatch(queries.join("\n"), /appbasis_ulc_linz_purge_expired_security_events\(\)\s*::/i);
 });
 
+test("accepts the callable postgres-js client shape returned by the database factory", async () => {
+  const queries = [];
+  const client = function postgresJsClientShape() {};
+  client.unsafe = async (query) => {
+    queries.push(query);
+    if (queries.length === 1) {
+      const { expired_rows_present: _expired, ...metadata } = VALID_ROW;
+      return [structuredClone(metadata)];
+    }
+    return [{ expired_rows_present: false, observed_at: VALID_ROW.observed_at }];
+  };
+
+  assert.equal(typeof client, "function");
+  const result = await collectUlcLinzM5RetentionDiagnostic(client);
+  assert.equal(result.classification, "read-only-preconditions-ok");
+  assert.equal(queries.length, 2);
+});
+
 test("structural drift is classified before any static event-table query", async () => {
   const queries = [];
   const client = {
