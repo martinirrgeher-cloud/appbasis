@@ -75,6 +75,8 @@ function diagnosticClient(overrides = {}) {
         security_definer: true,
         volatile: true,
         ordinary_function: true,
+        returns_bigint: overrides.returnsBigint ?? true,
+        owner_matches_table: overrides.ownerMatchesTable ?? true,
         config: overrides.config ?? ["search_path=pg_catalog"],
         definition: overrides.definition ?? PURGE_DEFINITION,
         executable: true,
@@ -114,6 +116,8 @@ test("proves the non-mutating cleanup runner path with the callable postgres-js 
   assert.match(queries[0], /pg_catalog\.pg_get_functiondef/);
   assert.match(queries[0], /has_function_privilege/);
   assert.match(queries[0], /procedure\.provolatile = 'v'/);
+  assert.match(queries[0], /procedure\.prorettype = 'pg_catalog\.int8'::regtype/);
+  assert.match(queries[0], /relation\.oid = 'public\.ulc_linz_security_event_log'::regclass/);
   assert.match(queries[1], /statement_timestamp\(\) AS cutoff/);
   assert.match(queries[2], /WITH protected_acl AS/);
   assert.match(queries[3], /COUNT\(retained_until\)/);
@@ -164,6 +168,8 @@ test("classifies purge-contract and cleanup-path failures without exposing raw d
   );
 
   for (const overrides of [
+    { returnsBigint: false },
+    { ownerMatchesTable: false },
     { config: ["search_path=public"] },
     { definition: PURGE_DEFINITION.replace("DELETE FROM public.ulc_linz_security_event_log", "DELETE FROM public.other_table") },
     { definition: PURGE_DEFINITION.replace("retained_until < statement_timestamp()", "retained_until <= statement_timestamp()") },
@@ -211,6 +217,8 @@ test("diagnostic and workflow remain read-only, sanitized, bounded and productio
   assert.match(source, /productionMutationPerformed:\s*false/);
   assert.match(source, /productionReleaseAuthorized:\s*false/);
   assert.match(source, /read-only-cleanup-path-reachable-with-residual-rows/);
+  assert.match(source, /procedure\.prorettype = 'pg_catalog\.int8'::regtype/);
+  assert.match(source, /owner_matches_table/);
   assert.doesNotMatch(source, /purgeExpiredUlcLinzSecurityEvents\s*\(/);
   assert.doesNotMatch(source, /SELECT\s+public\.appbasis_ulc_linz_purge_expired_security_events\s*\(/i);
   assert.doesNotMatch(source, /EXPLAIN/i);
