@@ -500,7 +500,12 @@ export async function runUlcLinzM5SecurityLogRetention(
   purgeExpiredSecurityEvents,
   backupUsername,
 ) {
-  if (client === null || typeof client !== "object" || typeof client.unsafe !== "function") {
+  const clientType = typeof client;
+  if (
+    client === null ||
+    (clientType !== "object" && clientType !== "function") ||
+    typeof client.unsafe !== "function"
+  ) {
     throw new Error("ULC M5-F retention SQL client is invalid.");
   }
   if (typeof purgeExpiredSecurityEvents !== "function") {
