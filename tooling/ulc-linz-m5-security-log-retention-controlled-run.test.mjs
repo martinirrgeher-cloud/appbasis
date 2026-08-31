@@ -56,7 +56,8 @@ const VALID_CREATOR_BACK_REFERENCE = Object.freeze({
   reverse_membership_count: 0,
   safe_creator_back_reference_count: 0,
   unsafe_reverse_membership_count: 0,
-  database_record_count: 1,
+  protected_object_count: 3,
+  distinct_owner_count: 1,
 });
 
 function database({
@@ -74,7 +75,7 @@ function database({
       if (accessError) throw accessError;
       return [structuredClone(access)];
     }
-    if (query.includes("cleanup_role.rolname = current_user")) {
+    if (query.includes("protected_object_owner AS")) {
       if (creatorBackReferenceError) throw creatorBackReferenceError;
       return [structuredClone(creatorBackReference)];
     }
@@ -133,13 +134,14 @@ test("controlled retention runner classifies binding, principal, purge and post-
   assert.equal(await capturePhase({ database: { verifyError: new Error("postgres://secret-leak") } }), "post-verification");
 });
 
-test("controlled retention runner accepts only the database-owner creator back-reference", async () => {
+test("controlled retention runner accepts only the protected-object-owner creator back-reference", async () => {
   const safeAccess = { ...structuredClone(VALID_ACCESS), reverse_membership_count: 1 };
   const safeCreatorBackReference = {
     reverse_membership_count: 1,
     safe_creator_back_reference_count: 1,
     unsafe_reverse_membership_count: 0,
-    database_record_count: 1,
+    protected_object_count: 3,
+    distinct_owner_count: 1,
   };
   const result = await runControlledUlcLinzM5SecurityLogRetention({
     databaseUrl: CLEANUP_URL,
@@ -156,7 +158,8 @@ test("controlled retention runner accepts only the database-owner creator back-r
     { ...safeCreatorBackReference, safe_creator_back_reference_count: 0, unsafe_reverse_membership_count: 1 },
     { ...safeCreatorBackReference, reverse_membership_count: 2 },
     { ...safeCreatorBackReference, safe_creator_back_reference_count: 2, reverse_membership_count: 2 },
-    { ...safeCreatorBackReference, database_record_count: 0 },
+    { ...safeCreatorBackReference, protected_object_count: 2 },
+    { ...safeCreatorBackReference, distinct_owner_count: 2 },
   ]) {
     await assert.rejects(() => runControlledUlcLinzM5SecurityLogRetention({
       databaseUrl: CLEANUP_URL,
@@ -180,7 +183,8 @@ test("controlled retention runner rejects access/back-reference observation drif
         reverse_membership_count: 1,
         safe_creator_back_reference_count: 1,
         unsafe_reverse_membership_count: 0,
-        database_record_count: 1,
+        protected_object_count: 3,
+        distinct_owner_count: 1,
       },
     }),
     purgeExpiredSecurityEvents: async () => ({ cutoff: CUTOFF, deletedRows: "0" }),
@@ -218,11 +222,14 @@ test("CLI emits a fixed phase only and never forwards caught error text", async 
   assert.doesNotMatch(source, /error\.message|cause\.message|console\.error\([^)]*error/);
   assert.match(source, /failurePhase = "database-client-import"/);
   assert.match(source, /ULC_LINZ_M5_RETENTION_FAILURE_PHASES\.includes\(phase\)/);
-  assert.match(source, /cleanup_role\.rolname = current_user/);
-  assert.match(source, /membership\.member = database_record\.datdba/);
+  assert.match(source, /protected_object_owner AS/);
+  assert.match(source, /membership\.member = protected_object_owner\.owner_oid/);
+  assert.doesNotMatch(source, /pg_database|datdba/);
   assert.match(source, /membership\.grantor_superuser = true/);
   assert.match(source, /membership\.admin_option = true/);
   assert.match(source, /membership\.inherit_option = false/);
   assert.match(source, /membership\.set_option = false/);
   assert.match(source, /unsafe_reverse_membership_count/);
+  assert.match(source, /protected_object_count/);
+  assert.match(source, /distinct_owner_count/);
 });
