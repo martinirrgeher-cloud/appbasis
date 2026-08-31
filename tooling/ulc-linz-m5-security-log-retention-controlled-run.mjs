@@ -73,7 +73,10 @@ SELECT
   protected_object_owner.distinct_owner_count
 FROM protected_object_owner
 LEFT JOIN reverse_memberships membership ON true
-GROUP BY protected_object_owner.protected_object_count, protected_object_owner.distinct_owner_count
+GROUP BY
+  protected_object_owner.owner_oid,
+  protected_object_owner.protected_object_count,
+  protected_object_owner.distinct_owner_count
 `;
 
 export async function runControlledUlcLinzM5SecurityLogRetention({
