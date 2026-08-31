@@ -98,7 +98,7 @@ export function classifyUlcLinzM5RetentionDiagnosticFailure(error) {
   if (error === null || typeof error !== "object" || typeof error.message !== "string") {
     return "unknown";
   }
-  return FAILURE_PHASES[error.message] ?? "unknown";
+  return Object.hasOwn(FAILURE_PHASES, error.message) ? FAILURE_PHASES[error.message] : "unknown";
 }
 
 export async function collectUlcLinzM5RetentionDiagnostic(client) {
