@@ -54,6 +54,9 @@ function diagnosticClient(overrides = {}) {
   const client = function postgresJsClientShape() {};
   client.unsafe = async (query) => {
     queries.push(query);
+    if (query.includes("WITH protected_acl AS")) {
+      return [structuredClone(overrides.access ?? VALID_CLEANUP_ACCESS)];
+    }
     if (query.includes("FROM pg_catalog.pg_proc procedure")) {
       if (overrides.purgeContractError) throw new Error("database secret must not leak");
       return [{
@@ -67,9 +70,6 @@ function diagnosticClient(overrides = {}) {
     if (query.includes("statement_timestamp() AS cutoff")) {
       if (overrides.clockError) throw new Error("database secret must not leak");
       return [{ cutoff: CUTOFF }];
-    }
-    if (query.includes("WITH protected_acl AS")) {
-      return [structuredClone(overrides.access ?? VALID_CLEANUP_ACCESS)];
     }
     if (query.includes("COUNT(retained_until)")) {
       return [{ expired_rows: overrides.expiredRows ?? "0" }];
