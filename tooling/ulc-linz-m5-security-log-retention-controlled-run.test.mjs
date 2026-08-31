@@ -52,12 +52,31 @@ const VALID_ACCESS = Object.freeze({
   unexpected_cleanup_acl_count: 0,
 });
 
-function database({ access = VALID_ACCESS, expiredRows = "0", accessError, verifyError, closeError } = {}) {
+const VALID_CREATOR_BACK_REFERENCE = Object.freeze({
+  reverse_membership_count: 0,
+  safe_creator_back_reference_count: 0,
+  unsafe_reverse_membership_count: 0,
+  database_record_count: 1,
+});
+
+function database({
+  access = VALID_ACCESS,
+  creatorBackReference = VALID_CREATOR_BACK_REFERENCE,
+  expiredRows = "0",
+  accessError,
+  creatorBackReferenceError,
+  verifyError,
+  closeError,
+} = {}) {
   const client = function postgresJsClientShape() {};
   client.unsafe = async (query) => {
     if (query.includes("WITH protected_acl AS")) {
       if (accessError) throw accessError;
       return [structuredClone(access)];
+    }
+    if (query.includes("cleanup_role.rolname = current_user")) {
+      if (creatorBackReferenceError) throw creatorBackReferenceError;
+      return [structuredClone(creatorBackReference)];
     }
     if (query.includes("COUNT(retained_until)")) {
       if (verifyError) throw verifyError;
@@ -109,8 +128,63 @@ test("controlled retention runner classifies binding, principal, purge and post-
   assert.equal(bindingPhase, "database-binding");
 
   assert.equal(await capturePhase({ database: { accessError: new Error("postgres://secret-leak") } }), "cleanup-principal");
+  assert.equal(await capturePhase({ database: { creatorBackReferenceError: new Error("postgres://secret-leak") } }), "cleanup-principal");
   assert.equal(await capturePhase({ purge: async () => { throw new Error("postgres://secret-leak"); } }), "purge-execution");
   assert.equal(await capturePhase({ database: { verifyError: new Error("postgres://secret-leak") } }), "post-verification");
+});
+
+test("controlled retention runner accepts only the database-owner creator back-reference", async () => {
+  const safeAccess = { ...structuredClone(VALID_ACCESS), reverse_membership_count: 1 };
+  const safeCreatorBackReference = {
+    reverse_membership_count: 1,
+    safe_creator_back_reference_count: 1,
+    unsafe_reverse_membership_count: 0,
+    database_record_count: 1,
+  };
+  const result = await runControlledUlcLinzM5SecurityLogRetention({
+    databaseUrl: CLEANUP_URL,
+    backupDatabaseUrl: BACKUP_URL,
+    createPostgresDatabase: () => database({
+      access: safeAccess,
+      creatorBackReference: safeCreatorBackReference,
+    }),
+    purgeExpiredSecurityEvents: async () => ({ cutoff: CUTOFF, deletedRows: "0" }),
+  });
+  assert.equal(result.cleanupAccessVerified, true);
+
+  for (const creatorBackReference of [
+    { ...safeCreatorBackReference, safe_creator_back_reference_count: 0, unsafe_reverse_membership_count: 1 },
+    { ...safeCreatorBackReference, reverse_membership_count: 2 },
+    { ...safeCreatorBackReference, safe_creator_back_reference_count: 2, reverse_membership_count: 2 },
+    { ...safeCreatorBackReference, database_record_count: 0 },
+  ]) {
+    await assert.rejects(() => runControlledUlcLinzM5SecurityLogRetention({
+      databaseUrl: CLEANUP_URL,
+      backupDatabaseUrl: BACKUP_URL,
+      createPostgresDatabase: () => database({
+        access: safeAccess,
+        creatorBackReference,
+      }),
+      purgeExpiredSecurityEvents: async () => ({ cutoff: CUTOFF, deletedRows: "0" }),
+    }), /creator back-reference/);
+  }
+});
+
+test("controlled retention runner rejects access/back-reference observation drift", async () => {
+  await assert.rejects(() => runControlledUlcLinzM5SecurityLogRetention({
+    databaseUrl: CLEANUP_URL,
+    backupDatabaseUrl: BACKUP_URL,
+    createPostgresDatabase: () => database({
+      access: VALID_ACCESS,
+      creatorBackReference: {
+        reverse_membership_count: 1,
+        safe_creator_back_reference_count: 1,
+        unsafe_reverse_membership_count: 0,
+        database_record_count: 1,
+      },
+    }),
+    purgeExpiredSecurityEvents: async () => ({ cutoff: CUTOFF, deletedRows: "0" }),
+  }), /changed during access verification/);
 });
 
 test("controlled retention runner classifies close failure only after successful verification", async () => {
@@ -144,4 +218,11 @@ test("CLI emits a fixed phase only and never forwards caught error text", async 
   assert.doesNotMatch(source, /error\.message|cause\.message|console\.error\([^)]*error/);
   assert.match(source, /failurePhase = "database-client-import"/);
   assert.match(source, /ULC_LINZ_M5_RETENTION_FAILURE_PHASES\.includes\(phase\)/);
+  assert.match(source, /cleanup_role\.rolname = current_user/);
+  assert.match(source, /membership\.member = database_record\.datdba/);
+  assert.match(source, /membership\.grantor_superuser = true/);
+  assert.match(source, /membership\.admin_option = true/);
+  assert.match(source, /membership\.inherit_option = false/);
+  assert.match(source, /membership\.set_option = false/);
+  assert.match(source, /unsafe_reverse_membership_count/);
 });
