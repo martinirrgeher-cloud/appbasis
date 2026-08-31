@@ -132,6 +132,18 @@ test("emits only bounded sanitized failure phases", async () => {
     },
   );
 
+  assert.equal(
+    classifyUlcLinzM5RetentionDiagnosticFailure(
+      new Error("ULC M5-F retention diagnostic database client import failed."),
+    ),
+    "database-client-import",
+  );
+  assert.equal(
+    classifyUlcLinzM5RetentionDiagnosticFailure(
+      new Error("ULC M5-F retention diagnostic database client creation failed."),
+    ),
+    "database-client-create",
+  );
   assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(new Error("unexpected secret")), "unknown");
   assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(new Error("constructor")), "unknown");
   assert.equal(classifyUlcLinzM5RetentionDiagnosticFailure(new Error("toString")), "unknown");
@@ -150,5 +162,7 @@ test("diagnostic source remains read-only, sanitized and production-serialized",
   assert.doesNotMatch(source, /console\.error\([^\n]*error\.message/);
   assert.match(source, /metadata-query/);
   assert.match(source, /expired-row-query/);
+  assert.match(source, /database-client-import/);
+  assert.match(source, /database-client-create/);
   assert.match(workflow, /group:\s*m6-ulc-production-runtime-config/);
 });
