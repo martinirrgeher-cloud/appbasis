@@ -2,6 +2,14 @@
 
 Diese Regeln gelten für menschliche Entwickler, ChatGPT und Codex.
 
+## Aktuelles Gate
+
+- Vor jeder Änderung muss `CURRENT-GATE.md` gelesen und gegen den GitHub-Live-State abgeglichen werden.
+- `CURRENT-GATE.md` friert den operativen Scope und die Abnahmekriterien des aktuellen Arbeitspakets ein, ohne Roadmap, ADRs oder Security-/Privacy-Grenzen zu ersetzen.
+- Review-Findings erweitern den eingefrorenen Gate-Scope nicht automatisch. Sie blockieren nur, wenn sie ein festgelegtes Abnahmekriterium, eine bestehende Architektur-/Security-/Privacy-Entscheidung oder einen real erreichbaren Fehlerpfad verletzen.
+- Nach Erreichen der in `CURRENT-GATE.md` festgelegten Review-/Loop-Grenze wird der betroffene Pfad eingefroren und klassifiziert statt weiter Finding für Finding gepatcht.
+- Ein nicht für das aktuelle Gate oder den unmittelbar folgenden nutzbaren Vertical Slice notwendiger Schritt wird zurückgestellt.
+
 ## Architektur
 
 - Der Core bleibt fachneutral und bewusst klein.
