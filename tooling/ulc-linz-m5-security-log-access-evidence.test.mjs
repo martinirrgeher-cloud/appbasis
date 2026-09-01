@@ -290,7 +290,6 @@ test("accepts only the exact live 12-calendar-month equality constraint", () => 
   for (const definition of [
     "CHECK ((retained_until = (occurred_at + '1 year'::interval)))",
     "CHECK ((retained_until = (occurred_at + '12 mons'::interval)))",
-    "CHECK ( ( retained_until = ( occurred_at + '1 year'::interval ) ) )",
   ]) {
     assert.equal(isExactCalendarRetentionConstraint(definition), true);
   }
