@@ -1,12 +1,12 @@
 # M5-F – ULC Audit-/Security-Logging Boundary
 
-Stand: 2026-08-18
+Stand: 2026-09-01
 
 ## Zweck
 
-Dieser Slice schließt die technisch heute umsetzbare M5-F-Grenze für ULC Linz auf dem finalen C/D-Persistenzstand aus #158, ohne eine zweite Audit-Datenbank, eine generische Logging-Plattform oder einen nicht vorhandenen Production-Sink zu erfinden.
+Dieser Slice definiert die M5-F-Grenze für ULC Linz ohne eine zweite Audit-Datenbank, eine generische Logging-Plattform oder zusätzliche Providerdienste zu erfinden.
 
-M5 bleibt fail-closed. Diese Implementierung allein setzt `auditSecurityLogging` **nicht** auf `verified`.
+M5 bleibt fail-closed. `auditSecurityLogging=true` darf nur aus real gebundener Production-Evidence entstehen.
 
 ## Persistente Audit-Owner
 
@@ -23,7 +23,7 @@ Rollen-, Principal-Rollen- und Principal-Permission-Mutationen bleiben auf dem b
 
 ### ULC-Lifecycle-Owner
 
-#158 materialisiert zusätzlich den app-eigenen ULC-Lifecycle-Audit:
+Der app-eigene ULC-Lifecycle-Audit umfasst:
 
 - `ulc_linz_lifecycle_audit`
 - `identity.delete.completed` und `retention.exception.set`
@@ -36,7 +36,7 @@ Die Shared-Permissions-Audit-Tabelle wird deshalb nicht für ULC-spezifische Lif
 
 ## Reale Organisationsgrenze
 
-Mit #158 existieren reale persistente ULC-Membership- und Subject-Scope-Owner. Die Authorization-Denials können deshalb den Organisationskontext nur dann übernehmen, wenn die aktive Same-Organization-Membership erfolgreich autoritativ aufgelöst wurde. Ein bloß vom Client angefragter Fremdverein wird weiterhin nicht als bestätigter Organisationskontext geloggt.
+Es existieren reale persistente ULC-Membership- und Subject-Scope-Owner. Authorization-Denials dürfen den Organisationskontext nur dann übernehmen, wenn die aktive Same-Organization-Membership erfolgreich autoritativ aufgelöst wurde. Ein bloß vom Client angefragter Fremdverein wird nicht als bestätigter Organisationskontext geloggt.
 
 ## ULC Security Events
 
@@ -72,54 +72,52 @@ Control Characters, überlange oder nicht normalisierbare Identifier werden nich
 
 ## Sink-Grenze
 
-`UlcLinzSecurityEventLogger` ist der schmale Runtime-Port. Der aktuelle Fallback schreibt ausschließlich den normalisierten strukturierten Eventvertrag über `console.warn`.
-
-Ein Fehler eines injizierten/Provider-Sinks:
-
-- eröffnet niemals einen Zugriff,
-- ersetzt niemals die ursprüngliche Authorization-Denial-Semantik,
-- ersetzt niemals eine bereits verweigerte Identity-HTTP-Antwort,
-- wird nur mit einer festen secrets-freien Fallback-Meldung diagnostiziert,
-- bleibt auch dann ohne Einfluss auf die Denial-Semantik, wenn selbst die Fallback-Konsole fehlschlägt.
+`UlcLinzSecurityEventLogger` ist der schmale Runtime-Port. Die Produktionsruntime verwendet den dedizierten Security-Log-Sink; ein Logger-/Sink-Fehler darf niemals einen Zugriff eröffnen oder eine bereits verweigerte Identity-/Authorization-Antwort verändern.
 
 ## Zugriffsschutz
 
 Die normale öffentliche ULC-App besitzt keinen Audit-/Security-Log-Read-Endpunkt. Insbesondere werden keine `/api/security-events`- oder `/api/admin/audit`-Routen eingeführt.
 
-Persistente Audit-Daten und spätere Production-Security-Logs dürfen nur über eine geschützte Betreiber-/Control-Plane-Grenze zugänglich gemacht werden.
+Persistente Audit-Daten und Production-Security-Logs dürfen nur über die geschützte Betreiber-/Control-Plane-Grenze zugänglich gemacht werden.
 
 ## 12-Monats-Retention
 
-Für die beiden heute realen persistenten Audit-Owner ist die 12-Monats-Retention ausführbar belegt:
+Für M5-F ist die Anforderung erfüllt, wenn die konkrete Produktionskonfiguration fail-closed belegt:
 
-1. Permissions-Administration über `PostgresPermissionAdministrationAuditRetention` und dessen PostgreSQL-E2E.
-2. ULC-Lifecycle-Audit über `PostgresUlcLinzScopePersistence.purgeExpiredLifecycleAuditEvents()` und `lifecycle-audit.postgres.e2e.test.ts`.
+1. exakte ULC-Production-Bindung des Security-Log-Sinks,
+2. reale Post-Deployment-Sink-Aktivität,
+3. exakte serverseitige 12-Kalendermonats-Grenze,
+4. vorhandene kanonische Cleanup-Funktion ohne clientseitig überschreibbaren Cutoff,
+5. Least-Privilege-Cleanup-Prinzipal ohne direkten Tabellen-DELETE-/UPDATE-/TRUNCATE-Pfad,
+6. keine unerwarteten alternativen Early-Delete-Pfade,
+7. Bindung an den aktuellen geprüften Retention-Implementierungsdigest.
 
-Für die strukturierten ULC-Security-Events darf die 12-Monats-Anforderung **nicht** aus `console.warn` oder einer bloßen Logger-Schnittstelle abgeleitet werden. Vor `auditSecurityLogging=true` muss die konkrete Produktions-Sink-Konfiguration belegen:
+Ein **bereits erfolgreich ausgeführter destruktiver Produktions-Purge ist kein M5-Pflichtnachweis**. Die Roadmap fordert für Security & Privacy Ready ein vorhandenes und real verifiziertes Lösch-/Aufbewahrungskonzept sowie Audit-/Security-Logging; ein erzwungener Lösch-Probelauf würde das Gate unnötig an einen operativen Mutationsnachweis koppeln.
 
-1. exakte ULC-Production-Bindung,
-2. Zugriff nur über die vorgesehene geschützte Betreiber-/Control-Plane-Grenze,
-3. Retention von 12 Monaten für die erforderlichen Security-Ereignisse,
-4. keine Secrets oder unklassifizierten personenbezogenen Payloads,
-5. fail-closed bei fehlender, fremder oder veralteter Evidenz.
+Der manuelle Workflow `M5 ULC Security Log Retention` bleibt unverändert als kontrollierter Betriebs-/Runbook-Pfad bestehen. Er bleibt main-only, explizit freizugebend und fail-closed. Sein Erfolg darf als zusätzliche operative Evidence verwendet werden, ist aber keine Voraussetzung für `auditSecurityLogging=true`.
 
-## Bewusste globale Restgrenzen
+Der frühere Evidence-Modus `controlled-calendar-enforcement`, der einen frischen erfolgreichen Purge konsumiert, bleibt aus Kompatibilitätsgründen verifizierbar. Die aktuelle Production-Evidence-Komposition verwendet `controlled-calendar-contract`.
 
-Die M5-F-Repository-Implementierung ist technisch fertig. Die Production-Readiness-Evidenz bleibt korrekt `open`, solange mindestens folgende reale Bindungen fehlen:
+## Fail-closed bleibt verbindlich
 
-- konkrete Production-Sink-/Access-/Retention-Evidenz für ULC-Security-Events,
-- gemeinsamer finaler ULC-Integrationshead mit dem deploybaren Runtime-Vertrag aus #153 bzw. dessen Nachfolger,
-- spätere Factory-Evidence, die nur bei vollständiger End-to-End-Acceptance `auditSecurityLogging=true` liefert.
+Die Entschlackung senkt nicht die Sicherheitsgrenze. M5-F bleibt `open`, wenn insbesondere eine der folgenden Bedingungen fehlt oder driftet:
 
-Die zuvor offene Membership-/Organisationspersistenz ist durch #158 für den aktuellen Scope geschlossen und wird nicht mehr als M5-F-Restgrenze geführt.
+- reale Production-Runtime-/Resource-Bindung,
+- dedizierter Security-Log-Hyperdrive,
+- frische Post-Deployment-Sink-Aktivität,
+- Least-Privilege-/ACL-Nachweis,
+- serverseitiger Kalender-Retention-Vertrag,
+- exakter Implementierungsdigest,
+- vollständige oder aktuelle Provider-Evidence.
 
 ## Nicht enthalten
 
-- keine neue DB-Tabelle in M5-F
-- keine neue Migration in M5-F
-- keine neue `packages/audit`-Abstraktion
+- keine neue DB-Tabelle
+- keine neue Migration
+- keine neue Logging-Abstraktion
 - keine öffentliche Log-API
-- keine Providerwrites
+- keine Providerwrites durch diesen Slice
 - kein Deployment
 - keine Secret-Änderung
+- kein automatischer/destruktiver Retention-Run
 - keine Produktionsfreigabe
