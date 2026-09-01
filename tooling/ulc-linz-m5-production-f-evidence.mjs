@@ -268,6 +268,7 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
           SELECT count(*)::integer
           FROM pg_catalog.pg_inherits inheritance
           WHERE inheritance.inhrelid = 'public.ulc_linz_security_event_log'::regclass
+             OR inheritance.inhparent = 'public.ulc_linz_security_event_log'::regclass
         ) AS unexpected_rule_count`),
     ]);
     if (!Array.isArray(functionRows) || functionRows.length !== 1 ||
