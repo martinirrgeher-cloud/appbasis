@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare-current-deployment.mjs";
 import { ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { collectUlcLinzM5SecurityLogAccessEvidence } from "./ulc-linz-m5-security-log-access-evidence.mjs";
@@ -32,6 +33,7 @@ export async function completeUlcLinzM5ProductionFBundle(
     now = new Date(),
     accessCollector = collectUlcLinzM5SecurityLogAccessEvidence,
     deliveryCollector = collectUlcLinzM5SecurityLogDeliveryEvidence,
+    earlyDeletePathCollector = collectUlcLinzM5EarlyDeletePathEvidence,
   } = {},
 ) {
   const nowDate = requiredDate(now);
@@ -87,6 +89,13 @@ export async function completeUlcLinzM5ProductionFBundle(
     throw new Error("M5-F security-log access evidence is incomplete.");
   }
 
+  const earlyDeletePaths = await earlyDeletePathCollector({
+    productionDatabaseUrl: safeProductionDatabaseUrl,
+  });
+  if (earlyDeletePaths?.noEarlyDeletePathVerified !== true) {
+    throw new Error("M5-F early-delete path inventory is incomplete.");
+  }
+
   const sinkActivity = await deliveryCollector(
     {
       productionDatabaseUrl: safeReadDatabaseUrl,
@@ -111,7 +120,7 @@ export async function completeUlcLinzM5ProductionFBundle(
     structuredEventCaptureEnabled: true,
     protectedOperationalAccess: true,
     retentionMode: "controlled-calendar-contract",
-    retentionEvidence: controlledRetentionContractEvidence(access),
+    retentionEvidence: controlledRetentionContractEvidence(access, earlyDeletePaths),
     sinkInventoryComplete: true,
     publicReadEndpointPresent: false,
   };
@@ -194,11 +203,55 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
   });
 }
 
-function controlledRetentionContractEvidence(access) {
+export async function collectUlcLinzM5EarlyDeletePathEvidence(
+  { productionDatabaseUrl },
+  { databaseFactory = createPostgresDatabase } = {},
+) {
+  const safeUrl = credential(productionDatabaseUrl, "ULC production database URL");
+  if (typeof databaseFactory !== "function") {
+    throw new Error("M5-F early-delete database factory is invalid.");
+  }
+  const database = databaseFactory(safeUrl);
+  try {
+    const [functionRows, ruleRows] = await Promise.all([
+      database.client.unsafe(`SELECT count(*)::integer AS unexpected_delete_function_count
+        FROM pg_catalog.pg_proc procedure
+        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+        WHERE namespace.nspname = 'public'
+          AND NOT (procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events' AND procedure.pronargs = 0)
+          AND pg_catalog.pg_get_functiondef(procedure.oid) ~* 'DELETE[[:space:]]+FROM[[:space:]]+(public\\.)?ulc_linz_security_event_log'`),
+      database.client.unsafe(`SELECT count(*)::integer AS unexpected_rule_count
+        FROM pg_catalog.pg_rewrite rewrite
+        WHERE rewrite.ev_class = 'public.ulc_linz_security_event_log'::regclass
+          AND rewrite.rulename <> '_RETURN'`),
+    ]);
+    if (!Array.isArray(functionRows) || functionRows.length !== 1 ||
+        !Array.isArray(ruleRows) || ruleRows.length !== 1) {
+      throw new Error("M5-F early-delete path inventory is invalid.");
+    }
+    const unexpectedDeleteFunctionCount = nonNegativeInteger(
+      functionRows[0].unexpected_delete_function_count,
+      "M5-F unexpected delete function count",
+    );
+    const unexpectedRuleCount = nonNegativeInteger(
+      ruleRows[0].unexpected_rule_count,
+      "M5-F unexpected rule count",
+    );
+    if (unexpectedDeleteFunctionCount !== 0 || unexpectedRuleCount !== 0) {
+      throw new Error("M5-F unexpected early-delete path exists.");
+    }
+    return Object.freeze({ noEarlyDeletePathVerified: true });
+  } finally {
+    await database.client.end();
+  }
+}
+
+function controlledRetentionContractEvidence(access, earlyDeletePaths) {
   if (
     access?.leastPrivilegeAccessVerified !== true ||
     access?.protectedOperationalAccessVerified !== true ||
-    access?.providerMinimumRetentionVerified !== true
+    access?.providerMinimumRetentionVerified !== true ||
+    earlyDeletePaths?.noEarlyDeletePathVerified !== true
   ) {
     throw new Error("M5-F controlled retention contract evidence is unavailable.");
   }
@@ -281,6 +334,11 @@ function canonicalTimestamp(value, label) {
 function requiredDate(value) {
   if (!(value instanceof Date) || !Number.isFinite(value.getTime())) throw new Error("M5-F evidence clock is invalid.");
   return new Date(value.getTime());
+}
+function nonNegativeInteger(value, label) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 0) throw new Error(`${label} is invalid.`);
+  return number;
 }
 function deepFreeze(value) {
   if (value !== null && typeof value === "object") {
