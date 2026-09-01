@@ -235,7 +235,7 @@ function catalogDatabase({
         if (source.includes("protected_owner_member_count")) {
           assert.match(source, /pg_catalog\.pg_auth_members/);
           assert.match(source, /membership\.roleid = relation\.relowner/);
-          assert.match(source, /owner_role\.rolcanlogin/);
+          assert.match(source, /owner\.rolcanlogin/);
           return [{
             protected_owner_member_count: ownerMemberCount,
             owner_login: false,
