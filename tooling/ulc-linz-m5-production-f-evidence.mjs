@@ -264,6 +264,10 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
           WHERE constraint_row.contype = 'f'
             AND constraint_row.conrelid = 'public.ulc_linz_security_event_log'::regclass
             AND constraint_row.confdeltype = 'c'
+        ) + (
+          SELECT count(*)::integer
+          FROM pg_catalog.pg_inherits inheritance
+          WHERE inheritance.inhrelid = 'public.ulc_linz_security_event_log'::regclass
         ) AS unexpected_rule_count`),
     ]);
     if (!Array.isArray(functionRows) || functionRows.length !== 1 ||
