@@ -61,11 +61,11 @@ Kommt danach ein weiteres Finding derselben expandierenden Prüfklasse, wird **n
 
 Keine fortlaufende Finding→Fix→Review-Schleife.
 
-## Aktueller M5-Arbeitsentscheid
+## Volatile Arbeitszustände
 
-PR #248 (`fix/m5-retention-gate-scope`) ist **eingefroren**. Er wird nicht weiter durch zusätzliche PostgreSQL-/Ownership-/Topology-Hardening-Findings erweitert.
+Konkrete PR-Heads, CI-Ergebnisse, Reviewstände, offene Threads, Mergeability und temporäre Freeze-Entscheidungen werden **nicht** in dieser Datei dauerhaft geführt. Sie werden bei jedem Arbeitsstart aus dem verpflichtenden GitHub-Live-State ermittelt.
 
-Vor einer weiteren Änderung an diesem Bereich wird der bestehende Stand ausschließlich gegen die oben eingefrorene M5-Abnahme und bestehende ADR-/Security-Grenzen klassifiziert. Ein neuer Code-Fix ist nur zulässig, wenn daraus ein konkreter M5-Blocker hervorgeht.
+Hat ein aktuell live ermittelter Arbeitspfad die oben definierte Loop-Grenze erreicht, wird er nicht durch weitere Findings derselben expandierenden Prüfklasse erweitert. Vor einer weiteren Änderung wird der bestehende Stand ausschließlich gegen die eingefrorene M5-Abnahme und bestehende ADR-/Security-Grenzen klassifiziert. Ein neuer Code-Fix ist nur zulässig, wenn daraus ein konkreter M5-Blocker hervorgeht.
 
 ## Out of Scope für den aktuellen Gate-Abschluss
 
