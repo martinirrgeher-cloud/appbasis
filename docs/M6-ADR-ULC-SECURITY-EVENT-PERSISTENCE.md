@@ -1,6 +1,6 @@
 # ADR – M6 ULC Security-Event-Persistenz
 
-Stand: 2026-08-23
+Stand: 2026-09-01
 Status: angenommen
 Entscheidung: Variante 2
 
@@ -39,7 +39,9 @@ Diese ADR autorisiert keine externe Mutation. Insbesondere nicht enthalten:
 - keine Secret-Änderung,
 - keine Produktionsfreigabe.
 
-Repository-Code und Tests allein verifizieren `auditSecurityLogging` noch nicht. Produktions-Evidence bleibt fail-closed, bis Migration, Runtime-Bindung, kontrollierter Denial-Write, fehlender öffentlicher Read-Pfad und geschützte Retention-Ausführung real nachgewiesen und an den tatsächlichen Produktionshead gebunden sind.
+Repository-Code und Tests allein verifizieren `auditSecurityLogging` noch nicht. Gemäß ADR-026 bleibt die M5-Production-Evidence fail-closed, bis Migration und aktuelle Runtime-/Sink-Bindung real nachgewiesen sind, ein kontrollierter Denial-Write im Produktionssink beobachtet wurde, kein öffentlicher Read-Pfad besteht und der geschützte Retention-Vertrag auf der realen Produktionsdatenbank belegt ist. Dieser Retention-Nachweis umfasst die exakte serverseitige 12-Kalendermonats-Grenze, die kanonische geschützte Cleanup-Funktion, Least-Privilege-/ACL-Grenzen, das Fehlen unerwarteter alternativer Early-Delete-Pfade und die Bindung an den geprüften Implementierungsdigest.
+
+Ein bereits erfolgreich ausgeführter destruktiver Produktions-Purge ist nach ADR-026 **kein eigenes M5-Pflichtkriterium**. Der manuelle Purge bleibt ein separat freizugebender operativer Betreiber-/Control-Plane-Nachweis und kann zusätzliche Betriebs-Evidence liefern. Eine spätere automatische oder zeitgesteuerte Cleanup-Aktivierung bleibt eine eigene mutierende Produktionsentscheidung und wird durch M5 nicht autorisiert.
 
 ## Verworfen
 
