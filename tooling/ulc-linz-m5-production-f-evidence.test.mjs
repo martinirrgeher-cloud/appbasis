@@ -198,15 +198,15 @@ test("fails closed without real least-privilege access and retention-contract ev
   }
 });
 
-test("fails closed unless alternate early-delete paths were actually inventoried", async () => {
+test("fails closed unless the exact protected topology was inventoried", async () => {
   await assert.rejects(
     () => complete({ earlyDeletePaths: {} }),
     /early-delete path inventory is incomplete/,
   );
 });
 
-test("early-delete catalog inventory rejects alternate delete functions and rewrite rules", async () => {
-  for (const [functionCount, ruleCount] of [[1, 0], [0, 1]]) {
+test("protected topology inventory rejects alternate privileged functions or any structural drift", async () => {
+  for (const [functionCount, topologyCount] of [[1, 0], [0, 1]]) {
     let calls = 0;
     let ended = false;
     const databaseFactory = () => ({
@@ -216,13 +216,25 @@ test("early-delete catalog inventory rejects alternate delete functions and rewr
           const source = String(query);
           if (source.includes("pg_catalog.pg_proc")) {
             assert.match(source, /pg_get_functiondef/);
-            assert.match(source, /DELETE\[\[:space:\]\]\+FROM/);
+            assert.match(source, /prosecdef/);
+            assert.match(source, /has_table_privilege/);
             assert.match(source, /appbasis_ulc_linz_purge_expired_security_events/);
             return [{ unexpected_delete_function_count: functionCount }];
           }
+          assert.match(source, /relation\.relkind = 'r'/);
+          assert.match(source, /relation\.relispartition = false/);
+          assert.match(source, /relation\.relrowsecurity = false/);
+          assert.match(source, /relation\.relforcerowsecurity = false/);
           assert.match(source, /pg_catalog\.pg_rewrite/);
-          assert.match(source, /ulc_linz_security_event_log/);
-          return [{ unexpected_rule_count: ruleCount }];
+          assert.match(source, /pg_catalog\.pg_constraint/);
+          assert.match(source, /constraint_row\.conrelid/);
+          assert.match(source, /constraint_row\.confrelid/);
+          assert.match(source, /pg_catalog\.pg_inherits/);
+          assert.match(source, /inheritance\.inhrelid/);
+          assert.match(source, /inheritance\.inhparent/);
+          assert.match(source, /pg_catalog\.pg_trigger/);
+          assert.match(source, /trigger_row\.tgisinternal = false/);
+          return [{ unexpected_topology_count: topologyCount }];
         },
         async end() { ended = true; },
       },
@@ -239,7 +251,7 @@ test("early-delete catalog inventory rejects alternate delete functions and rewr
   }
 });
 
-test("early-delete catalog inventory accepts only zero alternate function and rule paths", async () => {
+test("protected topology inventory accepts only the canonical isolated table shape", async () => {
   let ended = false;
   const result = await collectUlcLinzM5EarlyDeletePathEvidence(
     { productionDatabaseUrl: inputs().productionDatabaseUrl },
@@ -249,7 +261,7 @@ test("early-delete catalog inventory accepts only zero alternate function and ru
           async unsafe(query) {
             return String(query).includes("pg_catalog.pg_proc")
               ? [{ unexpected_delete_function_count: 0 }]
-              : [{ unexpected_rule_count: 0 }];
+              : [{ unexpected_topology_count: 0 }];
           },
           async end() { ended = true; },
         },
