@@ -1,8 +1,8 @@
 # M6 – ULC Production Security Logging
 
-Stand: 2026-08-23
+Stand: 2026-09-01
 
-Verbindliche Architekturentscheidung: `docs/M6-ADR-ULC-SECURITY-EVENT-PERSISTENCE.md` – Variante 2.
+Verbindliche Architekturentscheidung: `docs/M6-ADR-ULC-SECURITY-EVENT-PERSISTENCE.md` – Variante 2. Für die M5-Retention-Grenze gilt zusätzlich ADR-026.
 
 ## Ziel
 
@@ -77,14 +77,16 @@ Die **automatische operative Ausführung** des Purge-Primitives wird in diesem S
 
 Dieser Repository-Slice allein setzt `auditSecurityLogging` weiterhin **nicht** auf `verified`.
 
-Für die finale M5/M6-Evidenz müssen zusätzlich real belegt sein:
+Für die finale M5-Evidenz müssen real und fail-closed belegt sein:
 
 1. Migration `0002` ist auf der dedizierten ULC-Produktionsdatenbank erfolgreich angewandt.
 2. Die tatsächlich konfigurierte ULC-Produktionsruntime verwendet genau diesen Sink.
 3. Mindestens ein kontrollierter Security-Denial schreibt den erwarteten normalisierten Datensatz in Production.
 4. Es existiert kein öffentlicher Log-Read-Pfad.
-5. Der 12-Monats-Purge ist über die geschützte Betreiber-/Control-Plane-Grenze operativ gebunden und erfolgreich nachgewiesen.
+5. Der geschützte 12-Kalendermonats-Retention-Vertrag ist auf der realen Produktionsdatenbank verifiziert: exakte serverseitige Kalendergrenze, kanonische Cleanup-Funktion, Least-Privilege-/ACL-Grenze, keine unerwarteten alternativen Early-Delete-Pfade und Bindung an den aktuellen geprüften Implementierungsdigest.
 6. Die Evidence ist an den tatsächlichen finalen Produktionshead gebunden und bleibt bei Drift fail-closed.
+
+Gemäß ADR-026 ist ein **bereits erfolgreich ausgeführter destruktiver Produktions-Purge kein zusätzliches M5-Pflichtkriterium**. Der manuelle Retention-Purge bleibt als separat freizugebender operativer Betriebs-/Control-Plane-Nachweis bestehen. Sein Erfolg kann zusätzliche operative Evidence liefern; eine spätere automatische Cleanup-Aktivierung bleibt ein eigenes M6-/Betriebsgate und wird durch `auditSecurityLogging=true` nicht autorisiert.
 
 ## Nicht enthalten
 
@@ -94,4 +96,5 @@ Für die finale M5/M6-Evidenz müssen zusätzlich real belegt sein:
 - keine Secret-Änderung,
 - kein öffentlicher Ingress,
 - keine neue Logging-/Audit-Plattform,
+- keine automatische Retention-Aktivierung,
 - keine Produktionsfreigabe.
