@@ -188,7 +188,7 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
   if (typeof databaseFactory !== "function") throw new Error("M5-F early-delete database factory is invalid.");
   const database = databaseFactory(safeUrl);
   try {
-    const [functionRows, topologyRows, constraintRows, purgeRows, ownerMembershipRows] = await Promise.all([
+    const [functionRows, topologyRows, constraintRows, purgeRows, ownerBoundaryRows] = await Promise.all([
       database.client.unsafe(`SELECT count(*)::integer AS unexpected_delete_function_count
         FROM pg_catalog.pg_proc procedure
         JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
@@ -290,18 +290,26 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
         JOIN pg_catalog.pg_language language ON language.oid = procedure.prolang
         WHERE namespace.nspname = 'public'
           AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'`),
-      database.client.unsafe(`SELECT count(*)::integer AS protected_owner_member_count
-        FROM pg_catalog.pg_auth_members membership
-        JOIN pg_catalog.pg_class relation
-          ON relation.oid = 'public.ulc_linz_security_event_log'::regclass
-        WHERE membership.roleid = relation.relowner`),
+      database.client.unsafe(`SELECT count(membership.member)::integer AS protected_owner_member_count,
+          owner.rolcanlogin AS owner_login,
+          owner.rolsuper AS owner_superuser,
+          owner.rolcreatedb AS owner_create_db,
+          owner.rolcreaterole AS owner_create_role,
+          owner.rolreplication AS owner_replication,
+          owner.rolbypassrls AS owner_bypass_rls
+        FROM pg_catalog.pg_class relation
+        JOIN pg_catalog.pg_roles owner ON owner.oid = relation.relowner
+        LEFT JOIN pg_catalog.pg_auth_members membership ON membership.roleid = relation.relowner
+        WHERE relation.oid = 'public.ulc_linz_security_event_log'::regclass
+        GROUP BY owner.rolcanlogin, owner.rolsuper, owner.rolcreatedb,
+          owner.rolcreaterole, owner.rolreplication, owner.rolbypassrls`),
     ]);
     if (
       !Array.isArray(functionRows) || functionRows.length !== 1 ||
       !Array.isArray(topologyRows) || topologyRows.length !== 1 ||
       !Array.isArray(constraintRows) ||
       !Array.isArray(purgeRows) || purgeRows.length !== 1 ||
-      !Array.isArray(ownerMembershipRows) || ownerMembershipRows.length !== 1
+      !Array.isArray(ownerBoundaryRows) || ownerBoundaryRows.length !== 1
     ) {
       throw new Error("M5-F early-delete path inventory is invalid.");
     }
@@ -313,10 +321,18 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
       topologyRows[0].unexpected_topology_count,
       "M5-F unexpected protected topology count",
     );
+    const ownerBoundary = ownerBoundaryRows[0];
     const protectedOwnerMemberCount = nonNegativeInteger(
-      ownerMembershipRows[0].protected_owner_member_count,
+      ownerBoundary.protected_owner_member_count,
       "M5-F protected owner member count",
     );
+    const protectedOwnerLeastPrivilege =
+      ownerBoundary.owner_login === false &&
+      ownerBoundary.owner_superuser === false &&
+      ownerBoundary.owner_create_db === false &&
+      ownerBoundary.owner_create_role === false &&
+      ownerBoundary.owner_replication === false &&
+      ownerBoundary.owner_bypass_rls === false;
     const exactRetentionConstraintCount = constraintRows.filter((row) =>
       CANONICAL_RETENTION_CONSTRAINT_PATTERN.test(normalizedCatalogSql(row.definition, "retention constraint"))
     ).length;
@@ -336,7 +352,8 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
       unexpectedTopologyCount !== 0 ||
       exactRetentionConstraintCount !== 1 ||
       canonicalPurgeVerified !== true ||
-      protectedOwnerMemberCount !== 0
+      protectedOwnerMemberCount !== 0 ||
+      protectedOwnerLeastPrivilege !== true
     ) {
       throw new Error("M5-F canonical retention contract drift exists.");
     }
