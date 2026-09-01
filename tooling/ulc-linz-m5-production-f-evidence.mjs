@@ -56,24 +56,10 @@ export async function completeUlcLinzM5ProductionFBundle(
     throw new Error("M5-F resource binding evidence is invalid.");
   }
 
-  const safeProductionDatabaseUrl = credential(
-    productionDatabaseUrl,
-    "ULC production database URL",
-  );
-  const safeBackupDatabaseUrl = credential(
-    backupDatabaseUrl,
-    "ULC production backup database URL",
-  );
-  const safeReadDatabaseUrl = credential(
-    readDatabaseUrl,
-    "ULC security read database URL",
-  );
-  const sink = await observeSecurityLogHyperdrive({
-    accountId,
-    apiToken,
-    githubSha,
-    fetchImpl,
-  });
+  const safeProductionDatabaseUrl = credential(productionDatabaseUrl, "ULC production database URL");
+  const safeBackupDatabaseUrl = credential(backupDatabaseUrl, "ULC production backup database URL");
+  const safeReadDatabaseUrl = credential(readDatabaseUrl, "ULC security read database URL");
+  const sink = await observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fetchImpl });
   const access = await accessCollector({
     productionDatabaseUrl: safeProductionDatabaseUrl,
     backupDatabaseUrl: safeBackupDatabaseUrl,
@@ -89,18 +75,13 @@ export async function completeUlcLinzM5ProductionFBundle(
     throw new Error("M5-F security-log access evidence is incomplete.");
   }
 
-  const earlyDeletePaths = await earlyDeletePathCollector({
-    productionDatabaseUrl: safeProductionDatabaseUrl,
-  });
+  const earlyDeletePaths = await earlyDeletePathCollector({ productionDatabaseUrl: safeProductionDatabaseUrl });
   if (earlyDeletePaths?.noEarlyDeletePathVerified !== true) {
     throw new Error("M5-F early-delete path inventory is incomplete.");
   }
 
   const sinkActivity = await deliveryCollector(
-    {
-      productionDatabaseUrl: safeReadDatabaseUrl,
-      deployedAt: sink.deployedAt,
-    },
+    { productionDatabaseUrl: safeReadDatabaseUrl, deployedAt: sink.deployedAt },
     { now: nowDate },
   );
   if (sinkActivity?.postDeploymentSinkActivityObserved !== true) {
@@ -129,10 +110,7 @@ export async function completeUlcLinzM5ProductionFBundle(
     ...root,
     ownerInputs: {
       ...root.ownerInputs,
-      auditSecurityLoggingEvidenceInput: {
-        resourceBindingEvidence,
-        loggingEvidence,
-      },
+      auditSecurityLoggingEvidenceInput: { resourceBindingEvidence, loggingEvidence },
     },
   });
 }
@@ -140,23 +118,16 @@ export async function completeUlcLinzM5ProductionFBundle(
 async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fetchImpl }) {
   const accountPath = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(accountId)}`;
   const deployments = await cloudflareJson(
-    `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`,
-    apiToken,
-    fetchImpl,
+    `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`, apiToken, fetchImpl,
   );
   const current = requireCurrentUlcLinzCloudflareDeployment(
     deployments?.result?.deployments,
     { label: "M5-F deployed Worker inventory" },
   );
-  const deployedAt = canonicalTimestamp(
-    current.deployment.created_on,
-    "Worker deployment created_on",
-  );
+  const deployedAt = canonicalTimestamp(current.deployment.created_on, "Worker deployment created_on");
   const versionId = versionIdValue(current.version.version_id);
   const versionResponse = await cloudflareJson(
-    `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${versionId}`,
-    apiToken,
-    fetchImpl,
+    `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${versionId}`, apiToken, fetchImpl,
   );
   const version = versionResponse.result;
   const message = version?.annotations?.["workers/message"];
@@ -169,18 +140,13 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
   ) {
     throw new Error("M5-F deployed Worker is not bound to current main.");
   }
-  const bindings = version.resources.bindings;
-  const securityBindings = bindings.filter(
+  const securityBindings = version.resources.bindings.filter(
     (binding) => binding?.name === "SECURITY_LOG_HYPERDRIVE" && binding?.type === "hyperdrive",
   );
-  if (securityBindings.length !== 1) {
-    throw new Error("M5-F security-log Hyperdrive binding is not exact.");
-  }
+  if (securityBindings.length !== 1) throw new Error("M5-F security-log Hyperdrive binding is not exact.");
   const hyperdriveId = opaque(securityBindings[0].id, "security-log Hyperdrive ID");
   const configResponse = await cloudflareJson(
-    `${accountPath}/hyperdrive/configs/${encodeURIComponent(hyperdriveId)}`,
-    apiToken,
-    fetchImpl,
+    `${accountPath}/hyperdrive/configs/${encodeURIComponent(hyperdriveId)}`, apiToken, fetchImpl,
   );
   const config = configResponse.result;
   const origin = config?.origin;
@@ -208,12 +174,10 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
   { databaseFactory = createPostgresDatabase } = {},
 ) {
   const safeUrl = credential(productionDatabaseUrl, "ULC production database URL");
-  if (typeof databaseFactory !== "function") {
-    throw new Error("M5-F early-delete database factory is invalid.");
-  }
+  if (typeof databaseFactory !== "function") throw new Error("M5-F early-delete database factory is invalid.");
   const database = databaseFactory(safeUrl);
   try {
-    const [functionRows, ruleRows] = await Promise.all([
+    const [functionRows, topologyRows] = await Promise.all([
       database.client.unsafe(`SELECT count(*)::integer AS unexpected_delete_function_count
         FROM pg_catalog.pg_proc procedure
         JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
@@ -247,10 +211,23 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
               )
             )
             OR pg_catalog.pg_get_functiondef(procedure.oid) ~* 'ulc_linz_security_event_log'
-            OR pg_catalog.pg_get_functiondef(procedure.oid) ~*
-              'DELETE[[:space:]]+FROM[[:space:]]+("?public"?[.])?"?ulc_linz_security_event_log"?'
           )`),
       database.client.unsafe(`SELECT (
+          SELECT CASE
+            WHEN count(*) = 1
+             AND bool_and(
+               relation.relkind = 'r'
+               AND relation.relispartition = false
+               AND relation.relrowsecurity = false
+               AND relation.relforcerowsecurity = false
+             )
+            THEN 0 ELSE 1
+          END
+          FROM pg_catalog.pg_class relation
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+          WHERE namespace.nspname = 'public'
+            AND relation.relname = 'ulc_linz_security_event_log'
+        ) + (
           SELECT count(*)::integer
           FROM pg_catalog.pg_rewrite rewrite
           JOIN pg_catalog.pg_class relation ON relation.oid = rewrite.ev_class
@@ -262,28 +239,35 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
           SELECT count(*)::integer
           FROM pg_catalog.pg_constraint constraint_row
           WHERE constraint_row.contype = 'f'
-            AND constraint_row.conrelid = 'public.ulc_linz_security_event_log'::regclass
-            AND constraint_row.confdeltype = 'c'
+            AND (
+              constraint_row.conrelid = 'public.ulc_linz_security_event_log'::regclass
+              OR constraint_row.confrelid = 'public.ulc_linz_security_event_log'::regclass
+            )
         ) + (
           SELECT count(*)::integer
           FROM pg_catalog.pg_inherits inheritance
           WHERE inheritance.inhrelid = 'public.ulc_linz_security_event_log'::regclass
              OR inheritance.inhparent = 'public.ulc_linz_security_event_log'::regclass
-        ) AS unexpected_rule_count`),
+        ) + (
+          SELECT count(*)::integer
+          FROM pg_catalog.pg_trigger trigger_row
+          WHERE trigger_row.tgrelid = 'public.ulc_linz_security_event_log'::regclass
+            AND trigger_row.tgisinternal = false
+        ) AS unexpected_topology_count`),
     ]);
     if (!Array.isArray(functionRows) || functionRows.length !== 1 ||
-        !Array.isArray(ruleRows) || ruleRows.length !== 1) {
+        !Array.isArray(topologyRows) || topologyRows.length !== 1) {
       throw new Error("M5-F early-delete path inventory is invalid.");
     }
     const unexpectedDeleteFunctionCount = nonNegativeInteger(
       functionRows[0].unexpected_delete_function_count,
       "M5-F unexpected delete function count",
     );
-    const unexpectedRuleCount = nonNegativeInteger(
-      ruleRows[0].unexpected_rule_count,
-      "M5-F unexpected rule count",
+    const unexpectedTopologyCount = nonNegativeInteger(
+      topologyRows[0].unexpected_topology_count,
+      "M5-F unexpected protected topology count",
     );
-    if (unexpectedDeleteFunctionCount !== 0 || unexpectedRuleCount !== 0) {
+    if (unexpectedDeleteFunctionCount !== 0 || unexpectedTopologyCount !== 0) {
       throw new Error("M5-F unexpected early-delete path exists.");
     }
     return Object.freeze({ noEarlyDeletePathVerified: true });
@@ -337,9 +321,7 @@ async function cloudflareJson(url, apiToken, fetchImpl) {
   } catch {
     throw new Error("M5-F Cloudflare evidence request failed.");
   }
-  if (!response?.ok || typeof response.json !== "function") {
-    throw new Error("M5-F Cloudflare evidence request failed.");
-  }
+  if (!response?.ok || typeof response.json !== "function") throw new Error("M5-F Cloudflare evidence request failed.");
   const payload = await response.json().catch(() => null);
   if (payload?.success !== true) throw new Error("M5-F Cloudflare evidence request failed.");
   return payload;
