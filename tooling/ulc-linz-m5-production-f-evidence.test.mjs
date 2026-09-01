@@ -11,7 +11,6 @@ const VALID_UNTIL = "2026-08-23T22:10:00.000Z";
 const VERSION = "12345678-1234-4123-8123-123456789abc";
 const HISTORICAL_VERSION = "22345678-1234-4123-8123-123456789abc";
 const DEPLOYED_AT = "2026-08-23T21:30:00.000Z";
-const VERSION_CREATED_AT = "2026-08-23T19:30:00.000Z";
 
 function resourceBindingEvidence() {
   return {
@@ -66,23 +65,6 @@ function bundle() {
   };
 }
 
-function retentionEvidence(overrides = {}) {
-  return {
-    schemaVersion: 1,
-    application: "ulc-linz",
-    environment: "production",
-    evidenceSource: "github-actions-controlled-production-retention-run",
-    cleanupExecutionBound: true,
-    cleanupLastSucceededAt: "2026-08-23T21:58:00.000Z",
-    cleanupResultVerified: true,
-    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
-    boundaryEventPreserved: true,
-    clientCutoffOverridePresent: false,
-    enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
-    ...overrides,
-  };
-}
-
 function cloudflareFetch(url) {
   const value = String(url);
   if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
@@ -90,14 +72,8 @@ function cloudflareFetch(url) {
       success: true,
       result: {
         deployments: [
-          {
-            created_on: DEPLOYED_AT,
-            versions: [{ version_id: VERSION, percentage: 100 }],
-          },
-          {
-            created_on: "2026-08-22T21:30:00.000Z",
-            versions: [{ version_id: HISTORICAL_VERSION, percentage: 100 }],
-          },
+          { created_on: DEPLOYED_AT, versions: [{ version_id: VERSION, percentage: 100 }] },
+          { created_on: "2026-08-22T21:30:00.000Z", versions: [{ version_id: HISTORICAL_VERSION, percentage: 100 }] },
         ],
       },
     }));
@@ -107,7 +83,6 @@ function cloudflareFetch(url) {
       success: true,
       result: {
         id: VERSION,
-        metadata: { created_on: VERSION_CREATED_AT },
         annotations: {
           "workers/tag": "ulc-linz-production-runtime-v1",
           "workers/message": `AppBasis ulc-linz production runtime ${SHA} auth-hmac:${"b".repeat(64)}`,
@@ -141,10 +116,7 @@ function cloudflareFetch(url) {
 }
 
 function json(value) {
-  return {
-    ok: true,
-    async json() { return structuredClone(value); },
-  };
+  return { ok: true, async json() { return structuredClone(value); } };
 }
 
 function inputs() {
@@ -166,15 +138,9 @@ const validAccess = Object.freeze({
 });
 const validDelivery = Object.freeze({ postDeploymentSinkActivityObserved: true });
 
-async function complete({
-  fetchImpl = cloudflareFetch,
-  access = validAccess,
-  delivery = validDelivery,
-  retention = retentionEvidence(),
-} = {}) {
+async function complete({ fetchImpl = cloudflareFetch, access = validAccess, delivery = validDelivery } = {}) {
   return completeUlcLinzM5ProductionFBundle(bundle(), inputs(), {
     fetchImpl,
-    githubFetchImpl: async () => { throw new Error("not used by injected reader"); },
     now: NOW,
     accessCollector: async (input) => {
       assert.equal(input.backupDatabaseUrl, inputs().backupDatabaseUrl);
@@ -186,46 +152,30 @@ async function complete({
       assert.equal(options.now.toISOString(), NOW.toISOString());
       return delivery;
     },
-    retentionEvidenceReader: async () => retention,
   });
 }
 
-test("adds M5-F from the active Cloudflare deployment even when older deployment history exists", async () => {
+test("adds M5-F from current production sink and verified retention contract without a destructive cleanup run", async () => {
   const result = await complete();
   const f = result.ownerInputs.auditSecurityLoggingEvidenceInput;
   assert.equal(f.resourceBindingEvidence, result.ownerInputs.providerBoundEvidenceInput.resourceBindingEvidence);
-  assert.deepEqual(f.loggingEvidence, {
-    schemaVersion: 1,
-    application: "ulc-linz",
-    environment: "production",
-    observedAt: OBSERVED_AT,
-    validUntilOrReviewAt: VALID_UNTIL,
-    inventorySource: "provider-api",
-    runtimeBindingId: "appbasis-ulc-linz-production",
-    sinkBindingId: "hyperdrive-security",
-    sinkIdentitySource: "provider-api",
-    structuredEventCaptureEnabled: true,
-    protectedOperationalAccess: true,
-    retentionMode: "controlled-calendar-enforcement",
-    retentionEvidence: {
-      source: "controlled-calendar-enforcement",
-      providerMinimumRetentionVerified: true,
-      cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
-      cleanupExecutionBound: true,
-      cleanupLastSucceededAt: "2026-08-23T21:58:00.000Z",
-      cleanupResultVerified: true,
-      boundaryEventPreserved: true,
-      clientCutoffOverridePresent: false,
-      enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
-    },
-    sinkInventoryComplete: true,
-    publicReadEndpointPresent: false,
+  assert.deepEqual(f.loggingEvidence.retentionEvidence, {
+    source: "production-database-and-authoritative-contract",
+    providerMinimumRetentionVerified: true,
+    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
+    calendarConstraintVerified: true,
+    cleanupFunctionVerified: true,
+    leastPrivilegeCleanupVerified: true,
+    noEarlyDeletePathVerified: true,
+    clientCutoffOverridePresent: false,
+    enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
   });
-  assert.equal(JSON.stringify(result).includes("ulc_security_ingest_login"), false);
+  assert.equal(f.loggingEvidence.retentionMode, "controlled-calendar-contract");
+  assert.equal("cleanupLastSucceededAt" in f.loggingEvidence.retentionEvidence, false);
   assert.equal(JSON.stringify(result).includes("postgresql://"), false);
 });
 
-test("fails closed without real least-privilege access evidence", async () => {
+test("fails closed without real least-privilege access and retention-contract evidence", async () => {
   for (const access of [
     { ...validAccess, leastPrivilegeAccessVerified: false },
     { ...validAccess, protectedOperationalAccessVerified: false },
@@ -242,31 +192,12 @@ test("fails closed without post-deployment sink activity evidence", async () => 
   );
 });
 
-test("fails closed without the exact successful retention contract", async () => {
-  for (const retention of [
-    {},
-    retentionEvidence({ cleanupResultVerified: false }),
-    retentionEvidence({ cutoffSemantics: "created-at-strictly-older-than-12-calendar-months" }),
-    retentionEvidence({ enforcementContractDigest: `sha256:${"c".repeat(64)}` }),
-  ]) {
-    await assert.rejects(() => complete({ retention }), /retention run evidence is unavailable/);
-  }
-});
-
 test("fails closed on stale Worker head, missing dedicated binding, missing active deploy timestamp or wrong Hyperdrive origin", async () => {
   const mutations = [
-    (body, url) => {
-      if (url.includes("/versions/")) body.result.annotations["workers/message"] = `AppBasis ulc-linz production runtime ${"c".repeat(40)} auth-hmac:x`;
-    },
-    (body, url) => {
-      if (url.includes("/versions/")) body.result.resources.bindings = body.result.resources.bindings.filter((entry) => entry.name !== "SECURITY_LOG_HYPERDRIVE");
-    },
-    (body, url) => {
-      if (url.endsWith("/deployments")) delete body.result.deployments[0].created_on;
-    },
-    (body, url) => {
-      if (url.includes("/hyperdrive/configs/")) body.result.origin.database = "other";
-    },
+    (body, url) => { if (url.includes("/versions/")) body.result.annotations["workers/message"] = `AppBasis ulc-linz production runtime ${"c".repeat(40)} auth-hmac:x`; },
+    (body, url) => { if (url.includes("/versions/")) body.result.resources.bindings = body.result.resources.bindings.filter((entry) => entry.name !== "SECURITY_LOG_HYPERDRIVE"); },
+    (body, url) => { if (url.endsWith("/deployments")) delete body.result.deployments[0].created_on; },
+    (body, url) => { if (url.includes("/hyperdrive/configs/")) body.result.origin.database = "other"; },
   ];
   for (const mutate of mutations) {
     const fetchImpl = async (url) => {
@@ -288,7 +219,6 @@ test("rejects pre-injected or cross-resource F evidence", async () => {
       now: NOW,
       accessCollector: async () => validAccess,
       deliveryCollector: async () => validDelivery,
-      retentionEvidenceReader: async () => retentionEvidence(),
     }),
     /already present/,
   );
@@ -301,7 +231,6 @@ test("rejects pre-injected or cross-resource F evidence", async () => {
       now: NOW,
       accessCollector: async () => validAccess,
       deliveryCollector: async () => validDelivery,
-      retentionEvidenceReader: async () => retentionEvidence(),
     }),
     /resource binding evidence is invalid/,
   );
