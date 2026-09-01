@@ -225,8 +225,19 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
             AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
             AND procedure.pronargs = 0
           )
-          AND pg_catalog.pg_get_functiondef(procedure.oid) ~*
-            'DELETE[[:space:]]+FROM[[:space:]]+("?public"?[.])?"?ulc_linz_security_event_log"?'`),
+          AND (
+            (
+              procedure.prosecdef = true
+              AND procedure.proowner = (
+                SELECT relation.relowner
+                  FROM pg_catalog.pg_class relation
+                 WHERE relation.oid = 'public.ulc_linz_security_event_log'::regclass
+              )
+            )
+            OR pg_catalog.pg_get_functiondef(procedure.oid) ~* 'ulc_linz_security_event_log'
+            OR pg_catalog.pg_get_functiondef(procedure.oid) ~*
+              'DELETE[[:space:]]+FROM[[:space:]]+("?public"?[.])?"?ulc_linz_security_event_log"?'
+          )`),
       database.client.unsafe(`SELECT count(*)::integer AS unexpected_rule_count
         FROM pg_catalog.pg_rewrite rewrite
         WHERE rewrite.ev_class = 'public.ulc_linz_security_event_log'::regclass
