@@ -217,9 +217,16 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
       database.client.unsafe(`SELECT count(*)::integer AS unexpected_delete_function_count
         FROM pg_catalog.pg_proc procedure
         JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
-        WHERE namespace.nspname = 'public'
-          AND NOT (procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events' AND procedure.pronargs = 0)
-          AND pg_catalog.pg_get_functiondef(procedure.oid) ~* 'DELETE[[:space:]]+FROM[[:space:]]+(public\\.)?ulc_linz_security_event_log'`),
+        WHERE procedure.prokind IN ('f', 'p')
+          AND namespace.nspname <> 'information_schema'
+          AND namespace.nspname !~ '^pg_'
+          AND NOT (
+            namespace.nspname = 'public'
+            AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+            AND procedure.pronargs = 0
+          )
+          AND pg_catalog.pg_get_functiondef(procedure.oid) ~*
+            'DELETE[[:space:]]+FROM[[:space:]]+("?public"?[.])?"?ulc_linz_security_event_log"?'`),
       database.client.unsafe(`SELECT count(*)::integer AS unexpected_rule_count
         FROM pg_catalog.pg_rewrite rewrite
         WHERE rewrite.ev_class = 'public.ulc_linz_security_event_log'::regclass
