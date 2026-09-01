@@ -250,13 +250,21 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
             OR pg_catalog.pg_get_functiondef(procedure.oid) ~*
               'DELETE[[:space:]]+FROM[[:space:]]+("?public"?[.])?"?ulc_linz_security_event_log"?'
           )`),
-      database.client.unsafe(`SELECT count(*)::integer AS unexpected_rule_count
-        FROM pg_catalog.pg_rewrite rewrite
-        JOIN pg_catalog.pg_class relation ON relation.oid = rewrite.ev_class
-        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-        WHERE namespace.nspname <> 'information_schema'
-          AND namespace.nspname !~ '^pg_'
-          AND pg_catalog.pg_get_ruledef(rewrite.oid, true) ~* 'ulc_linz_security_event_log'`),
+      database.client.unsafe(`SELECT (
+          SELECT count(*)::integer
+          FROM pg_catalog.pg_rewrite rewrite
+          JOIN pg_catalog.pg_class relation ON relation.oid = rewrite.ev_class
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+          WHERE namespace.nspname <> 'information_schema'
+            AND namespace.nspname !~ '^pg_'
+            AND pg_catalog.pg_get_ruledef(rewrite.oid, true) ~* 'ulc_linz_security_event_log'
+        ) + (
+          SELECT count(*)::integer
+          FROM pg_catalog.pg_constraint constraint_row
+          WHERE constraint_row.contype = 'f'
+            AND constraint_row.conrelid = 'public.ulc_linz_security_event_log'::regclass
+            AND constraint_row.confdeltype = 'c'
+        ) AS unexpected_rule_count`),
     ]);
     if (!Array.isArray(functionRows) || functionRows.length !== 1 ||
         !Array.isArray(ruleRows) || ruleRows.length !== 1) {
