@@ -290,19 +290,34 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
         JOIN pg_catalog.pg_language language ON language.oid = procedure.prolang
         WHERE namespace.nspname = 'public'
           AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'`),
-      database.client.unsafe(`SELECT count(membership.member)::integer AS protected_owner_member_count,
+      database.client.unsafe(`SELECT count(DISTINCT membership.member)::integer AS protected_owner_member_count,
+          count(DISTINCT schema_membership.member)::integer AS schema_owner_member_count,
+          pg_catalog.pg_has_role(current_user, namespace.nspowner, 'MEMBER') AS current_user_schema_owner_access,
           owner.rolcanlogin AS owner_login,
           owner.rolsuper AS owner_superuser,
           owner.rolcreatedb AS owner_create_db,
           owner.rolcreaterole AS owner_create_role,
           owner.rolreplication AS owner_replication,
-          owner.rolbypassrls AS owner_bypass_rls
+          owner.rolbypassrls AS owner_bypass_rls,
+          schema_owner.rolcanlogin AS schema_owner_login,
+          schema_owner.rolsuper AS schema_owner_superuser,
+          schema_owner.rolcreatedb AS schema_owner_create_db,
+          schema_owner.rolcreaterole AS schema_owner_create_role,
+          schema_owner.rolreplication AS schema_owner_replication,
+          schema_owner.rolbypassrls AS schema_owner_bypass_rls
         FROM pg_catalog.pg_class relation
+        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
         JOIN pg_catalog.pg_roles owner ON owner.oid = relation.relowner
+        JOIN pg_catalog.pg_roles schema_owner ON schema_owner.oid = namespace.nspowner
         LEFT JOIN pg_catalog.pg_auth_members membership ON membership.roleid = relation.relowner
+        LEFT JOIN pg_catalog.pg_auth_members schema_membership ON schema_membership.roleid = namespace.nspowner
         WHERE relation.oid = 'public.ulc_linz_security_event_log'::regclass
-        GROUP BY owner.rolcanlogin, owner.rolsuper, owner.rolcreatedb,
-          owner.rolcreaterole, owner.rolreplication, owner.rolbypassrls`),
+          AND namespace.nspname = 'public'
+        GROUP BY namespace.nspowner,
+          owner.rolcanlogin, owner.rolsuper, owner.rolcreatedb,
+          owner.rolcreaterole, owner.rolreplication, owner.rolbypassrls,
+          schema_owner.rolcanlogin, schema_owner.rolsuper, schema_owner.rolcreatedb,
+          schema_owner.rolcreaterole, schema_owner.rolreplication, schema_owner.rolbypassrls`),
     ]);
     if (
       !Array.isArray(functionRows) || functionRows.length !== 1 ||
@@ -326,6 +341,10 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
       ownerBoundary.protected_owner_member_count,
       "M5-F protected owner member count",
     );
+    const schemaOwnerMemberCount = nonNegativeInteger(
+      ownerBoundary.schema_owner_member_count,
+      "M5-F schema owner member count",
+    );
     const protectedOwnerLeastPrivilege =
       ownerBoundary.owner_login === false &&
       ownerBoundary.owner_superuser === false &&
@@ -333,6 +352,17 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
       ownerBoundary.owner_create_role === false &&
       ownerBoundary.owner_replication === false &&
       ownerBoundary.owner_bypass_rls === false;
+    const schemaOwnerLeastPrivilege =
+      ownerBoundary.schema_owner_login === false &&
+      ownerBoundary.schema_owner_superuser === false &&
+      ownerBoundary.schema_owner_create_db === false &&
+      ownerBoundary.schema_owner_create_role === false &&
+      ownerBoundary.schema_owner_replication === false &&
+      ownerBoundary.schema_owner_bypass_rls === false;
+    const schemaOwnerIsolated =
+      schemaOwnerMemberCount === 0 &&
+      ownerBoundary.current_user_schema_owner_access === false &&
+      schemaOwnerLeastPrivilege === true;
     const exactRetentionConstraintCount = constraintRows.filter((row) =>
       CANONICAL_RETENTION_CONSTRAINT_PATTERN.test(normalizedCatalogSql(row.definition, "retention constraint"))
     ).length;
@@ -353,7 +383,8 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
       exactRetentionConstraintCount !== 1 ||
       canonicalPurgeVerified !== true ||
       protectedOwnerMemberCount !== 0 ||
-      protectedOwnerLeastPrivilege !== true
+      protectedOwnerLeastPrivilege !== true ||
+      schemaOwnerIsolated !== true
     ) {
       throw new Error("M5-F canonical retention contract drift exists.");
     }
