@@ -14,7 +14,7 @@ BEGIN
   RETURN deleted_rows;
 END`;
 
-function databaseFactory({ ownerLogin = false, schemaOwnerAccess = false } = {}) {
+function databaseFactory({ ownerLogin = false, ownerAccess = false, schemaOwnerAccess = false, persistent = true } = {}) {
   let ended = false;
   return {
     factory: () => ({
@@ -25,7 +25,8 @@ function databaseFactory({ ownerLogin = false, schemaOwnerAccess = false } = {})
             return [{ unexpected_delete_function_count: 0 }];
           }
           if (source.includes("unexpected_topology_count")) {
-            return [{ unexpected_topology_count: 0 }];
+            assert.match(source, /relation\.relpersistence = 'p'/);
+            return [{ unexpected_topology_count: persistent ? 0 : 1 }];
           }
           if (source.includes("pg_get_constraintdef")) {
             assert.match(source, /constraint_row\.convalidated = true/);
@@ -53,9 +54,10 @@ function databaseFactory({ ownerLogin = false, schemaOwnerAccess = false } = {})
             assert.match(source, /owner\.rolbypassrls/);
             assert.match(source, /pg_catalog\.pg_namespace namespace/);
             assert.match(source, /pg_catalog\.pg_roles schema_owner/);
+            assert.match(source, /pg_catalog\.pg_has_role\(current_user, relation\.relowner, 'MEMBER'\)/);
             assert.match(source, /pg_catalog\.pg_has_role\(current_user, namespace\.nspowner, 'MEMBER'\)/);
             return [{
-              protected_owner_member_count: schemaOwnerAccess ? 1 : 0,
+              protected_owner_member_count: ownerAccess || schemaOwnerAccess ? 1 : 0,
               owner_login: ownerLogin,
               owner_superuser: false,
               owner_create_db: false,
@@ -73,7 +75,7 @@ function databaseFactory({ ownerLogin = false, schemaOwnerAccess = false } = {})
   };
 }
 
-test("canonical retention evidence requires a validated calendar constraint and inert ownership boundary", async () => {
+test("canonical retention evidence requires a validated calendar constraint and inert persistent ownership boundary", async () => {
   const database = databaseFactory();
   const result = await collectUlcLinzM5EarlyDeletePathEvidence(
     { productionDatabaseUrl: DATABASE_URL },
@@ -96,8 +98,32 @@ test("canonical retention evidence rejects a login-capable protected owner", asy
   assert.equal(database.ended(), true);
 });
 
+test("canonical retention evidence rejects runtime access to the protected table owner", async () => {
+  const database = databaseFactory({ ownerAccess: true });
+  await assert.rejects(
+    () => collectUlcLinzM5EarlyDeletePathEvidence(
+      { productionDatabaseUrl: DATABASE_URL },
+      { databaseFactory: database.factory },
+    ),
+    /canonical retention contract drift exists/,
+  );
+  assert.equal(database.ended(), true);
+});
+
 test("canonical retention evidence rejects runtime access to the containing schema owner", async () => {
   const database = databaseFactory({ schemaOwnerAccess: true });
+  await assert.rejects(
+    () => collectUlcLinzM5EarlyDeletePathEvidence(
+      { productionDatabaseUrl: DATABASE_URL },
+      { databaseFactory: database.factory },
+    ),
+    /canonical retention contract drift exists/,
+  );
+  assert.equal(database.ended(), true);
+});
+
+test("canonical retention evidence rejects an unlogged protected table", async () => {
+  const database = databaseFactory({ persistent: false });
   await assert.rejects(
     () => collectUlcLinzM5EarlyDeletePathEvidence(
       { productionDatabaseUrl: DATABASE_URL },
