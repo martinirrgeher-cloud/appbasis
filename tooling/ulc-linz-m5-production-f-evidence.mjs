@@ -16,6 +16,17 @@ const TARGET_VERSION_TAG = "ulc-linz-production-runtime-v1";
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const OPAQUE_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CANONICAL_RETENTION_CONSTRAINT_PATTERN =
+  /^CHECK \(\(retained_until = \(occurred_at \+ '(?:1 year|12 mons)'::interval\)\)\)$/u;
+const CANONICAL_PURGE_BODY = [
+  "DECLARE deleted_rows bigint;",
+  "BEGIN",
+  "DELETE FROM public.ulc_linz_security_event_log",
+  "WHERE retained_until < statement_timestamp();",
+  "GET DIAGNOSTICS deleted_rows = ROW_COUNT;",
+  "RETURN deleted_rows;",
+  "END",
+].join(" ");
 
 export async function completeUlcLinzM5ProductionFBundle(
   bundle,
@@ -177,7 +188,7 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
   if (typeof databaseFactory !== "function") throw new Error("M5-F early-delete database factory is invalid.");
   const database = databaseFactory(safeUrl);
   try {
-    const [functionRows, topologyRows] = await Promise.all([
+    const [functionRows, topologyRows, constraintRows, purgeRows, ownerMembershipRows] = await Promise.all([
       database.client.unsafe(`SELECT count(*)::integer AS unexpected_delete_function_count
         FROM pg_catalog.pg_proc procedure
         JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
@@ -254,9 +265,43 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
           WHERE trigger_row.tgrelid = 'public.ulc_linz_security_event_log'::regclass
             AND trigger_row.tgisinternal = false
         ) AS unexpected_topology_count`),
+      database.client.unsafe(`SELECT pg_catalog.pg_get_constraintdef(constraint_row.oid) AS definition
+        FROM pg_catalog.pg_constraint constraint_row
+        WHERE constraint_row.conrelid = 'public.ulc_linz_security_event_log'::regclass
+          AND constraint_row.contype = 'c'
+        ORDER BY constraint_row.conname`),
+      database.client.unsafe(`SELECT procedure.prosecdef AS security_definer,
+          procedure.pronargs AS argument_count,
+          procedure.prokind AS function_kind,
+          language.lanname AS language_name,
+          pg_catalog.format_type(procedure.prorettype, NULL) AS return_type,
+          procedure.proconfig AS config,
+          procedure.prosrc AS source_body,
+          EXISTS (
+            SELECT 1
+            FROM pg_catalog.aclexplode(
+              COALESCE(procedure.proacl, pg_catalog.acldefault('f', procedure.proowner))
+            ) acl
+            WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+          ) AS public_execute
+        FROM pg_catalog.pg_proc procedure
+        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+        JOIN pg_catalog.pg_language language ON language.oid = procedure.prolang
+        WHERE namespace.nspname = 'public'
+          AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'`),
+      database.client.unsafe(`SELECT count(*)::integer AS protected_owner_member_count
+        FROM pg_catalog.pg_auth_members membership
+        JOIN pg_catalog.pg_class relation
+          ON relation.oid = 'public.ulc_linz_security_event_log'::regclass
+        WHERE membership.roleid = relation.relowner`),
     ]);
-    if (!Array.isArray(functionRows) || functionRows.length !== 1 ||
-        !Array.isArray(topologyRows) || topologyRows.length !== 1) {
+    if (
+      !Array.isArray(functionRows) || functionRows.length !== 1 ||
+      !Array.isArray(topologyRows) || topologyRows.length !== 1 ||
+      !Array.isArray(constraintRows) ||
+      !Array.isArray(purgeRows) || purgeRows.length !== 1 ||
+      !Array.isArray(ownerMembershipRows) || ownerMembershipRows.length !== 1
+    ) {
       throw new Error("M5-F early-delete path inventory is invalid.");
     }
     const unexpectedDeleteFunctionCount = nonNegativeInteger(
@@ -267,8 +312,32 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
       topologyRows[0].unexpected_topology_count,
       "M5-F unexpected protected topology count",
     );
-    if (unexpectedDeleteFunctionCount !== 0 || unexpectedTopologyCount !== 0) {
-      throw new Error("M5-F unexpected early-delete path exists.");
+    const protectedOwnerMemberCount = nonNegativeInteger(
+      ownerMembershipRows[0].protected_owner_member_count,
+      "M5-F protected owner member count",
+    );
+    const exactRetentionConstraintCount = constraintRows.filter((row) =>
+      CANONICAL_RETENTION_CONSTRAINT_PATTERN.test(normalizedCatalogSql(row.definition, "retention constraint"))
+    ).length;
+    const purge = purgeRows[0];
+    const config = Array.isArray(purge.config) ? purge.config.map((entry) => String(entry).replaceAll(" ", "")) : [];
+    const canonicalPurgeVerified =
+      purge.security_definer === true &&
+      Number(purge.argument_count) === 0 &&
+      purge.function_kind === "f" &&
+      purge.language_name === "plpgsql" &&
+      purge.return_type === "bigint" &&
+      config.length === 1 && config[0] === "search_path=pg_catalog" &&
+      normalizedCatalogSql(purge.source_body, "purge function body") === CANONICAL_PURGE_BODY &&
+      purge.public_execute === false;
+    if (
+      unexpectedDeleteFunctionCount !== 0 ||
+      unexpectedTopologyCount !== 0 ||
+      exactRetentionConstraintCount !== 1 ||
+      canonicalPurgeVerified !== true ||
+      protectedOwnerMemberCount !== 0
+    ) {
+      throw new Error("M5-F canonical retention contract drift exists.");
     }
     return Object.freeze({ noEarlyDeletePathVerified: true });
   } finally {
@@ -367,6 +436,10 @@ function nonNegativeInteger(value, label) {
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < 0) throw new Error(`${label} is invalid.`);
   return number;
+}
+function normalizedCatalogSql(value, label) {
+  if (typeof value !== "string") throw new Error(`M5-F ${label} is invalid.`);
+  return value.replaceAll(/\s+/gu, " ").trim();
 }
 function deepFreeze(value) {
   if (value !== null && typeof value === "object") {
