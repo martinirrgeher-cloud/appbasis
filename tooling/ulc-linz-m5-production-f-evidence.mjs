@@ -228,10 +228,22 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
           AND (
             (
               procedure.prosecdef = true
-              AND procedure.proowner = (
-                SELECT relation.relowner
-                  FROM pg_catalog.pg_class relation
-                 WHERE relation.oid = 'public.ulc_linz_security_event_log'::regclass
+              AND (
+                has_table_privilege(
+                  pg_catalog.pg_get_userbyid(procedure.proowner),
+                  'public.ulc_linz_security_event_log',
+                  'DELETE'
+                )
+                OR has_table_privilege(
+                  pg_catalog.pg_get_userbyid(procedure.proowner),
+                  'public.ulc_linz_security_event_log',
+                  'TRUNCATE'
+                )
+                OR has_function_privilege(
+                  pg_catalog.pg_get_userbyid(procedure.proowner),
+                  'public.appbasis_ulc_linz_purge_expired_security_events()',
+                  'EXECUTE'
+                )
               )
             )
             OR pg_catalog.pg_get_functiondef(procedure.oid) ~* 'ulc_linz_security_event_log'
