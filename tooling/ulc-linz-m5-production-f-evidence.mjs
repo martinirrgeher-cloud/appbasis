@@ -269,6 +269,7 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
         FROM pg_catalog.pg_constraint constraint_row
         WHERE constraint_row.conrelid = 'public.ulc_linz_security_event_log'::regclass
           AND constraint_row.contype = 'c'
+          AND constraint_row.convalidated = true
         ORDER BY constraint_row.conname`),
       database.client.unsafe(`SELECT procedure.prosecdef AS security_definer,
           procedure.pronargs AS argument_count,
