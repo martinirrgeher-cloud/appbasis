@@ -254,8 +254,7 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
         FROM pg_catalog.pg_rewrite rewrite
         JOIN pg_catalog.pg_class relation ON relation.oid = rewrite.ev_class
         JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-        WHERE rewrite.rulename <> '_RETURN'
-          AND namespace.nspname <> 'information_schema'
+        WHERE namespace.nspname <> 'information_schema'
           AND namespace.nspname !~ '^pg_'
           AND pg_catalog.pg_get_ruledef(rewrite.oid, true) ~* 'ulc_linz_security_event_log'`),
     ]);
