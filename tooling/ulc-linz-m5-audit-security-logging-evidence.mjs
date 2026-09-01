@@ -21,6 +21,11 @@ const CONTROLLED_RETENTION_FIELDS = Object.freeze([
   "cleanupExecutionBound", "cleanupLastSucceededAt", "cleanupResultVerified",
   "boundaryEventPreserved", "clientCutoffOverridePresent", "enforcementContractDigest",
 ]);
+const CONTROLLED_RETENTION_CONTRACT_FIELDS = Object.freeze([
+  "source", "providerMinimumRetentionVerified", "cutoffSemantics",
+  "calendarConstraintVerified", "cleanupFunctionVerified", "leastPrivilegeCleanupVerified",
+  "noEarlyDeletePathVerified", "clientCutoffOverridePresent", "enforcementContractDigest",
+]);
 const CONTRACT_FILES = Object.freeze([
   ["apps/ulc-linz/worker/app.ts", new URL("../apps/ulc-linz/worker/app.ts", import.meta.url), "3acdcd47bf696c23334c15a11fe80c70368d608c"],
   ["apps/ulc-linz/worker/authorization.ts", new URL("../apps/ulc-linz/worker/authorization.ts", import.meta.url), "a39b41853b120e56d55a14bb75d4aa231c22843b"],
@@ -94,6 +99,21 @@ function retentionVerified(mode, evidence, nowDate) {
       nowDate.getTime() - cleanupLastSucceededAt.getTime() < MAX_AGE_MS &&
       value.cleanupResultVerified === true &&
       value.boundaryEventPreserved === true &&
+      value.clientCutoffOverridePresent === false &&
+      value.enforcementContractDigest === ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST
+    );
+  }
+  if (mode === "controlled-calendar-contract") {
+    const value = exactRecord(evidence, CONTROLLED_RETENTION_CONTRACT_FIELDS);
+    opaqueDigest(value.enforcementContractDigest);
+    return (
+      value.source === "production-database-and-authoritative-contract" &&
+      value.providerMinimumRetentionVerified === true &&
+      value.cutoffSemantics === "occurred-at-strictly-older-than-12-calendar-months" &&
+      value.calendarConstraintVerified === true &&
+      value.cleanupFunctionVerified === true &&
+      value.leastPrivilegeCleanupVerified === true &&
+      value.noEarlyDeletePathVerified === true &&
       value.clientCutoffOverridePresent === false &&
       value.enforcementContractDigest === ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST
     );
