@@ -15,10 +15,28 @@ export const ULC_LINZ_M5_RETENTION_FAILURE_PHASES = Object.freeze([
 ]);
 
 const CLEANUP_CREATOR_BACK_REFERENCE_SQL = `
-WITH current_database_record AS (
-  SELECT datdba
-  FROM pg_catalog.pg_database
-  WHERE datname = current_database()
+WITH protected_object_owner AS (
+  SELECT
+    CASE
+      WHEN count(*) = 3 AND count(DISTINCT owner_oid) = 1 THEN min(owner_oid)
+      ELSE NULL
+    END AS owner_oid,
+    count(*)::integer AS protected_object_count,
+    count(DISTINCT owner_oid)::integer AS distinct_owner_count
+  FROM (
+    SELECT relation.relowner AS owner_oid
+    FROM pg_catalog.pg_class relation
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND relation.relname IN ('ulc_linz_security_event_log', 'ulc_linz_security_event_log_id_seq')
+    UNION ALL
+    SELECT procedure.proowner
+    FROM pg_catalog.pg_proc procedure
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+    WHERE namespace.nspname = 'public'
+      AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+      AND procedure.pronargs = 0
+  ) protected_owner
 ), reverse_memberships AS (
   SELECT
     membership.member,
@@ -34,7 +52,8 @@ WITH current_database_record AS (
 SELECT
   count(membership.member)::integer AS reverse_membership_count,
   count(membership.member) FILTER (
-    WHERE membership.member = database_record.datdba
+    WHERE protected_object_owner.owner_oid IS NOT NULL
+      AND membership.member = protected_object_owner.owner_oid
       AND membership.grantor_superuser = true
       AND membership.admin_option = true
       AND membership.inherit_option = false
@@ -42,16 +61,22 @@ SELECT
   )::integer AS safe_creator_back_reference_count,
   count(membership.member) FILTER (
     WHERE NOT (
-      membership.member = database_record.datdba
+      protected_object_owner.owner_oid IS NOT NULL
+      AND membership.member = protected_object_owner.owner_oid
       AND membership.grantor_superuser = true
       AND membership.admin_option = true
       AND membership.inherit_option = false
       AND membership.set_option = false
     )
   )::integer AS unsafe_reverse_membership_count,
-  count(DISTINCT database_record.datdba)::integer AS database_record_count
-FROM current_database_record database_record
+  protected_object_owner.protected_object_count,
+  protected_object_owner.distinct_owner_count
+FROM protected_object_owner
 LEFT JOIN reverse_memberships membership ON true
+GROUP BY
+  protected_object_owner.owner_oid,
+  protected_object_owner.protected_object_count,
+  protected_object_owner.distinct_owner_count
 `;
 
 export async function runControlledUlcLinzM5SecurityLogRetention({
@@ -131,7 +156,8 @@ async function collectCleanupCreatorBackReferenceSnapshot(client) {
     reverseMembershipCount: Number(rows[0].reverse_membership_count),
     safeCreatorBackReferenceCount: Number(rows[0].safe_creator_back_reference_count),
     unsafeReverseMembershipCount: Number(rows[0].unsafe_reverse_membership_count),
-    databaseRecordCount: Number(rows[0].database_record_count),
+    protectedObjectCount: Number(rows[0].protected_object_count),
+    distinctOwnerCount: Number(rows[0].distinct_owner_count),
   });
 }
 
@@ -141,7 +167,8 @@ function verifyCleanupCreatorBackReferenceSnapshot(snapshot) {
     !Number.isInteger(snapshot.safeCreatorBackReferenceCount) || snapshot.safeCreatorBackReferenceCount < 0 ||
     snapshot.safeCreatorBackReferenceCount > 1 ||
     !Number.isInteger(snapshot.unsafeReverseMembershipCount) || snapshot.unsafeReverseMembershipCount !== 0 ||
-    snapshot.databaseRecordCount !== 1 ||
+    snapshot.protectedObjectCount !== 3 ||
+    snapshot.distinctOwnerCount !== 1 ||
     snapshot.reverseMembershipCount !== snapshot.safeCreatorBackReferenceCount
   ) {
     throw new Error("ULC M5-F cleanup creator back-reference is not least privilege.");
