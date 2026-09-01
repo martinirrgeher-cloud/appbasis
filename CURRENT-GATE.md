@@ -27,7 +27,7 @@ M5 umfasst genau die zwölf Pflichtpunkte der Roadmap:
 11. Secrets/Credentials getrennt vom normalen App-Manifest
 12. privilegierte Control-Plane-Funktionen nicht unnötig öffentlich erreichbar
 
-M5 ist DONE, wenn diese Punkte nachvollziehbar geprüft/angezeigt werden und fehlende Punkte fail-closed sperren.
+M5 ist DONE, wenn der bestehende kanonische M5-Evidence-Vertrag alle zwölf Kriterien explizit und gültig belegt und `evaluateProductionReadiness()` daraus `productionReady=true` ergibt. Maßgeblich bleiben die bestehenden Evidence-Owner und deren App-, Environment-, Freshness-, Runtime-/Contract- und Workflow-Bindungen; fehlende, malformed, veraltete, falsch gebundene oder nicht exakt boolesch `true` verifizierte Evidence bleibt fail-closed und blockiert M5.
 
 ## Scope-Freeze für Review und Implementierung
 
