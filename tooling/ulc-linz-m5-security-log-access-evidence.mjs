@@ -24,6 +24,7 @@ const ACL_BOUNDARY_FIELDS = Object.freeze([
   "missingExpectedGrantCount", "unexpectedProtectedGrantCount", "protectedGrantOptionCount",
   "protectedOwnerCount", "unexpectedGroupMemberCount", "groupMembershipAdminOptionCount",
 ]);
+const EXACT_CLEANUP_BODY = "DECLARE deleted_rows bigint; BEGIN DELETE FROM public.ulc_linz_security_event_log WHERE retained_until < statement_timestamp(); GET DIAGNOSTICS deleted_rows = ROW_COUNT; RETURN deleted_rows; END";
 
 export async function collectUlcLinzM5SecurityLogAccessEvidence(
   { productionDatabaseUrl, backupDatabaseUrl, cleanupDatabaseUrl, readDatabaseUrl, ingestUsername },
@@ -570,14 +571,12 @@ async function retentionContract(client) {
     isExactCalendarRetentionConstraint(row.definition),
   );
   const fn = functions[0];
-  const definition = String(fn.definition ?? "").replaceAll(/\s+/gu, " ");
   const config = Array.isArray(fn.config) ? fn.config : [];
   return {
     calendarConstraintVerified,
     cleanupFunctionVerified: fn.security_definer === true && Number(fn.argument_count) === 0 &&
       config.some((entry) => String(entry).replaceAll(" ", "") === "search_path=pg_catalog") &&
-      definition.includes("DELETE FROM public.ulc_linz_security_event_log") &&
-      definition.includes("retained_until < statement_timestamp()"),
+      isExactCleanupFunctionDefinition(fn.definition),
     publicFunctionExecute: bool(fn.public_execute),
     unexpectedTriggerCount: integer(triggers[0].trigger_count),
   };
@@ -587,6 +586,13 @@ export function isExactCalendarRetentionConstraint(value) {
   if (typeof value !== "string") return false;
   const text = value.replaceAll(/\s+/gu, " ").trim();
   return /^CHECK \(\(+retained_until = \(?occurred_at \+ '(?:1 year|12 mons)'::interval\)?\)+$/u.test(text);
+}
+
+export function isExactCleanupFunctionDefinition(value) {
+  if (typeof value !== "string") return false;
+  const text = value.replaceAll(/\s+/gu, " ").trim();
+  const match = text.match(/\bAS \$function\$ (.+) \$function\$;?$/u);
+  return match !== null && match[1] === EXACT_CLEANUP_BODY;
 }
 
 async function currentUser(client) {
