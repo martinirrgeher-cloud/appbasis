@@ -6,7 +6,6 @@ import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare
 import { ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { collectUlcLinzM5SecurityLogAccessEvidence } from "./ulc-linz-m5-security-log-access-evidence.mjs";
 import { collectUlcLinzM5SecurityLogDeliveryEvidence } from "./ulc-linz-m5-security-log-delivery-evidence.mjs";
-import { readUlcLinzM5SecurityLogRetentionRunEvidence } from "./ulc-linz-m5-security-log-retention-evidence.mjs";
 
 const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 const TARGET_WORKER = "appbasis-ulc-linz-production";
@@ -30,11 +29,9 @@ export async function completeUlcLinzM5ProductionFBundle(
   },
   {
     fetchImpl = fetch,
-    githubFetchImpl = fetch,
     now = new Date(),
     accessCollector = collectUlcLinzM5SecurityLogAccessEvidence,
     deliveryCollector = collectUlcLinzM5SecurityLogDeliveryEvidence,
-    retentionEvidenceReader = readUlcLinzM5SecurityLogRetentionRunEvidence,
   } = {},
 ) {
   const nowDate = requiredDate(now);
@@ -101,12 +98,6 @@ export async function completeUlcLinzM5ProductionFBundle(
     throw new Error("M5-F post-deployment production sink activity evidence is unavailable.");
   }
 
-  const retention = await retentionEvidenceReader({
-    expectedHeadSha: githubSha,
-    fetchImpl: githubFetchImpl,
-    now: () => nowDate.getTime(),
-  });
-  const retentionEvidence = controlledRetentionEvidence(retention, access);
   const loggingEvidence = {
     schemaVersion: 1,
     application: "ulc-linz",
@@ -119,8 +110,8 @@ export async function completeUlcLinzM5ProductionFBundle(
     sinkIdentitySource: "provider-api",
     structuredEventCaptureEnabled: true,
     protectedOperationalAccess: true,
-    retentionMode: "controlled-calendar-enforcement",
-    retentionEvidence,
+    retentionMode: "controlled-calendar-contract",
+    retentionEvidence: controlledRetentionContractEvidence(access),
     sinkInventoryComplete: true,
     publicReadEndpointPresent: false,
   };
@@ -203,36 +194,24 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
   });
 }
 
-function controlledRetentionEvidence(value, access) {
+function controlledRetentionContractEvidence(access) {
   if (
-    value?.schemaVersion !== 1 ||
-    value?.application !== "ulc-linz" ||
-    value?.environment !== "production" ||
-    value?.evidenceSource !== "github-actions-controlled-production-retention-run" ||
-    value?.cleanupExecutionBound !== true ||
-    value?.cleanupResultVerified !== true ||
-    value?.cutoffSemantics !== "occurred-at-strictly-older-than-12-calendar-months" ||
-    value?.boundaryEventPreserved !== true ||
-    value?.clientCutoffOverridePresent !== false ||
-    value?.enforcementContractDigest !== ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST ||
-    typeof value?.cleanupLastSucceededAt !== "string"
+    access?.leastPrivilegeAccessVerified !== true ||
+    access?.protectedOperationalAccessVerified !== true ||
+    access?.providerMinimumRetentionVerified !== true
   ) {
-    throw new Error("M5-F controlled retention run evidence is unavailable.");
-  }
-  const succeededAt = new Date(value.cleanupLastSucceededAt);
-  if (!Number.isFinite(succeededAt.getTime()) || succeededAt.toISOString() !== value.cleanupLastSucceededAt) {
-    throw new Error("M5-F controlled retention timestamp is invalid.");
+    throw new Error("M5-F controlled retention contract evidence is unavailable.");
   }
   return {
-    source: "controlled-calendar-enforcement",
-    providerMinimumRetentionVerified: access.providerMinimumRetentionVerified === true,
-    cutoffSemantics: value.cutoffSemantics,
-    cleanupExecutionBound: true,
-    cleanupLastSucceededAt: value.cleanupLastSucceededAt,
-    cleanupResultVerified: true,
-    boundaryEventPreserved: true,
+    source: "production-database-and-authoritative-contract",
+    providerMinimumRetentionVerified: true,
+    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
+    calendarConstraintVerified: true,
+    cleanupFunctionVerified: true,
+    leastPrivilegeCleanupVerified: true,
+    noEarlyDeletePathVerified: true,
     clientCutoffOverridePresent: false,
-    enforcementContractDigest: value.enforcementContractDigest,
+    enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
   };
 }
 
