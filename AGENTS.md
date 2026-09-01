@@ -2,6 +2,12 @@
 
 Diese Regeln gelten für menschliche Entwickler, ChatGPT und Codex.
 
+## Operativer Arbeitsstart
+
+- Vor jeder Änderung, Weiterentwicklung oder Merge-Entscheidung muss zuerst `CURRENT-GATE.md` gelesen werden.
+- Danach wird der GitHub-Live-State vollständig geprüft; volatile PR-, CI-, Review-, Branch- und Freeze-Zustände werden ausschließlich live aus GitHub abgeleitet und nicht dauerhaft in Projektdateien repliziert.
+- Arbeit ist auf den in `CURRENT-GATE.md` definierten Gate-Scope und den unmittelbar folgenden Produkt-Vertical-Slice begrenzt.
+
 ## Architektur
 
 - Der Core bleibt fachneutral und bewusst klein.
