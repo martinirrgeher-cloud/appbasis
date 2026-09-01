@@ -14,7 +14,7 @@ BEGIN
   RETURN deleted_rows;
 END`;
 
-function databaseFactory({ ownerLogin = false } = {}) {
+function databaseFactory({ ownerLogin = false, schemaOwnerAccess = false } = {}) {
   let ended = false;
   return {
     factory: () => ({
@@ -51,14 +51,25 @@ function databaseFactory({ ownerLogin = false } = {}) {
             assert.match(source, /owner\.rolcreaterole/);
             assert.match(source, /owner\.rolreplication/);
             assert.match(source, /owner\.rolbypassrls/);
+            assert.match(source, /pg_catalog\.pg_namespace namespace/);
+            assert.match(source, /pg_catalog\.pg_roles schema_owner/);
+            assert.match(source, /pg_catalog\.pg_has_role\(current_user, namespace\.nspowner, 'MEMBER'\)/);
             return [{
               protected_owner_member_count: 0,
+              schema_owner_member_count: 0,
+              current_user_schema_owner_access: schemaOwnerAccess,
               owner_login: ownerLogin,
               owner_superuser: false,
               owner_create_db: false,
               owner_create_role: false,
               owner_replication: false,
               owner_bypass_rls: false,
+              schema_owner_login: false,
+              schema_owner_superuser: false,
+              schema_owner_create_db: false,
+              schema_owner_create_role: false,
+              schema_owner_replication: false,
+              schema_owner_bypass_rls: false,
             }];
           }
           throw new Error(`Unexpected query: ${source}`);
@@ -70,7 +81,7 @@ function databaseFactory({ ownerLogin = false } = {}) {
   };
 }
 
-test("canonical retention evidence requires a validated calendar constraint and inert owner", async () => {
+test("canonical retention evidence requires a validated calendar constraint and inert ownership boundary", async () => {
   const database = databaseFactory();
   const result = await collectUlcLinzM5EarlyDeletePathEvidence(
     { productionDatabaseUrl: DATABASE_URL },
@@ -83,6 +94,18 @@ test("canonical retention evidence requires a validated calendar constraint and 
 
 test("canonical retention evidence rejects a login-capable protected owner", async () => {
   const database = databaseFactory({ ownerLogin: true });
+  await assert.rejects(
+    () => collectUlcLinzM5EarlyDeletePathEvidence(
+      { productionDatabaseUrl: DATABASE_URL },
+      { databaseFactory: database.factory },
+    ),
+    /canonical retention contract drift exists/,
+  );
+  assert.equal(database.ended(), true);
+});
+
+test("canonical retention evidence rejects runtime access to the containing schema owner", async () => {
+  const database = databaseFactory({ schemaOwnerAccess: true });
   await assert.rejects(
     () => collectUlcLinzM5EarlyDeletePathEvidence(
       { productionDatabaseUrl: DATABASE_URL },
