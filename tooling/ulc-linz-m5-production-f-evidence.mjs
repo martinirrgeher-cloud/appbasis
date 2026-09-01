@@ -252,8 +252,12 @@ export async function collectUlcLinzM5EarlyDeletePathEvidence(
           )`),
       database.client.unsafe(`SELECT count(*)::integer AS unexpected_rule_count
         FROM pg_catalog.pg_rewrite rewrite
-        WHERE rewrite.ev_class = 'public.ulc_linz_security_event_log'::regclass
-          AND rewrite.rulename <> '_RETURN'`),
+        JOIN pg_catalog.pg_class relation ON relation.oid = rewrite.ev_class
+        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+        WHERE rewrite.rulename <> '_RETURN'
+          AND namespace.nspname <> 'information_schema'
+          AND namespace.nspname !~ '^pg_'
+          AND pg_catalog.pg_get_ruledef(rewrite.oid, true) ~* 'ulc_linz_security_event_log'`),
     ]);
     if (!Array.isArray(functionRows) || functionRows.length !== 1 ||
         !Array.isArray(ruleRows) || ruleRows.length !== 1) {
