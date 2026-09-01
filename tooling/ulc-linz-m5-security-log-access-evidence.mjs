@@ -37,6 +37,12 @@ export async function collectUlcLinzM5SecurityLogAccessEvidence(
   if (backup.host !== production.host || backup.database !== production.database) {
     throw new Error("ULC M5-F backup credential must select the production database.");
   }
+  if (cleanup.host !== production.host || cleanup.database !== production.database) {
+    throw new Error("ULC M5-F cleanup credential must select the production database.");
+  }
+  if (read.host !== production.host || read.database !== production.database) {
+    throw new Error("ULC M5-F read credential must select the production database.");
+  }
   const users = {
     application: roleName(production.user),
     backup: roleName(backup.user),
@@ -560,11 +566,9 @@ async function retentionContract(client) {
   ]);
   if (!Array.isArray(constraints) || !Array.isArray(functions) || functions.length !== 1 ||
       !Array.isArray(triggers) || triggers.length !== 1) throw new Error("ULC M5-F server retention inventory is invalid.");
-  const calendarConstraintVerified = constraints.some((row) => {
-    const text = String(row.definition ?? "").replaceAll(/\s+/gu, " ");
-    return text.includes("retained_until") && text.includes("occurred_at") &&
-      (text.includes("'1 year'::interval") || text.includes("'12 mons'::interval"));
-  });
+  const calendarConstraintVerified = constraints.some((row) =>
+    isExactCalendarRetentionConstraint(row.definition),
+  );
   const fn = functions[0];
   const definition = String(fn.definition ?? "").replaceAll(/\s+/gu, " ");
   const config = Array.isArray(fn.config) ? fn.config : [];
@@ -577,6 +581,12 @@ async function retentionContract(client) {
     publicFunctionExecute: bool(fn.public_execute),
     unexpectedTriggerCount: integer(triggers[0].trigger_count),
   };
+}
+
+export function isExactCalendarRetentionConstraint(value) {
+  if (typeof value !== "string") return false;
+  const text = value.replaceAll(/\s+/gu, " ").trim();
+  return /^CHECK \(\(+retained_until = \(?occurred_at \+ '(?:1 year|12 mons)'::interval\)?\)+$/u.test(text);
 }
 
 async function currentUser(client) {
