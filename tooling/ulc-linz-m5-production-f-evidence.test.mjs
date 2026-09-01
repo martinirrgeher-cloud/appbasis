@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
-import { completeUlcLinzM5ProductionFBundle } from "./ulc-linz-m5-production-f-evidence.mjs";
+import {
+  collectUlcLinzM5EarlyDeletePathEvidence,
+  completeUlcLinzM5ProductionFBundle,
+} from "./ulc-linz-m5-production-f-evidence.mjs";
 
 const SHA = "a".repeat(40);
 const NOW = new Date("2026-08-23T22:00:00.000Z");
@@ -136,15 +139,25 @@ const validAccess = Object.freeze({
   protectedOperationalAccessVerified: true,
   providerMinimumRetentionVerified: true,
 });
+const validEarlyDeletePaths = Object.freeze({ noEarlyDeletePathVerified: true });
 const validDelivery = Object.freeze({ postDeploymentSinkActivityObserved: true });
 
-async function complete({ fetchImpl = cloudflareFetch, access = validAccess, delivery = validDelivery } = {}) {
+async function complete({
+  fetchImpl = cloudflareFetch,
+  access = validAccess,
+  earlyDeletePaths = validEarlyDeletePaths,
+  delivery = validDelivery,
+} = {}) {
   return completeUlcLinzM5ProductionFBundle(bundle(), inputs(), {
     fetchImpl,
     now: NOW,
     accessCollector: async (input) => {
       assert.equal(input.backupDatabaseUrl, inputs().backupDatabaseUrl);
       return access;
+    },
+    earlyDeletePathCollector: async (input) => {
+      assert.equal(input.productionDatabaseUrl, inputs().productionDatabaseUrl);
+      return earlyDeletePaths;
     },
     deliveryCollector: async (input, options) => {
       assert.equal(input.productionDatabaseUrl, inputs().readDatabaseUrl);
@@ -185,6 +198,68 @@ test("fails closed without real least-privilege access and retention-contract ev
   }
 });
 
+test("fails closed unless alternate early-delete paths were actually inventoried", async () => {
+  await assert.rejects(
+    () => complete({ earlyDeletePaths: {} }),
+    /early-delete path inventory is incomplete/,
+  );
+});
+
+test("early-delete catalog inventory rejects alternate delete functions and rewrite rules", async () => {
+  for (const [functionCount, ruleCount] of [[1, 0], [0, 1]]) {
+    let calls = 0;
+    let ended = false;
+    const databaseFactory = () => ({
+      client: {
+        async unsafe(query) {
+          calls += 1;
+          const source = String(query);
+          if (source.includes("pg_catalog.pg_proc")) {
+            assert.match(source, /pg_get_functiondef/);
+            assert.match(source, /DELETE\[\[:space:\]\]\+FROM/);
+            assert.match(source, /appbasis_ulc_linz_purge_expired_security_events/);
+            return [{ unexpected_delete_function_count: functionCount }];
+          }
+          assert.match(source, /pg_catalog\.pg_rewrite/);
+          assert.match(source, /ulc_linz_security_event_log/);
+          return [{ unexpected_rule_count: ruleCount }];
+        },
+        async end() { ended = true; },
+      },
+    });
+    await assert.rejects(
+      () => collectUlcLinzM5EarlyDeletePathEvidence(
+        { productionDatabaseUrl: inputs().productionDatabaseUrl },
+        { databaseFactory },
+      ),
+      /unexpected early-delete path exists/,
+    );
+    assert.equal(calls, 2);
+    assert.equal(ended, true);
+  }
+});
+
+test("early-delete catalog inventory accepts only zero alternate function and rule paths", async () => {
+  let ended = false;
+  const result = await collectUlcLinzM5EarlyDeletePathEvidence(
+    { productionDatabaseUrl: inputs().productionDatabaseUrl },
+    {
+      databaseFactory: () => ({
+        client: {
+          async unsafe(query) {
+            return String(query).includes("pg_catalog.pg_proc")
+              ? [{ unexpected_delete_function_count: 0 }]
+              : [{ unexpected_rule_count: 0 }];
+          },
+          async end() { ended = true; },
+        },
+      }),
+    },
+  );
+  assert.deepEqual(result, { noEarlyDeletePathVerified: true });
+  assert.equal(ended, true);
+});
+
 test("fails closed without post-deployment sink activity evidence", async () => {
   await assert.rejects(
     () => complete({ delivery: {} }),
@@ -218,6 +293,7 @@ test("rejects pre-injected or cross-resource F evidence", async () => {
       fetchImpl: cloudflareFetch,
       now: NOW,
       accessCollector: async () => validAccess,
+      earlyDeletePathCollector: async () => validEarlyDeletePaths,
       deliveryCollector: async () => validDelivery,
     }),
     /already present/,
@@ -230,6 +306,7 @@ test("rejects pre-injected or cross-resource F evidence", async () => {
       fetchImpl: cloudflareFetch,
       now: NOW,
       accessCollector: async () => validAccess,
+      earlyDeletePathCollector: async () => validEarlyDeletePaths,
       deliveryCollector: async () => validDelivery,
     }),
     /resource binding evidence is invalid/,
