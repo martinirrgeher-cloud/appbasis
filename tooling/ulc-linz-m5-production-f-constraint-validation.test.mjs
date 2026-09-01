@@ -55,21 +55,13 @@ function databaseFactory({ ownerLogin = false, schemaOwnerAccess = false } = {})
             assert.match(source, /pg_catalog\.pg_roles schema_owner/);
             assert.match(source, /pg_catalog\.pg_has_role\(current_user, namespace\.nspowner, 'MEMBER'\)/);
             return [{
-              protected_owner_member_count: 0,
-              schema_owner_member_count: 0,
-              current_user_schema_owner_access: schemaOwnerAccess,
+              protected_owner_member_count: schemaOwnerAccess ? 1 : 0,
               owner_login: ownerLogin,
               owner_superuser: false,
               owner_create_db: false,
               owner_create_role: false,
               owner_replication: false,
               owner_bypass_rls: false,
-              schema_owner_login: false,
-              schema_owner_superuser: false,
-              schema_owner_create_db: false,
-              schema_owner_create_role: false,
-              schema_owner_replication: false,
-              schema_owner_bypass_rls: false,
             }];
           }
           throw new Error(`Unexpected query: ${source}`);
