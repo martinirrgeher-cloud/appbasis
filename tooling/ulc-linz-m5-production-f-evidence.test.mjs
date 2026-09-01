@@ -14,6 +14,16 @@ const VALID_UNTIL = "2026-08-23T22:10:00.000Z";
 const VERSION = "12345678-1234-4123-8123-123456789abc";
 const HISTORICAL_VERSION = "22345678-1234-4123-8123-123456789abc";
 const DEPLOYED_AT = "2026-08-23T21:30:00.000Z";
+const CANONICAL_CONSTRAINT = "CHECK ((retained_until = (occurred_at + '1 year'::interval)))";
+const CANONICAL_PURGE_BODY = `
+DECLARE
+  deleted_rows bigint;
+BEGIN
+  DELETE FROM public.ulc_linz_security_event_log
+  WHERE retained_until < statement_timestamp();
+  GET DIAGNOSTICS deleted_rows = ROW_COUNT;
+  RETURN deleted_rows;
+END`;
 
 function resourceBindingEvidence() {
   return {
@@ -168,6 +178,88 @@ async function complete({
   });
 }
 
+function catalogDatabase({
+  functionCount = 0,
+  topologyCount = 0,
+  constraintDefinition = CANONICAL_CONSTRAINT,
+  purgeBody = CANONICAL_PURGE_BODY,
+  purgeConfig = ["search_path=pg_catalog"],
+  publicExecute = false,
+  ownerMemberCount = 0,
+} = {}) {
+  let calls = 0;
+  let ended = false;
+  const databaseFactory = () => ({
+    client: {
+      async unsafe(query) {
+        calls += 1;
+        const source = String(query);
+        if (source.includes("unexpected_delete_function_count")) {
+          assert.match(source, /pg_get_functiondef/);
+          assert.match(source, /prosecdef/);
+          assert.match(source, /has_table_privilege/);
+          return [{ unexpected_delete_function_count: functionCount }];
+        }
+        if (source.includes("unexpected_topology_count")) {
+          assert.match(source, /relation\.relkind = 'r'/);
+          assert.match(source, /relation\.relispartition = false/);
+          assert.match(source, /relation\.relrowsecurity = false/);
+          assert.match(source, /relation\.relforcerowsecurity = false/);
+          assert.match(source, /pg_catalog\.pg_rewrite/);
+          assert.match(source, /constraint_row\.conrelid/);
+          assert.match(source, /constraint_row\.confrelid/);
+          assert.match(source, /inheritance\.inhrelid/);
+          assert.match(source, /inheritance\.inhparent/);
+          assert.match(source, /trigger_row\.tgisinternal = false/);
+          return [{ unexpected_topology_count: topologyCount }];
+        }
+        if (source.includes("pg_get_constraintdef")) {
+          assert.match(source, /contype = 'c'/);
+          return [{ definition: constraintDefinition }];
+        }
+        if (source.includes("procedure.prosrc AS source_body")) {
+          assert.match(source, /pg_catalog\.pg_language/);
+          assert.match(source, /pg_catalog\.format_type/);
+          assert.match(source, /public_execute/);
+          return [{
+            security_definer: true,
+            argument_count: 0,
+            function_kind: "f",
+            language_name: "plpgsql",
+            return_type: "bigint",
+            config: purgeConfig,
+            source_body: purgeBody,
+            public_execute: publicExecute,
+          }];
+        }
+        if (source.includes("protected_owner_member_count")) {
+          assert.match(source, /pg_catalog\.pg_auth_members/);
+          assert.match(source, /membership\.roleid = relation\.relowner/);
+          return [{ protected_owner_member_count: ownerMemberCount }];
+        }
+        throw new Error(`Unexpected catalog query: ${source}`);
+      },
+      async end() { ended = true; },
+    },
+  });
+  return {
+    databaseFactory,
+    calls: () => calls,
+    ended: () => ended,
+  };
+}
+
+async function collectWithCatalog(options = {}) {
+  const catalog = catalogDatabase(options);
+  const result = await collectUlcLinzM5EarlyDeletePathEvidence(
+    { productionDatabaseUrl: inputs().productionDatabaseUrl },
+    { databaseFactory: catalog.databaseFactory },
+  );
+  assert.equal(catalog.calls(), 5);
+  assert.equal(catalog.ended(), true);
+  return result;
+}
+
 test("adds M5-F from current production sink and verified retention contract without a destructive cleanup run", async () => {
   const result = await complete();
   const f = result.ownerInputs.auditSecurityLoggingEvidenceInput;
@@ -205,71 +297,67 @@ test("fails closed unless the exact protected topology was inventoried", async (
   );
 });
 
-test("protected topology inventory rejects alternate privileged functions or any structural drift", async () => {
-  for (const [functionCount, topologyCount] of [[1, 0], [0, 1]]) {
-    let calls = 0;
-    let ended = false;
-    const databaseFactory = () => ({
-      client: {
-        async unsafe(query) {
-          calls += 1;
-          const source = String(query);
-          if (source.includes("pg_catalog.pg_proc")) {
-            assert.match(source, /pg_get_functiondef/);
-            assert.match(source, /prosecdef/);
-            assert.match(source, /has_table_privilege/);
-            assert.match(source, /appbasis_ulc_linz_purge_expired_security_events/);
-            return [{ unexpected_delete_function_count: functionCount }];
-          }
-          assert.match(source, /relation\.relkind = 'r'/);
-          assert.match(source, /relation\.relispartition = false/);
-          assert.match(source, /relation\.relrowsecurity = false/);
-          assert.match(source, /relation\.relforcerowsecurity = false/);
-          assert.match(source, /pg_catalog\.pg_rewrite/);
-          assert.match(source, /pg_catalog\.pg_constraint/);
-          assert.match(source, /constraint_row\.conrelid/);
-          assert.match(source, /constraint_row\.confrelid/);
-          assert.match(source, /pg_catalog\.pg_inherits/);
-          assert.match(source, /inheritance\.inhrelid/);
-          assert.match(source, /inheritance\.inhparent/);
-          assert.match(source, /pg_catalog\.pg_trigger/);
-          assert.match(source, /trigger_row\.tgisinternal = false/);
-          return [{ unexpected_topology_count: topologyCount }];
-        },
-        async end() { ended = true; },
-      },
-    });
+test("canonical production contract accepts only the migration-defined retention boundary", async () => {
+  assert.deepEqual(await collectWithCatalog(), { noEarlyDeletePathVerified: true });
+});
+
+test("canonical production contract rejects alternate privileged functions or structural drift", async () => {
+  for (const options of [{ functionCount: 1 }, { topologyCount: 1 }]) {
+    const catalog = catalogDatabase(options);
     await assert.rejects(
       () => collectUlcLinzM5EarlyDeletePathEvidence(
         { productionDatabaseUrl: inputs().productionDatabaseUrl },
-        { databaseFactory },
+        { databaseFactory: catalog.databaseFactory },
       ),
-      /unexpected early-delete path exists/,
+      /canonical retention contract drift exists/,
     );
-    assert.equal(calls, 2);
-    assert.equal(ended, true);
+    assert.equal(catalog.calls(), 5);
+    assert.equal(catalog.ended(), true);
   }
 });
 
-test("protected topology inventory accepts only the canonical isolated table shape", async () => {
-  let ended = false;
-  const result = await collectUlcLinzM5EarlyDeletePathEvidence(
-    { productionDatabaseUrl: inputs().productionDatabaseUrl },
-    {
-      databaseFactory: () => ({
-        client: {
-          async unsafe(query) {
-            return String(query).includes("pg_catalog.pg_proc")
-              ? [{ unexpected_delete_function_count: 0 }]
-              : [{ unexpected_topology_count: 0 }];
-          },
-          async end() { ended = true; },
-        },
-      }),
-    },
+test("canonical production contract rejects a weakened calendar constraint", async () => {
+  const catalog = catalogDatabase({
+    constraintDefinition: "CHECK ((retained_until <= (occurred_at + '1 year'::interval)))",
+  });
+  await assert.rejects(
+    () => collectUlcLinzM5EarlyDeletePathEvidence(
+      { productionDatabaseUrl: inputs().productionDatabaseUrl },
+      { databaseFactory: catalog.databaseFactory },
+    ),
+    /canonical retention contract drift exists/,
   );
-  assert.deepEqual(result, { noEarlyDeletePathVerified: true });
-  assert.equal(ended, true);
+  assert.equal(catalog.ended(), true);
+});
+
+test("canonical production contract rejects a drifted purge body or function configuration", async () => {
+  for (const options of [
+    { purgeBody: `${CANONICAL_PURGE_BODY} DELETE FROM public.ulc_linz_security_event_log;` },
+    { purgeConfig: ["search_path=pg_catalog", "statement_timeout=0"] },
+    { publicExecute: true },
+  ]) {
+    const catalog = catalogDatabase(options);
+    await assert.rejects(
+      () => collectUlcLinzM5EarlyDeletePathEvidence(
+        { productionDatabaseUrl: inputs().productionDatabaseUrl },
+        { databaseFactory: catalog.databaseFactory },
+      ),
+      /canonical retention contract drift exists/,
+    );
+    assert.equal(catalog.ended(), true);
+  }
+});
+
+test("canonical production contract rejects membership in the protected object owner", async () => {
+  const catalog = catalogDatabase({ ownerMemberCount: 1 });
+  await assert.rejects(
+    () => collectUlcLinzM5EarlyDeletePathEvidence(
+      { productionDatabaseUrl: inputs().productionDatabaseUrl },
+      { databaseFactory: catalog.databaseFactory },
+    ),
+    /canonical retention contract drift exists/,
+  );
+  assert.equal(catalog.ended(), true);
 });
 
 test("fails closed without post-deployment sink activity evidence", async () => {
