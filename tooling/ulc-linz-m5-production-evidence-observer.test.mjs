@@ -297,6 +297,22 @@ test("observer fails closed on public ingress or stale restore evidence", async 
     /public ingress is not closed/,
   );
 
+  for (const resultInfo of [
+    { count: 1, page: 1, per_page: 20, total_count: 1, total_pages: 1 },
+    { count: 0, page: 2, per_page: 20, total_count: 0, total_pages: 2 },
+  ]) {
+    const inconsistentDomainFetch = async (url, options) => {
+      if (String(url).includes("/workers/domains?")) {
+        return response({ success: true, result: [], result_info: resultInfo });
+      }
+      return providerFetch(url, options);
+    };
+    await assert.rejects(
+      () => collect({ fetchImpl: inconsistentDomainFetch }),
+      /custom-domain result metadata is inconsistent/,
+    );
+  }
+
   const stale = restoreObservation();
   stale.restoreTestedAt = "2026-08-23T13:00:00.000Z";
   await assert.rejects(
