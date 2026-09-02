@@ -365,6 +365,7 @@ test("observer classifies Cloudflare request failures without leaking provider c
       if (value.endsWith(suffix)) {
         return {
           ok: false,
+          status: 403,
           async json() {
             return {
               success: false,
@@ -381,13 +382,94 @@ test("observer classifies Cloudflare request failures without leaking provider c
       (error) => {
         assert.equal(
           error?.message,
-          `Cloudflare provider evidence request failed: ${requestClass}.`,
+          `Cloudflare provider evidence request failed: ${requestClass}:http-403.`,
         );
         assert.doesNotMatch(error.message, /provider-token-value|account-1|sensitive-provider-detail|https?:\/\//);
         return true;
       },
     );
   }
+});
+
+test("observer classifies bounded script-settings failure modes without provider leakage", async () => {
+  const cases = [
+    [
+      "http-404",
+      async () => ({
+        ok: false,
+        status: 404,
+        async json() {
+          return { errors: [{ message: "provider-token-value sensitive-provider-detail" }] };
+        },
+      }),
+    ],
+    [
+      "http-5xx",
+      async () => ({
+        ok: false,
+        status: 503,
+        async json() {
+          return { errors: [{ message: "provider-token-value sensitive-provider-detail" }] };
+        },
+      }),
+    ],
+    [
+      "invalid-json",
+      async () => ({
+        ok: true,
+        status: 200,
+        async json() {
+          throw new Error("provider-token-value sensitive-provider-detail");
+        },
+      }),
+    ],
+    [
+      "api-unsuccessful",
+      async () => response({
+        success: false,
+        errors: [{ message: "provider-token-value sensitive-provider-detail" }],
+      }),
+    ],
+  ];
+
+  for (const [failureClass, scriptSettingsResponse] of cases) {
+    const failingFetch = async (url, options) => {
+      if (String(url).endsWith("/workers/scripts/appbasis-ulc-linz-production/script-settings")) {
+        return scriptSettingsResponse();
+      }
+      return providerFetch(url, options);
+    };
+
+    await assert.rejects(
+      () => collect({ fetchImpl: failingFetch }),
+      (error) => {
+        assert.equal(
+          error?.message,
+          `Cloudflare provider evidence request failed: script-settings:${failureClass}.`,
+        );
+        assert.doesNotMatch(error.message, /provider-token-value|account-1|sensitive-provider-detail|https?:\/\//);
+        return true;
+      },
+    );
+  }
+
+  const transportFetch = async (url, options) => {
+    if (String(url).endsWith("/workers/scripts/appbasis-ulc-linz-production/script-settings")) {
+      throw new Error("provider-token-value sensitive-provider-detail");
+    }
+    return providerFetch(url, options);
+  };
+  await assert.rejects(
+    () => collect({ fetchImpl: transportFetch }),
+    (error) => {
+      assert.equal(
+        error?.message,
+        "Cloudflare provider evidence request failed: script-settings:transport.",
+      );
+      assert.doesNotMatch(error.message, /provider-token-value|account-1|sensitive-provider-detail|https?:\/\//);
+      return true;
+    },
+  );
 });
 
 test("observer classifies null Cloudflare payloads", async () => {
@@ -403,7 +485,7 @@ test("observer classifies null Cloudflare payloads", async () => {
     (error) => {
       assert.equal(
         error?.message,
-        "Cloudflare provider evidence request failed: worker-metadata.",
+        "Cloudflare provider evidence request failed: worker-metadata:api-unsuccessful.",
       );
       return true;
     },
