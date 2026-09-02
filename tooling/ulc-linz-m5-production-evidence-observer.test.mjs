@@ -57,8 +57,11 @@ function providerFetch(url) {
   if (value.endsWith("/projects/project-1/branches/branch-1/databases")) {
     return Promise.resolve(response({ databases: [{ id: 123, name: "neondb" }] }));
   }
-  if (value.endsWith("/workers/workers/appbasis-ulc-linz-production")) {
-    return Promise.resolve(response({ success: true, result: { name: "appbasis-ulc-linz-production", subdomain: { enabled: false, previews_enabled: false }, references: { domains: [] } } }));
+  if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/subdomain")) {
+    return Promise.resolve(response({ success: true, result: { enabled: false, previews_enabled: false } }));
+  }
+  if (value.includes("/workers/domains?") && value.includes("service=appbasis-ulc-linz-production")) {
+    return Promise.resolve(response({ success: true, result: [] }));
   }
   if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
     return Promise.resolve(response({
@@ -266,19 +269,49 @@ test("observer accepts only the native positive safe-integer Neon database ID sh
 });
 
 test("observer fails closed on public ingress or stale restore evidence", async () => {
-  const publicFetch = async (url, options) => {
+  const publicSubdomainFetch = async (url, options) => {
     const result = await providerFetch(url, options);
-    if (String(url).endsWith("/workers/workers/appbasis-ulc-linz-production")) {
+    if (String(url).endsWith("/workers/scripts/appbasis-ulc-linz-production/subdomain")) {
       const body = await result.json();
-      body.result.subdomain.enabled = true;
+      body.result.enabled = true;
       return response(body);
     }
     return result;
   };
   await assert.rejects(
-    () => collect({ fetchImpl: publicFetch }),
+    () => collect({ fetchImpl: publicSubdomainFetch }),
     /public ingress is not closed/,
   );
+
+  const publicDomainFetch = async (url, options) => {
+    if (String(url).includes("/workers/domains?")) {
+      return response({
+        success: true,
+        result: [{ service: "appbasis-ulc-linz-production", hostname: "app.ulc-linz.at" }],
+      });
+    }
+    return providerFetch(url, options);
+  };
+  await assert.rejects(
+    () => collect({ fetchImpl: publicDomainFetch }),
+    /public ingress is not closed/,
+  );
+
+  for (const resultInfo of [
+    { count: 1, page: 1, per_page: 20, total_count: 1, total_pages: 1 },
+    { count: 0, page: 2, per_page: 20, total_count: 0, total_pages: 2 },
+  ]) {
+    const inconsistentDomainFetch = async (url, options) => {
+      if (String(url).includes("/workers/domains?")) {
+        return response({ success: true, result: [], result_info: resultInfo });
+      }
+      return providerFetch(url, options);
+    };
+    await assert.rejects(
+      () => collect({ fetchImpl: inconsistentDomainFetch }),
+      /custom-domain result metadata is inconsistent/,
+    );
+  }
 
   const stale = restoreObservation();
   stale.restoreTestedAt = "2026-08-23T13:00:00.000Z";
@@ -352,17 +385,21 @@ test("observer refuses lifecycle activation when the real production table inven
 
 test("observer classifies Cloudflare request failures without leaking provider context", async () => {
   const cases = [
-    ["/workers/workers/appbasis-ulc-linz-production", "worker-metadata"],
+    ["/workers/scripts/appbasis-ulc-linz-production/subdomain", "subdomain"],
+    ["/workers/domains?", "custom-domains"],
     ["/workers/scripts/appbasis-ulc-linz-production/deployments", "deployments"],
     ["/workers/scripts", "script-inventory"],
     ["/workers/scripts/appbasis-ulc-linz-production/script-settings", "script-settings"],
     [`/versions/${CURRENT_VERSION}`, "version"],
   ];
 
-  for (const [suffix, requestClass] of cases) {
+  for (const [needle, requestClass] of cases) {
     const failingFetch = async (url, options) => {
       const value = String(url);
-      if (value.endsWith(suffix)) {
+      const matches = needle === "/workers/domains?"
+        ? value.includes(needle)
+        : value.endsWith(needle);
+      if (matches) {
         return {
           ok: false,
           status: 403,
@@ -474,7 +511,7 @@ test("observer classifies bounded script-settings failure modes without provider
 
 test("observer classifies null Cloudflare payloads", async () => {
   const nullFetch = async (url, options) => {
-    if (String(url).endsWith("/workers/workers/appbasis-ulc-linz-production")) {
+    if (String(url).endsWith("/workers/scripts/appbasis-ulc-linz-production/subdomain")) {
       return response(null);
     }
     return providerFetch(url, options);
@@ -485,7 +522,7 @@ test("observer classifies null Cloudflare payloads", async () => {
     (error) => {
       assert.equal(
         error?.message,
-        "Cloudflare provider evidence request failed: worker-metadata:api-unsuccessful.",
+        "Cloudflare provider evidence request failed: subdomain:api-unsuccessful.",
       );
       return true;
     },

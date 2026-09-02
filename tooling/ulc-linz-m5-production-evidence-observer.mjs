@@ -23,7 +23,8 @@ const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9
 const OPAQUE_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const TABLE_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
 const CLOUDFLARE_REQUEST_CLASSES = Object.freeze([
-  "worker-metadata",
+  "subdomain",
+  "custom-domains",
   "deployments",
   "script-inventory",
   "script-settings",
@@ -76,6 +77,13 @@ const TRACE_FIELDS = Object.freeze([
   "head_sampling_rate",
   "persist",
   "propagation_policy",
+]);
+const DOMAIN_RESULT_INFO_FIELDS = Object.freeze([
+  "count",
+  "page",
+  "per_page",
+  "total_count",
+  "total_pages",
 ]);
 const DATA_FLOWS = Object.freeze([
   Object.freeze({ from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" }),
@@ -394,13 +402,21 @@ async function observeNeon({ apiKey, orgId, fetchImpl }) {
 
 async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) {
   const accountPath = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(accountId)}`;
-  const [workerResponse, deploymentsResponse, scriptsResponse, settingsResponse] =
+  const domainsUrl = new URL(`${accountPath}/workers/domains`);
+  domainsUrl.searchParams.set("service", TARGET_WORKER);
+  const [subdomainResponse, domainsResponse, deploymentsResponse, scriptsResponse, settingsResponse] =
     await Promise.all([
       cloudflareJson(
-        `${accountPath}/workers/workers/${TARGET_WORKER}`,
+        `${accountPath}/workers/scripts/${TARGET_WORKER}/subdomain`,
         apiToken,
         fetchImpl,
-        "worker-metadata",
+        "subdomain",
+      ),
+      cloudflareJson(
+        domainsUrl,
+        apiToken,
+        fetchImpl,
+        "custom-domains",
       ),
       cloudflareJson(
         `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`,
@@ -422,13 +438,18 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
       ),
     ]);
 
-  const worker = workerResponse.result;
+  const subdomain = subdomainResponse.result;
   if (
-    worker?.name !== TARGET_WORKER ||
-    worker?.subdomain?.enabled !== false ||
-    worker?.subdomain?.previews_enabled !== false ||
-    !Array.isArray(worker?.references?.domains) ||
-    worker.references.domains.length !== 0
+    subdomain?.enabled !== false ||
+    subdomain?.previews_enabled !== false
+  ) {
+    throw new Error("ULC production Worker public ingress is not closed.");
+  }
+  const domainResults = array(domainsResponse.result);
+  validateOptionalDomainResultInfo(domainsResponse.result_info, domainResults.length);
+  if (
+    domainResults.some((candidate) => candidate?.service !== TARGET_WORKER) ||
+    domainResults.length !== 0
   ) {
     throw new Error("ULC production Worker public ingress is not closed.");
   }
@@ -497,6 +518,38 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
 
   const telemetryActive = inspectCloudflareTelemetry(settingsResponse.result);
   return Object.freeze({ hyperdriveId, telemetryActive });
+}
+
+function validateOptionalDomainResultInfo(value, filteredResultCount) {
+  if (value === undefined) return;
+  const resultInfo = optionalExactRecord(
+    value,
+    DOMAIN_RESULT_INFO_FIELDS,
+    "Cloudflare custom-domain result metadata",
+  );
+  const count = optionalNonNegativeInteger(
+    resultInfo,
+    "count",
+    "Cloudflare custom-domain result metadata",
+  );
+  const page = optionalNonNegativeInteger(
+    resultInfo,
+    "page",
+    "Cloudflare custom-domain result metadata",
+  );
+  for (const field of ["per_page", "total_count", "total_pages"]) {
+    optionalNonNegativeInteger(
+      resultInfo,
+      field,
+      "Cloudflare custom-domain result metadata",
+    );
+  }
+  if (count !== undefined && count !== filteredResultCount) {
+    throw new Error("Cloudflare custom-domain result metadata is inconsistent.");
+  }
+  if (page !== undefined && page !== 0 && page !== 1) {
+    throw new Error("Cloudflare custom-domain result metadata is inconsistent.");
+  }
 }
 
 function inspectCloudflareTelemetry(value) {
@@ -578,6 +631,15 @@ function optionalExactRecord(value, allowedFields, label) {
     ) {
       throw new Error(`${label} is invalid.`);
     }
+  }
+  return value;
+}
+
+function optionalNonNegativeInteger(record, field, label) {
+  if (!Object.hasOwn(record, field)) return undefined;
+  const value = record[field];
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} is invalid.`);
   }
   return value;
 }
