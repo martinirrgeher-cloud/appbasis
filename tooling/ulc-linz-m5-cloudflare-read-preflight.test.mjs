@@ -88,10 +88,13 @@ test("preflight emitted read surface stays in exact parity with the production o
   const cloudflareReads = observer.match(/^\s*(?:const versionResponse = await )?cloudflareJson\(/gm) ?? [];
   assert.equal(cloudflareReads.length, 6);
 
+  const apiMatch = /const CLOUDFLARE_API = "([^"]+)";/.exec(observer);
+  assert.ok(apiMatch);
+  const cloudflareApi = apiMatch[1];
   const workerMatch = /const TARGET_WORKER = "([^"]+)";/.exec(observer);
   assert.ok(workerMatch);
   const targetWorker = workerMatch[1];
-  const accountPath = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}`;
+  const accountPath = `${cloudflareApi}/accounts/${ACCOUNT}`;
   const expectedSurface = [
     { requestClass: "subdomain", url: `${accountPath}/workers/scripts/${targetWorker}/subdomain` },
     { requestClass: "custom-domains", url: `${accountPath}/workers/domains?service=${targetWorker}` },
