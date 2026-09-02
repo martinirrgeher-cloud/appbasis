@@ -24,6 +24,7 @@ const ACL_BOUNDARY_FIELDS = Object.freeze([
   "missingExpectedGrantCount", "unexpectedProtectedGrantCount", "protectedGrantOptionCount",
   "protectedOwnerCount", "unexpectedGroupMemberCount", "groupMembershipAdminOptionCount",
 ]);
+const EXACT_CLEANUP_BODY = "DECLARE deleted_rows bigint; BEGIN DELETE FROM public.ulc_linz_security_event_log WHERE retained_until < statement_timestamp(); GET DIAGNOSTICS deleted_rows = ROW_COUNT; RETURN deleted_rows; END";
 
 export async function collectUlcLinzM5SecurityLogAccessEvidence(
   { productionDatabaseUrl, backupDatabaseUrl, cleanupDatabaseUrl, readDatabaseUrl, ingestUsername },
@@ -36,6 +37,12 @@ export async function collectUlcLinzM5SecurityLogAccessEvidence(
   const read = parseUlcLinzProductionDatabaseUrl(readDatabaseUrl);
   if (backup.host !== production.host || backup.database !== production.database) {
     throw new Error("ULC M5-F backup credential must select the production database.");
+  }
+  if (cleanup.host !== production.host || cleanup.database !== production.database) {
+    throw new Error("ULC M5-F cleanup credential must select the production database.");
+  }
+  if (read.host !== production.host || read.database !== production.database) {
+    throw new Error("ULC M5-F read credential must select the production database.");
   }
   const users = {
     application: roleName(production.user),
@@ -560,23 +567,32 @@ async function retentionContract(client) {
   ]);
   if (!Array.isArray(constraints) || !Array.isArray(functions) || functions.length !== 1 ||
       !Array.isArray(triggers) || triggers.length !== 1) throw new Error("ULC M5-F server retention inventory is invalid.");
-  const calendarConstraintVerified = constraints.some((row) => {
-    const text = String(row.definition ?? "").replaceAll(/\s+/gu, " ");
-    return text.includes("retained_until") && text.includes("occurred_at") &&
-      (text.includes("'1 year'::interval") || text.includes("'12 mons'::interval"));
-  });
+  const calendarConstraintVerified = constraints.some((row) =>
+    isExactCalendarRetentionConstraint(row.definition),
+  );
   const fn = functions[0];
-  const definition = String(fn.definition ?? "").replaceAll(/\s+/gu, " ");
   const config = Array.isArray(fn.config) ? fn.config : [];
   return {
     calendarConstraintVerified,
     cleanupFunctionVerified: fn.security_definer === true && Number(fn.argument_count) === 0 &&
       config.some((entry) => String(entry).replaceAll(" ", "") === "search_path=pg_catalog") &&
-      definition.includes("DELETE FROM public.ulc_linz_security_event_log") &&
-      definition.includes("retained_until < statement_timestamp()"),
+      isExactCleanupFunctionDefinition(fn.definition),
     publicFunctionExecute: bool(fn.public_execute),
     unexpectedTriggerCount: integer(triggers[0].trigger_count),
   };
+}
+
+export function isExactCalendarRetentionConstraint(value) {
+  if (typeof value !== "string") return false;
+  const text = value.replaceAll(/\s+/gu, " ").trim();
+  return /^CHECK \(\(+retained_until = \(?occurred_at \+ '(?:1 year|12 mons)'::interval\)?\)+$/u.test(text);
+}
+
+export function isExactCleanupFunctionDefinition(value) {
+  if (typeof value !== "string") return false;
+  const text = value.replaceAll(/\s+/gu, " ").trim();
+  const match = text.match(/\bAS \$function\$ (.+) \$function\$;?$/u);
+  return match !== null && match[1] === EXACT_CLEANUP_BODY;
 }
 
 async function currentUser(client) {

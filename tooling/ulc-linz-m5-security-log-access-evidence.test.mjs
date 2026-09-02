@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { evaluateUlcLinzM5SecurityLogAccessSnapshot } from "./ulc-linz-m5-security-log-access-evidence.mjs";
+import {
+  evaluateUlcLinzM5SecurityLogAccessSnapshot,
+  isExactCalendarRetentionConstraint,
+} from "./ulc-linz-m5-security-log-access-evidence.mjs";
 
 function role(name, { login = false, memberships = [], membershipAdminOption = false } = {}) {
   return {
@@ -281,6 +284,33 @@ test("rejects early-delete escape hatches or an unverified server calendar contr
     mutate(value);
     assert.throws(() => evaluateUlcLinzM5SecurityLogAccessSnapshot(value));
   }
+});
+
+test("accepts only the exact live 12-calendar-month equality constraint", () => {
+  for (const definition of [
+    "CHECK ((retained_until = (occurred_at + '1 year'::interval)))",
+    "CHECK ((retained_until = (occurred_at + '12 mons'::interval)))",
+  ]) {
+    assert.equal(isExactCalendarRetentionConstraint(definition), true);
+  }
+
+  for (const definition of [
+    "CHECK ((retained_until >= (occurred_at + '1 year'::interval)))",
+    "CHECK ((retained_until <= (occurred_at + '1 year'::interval)))",
+    "CHECK ((retained_until = (occurred_at + '13 mons'::interval)))",
+    "CHECK ((retained_until = (occurred_at + '1 year'::interval)) OR true)",
+    "CHECK ((other_column = (occurred_at + '1 year'::interval)))",
+    null,
+  ]) {
+    assert.equal(isExactCalendarRetentionConstraint(definition), false);
+  }
+});
+
+test("collector binds backup, cleanup and read credentials to the production database", async () => {
+  const source = await readFile(new URL("./ulc-linz-m5-security-log-access-evidence.mjs", import.meta.url), "utf8");
+  assert.match(source, /backup\.host !== production\.host \|\| backup\.database !== production\.database/);
+  assert.match(source, /cleanup\.host !== production\.host \|\| cleanup\.database !== production\.database/);
+  assert.match(source, /read\.host !== production\.host \|\| read\.database !== production\.database/);
 });
 
 test("ACL inventory covers all non-owner grants, delegation, ownership and protected group membership", async () => {

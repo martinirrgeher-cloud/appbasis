@@ -190,6 +190,27 @@ async function complete({
   });
 }
 
+async function completeFromContract({
+  fetchImpl = cloudflareFetch,
+  access = validAccess,
+  delivery = validDelivery,
+} = {}) {
+  return completeUlcLinzM5ProductionFBundle(bundle(), inputs(), {
+    fetchImpl,
+    now: NOW,
+    accessCollector: async (input) => {
+      assert.equal(input.backupDatabaseUrl, inputs().backupDatabaseUrl);
+      return access;
+    },
+    deliveryCollector: async (input, options) => {
+      assert.equal(input.productionDatabaseUrl, inputs().readDatabaseUrl);
+      assert.equal(input.deployedAt, DEPLOYED_AT);
+      assert.equal(options.now.toISOString(), NOW.toISOString());
+      return delivery;
+    },
+  });
+}
+
 test("adds M5-F from the active Cloudflare deployment even when older deployment history exists", async () => {
   const result = await complete();
   const f = result.ownerInputs.auditSecurityLoggingEvidenceInput;
@@ -225,6 +246,23 @@ test("adds M5-F from the active Cloudflare deployment even when older deployment
   assert.equal(JSON.stringify(result).includes("postgresql://"), false);
 });
 
+test("uses the bounded production retention contract by default without a destructive run", async () => {
+  const result = await completeFromContract();
+  const retention = result.ownerInputs.auditSecurityLoggingEvidenceInput.loggingEvidence;
+  assert.equal(retention.retentionMode, "controlled-calendar-contract");
+  assert.deepEqual(retention.retentionEvidence, {
+    source: "production-database-and-authoritative-contract",
+    providerMinimumRetentionVerified: true,
+    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
+    serverRetentionBoundaryVerified: true,
+    leastPrivilegeCleanupVerified: true,
+    clientCutoffOverridePresent: false,
+    enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
+  });
+  assert.equal("cleanupLastSucceededAt" in retention.retentionEvidence, false);
+  assert.equal(JSON.stringify(result).includes("postgresql://"), false);
+});
+
 test("fails closed without real least-privilege access evidence", async () => {
   for (const access of [
     { ...validAccess, leastPrivilegeAccessVerified: false },
@@ -232,12 +270,17 @@ test("fails closed without real least-privilege access evidence", async () => {
     { ...validAccess, providerMinimumRetentionVerified: false },
   ]) {
     await assert.rejects(() => complete({ access }), /access evidence is incomplete/);
+    await assert.rejects(() => completeFromContract({ access }), /access evidence is incomplete/);
   }
 });
 
 test("fails closed without post-deployment sink activity evidence", async () => {
   await assert.rejects(
     () => complete({ delivery: {} }),
+    /post-deployment production sink activity evidence is unavailable/,
+  );
+  await assert.rejects(
+    () => completeFromContract({ delivery: {} }),
     /post-deployment production sink activity evidence is unavailable/,
   );
 });
@@ -276,6 +319,7 @@ test("fails closed on stale Worker head, missing dedicated binding, missing acti
       return json(body);
     };
     await assert.rejects(() => complete({ fetchImpl }));
+    await assert.rejects(() => completeFromContract({ fetchImpl }));
   }
 });
 

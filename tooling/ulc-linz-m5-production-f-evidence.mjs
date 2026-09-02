@@ -6,7 +6,6 @@ import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare
 import { ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { collectUlcLinzM5SecurityLogAccessEvidence } from "./ulc-linz-m5-security-log-access-evidence.mjs";
 import { collectUlcLinzM5SecurityLogDeliveryEvidence } from "./ulc-linz-m5-security-log-delivery-evidence.mjs";
-import { readUlcLinzM5SecurityLogRetentionRunEvidence } from "./ulc-linz-m5-security-log-retention-evidence.mjs";
 
 const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 const TARGET_WORKER = "appbasis-ulc-linz-production";
@@ -34,7 +33,7 @@ export async function completeUlcLinzM5ProductionFBundle(
     now = new Date(),
     accessCollector = collectUlcLinzM5SecurityLogAccessEvidence,
     deliveryCollector = collectUlcLinzM5SecurityLogDeliveryEvidence,
-    retentionEvidenceReader = readUlcLinzM5SecurityLogRetentionRunEvidence,
+    retentionEvidenceReader = null,
   } = {},
 ) {
   const nowDate = requiredDate(now);
@@ -101,12 +100,21 @@ export async function completeUlcLinzM5ProductionFBundle(
     throw new Error("M5-F post-deployment production sink activity evidence is unavailable.");
   }
 
-  const retention = await retentionEvidenceReader({
-    expectedHeadSha: githubSha,
-    fetchImpl: githubFetchImpl,
-    now: () => nowDate.getTime(),
-  });
-  const retentionEvidence = controlledRetentionEvidence(retention, access);
+  let retentionMode = "controlled-calendar-contract";
+  let retentionEvidence = controlledRetentionContractEvidence(access);
+  if (retentionEvidenceReader !== null) {
+    if (typeof retentionEvidenceReader !== "function") {
+      throw new Error("M5-F controlled retention evidence reader is invalid.");
+    }
+    const retention = await retentionEvidenceReader({
+      expectedHeadSha: githubSha,
+      fetchImpl: githubFetchImpl,
+      now: () => nowDate.getTime(),
+    });
+    retentionMode = "controlled-calendar-enforcement";
+    retentionEvidence = controlledRetentionEvidence(retention, access);
+  }
+
   const loggingEvidence = {
     schemaVersion: 1,
     application: "ulc-linz",
@@ -119,7 +127,7 @@ export async function completeUlcLinzM5ProductionFBundle(
     sinkIdentitySource: "provider-api",
     structuredEventCaptureEnabled: true,
     protectedOperationalAccess: true,
-    retentionMode: "controlled-calendar-enforcement",
+    retentionMode,
     retentionEvidence,
     sinkInventoryComplete: true,
     publicReadEndpointPresent: false,
@@ -201,6 +209,25 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
     ingestUsername: databaseRole(origin.user),
     deployedAt: deployedAt.toISOString(),
   });
+}
+
+function controlledRetentionContractEvidence(access) {
+  if (
+    access?.leastPrivilegeAccessVerified !== true ||
+    access?.protectedOperationalAccessVerified !== true ||
+    access?.providerMinimumRetentionVerified !== true
+  ) {
+    throw new Error("M5-F controlled retention contract evidence is unavailable.");
+  }
+  return {
+    source: "production-database-and-authoritative-contract",
+    providerMinimumRetentionVerified: true,
+    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
+    serverRetentionBoundaryVerified: true,
+    leastPrivilegeCleanupVerified: true,
+    clientCutoffOverridePresent: false,
+    enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
+  };
 }
 
 function controlledRetentionEvidence(value, access) {

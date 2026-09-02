@@ -72,6 +72,18 @@ function controlledRetentionEvidence() {
   };
 }
 
+function controlledRetentionContractEvidence() {
+  return {
+    source: "production-database-and-authoritative-contract",
+    providerMinimumRetentionVerified: true,
+    cutoffSemantics: "occurred-at-strictly-older-than-12-calendar-months",
+    serverRetentionBoundaryVerified: true,
+    leastPrivilegeCleanupVerified: true,
+    clientCutoffOverridePresent: false,
+    enforcementContractDigest: ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST,
+  };
+}
+
 function loggingEvidence(retentionMode = "provider-native-calendar", retentionEvidence = providerNativeRetentionEvidence()) {
   return {
     schemaVersion: 1,
@@ -106,10 +118,20 @@ test("verifies M5-F with authoritative provider-native calendar retention", () =
   );
 });
 
-test("verifies M5-F with controlled exact calendar enforcement", () => {
+test("keeps historical controlled successful-run evidence compatible", () => {
   assert.deepEqual(
     deriveUlcLinzM5FAuditSecurityLoggingEvidence(
       input("controlled-calendar-enforcement", controlledRetentionEvidence()),
+      { now: NOW },
+    ),
+    { auditSecurityLogging: true },
+  );
+});
+
+test("verifies M5-F from the bounded production retention contract without a destructive run", () => {
+  assert.deepEqual(
+    deriveUlcLinzM5FAuditSecurityLoggingEvidence(
+      input("controlled-calendar-contract", controlledRetentionContractEvidence()),
       { now: NOW },
     ),
     { auditSecurityLogging: true },
@@ -135,7 +157,7 @@ test("rejects day-based or unverified provider retention as twelve calendar mont
   }
 });
 
-test("rejects controlled retention without exact boundary, fresh cleanup or exact implementation binding", () => {
+test("rejects historical controlled retention without exact boundary, fresh cleanup or exact implementation binding", () => {
   for (const mutate of [
     (value) => { value.providerMinimumRetentionVerified = false; },
     (value) => { value.cutoffSemantics = "created-at-strictly-older-than-12-calendar-months"; },
@@ -153,6 +175,28 @@ test("rejects controlled retention without exact boundary, fresh cleanup or exac
     assert.deepEqual(
       deriveUlcLinzM5FAuditSecurityLoggingEvidence(
         input("controlled-calendar-enforcement", retention),
+        { now: NOW },
+      ),
+      {},
+    );
+  }
+});
+
+test("rejects bounded contract drift or missing least-privilege/server-retention proof", () => {
+  for (const mutate of [
+    (value) => { value.providerMinimumRetentionVerified = false; },
+    (value) => { value.cutoffSemantics = "older-than-365-days"; },
+    (value) => { value.serverRetentionBoundaryVerified = false; },
+    (value) => { value.leastPrivilegeCleanupVerified = false; },
+    (value) => { value.clientCutoffOverridePresent = true; },
+    (value) => { value.enforcementContractDigest = "not-a-digest"; },
+    (value) => { value.enforcementContractDigest = `sha256:${"a".repeat(64)}`; },
+  ]) {
+    const retention = controlledRetentionContractEvidence();
+    mutate(retention);
+    assert.deepEqual(
+      deriveUlcLinzM5FAuditSecurityLoggingEvidence(
+        input("controlled-calendar-contract", retention),
         { now: NOW },
       ),
       {},
@@ -200,7 +244,7 @@ test("rejects stale, cross-app and decorated M5-F evidence", () => {
     {},
   );
 
-  const decoratedRetention = input();
+  const decoratedRetention = input("controlled-calendar-contract", controlledRetentionContractEvidence());
   decoratedRetention.loggingEvidence.retentionEvidence.extra = true;
   assert.deepEqual(
     deriveUlcLinzM5FAuditSecurityLoggingEvidence(decoratedRetention, { now: NOW }),
