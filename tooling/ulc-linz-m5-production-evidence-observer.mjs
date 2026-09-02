@@ -5,16 +5,20 @@ import { pathToFileURL } from "node:url";
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { deriveUlcLinzLifecycleContractDigest } from "./factory-ui/ulc-linz-lifecycle-evidence.mjs";
 import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare-current-deployment.mjs";
+import {
+  buildUlcLinzM5CloudflareReadSurface,
+  ULC_LINZ_M5_CLOUDFLARE_REQUEST_CLASSES,
+  ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER,
+} from "./ulc-linz-m5-cloudflare-read-surface.mjs";
 import { verifyUlcLinzM5BackupContract } from "./ulc-linz-m5-backup-contract.mjs";
 import { deriveUlcLinzM5GResourceBindingFingerprint } from "./ulc-linz-m5-provider-bound-evidence.mjs";
 import { deriveUlcLinzProductionRuntimeContractDigest } from "./ulc-linz-m6-production-resource-binding.mjs";
 
 const NEON_API = "https://console.neon.tech/api/v2";
-const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 const TARGET_PROJECT = "appbasis-ulc-linz-production";
 const TARGET_BRANCH = "production";
 const TARGET_DATABASE = "neondb";
-const TARGET_WORKER = "appbasis-ulc-linz-production";
+const TARGET_WORKER = ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER;
 const TARGET_BASE_URL = "https://app.ulc-linz.at";
 const TARGET_VERSION_TAG = "ulc-linz-production-runtime-v1";
 const EVIDENCE_WINDOW_MS = 15 * 60 * 1000;
@@ -22,14 +26,7 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OPAQUE_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const TABLE_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
-const CLOUDFLARE_REQUEST_CLASSES = Object.freeze([
-  "subdomain",
-  "custom-domains",
-  "deployments",
-  "script-inventory",
-  "script-settings",
-  "version",
-]);
+const CLOUDFLARE_REQUEST_CLASSES = ULC_LINZ_M5_CLOUDFLARE_REQUEST_CLASSES;
 const CLOUDFLARE_FAILURE_CLASSES = Object.freeze([
   "transport",
   "invalid-response",
@@ -401,48 +398,26 @@ async function observeNeon({ apiKey, orgId, fetchImpl }) {
 }
 
 async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) {
-  const accountPath = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(accountId)}`;
-  const domainsUrl = new URL(`${accountPath}/workers/domains`);
-  domainsUrl.searchParams.set("service", TARGET_WORKER);
-  const [subdomainResponse, domainsResponse, deploymentsResponse, scriptsResponse, settingsResponse] =
-    await Promise.all([
-      cloudflareJson(
-        `${accountPath}/workers/scripts/${TARGET_WORKER}/subdomain`,
-        apiToken,
-        fetchImpl,
-        "subdomain",
-      ),
-      cloudflareJson(
-        domainsUrl,
-        apiToken,
-        fetchImpl,
-        "custom-domains",
-      ),
-      cloudflareJson(
-        `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`,
-        apiToken,
-        fetchImpl,
-        "deployments",
-      ),
-      cloudflareJson(
-        `${accountPath}/workers/scripts`,
-        apiToken,
-        fetchImpl,
-        "script-inventory",
-      ),
-      cloudflareJson(
-        `${accountPath}/workers/scripts/${TARGET_WORKER}/script-settings`,
-        apiToken,
-        fetchImpl,
-        "script-settings",
-      ),
-    ]);
+  const initialRequests = buildUlcLinzM5CloudflareReadSurface(accountId);
+  const responses = await Promise.all(
+    initialRequests.map(({ requestClass, url }) =>
+      cloudflareJson(url, apiToken, fetchImpl, requestClass),
+    ),
+  );
+  const responseByClass = new Map(
+    initialRequests.map(({ requestClass }, index) => [requestClass, responses[index]]),
+  );
+  if (responseByClass.size !== initialRequests.length) {
+    throw new Error("Cloudflare provider evidence read contract is invalid.");
+  }
+  const subdomainResponse = requiredCloudflareSurfaceResponse(responseByClass, "subdomain");
+  const domainsResponse = requiredCloudflareSurfaceResponse(responseByClass, "custom-domains");
+  const deploymentsResponse = requiredCloudflareSurfaceResponse(responseByClass, "deployments");
+  const scriptsResponse = requiredCloudflareSurfaceResponse(responseByClass, "script-inventory");
+  const settingsResponse = requiredCloudflareSurfaceResponse(responseByClass, "script-settings");
 
   const subdomain = subdomainResponse.result;
-  if (
-    subdomain?.enabled !== false ||
-    subdomain?.previews_enabled !== false
-  ) {
+  if (subdomain?.enabled !== false || subdomain?.previews_enabled !== false) {
     throw new Error("ULC production Worker public ingress is not closed.");
   }
   const domainResults = array(domainsResponse.result);
@@ -471,11 +446,17 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
       { label: "ULC production Worker deployment inventory" },
     );
   const versionId = requiredVersionId(currentDeploymentVersion.version_id);
+  const versionRequest = buildUlcLinzM5CloudflareReadSurface(accountId, versionId).find(
+    ({ requestClass }) => requestClass === "version",
+  );
+  if (!versionRequest) {
+    throw new Error("Cloudflare provider evidence read contract is invalid.");
+  }
   const versionResponse = await cloudflareJson(
-    `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${versionId}`,
+    versionRequest.url,
     apiToken,
     fetchImpl,
-    "version",
+    versionRequest.requestClass,
   );
   const version = versionResponse.result;
   const bindings = array(version?.resources?.bindings);
@@ -518,6 +499,14 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
 
   const telemetryActive = inspectCloudflareTelemetry(settingsResponse.result);
   return Object.freeze({ hyperdriveId, telemetryActive });
+}
+
+function requiredCloudflareSurfaceResponse(responseByClass, requestClass) {
+  requiredCloudflareRequestClass(requestClass);
+  if (!responseByClass.has(requestClass)) {
+    throw new Error("Cloudflare provider evidence read contract is invalid.");
+  }
+  return responseByClass.get(requestClass);
 }
 
 function validateOptionalDomainResultInfo(value, filteredResultCount) {
