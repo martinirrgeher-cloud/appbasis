@@ -65,8 +65,11 @@ function providerFetch(settingsResult) {
     if (value.endsWith("/projects/project-1/branches/branch-1/databases")) {
       return response({ databases: [{ id: 123, name: "neondb" }] });
     }
-    if (value.endsWith("/workers/workers/appbasis-ulc-linz-production")) {
-      return response({ success: true, result: { name: "appbasis-ulc-linz-production", subdomain: { enabled: false, previews_enabled: false }, references: { domains: [] } } });
+    if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/subdomain")) {
+      return response({ success: true, result: { enabled: false, previews_enabled: false } });
+    }
+    if (value.includes("/workers/domains?") && value.includes("service=appbasis-ulc-linz-production")) {
+      return response({ success: true, result: [] });
     }
     if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/deployments")) {
       return response({ success: true, result: { deployments: [{ versions: [{ version_id: CURRENT_VERSION, percentage: 100 }] }] } });
