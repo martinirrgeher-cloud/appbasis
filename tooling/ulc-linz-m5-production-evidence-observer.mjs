@@ -597,7 +597,7 @@ async function cloudflareJson(url, apiToken, fetchImpl, requestClass) {
   } catch {
     throw new Error(`Cloudflare provider evidence request failed: ${safeRequestClass}.`);
   }
-  if (value.success !== true) {
+  if (value?.success !== true) {
     throw new Error(`Cloudflare provider evidence request failed: ${safeRequestClass}.`);
   }
   return value;
