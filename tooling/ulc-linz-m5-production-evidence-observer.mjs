@@ -78,6 +78,13 @@ const TRACE_FIELDS = Object.freeze([
   "persist",
   "propagation_policy",
 ]);
+const DOMAIN_RESULT_INFO_FIELDS = Object.freeze([
+  "count",
+  "page",
+  "per_page",
+  "total_count",
+  "total_pages",
+]);
 const DATA_FLOWS = Object.freeze([
   Object.freeze({ from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing", status: "verified" }),
   Object.freeze({ from: "cloudflare", to: "neon-postgresql", purpose: "application-persistence", status: "verified" }),
@@ -438,7 +445,12 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
   ) {
     throw new Error("ULC production Worker public ingress is not closed.");
   }
-  if (array(domainsResponse.result).length !== 0) {
+  const domainResults = array(domainsResponse.result);
+  validateOptionalDomainResultInfo(domainsResponse.result_info, domainResults.length);
+  if (
+    domainResults.some((candidate) => candidate?.service !== TARGET_WORKER) ||
+    domainResults.length !== 0
+  ) {
     throw new Error("ULC production Worker public ingress is not closed.");
   }
 
@@ -506,6 +518,38 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
 
   const telemetryActive = inspectCloudflareTelemetry(settingsResponse.result);
   return Object.freeze({ hyperdriveId, telemetryActive });
+}
+
+function validateOptionalDomainResultInfo(value, filteredResultCount) {
+  if (value === undefined) return;
+  const resultInfo = optionalExactRecord(
+    value,
+    DOMAIN_RESULT_INFO_FIELDS,
+    "Cloudflare custom-domain result metadata",
+  );
+  const count = optionalNonNegativeInteger(
+    resultInfo,
+    "count",
+    "Cloudflare custom-domain result metadata",
+  );
+  const page = optionalNonNegativeInteger(
+    resultInfo,
+    "page",
+    "Cloudflare custom-domain result metadata",
+  );
+  for (const field of ["per_page", "total_count", "total_pages"]) {
+    optionalNonNegativeInteger(
+      resultInfo,
+      field,
+      "Cloudflare custom-domain result metadata",
+    );
+  }
+  if (count !== undefined && count !== filteredResultCount) {
+    throw new Error("Cloudflare custom-domain result metadata is inconsistent.");
+  }
+  if (page !== undefined && page !== 0 && page !== 1) {
+    throw new Error("Cloudflare custom-domain result metadata is inconsistent.");
+  }
 }
 
 function inspectCloudflareTelemetry(value) {
@@ -587,6 +631,15 @@ function optionalExactRecord(value, allowedFields, label) {
     ) {
       throw new Error(`${label} is invalid.`);
     }
+  }
+  return value;
+}
+
+function optionalNonNegativeInteger(record, field, label) {
+  if (!Object.hasOwn(record, field)) return undefined;
+  const value = record[field];
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} is invalid.`);
   }
   return value;
 }
