@@ -380,7 +380,10 @@ test("observer classifies Cloudflare request failures without leaking provider c
   for (const [needle, requestClass] of cases) {
     const failingFetch = async (url, options) => {
       const value = String(url);
-      if (value.includes(needle)) {
+      const matches = needle === "/workers/domains?"
+        ? value.includes(needle)
+        : value.endsWith(needle);
+      if (matches) {
         return {
           ok: false,
           status: 403,
