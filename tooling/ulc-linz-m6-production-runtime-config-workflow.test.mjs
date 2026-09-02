@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import "./ulc-linz-m6-private-production-deploy-workflow.test.mjs";
+import "./ulc-linz-m6-private-runtime-refresh.test.mjs";
 
 const workflowUrl = new URL(
   "../.github/workflows/m6-ulc-production-runtime-config.yml",
@@ -34,6 +35,18 @@ test("runtime refresh workflows remain bound to the protected environment", asyn
     refreshDeployWorkflow,
     /refresh-private-deploy:[\s\S]*?environment: m4-dr[\s\S]*?steps:/,
   );
+});
+
+test("runtime refresh configuration reuses the trusted deployed version bindings without Hyperdrive inventory permission", async () => {
+  const workflow = await readFile(refreshConfigWorkflowUrl, "utf8");
+  assert.match(workflow, /DEPLOYED_VERSION_ID: \$\{\{ steps\.state\.outputs\.deployed_id \}\}/);
+  assert.match(workflow, /workers\/scripts\/\$TARGET_WORKER\/versions\/\$DEPLOYED_VERSION_ID/);
+  assert.match(workflow, /ulc-linz-m6-private-runtime-refresh\.mjs binding-ids/);
+  assert.match(workflow, /applicationHyperdriveId/);
+  assert.match(workflow, /securityLogHyperdriveId/);
+  assert.doesNotMatch(workflow, /ulc-linz-m6-production-hyperdrive\.mjs resolve(?:\s|$)/m);
+  assert.doesNotMatch(workflow, /ulc-linz-m6-production-hyperdrive\.mjs resolve-security-log/);
+  assert.doesNotMatch(workflow, /\/hyperdrive\/configs/);
 });
 
 test("runtime configuration requires exact main-only operator approval", async () => {
