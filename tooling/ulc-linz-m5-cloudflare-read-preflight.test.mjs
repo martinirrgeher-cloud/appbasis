@@ -82,7 +82,7 @@ test("preflight verifies every Cloudflare read required by the M5 observer", asy
 
 test("preflight read surface stays in exact parity with the production observer", async () => {
   const observer = await readFile(OBSERVER_URL, "utf8");
-  const cloudflareReads = observer.match(/cloudflareJson\(/g) ?? [];
+  const cloudflareReads = observer.match(/^\s*(?:const versionResponse = await )?cloudflareJson\(/gm) ?? [];
   assert.equal(cloudflareReads.length, 6);
 
   const expectedObserverReads = [
