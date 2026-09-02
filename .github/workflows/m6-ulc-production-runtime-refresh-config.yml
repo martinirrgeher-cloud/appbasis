@@ -131,18 +131,22 @@ jobs:
           printf 'current_id=%s\n' "$current_id" >> "$GITHUB_OUTPUT"
           printf 'deployed_id=%s\n' "$deployed_id" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve exact dedicated production Hyperdrives
+      - name: Reuse exact Hyperdrives from trusted deployed runtime
         id: hyperdrive
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
-          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          DEPLOYED_VERSION_ID: ${{ steps.state.outputs.deployed_id }}
         run: |
           set -euo pipefail
-          app="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
-          security="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
+          detail="$RUNNER_TEMP/deployed-version-detail.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/versions/$DEPLOYED_VERSION_ID" > "$detail"
+          ids="$(VERSION_ID="$DEPLOYED_VERSION_ID" node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs binding-ids "$detail")"
+          app="$(jq -r '.applicationHyperdriveId // empty' <<<"$ids")"
+          security="$(jq -r '.securityLogHyperdriveId // empty' <<<"$ids")"
           test -n "$app" && test -n "$security" && test "$app" != "$security"
           echo "::add-mask::$app"; echo "::add-mask::$security"
           printf 'id=%s\nsecurity_log_id=%s\n' "$app" "$security" >> "$GITHUB_OUTPUT"

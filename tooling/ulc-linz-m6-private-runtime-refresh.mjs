@@ -66,21 +66,11 @@ export function evaluateUlcLinzPrivateRuntimeRefreshState(
   });
 }
 
-export function verifyUlcLinzPrivateRuntimeVersionBindings(
+export function deriveUlcLinzPrivateRuntimeHyperdriveBindings(
   response,
-  {
-    versionId,
-    applicationHyperdriveId,
-    securityLogHyperdriveId,
-  },
+  { versionId },
 ) {
   requireVersionId(versionId);
-  requireOpaque(applicationHyperdriveId, "application Hyperdrive ID");
-  requireOpaque(securityLogHyperdriveId, "security-log Hyperdrive ID");
-  if (applicationHyperdriveId === securityLogHyperdriveId) {
-    throw new Error("ULC production refresh Hyperdrive bindings must be distinct.");
-  }
-
   const result = response?.result;
   const bindings = result?.resources?.bindings;
   if (
@@ -95,14 +85,41 @@ export function verifyUlcLinzPrivateRuntimeVersionBindings(
   const app = exactBinding(bindings, "HYPERDRIVE");
   const security = exactBinding(bindings, "SECURITY_LOG_HYPERDRIVE");
   const secret = exactBinding(bindings, "BETTER_AUTH_SECRET");
+  requireOpaque(app.id, "application Hyperdrive ID");
+  requireOpaque(security.id, "security-log Hyperdrive ID");
   if (
     base.type !== "plain_text" ||
     base.text !== TARGET_BASE_URL ||
     app.type !== "hyperdrive" ||
-    app.id !== applicationHyperdriveId ||
     security.type !== "hyperdrive" ||
-    security.id !== securityLogHyperdriveId ||
-    secret.type !== "secret_text"
+    secret.type !== "secret_text" ||
+    app.id === security.id
+  ) {
+    throw new Error("ULC production refresh version bindings drifted from the approved contract.");
+  }
+  return Object.freeze({
+    applicationHyperdriveId: app.id,
+    securityLogHyperdriveId: security.id,
+  });
+}
+
+export function verifyUlcLinzPrivateRuntimeVersionBindings(
+  response,
+  {
+    versionId,
+    applicationHyperdriveId,
+    securityLogHyperdriveId,
+  },
+) {
+  requireOpaque(applicationHyperdriveId, "application Hyperdrive ID");
+  requireOpaque(securityLogHyperdriveId, "security-log Hyperdrive ID");
+  if (applicationHyperdriveId === securityLogHyperdriveId) {
+    throw new Error("ULC production refresh Hyperdrive bindings must be distinct.");
+  }
+  const actual = deriveUlcLinzPrivateRuntimeHyperdriveBindings(response, { versionId });
+  if (
+    actual.applicationHyperdriveId !== applicationHyperdriveId ||
+    actual.securityLogHyperdriveId !== securityLogHyperdriveId
   ) {
     throw new Error("ULC production refresh version bindings drifted from the approved contract.");
   }
@@ -247,6 +264,13 @@ async function main(argv = process.argv.slice(2)) {
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
+  if (mode === "binding-ids" && paths.length === 1) {
+    const result = deriveUlcLinzPrivateRuntimeHyperdriveBindings(await readJson(paths[0]), {
+      versionId: process.env.VERSION_ID,
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
+  }
   if (mode === "bindings" && paths.length === 1) {
     verifyUlcLinzPrivateRuntimeVersionBindings(await readJson(paths[0]), {
       versionId: process.env.VERSION_ID,
@@ -256,7 +280,7 @@ async function main(argv = process.argv.slice(2)) {
     process.stdout.write("verified\n");
     return;
   }
-  throw new Error("Usage: ulc-linz-m6-private-runtime-refresh.mjs <state|deploy-state|post-deploy-state|bindings> ...");
+  throw new Error("Usage: ulc-linz-m6-private-runtime-refresh.mjs <state|deploy-state|post-deploy-state|binding-ids|bindings> ...");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

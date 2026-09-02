@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  deriveUlcLinzPrivateRuntimeHyperdriveBindings,
   evaluateUlcLinzPrivateRuntimeRefreshState,
   verifyUlcLinzPrivateRuntimeVersionBindings,
 } from "./ulc-linz-m6-private-runtime-refresh.mjs";
@@ -81,6 +82,23 @@ function input(overrides = {}) {
     githubSha: CURRENT_SHA,
     authSecretFingerprint: HMAC,
     ...overrides,
+  };
+}
+
+function bindingResponse(versionId = CURRENT_VERSION) {
+  return {
+    success: true,
+    result: {
+      id: versionId,
+      resources: {
+        bindings: [
+          { name: "APPBASIS_BASE_URL", type: "plain_text", text: "https://app.ulc-linz.at" },
+          { name: "HYPERDRIVE", type: "hyperdrive", id: "app-hyperdrive" },
+          { name: "SECURITY_LOG_HYPERDRIVE", type: "hyperdrive", id: "security-hyperdrive" },
+          { name: "BETTER_AUTH_SECRET", type: "secret_text" },
+        ],
+      },
+    },
   };
 }
 
@@ -207,21 +225,34 @@ test("refresh fails closed when the current version is missing or duplicated at 
   );
 });
 
-test("refresh verifies the exact four approved current-version bindings", () => {
-  const response = {
-    success: true,
-    result: {
-      id: CURRENT_VERSION,
-      resources: {
-        bindings: [
-          { name: "APPBASIS_BASE_URL", type: "plain_text", text: "https://app.ulc-linz.at" },
-          { name: "HYPERDRIVE", type: "hyperdrive", id: "app-hyperdrive" },
-          { name: "SECURITY_LOG_HYPERDRIVE", type: "hyperdrive", id: "security-hyperdrive" },
-          { name: "BETTER_AUTH_SECRET", type: "secret_text" },
-        ],
-      },
+test("refresh derives the exact deployed Hyperdrive IDs without a separate provider inventory read", () => {
+  assert.deepEqual(
+    deriveUlcLinzPrivateRuntimeHyperdriveBindings(bindingResponse(OLD_VERSION), {
+      versionId: OLD_VERSION,
+    }),
+    {
+      applicationHyperdriveId: "app-hyperdrive",
+      securityLogHyperdriveId: "security-hyperdrive",
     },
-  };
+  );
+
+  const duplicate = bindingResponse(OLD_VERSION);
+  duplicate.result.resources.bindings[2].id = "app-hyperdrive";
+  assert.throws(
+    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(duplicate, { versionId: OLD_VERSION }),
+    /bindings drifted/,
+  );
+
+  const extra = bindingResponse(OLD_VERSION);
+  extra.result.resources.bindings.push({ name: "FUTURE", type: "plain_text", text: "x" });
+  assert.throws(
+    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(extra, { versionId: OLD_VERSION }),
+    /binding inventory is invalid/,
+  );
+});
+
+test("refresh verifies the exact four approved current-version bindings", () => {
+  const response = bindingResponse();
   assert.equal(
     verifyUlcLinzPrivateRuntimeVersionBindings(response, {
       versionId: CURRENT_VERSION,
