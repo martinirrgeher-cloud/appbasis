@@ -22,6 +22,13 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OPAQUE_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const TABLE_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
+const CLOUDFLARE_REQUEST_CLASSES = Object.freeze([
+  "worker-metadata",
+  "deployments",
+  "script-inventory",
+  "script-settings",
+  "version",
+]);
 const RESTORE_FIELDS = Object.freeze([
   "restoreTargetBindingId",
   "restoreTestedAt",
@@ -382,17 +389,25 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
         `${accountPath}/workers/workers/${TARGET_WORKER}`,
         apiToken,
         fetchImpl,
+        "worker-metadata",
       ),
       cloudflareJson(
         `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`,
         apiToken,
         fetchImpl,
+        "deployments",
       ),
-      cloudflareJson(`${accountPath}/workers/scripts`, apiToken, fetchImpl),
+      cloudflareJson(
+        `${accountPath}/workers/scripts`,
+        apiToken,
+        fetchImpl,
+        "script-inventory",
+      ),
       cloudflareJson(
         `${accountPath}/workers/scripts/${TARGET_WORKER}/script-settings`,
         apiToken,
         fetchImpl,
+        "script-settings",
       ),
     ]);
 
@@ -428,6 +443,7 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
     `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${versionId}`,
     apiToken,
     fetchImpl,
+    "version",
   );
   const version = versionResponse.result;
   const bindings = array(version?.resources?.bindings);
@@ -568,15 +584,21 @@ async function neonJson(url, apiKey, fetchImpl) {
   return jsonRequest(url, { Authorization: `Bearer ${apiKey}` }, fetchImpl, false);
 }
 
-async function cloudflareJson(url, apiToken, fetchImpl) {
-  const value = await jsonRequest(
-    url,
-    { Authorization: `Bearer ${apiToken}` },
-    fetchImpl,
-    true,
-  );
-  if (value.success !== true) {
-    throw new Error("Cloudflare provider evidence request was unsuccessful.");
+async function cloudflareJson(url, apiToken, fetchImpl, requestClass) {
+  const safeRequestClass = requiredCloudflareRequestClass(requestClass);
+  let value;
+  try {
+    value = await jsonRequest(
+      url,
+      { Authorization: `Bearer ${apiToken}` },
+      fetchImpl,
+      true,
+    );
+  } catch {
+    throw new Error(`Cloudflare provider evidence request failed: ${safeRequestClass}.`);
+  }
+  if (value?.success !== true) {
+    throw new Error(`Cloudflare provider evidence request failed: ${safeRequestClass}.`);
   }
   return value;
 }
@@ -600,6 +622,13 @@ async function jsonRequest(url, headers, fetchImpl, cloudflare) {
   } catch {
     throw new Error(`${cloudflare ? "Cloudflare" : "Neon"} provider evidence returned invalid JSON.`);
   }
+}
+
+function requiredCloudflareRequestClass(value) {
+  if (!CLOUDFLARE_REQUEST_CLASSES.includes(value)) {
+    throw new Error("Cloudflare provider evidence request class is invalid.");
+  }
+  return value;
 }
 
 function validateRestoreObservation(value, now) {

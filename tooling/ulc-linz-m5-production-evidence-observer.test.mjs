@@ -349,3 +349,63 @@ test("observer refuses lifecycle activation when the real production table inven
     /lifecycle persistence inventory is not exact/,
   );
 });
+
+test("observer classifies Cloudflare request failures without leaking provider context", async () => {
+  const cases = [
+    ["/workers/workers/appbasis-ulc-linz-production", "worker-metadata"],
+    ["/workers/scripts/appbasis-ulc-linz-production/deployments", "deployments"],
+    ["/workers/scripts", "script-inventory"],
+    ["/workers/scripts/appbasis-ulc-linz-production/script-settings", "script-settings"],
+    [`/versions/${CURRENT_VERSION}`, "version"],
+  ];
+
+  for (const [suffix, requestClass] of cases) {
+    const failingFetch = async (url, options) => {
+      const value = String(url);
+      if (value.endsWith(suffix)) {
+        return {
+          ok: false,
+          async json() {
+            return {
+              success: false,
+              errors: [{ message: "provider-token-value account-1 sensitive-provider-detail" }],
+            };
+          },
+        };
+      }
+      return providerFetch(url, options);
+    };
+
+    await assert.rejects(
+      () => collect({ fetchImpl: failingFetch }),
+      (error) => {
+        assert.equal(
+          error?.message,
+          `Cloudflare provider evidence request failed: ${requestClass}.`,
+        );
+        assert.doesNotMatch(error.message, /provider-token-value|account-1|sensitive-provider-detail|https?:\/\//);
+        return true;
+      },
+    );
+  }
+});
+
+test("observer classifies null Cloudflare payloads", async () => {
+  const nullFetch = async (url, options) => {
+    if (String(url).endsWith("/workers/workers/appbasis-ulc-linz-production")) {
+      return response(null);
+    }
+    return providerFetch(url, options);
+  };
+
+  await assert.rejects(
+    () => collect({ fetchImpl: nullFetch }),
+    (error) => {
+      assert.equal(
+        error?.message,
+        "Cloudflare provider evidence request failed: worker-metadata.",
+      );
+      return true;
+    },
+  );
+});
