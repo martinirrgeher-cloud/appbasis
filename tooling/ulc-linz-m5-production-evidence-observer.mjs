@@ -29,6 +29,17 @@ const CLOUDFLARE_REQUEST_CLASSES = Object.freeze([
   "script-settings",
   "version",
 ]);
+const CLOUDFLARE_FAILURE_CLASSES = Object.freeze([
+  "transport",
+  "invalid-response",
+  "http-403",
+  "http-404",
+  "http-4xx",
+  "http-5xx",
+  "http-other",
+  "invalid-json",
+  "api-unsuccessful",
+]);
 const RESTORE_FIELDS = Object.freeze([
   "restoreTargetBindingId",
   "restoreTestedAt",
@@ -586,24 +597,25 @@ async function neonJson(url, apiKey, fetchImpl) {
 
 async function cloudflareJson(url, apiToken, fetchImpl, requestClass) {
   const safeRequestClass = requiredCloudflareRequestClass(requestClass);
-  let value;
-  try {
-    value = await jsonRequest(
-      url,
-      { Authorization: `Bearer ${apiToken}` },
-      fetchImpl,
-      true,
-    );
-  } catch {
-    throw new Error(`Cloudflare provider evidence request failed: ${safeRequestClass}.`);
-  }
+  const value = await jsonRequest(
+    url,
+    { Authorization: `Bearer ${apiToken}` },
+    fetchImpl,
+    true,
+    safeRequestClass,
+  );
   if (value?.success !== true) {
-    throw new Error(`Cloudflare provider evidence request failed: ${safeRequestClass}.`);
+    throw new Error(
+      cloudflareFailureMessage(safeRequestClass, "api-unsuccessful"),
+    );
   }
   return value;
 }
 
-async function jsonRequest(url, headers, fetchImpl, cloudflare) {
+async function jsonRequest(url, headers, fetchImpl, cloudflare, requestClass = null) {
+  const safeRequestClass = cloudflare
+    ? requiredCloudflareRequestClass(requestClass)
+    : null;
   let response;
   try {
     response = await fetchImpl(url, {
@@ -612,21 +624,74 @@ async function jsonRequest(url, headers, fetchImpl, cloudflare) {
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
-    throw new Error(`${cloudflare ? "Cloudflare" : "Neon"} provider evidence request failed.`);
+    if (cloudflare) {
+      throw new Error(cloudflareFailureMessage(safeRequestClass, "transport"));
+    }
+    throw new Error("Neon provider evidence request failed.");
   }
-  if (!response?.ok || typeof response.json !== "function") {
-    throw new Error(`${cloudflare ? "Cloudflare" : "Neon"} provider evidence request failed.`);
+  if (response === null || typeof response !== "object") {
+    if (cloudflare) {
+      throw new Error(
+        cloudflareFailureMessage(safeRequestClass, "invalid-response"),
+      );
+    }
+    throw new Error("Neon provider evidence request failed.");
+  }
+  if (response.ok !== true) {
+    if (cloudflare) {
+      throw new Error(
+        cloudflareFailureMessage(
+          safeRequestClass,
+          classifyCloudflareHttpStatus(response.status),
+        ),
+      );
+    }
+    throw new Error("Neon provider evidence request failed.");
+  }
+  if (typeof response.json !== "function") {
+    if (cloudflare) {
+      throw new Error(
+        cloudflareFailureMessage(safeRequestClass, "invalid-response"),
+      );
+    }
+    throw new Error("Neon provider evidence request failed.");
   }
   try {
     return await response.json();
   } catch {
-    throw new Error(`${cloudflare ? "Cloudflare" : "Neon"} provider evidence returned invalid JSON.`);
+    if (cloudflare) {
+      throw new Error(
+        cloudflareFailureMessage(safeRequestClass, "invalid-json"),
+      );
+    }
+    throw new Error("Neon provider evidence returned invalid JSON.");
   }
+}
+
+function classifyCloudflareHttpStatus(value) {
+  if (value === 403) return "http-403";
+  if (value === 404) return "http-404";
+  if (Number.isInteger(value) && value >= 400 && value < 500) return "http-4xx";
+  if (Number.isInteger(value) && value >= 500 && value < 600) return "http-5xx";
+  return "http-other";
+}
+
+function cloudflareFailureMessage(requestClass, failureClass) {
+  const safeRequestClass = requiredCloudflareRequestClass(requestClass);
+  const safeFailureClass = requiredCloudflareFailureClass(failureClass);
+  return `Cloudflare provider evidence request failed: ${safeRequestClass}:${safeFailureClass}.`;
 }
 
 function requiredCloudflareRequestClass(value) {
   if (!CLOUDFLARE_REQUEST_CLASSES.includes(value)) {
     throw new Error("Cloudflare provider evidence request class is invalid.");
+  }
+  return value;
+}
+
+function requiredCloudflareFailureClass(value) {
+  if (!CLOUDFLARE_FAILURE_CLASSES.includes(value)) {
+    throw new Error("Cloudflare provider evidence failure class is invalid.");
   }
   return value;
 }
