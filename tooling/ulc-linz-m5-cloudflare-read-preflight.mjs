@@ -28,25 +28,38 @@ const FAILURE_CLASSES = Object.freeze([
   "invalid-shape",
 ]);
 
+export function buildUlcLinzM5CloudflareReadSurface(accountId, versionId = null) {
+  const safeAccountId = requiredOpaque(accountId, "Cloudflare account ID");
+  const accountPath = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(safeAccountId)}`;
+  const domainsUrl = new URL(`${accountPath}/workers/domains`);
+  domainsUrl.searchParams.set("service", TARGET_WORKER);
+  const requests = [
+    { requestClass: "subdomain", url: `${accountPath}/workers/scripts/${TARGET_WORKER}/subdomain` },
+    { requestClass: "custom-domains", url: String(domainsUrl) },
+    { requestClass: "deployments", url: `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments` },
+    { requestClass: "script-inventory", url: `${accountPath}/workers/scripts` },
+    { requestClass: "script-settings", url: `${accountPath}/workers/scripts/${TARGET_WORKER}/script-settings` },
+  ];
+  if (versionId !== null) {
+    const safeVersionId = requiredVersionId(versionId);
+    requests.push({
+      requestClass: "version",
+      url: `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${safeVersionId}`,
+    });
+  }
+  return Object.freeze(requests.map((request) => Object.freeze(request)));
+}
+
 export async function runUlcLinzM5CloudflareReadPreflight(
   { accountId, apiToken },
   { fetchImpl = fetch } = {},
 ) {
   const safeAccountId = requiredOpaque(accountId, "Cloudflare account ID");
   const safeApiToken = requiredCredential(apiToken, "Cloudflare API token");
-  const accountPath = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(safeAccountId)}`;
-  const domainsUrl = new URL(`${accountPath}/workers/domains`);
-  domainsUrl.searchParams.set("service", TARGET_WORKER);
-  const initialRequests = Object.freeze([
-    ["subdomain", `${accountPath}/workers/scripts/${TARGET_WORKER}/subdomain`],
-    ["custom-domains", domainsUrl],
-    ["deployments", `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`],
-    ["script-inventory", `${accountPath}/workers/scripts`],
-    ["script-settings", `${accountPath}/workers/scripts/${TARGET_WORKER}/script-settings`],
-  ]);
+  const initialRequests = buildUlcLinzM5CloudflareReadSurface(safeAccountId);
 
   const settled = await Promise.allSettled(
-    initialRequests.map(([requestClass, url]) =>
+    initialRequests.map(({ requestClass, url }) =>
       cloudflareJson(url, safeApiToken, fetchImpl, requestClass),
     ),
   );
@@ -54,7 +67,7 @@ export async function runUlcLinzM5CloudflareReadPreflight(
   let deploymentsResponse = null;
   for (let index = 0; index < settled.length; index += 1) {
     const result = settled[index];
-    const requestClass = initialRequests[index][0];
+    const { requestClass } = initialRequests[index];
     if (result.status === "rejected") {
       failures.push(normalizeFailure(result.reason, requestClass));
       continue;
@@ -72,11 +85,12 @@ export async function runUlcLinzM5CloudflareReadPreflight(
       failures.push(failure("deployments", "invalid-shape"));
     } else {
       try {
+        const versionRequest = buildUlcLinzM5CloudflareReadSurface(safeAccountId, versionId).at(-1);
         const version = await cloudflareJson(
-          `${accountPath}/workers/scripts/${TARGET_WORKER}/versions/${versionId}`,
+          versionRequest.url,
           safeApiToken,
           fetchImpl,
-          "version",
+          versionRequest.requestClass,
         );
         if (!hasExpectedShape("version", version)) {
           failures.push(failure("version", "invalid-shape"));
@@ -192,6 +206,13 @@ function message(requestClass, failureClass) {
 function requiredOpaque(value, label) {
   if (typeof value !== "string" || !OPAQUE_PATTERN.test(value)) {
     throw new Error(`${label} is invalid.`);
+  }
+  return value;
+}
+
+function requiredVersionId(value) {
+  if (typeof value !== "string" || !VERSION_ID_PATTERN.test(value)) {
+    throw new Error("Cloudflare version ID is invalid.");
   }
   return value;
 }
