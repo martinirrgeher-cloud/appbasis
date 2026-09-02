@@ -49,6 +49,17 @@ test("runtime refresh configuration reuses the trusted deployed version bindings
   assert.doesNotMatch(workflow, /\/hyperdrive\/configs/);
 });
 
+test("runtime refresh deploy reuses the exact configured version bindings without Hyperdrive inventory permission", async () => {
+  const workflow = await readFile(refreshDeployWorkflowUrl, "utf8");
+  assert.match(workflow, /VERSION_ID: \$\{\{ steps\.state\.outputs\.current_id \}\}/);
+  assert.match(workflow, /workers\/scripts\/\$TARGET_WORKER\/versions\/\$VERSION_ID/);
+  assert.match(workflow, /ulc-linz-m6-private-runtime-refresh\.mjs binding-ids/);
+  assert.match(workflow, /ulc-linz-m6-private-runtime-refresh\.mjs bindings/);
+  assert.doesNotMatch(workflow, /ulc-linz-m6-production-hyperdrive\.mjs resolve(?:\s|$)/m);
+  assert.doesNotMatch(workflow, /ulc-linz-m6-production-hyperdrive\.mjs resolve-security-log/);
+  assert.doesNotMatch(workflow, /\/hyperdrive\/configs/);
+});
+
 test("runtime configuration requires exact main-only operator approval", async () => {
   const workflow = await source();
   assert.match(workflow, /GITHUB_REF.*refs\/heads\/main/);
