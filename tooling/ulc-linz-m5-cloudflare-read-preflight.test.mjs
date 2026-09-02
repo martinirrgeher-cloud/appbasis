@@ -49,6 +49,16 @@ function successFetch(overrides = new Map()) {
   };
 }
 
+async function capturedFailure(promise) {
+  try {
+    await promise;
+  } catch (error) {
+    assert.ok(error instanceof Error);
+    return error;
+  }
+  assert.fail("Expected preflight to fail.");
+}
+
 test("preflight verifies every Cloudflare read required by the M5 observer", async () => {
   const seen = [];
   const baseFetch = successFetch();
@@ -70,7 +80,7 @@ test("preflight verifies every Cloudflare read required by the M5 observer", asy
 });
 
 test("preflight reports all permission failures deterministically without provider leakage", async () => {
-  const error = await assert.rejects(
+  const error = await capturedFailure(
     runUlcLinzM5CloudflareReadPreflight(
       { accountId: ACCOUNT, apiToken: TOKEN },
       {
