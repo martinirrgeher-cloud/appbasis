@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { runUlcLinzM5CloudflareReadPreflight } from "./ulc-linz-m5-cloudflare-read-preflight.mjs";
+import {
+  buildUlcLinzM5CloudflareReadSurface,
+  runUlcLinzM5CloudflareReadPreflight,
+} from "./ulc-linz-m5-cloudflare-read-preflight.mjs";
 
 const ACCOUNT = "account-123";
 const TOKEN = "token-secret-123";
@@ -80,10 +83,24 @@ test("preflight verifies every Cloudflare read required by the M5 observer", asy
   assert.ok(seen.some((url) => url.endsWith(`/versions/${VERSION}`)));
 });
 
-test("preflight read surface stays in exact parity with the production observer", async () => {
+test("preflight emitted read surface stays in exact parity with the production observer", async () => {
   const observer = await readFile(OBSERVER_URL, "utf8");
   const cloudflareReads = observer.match(/^\s*(?:const versionResponse = await )?cloudflareJson\(/gm) ?? [];
   assert.equal(cloudflareReads.length, 6);
+
+  const workerMatch = /const TARGET_WORKER = "([^"]+)";/.exec(observer);
+  assert.ok(workerMatch);
+  const targetWorker = workerMatch[1];
+  const accountPath = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}`;
+  const expectedSurface = [
+    { requestClass: "subdomain", url: `${accountPath}/workers/scripts/${targetWorker}/subdomain` },
+    { requestClass: "custom-domains", url: `${accountPath}/workers/domains?service=${targetWorker}` },
+    { requestClass: "deployments", url: `${accountPath}/workers/scripts/${targetWorker}/deployments` },
+    { requestClass: "script-inventory", url: `${accountPath}/workers/scripts` },
+    { requestClass: "script-settings", url: `${accountPath}/workers/scripts/${targetWorker}/script-settings` },
+    { requestClass: "version", url: `${accountPath}/workers/scripts/${targetWorker}/versions/${VERSION}` },
+  ];
+  assert.deepEqual(buildUlcLinzM5CloudflareReadSurface(ACCOUNT, VERSION), expectedSurface);
 
   const expectedObserverReads = [
     /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/subdomain`[\s\S]*?"subdomain"/,
@@ -94,7 +111,6 @@ test("preflight read surface stays in exact parity with the production observer"
     /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/versions\/\$\{versionId\}`[\s\S]*?"version"/,
   ];
   for (const pattern of expectedObserverReads) assert.match(observer, pattern);
-
   assert.match(observer, /domainsUrl\.searchParams\.set\("service", TARGET_WORKER\)/);
   assert.doesNotMatch(observer, /cloudflareJson\([\s\S]*?"worker-metadata"/);
 });
