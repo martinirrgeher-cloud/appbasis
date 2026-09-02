@@ -23,7 +23,8 @@ const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9
 const OPAQUE_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const TABLE_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
 const CLOUDFLARE_REQUEST_CLASSES = Object.freeze([
-  "worker-metadata",
+  "subdomain",
+  "custom-domains",
   "deployments",
   "script-inventory",
   "script-settings",
@@ -394,13 +395,21 @@ async function observeNeon({ apiKey, orgId, fetchImpl }) {
 
 async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) {
   const accountPath = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(accountId)}`;
-  const [workerResponse, deploymentsResponse, scriptsResponse, settingsResponse] =
+  const domainsUrl = new URL(`${accountPath}/workers/domains`);
+  domainsUrl.searchParams.set("service", TARGET_WORKER);
+  const [subdomainResponse, domainsResponse, deploymentsResponse, scriptsResponse, settingsResponse] =
     await Promise.all([
       cloudflareJson(
-        `${accountPath}/workers/workers/${TARGET_WORKER}`,
+        `${accountPath}/workers/scripts/${TARGET_WORKER}/subdomain`,
         apiToken,
         fetchImpl,
-        "worker-metadata",
+        "subdomain",
+      ),
+      cloudflareJson(
+        domainsUrl,
+        apiToken,
+        fetchImpl,
+        "custom-domains",
       ),
       cloudflareJson(
         `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`,
@@ -422,14 +431,14 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
       ),
     ]);
 
-  const worker = workerResponse.result;
+  const subdomain = subdomainResponse.result;
   if (
-    worker?.name !== TARGET_WORKER ||
-    worker?.subdomain?.enabled !== false ||
-    worker?.subdomain?.previews_enabled !== false ||
-    !Array.isArray(worker?.references?.domains) ||
-    worker.references.domains.length !== 0
+    subdomain?.enabled !== false ||
+    subdomain?.previews_enabled !== false
   ) {
+    throw new Error("ULC production Worker public ingress is not closed.");
+  }
+  if (array(domainsResponse.result).length !== 0) {
     throw new Error("ULC production Worker public ingress is not closed.");
   }
 
