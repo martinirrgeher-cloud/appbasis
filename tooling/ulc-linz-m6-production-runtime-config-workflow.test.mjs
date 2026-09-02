@@ -37,6 +37,29 @@ test("runtime refresh workflows remain bound to the protected environment", asyn
   );
 });
 
+test("runtime refresh mutations use the dedicated Cloudflare write token while provider reads retain the read token", async () => {
+  const [refreshConfigWorkflow, refreshDeployWorkflow] = await Promise.all([
+    readFile(refreshConfigWorkflowUrl, "utf8"),
+    readFile(refreshDeployWorkflowUrl, "utf8"),
+  ]);
+  assert.match(
+    refreshConfigWorkflow,
+    /Upload exact current runtime as an undeployed version[\s\S]*?CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_WRITE_TOKEN \}\}/,
+  );
+  assert.match(
+    refreshDeployWorkflow,
+    /Deploy exact current version privately[\s\S]*?CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_WRITE_TOKEN \}\}/,
+  );
+  assert.match(
+    refreshConfigWorkflow,
+    /Read and validate current closed private runtime state[\s\S]*?CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/,
+  );
+  assert.match(
+    refreshDeployWorkflow,
+    /Require exact closed runtime and exact current configured version[\s\S]*?CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/,
+  );
+});
+
 test("runtime refresh configuration reuses the trusted deployed version bindings without Hyperdrive inventory permission", async () => {
   const workflow = await readFile(refreshConfigWorkflowUrl, "utf8");
   assert.match(workflow, /DEPLOYED_VERSION_ID: \$\{\{ steps\.state\.outputs\.deployed_id \}\}/);
