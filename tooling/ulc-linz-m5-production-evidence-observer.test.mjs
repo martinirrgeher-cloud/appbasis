@@ -389,3 +389,23 @@ test("observer classifies Cloudflare request failures without leaking provider c
     );
   }
 });
+
+test("observer classifies null Cloudflare payloads", async () => {
+  const nullFetch = async (url, options) => {
+    if (String(url).endsWith("/workers/workers/appbasis-ulc-linz-production")) {
+      return response(null);
+    }
+    return providerFetch(url, options);
+  };
+
+  await assert.rejects(
+    () => collect({ fetchImpl: nullFetch }),
+    (error) => {
+      assert.equal(
+        error?.message,
+        "Cloudflare provider evidence request failed: worker-metadata.",
+      );
+      return true;
+    },
+  );
+});
