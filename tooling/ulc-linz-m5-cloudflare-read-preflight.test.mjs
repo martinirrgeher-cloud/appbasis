@@ -2,15 +2,18 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { runUlcLinzM5CloudflareReadPreflight } from "./ulc-linz-m5-cloudflare-read-preflight.mjs";
 import {
   buildUlcLinzM5CloudflareReadSurface,
-  runUlcLinzM5CloudflareReadPreflight,
-} from "./ulc-linz-m5-cloudflare-read-preflight.mjs";
+  ULC_LINZ_M5_CLOUDFLARE_REQUEST_CLASSES,
+  ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER,
+} from "./ulc-linz-m5-cloudflare-read-surface.mjs";
 
 const ACCOUNT = "account-123";
 const TOKEN = "token-secret-123";
 const VERSION = "11111111-1111-4111-8111-111111111111";
 const OBSERVER_URL = new URL("./ulc-linz-m5-production-evidence-observer.mjs", import.meta.url);
+const PREFLIGHT_URL = new URL("./ulc-linz-m5-cloudflare-read-preflight.mjs", import.meta.url);
 
 function response(status, body) {
   return {
@@ -41,7 +44,7 @@ function successFetch(overrides = new Map()) {
       });
     }
     if (value.endsWith("/workers/scripts")) {
-      return response(200, { success: true, result: [{ id: "appbasis-ulc-linz-production" }] });
+      return response(200, { success: true, result: [{ id: ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER }] });
     }
     if (value.endsWith("/script-settings")) {
       return response(200, { success: true, result: { logpush: false } });
@@ -63,6 +66,41 @@ async function capturedFailure(promise) {
   assert.fail("Expected preflight to fail.");
 }
 
+test("shared Cloudflare read surface is exact and complete", () => {
+  const accountPath = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}`;
+  assert.deepEqual(ULC_LINZ_M5_CLOUDFLARE_REQUEST_CLASSES, [
+    "subdomain",
+    "custom-domains",
+    "deployments",
+    "script-inventory",
+    "script-settings",
+    "version",
+  ]);
+  assert.deepEqual(buildUlcLinzM5CloudflareReadSurface(ACCOUNT, VERSION), [
+    { requestClass: "subdomain", url: `${accountPath}/workers/scripts/${ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER}/subdomain` },
+    { requestClass: "custom-domains", url: `${accountPath}/workers/domains?service=${ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER}` },
+    { requestClass: "deployments", url: `${accountPath}/workers/scripts/${ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER}/deployments` },
+    { requestClass: "script-inventory", url: `${accountPath}/workers/scripts` },
+    { requestClass: "script-settings", url: `${accountPath}/workers/scripts/${ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER}/script-settings` },
+    { requestClass: "version", url: `${accountPath}/workers/scripts/${ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER}/versions/${VERSION}` },
+  ]);
+});
+
+test("observer and preflight consume one shared Cloudflare read surface", async () => {
+  const [observer, preflight] = await Promise.all([
+    readFile(OBSERVER_URL, "utf8"),
+    readFile(PREFLIGHT_URL, "utf8"),
+  ]);
+  for (const source of [observer, preflight]) {
+    assert.match(source, /from "\.\/ulc-linz-m5-cloudflare-read-surface\.mjs"/);
+    assert.match(source, /buildUlcLinzM5CloudflareReadSurface/);
+  }
+  assert.doesNotMatch(observer, /const CLOUDFLARE_API =/);
+  assert.doesNotMatch(preflight, /const CLOUDFLARE_API =/);
+  assert.doesNotMatch(observer, /workers\/scripts\/\$\{TARGET_WORKER\}\/deployments/);
+  assert.doesNotMatch(preflight, /workers\/scripts\/\$\{TARGET_WORKER\}\/deployments/);
+});
+
 test("preflight verifies every Cloudflare read required by the M5 observer", async () => {
   const seen = [];
   const baseFetch = successFetch();
@@ -78,44 +116,7 @@ test("preflight verifies every Cloudflare read required by the M5 observer", asy
     },
   );
   assert.deepEqual(result, { cloudflareReadPreflightVerified: true });
-  assert.equal(seen.length, 6);
-  assert.ok(seen.some((url) => url.endsWith("/deployments")));
-  assert.ok(seen.some((url) => url.endsWith(`/versions/${VERSION}`)));
-});
-
-test("preflight emitted read surface stays in exact parity with the production observer", async () => {
-  const observer = await readFile(OBSERVER_URL, "utf8");
-  const cloudflareReads = observer.match(/^\s*(?:const versionResponse = await )?cloudflareJson\(/gm) ?? [];
-  assert.equal(cloudflareReads.length, 6);
-
-  const apiMatch = /const CLOUDFLARE_API = "([^"]+)";/.exec(observer);
-  assert.ok(apiMatch);
-  const cloudflareApi = apiMatch[1];
-  const workerMatch = /const TARGET_WORKER = "([^"]+)";/.exec(observer);
-  assert.ok(workerMatch);
-  const targetWorker = workerMatch[1];
-  const accountPath = `${cloudflareApi}/accounts/${ACCOUNT}`;
-  const expectedSurface = [
-    { requestClass: "subdomain", url: `${accountPath}/workers/scripts/${targetWorker}/subdomain` },
-    { requestClass: "custom-domains", url: `${accountPath}/workers/domains?service=${targetWorker}` },
-    { requestClass: "deployments", url: `${accountPath}/workers/scripts/${targetWorker}/deployments` },
-    { requestClass: "script-inventory", url: `${accountPath}/workers/scripts` },
-    { requestClass: "script-settings", url: `${accountPath}/workers/scripts/${targetWorker}/script-settings` },
-    { requestClass: "version", url: `${accountPath}/workers/scripts/${targetWorker}/versions/${VERSION}` },
-  ];
-  assert.deepEqual(buildUlcLinzM5CloudflareReadSurface(ACCOUNT, VERSION), expectedSurface);
-
-  const expectedObserverReads = [
-    /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/subdomain`[\s\S]*?"subdomain"/,
-    /domainsUrl[\s\S]*?"custom-domains"/,
-    /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/deployments`[\s\S]*?"deployments"/,
-    /`\$\{accountPath\}\/workers\/scripts`[\s\S]*?"script-inventory"/,
-    /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/script-settings`[\s\S]*?"script-settings"/,
-    /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/versions\/\$\{versionId\}`[\s\S]*?"version"/,
-  ];
-  for (const pattern of expectedObserverReads) assert.match(observer, pattern);
-  assert.match(observer, /domainsUrl\.searchParams\.set\("service", TARGET_WORKER\)/);
-  assert.doesNotMatch(observer, /cloudflareJson\([\s\S]*?"worker-metadata"/);
+  assert.deepEqual(seen.sort(), buildUlcLinzM5CloudflareReadSurface(ACCOUNT, VERSION).map(({ url }) => url).sort());
 });
 
 test("preflight reports all permission failures deterministically without provider leakage", async () => {
@@ -143,11 +144,7 @@ test("preflight distinguishes request-shape and version-access failures", async 
   await assert.rejects(
     runUlcLinzM5CloudflareReadPreflight(
       { accountId: ACCOUNT, apiToken: TOKEN },
-      {
-        fetchImpl: successFetch(
-          new Map([["/deployments", response(400, { success: false })]]),
-        ),
-      },
+      { fetchImpl: successFetch(new Map([["/deployments", response(400, { success: false })]])) },
     ),
     /deployments:http-400/,
   );
@@ -155,11 +152,7 @@ test("preflight distinguishes request-shape and version-access failures", async 
   await assert.rejects(
     runUlcLinzM5CloudflareReadPreflight(
       { accountId: ACCOUNT, apiToken: TOKEN },
-      {
-        fetchImpl: successFetch(
-          new Map([[`/versions/${VERSION}`, response(404, { success: false })]]),
-        ),
-      },
+      { fetchImpl: successFetch(new Map([[`/versions/${VERSION}`, response(404, { success: false })]])) },
     ),
     /version:http-404/,
   );
@@ -169,11 +162,7 @@ test("preflight fails closed on malformed successful deployment evidence", async
   await assert.rejects(
     runUlcLinzM5CloudflareReadPreflight(
       { accountId: ACCOUNT, apiToken: TOKEN },
-      {
-        fetchImpl: successFetch(
-          new Map([["/deployments", response(200, { success: true, result: { deployments: [] } })]]),
-        ),
-      },
+      { fetchImpl: successFetch(new Map([["/deployments", response(200, { success: true, result: { deployments: [] } })]])) },
     ),
     /deployments:invalid-shape/,
   );
@@ -189,6 +178,7 @@ test("workflow is main-only, read-only and uses only Cloudflare read credentials
   assert.match(workflow, /permissions:\s*\n\s*contents: read/);
   assert.match(workflow, /CLOUDFLARE_ACCOUNT_ID/);
   assert.match(workflow, /CLOUDFLARE_API_TOKEN/);
+  assert.match(workflow, /ulc-linz-m5-cloudflare-read-surface\.mjs/);
   assert.doesNotMatch(workflow, /DATABASE_URL/);
   assert.doesNotMatch(workflow, /NEON_API_KEY/);
   assert.doesNotMatch(workflow, /curl .* -X (POST|PUT|PATCH|DELETE)/);

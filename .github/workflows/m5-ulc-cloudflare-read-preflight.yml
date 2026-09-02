@@ -3,12 +3,15 @@ name: M5 ULC Cloudflare Read Preflight
 on:
   pull_request:
     paths:
+      - 'tooling/ulc-linz-m5-cloudflare-read-surface.mjs'
       - 'tooling/ulc-linz-m5-cloudflare-read-preflight.mjs'
       - 'tooling/ulc-linz-m5-cloudflare-read-preflight.test.mjs'
+      - 'tooling/ulc-linz-m5-production-evidence-observer.mjs'
       - '.github/workflows/m5-ulc-cloudflare-read-preflight.yml'
   push:
     branches: [main]
     paths:
+      - 'tooling/ulc-linz-m5-cloudflare-read-surface.mjs'
       - 'tooling/ulc-linz-m5-cloudflare-read-preflight.mjs'
       - 'tooling/ulc-linz-m5-cloudflare-read-preflight.test.mjs'
       - '.github/workflows/m5-ulc-cloudflare-read-preflight.yml'
