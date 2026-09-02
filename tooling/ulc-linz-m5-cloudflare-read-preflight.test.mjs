@@ -7,6 +7,7 @@ import { runUlcLinzM5CloudflareReadPreflight } from "./ulc-linz-m5-cloudflare-re
 const ACCOUNT = "account-123";
 const TOKEN = "token-secret-123";
 const VERSION = "11111111-1111-4111-8111-111111111111";
+const OBSERVER_URL = new URL("./ulc-linz-m5-production-evidence-observer.mjs", import.meta.url);
 
 function response(status, body) {
   return {
@@ -77,6 +78,25 @@ test("preflight verifies every Cloudflare read required by the M5 observer", asy
   assert.equal(seen.length, 6);
   assert.ok(seen.some((url) => url.endsWith("/deployments")));
   assert.ok(seen.some((url) => url.endsWith(`/versions/${VERSION}`)));
+});
+
+test("preflight read surface stays in exact parity with the production observer", async () => {
+  const observer = await readFile(OBSERVER_URL, "utf8");
+  const cloudflareReads = observer.match(/cloudflareJson\(/g) ?? [];
+  assert.equal(cloudflareReads.length, 6);
+
+  const expectedObserverReads = [
+    /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/subdomain`[\s\S]*?"subdomain"/,
+    /domainsUrl[\s\S]*?"custom-domains"/,
+    /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/deployments`[\s\S]*?"deployments"/,
+    /`\$\{accountPath\}\/workers\/scripts`[\s\S]*?"script-inventory"/,
+    /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/script-settings`[\s\S]*?"script-settings"/,
+    /`\$\{accountPath\}\/workers\/scripts\/\$\{TARGET_WORKER\}\/versions\/\$\{versionId\}`[\s\S]*?"version"/,
+  ];
+  for (const pattern of expectedObserverReads) assert.match(observer, pattern);
+
+  assert.match(observer, /domainsUrl\.searchParams\.set\("service", TARGET_WORKER\)/);
+  assert.doesNotMatch(observer, /cloudflareJson\([\s\S]*?"worker-metadata"/);
 });
 
 test("preflight reports all permission failures deterministically without provider leakage", async () => {
