@@ -30,8 +30,8 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
     const rows = await database.client.unsafe(`
       SELECT
         count(*)::bigint AS event_count,
-        max(recorded_at) AS latest_recorded_at,
-        statement_timestamp() AS observed_at
+        max(recorded_at)::text AS latest_recorded_at,
+        statement_timestamp()::text AS observed_at
       FROM public.ulc_linz_security_event_log
       WHERE app_id = 'ulc-linz'
         AND schema_version = 1
@@ -124,7 +124,6 @@ function canonicalTimestamp(value, label) {
 }
 
 function databaseTimestamp(value, label) {
-  if (value instanceof Date) return dateTimestamp(value, label);
   if (typeof value !== "string") {
     throw new Error(`ULC M5-F ${label} is invalid.`);
   }
