@@ -17,6 +17,10 @@ const refreshDeployWorkflowUrl = new URL(
   "../.github/workflows/m6-ulc-private-production-refresh-deploy.yml",
   import.meta.url,
 );
+const securitySmokeWorkflowUrl = new URL(
+  "../.github/workflows/m5-ulc-private-security-smoke.yml",
+  import.meta.url,
+);
 
 async function source() {
   return readFile(workflowUrl, "utf8");
@@ -57,6 +61,22 @@ test("runtime refresh mutations use the dedicated Cloudflare write token while p
   assert.match(
     refreshDeployWorkflow,
     /Require exact closed runtime and exact current configured version[\s\S]*?CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/,
+  );
+});
+
+test("M5 remote security smoke uses the dedicated write token only for the remote preview session", async () => {
+  const workflow = await readFile(securitySmokeWorkflowUrl, "utf8");
+  assert.match(
+    workflow,
+    /Exercise application database and emit one denied security event[\s\S]*?CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_WRITE_TOKEN \}\}[\s\S]*?wrangler dev --remote/,
+  );
+  assert.match(
+    workflow,
+    /Resolve exact active private production version[\s\S]*?CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/,
+  );
+  assert.match(
+    workflow,
+    /Verify workers\.dev account subdomain remained unchanged[\s\S]*?CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/,
   );
 });
 
