@@ -18,7 +18,7 @@ function validSnapshot() {
   };
 }
 
-test("collector binds post-deployment sink activity and observation time to the same database statement", async () => {
+test("collector binds post-deployment sink activity and observation time to one UTC-normalized precision-preserving statement", async () => {
   let ended = 0;
   const calls = [];
   const databaseFactory = () => ({
@@ -27,8 +27,8 @@ test("collector binds post-deployment sink activity and observation time to the 
         calls.push({ query, params });
         return [{
           event_count: "1",
-          latest_recorded_at: "2026-08-23T22:00:00.500Z",
-          observed_at: "2026-08-23T22:00:01.000Z",
+          latest_recorded_at: "2026-08-23T22:00:00.500123Z",
+          observed_at: "2026-08-23T22:00:01.000456Z",
         }];
       },
       async end() { ended += 1; },
@@ -49,6 +49,11 @@ test("collector binds post-deployment sink activity and observation time to the 
   assert.equal(ended, 1);
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].params, [DEPLOYED_AT]);
+  assert.match(calls[0].query, /max\(recorded_at\) AT TIME ZONE 'UTC'/);
+  assert.match(calls[0].query, /statement_timestamp\(\) AT TIME ZONE 'UTC'/);
+  assert.match(calls[0].query, /YYYY-MM-DD"T"HH24:MI:SS\.US"Z"/);
+  assert.doesNotMatch(calls[0].query, /max\(recorded_at\)::text/);
+  assert.doesNotMatch(calls[0].query, /statement_timestamp\(\)::text/);
   assert.match(calls[0].query, /app_id = 'ulc-linz'/);
   assert.match(calls[0].query, /schema_version = 1/);
   assert.match(calls[0].query, /category = 'security'/);
@@ -56,7 +61,6 @@ test("collector binds post-deployment sink activity and observation time to the 
   assert.match(calls[0].query, /authorization\.denied/);
   assert.match(calls[0].query, /occurred_at >= \$1::timestamptz/);
   assert.match(calls[0].query, /recorded_at >= \$1::timestamptz/);
-  assert.match(calls[0].query, /statement_timestamp\(\) AS observed_at/);
   assert.match(calls[0].query, /recorded_at <= statement_timestamp\(\)/);
   assert.doesNotMatch(calls[0].query, /actor_principal_id\s*,|organization_id\s*,|target_id\s*,/);
 });
@@ -65,6 +69,20 @@ test("observes only fresh matching sink activity after the deployed runtime vers
   assert.deepEqual(evaluateUlcLinzM5SecurityLogDeliverySnapshot(validSnapshot()), {
     postDeploymentSinkActivityObserved: true,
   });
+});
+
+test("preserves sub-millisecond ordering in the evidence window", () => {
+  const valid = validSnapshot();
+  valid.latestRecordedAt = "2026-08-23T21:59:59.999999Z";
+  valid.observedAt = "2026-08-23T22:00:00.000001Z";
+  assert.deepEqual(evaluateUlcLinzM5SecurityLogDeliverySnapshot(valid), {
+    postDeploymentSinkActivityObserved: true,
+  });
+
+  const future = validSnapshot();
+  future.latestRecordedAt = "2026-08-23T22:00:00.000001Z";
+  future.observedAt = "2026-08-23T22:00:00.000000Z";
+  assert.throws(() => evaluateUlcLinzM5SecurityLogDeliverySnapshot(future));
 });
 
 test("rejects an empty sink or missing latest activity timestamp", () => {
@@ -90,14 +108,19 @@ test("rejects pre-deployment, future or stale sink activity evidence", () => {
   }
 });
 
-test("rejects missing or malformed database observation time", async () => {
-  for (const observedAt of [undefined, "not-a-time"]) {
+test("rejects missing malformed non-UTC or already-date-parsed database observation time", async () => {
+  for (const observedAt of [
+    undefined,
+    "not-a-time",
+    "2026-08-23 22:00:01.000456+01:00",
+    new Date("2026-08-23T22:00:01.000Z"),
+  ]) {
     const databaseFactory = () => ({
       client: {
         async unsafe() {
           return [{
             event_count: "1",
-            latest_recorded_at: "2026-08-23T21:59:00.000Z",
+            latest_recorded_at: "2026-08-23T21:59:00.000123Z",
             observed_at: observedAt,
           }];
         },
