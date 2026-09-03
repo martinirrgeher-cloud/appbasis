@@ -18,7 +18,7 @@ function validSnapshot() {
   };
 }
 
-test("collector binds post-deployment sink activity and observation time to one text-preserving database statement", async () => {
+test("collector binds post-deployment sink activity and observation time to one UTC-normalized precision-preserving statement", async () => {
   let ended = 0;
   const calls = [];
   const databaseFactory = () => ({
@@ -27,8 +27,8 @@ test("collector binds post-deployment sink activity and observation time to one 
         calls.push({ query, params });
         return [{
           event_count: "1",
-          latest_recorded_at: "2026-08-23 22:00:00.500123+00",
-          observed_at: "2026-08-23 22:00:01.000456+00",
+          latest_recorded_at: "2026-08-23T22:00:00.500123Z",
+          observed_at: "2026-08-23T22:00:01.000456Z",
         }];
       },
       async end() { ended += 1; },
@@ -49,8 +49,11 @@ test("collector binds post-deployment sink activity and observation time to one 
   assert.equal(ended, 1);
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].params, [DEPLOYED_AT]);
-  assert.match(calls[0].query, /max\(recorded_at\)::text AS latest_recorded_at/);
-  assert.match(calls[0].query, /statement_timestamp\(\)::text AS observed_at/);
+  assert.match(calls[0].query, /max\(recorded_at\) AT TIME ZONE 'UTC'/);
+  assert.match(calls[0].query, /statement_timestamp\(\) AT TIME ZONE 'UTC'/);
+  assert.match(calls[0].query, /YYYY-MM-DD"T"HH24:MI:SS\.US"Z"/);
+  assert.doesNotMatch(calls[0].query, /max\(recorded_at\)::text/);
+  assert.doesNotMatch(calls[0].query, /statement_timestamp\(\)::text/);
   assert.match(calls[0].query, /app_id = 'ulc-linz'/);
   assert.match(calls[0].query, /schema_version = 1/);
   assert.match(calls[0].query, /category = 'security'/);
@@ -117,7 +120,7 @@ test("rejects missing malformed non-UTC or already-date-parsed database observat
         async unsafe() {
           return [{
             event_count: "1",
-            latest_recorded_at: "2026-08-23 21:59:00.000123+00",
+            latest_recorded_at: "2026-08-23T21:59:00.000123Z",
             observed_at: observedAt,
           }];
         },
