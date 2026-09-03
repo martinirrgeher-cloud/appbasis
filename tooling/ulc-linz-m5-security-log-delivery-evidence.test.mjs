@@ -27,8 +27,8 @@ test("collector binds post-deployment sink activity and observation time to the 
         calls.push({ query, params });
         return [{
           event_count: "1",
-          latest_recorded_at: "2026-08-23T22:00:00.500Z",
-          observed_at: "2026-08-23T22:00:01.000Z",
+          latest_recorded_at: "2026-08-23 22:00:00.500123+00",
+          observed_at: "2026-08-23 22:00:01.000456+00",
         }];
       },
       async end() { ended += 1; },
@@ -67,6 +67,20 @@ test("observes only fresh matching sink activity after the deployed runtime vers
   });
 });
 
+test("preserves sub-millisecond ordering in the evidence window", () => {
+  const valid = validSnapshot();
+  valid.latestRecordedAt = "2026-08-23T21:59:59.999999Z";
+  valid.observedAt = "2026-08-23T22:00:00.000001Z";
+  assert.deepEqual(evaluateUlcLinzM5SecurityLogDeliverySnapshot(valid), {
+    postDeploymentSinkActivityObserved: true,
+  });
+
+  const future = validSnapshot();
+  future.latestRecordedAt = "2026-08-23T22:00:00.000001Z";
+  future.observedAt = "2026-08-23T22:00:00.000000Z";
+  assert.throws(() => evaluateUlcLinzM5SecurityLogDeliverySnapshot(future));
+});
+
 test("rejects an empty sink or missing latest activity timestamp", () => {
   for (const mutate of [
     (value) => { value.eventCount = 0n; value.latestRecordedAt = null; },
@@ -90,14 +104,14 @@ test("rejects pre-deployment, future or stale sink activity evidence", () => {
   }
 });
 
-test("rejects missing or malformed database observation time", async () => {
-  for (const observedAt of [undefined, "not-a-time"]) {
+test("rejects missing malformed or non-UTC database observation time", async () => {
+  for (const observedAt of [undefined, "not-a-time", "2026-08-23 22:00:01.000456+01:00"]) {
     const databaseFactory = () => ({
       client: {
         async unsafe() {
           return [{
             event_count: "1",
-            latest_recorded_at: "2026-08-23T21:59:00.000Z",
+            latest_recorded_at: "2026-08-23 21:59:00.000123+00",
             observed_at: observedAt,
           }];
         },
