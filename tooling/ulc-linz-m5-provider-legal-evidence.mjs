@@ -233,7 +233,7 @@ async function officialDatabricksDpaPdf(url, fetchImpl, sha256Impl) {
   if (!/^[0-9a-f]{64}$/u.test(observedSha256)) {
     throw new Error("ULC M5-G Databricks DPA digest result is invalid.");
   }
-  if (observedSha256 !== DATARBRICKS_DPA_PDF_SHA256) {
+  if (observedSha256 !== DATABRICKS_DPA_PDF_SHA256) {
     throw new Error(
       `ULC M5-G Databricks DPA drifted from the reviewed official baseline (observed sha256: ${observedSha256}).`,
     );
