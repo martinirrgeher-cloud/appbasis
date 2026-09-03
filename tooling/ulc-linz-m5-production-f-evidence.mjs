@@ -15,6 +15,7 @@ const TARGET_VERSION_TAG = "ulc-linz-production-runtime-v1";
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const OPAQUE_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UTC_TIMESTAMP_PATTERN = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/;
 
 export async function completeUlcLinzM5ProductionFBundle(
   bundle,
@@ -156,7 +157,7 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
     deployments?.result?.deployments,
     { label: "M5-F deployed Worker inventory" },
   );
-  const deployedAt = canonicalTimestamp(
+  const deployedAt = conservativeProviderTimestamp(
     current.deployment.created_on,
     "Worker deployment created_on",
   );
@@ -318,11 +319,20 @@ function credential(value, label) {
   }
   return value;
 }
-function canonicalTimestamp(value, label) {
+function conservativeProviderTimestamp(value, label) {
   if (typeof value !== "string") throw new Error(`M5-F ${label} is invalid.`);
+  const match = UTC_TIMESTAMP_PATTERN.exec(value);
+  if (match === null) throw new Error(`M5-F ${label} is invalid.`);
+  const fraction = match[2] ?? "";
+  const milliseconds = fraction.padEnd(3, "0").slice(0, 3);
+  const normalized = `${match[1]}.${milliseconds}Z`;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== normalized) {
     throw new Error(`M5-F ${label} is invalid.`);
+  }
+  const discardedFraction = fraction.slice(3);
+  if (/[1-9]/.test(discardedFraction)) {
+    parsed.setTime(parsed.getTime() + 1);
   }
   return parsed;
 }

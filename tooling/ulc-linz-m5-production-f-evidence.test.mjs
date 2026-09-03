@@ -10,7 +10,8 @@ const OBSERVED_AT = "2026-08-23T21:55:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:10:00.000Z";
 const VERSION = "12345678-1234-4123-8123-123456789abc";
 const HISTORICAL_VERSION = "22345678-1234-4123-8123-123456789abc";
-const DEPLOYED_AT = "2026-08-23T21:30:00.000Z";
+const DEPLOYED_AT = "2026-08-23T21:30:00.123456Z";
+const NORMALIZED_DEPLOYED_AT = "2026-08-23T21:30:00.124Z";
 const VERSION_CREATED_AT = "2026-08-23T19:30:00.000Z";
 
 function resourceBindingEvidence() {
@@ -182,7 +183,7 @@ async function complete({
     },
     deliveryCollector: async (input, options) => {
       assert.equal(input.productionDatabaseUrl, inputs().readDatabaseUrl);
-      assert.equal(input.deployedAt, DEPLOYED_AT);
+      assert.equal(input.deployedAt, NORMALIZED_DEPLOYED_AT);
       assert.equal(options.now.toISOString(), NOW.toISOString());
       return delivery;
     },
@@ -204,7 +205,7 @@ async function completeFromContract({
     },
     deliveryCollector: async (input, options) => {
       assert.equal(input.productionDatabaseUrl, inputs().readDatabaseUrl);
-      assert.equal(input.deployedAt, DEPLOYED_AT);
+      assert.equal(input.deployedAt, NORMALIZED_DEPLOYED_AT);
       assert.equal(options.now.toISOString(), NOW.toISOString());
       return delivery;
     },
@@ -320,6 +321,22 @@ test("fails closed on stale Worker head, missing dedicated binding, missing acti
     };
     await assert.rejects(() => complete({ fetchImpl }));
     await assert.rejects(() => completeFromContract({ fetchImpl }));
+  }
+});
+
+test("rejects non-UTC or over-precision deployment timestamps", async () => {
+  for (const createdOn of [
+    "2026-08-23T21:30:00.123+00:00",
+    "2026-08-23T21:30:00.1234567890Z",
+  ]) {
+    const fetchImpl = async (url) => {
+      const response = await cloudflareFetch(url);
+      const body = await response.json();
+      if (String(url).endsWith("/deployments")) body.result.deployments[0].created_on = createdOn;
+      return json(body);
+    };
+    await assert.rejects(() => complete({ fetchImpl }), /Worker deployment created_on is invalid/);
+    await assert.rejects(() => completeFromContract({ fetchImpl }), /Worker deployment created_on is invalid/);
   }
 });
 
