@@ -118,6 +118,21 @@ jobs:
           }
           NODE
 
+      - name: Derive current auth-secret HMAC fingerprint
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          AUTH_SECRET_FINGERPRINT="$(node --input-type=module <<'NODE'
+          import { createHmac } from 'node:crypto';
+          process.stdout.write(createHmac('sha256', process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET).update('appbasis:ulc-linz:production:better-auth-secret:v1').digest('hex'));
+          NODE
+          )"
+          [[ "$AUTH_SECRET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
+          printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
+
       - name: Resolve exact active private production version
         id: runtime
         shell: bash
@@ -173,6 +188,32 @@ jobs:
           HYPERDRIVE_ID="$APP_HYPERDRIVE_ID" \
           SECURITY_LOG_HYPERDRIVE_ID="$SECURITY_HYPERDRIVE_ID" \
           node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs bindings "$detail"
+          DETAIL_PATH="$detail" node --input-type=module <<'NODE' > "$RUNNER_TEMP/runtime-config.env"
+          import { readFileSync } from 'node:fs';
+          import { renderGeneratedProductionWranglerConfig } from './tooling/generated-production-deploy-config.mjs';
+          const response = JSON.parse(readFileSync(process.env.DETAIL_PATH, 'utf8'));
+          const runtime = response?.result?.resources?.script_runtime;
+          const expected = renderGeneratedProductionWranglerConfig({
+            appId: 'ulc-linz',
+            hyperdriveId: process.env.APP_HYPERDRIVE_ID,
+            securityLogHyperdriveId: process.env.SECURITY_HYPERDRIVE_ID,
+            baseURL: 'https://app.ulc-linz.at',
+            entrypoint: './worker/index.ts',
+          });
+          const actualFlags = runtime?.compatibility_flags ?? [];
+          if (
+            runtime?.compatibility_date !== expected.compatibility_date ||
+            !Array.isArray(actualFlags) ||
+            actualFlags.length !== expected.compatibility_flags.length ||
+            actualFlags.some((flag, index) => flag !== expected.compatibility_flags[index])
+          ) {
+            throw new Error('Active production runtime compatibility settings drifted from the canonical production config.');
+          }
+          process.stdout.write(
+            `COMPATIBILITY_DATE=${expected.compatibility_date}\nCOMPATIBILITY_FLAGS_JSON=${JSON.stringify(expected.compatibility_flags)}\n`,
+          );
+          NODE
+          cat "$RUNNER_TEMP/runtime-config.env" >> "$GITHUB_ENV"
 
       - name: Require existing workers.dev account subdomain
         shell: bash
@@ -204,12 +245,10 @@ jobs:
           cat > "$HARNESS" <<'TS'
           import { createPostgresDatabase } from '@appbasis/database/postgres-runtime';
           import productionWorker from './worker/index';
-
           type SmokeEnv = {
             HYPERDRIVE?: { connectionString?: unknown };
             M5_SMOKE_PROBE_TOKEN?: unknown;
           };
-
           export default {
             async fetch(request: Request, env: SmokeEnv): Promise<Response> {
               const url = new URL(request.url);
@@ -242,15 +281,16 @@ jobs:
           CONFIG="$RUNNER_TEMP/m5-security-smoke.wrangler.json"
           CONFIG="$CONFIG" HARNESS="$HARNESS" node --input-type=module <<'NODE'
           import { writeFileSync } from 'node:fs';
+          const flags = JSON.parse(process.env.COMPATIBILITY_FLAGS_JSON);
           const config = {
             name: 'appbasis-ulc-linz-m5-security-smoke',
             main: process.env.HARNESS,
-            compatibility_date: '2026-08-21',
-            compatibility_flags: ['nodejs_compat'],
+            compatibility_date: process.env.COMPATIBILITY_DATE,
+            compatibility_flags: flags,
             vars: { APPBASIS_BASE_URL: 'https://app.ulc-linz.at' },
             hyperdrive: [
               { binding: 'HYPERDRIVE', id: process.env.APP_HYPERDRIVE_ID },
-              { binding: 'SECURITY_LOG_HYPERDRIVE', id: process.env.SECURITY_LOG_HYPERDRIVE_ID },
+              { binding: 'SECURITY_LOG_HYPERDRIVE', id: process.env.SECURITY_HYPERDRIVE_ID },
             ],
             dev: { ip: '127.0.0.1', port: 8787 },
           };
@@ -409,4 +449,4 @@ jobs:
       - name: Record sanitized smoke outcome
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime. Provider reads used the dedicated read token while the remote preview session used only the dedicated Workers Scripts Write token. Both production Hyperdrives matched the active private runtime contract, the application Hyperdrive completed a guarded read-only database probe, and one denied identity request produced the expected security event. Public production ingress and release state remained unchanged.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime. Provider reads used the dedicated read token while the remote preview session used only the dedicated Workers Scripts Write token. Both production Hyperdrives matched their canonical protected contracts and the exact active private production version bindings, the application Hyperdrive completed a token-guarded read-only database probe, and the denied identity request produced exactly one matching 401 SESSION_INVALID security event relative to an immediate protected-read baseline. The canonical runtime compatibility settings and least-privilege access boundary were verified, the pre-existing workers.dev account subdomain remained unchanged, and no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
