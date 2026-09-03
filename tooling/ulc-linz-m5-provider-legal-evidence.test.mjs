@@ -7,7 +7,7 @@ import { collectUlcLinzM5ProviderLegalEvidence } from "./ulc-linz-m5-provider-le
 const OBSERVED_AT = "2026-08-23T22:00:00.000Z";
 const VALID_UNTIL = "2026-08-23T22:15:00.000Z";
 const DATABRICKS_DPA_PATH = "/sites/default/files/legal/dpa-20230721.pdf";
-const REVIEWED_DATABRICKS_DPA_SHA256 = "f7501e724b91d8bdb737b34d7f9807b996fe88a86db782063f3c09ee5ce2aa2c";
+const REVIEWED_DATABRICKS_DPA_SHA256 = "5b13d95891a87327097ff15445ea645944308a2ecaf27cb3b86c39e9c0e613b0";
 const FIXTURE_DATABRICKS_DPA_SHA256 = "741b212cf54fb20d371f4c4b1abdbd39f1cca842878c8640e8a794cbcddffd93";
 
 const SOURCE_TEXT = Object.freeze({

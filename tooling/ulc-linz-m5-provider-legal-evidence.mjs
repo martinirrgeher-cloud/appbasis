@@ -4,7 +4,7 @@ import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evide
 
 const REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DATARBRICKS_DPA_PDF_MARKER = "Databricks DPA v3 (2023-07-21)";
-const DATABRICKS_DPA_PDF_SHA256 = "f7501e724b91d8bdb737b34d7f9807b996fe88a86db782063f3c09ee5ce2aa2c";
+const DATABRICKS_DPA_PDF_SHA256 = "5b13d95891a87327097ff15445ea645944308a2ecaf27cb3b86c39e9c0e613b0";
 const SOURCES = Object.freeze({
   cloudflareDpa: "https://www.cloudflare.com/cloudflare-customer-dpa/",
   cloudflareGdpr: "https://www.cloudflare.com/trust-hub/gdpr/",
