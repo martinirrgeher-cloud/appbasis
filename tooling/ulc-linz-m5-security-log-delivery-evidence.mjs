@@ -30,8 +30,14 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
     const rows = await database.client.unsafe(`
       SELECT
         count(*)::bigint AS event_count,
-        max(recorded_at)::text AS latest_recorded_at,
-        statement_timestamp()::text AS observed_at
+        to_char(
+          max(recorded_at) AT TIME ZONE 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        ) AS latest_recorded_at,
+        to_char(
+          statement_timestamp() AT TIME ZONE 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        ) AS observed_at
       FROM public.ulc_linz_security_event_log
       WHERE app_id = 'ulc-linz'
         AND schema_version = 1
