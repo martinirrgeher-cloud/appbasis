@@ -1,7 +1,9 @@
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
 
-const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_AGE_NS = 24n * 60n * 60n * 1_000_000_000n;
+const CANONICAL_UTC_PATTERN = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/;
+const DATABASE_UTC_PATTERN = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(?:Z|\+00(?::?00)?)$/;
 const ROOT_FIELDS = Object.freeze([
   "eventCount",
   "latestRecordedAt",
@@ -18,8 +20,8 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
   }
   parseUlcLinzProductionDatabaseUrl(productionDatabaseUrl);
   const deployed = canonicalTimestamp(deployedAt, "deployedAt");
-  const invocationObserved = requiredDate(now);
-  if (deployed.getTime() > invocationObserved.getTime()) {
+  const invocationObserved = dateTimestamp(requiredDate(now));
+  if (deployed.epochNanoseconds > invocationObserved.epochNanoseconds) {
     throw new Error("ULC M5-F deployed runtime timestamp is in the future.");
   }
 
@@ -38,7 +40,7 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
         AND occurred_at >= $1::timestamptz
         AND recorded_at >= $1::timestamptz
         AND recorded_at <= statement_timestamp()
-    `, [deployed.toISOString()]);
+    `, [deployed.date.toISOString()]);
     if (!Array.isArray(rows) || rows.length !== 1) {
       throw new Error("ULC M5-F production sink activity observation is invalid.");
     }
@@ -46,12 +48,12 @@ export async function collectUlcLinzM5SecurityLogDeliveryEvidence(
     const latestRecordedAt =
       rows[0]?.latest_recorded_at === null
         ? null
-        : canonicalTimestamp(rows[0]?.latest_recorded_at, "latestRecordedAt").toISOString();
-    const observedAt = canonicalTimestamp(rows[0]?.observed_at, "observedAt").toISOString();
+        : databaseTimestamp(rows[0]?.latest_recorded_at, "latestRecordedAt").canonical;
+    const observedAt = databaseTimestamp(rows[0]?.observed_at, "observedAt").canonical;
     return evaluateUlcLinzM5SecurityLogDeliverySnapshot({
       eventCount: count,
       latestRecordedAt,
-      deployedAt: deployed.toISOString(),
+      deployedAt: deployed.canonical,
       observedAt,
     });
   } finally {
@@ -64,7 +66,7 @@ export function evaluateUlcLinzM5SecurityLogDeliverySnapshot(value) {
   const eventCount = requiredCount(root.eventCount);
   const deployedAt = canonicalTimestamp(root.deployedAt, "deployedAt");
   const observedAt = canonicalTimestamp(root.observedAt, "observedAt");
-  if (deployedAt.getTime() > observedAt.getTime()) {
+  if (deployedAt.epochNanoseconds > observedAt.epochNanoseconds) {
     throw new Error("ULC M5-F sink activity evidence window is invalid.");
   }
   if (eventCount === 0n || root.latestRecordedAt === null) {
@@ -75,9 +77,9 @@ export function evaluateUlcLinzM5SecurityLogDeliverySnapshot(value) {
     "latestRecordedAt",
   );
   if (
-    latestRecordedAt.getTime() < deployedAt.getTime() ||
-    latestRecordedAt.getTime() > observedAt.getTime() ||
-    observedAt.getTime() - latestRecordedAt.getTime() >= MAX_AGE_MS
+    latestRecordedAt.epochNanoseconds < deployedAt.epochNanoseconds ||
+    latestRecordedAt.epochNanoseconds > observedAt.epochNanoseconds ||
+    observedAt.epochNanoseconds - latestRecordedAt.epochNanoseconds >= MAX_AGE_NS
   ) {
     throw new Error("ULC M5-F production sink activity evidence is stale or pre-deployment.");
   }
@@ -114,15 +116,54 @@ function exactRecord(value, fields) {
 }
 
 function canonicalTimestamp(value, label) {
-  const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value);
-  if (
-    (typeof value !== "string" && !(value instanceof Date)) ||
-    !Number.isFinite(parsed.getTime()) ||
-    (typeof value === "string" && parsed.toISOString() !== value)
-  ) {
+  if (value instanceof Date) return dateTimestamp(value, label);
+  if (typeof value !== "string") {
     throw new Error(`ULC M5-F ${label} is invalid.`);
   }
-  return parsed;
+  return parsedTimestamp(value, CANONICAL_UTC_PATTERN, label);
+}
+
+function databaseTimestamp(value, label) {
+  if (value instanceof Date) return dateTimestamp(value, label);
+  if (typeof value !== "string") {
+    throw new Error(`ULC M5-F ${label} is invalid.`);
+  }
+  return parsedTimestamp(value, DATABASE_UTC_PATTERN, label);
+}
+
+function dateTimestamp(value, label = "timestamp") {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new Error(`ULC M5-F ${label} is invalid.`);
+  }
+  const date = new Date(value.getTime());
+  return Object.freeze({
+    date,
+    epochNanoseconds: BigInt(date.getTime()) * 1_000_000n,
+    canonical: date.toISOString(),
+  });
+}
+
+function parsedTimestamp(value, pattern, label) {
+  const match = pattern.exec(value);
+  if (match === null) {
+    throw new Error(`ULC M5-F ${label} is invalid.`);
+  }
+  const fraction = match[3] ?? "";
+  const milliseconds = fraction.padEnd(3, "0").slice(0, 3);
+  const canonicalMilliseconds = `${match[1]}T${match[2]}.${milliseconds}Z`;
+  const date = new Date(canonicalMilliseconds);
+  if (!Number.isFinite(date.getTime()) || date.toISOString() !== canonicalMilliseconds) {
+    throw new Error(`ULC M5-F ${label} is invalid.`);
+  }
+  const nanosecondsWithinMillisecond = BigInt((fraction.padEnd(9, "0").slice(3) || "0"));
+  const canonical = fraction.length === 0
+    ? `${match[1]}T${match[2]}Z`
+    : `${match[1]}T${match[2]}.${fraction}Z`;
+  return Object.freeze({
+    date,
+    epochNanoseconds: BigInt(date.getTime()) * 1_000_000n + nanosecondsWithinMillisecond,
+    canonical,
+  });
 }
 
 function requiredDate(value) {
