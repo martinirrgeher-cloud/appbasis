@@ -157,7 +157,7 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
     deployments?.result?.deployments,
     { label: "M5-F deployed Worker inventory" },
   );
-  const deployedAt = canonicalProviderTimestamp(
+  const deployedAt = conservativeProviderTimestamp(
     current.deployment.created_on,
     "Worker deployment created_on",
   );
@@ -319,15 +319,20 @@ function credential(value, label) {
   }
   return value;
 }
-function canonicalProviderTimestamp(value, label) {
+function conservativeProviderTimestamp(value, label) {
   if (typeof value !== "string") throw new Error(`M5-F ${label} is invalid.`);
   const match = UTC_TIMESTAMP_PATTERN.exec(value);
   if (match === null) throw new Error(`M5-F ${label} is invalid.`);
-  const milliseconds = (match[2] ?? "").padEnd(3, "0").slice(0, 3);
+  const fraction = match[2] ?? "";
+  const milliseconds = fraction.padEnd(3, "0").slice(0, 3);
   const normalized = `${match[1]}.${milliseconds}Z`;
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== normalized) {
     throw new Error(`M5-F ${label} is invalid.`);
+  }
+  const discardedFraction = fraction.slice(3);
+  if (/[1-9]/.test(discardedFraction)) {
+    parsed.setTime(parsed.getTime() + 1);
   }
   return parsed;
 }
