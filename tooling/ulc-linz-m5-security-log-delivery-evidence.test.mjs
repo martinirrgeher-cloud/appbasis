@@ -18,7 +18,7 @@ function validSnapshot() {
   };
 }
 
-test("collector binds post-deployment sink activity and observation time to the same database statement", async () => {
+test("collector binds post-deployment sink activity and observation time to one text-preserving database statement", async () => {
   let ended = 0;
   const calls = [];
   const databaseFactory = () => ({
@@ -49,6 +49,8 @@ test("collector binds post-deployment sink activity and observation time to the 
   assert.equal(ended, 1);
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].params, [DEPLOYED_AT]);
+  assert.match(calls[0].query, /max\(recorded_at\)::text AS latest_recorded_at/);
+  assert.match(calls[0].query, /statement_timestamp\(\)::text AS observed_at/);
   assert.match(calls[0].query, /app_id = 'ulc-linz'/);
   assert.match(calls[0].query, /schema_version = 1/);
   assert.match(calls[0].query, /category = 'security'/);
@@ -56,7 +58,6 @@ test("collector binds post-deployment sink activity and observation time to the 
   assert.match(calls[0].query, /authorization\.denied/);
   assert.match(calls[0].query, /occurred_at >= \$1::timestamptz/);
   assert.match(calls[0].query, /recorded_at >= \$1::timestamptz/);
-  assert.match(calls[0].query, /statement_timestamp\(\) AS observed_at/);
   assert.match(calls[0].query, /recorded_at <= statement_timestamp\(\)/);
   assert.doesNotMatch(calls[0].query, /actor_principal_id\s*,|organization_id\s*,|target_id\s*,/);
 });
@@ -104,8 +105,13 @@ test("rejects pre-deployment, future or stale sink activity evidence", () => {
   }
 });
 
-test("rejects missing malformed or non-UTC database observation time", async () => {
-  for (const observedAt of [undefined, "not-a-time", "2026-08-23 22:00:01.000456+01:00"]) {
+test("rejects missing malformed non-UTC or already-date-parsed database observation time", async () => {
+  for (const observedAt of [
+    undefined,
+    "not-a-time",
+    "2026-08-23 22:00:01.000456+01:00",
+    new Date("2026-08-23T22:00:01.000Z"),
+  ]) {
     const databaseFactory = () => ({
       client: {
         async unsafe() {
