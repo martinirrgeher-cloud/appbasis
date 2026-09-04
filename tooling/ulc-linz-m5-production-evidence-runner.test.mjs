@@ -12,13 +12,13 @@ import { deriveUlcLinzLifecycleContractDigest } from "./factory-ui/ulc-linz-life
 
 const REAL_FETCH = globalThis.fetch;
 const LIVE_HEAD = "a".repeat(40);
+const LIVE_BINDING_AT = "2026-08-23T14:04:00.000Z";
 globalThis.fetch = async (input) => {
   const url = String(input);
   if (url.endsWith("/repos/martinirrgeher-cloud/appbasis/commits/main")) {
     return Response.json({ sha: LIVE_HEAD });
   }
   if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
-    const updatedAt = new Date(Date.now() - 1_000).toISOString();
     return Response.json({
       total_count: 1,
       workflow_runs: [{
@@ -31,8 +31,8 @@ globalThis.fetch = async (input) => {
         head_sha: LIVE_HEAD,
         status: "completed",
         conclusion: "success",
-        created_at: updatedAt,
-        updated_at: updatedAt,
+        created_at: LIVE_BINDING_AT,
+        updated_at: LIVE_BINDING_AT,
         repository: { full_name: "martinirrgeher-cloud/appbasis" },
       }],
     });
@@ -268,6 +268,7 @@ test("sanitized production bundle can close all twelve M5 criteria only with bou
   assert.equal(result.verifiedCount, 12);
   assert.equal(result.requiredCount, 12);
   assert.equal(result.productionReleaseAuthorized, false);
+  assert.equal(result.lifecycleBindingVerifiedAt, LIVE_BINDING_AT);
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
   assert.equal(result.criteria.every(({ status }) => status === "verified"), true);
   const serialized = JSON.stringify(result);
