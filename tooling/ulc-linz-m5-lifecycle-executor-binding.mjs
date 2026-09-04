@@ -7,8 +7,8 @@ const WORKFLOW_FILE_NAME = "m5-ulc-protected-lifecycle-operations.yml";
 const WORKFLOW_NAME = "M5 ULC Protected Lifecycle Operations";
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
-const WORKFLOW_GIT_BLOB_SHA = "92a22df1803897806638de58f886cc365d33cf57";
-const EXECUTOR_GIT_BLOB_SHA = "9132cf1068c8dac2b1a232e255f252ae8e853901";
+const WORKFLOW_GIT_BLOB_SHA = "a9bba7242e7026d72ce3d36a1da75d05e1f40aef";
+const EXECUTOR_GIT_BLOB_SHA = "d181a34a9e6c22efeb1e9c2395706369b4a710c0";
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
 const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
@@ -21,6 +21,8 @@ const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
   "VERIFY-ULC-M5-LIFECYCLE-BINDING",
   "RUN-ULC-M5-PRODUCTION-RETENTION",
   "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}",
+  "ULC_LINZ_PRODUCTION_ADMIN_SESSION: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_SESSION }}",
+  "ADMINISTRATIVE_SESSION:$ULC_LINZ_PRODUCTION_ADMIN_SESSION",
   "pnpm --dir apps/reference exec wrangler dev --remote",
   "createUlcLinzProtectedLifecycleOperations",
   "await lifecycle.verifyBinding()",
@@ -32,6 +34,8 @@ const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
 
 const REQUIRED_EXECUTOR_ANCHORS = Object.freeze([
   'import { runUlcLinzRetention, type UlcLinzRetentionRunResult } from "./retention";',
+  "administrativeSessionToken",
+  "identityRuntime.lifecycleIdentity.assertAdministrativeSessionAuthorized()",
   "identity: identityRuntime.lifecycleIdentity",
   "new PostgresIdentityDeletion(lifecycleClient)",
   "new PostgresIdentityDeletionRetention(",
