@@ -1,4 +1,4 @@
-import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import { createPostgresDatabase } from "@appbasis/database";
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
 import { PostgresIdentityDeletionRetention } from "@appbasis/identity/postgres-deletion-retention";
