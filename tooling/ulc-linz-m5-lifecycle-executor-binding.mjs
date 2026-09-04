@@ -6,7 +6,7 @@ const WORKFLOW_PATH = ".github/workflows/m5-ulc-protected-lifecycle-operations.y
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
 const WORKFLOW_GIT_BLOB_SHA = "92a22df1803897806638de58f886cc365d33cf57";
-const EXECUTOR_GIT_BLOB_SHA = "3c3e8feeaff7b5898b6b2bd69e853be2295e0154";
+const EXECUTOR_GIT_BLOB_SHA = "8eaeaca8fe115682018e3a3a970f86d7f036985c";
 
 const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
   "name: M5 ULC Protected Lifecycle Operations",
@@ -24,13 +24,16 @@ const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
 ]);
 
 const REQUIRED_EXECUTOR_ANCHORS = Object.freeze([
+  'import { createPostgresIdentityApplicationRuntime } from "@appbasis/identity/postgres-runtime";',
   'import { runUlcLinzRetention, type UlcLinzRetentionRunResult } from "./retention";',
-  "new PostgresIdentityDeletion(connection.client)",
+  "const lifecycleClient = connection.client as unknown as LifecycleSqlClient;",
+  "new PostgresIdentityDeletion(lifecycleClient)",
   "new PostgresIdentityDeletionRetention(",
-  "new PostgresPermissionStore(connection.client)",
+  "new PostgresPermissionStore(lifecycleClient)",
   "new PostgresPrincipalAccessAdministration(",
   "new PostgresPrincipalLifecycleAdministration(",
-  "new PostgresUlcLinzScopePersistence(connection.client)",
+  "new PostgresUlcLinzScopePersistence(lifecycleClient)",
+  "identity: identityRuntime.identity",
   "return runUlcLinzRetention(dependencies);",
 ]);
 
