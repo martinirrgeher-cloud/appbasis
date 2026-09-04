@@ -6,7 +6,7 @@ import {
   bootstrapUlcLinzProductionAdmin,
   readUlcLinzProductionAdminBootstrapEnvironment,
   UlcLinzProductionAdminBootstrapEnvironmentError,
-} from "../../../tooling/ulc-linz-m5-production-admin-bootstrap.mjs";
+} from "../tooling/bootstrap-production-admin.mjs";
 
 const DATABASE_URL =
   "postgresql://neondb_owner:runtime-password@ep-crimson-boat-b1aqfjwf.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require";
@@ -89,7 +89,7 @@ describe("ULC production technical administrator bootstrap", () => {
       "ULC_LINZ_PRODUCTION_ADMIN_PASSWORD",
       "ULC_LINZ_PRODUCTION_ADMIN_BOOTSTRAP_TARGET: ulc-linz-production",
       "ULC_LINZ_PRODUCTION_ADMIN_BOOTSTRAP_APPLY: '1'",
-      "node ./tooling/ulc-linz-m5-production-admin-bootstrap.mjs",
+      "node ./apps/ulc-linz/tooling/bootstrap-production-admin.mjs",
       "username: `ulc.production.admin`",
     ]) {
       expect(workflow).toContain(anchor);
