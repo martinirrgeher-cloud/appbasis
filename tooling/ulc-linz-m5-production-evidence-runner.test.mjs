@@ -3,7 +3,10 @@ import test from "node:test";
 
 import { deriveUlcLinzM5GResourceBindingFingerprint } from "./ulc-linz-m5-provider-bound-evidence.mjs";
 import { ULC_LINZ_M5_G_LEGAL_SERVICE_SCOPES } from "./ulc-linz-m5-provider-evidence.mjs";
-import { evaluateUlcLinzM5ProductionEvidenceBundle } from "./ulc-linz-m5-production-evidence-runner.mjs";
+import {
+  evaluateUlcLinzM5ProductionEvidenceBundle,
+  formatUlcLinzM5ReadinessDiagnostic,
+} from "./ulc-linz-m5-production-evidence-runner.mjs";
 import { ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST } from "./ulc-linz-m6-production-resource-binding.mjs";
 import { deriveUlcLinzLifecycleContractDigest } from "./factory-ui/ulc-linz-lifecycle-evidence.mjs";
 
@@ -246,6 +249,20 @@ test("one missing operational owner remains fail closed", async () => {
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), value, { now: NOW });
   assert.equal(result.securityPrivacyReady, false);
   assert.equal(result.criteria.find(({ id }) => id === "auditSecurityLogging")?.status, "open");
+});
+
+test("final readiness diagnostic exposes only bounded progress and open criterion ids", async () => {
+  const value = bundle();
+  delete value.ownerInputs.auditSecurityLoggingEvidenceInput;
+  const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), value, { now: NOW });
+  const diagnostic = formatUlcLinzM5ReadinessDiagnostic(result);
+  assert.equal(
+    diagnostic,
+    "ULC M5 readiness blocked: 9/12; open criteria: dataExport,auditSecurityLogging,highPrivacyProfile.",
+  );
+  for (const internal of ["account-1", "worker-1", "project-1", "branch-1", "database-1", "hyperdrive-1", "restore-target-1"]) {
+    assert.equal(diagnostic.includes(internal), false);
+  }
 });
 
 test("runner rejects credential-shaped or accessor evidence before owner evaluation", async () => {
