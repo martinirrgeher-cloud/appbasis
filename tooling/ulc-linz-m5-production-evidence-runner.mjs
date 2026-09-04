@@ -11,11 +11,12 @@ const ROOT_FIELDS = Object.freeze(["schemaVersion", "application", "environment"
 const UNSAFE_KEY = /authorization|cookie|password|secret|token|credential|connection.?string|database.?url|api[_-]?key|private.?key|request.?body|response.?body/i;
 const UNSAFE_VALUE = [/^postgres(?:ql)?:\/\//i, /^bearer\s+/i, /^basic\s+/i, /-----BEGIN [A-Z ]*PRIVATE KEY-----/];
 const MAX_LIFECYCLE_BINDING_LEAD_MS = 45 * 60 * 1000;
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 export async function evaluateUlcLinzM5ProductionEvidenceBundle(
   repositoryRoot,
   bundle,
-  { now = new Date() } = {},
+  { now = new Date(), expectedHeadSha = defaultEvidenceHeadSha() } = {},
 ) {
   const root = exactRecord(bundle, ROOT_FIELDS, "ULC production M5 evidence bundle");
   assertSafeTree(root);
@@ -33,6 +34,7 @@ export async function evaluateUlcLinzM5ProductionEvidenceBundle(
   if (observedAt.getTime() > nowDate.getTime()) {
     throw new Error("ULC production M5 evidence bundle is from the future.");
   }
+  const evidenceHeadSha = optionalEvidenceHeadSha(expectedHeadSha);
 
   const resolvedRepositoryRoot = resolve(repositoryRoot);
   const lifecycleExecutorBinding = await verifyUlcLinzM5LifecycleExecutorBinding(
@@ -42,6 +44,7 @@ export async function evaluateUlcLinzM5ProductionEvidenceBundle(
   const ownerInputs = bindProtectedLifecycleExecutors(
     root.ownerInputs,
     lifecycleExecutorBinding,
+    evidenceHeadSha,
   );
   const evidence = await deriveUlcLinzM5JProductionEvidence(
     resolvedRepositoryRoot,
@@ -92,7 +95,7 @@ export function formatUlcLinzM5ReadinessDiagnostic(result) {
   return `ULC M5 readiness blocked: ${result.verifiedCount}/${result.requiredCount}; open criteria: ${openCriteria.join(",") || "unknown"}.`;
 }
 
-function bindProtectedLifecycleExecutors(ownerInputs, binding) {
+function bindProtectedLifecycleExecutors(ownerInputs, binding, evidenceHeadSha) {
   if (
     ownerInputs === null ||
     typeof ownerInputs !== "object" ||
@@ -101,7 +104,8 @@ function bindProtectedLifecycleExecutors(ownerInputs, binding) {
     binding?.deletionExecutorBound !== true ||
     binding?.retentionExecutorBound !== true ||
     typeof binding?.verifiedHeadSha !== "string" ||
-    !/^[0-9a-f]{40}$/.test(binding.verifiedHeadSha)
+    !SHA_PATTERN.test(binding.verifiedHeadSha) ||
+    (evidenceHeadSha !== null && binding.verifiedHeadSha !== evidenceHeadSha)
   ) {
     throw new Error("ULC production lifecycle executor binding is invalid.");
   }
@@ -151,6 +155,28 @@ function bindProtectedLifecycleExecutors(ownerInputs, binding) {
       },
     },
   };
+}
+
+function defaultEvidenceHeadSha() {
+  if (
+    process.env.GITHUB_ACTIONS === "true" &&
+    process.env.GITHUB_EVENT_NAME === "workflow_dispatch"
+  ) {
+    return requiredEvidenceHeadSha(process.env.GITHUB_SHA);
+  }
+  return null;
+}
+
+function optionalEvidenceHeadSha(value) {
+  if (value === null || value === undefined) return null;
+  return requiredEvidenceHeadSha(value);
+}
+
+function requiredEvidenceHeadSha(value) {
+  if (typeof value !== "string" || !SHA_PATTERN.test(value)) {
+    throw new Error("ULC production M5 evidence checkout head is invalid.");
+  }
+  return value;
 }
 
 function exactRecord(value, fields, label) {
@@ -235,7 +261,10 @@ async function main(argv = process.argv.slice(2)) {
     throw new Error("Usage: node tooling/ulc-linz-m5-production-evidence-runner.mjs <bundle.json> [--require-ready]");
   }
   const bundle = JSON.parse(await readFile(resolve(argv[0]), "utf8"));
-  const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle, { now: new Date() });
+  const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle, {
+    now: new Date(),
+    expectedHeadSha: process.env.GITHUB_SHA ?? null,
+  });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   if (argv[1] === "--require-ready" && result.securityPrivacyReady !== true) {
     console.error(formatUlcLinzM5ReadinessDiagnostic(result));
