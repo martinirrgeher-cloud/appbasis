@@ -62,6 +62,11 @@ const REQUIRED_LIFECYCLE_IDENTITY_SEQUENCES = Object.freeze([
   ["public.appbasis_permission_administration_audit", "event_id"],
 ] as const);
 
+const ADMINISTRATIVE_SESSION_COOKIE_NAMES = Object.freeze([
+  "better-auth.session_token",
+  "__Secure-better-auth.session_token",
+]);
+
 /**
  * Protected control-plane composition for the current ULC lifecycle owners.
  *
@@ -133,10 +138,9 @@ export async function createUlcLinzProtectedLifecycleOperations(
           throw new Error("ULC protected lifecycle database binding is invalid.");
         }
         await verifyAdministrativeSessionReadOnly(
-          auth,
           connection.client,
-          baseURL,
           administrativeSessionToken,
+          secret,
         );
         await verifyLifecycleDatabaseCapabilities(connection.client);
         await scopes.evaluateRetention();
@@ -159,37 +163,32 @@ export async function createUlcLinzProtectedLifecycleOperations(
 }
 
 async function verifyAdministrativeSessionReadOnly(
-  auth: ReturnType<typeof createBetterAuthRuntime>,
   sql: Pick<ReturnType<typeof createPostgresDatabase>["client"], "unsafe">,
-  baseURL: string,
   administrativeSessionToken: string,
+  secret: string,
 ): Promise<void> {
-  const headers = new Headers();
-  headers.set("cookie", administrativeSessionToken);
-  const response = await auth.handler(
-    new Request(`${baseURL}/api/auth/get-session?disableRefresh=true`, {
-      method: "GET",
-      headers,
-    }),
+  const sessionToken = await verifiedAdministrativeSessionDatabaseToken(
+    administrativeSessionToken,
+    secret,
   );
-  if (!response.ok) {
+  if (sessionToken === null) {
     throw new Error("ULC protected lifecycle administrative session is invalid.");
   }
-  const body = (await response.json()) as { user?: { id?: unknown } } | null;
-  const identityId = body?.user?.id;
-  if (typeof identityId !== "string" || identityId.length === 0) {
-    throw new Error("ULC protected lifecycle administrative session is invalid.");
-  }
+
   const rows = await sql.unsafe(
-    `SELECT role, banned
-     FROM "user"
-     WHERE id = $1
+    `SELECT s.expires_at, u.role, u.banned
+     FROM "session" s
+     JOIN "user" u ON u.id = s.user_id
+     WHERE s.token = $1
      LIMIT 1`,
-    [identityId],
+    [sessionToken],
   );
   const administrator = rows[0];
+  const expiresAt = timestampValue(administrator?.expires_at);
   if (
     rows.length !== 1 ||
+    expiresAt === null ||
+    expiresAt <= Date.now() ||
     administrator?.banned === true ||
     typeof administrator?.role !== "string" ||
     !administrator.role
@@ -199,6 +198,82 @@ async function verifyAdministrativeSessionReadOnly(
   ) {
     throw new Error("ULC protected lifecycle administrative session is invalid.");
   }
+}
+
+async function verifiedAdministrativeSessionDatabaseToken(
+  cookieHeader: string,
+  secret: string,
+): Promise<string | null> {
+  const cookie = readAdministrativeSessionCookie(cookieHeader);
+  if (cookie === null) return null;
+  const signature = decodeBase64Url(cookie.signature);
+  if (signature === null) return null;
+
+  try {
+    const key = await globalThis.crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const valid = await globalThis.crypto.subtle.verify(
+      "HMAC",
+      key,
+      signature,
+      new TextEncoder().encode(cookie.token),
+    );
+    return valid ? cookie.token : null;
+  } catch {
+    return null;
+  }
+}
+
+function readAdministrativeSessionCookie(
+  cookieHeader: string,
+): { token: string; signature: string } | null {
+  for (const part of cookieHeader.split(";")) {
+    const segment = part.trim();
+    const separator = segment.indexOf("=");
+    if (separator <= 0) continue;
+    const name = segment.slice(0, separator);
+    if (!ADMINISTRATIVE_SESSION_COOKIE_NAMES.includes(name)) continue;
+
+    let signedValue: string;
+    try {
+      signedValue = decodeURIComponent(segment.slice(separator + 1));
+    } catch {
+      return null;
+    }
+    const signatureSeparator = signedValue.lastIndexOf(".");
+    if (signatureSeparator <= 0 || signatureSeparator === signedValue.length - 1) {
+      return null;
+    }
+    return {
+      token: signedValue.slice(0, signatureSeparator),
+      signature: signedValue.slice(signatureSeparator + 1),
+    };
+  }
+  return null;
+}
+
+function decodeBase64Url(value: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  try {
+    const decoded = atob(padded);
+    return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
+function timestampValue(value: unknown): number | null {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value !== "string") return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 async function verifyLifecycleDatabaseCapabilities(
