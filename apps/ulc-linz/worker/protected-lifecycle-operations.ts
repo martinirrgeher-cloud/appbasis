@@ -257,13 +257,13 @@ function readAdministrativeSessionCookie(
   return null;
 }
 
-function decodeBase64Url(value: string): Uint8Array | null {
+function decodeBase64Url(value: string): ArrayBuffer | null {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   try {
     const decoded = atob(padded);
-    return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+    return Uint8Array.from(decoded, (character) => character.charCodeAt(0)).buffer;
   } catch {
     return null;
   }
