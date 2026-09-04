@@ -127,7 +127,7 @@ function collect(options = {}, inputOverrides = {}) {
   );
 }
 
-test("observer derives authoritative provider recovery/control-plane evidence and reports protected lifecycle executors bound", async () => {
+test("observer reports lifecycle executors unbound before repository binding while the canonical runner verifies the protected operations", async () => {
   const bundle = await collect();
   assert.deepEqual(Object.keys(bundle.ownerInputs).sort(), [
     "backupRestoreEvidenceInput",
@@ -145,11 +145,11 @@ test("observer derives authoritative provider recovery/control-plane evidence an
   );
   assert.equal(
     bundle.ownerInputs.lifecycleActivationEvidenceInput.activationEvidence.deletionExecutorBound,
-    true,
+    false,
   );
   assert.equal(
     bundle.ownerInputs.lifecycleActivationEvidenceInput.activationEvidence.retentionExecutorBound,
-    true,
+    false,
   );
 
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(
