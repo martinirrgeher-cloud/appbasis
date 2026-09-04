@@ -206,7 +206,7 @@ async function verifiedAdministrativeSessionDatabaseToken(
 ): Promise<string | null> {
   const cookie = readAdministrativeSessionCookie(cookieHeader);
   if (cookie === null) return null;
-  const signature = decodeBase64Url(cookie.signature);
+  const signature = decodeBase64Signature(cookie.signature);
   if (signature === null) return null;
 
   try {
@@ -257,9 +257,14 @@ function readAdministrativeSessionCookie(
   return null;
 }
 
-function decodeBase64Url(value: string): ArrayBuffer | null {
-  if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+function decodeBase64Signature(value: string): ArrayBuffer | null {
+  const standardBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(value);
+  const base64Url = /^[A-Za-z0-9_-]+$/.test(value);
+  if (!standardBase64 && !base64Url) return null;
+
+  const unpadded = value.replace(/=+$/, "");
+  if (unpadded.length === 0 || unpadded.length % 4 === 1) return null;
+  const normalized = unpadded.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   try {
     const decoded = atob(padded);
