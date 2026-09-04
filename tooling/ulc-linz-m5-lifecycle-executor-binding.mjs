@@ -8,7 +8,7 @@ const WORKFLOW_NAME = "M5 ULC Protected Lifecycle Operations";
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
 const WORKFLOW_GIT_BLOB_SHA = "92a22df1803897806638de58f886cc365d33cf57";
-const EXECUTOR_GIT_BLOB_SHA = "273e502b7d98bdf1786022f5c63f9cf74330269c";
+const EXECUTOR_GIT_BLOB_SHA = "9132cf1068c8dac2b1a232e255f252ae8e853901";
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
 const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
@@ -39,6 +39,9 @@ const REQUIRED_EXECUTOR_ANCHORS = Object.freeze([
   "new PostgresPrincipalAccessAdministration(",
   "new PostgresPrincipalLifecycleAdministration(",
   "new PostgresUlcLinzScopePersistence(lifecycleClient)",
+  "verifyLifecycleDatabaseCapabilities(connection.client)",
+  "pg_catalog.has_table_privilege",
+  "pg_catalog.has_sequence_privilege",
   "return runUlcLinzRetention(dependencies);",
 ]);
 
