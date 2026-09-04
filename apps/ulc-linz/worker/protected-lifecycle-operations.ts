@@ -1,7 +1,8 @@
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
 import { PostgresIdentityDeletionRetention } from "@appbasis/identity/postgres-deletion-retention";
-import { createPostgresIdentityApplicationRuntime } from "@appbasis/identity/postgres-runtime";
+import { createIdentityRuntime } from "@appbasis/identity/server";
 import {
   PostgresPermissionStore,
   PostgresPrincipalAccessAdministration,
@@ -80,15 +81,20 @@ export async function createUlcLinzProtectedLifecycleOperations(
   const administrativeSessionToken = requiredAdministrativeSessionToken(
     options.administrativeSessionToken,
   );
-  const identityRuntime = await createPostgresIdentityApplicationRuntime({
-    connectionString,
-    baseURL,
-    secret,
-    administrativeSessionToken,
-  });
   const connection = createPostgresDatabase(connectionString);
 
   try {
+    const auth = createBetterAuthRuntime({
+      database: connection.database,
+      baseURL,
+      secret,
+    });
+    const identityRuntime = createIdentityRuntime({
+      auth,
+      sql: connection.client,
+      baseURL,
+      administrativeSessionToken,
+    });
     const lifecycleClient = connection.client as unknown as LifecycleSqlClient;
     const scopes = new PostgresUlcLinzScopePersistence(lifecycleClient);
     const permissions = new PostgresPermissionStore(lifecycleClient);
@@ -104,7 +110,7 @@ export async function createUlcLinzProtectedLifecycleOperations(
     );
 
     const dependencies = Object.freeze({
-      identity: identityRuntime.lifecycleIdentity,
+      identity: identityRuntime.service,
       identityDeletion,
       permissions,
       accessAdministration,
@@ -126,7 +132,7 @@ export async function createUlcLinzProtectedLifecycleOperations(
         ) {
           throw new Error("ULC protected lifecycle database binding is invalid.");
         }
-        await identityRuntime.lifecycleIdentity.assertAdministrativeSessionAuthorized();
+        await identityRuntime.backend.assertProvisioningAuthorized();
         await verifyLifecycleDatabaseCapabilities(connection.client);
         await scopes.evaluateRetention();
       },
@@ -134,28 +140,12 @@ export async function createUlcLinzProtectedLifecycleOperations(
         return runUlcLinzRetention(dependencies);
       },
       async close() {
-        let closeError: unknown = null;
-        try {
-          await connection.client.end();
-        } catch (error) {
-          closeError = error;
-        }
-        try {
-          await identityRuntime.close();
-        } catch (error) {
-          closeError ??= error;
-        }
-        if (closeError !== null) throw closeError;
+        await connection.client.end();
       },
     });
   } catch (error) {
     try {
       await connection.client.end();
-    } catch {
-      // Preserve the construction failure.
-    }
-    try {
-      await identityRuntime.close();
     } catch {
       // Preserve the construction failure.
     }
