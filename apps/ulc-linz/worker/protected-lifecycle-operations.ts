@@ -31,6 +31,35 @@ type LifecycleSqlClient =
   ConstructorParameters<typeof PostgresIdentityDeletionRetention>[0] &
   ConstructorParameters<typeof PostgresUlcLinzScopePersistence>[0];
 
+type LifecyclePrivilege = "SELECT" | "INSERT" | "UPDATE" | "DELETE";
+
+const REQUIRED_LIFECYCLE_TABLE_PRIVILEGES = Object.freeze([
+  ["public.ulc_linz_membership", ["SELECT", "UPDATE", "DELETE"]],
+  ["public.ulc_linz_subject_scope", ["SELECT", "DELETE"]],
+  ["public.ulc_linz_lifecycle_deletion", ["SELECT", "INSERT", "DELETE"]],
+  ["public.ulc_linz_lifecycle_audit", ["INSERT", "DELETE"]],
+  ["public.appbasis_identity_operation", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
+  ["public.user", ["SELECT", "UPDATE", "DELETE"]],
+  ["public.appbasis_identity_security_state", ["SELECT", "UPDATE", "DELETE"]],
+  ["public.verification", ["SELECT"]],
+  ["public.appbasis_person", ["DELETE"]],
+  ["public.account", ["SELECT"]],
+  ["public.session", ["SELECT", "DELETE"]],
+  ["public.appbasis_permission_principal", ["SELECT", "DELETE"]],
+  ["public.appbasis_permission_principal_role", ["SELECT", "DELETE"]],
+  ["public.appbasis_permission_principal_grant", ["SELECT", "DELETE"]],
+  ["public.appbasis_permission_principal_revoke", ["SELECT", "DELETE"]],
+  ["public.appbasis_permission_role", ["SELECT"]],
+  ["public.appbasis_permission_role_capability", ["SELECT"]],
+  ["public.appbasis_permission_capability", ["SELECT"]],
+  ["public.appbasis_permission_administration_audit", ["INSERT"]],
+] as const satisfies readonly (readonly [string, readonly LifecyclePrivilege[]])[]);
+
+const REQUIRED_LIFECYCLE_IDENTITY_SEQUENCES = Object.freeze([
+  ["public.ulc_linz_lifecycle_audit", "event_id"],
+  ["public.appbasis_permission_administration_audit", "event_id"],
+] as const);
+
 /**
  * Protected control-plane composition for the current ULC lifecycle owners.
  *
@@ -97,6 +126,7 @@ export async function createUlcLinzProtectedLifecycleOperations(
         ) {
           throw new Error("ULC protected lifecycle database binding is invalid.");
         }
+        await verifyLifecycleDatabaseCapabilities(connection.client);
         await scopes.evaluateRetention();
       },
       async runRetention() {
@@ -129,6 +159,58 @@ export async function createUlcLinzProtectedLifecycleOperations(
       // Preserve the construction failure.
     }
     throw error;
+  }
+}
+
+async function verifyLifecycleDatabaseCapabilities(
+  sql: Pick<ReturnType<typeof createPostgresDatabase>["client"], "unsafe">,
+): Promise<void> {
+  for (const [relation, privileges] of REQUIRED_LIFECYCLE_TABLE_PRIVILEGES) {
+    for (const privilege of privileges) {
+      const rows = await sql.unsafe(
+        `WITH target AS (
+           SELECT to_regclass($1) AS relation_oid
+         )
+         SELECT
+           relation_oid IS NOT NULL AS relation_present,
+           CASE
+             WHEN relation_oid IS NULL THEN false
+             ELSE pg_catalog.has_table_privilege(current_user, relation_oid, $2)
+           END AS privilege_present
+         FROM target`,
+        [relation, privilege],
+      );
+      if (
+        rows.length !== 1 ||
+        rows[0]?.relation_present !== true ||
+        rows[0]?.privilege_present !== true
+      ) {
+        throw new Error("ULC protected lifecycle database capability is unavailable.");
+      }
+    }
+  }
+
+  for (const [relation, column] of REQUIRED_LIFECYCLE_IDENTITY_SEQUENCES) {
+    const rows = await sql.unsafe(
+      `WITH target AS (
+         SELECT pg_catalog.pg_get_serial_sequence($1, $2) AS sequence_name
+       )
+       SELECT
+         sequence_name IS NOT NULL AS sequence_present,
+         CASE
+           WHEN sequence_name IS NULL THEN false
+           ELSE pg_catalog.has_sequence_privilege(current_user, sequence_name, 'USAGE')
+         END AS usage_present
+       FROM target`,
+      [relation, column],
+    );
+    if (
+      rows.length !== 1 ||
+      rows[0]?.sequence_present !== true ||
+      rows[0]?.usage_present !== true
+    ) {
+      throw new Error("ULC protected lifecycle database capability is unavailable.");
+    }
   }
 }
 
