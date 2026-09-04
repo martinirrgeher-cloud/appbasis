@@ -15,6 +15,9 @@ export async function createPostgresIdentityApplicationRuntime(
   );
   const baseURL = requiredBaseURL(options.baseURL);
   const secret = requiredIdentitySecret(options.secret);
+  const administrativeSessionToken = optionalAdministrativeSessionToken(
+    options.administrativeSessionToken,
+  );
   const connection = createPostgresDatabase(connectionString);
 
   try {
@@ -27,6 +30,9 @@ export async function createPostgresIdentityApplicationRuntime(
       auth,
       sql: connection.client,
       baseURL,
+      ...(administrativeSessionToken === undefined
+        ? {}
+        : { administrativeSessionToken }),
     });
     const sql = Object.freeze({
       unsafe(
@@ -39,7 +45,14 @@ export async function createPostgresIdentityApplicationRuntime(
 
     return Object.freeze({
       identity: identity.service,
-      lifecycleIdentity: identity.service,
+      lifecycleIdentity: Object.freeze({
+        assertAdministrativeSessionAuthorized() {
+          return identity.backend.assertProvisioningAuthorized();
+        },
+        disableIdentity(identityId: string) {
+          return identity.service.disableIdentity(identityId);
+        },
+      }),
       sql,
       async close() {
         await connection.client.end();
@@ -95,6 +108,14 @@ function requiredBaseURL(value: string): string {
 function requiredIdentitySecret(value: string): string {
   if (typeof value !== "string" || value.trim() !== value || value.length < 32) {
     throw new Error("An identity secret with at least 32 characters is required.");
+  }
+  return value;
+}
+
+function optionalAdministrativeSessionToken(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (value.trim() !== value || value.length === 0) {
+    throw new Error("A valid administrative Better Auth session is required.");
   }
   return value;
 }
