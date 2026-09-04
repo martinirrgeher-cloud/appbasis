@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: 'Choose preflight for read-only binding verification or retention for the destructive canonical retention run'
+        description: 'Choose preflight for non-destructive binding verification with transient authentication or retention for the destructive canonical retention run'
         required: true
         default: preflight
         type: choice
@@ -13,6 +13,10 @@ on:
           - retention
       confirmation:
         description: 'Preflight: VERIFY-ULC-M5-LIFECYCLE-BINDING; retention: RUN-ULC-M5-PRODUCTION-RETENTION'
+        required: true
+        type: string
+      administrator_username:
+        description: 'Existing technical Better Auth production administrator username'
         required: true
         type: string
 
@@ -46,7 +50,7 @@ jobs:
           case "$OPERATION" in
             preflight)
               test "$CONFIRMATION" = "VERIFY-ULC-M5-LIFECYCLE-BINDING" || {
-                echo 'Exact read-only lifecycle-binding confirmation is required.' >&2
+                echo 'Exact non-destructive lifecycle-binding confirmation is required.' >&2
                 exit 1
               }
               ;;
@@ -89,12 +93,13 @@ jobs:
       - name: Validate and mask protected inputs
         shell: bash
         env:
+          ADMINISTRATOR_USERNAME: ${{ inputs.administrator_username }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_API_WRITE_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
-          ULC_LINZ_PRODUCTION_ADMIN_SESSION: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_SESSION }}
+          ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
           for name in \
@@ -103,7 +108,7 @@ jobs:
             CLOUDFLARE_API_WRITE_TOKEN \
             ULC_LINZ_PRODUCTION_DATABASE_URL \
             ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET \
-            ULC_LINZ_PRODUCTION_ADMIN_SESSION
+            ULC_LINZ_PRODUCTION_ADMIN_PASSWORD
           do
             value="${!name:-}"
             test -n "$value" || { echo "Missing $name." >&2; exit 1; }
@@ -116,9 +121,13 @@ jobs:
           if (secret.length < 32 || secret !== secret.trim()) {
             throw new Error('ULC production Better Auth secret is invalid.');
           }
-          const administrativeSession = process.env.ULC_LINZ_PRODUCTION_ADMIN_SESSION ?? '';
-          if (administrativeSession.length === 0 || administrativeSession !== administrativeSession.trim()) {
-            throw new Error('ULC production administrative session is invalid.');
+          const username = process.env.ADMINISTRATOR_USERNAME ?? '';
+          if (!/^[a-z0-9._]{3,30}$/.test(username)) {
+            throw new Error('ULC production administrator username is invalid.');
+          }
+          const password = process.env.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD ?? '';
+          if (password.length < 8 || password.length > 128 || password.trim().length === 0) {
+            throw new Error('ULC production administrator credential is invalid.');
           }
           NODE
 
@@ -162,12 +171,13 @@ jobs:
           set -euo pipefail
           HARNESS="$GITHUB_WORKSPACE/apps/ulc-linz/m5-protected-lifecycle.generated.ts"
           cat > "$HARNESS" <<'TS'
-          import { createUlcLinzProtectedLifecycleOperations } from './worker/protected-lifecycle-operations';
+          import { runUlcLinzProtectedLifecycleWithAdministratorCredentials } from './worker/protected-lifecycle-credential-operation';
 
           type LifecycleEnv = {
             HYPERDRIVE?: { connectionString?: unknown };
             BETTER_AUTH_SECRET?: unknown;
-            ADMINISTRATIVE_SESSION?: unknown;
+            ADMINISTRATOR_USERNAME?: unknown;
+            ADMINISTRATOR_PASSWORD?: unknown;
             LIFECYCLE_OPERATION_TOKEN?: unknown;
           };
 
@@ -187,45 +197,49 @@ jobs:
               }
               const connectionString = env.HYPERDRIVE?.connectionString;
               const secret = env.BETTER_AUTH_SECRET;
-              const administrativeSessionToken = env.ADMINISTRATIVE_SESSION;
+              const administratorUsername = env.ADMINISTRATOR_USERNAME;
+              const administratorPassword = env.ADMINISTRATOR_PASSWORD;
               if (
                 typeof connectionString !== 'string' ||
                 connectionString.length === 0 ||
                 typeof secret !== 'string' ||
                 secret.length < 32 ||
-                typeof administrativeSessionToken !== 'string' ||
-                administrativeSessionToken.length === 0
+                typeof administratorUsername !== 'string' ||
+                !/^[a-z0-9._]{3,30}$/.test(administratorUsername) ||
+                typeof administratorPassword !== 'string' ||
+                administratorPassword.length < 8 ||
+                administratorPassword.length > 128
               ) {
                 return new Response(null, { status: 503 });
               }
               const operation = request.headers.get('x-appbasis-lifecycle-operation');
-              const lifecycle = await createUlcLinzProtectedLifecycleOperations({
-                connectionString,
-                baseURL: 'https://app.ulc-linz.at',
-                secret,
-                administrativeSessionToken,
-              });
+              if (operation !== 'preflight' && operation !== 'retention') {
+                return new Response(null, { status: 404 });
+              }
               try {
-                if (operation === 'preflight') {
-                  await lifecycle.verifyBinding();
+                const result = await runUlcLinzProtectedLifecycleWithAdministratorCredentials(
+                  {
+                    connectionString,
+                    baseURL: 'https://app.ulc-linz.at',
+                    secret,
+                    administratorUsername,
+                    administratorPassword,
+                  },
+                  operation,
+                );
+                if (result.status === 'verified') {
                   return Response.json({ status: 'verified' });
                 }
-                if (operation === 'retention') {
-                  const result = await lifecycle.runRetention();
-                  return Response.json({
-                    status: 'completed',
-                    deletedCount: result.deletedIdentityIds.length,
-                    exceptionCount: result.exceptionIdentityIds.length,
-                    purgedAppDeletionMarkers: result.purgedAppDeletionMarkers,
-                    purgedIdentityDeletionTombstones: result.purgedIdentityDeletionTombstones,
-                    purgedLifecycleAuditEvents: result.purgedLifecycleAuditEvents,
-                  });
-                }
-                return new Response(null, { status: 404 });
+                return Response.json({
+                  status: 'completed',
+                  deletedCount: result.result.deletedIdentityIds.length,
+                  exceptionCount: result.result.exceptionIdentityIds.length,
+                  purgedAppDeletionMarkers: result.result.purgedAppDeletionMarkers,
+                  purgedIdentityDeletionTombstones: result.result.purgedIdentityDeletionTombstones,
+                  purgedLifecycleAuditEvents: result.result.purgedLifecycleAuditEvents,
+                });
               } catch {
                 return new Response(null, { status: 503 });
-              } finally {
-                await lifecycle.close().catch(() => {});
               }
             },
           };
@@ -260,7 +274,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
-          ULC_LINZ_PRODUCTION_ADMIN_SESSION: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_SESSION }}
+          ULC_LINZ_PRODUCTION_ADMIN_USERNAME: ${{ inputs.administrator_username }}
+          ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
           operation_token="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(32).toString('hex'))")"
@@ -271,7 +286,8 @@ jobs:
             --ip 127.0.0.1 \
             --port 8787 \
             --var "BETTER_AUTH_SECRET:$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET" \
-            --var "ADMINISTRATIVE_SESSION:$ULC_LINZ_PRODUCTION_ADMIN_SESSION" \
+            --var "ADMINISTRATOR_USERNAME:$ULC_LINZ_PRODUCTION_ADMIN_USERNAME" \
+            --var "ADMINISTRATOR_PASSWORD:$ULC_LINZ_PRODUCTION_ADMIN_PASSWORD" \
             --var "LIFECYCLE_OPERATION_TOKEN:$operation_token" > "$log" 2>&1 &
           dev_pid=$!
           cleanup() { kill "$dev_pid" 2>/dev/null || true; wait "$dev_pid" 2>/dev/null || true; }
@@ -339,7 +355,7 @@ jobs:
           OPERATION: ${{ inputs.operation }}
         run: |
           if test "$OPERATION" = "preflight"; then
-            echo 'ULC protected lifecycle binding preflight passed through an isolated Cloudflare remote harness with an authorized technical administrator session. No retention or deletion write was requested.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'ULC protected lifecycle binding preflight passed through an isolated Cloudflare remote harness with a transient technical administrator session that was removed before completion. No retention or deletion write was requested.' >> "$GITHUB_STEP_SUMMARY"
           else
-            echo 'ULC protected production retention completed through the canonical app-owned lifecycle executor. Result details remain intentionally omitted from the workflow summary.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'ULC protected production retention completed through the canonical app-owned lifecycle executor. The transient technical administrator session was removed before completion. Result details remain intentionally omitted from the workflow summary.' >> "$GITHUB_STEP_SUMMARY"
           fi
