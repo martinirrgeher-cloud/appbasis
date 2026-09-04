@@ -1,0 +1,103 @@
+name: M5 ULC Production Admin Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Exact confirmation: CREATE-ULC-M5-PRODUCTION-ADMIN'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Bootstrap ULC production technical administrator
+    if: github.ref == 'refs/heads/main'
+    environment: m4-dr
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Require exact production administrator bootstrap approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main' || {
+            echo 'ULC production administrator bootstrap must run from main.' >&2
+            exit 1
+          }
+          test "$CONFIRMATION" = 'CREATE-ULC-M5-PRODUCTION-ADMIN' || {
+            echo 'Exact production administrator bootstrap confirmation is required.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify exact repository contracts
+        run: pnpm run verify:repo
+
+      - name: Validate and mask protected bootstrap inputs
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in \
+            ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET \
+            ULC_LINZ_PRODUCTION_ADMIN_PASSWORD
+          do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+
+      - name: Create one-time ULC production technical administrator
+        env:
+          ULC_LINZ_PRODUCTION_ADMIN_BOOTSTRAP_TARGET: ulc-linz-production
+          ULC_LINZ_PRODUCTION_ADMIN_BOOTSTRAP_APPLY: '1'
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}
+        run: node ./apps/ulc-linz/tooling/bootstrap-production-admin.mjs
+
+      - name: Record protected bootstrap result
+        if: success()
+        run: |
+          {
+            echo '### ULC production administrator bootstrap'
+            echo '- target: ulc-linz-production'
+            echo '- username: `ulc.production.admin`'
+            echo '- role: `admin`'
+            echo '- public deployment: not performed'
+            echo '- production retention: not performed'
+          } >> "$GITHUB_STEP_SUMMARY"
