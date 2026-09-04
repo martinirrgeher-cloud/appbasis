@@ -24,7 +24,7 @@ globalThis.fetch = async (input, options) => {
     return Response.json({ sha: GITHUB_SHA });
   }
   if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
-    const updatedAt = new Date(Date.now() - 1_000).toISOString();
+    const updatedAt = "2026-08-23T14:04:00.000Z";
     return Response.json({
       total_count: 1,
       workflow_runs: [{
