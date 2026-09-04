@@ -132,7 +132,12 @@ export async function createUlcLinzProtectedLifecycleOperations(
         ) {
           throw new Error("ULC protected lifecycle database binding is invalid.");
         }
-        await identityRuntime.backend.assertProvisioningAuthorized();
+        await verifyAdministrativeSessionReadOnly(
+          auth,
+          connection.client,
+          baseURL,
+          administrativeSessionToken,
+        );
         await verifyLifecycleDatabaseCapabilities(connection.client);
         await scopes.evaluateRetention();
       },
@@ -150,6 +155,49 @@ export async function createUlcLinzProtectedLifecycleOperations(
       // Preserve the construction failure.
     }
     throw error;
+  }
+}
+
+async function verifyAdministrativeSessionReadOnly(
+  auth: ReturnType<typeof createBetterAuthRuntime>,
+  sql: Pick<ReturnType<typeof createPostgresDatabase>["client"], "unsafe">,
+  baseURL: string,
+  administrativeSessionToken: string,
+): Promise<void> {
+  const headers = new Headers();
+  headers.set("cookie", administrativeSessionToken);
+  const response = await auth.handler(
+    new Request(`${baseURL}/api/auth/get-session?disableRefresh=true`, {
+      method: "GET",
+      headers,
+    }),
+  );
+  if (!response.ok) {
+    throw new Error("ULC protected lifecycle administrative session is invalid.");
+  }
+  const body = (await response.json()) as { user?: { id?: unknown } } | null;
+  const identityId = body?.user?.id;
+  if (typeof identityId !== "string" || identityId.length === 0) {
+    throw new Error("ULC protected lifecycle administrative session is invalid.");
+  }
+  const rows = await sql.unsafe(
+    `SELECT role, banned
+     FROM "user"
+     WHERE id = $1
+     LIMIT 1`,
+    [identityId],
+  );
+  const administrator = rows[0];
+  if (
+    rows.length !== 1 ||
+    administrator?.banned === true ||
+    typeof administrator?.role !== "string" ||
+    !administrator.role
+      .split(",")
+      .map((value: string) => value.trim())
+      .includes("admin")
+  ) {
+    throw new Error("ULC protected lifecycle administrative session is invalid.");
   }
 }
 
