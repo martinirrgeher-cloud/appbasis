@@ -256,7 +256,10 @@ test("final readiness diagnostic exposes only bounded progress and open criterio
   delete value.ownerInputs.auditSecurityLoggingEvidenceInput;
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), value, { now: NOW });
   const diagnostic = formatUlcLinzM5ReadinessDiagnostic(result);
-  assert.equal(diagnostic, "ULC M5 readiness blocked: 11/12; open criteria: auditSecurityLogging.");
+  assert.equal(
+    diagnostic,
+    "ULC M5 readiness blocked: 9/12; open criteria: dataExport,auditSecurityLogging,highPrivacyProfile.",
+  );
   for (const internal of ["account-1", "worker-1", "project-1", "branch-1", "database-1", "hyperdrive-1", "restore-target-1"]) {
     assert.equal(diagnostic.includes(internal), false);
   }
