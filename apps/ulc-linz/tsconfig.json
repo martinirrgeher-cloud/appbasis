@@ -11,6 +11,7 @@
     "vitest*.config.ts"
   ],
   "exclude": [
+    "worker/protected-lifecycle-operations.ts",
     "test/**/*.postgres.e2e.test.ts"
   ]
 }
