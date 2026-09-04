@@ -8,7 +8,7 @@ const WORKFLOW_NAME = "M5 ULC Protected Lifecycle Operations";
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
 const WORKFLOW_GIT_BLOB_SHA = "a9bba7242e7026d72ce3d36a1da75d05e1f40aef";
-const EXECUTOR_GIT_BLOB_SHA = "b6634939e604fc19348e7d491eeb31b05d5b9344";
+const EXECUTOR_GIT_BLOB_SHA = "85f293fa853b9b81e4ac482d6b097c673ff79fa1";
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
 const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
@@ -41,6 +41,9 @@ const REQUIRED_EXECUTOR_ANCHORS = Object.freeze([
   'FROM "session" s',
   "WHERE s.token = $1",
   "expiresAt <= Date.now()",
+  "decodeBase64Signature(cookie.signature)",
+  "const standardBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(value);",
+  "const base64Url = /^[A-Za-z0-9_-]+$/.test(value);",
   "globalThis.crypto.subtle.verify(",
   "identity: identityRuntime.service",
   "new PostgresIdentityDeletion(lifecycleClient)",
