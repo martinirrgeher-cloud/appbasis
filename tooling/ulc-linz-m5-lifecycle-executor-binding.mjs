@@ -3,10 +3,17 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const WORKFLOW_PATH = ".github/workflows/m5-ulc-protected-lifecycle-operations.yml";
+const WORKFLOW_FILE_NAME = "m5-ulc-protected-lifecycle-operations.yml";
+const WORKFLOW_NAME = "M5 ULC Protected Lifecycle Operations";
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
 const WORKFLOW_GIT_BLOB_SHA = "92a22df1803897806638de58f886cc365d33cf57";
 const EXECUTOR_GIT_BLOB_SHA = "273e502b7d98bdf1786022f5c63f9cf74330269c";
+const GITHUB_API_BASE_URL = "https://api.github.com";
+const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
+const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
+const MAX_PREFLIGHT_AGE_MS = 24 * 60 * 60 * 1000;
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
   "name: M5 ULC Protected Lifecycle Operations",
@@ -44,7 +51,10 @@ const FORBIDDEN_WORKFLOW_ANCHORS = Object.freeze([
   "custom_domains:",
 ]);
 
-export async function verifyUlcLinzM5LifecycleExecutorBinding(repositoryRoot) {
+export async function verifyUlcLinzM5LifecycleExecutorBinding(
+  repositoryRoot,
+  { fetchImpl = fetch, now = Date.now } = {},
+) {
   const root = resolve(repositoryRoot);
   const [workflow, executor, publicEntrypoint] = await Promise.all([
     readFile(join(root, WORKFLOW_PATH), "utf8"),
@@ -73,12 +83,138 @@ export async function verifyUlcLinzM5LifecycleExecutorBinding(repositoryRoot) {
   ) {
     throw new Error("ULC protected lifecycle executor leaked into the public app runtime.");
   }
+  if (typeof fetchImpl !== "function" || typeof now !== "function") {
+    throw new Error("ULC protected lifecycle live binding verifier is invalid.");
+  }
+
+  const currentTime = readCurrentTime(now);
+  if (currentTime === null) {
+    throw new Error("ULC protected lifecycle live binding clock is invalid.");
+  }
+  const currentMainHead = await fetchCurrentMainHeadSha(fetchImpl);
+  if (currentMainHead === null) {
+    throw new Error("ULC protected lifecycle current main head is unavailable.");
+  }
+  const payload = await fetchJson(fetchImpl, latestProtectedLifecycleRunsUrl());
+  const run = latestRunFromPayload(payload);
+  const observedAt = verifiedRunObservedAt(run, currentTime, currentMainHead);
+  if (observedAt === null) {
+    throw new Error("ULC protected lifecycle live binding preflight is not verified.");
+  }
 
   return Object.freeze({
     executionBoundary: "protected-operations",
     deletionExecutorBound: true,
     retentionExecutorBound: true,
+    verifiedHeadSha: currentMainHead,
+    verifiedAt: observedAt,
   });
+}
+
+async function fetchCurrentMainHeadSha(fetchImpl) {
+  const payload = await fetchJson(
+    fetchImpl,
+    new URL(`${GITHUB_API_BASE_URL}/repos/${GITHUB_REPOSITORY}/commits/main`),
+  );
+  if (
+    !isPlainObject(payload) ||
+    typeof payload.sha !== "string" ||
+    !SHA_PATTERN.test(payload.sha)
+  ) {
+    return null;
+  }
+  return payload.sha;
+}
+
+function latestProtectedLifecycleRunsUrl() {
+  const url = new URL(
+    `${GITHUB_API_BASE_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE_NAME}/runs`,
+  );
+  url.searchParams.set("branch", "main");
+  url.searchParams.set("event", "workflow_dispatch");
+  url.searchParams.set("per_page", "1");
+  return url;
+}
+
+async function fetchJson(fetchImpl, url) {
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "GET",
+      headers: {
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+      },
+      redirect: "error",
+      signal: AbortSignal.timeout(GITHUB_EVIDENCE_TIMEOUT_MS),
+    });
+  } catch {
+    return null;
+  }
+  if (!response?.ok) return null;
+  const contentType = response.headers?.get?.("content-type") ?? "";
+  if (!contentType.toLowerCase().startsWith("application/json")) return null;
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function latestRunFromPayload(payload) {
+  if (!isPlainObject(payload)) return null;
+  if (!Number.isSafeInteger(payload.total_count) || payload.total_count < 1) return null;
+  if (!Array.isArray(payload.workflow_runs) || payload.workflow_runs.length !== 1) return null;
+  return payload.workflow_runs[0];
+}
+
+function verifiedRunObservedAt(run, currentTime, trustedHeadSha) {
+  if (
+    !isPlainObject(run) ||
+    !Number.isSafeInteger(run.id) ||
+    run.id < 1 ||
+    run.run_attempt !== 1 ||
+    run.name !== WORKFLOW_NAME ||
+    run.path !== WORKFLOW_PATH ||
+    run.event !== "workflow_dispatch" ||
+    run.head_branch !== "main" ||
+    run.head_sha !== trustedHeadSha ||
+    run.status !== "completed" ||
+    run.conclusion !== "success" ||
+    !isPlainObject(run.repository) ||
+    run.repository.full_name !== GITHUB_REPOSITORY
+  ) {
+    return null;
+  }
+  const createdAt = parseTimestamp(run.created_at);
+  const updatedAt = parseTimestamp(run.updated_at);
+  if (createdAt === null || updatedAt === null || createdAt > updatedAt) return null;
+  if (currentTime < updatedAt || currentTime - updatedAt >= MAX_PREFLIGHT_AGE_MS) return null;
+  return new Date(updatedAt).toISOString();
+}
+
+function readCurrentTime(now) {
+  try {
+    const value = now();
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseTimestamp(value) {
+  if (typeof value !== "string") return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isPlainObject(value) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
 }
 
 function gitBlobSha(content) {
