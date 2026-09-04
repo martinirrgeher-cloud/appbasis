@@ -168,7 +168,7 @@ function exactRecord(value, fields, label) {
   if (
     keys.length !== fields.length ||
     fields.some((field) => !Object.hasOwn(descriptors, field)) ||
-    keys.some((field) => !fields.includes(key)) ||
+    keys.some((field) => !fields.includes(field)) ||
     Object.values(descriptors).some(
       (descriptor) =>
         !Object.hasOwn(descriptor, "value") ||
