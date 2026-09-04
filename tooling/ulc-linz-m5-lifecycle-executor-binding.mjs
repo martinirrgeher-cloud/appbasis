@@ -6,9 +6,13 @@ const WORKFLOW_PATH = ".github/workflows/m5-ulc-protected-lifecycle-operations.y
 const WORKFLOW_FILE_NAME = "m5-ulc-protected-lifecycle-operations.yml";
 const WORKFLOW_NAME = "M5 ULC Protected Lifecycle Operations";
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
+const CREDENTIAL_ADAPTER_PATH =
+  "apps/ulc-linz/worker/protected-lifecycle-credential-operation.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
-const WORKFLOW_GIT_BLOB_SHA = "a9bba7242e7026d72ce3d36a1da75d05e1f40aef";
+const WORKFLOW_GIT_BLOB_SHA = "6a0c01ea788aaa2512cf672ac88a36faabc5155e";
 const EXECUTOR_GIT_BLOB_SHA = "ba3e24784f52ccdfceda3cce5b694f912785ea2a";
+const CREDENTIAL_ADAPTER_GIT_BLOB_SHA =
+  "6f71345941deaf23a5c73770132b965e379176a5";
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
 const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
@@ -20,16 +24,17 @@ const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
   "environment: m4-dr",
   "VERIFY-ULC-M5-LIFECYCLE-BINDING",
   "RUN-ULC-M5-PRODUCTION-RETENTION",
+  "administrator_username:",
   "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}",
-  "ULC_LINZ_PRODUCTION_ADMIN_SESSION: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_SESSION }}",
-  "ADMINISTRATIVE_SESSION:$ULC_LINZ_PRODUCTION_ADMIN_SESSION",
+  "ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}",
+  "--var \"ADMINISTRATOR_USERNAME:$ULC_LINZ_PRODUCTION_ADMIN_USERNAME\"",
+  "--var \"ADMINISTRATOR_PASSWORD:$ULC_LINZ_PRODUCTION_ADMIN_PASSWORD\"",
+  "runUlcLinzProtectedLifecycleWithAdministratorCredentials",
   "pnpm --dir apps/reference exec wrangler dev --remote",
-  "createUlcLinzProtectedLifecycleOperations",
-  "await lifecycle.verifyBinding()",
-  "await lifecycle.runRetention()",
   "x-appbasis-lifecycle-token",
   "x-appbasis-lifecycle-operation",
   "dev: { ip: '127.0.0.1', port: 8787 }",
+  "transient technical administrator session that was removed before completion",
 ]);
 
 const REQUIRED_EXECUTOR_ANCHORS = Object.freeze([
@@ -60,7 +65,21 @@ const REQUIRED_EXECUTOR_ANCHORS = Object.freeze([
   "return runUlcLinzRetention(dependencies);",
 ]);
 
+const REQUIRED_CREDENTIAL_ADAPTER_ANCHORS = Object.freeze([
+  'import { BetterAuthIdentityBackend } from "@appbasis/identity/server";',
+  "runUlcLinzProtectedLifecycleWithAdministratorCredentials(",
+  "backend.signInWithUsername({",
+  "createUlcLinzProtectedLifecycleOperations({",
+  "await lifecycle.verifyBinding();",
+  "await lifecycle.runRetention();",
+  "await backend.endSession(sessionToken);",
+  "await backend.getSession(sessionToken)",
+  "transient administrator session cleanup failed",
+  "primaryError === null && cleanupError !== null",
+]);
+
 const FORBIDDEN_WORKFLOW_ANCHORS = Object.freeze([
+  "ULC_LINZ_PRODUCTION_ADMIN_SESSION",
   "wrangler deploy",
   "workers_dev: true",
   "preview_urls: true",
@@ -74,9 +93,10 @@ export async function verifyUlcLinzM5LifecycleExecutorBinding(
   { fetchImpl = fetch, now = Date.now } = {},
 ) {
   const root = resolve(repositoryRoot);
-  const [workflow, executor, publicEntrypoint] = await Promise.all([
+  const [workflow, executor, credentialAdapter, publicEntrypoint] = await Promise.all([
     readFile(join(root, WORKFLOW_PATH), "utf8"),
     readFile(join(root, EXECUTOR_PATH), "utf8"),
+    readFile(join(root, CREDENTIAL_ADAPTER_PATH), "utf8"),
     readFile(join(root, PUBLIC_ENTRYPOINT_PATH), "utf8"),
   ]);
 
@@ -86,18 +106,36 @@ export async function verifyUlcLinzM5LifecycleExecutorBinding(
   if (gitBlobSha(executor) !== EXECUTOR_GIT_BLOB_SHA) {
     throw new Error("ULC protected lifecycle executor baseline drifted.");
   }
+  if (gitBlobSha(credentialAdapter) !== CREDENTIAL_ADAPTER_GIT_BLOB_SHA) {
+    throw new Error("ULC protected lifecycle credential adapter baseline drifted.");
+  }
   if (!REQUIRED_WORKFLOW_ANCHORS.every((anchor) => workflow.includes(anchor))) {
     throw new Error("ULC protected lifecycle workflow contract is incomplete.");
   }
   if (!REQUIRED_EXECUTOR_ANCHORS.every((anchor) => executor.includes(anchor))) {
     throw new Error("ULC protected lifecycle executor composition is incomplete.");
   }
+  if (
+    !REQUIRED_CREDENTIAL_ADAPTER_ANCHORS.every((anchor) =>
+      credentialAdapter.includes(anchor),
+    )
+  ) {
+    throw new Error(
+      "ULC protected lifecycle credential adapter composition is incomplete.",
+    );
+  }
   if (FORBIDDEN_WORKFLOW_ANCHORS.some((anchor) => workflow.includes(anchor))) {
-    throw new Error("ULC protected lifecycle workflow exposes a forbidden deployment surface.");
+    throw new Error(
+      "ULC protected lifecycle workflow exposes a forbidden deployment or credential surface.",
+    );
   }
   if (
     publicEntrypoint.includes("protected-lifecycle-operations") ||
-    publicEntrypoint.includes("createUlcLinzProtectedLifecycleOperations")
+    publicEntrypoint.includes("protected-lifecycle-credential-operation") ||
+    publicEntrypoint.includes("createUlcLinzProtectedLifecycleOperations") ||
+    publicEntrypoint.includes(
+      "runUlcLinzProtectedLifecycleWithAdministratorCredentials",
+    )
   ) {
     throw new Error("ULC protected lifecycle executor leaked into the public app runtime.");
   }
