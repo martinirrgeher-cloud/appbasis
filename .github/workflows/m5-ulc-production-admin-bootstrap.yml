@@ -88,7 +88,7 @@ jobs:
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
           ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}
-        run: node ./tooling/ulc-linz-m5-production-admin-bootstrap.mjs
+        run: node ./apps/ulc-linz/tooling/bootstrap-production-admin.mjs
 
       - name: Record protected bootstrap result
         if: success()
