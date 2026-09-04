@@ -63,6 +63,23 @@ export async function evaluateUlcLinzM5ProductionEvidenceBundle(
   });
 }
 
+export function formatUlcLinzM5ReadinessDiagnostic(result) {
+  if (
+    result === null ||
+    typeof result !== "object" ||
+    !Number.isSafeInteger(result.verifiedCount) ||
+    !Number.isSafeInteger(result.requiredCount) ||
+    !Array.isArray(result.criteria)
+  ) {
+    throw new Error("ULC production M5 readiness result is invalid.");
+  }
+  const openCriteria = result.criteria
+    .filter((criterion) => criterion?.status !== "verified")
+    .map((criterion) => criterion?.id)
+    .filter((id) => typeof id === "string" && /^[a-zA-Z][a-zA-Z0-9]*$/.test(id));
+  return `ULC M5 readiness blocked: ${result.verifiedCount}/${result.requiredCount}; open criteria: ${openCriteria.join(",") || "unknown"}.`;
+}
+
 function exactRecord(value, fields, label) {
   if (
     value === null ||
@@ -147,7 +164,10 @@ async function main(argv = process.argv.slice(2)) {
   const bundle = JSON.parse(await readFile(resolve(argv[0]), "utf8"));
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle, { now: new Date() });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  if (argv[1] === "--require-ready" && result.securityPrivacyReady !== true) process.exitCode = 2;
+  if (argv[1] === "--require-ready" && result.securityPrivacyReady !== true) {
+    console.error(formatUlcLinzM5ReadinessDiagnostic(result));
+    process.exitCode = 2;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
