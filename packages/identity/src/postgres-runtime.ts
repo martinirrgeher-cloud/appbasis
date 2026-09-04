@@ -39,6 +39,7 @@ export async function createPostgresIdentityApplicationRuntime(
 
     return Object.freeze({
       identity: identity.service,
+      lifecycleIdentity: identity.service,
       sql,
       async close() {
         await connection.client.end();
