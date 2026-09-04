@@ -42,16 +42,10 @@ export function readUlcLinzProductionAdminBootstrapEnvironment(env = process.env
     );
   }
 
-  const secret = requiredTrimmed(
+  const secret = requiredUntrimmedSecret(
     env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET,
     "ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET",
   );
-  if (secret.length < 32) {
-    throw new UlcLinzProductionAdminBootstrapEnvironmentError(
-      "ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET must contain at least 32 characters.",
-    );
-  }
-
   const password = requiredPassword(
     env.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD,
     "ULC_LINZ_PRODUCTION_ADMIN_PASSWORD",
@@ -80,6 +74,19 @@ function requiredTrimmed(value, field) {
     throw new UlcLinzProductionAdminBootstrapEnvironmentError(`${field} is required.`);
   }
   return normalized;
+}
+
+function requiredUntrimmedSecret(value, field) {
+  if (
+    typeof value !== "string" ||
+    value.length < 32 ||
+    value !== value.trim()
+  ) {
+    throw new UlcLinzProductionAdminBootstrapEnvironmentError(
+      `${field} must contain at least 32 characters without surrounding whitespace.`,
+    );
+  }
+  return value;
 }
 
 function requiredPassword(value, field) {
