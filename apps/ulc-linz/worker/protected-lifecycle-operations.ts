@@ -15,6 +15,7 @@ export interface UlcLinzProtectedLifecycleOptions {
   readonly connectionString: string;
   readonly baseURL: string;
   readonly secret: string;
+  readonly administrativeSessionToken: string;
 }
 
 export interface UlcLinzProtectedLifecycleOperations {
@@ -76,19 +77,18 @@ export async function createUlcLinzProtectedLifecycleOperations(
   const connectionString = requiredConnectionString(options.connectionString);
   const baseURL = requiredBaseURL(options.baseURL);
   const secret = requiredSecret(options.secret);
+  const administrativeSessionToken = requiredAdministrativeSessionToken(
+    options.administrativeSessionToken,
+  );
   const identityRuntime = await createPostgresIdentityApplicationRuntime({
     connectionString,
     baseURL,
     secret,
+    administrativeSessionToken,
   });
   const connection = createPostgresDatabase(connectionString);
 
   try {
-    // The database runtime contract intentionally exposes only the common
-    // read/query surface. The concrete runtime client is the same postgres-js
-    // client used by the existing lifecycle owners, which additionally require
-    // transactional administration methods. Keep that widening local to this
-    // protected composition boundary.
     const lifecycleClient = connection.client as unknown as LifecycleSqlClient;
     const scopes = new PostgresUlcLinzScopePersistence(lifecycleClient);
     const permissions = new PostgresPermissionStore(lifecycleClient);
@@ -126,6 +126,7 @@ export async function createUlcLinzProtectedLifecycleOperations(
         ) {
           throw new Error("ULC protected lifecycle database binding is invalid.");
         }
+        await identityRuntime.lifecycleIdentity.assertAdministrativeSessionAuthorized();
         await verifyLifecycleDatabaseCapabilities(connection.client);
         await scopes.evaluateRetention();
       },
@@ -262,6 +263,13 @@ function requiredSecret(value: string): string {
     value.length < 32
   ) {
     throw new Error("ULC protected lifecycle identity secret is invalid.");
+  }
+  return value;
+}
+
+function requiredAdministrativeSessionToken(value: string): string {
+  if (typeof value !== "string" || value.trim() !== value || value.length === 0) {
+    throw new Error("ULC protected lifecycle administrative session is invalid.");
   }
   return value;
 }
