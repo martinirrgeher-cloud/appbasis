@@ -12,6 +12,7 @@
   ],
   "exclude": [
     "worker/protected-lifecycle-operations.ts",
+    "worker/protected-lifecycle-credential-operation.ts",
     "test/**/*.postgres.e2e.test.ts"
   ]
 }
