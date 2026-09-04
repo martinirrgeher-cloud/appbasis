@@ -10,6 +10,39 @@ import {
 import { ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST } from "./ulc-linz-m6-production-resource-binding.mjs";
 import { deriveUlcLinzLifecycleContractDigest } from "./factory-ui/ulc-linz-lifecycle-evidence.mjs";
 
+const REAL_FETCH = globalThis.fetch;
+const LIVE_HEAD = "a".repeat(40);
+globalThis.fetch = async (input) => {
+  const url = String(input);
+  if (url.endsWith("/repos/martinirrgeher-cloud/appbasis/commits/main")) {
+    return Response.json({ sha: LIVE_HEAD });
+  }
+  if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+    const updatedAt = new Date(Date.now() - 1_000).toISOString();
+    return Response.json({
+      total_count: 1,
+      workflow_runs: [{
+        id: 1,
+        run_attempt: 1,
+        name: "M5 ULC Protected Lifecycle Operations",
+        path: ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
+        event: "workflow_dispatch",
+        head_branch: "main",
+        head_sha: LIVE_HEAD,
+        status: "completed",
+        conclusion: "success",
+        created_at: updatedAt,
+        updated_at: updatedAt,
+        repository: { full_name: "martinirrgeher-cloud/appbasis" },
+      }],
+    });
+  }
+  throw new Error(`Unexpected fetch in M5 runner test: ${url}`);
+};
+test.after(() => {
+  globalThis.fetch = REAL_FETCH;
+});
+
 const NOW = new Date("2026-08-23T14:10:00.000Z");
 const OBSERVED_AT = "2026-08-23T14:05:00.000Z";
 const VALID_UNTIL = "2026-08-23T14:20:00.000Z";
