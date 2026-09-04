@@ -8,7 +8,7 @@ const WORKFLOW_NAME = "M5 ULC Protected Lifecycle Operations";
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
 const WORKFLOW_GIT_BLOB_SHA = "a9bba7242e7026d72ce3d36a1da75d05e1f40aef";
-const EXECUTOR_GIT_BLOB_SHA = "7c5178d3dae7be1573c9a15d8ef1e574b442524a";
+const EXECUTOR_GIT_BLOB_SHA = "43ca9977daa26b17ecb2b84a88ae7db1c3ebfe60";
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
 const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
@@ -37,7 +37,9 @@ const REQUIRED_EXECUTOR_ANCHORS = Object.freeze([
   'import { createIdentityRuntime } from "@appbasis/identity/server";',
   'import { runUlcLinzRetention, type UlcLinzRetentionRunResult } from "./retention";',
   "administrativeSessionToken",
-  "identityRuntime.backend.assertProvisioningAuthorized()",
+  "verifyAdministrativeSessionReadOnly(",
+  "/api/auth/get-session?disableRefresh=true",
+  'SELECT role, banned',
   "identity: identityRuntime.service",
   "new PostgresIdentityDeletion(lifecycleClient)",
   "new PostgresIdentityDeletionRetention(",
