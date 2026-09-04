@@ -17,6 +17,38 @@ const INVENTORY = JSON.parse(
 );
 const PRODUCTION_TABLES = INVENTORY.persistentTables.map((entry) => entry.id);
 
+const REAL_FETCH = globalThis.fetch;
+globalThis.fetch = async (input, options) => {
+  const url = String(input);
+  if (url.endsWith("/repos/martinirrgeher-cloud/appbasis/commits/main")) {
+    return Response.json({ sha: GITHUB_SHA });
+  }
+  if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+    const updatedAt = "2026-08-23T14:04:00.000Z";
+    return Response.json({
+      total_count: 1,
+      workflow_runs: [{
+        id: 1,
+        run_attempt: 1,
+        name: "M5 ULC Protected Lifecycle Operations",
+        path: ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
+        event: "workflow_dispatch",
+        head_branch: "main",
+        head_sha: GITHUB_SHA,
+        status: "completed",
+        conclusion: "success",
+        created_at: updatedAt,
+        updated_at: updatedAt,
+        repository: { full_name: "martinirrgeher-cloud/appbasis" },
+      }],
+    });
+  }
+  return REAL_FETCH(input, options);
+};
+test.after(() => {
+  globalThis.fetch = REAL_FETCH;
+});
+
 function response(value) {
   return { ok: true, async json() { return structuredClone(value); } };
 }
@@ -127,7 +159,7 @@ function collect(options = {}, inputOverrides = {}) {
   );
 }
 
-test("observer derives authoritative provider recovery/control-plane evidence and reports lifecycle executors truthfully unbound", async () => {
+test("observer reports lifecycle executors unbound before repository binding while the canonical runner verifies the protected operations", async () => {
   const bundle = await collect();
   assert.deepEqual(Object.keys(bundle.ownerInputs).sort(), [
     "backupRestoreEvidenceInput",
@@ -161,13 +193,14 @@ test("observer derives authoritative provider recovery/control-plane evidence an
   assert.equal(result.securityPrivacyReady, false);
   assert.equal(result.productionReleaseAuthorized, false);
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
-  assert.equal(
-    result.criteria.find((criterion) => criterion.id === "privilegedControlPlaneIsolation")?.status,
-    "verified",
-  );
   for (const id of [
     "deletionConcept",
     "retention",
+    "privilegedControlPlaneIsolation",
+  ]) {
+    assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "verified");
+  }
+  for (const id of [
     "auditSecurityLogging",
     "dataRegion",
     "dpa",

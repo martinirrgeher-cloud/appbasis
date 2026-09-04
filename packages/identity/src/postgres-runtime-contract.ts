@@ -13,8 +13,13 @@ export interface IdentityPostgresRuntimeSqlClient {
   ): PromiseLike<readonly Record<string, unknown>[]>;
 }
 
+export interface IdentityPostgresLifecycleOwner {
+  disableIdentity(identityId: string): Promise<unknown>;
+}
+
 export interface PostgresIdentityApplicationRuntime {
   readonly identity: IdentityHttpService;
+  readonly lifecycleIdentity: IdentityPostgresLifecycleOwner;
   readonly sql: IdentityPostgresRuntimeSqlClient;
   close(): Promise<void>;
 }

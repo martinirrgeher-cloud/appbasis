@@ -1,0 +1,345 @@
+name: M5 ULC Protected Lifecycle Operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Choose preflight for read-only binding verification or retention for the destructive canonical retention run'
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - retention
+      confirmation:
+        description: 'Preflight: VERIFY-ULC-M5-LIFECYCLE-BINDING; retention: RUN-ULC-M5-PRODUCTION-RETENTION'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  protected-lifecycle-operation:
+    name: Execute protected ULC lifecycle operation
+    if: github.ref == 'refs/heads/main'
+    environment: m4-dr
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Require exact protected lifecycle approval
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo 'ULC protected lifecycle operations must run from main.' >&2
+            exit 1
+          }
+          case "$OPERATION" in
+            preflight)
+              test "$CONFIRMATION" = "VERIFY-ULC-M5-LIFECYCLE-BINDING" || {
+                echo 'Exact read-only lifecycle-binding confirmation is required.' >&2
+                exit 1
+              }
+              ;;
+            retention)
+              test "$CONFIRMATION" = "RUN-ULC-M5-PRODUCTION-RETENTION" || {
+                echo 'Exact destructive production-retention confirmation is required.' >&2
+                exit 1
+              }
+              ;;
+            *)
+              echo 'Unsupported protected lifecycle operation.' >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify exact repository contracts
+        run: pnpm run verify:repo
+
+      - name: Validate and mask protected inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_WRITE_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_ADMIN_SESSION: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_SESSION }}
+        run: |
+          set -euo pipefail
+          for name in \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_API_TOKEN \
+            CLOUDFLARE_API_WRITE_TOKEN \
+            ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET \
+            ULC_LINZ_PRODUCTION_ADMIN_SESSION
+          do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+          node --input-type=module <<'NODE'
+          import { parseUlcLinzProductionDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          const secret = process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET ?? '';
+          if (secret.length < 32 || secret !== secret.trim()) {
+            throw new Error('ULC production Better Auth secret is invalid.');
+          }
+          const administrativeSession = process.env.ULC_LINZ_PRODUCTION_ADMIN_SESSION ?? '';
+          if (administrativeSession.length === 0 || administrativeSession !== administrativeSession.trim()) {
+            throw new Error('ULC production administrative session is invalid.');
+          }
+          NODE
+
+      - name: Resolve canonical production Hyperdrive
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          app="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          test -n "$app" || { echo 'Canonical production Hyperdrive did not resolve.' >&2; exit 1; }
+          echo "::add-mask::$app"
+          printf 'APP_HYPERDRIVE_ID=%s\n' "$app" >> "$GITHUB_ENV"
+
+      - name: Require existing workers.dev account subdomain
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          state="$RUNNER_TEMP/workers-subdomain-before.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$state"
+          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE' >> "$GITHUB_ENV"
+          import { readFileSync } from 'node:fs';
+          const response = JSON.parse(readFileSync(process.env.SUBDOMAIN_STATE, 'utf8'));
+          const subdomain = response?.result?.subdomain;
+          if (response?.success !== true || typeof subdomain !== 'string' || !/^[A-Za-z0-9-]{1,63}$/.test(subdomain)) {
+            throw new Error('Protected lifecycle operation refuses remote execution without an existing workers.dev account subdomain.');
+          }
+          process.stdout.write(`WORKERS_DEV_SUBDOMAIN_BEFORE=${subdomain}\n`);
+          NODE
+
+      - name: Render isolated protected lifecycle harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          HARNESS="$GITHUB_WORKSPACE/apps/ulc-linz/m5-protected-lifecycle.generated.ts"
+          cat > "$HARNESS" <<'TS'
+          import { createUlcLinzProtectedLifecycleOperations } from './worker/protected-lifecycle-operations';
+
+          type LifecycleEnv = {
+            HYPERDRIVE?: { connectionString?: unknown };
+            BETTER_AUTH_SECRET?: unknown;
+            ADMINISTRATIVE_SESSION?: unknown;
+            LIFECYCLE_OPERATION_TOKEN?: unknown;
+          };
+
+          export default {
+            async fetch(request: Request, env: LifecycleEnv): Promise<Response> {
+              const url = new URL(request.url);
+              const expectedToken = env.LIFECYCLE_OPERATION_TOKEN;
+              const suppliedToken = request.headers.get('x-appbasis-lifecycle-token');
+              if (
+                request.method !== 'POST' ||
+                url.pathname !== '/__appbasis/m5/protected-lifecycle' ||
+                typeof expectedToken !== 'string' ||
+                expectedToken.length < 32 ||
+                suppliedToken !== expectedToken
+              ) {
+                return new Response(null, { status: 404 });
+              }
+              const connectionString = env.HYPERDRIVE?.connectionString;
+              const secret = env.BETTER_AUTH_SECRET;
+              const administrativeSessionToken = env.ADMINISTRATIVE_SESSION;
+              if (
+                typeof connectionString !== 'string' ||
+                connectionString.length === 0 ||
+                typeof secret !== 'string' ||
+                secret.length < 32 ||
+                typeof administrativeSessionToken !== 'string' ||
+                administrativeSessionToken.length === 0
+              ) {
+                return new Response(null, { status: 503 });
+              }
+              const operation = request.headers.get('x-appbasis-lifecycle-operation');
+              const lifecycle = await createUlcLinzProtectedLifecycleOperations({
+                connectionString,
+                baseURL: 'https://app.ulc-linz.at',
+                secret,
+                administrativeSessionToken,
+              });
+              try {
+                if (operation === 'preflight') {
+                  await lifecycle.verifyBinding();
+                  return Response.json({ status: 'verified' });
+                }
+                if (operation === 'retention') {
+                  const result = await lifecycle.runRetention();
+                  return Response.json({
+                    status: 'completed',
+                    deletedCount: result.deletedIdentityIds.length,
+                    exceptionCount: result.exceptionIdentityIds.length,
+                    purgedAppDeletionMarkers: result.purgedAppDeletionMarkers,
+                    purgedIdentityDeletionTombstones: result.purgedIdentityDeletionTombstones,
+                    purgedLifecycleAuditEvents: result.purgedLifecycleAuditEvents,
+                  });
+                }
+                return new Response(null, { status: 404 });
+              } catch {
+                return new Response(null, { status: 503 });
+              } finally {
+                await lifecycle.close().catch(() => {});
+              }
+            },
+          };
+          TS
+          CONFIG="$RUNNER_TEMP/m5-protected-lifecycle.wrangler.json"
+          CONFIG="$CONFIG" HARNESS="$HARNESS" node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          import { renderGeneratedProductionWranglerConfig } from './tooling/generated-production-deploy-config.mjs';
+          const expected = renderGeneratedProductionWranglerConfig({
+            appId: 'ulc-linz',
+            hyperdriveId: process.env.APP_HYPERDRIVE_ID,
+            securityLogHyperdriveId: 'unused-protected-lifecycle-binding',
+            baseURL: 'https://app.ulc-linz.at',
+            entrypoint: './worker/index.ts',
+          });
+          const config = {
+            name: 'appbasis-ulc-linz-m5-protected-lifecycle',
+            main: process.env.HARNESS,
+            compatibility_date: expected.compatibility_date,
+            compatibility_flags: expected.compatibility_flags,
+            hyperdrive: [{ binding: 'HYPERDRIVE', id: process.env.APP_HYPERDRIVE_ID }],
+            dev: { ip: '127.0.0.1', port: 8787 },
+          };
+          writeFileSync(process.env.CONFIG, `${JSON.stringify(config)}\n`, { mode: 0o600 });
+          NODE
+          printf 'LIFECYCLE_WRANGLER_CONFIG=%s\n' "$CONFIG" >> "$GITHUB_ENV"
+
+      - name: Execute isolated protected lifecycle operation
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_ADMIN_SESSION: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_SESSION }}
+        run: |
+          set -euo pipefail
+          operation_token="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(32).toString('hex'))")"
+          echo "::add-mask::$operation_token"
+          log="$RUNNER_TEMP/m5-protected-lifecycle-wrangler.log"
+          pnpm --dir apps/reference exec wrangler dev --remote \
+            --config "$LIFECYCLE_WRANGLER_CONFIG" \
+            --ip 127.0.0.1 \
+            --port 8787 \
+            --var "BETTER_AUTH_SECRET:$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET" \
+            --var "ADMINISTRATIVE_SESSION:$ULC_LINZ_PRODUCTION_ADMIN_SESSION" \
+            --var "LIFECYCLE_OPERATION_TOKEN:$operation_token" > "$log" 2>&1 &
+          dev_pid=$!
+          cleanup() { kill "$dev_pid" 2>/dev/null || true; wait "$dev_pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+          ready=false
+          for _ in $(seq 1 60); do
+            if curl --silent --show-error --connect-timeout 1 --max-time 2 -o /dev/null http://127.0.0.1:8787/; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$dev_pid" 2>/dev/null; then
+              sed -n '1,120p' "$log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$ready" = true || { sed -n '1,120p' "$log" >&2; exit 1; }
+          body="$RUNNER_TEMP/m5-protected-lifecycle-result.json"
+          status="$(curl --silent --show-error --connect-timeout 5 --max-time 120 \
+            -o "$body" -w '%{http_code}' -X POST \
+            -H "x-appbasis-lifecycle-token: $operation_token" \
+            -H "x-appbasis-lifecycle-operation: $OPERATION" \
+            http://127.0.0.1:8787/__appbasis/m5/protected-lifecycle)"
+          test "$status" = "200" || {
+            echo 'Protected ULC lifecycle operation failed.' >&2
+            exit 1
+          }
+          RESULT_PATH="$body" OPERATION="$OPERATION" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const value = JSON.parse(readFileSync(process.env.RESULT_PATH, 'utf8'));
+          if (process.env.OPERATION === 'preflight') {
+            if (value?.status !== 'verified' || Object.keys(value).length !== 1) throw new Error('Lifecycle preflight result is invalid.');
+          } else {
+            const fields = ['deletedCount', 'exceptionCount', 'purgedAppDeletionMarkers', 'purgedIdentityDeletionTombstones', 'purgedLifecycleAuditEvents'];
+            if (value?.status !== 'completed' || fields.some((field) => !Number.isSafeInteger(value[field]) || value[field] < 0)) {
+              throw new Error('Lifecycle retention result is invalid.');
+            }
+          }
+          NODE
+          cleanup
+          trap - EXIT
+
+      - name: Verify workers.dev account subdomain remained unchanged
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          state="$RUNNER_TEMP/workers-subdomain-after.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$state"
+          SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const response = JSON.parse(readFileSync(process.env.SUBDOMAIN_STATE, 'utf8'));
+          if (response?.success !== true || response?.result?.subdomain !== process.env.WORKERS_DEV_SUBDOMAIN_BEFORE) {
+            throw new Error('Protected lifecycle operation changed the workers.dev account subdomain state.');
+          }
+          NODE
+
+      - name: Record sanitized protected lifecycle outcome
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          if test "$OPERATION" = "preflight"; then
+            echo 'ULC protected lifecycle binding preflight passed through an isolated Cloudflare remote harness with an authorized technical administrator session. No retention or deletion write was requested.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'ULC protected production retention completed through the canonical app-owned lifecycle executor. Result details remain intentionally omitted from the workflow summary.' >> "$GITHUB_STEP_SUMMARY"
+          fi
