@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const WORKFLOW_PATH = ".github/workflows/m5-ulc-protected-lifecycle-operations.yml";
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
+const WORKFLOW_GIT_BLOB_SHA = "92a22df1803897806638de58f886cc365d33cf57";
+const EXECUTOR_GIT_BLOB_SHA = "3c3e8feeaff7b5898b6b2bd69e853be2295e0154";
 
 const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
   "name: M5 ULC Protected Lifecycle Operations",
@@ -48,6 +51,12 @@ export async function verifyUlcLinzM5LifecycleExecutorBinding(repositoryRoot) {
     readFile(join(root, PUBLIC_ENTRYPOINT_PATH), "utf8"),
   ]);
 
+  if (gitBlobSha(workflow) !== WORKFLOW_GIT_BLOB_SHA) {
+    throw new Error("ULC protected lifecycle workflow baseline drifted.");
+  }
+  if (gitBlobSha(executor) !== EXECUTOR_GIT_BLOB_SHA) {
+    throw new Error("ULC protected lifecycle executor baseline drifted.");
+  }
   if (!REQUIRED_WORKFLOW_ANCHORS.every((anchor) => workflow.includes(anchor))) {
     throw new Error("ULC protected lifecycle workflow contract is incomplete.");
   }
@@ -69,4 +78,12 @@ export async function verifyUlcLinzM5LifecycleExecutorBinding(repositoryRoot) {
     deletionExecutorBound: true,
     retentionExecutorBound: true,
   });
+}
+
+function gitBlobSha(content) {
+  const bytes = Buffer.from(content, "utf8");
+  return createHash("sha1")
+    .update(`blob ${bytes.length}\0`, "utf8")
+    .update(bytes)
+    .digest("hex");
 }
