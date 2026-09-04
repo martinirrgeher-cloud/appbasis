@@ -42,6 +42,11 @@ describe("ULC production technical administrator bootstrap", () => {
           "postgresql://owner:pass@ep-other.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require",
       },
       { ...ENV, ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: "too-short" },
+      {
+        ...ENV,
+        ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET:
+          `${ENV.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET} `,
+      },
       { ...ENV, ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: "short" },
     ]) {
       expect(() => readUlcLinzProductionAdminBootstrapEnvironment(env)).toThrow(
