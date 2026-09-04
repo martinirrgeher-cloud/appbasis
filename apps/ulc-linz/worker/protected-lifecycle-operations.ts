@@ -75,7 +75,7 @@ export async function createUlcLinzProtectedLifecycleOperations(
     );
 
     const dependencies = Object.freeze({
-      identity: identityRuntime.identity,
+      identity: identityRuntime.lifecycleIdentity,
       identityDeletion,
       permissions,
       accessAdministration,
