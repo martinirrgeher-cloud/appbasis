@@ -10,6 +10,7 @@ import { deriveUlcLinzM5JProductionEvidence } from "./factory-ui/ulc-linz-produc
 const ROOT_FIELDS = Object.freeze(["schemaVersion", "application", "environment", "observedAt", "definition", "ownerInputs"]);
 const UNSAFE_KEY = /authorization|cookie|password|secret|token|credential|connection.?string|database.?url|api[_-]?key|private.?key|request.?body|response.?body/i;
 const UNSAFE_VALUE = [/^postgres(?:ql)?:\/\//i, /^bearer\s+/i, /^basic\s+/i, /-----BEGIN [A-Z ]*PRIVATE KEY-----/];
+const MAX_LIFECYCLE_BINDING_LEAD_MS = 45 * 60 * 1000;
 
 export async function evaluateUlcLinzM5ProductionEvidenceBundle(
   repositoryRoot,
@@ -34,8 +35,10 @@ export async function evaluateUlcLinzM5ProductionEvidenceBundle(
   }
 
   const resolvedRepositoryRoot = resolve(repositoryRoot);
-  const lifecycleExecutorBinding =
-    await verifyUlcLinzM5LifecycleExecutorBinding(resolvedRepositoryRoot);
+  const lifecycleExecutorBinding = await verifyUlcLinzM5LifecycleExecutorBinding(
+    resolvedRepositoryRoot,
+    { now: () => nowDate.getTime() },
+  );
   const ownerInputs = bindProtectedLifecycleExecutors(
     root.ownerInputs,
     lifecycleExecutorBinding,
@@ -61,6 +64,7 @@ export async function evaluateUlcLinzM5ProductionEvidenceBundle(
     application: "ulc-linz",
     environment: "production",
     observedAt: root.observedAt,
+    lifecycleBindingVerifiedAt: lifecycleExecutorBinding.verifiedAt,
     resourceBindingFingerprint,
     status: readiness.status,
     securityPrivacyReady: readiness.productionReady,
@@ -95,7 +99,9 @@ function bindProtectedLifecycleExecutors(ownerInputs, binding) {
     Array.isArray(ownerInputs) ||
     binding?.executionBoundary !== "protected-operations" ||
     binding?.deletionExecutorBound !== true ||
-    binding?.retentionExecutorBound !== true
+    binding?.retentionExecutorBound !== true ||
+    typeof binding?.verifiedHeadSha !== "string" ||
+    !/^[0-9a-f]{40}$/.test(binding.verifiedHeadSha)
   ) {
     throw new Error("ULC production lifecycle executor binding is invalid.");
   }
@@ -111,6 +117,27 @@ function bindProtectedLifecycleExecutors(ownerInputs, binding) {
     activation.executionBoundary !== "protected-operations"
   ) {
     throw new Error("ULC production lifecycle activation input is invalid.");
+  }
+
+  const bindingVerifiedAt = canonicalTimestamp(
+    binding.verifiedAt,
+    "lifecycleBindingVerifiedAt",
+  );
+  const activationObservedAt = canonicalTimestamp(
+    activation.observedAt,
+    "lifecycleActivationObservedAt",
+  );
+  const activationValidUntil = canonicalTimestamp(
+    activation.validUntilOrReviewAt,
+    "lifecycleActivationValidUntilOrReviewAt",
+  );
+  if (
+    activationValidUntil.getTime() < activationObservedAt.getTime() ||
+    bindingVerifiedAt.getTime() > activationValidUntil.getTime() ||
+    activationObservedAt.getTime() - bindingVerifiedAt.getTime() >
+      MAX_LIFECYCLE_BINDING_LEAD_MS
+  ) {
+    throw new Error("ULC production lifecycle live binding evidence is outside the correlated evidence window.");
   }
 
   return {
@@ -141,7 +168,7 @@ function exactRecord(value, fields, label) {
   if (
     keys.length !== fields.length ||
     fields.some((field) => !Object.hasOwn(descriptors, field)) ||
-    keys.some((field) => !fields.includes(field)) ||
+    keys.some((field) => !fields.includes(key)) ||
     Object.values(descriptors).some(
       (descriptor) =>
         !Object.hasOwn(descriptor, "value") ||
