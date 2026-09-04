@@ -74,7 +74,7 @@ describe("ULC production technical administrator bootstrap", () => {
     });
   });
 
-  it("keeps the workflow main-only, protected and free of deploy or retention actions", async () => {
+  it("keeps the workflow main-only, protected, serialized and free of deploy or retention actions", async () => {
     const workflow = await readFile(
       new URL("../../../.github/workflows/m5-ulc-production-admin-bootstrap.yml", import.meta.url),
       "utf8",
@@ -83,6 +83,8 @@ describe("ULC production technical administrator bootstrap", () => {
     for (const anchor of [
       "environment: m4-dr",
       "github.ref == 'refs/heads/main'",
+      "group: m6-ulc-production-runtime-config",
+      "cancel-in-progress: false",
       "CREATE-ULC-M5-PRODUCTION-ADMIN",
       "ULC_LINZ_PRODUCTION_ADMIN_PASSWORD",
       "ULC_LINZ_PRODUCTION_ADMIN_BOOTSTRAP_TARGET: ulc-linz-production",
