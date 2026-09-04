@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { deriveUlcLinzM5GResourceBindingFingerprint } from "./ulc-linz-m5-provider-bound-evidence.mjs";
+import { verifyUlcLinzM5LifecycleExecutorBinding } from "./ulc-linz-m5-lifecycle-executor-binding.mjs";
 import { evaluateProductionReadiness } from "./factory-ui/production-readiness.mjs";
 import { deriveUlcLinzM5JProductionEvidence } from "./factory-ui/ulc-linz-production-readiness-evidence.mjs";
 
@@ -32,14 +33,21 @@ export async function evaluateUlcLinzM5ProductionEvidenceBundle(
     throw new Error("ULC production M5 evidence bundle is from the future.");
   }
 
-  const evidence = await deriveUlcLinzM5JProductionEvidence(
-    resolve(repositoryRoot),
-    root.definition,
+  const resolvedRepositoryRoot = resolve(repositoryRoot);
+  const lifecycleExecutorBinding =
+    await verifyUlcLinzM5LifecycleExecutorBinding(resolvedRepositoryRoot);
+  const ownerInputs = bindProtectedLifecycleExecutors(
     root.ownerInputs,
+    lifecycleExecutorBinding,
+  );
+  const evidence = await deriveUlcLinzM5JProductionEvidence(
+    resolvedRepositoryRoot,
+    root.definition,
+    ownerInputs,
     { now: nowDate },
   );
   const readiness = evaluateProductionReadiness(evidence);
-  const providerBoundEvidenceInput = root.ownerInputs?.providerBoundEvidenceInput;
+  const providerBoundEvidenceInput = ownerInputs?.providerBoundEvidenceInput;
   const resourceBindingFingerprint =
     providerBoundEvidenceInput === undefined
       ? null
@@ -78,6 +86,44 @@ export function formatUlcLinzM5ReadinessDiagnostic(result) {
     .map((criterion) => criterion?.id)
     .filter((id) => typeof id === "string" && /^[a-zA-Z][a-zA-Z0-9]*$/.test(id));
   return `ULC M5 readiness blocked: ${result.verifiedCount}/${result.requiredCount}; open criteria: ${openCriteria.join(",") || "unknown"}.`;
+}
+
+function bindProtectedLifecycleExecutors(ownerInputs, binding) {
+  if (
+    ownerInputs === null ||
+    typeof ownerInputs !== "object" ||
+    Array.isArray(ownerInputs) ||
+    binding?.executionBoundary !== "protected-operations" ||
+    binding?.deletionExecutorBound !== true ||
+    binding?.retentionExecutorBound !== true
+  ) {
+    throw new Error("ULC production lifecycle executor binding is invalid.");
+  }
+  const lifecycleInput = ownerInputs.lifecycleActivationEvidenceInput;
+  const activation = lifecycleInput?.activationEvidence;
+  if (
+    lifecycleInput === null ||
+    typeof lifecycleInput !== "object" ||
+    Array.isArray(lifecycleInput) ||
+    activation === null ||
+    typeof activation !== "object" ||
+    Array.isArray(activation) ||
+    activation.executionBoundary !== "protected-operations"
+  ) {
+    throw new Error("ULC production lifecycle activation input is invalid.");
+  }
+
+  return {
+    ...ownerInputs,
+    lifecycleActivationEvidenceInput: {
+      ...lifecycleInput,
+      activationEvidence: {
+        ...activation,
+        deletionExecutorBound: true,
+        retentionExecutorBound: true,
+      },
+    },
+  };
 }
 
 function exactRecord(value, fields, label) {
