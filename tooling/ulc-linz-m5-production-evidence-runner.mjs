@@ -16,7 +16,7 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 export async function evaluateUlcLinzM5ProductionEvidenceBundle(
   repositoryRoot,
   bundle,
-  { now = new Date(), expectedHeadSha = defaultEvidenceHeadSha() } = {},
+  { now = new Date(), expectedHeadSha = null } = {},
 ) {
   const root = exactRecord(bundle, ROOT_FIELDS, "ULC production M5 evidence bundle");
   assertSafeTree(root);
@@ -155,16 +155,6 @@ function bindProtectedLifecycleExecutors(ownerInputs, binding, evidenceHeadSha) 
       },
     },
   };
-}
-
-function defaultEvidenceHeadSha() {
-  if (
-    process.env.GITHUB_ACTIONS === "true" &&
-    process.env.GITHUB_EVENT_NAME === "workflow_dispatch"
-  ) {
-    return requiredEvidenceHeadSha(process.env.GITHUB_SHA);
-  }
-  return null;
 }
 
 function optionalEvidenceHeadSha(value) {
