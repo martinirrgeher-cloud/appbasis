@@ -1,8 +1,7 @@
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
-import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
 import { PostgresIdentityDeletionRetention } from "@appbasis/identity/postgres-deletion-retention";
-import { createIdentityRuntime } from "@appbasis/identity/server";
+import { createPostgresIdentityApplicationRuntime } from "@appbasis/identity/postgres-runtime";
 import {
   PostgresPermissionStore,
   PostgresPrincipalAccessAdministration,
@@ -24,6 +23,14 @@ export interface UlcLinzProtectedLifecycleOperations {
   close(): Promise<void>;
 }
 
+type LifecycleSqlClient =
+  ConstructorParameters<typeof PostgresPermissionStore>[0] &
+  ConstructorParameters<typeof PostgresPrincipalAccessAdministration>[0] &
+  ConstructorParameters<typeof PostgresPrincipalLifecycleAdministration>[0] &
+  ConstructorParameters<typeof PostgresIdentityDeletion>[0] &
+  ConstructorParameters<typeof PostgresIdentityDeletionRetention>[0] &
+  ConstructorParameters<typeof PostgresUlcLinzScopePersistence>[0];
+
 /**
  * Protected control-plane composition for the current ULC lifecycle owners.
  *
@@ -37,35 +44,38 @@ export interface UlcLinzProtectedLifecycleOperations {
 export async function createUlcLinzProtectedLifecycleOperations(
   options: UlcLinzProtectedLifecycleOptions,
 ): Promise<UlcLinzProtectedLifecycleOperations> {
-  const connection = createPostgresDatabase(requiredConnectionString(options.connectionString));
+  const connectionString = requiredConnectionString(options.connectionString);
+  const baseURL = requiredBaseURL(options.baseURL);
+  const secret = requiredSecret(options.secret);
+  const identityRuntime = await createPostgresIdentityApplicationRuntime({
+    connectionString,
+    baseURL,
+    secret,
+  });
+  const connection = createPostgresDatabase(connectionString);
+
   try {
-    const baseURL = requiredBaseURL(options.baseURL);
-    const secret = requiredSecret(options.secret);
-    const auth = createBetterAuthRuntime({
-      database: connection.database,
-      baseURL,
-      secret,
-    });
-    const identity = createIdentityRuntime({
-      auth,
-      sql: connection.client,
-      baseURL,
-    }).service;
-    const scopes = new PostgresUlcLinzScopePersistence(connection.client);
-    const permissions = new PostgresPermissionStore(connection.client);
+    // The database runtime contract intentionally exposes only the common
+    // read/query surface. The concrete runtime client is the same postgres-js
+    // client used by the existing lifecycle owners, which additionally require
+    // transactional administration methods. Keep that widening local to this
+    // protected composition boundary.
+    const lifecycleClient = connection.client as unknown as LifecycleSqlClient;
+    const scopes = new PostgresUlcLinzScopePersistence(lifecycleClient);
+    const permissions = new PostgresPermissionStore(lifecycleClient);
     const accessAdministration = new PostgresPrincipalAccessAdministration(
-      connection.client,
+      lifecycleClient,
     );
     const principalLifecycle = new PostgresPrincipalLifecycleAdministration(
-      connection.client,
+      lifecycleClient,
     );
-    const identityDeletion = new PostgresIdentityDeletion(connection.client);
+    const identityDeletion = new PostgresIdentityDeletion(lifecycleClient);
     const identityDeletionRetention = new PostgresIdentityDeletionRetention(
-      connection.client,
+      lifecycleClient,
     );
 
     const dependencies = Object.freeze({
-      identity,
+      identity: identityRuntime.identity,
       identityDeletion,
       permissions,
       accessAdministration,
@@ -93,12 +103,28 @@ export async function createUlcLinzProtectedLifecycleOperations(
         return runUlcLinzRetention(dependencies);
       },
       async close() {
-        await connection.client.end();
+        let closeError: unknown = null;
+        try {
+          await connection.client.end();
+        } catch (error) {
+          closeError = error;
+        }
+        try {
+          await identityRuntime.close();
+        } catch (error) {
+          closeError ??= error;
+        }
+        if (closeError !== null) throw closeError;
       },
     });
   } catch (error) {
     try {
       await connection.client.end();
+    } catch {
+      // Preserve the construction failure.
+    }
+    try {
+      await identityRuntime.close();
     } catch {
       // Preserve the construction failure.
     }
