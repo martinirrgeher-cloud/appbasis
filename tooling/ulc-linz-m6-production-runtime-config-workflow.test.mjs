@@ -17,9 +17,21 @@ const refreshDeployWorkflowUrl = new URL(
   "../.github/workflows/m6-ulc-private-production-refresh-deploy.yml",
   import.meta.url,
 );
+const securitySmokeWorkflowUrl = new URL(
+  "../.github/workflows/m5-ulc-private-security-smoke.yml",
+  import.meta.url,
+);
 
 async function source() {
   return readFile(workflowUrl, "utf8");
+}
+
+function workflowStep(workflow, name) {
+  const marker = `      - name: ${name}\n`;
+  const start = workflow.indexOf(marker);
+  assert.notEqual(start, -1, `Missing workflow step: ${name}`);
+  const next = workflow.indexOf("\n      - name: ", start + marker.length);
+  return workflow.slice(start, next === -1 ? workflow.length : next);
 }
 
 test("runtime refresh workflows remain bound to the protected environment", async () => {
@@ -58,6 +70,40 @@ test("runtime refresh mutations use the dedicated Cloudflare write token while p
     refreshDeployWorkflow,
     /Require exact closed runtime and exact current configured version[\s\S]*?CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/,
   );
+});
+
+test("M5 remote security smoke uses the dedicated write token only for the remote preview session", async () => {
+  const workflow = await readFile(securitySmokeWorkflowUrl, "utf8");
+  const exerciseStep = workflowStep(
+    workflow,
+    "Exercise application database and emit one denied security event",
+  );
+  const resolveStep = workflowStep(
+    workflow,
+    "Resolve exact active private production version",
+  );
+  const subdomainStep = workflowStep(
+    workflow,
+    "Verify workers.dev account subdomain remained unchanged",
+  );
+
+  assert.match(
+    exerciseStep,
+    /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_WRITE_TOKEN \}\}/,
+  );
+  assert.doesNotMatch(
+    exerciseStep,
+    /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/,
+  );
+  assert.match(exerciseStep, /wrangler dev --remote/);
+
+  for (const readStep of [resolveStep, subdomainStep]) {
+    assert.match(
+      readStep,
+      /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/,
+    );
+    assert.doesNotMatch(readStep, /CLOUDFLARE_API_WRITE_TOKEN/);
+  }
 });
 
 test("runtime refresh configuration reuses the trusted deployed version bindings without Hyperdrive inventory permission", async () => {

@@ -70,6 +70,7 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_WRITE_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL }}
           ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
@@ -81,6 +82,7 @@ jobs:
           for name in \
             CLOUDFLARE_ACCOUNT_ID \
             CLOUDFLARE_API_TOKEN \
+            CLOUDFLARE_API_WRITE_TOKEN \
             ULC_LINZ_PRODUCTION_DATABASE_URL \
             ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL \
             ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \
@@ -189,7 +191,6 @@ jobs:
           DETAIL_PATH="$detail" node --input-type=module <<'NODE' > "$RUNNER_TEMP/runtime-config.env"
           import { readFileSync } from 'node:fs';
           import { renderGeneratedProductionWranglerConfig } from './tooling/generated-production-deploy-config.mjs';
-
           const response = JSON.parse(readFileSync(process.env.DETAIL_PATH, 'utf8'));
           const runtime = response?.result?.resources?.script_runtime;
           const expected = renderGeneratedProductionWranglerConfig({
@@ -244,12 +245,10 @@ jobs:
           cat > "$HARNESS" <<'TS'
           import { createPostgresDatabase } from '@appbasis/database/postgres-runtime';
           import productionWorker from './worker/index';
-
           type SmokeEnv = {
             HYPERDRIVE?: { connectionString?: unknown };
             M5_SMOKE_PROBE_TOKEN?: unknown;
           };
-
           export default {
             async fetch(request: Request, env: SmokeEnv): Promise<Response> {
               const url = new URL(request.url);
@@ -258,11 +257,7 @@ jobs:
               }
               const expectedToken = env.M5_SMOKE_PROBE_TOKEN;
               const suppliedToken = request.headers.get('x-appbasis-m5-smoke-token');
-              if (
-                typeof expectedToken !== 'string' ||
-                expectedToken.length < 32 ||
-                suppliedToken !== expectedToken
-              ) {
+              if (typeof expectedToken !== 'string' || expectedToken.length < 32 || suppliedToken !== expectedToken) {
                 return new Response(null, { status: 404 });
               }
               const connectionString = env.HYPERDRIVE?.connectionString;
@@ -271,17 +266,10 @@ jobs:
               }
               const database = createPostgresDatabase(connectionString);
               try {
-                const rows = await database.client.unsafe(
-                  'SELECT current_database() AS database_name',
-                );
-                if (
-                  !Array.isArray(rows) ||
-                  rows.length !== 1 ||
-                  rows[0]?.database_name !== 'neondb'
-                ) {
-                  return new Response(null, { status: 503 });
-                }
-                return new Response(null, { status: 204 });
+                const rows = await database.client.unsafe('SELECT current_database() AS database_name');
+                return Array.isArray(rows) && rows.length === 1 && rows[0]?.database_name === 'neondb'
+                  ? new Response(null, { status: 204 })
+                  : new Response(null, { status: 503 });
               } catch {
                 return new Response(null, { status: 503 });
               } finally {
@@ -314,7 +302,7 @@ jobs:
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
           ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_READ_DATABASE_URL }}
         run: |
           set -euo pipefail
@@ -372,9 +360,7 @@ jobs:
             `);
             const value = rows?.[0]?.event_count;
             const normalized = typeof value === 'bigint' ? value.toString() : String(value ?? '');
-            if (!/^[0-9]+$/.test(normalized)) {
-              throw new Error('ULC security smoke baseline count is invalid.');
-            }
+            if (!/^[0-9]+$/.test(normalized)) throw new Error('ULC security smoke baseline count is invalid.');
             process.stdout.write(normalized);
           } finally {
             await database.client.end().catch(() => {});
@@ -416,8 +402,7 @@ jobs:
           SUBDOMAIN_STATE="$state" node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const response = JSON.parse(readFileSync(process.env.SUBDOMAIN_STATE, 'utf8'));
-          const subdomain = response?.result?.subdomain;
-          if (response?.success !== true || subdomain !== process.env.WORKERS_DEV_SUBDOMAIN_BEFORE) {
+          if (response?.success !== true || response?.result?.subdomain !== process.env.WORKERS_DEV_SUBDOMAIN_BEFORE) {
             throw new Error('Remote security smoke changed the workers.dev account subdomain state.');
           }
           NODE
@@ -435,10 +420,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { collectUlcLinzM5SecurityLogAccessEvidence } from './tooling/ulc-linz-m5-security-log-access-evidence.mjs';
           import { parseUlcLinzSecurityLogIngestDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
-
-          const ingest = parseUlcLinzSecurityLogIngestDatabaseUrl(
-            process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
-          );
+          const ingest = parseUlcLinzSecurityLogIngestDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL);
           const evidence = await collectUlcLinzM5SecurityLogAccessEvidence({
             productionDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
             backupDatabaseUrl: process.env.ULC_LINZ_PRODUCTION_BACKUP_DATABASE_URL,
@@ -467,4 +449,4 @@ jobs:
       - name: Record sanitized smoke outcome
         shell: bash
         run: |
-          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime. Both production Hyperdrives matched their canonical protected contracts and the exact active private production version bindings, the application Hyperdrive completed a token-guarded read-only database probe, and the denied identity request produced exactly one matching 401 SESSION_INVALID security event relative to an immediate protected-read baseline. The canonical runtime compatibility settings and least-privilege access boundary were verified, the pre-existing workers.dev account subdomain remained unchanged, and no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'ULC Linz security logging smoke passed through Cloudflare remote runtime. Provider reads used the dedicated read token while the remote preview session used only the dedicated Workers Scripts Write token. Both production Hyperdrives matched their canonical protected contracts and the exact active private production version bindings, the application Hyperdrive completed a token-guarded read-only database probe, and the denied identity request produced exactly one matching 401 SESSION_INVALID security event relative to an immediate protected-read baseline. The canonical runtime compatibility settings and least-privilege access boundary were verified, the pre-existing workers.dev account subdomain remained unchanged, and no production route, Worker workers.dev exposure, custom domain or release state was enabled.' >> "$GITHUB_STEP_SUMMARY"
