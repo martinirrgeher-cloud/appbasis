@@ -17,6 +17,38 @@ const INVENTORY = JSON.parse(
 );
 const PRODUCTION_TABLES = INVENTORY.persistentTables.map((entry) => entry.id);
 
+const REAL_FETCH = globalThis.fetch;
+globalThis.fetch = async (input, options) => {
+  const url = String(input);
+  if (url.endsWith("/repos/martinirrgeher-cloud/appbasis/commits/main")) {
+    return Response.json({ sha: GITHUB_SHA });
+  }
+  if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+    const updatedAt = new Date(Date.now() - 1_000).toISOString();
+    return Response.json({
+      total_count: 1,
+      workflow_runs: [{
+        id: 1,
+        run_attempt: 1,
+        name: "M5 ULC Protected Lifecycle Operations",
+        path: ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
+        event: "workflow_dispatch",
+        head_branch: "main",
+        head_sha: GITHUB_SHA,
+        status: "completed",
+        conclusion: "success",
+        created_at: updatedAt,
+        updated_at: updatedAt,
+        repository: { full_name: "martinirrgeher-cloud/appbasis" },
+      }],
+    });
+  }
+  return REAL_FETCH(input, options);
+};
+test.after(() => {
+  globalThis.fetch = REAL_FETCH;
+});
+
 function response(value) {
   return { ok: true, async json() { return structuredClone(value); } };
 }
