@@ -14,6 +14,7 @@ export interface IdentityPostgresRuntimeSqlClient {
 }
 
 export interface IdentityPostgresLifecycleOwner {
+  assertAdministrativeSessionAuthorized(): Promise<void>;
   disableIdentity(identityId: string): Promise<unknown>;
 }
 
@@ -28,6 +29,7 @@ export interface PostgresIdentityApplicationRuntimeOptions {
   readonly connectionString: string;
   readonly baseURL: string;
   readonly secret: string;
+  readonly administrativeSessionToken?: string;
 }
 
 export declare function createPostgresIdentityApplicationRuntime(
