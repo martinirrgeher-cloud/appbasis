@@ -16,18 +16,22 @@ export function evaluateUlcLinzM6ProductionDomainEvidence(payload) {
     return Object.freeze({ productionDomainReady: false });
   }
 
-  const matches = payload.result.filter(
-    (entry) =>
-      isPlainObject(entry) &&
-      entry.hostname === TARGET_HOSTNAME &&
-      entry.service === TARGET_WORKER &&
-      typeof entry.id === "string" &&
-      entry.id.length > 0 &&
-      typeof entry.zone_id === "string" &&
-      entry.zone_id.length > 0,
+  const hostnameBindings = payload.result.filter(
+    (entry) => isPlainObject(entry) && entry.hostname === TARGET_HOSTNAME,
   );
+  if (hostnameBindings.length !== 1) {
+    return Object.freeze({ productionDomainReady: false });
+  }
 
-  return Object.freeze({ productionDomainReady: matches.length === 1 });
+  const [binding] = hostnameBindings;
+  const productionDomainReady =
+    binding.service === TARGET_WORKER &&
+    typeof binding.id === "string" &&
+    binding.id.length > 0 &&
+    typeof binding.zone_id === "string" &&
+    binding.zone_id.length > 0;
+
+  return Object.freeze({ productionDomainReady });
 }
 
 function isPlainObject(value) {
