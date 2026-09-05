@@ -89,7 +89,8 @@ jobs:
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains?hostname=$TARGET_HOSTNAME" > "$before"
-          count="$(jq --arg h "$TARGET_HOSTNAME" '[.result[]? | select(.hostname == $h)] | length' "$before")"
+          jq -e '.success == true and (.result | type == "array")' "$before" >/dev/null || { echo 'Production domain inventory is malformed or unsuccessful.' >&2; exit 1; }
+          count="$(jq --arg h "$TARGET_HOSTNAME" '[.result[] | select(.hostname == $h)] | length' "$before")"
           test "$count" -le 1 || { echo 'Production hostname is bound more than once.' >&2; exit 1; }
           if test "$count" = 1; then
             service="$(jq -r --arg h "$TARGET_HOSTNAME" '.result[] | select(.hostname == $h) | .service' "$before")"
