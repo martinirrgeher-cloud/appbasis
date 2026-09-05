@@ -115,6 +115,8 @@ test("M6 post-deploy smoke stays dedicated, bounded and validates both productio
     "BetterAuthIdentityBackend",
     "await backend.endSession(sessionToken)",
     'const SESSION_COOKIE_NAME = "better-auth.session_token"',
+    'const HTTP_ONLY_PREFIX = "#HttpOnly_"',
+    "line.startsWith(HTTP_ONLY_PREFIX)",
     "Expected exactly one production HTTP smoke session cookie.",
   ]) {
     assert.equal(
