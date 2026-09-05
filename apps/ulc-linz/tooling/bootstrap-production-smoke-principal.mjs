@@ -11,6 +11,7 @@ import {
 } from "@appbasis/permissions";
 
 import { replaceUlcLinzPrincipalAccess } from "../../../tooling/ulc-linz-m5-principal-access-orchestration.mjs";
+import { parseUlcLinzProductionDatabaseUrl } from "../../../tooling/ulc-linz-m6-production-hyperdrive.mjs";
 
 export const ULC_LINZ_M6_SMOKE_PRINCIPAL = Object.freeze({
   username: "ulc.m6.smoke",
@@ -20,8 +21,12 @@ export const ULC_LINZ_M6_SMOKE_PRINCIPAL = Object.freeze({
   sourceRole: "trainer",
 });
 
+const PRODUCTION_ADMIN_USERNAME = "ulc.production.admin";
+
 export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.env) {
   const databaseUrl = required(env.ULC_LINZ_PRODUCTION_DATABASE_URL, "ULC_LINZ_PRODUCTION_DATABASE_URL");
+  parseUlcLinzProductionDatabaseUrl(databaseUrl);
+
   const authSecret = required(env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET, "ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET");
   const adminPassword = required(env.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD, "ULC_LINZ_PRODUCTION_ADMIN_PASSWORD");
   const bootstrapPassword = required(
@@ -40,11 +45,13 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
     const auth = createBetterAuthRuntime({ database: connection.database, baseURL, secret: authSecret });
     const bootstrapBackend = new BetterAuthIdentityBackend({ auth, sql: connection.client, baseURL });
     const adminSession = await bootstrapBackend.signInWithUsername({
-      username: "ulc.production.admin",
+      username: PRODUCTION_ADMIN_USERNAME,
       password: adminPassword,
     });
 
     try {
+      await assertReusableProductionAdminEvidence(connection.client, adminSession.identityId);
+
       const backend = new BetterAuthIdentityBackend({
         auth,
         sql: connection.client,
@@ -147,6 +154,24 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
     }
   } finally {
     await connection.client.end();
+  }
+}
+
+async function assertReusableProductionAdminEvidence(sql, identityId) {
+  const rows = await sql`
+    SELECT username, role, banned
+    FROM "user"
+    WHERE id = ${identityId}
+    LIMIT 1
+  `;
+  const admin = rows[0];
+  if (
+    admin === undefined ||
+    admin.username !== PRODUCTION_ADMIN_USERNAME ||
+    admin.role !== "admin" ||
+    admin.banned === true
+  ) {
+    throw new Error("Reusable production administrator evidence is invalid.");
   }
 }
 
