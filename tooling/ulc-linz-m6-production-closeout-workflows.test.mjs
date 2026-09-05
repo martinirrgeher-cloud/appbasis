@@ -73,6 +73,8 @@ test("M6 post-deploy smoke stays dedicated, bounded and validates both productio
     "/api/health",
     "/api/auth/sign-in",
     "/api/auth/session",
+    "/api/auth/sign-out",
+    "trap cleanup EXIT",
     "evaluateUlcLinzM6ProductionDomainEvidence",
     "final production release: not authorized",
   ]) {
@@ -88,6 +90,8 @@ test("M6 post-deploy smoke stays dedicated, bounded and validates both productio
     "appTarget.user === securityTarget.user",
     "appTarget.host !== securityTarget.host",
     "appTarget.database !== securityTarget.database",
+    "BetterAuthIdentityBackend",
+    "await backend.endSession(smokeSessionToken)",
     "assertUlcLinzModuleAccess",
     'const ALLOWED_MODULE = "countdown"',
     'const DENIED_MODULE = "__m6_smoke_unknown__"',
