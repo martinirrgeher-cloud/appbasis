@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "@appbasis/database/node-runtime";
@@ -23,7 +24,15 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
   const databaseUrl = required(env.ULC_LINZ_PRODUCTION_DATABASE_URL, "ULC_LINZ_PRODUCTION_DATABASE_URL");
   const authSecret = required(env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET, "ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET");
   const adminPassword = required(env.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD, "ULC_LINZ_PRODUCTION_ADMIN_PASSWORD");
+  const bootstrapPassword = required(
+    env.ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD,
+    "ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD",
+  );
   const smokePassword = required(env.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD, "ULC_LINZ_PRODUCTION_SMOKE_PASSWORD");
+  if (bootstrapPassword === smokePassword) {
+    throw new Error("M6 smoke bootstrap and steady-state passwords must be distinct.");
+  }
+
   const baseURL = "https://app.ulc-linz.at";
   const connection = createPostgresDatabase(databaseUrl);
 
@@ -51,10 +60,39 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
       const created = await identity.service.createInitialUser({
         username: ULC_LINZ_M6_SMOKE_PRINCIPAL.username,
         displayName: ULC_LINZ_M6_SMOKE_PRINCIPAL.displayName,
-        temporaryPassword: smokePassword,
+        temporaryPassword: bootstrapPassword,
       });
-      const smokePrincipalId = principalId(created.identityId);
 
+      if (created.mustChangePassword === true) {
+        const initial = await identity.service.signInWithUsername({
+          username: ULC_LINZ_M6_SMOKE_PRINCIPAL.username,
+          password: bootstrapPassword,
+        });
+        if (initial.identity.identityId !== created.identityId || initial.access !== "password-change-required") {
+          throw new Error("M6 smoke principal bootstrap session is inconsistent.");
+        }
+        const changed = await identity.service.changeRequiredPassword({
+          sessionToken: initial.sessionToken,
+          currentPassword: bootstrapPassword,
+          newPassword: smokePassword,
+          idempotencyKey: randomUUID(),
+        });
+        if (changed.identity.identityId !== created.identityId || changed.access !== "full") {
+          throw new Error("M6 smoke principal password transition did not reach full access.");
+        }
+        await backend.endSession(changed.sessionToken);
+      }
+
+      const steadyState = await identity.service.signInWithUsername({
+        username: ULC_LINZ_M6_SMOKE_PRINCIPAL.username,
+        password: smokePassword,
+      });
+      if (steadyState.identity.identityId !== created.identityId || steadyState.access !== "full") {
+        throw new Error("M6 smoke principal steady-state credential is invalid.");
+      }
+      await backend.endSession(steadyState.sessionToken);
+
+      const smokePrincipalId = principalId(created.identityId);
       await connection.client.begin(async (tx) => {
         await tx`
           INSERT INTO ulc_linz_membership (
@@ -123,7 +161,7 @@ const invokedPath = process.argv[1];
 if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
   try {
     await bootstrapUlcLinzM6ProductionSmokePrincipal();
-    console.log("ULC M6 production smoke principal is provisioned.");
+    console.log("ULC M6 production smoke principal is provisioned for steady-state smoke use.");
   } catch {
     console.error("ULC M6 production smoke principal provisioning failed.");
     process.exitCode = 1;
