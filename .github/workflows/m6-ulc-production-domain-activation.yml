@@ -1,0 +1,136 @@
+name: M6 ULC Production Domain Activation
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type ACTIVATE-ULC-PRODUCTION-DOMAIN to expose app.ulc-linz.at only after exact-head M5 evidence'
+        required: true
+        type: string
+      m5_run_id:
+        description: 'Successful M5 ULC Production Evidence run ID on this exact main head'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  activate-domain:
+    name: Activate exact ULC production domain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: m4-dr
+    env:
+      TARGET_HOSTNAME: app.ulc-linz.at
+      TARGET_WORKER: appbasis-ulc-linz-production
+
+    steps:
+      - name: Require explicit main dispatch
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          M5_RUN_ID: ${{ inputs.m5_run_id }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || { echo 'Domain activation must be dispatched from main.' >&2; exit 1; }
+          test "$CONFIRMATION" = "ACTIVATE-ULC-PRODUCTION-DOMAIN" || { echo 'Exact production domain activation confirmation is required.' >&2; exit 1; }
+          [[ "$M5_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 run ID is invalid.' >&2; exit 1; }
+
+      - name: Check out exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require successful exact-head M5 production evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          M5_RUN_ID: ${{ inputs.m5_run_id }}
+        run: |
+          set -euo pipefail
+          run="$RUNNER_TEMP/m5-run.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$run"
+          jq -e \
+            --arg sha "$GITHUB_SHA" \
+            '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+            "$run" >/dev/null || { echo 'M5 production evidence is not a successful exact-head main run.' >&2; exit 1; }
+
+      - name: Validate protected provider inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_WRITE_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN CLOUDFLARE_API_WRITE_TOKEN; do
+            test -n "${!name:-}" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+
+      - name: Recheck exact domain state before write
+        id: before
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          before="$RUNNER_TEMP/domains-before.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains?hostname=$TARGET_HOSTNAME" > "$before"
+          count="$(jq --arg h "$TARGET_HOSTNAME" '[.result[]? | select(.hostname == $h)] | length' "$before")"
+          test "$count" -le 1 || { echo 'Production hostname is bound more than once.' >&2; exit 1; }
+          if test "$count" = 1; then
+            service="$(jq -r --arg h "$TARGET_HOSTNAME" '.result[] | select(.hostname == $h) | .service' "$before")"
+            test "$service" = "$TARGET_WORKER" || { echo 'Production hostname is already bound to another service.' >&2; exit 1; }
+            echo 'write_required=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'write_required=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Attach exact production custom domain
+        if: steps.before.outputs.write_required == 'true'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          body="$(jq -nc --arg hostname "$TARGET_HOSTNAME" --arg service "$TARGET_WORKER" '{hostname:$hostname,service:$service}')"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --request PUT \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --header 'Content-Type: application/json' \
+            --data "$body" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains" > "$RUNNER_TEMP/domain-attach.json"
+          jq -e '.success == true' "$RUNNER_TEMP/domain-attach.json" >/dev/null
+
+      - name: Verify exact domain binding after activation
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          after="$RUNNER_TEMP/domains-after.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains?hostname=$TARGET_HOSTNAME" > "$after"
+          node --input-type=module "$after" <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          import { evaluateUlcLinzM6ProductionDomainEvidence } from './tooling/ulc-linz-m6-production-domain-evidence.mjs';
+          const payload = JSON.parse(await readFile(process.argv[2], 'utf8'));
+          if (evaluateUlcLinzM6ProductionDomainEvidence(payload).productionDomainReady !== true) process.exit(1);
+          NODE
+          echo 'Exact ULC production custom domain is active. This does not authorize final production release.' >> "$GITHUB_STEP_SUMMARY"
