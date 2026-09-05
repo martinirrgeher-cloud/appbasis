@@ -127,7 +127,7 @@ jobs:
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains?hostname=$TARGET_HOSTNAME" > "$after"
-          node --input-type=module "$after" <<'NODE'
+          node --input-type=module - "$after" <<'NODE'
           import { readFile } from 'node:fs/promises';
           import { evaluateUlcLinzM6ProductionDomainEvidence } from './tooling/ulc-linz-m6-production-domain-evidence.mjs';
           const payload = JSON.parse(await readFile(process.argv[2], 'utf8'));
