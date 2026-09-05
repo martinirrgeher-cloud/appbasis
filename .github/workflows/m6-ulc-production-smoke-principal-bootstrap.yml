@@ -7,10 +7,6 @@ on:
         description: 'Type BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL to provision the dedicated production smoke principal'
         required: true
         type: string
-      admin_run_id:
-        description: 'Successful exact-head M5 production admin bootstrap run ID'
-        required: true
-        type: string
       m5_run_id:
         description: 'Successful exact-head M5 production evidence run ID'
         required: true
@@ -37,13 +33,11 @@ jobs:
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
-          ADMIN_RUN_ID: ${{ inputs.admin_run_id }}
           M5_RUN_ID: ${{ inputs.m5_run_id }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main" || { echo 'Smoke principal bootstrap must run from main.' >&2; exit 1; }
           test "$CONFIRMATION" = "BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL" || { echo 'Exact smoke principal bootstrap confirmation is required.' >&2; exit 1; }
-          [[ "$ADMIN_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Admin bootstrap run ID is invalid.' >&2; exit 1; }
           [[ "$M5_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 evidence run ID is invalid.' >&2; exit 1; }
 
       - name: Check out exact head
@@ -67,27 +61,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Require successful exact-head prerequisite runs
+      - name: Require successful exact-head M5 production evidence
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          ADMIN_RUN_ID: ${{ inputs.admin_run_id }}
           M5_RUN_ID: ${{ inputs.m5_run_id }}
         run: |
           set -euo pipefail
-          verify_run() {
-            local id="$1" expected_name="$2" expected_path="$3"
-            local file="$RUNNER_TEMP/run-$id.json"
-            curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
-              --header "Authorization: Bearer $GH_TOKEN" \
-              --header 'Accept: application/vnd.github+json' \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${id}" > "$file"
-            jq -e --arg sha "$GITHUB_SHA" --arg name "$expected_name" --arg path "$expected_path" \
-              '.name == $name and .path == $path and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
-              "$file" >/dev/null
-          }
-          verify_run "$ADMIN_RUN_ID" "M5 ULC Production Admin Bootstrap" ".github/workflows/m5-ulc-production-admin-bootstrap.yml" || { echo 'Production admin bootstrap prerequisite is invalid.' >&2; exit 1; }
-          verify_run "$M5_RUN_ID" "M5 ULC Production Evidence" ".github/workflows/m5-ulc-production-evidence.yml" || { echo 'M5 production evidence prerequisite is invalid.' >&2; exit 1; }
+          file="$RUNNER_TEMP/run-$M5_RUN_ID.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$file"
+          jq -e --arg sha "$GITHUB_SHA" \
+            '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+            "$file" >/dev/null || { echo 'M5 production evidence prerequisite is invalid.' >&2; exit 1; }
 
       - name: Validate and mask protected smoke bootstrap inputs
         shell: bash
@@ -129,6 +117,7 @@ jobs:
             echo '- role: `trainer`'
             echo '- permission: `countdown:view` only'
             echo '- organization: dedicated smoke scope'
+            echo '- production administrator: verified read-only before provisioning'
             echo '- required password change: completed before smoke'
             echo '- production domain activation: not performed'
             echo '- post-deploy smoke: not performed'
