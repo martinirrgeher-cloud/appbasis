@@ -150,6 +150,8 @@ jobs:
       - name: Smoke dedicated authentication and session
         shell: bash
         env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
           ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
         run: |
           set -euo pipefail
@@ -158,8 +160,8 @@ jobs:
           session="$RUNNER_TEMP/session.json"
           cleanup() {
             if test -s "$cookies"; then
-              curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
-                --request POST --cookie "$cookies" "$TARGET_BASE_URL/api/auth/sign-out" >/dev/null || true
+              ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE="$cookies" \
+                node ./apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs >/dev/null || true
             fi
             rm -f "$cookies" "$signin" "$session"
           }
@@ -175,8 +177,8 @@ jobs:
           jq -e --arg id "$(jq -r '.identity.identityId' "$signin")" \
             '.identity.identityId == $id and .identity.username == "ulc.m6.smoke" and .identity.mustChangePassword == false and .access == "full"' \
             "$session" >/dev/null
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
-            --request POST --cookie "$cookies" "$TARGET_BASE_URL/api/auth/sign-out" >/dev/null
+          ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE="$cookies" \
+            node ./apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs >/dev/null
           rm -f "$cookies" "$signin" "$session"
           trap - EXIT
 
