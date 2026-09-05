@@ -8,6 +8,7 @@ import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { parseUlcLinzProductionDatabaseUrl } from "../../../tooling/ulc-linz-m6-production-hyperdrive.mjs";
 
 const SESSION_COOKIE_NAME = "better-auth.session_token";
+const HTTP_ONLY_PREFIX = "#HttpOnly_";
 const BASE_URL = "https://app.ulc-linz.at";
 
 export async function revokeUlcLinzProductionHttpSmokeSession(env = process.env) {
@@ -48,7 +49,11 @@ async function readSessionCookie(path) {
   const raw = await readFile(path, "utf8");
   const rows = raw
     .split(/\r?\n/)
-    .filter((line) => line.length > 0 && !line.startsWith("#"));
+    .filter((line) => line.length > 0)
+    .map((line) =>
+      line.startsWith(HTTP_ONLY_PREFIX) ? line.slice(HTTP_ONLY_PREFIX.length) : line,
+    )
+    .filter((line) => !line.startsWith("#"));
   const matches = rows
     .map((line) => line.split("\t"))
     .filter((fields) => fields.length >= 7 && fields[5] === SESSION_COOKIE_NAME);
