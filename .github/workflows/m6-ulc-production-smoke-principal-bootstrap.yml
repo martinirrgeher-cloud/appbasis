@@ -1,0 +1,136 @@
+name: M6 ULC Production Smoke Principal Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL to provision the dedicated production smoke principal'
+        required: true
+        type: string
+      admin_run_id:
+        description: 'Successful exact-head M5 production admin bootstrap run ID'
+        required: true
+        type: string
+      m5_run_id:
+        description: 'Successful exact-head M5 production evidence run ID'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  bootstrap-smoke-principal:
+    name: Bootstrap dedicated production smoke principal
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: m4-dr
+
+    steps:
+      - name: Require explicit production write approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          ADMIN_RUN_ID: ${{ inputs.admin_run_id }}
+          M5_RUN_ID: ${{ inputs.m5_run_id }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || { echo 'Smoke principal bootstrap must run from main.' >&2; exit 1; }
+          test "$CONFIRMATION" = "BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL" || { echo 'Exact smoke principal bootstrap confirmation is required.' >&2; exit 1; }
+          [[ "$ADMIN_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Admin bootstrap run ID is invalid.' >&2; exit 1; }
+          [[ "$M5_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 evidence run ID is invalid.' >&2; exit 1; }
+
+      - name: Check out exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require successful exact-head prerequisite runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ADMIN_RUN_ID: ${{ inputs.admin_run_id }}
+          M5_RUN_ID: ${{ inputs.m5_run_id }}
+        run: |
+          set -euo pipefail
+          verify_run() {
+            local id="$1" expected_name="$2" expected_path="$3"
+            local file="$RUNNER_TEMP/run-$id.json"
+            curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${id}" > "$file"
+            jq -e --arg sha "$GITHUB_SHA" --arg name "$expected_name" --arg path "$expected_path" \
+              '.name == $name and .path == $path and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+              "$file" >/dev/null
+          }
+          verify_run "$ADMIN_RUN_ID" "M5 ULC Production Admin Bootstrap" ".github/workflows/m5-ulc-production-admin-bootstrap.yml" || { echo 'Production admin bootstrap prerequisite is invalid.' >&2; exit 1; }
+          verify_run "$M5_RUN_ID" "M5 ULC Production Evidence" ".github/workflows/m5-ulc-production-evidence.yml" || { echo 'M5 production evidence prerequisite is invalid.' >&2; exit 1; }
+
+      - name: Validate and mask protected smoke bootstrap inputs
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}
+          ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD }}
+          ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in \
+            ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET \
+            ULC_LINZ_PRODUCTION_ADMIN_PASSWORD \
+            ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD \
+            ULC_LINZ_PRODUCTION_SMOKE_PASSWORD; do
+            test -n "${!name:-}" || { echo "Missing protected input: $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+          test "$ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD" || { echo 'Smoke bootstrap and steady-state passwords must differ.' >&2; exit 1; }
+
+      - name: Provision dedicated smoke principal before post-deploy smoke
+        working-directory: apps/ulc-linz
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}
+          ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD }}
+          ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
+        run: node ./tooling/bootstrap-production-smoke-principal.mjs
+
+      - name: Record bounded bootstrap result
+        if: success()
+        run: |
+          {
+            echo '### ULC M6 production smoke principal bootstrap'
+            echo '- principal: `ulc.m6.smoke`'
+            echo '- role: `trainer`'
+            echo '- permission: `countdown:view` only'
+            echo '- organization: dedicated smoke scope'
+            echo '- required password change: completed before smoke'
+            echo '- production domain activation: not performed'
+            echo '- post-deploy smoke: not performed'
+            echo '- final production release: not authorized'
+          } >> "$GITHUB_STEP_SUMMARY"
