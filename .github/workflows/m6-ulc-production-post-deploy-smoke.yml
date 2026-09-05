@@ -156,6 +156,14 @@ jobs:
           cookies="$RUNNER_TEMP/smoke.cookies"
           signin="$RUNNER_TEMP/signin.json"
           session="$RUNNER_TEMP/session.json"
+          cleanup() {
+            if test -s "$cookies"; then
+              curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                --request POST --cookie "$cookies" "$TARGET_BASE_URL/api/auth/sign-out" >/dev/null || true
+            fi
+            rm -f "$cookies" "$signin" "$session"
+          }
+          trap cleanup EXIT
           body="$(jq -nc --arg username 'ulc.m6.smoke' --arg password "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD" '{username:$username,password:$password}')"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --request POST --header 'Content-Type: application/json' --data "$body" --cookie-jar "$cookies" \
@@ -167,7 +175,10 @@ jobs:
           jq -e --arg id "$(jq -r '.identity.identityId' "$signin")" \
             '.identity.identityId == $id and .identity.username == "ulc.m6.smoke" and .identity.mustChangePassword == false and .access == "full"' \
             "$session" >/dev/null
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --request POST --cookie "$cookies" "$TARGET_BASE_URL/api/auth/sign-out" >/dev/null
           rm -f "$cookies" "$signin" "$session"
+          trap - EXIT
 
       - name: Smoke protected permission allow and fail-closed deny with security sink
         working-directory: apps/ulc-linz
@@ -186,6 +197,7 @@ jobs:
             echo '- HTTPS health: PASS'
             echo '- dedicated smoke authentication: PASS'
             echo '- authenticated session: PASS'
+            echo '- smoke sessions revoked after verification: PASS'
             echo '- `trainer` + `countdown:view`: PASS'
             echo '- unknown capability fail-closed: PASS'
             echo '- denied authorization security-event sink: PASS'
