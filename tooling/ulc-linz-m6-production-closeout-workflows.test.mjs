@@ -19,7 +19,7 @@ const SMOKE_RUNNER = new URL(
   import.meta.url,
 );
 
-test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and uses reusable administrator evidence", async () => {
+test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-safe", async () => {
   const [workflow, runner] = await Promise.all([
     readFile(BOOTSTRAP_WORKFLOW, "utf8"),
     readFile(BOOTSTRAP_RUNNER, "utf8"),
@@ -32,6 +32,8 @@ test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and uses reu
     "ULC_LINZ_PRODUCTION_SMOKE_PASSWORD",
     "production administrator: verified read-only before provisioning",
     "final production release: not authorized",
+    'test "$ULC_LINZ_PRODUCTION_ADMIN_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD"',
+    'test "$ULC_LINZ_PRODUCTION_ADMIN_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD"',
   ]) {
     assert.equal(workflow.includes(marker), true, `missing smoke bootstrap guard: ${marker}`);
   }
@@ -44,12 +46,18 @@ test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and uses reu
     'admin.role !== "admin"',
     'admin.username !== PRODUCTION_ADMIN_USERNAME',
     "changeRequiredPassword",
+    "SMOKE_PASSWORD_CHANGE_IDEMPOTENCY_KEY",
+    "SMOKE_PASSWORD_RECOVERY_SESSION_TOKEN",
+    "initial?.sessionToken ?? SMOKE_PASSWORD_RECOVERY_SESSION_TOKEN",
     'username: "ulc.m6.smoke"',
     'moduleKey: "countdown"',
+    "adminPassword === bootstrapPassword",
+    "adminPassword === smokePassword",
     "bootstrapPassword === smokePassword",
   ]) {
     assert.equal(runner.includes(marker), true, `missing smoke bootstrap runner guard: ${marker}`);
   }
+  assert.equal(runner.includes("randomUUID"), false);
 });
 
 test("M6 post-deploy smoke stays dedicated, bounded and validates both production database targets", async () => {
