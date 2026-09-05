@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "@appbasis/database/node-runtime";
-import { createIdentityRuntime } from "@appbasis/identity";
+import { BetterAuthIdentityBackend, createIdentityRuntime } from "@appbasis/identity";
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { PostgresPermissionStore } from "@appbasis/permissions";
 
@@ -41,13 +41,15 @@ export async function runUlcLinzProductionPostDeploySmoke(env = process.env) {
   const baseURL = "https://app.ulc-linz.at";
   const appConnection = createPostgresDatabase(databaseUrl);
   const securityConnection = createPostgresDatabase(securityLogUrl);
+  const auth = createBetterAuthRuntime({
+    database: appConnection.database,
+    baseURL,
+    secret: authSecret,
+  });
+  const backend = new BetterAuthIdentityBackend({ auth, sql: appConnection.client, baseURL });
+  let smokeSessionToken = null;
 
   try {
-    const auth = createBetterAuthRuntime({
-      database: appConnection.database,
-      baseURL,
-      secret: authSecret,
-    });
     const identity = createIdentityRuntime({
       auth,
       sql: appConnection.client,
@@ -57,6 +59,7 @@ export async function runUlcLinzProductionPostDeploySmoke(env = process.env) {
       username: USERNAME,
       password: smokePassword,
     });
+    smokeSessionToken = current.sessionToken;
     if (current.access !== "full" || current.identity.mustChangePassword !== false) {
       throw new Error("M6 smoke principal is not in steady-state full access.");
     }
@@ -125,8 +128,14 @@ export async function runUlcLinzProductionPostDeploySmoke(env = process.env) {
       fachmoduleDataMutated: false,
     });
   } finally {
-    await securityConnection.client.end();
-    await appConnection.client.end();
+    try {
+      if (smokeSessionToken !== null) {
+        await backend.endSession(smokeSessionToken);
+      }
+    } finally {
+      await securityConnection.client.end();
+      await appConnection.client.end();
+    }
   }
 }
 
