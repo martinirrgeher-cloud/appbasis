@@ -18,6 +18,10 @@ const SMOKE_RUNNER = new URL(
   "../apps/ulc-linz/tooling/run-production-post-deploy-smoke.mjs",
   import.meta.url,
 );
+const HTTP_SMOKE_SESSION_REVOKER = new URL(
+  "../apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs",
+  import.meta.url,
+);
 
 test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-safe", async () => {
   const [workflow, runner] = await Promise.all([
@@ -61,9 +65,10 @@ test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-sa
 });
 
 test("M6 post-deploy smoke stays dedicated, bounded and validates both production database targets", async () => {
-  const [workflow, runner] = await Promise.all([
+  const [workflow, runner, httpSessionRevoker] = await Promise.all([
     readFile(SMOKE_WORKFLOW, "utf8"),
     readFile(SMOKE_RUNNER, "utf8"),
+    readFile(HTTP_SMOKE_SESSION_REVOKER, "utf8"),
   ]);
   for (const marker of [
     "RUN-ULC-M6-PRODUCTION-SMOKE",
@@ -73,13 +78,15 @@ test("M6 post-deploy smoke stays dedicated, bounded and validates both productio
     "/api/health",
     "/api/auth/sign-in",
     "/api/auth/session",
-    "/api/auth/sign-out",
+    "revoke-production-http-smoke-session.mjs",
+    "ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE",
     "trap cleanup EXIT",
     "evaluateUlcLinzM6ProductionDomainEvidence",
     "final production release: not authorized",
   ]) {
     assert.equal(workflow.includes(marker), true, `missing production smoke guard: ${marker}`);
   }
+  assert.equal(workflow.includes("$TARGET_BASE_URL/api/auth/sign-out"), false);
   assert.equal(workflow.includes("/api/auth/change-required-password"), false);
   assert.equal(workflow.includes("releaseAuthorized: true"), false);
   assert.equal(workflow.includes("releaseProduction"), false);
@@ -102,4 +109,18 @@ test("M6 post-deploy smoke stays dedicated, bounded and validates both productio
     assert.equal(runner.includes(marker), true, `missing protected smoke contract: ${marker}`);
   }
   assert.equal(runner.includes("changeRequiredPassword"), false);
+
+  for (const marker of [
+    "parseUlcLinzProductionDatabaseUrl(databaseUrl)",
+    "BetterAuthIdentityBackend",
+    "await backend.endSession(sessionToken)",
+    'const SESSION_COOKIE_NAME = "better-auth.session_token"',
+    "Expected exactly one production HTTP smoke session cookie.",
+  ]) {
+    assert.equal(
+      httpSessionRevoker.includes(marker),
+      true,
+      `missing protected HTTP smoke cleanup guard: ${marker}`,
+    );
+  }
 });
