@@ -52,7 +52,7 @@ test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and uses reu
   }
 });
 
-test("M6 post-deploy smoke stays dedicated, bounded and never performs password change or release", async () => {
+test("M6 post-deploy smoke stays dedicated, bounded and validates both production database targets", async () => {
   const [workflow, runner] = await Promise.all([
     readFile(SMOKE_WORKFLOW, "utf8"),
     readFile(SMOKE_RUNNER, "utf8"),
@@ -75,6 +75,11 @@ test("M6 post-deploy smoke stays dedicated, bounded and never performs password 
   assert.equal(workflow.includes("releaseProduction"), false);
 
   for (const marker of [
+    "parseUlcLinzProductionDatabaseUrl(databaseUrl)",
+    "parseUlcLinzSecurityLogIngestDatabaseUrl(securityLogUrl)",
+    "appTarget.user === securityTarget.user",
+    "appTarget.host !== securityTarget.host",
+    "appTarget.database !== securityTarget.database",
     "assertUlcLinzModuleAccess",
     'const ALLOWED_MODULE = "countdown"',
     'const DENIED_MODULE = "__m6_smoke_unknown__"',
