@@ -96,6 +96,8 @@ jobs:
             test -n "${!name:-}" || { echo "Missing protected input: $name." >&2; exit 1; }
             echo "::add-mask::${!name}"
           done
+          test "$ULC_LINZ_PRODUCTION_ADMIN_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD" || { echo 'Production admin and smoke bootstrap passwords must differ.' >&2; exit 1; }
+          test "$ULC_LINZ_PRODUCTION_ADMIN_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD" || { echo 'Production admin and steady-state smoke passwords must differ.' >&2; exit 1; }
           test "$ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD" || { echo 'Smoke bootstrap and steady-state passwords must differ.' >&2; exit 1; }
 
       - name: Provision dedicated smoke principal before post-deploy smoke
