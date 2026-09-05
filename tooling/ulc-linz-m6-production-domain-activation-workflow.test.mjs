@@ -4,7 +4,7 @@ import test from "node:test";
 
 const WORKFLOW = new URL("../.github/workflows/m6-ulc-production-domain-activation.yml", import.meta.url);
 
-test("M6 production domain activation stays explicit, exact-head gated and separately serialized", async () => {
+test("M6 production domain activation stays explicit, exact-head gated and fail-closed before write", async () => {
   const source = await readFile(WORKFLOW, "utf8");
 
   for (const marker of [
@@ -16,6 +16,8 @@ test("M6 production domain activation stays explicit, exact-head gated and separ
     ".conclusion == \"success\"",
     "group: m6-ulc-production-runtime-config",
     "CLOUDFLARE_API_WRITE_TOKEN",
+    ".success == true and (.result | type == \"array\")",
+    "Production domain inventory is malformed or unsuccessful.",
     "--request PUT",
     "/workers/domains",
     "app.ulc-linz.at",
@@ -26,6 +28,7 @@ test("M6 production domain activation stays explicit, exact-head gated and separ
     assert.equal(source.includes(marker), true, `missing workflow guard: ${marker}`);
   }
 
+  assert.equal(source.includes(".result[]?"), false);
   assert.equal(source.includes("releaseAuthorized: true"), false);
   assert.equal(source.includes("releaseProduction"), false);
 });
