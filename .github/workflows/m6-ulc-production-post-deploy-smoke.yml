@@ -1,0 +1,209 @@
+name: M6 ULC Production Post-Deploy Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RUN-ULC-M6-PRODUCTION-SMOKE after approved domain activation'
+        required: true
+        type: string
+      domain_run_id:
+        description: 'Successful exact-head M6 production domain activation run ID'
+        required: true
+        type: string
+      smoke_principal_run_id:
+        description: 'Successful exact-head M6 smoke principal bootstrap run ID'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  post-deploy-smoke:
+    name: Verify public ULC production runtime and protected authorization
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: m4-dr
+    env:
+      TARGET_BASE_URL: https://app.ulc-linz.at
+      TARGET_HOSTNAME: app.ulc-linz.at
+      TARGET_WORKER: appbasis-ulc-linz-production
+
+    steps:
+      - name: Require explicit production smoke approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DOMAIN_RUN_ID: ${{ inputs.domain_run_id }}
+          SMOKE_PRINCIPAL_RUN_ID: ${{ inputs.smoke_principal_run_id }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || { echo 'Post-deploy smoke must run from main.' >&2; exit 1; }
+          test "$CONFIRMATION" = "RUN-ULC-M6-PRODUCTION-SMOKE" || { echo 'Exact production smoke confirmation is required.' >&2; exit 1; }
+          [[ "$DOMAIN_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Domain run ID is invalid.' >&2; exit 1; }
+          [[ "$SMOKE_PRINCIPAL_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Smoke principal run ID is invalid.' >&2; exit 1; }
+
+      - name: Check out exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository and current M6 smoke contract
+        run: |
+          pnpm run verify:repo
+          node ./tooling/ulc-linz-m6-migration-smoke-rehearsal.mjs >/dev/null
+
+      - name: Require successful exact-head domain and smoke-principal runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOMAIN_RUN_ID: ${{ inputs.domain_run_id }}
+          SMOKE_PRINCIPAL_RUN_ID: ${{ inputs.smoke_principal_run_id }}
+        run: |
+          set -euo pipefail
+          verify_run() {
+            local id="$1" expected_name="$2" expected_path="$3"
+            local file="$RUNNER_TEMP/run-$id.json"
+            curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${id}" > "$file"
+            jq -e --arg sha "$GITHUB_SHA" --arg name "$expected_name" --arg path "$expected_path" \
+              '.name == $name and .path == $path and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+              "$file" >/dev/null
+          }
+          verify_run "$DOMAIN_RUN_ID" "M6 ULC Production Domain Activation" ".github/workflows/m6-ulc-production-domain-activation.yml" || { echo 'Production domain prerequisite is invalid.' >&2; exit 1; }
+          verify_run "$SMOKE_PRINCIPAL_RUN_ID" "M6 ULC Production Smoke Principal Bootstrap" ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml" || { echo 'Smoke-principal prerequisite is invalid.' >&2; exit 1; }
+
+      - name: Validate and mask protected smoke inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_API_TOKEN \
+            ULC_LINZ_PRODUCTION_DATABASE_URL \
+            ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL \
+            ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET \
+            ULC_LINZ_PRODUCTION_SMOKE_PASSWORD; do
+            test -n "${!name:-}" || { echo "Missing protected smoke input: $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+
+      - name: Reverify exact public domain binding
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          domains="$RUNNER_TEMP/domains.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains?hostname=$TARGET_HOSTNAME" > "$domains"
+          node --input-type=module - "$domains" <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          import { evaluateUlcLinzM6ProductionDomainEvidence } from './tooling/ulc-linz-m6-production-domain-evidence.mjs';
+          const payload = JSON.parse(await readFile(process.argv[2], 'utf8'));
+          if (evaluateUlcLinzM6ProductionDomainEvidence(payload).productionDomainReady !== true) process.exit(1);
+          NODE
+
+      - name: Smoke public health endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          health="$RUNNER_TEMP/health.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --retry 6 --retry-delay 5 \
+            "$TARGET_BASE_URL/api/health" > "$health"
+          jq -e '.status == "ok" and .appId == "ulc-linz"' "$health" >/dev/null
+
+      - name: Smoke dedicated authentication and session
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cookies="$RUNNER_TEMP/smoke.cookies"
+          signin="$RUNNER_TEMP/signin.json"
+          session="$RUNNER_TEMP/session.json"
+          cleanup() {
+            if test -s "$cookies"; then
+              ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE="$cookies" \
+                node ./apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs >/dev/null || true
+            fi
+            rm -f "$cookies" "$signin" "$session"
+          }
+          trap cleanup EXIT
+          body="$(jq -nc --arg username 'ulc.m6.smoke' --arg password "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD" '{username:$username,password:$password}')"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --request POST --header 'Content-Type: application/json' --data "$body" --cookie-jar "$cookies" \
+            "$TARGET_BASE_URL/api/auth/sign-in" > "$signin"
+          jq -e '.identity.username == "ulc.m6.smoke" and .identity.mustChangePassword == false and .identity.accountStatus == "active" and .access == "full"' "$signin" >/dev/null
+          test -s "$cookies"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --cookie "$cookies" \
+            "$TARGET_BASE_URL/api/auth/session" > "$session"
+          jq -e --arg id "$(jq -r '.identity.identityId' "$signin")" \
+            '.identity.identityId == $id and .identity.username == "ulc.m6.smoke" and .identity.mustChangePassword == false and .access == "full"' \
+            "$session" >/dev/null
+          ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE="$cookies" \
+            node ./apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs >/dev/null
+          rm -f "$cookies" "$signin" "$session"
+          trap - EXIT
+
+      - name: Smoke protected permission allow and fail-closed deny with security sink
+        working-directory: apps/ulc-linz
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
+        run: node ./tooling/run-production-post-deploy-smoke.mjs
+
+      - name: Record M6 post-deploy smoke evidence
+        if: success()
+        run: |
+          {
+            echo '### ULC M6 production post-deploy smoke'
+            echo '- HTTPS health: PASS'
+            echo '- dedicated smoke authentication: PASS'
+            echo '- authenticated session: PASS'
+            echo '- smoke sessions revoked after verification: PASS'
+            echo '- `trainer` + `countdown:view`: PASS'
+            echo '- unknown capability fail-closed: PASS'
+            echo '- denied authorization security-event sink: PASS'
+            echo '- Fachmodul data mutation: none'
+            echo '- password change during smoke: none'
+            echo '- final production release: not authorized'
+          } >> "$GITHUB_STEP_SUMMARY"

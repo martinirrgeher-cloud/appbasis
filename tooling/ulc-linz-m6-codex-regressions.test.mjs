@@ -1,3 +1,6 @@
+import "./ulc-linz-m6-production-domain-evidence.test.mjs";
+import "./ulc-linz-m6-production-domain-activation-workflow.test.mjs";
+
 import assert from "node:assert/strict";
 import test from "node:test";
 
