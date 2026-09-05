@@ -6,6 +6,10 @@ import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { PostgresPermissionStore } from "@appbasis/permissions";
 
 import {
+  parseUlcLinzProductionDatabaseUrl,
+  parseUlcLinzSecurityLogIngestDatabaseUrl,
+} from "../../../tooling/ulc-linz-m6-production-hyperdrive.mjs";
+import {
   assertUlcLinzModuleAccess,
   UlcLinzAuthorizationDeniedError,
 } from "../worker/authorization.ts";
@@ -22,6 +26,16 @@ export async function runUlcLinzProductionPostDeploySmoke(env = process.env) {
     env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL,
     "ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL",
   );
+  const appTarget = parseUlcLinzProductionDatabaseUrl(databaseUrl);
+  const securityTarget = parseUlcLinzSecurityLogIngestDatabaseUrl(securityLogUrl);
+  if (
+    appTarget.host !== securityTarget.host ||
+    appTarget.database !== securityTarget.database ||
+    appTarget.user === securityTarget.user
+  ) {
+    throw new Error("M6 production smoke requires one production database with distinct app and security-log principals.");
+  }
+
   const authSecret = required(env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET, "ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET");
   const smokePassword = required(env.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD, "ULC_LINZ_PRODUCTION_SMOKE_PASSWORD");
   const baseURL = "https://app.ulc-linz.at";
