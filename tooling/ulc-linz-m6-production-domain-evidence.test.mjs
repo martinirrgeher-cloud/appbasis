@@ -33,7 +33,7 @@ test("M6 production domain evidence accepts exactly the canonical ULC domain bin
   );
 });
 
-test("M6 production domain evidence fails closed on missing, conflicting or truthy bindings", () => {
+test("M6 production domain evidence fails closed on missing, conflicting, duplicate or mixed bindings", () => {
   const cases = [
     null,
     { success: "true", result: [] },
@@ -47,6 +47,13 @@ test("M6 production domain evidence fails closed on missing, conflicting or trut
       result: [
         { id: "a", hostname: "app.ulc-linz.at", service: "appbasis-ulc-linz-production", zone_id: "z" },
         { id: "b", hostname: "app.ulc-linz.at", service: "appbasis-ulc-linz-production", zone_id: "z" },
+      ],
+    },
+    {
+      success: true,
+      result: [
+        { id: "canonical", hostname: "app.ulc-linz.at", service: "appbasis-ulc-linz-production", zone_id: "z" },
+        { id: "conflict", hostname: "app.ulc-linz.at", service: "other-worker", zone_id: "z" },
       ],
     },
   ];
