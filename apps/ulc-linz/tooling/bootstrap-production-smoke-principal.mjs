@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "@appbasis/database/node-runtime";
@@ -22,6 +21,8 @@ export const ULC_LINZ_M6_SMOKE_PRINCIPAL = Object.freeze({
 });
 
 const PRODUCTION_ADMIN_USERNAME = "ulc.production.admin";
+const SMOKE_PASSWORD_CHANGE_IDEMPOTENCY_KEY = "7b04a4e0-cc5a-4d74-9ba5-62ae25d22156";
+const SMOKE_PASSWORD_RECOVERY_SESSION_TOKEN = "m6-smoke-password-change-recovery";
 
 export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.env) {
   const databaseUrl = required(env.ULC_LINZ_PRODUCTION_DATABASE_URL, "ULC_LINZ_PRODUCTION_DATABASE_URL");
@@ -34,8 +35,12 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
     "ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD",
   );
   const smokePassword = required(env.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD, "ULC_LINZ_PRODUCTION_SMOKE_PASSWORD");
-  if (bootstrapPassword === smokePassword) {
-    throw new Error("M6 smoke bootstrap and steady-state passwords must be distinct.");
+  if (
+    adminPassword === bootstrapPassword ||
+    adminPassword === smokePassword ||
+    bootstrapPassword === smokePassword
+  ) {
+    throw new Error("Production admin, M6 smoke bootstrap and steady-state passwords must all be distinct.");
   }
 
   const baseURL = "https://app.ulc-linz.at";
@@ -71,19 +76,25 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
       });
 
       if (created.mustChangePassword === true) {
-        const initial = await identity.service.signInWithUsername({
-          username: ULC_LINZ_M6_SMOKE_PRINCIPAL.username,
-          password: bootstrapPassword,
-        });
-        if (initial.identity.identityId !== created.identityId || initial.access !== "password-change-required") {
-          throw new Error("M6 smoke principal bootstrap session is inconsistent.");
+        let initial;
+        try {
+          initial = await identity.service.signInWithUsername({
+            username: ULC_LINZ_M6_SMOKE_PRINCIPAL.username,
+            password: bootstrapPassword,
+          });
+        } catch {
+          initial = null;
         }
+
         const changed = await identity.service.changeRequiredPassword({
-          sessionToken: initial.sessionToken,
+          sessionToken: initial?.sessionToken ?? SMOKE_PASSWORD_RECOVERY_SESSION_TOKEN,
           currentPassword: bootstrapPassword,
           newPassword: smokePassword,
-          idempotencyKey: randomUUID(),
+          idempotencyKey: SMOKE_PASSWORD_CHANGE_IDEMPOTENCY_KEY,
         });
+        if (initial !== null && (initial.identity.identityId !== created.identityId || initial.access !== "password-change-required")) {
+          throw new Error("M6 smoke principal bootstrap session is inconsistent.");
+        }
         if (changed.identity.identityId !== created.identityId || changed.access !== "full") {
           throw new Error("M6 smoke principal password transition did not reach full access.");
         }
