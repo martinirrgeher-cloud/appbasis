@@ -38,7 +38,10 @@ export async function runUlcLinzProductionPostDeploySmoke(env = process.env) {
 
   const authSecret = required(env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET, "ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET");
   const smokePassword = required(env.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD, "ULC_LINZ_PRODUCTION_SMOKE_PASSWORD");
-  const baseURL = "https://app.ulc-linz.at";
+  const baseURL = requiredHttpsOrigin(
+    env.ULC_LINZ_PRODUCTION_BASE_URL,
+    "ULC_LINZ_PRODUCTION_BASE_URL",
+  );
   const appConnection = createPostgresDatabase(databaseUrl);
   const securityConnection = createPostgresDatabase(securityLogUrl);
   const auth = createBetterAuthRuntime({
@@ -144,6 +147,27 @@ function required(value, name) {
     throw new Error(`Missing or invalid ${name}.`);
   }
   return value;
+}
+
+function requiredHttpsOrigin(value, name) {
+  const normalized = required(value, name);
+  try {
+    const url = new URL(normalized);
+    if (
+      url.protocol !== "https:" ||
+      url.username.length > 0 ||
+      url.password.length > 0 ||
+      (url.pathname !== "" && url.pathname !== "/") ||
+      url.search.length > 0 ||
+      url.hash.length > 0 ||
+      url.origin !== normalized
+    ) {
+      throw new Error("invalid origin");
+    }
+    return url.origin;
+  } catch {
+    throw new Error(`Missing or invalid ${name}.`);
+  }
 }
 
 function requiredRowString(row, field) {
