@@ -32,3 +32,24 @@ test("M6 production domain activation stays explicit, exact-head gated and fail-
   assert.equal(source.includes("releaseAuthorized: true"), false);
   assert.equal(source.includes("releaseProduction"), false);
 });
+
+test("M6 production domain activation preserves sanitized provider diagnostics without logging raw responses", async () => {
+  const source = await readFile(WORKFLOW, "utf8");
+
+  for (const marker of [
+    "--output \"$response\"",
+    "--write-out '%{http_code}'",
+    "(.errors // [])[:5][]",
+    "Cloudflare error",
+    "gsub(\"[\\\\r\\\\n]\"; \" \")",
+    ".[0:300]",
+    "Cloudflare custom domain activation failed with HTTP $http_status.",
+    "Cloudflare custom domain activation returned an unsuccessful response.",
+  ]) {
+    assert.equal(source.includes(marker), true, `missing sanitized diagnostic guard: ${marker}`);
+  }
+
+  assert.equal(source.includes('cat "$response"'), false);
+  assert.equal(source.includes('cat "$RUNNER_TEMP/domain-attach.json"'), false);
+  assert.equal(source.includes("--fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \\\n            --request PUT"), false);
+});
