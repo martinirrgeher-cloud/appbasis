@@ -71,7 +71,7 @@ jobs:
             echo 'Production hostname is not currently bound as a Worker custom domain.'
           fi
 
-      - name: Inspect owned active zone and exact DNS records read-only
+      - name: Inspect visible zone ownership and exact DNS records read-only
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -81,11 +81,24 @@ jobs:
           zone_response="$RUNNER_TEMP/zone.json"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/zones?name=$TARGET_ZONE&account.id=$CLOUDFLARE_ACCOUNT_ID&status=active&per_page=5" > "$zone_response"
+            "https://api.cloudflare.com/client/v4/zones?name=$TARGET_ZONE&status=active&per_page=5" > "$zone_response"
           jq -e '.success == true and (.result | type == "array")' "$zone_response" >/dev/null || { echo 'Cloudflare zone inventory is malformed or unsuccessful.' >&2; exit 1; }
-          zone_count="$(jq --arg z "$TARGET_ZONE" --arg a "$CLOUDFLARE_ACCOUNT_ID" '[.result[] | select(.name == $z and .account.id == $a and .status == "active")] | length' "$zone_response")"
-          test "$zone_count" = 1 || { echo 'Expected exactly one owned active Cloudflare zone for ulc-linz.at.' >&2; exit 1; }
-          zone_id="$(jq -r --arg z "$TARGET_ZONE" --arg a "$CLOUDFLARE_ACCOUNT_ID" '.result[] | select(.name == $z and .account.id == $a and .status == "active") | .id' "$zone_response")"
+
+          visible_count="$(jq --arg z "$TARGET_ZONE" '[.result[] | select(.name == $z and .status == "active")] | length' "$zone_response")"
+          if test "$visible_count" = 0; then
+            echo 'No active ulc-linz.at zone is visible to CLOUDFLARE_API_TOKEN. This means either the zone is outside the token resource scope or the token-visible Cloudflare accounts do not contain the active zone.' >&2
+            exit 1
+          fi
+          test "$visible_count" = 1 || { echo 'More than one active ulc-linz.at zone is visible; diagnostic refuses ambiguous zone ownership.' >&2; exit 1; }
+
+          visible_account_id="$(jq -r --arg z "$TARGET_ZONE" '.result[] | select(.name == $z and .status == "active") | .account.id' "$zone_response")"
+          test -n "$visible_account_id" && test "$visible_account_id" != null || { echo 'Visible Cloudflare zone account id is missing.' >&2; exit 1; }
+          if test "$visible_account_id" != "$CLOUDFLARE_ACCOUNT_ID"; then
+            echo 'Active ulc-linz.at zone is visible, but it belongs to a different Cloudflare account than CLOUDFLARE_ACCOUNT_ID.' >&2
+            exit 1
+          fi
+
+          zone_id="$(jq -r --arg z "$TARGET_ZONE" '.result[] | select(.name == $z and .status == "active") | .id' "$zone_response")"
           test -n "$zone_id" && test "$zone_id" != null || { echo 'Cloudflare zone id is missing.' >&2; exit 1; }
           echo "::add-mask::$zone_id"
 
@@ -113,7 +126,8 @@ jobs:
             echo '### ULC M6 production domain diagnostic'
             echo '- mode: read-only provider preflight'
             echo '- custom-domain inventory: inspected'
-            echo '- owned active zone: verified'
+            echo '- active zone visible to read token: verified'
+            echo '- zone account matches worker account: verified'
             echo '- exact-host CNAME blocker: absent'
             echo '- provider mutation: none'
             echo '- M5 production evidence: not established by this run'
