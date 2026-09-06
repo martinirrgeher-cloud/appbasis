@@ -109,13 +109,26 @@ jobs:
         run: |
           set -euo pipefail
           body="$(jq -nc --arg hostname "$TARGET_HOSTNAME" --arg service "$TARGET_WORKER" '{hostname:$hostname,service:$service}')"
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
-            --request PUT \
-            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            --header 'Content-Type: application/json' \
-            --data "$body" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains" > "$RUNNER_TEMP/domain-attach.json"
-          jq -e '.success == true' "$RUNNER_TEMP/domain-attach.json" >/dev/null
+          response="$RUNNER_TEMP/domain-attach.json"
+          http_status="$(
+            curl --silent --show-error --connect-timeout 10 --max-time 30 \
+              --output "$response" \
+              --write-out '%{http_code}' \
+              --request PUT \
+              --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              --header 'Content-Type: application/json' \
+              --data "$body" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains"
+          )"
+          if [[ ! "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+            jq -r '
+              (.errors // [])[:5][]
+              | "Cloudflare error \(.code // "unknown"): \((.message // "unspecified") | tostring | gsub("[\\r\\n]"; " ") | .[0:300])"
+            ' "$response" >&2 2>/dev/null || true
+            echo "Cloudflare custom domain activation failed with HTTP $http_status." >&2
+            exit 1
+          fi
+          jq -e '.success == true' "$response" >/dev/null || { echo 'Cloudflare custom domain activation returned an unsuccessful response.' >&2; exit 1; }
 
       - name: Verify exact domain binding after activation
         shell: bash
