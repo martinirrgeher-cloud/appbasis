@@ -102,7 +102,7 @@ jobs:
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$response"
           subdomain="$(jq -er '.result.subdomain | select(type == "string")' "$response")" || { echo 'Cloudflare account workers.dev subdomain is unavailable.' >&2; exit 1; }
-          [[ "$subdomain" =~ ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$ ]] || { echo 'Cloudflare account workers.dev subdomain is invalid.' >&2; exit 1; }
+          [[ "$subdomain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || { echo 'Cloudflare account workers.dev subdomain is invalid.' >&2; exit 1; }
           jq -e '.success == true' "$response" >/dev/null || { echo 'Cloudflare account workers.dev subdomain lookup was unsuccessful.' >&2; exit 1; }
           printf 'PILOT_BASE_URL=https://%s.%s.workers.dev\n' "$TARGET_WORKER" "$subdomain" >> "$GITHUB_ENV"
 
