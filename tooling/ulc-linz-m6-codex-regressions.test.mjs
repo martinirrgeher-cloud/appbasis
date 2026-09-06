@@ -2,6 +2,7 @@ import "./ulc-linz-m6-production-domain-evidence.test.mjs";
 import "./ulc-linz-m6-production-domain-activation-workflow.test.mjs";
 import "./ulc-linz-m6-production-domain-diagnostic-workflow.test.mjs";
 import "./ulc-linz-m6-production-pilot-ingress-workflow.test.mjs";
+import "./ulc-linz-m6-pilot-runtime-smoke-workflow.test.mjs";
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -280,6 +281,7 @@ test("M6 adopted Neon production target requires exact case-sensitive project na
 test("M6 execution-bound migration fingerprint changes for every validated non-migration input class", async () => {
   const result = await evaluateUlcLinzM6MigrationSmokeRehearsal();
   const baseline = result.migration.planFingerprint;
+  assert.match(baseline, /^sha256:[0-9a-f]{64}$/);
   const migrationFiles = result.migration.files;
   const inputs = result.validatedInputDigests;
   for (const key of Object.keys(inputs)) {
