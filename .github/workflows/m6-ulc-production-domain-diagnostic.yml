@@ -1,0 +1,122 @@
+name: M6 ULC Production Domain Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type DIAGNOSE-ULC-M6-PRODUCTION-DOMAIN to run one read-only Cloudflare preflight for the production hostname'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  diagnose-domain:
+    name: Diagnose ULC production custom-domain prerequisites read-only
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: m4-dr
+    env:
+      TARGET_HOSTNAME: app.ulc-linz.at
+      TARGET_ZONE: ulc-linz.at
+      TARGET_WORKER: appbasis-ulc-linz-production
+
+    steps:
+      - name: Require explicit read-only diagnostic confirmation
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || { echo 'Production domain diagnostic must be dispatched from main.' >&2; exit 1; }
+          test "$CONFIRMATION" = "DIAGNOSE-ULC-M6-PRODUCTION-DOMAIN" || { echo 'Exact production domain diagnostic confirmation is required.' >&2; exit 1; }
+
+      - name: Validate protected provider inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
+            test -n "${!name:-}" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+
+      - name: Inspect exact custom-domain inventory read-only
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/domains.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains?hostname=$TARGET_HOSTNAME" > "$response"
+          jq -e '.success == true and (.result | type == "array")' "$response" >/dev/null || { echo 'Production domain inventory is malformed or unsuccessful.' >&2; exit 1; }
+          count="$(jq --arg h "$TARGET_HOSTNAME" '[.result[] | select(.hostname == $h)] | length' "$response")"
+          test "$count" -le 1 || { echo 'Production hostname is bound more than once.' >&2; exit 1; }
+          if test "$count" = 1; then
+            service="$(jq -r --arg h "$TARGET_HOSTNAME" '.result[] | select(.hostname == $h) | .service' "$response")"
+            test "$service" = "$TARGET_WORKER" || { echo 'Production hostname is already bound to another service.' >&2; exit 1; }
+            echo 'Production hostname is already bound to the intended worker.'
+          else
+            echo 'Production hostname is not currently bound as a Worker custom domain.'
+          fi
+
+      - name: Inspect owned active zone and exact DNS records read-only
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          zone_response="$RUNNER_TEMP/zone.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/zones?name=$TARGET_ZONE&account.id=$CLOUDFLARE_ACCOUNT_ID&status=active&per_page=5" > "$zone_response"
+          jq -e '.success == true and (.result | type == "array")' "$zone_response" >/dev/null || { echo 'Cloudflare zone inventory is malformed or unsuccessful.' >&2; exit 1; }
+          zone_count="$(jq --arg z "$TARGET_ZONE" --arg a "$CLOUDFLARE_ACCOUNT_ID" '[.result[] | select(.name == $z and .account.id == $a and .status == "active")] | length' "$zone_response")"
+          test "$zone_count" = 1 || { echo 'Expected exactly one owned active Cloudflare zone for ulc-linz.at.' >&2; exit 1; }
+          zone_id="$(jq -r --arg z "$TARGET_ZONE" --arg a "$CLOUDFLARE_ACCOUNT_ID" '.result[] | select(.name == $z and .account.id == $a and .status == "active") | .id' "$zone_response")"
+          test -n "$zone_id" && test "$zone_id" != null || { echo 'Cloudflare zone id is missing.' >&2; exit 1; }
+          echo "::add-mask::$zone_id"
+
+          dns_response="$RUNNER_TEMP/dns.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records?name=$TARGET_HOSTNAME&per_page=100" > "$dns_response"
+          jq -e '.success == true and (.result | type == "array")' "$dns_response" >/dev/null || { echo 'Cloudflare DNS inventory is malformed or unsuccessful.' >&2; exit 1; }
+          cname_count="$(jq --arg h "$TARGET_HOSTNAME" '[.result[] | select(.name == $h and .type == "CNAME")] | length' "$dns_response")"
+          if test "$cname_count" -gt 0; then
+            echo 'Blocking prerequisite found: app.ulc-linz.at already has a CNAME DNS record; Cloudflare Workers Custom Domains cannot be created on such a hostname.' >&2
+            exit 1
+          fi
+          record_types="$(jq -r --arg h "$TARGET_HOSTNAME" '[.result[] | select(.name == $h) | .type] | unique | join(",")' "$dns_response")"
+          if test -n "$record_types"; then
+            echo "Exact hostname has existing non-CNAME DNS record types: $record_types"
+          else
+            echo 'Exact hostname has no existing DNS records.'
+          fi
+
+      - name: Record read-only diagnostic result
+        if: success()
+        run: |
+          {
+            echo '### ULC M6 production domain diagnostic'
+            echo '- mode: read-only provider preflight'
+            echo '- custom-domain inventory: inspected'
+            echo '- owned active zone: verified'
+            echo '- exact-host CNAME blocker: absent'
+            echo '- provider mutation: none'
+            echo '- M5 production evidence: not established by this run'
+            echo '- M6 Production Ready: not established by this run'
+            echo '- final production release: not authorized'
+          } >> "$GITHUB_STEP_SUMMARY"
