@@ -15,7 +15,7 @@ const expectedIds = [
   "previewAccepted",
   "productionDatabaseReady",
   "productionWorkerReady",
-  "productionPilotIngressReady",
+  "productionDomainReady",
   "productionUsersAndPermissionsReady",
   "backupRecoveryReady",
   "securityPrivacyReady",
@@ -58,10 +58,10 @@ test("M6 release readiness pins only the semantic per-app production gates", () 
     ),
   );
   assert.equal(
-    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.some(
+    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.find(
       (criterion) => criterion.id === "productionDomainReady",
-    ),
-    false,
+    )?.label,
+    "Kontrollierter Pilot-Ingress",
   );
 });
 
@@ -81,7 +81,6 @@ test("M6 release readiness remains fail-closed for truthy or unknown evidence", 
   const evidence = allEvidence();
   evidence.previewAccepted = "yes";
   evidence.releaseProduction = true;
-  evidence.productionDomainReady = true;
 
   const readiness = evaluateM6ProductionReleaseReadiness(evidence);
 
