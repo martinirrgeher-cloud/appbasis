@@ -10,7 +10,11 @@ test("M6 runtime refresh binds Better Auth to the canonical workers.dev pilot or
   const source = await readFile(REFRESH, "utf8");
   for (const marker of [
     "/workers/subdomain",
-    "PILOT_BASE_URL=https://%s.%s.workers.dev",
+    'pilot_base_url="https://${TARGET_WORKER}.${subdomain}.workers.dev"',
+    "pilot_origin_fingerprint=",
+    "sha256sum",
+    "PILOT_ORIGIN_FINGERPRINT=%s",
+    "origin-hmac:${PILOT_ORIGIN_FINGERPRINT}",
     "baseURL: process.env.PILOT_BASE_URL",
     "Read and validate current closed private runtime state",
     "previous private deployment was not changed",
