@@ -70,10 +70,15 @@ export function evaluateUlcLinzPrivateRuntimeRefreshState(
 
 export function deriveUlcLinzPrivateRuntimeHyperdriveBindings(
   response,
-  { versionId, expectedBaseURL = LEGACY_BASE_URL },
+  { versionId, expectedBaseURL = LEGACY_BASE_URL, alternateBaseURL = null },
 ) {
   requireVersionId(versionId);
   requireBaseURL(expectedBaseURL);
+  const allowedBaseURLs = new Set([expectedBaseURL]);
+  if (alternateBaseURL !== null) {
+    requireBaseURL(alternateBaseURL);
+    allowedBaseURLs.add(alternateBaseURL);
+  }
   const result = response?.result;
   const bindings = result?.resources?.bindings;
   if (
@@ -92,7 +97,7 @@ export function deriveUlcLinzPrivateRuntimeHyperdriveBindings(
   requireOpaque(security.id, "security-log Hyperdrive ID");
   if (
     base.type !== "plain_text" ||
-    base.text !== expectedBaseURL ||
+    !allowedBaseURLs.has(base.text) ||
     app.type !== "hyperdrive" ||
     security.type !== "hyperdrive" ||
     secret.type !== "secret_text" ||
@@ -300,6 +305,7 @@ async function main(argv = process.argv.slice(2)) {
     const result = deriveUlcLinzPrivateRuntimeHyperdriveBindings(await readJson(paths[0]), {
       versionId: process.env.VERSION_ID,
       expectedBaseURL: LEGACY_BASE_URL,
+      alternateBaseURL: process.env.PILOT_BASE_URL,
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
