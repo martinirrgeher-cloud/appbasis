@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA } from "./factory-ui/production-release-readiness.mjs";
 import {
   ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE,
-  isCanonicalUlcLinzM5PermissionProvisioningBundle,
+  isCanonicalUlcLinzM5PermissionProvisionINGBundle,
 } from "./ulc-linz-m5-permission-provisioning.mjs";
 import { ULC_LINZ_M5_TARGET_POLICY } from "./ulc-linz-m5-target-policy.mjs";
 import { createExpectedUlcLinzDatabaseManifest } from "./ulc-linz-database-contract.mjs";
@@ -65,18 +65,9 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
     requires: ["neon-production-database", "production-worker"],
   },
   {
-    id: "production-domain-selection",
-    kind: "operator-input",
-    requires: ["production-worker"],
-  },
-  {
     id: "runtime-configuration",
     kind: "provider-write",
-    requires: [
-      "database-binding",
-      "production-worker",
-      "production-domain-selection",
-    ],
+    requires: ["database-binding", "production-worker"],
   },
   {
     id: "production-security-logging-sink",
@@ -123,10 +114,9 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
     ],
   },
   {
-    id: "production-domain-activation",
+    id: "production-pilot-ingress",
     kind: "public-exposure-write",
     requires: [
-      "production-domain-selection",
       "production-worker-deploy",
       "production-access-bootstrap",
       "backup-recovery-validation",
@@ -140,7 +130,7 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
     requires: [
       "backup-recovery-validation",
       "m5-production-evidence",
-      "production-domain-activation",
+      "production-pilot-ingress",
     ],
   },
   {
@@ -158,7 +148,7 @@ const M6_CRITERION_COVERAGE = deepFreeze({
   previewAccepted: ["prerequisite:M3_DONE"],
   productionDatabaseReady: ["neon-production-database", "database-binding"],
   productionWorkerReady: ["production-worker", "production-worker-deploy"],
-  productionDomainReady: ["production-domain-activation"],
+  productionDomainReady: ["production-pilot-ingress"],
   productionUsersAndPermissionsReady: ["production-access-bootstrap"],
   backupRecoveryReady: ["backup-recovery-validation"],
   securityPrivacyReady: [
@@ -236,28 +226,13 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
     },
     {
       sequence: 4,
-      id: "production-domain-selection",
-      kind: "operator-input",
-      approvalRequired: true,
-      requires: ["production-worker"],
-      target: {
-        hostnameSource: "operator-supplied",
-        providerWrite: false,
-        publicIngress: false,
-      },
-    },
-    {
-      sequence: 5,
       id: "runtime-configuration",
       kind: "provider-write",
       approvalRequired: true,
-      requires: [
-        "database-binding",
-        "production-worker",
-        "production-domain-selection",
-      ],
+      requires: ["database-binding", "production-worker"],
       target: {
         provider: "cloudflare",
+        baseURLSource: "provider-derived-workers-dev-origin",
         secretNames: ["BETTER_AUTH_SECRET"],
         plainConfigurationNames: ["APPBASIS_BASE_URL"],
         requiredBindings: ["HYPERDRIVE"],
@@ -265,7 +240,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 6,
+      sequence: 5,
       id: "production-security-logging-sink",
       kind: "provider-write",
       approvalRequired: true,
@@ -283,7 +258,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 7,
+      sequence: 6,
       id: "production-migrations",
       kind: "production-data-write",
       approvalRequired: true,
@@ -298,7 +273,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 8,
+      sequence: 7,
       id: "production-worker-deploy",
       kind: "provider-write",
       approvalRequired: true,
@@ -315,7 +290,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 9,
+      sequence: 8,
       id: "production-access-bootstrap",
       kind: "application-write",
       approvalRequired: true,
@@ -336,7 +311,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 10,
+      sequence: 9,
       id: "backup-recovery-validation",
       kind: "recovery-validation-write",
       approvalRequired: true,
@@ -358,7 +333,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 11,
+      sequence: 10,
       id: "m5-production-evidence",
       kind: "read-only-evidence",
       approvalRequired: false,
@@ -380,12 +355,11 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       },
     },
     {
-      sequence: 12,
-      id: "production-domain-activation",
+      sequence: 11,
+      id: "production-pilot-ingress",
       kind: "public-exposure-write",
       approvalRequired: true,
       requires: [
-        "production-domain-selection",
         "production-worker-deploy",
         "production-access-bootstrap",
         "backup-recovery-validation",
@@ -394,26 +368,29 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       ],
       target: {
         provider: "cloudflare",
-        hostnameSource: "operator-supplied",
+        ingress: "workers.dev",
+        workerScoped: true,
+        previewUrlsEnabled: false,
+        customDomainActivated: false,
         publicIngress: true,
       },
     },
     {
-      sequence: 13,
+      sequence: 12,
       id: "post-deploy-smokes",
       kind: "production-smoke-write",
       approvalRequired: true,
       requires: [
         "backup-recovery-validation",
         "m5-production-evidence",
-        "production-domain-activation",
+        "production-pilot-ingress",
       ],
       target: {
         checks: ["health", "auth", "permissions", "application"],
       },
     },
     {
-      sequence: 14,
+      sequence: 13,
       id: "release-gate",
       kind: "authorization-gate",
       approvalRequired: true,
@@ -609,19 +586,10 @@ function assertExecutionPlanContract() {
     fail("DATABASE_BINDING_TARGET_DRIFT");
   }
 
-  const domainSelection = stepById(plan, "production-domain-selection");
-  if (
-    domainSelection.target?.hostnameSource !== "operator-supplied" ||
-    domainSelection.target?.providerWrite !== false ||
-    domainSelection.target?.publicIngress !== false
-  ) {
-    fail("DOMAIN_SELECTION_BOUNDARY_DRIFT");
-  }
-
   const runtimeConfiguration = stepById(plan, "runtime-configuration");
   if (
     runtimeConfiguration.target?.provider !== "cloudflare" ||
-    !runtimeConfiguration.requires.includes("production-domain-selection") ||
+    runtimeConfiguration.target?.baseURLSource !== "provider-derived-workers-dev-origin" ||
     !isDeepStrictEqual(runtimeConfiguration.target?.secretNames, [
       "BETTER_AUTH_SECRET",
     ]) ||
@@ -724,21 +692,25 @@ function assertExecutionPlanContract() {
     fail("M5_EVIDENCE_GATE_DRIFT");
   }
 
-  const domainActivation = stepById(plan, "production-domain-activation");
+  const pilotIngress = stepById(plan, "production-pilot-ingress");
   if (
-    domainActivation.target?.provider !== "cloudflare" ||
-    domainActivation.target?.hostnameSource !== "operator-supplied" ||
-    domainActivation.target?.publicIngress !== true ||
-    domainActivation.approvalRequired !== true ||
-    !domainActivation.requires.includes("m5-production-evidence") ||
-    !domainActivation.requires.includes("backup-recovery-validation") ||
-    !domainActivation.requires.includes("prerequisite:M4_DONE")
+    pilotIngress.target?.provider !== "cloudflare" ||
+    pilotIngress.target?.ingress !== "workers.dev" ||
+    pilotIngress.target?.workerScoped !== true ||
+    pilotIngress.target?.previewUrlsEnabled !== false ||
+    pilotIngress.target?.customDomainActivated !== false ||
+    pilotIngress.target?.publicIngress !== true ||
+    pilotIngress.approvalRequired !== true ||
+    !pilotIngress.requires.includes("m5-production-evidence") ||
+    !pilotIngress.requires.includes("backup-recovery-validation") ||
+    !pilotIngress.requires.includes("prerequisite:M4_DONE")
   ) {
     fail("PUBLIC_EXPOSURE_BOUNDARY_DRIFT");
   }
 
   const smokes = stepById(plan, "post-deploy-smokes");
   if (
+    !smokes.requires.includes("production-pilot-ingress") ||
     !isDeepStrictEqual(smokes.target?.checks, [
       "health",
       "auth",
@@ -791,7 +763,7 @@ function assertM6CoverageContract() {
 
 function assertPermissionProvisioningContract() {
   if (
-    !isCanonicalUlcLinzM5PermissionProvisioningBundle() ||
+    !isCanonicalUlcLinzM5PermissionProvisionINGBundle() ||
     ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE.principalRoleAssignments.length !== 0
   ) {
     fail("PERMISSION_PROVISIONING_CONTRACT_DRIFT");
