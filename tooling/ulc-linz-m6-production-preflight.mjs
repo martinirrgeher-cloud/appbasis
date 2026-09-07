@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA } from "./factory-ui/production-release-readiness.mjs";
 import {
   ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE,
-  isCanonicalUlcLinzM5PermissionProvisionINGBundle,
+  isCanonicalUlcLinzM5PermissionProvisioningBundle,
 } from "./ulc-linz-m5-permission-provisioning.mjs";
 import { ULC_LINZ_M5_TARGET_POLICY } from "./ulc-linz-m5-target-policy.mjs";
 import { createExpectedUlcLinzDatabaseManifest } from "./ulc-linz-database-contract.mjs";
@@ -763,7 +763,7 @@ function assertM6CoverageContract() {
 
 function assertPermissionProvisioningContract() {
   if (
-    !isCanonicalUlcLinzM5PermissionProvisionINGBundle() ||
+    !isCanonicalUlcLinzM5PermissionProvisioningBundle() ||
     ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE.principalRoleAssignments.length !== 0
   ) {
     fail("PERMISSION_PROVISIONING_CONTRACT_DRIFT");
