@@ -2,7 +2,7 @@ export const REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA = Object.freeze([
   Object.freeze({ id: "previewAccepted", label: "Preview geprüft" }),
   Object.freeze({ id: "productionDatabaseReady", label: "Eigene Produktionsdatenbank" }),
   Object.freeze({ id: "productionWorkerReady", label: "Eigener Produktions-Worker" }),
-  Object.freeze({ id: "productionPilotIngressReady", label: "Kontrollierter Pilot-Ingress" }),
+  Object.freeze({ id: "productionDomainReady", label: "Kontrollierter Pilot-Ingress" }),
   Object.freeze({ id: "productionUsersAndPermissionsReady", label: "Produktive Benutzer & Rechte" }),
   Object.freeze({ id: "backupRecoveryReady", label: "Backup & Recovery geprüft" }),
   Object.freeze({ id: "securityPrivacyReady", label: "Security & Privacy geprüft" }),
