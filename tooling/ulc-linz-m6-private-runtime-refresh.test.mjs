@@ -244,29 +244,62 @@ test("refresh fails closed when the current version is missing or duplicated at 
   );
 });
 
-test("refresh derives the exact deployed Hyperdrive IDs without a separate provider inventory read", () => {
+test("refresh derives Hyperdrive IDs from only the approved legacy-to-pilot origin transition", () => {
+  const expected = {
+    applicationHyperdriveId: "app-hyperdrive",
+    securityLogHyperdriveId: "security-hyperdrive",
+  };
   assert.deepEqual(
     deriveUlcLinzPrivateRuntimeHyperdriveBindings(bindingResponse(OLD_VERSION), {
       versionId: OLD_VERSION,
       expectedBaseURL: LEGACY_BASE_URL,
+      alternateBaseURL: PILOT_BASE_URL,
     }),
-    {
-      applicationHyperdriveId: "app-hyperdrive",
-      securityLogHyperdriveId: "security-hyperdrive",
-    },
+    expected,
+  );
+  assert.deepEqual(
+    deriveUlcLinzPrivateRuntimeHyperdriveBindings(
+      bindingResponse(CURRENT_VERSION, PILOT_BASE_URL),
+      {
+        versionId: CURRENT_VERSION,
+        expectedBaseURL: LEGACY_BASE_URL,
+        alternateBaseURL: PILOT_BASE_URL,
+      },
+    ),
+    expected,
+  );
+
+  assert.throws(
+    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(
+      bindingResponse(CURRENT_VERSION, "https://unexpected.example.com"),
+      {
+        versionId: CURRENT_VERSION,
+        expectedBaseURL: LEGACY_BASE_URL,
+        alternateBaseURL: PILOT_BASE_URL,
+      },
+    ),
+    /bindings drifted/,
   );
 
   const duplicate = bindingResponse(OLD_VERSION);
   duplicate.result.resources.bindings[2].id = "app-hyperdrive";
   assert.throws(
-    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(duplicate, { versionId: OLD_VERSION }),
+    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(duplicate, {
+      versionId: OLD_VERSION,
+      expectedBaseURL: LEGACY_BASE_URL,
+      alternateBaseURL: PILOT_BASE_URL,
+    }),
     /bindings drifted/,
   );
 
   const extra = bindingResponse(OLD_VERSION);
   extra.result.resources.bindings.push({ name: "FUTURE", type: "plain_text", text: "x" });
   assert.throws(
-    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(extra, { versionId: OLD_VERSION }),
+    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(extra, {
+      versionId: OLD_VERSION,
+      expectedBaseURL: LEGACY_BASE_URL,
+      alternateBaseURL: PILOT_BASE_URL,
+    }),
     /binding inventory is invalid/,
   );
 });
