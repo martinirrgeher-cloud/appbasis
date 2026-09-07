@@ -64,7 +64,7 @@ test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-sa
   assert.equal(runner.includes("randomUUID"), false);
 });
 
-test("M6 post-deploy smoke stays dedicated, bounded and validates both production database targets", async () => {
+test("M6 post-deploy smoke stays dedicated, pilot-ingress bound and validates both production database targets", async () => {
   const [workflow, runner, httpSessionRevoker] = await Promise.all([
     readFile(SMOKE_WORKFLOW, "utf8"),
     readFile(SMOKE_RUNNER, "utf8"),
@@ -72,20 +72,25 @@ test("M6 post-deploy smoke stays dedicated, bounded and validates both productio
   ]);
   for (const marker of [
     "RUN-ULC-M6-PRODUCTION-SMOKE",
-    "M6 ULC Production Domain Activation",
+    "M6 ULC Production Pilot Ingress",
+    "pilot_ingress_run_id",
     "M6 ULC Production Smoke Principal Bootstrap",
     ".head_sha == $sha",
+    "workers.dev",
+    "previews_enabled == false",
     "/api/health",
     "/api/auth/sign-in",
     "/api/auth/session",
     "revoke-production-http-smoke-session.mjs",
     "ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE",
     "trap cleanup EXIT",
-    "evaluateUlcLinzM6ProductionDomainEvidence",
-    "final production release: not authorized",
+    "custom organizational domain: not activated",
+    "final organizational go-live: not authorized",
   ]) {
     assert.equal(workflow.includes(marker), true, `missing production smoke guard: ${marker}`);
   }
+  assert.equal(workflow.includes("M6 ULC Production Domain Activation"), false);
+  assert.equal(workflow.includes("evaluateUlcLinzM6ProductionDomainEvidence"), false);
   assert.equal(workflow.includes("$TARGET_BASE_URL/api/auth/sign-out"), false);
   assert.equal(workflow.includes("/api/auth/change-required-password"), false);
   assert.equal(workflow.includes("releaseAuthorized: true"), false);
