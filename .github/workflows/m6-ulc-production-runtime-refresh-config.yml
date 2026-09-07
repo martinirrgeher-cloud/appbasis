@@ -104,7 +104,10 @@ jobs:
           subdomain="$(jq -er '.result.subdomain | select(type == "string")' "$response")" || { echo 'Cloudflare account workers.dev subdomain is unavailable.' >&2; exit 1; }
           [[ "$subdomain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || { echo 'Cloudflare account workers.dev subdomain is invalid.' >&2; exit 1; }
           jq -e '.success == true' "$response" >/dev/null || { echo 'Cloudflare account workers.dev subdomain lookup was unsuccessful.' >&2; exit 1; }
-          printf 'PILOT_BASE_URL=https://%s.%s.workers.dev\n' "$TARGET_WORKER" "$subdomain" >> "$GITHUB_ENV"
+          pilot_base_url="https://${TARGET_WORKER}.${subdomain}.workers.dev"
+          pilot_origin_fingerprint="$(printf '%s' "$pilot_base_url" | sha256sum | awk '{print $1}')"
+          [[ "$pilot_origin_fingerprint" =~ ^[0-9a-f]{64}$ ]] || { echo 'Pilot origin fingerprint is invalid.' >&2; exit 1; }
+          printf 'PILOT_BASE_URL=%s\nPILOT_ORIGIN_FINGERPRINT=%s\n' "$pilot_base_url" "$pilot_origin_fingerprint" >> "$GITHUB_ENV"
 
       - name: Derive current auth-secret HMAC fingerprint
         shell: bash
@@ -195,7 +198,7 @@ jobs:
           await writeFile(process.env.SECRETS_FILE, `${JSON.stringify({ BETTER_AUTH_SECRET: process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET })}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
           NODE
           pnpm exec wrangler versions upload --cwd ../ulc-linz --config wrangler.production.generated.json --name "$TARGET_WORKER" --secrets-file "$secrets_file" --strict --dry-run --experimental-provision=false --experimental-auto-create=false
-          WRANGLER_OUTPUT_FILE_PATH="$output_file" pnpm exec wrangler versions upload --cwd ../ulc-linz --config wrangler.production.generated.json --name "$TARGET_WORKER" --secrets-file "$secrets_file" --strict --tag "$TARGET_VERSION_TAG" --message "AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${AUTH_SECRET_FINGERPRINT}" --experimental-provision=false --experimental-auto-create=false
+          WRANGLER_OUTPUT_FILE_PATH="$output_file" pnpm exec wrangler versions upload --cwd ../ulc-linz --config wrangler.production.generated.json --name "$TARGET_WORKER" --secrets-file "$secrets_file" --strict --tag "$TARGET_VERSION_TAG" --message "AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${AUTH_SECRET_FINGERPRINT} origin-hmac:${PILOT_ORIGIN_FINGERPRINT}" --experimental-provision=false --experimental-auto-create=false
           id="$(jq -r 'select(.type == "version-upload") | .version_id // empty' "$output_file" | tail -n 1)"
           test -n "$id" || { echo 'Wrangler did not report a version ID.' >&2; exit 1; }
           echo "::add-mask::$id"; printf 'id=%s\n' "$id" >> "$GITHUB_OUTPUT"
