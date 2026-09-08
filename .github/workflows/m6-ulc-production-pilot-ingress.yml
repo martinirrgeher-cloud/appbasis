@@ -29,6 +29,7 @@ jobs:
     environment: m4-dr
     env:
       TARGET_WORKER: appbasis-ulc-linz-production
+      M5_GATE_ARTIFACT: ulc-linz-m5-production-gate
 
     steps:
       - name: Require explicit main dispatch
@@ -50,6 +51,9 @@ jobs:
         run: |
           set -euo pipefail
           run="$RUNNER_TEMP/m5-run.json"
+          artifacts="$RUNNER_TEMP/m5-artifacts.json"
+          archive="$RUNNER_TEMP/m5-gate.zip"
+          extracted="$RUNNER_TEMP/m5-gate"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
@@ -57,12 +61,32 @@ jobs:
           jq -e --arg sha "$GITHUB_SHA" \
             '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
             "$run" >/dev/null || { echo 'M5 production evidence is not a successful exact-head main run.' >&2; exit 1; }
-          created_at="$(jq -er '.created_at | select(type == "string")' "$run")"
-          created_epoch="$(date -u -d "$created_at" +%s 2>/dev/null)" || { echo 'M5 production evidence creation time is invalid.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}/artifacts?per_page=100" > "$artifacts"
+          jq -e --arg name "$M5_GATE_ARTIFACT" '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' "$artifacts" >/dev/null || { echo 'M5 authoritative gate artifact is missing, duplicated or expired.' >&2; exit 1; }
+          artifact_id="$(jq -er --arg name "$M5_GATE_ARTIFACT" '.artifacts[] | select(.name == $name and .expired == false) | .id' "$artifacts")"
+          [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 authoritative gate artifact ID is invalid.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --location --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$archive"
+          rm -rf -- "$extracted" && mkdir -p "$extracted"
+          unzip -q "$archive" -d "$extracted"
+          gate="$extracted/m5-production-gate.json"
+          test -f "$gate" && test "$(find "$extracted" -type f | wc -l)" -eq 1 || { echo 'M5 authoritative gate artifact contents are invalid.' >&2; exit 1; }
+          jq -e --arg sha "$GITHUB_SHA" --arg runId "$M5_RUN_ID" \
+            '.schemaVersion == 1 and .application == "ulc-linz" and .environment == "production" and .headSha == $sha and .runId == $runId and .securityPrivacyReady == true and .verifiedCount == 12 and .requiredCount == 12 and .productionReleaseAuthorized == false and (.observedAt | type == "string") and (.validUntilOrReviewAt | type == "string")' \
+            "$gate" >/dev/null || { echo 'M5 authoritative gate artifact contract is invalid.' >&2; exit 1; }
+          observed_at="$(jq -er '.observedAt' "$gate")"
+          valid_until="$(jq -er '.validUntilOrReviewAt' "$gate")"
+          observed_epoch="$(date -u -d "$observed_at" +%s 2>/dev/null)" || { echo 'M5 evidence observation time is invalid.' >&2; exit 1; }
+          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'M5 evidence expiry is invalid.' >&2; exit 1; }
           now_epoch="$(date -u +%s)"
-          age_seconds="$((now_epoch - created_epoch))"
-          if (( age_seconds < 0 || age_seconds > 900 )); then
-            echo 'M5 production evidence is outside the fail-closed 15-minute freshness window.' >&2
+          test "$((valid_epoch - observed_epoch))" -eq 900 || { echo 'M5 evidence validity window is not the canonical 15 minutes.' >&2; exit 1; }
+          if (( now_epoch < observed_epoch || now_epoch >= valid_epoch )); then
+            echo 'M5 authoritative production evidence is outside its validUntilOrReviewAt window.' >&2
             exit 1
           fi
 
@@ -100,7 +124,7 @@ jobs:
             echo 'write_required=true' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Revalidate fresh exact-head M5 evidence immediately before write
+      - name: Revalidate authoritative fresh exact-head M5 evidence immediately before write
         if: steps.before.outputs.write_required == 'true'
         shell: bash
         env:
@@ -109,6 +133,9 @@ jobs:
         run: |
           set -euo pipefail
           run="$RUNNER_TEMP/m5-run-before-write.json"
+          artifacts="$RUNNER_TEMP/m5-artifacts-before-write.json"
+          archive="$RUNNER_TEMP/m5-gate-before-write.zip"
+          extracted="$RUNNER_TEMP/m5-gate-before-write"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
@@ -116,12 +143,32 @@ jobs:
           jq -e --arg sha "$GITHUB_SHA" \
             '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
             "$run" >/dev/null || { echo 'M5 production evidence changed or is no longer a successful exact-head main run.' >&2; exit 1; }
-          created_at="$(jq -er '.created_at | select(type == "string")' "$run")"
-          created_epoch="$(date -u -d "$created_at" +%s 2>/dev/null)" || { echo 'M5 production evidence creation time is invalid.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}/artifacts?per_page=100" > "$artifacts"
+          jq -e --arg name "$M5_GATE_ARTIFACT" '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' "$artifacts" >/dev/null || { echo 'M5 authoritative gate artifact is missing, duplicated or expired before write.' >&2; exit 1; }
+          artifact_id="$(jq -er --arg name "$M5_GATE_ARTIFACT" '.artifacts[] | select(.name == $name and .expired == false) | .id' "$artifacts")"
+          [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 authoritative gate artifact ID is invalid before write.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --location --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$archive"
+          rm -rf -- "$extracted" && mkdir -p "$extracted"
+          unzip -q "$archive" -d "$extracted"
+          gate="$extracted/m5-production-gate.json"
+          test -f "$gate" && test "$(find "$extracted" -type f | wc -l)" -eq 1 || { echo 'M5 authoritative gate artifact contents are invalid before write.' >&2; exit 1; }
+          jq -e --arg sha "$GITHUB_SHA" --arg runId "$M5_RUN_ID" \
+            '.schemaVersion == 1 and .application == "ulc-linz" and .environment == "production" and .headSha == $sha and .runId == $runId and .securityPrivacyReady == true and .verifiedCount == 12 and .requiredCount == 12 and .productionReleaseAuthorized == false and (.observedAt | type == "string") and (.validUntilOrReviewAt | type == "string")' \
+            "$gate" >/dev/null || { echo 'M5 authoritative gate artifact contract is invalid before write.' >&2; exit 1; }
+          observed_at="$(jq -er '.observedAt' "$gate")"
+          valid_until="$(jq -er '.validUntilOrReviewAt' "$gate")"
+          observed_epoch="$(date -u -d "$observed_at" +%s 2>/dev/null)" || { echo 'M5 evidence observation time is invalid before write.' >&2; exit 1; }
+          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'M5 evidence expiry is invalid before write.' >&2; exit 1; }
           now_epoch="$(date -u +%s)"
-          age_seconds="$((now_epoch - created_epoch))"
-          if (( age_seconds < 0 || age_seconds > 900 )); then
-            echo 'M5 production evidence expired before pilot-ingress activation.' >&2
+          test "$((valid_epoch - observed_epoch))" -eq 900 || { echo 'M5 evidence validity window is not the canonical 15 minutes before write.' >&2; exit 1; }
+          if (( now_epoch < observed_epoch || now_epoch >= valid_epoch )); then
+            echo 'M5 authoritative production evidence expired before pilot-ingress activation.' >&2
             exit 1
           fi
 
@@ -167,7 +214,7 @@ jobs:
             echo '### ULC M6 temporary Cloudflare pilot ingress'
             echo '- canonical workers.dev endpoint: enabled'
             echo '- preview URLs: disabled'
-            echo '- exact-head M5 Security & Privacy evidence: verified prerequisite'
+            echo '- exact-head M5 Security & Privacy evidence: verified from authoritative gate artifact'
             echo '- custom organizational domain: not activated'
             echo '- final organizational go-live: not authorized'
           } >> "$GITHUB_STEP_SUMMARY"
