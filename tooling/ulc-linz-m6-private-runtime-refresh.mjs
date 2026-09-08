@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { appendFile, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -11,6 +12,7 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const HMAC_PATTERN = /^[0-9a-f]{64}$/;
 const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HISTORICAL_MESSAGE_PATTERN = /^AppBasis ulc-linz production runtime ([0-9a-f]{40}) auth-hmac:([0-9a-f]{64})(?: origin-hmac:([0-9a-f]{64}))?$/;
+const SUBDOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 export function evaluateUlcLinzPrivateRuntimeRefreshState(
   {
@@ -267,8 +269,48 @@ async function readJson(path) {
   return JSON.parse(await readFile(resolve(path), "utf8"));
 }
 
+async function resolvePilotOriginEnvironment() {
+  let baseURL = process.env.PILOT_BASE_URL;
+  let fingerprint = process.env.PILOT_ORIGIN_FINGERPRINT;
+  if (baseURL !== undefined || fingerprint !== undefined) {
+    requireBaseURL(baseURL);
+    requireHmac(fingerprint, "pilot-origin fingerprint");
+    return { baseURL, fingerprint };
+  }
+  const accountId = requireOpaque(process.env.CLOUDFLARE_ACCOUNT_ID, "Cloudflare account ID");
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (typeof apiToken !== "string" || apiToken.length === 0 || apiToken !== apiToken.trim()) {
+    throw new Error("ULC production refresh Cloudflare API token is invalid.");
+  }
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/subdomain`,
+    { headers: { Authorization: `Bearer ${apiToken}` } },
+  );
+  if (!response.ok) {
+    throw new Error(`ULC production refresh account-subdomain lookup failed with HTTP ${response.status}.`);
+  }
+  const payload = await response.json();
+  const subdomain = payload?.result?.subdomain;
+  if (payload?.success !== true || typeof subdomain !== "string" || !SUBDOMAIN_PATTERN.test(subdomain)) {
+    throw new Error("ULC production refresh account workers.dev subdomain is invalid.");
+  }
+  baseURL = `https://${TARGET_WORKER}.${subdomain}.workers.dev`;
+  fingerprint = createHash("sha256").update(baseURL).digest("hex");
+  requireBaseURL(baseURL);
+  requireHmac(fingerprint, "pilot-origin fingerprint");
+  if (typeof process.env.GITHUB_ENV === "string" && process.env.GITHUB_ENV.length > 0) {
+    await appendFile(
+      process.env.GITHUB_ENV,
+      `PILOT_BASE_URL=${baseURL}\nPILOT_ORIGIN_FINGERPRINT=${fingerprint}\n`,
+      "utf8",
+    );
+  }
+  return { baseURL, fingerprint };
+}
+
 async function main(argv = process.argv.slice(2)) {
   const [mode, ...paths] = argv;
+  const pilot = await resolvePilotOriginEnvironment();
   if ((mode === "state" || mode === "deploy-state") && paths.length === 4) {
     const result = evaluateUlcLinzPrivateRuntimeRefreshState(
       {
@@ -278,7 +320,7 @@ async function main(argv = process.argv.slice(2)) {
         scriptsResponse: await readJson(paths[3]),
         githubSha: process.env.GITHUB_SHA,
         authSecretFingerprint: process.env.AUTH_SECRET_FINGERPRINT,
-        pilotOriginFingerprint: process.env.PILOT_ORIGIN_FINGERPRINT,
+        pilotOriginFingerprint: pilot.fingerprint,
       },
       mode === "deploy-state" ? { requireCurrentVersion: true } : {},
     );
@@ -294,7 +336,7 @@ async function main(argv = process.argv.slice(2)) {
         scriptsResponse: await readJson(paths[3]),
         githubSha: process.env.GITHUB_SHA,
         authSecretFingerprint: process.env.AUTH_SECRET_FINGERPRINT,
-        pilotOriginFingerprint: process.env.PILOT_ORIGIN_FINGERPRINT,
+        pilotOriginFingerprint: pilot.fingerprint,
       },
       { requireCurrentVersion: true, requireCurrentDeployment: true },
     );
@@ -305,7 +347,7 @@ async function main(argv = process.argv.slice(2)) {
     const result = deriveUlcLinzPrivateRuntimeHyperdriveBindings(await readJson(paths[0]), {
       versionId: process.env.VERSION_ID,
       expectedBaseURL: LEGACY_BASE_URL,
-      alternateBaseURL: process.env.PILOT_BASE_URL,
+      alternateBaseURL: pilot.baseURL,
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
@@ -315,7 +357,7 @@ async function main(argv = process.argv.slice(2)) {
       versionId: process.env.VERSION_ID,
       applicationHyperdriveId: process.env.HYPERDRIVE_ID,
       securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID,
-      expectedBaseURL: process.env.PILOT_BASE_URL,
+      expectedBaseURL: pilot.baseURL,
     });
     process.stdout.write("verified\n");
     return;
