@@ -7,6 +7,8 @@ import { collectUlcLinzM5ProductionEvidenceBundle } from "./ulc-linz-m5-producti
 const NOW = new Date("2026-08-23T14:10:00.000Z");
 const GITHUB_SHA = "a".repeat(40);
 const CURRENT_VERSION = "12345678-1234-4123-8123-123456789abc";
+const PILOT_BASE_URL = "https://appbasis-ulc-linz-production.example.workers.dev";
+const PILOT_ORIGIN_FINGERPRINT = "199802ae5d095dd6407e55e7f93be7e892077c9776e59b1d04b2751f8213fd04";
 const INVENTORY = JSON.parse(
   await readFile(
     new URL("../apps/ulc-linz/privacy/m5-data-inventory.json", import.meta.url),
@@ -26,11 +28,11 @@ function workerVersion() {
       id: CURRENT_VERSION,
       annotations: {
         "workers/tag": "ulc-linz-production-runtime-v1",
-        "workers/message": `AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${"b".repeat(64)}`,
+        "workers/message": `AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${"b".repeat(64)} origin-hmac:${PILOT_ORIGIN_FINGERPRINT}`,
       },
       resources: {
         bindings: [
-          { name: "APPBASIS_BASE_URL", type: "plain_text", text: "https://app.ulc-linz.at" },
+          { name: "APPBASIS_BASE_URL", type: "plain_text", text: PILOT_BASE_URL },
           { name: "HYPERDRIVE", type: "hyperdrive", id: "hyperdrive-1" },
           { name: "SECURITY_LOG_HYPERDRIVE", type: "hyperdrive", id: "hyperdrive-security-1" },
           { name: "BETTER_AUTH_SECRET", type: "secret_text" },
@@ -64,6 +66,9 @@ function providerFetch(settingsResult) {
     }
     if (value.endsWith("/projects/project-1/branches/branch-1/databases")) {
       return response({ databases: [{ id: 123, name: "neondb" }] });
+    }
+    if (value.endsWith("/workers/subdomain")) {
+      return response({ success: true, result: { subdomain: "example" } });
     }
     if (value.endsWith("/workers/scripts/appbasis-ulc-linz-production/subdomain")) {
       return response({ success: true, result: { enabled: false, previews_enabled: false } });
