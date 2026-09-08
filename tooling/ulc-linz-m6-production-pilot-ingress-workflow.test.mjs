@@ -14,10 +14,15 @@ test("M6 pilot ingress stays explicit, exact-head M5 gated, fresh and preview-cl
     ".github/workflows/m5-ulc-production-evidence.yml",
     ".head_sha == $sha",
     ".conclusion == \"success\"",
-    ".created_at",
-    "age_seconds > 900",
-    "outside the fail-closed 15-minute freshness window",
-    "Revalidate fresh exact-head M5 evidence immediately before write",
+    "ulc-linz-m5-production-gate",
+    "/actions/runs/${M5_RUN_ID}/artifacts?per_page=100",
+    "/actions/artifacts/${artifact_id}/zip",
+    "m5-production-gate.json",
+    ".validUntilOrReviewAt",
+    "valid_epoch - observed_epoch",
+    "-eq 900",
+    "now_epoch >= valid_epoch",
+    "Revalidate authoritative fresh exact-head M5 evidence immediately before write",
     "expired before pilot-ingress activation",
     "group: m6-ulc-production-runtime-config",
     "CLOUDFLARE_API_WRITE_TOKEN",
@@ -31,7 +36,9 @@ test("M6 pilot ingress stays explicit, exact-head M5 gated, fresh and preview-cl
     assert.equal(source.includes(marker), true, `missing pilot ingress guard: ${marker}`);
   }
 
-  assert.equal((source.match(/age_seconds > 900/g) ?? []).length, 2);
+  assert.equal((source.match(/valid_epoch - observed_epoch/g) ?? []).length, 2);
+  assert.equal(source.includes(".created_at"), false);
+  assert.equal(source.includes("age_seconds > 900"), false);
   assert.equal(source.includes("previews_enabled\":true"), false);
   assert.equal(source.includes("/workers/domains"), false);
   assert.equal(source.includes("app.ulc-linz.at"), false);
