@@ -408,6 +408,64 @@ jobs:
           );
           NODE
 
+      - name: Create sanitized authoritative M5 pilot gate
+        shell: bash
+        env:
+          WORK: ${{ steps.workspace.outputs.path }}
+        run: |
+          set -euo pipefail
+          BUNDLE_PATH="$WORK/m5-bundle.json" RESULT_PATH="$WORK/m5-result.json" GATE_PATH="$WORK/m5-production-gate.json" node --input-type=module <<'NODE'
+          import { readFile, writeFile } from "node:fs/promises";
+          const bundle = JSON.parse(await readFile(process.env.BUNDLE_PATH, "utf8"));
+          const result = JSON.parse(await readFile(process.env.RESULT_PATH, "utf8"));
+          const resource = bundle?.providerBoundEvidenceInput?.resourceBindingEvidence;
+          const observedAt = resource?.observedAt;
+          const validUntilOrReviewAt = resource?.validUntilOrReviewAt;
+          const observedMs = Date.parse(observedAt);
+          const validMs = Date.parse(validUntilOrReviewAt);
+          if (
+            result?.application !== "ulc-linz" ||
+            result?.environment !== "production" ||
+            result?.securityPrivacyReady !== true ||
+            result?.verifiedCount !== 12 ||
+            result?.requiredCount !== 12 ||
+            result?.productionReleaseAuthorized !== false ||
+            resource?.schemaVersion !== 1 ||
+            resource?.application !== "ulc-linz" ||
+            resource?.environment !== "production" ||
+            !Number.isFinite(observedMs) ||
+            !Number.isFinite(validMs) ||
+            validMs - observedMs !== 15 * 60 * 1000 ||
+            Date.now() < observedMs ||
+            Date.now() >= validMs
+          ) {
+            throw new Error("ULC M5 authoritative pilot gate cannot be derived from a fresh canonical 12/12 result.");
+          }
+          const gate = {
+            schemaVersion: 1,
+            application: "ulc-linz",
+            environment: "production",
+            headSha: process.env.GITHUB_SHA,
+            runId: process.env.GITHUB_RUN_ID,
+            observedAt,
+            validUntilOrReviewAt,
+            securityPrivacyReady: true,
+            verifiedCount: 12,
+            requiredCount: 12,
+            productionReleaseAuthorized: false,
+          };
+          await writeFile(process.env.GATE_PATH, `${JSON.stringify(gate, null, 2)}\n`, { mode: 0o600 });
+          NODE
+
+      - name: Upload authoritative M5 pilot gate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ulc-linz-m5-production-gate
+          path: ${{ steps.workspace.outputs.path }}/m5-production-gate.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
       - name: Remove temporary production and restore evidence
         if: always()
         shell: bash
