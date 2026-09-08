@@ -42,7 +42,7 @@ jobs:
           test "$CONFIRMATION" = "ACTIVATE-ULC-M6-PILOT-INGRESS" || { echo 'Exact pilot ingress activation confirmation is required.' >&2; exit 1; }
           [[ "$M5_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 run ID is invalid.' >&2; exit 1; }
 
-      - name: Require successful exact-head M5 production evidence
+      - name: Require successful fresh exact-head M5 production evidence
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -57,6 +57,14 @@ jobs:
           jq -e --arg sha "$GITHUB_SHA" \
             '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
             "$run" >/dev/null || { echo 'M5 production evidence is not a successful exact-head main run.' >&2; exit 1; }
+          created_at="$(jq -er '.created_at | select(type == "string")' "$run")"
+          created_epoch="$(date -u -d "$created_at" +%s 2>/dev/null)" || { echo 'M5 production evidence creation time is invalid.' >&2; exit 1; }
+          now_epoch="$(date -u +%s)"
+          age_seconds="$((now_epoch - created_epoch))"
+          if (( age_seconds < 0 || age_seconds > 900 )); then
+            echo 'M5 production evidence is outside the fail-closed 15-minute freshness window.' >&2
+            exit 1
+          fi
 
       - name: Validate and mask protected provider inputs
         shell: bash
@@ -90,6 +98,31 @@ jobs:
             echo 'write_required=false' >> "$GITHUB_OUTPUT"
           else
             echo 'write_required=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Revalidate fresh exact-head M5 evidence immediately before write
+        if: steps.before.outputs.write_required == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          M5_RUN_ID: ${{ inputs.m5_run_id }}
+        run: |
+          set -euo pipefail
+          run="$RUNNER_TEMP/m5-run-before-write.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$run"
+          jq -e --arg sha "$GITHUB_SHA" \
+            '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+            "$run" >/dev/null || { echo 'M5 production evidence changed or is no longer a successful exact-head main run.' >&2; exit 1; }
+          created_at="$(jq -er '.created_at | select(type == "string")' "$run")"
+          created_epoch="$(date -u -d "$created_at" +%s 2>/dev/null)" || { echo 'M5 production evidence creation time is invalid.' >&2; exit 1; }
+          now_epoch="$(date -u +%s)"
+          age_seconds="$((now_epoch - created_epoch))"
+          if (( age_seconds < 0 || age_seconds > 900 )); then
+            echo 'M5 production evidence expired before pilot-ingress activation.' >&2
+            exit 1
           fi
 
       - name: Enable canonical workers.dev pilot ingress with previews disabled
