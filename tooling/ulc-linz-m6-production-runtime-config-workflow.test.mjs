@@ -129,14 +129,19 @@ test("runtime refresh deploy reuses the exact configured version bindings withou
   assert.doesNotMatch(workflow, /\/hyperdrive\/configs/);
 });
 
-test("runtime configuration requires exact main-only operator approval", async () => {
+test("runtime configuration requires exact main-only operator approval and provider-derived pilot origin", async () => {
   const workflow = await source();
   assert.match(workflow, /GITHUB_REF.*refs\/heads\/main/);
   assert.match(workflow, /CONFIGURE-ULC-PRODUCTION-RUNTIME/);
   assert.match(workflow, /TARGET_WORKER: appbasis-ulc-linz-production/);
-  assert.match(workflow, /TARGET_BASE_URL: https:\/\/app\.ulc-linz\.at/);
   assert.match(workflow, /TARGET_VERSION_TAG: ulc-linz-production-runtime-v1/);
   assert.match(workflow, /group: m6-ulc-production-runtime-config/);
+  assert.match(workflow, /workers\/subdomain/);
+  assert.match(workflow, /PILOT_BASE_URL/);
+  assert.match(workflow, /PILOT_ORIGIN_FINGERPRINT/);
+  assert.match(workflow, /baseURL: process\.env\.PILOT_BASE_URL/);
+  assert.match(workflow, /origin-hmac:\$\{PILOT_ORIGIN_FINGERPRINT\}/);
+  assert.doesNotMatch(workflow, /https:\/\/app\.ulc-linz\.at/);
 });
 
 test("runtime configuration consumes only dedicated production inputs", async () => {
