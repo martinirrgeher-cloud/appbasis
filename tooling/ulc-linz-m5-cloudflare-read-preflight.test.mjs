@@ -31,6 +31,9 @@ function successFetch(overrides = new Map()) {
     for (const [needle, result] of overrides) {
       if (value.includes(needle)) return result;
     }
+    if (value.endsWith("/workers/subdomain")) {
+      return response(200, { success: true, result: { subdomain: "example" } });
+    }
     if (value.endsWith("/subdomain")) {
       return response(200, { success: true, result: { enabled: false, previews_enabled: false } });
     }
@@ -69,6 +72,7 @@ async function capturedFailure(promise) {
 test("shared Cloudflare read surface is exact and complete", () => {
   const accountPath = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}`;
   assert.deepEqual(ULC_LINZ_M5_CLOUDFLARE_REQUEST_CLASSES, [
+    "account-subdomain",
     "subdomain",
     "custom-domains",
     "deployments",
@@ -77,6 +81,7 @@ test("shared Cloudflare read surface is exact and complete", () => {
     "version",
   ]);
   assert.deepEqual(buildUlcLinzM5CloudflareReadSurface(ACCOUNT, VERSION), [
+    { requestClass: "account-subdomain", url: `${accountPath}/workers/subdomain` },
     { requestClass: "subdomain", url: `${accountPath}/workers/scripts/${ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER}/subdomain` },
     { requestClass: "custom-domains", url: `${accountPath}/workers/domains?service=${ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER}` },
     { requestClass: "deployments", url: `${accountPath}/workers/scripts/${ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER}/deployments` },
