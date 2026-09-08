@@ -123,6 +123,9 @@ jobs:
       - name: Test ULC private runtime refresh safety contract
         run: node --test ./tooling/ulc-linz-m6-private-runtime-refresh.test.mjs
 
+      - name: Test ULC M6 pilot lifecycle contract
+        run: node --test ./tooling/ulc-linz-m6-production-pilot-ingress-workflow.test.mjs ./tooling/ulc-linz-m6-pilot-lifecycle-contract.test.mjs
+
       - name: Test M5 restore credential preflight
         run: node --test ./tooling/ulc-linz-m5-restore-credential-preflight.test.mjs
 
