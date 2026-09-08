@@ -263,6 +263,7 @@ function requireOpaque(value, label) {
   ) {
     throw new Error(`ULC production refresh ${label} is invalid.`);
   }
+  return value;
 }
 
 async function readJson(path) {
