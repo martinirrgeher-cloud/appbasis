@@ -6,6 +6,7 @@ import {
 } from "./ulc-linz-m5-cloudflare-read-surface.mjs";
 
 const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SUBDOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 const REQUEST_CLASSES = ULC_LINZ_M5_CLOUDFLARE_REQUEST_CLASSES;
 const FAILURE_CLASSES = Object.freeze([
   "transport",
@@ -92,6 +93,9 @@ export async function runUlcLinzM5CloudflareReadPreflight(
 
 function hasExpectedShape(requestClass, value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  if (requestClass === "account-subdomain") {
+    return typeof value?.result?.subdomain === "string" && SUBDOMAIN_PATTERN.test(value.result.subdomain);
+  }
   if (requestClass === "subdomain") return value.result !== null && typeof value.result === "object";
   if (requestClass === "custom-domains" || requestClass === "script-inventory") return Array.isArray(value.result);
   if (requestClass === "deployments") return Array.isArray(value?.result?.deployments);
