@@ -105,7 +105,11 @@ jobs:
           set -euo pipefail
 
           API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
-          AUTH=(--header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json')
+          AUTH=(
+            --header "Authorization: Bearer $GH_TOKEN"
+            --header 'Accept: application/vnd.github+json'
+            --header 'X-GitHub-Api-Version: 2026-03-10'
+          )
           steps=(runtime_refresh private_deploy security_smoke lifecycle_preflight m5_evidence pilot_ingress smoke_principal post_deploy_smoke)
           declare -A rank=(
             [runtime_refresh]=1
@@ -182,44 +186,33 @@ jobs:
           dispatch_and_wait() {
             local workflow="$1" inputs_json="$2" label="$3"
             local safe="${workflow//[^a-zA-Z0-9]/_}"
-            local before="$RUNNER_TEMP/m6-chain-before-$safe.txt"
-            local runs="$RUNNER_TEMP/m6-chain-runs-$safe.json"
             local payload="$RUNNER_TEMP/m6-chain-dispatch-$safe.json"
+            local dispatched="$RUNNER_TEMP/m6-chain-dispatched-$safe.json"
             local run="$RUNNER_TEMP/m6-chain-run-$safe.json"
 
             assert_main_head
-            curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
-              "${AUTH[@]}" "$API/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&per_page=100" > "$runs"
-            jq -r --arg sha "$GITHUB_SHA" '.workflow_runs[] | select(.head_sha == $sha) | (.id | tostring)' "$runs" > "$before"
-
             jq -cn --arg ref main --argjson inputs "$inputs_json" '{ref:$ref,inputs:$inputs}' > "$payload"
             echo "Dispatching $label..." >&2
-            curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
-              --request POST "${AUTH[@]}" --header 'Content-Type: application/json' \
-              --data-binary "@$payload" "$API/actions/workflows/$workflow/dispatches" >/dev/null
+            http_status="$(
+              curl --silent --show-error --connect-timeout 10 --max-time 30 \
+                --output "$dispatched" --write-out '%{http_code}' \
+                --request POST "${AUTH[@]}" --header 'Content-Type: application/json' \
+                --data-binary "@$payload" "$API/actions/workflows/$workflow/dispatches"
+            )"
+            if test "$http_status" != 200; then
+              echo "GitHub did not return the pinned workflow-dispatch run identity for $label (HTTP $http_status). The child attempt may exist, so any retry requires fresh approval." >&2
+              exit 1
+            fi
 
-            local run_id=''
-            for _ in $(seq 1 60); do
-              curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
-                "${AUTH[@]}" "$API/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&per_page=100" > "$runs"
-              mapfile -t candidates < <(
-                jq -r --arg sha "$GITHUB_SHA" '.workflow_runs[] | select(.head_sha == $sha) | (.id | tostring)' "$runs" |
-                  while read -r id; do
-                    grep -Fxq "$id" "$before" || printf '%s\n' "$id"
-                  done
-              )
-              if (( ${#candidates[@]} > 1 )); then
-                echo "Ambiguous child-run identity for $label; stopping fail-closed. The dispatched attempt may still exist, so any retry requires fresh approval." >&2
-                exit 1
-              fi
-              if (( ${#candidates[@]} == 1 )); then
-                run_id="${candidates[0]}"
-                break
-              fi
-              sleep 2
-            done
+            local run_id
+            run_id="$(jq -r '.workflow_run_id // empty' "$dispatched")"
             [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
-              echo "Could not identify the dispatched $label run; stopping fail-closed. Any retry requires fresh approval." >&2
+              echo "GitHub returned an invalid dispatched run ID for $label. The child attempt may exist, so any retry requires fresh approval." >&2
+              exit 1
+            }
+            jq -e --arg runUrl "$API/actions/runs/$run_id" \
+              '.run_url == $runUrl and (.html_url | type == "string" and length > 0)' "$dispatched" >/dev/null || {
+              echo "GitHub returned an invalid dispatched run binding for $label. The child attempt may exist, so any retry requires fresh approval." >&2
               exit 1
             }
 
