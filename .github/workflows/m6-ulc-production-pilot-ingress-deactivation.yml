@@ -1,0 +1,116 @@
+name: M6 ULC Production Pilot Ingress Deactivation
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type DEACTIVATE-ULC-M6-PILOT-INGRESS to close the canonical workers.dev endpoint'
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  deactivate-pilot-ingress:
+    name: Deactivate guarded ULC workers.dev pilot ingress
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: m4-dr
+    env:
+      TARGET_WORKER: appbasis-ulc-linz-production
+
+    steps:
+      - name: Require explicit main deactivation approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || { echo 'Pilot ingress deactivation must be dispatched from main.' >&2; exit 1; }
+          test "$CONFIRMATION" = "DEACTIVATE-ULC-M6-PILOT-INGRESS" || { echo 'Exact pilot ingress deactivation confirmation is required.' >&2; exit 1; }
+
+      - name: Validate and mask protected provider inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_WRITE_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN CLOUDFLARE_API_WRITE_TOKEN; do
+            test -n "${!name:-}" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+
+      - name: Recheck exact pilot ingress state before deactivation
+        id: before
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/pilot-before-deactivation.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/subdomain" > "$response"
+          jq -e '.success == true and (.result | type == "object") and (.result.enabled | type == "boolean") and (.result.previews_enabled | type == "boolean")' "$response" >/dev/null || { echo 'Worker pilot-ingress state is malformed or unsuccessful.' >&2; exit 1; }
+          enabled="$(jq -r '.result.enabled' "$response")"
+          previews="$(jq -r '.result.previews_enabled' "$response")"
+          if test "$enabled" = false && test "$previews" = false; then
+            echo 'write_required=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'write_required=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Disable canonical workers.dev pilot ingress and previews
+        if: steps.before.outputs.write_required == 'true'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/pilot-disable.json"
+          http_status="$(
+            curl --silent --show-error --connect-timeout 10 --max-time 30 \
+              --output "$response" \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              --header 'Content-Type: application/json' \
+              --data '{"enabled":false,"previews_enabled":false}' \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/subdomain"
+          )"
+          if [[ ! "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+            jq -r '(.errors // [])[:5][] | "Cloudflare error \(.code // "unknown"): \((.message // "unspecified") | tostring | gsub("[\\r\\n]"; " ") | .[0:300])"' "$response" >&2 2>/dev/null || true
+            echo "Cloudflare pilot ingress deactivation failed with HTTP $http_status." >&2
+            exit 1
+          fi
+          jq -e '.success == true' "$response" >/dev/null || { echo 'Cloudflare pilot ingress deactivation returned an unsuccessful response.' >&2; exit 1; }
+
+      - name: Verify exact closed pilot ingress state
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/pilot-after-deactivation.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/subdomain" > "$response"
+          jq -e '.success == true and .result.enabled == false and .result.previews_enabled == false' "$response" >/dev/null || { echo 'Canonical workers.dev pilot ingress is not provably closed with previews disabled.' >&2; exit 1; }
+          {
+            echo '### ULC M6 pilot ingress deactivation'
+            echo '- canonical workers.dev endpoint: disabled'
+            echo '- preview URLs: disabled'
+            echo '- production runtime deployment: unchanged'
+            echo '- custom organizational domain: not activated'
+            echo '- final organizational go-live: not authorized'
+          } >> "$GITHUB_STEP_SUMMARY"
