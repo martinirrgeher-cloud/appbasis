@@ -108,7 +108,7 @@ jobs:
           ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}
           ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD }}
           ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
-        run: node ./tooling/bootstrap-production-smoke-principal.mjs
+        run: node --import ./tooling/register-native-typescript-resolution.mjs ./tooling/bootstrap-production-smoke-principal.mjs
 
       - name: Record bounded bootstrap result
         if: success()
