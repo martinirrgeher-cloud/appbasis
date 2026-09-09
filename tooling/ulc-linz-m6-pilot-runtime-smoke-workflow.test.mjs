@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const REFRESH = new URL("../.github/workflows/m6-ulc-production-runtime-refresh-config.yml", import.meta.url);
+const REFRESH_CHAIN = new URL("../.github/workflows/m6-ulc-production-refresh-chain.yml", import.meta.url);
 const SMOKE = new URL("../.github/workflows/m6-ulc-production-post-deploy-smoke.yml", import.meta.url);
 const SMOKE_RUNNER = new URL("../apps/ulc-linz/tooling/run-production-post-deploy-smoke.mjs", import.meta.url);
 const SMOKE_PRINCIPAL_BOOTSTRAP = new URL("../.github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml", import.meta.url);
@@ -28,6 +29,83 @@ test("M6 runtime refresh binds Better Auth to the canonical workers.dev pilot or
   assert.equal(source.includes("baseURL: 'https://app.ulc-linz.at'"), false);
   assert.equal(source.includes("--request POST"), false);
   assert.equal(source.includes("/workers/scripts/$TARGET_WORKER/subdomain"), false);
+});
+
+test("M6 production refresh chain preserves canonical child workflows and per-step approvals", async () => {
+  const source = await readFile(REFRESH_CHAIN, "utf8");
+
+  for (const marker of [
+    "name: M6 ULC Production Refresh Chain",
+    "workflow_dispatch:",
+    "start_at:",
+    "stop_after:",
+    "actions: write",
+    "if: github.ref == 'refs/heads/main'",
+    "approve_runtime_refresh:",
+    "approve_private_deploy:",
+    "approve_security_smoke:",
+    "approve_lifecycle_preflight:",
+    "approve_m5_evidence:",
+    "approve_pilot_ingress:",
+    "approve_smoke_principal:",
+    "approve_post_deploy_smoke:",
+    "m6-ulc-production-runtime-refresh-config.yml",
+    "m6-ulc-private-production-refresh-deploy.yml",
+    "m5-ulc-private-security-smoke.yml",
+    "m5-ulc-protected-lifecycle-operations.yml",
+    "m5-ulc-production-evidence.yml",
+    "m6-ulc-production-pilot-ingress.yml",
+    "m6-ulc-production-smoke-principal-bootstrap.yml",
+    "m6-ulc-production-post-deploy-smoke.yml",
+    "REFRESH-CONFIGURE-ULC-PRODUCTION-RUNTIME",
+    "REFRESH-DEPLOY-ULC-PRIVATE-PRODUCTION",
+    "RUN-ULC-M5-PRIVATE-SECURITY-SMOKE",
+    "VERIFY-ULC-M5-LIFECYCLE-BINDING",
+    "VERIFY-ULC-M5-PRODUCTION",
+    "ACTIVATE-ULC-M6-PILOT-INGRESS",
+    "BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL",
+    "RUN-ULC-M6-PRODUCTION-SMOKE",
+    "administrator_username 'ulc.production.admin'",
+    "apply_restore:true",
+  ]) {
+    assert.equal(source.includes(marker), true, `missing M6 refresh-chain contract: ${marker}`);
+  }
+
+  assert.equal((source.match(/default: false/g) ?? []).length, 8);
+  assert.equal(source.includes("environment: m4-dr"), false);
+  assert.equal(source.includes("secrets."), false);
+  assert.equal(source.includes("CLOUDFLARE_API_TOKEN"), false);
+  assert.equal(source.includes("NEON_API_KEY"), false);
+  assert.equal(source.includes("DATABASE_URL"), false);
+});
+
+test("M6 production refresh chain is exact-head, fail-closed and never auto-retries", async () => {
+  const source = await readFile(REFRESH_CHAIN, "utf8");
+
+  for (const marker of [
+    "assert_main_head",
+    ".commit.sha == $sha",
+    ".head_sha == $sha",
+    '.head_branch == "main"',
+    '.event == "workflow_dispatch"',
+    '.path == $path',
+    "m6-chain-before-$safe.txt",
+    "Ambiguous child-run identity",
+    "Could not identify the dispatched",
+    "No automatic retry will be attempted.",
+    "Fresh explicit approval is required for selected step",
+    "latest_success_run",
+    "failed child workflows are never retried automatically",
+    "final production release: not authorized",
+  ]) {
+    assert.equal(source.includes(marker), true, `missing M6 refresh-chain safety guard: ${marker}`);
+  }
+
+  assert.equal(source.includes("/rerun"), false);
+  assert.equal(source.includes("/cancel"), false);
+  assert.equal(source.includes("productionReleaseAuthorized: true"), false);
+  assert.equal(source.includes("app.ulc-linz.at"), false);
+  assert.equal(source.includes("/workers/domains"), false);
 });
 
 test("M6 post-deploy smoke requires exact-head pilot activation and never depends on the organizational domain", async () => {
