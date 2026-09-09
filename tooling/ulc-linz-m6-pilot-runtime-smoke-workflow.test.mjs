@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const REFRESH = new URL("../.github/workflows/m6-ulc-production-runtime-refresh-config.yml", import.meta.url);
 const SMOKE = new URL("../.github/workflows/m6-ulc-production-post-deploy-smoke.yml", import.meta.url);
 const SMOKE_RUNNER = new URL("../apps/ulc-linz/tooling/run-production-post-deploy-smoke.mjs", import.meta.url);
+const SMOKE_PRINCIPAL_BOOTSTRAP = new URL("../.github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml", import.meta.url);
+const ULC_LINZ_APP = new URL("../apps/ulc-linz/", import.meta.url);
 
 test("M6 runtime refresh binds Better Auth to the canonical workers.dev pilot origin without exposing the worker", async () => {
   const source = await readFile(REFRESH, "utf8");
@@ -63,4 +67,28 @@ test("production protected smoke rejects an implicit or malformed auth origin", 
   ]) {
     assert.equal(source.includes(marker), true, `missing smoke origin validation: ${marker}`);
   }
+});
+
+test("M6 smoke principal bootstrap uses the bounded native TypeScript resolver", async () => {
+  const source = await readFile(SMOKE_PRINCIPAL_BOOTSTRAP, "utf8");
+  assert.equal(
+    source.includes("node --import ./tooling/register-native-typescript-resolution.mjs ./tooling/bootstrap-production-smoke-principal.mjs"),
+    true,
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      "./tooling/register-native-typescript-resolution.mjs",
+      "--input-type=module",
+      "--eval",
+      'await import("@appbasis/identity"); await import("@appbasis/permissions");',
+    ],
+    {
+      cwd: fileURLToPath(ULC_LINZ_APP),
+      encoding: "utf8",
+    },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });
