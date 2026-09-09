@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { appendFile, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -6,11 +7,12 @@ import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare
 
 const TARGET_WORKER = "appbasis-ulc-linz-production";
 const TARGET_VERSION_TAG = "ulc-linz-production-runtime-v1";
-const TARGET_BASE_URL = "https://app.ulc-linz.at";
+const LEGACY_BASE_URL = "https://app.ulc-linz.at";
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const HMAC_PATTERN = /^[0-9a-f]{64}$/;
 const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const HISTORICAL_MESSAGE_PATTERN = /^AppBasis ulc-linz production runtime ([0-9a-f]{40}) auth-hmac:([0-9a-f]{64})$/;
+const HISTORICAL_MESSAGE_PATTERN = /^AppBasis ulc-linz production runtime ([0-9a-f]{40}) auth-hmac:([0-9a-f]{64})(?: origin-hmac:([0-9a-f]{64}))?$/;
+const SUBDOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 export function evaluateUlcLinzPrivateRuntimeRefreshState(
   {
@@ -20,16 +22,18 @@ export function evaluateUlcLinzPrivateRuntimeRefreshState(
     scriptsResponse,
     githubSha,
     authSecretFingerprint,
+    pilotOriginFingerprint,
   },
   { requireCurrentVersion = false, requireCurrentDeployment = false } = {},
 ) {
   requireSha(githubSha);
   requireHmac(authSecretFingerprint);
+  requireHmac(pilotOriginFingerprint, "pilot-origin fingerprint");
   requireClosedWorker(workerResponse);
   requireClosedRoutes(scriptsResponse);
 
   const versions = requireVersionHistory(versionsResponse);
-  const expectedMessage = `AppBasis ulc-linz production runtime ${githubSha} auth-hmac:${authSecretFingerprint}`;
+  const expectedMessage = `AppBasis ulc-linz production runtime ${githubSha} auth-hmac:${authSecretFingerprint} origin-hmac:${pilotOriginFingerprint}`;
   const currentVersions = versions.filter(
     (version) => version.annotations["workers/message"] === expectedMessage,
   );
@@ -37,7 +41,7 @@ export function evaluateUlcLinzPrivateRuntimeRefreshState(
     throw new Error("ULC production refresh encountered duplicate current runtime versions.");
   }
   if (requireCurrentVersion && currentVersions.length !== 1) {
-    throw new Error("ULC production refresh requires exactly one version bound to current main and auth secret.");
+    throw new Error("ULC production refresh requires exactly one version bound to current main, auth secret and pilot origin.");
   }
 
   const deployment = requireSinglePrivateDeployment(deploymentsResponse);
@@ -68,9 +72,15 @@ export function evaluateUlcLinzPrivateRuntimeRefreshState(
 
 export function deriveUlcLinzPrivateRuntimeHyperdriveBindings(
   response,
-  { versionId },
+  { versionId, expectedBaseURL = LEGACY_BASE_URL, alternateBaseURL = null },
 ) {
   requireVersionId(versionId);
+  requireBaseURL(expectedBaseURL);
+  const allowedBaseURLs = new Set([expectedBaseURL]);
+  if (alternateBaseURL !== null) {
+    requireBaseURL(alternateBaseURL);
+    allowedBaseURLs.add(alternateBaseURL);
+  }
   const result = response?.result;
   const bindings = result?.resources?.bindings;
   if (
@@ -89,7 +99,7 @@ export function deriveUlcLinzPrivateRuntimeHyperdriveBindings(
   requireOpaque(security.id, "security-log Hyperdrive ID");
   if (
     base.type !== "plain_text" ||
-    base.text !== TARGET_BASE_URL ||
+    !allowedBaseURLs.has(base.text) ||
     app.type !== "hyperdrive" ||
     security.type !== "hyperdrive" ||
     secret.type !== "secret_text" ||
@@ -109,6 +119,7 @@ export function verifyUlcLinzPrivateRuntimeVersionBindings(
     versionId,
     applicationHyperdriveId,
     securityLogHyperdriveId,
+    expectedBaseURL,
   },
 ) {
   requireOpaque(applicationHyperdriveId, "application Hyperdrive ID");
@@ -116,7 +127,10 @@ export function verifyUlcLinzPrivateRuntimeVersionBindings(
   if (applicationHyperdriveId === securityLogHyperdriveId) {
     throw new Error("ULC production refresh Hyperdrive bindings must be distinct.");
   }
-  const actual = deriveUlcLinzPrivateRuntimeHyperdriveBindings(response, { versionId });
+  const actual = deriveUlcLinzPrivateRuntimeHyperdriveBindings(response, {
+    versionId,
+    expectedBaseURL,
+  });
   if (
     actual.applicationHyperdriveId !== applicationHyperdriveId ||
     actual.securityLogHyperdriveId !== securityLogHyperdriveId
@@ -204,9 +218,32 @@ function requireSha(value) {
   }
 }
 
-function requireHmac(value) {
+function requireHmac(value, label = "auth-secret fingerprint") {
   if (typeof value !== "string" || !HMAC_PATTERN.test(value)) {
-    throw new Error("ULC production refresh auth-secret fingerprint is invalid.");
+    throw new Error(`ULC production refresh ${label} is invalid.`);
+  }
+}
+
+function requireBaseURL(value) {
+  if (typeof value !== "string" || value !== value.trim()) {
+    throw new Error("ULC production refresh base URL is invalid.");
+  }
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("ULC production refresh base URL is invalid.");
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.port !== "" ||
+    parsed.pathname !== "/" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new Error("ULC production refresh base URL is invalid.");
   }
 }
 
@@ -226,14 +263,55 @@ function requireOpaque(value, label) {
   ) {
     throw new Error(`ULC production refresh ${label} is invalid.`);
   }
+  return value;
 }
 
 async function readJson(path) {
   return JSON.parse(await readFile(resolve(path), "utf8"));
 }
 
+async function resolvePilotOriginEnvironment() {
+  let baseURL = process.env.PILOT_BASE_URL;
+  let fingerprint = process.env.PILOT_ORIGIN_FINGERPRINT;
+  if (baseURL !== undefined || fingerprint !== undefined) {
+    requireBaseURL(baseURL);
+    requireHmac(fingerprint, "pilot-origin fingerprint");
+    return { baseURL, fingerprint };
+  }
+  const accountId = requireOpaque(process.env.CLOUDFLARE_ACCOUNT_ID, "Cloudflare account ID");
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (typeof apiToken !== "string" || apiToken.length === 0 || apiToken !== apiToken.trim()) {
+    throw new Error("ULC production refresh Cloudflare API token is invalid.");
+  }
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/subdomain`,
+    { headers: { Authorization: `Bearer ${apiToken}` } },
+  );
+  if (!response.ok) {
+    throw new Error(`ULC production refresh account-subdomain lookup failed with HTTP ${response.status}.`);
+  }
+  const payload = await response.json();
+  const subdomain = payload?.result?.subdomain;
+  if (payload?.success !== true || typeof subdomain !== "string" || !SUBDOMAIN_PATTERN.test(subdomain)) {
+    throw new Error("ULC production refresh account workers.dev subdomain is invalid.");
+  }
+  baseURL = `https://${TARGET_WORKER}.${subdomain}.workers.dev`;
+  fingerprint = createHash("sha256").update(baseURL).digest("hex");
+  requireBaseURL(baseURL);
+  requireHmac(fingerprint, "pilot-origin fingerprint");
+  if (typeof process.env.GITHUB_ENV === "string" && process.env.GITHUB_ENV.length > 0) {
+    await appendFile(
+      process.env.GITHUB_ENV,
+      `PILOT_BASE_URL=${baseURL}\nPILOT_ORIGIN_FINGERPRINT=${fingerprint}\n`,
+      "utf8",
+    );
+  }
+  return { baseURL, fingerprint };
+}
+
 async function main(argv = process.argv.slice(2)) {
   const [mode, ...paths] = argv;
+  const pilot = await resolvePilotOriginEnvironment();
   if ((mode === "state" || mode === "deploy-state") && paths.length === 4) {
     const result = evaluateUlcLinzPrivateRuntimeRefreshState(
       {
@@ -243,6 +321,7 @@ async function main(argv = process.argv.slice(2)) {
         scriptsResponse: await readJson(paths[3]),
         githubSha: process.env.GITHUB_SHA,
         authSecretFingerprint: process.env.AUTH_SECRET_FINGERPRINT,
+        pilotOriginFingerprint: pilot.fingerprint,
       },
       mode === "deploy-state" ? { requireCurrentVersion: true } : {},
     );
@@ -258,6 +337,7 @@ async function main(argv = process.argv.slice(2)) {
         scriptsResponse: await readJson(paths[3]),
         githubSha: process.env.GITHUB_SHA,
         authSecretFingerprint: process.env.AUTH_SECRET_FINGERPRINT,
+        pilotOriginFingerprint: pilot.fingerprint,
       },
       { requireCurrentVersion: true, requireCurrentDeployment: true },
     );
@@ -267,6 +347,8 @@ async function main(argv = process.argv.slice(2)) {
   if (mode === "binding-ids" && paths.length === 1) {
     const result = deriveUlcLinzPrivateRuntimeHyperdriveBindings(await readJson(paths[0]), {
       versionId: process.env.VERSION_ID,
+      expectedBaseURL: LEGACY_BASE_URL,
+      alternateBaseURL: pilot.baseURL,
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
@@ -276,6 +358,7 @@ async function main(argv = process.argv.slice(2)) {
       versionId: process.env.VERSION_ID,
       applicationHyperdriveId: process.env.HYPERDRIVE_ID,
       securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID,
+      expectedBaseURL: pilot.baseURL,
     });
     process.stdout.write("verified\n");
     return;

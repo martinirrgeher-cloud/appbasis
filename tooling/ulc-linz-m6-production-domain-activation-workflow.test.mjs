@@ -1,55 +1,68 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
-const WORKFLOW = new URL("../.github/workflows/m6-ulc-production-domain-activation.yml", import.meta.url);
+const RETIRED_WORKFLOW = new URL(
+  "../.github/workflows/m6-ulc-production-domain-activation.yml",
+  import.meta.url,
+);
+const PILOT_WORKFLOW = new URL(
+  "../.github/workflows/m6-ulc-production-pilot-ingress.yml",
+  import.meta.url,
+);
+const DEACTIVATION_WORKFLOW = new URL(
+  "../.github/workflows/m6-ulc-production-pilot-ingress-deactivation.yml",
+  import.meta.url,
+);
 
-test("M6 production domain activation stays explicit, exact-head gated and fail-closed before write", async () => {
-  const source = await readFile(WORKFLOW, "utf8");
-
-  for (const marker of [
-    "ACTIVATE-ULC-PRODUCTION-DOMAIN",
-    "refs/heads/main",
-    "M5 ULC Production Evidence",
-    ".github/workflows/m5-ulc-production-evidence.yml",
-    ".head_sha == $sha",
-    ".conclusion == \"success\"",
-    "group: m6-ulc-production-runtime-config",
-    "CLOUDFLARE_API_WRITE_TOKEN",
-    ".success == true and (.result | type == \"array\")",
-    "Production domain inventory is malformed or unsuccessful.",
-    "--request PUT",
-    "/workers/domains",
-    "app.ulc-linz.at",
-    "appbasis-ulc-linz-production",
-    "evaluateUlcLinzM6ProductionDomainEvidence",
-    "This does not authorize final production release",
-  ]) {
-    assert.equal(source.includes(marker), true, `missing workflow guard: ${marker}`);
-  }
-
-  assert.equal(source.includes(".result[]?"), false);
-  assert.equal(source.includes("releaseAuthorized: true"), false);
-  assert.equal(source.includes("releaseProduction"), false);
+test("legacy M6 custom-domain activation workflow is retired", async () => {
+  await assert.rejects(access(RETIRED_WORKFLOW), (error) => error?.code === "ENOENT");
 });
 
-test("M6 production domain activation preserves sanitized provider diagnostics without logging raw responses", async () => {
-  const source = await readFile(WORKFLOW, "utf8");
+test("public M6 ingress remains isolated to the guarded workers.dev pilot workflow", async () => {
+  const source = await readFile(PILOT_WORKFLOW, "utf8");
 
   for (const marker of [
-    "--output \"$response\"",
-    "--write-out '%{http_code}'",
-    "(.errors // [])[:5][]",
-    "Cloudflare error",
-    "gsub(\"[\\\\r\\\\n]\"; \" \")",
-    ".[0:300]",
-    "Cloudflare custom domain activation failed with HTTP $http_status.",
-    "Cloudflare custom domain activation returned an unsuccessful response.",
+    "ACTIVATE-ULC-M6-PILOT-INGRESS",
+    "ulc-linz-m5-production-gate",
+    "validUntilOrReviewAt",
+    "Revalidate authoritative fresh exact-head M5 evidence immediately before write",
+    '{"enabled":true,"previews_enabled":false}',
+    "custom organizational domain: not activated",
+    "final organizational go-live: not authorized",
   ]) {
-    assert.equal(source.includes(marker), true, `missing sanitized diagnostic guard: ${marker}`);
+    assert.equal(source.includes(marker), true, `missing pilot-ingress guard: ${marker}`);
   }
 
-  assert.equal(source.includes('cat "$response"'), false);
-  assert.equal(source.includes('cat "$RUNNER_TEMP/domain-attach.json"'), false);
-  assert.equal(source.includes("--fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \\\n            --request PUT"), false);
+  assert.equal(source.includes("/workers/domains"), false);
+  assert.equal(source.includes("ACTIVATE-ULC-PRODUCTION-DOMAIN"), false);
+  assert.equal(source.includes("app.ulc-linz.at"), false);
+});
+
+test("M6 pilot ingress has an explicit fail-closed deactivation path independent of M5 freshness", async () => {
+  const source = await readFile(DEACTIVATION_WORKFLOW, "utf8");
+
+  for (const marker of [
+    "DEACTIVATE-ULC-M6-PILOT-INGRESS",
+    "refs/heads/main",
+    "environment: m4-dr",
+    "CLOUDFLARE_API_WRITE_TOKEN",
+    "Recheck exact pilot ingress state before deactivation",
+    "write_required=false",
+    "write_required=true",
+    "--request POST",
+    '{"enabled":false,"previews_enabled":false}',
+    ".result.enabled == false and .result.previews_enabled == false",
+    "production runtime deployment: unchanged",
+    "final organizational go-live: not authorized",
+  ]) {
+    assert.equal(source.includes(marker), true, `missing pilot-deactivation guard: ${marker}`);
+  }
+
+  assert.equal(source.includes("M5 ULC Production Evidence"), false);
+  assert.equal(source.includes("m5_run_id"), false);
+  assert.equal(source.includes('{"enabled":true'), false);
+  assert.equal(source.includes("/workers/domains"), false);
+  assert.equal(source.includes("app.ulc-linz.at"), false);
+  assert.equal(source.includes("releaseAuthorized: true"), false);
 });

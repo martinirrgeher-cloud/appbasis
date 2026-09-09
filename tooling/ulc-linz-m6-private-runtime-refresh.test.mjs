@@ -10,19 +10,22 @@ import {
 const OLD_SHA = "a".repeat(40);
 const CURRENT_SHA = "b".repeat(40);
 const HMAC = "c".repeat(64);
+const PILOT_ORIGIN_HMAC = "d".repeat(64);
 const OLD_VERSION = "12345678-1234-4123-8123-123456789abc";
 const CURRENT_VERSION = "87654321-4321-4123-8123-cba987654321";
+const LEGACY_BASE_URL = "https://app.ulc-linz.at";
+const PILOT_BASE_URL = "https://appbasis-ulc-linz-production.example.workers.dev";
 
-function message(sha, hmac = HMAC) {
-  return `AppBasis ulc-linz production runtime ${sha} auth-hmac:${hmac}`;
+function message(sha, hmac = HMAC, originHmac = null) {
+  return `AppBasis ulc-linz production runtime ${sha} auth-hmac:${hmac}${originHmac === null ? "" : ` origin-hmac:${originHmac}`}`;
 }
 
-function version(id, sha, hmac = HMAC) {
+function version(id, sha, hmac = HMAC, originHmac = null) {
   return {
     id,
     annotations: {
       "workers/tag": "ulc-linz-production-runtime-v1",
-      "workers/message": message(sha, hmac),
+      "workers/message": message(sha, hmac, originHmac),
     },
   };
 }
@@ -46,12 +49,12 @@ function scriptsResponse(routes = []) {
   };
 }
 
-function versionsResponse({ includeCurrent = false, oldHmac = HMAC } = {}) {
+function versionsResponse({ includeCurrent = false, oldHmac = HMAC, currentOriginHmac = PILOT_ORIGIN_HMAC } = {}) {
   return {
     success: true,
     result: [
       version(OLD_VERSION, OLD_SHA, oldHmac),
-      ...(includeCurrent ? [version(CURRENT_VERSION, CURRENT_SHA)] : []),
+      ...(includeCurrent ? [version(CURRENT_VERSION, CURRENT_SHA, HMAC, currentOriginHmac)] : []),
     ],
   };
 }
@@ -81,18 +84,19 @@ function input(overrides = {}) {
     scriptsResponse: scriptsResponse(),
     githubSha: CURRENT_SHA,
     authSecretFingerprint: HMAC,
+    pilotOriginFingerprint: PILOT_ORIGIN_HMAC,
     ...overrides,
   };
 }
 
-function bindingResponse(versionId = CURRENT_VERSION) {
+function bindingResponse(versionId = CURRENT_VERSION, baseURL = LEGACY_BASE_URL) {
   return {
     success: true,
     result: {
       id: versionId,
       resources: {
         bindings: [
-          { name: "APPBASIS_BASE_URL", type: "plain_text", text: "https://app.ulc-linz.at" },
+          { name: "APPBASIS_BASE_URL", type: "plain_text", text: baseURL },
           { name: "HYPERDRIVE", type: "hyperdrive", id: "app-hyperdrive" },
           { name: "SECURITY_LOG_HYPERDRIVE", type: "hyperdrive", id: "security-hyperdrive" },
           { name: "BETTER_AUTH_SECRET", type: "secret_text" },
@@ -102,7 +106,7 @@ function bindingResponse(versionId = CURRENT_VERSION) {
   };
 }
 
-test("refresh upload state accepts one trusted historical private deployment and requests a current upload", () => {
+test("refresh upload state accepts one trusted historical private deployment and requests a current pilot-origin upload", () => {
   assert.deepEqual(evaluateUlcLinzPrivateRuntimeRefreshState(input()), {
     currentVersionId: null,
     deployedVersionId: OLD_VERSION,
@@ -112,7 +116,15 @@ test("refresh upload state accepts one trusted historical private deployment and
   });
 });
 
-test("refresh deploy state requires one current version and preserves the historical deployment until explicit deploy approval", () => {
+test("refresh does not confuse an exact-head legacy-origin version with the pilot-origin current version", () => {
+  const legacyExactHead = versionsResponse();
+  legacyExactHead.result.push(version(CURRENT_VERSION, CURRENT_SHA));
+  const result = evaluateUlcLinzPrivateRuntimeRefreshState(input({ versionsResponse: legacyExactHead }));
+  assert.equal(result.currentVersionId, null);
+  assert.equal(result.uploadRequired, true);
+});
+
+test("refresh deploy state requires one current pilot-origin version and preserves the historical deployment until explicit deploy approval", () => {
   const result = evaluateUlcLinzPrivateRuntimeRefreshState(
     input({ versionsResponse: versionsResponse({ includeCurrent: true }) }),
     { requireCurrentVersion: true },
@@ -195,7 +207,7 @@ test("refresh fails closed on malformed or split active deployment history", () 
   );
 });
 
-test("refresh fails closed on public ingress, untrusted history and auth-secret drift", () => {
+test("refresh fails closed on public ingress, untrusted history, auth-secret drift and pilot-origin drift", () => {
   assert.throws(
     () => evaluateUlcLinzPrivateRuntimeRefreshState(input({ scriptsResponse: scriptsResponse(["example.com/*"]) })),
     /public routes/,
@@ -207,8 +219,15 @@ test("refresh fails closed on public ingress, untrusted history and auth-secret 
     /unrecognized version/,
   );
   assert.throws(
-    () => evaluateUlcLinzPrivateRuntimeRefreshState(input({ versionsResponse: versionsResponse({ oldHmac: "d".repeat(64) }) })),
+    () => evaluateUlcLinzPrivateRuntimeRefreshState(input({ versionsResponse: versionsResponse({ oldHmac: "e".repeat(64) }) })),
     /current auth-secret fingerprint/,
+  );
+  assert.throws(
+    () => evaluateUlcLinzPrivateRuntimeRefreshState(
+      input({ versionsResponse: versionsResponse({ includeCurrent: true, currentOriginHmac: "f".repeat(64) }) }),
+      { requireCurrentVersion: true },
+    ),
+    /current main, auth secret and pilot origin/,
   );
 });
 
@@ -218,48 +237,94 @@ test("refresh fails closed when the current version is missing or duplicated at 
     /exactly one version bound to current main/,
   );
   const duplicate = versionsResponse({ includeCurrent: true });
-  duplicate.result.push(version("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", CURRENT_SHA));
+  duplicate.result.push(version("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", CURRENT_SHA, HMAC, PILOT_ORIGIN_HMAC));
   assert.throws(
     () => evaluateUlcLinzPrivateRuntimeRefreshState(input({ versionsResponse: duplicate })),
     /duplicate current runtime versions/,
   );
 });
 
-test("refresh derives the exact deployed Hyperdrive IDs without a separate provider inventory read", () => {
+test("refresh derives Hyperdrive IDs from only the approved legacy-to-pilot origin transition", () => {
+  const expected = {
+    applicationHyperdriveId: "app-hyperdrive",
+    securityLogHyperdriveId: "security-hyperdrive",
+  };
   assert.deepEqual(
     deriveUlcLinzPrivateRuntimeHyperdriveBindings(bindingResponse(OLD_VERSION), {
       versionId: OLD_VERSION,
+      expectedBaseURL: LEGACY_BASE_URL,
+      alternateBaseURL: PILOT_BASE_URL,
     }),
-    {
-      applicationHyperdriveId: "app-hyperdrive",
-      securityLogHyperdriveId: "security-hyperdrive",
-    },
+    expected,
+  );
+  assert.deepEqual(
+    deriveUlcLinzPrivateRuntimeHyperdriveBindings(
+      bindingResponse(CURRENT_VERSION, PILOT_BASE_URL),
+      {
+        versionId: CURRENT_VERSION,
+        expectedBaseURL: LEGACY_BASE_URL,
+        alternateBaseURL: PILOT_BASE_URL,
+      },
+    ),
+    expected,
+  );
+
+  assert.throws(
+    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(
+      bindingResponse(CURRENT_VERSION, "https://unexpected.example.com"),
+      {
+        versionId: CURRENT_VERSION,
+        expectedBaseURL: LEGACY_BASE_URL,
+        alternateBaseURL: PILOT_BASE_URL,
+      },
+    ),
+    /bindings drifted/,
   );
 
   const duplicate = bindingResponse(OLD_VERSION);
   duplicate.result.resources.bindings[2].id = "app-hyperdrive";
   assert.throws(
-    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(duplicate, { versionId: OLD_VERSION }),
+    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(duplicate, {
+      versionId: OLD_VERSION,
+      expectedBaseURL: LEGACY_BASE_URL,
+      alternateBaseURL: PILOT_BASE_URL,
+    }),
     /bindings drifted/,
   );
 
   const extra = bindingResponse(OLD_VERSION);
   extra.result.resources.bindings.push({ name: "FUTURE", type: "plain_text", text: "x" });
   assert.throws(
-    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(extra, { versionId: OLD_VERSION }),
+    () => deriveUlcLinzPrivateRuntimeHyperdriveBindings(extra, {
+      versionId: OLD_VERSION,
+      expectedBaseURL: LEGACY_BASE_URL,
+      alternateBaseURL: PILOT_BASE_URL,
+    }),
     /binding inventory is invalid/,
   );
 });
 
-test("refresh verifies the exact four approved current-version bindings", () => {
-  const response = bindingResponse();
+test("refresh verifies the exact four approved current-version bindings including pilot origin", () => {
+  const response = bindingResponse(CURRENT_VERSION, PILOT_BASE_URL);
   assert.equal(
     verifyUlcLinzPrivateRuntimeVersionBindings(response, {
       versionId: CURRENT_VERSION,
       applicationHyperdriveId: "app-hyperdrive",
       securityLogHyperdriveId: "security-hyperdrive",
+      expectedBaseURL: PILOT_BASE_URL,
     }),
     true,
+  );
+
+  const wrongOrigin = bindingResponse(CURRENT_VERSION, LEGACY_BASE_URL);
+  assert.throws(
+    () => verifyUlcLinzPrivateRuntimeVersionBindings(wrongOrigin, {
+      versionId: CURRENT_VERSION,
+      applicationHyperdriveId: "app-hyperdrive",
+      securityLogHyperdriveId: "security-hyperdrive",
+      expectedBaseURL: PILOT_BASE_URL,
+    }),
+    /bindings drifted/,
   );
 
   const drift = structuredClone(response);
@@ -269,6 +334,7 @@ test("refresh verifies the exact four approved current-version bindings", () => 
       versionId: CURRENT_VERSION,
       applicationHyperdriveId: "app-hyperdrive",
       securityLogHyperdriveId: "security-hyperdrive",
+      expectedBaseURL: PILOT_BASE_URL,
     }),
     /bindings drifted/,
   );

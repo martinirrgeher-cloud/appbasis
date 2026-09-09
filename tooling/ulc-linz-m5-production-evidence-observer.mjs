@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -19,13 +20,13 @@ const TARGET_PROJECT = "appbasis-ulc-linz-production";
 const TARGET_BRANCH = "production";
 const TARGET_DATABASE = "neondb";
 const TARGET_WORKER = ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER;
-const TARGET_BASE_URL = "https://app.ulc-linz.at";
 const TARGET_VERSION_TAG = "ulc-linz-production-runtime-v1";
 const EVIDENCE_WINDOW_MS = 15 * 60 * 1000;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const VERSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OPAQUE_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const TABLE_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
+const SUBDOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 const CLOUDFLARE_REQUEST_CLASSES = ULC_LINZ_M5_CLOUDFLARE_REQUEST_CLASSES;
 const CLOUDFLARE_FAILURE_CLASSES = Object.freeze([
   "transport",
@@ -410,11 +411,19 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
   if (responseByClass.size !== initialRequests.length) {
     throw new Error("Cloudflare provider evidence read contract is invalid.");
   }
+  const accountSubdomainResponse = requiredCloudflareSurfaceResponse(responseByClass, "account-subdomain");
   const subdomainResponse = requiredCloudflareSurfaceResponse(responseByClass, "subdomain");
   const domainsResponse = requiredCloudflareSurfaceResponse(responseByClass, "custom-domains");
   const deploymentsResponse = requiredCloudflareSurfaceResponse(responseByClass, "deployments");
   const scriptsResponse = requiredCloudflareSurfaceResponse(responseByClass, "script-inventory");
   const settingsResponse = requiredCloudflareSurfaceResponse(responseByClass, "script-settings");
+
+  const accountSubdomain = accountSubdomainResponse?.result?.subdomain;
+  if (typeof accountSubdomain !== "string" || !SUBDOMAIN_PATTERN.test(accountSubdomain)) {
+    throw new Error("Cloudflare account workers.dev subdomain is invalid.");
+  }
+  const targetBaseURL = `https://${TARGET_WORKER}.${accountSubdomain}.workers.dev`;
+  const pilotOriginFingerprint = createHash("sha256").update(targetBaseURL).digest("hex");
 
   const subdomain = subdomainResponse.result;
   if (subdomain?.enabled !== false || subdomain?.previews_enabled !== false) {
@@ -472,7 +481,7 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
   const secret = bindings.find((binding) => binding?.name === "BETTER_AUTH_SECRET");
   if (
     base?.type !== "plain_text" ||
-    base?.text !== TARGET_BASE_URL ||
+    base?.text !== targetBaseURL ||
     hyperdrive?.type !== "hyperdrive" ||
     securityLogHyperdrive?.type !== "hyperdrive" ||
     securityLogHyperdrive.id === hyperdrive.id ||
@@ -487,14 +496,15 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
   );
 
   const message = version?.annotations?.["workers/message"];
+  const expectedMessagePattern = new RegExp(
+    `^AppBasis ulc-linz production runtime ${githubSha} auth-hmac:[0-9a-f]{64} origin-hmac:${pilotOriginFingerprint}$`,
+  );
   if (
     version?.annotations?.["workers/tag"] !== TARGET_VERSION_TAG ||
     typeof message !== "string" ||
-    !message.startsWith(
-      `AppBasis ulc-linz production runtime ${githubSha} auth-hmac:`,
-    )
+    !expectedMessagePattern.test(message)
   ) {
-    throw new Error("ULC production Worker version is not bound to the current main runtime.");
+    throw new Error("ULC production Worker version is not bound to the current main runtime and pilot origin.");
   }
 
   const telemetryActive = inspectCloudflareTelemetry(settingsResponse.result);

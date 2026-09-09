@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 15
     env:
       TARGET_WORKER: appbasis-ulc-linz-production
-      TARGET_BASE_URL: https://app.ulc-linz.at
       TARGET_VERSION_TAG: ulc-linz-production-runtime-v1
 
     steps:
@@ -118,6 +117,25 @@ jobs:
           echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
           printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
 
+      - name: Resolve canonical Cloudflare pilot origin read-only
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/account-subdomain.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$response"
+          subdomain="$(jq -er '.result.subdomain | select(type == "string")' "$response")" || { echo 'Cloudflare account workers.dev subdomain is unavailable.' >&2; exit 1; }
+          [[ "$subdomain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || { echo 'Cloudflare account workers.dev subdomain is invalid.' >&2; exit 1; }
+          jq -e '.success == true' "$response" >/dev/null || { echo 'Cloudflare account workers.dev subdomain lookup was unsuccessful.' >&2; exit 1; }
+          PILOT_BASE_URL="https://${TARGET_WORKER}.${subdomain}.workers.dev"
+          PILOT_ORIGIN_FINGERPRINT="$(printf '%s' "$PILOT_BASE_URL" | sha256sum | awk '{print $1}')"
+          [[ "$PILOT_ORIGIN_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || { echo 'Pilot origin fingerprint is invalid.' >&2; exit 1; }
+          printf 'PILOT_BASE_URL=%s\nPILOT_ORIGIN_FINGERPRINT=%s\n' "$PILOT_BASE_URL" "$PILOT_ORIGIN_FINGERPRINT" >> "$GITHUB_ENV"
+
       - name: Resolve exact dedicated production Hyperdrives
         id: hyperdrive
         shell: bash
@@ -156,23 +174,19 @@ jobs:
 
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER" \
-            > "$WORKER_PATH"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER" > "$WORKER_PATH"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" \
-            > "$VERSIONS_PATH"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" > "$VERSIONS_PATH"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
-            > "$DEPLOYMENTS_PATH"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" > "$DEPLOYMENTS_PATH"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
-            > "$ROUTES_PATH"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" > "$ROUTES_PATH"
 
           VERSION_ID="$(
-            WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" ROUTES_PATH="$ROUTES_PATH" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" TARGET_WORKER="$TARGET_WORKER" node --input-type=module <<'NODE'
+            WORKER_PATH="$WORKER_PATH" VERSIONS_PATH="$VERSIONS_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" ROUTES_PATH="$ROUTES_PATH" TARGET_VERSION_TAG="$TARGET_VERSION_TAG" GITHUB_SHA="$GITHUB_SHA" AUTH_SECRET_FINGERPRINT="$AUTH_SECRET_FINGERPRINT" PILOT_ORIGIN_FINGERPRINT="$PILOT_ORIGIN_FINGERPRINT" TARGET_WORKER="$TARGET_WORKER" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const workerResponse = JSON.parse(await readFile(process.env.WORKER_PATH, "utf8"));
           const versionsResponse = JSON.parse(await readFile(process.env.VERSIONS_PATH, "utf8"));
@@ -191,10 +205,7 @@ jobs:
           ) {
             throw new Error("ULC production Worker is not provably closed and undeployed.");
           }
-          if (
-            routesResponse?.success !== true ||
-            !Array.isArray(routesResponse?.result)
-          ) {
+          if (routesResponse?.success !== true || !Array.isArray(routesResponse?.result)) {
             throw new Error("Private production Worker route inventory is invalid.");
           }
           const matchingScripts = routesResponse.result.filter(
@@ -220,12 +231,15 @@ jobs:
           if (versionsResponse?.success !== true || !Array.isArray(versionsResponse?.result)) {
             throw new Error("Private production deploy version inventory is invalid.");
           }
-          if (!/^[0-9a-f]{64}$/.test(process.env.AUTH_SECRET_FINGERPRINT ?? "")) {
-            throw new Error("Current auth-secret fingerprint is invalid.");
+          if (
+            !/^[0-9a-f]{64}$/.test(process.env.AUTH_SECRET_FINGERPRINT ?? "") ||
+            !/^[0-9a-f]{64}$/.test(process.env.PILOT_ORIGIN_FINGERPRINT ?? "")
+          ) {
+            throw new Error("Current runtime fingerprints are invalid.");
           }
           const versionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-          const historicalMessagePattern = /^AppBasis ulc-linz production runtime [0-9a-f]{40} auth-hmac:[0-9a-f]{64}$/;
-          const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT}`;
+          const historicalMessagePattern = /^AppBasis ulc-linz production runtime [0-9a-f]{40} auth-hmac:[0-9a-f]{64}(?: origin-hmac:[0-9a-f]{64})?$/;
+          const expectedMessage = `AppBasis ulc-linz production runtime ${process.env.GITHUB_SHA} auth-hmac:${process.env.AUTH_SECRET_FINGERPRINT} origin-hmac:${process.env.PILOT_ORIGIN_FINGERPRINT}`;
           for (const version of versionsResponse.result) {
             const message = version?.annotations?.["workers/message"];
             if (
@@ -241,7 +255,7 @@ jobs:
             (version) => version?.annotations?.["workers/message"] === expectedMessage,
           );
           if (currentVersions.length !== 1) {
-            throw new Error("Private production deploy requires exactly one version bound to the current runtime and auth secret.");
+            throw new Error("Private production deploy requires exactly one version bound to the current runtime, auth secret and pilot origin.");
           }
           process.stdout.write(currentVersions[0].id);
           NODE
@@ -262,10 +276,9 @@ jobs:
           VERSION_PATH="$RUNNER_TEMP/m6-private-deploy-version-before.json"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/versions/$VERSION_ID" \
-            > "$VERSION_PATH"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/versions/$VERSION_ID" > "$VERSION_PATH"
 
-          VERSION_PATH="$VERSION_PATH" VERSION_ID="$VERSION_ID" HYPERDRIVE_ID="$HYPERDRIVE_ID" SECURITY_LOG_HYPERDRIVE_ID="$SECURITY_LOG_HYPERDRIVE_ID" TARGET_BASE_URL="$TARGET_BASE_URL" node --input-type=module <<'NODE'
+          VERSION_PATH="$VERSION_PATH" VERSION_ID="$VERSION_ID" HYPERDRIVE_ID="$HYPERDRIVE_ID" SECURITY_LOG_HYPERDRIVE_ID="$SECURITY_LOG_HYPERDRIVE_ID" PILOT_BASE_URL="$PILOT_BASE_URL" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const response = JSON.parse(await readFile(process.env.VERSION_PATH, "utf8"));
           const bindings = response?.result?.resources?.bindings;
@@ -283,7 +296,7 @@ jobs:
           const secret = bindings.find((entry) => entry?.name === "BETTER_AUTH_SECRET");
           if (
             base?.type !== "plain_text" ||
-            base?.text !== process.env.TARGET_BASE_URL ||
+            base?.text !== process.env.PILOT_BASE_URL ||
             hyperdrive?.type !== "hyperdrive" ||
             hyperdrive?.id !== process.env.HYPERDRIVE_ID ||
             securityHyperdrive?.type !== "hyperdrive" ||
@@ -291,7 +304,7 @@ jobs:
             securityHyperdrive.id === hyperdrive.id ||
             secret?.type !== "secret_text"
           ) {
-            throw new Error("Private production deploy bindings drifted from the approved runtime contract.");
+            throw new Error("Private production deploy bindings drifted from the approved pilot runtime contract.");
           }
           NODE
 
@@ -325,16 +338,13 @@ jobs:
 
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER" \
-            > "$WORKER_PATH"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/workers/$TARGET_WORKER" > "$WORKER_PATH"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" \
-            > "$DEPLOYMENTS_PATH"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/deployments" > "$DEPLOYMENTS_PATH"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" \
-            > "$ROUTES_PATH"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" > "$ROUTES_PATH"
 
           WORKER_PATH="$WORKER_PATH" DEPLOYMENTS_PATH="$DEPLOYMENTS_PATH" ROUTES_PATH="$ROUTES_PATH" VERSION_ID="$VERSION_ID" TARGET_WORKER="$TARGET_WORKER" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
@@ -352,10 +362,7 @@ jobs:
           ) {
             throw new Error("ULC production Worker became publicly reachable after private deployment.");
           }
-          if (
-            routesResponse?.success !== true ||
-            !Array.isArray(routesResponse?.result)
-          ) {
+          if (routesResponse?.success !== true || !Array.isArray(routesResponse?.result)) {
             throw new Error("Post-deploy private production Worker route inventory is invalid.");
           }
           const matchingScripts = routesResponse.result.filter(
@@ -391,9 +398,9 @@ jobs:
           }
           NODE
 
-          echo 'Exact ULC production version is deployed with distinct app/security-log Hyperdrives while workers.dev, Preview URLs, custom domains and Worker routes remain disabled.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Exact ULC production version is deployed with the canonical pilot-bound runtime and distinct app/security-log Hyperdrives while workers.dev, Preview URLs, custom domains and Worker routes remain disabled.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary deployment evidence
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP"/m6-private-deploy-*.json
+        run: rm -f "$RUNNER_TEMP"/m6-private-deploy-*.json "$RUNNER_TEMP"/account-subdomain.json

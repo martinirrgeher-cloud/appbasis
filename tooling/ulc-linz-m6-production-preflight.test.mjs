@@ -27,15 +27,10 @@ const EXPECTED_STEPS = [
     "provider-write",
     ["neon-production-database", "production-worker"],
   ],
-  ["production-domain-selection", "operator-input", ["production-worker"]],
   [
     "runtime-configuration",
     "provider-write",
-    [
-      "database-binding",
-      "production-worker",
-      "production-domain-selection",
-    ],
+    ["database-binding", "production-worker"],
   ],
   [
     "production-security-logging-sink",
@@ -82,10 +77,9 @@ const EXPECTED_STEPS = [
     ],
   ],
   [
-    "production-domain-activation",
+    "production-pilot-ingress",
     "public-exposure-write",
     [
-      "production-domain-selection",
       "production-worker-deploy",
       "production-access-bootstrap",
       "backup-recovery-validation",
@@ -99,7 +93,7 @@ const EXPECTED_STEPS = [
     [
       "backup-recovery-validation",
       "m5-production-evidence",
-      "production-domain-activation",
+      "production-pilot-ingress",
     ],
   ],
   [
@@ -227,7 +221,7 @@ test("ULC M6 execution plan pins every step id, step kind and exact dependency",
 test("ULC M6 dependency graph preserves critical gates and ordering transitively", () => {
   const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
   const runtime = stepById(plan, "runtime-configuration");
-  assert.equal(runtime.requires.includes("production-domain-selection"), true);
+  assert.deepEqual(runtime.requires, ["database-binding", "production-worker"]);
 
   for (const step of plan.steps) {
     if (!MUTATING_STEP_KINDS.has(step.kind)) continue;
@@ -238,31 +232,13 @@ test("ULC M6 dependency graph preserves critical gates and ordering transitively
     );
   }
 
-  for (const stepId of [
-    "runtime-configuration",
-    "production-security-logging-sink",
-    "production-worker-deploy",
-    "production-access-bootstrap",
-    "backup-recovery-validation",
-    "m5-production-evidence",
-    "production-domain-activation",
-    "post-deploy-smokes",
-    "release-gate",
-  ]) {
-    assert.equal(
-      dependencyClosure(plan, stepId).has("production-domain-selection"),
-      true,
-      `${stepId} must remain transitively behind production-domain-selection`,
-    );
-  }
-
-  const activationClosure = dependencyClosure(plan, "production-domain-activation");
-  assert.equal(activationClosure.has("backup-recovery-validation"), true);
-  assert.equal(activationClosure.has("m5-production-evidence"), true);
-  assert.equal(activationClosure.has("prerequisite:M4_DONE"), true);
+  const pilotClosure = dependencyClosure(plan, "production-pilot-ingress");
+  assert.equal(pilotClosure.has("backup-recovery-validation"), true);
+  assert.equal(pilotClosure.has("m5-production-evidence"), true);
+  assert.equal(pilotClosure.has("prerequisite:M4_DONE"), true);
 
   const releaseClosure = dependencyClosure(plan, "release-gate");
-  assert.equal(releaseClosure.has("production-domain-activation"), true);
+  assert.equal(releaseClosure.has("production-pilot-ingress"), true);
   assert.equal(releaseClosure.has("post-deploy-smokes"), true);
   assert.equal(releaseClosure.has("m5-production-evidence"), true);
   assert.equal(releaseClosure.has("prerequisite:M4_DONE"), true);
@@ -291,6 +267,10 @@ test("ULC M6 execution plan covers every canonical M6 release criterion exactly 
   assert.deepEqual(
     ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.m6CriterionCoverage.previewAccepted,
     ["prerequisite:M3_DONE"],
+  );
+  assert.deepEqual(
+    ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.m6CriterionCoverage.productionDomainReady,
+    ["production-pilot-ingress"],
   );
 });
 
@@ -321,31 +301,30 @@ test("ULC M6 plan keeps every mutating or release action behind explicit approva
   assert.equal(releaseGate.target.automaticRelease, false);
 });
 
-test("ULC M6 keeps worker creation and deploy private and blocks public domain activation until M4/M5 evidence", () => {
+test("ULC M6 keeps worker creation and deploy private and blocks pilot ingress until M4/M5 evidence", () => {
   const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
   const worker = plan.steps.find((step) => step.id === "production-worker");
   const deploy = plan.steps.find(
     (step) => step.id === "production-worker-deploy",
   );
-  const selection = plan.steps.find(
-    (step) => step.id === "production-domain-selection",
-  );
-  const activation = plan.steps.find(
-    (step) => step.id === "production-domain-activation",
+  const pilot = plan.steps.find(
+    (step) => step.id === "production-pilot-ingress",
   );
 
   assert.equal(worker.target.workersDev, false);
   assert.equal(worker.target.publicIngress, false);
   assert.equal(deploy.target.publicIngress, false);
-  assert.equal(selection.kind, "operator-input");
-  assert.equal(selection.target.providerWrite, false);
-  assert.equal(selection.target.publicIngress, false);
-  assert.equal(activation.kind, "public-exposure-write");
-  assert.equal(activation.approvalRequired, true);
-  assert.equal(activation.target.publicIngress, true);
-  assert.equal(activation.requires.includes("m5-production-evidence"), true);
-  assert.equal(activation.requires.includes("backup-recovery-validation"), true);
-  assert.equal(activation.requires.includes("prerequisite:M4_DONE"), true);
+  assert.equal(pilot.kind, "public-exposure-write");
+  assert.equal(pilot.approvalRequired, true);
+  assert.equal(pilot.target.provider, "cloudflare");
+  assert.equal(pilot.target.ingress, "workers.dev");
+  assert.equal(pilot.target.workerScoped, true);
+  assert.equal(pilot.target.previewUrlsEnabled, false);
+  assert.equal(pilot.target.customDomainActivated, false);
+  assert.equal(pilot.target.publicIngress, true);
+  assert.equal(pilot.requires.includes("m5-production-evidence"), true);
+  assert.equal(pilot.requires.includes("backup-recovery-validation"), true);
+  assert.equal(pilot.requires.includes("prerequisite:M4_DONE"), true);
 });
 
 test("ULC M6 migrations require recovery precheck, recovery path and verification", () => {
@@ -372,8 +351,9 @@ test("ULC M6 runtime configuration names secrets without storing secret values",
   assert.deepEqual(step.target.secretNames, ["BETTER_AUTH_SECRET"]);
   assert.deepEqual(step.target.plainConfigurationNames, ["APPBASIS_BASE_URL"]);
   assert.deepEqual(step.target.requiredBindings, ["HYPERDRIVE"]);
+  assert.equal(step.target.baseURLSource, "provider-derived-workers-dev-origin");
   assert.equal(step.target.secretValuesInRepository, false);
-  assert.equal(step.requires.includes("production-domain-selection"), true);
+  assert.deepEqual(step.requires, ["database-binding", "production-worker"]);
 });
 
 test("ULC M6 security logging sink is a separate approved preparation write and blocks deploy and final M5 evidence until its real contract can be evidenced", () => {
@@ -434,18 +414,18 @@ test("ULC M6 production access bootstrap reuses existing identity and principal-
   assert.equal(step.target.noSecondProvisioningContract, true);
 });
 
-test("ULC M6 recovery precedes the final M5 gate and both precede public exposure", () => {
+test("ULC M6 recovery precedes the final M5 gate and both precede pilot exposure", () => {
   const plan = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN;
   const recovery = plan.steps.find(
     (step) => step.id === "backup-recovery-validation",
   );
   const m5 = plan.steps.find((step) => step.id === "m5-production-evidence");
-  const activation = plan.steps.find(
-    (step) => step.id === "production-domain-activation",
+  const pilot = plan.steps.find(
+    (step) => step.id === "production-pilot-ingress",
   );
   const smokes = plan.steps.find((step) => step.id === "post-deploy-smokes");
 
-  assert.equal(recovery.sequence, 10);
+  assert.equal(recovery.sequence, 9);
   assert.equal(recovery.requires.includes("m5-production-evidence"), false);
   assert.equal(recovery.requires.includes("production-migrations"), true);
   assert.equal(recovery.requires.includes("production-worker-deploy"), true);
@@ -458,7 +438,7 @@ test("ULC M6 recovery precedes the final M5 gate and both precede public exposur
   assert.equal(recovery.target.restorePermissionsCheckRequired, true);
   assert.equal(recovery.target.restoreApplicationSmokeRequired, true);
 
-  assert.equal(m5.sequence, 11);
+  assert.equal(m5.sequence, 10);
   assert.equal(m5.approvalRequired, false);
   assert.equal(m5.requires.includes("backup-recovery-validation"), true);
   assert.equal(m5.target.gate, "Security & Privacy Ready v0.1");
@@ -474,9 +454,10 @@ test("ULC M6 recovery precedes the final M5 gate and both precede public exposur
     "tooling/ulc-linz-m5-audit-security-logging-evidence.mjs",
   );
 
-  assert.equal(activation.requires.includes("backup-recovery-validation"), true);
-  assert.equal(activation.requires.includes("m5-production-evidence"), true);
-  assert.equal(activation.requires.includes("prerequisite:M4_DONE"), true);
+  assert.equal(pilot.sequence, 11);
+  assert.equal(pilot.requires.includes("backup-recovery-validation"), true);
+  assert.equal(pilot.requires.includes("m5-production-evidence"), true);
+  assert.equal(pilot.requires.includes("prerequisite:M4_DONE"), true);
   assert.deepEqual(smokes.target.checks, [
     "health",
     "auth",

@@ -1,6 +1,8 @@
 import "./ulc-linz-m6-production-domain-evidence.test.mjs";
 import "./ulc-linz-m6-production-domain-activation-workflow.test.mjs";
 import "./ulc-linz-m6-production-domain-diagnostic-workflow.test.mjs";
+import "./ulc-linz-m6-production-pilot-ingress-workflow.test.mjs";
+import "./ulc-linz-m6-pilot-runtime-smoke-workflow.test.mjs";
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -239,7 +241,7 @@ test("M6 first-provider evaluator uses the aggregate pagination bound rather tha
         name: `other-app-${index}`,
         region: "aws-us-east-1",
       })),
-      targetRegionAvailable: true,
+      targetRegionAvailable: null,
       selectedCreateMethodSupportsExplicitRegion: true,
     },
   };

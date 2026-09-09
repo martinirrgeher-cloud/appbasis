@@ -57,6 +57,12 @@ test("M6 release readiness pins only the semantic per-app production gates", () 
       (criterion) => !Object.hasOwn(criterion, "stage"),
     ),
   );
+  assert.equal(
+    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.find(
+      (criterion) => criterion.id === "productionDomainReady",
+    )?.label,
+    "Kontrollierter Pilot-Ingress",
+  );
 });
 
 test("M6 release readiness is blocked when evidence is missing", () => {

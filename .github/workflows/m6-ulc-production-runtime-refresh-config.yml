@@ -90,6 +90,25 @@ jobs:
           if (app.user === security.user) throw new Error('Production app and security-log ingest roles must be distinct.');
           NODE
 
+      - name: Resolve canonical Cloudflare pilot origin read-only
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/account-subdomain.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$response"
+          subdomain="$(jq -er '.result.subdomain | select(type == "string")' "$response")" || { echo 'Cloudflare account workers.dev subdomain is unavailable.' >&2; exit 1; }
+          [[ "$subdomain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || { echo 'Cloudflare account workers.dev subdomain is invalid.' >&2; exit 1; }
+          jq -e '.success == true' "$response" >/dev/null || { echo 'Cloudflare account workers.dev subdomain lookup was unsuccessful.' >&2; exit 1; }
+          pilot_base_url="https://${TARGET_WORKER}.${subdomain}.workers.dev"
+          pilot_origin_fingerprint="$(printf '%s' "$pilot_base_url" | sha256sum | awk '{print $1}')"
+          [[ "$pilot_origin_fingerprint" =~ ^[0-9a-f]{64}$ ]] || { echo 'Pilot origin fingerprint is invalid.' >&2; exit 1; }
+          printf 'PILOT_BASE_URL=%s\nPILOT_ORIGIN_FINGERPRINT=%s\n' "$pilot_base_url" "$pilot_origin_fingerprint" >> "$GITHUB_ENV"
+
       - name: Derive current auth-secret HMAC fingerprint
         shell: bash
         env:
@@ -158,7 +177,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import { writeGeneratedProductionWranglerConfig } from './tooling/generated-production-deploy-config.mjs';
-          await writeGeneratedProductionWranglerConfig({ appId: 'ulc-linz', hyperdriveId: process.env.HYPERDRIVE_ID, securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID, baseURL: 'https://app.ulc-linz.at', entrypoint: './worker/index.ts', outputPath: './apps/ulc-linz/wrangler.production.generated.json' });
+          await writeGeneratedProductionWranglerConfig({ appId: 'ulc-linz', hyperdriveId: process.env.HYPERDRIVE_ID, securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID, baseURL: process.env.PILOT_BASE_URL, entrypoint: './worker/index.ts', outputPath: './apps/ulc-linz/wrangler.production.generated.json' });
           NODE
 
       - name: Upload exact current runtime as an undeployed version
@@ -179,7 +198,7 @@ jobs:
           await writeFile(process.env.SECRETS_FILE, `${JSON.stringify({ BETTER_AUTH_SECRET: process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET })}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
           NODE
           pnpm exec wrangler versions upload --cwd ../ulc-linz --config wrangler.production.generated.json --name "$TARGET_WORKER" --secrets-file "$secrets_file" --strict --dry-run --experimental-provision=false --experimental-auto-create=false
-          WRANGLER_OUTPUT_FILE_PATH="$output_file" pnpm exec wrangler versions upload --cwd ../ulc-linz --config wrangler.production.generated.json --name "$TARGET_WORKER" --secrets-file "$secrets_file" --strict --tag "$TARGET_VERSION_TAG" --message "AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${AUTH_SECRET_FINGERPRINT}" --experimental-provision=false --experimental-auto-create=false
+          WRANGLER_OUTPUT_FILE_PATH="$output_file" pnpm exec wrangler versions upload --cwd ../ulc-linz --config wrangler.production.generated.json --name "$TARGET_WORKER" --secrets-file "$secrets_file" --strict --tag "$TARGET_VERSION_TAG" --message "AppBasis ulc-linz production runtime ${GITHUB_SHA} auth-hmac:${AUTH_SECRET_FINGERPRINT} origin-hmac:${PILOT_ORIGIN_FINGERPRINT}" --experimental-provision=false --experimental-auto-create=false
           id="$(jq -r 'select(.type == "version-upload") | .version_id // empty' "$output_file" | tail -n 1)"
           test -n "$id" || { echo 'Wrangler did not report a version ID.' >&2; exit 1; }
           echo "::add-mask::$id"; printf 'id=%s\n' "$id" >> "$GITHUB_OUTPUT"
@@ -209,4 +228,4 @@ jobs:
           test "$(jq -r '.currentVersionId' <<<"$state")" = "$version_id" || { echo 'Current version post-check drifted.' >&2; exit 1; }
           test "$(jq -r '.deployedVersionId' <<<"$state")" = "$BEFORE_DEPLOYED_ID" || { echo 'Runtime configuration changed the private deployment unexpectedly.' >&2; exit 1; }
           VERSION_ID="$version_id" node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs bindings "$detail"
-          echo 'Exact current runtime version is configured; the previous private deployment was not changed.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Exact current runtime version is configured for the canonical workers.dev pilot origin; the previous private deployment was not changed.' >> "$GITHUB_STEP_SUMMARY"

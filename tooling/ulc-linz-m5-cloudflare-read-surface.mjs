@@ -1,6 +1,7 @@
 const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 export const ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER = "appbasis-ulc-linz-production";
 export const ULC_LINZ_M5_CLOUDFLARE_REQUEST_CLASSES = Object.freeze([
+  "account-subdomain",
   "subdomain",
   "custom-domains",
   "deployments",
@@ -18,6 +19,7 @@ export function buildUlcLinzM5CloudflareReadSurface(accountId, versionId = null)
   const domainsUrl = new URL(`${accountPath}/workers/domains`);
   domainsUrl.searchParams.set("service", ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER);
   const requests = [
+    { requestClass: "account-subdomain", url: `${accountPath}/workers/subdomain` },
     {
       requestClass: "subdomain",
       url: `${accountPath}/workers/scripts/${ULC_LINZ_M5_CLOUDFLARE_TARGET_WORKER}/subdomain`,

@@ -11,17 +11,20 @@ async function source() {
   return readFile(workflowUrl, "utf8");
 }
 
-test("private production deploy requires exact main-only approval", async () => {
+test("private production deploy requires exact main-only approval and provider-derived pilot origin", async () => {
   const workflow = await source();
   assert.match(workflow, /GITHUB_REF.*refs\/heads\/main/);
   assert.match(workflow, /DEPLOY-ULC-PRIVATE-PRODUCTION/);
   assert.match(workflow, /TARGET_WORKER: appbasis-ulc-linz-production/);
-  assert.match(workflow, /TARGET_BASE_URL: https:\/\/app\.ulc-linz\.at/);
+  assert.match(workflow, /Resolve canonical Cloudflare pilot origin read-only/);
+  assert.match(workflow, /workers\/subdomain/);
+  assert.match(workflow, /PILOT_BASE_URL="https:\/\/\$\{TARGET_WORKER\}\.\$\{subdomain\}\.workers\.dev"/);
+  assert.match(workflow, /PILOT_ORIGIN_FINGERPRINT/);
   assert.match(workflow, /TARGET_VERSION_TAG: ulc-linz-production-runtime-v1/);
   assert.match(workflow, /group: m6-ulc-production-runtime-config/);
 });
 
-test("private production deploy binds to current auth secret and both database bindings", async () => {
+test("private production deploy binds to current auth secret, pilot origin and both database bindings", async () => {
   const workflow = await source();
   assert.match(workflow, /secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL/);
   assert.match(workflow, /secrets\.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL/);
@@ -34,6 +37,8 @@ test("private production deploy binds to current auth secret and both database b
   assert.match(workflow, /entry\?\.name === "SECURITY_LOG_HYPERDRIVE"/);
   assert.match(workflow, /securityHyperdrive\?\.id !== process\.env\.SECURITY_LOG_HYPERDRIVE_ID/);
   assert.match(workflow, /securityHyperdrive\.id === hyperdrive\.id/);
+  assert.match(workflow, /base\?\.text !== process\.env\.PILOT_BASE_URL/);
+  assert.match(workflow, /origin-hmac:\$\{process\.env\.PILOT_ORIGIN_FINGERPRINT\}/);
   assert.match(workflow, /secret\?\.type !== "secret_text"/);
 });
 

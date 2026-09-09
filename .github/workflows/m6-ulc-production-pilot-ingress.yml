@@ -1,0 +1,220 @@
+name: M6 ULC Production Pilot Ingress
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type ACTIVATE-ULC-M6-PILOT-INGRESS to enable only the canonical workers.dev endpoint after exact-head M5 evidence'
+        required: true
+        type: string
+      m5_run_id:
+        description: 'Successful M5 ULC Production Evidence run ID on this exact main head'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  activate-pilot-ingress:
+    name: Activate guarded ULC workers.dev pilot ingress
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: m4-dr
+    env:
+      TARGET_WORKER: appbasis-ulc-linz-production
+      M5_GATE_ARTIFACT: ulc-linz-m5-production-gate
+
+    steps:
+      - name: Require explicit main dispatch
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          M5_RUN_ID: ${{ inputs.m5_run_id }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || { echo 'Pilot ingress activation must be dispatched from main.' >&2; exit 1; }
+          test "$CONFIRMATION" = "ACTIVATE-ULC-M6-PILOT-INGRESS" || { echo 'Exact pilot ingress activation confirmation is required.' >&2; exit 1; }
+          [[ "$M5_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 run ID is invalid.' >&2; exit 1; }
+
+      - name: Require successful fresh exact-head M5 production evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          M5_RUN_ID: ${{ inputs.m5_run_id }}
+        run: |
+          set -euo pipefail
+          run="$RUNNER_TEMP/m5-run.json"
+          artifacts="$RUNNER_TEMP/m5-artifacts.json"
+          archive="$RUNNER_TEMP/m5-gate.zip"
+          extracted="$RUNNER_TEMP/m5-gate"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$run"
+          jq -e --arg sha "$GITHUB_SHA" \
+            '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+            "$run" >/dev/null || { echo 'M5 production evidence is not a successful exact-head main run.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}/artifacts?per_page=100" > "$artifacts"
+          jq -e --arg name "$M5_GATE_ARTIFACT" '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' "$artifacts" >/dev/null || { echo 'M5 authoritative gate artifact is missing, duplicated or expired.' >&2; exit 1; }
+          artifact_id="$(jq -er --arg name "$M5_GATE_ARTIFACT" '.artifacts[] | select(.name == $name and .expired == false) | .id' "$artifacts")"
+          [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 authoritative gate artifact ID is invalid.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --location --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$archive"
+          rm -rf -- "$extracted" && mkdir -p "$extracted"
+          unzip -q "$archive" -d "$extracted"
+          gate="$extracted/m5-production-gate.json"
+          test -f "$gate" && test "$(find "$extracted" -type f | wc -l)" -eq 1 || { echo 'M5 authoritative gate artifact contents are invalid.' >&2; exit 1; }
+          jq -e --arg sha "$GITHUB_SHA" --arg runId "$M5_RUN_ID" \
+            '.schemaVersion == 1 and .application == "ulc-linz" and .environment == "production" and .headSha == $sha and .runId == $runId and .securityPrivacyReady == true and .verifiedCount == 12 and .requiredCount == 12 and .productionReleaseAuthorized == false and (.observedAt | type == "string") and (.validUntilOrReviewAt | type == "string")' \
+            "$gate" >/dev/null || { echo 'M5 authoritative gate artifact contract is invalid.' >&2; exit 1; }
+          observed_at="$(jq -er '.observedAt' "$gate")"
+          valid_until="$(jq -er '.validUntilOrReviewAt' "$gate")"
+          observed_epoch="$(date -u -d "$observed_at" +%s 2>/dev/null)" || { echo 'M5 evidence observation time is invalid.' >&2; exit 1; }
+          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'M5 evidence expiry is invalid.' >&2; exit 1; }
+          now_epoch="$(date -u +%s)"
+          test "$((valid_epoch - observed_epoch))" -eq 900 || { echo 'M5 evidence validity window is not the canonical 15 minutes.' >&2; exit 1; }
+          if (( now_epoch < observed_epoch || now_epoch >= valid_epoch )); then
+            echo 'M5 authoritative production evidence is outside its validUntilOrReviewAt window.' >&2
+            exit 1
+          fi
+
+      - name: Validate and mask protected provider inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_WRITE_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN CLOUDFLARE_API_WRITE_TOKEN; do
+            test -n "${!name:-}" || { echo "Missing $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+
+      - name: Recheck exact pilot ingress state before write
+        id: before
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/pilot-before.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/subdomain" > "$response"
+          jq -e '.success == true and (.result | type == "object") and (.result.enabled | type == "boolean") and (.result.previews_enabled | type == "boolean")' "$response" >/dev/null || { echo 'Worker pilot-ingress state is malformed or unsuccessful.' >&2; exit 1; }
+          enabled="$(jq -r '.result.enabled' "$response")"
+          previews="$(jq -r '.result.previews_enabled' "$response")"
+          if test "$enabled" = true && test "$previews" = false; then
+            echo 'write_required=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'write_required=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Revalidate authoritative fresh exact-head M5 evidence immediately before write
+        if: steps.before.outputs.write_required == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          M5_RUN_ID: ${{ inputs.m5_run_id }}
+        run: |
+          set -euo pipefail
+          run="$RUNNER_TEMP/m5-run-before-write.json"
+          artifacts="$RUNNER_TEMP/m5-artifacts-before-write.json"
+          archive="$RUNNER_TEMP/m5-gate-before-write.zip"
+          extracted="$RUNNER_TEMP/m5-gate-before-write"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$run"
+          jq -e --arg sha "$GITHUB_SHA" \
+            '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+            "$run" >/dev/null || { echo 'M5 production evidence changed or is no longer a successful exact-head main run.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}/artifacts?per_page=100" > "$artifacts"
+          jq -e --arg name "$M5_GATE_ARTIFACT" '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' "$artifacts" >/dev/null || { echo 'M5 authoritative gate artifact is missing, duplicated or expired before write.' >&2; exit 1; }
+          artifact_id="$(jq -er --arg name "$M5_GATE_ARTIFACT" '.artifacts[] | select(.name == $name and .expired == false) | .id' "$artifacts")"
+          [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 authoritative gate artifact ID is invalid before write.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --location --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$archive"
+          rm -rf -- "$extracted" && mkdir -p "$extracted"
+          unzip -q "$archive" -d "$extracted"
+          gate="$extracted/m5-production-gate.json"
+          test -f "$gate" && test "$(find "$extracted" -type f | wc -l)" -eq 1 || { echo 'M5 authoritative gate artifact contents are invalid before write.' >&2; exit 1; }
+          jq -e --arg sha "$GITHUB_SHA" --arg runId "$M5_RUN_ID" \
+            '.schemaVersion == 1 and .application == "ulc-linz" and .environment == "production" and .headSha == $sha and .runId == $runId and .securityPrivacyReady == true and .verifiedCount == 12 and .requiredCount == 12 and .productionReleaseAuthorized == false and (.observedAt | type == "string") and (.validUntilOrReviewAt | type == "string")' \
+            "$gate" >/dev/null || { echo 'M5 authoritative gate artifact contract is invalid before write.' >&2; exit 1; }
+          observed_at="$(jq -er '.observedAt' "$gate")"
+          valid_until="$(jq -er '.validUntilOrReviewAt' "$gate")"
+          observed_epoch="$(date -u -d "$observed_at" +%s 2>/dev/null)" || { echo 'M5 evidence observation time is invalid before write.' >&2; exit 1; }
+          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'M5 evidence expiry is invalid before write.' >&2; exit 1; }
+          now_epoch="$(date -u +%s)"
+          test "$((valid_epoch - observed_epoch))" -eq 900 || { echo 'M5 evidence validity window is not the canonical 15 minutes before write.' >&2; exit 1; }
+          if (( now_epoch < observed_epoch || now_epoch >= valid_epoch )); then
+            echo 'M5 authoritative production evidence expired before pilot-ingress activation.' >&2
+            exit 1
+          fi
+
+      - name: Enable canonical workers.dev pilot ingress with previews disabled
+        if: steps.before.outputs.write_required == 'true'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/pilot-enable.json"
+          http_status="$(
+            curl --silent --show-error --connect-timeout 10 --max-time 30 \
+              --output "$response" \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              --header 'Content-Type: application/json' \
+              --data '{"enabled":true,"previews_enabled":false}' \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/subdomain"
+          )"
+          if [[ ! "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+            jq -r '(.errors // [])[:5][] | "Cloudflare error \(.code // "unknown"): \((.message // "unspecified") | tostring | gsub("[\\r\\n]"; " ") | .[0:300])"' "$response" >&2 2>/dev/null || true
+            echo "Cloudflare pilot ingress activation failed with HTTP $http_status." >&2
+            exit 1
+          fi
+          jq -e '.success == true and .result.enabled == true and .result.previews_enabled == false' "$response" >/dev/null || { echo 'Cloudflare pilot ingress activation returned an unexpected response.' >&2; exit 1; }
+
+      - name: Verify exact pilot ingress state after activation
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/pilot-after.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/subdomain" > "$response"
+          jq -e '.success == true and .result.enabled == true and .result.previews_enabled == false' "$response" >/dev/null || { echo 'Canonical workers.dev pilot ingress is not provably enabled with previews disabled.' >&2; exit 1; }
+          {
+            echo '### ULC M6 temporary Cloudflare pilot ingress'
+            echo '- canonical workers.dev endpoint: enabled'
+            echo '- preview URLs: disabled'
+            echo '- exact-head M5 Security & Privacy evidence: verified from authoritative gate artifact'
+            echo '- custom organizational domain: not activated'
+            echo '- final organizational go-live: not authorized'
+          } >> "$GITHUB_STEP_SUMMARY"

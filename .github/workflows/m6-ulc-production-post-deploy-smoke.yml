@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Type RUN-ULC-M6-PRODUCTION-SMOKE after approved domain activation'
+        description: 'Type RUN-ULC-M6-PRODUCTION-SMOKE after approved pilot ingress activation'
         required: true
         type: string
-      domain_run_id:
-        description: 'Successful exact-head M6 production domain activation run ID'
+      pilot_ingress_run_id:
+        description: 'Successful exact-head M6 production pilot ingress run ID'
         required: true
         type: string
       smoke_principal_run_id:
@@ -26,14 +26,12 @@ concurrency:
 
 jobs:
   post-deploy-smoke:
-    name: Verify public ULC production runtime and protected authorization
+    name: Verify reachable ULC production pilot runtime and protected authorization
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: m4-dr
     env:
-      TARGET_BASE_URL: https://app.ulc-linz.at
-      TARGET_HOSTNAME: app.ulc-linz.at
       TARGET_WORKER: appbasis-ulc-linz-production
 
     steps:
@@ -41,13 +39,13 @@ jobs:
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
-          DOMAIN_RUN_ID: ${{ inputs.domain_run_id }}
+          PILOT_INGRESS_RUN_ID: ${{ inputs.pilot_ingress_run_id }}
           SMOKE_PRINCIPAL_RUN_ID: ${{ inputs.smoke_principal_run_id }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main" || { echo 'Post-deploy smoke must run from main.' >&2; exit 1; }
           test "$CONFIRMATION" = "RUN-ULC-M6-PRODUCTION-SMOKE" || { echo 'Exact production smoke confirmation is required.' >&2; exit 1; }
-          [[ "$DOMAIN_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Domain run ID is invalid.' >&2; exit 1; }
+          [[ "$PILOT_INGRESS_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Pilot ingress run ID is invalid.' >&2; exit 1; }
           [[ "$SMOKE_PRINCIPAL_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Smoke principal run ID is invalid.' >&2; exit 1; }
 
       - name: Check out exact head
@@ -76,11 +74,11 @@ jobs:
           pnpm run verify:repo
           node ./tooling/ulc-linz-m6-migration-smoke-rehearsal.mjs >/dev/null
 
-      - name: Require successful exact-head domain and smoke-principal runs
+      - name: Require successful exact-head pilot-ingress and smoke-principal runs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          DOMAIN_RUN_ID: ${{ inputs.domain_run_id }}
+          PILOT_INGRESS_RUN_ID: ${{ inputs.pilot_ingress_run_id }}
           SMOKE_PRINCIPAL_RUN_ID: ${{ inputs.smoke_principal_run_id }}
         run: |
           set -euo pipefail
@@ -95,7 +93,7 @@ jobs:
               '.name == $name and .path == $path and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
               "$file" >/dev/null
           }
-          verify_run "$DOMAIN_RUN_ID" "M6 ULC Production Domain Activation" ".github/workflows/m6-ulc-production-domain-activation.yml" || { echo 'Production domain prerequisite is invalid.' >&2; exit 1; }
+          verify_run "$PILOT_INGRESS_RUN_ID" "M6 ULC Production Pilot Ingress" ".github/workflows/m6-ulc-production-pilot-ingress.yml" || { echo 'Production pilot-ingress prerequisite is invalid.' >&2; exit 1; }
           verify_run "$SMOKE_PRINCIPAL_RUN_ID" "M6 ULC Production Smoke Principal Bootstrap" ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml" || { echo 'Smoke-principal prerequisite is invalid.' >&2; exit 1; }
 
       - name: Validate and mask protected smoke inputs
@@ -120,25 +118,29 @@ jobs:
             echo "::add-mask::${!name}"
           done
 
-      - name: Reverify exact public domain binding
+      - name: Reverify exact pilot ingress and resolve canonical workers.dev origin
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          domains="$RUNNER_TEMP/domains.json"
+          state="$RUNNER_TEMP/pilot-state.json"
+          account="$RUNNER_TEMP/account-subdomain.json"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains?hostname=$TARGET_HOSTNAME" > "$domains"
-          node --input-type=module - "$domains" <<'NODE'
-          import { readFile } from 'node:fs/promises';
-          import { evaluateUlcLinzM6ProductionDomainEvidence } from './tooling/ulc-linz-m6-production-domain-evidence.mjs';
-          const payload = JSON.parse(await readFile(process.argv[2], 'utf8'));
-          if (evaluateUlcLinzM6ProductionDomainEvidence(payload).productionDomainReady !== true) process.exit(1);
-          NODE
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/subdomain" > "$state"
+          jq -e '.success == true and .result.enabled == true and .result.previews_enabled == false' "$state" >/dev/null || { echo 'Canonical workers.dev pilot ingress is not active with previews disabled.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$account"
+          subdomain="$(jq -er '.result.subdomain | select(type == "string")' "$account")" || { echo 'Cloudflare account workers.dev subdomain is unavailable.' >&2; exit 1; }
+          [[ "$subdomain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || { echo 'Cloudflare account workers.dev subdomain is invalid.' >&2; exit 1; }
+          jq -e '.success == true' "$account" >/dev/null || { echo 'Cloudflare account workers.dev subdomain lookup was unsuccessful.' >&2; exit 1; }
+          printf 'TARGET_BASE_URL=https://%s.%s.workers.dev\n' "$TARGET_WORKER" "$subdomain" >> "$GITHUB_ENV"
+          printf 'ULC_LINZ_PRODUCTION_BASE_URL=https://%s.%s.workers.dev\n' "$TARGET_WORKER" "$subdomain" >> "$GITHUB_ENV"
 
-      - name: Smoke public health endpoint
+      - name: Smoke pilot health endpoint
         shell: bash
         run: |
           set -euo pipefail
@@ -195,8 +197,9 @@ jobs:
         if: success()
         run: |
           {
-            echo '### ULC M6 production post-deploy smoke'
-            echo '- HTTPS health: PASS'
+            echo '### ULC M6 production pilot post-deploy smoke'
+            echo '- canonical workers.dev HTTPS health: PASS'
+            echo '- workers.dev preview URLs: disabled'
             echo '- dedicated smoke authentication: PASS'
             echo '- authenticated session: PASS'
             echo '- smoke sessions revoked after verification: PASS'
@@ -204,6 +207,6 @@ jobs:
             echo '- unknown capability fail-closed: PASS'
             echo '- denied authorization security-event sink: PASS'
             echo '- Fachmodul data mutation: none'
-            echo '- password change during smoke: none'
-            echo '- final production release: not authorized'
+            echo '- custom organizational domain: not activated'
+            echo '- final organizational go-live: not authorized'
           } >> "$GITHUB_STEP_SUMMARY"
