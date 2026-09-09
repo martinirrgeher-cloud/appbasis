@@ -72,13 +72,14 @@ test("production protected smoke rejects an implicit or malformed auth origin", 
 test("M6 smoke principal bootstrap uses the bounded native TypeScript resolver", async () => {
   const source = await readFile(SMOKE_PRINCIPAL_BOOTSTRAP, "utf8");
   assert.equal(
-    source.includes("node --import ./tooling/register-native-typescript-resolution.mjs ./tooling/bootstrap-production-smoke-principal.mjs"),
+    source.includes("node --experimental-transform-types --import ./tooling/register-native-typescript-resolution.mjs ./tooling/bootstrap-production-smoke-principal.mjs"),
     true,
   );
 
   const result = spawnSync(
     process.execPath,
     [
+      "--experimental-transform-types",
       "--import",
       "./tooling/register-native-typescript-resolution.mjs",
       "--input-type=module",
