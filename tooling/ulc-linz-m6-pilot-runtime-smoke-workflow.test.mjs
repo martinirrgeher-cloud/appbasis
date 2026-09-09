@@ -79,19 +79,20 @@ test("M6 production refresh chain preserves canonical child workflows and per-st
   assert.equal(source.includes("DATABASE_URL"), false);
 });
 
-test("M6 production refresh chain is exact-head, fail-closed and never auto-retries", async () => {
+test("M6 production refresh chain binds every dispatch to the returned exact child run and never auto-retries", async () => {
   const source = await readFile(REFRESH_CHAIN, "utf8");
 
   for (const marker of [
     "assert_main_head",
     ".commit.sha == $sha",
+    "X-GitHub-Api-Version: 2026-03-10",
+    "workflow_run_id",
+    ".run_url == $runUrl",
     ".head_sha == $sha",
     '.head_branch == "main"',
     '.event == "workflow_dispatch"',
     '.path == $path',
-    "m6-chain-before-$safe.txt",
-    "Ambiguous child-run identity",
-    "Could not identify the dispatched",
+    "GitHub did not return the pinned workflow-dispatch run identity",
     "No automatic retry will be attempted.",
     "Fresh explicit approval is required for selected step",
     "latest_success_run",
@@ -101,6 +102,8 @@ test("M6 production refresh chain is exact-head, fail-closed and never auto-retr
     assert.equal(source.includes(marker), true, `missing M6 refresh-chain safety guard: ${marker}`);
   }
 
+  assert.equal(source.includes("m6-chain-before-"), false);
+  assert.equal(source.includes("Ambiguous child-run identity"), false);
   assert.equal(source.includes("/rerun"), false);
   assert.equal(source.includes("/cancel"), false);
   assert.equal(source.includes("productionReleaseAuthorized: true"), false);
