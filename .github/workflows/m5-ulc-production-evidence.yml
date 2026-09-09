@@ -418,7 +418,7 @@ jobs:
           import { readFile, writeFile } from "node:fs/promises";
           const bundle = JSON.parse(await readFile(process.env.BUNDLE_PATH, "utf8"));
           const result = JSON.parse(await readFile(process.env.RESULT_PATH, "utf8"));
-          const resource = bundle?.providerBoundEvidenceInput?.resourceBindingEvidence;
+          const resource = bundle?.ownerInputs?.providerBoundEvidenceInput?.resourceBindingEvidence;
           const observedAt = resource?.observedAt;
           const validUntilOrReviewAt = resource?.validUntilOrReviewAt;
           const observedMs = Date.parse(observedAt);
