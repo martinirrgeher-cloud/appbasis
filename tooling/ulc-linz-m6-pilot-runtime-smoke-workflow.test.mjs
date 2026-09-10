@@ -105,7 +105,7 @@ test("M6 production refresh chain executes exactly one separately approved canon
   assert.equal(source.includes("DATABASE_URL"), false);
 });
 
-test("M6 production refresh chain binds the one dispatch to the returned exact child run and keeps a bounded parent wait headroom", async () => {
+test("M6 production refresh chain binds the one dispatch to the returned exact child run and keeps a bounded parent wait and cleanup window", async () => {
   const source = await readFile(REFRESH_CHAIN, "utf8");
 
   for (const marker of [
@@ -123,7 +123,10 @@ test("M6 production refresh chain binds the one dispatch to the returned exact c
     "GitHub did not return the pinned workflow-dispatch run identity",
     "for _ in $(seq 1 1800)",
     "bounded 150-minute queue/execution wait window",
-    "180-minute lifetime",
+    'gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"',
+    "for _ in $(seq 1 120)",
+    "reserved cleanup window",
+    "180-minute timeout",
     "No automatic retry will be attempted.",
     "Fresh explicit approval is required for selected step",
     "latest_success_run",
@@ -137,7 +140,6 @@ test("M6 production refresh chain binds the one dispatch to the returned exact c
   assert.equal(source.includes("m6-chain-before-"), false);
   assert.equal(source.includes("Ambiguous child-run identity"), false);
   assert.equal(source.includes("/rerun"), false);
-  assert.equal(source.includes("/cancel"), false);
   assert.equal(source.includes("productionReleaseAuthorized: true"), false);
   assert.equal(source.includes("app.ulc-linz.at"), false);
   assert.equal(source.includes("/workers/domains"), false);
