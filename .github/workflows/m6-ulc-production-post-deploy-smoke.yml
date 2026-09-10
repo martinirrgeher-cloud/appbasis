@@ -15,6 +15,10 @@ on:
         description: 'Successful exact-head M6 smoke principal bootstrap run ID'
         required: true
         type: string
+      expected_head_sha:
+        description: 'Optional exact commit SHA; required by the M6 production refresh chain'
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -35,6 +39,16 @@ jobs:
       TARGET_WORKER: appbasis-ulc-linz-production
 
     steps:
+      - name: Require exact chain head when supplied
+        if: inputs.expected_head_sha != ''
+        shell: bash
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected chain head SHA is invalid.' >&2; exit 1; }
+          test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA" || { echo 'Workflow head differs from the chain-approved exact SHA.' >&2; exit 1; }
+
       - name: Require explicit production smoke approval
         shell: bash
         env:
