@@ -105,7 +105,7 @@ test("M6 production refresh chain executes exactly one separately approved canon
   assert.equal(source.includes("DATABASE_URL"), false);
 });
 
-test("M6 production refresh chain binds the one dispatch to the returned exact child run and keeps a bounded parent wait and cleanup window", async () => {
+test("M6 production refresh chain binds the one dispatch to the returned or uniquely recovered exact child run and keeps bounded shared wait and cleanup windows", async () => {
   const source = await readFile(REFRESH_CHAIN, "utf8");
 
   for (const marker of [
@@ -113,22 +113,27 @@ test("M6 production refresh chain binds the one dispatch to the returned exact c
     ".commit.sha == $sha",
     "X-GitHub-Api-Version: 2026-03-10",
     "expected_head_sha",
-    '. + {expected_head_sha:$expected_head_sha}',
+    "chain_attempt_id",
+    '. + {expected_head_sha:$expected_head_sha,chain_attempt_id:$chain_attempt_id}',
+    "return_run_details:true",
     "workflow_run_id",
     ".run_url == $runUrl",
+    "discover_attempt_run",
+    ".display_title == $attempt",
     ".head_sha == $sha",
     '.head_branch == "main"',
     '.event == "workflow_dispatch"',
     '.path == $path',
-    "GitHub did not return the pinned workflow-dispatch run identity",
-    "local wait_deadline=$(( $(date +%s) + 9000 ))",
+    "dispatch transport/status was ambiguous",
+    "local step_wait_deadline=$(( $(date +%s) + 9000 ))",
+    'local wait_deadline="$step_wait_deadline"',
     'while test "$(date +%s)" -lt "$wait_deadline"',
     "wall-clock 150-minute queue/execution wait deadline",
     'gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"',
     "local cleanup_deadline=$(( $(date +%s) + 1200 ))",
     'while test "$(date +%s)" -lt "$cleanup_deadline"',
     "reserved 20-minute cleanup window",
-    "180-minute timeout",
+    "timeout-minutes: 180",
     "local poll_failures=0",
     "child status poll failed ($poll_failures/6)",
     'if test "$poll_failures" -ge 6',
