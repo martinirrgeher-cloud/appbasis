@@ -46,24 +46,21 @@ test("M6 runtime refresh binds Better Auth to the canonical workers.dev pilot or
   assert.equal(source.includes("/workers/scripts/$TARGET_WORKER/subdomain"), false);
 });
 
-test("M6 production refresh chain preserves canonical child workflows and per-step approvals", async () => {
+test("M6 production refresh chain executes exactly one separately approved canonical child step", async () => {
   const source = await readFile(REFRESH_CHAIN, "utf8");
 
   for (const marker of [
     "name: M6 ULC Production Refresh Chain",
     "workflow_dispatch:",
-    "start_at:",
-    "stop_after:",
+    "step:",
+    "approve_step:",
+    "Fresh operator approval for this selected step only",
     "actions: write",
     "if: github.ref == 'refs/heads/main'",
-    "approve_runtime_refresh:",
-    "approve_private_deploy:",
-    "approve_security_smoke:",
-    "approve_lifecycle_preflight:",
-    "approve_m5_evidence:",
-    "approve_pilot_ingress:",
-    "approve_smoke_principal:",
-    "approve_post_deploy_smoke:",
+    "SELECTED_STEP: ${{ inputs.step }}",
+    "APPROVE_STEP: ${{ inputs.approve_step }}",
+    'test "$APPROVE_STEP" = true',
+    'case "$SELECTED_STEP" in',
     "m6-ulc-production-runtime-refresh-config.yml",
     "m6-ulc-private-production-refresh-deploy.yml",
     "m5-ulc-private-security-smoke.yml",
@@ -82,11 +79,23 @@ test("M6 production refresh chain preserves canonical child workflows and per-st
     "RUN-ULC-M6-PRODUCTION-SMOKE",
     "administrator_username 'ulc.production.admin'",
     "apply_restore:true",
+    "later steps require a separate workflow dispatch and a fresh operator approval",
+    "successful exact-head prerequisite runs are reused instead of rerun",
   ]) {
     assert.equal(source.includes(marker), true, `missing M6 refresh-chain contract: ${marker}`);
   }
 
-  assert.equal((source.match(/default: false/g) ?? []).length, 8);
+  assert.equal((source.match(/default: false/g) ?? []).length, 1);
+  assert.equal(source.includes("start_at:"), false);
+  assert.equal(source.includes("stop_after:"), false);
+  assert.equal(source.includes("approve_runtime_refresh:"), false);
+  assert.equal(source.includes("approve_private_deploy:"), false);
+  assert.equal(source.includes("approve_security_smoke:"), false);
+  assert.equal(source.includes("approve_lifecycle_preflight:"), false);
+  assert.equal(source.includes("approve_m5_evidence:"), false);
+  assert.equal(source.includes("approve_pilot_ingress:"), false);
+  assert.equal(source.includes("approve_smoke_principal:"), false);
+  assert.equal(source.includes("approve_post_deploy_smoke:"), false);
   assert.equal(source.includes("environment: m4-dr"), false);
   assert.equal(source.includes("secrets."), false);
   assert.equal(source.includes("CLOUDFLARE_API_TOKEN"), false);
@@ -94,7 +103,7 @@ test("M6 production refresh chain preserves canonical child workflows and per-st
   assert.equal(source.includes("DATABASE_URL"), false);
 });
 
-test("M6 production refresh chain binds every dispatch to the returned exact child run and never auto-retries", async () => {
+test("M6 production refresh chain binds the one dispatch to the returned exact child run and never auto-retries", async () => {
   const source = await readFile(REFRESH_CHAIN, "utf8");
 
   for (const marker of [
@@ -113,6 +122,7 @@ test("M6 production refresh chain binds every dispatch to the returned exact chi
     "No automatic retry will be attempted.",
     "Fresh explicit approval is required for selected step",
     "latest_success_run",
+    "rerun only this failed step with a new explicit approval",
     "failed child workflows are never retried automatically",
     "final production release: not authorized",
   ]) {
