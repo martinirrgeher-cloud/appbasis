@@ -57,6 +57,7 @@ test("M6 production refresh chain executes exactly one separately approved canon
     "Fresh operator approval for this selected step only",
     "actions: write",
     "if: github.ref == 'refs/heads/main'",
+    "timeout-minutes: 180",
     "SELECTED_STEP: ${{ inputs.step }}",
     "APPROVE_STEP: ${{ inputs.approve_step }}",
     'test "$APPROVE_STEP" = true',
@@ -96,6 +97,7 @@ test("M6 production refresh chain executes exactly one separately approved canon
   assert.equal(source.includes("approve_pilot_ingress:"), false);
   assert.equal(source.includes("approve_smoke_principal:"), false);
   assert.equal(source.includes("approve_post_deploy_smoke:"), false);
+  assert.equal(source.includes("timeout-minutes: 30"), false);
   assert.equal(source.includes("environment: m4-dr"), false);
   assert.equal(source.includes("secrets."), false);
   assert.equal(source.includes("CLOUDFLARE_API_TOKEN"), false);
@@ -103,7 +105,7 @@ test("M6 production refresh chain executes exactly one separately approved canon
   assert.equal(source.includes("DATABASE_URL"), false);
 });
 
-test("M6 production refresh chain binds the one dispatch to the returned exact child run and never auto-retries", async () => {
+test("M6 production refresh chain binds the one dispatch to the returned exact child run and keeps a bounded parent wait headroom", async () => {
   const source = await readFile(REFRESH_CHAIN, "utf8");
 
   for (const marker of [
@@ -119,6 +121,9 @@ test("M6 production refresh chain binds the one dispatch to the returned exact c
     '.event == "workflow_dispatch"',
     '.path == $path',
     "GitHub did not return the pinned workflow-dispatch run identity",
+    "for _ in $(seq 1 1800)",
+    "bounded 150-minute queue/execution wait window",
+    "180-minute lifetime",
     "No automatic retry will be attempted.",
     "Fresh explicit approval is required for selected step",
     "latest_success_run",
