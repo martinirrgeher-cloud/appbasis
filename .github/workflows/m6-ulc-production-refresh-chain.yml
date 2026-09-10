@@ -191,6 +191,7 @@ jobs:
             local run="$RUNNER_TEMP/m6-chain-run-$safe.json"
 
             assert_main_head
+            inputs_json="$(jq -c --arg expected_head_sha "$GITHUB_SHA" '. + {expected_head_sha:$expected_head_sha}' <<<"$inputs_json")"
             jq -cn --arg ref main --argjson inputs "$inputs_json" '{ref:$ref,inputs:$inputs}' > "$payload"
             echo "Dispatching $label..." >&2
             http_status="$(
