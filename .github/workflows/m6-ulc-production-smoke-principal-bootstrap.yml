@@ -1,5 +1,7 @@
 name: M6 ULC Production Smoke Principal Bootstrap
 
+run-name: ${{ inputs.chain_attempt_id || github.workflow }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -13,6 +15,10 @@ on:
         type: string
       expected_head_sha:
         description: 'Optional exact commit SHA; required by the M6 production refresh chain'
+        required: false
+        type: string
+      chain_attempt_id:
+        description: 'Optional unique parent-chain attempt ID for fail-closed dispatch correlation'
         required: false
         type: string
 
