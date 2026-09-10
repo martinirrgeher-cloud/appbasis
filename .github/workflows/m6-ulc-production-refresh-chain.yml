@@ -159,7 +159,19 @@ jobs:
               sleep 5
             done
 
-            echo "$label did not complete inside the bounded 150-minute queue/execution wait window. No automatic retry will be attempted." >&2
+            echo "$label exceeded the bounded 150-minute queue/execution wait window; requesting cancellation before the parent exits." >&2
+            gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
+            for _ in $(seq 1 120); do
+              curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"
+              if test "$(jq -r '.status' "$run")" = completed; then
+                conclusion="$(jq -r '.conclusion // ""' "$run")"
+                echo "$label ended with conclusion '$conclusion' after the bounded cancellation request." >&2
+                exit 1
+              fi
+              sleep 5
+            done
+            echo "$label cancellation could not be confirmed inside the reserved cleanup window; inspect the exact child run before any retry." >&2
             exit 1
           }
 
@@ -229,7 +241,7 @@ jobs:
             echo '- this dispatch authorizes exactly one canonical production-preparation step'
             echo '- later steps require a separate workflow dispatch and a fresh operator approval'
             echo '- successful exact-head prerequisite runs are reused instead of rerun'
-            echo '- the parent keeps a 180-minute lifetime and waits up to 150 minutes for the exact child, covering the longest canonical child timeout and normal concurrency queueing'
+            echo '- parent waits up to 150 minutes and reserves cleanup time to cancel an overlong exact child before its own 180-minute timeout'
             echo '- child workflows remain the canonical executors; the chain performs no provider/database mutation itself'
             echo '- failed child workflows are never retried automatically'
             echo '- final production release: not authorized'
