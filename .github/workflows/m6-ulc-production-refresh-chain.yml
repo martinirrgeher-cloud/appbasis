@@ -36,7 +36,7 @@ jobs:
     name: Execute one approved canonical M6 production step
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 180
     steps:
       - name: Require fresh approval and execute selected step
         shell: bash
@@ -130,7 +130,7 @@ jobs:
               exit 1
             }
 
-            for _ in $(seq 1 360); do
+            for _ in $(seq 1 1800); do
               curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
                 "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"
               jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" \
@@ -159,7 +159,7 @@ jobs:
               sleep 5
             done
 
-            echo "$label did not complete inside the bounded wait window. No automatic retry will be attempted." >&2
+            echo "$label did not complete inside the bounded 150-minute queue/execution wait window. No automatic retry will be attempted." >&2
             exit 1
           }
 
@@ -217,7 +217,7 @@ jobs:
               smoke_principal_run_id="$(latest_success_run 'm6-ulc-production-smoke-principal-bootstrap.yml')"
               dispatch_and_wait \
                 'm6-ulc-production-post-deploy-smoke.yml' \
-                "$(jq -cn --arg confirmation 'RUN-ULC-M6-PRODUCTION-SMOKE' --arg pilot_ingress_run_id "$pilot_run_id" --arg smoke_principal_run_id "$smoke_principal_run_id" '{confirmation:$confirmation,pilot_ingress_run_id:$pilot_ingress_run_id,smoke_principal_run_id:$smoke_principal_run_id}')" \
+                "$(jq -cn --arg confirmation 'RUN-ULC-M6-PRODUCTION-SMOKE' --arg pilot_ingress_run_id "$pilot_run_id" --arg smoke_principal_run_id "$smoke_principal_run_id" '{confirmation:$confirmation,pilot_ingress_run_id:$pilot_run_id,smoke_principal_run_id:$smoke_principal_run_id}')" \
                 'production post-deploy smoke' >/dev/null
               ;;
           esac
@@ -229,6 +229,7 @@ jobs:
             echo '- this dispatch authorizes exactly one canonical production-preparation step'
             echo '- later steps require a separate workflow dispatch and a fresh operator approval'
             echo '- successful exact-head prerequisite runs are reused instead of rerun'
+            echo '- the parent keeps a 180-minute lifetime and waits up to 150 minutes for the exact child, covering the longest canonical child timeout and normal concurrency queueing'
             echo '- child workflows remain the canonical executors; the chain performs no provider/database mutation itself'
             echo '- failed child workflows are never retried automatically'
             echo '- final production release: not authorized'
