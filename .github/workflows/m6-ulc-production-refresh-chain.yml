@@ -3,8 +3,8 @@ name: M6 ULC Production Refresh Chain
 on:
   workflow_dispatch:
     inputs:
-      start_at:
-        description: 'First canonical step to execute; earlier steps are not rerun'
+      step:
+        description: 'Execute exactly one canonical M6 production-preparation step; rerun this workflow for the next step'
         required: true
         default: runtime_refresh
         type: choice
@@ -17,57 +17,8 @@ on:
           - pilot_ingress
           - smoke_principal
           - post_deploy_smoke
-      stop_after:
-        description: 'Last canonical step to execute in this attempt'
-        required: true
-        default: post_deploy_smoke
-        type: choice
-        options:
-          - runtime_refresh
-          - private_deploy
-          - security_smoke
-          - lifecycle_preflight
-          - m5_evidence
-          - pilot_ingress
-          - smoke_principal
-          - post_deploy_smoke
-      approve_runtime_refresh:
-        description: 'Approve this attempt to upload the exact current private runtime configuration'
-        required: true
-        default: false
-        type: boolean
-      approve_private_deploy:
-        description: 'Approve this attempt to deploy the exact current runtime privately'
-        required: true
-        default: false
-        type: boolean
-      approve_security_smoke:
-        description: 'Approve this attempt to execute the private production security-log smoke'
-        required: true
-        default: false
-        type: boolean
-      approve_lifecycle_preflight:
-        description: 'Approve this attempt to execute the isolated protected lifecycle preflight'
-        required: true
-        default: false
-        type: boolean
-      approve_m5_evidence:
-        description: 'Approve this attempt to write only to the isolated restore target and collect M5 evidence'
-        required: true
-        default: false
-        type: boolean
-      approve_pilot_ingress:
-        description: 'Approve this attempt to verify/enable only canonical workers.dev pilot ingress with previews disabled'
-        required: true
-        default: false
-        type: boolean
-      approve_smoke_principal:
-        description: 'Approve this attempt to provision/reconcile the dedicated production smoke principal'
-        required: true
-        default: false
-        type: boolean
-      approve_post_deploy_smoke:
-        description: 'Approve this attempt to execute the production pilot post-deploy smoke'
+      approve_step:
+        description: 'Fresh operator approval for this selected step only'
         required: true
         default: false
         type: boolean
@@ -82,25 +33,17 @@ concurrency:
 
 jobs:
   production-refresh-chain:
-    name: Orchestrate canonical M6 production refresh steps
+    name: Execute one approved canonical M6 production step
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 30
     steps:
-      - name: Require explicit per-step approvals and execute selected range
+      - name: Require fresh approval and execute selected step
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          START_AT: ${{ inputs.start_at }}
-          STOP_AFTER: ${{ inputs.stop_after }}
-          APPROVE_RUNTIME_REFRESH: ${{ inputs.approve_runtime_refresh }}
-          APPROVE_PRIVATE_DEPLOY: ${{ inputs.approve_private_deploy }}
-          APPROVE_SECURITY_SMOKE: ${{ inputs.approve_security_smoke }}
-          APPROVE_LIFECYCLE_PREFLIGHT: ${{ inputs.approve_lifecycle_preflight }}
-          APPROVE_M5_EVIDENCE: ${{ inputs.approve_m5_evidence }}
-          APPROVE_PILOT_INGRESS: ${{ inputs.approve_pilot_ingress }}
-          APPROVE_SMOKE_PRINCIPAL: ${{ inputs.approve_smoke_principal }}
-          APPROVE_POST_DEPLOY_SMOKE: ${{ inputs.approve_post_deploy_smoke }}
+          SELECTED_STEP: ${{ inputs.step }}
+          APPROVE_STEP: ${{ inputs.approve_step }}
         run: |
           set -euo pipefail
 
@@ -111,59 +54,29 @@ jobs:
             --header 'X-GitHub-Api-Version: 2026-03-10'
           )
           steps=(runtime_refresh private_deploy security_smoke lifecycle_preflight m5_evidence pilot_ingress smoke_principal post_deploy_smoke)
-          declare -A rank=(
-            [runtime_refresh]=1
-            [private_deploy]=2
-            [security_smoke]=3
-            [lifecycle_preflight]=4
-            [m5_evidence]=5
-            [pilot_ingress]=6
-            [smoke_principal]=7
-            [post_deploy_smoke]=8
-          )
-          declare -A approval_var=(
-            [runtime_refresh]=APPROVE_RUNTIME_REFRESH
-            [private_deploy]=APPROVE_PRIVATE_DEPLOY
-            [security_smoke]=APPROVE_SECURITY_SMOKE
-            [lifecycle_preflight]=APPROVE_LIFECYCLE_PREFLIGHT
-            [m5_evidence]=APPROVE_M5_EVIDENCE
-            [pilot_ingress]=APPROVE_PILOT_INGRESS
-            [smoke_principal]=APPROVE_SMOKE_PRINCIPAL
-            [post_deploy_smoke]=APPROVE_POST_DEPLOY_SMOKE
-          )
 
-          test -n "${rank[$START_AT]:-}" && test -n "${rank[$STOP_AFTER]:-}" || {
-            echo 'Selected M6 refresh-chain range is invalid.' >&2
-            exit 1
-          }
-          start_rank="${rank[$START_AT]}"
-          stop_rank="${rank[$STOP_AFTER]}"
-          (( start_rank <= stop_rank )) || {
-            echo 'M6 refresh-chain start_at must not be after stop_after.' >&2
-            exit 1
-          }
-
-          selected() {
-            local step="$1" step_rank="${rank[$1]}"
-            (( step_rank >= start_rank && step_rank <= stop_rank ))
-          }
-
+          valid_step=false
           for step in "${steps[@]}"; do
-            if selected "$step"; then
-              variable="${approval_var[$step]}"
-              test "${!variable:-false}" = true || {
-                echo "Fresh explicit approval is required for selected step: $step." >&2
-                exit 1
-              }
+            if test "$step" = "$SELECTED_STEP"; then
+              valid_step=true
+              break
             fi
           done
+          test "$valid_step" = true || {
+            echo 'Selected M6 refresh-chain step is invalid.' >&2
+            exit 1
+          }
+          test "$APPROVE_STEP" = true || {
+            echo "Fresh explicit approval is required for selected step: $SELECTED_STEP." >&2
+            exit 1
+          }
 
           assert_main_head() {
             local branch_file="$RUNNER_TEMP/m6-chain-main.json"
             curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
               "${AUTH[@]}" "$API/branches/main" > "$branch_file"
             jq -e --arg sha "$GITHUB_SHA" '.commit.sha == $sha' "$branch_file" >/dev/null || {
-              echo 'main moved during the M6 refresh chain; no further child workflow will be dispatched.' >&2
+              echo 'main moved before the selected M6 step could be dispatched.' >&2
               exit 1
             }
           }
@@ -217,7 +130,7 @@ jobs:
               exit 1
             }
 
-            for _ in $(seq 1 480); do
+            for _ in $(seq 1 360); do
               curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
                 "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"
               jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" \
@@ -230,11 +143,11 @@ jobs:
                 conclusion="$(jq -r '.conclusion // ""' "$run")"
                 if test "$conclusion" != success; then
                   {
-                    echo "### M6 refresh chain stopped"
-                    echo "- step: \`$label\`"
+                    echo '### M6 refresh chain stopped'
+                    echo "- step: \`$SELECTED_STEP\`"
                     echo "- child run: \`$run_id\`"
                     echo "- conclusion: \`$conclusion\`"
-                    echo '- retry: requires a new explicit approval for every step selected in the next attempt'
+                    echo '- retry: rerun only this failed step with a new explicit approval'
                   } >> "$GITHUB_STEP_SUMMARY"
                   echo "$label failed in child run $run_id. No automatic retry will be attempted." >&2
                   exit 1
@@ -250,83 +163,72 @@ jobs:
             exit 1
           }
 
-          m5_run_id=''
-          pilot_run_id=''
-          smoke_principal_run_id=''
-
-          if selected runtime_refresh; then
-            dispatch_and_wait \
-              'm6-ulc-production-runtime-refresh-config.yml' \
-              "$(jq -cn --arg confirmation 'REFRESH-CONFIGURE-ULC-PRODUCTION-RUNTIME' '{confirmation:$confirmation}')" \
-              'runtime refresh configuration' >/dev/null
-          fi
-
-          if selected private_deploy; then
-            dispatch_and_wait \
-              'm6-ulc-private-production-refresh-deploy.yml' \
-              "$(jq -cn --arg confirmation 'REFRESH-DEPLOY-ULC-PRIVATE-PRODUCTION' '{confirmation:$confirmation}')" \
-              'private production refresh deploy' >/dev/null
-          fi
-
-          if selected security_smoke; then
-            dispatch_and_wait \
-              'm5-ulc-private-security-smoke.yml' \
-              "$(jq -cn --arg confirmation 'RUN-ULC-M5-PRIVATE-SECURITY-SMOKE' '{confirmation:$confirmation}')" \
-              'private security logging smoke' >/dev/null
-          fi
-
-          if selected lifecycle_preflight; then
-            dispatch_and_wait \
-              'm5-ulc-protected-lifecycle-operations.yml' \
-              "$(jq -cn --arg operation preflight --arg confirmation 'VERIFY-ULC-M5-LIFECYCLE-BINDING' --arg administrator_username 'ulc.production.admin' '{operation:$operation,confirmation:$confirmation,administrator_username:$administrator_username}')" \
-              'protected lifecycle preflight' >/dev/null
-          fi
-
-          if selected m5_evidence; then
-            m5_run_id="$(dispatch_and_wait \
-              'm5-ulc-production-evidence.yml' \
-              "$(jq -cn --arg confirmation 'VERIFY-ULC-M5-PRODUCTION' '{confirmation:$confirmation,apply_restore:true}')" \
-              'M5 production evidence')"
-          fi
-
-          if selected pilot_ingress; then
-            if test -z "$m5_run_id"; then
+          case "$SELECTED_STEP" in
+            runtime_refresh)
+              dispatch_and_wait \
+                'm6-ulc-production-runtime-refresh-config.yml' \
+                "$(jq -cn --arg confirmation 'REFRESH-CONFIGURE-ULC-PRODUCTION-RUNTIME' '{confirmation:$confirmation}')" \
+                'runtime refresh configuration' >/dev/null
+              ;;
+            private_deploy)
+              latest_success_run 'm6-ulc-production-runtime-refresh-config.yml' >/dev/null
+              dispatch_and_wait \
+                'm6-ulc-private-production-refresh-deploy.yml' \
+                "$(jq -cn --arg confirmation 'REFRESH-DEPLOY-ULC-PRIVATE-PRODUCTION' '{confirmation:$confirmation}')" \
+                'private production refresh deploy' >/dev/null
+              ;;
+            security_smoke)
+              latest_success_run 'm6-ulc-private-production-refresh-deploy.yml' >/dev/null
+              dispatch_and_wait \
+                'm5-ulc-private-security-smoke.yml' \
+                "$(jq -cn --arg confirmation 'RUN-ULC-M5-PRIVATE-SECURITY-SMOKE' '{confirmation:$confirmation}')" \
+                'private security logging smoke' >/dev/null
+              ;;
+            lifecycle_preflight)
+              latest_success_run 'm5-ulc-private-security-smoke.yml' >/dev/null
+              dispatch_and_wait \
+                'm5-ulc-protected-lifecycle-operations.yml' \
+                "$(jq -cn --arg operation preflight --arg confirmation 'VERIFY-ULC-M5-LIFECYCLE-BINDING' --arg administrator_username 'ulc.production.admin' '{operation:$operation,confirmation:$confirmation,administrator_username:$administrator_username}')" \
+                'protected lifecycle preflight' >/dev/null
+              ;;
+            m5_evidence)
+              latest_success_run 'm5-ulc-protected-lifecycle-operations.yml' >/dev/null
+              dispatch_and_wait \
+                'm5-ulc-production-evidence.yml' \
+                "$(jq -cn --arg confirmation 'VERIFY-ULC-M5-PRODUCTION' '{confirmation:$confirmation,apply_restore:true}')" \
+                'M5 production evidence' >/dev/null
+              ;;
+            pilot_ingress)
               m5_run_id="$(latest_success_run 'm5-ulc-production-evidence.yml')"
-            fi
-            pilot_run_id="$(dispatch_and_wait \
-              'm6-ulc-production-pilot-ingress.yml' \
-              "$(jq -cn --arg confirmation 'ACTIVATE-ULC-M6-PILOT-INGRESS' --arg m5_run_id "$m5_run_id" '{confirmation:$confirmation,m5_run_id:$m5_run_id}')" \
-              'workers.dev pilot ingress')"
-          fi
-
-          if selected smoke_principal; then
-            if test -z "$m5_run_id"; then
+              dispatch_and_wait \
+                'm6-ulc-production-pilot-ingress.yml' \
+                "$(jq -cn --arg confirmation 'ACTIVATE-ULC-M6-PILOT-INGRESS' --arg m5_run_id "$m5_run_id" '{confirmation:$confirmation,m5_run_id:$m5_run_id}')" \
+                'workers.dev pilot ingress' >/dev/null
+              ;;
+            smoke_principal)
               m5_run_id="$(latest_success_run 'm5-ulc-production-evidence.yml')"
-            fi
-            smoke_principal_run_id="$(dispatch_and_wait \
-              'm6-ulc-production-smoke-principal-bootstrap.yml' \
-              "$(jq -cn --arg confirmation 'BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL' --arg m5_run_id "$m5_run_id" '{confirmation:$confirmation,m5_run_id:$m5_run_id}')" \
-              'production smoke principal bootstrap')"
-          fi
-
-          if selected post_deploy_smoke; then
-            if test -z "$pilot_run_id"; then
+              dispatch_and_wait \
+                'm6-ulc-production-smoke-principal-bootstrap.yml' \
+                "$(jq -cn --arg confirmation 'BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL' --arg m5_run_id "$m5_run_id" '{confirmation:$confirmation,m5_run_id:$m5_run_id}')" \
+                'production smoke principal bootstrap' >/dev/null
+              ;;
+            post_deploy_smoke)
               pilot_run_id="$(latest_success_run 'm6-ulc-production-pilot-ingress.yml')"
-            fi
-            if test -z "$smoke_principal_run_id"; then
               smoke_principal_run_id="$(latest_success_run 'm6-ulc-production-smoke-principal-bootstrap.yml')"
-            fi
-            dispatch_and_wait \
-              'm6-ulc-production-post-deploy-smoke.yml' \
-              "$(jq -cn --arg confirmation 'RUN-ULC-M6-PRODUCTION-SMOKE' --arg pilot_ingress_run_id "$pilot_run_id" --arg smoke_principal_run_id "$smoke_principal_run_id" '{confirmation:$confirmation,pilot_ingress_run_id:$pilot_ingress_run_id,smoke_principal_run_id:$smoke_principal_run_id}')" \
-              'production post-deploy smoke' >/dev/null
-          fi
+              dispatch_and_wait \
+                'm6-ulc-production-post-deploy-smoke.yml' \
+                "$(jq -cn --arg confirmation 'RUN-ULC-M6-PRODUCTION-SMOKE' --arg pilot_ingress_run_id "$pilot_run_id" --arg smoke_principal_run_id "$smoke_principal_run_id" '{confirmation:$confirmation,pilot_ingress_run_id:$pilot_ingress_run_id,smoke_principal_run_id:$smoke_principal_run_id}')" \
+                'production post-deploy smoke' >/dev/null
+              ;;
+          esac
 
           {
             echo '### M6 ULC production refresh chain'
             echo "- exact head: \`$GITHUB_SHA\`"
-            echo "- executed range: \`$START_AT\` → \`$STOP_AFTER\`"
-            echo '- each selected production/provider step required its own fresh boolean approval in this dispatch'
+            echo "- executed step: \`$SELECTED_STEP\`"
+            echo '- this dispatch authorizes exactly one canonical production-preparation step'
+            echo '- later steps require a separate workflow dispatch and a fresh operator approval'
+            echo '- successful exact-head prerequisite runs are reused instead of rerun'
             echo '- child workflows remain the canonical executors; the chain performs no provider/database mutation itself'
             echo '- failed child workflows are never retried automatically'
             echo '- final production release: not authorized'
