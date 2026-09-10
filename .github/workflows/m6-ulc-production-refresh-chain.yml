@@ -96,45 +96,90 @@ jobs:
             printf '%s\n' "$id"
           }
 
+          discover_attempt_run() {
+            local workflow="$1" attempt_id="$2" output="$3"
+            local discovery_deadline=$(( $(date +%s) + 1200 ))
+            local list="$RUNNER_TEMP/m6-chain-discovery-${workflow//[^a-zA-Z0-9]/_}.json"
+            while test "$(date +%s)" -lt "$discovery_deadline"; do
+              if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                "${AUTH[@]}" "$API/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&per_page=100" > "$list"; then
+                matches="$(jq -c --arg sha "$GITHUB_SHA" --arg attempt "$attempt_id" --arg path ".github/workflows/$workflow" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .path == $path and .display_title == $attempt)]' "$list")"
+                count="$(jq 'length' <<<"$matches")"
+                if test "$count" -eq 1; then
+                  jq -r '.[0].id' <<<"$matches" > "$output"
+                  return 0
+                fi
+                if test "$count" -gt 1; then
+                  echo "Correlation token $attempt_id matched multiple child runs; refusing ambiguous recovery." >&2
+                  return 1
+                fi
+              else
+                echo 'Attempt-correlation poll failed transiently; retrying bounded discovery.' >&2
+              fi
+              sleep 5
+            done
+            echo "No exact child run became visible for correlation token $attempt_id inside the reserved 20-minute discovery window." >&2
+            return 1
+          }
+
           dispatch_and_wait() {
             local workflow="$1" inputs_json="$2" label="$3"
             local safe="${workflow//[^a-zA-Z0-9]/_}"
             local payload="$RUNNER_TEMP/m6-chain-dispatch-$safe.json"
             local dispatched="$RUNNER_TEMP/m6-chain-dispatched-$safe.json"
+            local recovered="$RUNNER_TEMP/m6-chain-recovered-$safe.txt"
             local run="$RUNNER_TEMP/m6-chain-run-$safe.json"
+            local attempt_id="m6-chain-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${SELECTED_STEP}"
 
             assert_main_head
-            inputs_json="$(jq -c --arg expected_head_sha "$GITHUB_SHA" '. + {expected_head_sha:$expected_head_sha}' <<<"$inputs_json")"
-            jq -cn --arg ref main --argjson inputs "$inputs_json" '{ref:$ref,inputs:$inputs}' > "$payload"
-            echo "Dispatching $label..." >&2
-            http_status="$(
+            inputs_json="$(jq -c --arg expected_head_sha "$GITHUB_SHA" --arg chain_attempt_id "$attempt_id" '. + {expected_head_sha:$expected_head_sha,chain_attempt_id:$chain_attempt_id}' <<<"$inputs_json")"
+            jq -cn --arg ref main --argjson inputs "$inputs_json" '{ref:$ref,inputs:$inputs,return_run_details:true}' > "$payload"
+
+            {
+              echo "M6_CHILD_RUN_ID="
+              echo "M6_CHILD_WORKFLOW=$workflow"
+              echo "M6_CHILD_LABEL=$label"
+              echo "M6_CHILD_ATTEMPT_ID=$attempt_id"
+            } >> "$GITHUB_ENV"
+
+            echo "Dispatching $label with correlation token $attempt_id..." >&2
+            set +e
+            http_status="$({
               curl --silent --show-error --connect-timeout 10 --max-time 30 \
                 --output "$dispatched" --write-out '%{http_code}' \
                 --request POST "${AUTH[@]}" --header 'Content-Type: application/json' \
                 --data-binary "@$payload" "$API/actions/workflows/$workflow/dispatches"
-            )"
-            if test "$http_status" != 200; then
-              echo "GitHub did not return the pinned workflow-dispatch run identity for $label (HTTP $http_status). The child attempt may exist, so any retry requires fresh approval." >&2
-              exit 1
+            })"
+            dispatch_rc=$?
+            set -e
+
+            local run_id=''
+            if test "$dispatch_rc" -eq 0 && test "$http_status" = 200; then
+              run_id="$(jq -r '.workflow_run_id // empty' "$dispatched")"
+              if [[ "$run_id" =~ ^[1-9][0-9]*$ ]] && jq -e --arg runUrl "$API/actions/runs/$run_id" '.run_url == $runUrl and (.html_url | type == "string" and length > 0)' "$dispatched" >/dev/null; then
+                :
+              else
+                echo "$label returned malformed pinned dispatch details; recovering by unique correlation token." >&2
+                run_id=''
+              fi
+            else
+              echo "$label dispatch transport/status was ambiguous (curl=$dispatch_rc HTTP=${http_status:-none}); recovering by unique correlation token." >&2
             fi
 
-            local run_id
-            run_id="$(jq -r '.workflow_run_id // empty' "$dispatched")"
-            [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
-              echo "GitHub returned an invalid dispatched run ID for $label. The child attempt may exist, so any retry requires fresh approval." >&2
-              exit 1
-            }
-            jq -e --arg runUrl "$API/actions/runs/$run_id" \
-              '.run_url == $runUrl and (.html_url | type == "string" and length > 0)' "$dispatched" >/dev/null || {
-              echo "GitHub returned an invalid dispatched run binding for $label. The child attempt may exist, so any retry requires fresh approval." >&2
-              exit 1
-            }
+            if test -z "$run_id"; then
+              discover_attempt_run "$workflow" "$attempt_id" "$recovered" || {
+                echo "$label dispatch could not be correlated after an ambiguous response. Do not retry without inspecting workflow runs for token $attempt_id." >&2
+                exit 1
+              }
+              run_id="$(cat "$recovered")"
+              [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+                echo "$label recovered an invalid child run ID; refusing ambiguous continuation." >&2
+                exit 1
+              }
+              echo "$label recovered exact child run $run_id from correlation token $attempt_id." >&2
+            fi
 
-            {
-              echo "M6_CHILD_RUN_ID=$run_id"
-              echo "M6_CHILD_WORKFLOW=$workflow"
-              echo "M6_CHILD_LABEL=$label"
-            } >> "$GITHUB_ENV"
+            echo "M6_CHILD_RUN_ID=$run_id" >> "$GITHUB_ENV"
 
             cancel_on_signal() {
               echo "$label: parent received a cancellation signal; requesting immediate cancellation of exact child run $run_id." >&2
@@ -150,6 +195,11 @@ jobs:
               while test "$(date +%s)" -lt "$cleanup_deadline"; do
                 if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
                   "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
+                  jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
+                    '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .path == $path and .display_title == $attempt' "$run" >/dev/null || {
+                    echo "$label cancellation cleanup found child-run identity drift; inspect exact run $run_id before any retry." >&2
+                    return 1
+                  }
                   if test "$(jq -r '.status' "$run")" = completed; then
                     conclusion="$(jq -r '.conclusion // ""' "$run")"
                     echo "$label ended with conclusion '$conclusion' after cancellation request." >&2
@@ -181,8 +231,8 @@ jobs:
               fi
               poll_failures=0
 
-              jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" \
-                '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .path == $path' "$run" >/dev/null || {
+              jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
+                '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .path == $path and .display_title == $attempt' "$run" >/dev/null || {
                 cancel_and_confirm_child 'Child-run identity drifted.' || true
                 echo "$label child-run identity drifted; stopping fail-closed." >&2
                 exit 1
@@ -195,6 +245,7 @@ jobs:
                     echo '### M6 refresh chain stopped'
                     echo "- step: \`$SELECTED_STEP\`"
                     echo "- child run: \`$run_id\`"
+                    echo "- correlation: \`$attempt_id\`"
                     echo "- conclusion: \`$conclusion\`"
                     echo '- retry: rerun only this failed step with a new explicit approval'
                   } >> "$GITHUB_STEP_SUMMARY"
@@ -280,29 +331,26 @@ jobs:
             echo '- this dispatch authorizes exactly one canonical production-preparation step'
             echo '- later steps require a separate workflow dispatch and a fresh operator approval'
             echo '- successful exact-head prerequisite runs are reused instead of rerun'
-            echo '- parent persists the exact child-run identity and propagates manual cancellation to that child'
-            echo '- parent enforces a 150-minute wall-clock child wait, tolerates bounded transient child-status polling failures, and reserves a 20-minute wall-clock cleanup window before its own 180-minute timeout'
+            echo '- every child dispatch carries a unique run-name correlation token; ambiguous POST responses recover only that exact attempt'
+            echo '- parent persists child attempt identity before dispatch and exact child-run identity once known, then propagates manual cancellation'
+            echo '- parent enforces a 150-minute wall-clock child wait, bounded transient polling, and bounded discovery/cancellation cleanup'
             echo '- child workflows remain the canonical executors; the chain performs no provider/database mutation itself'
             echo '- failed child workflows are never retried automatically'
             echo '- final production release: not authorized'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Cancel exact child if parent is cancelled
-        if: ${{ cancelled() && env.M6_CHILD_RUN_ID != '' }}
+      - name: Cancel correlated child if parent is cancelled
+        if: ${{ cancelled() && env.M6_CHILD_ATTEMPT_ID != '' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          run_id="$M6_CHILD_RUN_ID"
+          run_id="${M6_CHILD_RUN_ID:-}"
           workflow="$M6_CHILD_WORKFLOW"
           label="$M6_CHILD_LABEL"
-          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
-            echo 'Persisted M6 child run ID is invalid; refusing ambiguous cleanup.' >&2
-            exit 1
-          }
-
+          attempt_id="$M6_CHILD_ATTEMPT_ID"
           API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
           AUTH=(
             --header "Authorization: Bearer $GH_TOKEN"
@@ -310,16 +358,43 @@ jobs:
             --header 'X-GitHub-Api-Version: 2026-03-10'
           )
           run="$RUNNER_TEMP/m6-chain-cancelled-child.json"
+          list="$RUNNER_TEMP/m6-chain-cancelled-discovery.json"
           cleanup_deadline=$(( $(date +%s) + 1200 ))
 
-          echo "$label: parent workflow was cancelled; cancelling exact child run $run_id." >&2
+          if ! [[ "$run_id" =~ ^[1-9][0-9]*$ ]]; then
+            run_id=''
+            echo "$label: parent cancelled before pinned child identity was persisted; recovering correlation token $attempt_id." >&2
+            while test "$(date +%s)" -lt "$cleanup_deadline"; do
+              if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                "${AUTH[@]}" "$API/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&per_page=100" > "$list"; then
+                matches="$(jq -c --arg sha "$GITHUB_SHA" --arg attempt "$attempt_id" --arg path ".github/workflows/$workflow" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .path == $path and .display_title == $attempt)]' "$list")"
+                count="$(jq 'length' <<<"$matches")"
+                if test "$count" -eq 1; then
+                  run_id="$(jq -r '.[0].id' <<<"$matches")"
+                  break
+                fi
+                if test "$count" -gt 1; then
+                  echo "$label cancellation correlation matched multiple runs; refusing ambiguous cleanup." >&2
+                  exit 1
+                fi
+              fi
+              sleep 5
+            done
+          fi
+
+          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo "$label cancellation could not locate a child for correlation token $attempt_id inside the bounded cleanup window; inspect before any retry." >&2
+            exit 1
+          }
+
+          echo "$label: parent workflow was cancelled; cancelling exact correlated child run $run_id." >&2
           gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
 
           while test "$(date +%s)" -lt "$cleanup_deadline"; do
             if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
               "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
-              jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" \
-                '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .path == $path' "$run" >/dev/null || {
+              jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
+                '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .path == $path and .display_title == $attempt' "$run" >/dev/null || {
                 echo "$label cancellation cleanup found child-run identity drift; inspect exact run $run_id before any retry." >&2
                 exit 1
               }
@@ -334,5 +409,5 @@ jobs:
             sleep 5
           done
 
-          echo "$label cancellation could not be confirmed inside the reserved 20-minute cleanup window; inspect exact child run $run_id before any retry." >&2
+          echo "$label cancellation could not be confirmed inside the reserved cleanup window; inspect exact child run $run_id before any retry." >&2
           exit 1
