@@ -132,9 +132,10 @@ jobs:
 
             cancel_and_confirm_child() {
               local reason="$1"
+              local cleanup_deadline=$(( $(date +%s) + 1200 ))
               echo "$label: $reason Requesting cancellation of exact child run $run_id before parent exit." >&2
               gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
-              for _ in $(seq 1 120); do
+              while test "$(date +%s)" -lt "$cleanup_deadline"; do
                 if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
                   "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
                   if test "$(jq -r '.status' "$run")" = completed; then
@@ -147,12 +148,13 @@ jobs:
                 fi
                 sleep 5
               done
-              echo "$label cancellation could not be confirmed inside the reserved cleanup window; inspect exact child run $run_id before any retry." >&2
+              echo "$label cancellation could not be confirmed inside the reserved 20-minute cleanup window; inspect exact child run $run_id before any retry." >&2
               return 1
             }
 
             local poll_failures=0
-            for _ in $(seq 1 1800); do
+            local wait_deadline=$(( $(date +%s) + 9000 ))
+            while test "$(date +%s)" -lt "$wait_deadline"; do
               if ! curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
                 "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
                 poll_failures=$((poll_failures + 1))
@@ -194,8 +196,8 @@ jobs:
               sleep 5
             done
 
-            cancel_and_confirm_child 'Exceeded the bounded 150-minute queue/execution wait window.' || true
-            echo "$label exceeded the bounded wait window; inspect exact child run $run_id before any retry." >&2
+            cancel_and_confirm_child 'Exceeded the wall-clock 150-minute queue/execution wait deadline.' || true
+            echo "$label exceeded the wall-clock wait deadline; inspect exact child run $run_id before any retry." >&2
             exit 1
           }
 
@@ -265,7 +267,7 @@ jobs:
             echo '- this dispatch authorizes exactly one canonical production-preparation step'
             echo '- later steps require a separate workflow dispatch and a fresh operator approval'
             echo '- successful exact-head prerequisite runs are reused instead of rerun'
-            echo '- parent waits up to 150 minutes, tolerates bounded transient child-status polling failures, and reserves cleanup time to cancel the exact child before its own 180-minute timeout'
+            echo '- parent enforces a 150-minute wall-clock child wait, tolerates bounded transient child-status polling failures, and reserves a 20-minute wall-clock cleanup window before its own 180-minute timeout'
             echo '- child workflows remain the canonical executors; the chain performs no provider/database mutation itself'
             echo '- failed child workflows are never retried automatically'
             echo '- final production release: not authorized'
