@@ -121,11 +121,13 @@ test("M6 production refresh chain binds the one dispatch to the returned exact c
     '.event == "workflow_dispatch"',
     '.path == $path',
     "GitHub did not return the pinned workflow-dispatch run identity",
-    "for _ in $(seq 1 1800)",
-    "bounded 150-minute queue/execution wait window",
+    "local wait_deadline=$(( $(date +%s) + 9000 ))",
+    'while test "$(date +%s)" -lt "$wait_deadline"',
+    "wall-clock 150-minute queue/execution wait deadline",
     'gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"',
-    "for _ in $(seq 1 120)",
-    "reserved cleanup window",
+    "local cleanup_deadline=$(( $(date +%s) + 1200 ))",
+    'while test "$(date +%s)" -lt "$cleanup_deadline"',
+    "reserved 20-minute cleanup window",
     "180-minute timeout",
     "local poll_failures=0",
     "child status poll failed ($poll_failures/6)",
@@ -142,6 +144,8 @@ test("M6 production refresh chain binds the one dispatch to the returned exact c
     assert.equal(source.includes(marker), true, `missing M6 refresh-chain safety guard: ${marker}`);
   }
 
+  assert.equal(source.includes("for _ in $(seq 1 1800)"), false);
+  assert.equal(source.includes("for _ in $(seq 1 120)"), false);
   assert.equal(source.includes("m6-chain-before-"), false);
   assert.equal(source.includes("Ambiguous child-run identity"), false);
   assert.equal(source.includes("/rerun"), false);
