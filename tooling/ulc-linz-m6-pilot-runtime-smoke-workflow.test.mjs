@@ -5,11 +5,26 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const REFRESH = new URL("../.github/workflows/m6-ulc-production-runtime-refresh-config.yml", import.meta.url);
+const PRIVATE_DEPLOY = new URL("../.github/workflows/m6-ulc-private-production-refresh-deploy.yml", import.meta.url);
+const SECURITY_SMOKE = new URL("../.github/workflows/m5-ulc-private-security-smoke.yml", import.meta.url);
+const LIFECYCLE_PREFLIGHT = new URL("../.github/workflows/m5-ulc-protected-lifecycle-operations.yml", import.meta.url);
+const M5_EVIDENCE = new URL("../.github/workflows/m5-ulc-production-evidence.yml", import.meta.url);
+const PILOT_INGRESS = new URL("../.github/workflows/m6-ulc-production-pilot-ingress.yml", import.meta.url);
 const REFRESH_CHAIN = new URL("../.github/workflows/m6-ulc-production-refresh-chain.yml", import.meta.url);
 const SMOKE = new URL("../.github/workflows/m6-ulc-production-post-deploy-smoke.yml", import.meta.url);
 const SMOKE_RUNNER = new URL("../apps/ulc-linz/tooling/run-production-post-deploy-smoke.mjs", import.meta.url);
 const SMOKE_PRINCIPAL_BOOTSTRAP = new URL("../.github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml", import.meta.url);
 const ULC_LINZ_APP = new URL("../apps/ulc-linz/", import.meta.url);
+const EXACT_HEAD_CHILD_WORKFLOWS = [
+  REFRESH,
+  PRIVATE_DEPLOY,
+  SECURITY_SMOKE,
+  LIFECYCLE_PREFLIGHT,
+  M5_EVIDENCE,
+  PILOT_INGRESS,
+  SMOKE_PRINCIPAL_BOOTSTRAP,
+  SMOKE,
+];
 
 test("M6 runtime refresh binds Better Auth to the canonical workers.dev pilot origin without exposing the worker", async () => {
   const source = await readFile(REFRESH, "utf8");
@@ -86,6 +101,8 @@ test("M6 production refresh chain binds every dispatch to the returned exact chi
     "assert_main_head",
     ".commit.sha == $sha",
     "X-GitHub-Api-Version: 2026-03-10",
+    "expected_head_sha",
+    '. + {expected_head_sha:$expected_head_sha}',
     "workflow_run_id",
     ".run_url == $runUrl",
     ".head_sha == $sha",
@@ -109,6 +126,30 @@ test("M6 production refresh chain binds every dispatch to the returned exact chi
   assert.equal(source.includes("productionReleaseAuthorized: true"), false);
   assert.equal(source.includes("app.ulc-linz.at"), false);
   assert.equal(source.includes("/workers/domains"), false);
+});
+
+test("M6 refresh-chain children fail before production interaction when dispatched on a different head", async () => {
+  for (const workflow of EXACT_HEAD_CHILD_WORKFLOWS) {
+    const source = await readFile(workflow, "utf8");
+    for (const marker of [
+      "expected_head_sha:",
+      "Require exact chain head when supplied",
+      "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}",
+      '[[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]',
+      'test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA"',
+    ]) {
+      assert.equal(source.includes(marker), true, `missing exact-head child guard ${marker} in ${workflow.pathname}`);
+    }
+
+    const stepsIndex = source.indexOf("\n    steps:\n");
+    const firstStepIndex = source.indexOf("\n      - name:", stepsIndex);
+    assert.ok(stepsIndex >= 0 && firstStepIndex >= 0, `workflow steps are missing in ${workflow.pathname}`);
+    assert.equal(
+      source.startsWith("\n      - name: Require exact chain head when supplied", firstStepIndex),
+      true,
+      `exact-head guard must be the first executable child step in ${workflow.pathname}`,
+    );
+  }
 });
 
 test("M6 post-deploy smoke requires exact-head pilot activation and never depends on the organizational domain", async () => {
