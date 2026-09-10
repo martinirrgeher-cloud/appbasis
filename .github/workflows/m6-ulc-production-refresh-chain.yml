@@ -130,6 +130,18 @@ jobs:
               exit 1
             }
 
+            {
+              echo "M6_CHILD_RUN_ID=$run_id"
+              echo "M6_CHILD_WORKFLOW=$workflow"
+              echo "M6_CHILD_LABEL=$label"
+            } >> "$GITHUB_ENV"
+
+            cancel_on_signal() {
+              echo "$label: parent received a cancellation signal; requesting immediate cancellation of exact child run $run_id." >&2
+              gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
+            }
+            trap cancel_on_signal TERM INT
+
             cancel_and_confirm_child() {
               local reason="$1"
               local cleanup_deadline=$(( $(date +%s) + 1200 ))
@@ -189,6 +201,7 @@ jobs:
                   echo "$label failed in child run $run_id. No automatic retry will be attempted." >&2
                   exit 1
                 fi
+                trap - TERM INT
                 echo "$label succeeded in child run $run_id." >&2
                 printf '%s\n' "$run_id"
                 return 0
@@ -267,8 +280,59 @@ jobs:
             echo '- this dispatch authorizes exactly one canonical production-preparation step'
             echo '- later steps require a separate workflow dispatch and a fresh operator approval'
             echo '- successful exact-head prerequisite runs are reused instead of rerun'
+            echo '- parent persists the exact child-run identity and propagates manual cancellation to that child'
             echo '- parent enforces a 150-minute wall-clock child wait, tolerates bounded transient child-status polling failures, and reserves a 20-minute wall-clock cleanup window before its own 180-minute timeout'
             echo '- child workflows remain the canonical executors; the chain performs no provider/database mutation itself'
             echo '- failed child workflows are never retried automatically'
             echo '- final production release: not authorized'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cancel exact child if parent is cancelled
+        if: ${{ cancelled() && env.M6_CHILD_RUN_ID != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          run_id="$M6_CHILD_RUN_ID"
+          workflow="$M6_CHILD_WORKFLOW"
+          label="$M6_CHILD_LABEL"
+          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'Persisted M6 child run ID is invalid; refusing ambiguous cleanup.' >&2
+            exit 1
+          }
+
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          AUTH=(
+            --header "Authorization: Bearer $GH_TOKEN"
+            --header 'Accept: application/vnd.github+json'
+            --header 'X-GitHub-Api-Version: 2026-03-10'
+          )
+          run="$RUNNER_TEMP/m6-chain-cancelled-child.json"
+          cleanup_deadline=$(( $(date +%s) + 1200 ))
+
+          echo "$label: parent workflow was cancelled; cancelling exact child run $run_id." >&2
+          gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
+
+          while test "$(date +%s)" -lt "$cleanup_deadline"; do
+            if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+              "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
+              jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" \
+                '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .path == $path' "$run" >/dev/null || {
+                echo "$label cancellation cleanup found child-run identity drift; inspect exact run $run_id before any retry." >&2
+                exit 1
+              }
+              if test "$(jq -r '.status' "$run")" = completed; then
+                conclusion="$(jq -r '.conclusion // ""' "$run")"
+                echo "$label ended with conclusion '$conclusion' after parent cancellation." >&2
+                exit 0
+              fi
+            else
+              echo "$label parent-cancellation status poll failed transiently; retrying bounded cleanup." >&2
+            fi
+            sleep 5
+          done
+
+          echo "$label cancellation could not be confirmed inside the reserved 20-minute cleanup window; inspect exact child run $run_id before any retry." >&2
+          exit 1
