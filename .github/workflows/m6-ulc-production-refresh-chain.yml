@@ -54,6 +54,7 @@ jobs:
             --header 'X-GitHub-Api-Version: 2026-03-10'
           )
           steps=(runtime_refresh private_deploy security_smoke lifecycle_preflight m5_evidence pilot_ingress smoke_principal post_deploy_smoke)
+          CHAIN_WORK_DEADLINE=$(( $(date +%s) + 9000 ))
 
           valid_step=false
           for step in "${steps[@]}"; do
@@ -99,6 +100,9 @@ jobs:
           discover_attempt_run() {
             local workflow="$1" attempt_id="$2" output="$3"
             local discovery_deadline=$(( $(date +%s) + 1200 ))
+            if test "$discovery_deadline" -gt "$CHAIN_WORK_DEADLINE"; then
+              discovery_deadline="$CHAIN_WORK_DEADLINE"
+            fi
             local list="$RUNNER_TEMP/m6-chain-discovery-${workflow//[^a-zA-Z0-9]/_}.json"
             while test "$(date +%s)" -lt "$discovery_deadline"; do
               if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
@@ -118,7 +122,7 @@ jobs:
               fi
               sleep 5
             done
-            echo "No exact child run became visible for correlation token $attempt_id inside the reserved 20-minute discovery window." >&2
+            echo "No exact child run became visible for correlation token $attempt_id inside the bounded discovery window." >&2
             return 1
           }
 
@@ -215,7 +219,7 @@ jobs:
             }
 
             local poll_failures=0
-            local wait_deadline=$(( $(date +%s) + 9000 ))
+            local wait_deadline="$CHAIN_WORK_DEADLINE"
             while test "$(date +%s)" -lt "$wait_deadline"; do
               if ! curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
                 "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
@@ -260,8 +264,8 @@ jobs:
               sleep 5
             done
 
-            cancel_and_confirm_child 'Exceeded the wall-clock 150-minute queue/execution wait deadline.' || true
-            echo "$label exceeded the wall-clock wait deadline; inspect exact child run $run_id before any retry." >&2
+            cancel_and_confirm_child 'Exceeded the shared wall-clock work deadline.' || true
+            echo "$label exceeded the shared work deadline; inspect exact child run $run_id before any retry." >&2
             exit 1
           }
 
@@ -333,7 +337,7 @@ jobs:
             echo '- successful exact-head prerequisite runs are reused instead of rerun'
             echo '- every child dispatch carries a unique run-name correlation token; ambiguous POST responses recover only that exact attempt'
             echo '- parent persists child attempt identity before dispatch and exact child-run identity once known, then propagates manual cancellation'
-            echo '- parent enforces a 150-minute wall-clock child wait, bounded transient polling, and bounded discovery/cancellation cleanup'
+            echo '- parent shares one 150-minute wall-clock work budget across dispatch recovery and child waiting, then reserves a bounded cancellation-cleanup window before its own 180-minute timeout'
             echo '- child workflows remain the canonical executors; the chain performs no provider/database mutation itself'
             echo '- failed child workflows are never retried automatically'
             echo '- final production release: not authorized'
