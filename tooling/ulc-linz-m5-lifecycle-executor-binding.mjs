@@ -9,7 +9,7 @@ const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const CREDENTIAL_ADAPTER_PATH =
   "apps/ulc-linz/worker/protected-lifecycle-credential-operation.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
-const WORKFLOW_GIT_BLOB_SHA = "d9cdce2b143541fb1490219980a6ab234250160c";
+const WORKFLOW_GIT_BLOB_SHA = "44934fe90f30ba686ee92b4cfdc821da0f7105ce";
 const EXECUTOR_GIT_BLOB_SHA = "ba3e24784f52ccdfceda3cce5b694f912785ea2a";
 const CREDENTIAL_ADAPTER_GIT_BLOB_SHA =
   "6f71345941deaf23a5c73770132b965e379176a5";
