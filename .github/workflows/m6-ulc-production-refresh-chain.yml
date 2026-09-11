@@ -195,8 +195,10 @@ jobs:
               local reason="$1"
               local cleanup_deadline=$(( $(date +%s) + 1200 ))
               echo "$label: $reason Requesting cancellation of exact child run $run_id before parent exit." >&2
-              gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
               while test "$(date +%s)" -lt "$cleanup_deadline"; do
+                if ! gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"; then
+                  echo "$label cancellation request failed transiently; retrying bounded cleanup." >&2
+                fi
                 if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
                   "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
                   jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
@@ -392,9 +394,10 @@ jobs:
           }
 
           echo "$label: parent workflow was cancelled; cancelling exact correlated child run $run_id." >&2
-          gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
-
           while test "$(date +%s)" -lt "$cleanup_deadline"; do
+            if ! gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"; then
+              echo "$label parent-cancellation cancel request failed transiently; retrying bounded cleanup." >&2
+            fi
             if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
               "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
               jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
