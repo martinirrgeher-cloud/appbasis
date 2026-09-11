@@ -81,7 +81,7 @@ test("M6 production refresh chain executes exactly one separately approved canon
     "administrator_username 'ulc.production.admin'",
     "apply_restore:true",
     "later steps require a separate workflow dispatch and a fresh operator approval",
-    "successful exact-head prerequisite runs are reused instead of rerun",
+    "successful exact-head prerequisite runs are reused only when they completed before this parent approval dispatch was created",
   ]) {
     assert.equal(source.includes(marker), true, `missing M6 refresh-chain contract: ${marker}`);
   }
