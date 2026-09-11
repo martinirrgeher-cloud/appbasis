@@ -1,28 +1,118 @@
 name: CI
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
-  pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  quality:
+  identity-postgres-e2e:
+    name: Identity PostgreSQL E2E
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: true
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/appbasis_identity_e2e
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: appbasis_identity_e2e
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d appbasis_identity_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: 10.15.1
+          persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/setup-node@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          node-version: 24
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
           cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run real PostgreSQL identity E2E tests
+        run: pnpm run test:identity:e2e
+
+      - name: Run real PostgreSQL permissions E2E tests
+        run: pnpm --filter @appbasis/permissions test:e2e
+
+      - name: Run ULC lifecycle PostgreSQL E2E tests
+        run: pnpm --filter @appbasis/app-ulc-linz test:postgres
+
+      - name: Run M5 exported snapshot PostgreSQL regression
+        run: node --test ./tooling/ulc-linz-m5-exported-snapshot.postgres.test.mjs
+
+      - name: Run M5 restore backup ACL PostgreSQL 18 regression
+        run: node --test ./tooling/ulc-linz-m5-restore-backup-acl.postgres.test.mjs
+
+      - name: Run M5 portable restore PostgreSQL 18 regression
+        run: node --test ./tooling/ulc-linz-m5-portable-restore-list.postgres.test.mjs
+
+      - name: Run real PostgreSQL tasks E2E tests
+        run: pnpm --filter @appbasis/reference test:postgres
+
+      - name: Run generated PostgreSQL tasks runtime E2E tests
+        run: pnpm --filter @appbasis/app-tasks-minimal test:postgres
+
+      - name: Run m3-preview PostgreSQL E2E tests
+        run: pnpm --filter @appbasis/app-m3-preview test:postgres
+
+  quality-gate:
+    name: Quality gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -49,7 +139,19 @@ jobs:
         run: pnpm run typecheck
 
       - name: Test
-        run: pnpm test
+        run: pnpm run test
+
+      - name: Test preview bootstrap contract
+        run: node --test ./apps/reference/tooling/preview-bootstrap-contract.test.mjs
+
+      - name: Test M3 preview execution readiness preflight
+        run: node --test ./tooling/m3-preview-execution-readiness.test.mjs ./tooling/m3-preview-execution-readiness-workflow.test.mjs
+
+      - name: Test M4 backup and restore readiness contracts
+        run: node --test ./tooling/m4-neon-backup-readiness.test.mjs ./tooling/m4-neon-backup-readiness-workflow.test.mjs ./tooling/m4-restore-verification.test.mjs ./tooling/m4-restore-verification-workflow.test.mjs ./tooling/m4-pre-migration-snapshot.test.mjs ./tooling/m4-pre-migration-snapshot-workflow.test.mjs ./tooling/m4-neon-backup-schedule.test.mjs ./tooling/m4-neon-backup-schedule-workflow.test.mjs ./tooling/m4-restore-rehearsal.test.mjs ./tooling/m4-restore-rehearsal-operations.test.mjs ./tooling/m4-restore-operation-recheck.test.mjs ./tooling/m4-restore-rehearsal-workflow.test.mjs ./tooling/m4-free-backup-plan.test.mjs ./tooling/m4-backup-crypto.test.mjs ./tooling/m4-consistent-backup.test.mjs ./tooling/m4-free-external-backup-workflow.test.mjs ./tooling/m4-r2-backup-evidence.test.mjs ./tooling/m4-r2-backup-evidence-workflow.test.mjs ./tooling/m4-r2-restore-plan.test.mjs ./tooling/m4-r2-restore-target.test.mjs ./tooling/m4-r2-restore-rehearsal-workflow.test.mjs
 
       - name: Build
         run: pnpm run build
+
+      - name: Check Git whitespace errors
+        run: git diff --check
