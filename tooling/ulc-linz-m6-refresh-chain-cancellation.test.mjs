@@ -19,7 +19,9 @@ test("M6 refresh chain propagates parent cancellation to the exact dispatched ch
     'run_id="${M6_CHILD_RUN_ID:-}"',
     'workflow="$M6_CHILD_WORKFLOW"',
     'attempt_id="$M6_CHILD_ATTEMPT_ID"',
-    'gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true',
+    'if ! gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"; then',
+    "cancellation request failed transiently; retrying bounded cleanup",
+    "parent-cancellation cancel request failed transiently; retrying bounded cleanup",
     "parent workflow was cancelled; cancelling exact correlated child run",
     "parent-cancellation status poll failed transiently",
     "after parent cancellation",
@@ -27,4 +29,11 @@ test("M6 refresh chain propagates parent cancellation to the exact dispatched ch
   ]) {
     assert.equal(source.includes(marker), true, `missing parent-cancellation guard: ${marker}`);
   }
+
+  const retryingCancelRequests = source.split('if ! gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"; then').length - 1;
+  assert.equal(
+    retryingCancelRequests >= 2,
+    true,
+    "expected bounded cancellation-request retries in both cleanup paths",
+  );
 });
