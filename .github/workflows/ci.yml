@@ -126,6 +126,9 @@ jobs:
       - name: Test ULC M6 pilot lifecycle contract
         run: node --test ./tooling/ulc-linz-m6-production-pilot-ingress-workflow.test.mjs ./tooling/ulc-linz-m6-pilot-lifecycle-contract.test.mjs
 
+      - name: Test ULC M6 refresh-chain cancellation regression
+        run: node --test ./tooling/ulc-linz-m6-refresh-chain-cancellation.test.mjs
+
       - name: Test M5 restore credential preflight
         run: node --test ./tooling/ulc-linz-m5-restore-credential-preflight.test.mjs
 
