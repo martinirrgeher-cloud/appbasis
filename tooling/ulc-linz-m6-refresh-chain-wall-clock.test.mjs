@@ -34,12 +34,12 @@ test("M6 refresh chain rejects approvals created before their prerequisite compl
   for (const marker of [
     'parent_run="$RUNNER_TEMP/m6-chain-parent-run.json"',
     '"$API/actions/runs/$GITHUB_RUN_ID"',
-    'PARENT_CREATED_AT="$(jq -er \'.created_at\' "$parent_run")"',
+    'PARENT_CREATED_AT="$(jq -er \' .created_at\' "$parent_run")"'.replace("' .created_at'", "'.created_at'"),
     '--arg approved_before "$PARENT_CREATED_AT"',
     '(.updated_at | type) == "string"',
-    '.updated_at <= $approved_before',
-    "No successful exact-head prerequisite run completed before this approval dispatch",
-    "successful exact-head prerequisite runs are reused only when they completed before this parent approval dispatch was created",
+    '.updated_at < $approved_before',
+    "No successful exact-head prerequisite run completed strictly before this approval dispatch",
+    "successful exact-head prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created",
   ]) {
     assert.equal(source.includes(marker), true, `missing queued-approval guard: ${marker}`);
   }
