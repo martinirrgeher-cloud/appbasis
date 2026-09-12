@@ -29,6 +29,17 @@ test('M6 refresh chain recovers an ambiguous dispatch by a unique child run name
   assert.match(source, /cancelled\(\) && env\.M6_CHILD_ATTEMPT_ID != ''/);
 });
 
+test('M6 refresh chain rejects reused approvals and equal prerequisite timestamps', () => {
+  const source = readFileSync(parentPath, 'utf8');
+
+  assert.match(source, /\.run_attempt == 1/);
+  assert.match(source, /test "\$GITHUB_RUN_ATTEMPT" = 1/);
+  assert.match(source, /Rerun attempts cannot reuse an earlier M6 production approval/);
+  assert.match(source, /\.updated_at < \$approved_before/);
+  assert.equal(source.includes('.updated_at <= $approved_before'), false);
+  assert.match(source, /completed strictly before this approval dispatch/);
+});
+
 test('all canonical M6 refresh-chain children expose the correlation token as run-name', () => {
   for (const path of childPaths) {
     const source = read(path);
