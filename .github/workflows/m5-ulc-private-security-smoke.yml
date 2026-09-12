@@ -43,6 +43,7 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
         run: |
           set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Chain-dispatched child reruns cannot reuse an earlier M6 production approval.' >&2; exit 1; }
           [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected chain head SHA is invalid.' >&2; exit 1; }
           test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA" || { echo 'Workflow head differs from the chain-approved exact SHA.' >&2; exit 1; }
 
@@ -206,7 +207,7 @@ jobs:
           set -euo pipefail
           detail="$RUNNER_TEMP/version-detail.json"
           HYPERDRIVE_ID="$APP_HYPERDRIVE_ID" \
-          SECURITY_LOG_HYPERDRIVE_ID="$SECURITY_HYPERDRIVE_ID" \
+          SECURITY_LOG_HYPERDRIVE_ID="$SECURITY_LOG_HYPERDRIVE_ID" \
           node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs bindings "$detail"
           DETAIL_PATH="$detail" node --input-type=module <<'NODE' > "$RUNNER_TEMP/runtime-config.env"
           import { readFileSync } from 'node:fs';
@@ -216,7 +217,7 @@ jobs:
           const expected = renderGeneratedProductionWranglerConfig({
             appId: 'ulc-linz',
             hyperdriveId: process.env.APP_HYPERDRIVE_ID,
-            securityLogHyperdriveId: process.env.SECURITY_HYPERDRIVE_ID,
+            securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID,
             baseURL: 'https://app.ulc-linz.at',
             entrypoint: './worker/index.ts',
           });
@@ -310,7 +311,7 @@ jobs:
             vars: { APPBASIS_BASE_URL: 'https://app.ulc-linz.at' },
             hyperdrive: [
               { binding: 'HYPERDRIVE', id: process.env.APP_HYPERDRIVE_ID },
-              { binding: 'SECURITY_LOG_HYPERDRIVE', id: process.env.SECURITY_HYPERDRIVE_ID },
+              { binding: 'SECURITY_LOG_HYPERDRIVE', id: process.env.SECURITY_LOG_HYPERDRIVE_ID },
             ],
             dev: { ip: '127.0.0.1', port: 8787 },
           };
