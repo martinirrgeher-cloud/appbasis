@@ -59,8 +59,9 @@ jobs:
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             "${AUTH[@]}" "$API/actions/runs/$GITHUB_RUN_ID" > "$parent_run"
           jq -e --arg sha "$GITHUB_SHA" --arg id "$GITHUB_RUN_ID" \
-            '.id == ($id | tonumber) and .head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and (.created_at | type == "string" and length > 0)' \
-            "$parent_run" >/dev/null || { echo 'Parent workflow-run identity or dispatch timestamp is invalid.' >&2; exit 1; }
+            '.id == ($id | tonumber) and .run_attempt == 1 and .head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and (.created_at | type == "string" and length > 0)' \
+            "$parent_run" >/dev/null || { echo 'Parent workflow-run identity, first-attempt approval, or dispatch timestamp is invalid.' >&2; exit 1; }
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Rerun attempts cannot reuse an earlier M6 production approval; dispatch a new explicitly approved run.' >&2; exit 1; }
           PARENT_CREATED_AT="$(jq -er '.created_at' "$parent_run")"
           date -u -d "$PARENT_CREATED_AT" +%s >/dev/null 2>&1 || { echo 'Parent workflow dispatch timestamp is invalid.' >&2; exit 1; }
 
@@ -97,9 +98,9 @@ jobs:
             curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
               "${AUTH[@]}" "$API/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&per_page=100" > "$file"
             local id
-            id="$(jq -r --arg sha "$GITHUB_SHA" --arg approved_before "$PARENT_CREATED_AT" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .status == "completed" and .conclusion == "success" and (.updated_at | type) == "string" and .updated_at <= $approved_before)] | sort_by(.updated_at) | reverse | .[0].id // empty' "$file")"
+            id="$(jq -r --arg sha "$GITHUB_SHA" --arg approved_before "$PARENT_CREATED_AT" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .status == "completed" and .conclusion == "success" and (.updated_at | type) == "string" and .updated_at < $approved_before)] | sort_by(.updated_at) | reverse | .[0].id // empty' "$file")"
             [[ "$id" =~ ^[1-9][0-9]*$ ]] || {
-              echo "No successful exact-head prerequisite run completed before this approval dispatch for $workflow." >&2
+              echo "No successful exact-head prerequisite run completed strictly before this approval dispatch for $workflow." >&2
               exit 1
             }
             printf '%s\n' "$id"
@@ -344,7 +345,8 @@ jobs:
             echo "- executed step: \`$SELECTED_STEP\`"
             echo '- this dispatch authorizes exactly one canonical production-preparation step'
             echo '- later steps require a separate workflow dispatch and a fresh operator approval'
-            echo '- successful exact-head prerequisite runs are reused only when they completed before this parent approval dispatch was created'
+            echo '- workflow reruns are rejected; retries require a new explicitly approved dispatch'
+            echo '- successful exact-head prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created'
             echo '- every child dispatch carries a unique run-name correlation token; ambiguous POST responses recover only that exact attempt'
             echo '- parent persists child attempt identity before dispatch and exact child-run identity once known, then propagates manual cancellation'
             echo '- parent shares one 150-minute wall-clock work budget across dispatch recovery and child waiting, then reserves a bounded cancellation-cleanup window before its own 180-minute timeout'
