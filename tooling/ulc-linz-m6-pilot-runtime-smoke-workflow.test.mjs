@@ -81,7 +81,7 @@ test("M6 production refresh chain executes exactly one separately approved canon
     "administrator_username 'ulc.production.admin'",
     "apply_restore:true",
     "later steps require a separate workflow dispatch and a fresh operator approval",
-    "successful exact-head prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created",
+    "successful exact-head first-attempt prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created",
   ]) {
     assert.equal(source.includes(marker), true, `missing M6 refresh-chain contract: ${marker}`);
   }
@@ -105,7 +105,7 @@ test("M6 production refresh chain executes exactly one separately approved canon
   assert.equal(source.includes("DATABASE_URL"), false);
 });
 
-test("M6 production refresh chain binds the one dispatch to the returned or uniquely recovered exact child run and keeps bounded shared wait and cleanup windows", async () => {
+test("M6 production refresh chain binds the one dispatch to the returned or uniquely recovered exact first-attempt child run and keeps bounded shared wait and cleanup windows", async () => {
   const source = await readFile(REFRESH_CHAIN, "utf8");
 
   for (const marker of [
@@ -123,6 +123,7 @@ test("M6 production refresh chain binds the one dispatch to the returned or uniq
     ".head_sha == $sha",
     '.head_branch == "main"',
     '.event == "workflow_dispatch"',
+    '.run_attempt == 1',
     '.path == $path',
     "dispatch transport/status was ambiguous",
     "CHAIN_WORK_DEADLINE=$(( $(date +%s) + 9000 ))",
@@ -160,17 +161,19 @@ test("M6 production refresh chain binds the one dispatch to the returned or uniq
   assert.equal(source.includes("/workers/domains"), false);
 });
 
-test("M6 refresh-chain children fail before production interaction when dispatched on a different head", async () => {
+test("M6 refresh-chain children fail before production interaction on a different head or a rerun attempt", async () => {
   for (const workflow of EXACT_HEAD_CHILD_WORKFLOWS) {
     const source = await readFile(workflow, "utf8");
     for (const marker of [
       "expected_head_sha:",
       "Require exact chain head when supplied",
       "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}",
+      'test "$GITHUB_RUN_ATTEMPT" = 1',
+      "Chain-dispatched child reruns cannot reuse an earlier M6 production approval.",
       '[[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]',
       'test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA"',
     ]) {
-      assert.equal(source.includes(marker), true, `missing exact-head child guard ${marker} in ${workflow.pathname}`);
+      assert.equal(source.includes(marker), true, `missing exact-head/first-attempt child guard ${marker} in ${workflow.pathname}`);
     }
 
     const stepsIndex = source.indexOf("\n    steps:\n");
@@ -179,7 +182,7 @@ test("M6 refresh-chain children fail before production interaction when dispatch
     assert.equal(
       source.startsWith("\n      - name: Require exact chain head when supplied", firstStepIndex),
       true,
-      `exact-head guard must be the first executable child step in ${workflow.pathname}`,
+      `exact-head/first-attempt guard must be the first executable child step in ${workflow.pathname}`,
     );
   }
 });
