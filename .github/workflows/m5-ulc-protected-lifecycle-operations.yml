@@ -53,6 +53,7 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
         run: |
           set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Chain-dispatched child reruns cannot reuse an earlier M6 production approval.' >&2; exit 1; }
           [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected chain head SHA is invalid.' >&2; exit 1; }
           test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA" || { echo 'Workflow head differs from the chain-approved exact SHA.' >&2; exit 1; }
 
