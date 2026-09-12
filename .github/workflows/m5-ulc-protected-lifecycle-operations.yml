@@ -1,5 +1,7 @@
 name: M5 ULC Protected Lifecycle Operations
 
+run-name: ${{ inputs.chain_attempt_id || github.workflow }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +21,14 @@ on:
         description: 'Existing technical Better Auth production administrator username'
         required: true
         type: string
+      expected_head_sha:
+        description: 'Optional exact commit SHA; required by the M6 production refresh chain'
+        required: false
+        type: string
+      chain_attempt_id:
+        description: 'Optional unique parent-chain attempt ID for fail-closed dispatch correlation'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -36,6 +46,17 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      - name: Require exact chain head when supplied
+        if: inputs.expected_head_sha != ''
+        shell: bash
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Chain-dispatched child reruns cannot reuse an earlier M6 production approval.' >&2; exit 1; }
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected chain head SHA is invalid.' >&2; exit 1; }
+          test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA" || { echo 'Workflow head differs from the chain-approved exact SHA.' >&2; exit 1; }
+
       - name: Require exact protected lifecycle approval
         shell: bash
         env:

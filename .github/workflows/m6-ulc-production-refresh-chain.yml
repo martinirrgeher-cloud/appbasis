@@ -1,0 +1,430 @@
+name: M6 ULC Production Refresh Chain
+
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: 'Execute exactly one canonical M6 production-preparation step; rerun this workflow for the next step'
+        required: true
+        default: runtime_refresh
+        type: choice
+        options:
+          - runtime_refresh
+          - private_deploy
+          - security_smoke
+          - lifecycle_preflight
+          - m5_evidence
+          - pilot_ingress
+          - smoke_principal
+          - post_deploy_smoke
+      approve_step:
+        description: 'Fresh operator approval for this selected step only'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-refresh-chain
+  cancel-in-progress: false
+
+jobs:
+  production-refresh-chain:
+    name: Execute one approved canonical M6 production step
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Require fresh approval and execute selected step
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SELECTED_STEP: ${{ inputs.step }}
+          APPROVE_STEP: ${{ inputs.approve_step }}
+        run: |
+          set -euo pipefail
+
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          AUTH=(
+            --header "Authorization: Bearer $GH_TOKEN"
+            --header 'Accept: application/vnd.github+json'
+            --header 'X-GitHub-Api-Version: 2026-03-10'
+          )
+          steps=(runtime_refresh private_deploy security_smoke lifecycle_preflight m5_evidence pilot_ingress smoke_principal post_deploy_smoke)
+          CHAIN_WORK_DEADLINE=$(( $(date +%s) + 9000 ))
+          parent_run="$RUNNER_TEMP/m6-chain-parent-run.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            "${AUTH[@]}" "$API/actions/runs/$GITHUB_RUN_ID" > "$parent_run"
+          jq -e --arg sha "$GITHUB_SHA" --arg id "$GITHUB_RUN_ID" \
+            '.id == ($id | tonumber) and .run_attempt == 1 and .head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and (.created_at | type == "string" and length > 0)' \
+            "$parent_run" >/dev/null || { echo 'Parent workflow-run identity, first-attempt approval, or dispatch timestamp is invalid.' >&2; exit 1; }
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Rerun attempts cannot reuse an earlier M6 production approval; dispatch a new explicitly approved run.' >&2; exit 1; }
+          PARENT_CREATED_AT="$(jq -er '.created_at' "$parent_run")"
+          date -u -d "$PARENT_CREATED_AT" +%s >/dev/null 2>&1 || { echo 'Parent workflow dispatch timestamp is invalid.' >&2; exit 1; }
+
+          valid_step=false
+          for step in "${steps[@]}"; do
+            if test "$step" = "$SELECTED_STEP"; then
+              valid_step=true
+              break
+            fi
+          done
+          test "$valid_step" = true || {
+            echo 'Selected M6 refresh-chain step is invalid.' >&2
+            exit 1
+          }
+          test "$APPROVE_STEP" = true || {
+            echo "Fresh explicit approval is required for selected step: $SELECTED_STEP." >&2
+            exit 1
+          }
+
+          assert_main_head() {
+            local branch_file="$RUNNER_TEMP/m6-chain-main.json"
+            curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+              "${AUTH[@]}" "$API/branches/main" > "$branch_file"
+            jq -e --arg sha "$GITHUB_SHA" '.commit.sha == $sha' "$branch_file" >/dev/null || {
+              echo 'main moved before the selected M6 step could be dispatched.' >&2
+              exit 1
+            }
+          }
+
+          latest_success_run() {
+            local workflow="$1"
+            local file="$RUNNER_TEMP/m6-chain-latest-${workflow//[^a-zA-Z0-9]/_}.json"
+            assert_main_head
+            curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+              "${AUTH[@]}" "$API/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&per_page=100" > "$file"
+            local id
+            id="$(jq -r --arg sha "$GITHUB_SHA" --arg approved_before "$PARENT_CREATED_AT" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .run_attempt == 1 and .status == "completed" and .conclusion == "success" and (.updated_at | type) == "string" and .updated_at < $approved_before)] | sort_by(.updated_at) | reverse | .[0].id // empty' "$file")"
+            [[ "$id" =~ ^[1-9][0-9]*$ ]] || {
+              echo "No successful exact-head first-attempt prerequisite run completed strictly before this approval dispatch for $workflow." >&2
+              exit 1
+            }
+            printf '%s\n' "$id"
+          }
+
+          discover_attempt_run() {
+            local workflow="$1" attempt_id="$2" output="$3"
+            local discovery_deadline=$(( $(date +%s) + 1200 ))
+            if test "$discovery_deadline" -gt "$CHAIN_WORK_DEADLINE"; then
+              discovery_deadline="$CHAIN_WORK_DEADLINE"
+            fi
+            local list="$RUNNER_TEMP/m6-chain-discovery-${workflow//[^a-zA-Z0-9]/_}.json"
+            while test "$(date +%s)" -lt "$discovery_deadline"; do
+              if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                "${AUTH[@]}" "$API/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&per_page=100" > "$list"; then
+                matches="$(jq -c --arg sha "$GITHUB_SHA" --arg attempt "$attempt_id" --arg path ".github/workflows/$workflow" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .run_attempt == 1 and .path == $path and .display_title == $attempt)]' "$list")"
+                count="$(jq 'length' <<<"$matches")"
+                if test "$count" -eq 1; then
+                  jq -r '.[0].id' <<<"$matches" > "$output"
+                  return 0
+                fi
+                if test "$count" -gt 1; then
+                  echo "Correlation token $attempt_id matched multiple child runs; refusing ambiguous recovery." >&2
+                  return 1
+                fi
+              else
+                echo 'Attempt-correlation poll failed transiently; retrying bounded discovery.' >&2
+              fi
+              sleep 5
+            done
+            echo "No exact first-attempt child run became visible for correlation token $attempt_id inside the bounded discovery window." >&2
+            return 1
+          }
+
+          dispatch_and_wait() {
+            local workflow="$1" inputs_json="$2" label="$3"
+            local safe="${workflow//[^a-zA-Z0-9]/_}"
+            local payload="$RUNNER_TEMP/m6-chain-dispatch-$safe.json"
+            local dispatched="$RUNNER_TEMP/m6-chain-dispatched-$safe.json"
+            local recovered="$RUNNER_TEMP/m6-chain-recovered-$safe.txt"
+            local run="$RUNNER_TEMP/m6-chain-run-$safe.json"
+            local attempt_id="m6-chain-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${SELECTED_STEP}"
+
+            assert_main_head
+            inputs_json="$(jq -c --arg expected_head_sha "$GITHUB_SHA" --arg chain_attempt_id "$attempt_id" '. + {expected_head_sha:$expected_head_sha,chain_attempt_id:$chain_attempt_id}' <<<"$inputs_json")"
+            jq -cn --arg ref main --argjson inputs "$inputs_json" '{ref:$ref,inputs:$inputs,return_run_details:true}' > "$payload"
+
+            {
+              echo "M6_CHILD_RUN_ID="
+              echo "M6_CHILD_WORKFLOW=$workflow"
+              echo "M6_CHILD_LABEL=$label"
+              echo "M6_CHILD_ATTEMPT_ID=$attempt_id"
+            } >> "$GITHUB_ENV"
+
+            echo "Dispatching $label with correlation token $attempt_id..." >&2
+            set +e
+            http_status="$({
+              curl --silent --show-error --connect-timeout 10 --max-time 30 \
+                --output "$dispatched" --write-out '%{http_code}' \
+                --request POST "${AUTH[@]}" --header 'Content-Type: application/json' \
+                --data-binary "@$payload" "$API/actions/workflows/$workflow/dispatches"
+            })"
+            dispatch_rc=$?
+            set -e
+
+            local run_id=''
+            if test "$dispatch_rc" -eq 0 && test "$http_status" = 200; then
+              run_id="$(jq -r '.workflow_run_id // empty' "$dispatched")"
+              if [[ "$run_id" =~ ^[1-9][0-9]*$ ]] && jq -e --arg runUrl "$API/actions/runs/$run_id" '.run_url == $runUrl and (.html_url | type == "string" and length > 0)' "$dispatched" >/dev/null; then
+                :
+              else
+                echo "$label returned malformed pinned dispatch details; recovering by unique correlation token." >&2
+                run_id=''
+              fi
+            else
+              echo "$label dispatch transport/status was ambiguous (curl=$dispatch_rc HTTP=${http_status:-none}); recovering by unique correlation token." >&2
+            fi
+
+            if test -z "$run_id"; then
+              discover_attempt_run "$workflow" "$attempt_id" "$recovered" || {
+                echo "$label dispatch could not be correlated after an ambiguous response. Do not retry without inspecting workflow runs for token $attempt_id." >&2
+                exit 1
+              }
+              run_id="$(cat "$recovered")"
+              [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+                echo "$label recovered an invalid child run ID; refusing ambiguous continuation." >&2
+                exit 1
+              }
+              echo "$label recovered exact first-attempt child run $run_id from correlation token $attempt_id." >&2
+            fi
+
+            echo "M6_CHILD_RUN_ID=$run_id" >> "$GITHUB_ENV"
+
+            cancel_on_signal() {
+              echo "$label: parent received a cancellation signal; requesting immediate cancellation of exact child run $run_id." >&2
+              gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
+            }
+            trap cancel_on_signal TERM INT
+
+            cancel_and_confirm_child() {
+              local reason="$1"
+              local cleanup_deadline=$(( $(date +%s) + 1200 ))
+              echo "$label: $reason Requesting cancellation of exact child run $run_id before parent exit." >&2
+              while test "$(date +%s)" -lt "$cleanup_deadline"; do
+                if ! gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"; then
+                  echo "$label cancellation request failed transiently; retrying bounded cleanup." >&2
+                fi
+                if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                  "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
+                  jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
+                    '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .run_attempt == 1 and .path == $path and .display_title == $attempt' "$run" >/dev/null || {
+                    echo "$label cancellation cleanup found child-run identity or attempt drift; inspect exact run $run_id before any retry." >&2
+                    return 1
+                  }
+                  if test "$(jq -r '.status' "$run")" = completed; then
+                    conclusion="$(jq -r '.conclusion // ""' "$run")"
+                    echo "$label ended with conclusion '$conclusion' after cancellation request." >&2
+                    return 0
+                  fi
+                else
+                  echo "$label cancellation status poll failed transiently; retrying bounded cleanup." >&2
+                fi
+                sleep 5
+              done
+              echo "$label cancellation could not be confirmed inside the reserved 20-minute cleanup window; inspect exact child run $run_id before any retry." >&2
+              return 1
+            }
+
+            local poll_failures=0
+            local wait_deadline="$CHAIN_WORK_DEADLINE"
+            while test "$(date +%s)" -lt "$wait_deadline"; do
+              if ! curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
+                poll_failures=$((poll_failures + 1))
+                echo "$label child status poll failed ($poll_failures/6); retrying exact known run." >&2
+                if test "$poll_failures" -ge 6; then
+                  cancel_and_confirm_child 'Child status polling repeatedly failed.' || true
+                  echo "$label child status could not be tracked reliably; no retry is safe without inspecting exact child run $run_id." >&2
+                  exit 1
+                fi
+                sleep 5
+                continue
+              fi
+              poll_failures=0
+
+              jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
+                '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .run_attempt == 1 and .path == $path and .display_title == $attempt' "$run" >/dev/null || {
+                cancel_and_confirm_child 'Child-run identity or attempt drifted.' || true
+                echo "$label child-run identity or attempt drifted; stopping fail-closed." >&2
+                exit 1
+              }
+              status="$(jq -r '.status' "$run")"
+              if test "$status" = completed; then
+                conclusion="$(jq -r '.conclusion // ""' "$run")"
+                if test "$conclusion" != success; then
+                  {
+                    echo '### M6 refresh chain stopped'
+                    echo "- step: \`$SELECTED_STEP\`"
+                    echo "- child run: \`$run_id\`"
+                    echo "- correlation: \`$attempt_id\`"
+                    echo "- conclusion: \`$conclusion\`"
+                    echo '- retry: rerun only this failed step with a new explicit approval'
+                  } >> "$GITHUB_STEP_SUMMARY"
+                  echo "$label failed in child run $run_id. No automatic retry will be attempted." >&2
+                  exit 1
+                fi
+                trap - TERM INT
+                echo "$label succeeded in child run $run_id." >&2
+                printf '%s\n' "$run_id"
+                return 0
+              fi
+              sleep 5
+            done
+
+            cancel_and_confirm_child 'Exceeded the shared wall-clock work deadline.' || true
+            echo "$label exceeded the shared work deadline; inspect exact child run $run_id before any retry." >&2
+            exit 1
+          }
+
+          case "$SELECTED_STEP" in
+            runtime_refresh)
+              dispatch_and_wait \
+                'm6-ulc-production-runtime-refresh-config.yml' \
+                "$(jq -cn --arg confirmation 'REFRESH-CONFIGURE-ULC-PRODUCTION-RUNTIME' '{confirmation:$confirmation}')" \
+                'runtime refresh configuration' >/dev/null
+              ;;
+            private_deploy)
+              latest_success_run 'm6-ulc-production-runtime-refresh-config.yml' >/dev/null
+              dispatch_and_wait \
+                'm6-ulc-private-production-refresh-deploy.yml' \
+                "$(jq -cn --arg confirmation 'REFRESH-DEPLOY-ULC-PRIVATE-PRODUCTION' '{confirmation:$confirmation}')" \
+                'private production refresh deploy' >/dev/null
+              ;;
+            security_smoke)
+              latest_success_run 'm6-ulc-private-production-refresh-deploy.yml' >/dev/null
+              dispatch_and_wait \
+                'm5-ulc-private-security-smoke.yml' \
+                "$(jq -cn --arg confirmation 'RUN-ULC-M5-PRIVATE-SECURITY-SMOKE' '{confirmation:$confirmation}')" \
+                'private security logging smoke' >/dev/null
+              ;;
+            lifecycle_preflight)
+              latest_success_run 'm5-ulc-private-security-smoke.yml' >/dev/null
+              dispatch_and_wait \
+                'm5-ulc-protected-lifecycle-operations.yml' \
+                "$(jq -cn --arg operation preflight --arg confirmation 'VERIFY-ULC-M5-LIFECYCLE-BINDING' --arg administrator_username 'ulc.production.admin' '{operation:$operation,confirmation:$confirmation,administrator_username:$administrator_username}')" \
+                'protected lifecycle preflight' >/dev/null
+              ;;
+            m5_evidence)
+              latest_success_run 'm5-ulc-protected-lifecycle-operations.yml' >/dev/null
+              dispatch_and_wait \
+                'm5-ulc-production-evidence.yml' \
+                "$(jq -cn --arg confirmation 'VERIFY-ULC-M5-PRODUCTION' '{confirmation:$confirmation,apply_restore:true}')" \
+                'M5 production evidence' >/dev/null
+              ;;
+            pilot_ingress)
+              m5_run_id="$(latest_success_run 'm5-ulc-production-evidence.yml')"
+              dispatch_and_wait \
+                'm6-ulc-production-pilot-ingress.yml' \
+                "$(jq -cn --arg confirmation 'ACTIVATE-ULC-M6-PILOT-INGRESS' --arg m5_run_id "$m5_run_id" '{confirmation:$confirmation,m5_run_id:$m5_run_id}')" \
+                'workers.dev pilot ingress' >/dev/null
+              ;;
+            smoke_principal)
+              m5_run_id="$(latest_success_run 'm5-ulc-production-evidence.yml')"
+              dispatch_and_wait \
+                'm6-ulc-production-smoke-principal-bootstrap.yml' \
+                "$(jq -cn --arg confirmation 'BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL' --arg m5_run_id "$m5_run_id" '{confirmation:$confirmation,m5_run_id:$m5_run_id}')" \
+                'production smoke principal bootstrap' >/dev/null
+              ;;
+            post_deploy_smoke)
+              pilot_run_id="$(latest_success_run 'm6-ulc-production-pilot-ingress.yml')"
+              smoke_principal_run_id="$(latest_success_run 'm6-ulc-production-smoke-principal-bootstrap.yml')"
+              dispatch_and_wait \
+                'm6-ulc-production-post-deploy-smoke.yml' \
+                "$(jq -cn --arg confirmation 'RUN-ULC-M6-PRODUCTION-SMOKE' --arg pilot_ingress_run_id "$pilot_run_id" --arg smoke_principal_run_id "$smoke_principal_run_id" '{confirmation:$confirmation,pilot_ingress_run_id:$pilot_run_id,smoke_principal_run_id:$smoke_principal_run_id}')" \
+                'production post-deploy smoke' >/dev/null
+              ;;
+          esac
+
+          {
+            echo '### M6 ULC production refresh chain'
+            echo "- exact head: \`$GITHUB_SHA\`"
+            echo "- executed step: \`$SELECTED_STEP\`"
+            echo '- this dispatch authorizes exactly one canonical production-preparation step'
+            echo '- later steps require a separate workflow dispatch and a fresh operator approval'
+            echo '- workflow reruns are rejected; retries require a new explicitly approved dispatch'
+            echo '- successful exact-head first-attempt prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created'
+            echo '- every child dispatch carries a unique run-name correlation token and is accepted only on run attempt 1; ambiguous POST responses recover only that exact first attempt'
+            echo '- parent persists child attempt identity before dispatch and exact child-run identity once known, then propagates manual cancellation'
+            echo '- parent shares one 150-minute wall-clock work budget across dispatch recovery and child waiting, then reserves a bounded cancellation-cleanup window before its own 180-minute timeout'
+            echo '- child workflows remain the canonical executors; the chain performs no provider/database mutation itself'
+            echo '- failed child workflows are never retried automatically'
+            echo '- final production release: not authorized'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cancel correlated child if parent is cancelled
+        if: ${{ cancelled() && env.M6_CHILD_ATTEMPT_ID != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          run_id="${M6_CHILD_RUN_ID:-}"
+          workflow="$M6_CHILD_WORKFLOW"
+          label="$M6_CHILD_LABEL"
+          attempt_id="$M6_CHILD_ATTEMPT_ID"
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          AUTH=(
+            --header "Authorization: Bearer $GH_TOKEN"
+            --header 'Accept: application/vnd.github+json'
+            --header 'X-GitHub-Api-Version: 2026-03-10'
+          )
+          run="$RUNNER_TEMP/m6-chain-cancelled-child.json"
+          list="$RUNNER_TEMP/m6-chain-cancelled-discovery.json"
+          cleanup_deadline=$(( $(date +%s) + 1200 ))
+
+          if ! [[ "$run_id" =~ ^[1-9][0-9]*$ ]]; then
+            run_id=''
+            echo "$label: parent cancelled before pinned child identity was persisted; recovering correlation token $attempt_id." >&2
+            while test "$(date +%s)" -lt "$cleanup_deadline"; do
+              if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                "${AUTH[@]}" "$API/actions/workflows/$workflow/runs?branch=main&event=workflow_dispatch&per_page=100" > "$list"; then
+                matches="$(jq -c --arg sha "$GITHUB_SHA" --arg attempt "$attempt_id" --arg path ".github/workflows/$workflow" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .run_attempt == 1 and .path == $path and .display_title == $attempt)]' "$list")"
+                count="$(jq 'length' <<<"$matches")"
+                if test "$count" -eq 1; then
+                  run_id="$(jq -r '.[0].id' <<<"$matches")"
+                  break
+                fi
+                if test "$count" -gt 1; then
+                  echo "$label cancellation correlation matched multiple runs; refusing ambiguous cleanup." >&2
+                  exit 1
+                fi
+              fi
+              sleep 5
+            done
+          fi
+
+          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo "$label cancellation could not locate a first-attempt child for correlation token $attempt_id inside the bounded cleanup window; inspect before any retry." >&2
+            exit 1
+          }
+
+          echo "$label: parent workflow was cancelled; cancelling exact correlated child run $run_id." >&2
+          while test "$(date +%s)" -lt "$cleanup_deadline"; do
+            if ! gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"; then
+              echo "$label parent-cancellation cancel request failed transiently; retrying bounded cleanup." >&2
+            fi
+            if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+              "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
+              jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
+                '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .run_attempt == 1 and .path == $path and .display_title == $attempt' "$run" >/dev/null || {
+                echo "$label cancellation cleanup found child-run identity or attempt drift; inspect exact run $run_id before any retry." >&2
+                exit 1
+              }
+              if test "$(jq -r '.status' "$run")" = completed; then
+                conclusion="$(jq -r '.conclusion // ""' "$run")"
+                echo "$label ended with conclusion '$conclusion' after parent cancellation." >&2
+                exit 0
+              fi
+            else
+              echo "$label parent-cancellation status poll failed transiently; retrying bounded cleanup." >&2
+            fi
+            sleep 5
+          done
+
+          echo "$label cancellation could not be confirmed inside the reserved cleanup window; inspect exact child run $run_id before any retry." >&2
+          exit 1
