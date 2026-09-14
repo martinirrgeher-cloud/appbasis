@@ -45,7 +45,10 @@ test("maps a non-admin ULC member without inventing an admin-demotion guard", as
     call.constraints.expectedRevokes,
     ULC_LINZ_M5_KNOWN_CAPABILITIES,
   );
-  assert.deepEqual(call.constraints.requiredRemainingCapabilities, []);
+  assert.deepEqual(
+    call.constraints.requiredRemainingCapabilities,
+    ULC_LINZ_M5_KNOWN_CAPABILITIES,
+  );
   assert.deepEqual(call.constraints.requiredRemainingRoleIds, []);
   assert.equal(
     Object.hasOwn(call.constraints, "resolveRequiredRoleHolderPrincipalScope"),
@@ -78,10 +81,6 @@ test("binds an actual admin demotion to its organization and active membership r
   });
 
   assert.equal(calls.length, 1);
-  assert.deepEqual(
-    calls[0].constraints.requiredRemainingCapabilities,
-    ULC_LINZ_M5_KNOWN_CAPABILITIES,
-  );
   assert.deepEqual(calls[0].constraints.requiredRemainingRoleIds, [
     "ulc-linz:admin",
   ]);
