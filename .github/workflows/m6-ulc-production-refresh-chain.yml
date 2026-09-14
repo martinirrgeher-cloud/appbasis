@@ -229,6 +229,30 @@ jobs:
               return 1
             }
 
+            wait_for_child_identity() {
+              local identity_deadline=$(( $(date +%s) + 30 ))
+              echo "$label: waiting up to 30 seconds for exact child-run metadata to stabilize." >&2
+              while test "$(date +%s)" -lt "$identity_deadline"; do
+                if curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                  "${AUTH[@]}" "$API/actions/runs/$run_id" > "$run"; then
+                  if jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
+                    '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .run_attempt == 1 and .path == $path and .display_title == $attempt' "$run" >/dev/null; then
+                    echo "$label: exact child-run identity stabilized." >&2
+                    return 0
+                  fi
+                fi
+                sleep 2
+              done
+              echo "$label: exact child-run identity did not stabilize inside the bounded 30-second window." >&2
+              return 1
+            }
+
+            wait_for_child_identity || {
+              cancel_and_confirm_child 'Child-run identity did not stabilize inside the bounded verification window.' || true
+              echo "$label child-run identity remained inconsistent after bounded stabilization; stopping fail-closed." >&2
+              exit 1
+            }
+
             local poll_failures=0
             local wait_deadline="$CHAIN_WORK_DEADLINE"
             while test "$(date +%s)" -lt "$wait_deadline"; do
@@ -248,8 +272,8 @@ jobs:
 
               jq -e --arg sha "$GITHUB_SHA" --arg path ".github/workflows/$workflow" --arg attempt "$attempt_id" \
                 '.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .run_attempt == 1 and .path == $path and .display_title == $attempt' "$run" >/dev/null || {
-                cancel_and_confirm_child 'Child-run identity or attempt drifted.' || true
-                echo "$label child-run identity or attempt drifted; stopping fail-closed." >&2
+                cancel_and_confirm_child 'Child-run identity or attempt drifted after stabilization.' || true
+                echo "$label child-run identity or attempt drifted after stabilization; stopping fail-closed." >&2
                 exit 1
               }
               status="$(jq -r '.status' "$run")"
@@ -348,6 +372,7 @@ jobs:
             echo '- workflow reruns are rejected; retries require a new explicitly approved dispatch'
             echo '- successful exact-head prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created (first-attempt runs only)'
             echo '- every child dispatch carries a unique run-name correlation token and is accepted only on run attempt 1; ambiguous POST responses recover only that exact first attempt'
+            echo '- parent waits a bounded 30 seconds for freshly dispatched GitHub run metadata to stabilize before fail-closed identity enforcement'
             echo '- parent persists child attempt identity before dispatch and exact child-run identity once known, then propagates manual cancellation'
             echo '- parent shares one 150-minute wall-clock work budget across dispatch recovery and child waiting, then reserves a bounded cancellation-cleanup window before its own 180-minute timeout'
             echo '- child workflows remain the canonical executors; the chain performs no provider/database mutation itself'
