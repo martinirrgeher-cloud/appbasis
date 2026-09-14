@@ -4,7 +4,7 @@
 
 M6 beweist den ersten kontrollierten technischen End-to-End-Produktionspfad für eine eigenständige AppBasis-App.
 
-Die Vorbereitungsslices implementieren ausschließlich einen **read-only, fail-closed M6-Release-Readiness-Status** im Factory-Snapshot und dessen Anzeige. Sie erstellen keine Produktionsressourcen, führen keine produktiven Migrationen aus und besitzen keinen Release-Endpunkt.
+Die frühen Vorbereitungsslices implementieren einen **read-only, fail-closed M6-Release-Readiness-Status** im Factory-Snapshot und dessen Anzeige. Dieser Readiness-Vertrag selbst erstellt keine Produktionsressourcen, führt keine produktiven Migrationen aus und besitzt keinen Release-Endpunkt. Nach real belegtem M3 darf die erste App gemäß ADR-024 jedoch kontrolliert und weiterhin nicht öffentlich für die reale M4-/M5-Evidence vorbereitet werden. Jeder mutierende Provider-, Datenbank-, Deployment-, Secret- oder Binding-Schritt benötigt unmittelbar davor eine eigene ausdrückliche Freigabe; vor erfolgreicher M4-/M5-Evidence bleibt öffentliches Produktions-Ingress gesperrt.
 
 M6 ist nicht gleichbedeutend mit „Factory Complete“. Der wiederholbare Factory-Lifecycle wird erst nach dem bewiesenen ersten Produktionspfad in FC1 verallgemeinert.
 
@@ -35,7 +35,7 @@ Erst wenn alle zehn Nachweise verifiziert sind, ist `technicalEvidenceVerified=t
 
 Die vom Nutzer ausdrücklich zu erteilende Produktionsfreigabe wird **bewusst nicht als dauerhaftes Readiness-Flag gespeichert**.
 
-Ein statischer Snapshot darf keine frühere Zustimmung in eine spätere Produktionsaktion hineintragen. Eine zukünftige schreibende Produktionsaktion muss deshalb unmittelbar vor dem externen Write eine frische, ausdrückliche Freigabe verlangen und die dann aktuellen Gates erneut prüfen.
+Ein statischer Snapshot darf keine frühere Zustimmung in eine spätere Produktionsaktion hineintragen. Eine zukünftige schreibende Produktionsaktion muss deshalb unmittelbar vor dem externen Write eine frische, ausdrückliche Freigabe verlangen und die dann aktuellen Gates erneut prüfen. Nach einem fehlgeschlagenen mutierenden Versuch ist auch ein weiterer Versuch eine neue Betreiberentscheidung und benötigt erneut eine ausdrückliche Freigabe.
 
 Der M6-Snapshot führt deshalb `explicitApprovalRequired=true` und gleichzeitig invariant `releaseAuthorized=false`. Selbst bei zehn technisch verifizierten Kriterien autorisiert dieser read-only Vertrag keinen Release. Die vorhandene Factory-Capability `releaseProduction` bleibt ebenfalls unverändert `false`.
 
@@ -107,25 +107,24 @@ Damit steigt `m3-preview` nur bei aktuell unabhängig verifizierbarer GitHub-Evi
 
 ## Sicherheitsgrenze
 
-Diese Slices verändern nicht:
+Der Readiness-Snapshot und seine UI-Slices verändern nicht:
 
 - `createAppSkeleton()` und den maßgeblichen Generatorpfad,
 - M3-Preview-Deployments oder Preview-Datenbanken,
 - M4-Backup-/Restore-Providerzustand,
 - M5-Kriterien oder deren Semantik,
 - App-Manifeste,
-- gemeinsame Runtime-/Security-Foundation,
-- Produktionsdatenbanken, Worker, Domains oder Secrets.
+- gemeinsame Runtime-/Security-Foundation.
 
-Es existiert weiterhin kein Factory-Release-Endpunkt und kein produktiver Provider-Write.
+Kontrollierte Produktionsvorbereitung bleibt davon getrennt: Sie darf nur über die dafür vorgesehenen kanonischen, fail-closed Workflows erfolgen, jeweils mit frischer Freigabe für genau einen mutierenden Schritt. Vor vollständiger M4-/M5-Evidence bleibt die Runtime nicht öffentlich; technische Evidence erzeugt weiterhin weder einen Factory-Release-Endpunkt noch eine Release-Autorisierung.
 
 ## Nächste sichere Slices
 
 1. Backup/Recovery nur dann read-only in den M6-Snapshot einspeisen, wenn M4 einen belastbaren maschinenlesbaren Nachweis liefert.
 2. Security & Privacy ausschließlich über den bestehenden M5-Vertrag übernehmen; keine Abkürzung aus einzelnen Repository-Fakten.
 3. Für die erste reale Produktions-App konkrete Ressourcen-Nachweise ergänzen, ohne einen allgemeinen Multi-Provider-Provisioner vorwegzubauen.
-4. Erst nach M4 und M5 DONE einen getrennten, ausdrücklich freizugebenden Produktionsworkflow für die erste App entwerfen.
-5. Post-Deploy-Smoke aus den bewährten M3-Prüfmustern für diese konkrete Produktions-App ableiten.
+4. Nach real belegtem M3 dürfen die für M4/M5-Evidence notwendigen dedizierten Produktionsressourcen kontrolliert und ohne öffentliches Ingress vorbereitet werden; jeder mutierende Schritt bleibt einzeln freigabepflichtig. Öffentliches Ingress setzt erfolgreiche Recovery- und M5-Evidence voraus.
+5. Post-Deploy-Smoke aus den bewährten M3-Prüfmustern für diese konkrete Produktions-App ableiten; Production Ready entsteht erst nach allen zehn M6-Nachweisen und autorisiert den Release weiterhin nicht automatisch.
 
 ## Abgrenzung zu FC1
 
