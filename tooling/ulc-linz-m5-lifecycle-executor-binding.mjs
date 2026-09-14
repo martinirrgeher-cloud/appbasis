@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 const WORKFLOW_PATH = ".github/workflows/m5-ulc-protected-lifecycle-operations.yml";
 const WORKFLOW_FILE_NAME = "m5-ulc-protected-lifecycle-operations.yml";
 const WORKFLOW_NAME = "M5 ULC Protected Lifecycle Operations";
+const CHAIN_RUN_NAME_PATTERN = /^m6-chain-[1-9][0-9]*-1-lifecycle_preflight$/;
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const CREDENTIAL_ADAPTER_PATH =
   "apps/ulc-linz/worker/protected-lifecycle-credential-operation.ts";
@@ -20,6 +21,10 @@ const GITHUB_EVIDENCE_ATTEMPTS = 3;
 const GITHUB_EVIDENCE_RETRY_DELAY_MS = 250;
 const MAX_PREFLIGHT_AGE_MS = 24 * 60 * 60 * 1000;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const SAFE_RESUME_FILES = Object.freeze([
+  "tooling/ulc-linz-m5-lifecycle-executor-binding.mjs",
+  "tooling/ulc-linz-m5-lifecycle-executor-binding-retry.test.mjs",
+]);
 
 const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
   "name: M5 ULC Protected Lifecycle Operations",
@@ -160,13 +165,18 @@ export async function verifyUlcLinzM5LifecycleExecutorBinding(
   if (currentMainHead === null) {
     throw new Error("ULC protected lifecycle current main head is unavailable.");
   }
+  const trustedHeads = await trustedLifecycleHeadsForCurrentMain(
+    currentMainHead,
+    fetchImpl,
+    sleep,
+  );
   const payload = await fetchJsonWithRetry(
     fetchImpl,
     latestProtectedLifecycleRunsUrl(),
     sleep,
   );
-  const run = latestRunFromPayload(payload);
-  const observedAt = verifiedRunObservedAt(run, currentTime, currentMainHead);
+  const run = latestRunFromPayload(payload, trustedHeads);
+  const observedAt = verifiedRunObservedAt(run, currentTime, trustedHeads);
   if (observedAt === null) {
     throw new Error("ULC protected lifecycle live binding preflight is not verified.");
   }
@@ -196,13 +206,40 @@ async function fetchCurrentMainHeadSha(fetchImpl, sleep) {
   return payload.sha;
 }
 
+async function trustedLifecycleHeadsForCurrentMain(currentMainHead, fetchImpl, sleep) {
+  const currentOnly = Object.freeze([currentMainHead]);
+  const payload = await fetchJsonWithRetry(
+    fetchImpl,
+    new URL(`${GITHUB_API_BASE_URL}/repos/${GITHUB_REPOSITORY}/commits/${currentMainHead}`),
+    sleep,
+  );
+  if (!isPlainObject(payload) || payload.sha !== currentMainHead) return currentOnly;
+  if (!Array.isArray(payload.parents) || payload.parents.length !== 1) return currentOnly;
+  const parent = payload.parents[0];
+  if (!isPlainObject(parent) || typeof parent.sha !== "string" || !SHA_PATTERN.test(parent.sha)) {
+    return currentOnly;
+  }
+  if (!Array.isArray(payload.files) || payload.files.length < 1) return currentOnly;
+  if (
+    payload.files.some(
+      (file) =>
+        !isPlainObject(file) ||
+        typeof file.filename !== "string" ||
+        !SAFE_RESUME_FILES.includes(file.filename),
+    )
+  ) {
+    return currentOnly;
+  }
+  return Object.freeze([currentMainHead, parent.sha]);
+}
+
 function latestProtectedLifecycleRunsUrl() {
   const url = new URL(
     `${GITHUB_API_BASE_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE_NAME}/runs`,
   );
   url.searchParams.set("branch", "main");
   url.searchParams.set("event", "workflow_dispatch");
-  url.searchParams.set("per_page", "1");
+  url.searchParams.set("per_page", "10");
   return url;
 }
 
@@ -242,24 +279,27 @@ async function fetchJson(fetchImpl, url) {
   }
 }
 
-function latestRunFromPayload(payload) {
+function latestRunFromPayload(payload, trustedHeads) {
   if (!isPlainObject(payload)) return null;
   if (!Number.isSafeInteger(payload.total_count) || payload.total_count < 1) return null;
-  if (!Array.isArray(payload.workflow_runs) || payload.workflow_runs.length !== 1) return null;
-  return payload.workflow_runs[0];
+  if (!Array.isArray(payload.workflow_runs) || payload.workflow_runs.length < 1) return null;
+  const trusted = new Set(trustedHeads);
+  return payload.workflow_runs.find((run) => isPlainObject(run) && trusted.has(run.head_sha)) ?? null;
 }
 
-function verifiedRunObservedAt(run, currentTime, trustedHeadSha) {
+function verifiedRunObservedAt(run, currentTime, trustedHeads) {
+  const trusted = new Set(trustedHeads);
   if (
     !isPlainObject(run) ||
     !Number.isSafeInteger(run.id) ||
     run.id < 1 ||
     run.run_attempt !== 1 ||
-    run.name !== WORKFLOW_NAME ||
+    !isAcceptedLifecycleRunName(run.name) ||
     run.path !== WORKFLOW_PATH ||
     run.event !== "workflow_dispatch" ||
     run.head_branch !== "main" ||
-    run.head_sha !== trustedHeadSha ||
+    typeof run.head_sha !== "string" ||
+    !trusted.has(run.head_sha) ||
     run.status !== "completed" ||
     run.conclusion !== "success" ||
     !isPlainObject(run.repository) ||
@@ -272,6 +312,11 @@ function verifiedRunObservedAt(run, currentTime, trustedHeadSha) {
   if (createdAt === null || updatedAt === null || createdAt > updatedAt) return null;
   if (currentTime < updatedAt || currentTime - updatedAt >= MAX_PREFLIGHT_AGE_MS) return null;
   return new Date(updatedAt).toISOString();
+}
+
+function isAcceptedLifecycleRunName(value) {
+  return value === WORKFLOW_NAME ||
+    (typeof value === "string" && CHAIN_RUN_NAME_PATTERN.test(value));
 }
 
 function readCurrentTime(now) {
