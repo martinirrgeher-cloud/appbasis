@@ -9,7 +9,8 @@ import {
   principalId,
 } from "@appbasis/permissions";
 
-import { replaceUlcLinzPrincipalAccess } from "../../../tooling/ulc-linz-m5-principal-access-orchestration.mjs";
+import { mapUlcLinzManagedPermissionsToPrincipalOverrides } from "../../../tooling/ulc-linz-m5-principal-permission-mapping.mjs";
+import { ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY } from "../../../tooling/ulc-linz-m5-role-data-scope.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "../../../tooling/ulc-linz-m6-production-hyperdrive.mjs";
 
 export const ULC_LINZ_M6_SMOKE_PRINCIPAL = Object.freeze({
@@ -152,26 +153,42 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
       setSmokeBootstrapDiagnosticPhase("permission-binding");
       const store = new PostgresPermissionStore(connection.client);
       const existing = await store.findPrincipal(smokePrincipalId);
-      const administration = new PostgresPrincipalAccessAdministration(connection.client);
-      await replaceUlcLinzPrincipalAccess({
-        administration,
-        principalId: smokePrincipalId,
-        sourceRole: "trainer",
+      const adminRuntimeRoleId = ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.admin;
+      if (existing?.roleIds.includes(adminRuntimeRoleId) === true) {
+        throw new Error("Dedicated M6 smoke principal must never replace an administrator role.");
+      }
+      const smokeRuntimeRoleId = ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.trainer;
+      const smokeOverrides = mapUlcLinzManagedPermissionsToPrincipalOverrides({
+        sourceRole: ULC_LINZ_M6_SMOKE_PRINCIPAL.sourceRole,
         permissions: [{ moduleKey: "countdown", canView: true, canEdit: false }],
-        auditContext: {
+      });
+      const administration = new PostgresPrincipalAccessAdministration(connection.client);
+      await administration.replacePrincipalAccess(
+        smokePrincipalId,
+        [smokeRuntimeRoleId],
+        smokeOverrides,
+        {
           actorPrincipalId: principalId(adminSession.identityId),
           reason: "M6 production post-deploy smoke principal provisioning",
         },
-        constraints: {
+        {
           expectedRoleIds: existing?.roleIds ?? [],
           expectedGrants: existing?.grants ?? [],
           expectedRevokes: existing?.revokes ?? [],
         },
-      });
+      );
 
       setSmokeBootstrapDiagnosticPhase("permission-verification");
       const finalState = await store.findPrincipal(smokePrincipalId);
-      if (finalState === null || finalState.roleIds.length !== 1) {
+      if (
+        finalState === null ||
+        finalState.roleIds.length !== 1 ||
+        finalState.roleIds[0] !== smokeRuntimeRoleId ||
+        finalState.grants.length !== smokeOverrides.grants.length ||
+        finalState.revokes.length !== smokeOverrides.revokes.length ||
+        smokeOverrides.grants.some((capability) => !finalState.grants.includes(capability)) ||
+        smokeOverrides.revokes.some((capability) => !finalState.revokes.includes(capability))
+      ) {
         throw new Error("M6 smoke principal permission state is incomplete.");
       }
       setSmokeBootstrapDiagnosticPhase("complete");
