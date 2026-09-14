@@ -15,7 +15,9 @@ const CREDENTIAL_ADAPTER_GIT_BLOB_SHA =
   "6f71345941deaf23a5c73770132b965e379176a5";
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
-const GITHUB_EVIDENCE_TIMEOUT_MS = 3000;
+const GITHUB_EVIDENCE_TIMEOUT_MS = 10000;
+const GITHUB_EVIDENCE_ATTEMPTS = 3;
+const GITHUB_EVIDENCE_RETRY_DELAY_MS = 250;
 const MAX_PREFLIGHT_AGE_MS = 24 * 60 * 60 * 1000;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
@@ -93,7 +95,7 @@ const FORBIDDEN_WORKFLOW_ANCHORS = Object.freeze([
 
 export async function verifyUlcLinzM5LifecycleExecutorBinding(
   repositoryRoot,
-  { fetchImpl = fetch, now = Date.now } = {},
+  { fetchImpl = fetch, now = Date.now, sleep = defaultSleep } = {},
 ) {
   const root = resolve(repositoryRoot);
   const [workflow, executor, credentialAdapter, publicEntrypoint] = await Promise.all([
@@ -142,7 +144,11 @@ export async function verifyUlcLinzM5LifecycleExecutorBinding(
   ) {
     throw new Error("ULC protected lifecycle executor leaked into the public app runtime.");
   }
-  if (typeof fetchImpl !== "function" || typeof now !== "function") {
+  if (
+    typeof fetchImpl !== "function" ||
+    typeof now !== "function" ||
+    typeof sleep !== "function"
+  ) {
     throw new Error("ULC protected lifecycle live binding verifier is invalid.");
   }
 
@@ -150,11 +156,15 @@ export async function verifyUlcLinzM5LifecycleExecutorBinding(
   if (currentTime === null) {
     throw new Error("ULC protected lifecycle live binding clock is invalid.");
   }
-  const currentMainHead = await fetchCurrentMainHeadSha(fetchImpl);
+  const currentMainHead = await fetchCurrentMainHeadSha(fetchImpl, sleep);
   if (currentMainHead === null) {
     throw new Error("ULC protected lifecycle current main head is unavailable.");
   }
-  const payload = await fetchJson(fetchImpl, latestProtectedLifecycleRunsUrl());
+  const payload = await fetchJsonWithRetry(
+    fetchImpl,
+    latestProtectedLifecycleRunsUrl(),
+    sleep,
+  );
   const run = latestRunFromPayload(payload);
   const observedAt = verifiedRunObservedAt(run, currentTime, currentMainHead);
   if (observedAt === null) {
@@ -170,10 +180,11 @@ export async function verifyUlcLinzM5LifecycleExecutorBinding(
   });
 }
 
-async function fetchCurrentMainHeadSha(fetchImpl) {
-  const payload = await fetchJson(
+async function fetchCurrentMainHeadSha(fetchImpl, sleep) {
+  const payload = await fetchJsonWithRetry(
     fetchImpl,
     new URL(`${GITHUB_API_BASE_URL}/repos/${GITHUB_REPOSITORY}/commits/main`),
+    sleep,
   );
   if (
     !isPlainObject(payload) ||
@@ -193,6 +204,17 @@ function latestProtectedLifecycleRunsUrl() {
   url.searchParams.set("event", "workflow_dispatch");
   url.searchParams.set("per_page", "1");
   return url;
+}
+
+async function fetchJsonWithRetry(fetchImpl, url, sleep) {
+  for (let attempt = 1; attempt <= GITHUB_EVIDENCE_ATTEMPTS; attempt += 1) {
+    const payload = await fetchJson(fetchImpl, url);
+    if (payload !== null) return payload;
+    if (attempt < GITHUB_EVIDENCE_ATTEMPTS) {
+      await sleep(GITHUB_EVIDENCE_RETRY_DELAY_MS * attempt);
+    }
+  }
+  return null;
 }
 
 async function fetchJson(fetchImpl, url) {
@@ -282,4 +304,8 @@ function gitBlobSha(content) {
     .update(`blob ${bytes.length}\0`, "utf8")
     .update(bytes)
     .digest("hex");
+}
+
+function defaultSleep(milliseconds) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
