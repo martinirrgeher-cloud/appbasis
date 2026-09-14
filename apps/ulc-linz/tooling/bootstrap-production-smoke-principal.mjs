@@ -9,7 +9,7 @@ import {
   principalId,
 } from "@appbasis/permissions";
 
-import { mapUlcLinzManagedPermissionsToPrincipalOverrides } from "../../../tooling/ulc-linz-m5-principal-permission-mapping.mjs";
+import { mapUocLinzManagedPermissionsToPrincipalOverrides } from "../../../tooling/ulc-linz-m5-principal-permission-mapping.mjs";
 import { ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY } from "../../../tooling/ulc-linz-m5-role-data-scope.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "../../../tooling/ulc-linz-m6-production-hyperdrive.mjs";
 
@@ -152,17 +152,33 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
 
       const store = new PostgresPermissionStore(connection.client);
       setSmokeBootstrapDiagnosticPhase("permission-read-existing");
-      const existing = await store.findPrincipal(smokePrincipalId);
+      let existing = await store.findPrincipal(smokePrincipalId);
+
+      if (existing === null) {
+        setSmokeBootstrapDiagnosticPhase("permission-principal-register");
+        await connection.client.begin(async (tx) => {
+          await tx`
+            INSERT INTO appbasis_permission_principal (principal_id)
+            VALUES (${smokePrincipalId})
+            ON CONFLICT (principal_id) DO NOTHING
+          `;
+        });
+        setSmokeBootstrapDiagnosticPhase("permission-read-registered");
+        existing = await store.findPrincipal(smokePrincipalId);
+        if (existing === null) {
+          throw new Error("M6 smoke permission principal registration did not become visible.");
+        }
+      }
 
       setSmokeBootstrapDiagnosticPhase("permission-role-guard");
       const adminRuntimeRoleId = ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.admin;
-      if (existing?.roleIds.includes(adminRuntimeRoleId) === true) {
+      if (existing.roleIds.includes(adminRuntimeRoleId)) {
         throw new Error("Dedicated M6 smoke principal must never replace an administrator role.");
       }
 
       setSmokeBootstrapDiagnosticPhase("permission-map");
       const smokeRuntimeRoleId = ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.trainer;
-      const smokeOverrides = mapUlcLinzManagedPermissionsToPrincipalOverrides({
+      const smokeOverrides = mapUocLinzManagedPermissionsToPrincipalOverrides({
         sourceRole: ULC_LINZ_M6_SMOKE_PRINCIPAL.sourceRole,
         permissions: [{ moduleKey: "countdown", canView: true, canEdit: false }],
       });
@@ -171,16 +187,16 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
       const administration = new PostgresPrincipalAccessAdministration(connection.client);
       await administration.replacePrincipalAccess(
         smokePrincipalId,
-        [smokeRuntimeRoleId],
+      [smokeRuntimeRoleId],
         smokeOverrides,
         {
           actorPrincipalId: principalId(adminSession.identityId),
           reason: "M6 production post-deploy smoke principal provisioning",
         },
         {
-          expectedRoleIds: existing?.roleIds ?? [],
-          expectedGrants: existing?.grants ?? [],
-          expectedRevokes: existing?.revokes ?? [],
+          expectedRoleIds: existing.roleIds,
+          expectedGrants: existing.grants,
+          expectedRevokes: existing.revokes,
         },
       );
 
