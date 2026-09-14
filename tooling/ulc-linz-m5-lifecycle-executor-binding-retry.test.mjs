@@ -4,21 +4,22 @@ import test from "node:test";
 import { verifyUlcLinzM5LifecycleExecutorBinding } from "./ulc-linz-m5-lifecycle-executor-binding.mjs";
 
 const HEAD = "a".repeat(40);
+const PARENT = "b".repeat(40);
 const UPDATED_AT = "2026-09-14T16:29:15.000Z";
 const NOW = Date.parse("2026-09-14T16:35:00.000Z");
 
-function successfulLifecycleRun() {
+function successfulLifecycleRun({ head = HEAD, name = "M5 ULC Protected Lifecycle Operations" } = {}) {
   return {
     total_count: 1,
     workflow_runs: [
       {
         id: 123,
         run_attempt: 1,
-        name: "M5 ULC Protected Lifecycle Operations",
+        name,
         path: ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
         event: "workflow_dispatch",
         head_branch: "main",
-        head_sha: HEAD,
+        head_sha: head,
         status: "completed",
         conclusion: "success",
         created_at: "2026-09-14T16:27:47.000Z",
@@ -26,6 +27,14 @@ function successfulLifecycleRun() {
         repository: { full_name: "martinirrgeher-cloud/appbasis" },
       },
     ],
+  };
+}
+
+function currentCommit({ head = HEAD, parent = null, files = [] } = {}) {
+  return {
+    sha: head,
+    parents: parent === null ? [] : [{ sha: parent }],
+    files: files.map((filename) => ({ filename })),
   };
 }
 
@@ -41,6 +50,9 @@ test("retries transient GitHub main-head evidence failures without weakening exa
       if (mainHeadCalls === 1) return new Response(null, { status: 503 });
       if (mainHeadCalls === 2) throw new Error("transient network failure");
       return Response.json({ sha: HEAD });
+    }
+    if (url.endsWith(`/repos/martinirrgeher-cloud/appbasis/commits/${HEAD}`)) {
+      return Response.json(currentCommit());
     }
     if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
       lifecycleCalls += 1;
@@ -64,6 +76,91 @@ test("retries transient GitHub main-head evidence failures without weakening exa
   assert.equal(result.verifiedAt, UPDATED_AT);
   assert.equal(result.deletionExecutorBound, true);
   assert.equal(result.retentionExecutorBound, true);
+});
+
+test("accepts the exact M6-correlated lifecycle preflight run name", async () => {
+  const fetchImpl = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/commits/main")) return Response.json({ sha: HEAD });
+    if (url.endsWith(`/commits/${HEAD}`)) return Response.json(currentCommit());
+    if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+      return Response.json(successfulLifecycleRun({
+        name: "m6-chain-34873471771-1-lifecycle_preflight",
+      }));
+    }
+    throw new Error(`Unexpected GitHub evidence URL: ${url}`);
+  };
+
+  const result = await verifyUlcLinzM5LifecycleExecutorBinding(process.cwd(), {
+    fetchImpl,
+    now: () => NOW,
+    sleep: async () => {},
+  });
+
+  assert.equal(result.verifiedHeadSha, HEAD);
+  assert.equal(result.verifiedAt, UPDATED_AT);
+});
+
+test("bridges one direct parent lifecycle checkpoint only across evidence-verifier-only changes", async () => {
+  const fetchImpl = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/commits/main")) return Response.json({ sha: HEAD });
+    if (url.endsWith(`/commits/${HEAD}`)) {
+      return Response.json(currentCommit({
+        parent: PARENT,
+        files: [
+          "tooling/ulc-linz-m5-lifecycle-executor-binding.mjs",
+          "tooling/ulc-linz-m5-lifecycle-executor-binding-retry.test.mjs",
+        ],
+      }));
+    }
+    if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+      return Response.json(successfulLifecycleRun({
+        head: PARENT,
+        name: "m6-chain-34873471771-1-lifecycle_preflight",
+      }));
+    }
+    throw new Error(`Unexpected GitHub evidence URL: ${url}`);
+  };
+
+  const result = await verifyUlcLinzM5LifecycleExecutorBinding(process.cwd(), {
+    fetchImpl,
+    now: () => NOW,
+    sleep: async () => {},
+  });
+
+  assert.equal(result.verifiedHeadSha, HEAD);
+  assert.equal(result.verifiedAt, UPDATED_AT);
+});
+
+test("refuses parent checkpoint reuse when the current commit changes any runtime or workflow file", async () => {
+  const fetchImpl = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/commits/main")) return Response.json({ sha: HEAD });
+    if (url.endsWith(`/commits/${HEAD}`)) {
+      return Response.json(currentCommit({
+        parent: PARENT,
+        files: ["apps/ulc-linz/worker/index.ts"],
+      }));
+    }
+    if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+      return Response.json(successfulLifecycleRun({
+        head: PARENT,
+        name: "m6-chain-34873471771-1-lifecycle_preflight",
+      }));
+    }
+    throw new Error(`Unexpected GitHub evidence URL: ${url}`);
+  };
+
+  await assert.rejects(
+    () =>
+      verifyUlcLinzM5LifecycleExecutorBinding(process.cwd(), {
+        fetchImpl,
+        now: () => NOW,
+        sleep: async () => {},
+      }),
+    /live binding preflight is not verified/,
+  );
 });
 
 test("still fails closed after the bounded GitHub evidence retry budget is exhausted", async () => {
