@@ -115,7 +115,11 @@ jobs:
               select(.sha == env.GITHUB_SHA)
               | select((.parents | length) == 1)
               | select((.files | length) > 0)
-              | select(all(.files[]; .filename == "tooling/ulc-linz-m5-principal-access-orchestration.mjs" or .filename == "tooling/ulc-linz-m5-principal-access-orchestration.test.mjs" or .filename == ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml" or .filename == ".github/workflows/m6-ulc-production-post-deploy-smoke.yml"))
+              | select(all(.files[];
+                  .filename == "apps/ulc-linz/tooling/bootstrap-production-smoke-principal.mjs" or
+                  .filename == ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml" or
+                  .filename == ".github/workflows/m6-ulc-production-post-deploy-smoke.yml"
+                ))
               | .parents[0].sha // empty
             ' "$commit_file")"
           fi
@@ -133,12 +137,12 @@ jobs:
           fetch_run "$PILOT_INGRESS_RUN_ID" "$pilot_file"
           fetch_run "$SMOKE_PRINCIPAL_RUN_ID" "$smoke_file"
 
-          jq -e --arg current "$GITHUB_SHA" --arg parent "$trusted_parent" \
-            '.name == "M6 ULC Production Pilot Ingress" and .path == ".github/workflows/m6-ulc-production-pilot-ingress.yml" and .event == "workflow_dispatch" and .head_branch == "main" and (.head_sha == $current or ($parent != "" and .head_sha == $parent)) and .run_attempt == 1 and .status == "completed" and .conclusion == "success"' \
-            "$pilot_file" >/dev/null || { echo 'Production pilot-ingress prerequisite is invalid for the current head or the single allowlisted repair parent.' >&2; exit 1; }
+          jq -e --arg sha "$GITHUB_SHA" --arg parent "$trusted_parent" \
+            '.name == "M6 ULC Production Pilot Ingress" and .path == ".github/workflows/m6-ulc-production-pilot-ingress.yml" and .event == "workflow_dispatch" and .head_branch == "main" and (.head_sha == $sha or ($parent != "" and .head_sha == $parent)) and .run_attempt == 1 and .status == "completed" and .conclusion == "success"' \
+            "$pilot_file" >/dev/null || { echo 'Production pilot-ingress prerequisite is invalid for the exact current head or the single allowlisted repair parent.' >&2; exit 1; }
 
-          jq -e --arg current "$GITHUB_SHA" \
-            '.name == "M6 ULC Production Smoke Principal Bootstrap" and .path == ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $current and .run_attempt == 1 and .status == "completed" and .conclusion == "success"' \
+          jq -e --arg sha "$GITHUB_SHA" \
+            '.name == "M6 ULC Production Smoke Principal Bootstrap" and .path == ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .run_attempt == 1 and .status == "completed" and .conclusion == "success"' \
             "$smoke_file" >/dev/null || { echo 'Smoke-principal prerequisite must be a successful first-attempt run on the exact current head.' >&2; exit 1; }
 
       - name: Validate and mask protected smoke inputs
