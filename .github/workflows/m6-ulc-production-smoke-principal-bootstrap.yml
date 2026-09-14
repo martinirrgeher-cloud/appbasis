@@ -127,6 +127,7 @@ jobs:
             done
           fi
 
+          # Chain-dispatched mode retains the canonical exact-head invariant: .head_sha == $sha
           jq -e '
             .name == "M5 ULC Production Evidence"
             and .path == ".github/workflows/m5-ulc-production-evidence.yml"
