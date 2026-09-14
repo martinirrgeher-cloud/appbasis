@@ -40,7 +40,7 @@ export async function replaceUlcLinzPrincipalAccess({
   const demotingFromAdmin =
     sourceRole !== "admin" &&
     constraints.expectedRoleIds.includes(adminRuntimeRoleId);
-  const requiredRemainingCapabilities = sourceRole !== "admin"
+  const requiredRemainingCapabilities = demotingFromAdmin
     ? ULC_LINZ_M5_KNOWN_CAPABILITIES
     : [];
   const requiredRemainingRoleIds = demotingFromAdmin
