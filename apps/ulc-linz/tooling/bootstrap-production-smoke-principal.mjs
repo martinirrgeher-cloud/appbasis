@@ -23,8 +23,14 @@ export const ULC_LINZ_M6_SMOKE_PRINCIPAL = Object.freeze({
 const PRODUCTION_ADMIN_USERNAME = "ulc.production.admin";
 const SMOKE_PASSWORD_CHANGE_IDEMPOTENCY_KEY = "7b04a4e0-cc5a-4d74-9ba5-62ae25d22156";
 const SMOKE_PASSWORD_RECOVERY_SESSION_TOKEN = "m6-smoke-password-change-recovery";
+let smokeBootstrapDiagnosticPhase = "not-started";
+
+function setSmokeBootstrapDiagnosticPhase(phase) {
+  smokeBootstrapDiagnosticPhase = phase;
+}
 
 export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.env) {
+  setSmokeBootstrapDiagnosticPhase("input-validation");
   const databaseUrl = required(env.ULC_LINZ_PRODUCTION_DATABASE_URL, "ULC_LINZ_PRODUCTION_DATABASE_URL");
   parseUlcLinzProductionDatabaseUrl(databaseUrl);
 
@@ -44,17 +50,20 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
   }
 
   const baseURL = "https://app.ulc-linz.at";
+  setSmokeBootstrapDiagnosticPhase("database-connect");
   const connection = createPostgresDatabase(databaseUrl);
 
   try {
     const auth = createBetterAuthRuntime({ database: connection.database, baseURL, secret: authSecret });
     const bootstrapBackend = new BetterAuthIdentityBackend({ auth, sql: connection.client, baseURL });
+    setSmokeBootstrapDiagnosticPhase("admin-login");
     const adminSession = await bootstrapBackend.signInWithUsername({
       username: PRODUCTION_ADMIN_USERNAME,
       password: adminPassword,
     });
 
     try {
+      setSmokeBootstrapDiagnosticPhase("admin-evidence");
       await assertReusableProductionAdminEvidence(connection.client, adminSession.identityId);
 
       const backend = new BetterAuthIdentityBackend({
@@ -69,6 +78,7 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
         baseURL,
         administrativeSessionToken: adminSession.sessionToken,
       });
+      setSmokeBootstrapDiagnosticPhase("create-user");
       const created = await identity.service.createInitialUser({
         username: ULC_LINZ_M6_SMOKE_PRINCIPAL.username,
         displayName: ULC_LINZ_M6_SMOKE_PRINCIPAL.displayName,
@@ -76,6 +86,7 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
       });
 
       if (created.mustChangePassword === true) {
+        setSmokeBootstrapDiagnosticPhase("password-transition");
         let initial;
         try {
           initial = await identity.service.signInWithUsername({
@@ -101,6 +112,7 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
         await backend.endSession(changed.sessionToken);
       }
 
+      setSmokeBootstrapDiagnosticPhase("steady-state-login");
       const steadyState = await identity.service.signInWithUsername({
         username: ULC_LINZ_M6_SMOKE_PRINCIPAL.username,
         password: smokePassword,
@@ -111,6 +123,7 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
       await backend.endSession(steadyState.sessionToken);
 
       const smokePrincipalId = principalId(created.identityId);
+      setSmokeBootstrapDiagnosticPhase("membership");
       await connection.client.begin(async (tx) => {
         await tx`
           INSERT INTO ulc_linz_membership (
@@ -136,6 +149,7 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
         `;
       });
 
+      setSmokeBootstrapDiagnosticPhase("permission-binding");
       const store = new PostgresPermissionStore(connection.client);
       const existing = await store.findPrincipal(smokePrincipalId);
       const administration = new PostgresPrincipalAccessAdministration(connection.client);
@@ -155,10 +169,12 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
         },
       });
 
+      setSmokeBootstrapDiagnosticPhase("permission-verification");
       const finalState = await store.findPrincipal(smokePrincipalId);
       if (finalState === null || finalState.roleIds.length !== 1) {
         throw new Error("M6 smoke principal permission state is incomplete.");
       }
+      setSmokeBootstrapDiagnosticPhase("complete");
       return Object.freeze({ identityId: created.identityId });
     } finally {
       await bootstrapBackend.endSession(adminSession.sessionToken);
@@ -199,7 +215,7 @@ if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).
     await bootstrapUlcLinzM6ProductionSmokePrincipal();
     console.log("ULC M6 production smoke principal is provisioned for steady-state smoke use.");
   } catch {
-    console.error("ULC M6 production smoke principal provisioning failed.");
+    console.error(`ULC M6 production smoke principal provisioning failed at phase: ${smokeBootstrapDiagnosticPhase}.`);
     process.exitCode = 1;
   }
 }
