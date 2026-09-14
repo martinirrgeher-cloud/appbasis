@@ -100,7 +100,7 @@ jobs:
             local id
             id="$(jq -r --arg sha "$GITHUB_SHA" --arg approved_before "$PARENT_CREATED_AT" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and .run_attempt == 1 and .status == "completed" and .conclusion == "success" and (.updated_at | type) == "string" and .updated_at < $approved_before)] | sort_by(.updated_at) | reverse | .[0].id // empty' "$file")"
             [[ "$id" =~ ^[1-9][0-9]*$ ]] || {
-              echo "No successful exact-head first-attempt prerequisite run completed strictly before this approval dispatch for $workflow." >&2
+              echo "No successful exact-head prerequisite run completed strictly before this approval dispatch for $workflow (first-attempt runs only)." >&2
               exit 1
             }
             printf '%s\n' "$id"
@@ -346,7 +346,7 @@ jobs:
             echo '- this dispatch authorizes exactly one canonical production-preparation step'
             echo '- later steps require a separate workflow dispatch and a fresh operator approval'
             echo '- workflow reruns are rejected; retries require a new explicitly approved dispatch'
-            echo '- successful exact-head first-attempt prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created'
+            echo '- successful exact-head prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created (first-attempt runs only)'
             echo '- every child dispatch carries a unique run-name correlation token and is accepted only on run attempt 1; ambiguous POST responses recover only that exact first attempt'
             echo '- parent persists child attempt identity before dispatch and exact child-run identity once known, then propagates manual cancellation'
             echo '- parent shares one 150-minute wall-clock work budget across dispatch recovery and child waiting, then reserves a bounded cancellation-cleanup window before its own 180-minute timeout'
