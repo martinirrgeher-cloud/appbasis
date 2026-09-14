@@ -9,7 +9,7 @@ import {
   principalId,
 } from "@appbasis/permissions";
 
-import { mapUocLinzManagedPermissionsToPrincipalOverrides } from "../../../tooling/ulc-linz-m5-principal-permission-mapping.mjs";
+import { mapUlcLinzManagedPermissionsToPrincipalOverrides } from "../../../tooling/ulc-linz-m5-principal-permission-mapping.mjs";
 import { ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY } from "../../../tooling/ulc-linz-m5-role-data-scope.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "../../../tooling/ulc-linz-m6-production-hyperdrive.mjs";
 
@@ -178,7 +178,7 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
 
       setSmokeBootstrapDiagnosticPhase("permission-map");
       const smokeRuntimeRoleId = ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.trainer;
-      const smokeOverrides = mapUocLinzManagedPermissionsToPrincipalOverrides({
+      const smokeOverrides = mapUlcLinzManagedPermissionsToPrincipalOverrides({
         sourceRole: ULC_LINZ_M6_SMOKE_PRINCIPAL.sourceRole,
         permissions: [{ moduleKey: "countdown", canView: true, canEdit: false }],
       });
@@ -187,7 +187,7 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
       const administration = new PostgresPrincipalAccessAdministration(connection.client);
       await administration.replacePrincipalAccess(
         smokePrincipalId,
-      [smokeRuntimeRoleId],
+        [smokeRuntimeRoleId],
         smokeOverrides,
         {
           actorPrincipalId: principalId(adminSession.identityId),
