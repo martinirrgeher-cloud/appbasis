@@ -148,6 +148,7 @@ jobs:
           fetch_run "$PILOT_INGRESS_RUN_ID" "$pilot_file"
           fetch_run "$SMOKE_PRINCIPAL_RUN_ID" "$smoke_file"
 
+          # Chain-dispatched mode retains the canonical exact-head invariant: .head_sha == $sha
           jq -e '
             .name == "M6 ULC Production Pilot Ingress"
             and .path == ".github/workflows/m6-ulc-production-pilot-ingress.yml"
