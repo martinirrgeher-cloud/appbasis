@@ -30,6 +30,34 @@ function setSmokeBootstrapDiagnosticPhase(phase) {
   smokeBootstrapDiagnosticPhase = phase;
 }
 
+function classifyPermissionWriteFailure(error) {
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? error.code
+    : undefined;
+  switch (code) {
+    case "ROLE_NOT_FOUND":
+    case "REQUIRED_ROLE_NOT_ACTIVE":
+      return "permission-write-role-missing";
+    case "UNKNOWN_CAPABILITY":
+      return "permission-write-capability-missing";
+    case "STALE_PRINCIPAL_ROLES":
+    case "STALE_PRINCIPAL_PERMISSIONS":
+      return "permission-write-stale-state";
+    case "PRINCIPAL_NOT_FOUND":
+      return "permission-write-principal-missing";
+    case "INVALID_AUDIT_CONTEXT":
+    case "INVALID_OVERRIDES":
+    case "INVALID_ROLE":
+    case "LAST_CAPABILITY_HOLDER":
+    case "LAST_REQUIRED_ROLE_HOLDER":
+    case "REQUIRED_ROLE_HOLDER_SCOPE_REQUIRED":
+    case "TARGET_PRINCIPAL_OUTSIDE_REQUIRED_ROLE_SCOPE":
+      return "permission-write-contract";
+    default:
+      return "permission-write-db";
+  }
+}
+
 export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.env) {
   setSmokeBootstrapDiagnosticPhase("input-validation");
   const databaseUrl = required(env.ULC_LINZ_PRODUCTION_DATABASE_URL, "ULC_LINZ_PRODUCTION_DATABASE_URL");
@@ -185,20 +213,25 @@ export async function bootstrapUlcLinzM6ProductionSmokePrincipal(env = process.e
 
       setSmokeBootstrapDiagnosticPhase("permission-write");
       const administration = new PostgresPrincipalAccessAdministration(connection.client);
-      await administration.replacePrincipalAccess(
-        smokePrincipalId,
-        [smokeRuntimeRoleId],
-        smokeOverrides,
-        {
-          actorPrincipalId: principalId(adminSession.identityId),
-          reason: "M6 production post-deploy smoke principal provisioning",
-        },
-        {
-          expectedRoleIds: existing.roleIds,
-          expectedGrants: existing.grants,
-          expectedRevokes: existing.revokes,
-        },
-      );
+      try {
+        await administration.replacePrincipalAccess(
+          smokePrincipalId,
+          [smokeRuntimeRoleId],
+          smokeOverrides,
+          {
+            actorPrincipalId: principalId(adminSession.identityId),
+            reason: "M6 production post-deploy smoke principal provisioning",
+          },
+          {
+            expectedRoleIds: existing.roleIds,
+            expectedGrants: existing.grants,
+            expectedRevokes: existing.revokes,
+          },
+        );
+      } catch (error) {
+        setSmokeBootstrapDiagnosticPhase(classifyPermissionWriteFailure(error));
+        throw error;
+      }
 
       setSmokeBootstrapDiagnosticPhase("permission-read-final");
       const finalState = await store.findPrincipal(smokePrincipalId);
