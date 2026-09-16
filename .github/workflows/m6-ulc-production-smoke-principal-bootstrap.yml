@@ -172,18 +172,18 @@ jobs:
         run: |
           set -euo pipefail
           node --experimental-transform-types --import ./tooling/register-native-typescript-resolution.mjs --input-type=module <<'NODE'
-          import postgres from "postgres";
+          import { createPostgresDatabase } from "@appbasis/database/node-runtime";
           import { provisionPostgresPermissions } from "../../packages/permissions/src/postgres-permission-provisioning.ts";
           import { ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE } from "../../tooling/ulc-linz-m5-permission-provisioning.mjs";
           import { parseUlcLinzProductionDatabaseUrl } from "../../tooling/ulc-linz-m6-production-hyperdrive.mjs";
 
           const connectionString = process.env.ULC_LINZ_PRODUCTION_DATABASE_URL ?? "";
           parseUlcLinzProductionDatabaseUrl(connectionString);
-          const sql = postgres(connectionString, { max: 1, prepare: false });
+          const { client } = createPostgresDatabase(connectionString);
           try {
-            await provisionPostgresPermissions(sql, ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE);
+            await provisionPostgresPermissions(client, ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE);
           } finally {
-            await sql.end({ timeout: 5 });
+            await client.end({ timeout: 5 });
           }
           console.log("Canonical ULC M5 permission provisioning restored for M6 smoke.");
           NODE
