@@ -80,8 +80,8 @@ jobs:
             --header 'Accept: application/vnd.github+json' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$run"
           jq -e --arg sha "$GITHUB_SHA" \
-            '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
-            "$run" >/dev/null || { echo 'M5 production evidence is not a successful exact-head main run.' >&2; exit 1; }
+            '.path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success" and .run_attempt == 1' \
+            "$run" >/dev/null || { echo 'M5 production evidence is not a successful exact-head first-attempt main run.' >&2; exit 1; }
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
@@ -162,8 +162,8 @@ jobs:
             --header 'Accept: application/vnd.github+json' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$run"
           jq -e --arg sha "$GITHUB_SHA" \
-            '.name == "M5 ULC Production Evidence" and .path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
-            "$run" >/dev/null || { echo 'M5 production evidence changed or is no longer a successful exact-head main run.' >&2; exit 1; }
+            '.path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success" and .run_attempt == 1' \
+            "$run" >/dev/null || { echo 'M5 production evidence changed or is no longer a successful exact-head first-attempt main run.' >&2; exit 1; }
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
