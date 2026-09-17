@@ -129,8 +129,7 @@ jobs:
 
           # Chain-dispatched mode retains the canonical exact-head invariant: .head_sha == $sha
           jq -e '
-            .name == "M5 ULC Production Evidence"
-            and .path == ".github/workflows/m5-ulc-production-evidence.yml"
+            .path == ".github/workflows/m5-ulc-production-evidence.yml"
             and .event == "workflow_dispatch"
             and .head_branch == "main"
             and .run_attempt == 1
