@@ -30,7 +30,7 @@ test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-sa
   ]);
   for (const marker of [
     "BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL",
-    "M5 ULC Production Evidence",
+    ".github/workflows/m5-ulc-production-evidence.yml",
     ".head_sha == $sha",
     "ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD",
     "ULC_LINZ_PRODUCTION_SMOKE_PASSWORD",
@@ -72,9 +72,9 @@ test("M6 post-deploy smoke stays dedicated, pilot-ingress bound and validates bo
   ]);
   for (const marker of [
     "RUN-ULC-M6-PRODUCTION-SMOKE",
-    "M6 ULC Production Pilot Ingress",
+    ".github/workflows/m6-ulc-production-pilot-ingress.yml",
     "pilot_ingress_run_id",
-    "M6 ULC Production Smoke Principal Bootstrap",
+    ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml",
     ".head_sha == $sha",
     "workers.dev",
     "previews_enabled == false",

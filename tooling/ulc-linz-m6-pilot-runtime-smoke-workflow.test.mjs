@@ -191,7 +191,6 @@ test("M6 post-deploy smoke requires exact-head pilot activation and never depend
   const source = await readFile(SMOKE, "utf8");
   for (const marker of [
     "pilot_ingress_run_id",
-    "M6 ULC Production Pilot Ingress",
     ".github/workflows/m6-ulc-production-pilot-ingress.yml",
     ".head_sha == $sha",
     "/workers/scripts/$TARGET_WORKER/subdomain",
