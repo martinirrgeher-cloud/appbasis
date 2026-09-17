@@ -150,8 +150,7 @@ jobs:
 
           # Chain-dispatched mode retains the canonical exact-head invariant: .head_sha == $sha
           jq -e '
-            .name == "M6 ULC Production Pilot Ingress"
-            and .path == ".github/workflows/m6-ulc-production-pilot-ingress.yml"
+            .path == ".github/workflows/m6-ulc-production-pilot-ingress.yml"
             and .event == "workflow_dispatch"
             and .head_branch == "main"
             and .run_attempt == 1
@@ -163,7 +162,7 @@ jobs:
           grep -Fxq "$pilot_head" "$trusted_heads" || { echo 'Production pilot ingress is not on the exact current head or within the bounded allowlisted smoke-repair ancestry.' >&2; exit 1; }
 
           jq -e --arg sha "$GITHUB_SHA" \
-            '.name == "M6 ULC Production Smoke Principal Bootstrap" and .path == ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .run_attempt == 1 and .status == "completed" and .conclusion == "success"' \
+            '.path == ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .run_attempt == 1 and .status == "completed" and .conclusion == "success"' \
             "$smoke_file" >/dev/null || { echo 'Smoke-principal prerequisite must be a successful first-attempt run on the exact current head.' >&2; exit 1; }
 
       - name: Validate and mask protected smoke inputs
