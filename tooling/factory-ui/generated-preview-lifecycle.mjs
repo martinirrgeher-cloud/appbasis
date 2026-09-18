@@ -1,4 +1,5 @@
 import { loadGeneratedAppPreviewContract } from "../generated-app-preview-contract.mjs";
+import { verifyGeneratedPreviewPublishedOnMain } from "./generated-preview-publication.mjs";
 
 const WORKFLOW_PATH = ".github/workflows/generated-app-preview-lifecycle.yml";
 const WORKFLOW_URL =
@@ -30,6 +31,7 @@ const OPERATIONS = Object.freeze([
 export async function deriveGeneratedPreviewLifecycle(
   repositoryRoot,
   definition,
+  { publicationFetchImpl = fetch } = {},
 ) {
   try {
     const contract = await loadGeneratedAppPreviewContract(
@@ -37,13 +39,23 @@ export async function deriveGeneratedPreviewLifecycle(
       definition?.appId,
     );
 
+    const publishedOnMain = await verifyGeneratedPreviewPublishedOnMain(
+      repositoryRoot,
+      contract.definition.appId,
+      { fetchImpl: publicationFetchImpl },
+    );
+
     return Object.freeze({
-      status: "workflow-ready",
+      status: publishedOnMain ? "workflow-ready" : "local-contract-ready",
       workflowName: "Generated App Preview Lifecycle",
       workflowPath: WORKFLOW_PATH,
       workflowUrl: WORKFLOW_URL,
+      workflowRef: publishedOnMain ? "main" : null,
       requiresExplicitApply: true,
-      nextOperation: "hyperdrive",
+      publishedOnMain,
+      initialOperation: "hyperdrive",
+      nextOperation: null,
+      progressEvidence: "not-observed",
       operations: OPERATIONS,
       target: Object.freeze({
         environment: contract.target.environment,
@@ -59,7 +71,10 @@ export async function deriveGeneratedPreviewLifecycle(
       workflowPath: WORKFLOW_PATH,
       workflowUrl: WORKFLOW_URL,
       requiresExplicitApply: true,
+      publishedOnMain: false,
+      initialOperation: null,
       nextOperation: null,
+      progressEvidence: "not-observed",
       operations: OPERATIONS,
       target: null,
     });
