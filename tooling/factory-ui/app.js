@@ -25,6 +25,10 @@ const elements = {
   detailSchema: document.querySelector("#detail-schema"),
   detailModules: document.querySelector("#detail-modules"),
   detailServices: document.querySelector("#detail-services"),
+  detailPreviewStatus: document.querySelector("#detail-preview-status"),
+  detailPreviewSummary: document.querySelector("#detail-preview-summary"),
+  detailPreviewLifecycle: document.querySelector("#detail-preview-lifecycle"),
+  detailPreviewWorkflow: document.querySelector("#detail-preview-workflow"),
   detailProductionStatus: document.querySelector("#detail-production-status"),
   detailProductionSummary: document.querySelector("#detail-production-summary"),
   displayName: document.querySelector("#display-name"),
@@ -41,6 +45,8 @@ const elements = {
   previewTheme: document.querySelector("#preview-theme"),
   previewModules: document.querySelector("#preview-modules"),
   previewServices: document.querySelector("#preview-services"),
+  createPreviewReadiness: document.querySelector("#create-preview-readiness"),
+  previewLifecycle: document.querySelector("#preview-lifecycle"),
 };
 
 for (const button of document.querySelectorAll("[data-tab]")) {
@@ -180,7 +186,10 @@ function renderApps() {
     const footer = document.createElement("div");
     footer.className = "factory-app-card__footer";
     const preview = document.createElement("span");
-    preview.textContent = previewReadinessLabel(app.previewReadiness);
+    preview.textContent = previewReadinessLabel(
+      app.previewReadiness,
+      app.previewLifecycle,
+    );
     preview.title = lifecycleCard.detail;
     const button = document.createElement("button");
     button.className = "ab-button ab-button--ghost";
@@ -240,6 +249,7 @@ function renderAppDetail(app) {
     app.productionReadiness,
     app.productionReleaseReadiness,
   );
+  renderGeneratedPreviewLifecycle(app.previewLifecycle);
   renderProductionReadiness(
     app.previewReadiness,
     app.productionReadiness,
@@ -253,11 +263,8 @@ function renderAppDetail(app) {
 }
 
 function renderPreviewReadiness(readiness, productionReadiness, releaseReadiness) {
-  const previewGate = document.querySelector(
-    ".factory-detail-gates .factory-detail-gate:nth-child(3)",
-  );
-  const heading = previewGate?.querySelector("strong");
-  const detail = previewGate?.querySelector("small");
+  const heading = elements.detailPreviewStatus;
+  const detail = elements.detailPreviewSummary;
   if (!heading || !detail) return;
 
   const previewAccepted =
@@ -292,6 +299,80 @@ function renderPreviewReadiness(readiness, productionReadiness, releaseReadiness
     missing.length > 0
       ? `Fehlt: ${missing.join(", ")}. Preview bleibt gesperrt.`
       : "Die lokalen Preview-Voraussetzungen konnten nicht vollständig bestätigt werden. Preview bleibt gesperrt.";
+}
+
+function renderGeneratedPreviewLifecycle(lifecycle) {
+  const container = elements.detailPreviewLifecycle;
+  const workflowLink = elements.detailPreviewWorkflow;
+  if (!container || !workflowLink) return;
+
+  container.replaceChildren();
+  container.hidden = true;
+  workflowLink.hidden = true;
+  workflowLink.removeAttribute("href");
+
+  if (
+    lifecycle?.status !== "workflow-ready" &&
+    lifecycle?.status !== "local-contract-ready"
+  ) {
+    return;
+  }
+  if (elements.detailPreviewStatus?.textContent === "Preview geprüft") return;
+
+  const published = lifecycle.status === "workflow-ready";
+  if (elements.detailPreviewStatus) {
+    elements.detailPreviewStatus.textContent = published
+      ? "Preview-Workflow bereit"
+      : "Preview-Vertrag lokal bereit";
+  }
+  if (elements.detailPreviewSummary) {
+    elements.detailPreviewSummary.textContent = published
+      ? "Der exakte Preview-Vertrag ist auf main veröffentlicht. Die Provider-Schritte bleiben einzeln und ausdrücklich freigabepflichtig."
+      : "Die App erfüllt den lokalen Preview-Vertrag, ist aber noch nicht exakt auf main veröffentlicht. Erst nach Commit und Push kann der GitHub-Workflow diesen Stand ausführen.";
+  }
+
+  const target = document.createElement("div");
+  target.className = "factory-preview-target";
+  const targetHeading = document.createElement("strong");
+  targetHeading.textContent = "Isoliertes Preview-Ziel";
+  const targetDetail = document.createElement("small");
+  targetDetail.textContent =
+    lifecycle.target === null
+      ? "Preview-Ziel konnte nicht eindeutig abgeleitet werden."
+      : `${lifecycle.target.environment} · ${lifecycle.target.workerName} · ${lifecycle.target.database}`;
+  target.append(targetHeading, targetDetail);
+
+  const list = document.createElement("ol");
+  list.className = "factory-preview-steps";
+  list.setAttribute("aria-label", "Preview-Lifecycle");
+
+  for (const [index, operation] of (lifecycle.operations ?? []).entries()) {
+    const item = document.createElement("li");
+
+    const marker = document.createElement("span");
+    marker.textContent = String(index + 1);
+    marker.setAttribute("aria-hidden", "true");
+    const copy = document.createElement("div");
+    const label = document.createElement("strong");
+    label.textContent = operation.label;
+    const detail = document.createElement("small");
+    detail.textContent = operation.detail;
+    copy.append(label, detail);
+    item.append(marker, copy);
+    list.append(item);
+  }
+
+  container.append(target, list);
+  container.hidden = false;
+
+  if (
+    published &&
+    typeof lifecycle.workflowUrl === "string" &&
+    lifecycle.workflowUrl.length > 0
+  ) {
+    workflowLink.href = lifecycle.workflowUrl;
+    workflowLink.hidden = false;
+  }
 }
 
 function renderProductionReadiness(previewReadiness, readiness, releaseReadiness) {
@@ -423,7 +504,11 @@ function renderFactoryLifecycle(previewReadiness, readiness, releaseReadiness) {
   lifecycle.replaceChildren(flow, nextStep);
 }
 
-function previewReadinessLabel(readiness) {
+function previewReadinessLabel(readiness, lifecycle) {
+  if (lifecycle?.status === "workflow-ready") return "Preview-Workflow bereit";
+  if (lifecycle?.status === "local-contract-ready") {
+    return "Preview lokal bereit · Veröffentlichung fehlt";
+  }
   return readiness?.status === "repository-ready"
     ? "Preview lokal vorbereitet"
     : "Preview-Voraussetzungen fehlen";
@@ -592,6 +677,21 @@ function renderDraftPreview() {
   }
   if (elements.previewServices) {
     elements.previewServices.textContent = listLabels(services, serviceLabel);
+  }
+
+  const genericPreviewEligible =
+    modules.includes("tasks") &&
+    services.includes("identity") &&
+    services.includes("permissions");
+  if (elements.createPreviewReadiness) {
+    elements.createPreviewReadiness.textContent = genericPreviewEligible
+      ? "Nach dem Anlegen über den generischen Preview-Lifecycle"
+      : "Für diesen Entwurf noch nicht verfügbar";
+  }
+  if (elements.previewLifecycle) {
+    elements.previewLifecycle.textContent = genericPreviewEligible
+      ? "Generischer Preview-Lifecycle verfügbar"
+      : "Benötigt Aufgaben + Benutzer & Login + Rollen & Rechte";
   }
 }
 

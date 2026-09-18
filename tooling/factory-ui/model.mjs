@@ -7,6 +7,7 @@ import {
 } from "../app-definition.mjs";
 import { readAppTheme } from "../app-theme.mjs";
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
+import { deriveGeneratedPreviewLifecycle } from "./generated-preview-lifecycle.mjs";
 import { deriveM3PreviewAcceptanceEvidence } from "./m3-preview-acceptance-evidence.mjs";
 import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
 import { evaluateProductionReadiness } from "./production-readiness.mjs";
@@ -17,6 +18,8 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
   const root = resolve(repositoryRoot);
   const m3PreviewAcceptanceFetchImpl =
     options.m3PreviewAcceptanceFetchImpl ?? fetch;
+  const generatedPreviewPublicationFetchImpl =
+    options.generatedPreviewPublicationFetchImpl ?? fetch;
   const ulcLinzM5JOwnerInputs = options.ulcLinzM5JOwnerInputs ?? {};
   const m5EvidenceNow = options.m5EvidenceNow ?? new Date();
   const [appDefinitions, modules] = await Promise.all([
@@ -27,6 +30,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
     appDefinitions.map((definition) =>
       withFactoryReadiness(root, definition, {
         m3PreviewAcceptanceFetchImpl,
+        generatedPreviewPublicationFetchImpl,
         ulcLinzM5JOwnerInputs,
         m5EvidenceNow,
       }),
@@ -41,6 +45,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
     }),
     capabilities: Object.freeze({
       createApp: true,
+      previewWorkflow: true,
       deployPreview: false,
       releaseProduction: false,
     }),
@@ -50,7 +55,12 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
 async function withFactoryReadiness(
   repositoryRoot,
   definition,
-  { m3PreviewAcceptanceFetchImpl, ulcLinzM5JOwnerInputs, m5EvidenceNow },
+  {
+    m3PreviewAcceptanceFetchImpl,
+    generatedPreviewPublicationFetchImpl,
+    ulcLinzM5JOwnerInputs,
+    m5EvidenceNow,
+  },
 ) {
   const appRoot = join(repositoryRoot, "apps", definition.appId);
   const databaseManifestRequired =
@@ -60,6 +70,7 @@ async function withFactoryReadiness(
     packageManifestPresent,
     databaseManifestPresent,
     appTheme,
+    generatedPreviewLifecycle,
     m3PreviewAcceptanceEvidence,
     productionReadinessEvidence,
   ] = await Promise.all([
@@ -69,6 +80,9 @@ async function withFactoryReadiness(
       ? pathExists(join(appRoot, "appbasis.database.json"))
       : Promise.resolve(false),
     readAppTheme(repositoryRoot, definition),
+    deriveGeneratedPreviewLifecycle(repositoryRoot, definition, {
+      publicationFetchImpl: generatedPreviewPublicationFetchImpl,
+    }),
     deriveM3PreviewAcceptanceEvidence(definition, {
       fetchImpl: m3PreviewAcceptanceFetchImpl,
     }),
@@ -105,6 +119,7 @@ async function withFactoryReadiness(
       databaseManifestRequired,
       databaseManifestPresent,
     }),
+    previewLifecycle: generatedPreviewLifecycle,
     productionReadiness,
     productionReleaseReadiness,
   });

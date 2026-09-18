@@ -37,6 +37,7 @@ test("factory snapshot reads the real app registry and supported catalog", async
   assert.deepEqual(snapshot.catalog.platformServices, SUPPORTED_PLATFORM_SERVICES);
   assert.deepEqual(snapshot.capabilities, {
     createApp: true,
+    previewWorkflow: true,
     deployPreview: false,
     releaseProduction: false,
   });
@@ -143,6 +144,10 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(pageBody, /id="detail-name"/);
   assert.match(pageBody, /id="detail-modules"/);
   assert.match(pageBody, /id="detail-services"/);
+  assert.match(pageBody, /id="detail-preview-status"/);
+  assert.match(pageBody, /id="detail-preview-lifecycle"/);
+  assert.match(pageBody, /id="detail-preview-workflow"/);
+  assert.match(pageBody, /Preview-Workflow öffnen/);
   assert.match(pageBody, /Read-only Detailansicht/);
   assert.match(pageBody, /data-flow-step="branding"/);
   assert.match(pageBody, /data-flow-step="roles"/);
@@ -154,6 +159,9 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(pageBody, /data-wizard-next/);
   assert.match(pageBody, /id="brand-mark"/);
   assert.match(pageBody, /id="accent-color"/);
+  assert.match(pageBody, /id="create-preview-readiness"/);
+  assert.match(pageBody, /id="preview-lifecycle"/);
+  assert.match(pageBody, /Benötigt Aufgaben \+ Benutzer & Login \+ Rollen & Rechte/);
   assert.match(pageBody, /Theme-Manifest gespeichert/);
   assert.match(pageBody, /Produktion bleibt getrennt und fail-closed/);
   assert.match(pageBody, /id="create-app-button" type="submit" disabled/);
@@ -176,6 +184,20 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(appScriptBody, /applyAppMark\(mark, app\)/);
   assert.match(appScriptBody, /app\?\.theme\?\.accentColor/);
   assert.match(appScriptBody, /previewAccentForeground\(accent\)/);
+  assert.match(appScriptBody, /renderGeneratedPreviewLifecycle\(app\.previewLifecycle\)/);
+  assert.match(appScriptBody, /lifecycle\?\.status !== "workflow-ready"/);
+  assert.match(appScriptBody, /Preview-Workflow bereit/);
+  assert.match(appScriptBody, /Preview-Vertrag lokal bereit/);
+  assert.match(appScriptBody, /noch nicht exakt auf main veröffentlicht/);
+  assert.match(appScriptBody, /workflowLink\.href = lifecycle\.workflowUrl/);
+  assert.doesNotMatch(appScriptBody, /operation\.id === lifecycle\.nextOperation/);
+  assert.match(appScriptBody, /lifecycle\.target\.environment/);
+  assert.match(
+    appScriptBody,
+    /modules\.includes\("tasks"\)[\s\S]*services\.includes\("identity"\)[\s\S]*services\.includes\("permissions"\)/,
+  );
+  assert.match(appScriptBody, /Generischer Preview-Lifecycle verfügbar/);
+  assert.match(appScriptBody, /Für diesen Entwurf noch nicht verfügbar/);
   assert.match(
     appScriptBody,
     /function returnToApps\(appIdToRestore = state\.selectedAppId\)/,
@@ -263,6 +285,9 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(targetStylesBody, /\.factory-detail-header/);
   assert.match(targetStylesBody, /\.factory-wizard-actions/);
   assert.match(targetStylesBody, /\.factory-flow li\.is-complete/);
+  assert.match(targetStylesBody, /\.factory-preview-lifecycle/);
+  assert.match(targetStylesBody, /\.factory-preview-steps/);
+  assert.match(targetStylesBody, /\.factory-preview-workflow-link/);
 
   const previewTheme = await fetch(`${baseUrl}/preview-theme.mjs`);
   assert.equal(previewTheme.status, 200);
@@ -274,6 +299,7 @@ test("factory console exposes app details and local creation without enabling de
   const snapshot = await snapshotResponse.json();
   assert.ok(Array.isArray(snapshot.apps));
   assert.equal(snapshot.capabilities.createApp, true);
+  assert.equal(snapshot.capabilities.previewWorkflow, true);
   assert.equal(snapshot.capabilities.deployPreview, false);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 

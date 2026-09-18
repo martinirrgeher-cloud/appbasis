@@ -463,6 +463,80 @@
   background: var(--ab-surface-muted);
 }
 
+.factory-preview-lifecycle {
+  display: grid;
+  gap: var(--ab-space-3);
+  margin-top: var(--ab-space-2);
+}
+
+.factory-preview-target {
+  display: grid;
+  gap: 2px;
+  padding: var(--ab-space-3);
+  border: 1px solid var(--ab-border-default);
+  border-radius: var(--ab-radius-control);
+  background: var(--ab-surface-muted);
+}
+
+.factory-preview-target strong {
+  font-size: 0.8rem;
+}
+
+.factory-preview-target small {
+  color: var(--ab-text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.factory-preview-steps {
+  display: grid;
+  gap: var(--ab-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.factory-preview-steps li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--ab-space-2);
+  align-items: start;
+}
+
+.factory-preview-steps li > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--ab-border-default);
+  border-radius: 999px;
+  color: var(--ab-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.factory-preview-steps li div {
+  display: grid;
+  gap: 2px;
+}
+
+.factory-preview-steps strong {
+  font-size: 0.78rem;
+}
+
+.factory-preview-steps small {
+  color: var(--ab-text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.factory-preview-workflow-link {
+  justify-self: start;
+  margin-top: var(--ab-space-2);
+  text-decoration: none;
+}
+
 @media (min-width: 640px) {
   .factory-wizard-actions {
     align-items: center;
