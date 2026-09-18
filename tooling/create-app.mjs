@@ -13,6 +13,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseAppDefinition } from "./app-definition.mjs";
+import { createAppTheme, renderAppTheme } from "./app-theme.mjs";
 import { acquireAppRegistryLock } from "./app-publication.mjs";
 import { renderGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
@@ -45,6 +46,11 @@ export async function createAppSkeleton(input, options = {}) {
     }
   }
 
+  const appTheme = createAppTheme({
+    displayName: definition.displayName,
+    brandMark: input.brandMark,
+    accentColor: input.accentColor,
+  });
   const databaseManifest = renderGeneratedDatabaseManifest(definition);
   const runtimeFiles = generatedRuntimeFiles(definition);
   const publishesWorkspacePackage = runtimeFiles.some(
@@ -74,6 +80,11 @@ export async function createAppSkeleton(input, options = {}) {
     await writeFile(
       join(stagingDirectory, "appbasis.app.json"),
       `${JSON.stringify(definition, null, 2)}\n`,
+      { flag: "wx" },
+    );
+    await writeFile(
+      join(stagingDirectory, "appbasis.theme.json"),
+      renderAppTheme(appTheme),
       { flag: "wx" },
     );
     if (databaseManifest !== null) {
@@ -123,6 +134,10 @@ export async function createAppSkeleton(input, options = {}) {
     await rename(
       join(stagingDirectory, "README.md"),
       join(destination, "README.md"),
+    );
+    await rename(
+      join(stagingDirectory, "appbasis.theme.json"),
+      join(destination, "appbasis.theme.json"),
     );
     if (databaseManifest !== null) {
       await rename(
@@ -192,6 +207,7 @@ export async function createAppSkeleton(input, options = {}) {
 
   return Object.freeze({
     definition,
+    theme: appTheme,
     destination,
     relativeDestination: relative(repositoryRoot, destination),
   });
