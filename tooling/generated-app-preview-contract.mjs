@@ -20,13 +20,18 @@ export async function loadGeneratedAppPreviewContract(
   }
 
   const appRoot = join(repositoryRoot, "apps", target.appId);
-  const [packageJson, databaseManifest, workerIndex, workerUi, theme] = await Promise.all([
+  const [packageJson, databaseManifest, workerIndex, workerUi, workerPreview, theme] =
+    await Promise.all([
     readJson(join(appRoot, "package.json"), "Generated preview package manifest"),
     readJson(join(appRoot, "appbasis.database.json"), "Generated preview database manifest"),
     readRequiredText(join(appRoot, "worker", "index.ts"), "Generated preview Worker entrypoint"),
-    readRequiredText(join(appRoot, "worker", "ui.ts"), "Generated preview web UI"),
-    readAppTheme(repositoryRoot, definition),
-  ]);
+      readRequiredText(join(appRoot, "worker", "ui.ts"), "Generated preview web UI"),
+      readRequiredText(
+        join(appRoot, "worker", "preview.ts"),
+        "Generated preview database-health Worker",
+      ),
+      readAppTheme(repositoryRoot, definition),
+    ]);
 
   if (packageJson?.name !== `@appbasis/app-${target.appId}`) {
     throw new Error("Generated preview package name does not match the app id.");
@@ -39,6 +44,14 @@ export async function loadGeneratedAppPreviewContract(
   }
   if (!workerUi.includes("generatedUiResponse")) {
     throw new Error("Generated preview web UI is not the canonical generated UI runtime.");
+  }
+  if (
+    !workerPreview.includes("createGeneratedPreviewWorker") ||
+    !workerPreview.includes("/api/health/database")
+  ) {
+    throw new Error(
+      "Generated preview database-health Worker is not the canonical preview wrapper.",
+    );
   }
 
   return Object.freeze({
