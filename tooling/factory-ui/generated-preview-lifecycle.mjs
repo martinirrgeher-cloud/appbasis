@@ -1,9 +1,14 @@
 import { loadGeneratedAppPreviewContract } from "../generated-app-preview-contract.mjs";
-import { verifyGeneratedPreviewPublishedOnMain } from "./generated-preview-publication.mjs";
+import {
+  verifyGeneratedPreviewPublishedAtRef,
+  verifyGeneratedPreviewPublishedOnMain,
+} from "./generated-preview-publication.mjs";
+import { deriveGeneratedPreviewRunEvidence } from "./generated-preview-run-evidence.mjs";
 
 const WORKFLOW_PATH = ".github/workflows/generated-app-preview-lifecycle.yml";
 const WORKFLOW_URL =
   "https://github.com/martinirrgeher-cloud/appbasis/actions/workflows/generated-app-preview-lifecycle.yml";
+const EXECUTION_CONTRACT_FILES = Object.freeze([WORKFLOW_PATH]);
 
 const OPERATIONS = Object.freeze([
   operation(
@@ -31,7 +36,10 @@ const OPERATIONS = Object.freeze([
 export async function deriveGeneratedPreviewLifecycle(
   repositoryRoot,
   definition,
-  { publicationFetchImpl = fetch } = {},
+  {
+    publicationFetchImpl = fetch,
+    runEvidenceFetchImpl = fetch,
+  } = {},
 ) {
   try {
     const contract = await loadGeneratedAppPreviewContract(
@@ -39,23 +47,52 @@ export async function deriveGeneratedPreviewLifecycle(
       definition?.appId,
     );
 
-    const publishedOnMain = await verifyGeneratedPreviewPublishedOnMain(
-      repositoryRoot,
+    const runEvidence = await deriveGeneratedPreviewRunEvidence(
       contract.definition.appId,
-      { fetchImpl: publicationFetchImpl },
+      { fetchImpl: runEvidenceFetchImpl },
     );
 
+    const publishedOnMain =
+      runEvidence.status === "available"
+        ? await verifyGeneratedPreviewPublishedAtRef(
+            repositoryRoot,
+            contract.definition.appId,
+            runEvidence.exactHeadSha,
+            {
+              fetchImpl: publicationFetchImpl,
+              additionalRepositoryFiles: EXECUTION_CONTRACT_FILES,
+            },
+          )
+        : await verifyGeneratedPreviewPublishedOnMain(
+            repositoryRoot,
+            contract.definition.appId,
+            { fetchImpl: publicationFetchImpl },
+          );
+
+    const status = !publishedOnMain
+      ? "local-contract-ready"
+      : runEvidence.status === "available"
+        ? "workflow-ready"
+        : "workflow-evidence-unavailable";
+    const progressVerified = status === "workflow-ready";
+
     return Object.freeze({
-      status: publishedOnMain ? "workflow-ready" : "local-contract-ready",
+      status,
       workflowName: "Generated App Preview Lifecycle",
       workflowPath: WORKFLOW_PATH,
       workflowUrl: WORKFLOW_URL,
       workflowRef: publishedOnMain ? "main" : null,
+      exactHeadSha: progressVerified ? runEvidence.exactHeadSha : null,
       requiresExplicitApply: true,
       publishedOnMain,
       initialOperation: "hyperdrive",
-      nextOperation: null,
-      progressEvidence: "not-observed",
+      nextOperation: progressVerified ? runEvidence.nextOperation : null,
+      progressEvidence: progressVerified ? "verified" : runEvidence.status,
+      completedOperations: Object.freeze(
+        progressVerified ? [...runEvidence.completedOperations] : [],
+      ),
+      previewVerified: progressVerified && runEvidence.previewVerified,
+      runs: Object.freeze(progressVerified ? [...runEvidence.runs] : []),
       operations: OPERATIONS,
       target: Object.freeze({
         environment: contract.target.environment,
@@ -70,11 +107,15 @@ export async function deriveGeneratedPreviewLifecycle(
       workflowName: "Generated App Preview Lifecycle",
       workflowPath: WORKFLOW_PATH,
       workflowUrl: WORKFLOW_URL,
+      exactHeadSha: null,
       requiresExplicitApply: true,
       publishedOnMain: false,
       initialOperation: null,
       nextOperation: null,
-      progressEvidence: "not-observed",
+      progressEvidence: "not-applicable",
+      completedOperations: Object.freeze([]),
+      previewVerified: false,
+      runs: Object.freeze([]),
       operations: OPERATIONS,
       target: null,
     });
