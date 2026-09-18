@@ -9,18 +9,46 @@
     <link rel="stylesheet" href="/target-flow.css" />
   </head>
   <body>
-    <main class="factory-shell">
-      <header class="factory-topbar">
-        <div class="factory-brand">
+    <div class="factory-app-shell">
+      <aside class="factory-nav-rail" aria-label="Factory Navigation">
+        <div class="factory-brand factory-brand--desktop">
           <span class="factory-brand__mark" aria-hidden="true">A</span>
           <div>
             <strong>AppBasis Factory</strong>
-            <span>Apps gestalten, prüfen und später freigeben</span>
+            <span>Apps gestalten, prüfen und freigeben</span>
           </div>
         </div>
-        <span class="ab-badge ab-badge--info">Lokale Konsole</span>
-      </header>
 
+        <nav class="factory-tabs" aria-label="Factory Bereiche">
+          <button class="factory-tab is-active" type="button" data-tab="apps" aria-selected="true">
+            <span class="factory-tab__icon" aria-hidden="true">▦</span>
+            <span>Apps</span>
+          </button>
+          <button class="factory-tab" type="button" data-tab="create" aria-selected="false">
+            <span class="factory-tab__icon" aria-hidden="true">＋</span>
+            <span>Neue App</span>
+          </button>
+        </nav>
+
+        <div class="factory-nav-footer">
+          <span class="ab-badge ab-badge--info">Lokale Konsole</span>
+          <small>Repository lokal verwalten. Deployments bleiben eigene Gates.</small>
+        </div>
+      </aside>
+
+      <div class="factory-workspace">
+        <header class="factory-mobile-header">
+          <div class="factory-brand">
+            <span class="factory-brand__mark" aria-hidden="true">A</span>
+            <div>
+              <strong>AppBasis Factory</strong>
+              <span>Apps gestalten & prüfen</span>
+            </div>
+          </div>
+          <span class="ab-badge ab-badge--info">Lokal</span>
+        </header>
+
+        <main class="factory-shell">
       <section class="factory-hero ab-surface" aria-labelledby="factory-title">
         <div class="ab-page-header">
           <div class="ab-page-header__copy">
@@ -36,10 +64,6 @@
         </div>
       </section>
 
-      <nav class="factory-tabs" aria-label="Factory Bereiche">
-        <button class="factory-tab is-active" type="button" data-tab="apps" aria-selected="true">Apps</button>
-        <button class="factory-tab" type="button" data-tab="create" aria-selected="false">Neue App</button>
-      </nav>
 
       <section data-panel="apps" aria-labelledby="apps-heading">
         <div class="factory-section-heading">
@@ -266,7 +290,9 @@
       </section>
 
       <div id="factory-error" class="factory-error" role="alert" hidden></div>
-    </main>
+        </main>
+      </div>
+    </div>
     <script type="module" src="/app.js"></script>
     <script type="module" src="/production-readiness-status.js"></script>
     <script type="module" src="/create-app.js"></script>
