@@ -52,7 +52,7 @@ export async function createAppSkeleton(input, options = {}) {
     accentColor: input.accentColor,
   });
   const databaseManifest = renderGeneratedDatabaseManifest(definition);
-  const runtimeFiles = generatedRuntimeFiles(definition);
+  const runtimeFiles = generatedRuntimeFiles(definition, appTheme);
   const publishesWorkspacePackage = runtimeFiles.some(
     (runtimeFile) => runtimeFile.path === "package.json",
   );
@@ -259,7 +259,7 @@ async function runCli() {
   console.log(`Created AppBasis app skeleton: ${result.relativeDestination}.`);
 }
 
-function generatedRuntimeFiles(definition) {
+function generatedRuntimeFiles(definition, appTheme) {
   if (
     definition.platformServices.includes("permissions") &&
     !definition.platformServices.includes("identity")
@@ -274,6 +274,8 @@ function generatedRuntimeFiles(definition) {
     displayName: definition.displayName,
     modules: definition.modules,
     platformServices: definition.platformServices,
+    brandMark: appTheme.brandMark,
+    accentColor: appTheme.accentColor,
   }).files;
 }
 
@@ -287,7 +289,7 @@ function generatedReadme(definition, runtimeFiles) {
   const runtimeDescription =
     runtimeFiles.length === 0
       ? "This skeleton contains the versioned app definition only."
-      : "This app includes the independently verified generated runtime and consumes declared AppBasis platform and module contracts without copying the Reference app.";
+      : "This app includes the independently verified generated runtime, a responsive themed web UI and declared AppBasis platform/module contracts without copying the Reference app.";
   return `# ${definition.displayName}\n\nGenerated AppBasis app skeleton.\n\n- App ID: \`${definition.appId}\`\n- Modules: ${modules}\n- Platform services: ${platformServices}\n\n${runtimeDescription}\n`;
 }
 
