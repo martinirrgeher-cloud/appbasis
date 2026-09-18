@@ -45,6 +45,8 @@ const elements = {
   previewTheme: document.querySelector("#preview-theme"),
   previewModules: document.querySelector("#preview-modules"),
   previewServices: document.querySelector("#preview-services"),
+  createPreviewReadiness: document.querySelector("#create-preview-readiness"),
+  previewLifecycle: document.querySelector("#preview-lifecycle"),
 };
 
 for (const button of document.querySelectorAll("[data-tab]")) {
@@ -660,6 +662,21 @@ function renderDraftPreview() {
   }
   if (elements.previewServices) {
     elements.previewServices.textContent = listLabels(services, serviceLabel);
+  }
+
+  const genericPreviewEligible =
+    modules.includes("tasks") &&
+    services.includes("identity") &&
+    services.includes("permissions");
+  if (elements.createPreviewReadiness) {
+    elements.createPreviewReadiness.textContent = genericPreviewEligible
+      ? "Nach dem Anlegen über den generischen Preview-Lifecycle"
+      : "Für diesen Entwurf noch nicht verfügbar";
+  }
+  if (elements.previewLifecycle) {
+    elements.previewLifecycle.textContent = genericPreviewEligible
+      ? "Generischer Preview-Lifecycle verfügbar"
+      : "Benötigt Aufgaben + Benutzer & Login + Rollen & Rechte";
   }
 }
 
