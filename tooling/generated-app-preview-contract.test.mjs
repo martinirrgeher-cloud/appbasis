@@ -49,6 +49,10 @@ async function createFixture(t) {
     path.join(root, "apps", "demo", "worker", "ui.ts"),
     "export function generatedUiResponse() {}\n",
   );
+  await writeFile(
+    path.join(root, "apps", "demo", "worker", "preview.ts"),
+    'export function createGeneratedPreviewWorker() {}\nconst path = "/api/health/database";\n',
+  );
   return root;
 }
 
@@ -71,6 +75,16 @@ test("fails closed when required generated preview artifacts are missing", async
   await assert.rejects(
     loadGeneratedAppPreviewContract(root, "demo"),
     /Generated preview web UI is missing or empty/,
+  );
+});
+
+test("fails closed when the generated preview database wrapper is missing", async (t) => {
+  const root = await createFixture(t);
+  await rm(path.join(root, "apps", "demo", "worker", "preview.ts"));
+
+  await assert.rejects(
+    loadGeneratedAppPreviewContract(root, "demo"),
+    /Generated preview database-health Worker is missing or empty/,
   );
 });
 
