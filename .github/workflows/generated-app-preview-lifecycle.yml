@@ -148,7 +148,7 @@ jobs:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_MIGRATION_TARGET: ${{ steps.plan.outputs.migration_target }}
           APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
-        run: node ./tooling/generated-app-preview-migrate.mjs
+        run: node --experimental-transform-types ./tooling/generated-app-preview-migrate.mjs
 
       - name: Resolve generated workers.dev origin
         if: inputs.operation == 'bootstrap' || inputs.operation == 'deploy'
