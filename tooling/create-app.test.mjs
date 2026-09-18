@@ -157,13 +157,6 @@ test("persists explicit app branding without changing the app definition schema"
   assert.match(generatedUi, />BA</);
   assert.match(generatedUi, /--app-accent: #0f766e/);
   assert.match(generatedUi, /Branded App/);
-  assert.match(
-    await readFile(
-      join(root, "apps", "branded", "worker", "preview.ts"),
-      "utf8",
-    ),
-    /appId: "branded"/,
-  );
 });
 
 test("creates permission-guarded tasks runtime only from explicit platform composition", async (t) => {
@@ -213,6 +206,13 @@ test("creates permission-guarded tasks runtime only from explicit platform compo
   assert.match(worker, /TASK_CAPABILITIES/);
   assert.match(worker, /assertPermission/);
   assert.match(worker, /\/api\/tasks/);
+
+  const previewWorker = await readFile(
+    join(root, "apps", "checklist", "worker", "preview.ts"),
+    "utf8",
+  );
+  assert.match(previewWorker, /appId: "checklist"/);
+  assert.match(previewWorker, /\/api\/health\/database/);
 
   const definitions = await verifyAppDefinitions(root);
   assert.deepEqual(definitions[0]?.platformServices, ["identity", "permissions"]);
