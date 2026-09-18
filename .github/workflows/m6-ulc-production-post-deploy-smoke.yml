@@ -262,7 +262,7 @@ jobs:
           ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
           ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
-        run: node ./tooling/run-production-post-deploy-smoke.mjs
+        run: node --experimental-transform-types --import ./tooling/register-native-typescript-resolution.mjs ./tooling/run-production-post-deploy-smoke.mjs
 
       - name: Record M6 post-deploy smoke evidence
         if: success()
