@@ -7,7 +7,10 @@ import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 
 import { parseUlcLinzProductionDatabaseUrl } from "../../../tooling/ulc-linz-m6-production-hyperdrive.mjs";
 
-const SESSION_COOKIE_NAME = "better-auth.session_token";
+const SESSION_COOKIE_NAMES = new Set([
+  "better-auth.session_token",
+  "__Secure-better-auth.session_token",
+]);
 const HTTP_ONLY_PREFIX = "#HttpOnly_";
 
 export async function revokeUlcLinzProductionHttpSmokeSession(env = process.env) {
@@ -59,15 +62,26 @@ async function readSessionCookie(path) {
     .filter((line) => !line.startsWith("#"));
   const matches = rows
     .map((line) => line.split("\t"))
-    .filter((fields) => fields.length >= 7 && fields[5] === SESSION_COOKIE_NAME);
+    .filter(
+      (fields) =>
+        fields.length >= 7 &&
+        typeof fields[5] === "string" &&
+        SESSION_COOKIE_NAMES.has(fields[5]),
+    );
   if (matches.length !== 1) {
     throw new Error("Expected exactly one production HTTP smoke session cookie.");
   }
+  const name = matches[0][5];
   const value = matches[0][6];
-  if (typeof value !== "string" || value.length === 0 || /[\r\n;]/.test(value)) {
+  if (
+    typeof name !== "string" ||
+    typeof value !== "string" ||
+    value.length === 0 ||
+    /[\r\n;]/.test(value)
+  ) {
     throw new Error("Production HTTP smoke session cookie is invalid.");
   }
-  return `${SESSION_COOKIE_NAME}=${value}`;
+  return `${name}=${value}`;
 }
 
 function required(value, name) {
