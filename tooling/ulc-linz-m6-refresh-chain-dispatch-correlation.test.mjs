@@ -47,3 +47,18 @@ test('all canonical M6 refresh-chain children expose the correlation token as ru
     assert.match(source, /chain_attempt_id:\n\s+description: 'Optional unique parent-chain attempt ID for fail-closed dispatch correlation'/, path);
   }
 });
+
+
+test('M6 refresh chain passes resolved prerequisite run IDs to post-deploy smoke', () => {
+  const source = readFileSync(parentPath, 'utf8');
+
+  assert.match(
+    source,
+    /--arg pilot_ingress_run_id "\$pilot_run_id" --arg smoke_principal_run_id "\$smoke_principal_run_id" '\{confirmation:\$confirmation,pilot_ingress_run_id:\$pilot_ingress_run_id,smoke_principal_run_id:\$smoke_principal_run_id\}'/,
+  );
+  assert.equal(
+    source.includes('pilot_ingress_run_id:$pilot_run_id'),
+    false,
+    'post-deploy dispatch must reference the jq argument name, not the shell variable name',
+  );
+});
