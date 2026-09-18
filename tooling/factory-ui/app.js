@@ -310,6 +310,7 @@ function renderGeneratedPreviewLifecycle(lifecycle) {
   workflowLink.removeAttribute("href");
 
   if (lifecycle?.status !== "workflow-ready") return;
+  if (elements.detailPreviewStatus?.textContent === "Preview geprüft") return;
 
   if (elements.detailPreviewStatus) {
     elements.detailPreviewStatus.textContent = "Generischer Preview-Lifecycle bereit";
