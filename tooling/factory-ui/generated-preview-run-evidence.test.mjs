@@ -118,6 +118,32 @@ test("generic preview run evidence ignores wrong-head rerun spoofed and out-of-o
   assert.equal(evidence.previewVerified, false);
 });
 
+test("generic preview run evidence invalidates downstream completion after a newer failed operation", async () => {
+  const evidence = await deriveGeneratedPreviewRunEvidence("checklist", {
+    fetchImpl: githubFetch([
+      run("hyperdrive", 31, "2026-09-18T19:00:00Z", "2026-09-18T19:01:00Z"),
+      run("migrate", 32, "2026-09-18T19:01:00Z", "2026-09-18T19:02:00Z"),
+      run("bootstrap", 33, "2026-09-18T19:02:00Z", "2026-09-18T19:03:00Z"),
+      run("deploy", 34, "2026-09-18T19:03:00Z", "2026-09-18T19:04:00Z"),
+      run("deploy", 35, "2026-09-18T19:05:00Z", "2026-09-18T19:06:00Z", {
+        conclusion: "failure",
+      }),
+    ]),
+  });
+
+  assert.deepEqual(evidence.completedOperations, [
+    "hyperdrive",
+    "migrate",
+    "bootstrap",
+  ]);
+  assert.equal(evidence.nextOperation, "deploy");
+  assert.equal(evidence.previewVerified, false);
+  assert.deepEqual(
+    evidence.runs.map(({ runId }) => runId),
+    [31, 32, 33],
+  );
+});
+
 test("generic preview run evidence fails closed when GitHub evidence is unavailable or pagination is incomplete", async () => {
   const unavailable = await deriveGeneratedPreviewRunEvidence("checklist", {
     fetchImpl: async () => Response.json({ message: "down" }, { status: 503 }),
