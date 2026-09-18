@@ -27,8 +27,9 @@ test("generic generated preview lifecycle selects one app and one explicit mutat
   assert.match(workflow, /generated-app-preview-plan\.mjs/);
   assert.match(workflow, /generated-app-preview-hyperdrive\.mjs ensure/);
   assert.match(workflow, /generated-app-preview-hyperdrive\.mjs resolve/);
-  assert.match(workflow, /generated-app-preview-migrate\.mjs/);
-  assert.match(workflow, /entrypoint: "\.\/worker\/preview\.ts"/);
+  assert.match(workflow, /node --experimental-transform-types \.\/tooling\/generated-app-preview-migrate\.mjs/);
+  assert.match(workflow, /APPBASIS_ENTRYPOINT: \$\{\{ steps\.plan\.outputs\.entrypoint \}\}/);
+  assert.match(workflow, /entrypoint: process\.env\.APPBASIS_ENTRYPOINT/);
   assert.match(workflow, /generated-app-preview-smoke\.mjs/);
   assert.match(workflow, /generated-preview-database-smoke\.mjs/);
   assert.match(workflow, /--experimental-provision=false/);
