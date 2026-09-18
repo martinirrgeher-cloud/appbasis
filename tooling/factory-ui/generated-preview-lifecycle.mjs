@@ -1,8 +1,5 @@
 import { loadGeneratedAppPreviewContract } from "../generated-app-preview-contract.mjs";
-import {
-  verifyGeneratedPreviewPublishedAtRef,
-  verifyGeneratedPreviewPublishedOnMain,
-} from "./generated-preview-publication.mjs";
+import { verifyGeneratedPreviewPublishedAtRef } from "./generated-preview-publication.mjs";
 import { deriveGeneratedPreviewRunEvidence } from "./generated-preview-run-evidence.mjs";
 
 const WORKFLOW_PATH = ".github/workflows/generated-app-preview-lifecycle.yml";
@@ -63,10 +60,14 @@ export async function deriveGeneratedPreviewLifecycle(
               additionalRepositoryFiles: EXECUTION_CONTRACT_FILES,
             },
           )
-        : await verifyGeneratedPreviewPublishedOnMain(
+        : await verifyGeneratedPreviewPublishedAtRef(
             repositoryRoot,
             contract.definition.appId,
-            { fetchImpl: publicationFetchImpl },
+            "main",
+            {
+              fetchImpl: publicationFetchImpl,
+              additionalRepositoryFiles: EXECUTION_CONTRACT_FILES,
+            },
           );
 
     const status = !publishedOnMain
