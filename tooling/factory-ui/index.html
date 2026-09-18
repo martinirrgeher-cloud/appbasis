@@ -128,10 +128,21 @@
               <strong>Separat verwaltet</strong>
               <small>Der privilegierte Rollenpfad bleibt außerhalb der normalen Factory-Leseansicht.</small>
             </div>
-            <div class="factory-detail-gate">
+            <div class="factory-detail-gate" id="detail-preview-gate">
               <span>Preview</span>
-              <strong>Noch nicht im Factory-Snapshot</strong>
-              <small>Ein echter Deployment-Status wird erst nach einer eigenen, geprüften Anbindung angezeigt.</small>
+              <strong id="detail-preview-status">Preview-Vertrag wird geprüft</strong>
+              <small id="detail-preview-summary">Die Factory prüft, ob diese App den generischen Preview-Lifecycle sicher verwenden kann.</small>
+              <div class="factory-preview-lifecycle" id="detail-preview-lifecycle" hidden></div>
+              <a
+                class="ab-button ab-button--secondary factory-preview-workflow-link"
+                id="detail-preview-workflow"
+                href="#"
+                target="_blank"
+                rel="noreferrer"
+                hidden
+              >
+                Preview-Workflow öffnen
+              </a>
             </div>
             <div class="factory-detail-gate factory-detail-gate--locked">
               <span>Produktion</span>
@@ -230,7 +241,7 @@
               <div class="factory-readiness-list" aria-label="Preview Bereitschaft">
                 <div><span>App-Entwurf</span><strong>Bereit zum lokalen Anlegen</strong></div>
                 <div><span>Gestaltung</span><strong>Theme wird mitgespeichert</strong></div>
-                <div><span>Preview-Deployment</span><strong>Noch nicht verbunden</strong></div>
+                <div><span>Preview-Deployment</span><strong>Nach dem Anlegen über den generischen Preview-Lifecycle</strong></div>
                 <div><span>Automatische Tests</span><strong>Vor späterer Freigabe verpflichtend</strong></div>
               </div>
               <div class="factory-release-gate">
@@ -279,7 +290,7 @@
               <div><dt>Module</dt><dd id="preview-modules">Keine</dd></div>
               <div><dt>Dienste</dt><dd id="preview-services">Keine</dd></div>
               <div><dt>Rollen</dt><dd>Control Plane wird angebunden</dd></div>
-              <div><dt>Preview</dt><dd>Noch nicht erstellt</dd></div>
+              <div><dt>Preview</dt><dd>Nach dem Anlegen in der App-Detailansicht</dd></div>
               <div><dt>Produktion</dt><dd>Gesperrt</dd></div>
             </dl>
             <div class="factory-gate-note">
