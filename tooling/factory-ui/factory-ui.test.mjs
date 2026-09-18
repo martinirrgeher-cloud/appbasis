@@ -187,7 +187,10 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(appScriptBody, /renderGeneratedPreviewLifecycle\(app\.previewLifecycle\)/);
   assert.match(appScriptBody, /lifecycle\?\.status !== "workflow-ready"/);
   assert.match(appScriptBody, /Preview-Workflow bereit/);
+  assert.match(appScriptBody, /Preview-Vertrag lokal bereit/);
+  assert.match(appScriptBody, /noch nicht exakt auf main veröffentlicht/);
   assert.match(appScriptBody, /workflowLink\.href = lifecycle\.workflowUrl/);
+  assert.doesNotMatch(appScriptBody, /operation\.id === lifecycle\.nextOperation/);
   assert.match(appScriptBody, /lifecycle\.target\.environment/);
   assert.match(
     appScriptBody,
