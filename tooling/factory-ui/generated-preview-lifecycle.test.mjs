@@ -8,6 +8,7 @@ import { createGeneratedDatabaseManifest } from "../generated-database-manifest.
 import { deriveGeneratedPreviewLifecycle } from "./generated-preview-lifecycle.mjs";
 import {
   GENERATED_PREVIEW_PUBLICATION_FILES,
+  GENERATED_PREVIEW_ROOT_PUBLICATION_FILES,
   gitBlobSha,
 } from "./generated-preview-publication.mjs";
 
@@ -18,6 +19,7 @@ async function createPreviewFixture(t) {
   const appRoot = join(root, "apps", "checklist");
   await mkdir(join(appRoot, "worker"), { recursive: true });
   await mkdir(join(root, "modules", "tasks"), { recursive: true });
+  await writeFile(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
 
   const definition = {
     schemaVersion: 2,
@@ -75,6 +77,14 @@ async function publicationFetch(root) {
     );
     tree.push({
       path: `apps/checklist/${relativePath}`,
+      type: "blob",
+      sha: gitBlobSha(source),
+    });
+  }
+  for (const relativePath of GENERATED_PREVIEW_ROOT_PUBLICATION_FILES) {
+    const source = await readFile(join(root, relativePath));
+    tree.push({
+      path: relativePath,
       type: "blob",
       sha: gitBlobSha(source),
     });
