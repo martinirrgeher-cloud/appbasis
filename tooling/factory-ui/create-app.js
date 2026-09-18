@@ -4,6 +4,8 @@ const createReason = document.querySelector("#create-disabled-reason");
 const status = document.querySelector("#factory-status");
 const displayName = document.querySelector("#display-name");
 const appId = document.querySelector("#app-id");
+const brandMark = document.querySelector("#brand-mark");
+const accentColor = document.querySelector("#accent-color");
 const createdAppIds = new Set();
 const MAX_APP_ID_LENGTH = 63;
 
@@ -66,6 +68,8 @@ function currentCreateInput() {
   return {
     appId: appId?.value.trim() ?? "",
     displayName: displayName?.value.trim() ?? "",
+    brandMark: brandMark?.value.trim() ?? "",
+    accentColor: accentColor?.value ?? "",
     modules: checkedValues("module"),
     platformServices: checkedValues("service"),
   };
