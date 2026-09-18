@@ -186,12 +186,18 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(appScriptBody, /previewAccentForeground\(accent\)/);
   assert.match(appScriptBody, /renderGeneratedPreviewLifecycle\(app\.previewLifecycle\)/);
   assert.match(appScriptBody, /lifecycle\?\.status !== "workflow-ready"/);
+  assert.match(appScriptBody, /"workflow-evidence-unavailable"/);
   assert.match(appScriptBody, /Preview-Workflow bereit/);
+  assert.match(appScriptBody, /Preview technisch geprüft/);
+  assert.match(appScriptBody, /Nächster verifizierter Schritt/);
+  assert.match(appScriptBody, /GitHub-Run #/);
   assert.match(appScriptBody, /Preview-Vertrag lokal bereit/);
   assert.match(appScriptBody, /noch nicht exakt auf main veröffentlicht/);
   assert.match(appScriptBody, /workflowLink\.href = lifecycle\.workflowUrl/);
-  assert.doesNotMatch(appScriptBody, /operation\.id === lifecycle\.nextOperation/);
+  assert.match(appScriptBody, /lifecycle\.nextOperation === operation\.id/);
+  assert.match(appScriptBody, /completedOperations\.has\(operation\.id\)/);
   assert.match(appScriptBody, /lifecycle\.target\.environment/);
+  assert.match(appScriptBody, /lifecycle\.target\.hyperdriveName/);
   assert.match(
     appScriptBody,
     /modules\.includes\("tasks"\)[\s\S]*services\.includes\("identity"\)[\s\S]*services\.includes\("permissions"\)/,
@@ -287,6 +293,9 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(targetStylesBody, /\.factory-flow li\.is-complete/);
   assert.match(targetStylesBody, /\.factory-preview-lifecycle/);
   assert.match(targetStylesBody, /\.factory-preview-steps/);
+  assert.match(targetStylesBody, /\.factory-preview-steps li\.is-current/);
+  assert.match(targetStylesBody, /\.factory-preview-steps li\.is-complete/);
+  assert.match(targetStylesBody, /\.factory-preview-evidence-link/);
   assert.match(targetStylesBody, /\.factory-preview-workflow-link/);
 
   const previewTheme = await fetch(`${baseUrl}/preview-theme.mjs`);
