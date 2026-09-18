@@ -1,4 +1,5 @@
 import { renderGeneratedAppUiModule } from "./generated-app-ui-template.mjs";
+import { renderGeneratedPreviewWorker } from "./generated-preview-worker-template.mjs";
 
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 const SUPPORTED_GENERATED_MODULES = new Set(["tasks"]);
@@ -62,6 +63,9 @@ export function createIdentityRuntimeTemplate(input) {
       : []),
     ...(guardedTasks
       ? [file("worker/index.ts", generatedWorkerEntrypoint(appId, generatedUiEnabled))]
+      : []),
+    ...(generatedUiEnabled && guardedTasks
+      ? [file("worker/preview.ts", renderGeneratedPreviewWorker({ appId }))]
       : []),
     ...(guardedTasks
       ? [file("worker/postgres.ts", generatedPostgresRuntime())]
