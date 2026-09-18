@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   GENERATED_PREVIEW_PUBLICATION_FILES,
+  GENERATED_PREVIEW_ROOT_PUBLICATION_FILES,
   gitBlobSha,
   verifyGeneratedPreviewPublishedOnMain,
 } from "./generated-preview-publication.mjs";
@@ -19,6 +20,9 @@ async function createPublicationFixture(t) {
     await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, `${relativePath}\n`);
   }
+  for (const relativePath of GENERATED_PREVIEW_ROOT_PUBLICATION_FILES) {
+    await writeFile(join(root, relativePath), `${relativePath}\n`);
+  }
   return root;
 }
 
@@ -30,6 +34,14 @@ async function exactTree(root) {
     );
     tree.push({
       path: `apps/checklist/${relativePath}`,
+      type: "blob",
+      sha: gitBlobSha(source),
+    });
+  }
+  for (const relativePath of GENERATED_PREVIEW_ROOT_PUBLICATION_FILES) {
+    const source = await readFile(join(root, relativePath));
+    tree.push({
+      path: relativePath,
       type: "blob",
       sha: gitBlobSha(source),
     });
