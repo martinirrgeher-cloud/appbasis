@@ -16,6 +16,9 @@ export const GENERATED_PREVIEW_PUBLICATION_FILES = Object.freeze([
   "worker/ui.ts",
   "worker/preview.ts",
 ]);
+export const GENERATED_PREVIEW_ROOT_PUBLICATION_FILES = Object.freeze([
+  "pnpm-lock.yaml",
+]);
 
 export async function verifyGeneratedPreviewPublishedOnMain(
   repositoryRoot,
@@ -81,6 +84,18 @@ export async function verifyGeneratedPreviewPublishedOnMain(
 
     const remotePath = `apps/${appId}/${relativePath}`;
     if (remoteBlobs.get(remotePath) !== gitBlobSha(source)) {
+      return false;
+    }
+  }
+
+  for (const relativePath of GENERATED_PREVIEW_ROOT_PUBLICATION_FILES) {
+    let source;
+    try {
+      source = await readFile(join(repositoryRoot, relativePath));
+    } catch {
+      return false;
+    }
+    if (remoteBlobs.get(relativePath) !== gitBlobSha(source)) {
       return false;
     }
   }
