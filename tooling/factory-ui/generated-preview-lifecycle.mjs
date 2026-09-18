@@ -1,6 +1,10 @@
 import { loadGeneratedAppPreviewContract } from "../generated-app-preview-contract.mjs";
 import { verifyGeneratedPreviewPublishedAtRef } from "./generated-preview-publication.mjs";
-import { deriveGeneratedPreviewRunEvidence } from "./generated-preview-run-evidence.mjs";
+import { observeGeneratedPreviewRepositoryState } from "./generated-preview-repository-state.mjs";
+import {
+  deriveGeneratedPreviewRunEvidence,
+  verifyGeneratedPreviewCurrentMainHead,
+} from "./generated-preview-run-evidence.mjs";
 
 const WORKFLOW_PATH = ".github/workflows/generated-app-preview-lifecycle.yml";
 const WORKFLOW_URL =
@@ -35,6 +39,7 @@ export async function deriveGeneratedPreviewLifecycle(
   definition,
   {
     publicationFetchImpl = fetch,
+    repositoryStateImpl = observeGeneratedPreviewRepositoryState,
     runEvidenceFetchImpl = fetch,
   } = {},
 ) {
@@ -44,31 +49,58 @@ export async function deriveGeneratedPreviewLifecycle(
       definition?.appId,
     );
 
+    const initialRepositoryState = await repositoryStateImpl(repositoryRoot);
+    if (
+      initialRepositoryState?.status !== "clean" ||
+      typeof initialRepositoryState.headSha !== "string"
+    ) {
+      return localContractReady(contract);
+    }
+
     const runEvidence = await deriveGeneratedPreviewRunEvidence(
       contract.definition.appId,
       { fetchImpl: runEvidenceFetchImpl },
     );
+    const expectedHeadSha =
+      runEvidence.status === "available"
+        ? runEvidence.exactHeadSha
+        : initialRepositoryState.headSha;
+
+    if (initialRepositoryState.headSha !== expectedHeadSha) {
+      return localContractReady(contract);
+    }
+
+    const mainBeforePublication =
+      await verifyGeneratedPreviewCurrentMainHead(expectedHeadSha, {
+        fetchImpl: runEvidenceFetchImpl,
+      });
+    if (!mainBeforePublication) {
+      return localContractReady(contract);
+    }
+
+    const publishedAtExpectedHead = await verifyGeneratedPreviewPublishedAtRef(
+      repositoryRoot,
+      contract.definition.appId,
+      expectedHeadSha,
+      {
+        fetchImpl: publicationFetchImpl,
+        additionalRepositoryFiles: EXECUTION_CONTRACT_FILES,
+      },
+    );
+
+    const mainAfterPublication =
+      await verifyGeneratedPreviewCurrentMainHead(expectedHeadSha, {
+        fetchImpl: runEvidenceFetchImpl,
+      });
+    const finalRepositoryState = await repositoryStateImpl(repositoryRoot);
+    const exactCleanRepositoryState =
+      finalRepositoryState?.status === "clean" &&
+      finalRepositoryState.headSha === expectedHeadSha;
 
     const publishedOnMain =
-      runEvidence.status === "available"
-        ? await verifyGeneratedPreviewPublishedAtRef(
-            repositoryRoot,
-            contract.definition.appId,
-            runEvidence.exactHeadSha,
-            {
-              fetchImpl: publicationFetchImpl,
-              additionalRepositoryFiles: EXECUTION_CONTRACT_FILES,
-            },
-          )
-        : await verifyGeneratedPreviewPublishedAtRef(
-            repositoryRoot,
-            contract.definition.appId,
-            "main",
-            {
-              fetchImpl: publicationFetchImpl,
-              additionalRepositoryFiles: EXECUTION_CONTRACT_FILES,
-            },
-          );
+      publishedAtExpectedHead &&
+      mainAfterPublication &&
+      exactCleanRepositoryState;
 
     const status = !publishedOnMain
       ? "local-contract-ready"
@@ -126,6 +158,32 @@ export async function deriveGeneratedPreviewLifecycle(
       target: null,
     });
   }
+}
+
+function localContractReady(contract) {
+  return Object.freeze({
+    status: "local-contract-ready",
+    workflowName: "Generated App Preview Lifecycle",
+    workflowPath: WORKFLOW_PATH,
+    workflowUrl: WORKFLOW_URL,
+    workflowRef: null,
+    exactHeadSha: null,
+    requiresExplicitApply: true,
+    publishedOnMain: false,
+    initialOperation: "hyperdrive",
+    nextOperation: null,
+    progressEvidence: "not-applicable",
+    completedOperations: Object.freeze([]),
+    previewVerified: false,
+    runs: Object.freeze([]),
+    operations: OPERATIONS,
+    target: Object.freeze({
+      environment: contract.target.environment,
+      workerName: contract.target.workerName,
+      hyperdriveName: contract.target.hyperdriveName,
+      database: contract.target.database,
+    }),
+  });
 }
 
 function operation(id, label, detail) {
