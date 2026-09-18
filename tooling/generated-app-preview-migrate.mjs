@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { createPostgresDatabase } from "@appbasis/database/node-runtime";
+import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 
 import { createGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
