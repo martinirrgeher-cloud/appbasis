@@ -44,6 +44,7 @@ test("uses a collision-resistant app package namespace and shared identity HTTP 
   assert.match(worker, /\/api\/auth\/sign-in/);
   assert.match(worker, /\/api\/auth\/session/);
   assert.match(worker, /\/api\/auth\/change-required-password/);
+  assert.doesNotMatch(worker, /generatedUiResponse/);
   assert.doesNotMatch(worker, /reference/i);
   assert.doesNotMatch(worker, /@appbasis\/permissions/);
   assert.doesNotMatch(worker, /tasks/);
@@ -113,6 +114,7 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
   assert.match(worker, /app\.get\("\/api\/tasks"/);
   assert.match(worker, /app\.post\("\/api\/tasks"/);
   assert.match(worker, /app\.post\("\/api\/tasks\/:id\/toggle"/);
+  assert.doesNotMatch(worker, /generatedUiResponse/);
 
   assert.match(generatedTest, /InMemoryPermissionStore/);
   assert.match(generatedTest, /unauthenticated\.status\)\.toBe\(401\)/);
@@ -209,6 +211,46 @@ test("generates a self-test that exercises the second consumer contract", () => 
   assert.match(generatedTest, /\/api\/health/);
   assert.match(generatedTest, /\/api\/auth\/sign-in/);
   assert.match(generatedTest, /appbasis\.session=test-token/);
+});
+
+test("renders persisted branding into a generated guarded app UI without changing legacy outputs", () => {
+  const template = createIdentityRuntimeTemplate({
+    ...input,
+    modules: ["tasks"],
+    platformServices: ["identity", "permissions"],
+    brandMark: "CL",
+    accentColor: "#0F766E",
+  });
+  const ui = content(template, "worker/ui.ts");
+  const worker = content(template, "worker/app.ts");
+  const entrypoint = content(template, "worker/index.ts");
+
+  assert.match(ui, />CL</);
+  assert.match(ui, /--app-accent: #0f766e/);
+  assert.match(ui, /const HAS_TASKS = true/);
+  assert.match(ui, /Aufgaben verwalten/);
+  assert.match(ui, /content-security-policy/);
+  assert.match(worker, /generatedUiResponse/);
+  assert.match(worker, /app\.get\("\/app\.css"/);
+  assert.match(worker, /app\.get\("\/app\.js"/);
+  assert.match(entrypoint, /staticUiResponse = generatedUiResponse\(request\)/);
+  assert.deepEqual(
+    template.files.map((entry) => entry.path),
+    [
+      "package.json",
+      "test/app.test.ts",
+      "test/app.postgres.e2e.ts",
+      "test/worker.test.ts",
+      "tsconfig.json",
+      "vitest.config.ts",
+      "vitest.postgres.config.ts",
+      "worker/app.ts",
+      "worker/ui.ts",
+      "worker/index.ts",
+      "worker/postgres.ts",
+      PRODUCTION_BOOTSTRAP_CONFIG_PATH,
+    ],
+  );
 });
 
 test("fails closed on invalid or unsupported runtime inputs", () => {

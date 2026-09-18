@@ -121,7 +121,7 @@ test("persists explicit app branding without changing the app definition schema"
       brandMark: "ba",
       accentColor: "#0F766E",
       modules: [],
-      platformServices: [],
+      platformServices: ["identity"],
     },
     testGeneratorOptions(root),
   );
@@ -146,9 +146,17 @@ test("persists explicit app branding without changing the app definition schema"
       appId: "branded",
       displayName: "Branded App",
       modules: [],
-      platformServices: [],
+      platformServices: ["identity"],
     },
   );
+
+  const generatedUi = await readFile(
+    join(root, "apps", "branded", "worker", "ui.ts"),
+    "utf8",
+  );
+  assert.match(generatedUi, />BA</);
+  assert.match(generatedUi, /--app-accent: #0f766e/);
+  assert.match(generatedUi, /Branded App/);
 });
 
 test("creates permission-guarded tasks runtime only from explicit platform composition", async (t) => {

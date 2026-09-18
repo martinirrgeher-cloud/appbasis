@@ -1,3 +1,5 @@
+import { renderGeneratedAppUiModule } from "./generated-app-ui-template.mjs";
+
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 const SUPPORTED_GENERATED_MODULES = new Set(["tasks"]);
 const SUPPORTED_GENERATED_PLATFORM_SERVICES = new Set([
@@ -15,6 +17,9 @@ export function createIdentityRuntimeTemplate(input) {
   if (!platformServices.includes("identity")) {
     throw new Error("Generated identity runtime requires the identity platform service.");
   }
+
+  const generatedUiEnabled =
+    input?.brandMark !== undefined || input?.accentColor !== undefined;
 
   const packageName = `@appbasis/app-${appId}`;
   const guardedTasks =
@@ -36,9 +41,27 @@ export function createIdentityRuntimeTemplate(input) {
     ...(guardedTasks
       ? [file("vitest.postgres.config.ts", generatedPostgresVitestConfig())]
       : []),
-    file("worker/app.ts", generatedWorkerApp(appId, modules, platformServices)),
+    file(
+      "worker/app.ts",
+      generatedWorkerApp(appId, modules, platformServices, generatedUiEnabled),
+    ),
+    ...(generatedUiEnabled
+      ? [
+          file(
+            "worker/ui.ts",
+            renderGeneratedAppUiModule({
+              appId,
+              displayName,
+              modules,
+              platformServices,
+              brandMark: input?.brandMark,
+              accentColor: input?.accentColor,
+            }),
+          ),
+        ]
+      : []),
     ...(guardedTasks
-      ? [file("worker/index.ts", generatedWorkerEntrypoint(appId))]
+      ? [file("worker/index.ts", generatedWorkerEntrypoint(appId, generatedUiEnabled))]
       : []),
     ...(guardedTasks
       ? [file("worker/postgres.ts", generatedPostgresRuntime())]
@@ -114,11 +137,33 @@ function generatedPostgresVitestConfig() {
   return `import { defineConfig } from "vitest/config";\n\nexport default defineConfig({\n  test: {\n    environment: "node",\n    include: ["test/**/*.postgres.e2e.ts"],\n  },\n});\n`;
 }
 
-function generatedWorkerApp(appId, modules, platformServices) {
+function generatedWorkerApp(
+  appId,
+  modules,
+  platformServices,
+  generatedUiEnabled = false,
+) {
   const guardedTasks =
     modules.includes("tasks") && platformServices.includes("permissions");
-  if (!guardedTasks) return generatedIdentityWorkerApp(appId);
-  return generatedTasksWorkerApp(appId);
+  const base = guardedTasks
+    ? generatedTasksWorkerApp(appId)
+    : generatedIdentityWorkerApp(appId);
+  return generatedUiEnabled ? withGeneratedUiRoutes(base) : base;
+}
+
+function withGeneratedUiRoutes(content) {
+  const uiImport = 'import { generatedUiResponse } from "./ui";\n';
+  const routeAnchor = "  const app = new Hono();\n";
+  const uiRoutes =
+    '  const app = new Hono();\n' +
+    '  app.get("/", (context) => generatedUiResponse(context.req.raw) ?? new Response("Not Found", { status: 404 }));\n' +
+    '  app.get("/app.css", (context) => generatedUiResponse(context.req.raw) ?? new Response("Not Found", { status: 404 }));\n' +
+    '  app.get("/app.js", (context) => generatedUiResponse(context.req.raw) ?? new Response("Not Found", { status: 404 }));\n';
+
+  if (!content.includes(routeAnchor)) {
+    throw new Error("Generated Worker app is missing the Hono construction anchor.");
+  }
+  return uiImport + content.replace(routeAnchor, uiRoutes);
 }
 
 function generatedIdentityWorkerApp(appId) {
@@ -229,8 +274,8 @@ function requiredPostgresConnectionString(value: string): string {
 `;
 }
 
-function generatedWorkerEntrypoint(appId) {
-  return `import { createGeneratedApp } from "./app";
+function generatedWorkerEntrypoint(appId, generatedUiEnabled = false) {
+  const base = `import { createGeneratedApp } from "./app";
 import {
   createGeneratedPostgresApplicationRuntime,
   type GeneratedPostgresApplicationRuntime,
@@ -389,8 +434,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 `;
-}
+  if (!generatedUiEnabled) return base;
 
+  const uiImport = 'import { generatedUiResponse } from "./ui";\n';
+  const fetchAnchor = '      const url = new URL(request.url);\n';
+  const uiFetch =
+    '      const url = new URL(request.url);\n' +
+    '      const staticUiResponse = generatedUiResponse(request);\n' +
+    '      if (staticUiResponse !== null) {\n' +
+    '        return staticUiResponse;\n' +
+    '      }\n';
+  if (!base.includes(fetchAnchor)) {
+    throw new Error("Generated Worker entrypoint is missing the request URL anchor.");
+  }
+  return uiImport + base.replace(fetchAnchor, uiFetch);
+}
 function generatedPostgresE2ETest() {
   return `import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
