@@ -124,6 +124,12 @@ test("factory console exposes app details and local creation without enabling de
   assert.equal(page.status, 200);
   const pageBody = await page.text();
   assert.match(pageBody, /AppBasis Factory/);
+  assert.match(pageBody, /class="factory-app-shell"/);
+  assert.match(pageBody, /class="factory-nav-rail"/);
+  assert.match(pageBody, /class="factory-mobile-header"/);
+  assert.match(pageBody, /class="factory-tab__icon"/);
+  assert.match(pageBody, /data-tab="apps"/);
+  assert.match(pageBody, /data-tab="create"/);
   assert.match(pageBody, /data-panel="detail"/);
   assert.match(pageBody, /data-action="back-to-apps"/);
   assert.match(pageBody, /id="detail-name"/);
@@ -209,6 +215,17 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(createScriptBody, /FACTORY_STATE_UNAVAILABLE/);
   assert.doesNotMatch(createScriptBody, /brandMark:/);
   assert.doesNotMatch(createScriptBody, /accentColor:/);
+
+  const shellStyles = await fetch(`${baseUrl}/styles.css`);
+  assert.equal(shellStyles.status, 200);
+  assert.match(shellStyles.headers.get("content-type") ?? "", /^text\/css/);
+  const shellStylesBody = await shellStyles.text();
+  assert.match(shellStylesBody, /\.factory-nav-rail/);
+  assert.match(shellStylesBody, /\.factory-mobile-header/);
+  assert.match(shellStylesBody, /grid-template-columns: 252px minmax\(0, 1fr\)/);
+  assert.match(shellStylesBody, /@media \(min-width: 1024px\)/);
+  assert.match(shellStylesBody, /position: fixed/);
+  assert.match(shellStylesBody, /position: sticky/);
 
   const targetStyles = await fetch(`${baseUrl}/target-flow.css`);
   assert.equal(targetStyles.status, 200);
