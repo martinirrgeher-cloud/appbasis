@@ -311,15 +311,24 @@ function renderGeneratedPreviewLifecycle(lifecycle) {
   workflowLink.hidden = true;
   workflowLink.removeAttribute("href");
 
-  if (lifecycle?.status !== "workflow-ready") return;
+  if (
+    lifecycle?.status !== "workflow-ready" &&
+    lifecycle?.status !== "local-contract-ready"
+  ) {
+    return;
+  }
   if (elements.detailPreviewStatus?.textContent === "Preview geprüft") return;
 
+  const published = lifecycle.status === "workflow-ready";
   if (elements.detailPreviewStatus) {
-    elements.detailPreviewStatus.textContent = "Generischer Preview-Lifecycle bereit";
+    elements.detailPreviewStatus.textContent = published
+      ? "Preview-Workflow bereit"
+      : "Preview-Vertrag lokal bereit";
   }
   if (elements.detailPreviewSummary) {
-    elements.detailPreviewSummary.textContent =
-      "Die App erfüllt den kanonischen Preview-Vertrag. Die Provider-Schritte bleiben einzeln und ausdrücklich freigabepflichtig.";
+    elements.detailPreviewSummary.textContent = published
+      ? "Der exakte Preview-Vertrag ist auf main veröffentlicht. Die Provider-Schritte bleiben einzeln und ausdrücklich freigabepflichtig."
+      : "Die App erfüllt den lokalen Preview-Vertrag, ist aber noch nicht exakt auf main veröffentlicht. Erst nach Commit und Push kann der GitHub-Workflow diesen Stand ausführen.";
   }
 
   const target = document.createElement("div");
@@ -337,12 +346,11 @@ function renderGeneratedPreviewLifecycle(lifecycle) {
   list.className = "factory-preview-steps";
   list.setAttribute("aria-label", "Preview-Lifecycle");
 
-  for (const operation of lifecycle.operations ?? []) {
+  for (const [index, operation] of (lifecycle.operations ?? []).entries()) {
     const item = document.createElement("li");
-    if (operation.id === lifecycle.nextOperation) item.classList.add("is-current");
 
     const marker = document.createElement("span");
-    marker.textContent = operation.id === lifecycle.nextOperation ? "→" : "–";
+    marker.textContent = String(index + 1);
     marker.setAttribute("aria-hidden", "true");
     const copy = document.createElement("div");
     const label = document.createElement("strong");
@@ -357,7 +365,11 @@ function renderGeneratedPreviewLifecycle(lifecycle) {
   container.append(target, list);
   container.hidden = false;
 
-  if (typeof lifecycle.workflowUrl === "string" && lifecycle.workflowUrl.length > 0) {
+  if (
+    published &&
+    typeof lifecycle.workflowUrl === "string" &&
+    lifecycle.workflowUrl.length > 0
+  ) {
     workflowLink.href = lifecycle.workflowUrl;
     workflowLink.hidden = false;
   }
@@ -494,6 +506,9 @@ function renderFactoryLifecycle(previewReadiness, readiness, releaseReadiness) {
 
 function previewReadinessLabel(readiness, lifecycle) {
   if (lifecycle?.status === "workflow-ready") return "Preview-Workflow bereit";
+  if (lifecycle?.status === "local-contract-ready") {
+    return "Preview lokal bereit · Veröffentlichung fehlt";
+  }
   return readiness?.status === "repository-ready"
     ? "Preview lokal vorbereitet"
     : "Preview-Voraussetzungen fehlen";
