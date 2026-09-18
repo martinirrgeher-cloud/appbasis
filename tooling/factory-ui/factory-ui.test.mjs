@@ -147,14 +147,19 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(pageBody, /data-flow-step="branding"/);
   assert.match(pageBody, /data-flow-step="roles"/);
   assert.match(pageBody, /data-flow-step="preview"/);
-  assert.match(pageBody, /data-flow-step="release"/);
+  assert.doesNotMatch(pageBody, /data-flow-step="release"/);
+  assert.match(pageBody, /data-wizard-panel="identity"/);
+  assert.match(pageBody, /data-wizard-panel="preview" hidden/);
+  assert.match(pageBody, /data-wizard-back/);
+  assert.match(pageBody, /data-wizard-next/);
   assert.match(pageBody, /id="brand-mark"/);
   assert.match(pageBody, /id="accent-color"/);
   assert.match(pageBody, /Theme-Manifest gespeichert/);
-  assert.match(pageBody, /Produktion bleibt fail-closed/);
+  assert.match(pageBody, /Produktion bleibt getrennt und fail-closed/);
   assert.match(pageBody, /id="create-app-button" type="submit" disabled/);
   assert.match(pageBody, /id="factory-status"/);
   assert.match(pageBody, /src="\/create-app\.js"/);
+  assert.match(pageBody, /src="\/create-wizard\.js"/);
   assert.match(pageBody, /Deployments, Provider-Ressourcen und Produktionsfreigaben werden dadurch nicht ausgelöst/);
 
   const appScript = await fetch(`${baseUrl}/app.js`);
@@ -227,6 +232,17 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(createScriptBody, /FACTORY_STATE_UNAVAILABLE/);
   assert.match(createScriptBody, /brandMark: brandMark\?\.value\.trim\(\)/);
   assert.match(createScriptBody, /accentColor: accentColor\?\.value/);
+  assert.match(createScriptBody, /form\?\.dataset\.wizardStep === "preview"/);
+
+  const wizardScript = await fetch(`${baseUrl}/create-wizard.js`);
+  assert.equal(wizardScript.status, 200);
+  assert.match(wizardScript.headers.get("content-type") ?? "", /^text\/javascript/);
+  const wizardScriptBody = await wizardScript.text();
+  assert.match(wizardScriptBody, /Object\.freeze\(\["identity", "branding", "modules", "roles", "preview"\]\)/);
+  assert.match(wizardScriptBody, /form\.dataset\.wizardStep = currentStep/);
+  assert.match(wizardScriptBody, /item\.classList\.toggle\("is-complete", complete\)/);
+  assert.match(wizardScriptBody, /nextButton\.disabled = !currentStepValid\(\)/);
+  assert.doesNotMatch(wizardScriptBody, /releaseProduction/);
 
   const shellStyles = await fetch(`${baseUrl}/styles.css`);
   assert.equal(shellStyles.status, 200);
@@ -245,6 +261,8 @@ test("factory console exposes app details and local creation without enabling de
   const targetStylesBody = await targetStyles.text();
   assert.match(targetStylesBody, /\.factory-flow/);
   assert.match(targetStylesBody, /\.factory-detail-header/);
+  assert.match(targetStylesBody, /\.factory-wizard-actions/);
+  assert.match(targetStylesBody, /\.factory-flow li\.is-complete/);
 
   const previewTheme = await fetch(`${baseUrl}/preview-theme.mjs`);
   assert.equal(previewTheme.status, 200);
