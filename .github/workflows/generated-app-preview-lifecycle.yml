@@ -271,7 +271,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: >-
           pnpm exec wrangler deploy
-          --cwd "../${{ inputs.app_id }}"
+          --cwd "../${APPBASIS_GENERATED_APP_ID}"
           --config wrangler.preview.generated.json
           --dry-run
           --experimental-provision=false
@@ -303,7 +303,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: >-
           pnpm exec wrangler deploy
-          --cwd "../${{ inputs.app_id }}"
+          --cwd "../${APPBASIS_GENERATED_APP_ID}"
           --config wrangler.preview.generated.json
           --experimental-provision=false
           --experimental-auto-create=false
