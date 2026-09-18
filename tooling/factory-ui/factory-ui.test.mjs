@@ -159,6 +159,9 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(pageBody, /data-wizard-next/);
   assert.match(pageBody, /id="brand-mark"/);
   assert.match(pageBody, /id="accent-color"/);
+  assert.match(pageBody, /id="create-preview-readiness"/);
+  assert.match(pageBody, /id="preview-lifecycle"/);
+  assert.match(pageBody, /Benötigt Aufgaben \+ Benutzer & Login \+ Rollen & Rechte/);
   assert.match(pageBody, /Theme-Manifest gespeichert/);
   assert.match(pageBody, /Produktion bleibt getrennt und fail-closed/);
   assert.match(pageBody, /id="create-app-button" type="submit" disabled/);
@@ -186,6 +189,12 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(appScriptBody, /Preview-Workflow bereit/);
   assert.match(appScriptBody, /workflowLink\.href = lifecycle\.workflowUrl/);
   assert.match(appScriptBody, /lifecycle\.target\.environment/);
+  assert.match(
+    appScriptBody,
+    /modules\.includes\("tasks"\)[\s\S]*services\.includes\("identity"\)[\s\S]*services\.includes\("permissions"\)/,
+  );
+  assert.match(appScriptBody, /Generischer Preview-Lifecycle verfügbar/);
+  assert.match(appScriptBody, /Für diesen Entwurf noch nicht verfügbar/);
   assert.match(
     appScriptBody,
     /function returnToApps\(appIdToRestore = state\.selectedAppId\)/,
