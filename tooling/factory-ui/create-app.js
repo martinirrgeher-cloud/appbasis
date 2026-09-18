@@ -84,11 +84,15 @@ function syncCreateAvailability() {
   const validAppIdSyntax = /^[a-z][a-z0-9-]*$/.test(input.appId);
   const validAppId = validAppIdLength && validAppIdSyntax;
   const duplicate = validAppId && appIdAlreadyExists(input.appId);
+  const wizardReady = form?.dataset.wizardStep === "preview";
 
-  createButton.disabled = createPending || !validName || !validAppId || duplicate;
+  createButton.disabled =
+    createPending || !wizardReady || !validName || !validAppId || duplicate;
 
   if (createPending) {
     createReason.textContent = "Die App wird gerade lokal erzeugt.";
+  } else if (!wizardReady) {
+    createReason.textContent = "Führe den App-Entwurf zuerst bis zur Preview-Prüfung.";
   } else if (!validName) {
     createReason.textContent = "Bitte zuerst einen App-Namen eingeben.";
   } else if (!validAppIdLength) {
