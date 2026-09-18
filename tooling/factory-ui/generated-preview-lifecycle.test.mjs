@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
 import { deriveGeneratedPreviewLifecycle } from "./generated-preview-lifecycle.mjs";
+import {
+  GENERATED_PREVIEW_PUBLICATION_FILES,
+  gitBlobSha,
+} from "./generated-preview-publication.mjs";
 
 async function createPreviewFixture(t) {
   const root = await mkdtemp(join(tmpdir(), "appbasis-factory-preview-"));
@@ -63,12 +67,37 @@ async function createPreviewFixture(t) {
   return { root, definition };
 }
 
+async function publicationFetch(root) {
+  const tree = [];
+  for (const relativePath of GENERATED_PREVIEW_PUBLICATION_FILES) {
+    const source = await readFile(
+      join(root, "apps", "checklist", ...relativePath.split("/")),
+    );
+    tree.push({
+      path: `apps/checklist/${relativePath}`,
+      type: "blob",
+      sha: gitBlobSha(source),
+    });
+  }
+  return async () =>
+    Response.json({
+      truncated: false,
+      tree,
+    });
+}
+
 test("Factory exposes the exact generic preview workflow for a canonical generated app", async (t) => {
   const { root, definition } = await createPreviewFixture(t);
-  const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition);
+  const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
+    publicationFetchImpl: await publicationFetch(root),
+  });
 
   assert.equal(lifecycle.status, "workflow-ready");
-  assert.equal(lifecycle.nextOperation, "hyperdrive");
+  assert.equal(lifecycle.publishedOnMain, true);
+  assert.equal(lifecycle.workflowRef, "main");
+  assert.equal(lifecycle.initialOperation, "hyperdrive");
+  assert.equal(lifecycle.nextOperation, null);
+  assert.equal(lifecycle.progressEvidence, "not-observed");
   assert.equal(lifecycle.requiresExplicitApply, true);
   assert.equal(
     lifecycle.workflowPath,
@@ -90,6 +119,22 @@ test("Factory exposes the exact generic preview workflow for a canonical generat
   });
 });
 
+test("Factory keeps a local generated app pending until its exact preview files are published", async (t) => {
+  const { root, definition } = await createPreviewFixture(t);
+  const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
+    publicationFetchImpl: async () =>
+      Response.json({ message: "not published" }, { status: 404 }),
+  });
+
+  assert.equal(lifecycle.status, "local-contract-ready");
+  assert.equal(lifecycle.publishedOnMain, false);
+  assert.equal(lifecycle.workflowRef, null);
+  assert.equal(lifecycle.initialOperation, "hyperdrive");
+  assert.equal(lifecycle.nextOperation, null);
+  assert.equal(lifecycle.progressEvidence, "not-observed");
+  assert.notEqual(lifecycle.target, null);
+});
+
 test("Factory keeps generic preview actions closed when the canonical preview wrapper is absent", async (t) => {
   const { root, definition } = await createPreviewFixture(t);
   await rm(join(root, "apps", "checklist", "worker", "preview.ts"));
@@ -97,6 +142,8 @@ test("Factory keeps generic preview actions closed when the canonical preview wr
   const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition);
 
   assert.equal(lifecycle.status, "not-eligible");
+  assert.equal(lifecycle.publishedOnMain, false);
+  assert.equal(lifecycle.initialOperation, null);
   assert.equal(lifecycle.nextOperation, null);
   assert.equal(lifecycle.target, null);
   assert.equal(lifecycle.requiresExplicitApply, true);
