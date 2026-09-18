@@ -358,7 +358,7 @@ jobs:
               smoke_principal_run_id="$(latest_success_run 'm6-ulc-production-smoke-principal-bootstrap.yml')"
               dispatch_and_wait \
                 'm6-ulc-production-post-deploy-smoke.yml' \
-                "$(jq -cn --arg confirmation 'RUN-ULC-M6-PRODUCTION-SMOKE' --arg pilot_ingress_run_id "$pilot_run_id" --arg smoke_principal_run_id "$smoke_principal_run_id" '{confirmation:$confirmation,pilot_ingress_run_id:$pilot_run_id,smoke_principal_run_id:$smoke_principal_run_id}')" \
+                "$(jq -cn --arg confirmation 'RUN-ULC-M6-PRODUCTION-SMOKE' --arg pilot_ingress_run_id "$pilot_run_id" --arg smoke_principal_run_id "$smoke_principal_run_id" '{confirmation:$confirmation,pilot_ingress_run_id:$pilot_ingress_run_id,smoke_principal_run_id:$smoke_principal_run_id}')" \
                 'production post-deploy smoke' >/dev/null
               ;;
           esac
