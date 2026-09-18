@@ -207,7 +207,7 @@ jobs:
             appId,
             hyperdriveId: process.env.APPBASIS_HYPERDRIVE_ID,
             baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
-            entrypoint: "./worker/preview.ts",
+            entrypoint: process.env.APPBASIS_ENTRYPOINT,
             outputPath,
           };
           if (process.env.APPBASIS_OPERATION === "bootstrap") {
