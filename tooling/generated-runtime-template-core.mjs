@@ -1,3 +1,5 @@
+import { renderGeneratedAppUiModule } from "./generated-app-ui-template.mjs";
+
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 const SUPPORTED_GENERATED_MODULES = new Set(["tasks"]);
 const SUPPORTED_GENERATED_PLATFORM_SERVICES = new Set([
@@ -37,6 +39,17 @@ export function createIdentityRuntimeTemplate(input) {
       ? [file("vitest.postgres.config.ts", generatedPostgresVitestConfig())]
       : []),
     file("worker/app.ts", generatedWorkerApp(appId, modules, platformServices)),
+    file(
+      "worker/ui.ts",
+      renderGeneratedAppUiModule({
+        appId,
+        displayName,
+        modules,
+        platformServices,
+        brandMark: input?.brandMark,
+        accentColor: input?.accentColor,
+      }),
+    ),
     ...(guardedTasks
       ? [file("worker/index.ts", generatedWorkerEntrypoint(appId))]
       : []),
@@ -117,8 +130,24 @@ function generatedPostgresVitestConfig() {
 function generatedWorkerApp(appId, modules, platformServices) {
   const guardedTasks =
     modules.includes("tasks") && platformServices.includes("permissions");
-  if (!guardedTasks) return generatedIdentityWorkerApp(appId);
-  return generatedTasksWorkerApp(appId);
+  return withGeneratedUiRoutes(
+    guardedTasks ? generatedTasksWorkerApp(appId) : generatedIdentityWorkerApp(appId),
+  );
+}
+
+function withGeneratedUiRoutes(content) {
+  const uiImport = 'import { generatedUiResponse } from "./ui";\n';
+  const routeAnchor = "  const app = new Hono();\n";
+  const uiRoutes =
+    '  const app = new Hono();\n' +
+    '  app.get("/", (context) => generatedUiResponse(context.req.raw) ?? new Response("Not Found", { status: 404 }));\n' +
+    '  app.get("/app.css", (context) => generatedUiResponse(context.req.raw) ?? new Response("Not Found", { status: 404 }));\n' +
+    '  app.get("/app.js", (context) => generatedUiResponse(context.req.raw) ?? new Response("Not Found", { status: 404 }));\n';
+
+  if (!content.includes(routeAnchor)) {
+    throw new Error("Generated Worker app is missing the Hono construction anchor.");
+  }
+  return uiImport + content.replace(routeAnchor, uiRoutes);
 }
 
 function generatedIdentityWorkerApp(appId) {
@@ -231,6 +260,7 @@ function requiredPostgresConnectionString(value: string): string {
 
 function generatedWorkerEntrypoint(appId) {
   return `import { createGeneratedApp } from "./app";
+import { generatedUiResponse } from "./ui";
 import {
   createGeneratedPostgresApplicationRuntime,
   type GeneratedPostgresApplicationRuntime,
@@ -252,6 +282,10 @@ export function createGeneratedWorker(
   return Object.freeze({
     async fetch(request: Request, env: unknown): Promise<Response> {
       const url = new URL(request.url);
+      const staticUiResponse = generatedUiResponse(request);
+      if (staticUiResponse !== null) {
+        return staticUiResponse;
+      }
       if (url.pathname === "/api/health") {
         return Response.json({ status: "ok", appId: "${appId}" });
       }
