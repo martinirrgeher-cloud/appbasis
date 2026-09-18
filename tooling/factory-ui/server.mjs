@@ -16,6 +16,8 @@ const LOOPBACK_ORIGIN_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const CREATE_APP_KEYS = new Set([
   "appId",
   "displayName",
+  "brandMark",
+  "accentColor",
   "modules",
   "platformServices",
 ]);
