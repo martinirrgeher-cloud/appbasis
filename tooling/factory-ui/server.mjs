@@ -50,6 +50,8 @@ export function createFactoryServer(options = {}) {
       options.generatedPreviewPublicationFetchImpl,
     generatedPreviewRunEvidenceFetchImpl:
       options.generatedPreviewRunEvidenceFetchImpl,
+    generatedPreviewRepositoryStateImpl:
+      options.generatedPreviewRepositoryStateImpl,
   };
 
   return createServer(async (request, response) => {
