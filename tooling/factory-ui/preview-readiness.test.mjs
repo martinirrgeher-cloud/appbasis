@@ -110,7 +110,10 @@ test("factory UI surfaces repository readiness while keeping external preview ac
     "utf8",
   );
 
-  assert.match(appScript, /previewReadinessLabel\(app\.previewReadiness\)/);
+  assert.match(
+    appScript,
+    /previewReadinessLabel\(\s*app\.previewReadiness,\s*app\.previewLifecycle,\s*\)/,
+  );
   assert.match(
     appScript,
     /renderPreviewReadiness\(\s*app\.previewReadiness,\s*app\.productionReadiness,\s*app\.productionReleaseReadiness,\s*\)/,
@@ -121,6 +124,8 @@ test("factory UI surfaces repository readiness while keeping external preview ac
   assert.match(appScript, /Preview wurde im aktuellen M6-Snapshot abgenommen/);
   assert.doesNotMatch(appScript, /Externe Preview-Voraussetzungen werden noch nicht geprüft/);
   assert.doesNotMatch(appScript, /Preview bleibt gesperrt.*repository-ready/);
+  assert.match(appScript, /renderGeneratedPreviewLifecycle\(app\.previewLifecycle\)/);
+  assert.match(appScript, /workflowLink\.href = lifecycle\.workflowUrl/);
   assert.doesNotMatch(appScript, /\/api\/factory\/preview/);
 });
 
