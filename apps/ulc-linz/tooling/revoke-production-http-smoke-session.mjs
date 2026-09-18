@@ -9,7 +9,6 @@ import { parseUlcLinzProductionDatabaseUrl } from "../../../tooling/ulc-linz-m6-
 
 const SESSION_COOKIE_NAME = "better-auth.session_token";
 const HTTP_ONLY_PREFIX = "#HttpOnly_";
-const BASE_URL = "https://app.ulc-linz.at";
 
 export async function revokeUlcLinzProductionHttpSmokeSession(env = process.env) {
   const databaseUrl = required(
@@ -25,19 +24,23 @@ export async function revokeUlcLinzProductionHttpSmokeSession(env = process.env)
     env.ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE,
     "ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE",
   );
+  const baseURL = requiredHttpsOrigin(
+    env.ULC_LINZ_PRODUCTION_BASE_URL,
+    "ULC_LINZ_PRODUCTION_BASE_URL",
+  );
   const sessionToken = await readSessionCookie(cookieFile);
 
   const connection = createPostgresDatabase(databaseUrl);
   try {
     const auth = createBetterAuthRuntime({
       database: connection.database,
-      baseURL: BASE_URL,
+      baseURL,
       secret: authSecret,
     });
     const backend = new BetterAuthIdentityBackend({
       auth,
       sql: connection.client,
-      baseURL: BASE_URL,
+      baseURL,
     });
     await backend.endSession(sessionToken);
   } finally {
@@ -72,6 +75,27 @@ function required(value, name) {
     throw new Error(`Missing or invalid ${name}.`);
   }
   return value;
+}
+
+function requiredHttpsOrigin(value, name) {
+  const normalized = required(value, name);
+  try {
+    const url = new URL(normalized);
+    if (
+      url.protocol !== "https:" ||
+      url.username.length > 0 ||
+      url.password.length > 0 ||
+      (url.pathname !== "" && url.pathname !== "/") ||
+      url.search.length > 0 ||
+      url.hash.length > 0 ||
+      url.origin !== normalized
+    ) {
+      throw new Error("invalid origin");
+    }
+    return url.origin;
+  } catch {
+    throw new Error(`Missing or invalid ${name}.`);
+  }
 }
 
 const invokedPath = process.argv[1];
