@@ -151,7 +151,7 @@ test("fails closed on invalid provider, Worker-name, entrypoint or public-origin
         hyperdriveId: "provider-id",
         baseURL: "https://tasks-preview.example.test",
       }),
-    /Worker name is invalid/,
+    /appId must match/,
   );
   const longAppConfig = renderGeneratedPreviewWranglerConfig({
     appId: `a${"b".repeat(54)}`,
