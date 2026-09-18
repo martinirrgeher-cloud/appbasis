@@ -207,6 +207,13 @@ test("creates permission-guarded tasks runtime only from explicit platform compo
   assert.match(worker, /assertPermission/);
   assert.match(worker, /\/api\/tasks/);
 
+  const previewWorker = await readFile(
+    join(root, "apps", "checklist", "worker", "preview.ts"),
+    "utf8",
+  );
+  assert.match(previewWorker, /appId: "checklist"/);
+  assert.match(previewWorker, /\/api\/health\/database/);
+
   const definitions = await verifyAppDefinitions(root);
   assert.deepEqual(definitions[0]?.platformServices, ["identity", "permissions"]);
 });

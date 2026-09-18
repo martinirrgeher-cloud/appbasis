@@ -151,17 +151,15 @@ test("fails closed on invalid provider, Worker-name, entrypoint or public-origin
         hyperdriveId: "provider-id",
         baseURL: "https://tasks-preview.example.test",
       }),
-    /Worker name is invalid/,
+    /appId must match/,
   );
-  assert.throws(
-    () =>
-      renderGeneratedPreviewWranglerConfig({
-        appId: `a${"b".repeat(54)}`,
-        hyperdriveId: "provider-id",
-        baseURL: "https://tasks-preview.example.test",
-      }),
-    /Worker name is invalid/,
-  );
+  const longAppConfig = renderGeneratedPreviewWranglerConfig({
+    appId: `a${"b".repeat(54)}`,
+    hyperdriveId: "provider-id",
+    baseURL: "https://tasks-preview.example.test",
+  });
+  assert.ok(longAppConfig.name.length <= 63);
+  assert.match(longAppConfig.name, /^appbasis-[a-z0-9-]+-[0-9a-f]{8}$/);
 });
 
 test("writes only the rendered deployment artifact with owner-only permissions", async () => {

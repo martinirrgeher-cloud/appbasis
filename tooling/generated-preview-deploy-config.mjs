@@ -1,11 +1,10 @@
+import { generatedPreviewWorkerName } from "./generated-app-preview-target.mjs";
 import { randomUUID } from "node:crypto";
 import { rename, rm, writeFile } from "node:fs/promises";
 
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const REQUIRED_SECRET_NAMES = Object.freeze(["BETTER_AUTH_SECRET"]);
-const WORKER_NAME_PREFIX = "appbasis-";
-const WORKER_NAME_MAX_LENGTH = 63;
 const DEFAULT_ENTRYPOINT = "./worker/index.ts";
 
 export function renderGeneratedPreviewWranglerConfig({
@@ -16,7 +15,7 @@ export function renderGeneratedPreviewWranglerConfig({
   compatibilityDate = "2026-08-14",
 } = {}) {
   const normalizedAppId = requiredIdentifier(appId, "appId");
-  const workerName = requiredWorkerName(normalizedAppId);
+  const workerName = generatedPreviewWorkerName(normalizedAppId);
   const normalizedHyperdriveId = requiredProviderId(hyperdriveId);
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
   const normalizedEntrypoint = requiredEntrypoint(entrypoint);
@@ -96,17 +95,6 @@ function requiredIdentifier(value, field) {
     throw new Error(`${field} must match ${IDENTIFIER_PATTERN.source}.`);
   }
   return value;
-}
-
-function requiredWorkerName(appId) {
-  const workerName = `${WORKER_NAME_PREFIX}${appId}`;
-  if (
-    workerName.length > WORKER_NAME_MAX_LENGTH ||
-    workerName.endsWith("-")
-  ) {
-    throw new Error("Derived Cloudflare Worker name is invalid.");
-  }
-  return workerName;
 }
 
 function requiredProviderId(value) {
