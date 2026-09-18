@@ -30,11 +30,14 @@ export async function deriveGeneratedPreviewRunEvidence(
     return unavailableEvidence();
   }
 
-  const [mainSha, runs] = await Promise.all([
-    fetchCurrentMainSha(fetchImpl),
-    fetchWorkflowRuns(fetchImpl),
-  ]);
-  if (mainSha === null || runs === null) {
+  const mainSha = await fetchCurrentMainSha(fetchImpl);
+  if (mainSha === null) return unavailableEvidence();
+
+  const runs = await fetchWorkflowRuns(fetchImpl);
+  if (runs === null) return unavailableEvidence();
+
+  const confirmedMainSha = await fetchCurrentMainSha(fetchImpl);
+  if (confirmedMainSha !== mainSha) {
     return unavailableEvidence();
   }
 
