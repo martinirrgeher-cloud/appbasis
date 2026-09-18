@@ -42,24 +42,22 @@ export async function deriveGeneratedPreviewRunEvidence(
   }
 
   const matching = runs
-    .map((run) => normalizedSuccessfulRun(run, appId, mainSha))
+    .map((run) => normalizedRelevantRun(run, appId, mainSha))
     .filter((run) => run !== null)
-    .sort((left, right) => {
-      const time = Date.parse(left.startedAt) - Date.parse(right.startedAt);
-      return time !== 0 ? time : left.runId - right.runId;
-    });
+    .sort(compareRuns);
 
   const completed = [];
   let previousCompletedAt = null;
 
   for (const operation of GENERATED_PREVIEW_OPERATIONS) {
-    const candidate = matching.find((run) => {
+    const candidates = matching.filter((run) => {
       if (run.operation !== operation) return false;
       if (previousCompletedAt === null) return true;
       return Date.parse(run.startedAt) >= Date.parse(previousCompletedAt);
     });
-    if (candidate === undefined) break;
-    completed.push(candidate);
+    const candidate = candidates.at(-1);
+    if (candidate === undefined || candidate.evidenceAccepted !== true) break;
+    completed.push(withoutEvidenceFlag(candidate));
     previousCompletedAt = candidate.completedAt;
   }
 
@@ -154,7 +152,7 @@ async function githubJson(fetchImpl, url) {
   }
 }
 
-function normalizedSuccessfulRun(run, appId, mainSha) {
+function normalizedRelevantRun(run, appId, mainSha) {
   if (!isRecord(run)) return null;
 
   const operation = operationFromDisplayTitle(run.display_title, appId);
@@ -165,13 +163,12 @@ function normalizedSuccessfulRun(run, appId, mainSha) {
     run.event !== "workflow_dispatch" ||
     run.head_branch !== "main" ||
     run.head_sha !== mainSha ||
-    run.run_attempt !== 1 ||
-    run.status !== "completed" ||
-    run.conclusion !== "success" ||
     !isRecord(run.repository) ||
     run.repository.full_name !== GITHUB_REPOSITORY ||
     !Number.isInteger(run.id) ||
     run.id <= 0 ||
+    !Number.isInteger(run.run_attempt) ||
+    run.run_attempt <= 0 ||
     !isIsoTimestamp(run.run_started_at) ||
     !isIsoTimestamp(run.updated_at) ||
     Date.parse(run.updated_at) < Date.parse(run.run_started_at)
@@ -185,6 +182,25 @@ function normalizedSuccessfulRun(run, appId, mainSha) {
     runUrl: `https://github.com/${GITHUB_REPOSITORY}/actions/runs/${run.id}`,
     startedAt: run.run_started_at,
     completedAt: run.updated_at,
+    evidenceAccepted:
+      run.run_attempt === 1 &&
+      run.status === "completed" &&
+      run.conclusion === "success",
+  });
+}
+
+function compareRuns(left, right) {
+  const time = Date.parse(left.startedAt) - Date.parse(right.startedAt);
+  return time !== 0 ? time : left.runId - right.runId;
+}
+
+function withoutEvidenceFlag(run) {
+  return Object.freeze({
+    operation: run.operation,
+    runId: run.runId,
+    runUrl: run.runUrl,
+    startedAt: run.startedAt,
+    completedAt: run.completedAt,
   });
 }
 
