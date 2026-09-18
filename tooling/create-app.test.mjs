@@ -121,7 +121,7 @@ test("persists explicit app branding without changing the app definition schema"
       brandMark: "ba",
       accentColor: "#0F766E",
       modules: [],
-      platformServices: [],
+      platformServices: ["identity"],
     },
     testGeneratorOptions(root),
   );
@@ -146,7 +146,7 @@ test("persists explicit app branding without changing the app definition schema"
       appId: "branded",
       displayName: "Branded App",
       modules: [],
-      platformServices: [],
+      platformServices: ["identity"],
     },
   );
 
