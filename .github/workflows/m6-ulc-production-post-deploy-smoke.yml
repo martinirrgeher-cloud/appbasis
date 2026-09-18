@@ -232,7 +232,7 @@ jobs:
           cleanup() {
             if test -s "$cookies"; then
               ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE="$cookies" \
-                node ./apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs >/dev/null || true
+                node --experimental-transform-types --import ./apps/ulc-linz/tooling/register-native-typescript-resolution.mjs ./apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs >/dev/null || true
             fi
             rm -f "$cookies" "$signin" "$session"
           }
@@ -249,7 +249,7 @@ jobs:
             '.identity.identityId == $id and .identity.username == "ulc.m6.smoke" and .identity.mustChangePassword == false and .access == "full"' \
             "$session" >/dev/null
           ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE="$cookies" \
-            node ./apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs >/dev/null
+            node --experimental-transform-types --import ./apps/ulc-linz/tooling/register-native-typescript-resolution.mjs ./apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs >/dev/null
           rm -f "$cookies" "$signin" "$session"
           trap - EXIT
 
