@@ -87,7 +87,12 @@ export async function deriveGeneratedPreviewLifecycle(
       publishedOnMain,
       initialOperation: "hyperdrive",
       nextOperation: progressVerified ? runEvidence.nextOperation : null,
-      progressEvidence: progressVerified ? "verified" : runEvidence.status,
+      progressEvidence:
+        status === "workflow-ready"
+          ? "verified"
+          : status === "workflow-evidence-unavailable"
+            ? "unavailable"
+            : "not-applicable",
       completedOperations: Object.freeze(
         progressVerified ? [...runEvidence.completedOperations] : [],
       ),
