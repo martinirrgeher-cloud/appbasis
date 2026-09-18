@@ -15,7 +15,7 @@ export async function buildGeneratedAppPreviewPlan({ appId } = {}) {
     workerName: contract.target.workerName,
     hyperdriveName: contract.target.hyperdriveName,
     database: contract.target.database,
-    entrypoint: "./worker/index.ts",
+    entrypoint: "./worker/preview.ts",
   });
 }
 
