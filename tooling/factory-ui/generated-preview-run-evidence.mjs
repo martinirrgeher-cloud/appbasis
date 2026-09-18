@@ -78,6 +78,20 @@ export async function deriveGeneratedPreviewRunEvidence(
   });
 }
 
+export async function verifyGeneratedPreviewCurrentMainHead(
+  expectedHeadSha,
+  { fetchImpl = fetch } = {},
+) {
+  if (
+    typeof expectedHeadSha !== "string" ||
+    !COMMIT_SHA_PATTERN.test(expectedHeadSha) ||
+    typeof fetchImpl !== "function"
+  ) {
+    return false;
+  }
+  return (await fetchCurrentMainSha(fetchImpl)) === expectedHeadSha;
+}
+
 export function generatedPreviewRunTitle(appId, operation) {
   if (
     typeof appId !== "string" ||
