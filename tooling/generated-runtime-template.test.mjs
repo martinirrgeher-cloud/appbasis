@@ -25,6 +25,7 @@ test("renders the deterministic runnable identity runtime", () => {
       "tsconfig.json",
       "vitest.config.ts",
       "worker/app.ts",
+      "worker/ui.ts",
     ],
   );
   assert.equal(
@@ -44,6 +45,9 @@ test("uses a collision-resistant app package namespace and shared identity HTTP 
   assert.match(worker, /\/api\/auth\/sign-in/);
   assert.match(worker, /\/api\/auth\/session/);
   assert.match(worker, /\/api\/auth\/change-required-password/);
+  assert.match(worker, /generatedUiResponse/);
+  assert.match(worker, /app\.get\("\/app\.css"/);
+  assert.match(worker, /app\.get\("\/app\.js"/);
   assert.doesNotMatch(worker, /reference/i);
   assert.doesNotMatch(worker, /@appbasis\/permissions/);
   assert.doesNotMatch(worker, /tasks/);
@@ -113,6 +117,12 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
   assert.match(worker, /app\.get\("\/api\/tasks"/);
   assert.match(worker, /app\.post\("\/api\/tasks"/);
   assert.match(worker, /app\.post\("\/api\/tasks\/:id\/toggle"/);
+  assert.match(worker, /generatedUiResponse/);
+  const ui = content(template, "worker/ui.ts");
+  assert.match(ui, /AppBasis/);
+  assert.match(ui, /Aufgaben verwalten/);
+  assert.match(ui, /const HAS_TASKS = true/);
+  assert.match(ui, /content-security-policy/);
 
   assert.match(generatedTest, /InMemoryPermissionStore/);
   assert.match(generatedTest, /unauthenticated\.status\)\.toBe\(401\)/);
@@ -168,6 +178,7 @@ test("generates tasks HTTP routes and complete PostgreSQL application compositio
       "vitest.config.ts",
       "vitest.postgres.config.ts",
       "worker/app.ts",
+      "worker/ui.ts",
       "worker/index.ts",
       "worker/postgres.ts",
       PRODUCTION_BOOTSTRAP_CONFIG_PATH,
@@ -207,8 +218,23 @@ test("generates a self-test that exercises the second consumer contract", () => 
 
   assert.match(generatedTest, /createGeneratedApp/);
   assert.match(generatedTest, /\/api\/health/);
+  assert.match(generatedTest, /serves the generated themed web UI/);
   assert.match(generatedTest, /\/api\/auth\/sign-in/);
   assert.match(generatedTest, /appbasis\.session=test-token/);
+});
+
+test("renders persisted branding into the generated UI without changing API contracts", () => {
+  const template = createIdentityRuntimeTemplate({
+    ...input,
+    brandMark: "CL",
+    accentColor: "#0F766E",
+  });
+  const ui = content(template, "worker/ui.ts");
+
+  assert.match(ui, />CL</);
+  assert.match(ui, /--app-accent: #0f766e/);
+  assert.match(ui, /const HAS_TASKS = false/);
+  assert.match(ui, /Identity Only|App bereit|kein Fachmodul/);
 });
 
 test("fails closed on invalid or unsupported runtime inputs", () => {
