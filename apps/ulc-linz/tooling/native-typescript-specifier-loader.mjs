@@ -1,3 +1,7 @@
+import { readFile } from "node:fs/promises";
+
+const ROLE_DATA_SCOPE_URL = new URL("../worker/role-data-scope.json", import.meta.url).href;
+
 function isRelativeTypescriptCandidate(specifier) {
   return (
     specifier.startsWith("./") ||
@@ -26,4 +30,15 @@ export async function resolve(specifier, context, nextResolve) {
 
     throw error;
   }
+}
+
+export async function load(url, context, nextLoad) {
+  if (url === ROLE_DATA_SCOPE_URL) {
+    return {
+      format: "json",
+      source: await readFile(new URL(url), "utf8"),
+      shortCircuit: true,
+    };
+  }
+  return nextLoad(url, context);
 }

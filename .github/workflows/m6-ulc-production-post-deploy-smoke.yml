@@ -123,6 +123,7 @@ jobs:
                 and all(.files[];
                   .filename == "apps/ulc-linz/tooling/bootstrap-production-smoke-principal.mjs" or
                   .filename == "apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs" or
+                  .filename == "apps/ulc-linz/tooling/native-typescript-specifier-loader.mjs" or
                   .filename == "tooling/ulc-linz-m6-production-closeout-workflows.test.mjs" or
                   .filename == ".github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml" or
                   .filename == ".github/workflows/m6-ulc-production-post-deploy-smoke.yml"
