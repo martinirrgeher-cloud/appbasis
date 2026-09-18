@@ -45,8 +45,16 @@ export function parseAppTheme(value) {
     typeof value.brandMark !== "string" ||
     value.brandMark.length === 0 ||
     value.brandMark.trim() !== value.brandMark ||
-    Array.from(value.brandMark).length > 2 ||
     /[\u0000-\u001f\u007f]/.test(value.brandMark)
+  ) {
+    throw new Error(
+      "App theme brandMark must be a trimmed one- or two-character string.",
+    );
+  }
+  const normalizedBrandMark = value.brandMark.toLocaleUpperCase("de-DE");
+  if (
+    Array.from(value.brandMark).length > 2 ||
+    Array.from(normalizedBrandMark).length > 2
   ) {
     throw new Error(
       "App theme brandMark must be a trimmed one- or two-character string.",
@@ -62,7 +70,7 @@ export function parseAppTheme(value) {
 
   return Object.freeze({
     schemaVersion: 1,
-    brandMark: value.brandMark.toLocaleUpperCase("de-DE"),
+    brandMark: normalizedBrandMark,
     accentColor: value.accentColor.toLowerCase(),
   });
 }
