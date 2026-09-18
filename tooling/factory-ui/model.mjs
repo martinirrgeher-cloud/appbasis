@@ -5,6 +5,7 @@ import {
   readAppDefinitions,
   SUPPORTED_PLATFORM_SERVICES,
 } from "../app-definition.mjs";
+import { readAppTheme } from "../app-theme.mjs";
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
 import { deriveM3PreviewAcceptanceEvidence } from "./m3-preview-acceptance-evidence.mjs";
 import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
@@ -58,6 +59,7 @@ async function withFactoryReadiness(
     workerEntrypointPresent,
     packageManifestPresent,
     databaseManifestPresent,
+    appTheme,
     m3PreviewAcceptanceEvidence,
     productionReadinessEvidence,
   ] = await Promise.all([
@@ -66,6 +68,7 @@ async function withFactoryReadiness(
     databaseManifestRequired
       ? pathExists(join(appRoot, "appbasis.database.json"))
       : Promise.resolve(false),
+    readAppTheme(repositoryRoot, definition),
     deriveM3PreviewAcceptanceEvidence(definition, {
       fetchImpl: m3PreviewAcceptanceFetchImpl,
     }),
@@ -94,6 +97,7 @@ async function withFactoryReadiness(
 
   return Object.freeze({
     ...definition,
+    theme: appTheme,
     previewReadiness: Object.freeze({
       status: repositoryReady ? "repository-ready" : "repository-incomplete",
       workerEntrypointPresent,
