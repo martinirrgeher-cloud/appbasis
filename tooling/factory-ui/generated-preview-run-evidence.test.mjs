@@ -8,6 +8,7 @@ import {
   deriveGeneratedPreviewRunEvidence,
   GENERATED_PREVIEW_OPERATIONS,
   generatedPreviewRunTitle,
+  verifyGeneratedPreviewCurrentMainHead,
 } from "./generated-preview-run-evidence.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -194,6 +195,34 @@ test("generic preview run evidence fails closed if main moves during observation
   assert.equal(evidence.status, "unavailable");
   assert.equal(evidence.exactHeadSha, null);
   assert.equal(evidence.nextOperation, null);
+});
+
+test("final Preview main-head verification accepts only the exact expected SHA", async () => {
+  assert.equal(
+    await verifyGeneratedPreviewCurrentMainHead(HEAD, {
+      fetchImpl: async (url) => {
+        assert.ok(url.endsWith("/branches/main"));
+        return Response.json({ commit: { sha: HEAD } });
+      },
+    }),
+    true,
+  );
+
+  assert.equal(
+    await verifyGeneratedPreviewCurrentMainHead(HEAD, {
+      fetchImpl: async () =>
+        Response.json({ commit: { sha: "b".repeat(40) } }),
+    }),
+    false,
+  );
+  assert.equal(
+    await verifyGeneratedPreviewCurrentMainHead("../main", {
+      fetchImpl: async () => {
+        throw new Error("invalid SHA must fail before fetch");
+      },
+    }),
+    false,
+  );
 });
 
 test("generated preview workflow title pins app and operation correlation", async () => {
