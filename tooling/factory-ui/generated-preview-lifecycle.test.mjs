@@ -239,7 +239,7 @@ test("Factory keeps a local generated app pending until its exact preview files 
   assert.equal(lifecycle.workflowRef, null);
   assert.equal(lifecycle.initialOperation, "hyperdrive");
   assert.equal(lifecycle.nextOperation, null);
-  assert.equal(lifecycle.progressEvidence, "available");
+  assert.equal(lifecycle.progressEvidence, "not-applicable");
   assert.notEqual(lifecycle.target, null);
 });
 
