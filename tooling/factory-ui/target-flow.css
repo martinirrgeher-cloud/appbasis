@@ -516,12 +516,6 @@
   font-weight: 800;
 }
 
-.factory-preview-steps li.is-current > span {
-  border-color: var(--ab-brand-primary);
-  background: var(--ab-brand-primary);
-  color: var(--ab-text-inverse);
-}
-
 .factory-preview-steps li div {
   display: grid;
   gap: 2px;
