@@ -16,6 +16,8 @@ const LOOPBACK_ORIGIN_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const CREATE_APP_KEYS = new Set([
   "appId",
   "displayName",
+  "brandMark",
+  "accentColor",
   "modules",
   "platformServices",
 ]);
@@ -307,6 +309,7 @@ function mapCreateAppError(error) {
 
   if (
     message.startsWith("App definition ") ||
+    message.startsWith("App theme ") ||
     message.startsWith("Unknown AppBasis module:") ||
     message.includes(" references unsupported platform service ") ||
     message === "Generated permissions runtime requires the identity platform service."

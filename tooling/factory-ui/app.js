@@ -152,8 +152,8 @@ function renderApps() {
 
     const mark = document.createElement("span");
     mark.className = "factory-app-mark";
-    mark.textContent = firstLetter(app.displayName);
     mark.setAttribute("aria-hidden", "true");
+    applyAppMark(mark, app);
 
     const title = document.createElement("div");
     const name = document.createElement("h3");
@@ -229,7 +229,7 @@ function restoreSelectedAppDetail() {
 }
 
 function renderAppDetail(app) {
-  if (elements.detailMark) elements.detailMark.textContent = firstLetter(app.displayName);
+  if (elements.detailMark) applyAppMark(elements.detailMark, app);
   if (elements.detailName) elements.detailName.textContent = app.displayName;
   if (elements.detailId) elements.detailId.textContent = app.appId;
   if (elements.detailSchema) elements.detailSchema.textContent = `Schema v${app.schemaVersion}`;
@@ -694,6 +694,14 @@ function appIdFromName(value) {
 
 function listLabels(ids, labelFor) {
   return ids.length === 0 ? "Keine" : ids.map(labelFor).join(", ");
+}
+
+function applyAppMark(element, app) {
+  const accent = app?.theme?.accentColor ?? "#2563eb";
+  const mark = app?.theme?.brandMark ?? firstLetter(app?.displayName ?? "");
+  element.textContent = mark;
+  element.style.backgroundColor = accent;
+  element.style.color = previewAccentForeground(accent);
 }
 
 function firstLetter(value) {

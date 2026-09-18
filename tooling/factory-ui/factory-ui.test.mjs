@@ -25,6 +25,14 @@ test("factory snapshot reads the real app registry and supported catalog", async
 
   assert.ok(snapshot.apps.length > 0);
   assert.ok(snapshot.apps.every((app) => app.schemaVersion === 2));
+  assert.ok(
+    snapshot.apps.every(
+      (app) =>
+        app.theme?.schemaVersion === 1 &&
+        typeof app.theme?.brandMark === "string" &&
+        /^#[0-9a-f]{6}$/.test(app.theme?.accentColor ?? ""),
+    ),
+  );
   assert.ok(snapshot.catalog.modules.includes("tasks"));
   assert.deepEqual(snapshot.catalog.platformServices, SUPPORTED_PLATFORM_SERVICES);
   assert.deepEqual(snapshot.capabilities, {
@@ -142,6 +150,7 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(pageBody, /data-flow-step="release"/);
   assert.match(pageBody, /id="brand-mark"/);
   assert.match(pageBody, /id="accent-color"/);
+  assert.match(pageBody, /Theme-Manifest gespeichert/);
   assert.match(pageBody, /Produktion bleibt fail-closed/);
   assert.match(pageBody, /id="create-app-button" type="submit" disabled/);
   assert.match(pageBody, /id="factory-status"/);
@@ -159,6 +168,9 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(appScriptBody, /button\.dataset\.appId = app\.appId/);
   assert.match(appScriptBody, /openAppDetail\(app\.appId\)/);
   assert.match(appScriptBody, /showPanel\("detail"\)/);
+  assert.match(appScriptBody, /applyAppMark\(mark, app\)/);
+  assert.match(appScriptBody, /app\?\.theme\?\.accentColor/);
+  assert.match(appScriptBody, /previewAccentForeground\(accent\)/);
   assert.match(
     appScriptBody,
     /function returnToApps\(appIdToRestore = state\.selectedAppId\)/,
@@ -213,8 +225,8 @@ test("factory console exposes app details and local creation without enabling de
   assert.match(createScriptBody, /credentials: "same-origin"/);
   assert.match(createScriptBody, /Es wurde kein Deployment gestartet/);
   assert.match(createScriptBody, /FACTORY_STATE_UNAVAILABLE/);
-  assert.doesNotMatch(createScriptBody, /brandMark:/);
-  assert.doesNotMatch(createScriptBody, /accentColor:/);
+  assert.match(createScriptBody, /brandMark: brandMark\?\.value\.trim\(\)/);
+  assert.match(createScriptBody, /accentColor: accentColor\?\.value/);
 
   const shellStyles = await fetch(`${baseUrl}/styles.css`);
   assert.equal(shellStyles.status, 200);
@@ -377,6 +389,8 @@ test("factory local app creation is origin-locked, JSON-only and uses the existi
     body: JSON.stringify({
       appId: "new-app",
       displayName: "Neue App",
+      brandMark: "NA",
+      accentColor: "#0F766E",
       modules: ["tasks"],
       platformServices: [],
     }),
@@ -396,12 +410,31 @@ test("factory local app creation is origin-locked, JSON-only and uses the existi
     await readFile(join(fixtureRoot, "apps", "new-app", "appbasis.app.json"), "utf8"),
   );
   assert.deepEqual(persisted, createdBody.app);
+  assert.deepEqual(
+    JSON.parse(
+      await readFile(join(fixtureRoot, "apps", "new-app", "appbasis.theme.json"), "utf8"),
+    ),
+    {
+      schemaVersion: 1,
+      brandMark: "NA",
+      accentColor: "#0f766e",
+    },
+  );
 
   const refreshedSnapshot = await fetch(`${baseUrl}/api/factory/snapshot`);
   assert.equal(refreshedSnapshot.status, 200);
+  const refreshed = await refreshedSnapshot.json();
   assert.deepEqual(
-    (await refreshedSnapshot.json()).apps.map((app) => app.appId).sort(),
+    refreshed.apps.map((app) => app.appId).sort(),
     ["demo", "new-app"],
+  );
+  assert.deepEqual(
+    refreshed.apps.find((app) => app.appId === "new-app")?.theme,
+    {
+      schemaVersion: 1,
+      brandMark: "NA",
+      accentColor: "#0f766e",
+    },
   );
 
   const duplicate = await fetch(endpoint, {

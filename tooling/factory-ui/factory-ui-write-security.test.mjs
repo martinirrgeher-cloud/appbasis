@@ -95,6 +95,31 @@ test("factory write UI blocks framing and rejects unsafe creation input", async 
   assert.ok(refreshSnapshot > successMessage);
   assert.doesNotMatch(createScriptBody, /button\[data-tab='apps'\]/);
 
+  const invalidTheme = await fetch(`${baseUrl}/api/factory/apps`, {
+    method: "POST",
+    headers: {
+      origin: baseUrl,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      appId: "invalid-theme",
+      displayName: "Invalid Theme",
+      brandMark: "ABC",
+      accentColor: "blue",
+      modules: [],
+      platformServices: [],
+    }),
+  });
+  assert.equal(invalidTheme.status, 400);
+  assert.equal((await invalidTheme.json()).error.code, "INVALID_APP_REQUEST");
+  await assert.rejects(
+    readFile(
+      join(fixtureRoot, "apps", "invalid-theme", "appbasis.app.json"),
+      "utf8",
+    ),
+    (error) => error?.code === "ENOENT",
+  );
+
   const unsupportedService = await fetch(`${baseUrl}/api/factory/apps`, {
     method: "POST",
     headers: {

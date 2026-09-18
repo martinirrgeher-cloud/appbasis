@@ -47,6 +47,17 @@ Token-Gruppen:
 
 Fachmodule verwenden keine eigenen festen Branding-Farben. Kundenbranding wird über die semantischen Variablen überschrieben.
 
+### Factory Theme Slice
+
+FC1 persistiert die ersten app-spezifischen Gestaltungswerte getrennt von der technischen App-Definition in `appbasis.theme.json`:
+
+- `schemaVersion: 1`
+- `brandMark`: ein kompaktes App-Zeichen mit maximal zwei Zeichen
+- `accentColor`: eine sechsstellige Hex-Akzentfarbe
+
+Das Theme-Manifest ist reine Darstellungskonfiguration. Es verändert weder Module noch Plattformdienste, Berechtigungen, Deployments oder Production-Gates. Fehlt das Manifest bei bestehenden Apps, verwendet die Factory den globalen AppBasis-Standard; ist ein vorhandenes Manifest ungültig, fällt die Factory nicht still auf einen anderen Stil zurück.
+
+
 ## Komponenten v0.1
 
 Die gemeinsame Foundation enthält derzeit die für die realen Reference-Slices benötigten allgemeinen Grundlagen:

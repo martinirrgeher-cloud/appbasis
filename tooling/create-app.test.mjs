@@ -67,6 +67,15 @@ test("creates a deterministic identity app that passes the app manifest contract
     await readFile(join(root, "apps", "checklist", "appbasis.app.json"), "utf8"),
     '{\n  "schemaVersion": 2,\n  "appId": "checklist",\n  "displayName": "Checklist",\n  "modules": [\n    "tasks"\n  ],\n  "platformServices": [\n    "identity"\n  ]\n}\n',
   );
+  assert.equal(
+    await readFile(join(root, "apps", "checklist", "appbasis.theme.json"), "utf8"),
+    '{\n  "schemaVersion": 1,\n  "brandMark": "C",\n  "accentColor": "#2563eb"\n}\n',
+  );
+  assert.deepEqual(result.theme, {
+    schemaVersion: 1,
+    brandMark: "C",
+    accentColor: "#2563eb",
+  });
 
   const readme = await readFile(
     join(root, "apps", "checklist", "README.md"),
@@ -100,6 +109,46 @@ test("creates a deterministic identity app that passes the app manifest contract
   assert.equal(definitions.length, 1);
   assert.equal(definitions[0]?.appId, "checklist");
   assert.deepEqual(definitions[0]?.platformServices, ["identity"]);
+});
+
+test("persists explicit app branding without changing the app definition schema", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  const result = await createAppSkeleton(
+    {
+      appId: "branded",
+      displayName: "Branded App",
+      brandMark: "ba",
+      accentColor: "#0F766E",
+      modules: [],
+      platformServices: [],
+    },
+    testGeneratorOptions(root),
+  );
+
+  assert.deepEqual(result.theme, {
+    schemaVersion: 1,
+    brandMark: "BA",
+    accentColor: "#0f766e",
+  });
+  assert.deepEqual(
+    JSON.parse(
+      await readFile(join(root, "apps", "branded", "appbasis.theme.json"), "utf8"),
+    ),
+    result.theme,
+  );
+  assert.deepEqual(
+    JSON.parse(
+      await readFile(join(root, "apps", "branded", "appbasis.app.json"), "utf8"),
+    ),
+    {
+      schemaVersion: 2,
+      appId: "branded",
+      displayName: "Branded App",
+      modules: [],
+      platformServices: [],
+    },
+  );
 });
 
 test("creates permission-guarded tasks runtime only from explicit platform composition", async (t) => {
@@ -245,6 +294,7 @@ test("does not generate runtime files when no platform service is selected", asy
   assert.deepEqual((await readdir(join(root, "apps", "plain"))).sort(), [
     "README.md",
     "appbasis.app.json",
+    "appbasis.theme.json",
   ]);
   assert.doesNotMatch(
     await readFile(join(root, "apps", "plain", "README.md"), "utf8"),
