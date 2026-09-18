@@ -148,6 +148,28 @@ test("generic preview run evidence fails closed when GitHub evidence is unavaila
   assert.equal(incomplete.exactHeadSha, null);
 });
 
+test("generic preview run evidence fails closed if main moves during observation", async () => {
+  let branchReads = 0;
+  const evidence = await deriveGeneratedPreviewRunEvidence("checklist", {
+    fetchImpl: async (url) => {
+      if (url.endsWith("/branches/main")) {
+        branchReads += 1;
+        return Response.json({
+          commit: { sha: branchReads === 1 ? HEAD : "b".repeat(40) },
+        });
+      }
+      return Response.json({
+        total_count: 0,
+        workflow_runs: [],
+      });
+    },
+  });
+
+  assert.equal(evidence.status, "unavailable");
+  assert.equal(evidence.exactHeadSha, null);
+  assert.equal(evidence.nextOperation, null);
+});
+
 test("generated preview workflow title pins app and operation correlation", async () => {
   assert.equal(
     generatedPreviewRunTitle("checklist", "deploy"),
