@@ -95,6 +95,22 @@ function previewRun(operation, id, startedAt, completedAt) {
   };
 }
 
+function cleanRepositoryStateImpl(headSha = HEAD) {
+  return async () => ({ status: "clean", headSha });
+}
+
+function runEvidenceUnavailableFetch() {
+  return async (url) => {
+    if (url.endsWith("/branches/main")) {
+      return Response.json({ commit: { sha: HEAD } });
+    }
+    if (url.includes("/actions/workflows/generated-app-preview-lifecycle.yml/runs")) {
+      return Response.json({ message: "unavailable" }, { status: 503 });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+}
+
 function runEvidenceFetch(runs = []) {
   return async (url) => {
     if (url.endsWith("/branches/main")) {
@@ -148,6 +164,7 @@ test("Factory exposes the exact generic preview workflow for a canonical generat
   const { root, definition } = await createPreviewFixture(t);
   const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
     publicationFetchImpl: await publicationFetch(root),
+    repositoryStateImpl: cleanRepositoryStateImpl(),
     runEvidenceFetchImpl: runEvidenceFetch([]),
   });
 
@@ -191,6 +208,7 @@ test("Factory advances the exact next preview operation and marks a complete pre
   ];
   const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
     publicationFetchImpl: await publicationFetch(root),
+    repositoryStateImpl: cleanRepositoryStateImpl(),
     runEvidenceFetchImpl: runEvidenceFetch(runs),
   });
 
@@ -213,8 +231,8 @@ test("Factory hides mutating preview guidance when run evidence is unavailable",
   const { root, definition } = await createPreviewFixture(t);
   const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
     publicationFetchImpl: await publicationFetch(root),
-    runEvidenceFetchImpl: async () =>
-      Response.json({ message: "unavailable" }, { status: 503 }),
+    repositoryStateImpl: cleanRepositoryStateImpl(),
+    runEvidenceFetchImpl: runEvidenceUnavailableFetch(),
   });
 
   assert.equal(lifecycle.status, "workflow-evidence-unavailable");
@@ -231,6 +249,7 @@ test("Factory keeps a local generated app pending until its exact preview files 
   const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
     publicationFetchImpl: async () =>
       Response.json({ message: "not published" }, { status: 404 }),
+    repositoryStateImpl: cleanRepositoryStateImpl(),
     runEvidenceFetchImpl: runEvidenceFetch([]),
   });
 
@@ -241,6 +260,100 @@ test("Factory keeps a local generated app pending until its exact preview files 
   assert.equal(lifecycle.nextOperation, null);
   assert.equal(lifecycle.progressEvidence, "not-applicable");
   assert.notEqual(lifecycle.target, null);
+});
+
+test("Factory refuses Preview evidence from any dirty local worktree", async (t) => {
+  const { root, definition } = await createPreviewFixture(t);
+  let remoteRead = false;
+  const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
+    publicationFetchImpl: async () => {
+      remoteRead = true;
+      throw new Error("publication must not be read for a dirty worktree");
+    },
+    repositoryStateImpl: async () => ({
+      status: "dirty",
+      headSha: HEAD,
+    }),
+    runEvidenceFetchImpl: async () => {
+      remoteRead = true;
+      throw new Error("runs must not be read for a dirty worktree");
+    },
+  });
+
+  assert.equal(remoteRead, false);
+  assert.equal(lifecycle.status, "local-contract-ready");
+  assert.equal(lifecycle.publishedOnMain, false);
+  assert.equal(lifecycle.nextOperation, null);
+  assert.equal(lifecycle.previewVerified, false);
+});
+
+test("Factory refuses Preview progress when local HEAD differs from the exact run head", async (t) => {
+  const { root, definition } = await createPreviewFixture(t);
+  const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
+    publicationFetchImpl: await publicationFetch(root),
+    repositoryStateImpl: cleanRepositoryStateImpl("b".repeat(40)),
+    runEvidenceFetchImpl: runEvidenceFetch([]),
+  });
+
+  assert.equal(lifecycle.status, "local-contract-ready");
+  assert.equal(lifecycle.publishedOnMain, false);
+  assert.equal(lifecycle.exactHeadSha, null);
+  assert.equal(lifecycle.nextOperation, null);
+});
+
+test("Factory rechecks main after publication evidence before exposing a mutating next step", async (t) => {
+  const { root, definition } = await createPreviewFixture(t);
+  let branchReads = 0;
+  const movingMainFetch = async (url) => {
+    if (url.endsWith("/branches/main")) {
+      branchReads += 1;
+      return Response.json({
+        commit: {
+          sha: branchReads <= 3 ? HEAD : "b".repeat(40),
+        },
+      });
+    }
+    if (url.includes("/actions/workflows/generated-app-preview-lifecycle.yml/runs")) {
+      return Response.json({
+        total_count: 0,
+        workflow_runs: [],
+      });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+
+  const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
+    publicationFetchImpl: await publicationFetch(root),
+    repositoryStateImpl: cleanRepositoryStateImpl(),
+    runEvidenceFetchImpl: movingMainFetch,
+  });
+
+  assert.equal(branchReads, 4);
+  assert.equal(lifecycle.status, "local-contract-ready");
+  assert.equal(lifecycle.publishedOnMain, false);
+  assert.equal(lifecycle.nextOperation, null);
+  assert.equal(lifecycle.previewVerified, false);
+});
+
+test("Factory rechecks the clean local repository state after remote Preview evidence", async (t) => {
+  const { root, definition } = await createPreviewFixture(t);
+  let repositoryReads = 0;
+  const lifecycle = await deriveGeneratedPreviewLifecycle(root, definition, {
+    publicationFetchImpl: await publicationFetch(root),
+    repositoryStateImpl: async () => {
+      repositoryReads += 1;
+      return {
+        status: repositoryReads === 1 ? "clean" : "dirty",
+        headSha: HEAD,
+      };
+    },
+    runEvidenceFetchImpl: runEvidenceFetch([]),
+  });
+
+  assert.equal(repositoryReads, 2);
+  assert.equal(lifecycle.status, "local-contract-ready");
+  assert.equal(lifecycle.publishedOnMain, false);
+  assert.equal(lifecycle.nextOperation, null);
 });
 
 test("Factory keeps generic preview actions closed when the canonical preview wrapper is absent", async (t) => {
