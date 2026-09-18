@@ -5,6 +5,7 @@ import { join } from "node:path";
 const GITHUB_TREE_URL =
   "https://api.github.com/repos/martinirrgeher-cloud/appbasis/git/trees/main?recursive=1";
 const TIMEOUT_MS = 3000;
+const APP_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 export const GENERATED_PREVIEW_PUBLICATION_FILES = Object.freeze([
   "appbasis.app.json",
@@ -22,6 +23,7 @@ export async function verifyGeneratedPreviewPublishedOnMain(
   { fetchImpl = fetch } = {},
 ) {
   if (typeof fetchImpl !== "function") return false;
+  if (typeof appId !== "string" || !APP_ID_PATTERN.test(appId)) return false;
 
   let response;
   try {
