@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const BOOTSTRAP_WORKFLOW = new URL(
@@ -22,6 +24,15 @@ const HTTP_SMOKE_SESSION_REVOKER = new URL(
   "../apps/ulc-linz/tooling/revoke-production-http-smoke-session.mjs",
   import.meta.url,
 );
+const NATIVE_TYPESCRIPT_REGISTER = new URL(
+  "../apps/ulc-linz/tooling/register-native-typescript-resolution.mjs",
+  import.meta.url,
+);
+const PROTECTED_SMOKE_RUNNER = new URL(
+  "../apps/ulc-linz/tooling/run-production-post-deploy-smoke.mjs",
+  import.meta.url,
+);
+const REPOSITORY_ROOT = new URL("../", import.meta.url);
 
 test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-safe", async () => {
   const [workflow, runner] = await Promise.all([
@@ -135,4 +146,25 @@ test("M6 post-deploy smoke stays dedicated, pilot-ingress bound and validates bo
       `missing protected HTTP smoke cleanup guard: ${marker}`,
     );
   }
+});
+
+
+test("M6 protected smoke native loader resolves the complete runtime import graph", () => {
+  const stdout = execFileSync(
+    process.execPath,
+    [
+      "--experimental-transform-types",
+      "--import",
+      fileURLToPath(NATIVE_TYPESCRIPT_REGISTER),
+      "--input-type=module",
+      "--eval",
+      `const module = await import(${JSON.stringify(PROTECTED_SMOKE_RUNNER.href)}); process.stdout.write(typeof module.runUlcLinzProductionPostDeploySmoke);`,
+    ],
+    {
+      cwd: fileURLToPath(REPOSITORY_ROOT),
+      encoding: "utf8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+    },
+  );
+  assert.equal(stdout, "function");
 });
