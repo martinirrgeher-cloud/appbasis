@@ -234,6 +234,9 @@ test("renders persisted branding into a generated guarded app UI without changin
   assert.match(worker, /app\.get\("\/app\.css"/);
   assert.match(worker, /app\.get\("\/app\.js"/);
   assert.match(entrypoint, /staticUiResponse = generatedUiResponse\(request\)/);
+  const previewWorker = content(template, "worker/preview.ts");
+  assert.match(previewWorker, /\/api\/health\/database/);
+  assert.match(previewWorker, /appId: "checklist"/);
   assert.deepEqual(
     template.files.map((entry) => entry.path),
     [
@@ -247,6 +250,7 @@ test("renders persisted branding into a generated guarded app UI without changin
       "worker/app.ts",
       "worker/ui.ts",
       "worker/index.ts",
+      "worker/preview.ts",
       "worker/postgres.ts",
       PRODUCTION_BOOTSTRAP_CONFIG_PATH,
     ],
