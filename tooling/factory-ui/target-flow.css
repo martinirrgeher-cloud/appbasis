@@ -516,6 +516,18 @@
   font-weight: 800;
 }
 
+.factory-preview-steps li.is-current > span {
+  border-color: var(--ab-brand-primary);
+  background: var(--ab-brand-primary);
+  color: var(--ab-text-inverse);
+}
+
+.factory-preview-steps li.is-complete > span {
+  border-color: var(--ab-border-strong);
+  background: var(--ab-surface-muted);
+  color: var(--ab-text-default);
+}
+
 .factory-preview-steps li div {
   display: grid;
   gap: 2px;
@@ -529,6 +541,12 @@
   color: var(--ab-text-secondary);
   font-size: 0.72rem;
   line-height: 1.4;
+}
+
+.factory-preview-evidence-link {
+  justify-self: start;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .factory-preview-workflow-link {

@@ -125,6 +125,9 @@ test("factory UI surfaces repository readiness while keeping external preview ac
   assert.doesNotMatch(appScript, /Externe Preview-Voraussetzungen werden noch nicht geprüft/);
   assert.doesNotMatch(appScript, /Preview bleibt gesperrt.*repository-ready/);
   assert.match(appScript, /renderGeneratedPreviewLifecycle\(app\.previewLifecycle\)/);
+  assert.match(appScript, /workflow-evidence-unavailable/);
+  assert.match(appScript, /Preview-Fortschritt nicht verifizierbar/);
+  assert.match(appScript, /lifecycle\.previewVerified === true/);
   assert.match(appScript, /workflowLink\.href = lifecycle\.workflowUrl/);
   assert.doesNotMatch(appScript, /\/api\/factory\/preview/);
 });

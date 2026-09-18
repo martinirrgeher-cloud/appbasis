@@ -310,25 +310,57 @@ function renderGeneratedPreviewLifecycle(lifecycle) {
   container.hidden = true;
   workflowLink.hidden = true;
   workflowLink.removeAttribute("href");
+  workflowLink.textContent = "Preview-Workflow öffnen";
 
   if (
     lifecycle?.status !== "workflow-ready" &&
+    lifecycle?.status !== "workflow-evidence-unavailable" &&
     lifecycle?.status !== "local-contract-ready"
   ) {
     return;
   }
   if (elements.detailPreviewStatus?.textContent === "Preview geprüft") return;
 
-  const published = lifecycle.status === "workflow-ready";
+  const workflowReady = lifecycle.status === "workflow-ready";
+  const published =
+    workflowReady || lifecycle.status === "workflow-evidence-unavailable";
+  const completedOperations = new Set(lifecycle.completedOperations ?? []);
+  const runByOperation = new Map(
+    (lifecycle.runs ?? []).map((run) => [run.operation, run]),
+  );
+
   if (elements.detailPreviewStatus) {
-    elements.detailPreviewStatus.textContent = published
-      ? "Preview-Workflow bereit"
-      : "Preview-Vertrag lokal bereit";
+    if (lifecycle.previewVerified === true) {
+      elements.detailPreviewStatus.textContent = "Preview technisch geprüft";
+    } else if (workflowReady) {
+      elements.detailPreviewStatus.textContent =
+        `Preview-Workflow bereit · ${completedOperations.size}/${lifecycle.operations?.length ?? 0} geprüft`;
+    } else if (published) {
+      elements.detailPreviewStatus.textContent =
+        "Preview-Fortschritt nicht verifizierbar";
+    } else {
+      elements.detailPreviewStatus.textContent = "Preview-Vertrag lokal bereit";
+    }
   }
   if (elements.detailPreviewSummary) {
-    elements.detailPreviewSummary.textContent = published
-      ? "Der exakte Preview-Vertrag ist auf main veröffentlicht. Die Provider-Schritte bleiben einzeln und ausdrücklich freigabepflichtig."
-      : "Die App erfüllt den lokalen Preview-Vertrag, ist aber noch nicht exakt auf main veröffentlicht. Erst nach Commit und Push kann der GitHub-Workflow diesen Stand ausführen.";
+    if (lifecycle.previewVerified === true) {
+      elements.detailPreviewSummary.textContent =
+        "Hyperdrive, Migration, Bootstrap und Deploy inklusive Smoke-Tests sind auf demselben exakten main-Head erfolgreich nachgewiesen.";
+    } else if (workflowReady && lifecycle.nextOperation !== null) {
+      const next = (lifecycle.operations ?? []).find(
+        (operation) => operation.id === lifecycle.nextOperation,
+      );
+      elements.detailPreviewSummary.textContent =
+        next === undefined
+          ? "Der Preview-Fortschritt ist verifiziert. Der nächste Schritt konnte nicht eindeutig zugeordnet werden."
+          : `Nächster verifizierter Schritt: ${next.label}. Jede Provider-Änderung bleibt einzeln freigabepflichtig.`;
+    } else if (published) {
+      elements.detailPreviewSummary.textContent =
+        "Der Preview-Vertrag ist auf main veröffentlicht, aber die GitHub-Run-Evidence ist aktuell nicht eindeutig verfügbar. Es wird deshalb kein mutierender nächster Schritt empfohlen.";
+    } else {
+      elements.detailPreviewSummary.textContent =
+        "Die App erfüllt den lokalen Preview-Vertrag, ist aber noch nicht exakt auf main veröffentlicht. Erst nach Commit und Push kann der GitHub-Workflow diesen Stand ausführen.";
+    }
   }
 
   const target = document.createElement("div");
@@ -339,7 +371,7 @@ function renderGeneratedPreviewLifecycle(lifecycle) {
   targetDetail.textContent =
     lifecycle.target === null
       ? "Preview-Ziel konnte nicht eindeutig abgeleitet werden."
-      : `${lifecycle.target.environment} · ${lifecycle.target.workerName} · ${lifecycle.target.database}`;
+      : `${lifecycle.target.environment} · ${lifecycle.target.workerName} · ${lifecycle.target.hyperdriveName} · ${lifecycle.target.database}`;
   target.append(targetHeading, targetDetail);
 
   const list = document.createElement("ol");
@@ -348,16 +380,39 @@ function renderGeneratedPreviewLifecycle(lifecycle) {
 
   for (const [index, operation] of (lifecycle.operations ?? []).entries()) {
     const item = document.createElement("li");
+    const completed = completedOperations.has(operation.id);
+    const current = workflowReady && lifecycle.nextOperation === operation.id;
+    if (completed) item.classList.add("is-complete");
+    if (current) item.classList.add("is-current");
 
     const marker = document.createElement("span");
-    marker.textContent = String(index + 1);
+    marker.textContent = completed ? "✓" : current ? "→" : String(index + 1);
     marker.setAttribute("aria-hidden", "true");
+
     const copy = document.createElement("div");
     const label = document.createElement("strong");
     label.textContent = operation.label;
     const detail = document.createElement("small");
-    detail.textContent = operation.detail;
+    detail.textContent = current
+      ? `Nächster Schritt · ${operation.detail}`
+      : operation.detail;
     copy.append(label, detail);
+
+    const run = runByOperation.get(operation.id);
+    if (
+      completed &&
+      typeof run?.runUrl === "string" &&
+      Number.isInteger(run?.runId)
+    ) {
+      const evidenceLink = document.createElement("a");
+      evidenceLink.href = run.runUrl;
+      evidenceLink.target = "_blank";
+      evidenceLink.rel = "noreferrer";
+      evidenceLink.textContent = `GitHub-Run #${run.runId}`;
+      evidenceLink.className = "factory-preview-evidence-link";
+      copy.append(evidenceLink);
+    }
+
     item.append(marker, copy);
     list.append(item);
   }
@@ -366,11 +421,19 @@ function renderGeneratedPreviewLifecycle(lifecycle) {
   container.hidden = false;
 
   if (
-    published &&
+    workflowReady &&
+    lifecycle.nextOperation !== null &&
     typeof lifecycle.workflowUrl === "string" &&
     lifecycle.workflowUrl.length > 0
   ) {
+    const next = (lifecycle.operations ?? []).find(
+      (operation) => operation.id === lifecycle.nextOperation,
+    );
     workflowLink.href = lifecycle.workflowUrl;
+    workflowLink.textContent =
+      next === undefined
+        ? "Nächsten Preview-Schritt öffnen"
+        : `${next.label} im Preview-Workflow öffnen`;
     workflowLink.hidden = false;
   }
 }
@@ -505,7 +568,19 @@ function renderFactoryLifecycle(previewReadiness, readiness, releaseReadiness) {
 }
 
 function previewReadinessLabel(readiness, lifecycle) {
-  if (lifecycle?.status === "workflow-ready") return "Preview-Workflow bereit";
+  if (lifecycle?.status === "workflow-ready") {
+    if (lifecycle.previewVerified === true) return "Preview technisch geprüft";
+    const completed = Array.isArray(lifecycle.completedOperations)
+      ? lifecycle.completedOperations.length
+      : 0;
+    const total = Array.isArray(lifecycle.operations)
+      ? lifecycle.operations.length
+      : 0;
+    return `Preview ${completed}/${total} geprüft`;
+  }
+  if (lifecycle?.status === "workflow-evidence-unavailable") {
+    return "Preview veröffentlicht · Status unklar";
+  }
   if (lifecycle?.status === "local-contract-ready") {
     return "Preview lokal bereit · Veröffentlichung fehlt";
   }

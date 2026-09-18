@@ -8,6 +8,7 @@ import {
   GENERATED_PREVIEW_PUBLICATION_FILES,
   GENERATED_PREVIEW_ROOT_PUBLICATION_FILES,
   gitBlobSha,
+  verifyGeneratedPreviewPublishedAtRef,
   verifyGeneratedPreviewPublishedOnMain,
 } from "./generated-preview-publication.mjs";
 
@@ -108,6 +109,56 @@ test("fails closed on stale, missing, truncated or unavailable publication evide
     await verifyGeneratedPreviewPublishedOnMain(root, "checklist", {
       fetchImpl: async () =>
         Response.json({ message: "unavailable" }, { status: 503 }),
+    }),
+    false,
+  );
+});
+
+
+test("exact-ref publication also binds additional execution-contract files", async (t) => {
+  const root = await createPublicationFixture(t);
+  const workflowPath = ".github/workflows/generated-app-preview-lifecycle.yml";
+  await mkdir(join(root, ".github", "workflows"), { recursive: true });
+  await writeFile(join(root, ...workflowPath.split("/")), "name: Preview\n");
+
+  const tree = await exactTree(root);
+  const workflowSource = await readFile(join(root, ...workflowPath.split("/")));
+  tree.push({
+    path: workflowPath,
+    type: "blob",
+    sha: gitBlobSha(workflowSource),
+  });
+
+  const head = "a".repeat(40);
+  const calls = [];
+  const result = await verifyGeneratedPreviewPublishedAtRef(
+    root,
+    "checklist",
+    head,
+    {
+      additionalRepositoryFiles: [workflowPath],
+      fetchImpl: async (url) => {
+        calls.push(url);
+        return Response.json({ truncated: false, tree });
+      },
+    },
+  );
+
+  assert.equal(result, true);
+  assert.deepEqual(calls, [
+    `https://api.github.com/repos/martinirrgeher-cloud/appbasis/git/trees/${head}?recursive=1`,
+  ]);
+
+  assert.equal(
+    await verifyGeneratedPreviewPublishedAtRef(root, "checklist", "../main", {
+      fetchImpl: async () => Response.json({ truncated: false, tree }),
+    }),
+    false,
+  );
+  assert.equal(
+    await verifyGeneratedPreviewPublishedAtRef(root, "checklist", head, {
+      additionalRepositoryFiles: ["../outside"],
+      fetchImpl: async () => Response.json({ truncated: false, tree }),
     }),
     false,
   );

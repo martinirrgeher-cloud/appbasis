@@ -1,4 +1,5 @@
 name: Generated App Preview Lifecycle
+run-name: Generated Preview · ${{ inputs.app_id }} · ${{ inputs.operation }}
 
 on:
   workflow_dispatch:

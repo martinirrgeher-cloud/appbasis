@@ -48,6 +48,10 @@ export function createFactoryServer(options = {}) {
     m3PreviewAcceptanceFetchImpl: options.m3PreviewAcceptanceFetchImpl,
     generatedPreviewPublicationFetchImpl:
       options.generatedPreviewPublicationFetchImpl,
+    generatedPreviewRunEvidenceFetchImpl:
+      options.generatedPreviewRunEvidenceFetchImpl,
+    generatedPreviewRepositoryStateImpl:
+      options.generatedPreviewRepositoryStateImpl,
   };
 
   return createServer(async (request, response) => {

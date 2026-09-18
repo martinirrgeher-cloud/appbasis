@@ -1,9 +1,15 @@
 import { loadGeneratedAppPreviewContract } from "../generated-app-preview-contract.mjs";
-import { verifyGeneratedPreviewPublishedOnMain } from "./generated-preview-publication.mjs";
+import { verifyGeneratedPreviewPublishedAtRef } from "./generated-preview-publication.mjs";
+import { observeGeneratedPreviewRepositoryState } from "./generated-preview-repository-state.mjs";
+import {
+  deriveGeneratedPreviewRunEvidence,
+  verifyGeneratedPreviewCurrentMainHead,
+} from "./generated-preview-run-evidence.mjs";
 
 const WORKFLOW_PATH = ".github/workflows/generated-app-preview-lifecycle.yml";
 const WORKFLOW_URL =
   "https://github.com/martinirrgeher-cloud/appbasis/actions/workflows/generated-app-preview-lifecycle.yml";
+const EXECUTION_CONTRACT_FILES = Object.freeze([WORKFLOW_PATH]);
 
 const OPERATIONS = Object.freeze([
   operation(
@@ -31,7 +37,11 @@ const OPERATIONS = Object.freeze([
 export async function deriveGeneratedPreviewLifecycle(
   repositoryRoot,
   definition,
-  { publicationFetchImpl = fetch } = {},
+  {
+    publicationFetchImpl = fetch,
+    repositoryStateImpl = observeGeneratedPreviewRepositoryState,
+    runEvidenceFetchImpl = fetch,
+  } = {},
 ) {
   try {
     const contract = await loadGeneratedAppPreviewContract(
@@ -39,23 +49,88 @@ export async function deriveGeneratedPreviewLifecycle(
       definition?.appId,
     );
 
-    const publishedOnMain = await verifyGeneratedPreviewPublishedOnMain(
+    const initialRepositoryState = await repositoryStateImpl(repositoryRoot);
+    if (
+      initialRepositoryState?.status !== "clean" ||
+      typeof initialRepositoryState.headSha !== "string"
+    ) {
+      return localContractReady(contract);
+    }
+
+    const runEvidence = await deriveGeneratedPreviewRunEvidence(
+      contract.definition.appId,
+      { fetchImpl: runEvidenceFetchImpl },
+    );
+    const expectedHeadSha =
+      runEvidence.status === "available"
+        ? runEvidence.exactHeadSha
+        : initialRepositoryState.headSha;
+
+    if (initialRepositoryState.headSha !== expectedHeadSha) {
+      return localContractReady(contract);
+    }
+
+    const mainBeforePublication =
+      await verifyGeneratedPreviewCurrentMainHead(expectedHeadSha, {
+        fetchImpl: runEvidenceFetchImpl,
+      });
+    if (!mainBeforePublication) {
+      return localContractReady(contract);
+    }
+
+    const publishedAtExpectedHead = await verifyGeneratedPreviewPublishedAtRef(
       repositoryRoot,
       contract.definition.appId,
-      { fetchImpl: publicationFetchImpl },
+      expectedHeadSha,
+      {
+        fetchImpl: publicationFetchImpl,
+        additionalRepositoryFiles: EXECUTION_CONTRACT_FILES,
+      },
     );
 
+    const finalRepositoryState = await repositoryStateImpl(repositoryRoot);
+    const exactCleanRepositoryState =
+      finalRepositoryState?.status === "clean" &&
+      finalRepositoryState.headSha === expectedHeadSha;
+    const mainAfterPublication =
+      await verifyGeneratedPreviewCurrentMainHead(expectedHeadSha, {
+        fetchImpl: runEvidenceFetchImpl,
+      });
+
+    const publishedOnMain =
+      publishedAtExpectedHead &&
+      exactCleanRepositoryState &&
+      mainAfterPublication;
+
+    const status = !publishedOnMain
+      ? "local-contract-ready"
+      : runEvidence.status === "available"
+        ? "workflow-ready"
+        : "workflow-evidence-unavailable";
+    const progressVerified = status === "workflow-ready";
+
     return Object.freeze({
-      status: publishedOnMain ? "workflow-ready" : "local-contract-ready",
+      status,
       workflowName: "Generated App Preview Lifecycle",
       workflowPath: WORKFLOW_PATH,
       workflowUrl: WORKFLOW_URL,
       workflowRef: publishedOnMain ? "main" : null,
+      exactHeadSha: progressVerified ? runEvidence.exactHeadSha : null,
       requiresExplicitApply: true,
       publishedOnMain,
       initialOperation: "hyperdrive",
-      nextOperation: null,
-      progressEvidence: "not-observed",
+      nextOperation: progressVerified ? runEvidence.nextOperation : null,
+      progressEvidence:
+        status === "workflow-ready"
+          ? "verified"
+          : status === "workflow-evidence-unavailable"
+            ? "unavailable"
+            : "not-applicable",
+      completedOperations: Object.freeze(
+        progressVerified ? [...runEvidence.completedOperations] : [],
+      ),
+      previewVerified: progressVerified && runEvidence.previewVerified,
+      runs: Object.freeze(progressVerified ? [...runEvidence.runs] : []),
       operations: OPERATIONS,
       target: Object.freeze({
         environment: contract.target.environment,
@@ -70,15 +145,45 @@ export async function deriveGeneratedPreviewLifecycle(
       workflowName: "Generated App Preview Lifecycle",
       workflowPath: WORKFLOW_PATH,
       workflowUrl: WORKFLOW_URL,
+      exactHeadSha: null,
       requiresExplicitApply: true,
       publishedOnMain: false,
       initialOperation: null,
       nextOperation: null,
-      progressEvidence: "not-observed",
+      progressEvidence: "not-applicable",
+      completedOperations: Object.freeze([]),
+      previewVerified: false,
+      runs: Object.freeze([]),
       operations: OPERATIONS,
       target: null,
     });
   }
+}
+
+function localContractReady(contract) {
+  return Object.freeze({
+    status: "local-contract-ready",
+    workflowName: "Generated App Preview Lifecycle",
+    workflowPath: WORKFLOW_PATH,
+    workflowUrl: WORKFLOW_URL,
+    workflowRef: null,
+    exactHeadSha: null,
+    requiresExplicitApply: true,
+    publishedOnMain: false,
+    initialOperation: "hyperdrive",
+    nextOperation: null,
+    progressEvidence: "not-applicable",
+    completedOperations: Object.freeze([]),
+    previewVerified: false,
+    runs: Object.freeze([]),
+    operations: OPERATIONS,
+    target: Object.freeze({
+      environment: contract.target.environment,
+      workerName: contract.target.workerName,
+      hyperdriveName: contract.target.hyperdriveName,
+      database: contract.target.database,
+    }),
+  });
 }
 
 function operation(id, label, detail) {
