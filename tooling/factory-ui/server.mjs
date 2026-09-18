@@ -309,6 +309,7 @@ function mapCreateAppError(error) {
 
   if (
     message.startsWith("App definition ") ||
+    message.startsWith("App theme ") ||
     message.startsWith("Unknown AppBasis module:") ||
     message.includes(" references unsupported platform service ") ||
     message === "Generated permissions runtime requires the identity platform service."
