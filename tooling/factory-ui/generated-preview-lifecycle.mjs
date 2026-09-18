@@ -88,19 +88,19 @@ export async function deriveGeneratedPreviewLifecycle(
       },
     );
 
-    const mainAfterPublication =
-      await verifyGeneratedPreviewCurrentMainHead(expectedHeadSha, {
-        fetchImpl: runEvidenceFetchImpl,
-      });
     const finalRepositoryState = await repositoryStateImpl(repositoryRoot);
     const exactCleanRepositoryState =
       finalRepositoryState?.status === "clean" &&
       finalRepositoryState.headSha === expectedHeadSha;
+    const mainAfterPublication =
+      await verifyGeneratedPreviewCurrentMainHead(expectedHeadSha, {
+        fetchImpl: runEvidenceFetchImpl,
+      });
 
     const publishedOnMain =
       publishedAtExpectedHead &&
-      mainAfterPublication &&
-      exactCleanRepositoryState;
+      exactCleanRepositoryState &&
+      mainAfterPublication;
 
     const status = !publishedOnMain
       ? "local-contract-ready"
