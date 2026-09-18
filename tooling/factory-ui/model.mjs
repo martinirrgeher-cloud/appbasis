@@ -20,6 +20,8 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
     options.m3PreviewAcceptanceFetchImpl ?? fetch;
   const generatedPreviewPublicationFetchImpl =
     options.generatedPreviewPublicationFetchImpl ?? fetch;
+  const generatedPreviewRunEvidenceFetchImpl =
+    options.generatedPreviewRunEvidenceFetchImpl ?? fetch;
   const ulcLinzM5JOwnerInputs = options.ulcLinzM5JOwnerInputs ?? {};
   const m5EvidenceNow = options.m5EvidenceNow ?? new Date();
   const [appDefinitions, modules] = await Promise.all([
@@ -31,6 +33,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
       withFactoryReadiness(root, definition, {
         m3PreviewAcceptanceFetchImpl,
         generatedPreviewPublicationFetchImpl,
+        generatedPreviewRunEvidenceFetchImpl,
         ulcLinzM5JOwnerInputs,
         m5EvidenceNow,
       }),
@@ -58,6 +61,7 @@ async function withFactoryReadiness(
   {
     m3PreviewAcceptanceFetchImpl,
     generatedPreviewPublicationFetchImpl,
+    generatedPreviewRunEvidenceFetchImpl,
     ulcLinzM5JOwnerInputs,
     m5EvidenceNow,
   },
@@ -82,6 +86,7 @@ async function withFactoryReadiness(
     readAppTheme(repositoryRoot, definition),
     deriveGeneratedPreviewLifecycle(repositoryRoot, definition, {
       publicationFetchImpl: generatedPreviewPublicationFetchImpl,
+      runEvidenceFetchImpl: generatedPreviewRunEvidenceFetchImpl,
     }),
     deriveM3PreviewAcceptanceEvidence(definition, {
       fetchImpl: m3PreviewAcceptanceFetchImpl,
