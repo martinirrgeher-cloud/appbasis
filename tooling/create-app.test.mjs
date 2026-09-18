@@ -157,6 +157,13 @@ test("persists explicit app branding without changing the app definition schema"
   assert.match(generatedUi, />BA</);
   assert.match(generatedUi, /--app-accent: #0f766e/);
   assert.match(generatedUi, /Branded App/);
+  assert.match(
+    await readFile(
+      join(root, "apps", "branded", "worker", "preview.ts"),
+      "utf8",
+    ),
+    /appId: "branded"/,
+  );
 });
 
 test("creates permission-guarded tasks runtime only from explicit platform composition", async (t) => {
