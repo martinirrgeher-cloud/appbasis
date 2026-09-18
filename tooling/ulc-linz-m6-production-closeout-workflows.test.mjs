@@ -82,6 +82,7 @@ test("M6 post-deploy smoke stays dedicated, pilot-ingress bound and validates bo
     "/api/auth/sign-in",
     "/api/auth/session",
     "revoke-production-http-smoke-session.mjs",
+    "node --experimental-transform-types --import ./tooling/register-native-typescript-resolution.mjs ./tooling/run-production-post-deploy-smoke.mjs",
     "ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE",
     "trap cleanup EXIT",
     "custom organizational domain: not activated",
