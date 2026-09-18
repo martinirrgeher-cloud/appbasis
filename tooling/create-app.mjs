@@ -289,7 +289,7 @@ function generatedReadme(definition, runtimeFiles) {
   const runtimeDescription =
     runtimeFiles.length === 0
       ? "This skeleton contains the versioned app definition only."
-      : "This app includes the independently verified generated runtime, a responsive themed web UI and declared AppBasis platform/module contracts without copying the Reference app.";
+      : "This app includes the independently verified generated runtime, a responsive themed web UI and consumes declared AppBasis platform and module contracts without copying the Reference app.";
   return `# ${definition.displayName}\n\nGenerated AppBasis app skeleton.\n\n- App ID: \`${definition.appId}\`\n- Modules: ${modules}\n- Platform services: ${platformServices}\n\n${runtimeDescription}\n`;
 }
 
