@@ -8,6 +8,8 @@ const PER_PAGE = 100;
 const MAX_PAGES = 3;
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const APP_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+const GITHUB_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 
 export const GENERATED_PREVIEW_OPERATIONS = Object.freeze([
   "hyperdrive",
@@ -202,9 +204,10 @@ function unavailableEvidence() {
 }
 
 function isIsoTimestamp(value) {
-  if (typeof value !== "string" || value.length === 0) return false;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+  if (typeof value !== "string" || !GITHUB_TIMESTAMP_PATTERN.test(value)) {
+    return false;
+  }
+  return Number.isFinite(Date.parse(value));
 }
 
 function isRecord(value) {
