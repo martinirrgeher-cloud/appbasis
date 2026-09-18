@@ -7,6 +7,7 @@ import {
 } from "../app-definition.mjs";
 import { readAppTheme } from "../app-theme.mjs";
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
+import { deriveGeneratedPreviewLifecycle } from "./generated-preview-lifecycle.mjs";
 import { deriveM3PreviewAcceptanceEvidence } from "./m3-preview-acceptance-evidence.mjs";
 import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
 import { evaluateProductionReadiness } from "./production-readiness.mjs";
@@ -41,6 +42,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
     }),
     capabilities: Object.freeze({
       createApp: true,
+      previewWorkflow: true,
       deployPreview: false,
       releaseProduction: false,
     }),
@@ -60,6 +62,7 @@ async function withFactoryReadiness(
     packageManifestPresent,
     databaseManifestPresent,
     appTheme,
+    generatedPreviewLifecycle,
     m3PreviewAcceptanceEvidence,
     productionReadinessEvidence,
   ] = await Promise.all([
@@ -69,6 +72,7 @@ async function withFactoryReadiness(
       ? pathExists(join(appRoot, "appbasis.database.json"))
       : Promise.resolve(false),
     readAppTheme(repositoryRoot, definition),
+    deriveGeneratedPreviewLifecycle(repositoryRoot, definition),
     deriveM3PreviewAcceptanceEvidence(definition, {
       fetchImpl: m3PreviewAcceptanceFetchImpl,
     }),
@@ -105,6 +109,7 @@ async function withFactoryReadiness(
       databaseManifestRequired,
       databaseManifestPresent,
     }),
+    previewLifecycle: generatedPreviewLifecycle,
     productionReadiness,
     productionReleaseReadiness,
   });
