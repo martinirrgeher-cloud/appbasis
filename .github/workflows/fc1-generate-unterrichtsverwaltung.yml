@@ -48,24 +48,34 @@ jobs:
           fi
           node ./tooling/create-app.mjs             --app-id unterrichtsverwaltung             --display-name Unterrichtsverwaltung             --module tasks             --platform-service identity             --platform-service permissions
 
-      - name: Verify generated app contracts
+      - name: Verify generated app locally
         shell: bash
         run: |
           set -euo pipefail
-          pnpm run verify:apps
           pnpm --filter @appbasis/app-unterrichtsverwaltung typecheck
           pnpm --filter @appbasis/app-unterrichtsverwaltung test
 
-      - name: Commit canonical generated app
+      - name: Commit canonical generated app locally
+        id: generated_commit
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- apps/unterrichtsverwaltung pnpm-lock.yaml &&              test -z "$(git status --short --untracked-files=all -- apps/unterrichtsverwaltung pnpm-lock.yaml)"; then
+          if git diff --quiet -- apps/unterrichtsverwaltung pnpm-lock.yaml && \
+             test -z "$(git status --short --untracked-files=all -- apps/unterrichtsverwaltung pnpm-lock.yaml)"; then
             echo "No generated changes to commit."
+            echo "created=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name "appbasis-factory-bot"
           git config user.email "appbasis-factory-bot@users.noreply.github.com"
           git add apps/unterrichtsverwaltung pnpm-lock.yaml
           git commit -m "feat: generate Unterrichtsverwaltung app [generated-unterrichtsverwaltung]"
-          git push origin HEAD:feat/fc1-unterrichtsverwaltung
+          echo "created=1" >> "$GITHUB_OUTPUT"
+
+      - name: Verify repository with clean generated commit
+        if: steps.generated_commit.outputs.created == '1'
+        run: pnpm run verify:apps
+
+      - name: Publish canonical generated app commit
+        if: steps.generated_commit.outputs.created == '1'
+        run: git push origin HEAD:feat/fc1-unterrichtsverwaltung
