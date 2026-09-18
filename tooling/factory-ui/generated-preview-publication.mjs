@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 
 const GITHUB_TREE_BASE =
   "https://api.github.com/repos/martinirrgeher-cloud/appbasis/git/trees";
@@ -38,11 +38,19 @@ export async function verifyGeneratedPreviewPublishedAtRef(
   repositoryRoot,
   appId,
   ref,
-  { fetchImpl = fetch } = {},
+  { fetchImpl = fetch, additionalRepositoryFiles = [] } = {},
 ) {
   if (typeof fetchImpl !== "function") return false;
   if (typeof appId !== "string" || !APP_ID_PATTERN.test(appId)) return false;
   if (ref !== "main" && (typeof ref !== "string" || !COMMIT_SHA_PATTERN.test(ref))) {
+    return false;
+  }
+  if (
+    !Array.isArray(additionalRepositoryFiles) ||
+    additionalRepositoryFiles.some(
+      (relativePath) => !isCanonicalRepositoryFile(relativePath),
+    )
+  ) {
     return false;
   }
 
@@ -109,10 +117,15 @@ export async function verifyGeneratedPreviewPublishedAtRef(
     }
   }
 
-  for (const relativePath of GENERATED_PREVIEW_ROOT_PUBLICATION_FILES) {
+  for (const relativePath of [
+    ...GENERATED_PREVIEW_ROOT_PUBLICATION_FILES,
+    ...additionalRepositoryFiles,
+  ]) {
     let source;
     try {
-      source = await readFile(join(repositoryRoot, relativePath));
+      source = await readFile(
+        join(repositoryRoot, ...relativePath.split("/")),
+      );
     } catch {
       return false;
     }
@@ -122,6 +135,21 @@ export async function verifyGeneratedPreviewPublishedAtRef(
   }
 
   return true;
+}
+
+function isCanonicalRepositoryFile(value) {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.trim() === value &&
+    !value.includes("\\") &&
+    !posix.isAbsolute(value) &&
+    posix.normalize(value) === value &&
+    value !== "." &&
+    value !== ".." &&
+    !value.startsWith("../") &&
+    !value.endsWith("/")
+  );
 }
 
 export function gitBlobSha(source) {
