@@ -84,6 +84,9 @@ jobs:
       - name: Run generated PostgreSQL tasks runtime E2E tests
         run: pnpm --filter @appbasis/app-tasks-minimal test:postgres
 
+      - name: Run Unterrichtsverwaltung PostgreSQL E2E tests
+        run: pnpm --filter @appbasis/app-unterrichtsverwaltung test:postgres
+
       - name: Run m3-preview PostgreSQL E2E tests
         run: pnpm --filter @appbasis/app-m3-preview test:postgres
 

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 2,
+  "appId": "unterrichtsverwaltung",
+  "displayName": "Unterrichtsverwaltung",
+  "modules": [
+    "tasks"
+  ],
+  "platformServices": [
+    "identity",
+    "permissions"
+  ]
+}
