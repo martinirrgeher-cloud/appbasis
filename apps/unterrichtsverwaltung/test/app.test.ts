@@ -8,6 +8,7 @@ import {
 } from "@appbasis/permissions";
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import { createGeneratedApp } from "../worker/app";
+import { InMemoryMasterDataRepository } from "../worker/master-data";
 
 const currentIdentity = {
   identity: {
@@ -41,7 +42,7 @@ const identity: IdentityHttpService = {
 
 describe("generated AppBasis identity runtime", () => {
   it("is runnable and exposes health", async () => {
-    const response = await createGeneratedApp({ identity, permissions: permissionStore(true), tasks: new InMemoryTaskRepository() }).request("/api/health");
+    const response = await createGeneratedApp({ identity, permissions: permissionStore(true), tasks: new InMemoryTaskRepository(), masterData: new InMemoryMasterDataRepository() }).request("/api/health");
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: "ok" });
   });
@@ -50,7 +51,7 @@ describe("generated AppBasis identity runtime", () => {
     const response = await createGeneratedApp({
       identity,
       permissions: permissionStore(true),
-      tasks: new InMemoryTaskRepository(),
+      tasks: new InMemoryTaskRepository(), masterData: new InMemoryMasterDataRepository(),
       secureCookies: false,
     }).request("/api/auth/sign-in", {
       method: "POST",
@@ -86,6 +87,7 @@ describe("generated AppBasis identity runtime", () => {
       identity,
       permissions: permissionStore(true),
       tasks,
+      masterData: new InMemoryMasterDataRepository(),
       secureCookies: false,
     });
 
@@ -96,6 +98,7 @@ describe("generated AppBasis identity runtime", () => {
       identity,
       permissions: permissionStore(false),
       tasks,
+      masterData: new InMemoryMasterDataRepository(),
       secureCookies: false,
     }).request("/api/tasks", {
       headers: { cookie: currentIdentity.sessionToken },
@@ -127,18 +130,113 @@ describe("generated AppBasis identity runtime", () => {
       tasks: [{ title: "Generated HTTP task", status: "open" }],
     });
   });
+
+  it("persists the first school master-data slice behind authenticated application access", async () => {
+    const masterData = new InMemoryMasterDataRepository(
+      (() => {
+        let id = 0;
+        return () => "master-" + String(++id);
+      })(),
+    );
+    const app = createGeneratedApp({
+      identity,
+      permissions: permissionStore(true),
+      tasks: new InMemoryTaskRepository(),
+      masterData,
+      secureCookies: false,
+    });
+    const headers = {
+      cookie: currentIdentity.sessionToken,
+      "content-type": "application/json",
+    };
+
+    const createdClass = await app.request("/api/master-data/classes", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "3A", schoolYear: "2026/27" }),
+    });
+    expect(createdClass.status).toBe(201);
+    const classBody = (await createdClass.json()) as {
+      class: { id: string; name: string; archived: boolean };
+    };
+    expect(classBody.class).toMatchObject({ name: "3A", archived: false });
+
+    const createdStudent = await app.request("/api/master-data/students", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        classId: classBody.class.id,
+        firstName: "Anna",
+        lastName: "Beispiel",
+      }),
+    });
+    expect(createdStudent.status).toBe(201);
+
+    const students = await app.request(
+      "/api/master-data/students?classId=" + encodeURIComponent(classBody.class.id),
+      { headers: { cookie: currentIdentity.sessionToken } },
+    );
+    expect(students.status).toBe(200);
+    await expect(students.json()).resolves.toMatchObject({
+      students: [
+        {
+          classId: classBody.class.id,
+          firstName: "Anna",
+          lastName: "Beispiel",
+        },
+      ],
+    });
+
+    const archived = await app.request(
+      "/api/master-data/classes/" + classBody.class.id + "/archive",
+      { method: "POST", headers: { cookie: currentIdentity.sessionToken } },
+    );
+    expect(archived.status).toBe(200);
+    await expect(archived.json()).resolves.toMatchObject({
+      class: { id: classBody.class.id, archived: true },
+    });
+
+    const rejectedStudent = await app.request("/api/master-data/students", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        classId: classBody.class.id,
+        firstName: "Max",
+        lastName: "Später",
+      }),
+    });
+    expect(rejectedStudent.status).toBe(409);
+  });
+
+  it("denies master-data access without app:use", async () => {
+    const denied = await createGeneratedApp({
+      identity,
+      permissions: permissionStore(false),
+      tasks: new InMemoryTaskRepository(),
+      masterData: new InMemoryMasterDataRepository(),
+      secureCookies: false,
+    }).request("/api/master-data/classes", {
+      headers: { cookie: currentIdentity.sessionToken },
+    });
+    expect(denied.status).toBe(403);
+    await expect(denied.json()).resolves.toMatchObject({
+      error: { code: "PERMISSION_DENIED" },
+    });
+  });
+
 });
 
 function permissionStore(allow: boolean) {
-  const capability = capabilityId(TASK_CAPABILITIES.manage);
+  const taskCapability = capabilityId(TASK_CAPABILITIES.manage);
+  const appCapability = capabilityId("app:use");
   return new InMemoryPermissionStore({
-    knownCapabilities: [capability],
+    knownCapabilities: [appCapability, taskCapability],
     roles: [],
     principals: [
       {
         principalId: principalId(currentIdentity.identity.identityId),
         roleIds: [],
-        grants: allow ? [capability] : [],
+        grants: allow ? [appCapability, taskCapability] : [],
         revokes: [],
       },
     ],

@@ -10,6 +10,7 @@ import { InMemoryTaskRepository, TASK_CAPABILITIES } from "@appbasis/tasks";
 
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
+import { InMemoryMasterDataRepository } from "../worker/master-data";
 
 const currentIdentity = {
   identity: {
@@ -113,6 +114,7 @@ describe("generated Worker entrypoint", () => {
       identity,
       permissions,
       tasks,
+      masterData: new InMemoryMasterDataRepository(),
       async close() {
         closeCalls += 1;
       },
@@ -188,6 +190,7 @@ describe("generated Worker entrypoint", () => {
       identity,
       permissions,
       tasks: new InMemoryTaskRepository(),
+      masterData: new InMemoryMasterDataRepository(),
       async close() {
         closeCalls += 1;
         const error = new Error("postgresql://close-secret-host/internal");
@@ -234,6 +237,7 @@ describe("generated Worker entrypoint", () => {
         },
       },
       tasks: new InMemoryTaskRepository(),
+      masterData: new InMemoryMasterDataRepository(),
       async close() {
         throw new Error("postgresql://close-secret-host/internal");
       },
