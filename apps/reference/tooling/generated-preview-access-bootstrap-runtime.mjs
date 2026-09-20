@@ -34,7 +34,10 @@ export async function bootstrapGeneratedPreviewAccess(
   env = process.env,
   dependencies = {},
 ) {
-  const config = await readGeneratedPreviewAccessBootstrapEnvironment(env);
+  const config = await readGeneratedPreviewAccessBootstrapEnvironment(
+    env,
+    dependencies.repositoryRoot ?? process.cwd(),
+  );
   const createDatabase =
     dependencies.createPostgresDatabase ?? createPostgresDatabase;
   const createRootAdmin =
