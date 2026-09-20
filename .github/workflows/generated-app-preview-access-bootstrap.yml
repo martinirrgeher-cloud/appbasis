@@ -133,6 +133,11 @@ jobs:
           node ./tooling/generated-app-preview-smoke.mjs
           node ./tooling/generated-preview-database-smoke.mjs
 
+      - name: Build generated preview access bootstrap
+        run: >-
+          pnpm --filter @appbasis/reference exec vite build
+          --config tooling/vite.generated-preview-access-bootstrap.config.ts
+
       - name: Bootstrap initial generated preview access
         shell: bash
         env:
@@ -141,7 +146,11 @@ jobs:
           APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
           APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
           APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD }}
-        run: node ./tooling/generated-app-preview-access-bootstrap.mjs
+        run: node ./apps/reference/tooling/.generated-preview-access-dist/generated-app-preview-access-bootstrap.mjs
+
+      - name: Remove generated preview access bundle
+        if: always()
+        run: rm -rf ./apps/reference/tooling/.generated-preview-access-dist
 
       - name: Record bootstrap result
         if: success()
