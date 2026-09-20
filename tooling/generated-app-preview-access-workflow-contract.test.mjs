@@ -22,8 +22,13 @@ test("generated preview access bootstrap is a separate explicit preview mutation
   assert.match(workflow, /Generated preview access bootstrap was not explicitly authorized/);
   assert.match(workflow, /Generated preview access bootstrap is main-only/);
   assert.match(workflow, /github\.ref/);
+  assert.match(workflow, /generated-app-preview-hyperdrive\.mjs resolve/);
   assert.match(workflow, /generated-app-preview-smoke\.mjs/);
   assert.match(workflow, /generated-preview-database-smoke\.mjs/);
+  assert.ok(
+    workflow.indexOf("generated-app-preview-hyperdrive.mjs resolve") <
+      workflow.indexOf("Bootstrap initial generated preview access"),
+  );
   assert.match(workflow, /vite\.generated-preview-access-bootstrap\.config\.ts/);
   assert.match(
     workflow,
