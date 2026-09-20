@@ -80,6 +80,25 @@ Für die erste neu erzeugte App ist die vorgesehene Reihenfolge:
 
 Erst nach erfolgreichem `deploy` gilt die technische Preview als erreichbar. Benutzer-/Rollen-Provisionierung und fachliche Abnahme bleiben eigene nachfolgende Schritte.
 
+## Initialer Preview-Zugang nach dem Deploy
+
+Der initiale Login bleibt bewusst **außerhalb** des vierstufigen FC1-Preview-Lifecycles. Dafür gibt es den getrennten Workflow **Generated App Preview Access Bootstrap**.
+
+Er benötigt im app-spezifischen Environment zusätzlich:
+
+- `APPBASIS_ROOT_ADMIN_PASSWORD` für den technischen Better-Auth-Administrator der Preview-Control-Plane
+- `APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD` für den ersten App-Benutzer
+
+Mit `apply=true`:
+
+- wird der technische Better-Auth-Administrator nur bei leerem bzw. recoverablem Ausgangszustand erstellt,
+- wird der App-Benutzer `preview.admin` über den bestehenden Identity-Vertrag provisioniert,
+- erhält er ausschließlich die für die aktuell unterstützten generierten Module benötigten AppBasis-Berechtigungen,
+- verlangt sein erster Login weiterhin den vorgesehenen Passwortwechsel,
+- werden keine Produktionsressourcen oder Produktionsbenutzer verändert.
+
+Die technische Administrator-Identität bleibt von AppBasis-Anwendungsidentitäten getrennt und wird nicht als normaler App-Benutzer verwendet.
+
 ## Sicherheitsgrenzen
 
 - keine Wiederverwendung der spezialisierten `generated-tasks-preview`-Umgebung
