@@ -117,6 +117,30 @@ export async function bootstrapGeneratedPreviewAccess(
       connection.client,
       rootSession.identityId,
     );
+    const previewProvisioningState =
+      await inspectPreviewUserProvisioningState(connection.client);
+    if (previewProvisioningState.requiresCredentialProbe) {
+      let previewProbe = null;
+      try {
+        previewProbe = await backend.signInWithUsername({
+          username: GENERATED_PREVIEW_USER_USERNAME,
+          password: config.userTemporaryPassword,
+        });
+      } catch {
+        throw new GeneratedPreviewAccessBootstrapStateError(
+          "Existing generated preview user cannot be authenticated with the protected temporary credential.",
+        );
+      }
+      try {
+        if (previewProbe.identityId !== previewProvisioningState.identityId) {
+          throw new GeneratedPreviewAccessBootstrapStateError(
+            "Existing generated preview user resolved an unexpected identity.",
+          );
+        }
+      } finally {
+        await backend.endSession(previewProbe.sessionToken);
+      }
+    }
 
     const identity = createRuntime({
       auth,
@@ -194,7 +218,7 @@ export function buildGeneratedPreviewPermissionBundle({ modules, identityId }) {
   });
 }
 
-async function loadWorkspaceRuntime(appId) {
+export async function loadWorkspaceRuntime(appId) {
   const appPackage = new URL(`../apps/${appId}/package.json`, import.meta.url);
   const requireFromApp = createRequire(appPackage);
   const importFromApp = async (specifier) => {
@@ -217,6 +241,123 @@ async function loadWorkspaceRuntime(appId) {
     createInitialTechnicalAdmin: rootAdmin.createInitialTechnicalAdmin,
     provisionPostgresPermissions: provisioning.provisionPostgresPermissions,
   });
+}
+
+async function inspectPreviewUserProvisioningState(client) {
+  const [users, operations] = await Promise.all([
+    client.unsafe(
+      `SELECT id, username, role, banned
+       FROM "user"
+       WHERE username = $1`,
+      [GENERATED_PREVIEW_USER_USERNAME],
+    ),
+    client.unsafe(
+      `SELECT identity_id, completed_at
+       FROM appbasis_identity_operation
+       WHERE operation_key = $1`,
+      [`provision:${GENERATED_PREVIEW_USER_USERNAME}`],
+    ),
+  ]);
+  if (users.length > 1 || operations.length > 1) {
+    throw new GeneratedPreviewAccessBootstrapStateError(
+      "Generated preview user provisioning state is ambiguous.",
+    );
+  }
+
+  const user = users[0] ?? null;
+  let hasIdentityState = false;
+  if (user !== null) {
+    const stateRows = await client.unsafe(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM appbasis_identity_security_state
+         WHERE identity_id = $1
+       ) AS present`,
+      [user.id],
+    );
+    hasIdentityState = stateRows[0]?.present === true;
+  }
+
+  return classifyPreviewUserProvisioningState({
+    user,
+    operation: operations[0] ?? null,
+    hasIdentityState,
+  });
+}
+
+export function classifyPreviewUserProvisioningState({
+  user,
+  operation,
+  hasIdentityState,
+}) {
+  if (user === null) {
+    if (hasIdentityState) {
+      throw new GeneratedPreviewAccessBootstrapStateError(
+        "Generated preview identity state exists without its Better Auth user.",
+      );
+    }
+    if (operation === null) {
+      return Object.freeze({
+        status: "new",
+        identityId: null,
+        requiresCredentialProbe: false,
+      });
+    }
+    if (operation.identity_id === null && operation.completed_at === null) {
+      return Object.freeze({
+        status: "recover",
+        identityId: null,
+        requiresCredentialProbe: false,
+      });
+    }
+    throw new GeneratedPreviewAccessBootstrapStateError(
+      "Generated preview provisioning operation conflicts with the missing user.",
+    );
+  }
+
+  if (
+    typeof user.id !== "string" ||
+    user.id.length === 0 ||
+    user.username !== GENERATED_PREVIEW_USER_USERNAME ||
+    user.role !== "user" ||
+    user.banned === true
+  ) {
+    throw new GeneratedPreviewAccessBootstrapStateError(
+      "Existing generated preview user has an invalid Better Auth state.",
+    );
+  }
+  if (operation === null) {
+    throw new GeneratedPreviewAccessBootstrapStateError(
+      "Existing generated preview user has no trusted provisioning operation.",
+    );
+  }
+
+  if (
+    operation.identity_id === null &&
+    operation.completed_at === null &&
+    !hasIdentityState
+  ) {
+    return Object.freeze({
+      status: "recover",
+      identityId: user.id,
+      requiresCredentialProbe: true,
+    });
+  }
+  if (
+    operation.identity_id === user.id &&
+    operation.completed_at !== null &&
+    hasIdentityState
+  ) {
+    return Object.freeze({
+      status: "ready",
+      identityId: user.id,
+      requiresCredentialProbe: false,
+    });
+  }
+
+  throw new GeneratedPreviewAccessBootstrapStateError(
+    "Existing generated preview user does not match the trusted provisioning state.",
+  );
 }
 
 async function ensureTechnicalRootAdmin(config, dependencies) {
@@ -293,9 +434,14 @@ function rootAdminOptions(config) {
 
 async function requireTechnicalRootAdmin(client, identityId) {
   const rows = await client.unsafe(
-    `SELECT username, role, banned
-     FROM "user"
-     WHERE id = $1
+    `SELECT u.username, u.role, u.banned,
+            EXISTS (
+              SELECT 1
+              FROM appbasis_identity_security_state s
+              WHERE s.identity_id = u.id
+            ) AS has_appbasis_identity
+     FROM "user" u
+     WHERE u.id = $1
      LIMIT 1`,
     [identityId],
   );
@@ -303,6 +449,7 @@ async function requireTechnicalRootAdmin(client, identityId) {
   if (
     row?.username !== GENERATED_PREVIEW_ROOT_ADMIN_USERNAME ||
     row.banned === true ||
+    row.has_appbasis_identity === true ||
     !hasAdminRole(row.role)
   ) {
     throw new GeneratedPreviewAccessBootstrapStateError(
@@ -395,7 +542,8 @@ function requiredPassword(value, field) {
     typeof value !== "string" ||
     value.length < MINIMUM_PASSWORD_LENGTH ||
     value.length > MAXIMUM_PASSWORD_LENGTH ||
-    value.trim().length === 0
+    value.trim().length === 0 ||
+    /[\r\n]/u.test(value)
   ) {
     throw new GeneratedPreviewAccessBootstrapConfigurationError(
       `${field} must contain ${MINIMUM_PASSWORD_LENGTH}-${MAXIMUM_PASSWORD_LENGTH} characters.`,
