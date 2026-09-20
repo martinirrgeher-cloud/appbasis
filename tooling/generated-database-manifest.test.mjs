@@ -60,6 +60,54 @@ test("createAppSkeleton publishes the generated database manifest before the app
   );
 });
 
+test("adds app-owned Unterrichtsverwaltung master-data migrations after shared owners", () => {
+  const manifest = createGeneratedDatabaseManifest({
+    appId: "unterrichtsverwaltung",
+    platformServices: ["identity", "permissions"],
+    modules: ["tasks"],
+  });
+
+  assert.deepEqual(
+    manifest?.owners.map((owner) => ({
+      id: owner.id,
+      schemaVersion: owner.schemaVersion,
+      migrations: owner.migrations,
+    })),
+    [
+      {
+        id: "identity",
+        schemaVersion: 2,
+        migrations: [
+          "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
+          "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+        ],
+      },
+      {
+        id: "permissions",
+        schemaVersion: 4,
+        migrations: [
+          "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
+          "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
+          "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+          "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
+        ],
+      },
+      {
+        id: "tasks",
+        schemaVersion: 1,
+        migrations: ["modules/tasks/migrations/0000_appbasis_tasks_foundation.sql"],
+      },
+      {
+        id: "unterrichtsverwaltung-master-data",
+        schemaVersion: 1,
+        migrations: [
+          "apps/unterrichtsverwaltung/migrations/0000_unterrichtsverwaltung_master_data.sql",
+        ],
+      },
+    ],
+  );
+});
+
 test("omits a database manifest only when the app declares no database owner", () => {
   assert.equal(
     createGeneratedDatabaseManifest({
