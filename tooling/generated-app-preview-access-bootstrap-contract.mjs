@@ -240,6 +240,66 @@ export function classifyPreviewUserProvisioningState({
   );
 }
 
+export function assertPreviewPrincipalPermissionsReadyForProvisioning(
+  principal,
+  expectedRoleId = TASKS_MANAGER_ROLE,
+) {
+  if (principal === null) return;
+
+  assertCanonicalPrincipalPermissionShape(principal, expectedRoleId, true);
+}
+
+export function assertExactPreviewPrincipalPermissions(
+  principal,
+  expectedRoleId = TASKS_MANAGER_ROLE,
+) {
+  if (principal === null) {
+    throw new GeneratedPreviewAccessBootstrapStateError(
+      "Generated preview principal is missing after permission provisioning.",
+    );
+  }
+
+  assertCanonicalPrincipalPermissionShape(principal, expectedRoleId, false);
+}
+
+function assertCanonicalPrincipalPermissionShape(
+  principal,
+  expectedRoleId,
+  allowMissingRole,
+) {
+  if (
+    typeof principal?.principalId !== "string" ||
+    !Array.isArray(principal.roleIds) ||
+    !Array.isArray(principal.grants) ||
+    !Array.isArray(principal.revokes)
+  ) {
+    throw new GeneratedPreviewAccessBootstrapStateError(
+      "Generated preview principal permission state is invalid.",
+    );
+  }
+
+  if (principal.grants.length !== 0 || principal.revokes.length !== 0) {
+    throw new GeneratedPreviewAccessBootstrapStateError(
+      "Generated preview principal has unexpected direct permission overrides.",
+    );
+  }
+
+  const roleIds = [...principal.roleIds];
+  const expectedRoles = allowMissingRole
+    ? [[], [expectedRoleId]]
+    : [[expectedRoleId]];
+  const matchesExpectedRoles = expectedRoles.some(
+    (expected) =>
+      roleIds.length === expected.length &&
+      roleIds.every((value, index) => value === expected[index]),
+  );
+  if (!matchesExpectedRoles) {
+    throw new GeneratedPreviewAccessBootstrapStateError(
+      "Generated preview principal has unexpected role assignments.",
+    );
+  }
+}
+
 export function requiredPreviewDatabaseUrl(value, expectedDatabase) {
   const normalized = requiredTrimmed(value, "APPBASIS_DATABASE_URL");
   let url;
