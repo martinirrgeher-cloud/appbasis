@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
 
-const repositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
+const defaultRepositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 const MINIMUM_PASSWORD_LENGTH = 8;
 const MAXIMUM_PASSWORD_LENGTH = 128;
 
@@ -29,6 +29,7 @@ export class GeneratedPreviewAccessBootstrapStateError extends Error {
 
 export async function readGeneratedPreviewAccessBootstrapEnvironment(
   env = process.env,
+  repositoryRoot = defaultRepositoryRoot,
 ) {
   if (env.APPBASIS_PREVIEW_ACCESS_BOOTSTRAP_APPLY !== "1") {
     throw new GeneratedPreviewAccessBootstrapConfigurationError(
