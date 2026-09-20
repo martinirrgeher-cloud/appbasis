@@ -24,7 +24,11 @@ test("generated preview access bootstrap is a separate explicit preview mutation
   assert.match(workflow, /github\.ref/);
   assert.match(workflow, /generated-app-preview-smoke\.mjs/);
   assert.match(workflow, /generated-preview-database-smoke\.mjs/);
-  assert.match(workflow, /generated-app-preview-access-bootstrap\.mjs/);
+  assert.match(workflow, /vite\.generated-preview-access-bootstrap\.config\.ts/);
+  assert.match(
+    workflow,
+    /\.generated-preview-access-dist\/generated-app-preview-access-bootstrap\.mjs/,
+  );
 });
 
 test("generated preview access bootstrap keeps credentials protected and production untouched", async () => {
