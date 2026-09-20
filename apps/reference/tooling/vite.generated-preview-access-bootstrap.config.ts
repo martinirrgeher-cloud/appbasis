@@ -7,8 +7,8 @@ const repositoryRoot = path.resolve(toolingDirectory, "../../..");
 export default {
   build: {
     ssr: path.join(
-      repositoryRoot,
-      "tooling/generated-app-preview-access-bootstrap.mjs",
+      toolingDirectory,
+      "generated-preview-access-bootstrap-runtime.mjs",
     ),
     outDir: path.join(
       toolingDirectory,
