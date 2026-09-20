@@ -5,7 +5,9 @@ import {
   GENERATED_PREVIEW_ROOT_ADMIN_USERNAME,
   GENERATED_PREVIEW_USER_USERNAME,
   buildGeneratedPreviewPermissionBundle,
+  classifyPreviewUserProvisioningState,
   classifyTechnicalRootAdminState,
+  loadWorkspaceRuntime,
   requiredGeneratedPreviewOrigin,
   requiredPreviewDatabaseUrl,
 } from "./generated-app-preview-access-bootstrap.mjs";
@@ -132,4 +134,92 @@ test("technical root bootstrap state is repeatable only for the expected root an
       ]),
     /technical administrator is missing/,
   );
+});
+
+
+test("generated preview user state rejects untrusted pre-existing usernames and allows exact recovery", () => {
+  assert.deepEqual(
+    classifyPreviewUserProvisioningState({
+      user: null,
+      operation: null,
+      hasIdentityState: false,
+    }),
+    {
+      status: "new",
+      identityId: null,
+      requiresCredentialProbe: false,
+    },
+  );
+
+  assert.throws(
+    () =>
+      classifyPreviewUserProvisioningState({
+        user: {
+          id: "identity-preview-admin",
+          username: GENERATED_PREVIEW_USER_USERNAME,
+          role: "user",
+          banned: false,
+        },
+        operation: null,
+        hasIdentityState: false,
+      }),
+    /no trusted provisioning operation/,
+  );
+
+  assert.deepEqual(
+    classifyPreviewUserProvisioningState({
+      user: {
+        id: "identity-preview-admin",
+        username: GENERATED_PREVIEW_USER_USERNAME,
+        role: "user",
+        banned: false,
+      },
+      operation: {
+        identity_id: null,
+        completed_at: null,
+      },
+      hasIdentityState: false,
+    }),
+    {
+      status: "recover",
+      identityId: "identity-preview-admin",
+      requiresCredentialProbe: true,
+    },
+  );
+
+  assert.deepEqual(
+    classifyPreviewUserProvisioningState({
+      user: {
+        id: "identity-preview-admin",
+        username: GENERATED_PREVIEW_USER_USERNAME,
+        role: "user",
+        banned: false,
+      },
+      operation: {
+        identity_id: "identity-preview-admin",
+        completed_at: "2026-09-20T00:00:00.000Z",
+      },
+      hasIdentityState: true,
+    }),
+    {
+      status: "ready",
+      identityId: "identity-preview-admin",
+      requiresCredentialProbe: false,
+    },
+  );
+});
+
+test("generated preview access runtime resolves through the selected generated app workspace", async () => {
+  const runtime = await loadWorkspaceRuntime("unterrichtsverwaltung");
+
+  for (const key of [
+    "createPostgresDatabase",
+    "BetterAuthIdentityBackend",
+    "createIdentityRuntime",
+    "createBetterAuthRuntime",
+    "createInitialTechnicalAdmin",
+    "provisionPostgresPermissions",
+  ]) {
+    assert.equal(typeof runtime[key], "function");
+  }
 });
