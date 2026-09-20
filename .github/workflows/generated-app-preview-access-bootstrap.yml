@@ -127,6 +127,16 @@ jobs:
           }
           echo "APPBASIS_GENERATED_PREVIEW_URL=https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev" >> "$GITHUB_ENV"
 
+      - name: Bind direct preview database to deployed Hyperdrive target
+        shell: bash
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          node ./tooling/generated-app-preview-hyperdrive.mjs resolve >/dev/null
+
       - name: Verify deployed preview before access mutation
         run: |
           set -euo pipefail
