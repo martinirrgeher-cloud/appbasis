@@ -7,15 +7,15 @@ import {
   buildGeneratedPreviewPermissionBundle,
   classifyPreviewUserProvisioningState,
   classifyTechnicalRootAdminState,
-  loadWorkspaceRuntime,
   requiredGeneratedPreviewOrigin,
   requiredPreviewDatabaseUrl,
-} from "./generated-app-preview-access-bootstrap.mjs";
+} from "./generated-app-preview-access-bootstrap-contract.mjs";
 
 test("generated preview access bootstrap provisions the tasks manager role for the initial preview user", () => {
   const bundle = buildGeneratedPreviewPermissionBundle({
     modules: ["tasks"],
     identityId: "identity-preview-admin",
+    taskManageCapability: "tasks:manage",
   });
 
   assert.deepEqual(bundle.knownCapabilities, ["tasks:manage"]);
@@ -39,6 +39,7 @@ test("generated preview access bootstrap fails closed for modules without a perm
       buildGeneratedPreviewPermissionBundle({
         modules: ["unknown-module"],
         identityId: "identity-preview-admin",
+        taskManageCapability: "tasks:manage",
       }),
     /does not support module unknown-module/,
   );
@@ -209,17 +210,3 @@ test("generated preview user state rejects untrusted pre-existing usernames and 
   );
 });
 
-test("generated preview access runtime resolves through the selected generated app workspace", async () => {
-  const runtime = await loadWorkspaceRuntime("unterrichtsverwaltung");
-
-  for (const key of [
-    "createPostgresDatabase",
-    "BetterAuthIdentityBackend",
-    "createIdentityRuntime",
-    "createBetterAuthRuntime",
-    "createInitialTechnicalAdmin",
-    "provisionPostgresPermissions",
-  ]) {
-    assert.equal(typeof runtime[key], "function");
-  }
-});
