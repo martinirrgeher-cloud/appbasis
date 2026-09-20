@@ -6,12 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
 import { createPostgresDatabase as createPostgresProvisioningDatabase } from "@appbasis/database/postgres-provisioning";
 import type { IdentityHttpService } from "@appbasis/identity/http";
-import {
-  DEMO_CAPABILITIES,
-  capabilityId,
-  principalId,
-  roleId,
-} from "@appbasis/permissions";
+import { capabilityId, principalId, roleId } from "@appbasis/permissions";
 import {
   provisionPostgresPermissions,
   type PermissionProvisioningPostgresClient,
@@ -427,7 +422,7 @@ async function applyMigration(url: URL) {
 async function provisionGeneratedPermissions() {
   const connection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
   const taskCapability = capabilityId(TASK_CAPABILITIES.manage);
-  const appCapability = DEMO_CAPABILITIES.appUse;
+  const appCapability = capabilityId("app:use");
   const managerRole = roleId("tasks:manager");
   const appMemberRole = roleId("app:member");
   const bundle = {
