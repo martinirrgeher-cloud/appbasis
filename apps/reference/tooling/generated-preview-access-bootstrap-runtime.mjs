@@ -135,6 +135,7 @@ export async function bootstrapGeneratedPreviewAccess(
       modules: config.contract.definition.modules,
       identityId: previewPrincipalId,
       appUseCapability: capabilityId("app:use"),
+      appManageCapability: capabilityId("app:manage"),
       taskManageCapability,
     });
     const expectedRoleIds = bundle.roles.map((role) => role.roleId);
@@ -149,13 +150,19 @@ export async function bootstrapGeneratedPreviewAccess(
 
     const after = await permissionStore.findPrincipal(previewPrincipalId);
     assertExactPreviewPrincipalPermissions(after, expectedRoleIds);
-    const appAccess = await permissionStore.evaluatePermission({
-      principalId: previewPrincipalId,
-      capability: capabilityId("app:use"),
-    });
-    if (appAccess !== true) {
+    const [appAccess, appManagementAccess] = await Promise.all([
+      permissionStore.evaluatePermission({
+        principalId: previewPrincipalId,
+        capability: capabilityId("app:use"),
+      }),
+      permissionStore.evaluatePermission({
+        principalId: previewPrincipalId,
+        capability: capabilityId("app:manage"),
+      }),
+    ]);
+    if (appAccess !== true || appManagementAccess !== true) {
       throw new GeneratedPreviewAccessBootstrapStateError(
-        "Generated preview principal cannot use the generated application after provisioning.",
+        "Generated preview principal does not have the expected application access after provisioning.",
       );
     }
     if (config.contract.definition.modules.includes("tasks")) {

@@ -208,7 +208,7 @@ describe("generated AppBasis identity runtime", () => {
     expect(rejectedStudent.status).toBe(409);
   });
 
-  it("denies master-data access without app:use", async () => {
+  it("denies master-data access without app:manage", async () => {
     const denied = await createGeneratedApp({
       identity,
       permissions: permissionStore(false),
@@ -228,15 +228,18 @@ describe("generated AppBasis identity runtime", () => {
 
 function permissionStore(allow: boolean) {
   const taskCapability = capabilityId(TASK_CAPABILITIES.manage);
-  const appCapability = capabilityId("app:use");
+  const appUseCapability = capabilityId("app:use");
+  const appManageCapability = capabilityId("app:manage");
   return new InMemoryPermissionStore({
-    knownCapabilities: [appCapability, taskCapability],
+    knownCapabilities: [appUseCapability, appManageCapability, taskCapability],
     roles: [],
     principals: [
       {
         principalId: principalId(currentIdentity.identity.identityId),
         roleIds: [],
-        grants: allow ? [appCapability, taskCapability] : [],
+        grants: allow
+          ? [appUseCapability, appManageCapability, taskCapability]
+          : [],
         revokes: [],
       },
     ],

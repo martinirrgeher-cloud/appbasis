@@ -11,7 +11,7 @@ export const GENERATED_PREVIEW_ROOT_ADMIN_USERNAME = "appbasis.preview.root";
 export const GENERATED_PREVIEW_USER_USERNAME = "preview.admin";
 export const GENERATED_PREVIEW_ROOT_ADMIN_DISPLAY_NAME =
   "AppBasis Generated Preview Technical Admin";
-export const APP_MEMBER_ROLE = "app:member";
+export const APP_ADMIN_ROLE = "app:administrator";
 export const TASKS_MANAGER_ROLE = "tasks:manager";
 
 export class GeneratedPreviewAccessBootstrapConfigurationError extends Error {
@@ -74,6 +74,7 @@ export function buildGeneratedPreviewPermissionBundle({
   modules,
   identityId,
   appUseCapability,
+  appManageCapability,
   taskManageCapability,
 }) {
   if (!Array.isArray(modules)) {
@@ -86,6 +87,8 @@ export function buildGeneratedPreviewPermissionBundle({
     identityId.length === 0 ||
     typeof appUseCapability !== "string" ||
     appUseCapability.length === 0 ||
+    typeof appManageCapability !== "string" ||
+    appManageCapability.length === 0 ||
     typeof taskManageCapability !== "string" ||
     taskManageCapability.length === 0
   ) {
@@ -94,14 +97,14 @@ export function buildGeneratedPreviewPermissionBundle({
     );
   }
 
-  const knownCapabilities = [appUseCapability];
+  const knownCapabilities = [appUseCapability, appManageCapability];
   const roles = [
     Object.freeze({
-      roleId: APP_MEMBER_ROLE,
-      capabilities: Object.freeze([appUseCapability]),
+      roleId: APP_ADMIN_ROLE,
+      capabilities: Object.freeze([appUseCapability, appManageCapability]),
     }),
   ];
-  const assignedRoleIds = [APP_MEMBER_ROLE];
+  const assignedRoleIds = [APP_ADMIN_ROLE];
 
   for (const moduleId of modules) {
     if (moduleId === "tasks") {

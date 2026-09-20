@@ -422,15 +422,16 @@ async function applyMigration(url: URL) {
 async function provisionGeneratedPermissions() {
   const connection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
   const taskCapability = capabilityId(TASK_CAPABILITIES.manage);
-  const appCapability = capabilityId("app:use");
+  const appUseCapability = capabilityId("app:use");
+  const appManageCapability = capabilityId("app:manage");
   const managerRole = roleId("tasks:manager");
-  const appMemberRole = roleId("app:member");
+  const appAdminRole = roleId("app:administrator");
   const bundle = {
-    knownCapabilities: [appCapability, taskCapability],
+    knownCapabilities: [appUseCapability, appManageCapability, taskCapability],
     roles: [
       {
-        roleId: appMemberRole,
-        capabilities: [appCapability],
+        roleId: appAdminRole,
+        capabilities: [appUseCapability, appManageCapability],
       },
       {
         roleId: managerRole,
@@ -440,7 +441,7 @@ async function provisionGeneratedPermissions() {
     principalRoleAssignments: [
       {
         principalId: principalId(currentIdentity.identity.identityId),
-        roleIds: [appMemberRole, managerRole],
+        roleIds: [appAdminRole, managerRole],
       },
     ],
   };
@@ -449,9 +450,9 @@ async function provisionGeneratedPermissions() {
     await expect(
       provisionPostgresPermissions(provisioningClient(connection.client), bundle),
     ).resolves.toEqual({
-      capabilitiesCreated: 2,
+      capabilitiesCreated: 3,
       rolesCreated: 2,
-      roleCapabilitiesCreated: 2,
+      roleCapabilitiesCreated: 3,
       principalsCreated: 1,
       principalRolesCreated: 2,
     });

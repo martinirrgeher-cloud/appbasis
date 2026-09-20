@@ -241,7 +241,7 @@ async function authorizeMasterData(
     assertIdentityActionAllowed(current, "application");
     await assertPermission(dependencies.permissions, {
       principalId: principalId(current.identity.identityId),
-      capability: capabilityId("app:use"),
+      capability: capabilityId("app:manage"),
     });
     return null;
   } catch (error) {
@@ -250,7 +250,7 @@ async function authorizeMasterData(
         context,
         403,
         "PERMISSION_DENIED",
-        "Die aktuelle Identität darf die Stammdaten nicht verwenden.",
+        "Die aktuelle Identität darf die Stammdaten nicht verwalten.",
       );
     }
     return identityHttp.identityErrorResponse(error);
