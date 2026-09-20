@@ -24,6 +24,7 @@ try {
     "tooling/vite.generated-preview-access-bootstrap.config.ts",
   ]);
   await import(pathToFileURL(outputPath).href);
+  await verifyBundledRepositoryRoot();
   console.log("Generated preview access bootstrap bundle verified.");
 } finally {
   await rm(outputDirectory, { recursive: true, force: true });
@@ -48,6 +49,51 @@ function runPnpm(args) {
           signal === null
             ? `Generated preview access bootstrap bundle build exited with code ${code}.`
             : `Generated preview access bootstrap bundle build exited on signal ${signal}.`,
+        ),
+      );
+    });
+  });
+}
+
+
+function verifyBundledRepositoryRoot() {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [outputPath], {
+      cwd: repositoryRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        APPBASIS_PREVIEW_ACCESS_BOOTSTRAP_APPLY: "1",
+        APPBASIS_GENERATED_APP_ID: "unterrichtsverwaltung",
+      },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (
+        signal === null &&
+        code === 1 &&
+        stdout.length === 0 &&
+        stderr.trim() === "APPBASIS_DATABASE_URL is required."
+      ) {
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          `Generated preview access bundle repository-root probe failed (code=${String(
+            code,
+          )}, signal=${String(signal)}, stdout=${JSON.stringify(
+            stdout,
+          )}, stderr=${JSON.stringify(stderr)}).`,
         ),
       );
     });
