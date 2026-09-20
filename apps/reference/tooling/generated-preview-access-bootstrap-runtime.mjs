@@ -8,7 +8,6 @@ import {
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { createInitialTechnicalAdmin } from "@appbasis/identity/root-admin";
 import {
-  DEMO_CAPABILITIES,
   PostgresPermissionStore,
   capabilityId,
   principalId,
@@ -135,7 +134,7 @@ export async function bootstrapGeneratedPreviewAccess(
     const bundle = buildGeneratedPreviewPermissionBundle({
       modules: config.contract.definition.modules,
       identityId: previewPrincipalId,
-      appUseCapability: DEMO_CAPABILITIES.appUse,
+      appUseCapability: capabilityId("app:use"),
       taskManageCapability,
     });
     const expectedRoleIds = bundle.roles.map((role) => role.roleId);
@@ -152,7 +151,7 @@ export async function bootstrapGeneratedPreviewAccess(
     assertExactPreviewPrincipalPermissions(after, expectedRoleIds);
     const appAccess = await permissionStore.evaluatePermission({
       principalId: previewPrincipalId,
-      capability: DEMO_CAPABILITIES.appUse,
+      capability: capabilityId("app:use"),
     });
     if (appAccess !== true) {
       throw new GeneratedPreviewAccessBootstrapStateError(
