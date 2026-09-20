@@ -61,6 +61,17 @@ jobs:
         shell: bash
         run: node ./tooling/generated-app-preview-plan.mjs >/dev/null
 
+      - name: Require main branch
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main' || {
+            echo 'Generated preview access bootstrap is main-only.' >&2
+            exit 1
+          }
+
       - name: Require explicit access bootstrap authorization
         shell: bash
         env:
@@ -115,6 +126,12 @@ jobs:
             exit 1
           }
           echo "APPBASIS_GENERATED_PREVIEW_URL=https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev" >> "$GITHUB_ENV"
+
+      - name: Verify deployed preview before access mutation
+        run: |
+          set -euo pipefail
+          node ./tooling/generated-app-preview-smoke.mjs
+          node ./tooling/generated-preview-database-smoke.mjs
 
       - name: Bootstrap initial generated preview access
         shell: bash
