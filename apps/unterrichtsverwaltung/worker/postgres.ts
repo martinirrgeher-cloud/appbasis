@@ -9,10 +9,15 @@ import {
   type PermissionStore,
 } from "@appbasis/permissions";
 import { PostgresTaskRepository, type TaskRepository } from "@appbasis/tasks";
+import {
+  PostgresMasterDataRepository,
+  type MasterDataRepository,
+} from "./master-data";
 
 export interface GeneratedPostgresRuntime {
   permissions: PermissionStore;
   tasks: TaskRepository;
+  masterData: MasterDataRepository;
   close(): Promise<void>;
 }
 
@@ -76,6 +81,7 @@ function createPersistentRepositories(client: IdentityPostgresRuntimeSqlClient) 
   return Object.freeze({
     permissions: new PostgresPermissionStore(sql),
     tasks: new PostgresTaskRepository(sql),
+    masterData: new PostgresMasterDataRepository(sql),
   });
 }
 

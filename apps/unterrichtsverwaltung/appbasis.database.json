@@ -30,6 +30,14 @@
       "migrations": [
         "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql"
       ]
+    },
+    {
+      "id": "unterrichtsverwaltung-master-data",
+      "root": "apps/unterrichtsverwaltung",
+      "schemaVersion": 1,
+      "migrations": [
+        "apps/unterrichtsverwaltung/migrations/0000_unterrichtsverwaltung_master_data.sql"
+      ]
     }
   ]
 }

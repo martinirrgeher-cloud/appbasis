@@ -50,6 +50,7 @@ export function createGeneratedWorker(
           identity: runtime.identity,
           permissions: runtime.permissions,
           tasks: runtime.tasks,
+          masterData: runtime.masterData,
           secureCookies: url.protocol === "https:",
         });
         response = await app.fetch(request);
