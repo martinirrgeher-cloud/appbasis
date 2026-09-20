@@ -20,6 +20,10 @@ test("generated preview access bootstrap is a separate explicit preview mutation
   assert.match(workflow, /generated-app-preview-\$\{\{ inputs\.app_id \}\}/);
   assert.match(workflow, /format\('generated-preview-\{0\}', inputs\.app_id\)/);
   assert.match(workflow, /Generated preview access bootstrap was not explicitly authorized/);
+  assert.match(workflow, /Generated preview access bootstrap is main-only/);
+  assert.match(workflow, /github\.ref/);
+  assert.match(workflow, /generated-app-preview-smoke\.mjs/);
+  assert.match(workflow, /generated-preview-database-smoke\.mjs/);
   assert.match(workflow, /generated-app-preview-access-bootstrap\.mjs/);
 });
 
