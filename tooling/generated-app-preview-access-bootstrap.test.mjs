@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  APP_MEMBER_ROLE,
   GENERATED_PREVIEW_ROOT_ADMIN_USERNAME,
   GENERATED_PREVIEW_USER_USERNAME,
   buildGeneratedPreviewPermissionBundle,
@@ -15,11 +16,16 @@ test("generated preview access bootstrap provisions the tasks manager role for t
   const bundle = buildGeneratedPreviewPermissionBundle({
     modules: ["tasks"],
     identityId: "identity-preview-admin",
+    appUseCapability: "app:use",
     taskManageCapability: "tasks:manage",
   });
 
-  assert.deepEqual(bundle.knownCapabilities, ["tasks:manage"]);
+  assert.deepEqual(bundle.knownCapabilities, ["app:use", "tasks:manage"]);
   assert.deepEqual(bundle.roles, [
+    {
+      roleId: APP_MEMBER_ROLE,
+      capabilities: ["app:use"],
+    },
     {
       roleId: "tasks:manager",
       capabilities: ["tasks:manage"],
@@ -28,7 +34,7 @@ test("generated preview access bootstrap provisions the tasks manager role for t
   assert.deepEqual(bundle.principalRoleAssignments, [
     {
       principalId: "identity-preview-admin",
-      roleIds: ["tasks:manager"],
+      roleIds: [APP_MEMBER_ROLE, "tasks:manager"],
     },
   ]);
 });
@@ -39,6 +45,7 @@ test("generated preview access bootstrap fails closed for modules without a perm
       buildGeneratedPreviewPermissionBundle({
         modules: ["unknown-module"],
         identityId: "identity-preview-admin",
+        appUseCapability: "app:use",
         taskManageCapability: "tasks:manage",
       }),
     /does not support module unknown-module/,
@@ -210,3 +217,33 @@ test("generated preview user state rejects untrusted pre-existing usernames and 
   );
 });
 
+
+
+test("generated preview access keeps a legacy tasks-only principal recoverable while rejecting unrelated roles", async () => {
+  const {
+    assertExactPreviewPrincipalPermissions,
+    assertPreviewPrincipalPermissionsReadyForProvisioning,
+  } = await import("./generated-app-preview-access-bootstrap-contract.mjs");
+  const expectedRoles = [APP_MEMBER_ROLE, "tasks:manager"];
+  const legacy = {
+    principalId: "identity-preview-admin",
+    roleIds: ["tasks:manager"],
+    grants: [],
+    revokes: [],
+  };
+  assert.doesNotThrow(() =>
+    assertPreviewPrincipalPermissionsReadyForProvisioning(legacy, expectedRoles),
+  );
+  assert.throws(
+    () => assertExactPreviewPrincipalPermissions(legacy, expectedRoles),
+    /unexpected role assignments/,
+  );
+  assert.throws(
+    () =>
+      assertPreviewPrincipalPermissionsReadyForProvisioning(
+        { ...legacy, roleIds: ["unexpected:role"] },
+        expectedRoles,
+      ),
+    /unexpected role assignments/,
+  );
+});

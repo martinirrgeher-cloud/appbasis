@@ -11,6 +11,7 @@ export const GENERATED_PREVIEW_ROOT_ADMIN_USERNAME = "appbasis.preview.root";
 export const GENERATED_PREVIEW_USER_USERNAME = "preview.admin";
 export const GENERATED_PREVIEW_ROOT_ADMIN_DISPLAY_NAME =
   "AppBasis Generated Preview Technical Admin";
+export const APP_MEMBER_ROLE = "app:member";
 export const TASKS_MANAGER_ROLE = "tasks:manager";
 
 export class GeneratedPreviewAccessBootstrapConfigurationError extends Error {
@@ -72,6 +73,7 @@ export async function readGeneratedPreviewAccessBootstrapEnvironment(
 export function buildGeneratedPreviewPermissionBundle({
   modules,
   identityId,
+  appUseCapability,
   taskManageCapability,
 }) {
   if (!Array.isArray(modules)) {
@@ -82,6 +84,8 @@ export function buildGeneratedPreviewPermissionBundle({
   if (
     typeof identityId !== "string" ||
     identityId.length === 0 ||
+    typeof appUseCapability !== "string" ||
+    appUseCapability.length === 0 ||
     typeof taskManageCapability !== "string" ||
     taskManageCapability.length === 0
   ) {
@@ -90,9 +94,14 @@ export function buildGeneratedPreviewPermissionBundle({
     );
   }
 
-  const knownCapabilities = [];
-  const roles = [];
-  const assignedRoleIds = [];
+  const knownCapabilities = [appUseCapability];
+  const roles = [
+    Object.freeze({
+      roleId: APP_MEMBER_ROLE,
+      capabilities: Object.freeze([appUseCapability]),
+    }),
+  ];
+  const assignedRoleIds = [APP_MEMBER_ROLE];
 
   for (const moduleId of modules) {
     if (moduleId === "tasks") {
@@ -243,16 +252,16 @@ export function classifyPreviewUserProvisioningState({
 
 export function assertPreviewPrincipalPermissionsReadyForProvisioning(
   principal,
-  expectedRoleId = TASKS_MANAGER_ROLE,
+  expectedRoleIds,
 ) {
   if (principal === null) return;
 
-  assertCanonicalPrincipalPermissionShape(principal, expectedRoleId, true);
+  assertCanonicalPrincipalPermissionShape(principal, expectedRoleIds, true);
 }
 
 export function assertExactPreviewPrincipalPermissions(
   principal,
-  expectedRoleId = TASKS_MANAGER_ROLE,
+  expectedRoleIds,
 ) {
   if (principal === null) {
     throw new GeneratedPreviewAccessBootstrapStateError(
@@ -260,19 +269,21 @@ export function assertExactPreviewPrincipalPermissions(
     );
   }
 
-  assertCanonicalPrincipalPermissionShape(principal, expectedRoleId, false);
+  assertCanonicalPrincipalPermissionShape(principal, expectedRoleIds, false);
 }
 
 function assertCanonicalPrincipalPermissionShape(
   principal,
-  expectedRoleId,
-  allowMissingRole,
+  expectedRoleIds,
+  allowSubset,
 ) {
   if (
     typeof principal?.principalId !== "string" ||
     !Array.isArray(principal.roleIds) ||
     !Array.isArray(principal.grants) ||
-    !Array.isArray(principal.revokes)
+    !Array.isArray(principal.revokes) ||
+    !Array.isArray(expectedRoleIds) ||
+    expectedRoleIds.some((roleId) => typeof roleId !== "string" || roleId.length === 0)
   ) {
     throw new GeneratedPreviewAccessBootstrapStateError(
       "Generated preview principal permission state is invalid.",
@@ -286,14 +297,12 @@ function assertCanonicalPrincipalPermissionShape(
   }
 
   const roleIds = [...principal.roleIds];
-  const expectedRoles = allowMissingRole
-    ? [[], [expectedRoleId]]
-    : [[expectedRoleId]];
-  const matchesExpectedRoles = expectedRoles.some(
-    (expected) =>
-      roleIds.length === expected.length &&
-      roleIds.every((value, index) => value === expected[index]),
-  );
+  const expected = new Set(expectedRoleIds);
+  const uniqueRoles = new Set(roleIds);
+  const matchesExpectedRoles =
+    uniqueRoles.size === roleIds.length &&
+    roleIds.every((roleId) => expected.has(roleId)) &&
+    (allowSubset || roleIds.length === expected.size);
   if (!matchesExpectedRoles) {
     throw new GeneratedPreviewAccessBootstrapStateError(
       "Generated preview principal has unexpected role assignments.",
