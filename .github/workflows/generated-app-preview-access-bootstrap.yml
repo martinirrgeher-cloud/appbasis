@@ -1,0 +1,139 @@
+name: Generated App Preview Access Bootstrap
+
+run-name: Generated Preview Access · ${{ inputs.app_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: Generated AppBasis app id
+        required: true
+        type: string
+      apply:
+        description: Explicitly authorize preview access bootstrap
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-app-preview-${{ inputs.app_id }}
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Generated app preview access bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: ${{ format('generated-preview-{0}', inputs.app_id) }}
+    env:
+      APPBASIS_GENERATED_APP_ID: ${{ inputs.app_id }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Resolve and validate selected generated app
+        shell: bash
+        run: node ./tooling/generated-app-preview-plan.mjs >/dev/null
+
+      - name: Require explicit access bootstrap authorization
+        shell: bash
+        env:
+          APPBASIS_PREVIEW_ACCESS_BOOTSTRAP_APPLY: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_PREVIEW_ACCESS_BOOTSTRAP_APPLY" = '1' || {
+            echo 'Generated preview access bootstrap was not explicitly authorized.' >&2
+            exit 1
+          }
+
+      - name: Validate and mask protected bootstrap inputs
+        shell: bash
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
+          APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          for name in \
+            APPBASIS_DATABASE_URL \
+            APPBASIS_BETTER_AUTH_SECRET \
+            APPBASIS_ROOT_ADMIN_PASSWORD \
+            APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_API_TOKEN
+          do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing required generated preview access input: $name" >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+
+      - name: Resolve generated workers.dev origin
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          PLAN="$(node ./tooling/generated-app-preview-plan.mjs)"
+          WORKER_NAME="$(jq -r '.workerName' <<<"$PLAN")"
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          SUBDOMAIN="$(jq -r 'if .success == true then (.result.subdomain // "") else "" end' <<<"$RESPONSE")"
+          [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || {
+            echo 'Cloudflare Workers account subdomain is unavailable or invalid.' >&2
+            exit 1
+          }
+          echo "APPBASIS_GENERATED_PREVIEW_URL=https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev" >> "$GITHUB_ENV"
+
+      - name: Bootstrap initial generated preview access
+        shell: bash
+        env:
+          APPBASIS_PREVIEW_ACCESS_BOOTSTRAP_APPLY: "1"
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
+          APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD }}
+        run: node ./tooling/generated-app-preview-access-bootstrap.mjs
+
+      - name: Record bootstrap result
+        if: success()
+        run: |
+          {
+            echo '### Generated preview access bootstrap'
+            echo '- app: `${{ inputs.app_id }}`'
+            echo '- login user: `preview.admin`'
+            echo '- temporary password: protected environment secret'
+            echo '- first login: password change required'
+            echo '- production: not modified'
+          } >> "$GITHUB_STEP_SUMMARY"
