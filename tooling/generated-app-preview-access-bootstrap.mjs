@@ -1,20 +1,6 @@
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import path from "node:path";
-
-import { createPostgresDatabase } from "@appbasis/database/node-runtime";
-import {
-  BetterAuthIdentityBackend,
-  createIdentityRuntime,
-} from "@appbasis/identity";
-import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
-import { createInitialTechnicalAdmin } from "@appbasis/identity/root-admin";
-import {
-  capabilityId,
-  principalId,
-  roleId,
-} from "@appbasis/permissions";
-import { provisionPostgresPermissions } from "@appbasis/permissions/provisioning";
-import { TASK_CAPABILITIES } from "@appbasis/tasks";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
 
@@ -26,7 +12,8 @@ export const GENERATED_PREVIEW_ROOT_ADMIN_USERNAME = "appbasis.preview.root";
 export const GENERATED_PREVIEW_USER_USERNAME = "preview.admin";
 const GENERATED_PREVIEW_ROOT_ADMIN_DISPLAY_NAME =
   "AppBasis Generated Preview Technical Admin";
-const TASKS_MANAGER_ROLE = roleId("tasks:manager");
+const TASKS_MANAGER_ROLE = "tasks:manager";
+const TASKS_MANAGE_CAPABILITY = "tasks:manage";
 
 export class GeneratedPreviewAccessBootstrapConfigurationError extends Error {
   constructor(message) {
@@ -88,17 +75,20 @@ export async function bootstrapGeneratedPreviewAccess(
   dependencies = {},
 ) {
   const config = await readGeneratedPreviewAccessBootstrapEnvironment(env);
+  const runtime = await loadWorkspaceRuntime(config.contract.definition.appId);
   const createDatabase =
-    dependencies.createPostgresDatabase ?? createPostgresDatabase;
+    dependencies.createPostgresDatabase ?? runtime.createPostgresDatabase;
   const createRootAdmin =
-    dependencies.createInitialTechnicalAdmin ?? createInitialTechnicalAdmin;
-  const createAuth = dependencies.createBetterAuthRuntime ?? createBetterAuthRuntime;
-  const createRuntime = dependencies.createIdentityRuntime ?? createIdentityRuntime;
+    dependencies.createInitialTechnicalAdmin ?? runtime.createInitialTechnicalAdmin;
+  const createAuth =
+    dependencies.createBetterAuthRuntime ?? runtime.createBetterAuthRuntime;
+  const createRuntime =
+    dependencies.createIdentityRuntime ?? runtime.createIdentityRuntime;
   const createBackend =
     dependencies.createIdentityBackend ??
-    ((options) => new BetterAuthIdentityBackend(options));
+    ((options) => new runtime.BetterAuthIdentityBackend(options));
   const provisionPermissions =
-    dependencies.provisionPostgresPermissions ?? provisionPostgresPermissions;
+    dependencies.provisionPostgresPermissions ?? runtime.provisionPostgresPermissions;
 
   await ensureTechnicalRootAdmin(config, {
     createDatabase,
@@ -176,7 +166,7 @@ export function buildGeneratedPreviewPermissionBundle({ modules, identityId }) {
 
   for (const moduleId of modules) {
     if (moduleId === "tasks") {
-      const capability = capabilityId(TASK_CAPABILITIES.manage);
+      const capability = TASKS_MANAGE_CAPABILITY;
       knownCapabilities.push(capability);
       roles.push(
         Object.freeze({
@@ -197,10 +187,35 @@ export function buildGeneratedPreviewPermissionBundle({ modules, identityId }) {
     roles: Object.freeze(roles),
     principalRoleAssignments: Object.freeze([
       Object.freeze({
-        principalId: principalId(identityId),
+        principalId: identityId,
         roleIds: Object.freeze(assignedRoleIds),
       }),
     ]),
+  });
+}
+
+async function loadWorkspaceRuntime(appId) {
+  const appPackage = new URL(`../apps/${appId}/package.json`, import.meta.url);
+  const requireFromApp = createRequire(appPackage);
+  const importFromApp = async (specifier) => {
+    const resolved = requireFromApp.resolve(specifier);
+    return import(pathToFileURL(resolved).href);
+  };
+  const [database, identity, betterAuth, rootAdmin, provisioning] =
+    await Promise.all([
+      importFromApp("@appbasis/database/node-runtime"),
+      importFromApp("@appbasis/identity"),
+      importFromApp("@appbasis/identity/better-auth"),
+      importFromApp("@appbasis/identity/root-admin"),
+      importFromApp("@appbasis/permissions/provisioning"),
+    ]);
+  return Object.freeze({
+    createPostgresDatabase: database.createPostgresDatabase,
+    BetterAuthIdentityBackend: identity.BetterAuthIdentityBackend,
+    createIdentityRuntime: identity.createIdentityRuntime,
+    createBetterAuthRuntime: betterAuth.createBetterAuthRuntime,
+    createInitialTechnicalAdmin: rootAdmin.createInitialTechnicalAdmin,
+    provisionPostgresPermissions: provisioning.provisionPostgresPermissions,
   });
 }
 
