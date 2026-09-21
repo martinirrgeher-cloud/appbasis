@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
-import { posix, join } from "node:path";
+import { join, posix } from "node:path";
 
 const MODULE_DEFINITION_FILE = "appbasis.module.json";
 const MODULE_DEFINITION_KEYS = new Set([
@@ -58,28 +58,28 @@ export async function readModuleDefinitions(repositoryRoot = process.cwd()) {
   const ids = new Set();
 
   for (const directoryName of entries) {
-    const path = join(modulesDirectory, directoryName, MODULE_DEFINITION_FILE);
-    let parsed;
-    try {
-      parsed = JSON.parse(await readFile(path, "utf8"));
-    } catch (error) {
-      if (error?.code === "ENOENT") {
-        throw new Error(
-          `modules/${directoryName} is missing ${MODULE_DEFINITION_FILE}.`,
-        );
-      }
-      if (error instanceof SyntaxError) {
-        throw new Error(
-          `modules/${directoryName}/${MODULE_DEFINITION_FILE} is not valid JSON.`,
-        );
-      }
-      throw error;
-    }
+    const manifestPath = join(
+      modulesDirectory,
+      directoryName,
+      MODULE_DEFINITION_FILE,
+    );
+    const parsed = await readRequiredJson(
+      manifestPath,
+      `modules/${directoryName}/${MODULE_DEFINITION_FILE}`,
+      `modules/${directoryName} is missing ${MODULE_DEFINITION_FILE}.`,
+    );
 
     const definition = parseModuleDefinition(parsed, { directoryName });
     if (ids.has(definition.moduleId)) {
       throw new Error(`Duplicate moduleId: ${definition.moduleId}.`);
     }
+
+    await verifyModuleOwnedArtifacts(
+      repositoryRoot,
+      directoryName,
+      definition,
+    );
+
     ids.add(definition.moduleId);
     definitions.push(definition);
   }
@@ -89,6 +89,51 @@ export async function readModuleDefinitions(repositoryRoot = process.cwd()) {
 
 export async function verifyModuleDefinitions(repositoryRoot = process.cwd()) {
   return readModuleDefinitions(repositoryRoot);
+}
+
+async function verifyModuleOwnedArtifacts(
+  repositoryRoot,
+  directoryName,
+  definition,
+) {
+  const moduleRoot = join(repositoryRoot, "modules", directoryName);
+  const packageJson = await readRequiredJson(
+    join(moduleRoot, "package.json"),
+    `modules/${directoryName}/package.json`,
+    `modules/${directoryName} is missing package.json.`,
+  );
+  if (packageJson.name !== definition.packageName) {
+    throw new Error(
+      `Module ${definition.moduleId} package.json name must be ${definition.packageName}.`,
+    );
+  }
+
+  const migrationRoot = join(moduleRoot, "migrations");
+  const actualMigrations = await collectSqlFiles(
+    `modules/${directoryName}/migrations`,
+    migrationRoot,
+  );
+
+  if (definition.database === null) {
+    if (actualMigrations.length !== 0) {
+      throw new Error(
+        `Module ${definition.moduleId} declares database null but owns SQL migrations.`,
+      );
+    }
+    return;
+  }
+
+  const expectedMigrations = [...definition.database.migrations];
+  if (
+    actualMigrations.length !== expectedMigrations.length ||
+    actualMigrations.some(
+      (migration, index) => migration !== expectedMigrations[index],
+    )
+  ) {
+    throw new Error(
+      `Module ${definition.moduleId} database migrations must list every owned SQL migration in deterministic path order.`,
+    );
+  }
 }
 
 function parseCompatibility(value) {
@@ -188,10 +233,77 @@ function parseDatabase(value, moduleId) {
     migrations.push(migration);
   }
 
+  const sorted = [...migrations].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  if (sorted.some((migration, index) => migration !== migrations[index])) {
+    throw new Error(
+      "Module database migrations must use deterministic path order.",
+    );
+  }
+
   return Object.freeze({
     schemaVersion: value.schemaVersion,
     migrations: Object.freeze(migrations),
   });
+}
+
+async function readRequiredJson(path, label, missingMessage) {
+  let raw;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(missingMessage);
+    }
+    throw error;
+  }
+
+  try {
+    const value = JSON.parse(raw);
+    if (!isPlainObject(value)) {
+      throw new Error(`${label} must contain a JSON object.`);
+    }
+    return value;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`${label} is not valid JSON.`);
+    }
+    throw error;
+  }
+}
+
+async function collectSqlFiles(relativeDirectory, absoluteDirectory) {
+  const entries = await directoryEntriesOrEmpty(absoluteDirectory);
+  const files = [];
+
+  for (const entry of entries) {
+    const relativePath = posix.join(relativeDirectory, entry.name);
+    const absolutePath = join(absoluteDirectory, entry.name);
+    if (entry.isSymbolicLink()) {
+      throw new Error(
+        `Module migration tree must not contain symbolic links: ${relativePath}.`,
+      );
+    }
+    if (entry.isDirectory()) {
+      files.push(...(await collectSqlFiles(relativePath, absolutePath)));
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith(".sql")) {
+      files.push(relativePath);
+    }
+  }
+
+  return files.sort((left, right) => left.localeCompare(right));
+}
+
+async function directoryEntriesOrEmpty(path) {
+  try {
+    return await readdir(path, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
 }
 
 function isAtOrWithin(root, candidate) {
