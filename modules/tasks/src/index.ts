@@ -1,7 +1,9 @@
 import moduleDefinition from "../appbasis.module.json";
 
-export const MODULE_CAPABILITIES = Object.freeze([
-  ...moduleDefinition.capabilities,
+const manifestCapabilities: readonly string[] = moduleDefinition.capabilities;
+
+export const MODULE_CAPABILITIES: readonly string[] = Object.freeze([
+  ...manifestCapabilities,
 ]);
 
 export const TASK_CAPABILITIES = {
