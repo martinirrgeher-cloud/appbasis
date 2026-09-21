@@ -60,6 +60,9 @@ describe("generated Worker entrypoint", () => {
     expect(GENERATED_APP_SCRIPT).toContain(
       '(elements.studentClass?.value ?? "") !== classId',
     );
+    expect(GENERATED_APP_SCRIPT).toContain(
+      'const classId = elements.studentClass?.value ?? "";\n  renderStudents([]);',
+    );
   });
 
   it("keeps liveness available without database or secret bindings", async () => {
