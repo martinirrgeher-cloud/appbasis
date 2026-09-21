@@ -13,10 +13,15 @@ import {
   createPostgresUlcLinzSecurityEventLogger,
   type BufferedUlcLinzSecurityEventLogger,
 } from "./security-events-postgres";
+import {
+  PostgresUlcLinzScopeResolver,
+  type UlcLinzScopeResolver,
+} from "./scope-postgres";
 
 export interface GeneratedPostgresApplicationRuntime {
   identity: IdentityHttpService;
   permissions: PermissionStore;
+  scope: UlcLinzScopeResolver;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
 }
@@ -42,12 +47,14 @@ export async function createGeneratedPostgresApplicationRuntime(
     );
     const securityConnection = securityLogConnection;
     const permissions = createPermissionStore(identityRuntime.sql);
+    const scope = new PostgresUlcLinzScopeResolver(identityRuntime.sql);
     const securityEvents = createPostgresUlcLinzSecurityEventLogger(
       securityConnection.client,
     );
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
+      scope,
       securityEvents,
       async close() {
         let closeError: unknown = null;
