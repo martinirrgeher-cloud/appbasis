@@ -208,6 +208,24 @@ test("rejects module identity, capability and compatibility drift", () => {
       }),
     /must not contain duplicates/,
   );
+  assert.throws(
+    () =>
+      parseModuleDefinition({
+        ...base,
+        compatibility: {
+          appDefinitionSchemaVersions: [3, 2],
+        },
+      }),
+    /must use ascending order/,
+  );
+  assert.throws(
+    () =>
+      parseModuleDefinition({
+        ...base,
+        capabilities: ["countdown:view", "countdown:edit"],
+      }),
+    /capabilities must use deterministic order/,
+  );
 });
 
 test("keeps database ownership inside the module migration tree and deterministic", () => {
