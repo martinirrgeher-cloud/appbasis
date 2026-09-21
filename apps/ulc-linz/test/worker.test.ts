@@ -59,6 +59,21 @@ function runtime(
       roles: [],
       principals: [],
     }),
+    scope: {
+      async resolveActiveOrganizationId() {
+        return "verein-worker";
+      },
+      async resolveMembership() {
+        return {
+          organizationId: "verein-worker",
+          sourceRole: "trainer",
+          active: true,
+        };
+      },
+      async hasRelation() {
+        return false;
+      },
+    },
     securityEvents: {
       record() {},
       flush,
@@ -85,6 +100,25 @@ describe("generated identity+permissions Worker entrypoint", () => {
       status: "ok",
       appId: "ulc-linz",
     });
+    expect(runtimeCalls).toBe(0);
+  });
+
+  it("serves the mobile countdown shell without opening the database runtime", async () => {
+    let runtimeCalls = 0;
+    const worker = createGeneratedWorker(() => {
+      runtimeCalls += 1;
+      throw new Error("runtime must not be created for static UI");
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/"),
+      undefined,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+    expect(await response.text()).toContain("Intervall-Countdown");
     expect(runtimeCalls).toBe(0);
   });
 
