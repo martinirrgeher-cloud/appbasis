@@ -9,7 +9,9 @@ import {
 import { InMemoryTaskRepository, TASK_CAPABILITIES } from "@appbasis/tasks";
 
 import { createGeneratedWorker } from "../worker/index";
+import { GENERATED_APP_SCRIPT } from "../worker/ui";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
+import { InMemoryMasterDataRepository } from "../worker/master-data";
 
 const currentIdentity = {
   identity: {
@@ -50,6 +52,19 @@ const validEnv = Object.freeze({
 });
 
 describe("generated Worker entrypoint", () => {
+  it("guards student roster rendering against stale class responses", () => {
+    expect(GENERATED_APP_SCRIPT).toContain("let studentRequestSequence = 0;");
+    expect(GENERATED_APP_SCRIPT).toContain(
+      "requestSequence !== studentRequestSequence",
+    );
+    expect(GENERATED_APP_SCRIPT).toContain(
+      '(elements.studentClass?.value ?? "") !== classId',
+    );
+    expect(GENERATED_APP_SCRIPT).toContain(
+      'const classId = elements.studentClass?.value ?? "";\n  renderStudents([]);',
+    );
+  });
+
   it("keeps liveness available without database or secret bindings", async () => {
     let runtimeCalls = 0;
     const worker = createGeneratedWorker(() => {
@@ -113,6 +128,7 @@ describe("generated Worker entrypoint", () => {
       identity,
       permissions,
       tasks,
+      masterData: new InMemoryMasterDataRepository(),
       async close() {
         closeCalls += 1;
       },
@@ -188,6 +204,7 @@ describe("generated Worker entrypoint", () => {
       identity,
       permissions,
       tasks: new InMemoryTaskRepository(),
+      masterData: new InMemoryMasterDataRepository(),
       async close() {
         closeCalls += 1;
         const error = new Error("postgresql://close-secret-host/internal");
@@ -234,6 +251,7 @@ describe("generated Worker entrypoint", () => {
         },
       },
       tasks: new InMemoryTaskRepository(),
+      masterData: new InMemoryMasterDataRepository(),
       async close() {
         throw new Error("postgresql://close-secret-host/internal");
       },

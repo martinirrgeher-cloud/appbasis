@@ -21,7 +21,6 @@ import {
   GENERATED_PREVIEW_USER_USERNAME,
   GeneratedPreviewAccessBootstrapConfigurationError,
   GeneratedPreviewAccessBootstrapStateError,
-  TASKS_MANAGER_ROLE,
   assertExactPreviewPrincipalPermissions,
   assertPreviewPrincipalPermissionsReadyForProvisioning,
   buildGeneratedPreviewPermissionBundle,
@@ -135,27 +134,47 @@ export async function bootstrapGeneratedPreviewAccess(
     const bundle = buildGeneratedPreviewPermissionBundle({
       modules: config.contract.definition.modules,
       identityId: previewPrincipalId,
+      appUseCapability: capabilityId("app:use"),
+      appManageCapability: capabilityId("app:manage"),
       taskManageCapability,
     });
+    const expectedRoleIds = bundle.roles.map((role) => role.roleId);
     const permissionStore = createPermissionStore(connection.client);
     const before = await permissionStore.findPrincipal(previewPrincipalId);
     assertPreviewPrincipalPermissionsReadyForProvisioning(
       before,
-      TASKS_MANAGER_ROLE,
+      expectedRoleIds,
     );
 
     await provisionPermissions(connection.client, bundle);
 
     const after = await permissionStore.findPrincipal(previewPrincipalId);
-    assertExactPreviewPrincipalPermissions(after, TASKS_MANAGER_ROLE);
-    const taskAccess = await permissionStore.evaluatePermission({
-      principalId: previewPrincipalId,
-      capability: taskManageCapability,
-    });
-    if (taskAccess !== true) {
+    assertExactPreviewPrincipalPermissions(after, expectedRoleIds);
+    const [appAccess, appManagementAccess] = await Promise.all([
+      permissionStore.evaluatePermission({
+        principalId: previewPrincipalId,
+        capability: capabilityId("app:use"),
+      }),
+      permissionStore.evaluatePermission({
+        principalId: previewPrincipalId,
+        capability: capabilityId("app:manage"),
+      }),
+    ]);
+    if (appAccess !== true || appManagementAccess !== true) {
       throw new GeneratedPreviewAccessBootstrapStateError(
-        "Generated preview principal cannot manage the generated tasks module after provisioning.",
+        "Generated preview principal does not have the expected application access after provisioning.",
       );
+    }
+    if (config.contract.definition.modules.includes("tasks")) {
+      const taskAccess = await permissionStore.evaluatePermission({
+        principalId: previewPrincipalId,
+        capability: taskManageCapability,
+      });
+      if (taskAccess !== true) {
+        throw new GeneratedPreviewAccessBootstrapStateError(
+          "Generated preview principal cannot manage the generated tasks module after provisioning.",
+        );
+      }
     }
 
     return Object.freeze({

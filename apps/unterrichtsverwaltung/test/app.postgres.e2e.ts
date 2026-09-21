@@ -58,6 +58,10 @@ const taskMigrationUrl = new URL(
   "../../../modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
   import.meta.url,
 );
+const masterDataMigrationUrl = new URL(
+  "../migrations/0000_unterrichtsverwaltung_master_data.sql",
+  import.meta.url,
+);
 
 const currentIdentity = {
   identity: {
@@ -115,12 +119,13 @@ beforeAll(async () => {
   await applyMigration(permissionAdministrationAuditMigrationUrl);
   await applyMigration(principalPermissionAdministrationAuditMigrationUrl);
   await applyMigration(taskMigrationUrl);
+  await applyMigration(masterDataMigrationUrl);
   await provisionGeneratedPermissions();
 });
 
 beforeEach(async () => {
   await requiredIsolatedConnection().client.unsafe(
-    "TRUNCATE TABLE appbasis_task",
+    "TRUNCATE TABLE unterrichtsverwaltung_student, unterrichtsverwaltung_class, appbasis_task",
   );
 });
 
@@ -153,6 +158,7 @@ describe("generated PostgreSQL tasks runtime", () => {
         identity: runtime.identity,
         permissions: runtime.permissions,
         tasks: runtime.tasks,
+        masterData: runtime.masterData,
         secureCookies: true,
       });
       const health = await app.request("/api/health");
@@ -178,6 +184,7 @@ describe("generated PostgreSQL tasks runtime", () => {
         identity,
         permissions: firstRuntime.permissions,
         tasks: firstRuntime.tasks,
+        masterData: firstRuntime.masterData,
         secureCookies: false,
       });
       const created = await firstApp.request("/api/tasks", {
@@ -204,6 +211,7 @@ describe("generated PostgreSQL tasks runtime", () => {
         identity,
         permissions: secondRuntime.permissions,
         tasks: secondRuntime.tasks,
+        masterData: secondRuntime.masterData,
         secureCookies: false,
       });
       const listed = await secondApp.request("/api/tasks", {
@@ -241,6 +249,7 @@ describe("generated PostgreSQL tasks runtime", () => {
         identity,
         permissions: thirdRuntime.permissions,
         tasks: thirdRuntime.tasks,
+        masterData: thirdRuntime.masterData,
         secureCookies: false,
       });
       const listed = await thirdApp.request("/api/tasks", {
@@ -255,6 +264,128 @@ describe("generated PostgreSQL tasks runtime", () => {
     }
   });
 
+
+  it("persists classes, students and class archival across runtime instances", async () => {
+    let classId: string;
+    const firstRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
+    try {
+      const app = createGeneratedApp({
+        identity,
+        permissions: firstRuntime.permissions,
+        tasks: firstRuntime.tasks,
+        masterData: firstRuntime.masterData,
+        secureCookies: false,
+      });
+      const createdClass = await app.request("/api/master-data/classes", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ name: "3A", schoolYear: "2026/27" }),
+      });
+      expect(createdClass.status).toBe(201);
+      const body = (await createdClass.json()) as { class: { id: string } };
+      classId = body.class.id;
+
+      const createdStudent = await app.request("/api/master-data/students", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          classId,
+          firstName: "Anna",
+          lastName: "Beispiel",
+        }),
+      });
+      expect(createdStudent.status).toBe(201);
+    } finally {
+      await firstRuntime.close();
+    }
+
+    const secondRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
+    try {
+      const app = createGeneratedApp({
+        identity,
+        permissions: secondRuntime.permissions,
+        tasks: secondRuntime.tasks,
+        masterData: secondRuntime.masterData,
+        secureCookies: false,
+      });
+      const listed = await app.request(
+        "/api/master-data/students?classId=" + encodeURIComponent(classId),
+        { headers: { cookie: currentIdentity.sessionToken } },
+      );
+      expect(listed.status).toBe(200);
+      await expect(listed.json()).resolves.toMatchObject({
+        students: [
+          {
+            classId,
+            firstName: "Anna",
+            lastName: "Beispiel",
+          },
+        ],
+      });
+
+      const archived = await app.request(
+        "/api/master-data/classes/" + classId + "/archive",
+        {
+          method: "POST",
+          headers: { cookie: currentIdentity.sessionToken },
+        },
+      );
+      expect(archived.status).toBe(200);
+      await expect(archived.json()).resolves.toMatchObject({
+        class: { id: classId, archived: true },
+      });
+    } finally {
+      await secondRuntime.close();
+    }
+
+    const thirdRuntime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
+    try {
+      const app = createGeneratedApp({
+        identity,
+        permissions: thirdRuntime.permissions,
+        tasks: thirdRuntime.tasks,
+        masterData: thirdRuntime.masterData,
+        secureCookies: false,
+      });
+      const classes = await app.request("/api/master-data/classes", {
+        headers: { cookie: currentIdentity.sessionToken },
+      });
+      expect(classes.status).toBe(200);
+      await expect(classes.json()).resolves.toMatchObject({
+        classes: [
+          {
+            id: classId,
+            name: "3A",
+            schoolYear: "2026/27",
+            archived: true,
+          },
+        ],
+      });
+
+      const rejected = await app.request("/api/master-data/students", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          classId,
+          firstName: "Max",
+          lastName: "Später",
+        }),
+      });
+      expect(rejected.status).toBe(409);
+    } finally {
+      await thirdRuntime.close();
+    }
+  });
+
   it("denies an authenticated principal that was not provisioned", async () => {
     const runtime = createGeneratedPostgresRuntime(isolatedDatabaseUrl);
     try {
@@ -262,6 +393,7 @@ describe("generated PostgreSQL tasks runtime", () => {
         identity,
         permissions: runtime.permissions,
         tasks: runtime.tasks,
+        masterData: runtime.masterData,
         secureCookies: false,
       });
       const denied = await app.request("/api/tasks", {
@@ -289,20 +421,27 @@ async function applyMigration(url: URL) {
 
 async function provisionGeneratedPermissions() {
   const connection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
-  const capability = capabilityId(TASK_CAPABILITIES.manage);
+  const taskCapability = capabilityId(TASK_CAPABILITIES.manage);
+  const appUseCapability = capabilityId("app:use");
+  const appManageCapability = capabilityId("app:manage");
   const managerRole = roleId("tasks:manager");
+  const appAdminRole = roleId("app:administrator");
   const bundle = {
-    knownCapabilities: [capability],
+    knownCapabilities: [appUseCapability, appManageCapability, taskCapability],
     roles: [
       {
+        roleId: appAdminRole,
+        capabilities: [appUseCapability, appManageCapability],
+      },
+      {
         roleId: managerRole,
-        capabilities: [capability],
+        capabilities: [taskCapability],
       },
     ],
     principalRoleAssignments: [
       {
         principalId: principalId(currentIdentity.identity.identityId),
-        roleIds: [managerRole],
+        roleIds: [appAdminRole, managerRole],
       },
     ],
   };
@@ -311,11 +450,11 @@ async function provisionGeneratedPermissions() {
     await expect(
       provisionPostgresPermissions(provisioningClient(connection.client), bundle),
     ).resolves.toEqual({
-      capabilitiesCreated: 1,
-      rolesCreated: 1,
-      roleCapabilitiesCreated: 1,
+      capabilitiesCreated: 3,
+      rolesCreated: 2,
+      roleCapabilitiesCreated: 3,
       principalsCreated: 1,
-      principalRolesCreated: 1,
+      principalRolesCreated: 2,
     });
     await expect(
       provisionPostgresPermissions(provisioningClient(connection.client), bundle),

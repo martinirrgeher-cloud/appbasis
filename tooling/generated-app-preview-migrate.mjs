@@ -27,9 +27,43 @@ export class GeneratedAppPreviewMigrationExecutionError extends Error {
   }
 }
 
+const UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER = Object.freeze({
+  id: "unterrichtsverwaltung-master-data",
+  root: "apps/unterrichtsverwaltung",
+  schemaVersion: 1,
+  migrations: Object.freeze([
+    "apps/unterrichtsverwaltung/migrations/0000_unterrichtsverwaltung_master_data.sql",
+  ]),
+});
+
+export function createGeneratedAppPreviewDatabaseManifest(definition) {
+  const baseManifest = createGeneratedDatabaseManifest(definition);
+  if (baseManifest === null || definition?.appId !== "unterrichtsverwaltung") {
+    return baseManifest;
+  }
+
+  return Object.freeze({
+    ...baseManifest,
+    owners: Object.freeze([
+      ...baseManifest.owners,
+      Object.freeze({
+        id: UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER.id,
+        root: UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER.root,
+        schemaVersion:
+          UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER.schemaVersion,
+        migrations: Object.freeze([
+          ...UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER.migrations,
+        ]),
+      }),
+    ]),
+  });
+}
+
 export async function loadGeneratedAppPreviewMigrationPlan({ appId } = {}) {
   const contract = await loadGeneratedAppPreviewContract(repositoryRoot, appId);
-  const canonicalManifest = createGeneratedDatabaseManifest(contract.definition);
+  const canonicalManifest = createGeneratedAppPreviewDatabaseManifest(
+    contract.definition,
+  );
   if (canonicalManifest === null) {
     throw new GeneratedAppPreviewMigrationConfigurationError(
       "Generated preview app does not declare a database contract.",

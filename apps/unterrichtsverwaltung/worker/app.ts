@@ -1,6 +1,13 @@
 import { generatedUiResponse } from "./ui";
 import { Hono, type Context } from "hono";
 
+import {
+  MasterDataConflictError,
+  MasterDataStateError,
+  MasterDataValidationError,
+  type MasterDataRepository,
+} from "./master-data";
+
 import { assertIdentityActionAllowed } from "@appbasis/identity/access";
 import {
   createIdentityHttpHandlers,
@@ -24,13 +31,18 @@ export interface GeneratedAppDependencies {
   identity: IdentityHttpService;
   permissions: PermissionStore;
   tasks: TaskRepository;
+  masterData: MasterDataRepository;
   secureCookies?: boolean;
 }
 
 type ErrorCode =
   | "INVALID_REQUEST"
   | "INVALID_TASK"
+  | "INVALID_MASTER_DATA"
+  | "MASTER_DATA_CONFLICT"
   | "PERMISSION_DENIED"
+  | "CLASS_NOT_FOUND"
+  | "CLASS_UNAVAILABLE"
   | "TASK_NOT_FOUND";
 
 export function createGeneratedApp(dependencies: GeneratedAppDependencies) {
@@ -55,6 +67,125 @@ export function createGeneratedApp(dependencies: GeneratedAppDependencies) {
   app.post("/api/auth/change-required-password", (context) =>
     identityHttp.changeRequiredPassword(context.req.raw),
   );
+
+  app.get("/api/master-data/classes", async (context) => {
+    const denied = await authorizeMasterData(context, dependencies, identityHttp);
+    if (denied !== null) return denied;
+    return context.json({ classes: await dependencies.masterData.listClasses() });
+  });
+
+  app.post("/api/master-data/classes", async (context) => {
+    const denied = await authorizeMasterData(context, dependencies, identityHttp);
+    if (denied !== null) return denied;
+    const body = await readObjectBody(context);
+    if (body === null) return invalidRequest(context);
+    const name = stringField(body, "name");
+    const schoolYear = stringField(body, "schoolYear");
+    if (name === null || schoolYear === null) return invalidRequest(context);
+    try {
+      const schoolClass = await dependencies.masterData.createClass({
+        name,
+        schoolYear,
+      });
+      return context.json({ class: schoolClass }, 201);
+    } catch (error) {
+      if (error instanceof MasterDataValidationError) {
+        return errorResponse(
+          context,
+          400,
+          "INVALID_MASTER_DATA",
+          "Die Klassendaten sind ungültig.",
+        );
+      }
+      if (error instanceof MasterDataConflictError) {
+        return errorResponse(
+          context,
+          409,
+          "MASTER_DATA_CONFLICT",
+          "Diese Klasse existiert in diesem Schuljahr bereits.",
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/master-data/classes/:id/archive", async (context) => {
+    const denied = await authorizeMasterData(context, dependencies, identityHttp);
+    if (denied !== null) return denied;
+    try {
+      const schoolClass = await dependencies.masterData.archiveClass(
+        context.req.param("id"),
+      );
+      if (schoolClass === undefined) {
+        return errorResponse(
+          context,
+          404,
+          "CLASS_NOT_FOUND",
+          "Die Klasse wurde nicht gefunden.",
+        );
+      }
+      return context.json({ class: schoolClass });
+    } catch (error) {
+      if (error instanceof MasterDataValidationError) return invalidRequest(context);
+      throw error;
+    }
+  });
+
+  app.get("/api/master-data/students", async (context) => {
+    const denied = await authorizeMasterData(context, dependencies, identityHttp);
+    if (denied !== null) return denied;
+    const classId = context.req.query("classId");
+    if (classId === undefined || classId.trim().length === 0) {
+      return invalidRequest(context);
+    }
+    try {
+      return context.json({
+        students: await dependencies.masterData.listStudents(classId),
+      });
+    } catch (error) {
+      if (error instanceof MasterDataValidationError) return invalidRequest(context);
+      throw error;
+    }
+  });
+
+  app.post("/api/master-data/students", async (context) => {
+    const denied = await authorizeMasterData(context, dependencies, identityHttp);
+    if (denied !== null) return denied;
+    const body = await readObjectBody(context);
+    if (body === null) return invalidRequest(context);
+    const classId = stringField(body, "classId");
+    const firstName = stringField(body, "firstName");
+    const lastName = stringField(body, "lastName");
+    if (classId === null || firstName === null || lastName === null) {
+      return invalidRequest(context);
+    }
+    try {
+      const student = await dependencies.masterData.createStudent({
+        classId,
+        firstName,
+        lastName,
+      });
+      return context.json({ student }, 201);
+    } catch (error) {
+      if (error instanceof MasterDataValidationError) {
+        return errorResponse(
+          context,
+          400,
+          "INVALID_MASTER_DATA",
+          "Die Schülerdaten sind ungültig.",
+        );
+      }
+      if (error instanceof MasterDataStateError) {
+        return errorResponse(
+          context,
+          409,
+          "CLASS_UNAVAILABLE",
+          "Die ausgewählte Klasse ist nicht verfügbar.",
+        );
+      }
+      throw error;
+    }
+  });
 
   app.get("/api/tasks", async (context) => {
     const denied = await authorizeTasks(context, dependencies, identityHttp);
@@ -96,6 +227,34 @@ export function createGeneratedApp(dependencies: GeneratedAppDependencies) {
   });
 
   return app;
+}
+
+async function authorizeMasterData(
+  context: Context,
+  dependencies: GeneratedAppDependencies,
+  identityHttp: IdentityHttpHandlers,
+): Promise<Response | null> {
+  const current = await identityHttp.resolveCurrentIdentity(context.req.raw);
+  if (current instanceof Response) return current;
+
+  try {
+    assertIdentityActionAllowed(current, "application");
+    await assertPermission(dependencies.permissions, {
+      principalId: principalId(current.identity.identityId),
+      capability: capabilityId("app:manage"),
+    });
+    return null;
+  } catch (error) {
+    if (error instanceof PermissionDeniedError) {
+      return errorResponse(
+        context,
+        403,
+        "PERMISSION_DENIED",
+        "Die aktuelle Identität darf die Stammdaten nicht verwalten.",
+      );
+    }
+    return identityHttp.identityErrorResponse(error);
+  }
 }
 
 async function authorizeTasks(
@@ -158,7 +317,7 @@ function invalidRequest(context: Context) {
 
 function errorResponse(
   context: Context,
-  status: 400 | 403 | 404,
+  status: 400 | 403 | 404 | 409,
   code: ErrorCode,
   message: string,
 ): Response {
