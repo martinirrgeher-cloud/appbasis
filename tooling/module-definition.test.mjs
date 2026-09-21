@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -155,6 +155,35 @@ test("rejects package drift and undeclared module SQL ownership", async (t) => {
   await assert.rejects(
     () => readModuleDefinitions(root),
     /declares database null but owns SQL migrations/,
+  );
+});
+
+test("rejects a symlinked module migration root", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("Symlink creation is not a portable unprivileged Windows test.");
+    return;
+  }
+
+  const root = await fixture(t);
+  await writeModule(root, {
+    moduleId: "inventory",
+    packageName: "@appbasis/inventory",
+    database: {
+      schemaVersion: 1,
+      migrations: ["modules/inventory/migrations/0000_foundation.sql"],
+    },
+  });
+
+  const migrationRoot = join(root, "modules", "inventory", "migrations");
+  const externalRoot = join(root, "outside-migrations");
+  await rm(migrationRoot, { recursive: true, force: true });
+  await mkdir(externalRoot);
+  await writeFile(join(externalRoot, "0000_foundation.sql"), "SELECT 1;\n");
+  await symlink(externalRoot, migrationRoot, "dir");
+
+  await assert.rejects(
+    () => readModuleDefinitions(root),
+    /must not contain symbolic links: modules\/inventory\/migrations/,
   );
 });
 
