@@ -9,6 +9,7 @@ import {
 import { InMemoryTaskRepository, TASK_CAPABILITIES } from "@appbasis/tasks";
 
 import { createGeneratedWorker } from "../worker/index";
+import { GENERATED_APP_SCRIPT } from "../worker/ui";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import { InMemoryMasterDataRepository } from "../worker/master-data";
 
@@ -51,6 +52,16 @@ const validEnv = Object.freeze({
 });
 
 describe("generated Worker entrypoint", () => {
+  it("guards student roster rendering against stale class responses", () => {
+    expect(GENERATED_APP_SCRIPT).toContain("let studentRequestSequence = 0;");
+    expect(GENERATED_APP_SCRIPT).toContain(
+      "requestSequence !== studentRequestSequence",
+    );
+    expect(GENERATED_APP_SCRIPT).toContain(
+      '(elements.studentClass?.value ?? "") !== classId',
+    );
+  });
+
   it("keeps liveness available without database or secret bindings", async () => {
     let runtimeCalls = 0;
     const worker = createGeneratedWorker(() => {

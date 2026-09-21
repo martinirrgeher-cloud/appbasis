@@ -44,14 +44,6 @@ const APP_DATABASE_OWNERS = Object.freeze({
       "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
     ],
   }),
-  "unterrichtsverwaltung": databaseOwner({
-    id: "unterrichtsverwaltung-master-data",
-    root: "apps/unterrichtsverwaltung",
-    schemaVersion: 1,
-    migrations: [
-      "apps/unterrichtsverwaltung/migrations/0000_unterrichtsverwaltung_master_data.sql",
-    ],
-  }),
 });
 
 export function createGeneratedDatabaseManifest(definition) {
