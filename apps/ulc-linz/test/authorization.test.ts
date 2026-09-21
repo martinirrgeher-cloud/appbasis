@@ -63,6 +63,8 @@ function dependencies(input: {
     capability("kindertraining", "edit"),
     capability("training_overview", "view"),
     capability("training_overview", "edit"),
+    capability("countdown", "view"),
+    capability("countdown", "edit"),
   ];
 
   return {
@@ -219,6 +221,53 @@ describe("ULC Linz M5-B runtime authorization", () => {
         {
           organizationId: ORGANIZATION_ID,
           moduleKey: "kindertraining",
+          action: "view",
+          scope: "organization",
+        },
+      ),
+    );
+  });
+
+  it("allows a non-data module scope without widening organization data scope", async () => {
+    await expect(
+      assertUlcLinzModuleAccess(
+        currentIdentity(),
+        dependencies({
+          sourceRole: "athlete",
+          grants: [capability("countdown", "view")],
+        }),
+        {
+          organizationId: ORGANIZATION_ID,
+          moduleKey: "countdown",
+          action: "view",
+          scope: "module",
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    await expectDenied(() =>
+      assertUlcLinzModuleAccess(
+        currentIdentity(),
+        dependencies({ sourceRole: "parent" }),
+        {
+          organizationId: ORGANIZATION_ID,
+          moduleKey: "countdown",
+          action: "view",
+          scope: "module",
+        },
+      ),
+    );
+
+    await expectDenied(() =>
+      assertUlcLinzModuleAccess(
+        currentIdentity(),
+        dependencies({
+          sourceRole: "athlete",
+          grants: [capability("countdown", "view")],
+        }),
+        {
+          organizationId: ORGANIZATION_ID,
+          moduleKey: "countdown",
           action: "view",
           scope: "organization",
         },
