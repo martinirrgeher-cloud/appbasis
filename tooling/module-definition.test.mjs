@@ -147,7 +147,6 @@ test("rejects package drift and undeclared module SQL ownership", async (t) => {
     packageName: "@appbasis/countdown",
     database: null,
   });
-  await mkdir(join(root, "modules", "countdown", "migrations"));
   await writeFile(
     join(root, "modules", "countdown", "migrations", "0000_hidden.sql"),
     "SELECT 1;\n",
