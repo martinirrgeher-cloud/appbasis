@@ -116,13 +116,26 @@ test("rejects package drift and undeclared module SQL ownership", async (t) => {
   const root = await fixture(t);
   await writeModule(root, {
     moduleId: "countdown",
-    packageName: "@appbasis/wrong",
+    packageName: "@appbasis/countdown",
     database: null,
   });
+  await writeFile(
+    join(root, "modules", "countdown", "package.json"),
+    JSON.stringify(
+      {
+        name: "@appbasis/wrong",
+        version: "0.0.0",
+        private: true,
+        type: "module",
+      },
+      null,
+      2,
+    ) + "\n",
+  );
 
   await assert.rejects(
     () => readModuleDefinitions(root),
-    /packageName must be @appbasis\/countdown/,
+    /package.json name must be @appbasis\/countdown/,
   );
 
   await rm(join(root, "modules", "countdown"), {
