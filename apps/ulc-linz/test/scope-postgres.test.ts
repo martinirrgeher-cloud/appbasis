@@ -1,20 +1,31 @@
 import { describe, expect, it } from "vitest";
 
+import type {
+  IdentityPostgresRuntimeParameter,
+  IdentityPostgresRuntimeSqlClient,
+} from "@appbasis/identity/postgres-runtime";
+
 import { PostgresUlcLinzScopeResolver } from "../worker/scope-postgres";
 
-type QueryCall = { query: string; parameters: readonly unknown[] | undefined };
+type QueryCall = {
+  query: string;
+  parameters: IdentityPostgresRuntimeParameter[] | undefined;
+};
 
-function sqlClient(responses: unknown[][]) {
+function sqlClient(
+  responses: Array<readonly Record<string, unknown>[]>,
+): {
+  calls: QueryCall[];
+  client: IdentityPostgresRuntimeSqlClient;
+} {
   const calls: QueryCall[] = [];
-  return {
-    calls,
-    client: {
-      async unsafe(query: string, parameters?: readonly unknown[]) {
-        calls.push({ query, parameters });
-        return responses.shift() ?? [];
-      },
+  const client: IdentityPostgresRuntimeSqlClient = {
+    async unsafe(query, parameters) {
+      calls.push({ query, parameters });
+      return responses.shift() ?? [];
     },
   };
+  return { calls, client };
 }
 
 describe("ULC Linz PostgreSQL scope resolver", () => {
