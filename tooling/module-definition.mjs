@@ -166,6 +166,13 @@ function parseCompatibility(value) {
     normalized.push(version);
   }
 
+  const sorted = [...normalized].sort((left, right) => left - right);
+  if (sorted.some((version, index) => version !== normalized[index])) {
+    throw new Error(
+      "Module compatibility appDefinitionSchemaVersions must use ascending order.",
+    );
+  }
+
   return Object.freeze({
     appDefinitionSchemaVersions: Object.freeze(normalized),
   });
@@ -194,6 +201,13 @@ function parseCapabilities(value, moduleId) {
     seen.add(capability);
     capabilities.push(capability);
   }
+  const sorted = [...capabilities].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  if (sorted.some((capability, index) => capability !== capabilities[index])) {
+    throw new Error("Module definition capabilities must use deterministic order.");
+  }
+
   return Object.freeze(capabilities);
 }
 
