@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "tasks",
+  "displayName": "Aufgaben",
+  "packageName": "@appbasis/tasks",
+  "compatibility": {
+    "appDefinitionSchemaVersions": [
+      2
+    ]
+  },
+  "capabilities": [
+    "tasks:manage"
+  ],
+  "database": {
+    "schemaVersion": 1,
+    "migrations": [
+      "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql"
+    ]
+  }
+}
