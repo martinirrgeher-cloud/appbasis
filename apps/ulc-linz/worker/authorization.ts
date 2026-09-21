@@ -53,6 +53,7 @@ export type UlcLinzModuleAccessRequest = {
   moduleKey: string;
   action: UlcLinzModuleAction;
 } & (
+  | { scope: "module" }
   | { scope: "organization" }
   | { scope: "subject"; subjectId: string }
 );
@@ -142,6 +143,10 @@ export async function assertUlcLinzModuleAccess(
       organizationId,
       "capability-denied",
     );
+  }
+
+  if (request.scope === "module") {
+    return;
   }
 
   if (request.scope === "organization") {
