@@ -25,7 +25,15 @@ Schema v1 beschreibt ausschließlich bereits benötigte, stabile Eigenschaften:
 - optionalen modul-eigenen Datenbank-Schema-/Migrationsvertrag
 
 Datenbankeigentum bleibt beim Modul. Ein Modulmanifest darf nur SQL-Migrationen
-unter `modules/<moduleId>/migrations/` deklarieren.
+unter `modules/<moduleId>/migrations/` deklarieren. Manifest, Workspace-Paket
+und vollständige SQL-Inventur müssen übereinstimmen; Symlinks in der
+Migrationsstruktur werden nicht als Modulbesitz akzeptiert.
+
+Capability-IDs werden nicht zusätzlich als unabhängige zweite Source of Truth im
+Paket gepflegt. Das Modul konsumiert die Capability-Liste aus
+`appbasis.module.json` und stellt sie als öffentlichen
+`MODULE_CAPABILITIES`-Vertrag bereit. Modulspezifische Convenience-Konstanten
+müssen exakt dieselben IDs abbilden.
 
 `tasks` ist der erste bestehende Referenzverbraucher des neuen Vertrags.
 
