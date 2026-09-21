@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
+import { lstat, readFile, readdir } from "node:fs/promises";
 import { join, posix } from "node:path";
 
 const MODULE_DEFINITION_FILE = "appbasis.module.json";
@@ -288,7 +288,10 @@ async function readRequiredJson(path, label, missingMessage) {
 }
 
 async function collectSqlFiles(relativeDirectory, absoluteDirectory) {
-  const entries = await directoryEntriesOrEmpty(absoluteDirectory);
+  const entries = await directoryEntriesOrEmpty(
+    absoluteDirectory,
+    relativeDirectory,
+  );
   const files = [];
 
   for (const entry of entries) {
@@ -311,13 +314,27 @@ async function collectSqlFiles(relativeDirectory, absoluteDirectory) {
   return files.sort((left, right) => left.localeCompare(right));
 }
 
-async function directoryEntriesOrEmpty(path) {
+async function directoryEntriesOrEmpty(path, relativePath) {
+  let stats;
   try {
-    return await readdir(path, { withFileTypes: true });
+    stats = await lstat(path);
   } catch (error) {
     if (error?.code === "ENOENT") return [];
     throw error;
   }
+
+  if (stats.isSymbolicLink()) {
+    throw new Error(
+      `Module migration tree must not contain symbolic links: ${relativePath}.`,
+    );
+  }
+  if (!stats.isDirectory()) {
+    throw new Error(
+      `Module migration path must be a directory: ${relativePath}.`,
+    );
+  }
+
+  return readdir(path, { withFileTypes: true });
 }
 
 function isAtOrWithin(root, candidate) {
