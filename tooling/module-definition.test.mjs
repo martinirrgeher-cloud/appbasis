@@ -78,6 +78,74 @@ test("requires every module directory to publish its FC4 manifest", async (t) =>
   );
 });
 
+test("binds the module manifest to the real package and complete migration inventory", async (t) => {
+  const root = await fixture(t);
+  await writeModule(root, {
+    moduleId: "inventory",
+    packageName: "@appbasis/inventory",
+    database: {
+      schemaVersion: 2,
+      migrations: [
+        "modules/inventory/migrations/0000_foundation.sql",
+        "modules/inventory/migrations/0001_extension.sql",
+      ],
+    },
+  });
+  await writeFile(
+    join(root, "modules", "inventory", "migrations", "0001_extension.sql"),
+    "SELECT 2;\n",
+  );
+
+  const definitions = await readModuleDefinitions(root);
+  assert.deepEqual(definitions[0]?.database?.migrations, [
+    "modules/inventory/migrations/0000_foundation.sql",
+    "modules/inventory/migrations/0001_extension.sql",
+  ]);
+
+  await writeFile(
+    join(root, "modules", "inventory", "migrations", "0002_unlisted.sql"),
+    "SELECT 3;\n",
+  );
+  await assert.rejects(
+    () => readModuleDefinitions(root),
+    /must list every owned SQL migration/,
+  );
+});
+
+test("rejects package drift and undeclared module SQL ownership", async (t) => {
+  const root = await fixture(t);
+  await writeModule(root, {
+    moduleId: "countdown",
+    packageName: "@appbasis/wrong",
+    database: null,
+  });
+
+  await assert.rejects(
+    () => readModuleDefinitions(root),
+    /packageName must be @appbasis\/countdown/,
+  );
+
+  await rm(join(root, "modules", "countdown"), {
+    recursive: true,
+    force: true,
+  });
+  await writeModule(root, {
+    moduleId: "countdown",
+    packageName: "@appbasis/countdown",
+    database: null,
+  });
+  await mkdir(join(root, "modules", "countdown", "migrations"));
+  await writeFile(
+    join(root, "modules", "countdown", "migrations", "0000_hidden.sql"),
+    "SELECT 1;\n",
+  );
+
+  await assert.rejects(
+    () => readModuleDefinitions(root),
+    /declares database null but owns SQL migrations/,
+  );
+});
+
 test("rejects module identity, capability and compatibility drift", () => {
   const base = {
     schemaVersion: 1,
@@ -130,7 +198,7 @@ test("rejects module identity, capability and compatibility drift", () => {
   );
 });
 
-test("keeps database ownership inside the module migration tree", () => {
+test("keeps database ownership inside the module migration tree and deterministic", () => {
   const base = {
     schemaVersion: 1,
     moduleId: "inventory",
@@ -168,6 +236,21 @@ test("keeps database ownership inside the module migration tree", () => {
       }),
     /must not contain duplicates/,
   );
+
+  assert.throws(
+    () =>
+      parseModuleDefinition({
+        ...base,
+        database: {
+          schemaVersion: 1,
+          migrations: [
+            "modules/inventory/migrations/0001.sql",
+            "modules/inventory/migrations/0000.sql",
+          ],
+        },
+      }),
+    /deterministic path order/,
+  );
 });
 
 async function fixture(t) {
@@ -175,4 +258,49 @@ async function fixture(t) {
   t.after(async () => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "modules"), { recursive: true });
   return root;
+}
+
+async function writeModule(
+  root,
+  { moduleId, packageName, database },
+) {
+  const moduleRoot = join(root, "modules", moduleId);
+  await mkdir(join(moduleRoot, "migrations"), { recursive: true });
+  await writeFile(
+    join(moduleRoot, "appbasis.module.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        moduleId,
+        displayName: moduleId === "countdown" ? "Intervall-Countdown" : "Inventar",
+        packageName,
+        compatibility: {
+          appDefinitionSchemaVersions: [2],
+        },
+        capabilities: [],
+        database,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await writeFile(
+    join(moduleRoot, "package.json"),
+    JSON.stringify(
+      {
+        name: packageName,
+        version: "0.0.0",
+        private: true,
+        type: "module",
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  if (database !== null) {
+    await writeFile(
+      join(moduleRoot, "migrations", "0000_foundation.sql"),
+      "SELECT 1;\n",
+    );
+  }
 }
