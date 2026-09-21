@@ -1,4 +1,5 @@
 import { createGeneratedApp } from "./app";
+import { generatedUiResponse } from "./ui";
 import {
   createGeneratedPostgresApplicationRuntime,
   type GeneratedPostgresApplicationRuntime,
@@ -23,6 +24,10 @@ export function createGeneratedWorker(
   return Object.freeze({
     async fetch(request: Request, env: unknown): Promise<Response> {
       const url = new URL(request.url);
+      const staticUiResponse = generatedUiResponse(request);
+      if (staticUiResponse !== null) {
+        return staticUiResponse;
+      }
       if (url.pathname === "/api/health") {
         return Response.json({ status: "ok", appId: "ulc-linz" });
       }
@@ -46,6 +51,8 @@ export function createGeneratedWorker(
         runtime = await runtimeFactory(runtimeOptions);
         const app = createGeneratedApp({
           identity: runtime.identity,
+          permissions: runtime.permissions,
+          scope: runtime.scope,
           secureCookies: url.protocol === "https:",
           securityEvents: runtime.securityEvents,
         });
