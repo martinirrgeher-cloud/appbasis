@@ -160,10 +160,17 @@ test("generates a deployable identity+permissions app that consumes the countdow
   const postgres = await readFile(join(appRoot, "worker", "postgres.ts"), "utf8");
   assert.match(postgres, /PostgresPermissionStore/);
   assert.doesNotMatch(postgres, /PostgresTaskRepository/);
-  assert.match(
-    await readFile(join(appRoot, "wrangler.production.bootstrap.jsonc"), "utf8"),
-    /HYPERDRIVE/,
+  const bootstrapConfig = JSON.parse(
+    await readFile(
+      join(appRoot, "wrangler.production.bootstrap.jsonc"),
+      "utf8",
+    ),
   );
+  assert.equal(bootstrapConfig.main, "./worker/index.ts");
+  assert.equal(bootstrapConfig.workers_dev, false);
+  assert.equal(bootstrapConfig.preview_urls, false);
+  assert.equal("hyperdrive" in bootstrapConfig, false);
+  assert.equal("secrets" in bootstrapConfig, false);
 
   const databaseManifest = JSON.parse(
     await readFile(join(appRoot, "appbasis.database.json"), "utf8"),
