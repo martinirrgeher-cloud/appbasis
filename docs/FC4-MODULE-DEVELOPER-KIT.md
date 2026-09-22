@@ -68,9 +68,11 @@ wenn ein realer DB-ownender Modulverbraucher sie benötigt.
 
 Publikation und Modulverifikation werden über einen Registry-Lock serialisiert;
 das Modulmanifest wird erst nach erfolgreicher Workspace-Finalisierung
-veröffentlicht. Die Workspace-Finalisierung aktualisiert den pnpm-Lockfile.
-Schlägt sie fehl, werden reservierter Modulordner und Lockfile auf den
-Ausgangszustand zurückgerollt.
+veröffentlicht. App- und Modul-Generator teilen zusätzlich denselben
+Workspace-Publication-Lock, damit pnpm-Lockfile-Snapshot, Finalisierung und
+Rollback niemals gegeneinander laufen. Schlägt die Workspace-Finalisierung
+fehl, werden reservierter Modulordner und Lockfile auf den Ausgangszustand
+zurückgerollt.
 
 ## Noch nicht Teil dieses Slices
 
