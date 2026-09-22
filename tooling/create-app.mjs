@@ -22,6 +22,7 @@ import {
   verifyModuleDefinitions,
 } from "./module-definition.mjs";
 import { enforceUlcLinzM5TargetPolicy } from "./ulc-linz-m5-target-policy.mjs";
+import { acquireWorkspacePublicationLock } from "./workspace-publication.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-";
 const WORKSPACE_FINALIZATION_TIMEOUT_MS = 90_000;
@@ -83,6 +84,7 @@ export async function createAppSkeleton(input, options = {}) {
   await mkdir(stagingDirectory);
 
   let registryLock;
+  let workspacePublicationLock;
   let destinationReserved = false;
   let published = false;
   let lockfileSnapshot;
@@ -125,6 +127,8 @@ export async function createAppSkeleton(input, options = {}) {
     registryLock = await acquireAppRegistryLock(repositoryRoot, "publish");
 
     if (publishesWorkspacePackage) {
+      workspacePublicationLock =
+        await acquireWorkspacePublicationLock(repositoryRoot);
       lockfileSnapshot = await readFile(lockfilePath, "utf8");
     }
 
@@ -214,6 +218,7 @@ export async function createAppSkeleton(input, options = {}) {
     }
     throw error;
   } finally {
+    await workspacePublicationLock?.release();
     await registryLock?.release();
   }
 
