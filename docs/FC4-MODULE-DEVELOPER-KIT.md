@@ -66,9 +66,11 @@ Für den unmittelbar benötigten Countdown erzeugt FC4-B bewusst
 `database: null`. Generische Erzeugung von Modul-Migrationen wird erst ergänzt,
 wenn ein realer DB-ownender Modulverbraucher sie benötigt.
 
-Die Workspace-Finalisierung aktualisiert den pnpm-Lockfile. Schlägt sie fehl,
-werden neu veröffentlichter Modulordner und Lockfile auf den Ausgangszustand
-zurückgerollt.
+Publikation und Modulverifikation werden über einen Registry-Lock serialisiert;
+das Modulmanifest wird erst nach erfolgreicher Workspace-Finalisierung
+veröffentlicht. Die Workspace-Finalisierung aktualisiert den pnpm-Lockfile.
+Schlägt sie fehl, werden reservierter Modulordner und Lockfile auf den
+Ausgangszustand zurückgerollt.
 
 ## Noch nicht Teil dieses Slices
 
