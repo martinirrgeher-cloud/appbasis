@@ -250,6 +250,30 @@ test("fails closed if an update input changes after planning", async (t) => {
   assert.equal(await readFile(lockfilePath, "utf8"), lockfileBefore);
 });
 
+test("keeps database-owning module installation fail-closed in FC5-B", async (t) => {
+  const root = await createFixture(t);
+  await writeDatabaseModuleFixture(root);
+  const before = await snapshotFixture(root);
+
+  await assert.rejects(
+    () =>
+      applyModuleUpdate(
+        {
+          appId: "reference",
+          moduleId: "inventory",
+        },
+        executorOptions(root, {
+          workspaceFinalizer: async () => {
+            throw new Error("workspace finalizer must not run");
+          },
+        }),
+      ),
+    /does not install database-owning modules/,
+  );
+
+  assert.deepEqual(await snapshotFixture(root), before);
+});
+
 test("returns a no-op only for a fully consistent installed state", async (t) => {
   const root = await createFixture(t, { installed: true });
   const before = await snapshotFixture(root);
@@ -345,6 +369,51 @@ async function createFixture(t, { installed = false } = {}) {
   );
 
   return root;
+}
+
+async function writeDatabaseModuleFixture(root) {
+  const moduleRoot = join(root, "modules", "inventory");
+  await mkdir(join(moduleRoot, "migrations"), { recursive: true });
+  await writeFile(
+    join(moduleRoot, "appbasis.module.json"),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        moduleId: "inventory",
+        displayName: "Inventory",
+        packageName: "@appbasis/inventory",
+        compatibility: {
+          appDefinitionSchemaVersions: [2],
+        },
+        capabilities: ["inventory:view"],
+        database: {
+          schemaVersion: 1,
+          migrations: [
+            "modules/inventory/migrations/0000_inventory.sql",
+          ],
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(
+    join(moduleRoot, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "@appbasis/inventory",
+        version: "0.0.0",
+        private: true,
+        type: "module",
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(
+    join(moduleRoot, "migrations", "0000_inventory.sql"),
+    "SELECT 1;\n",
+  );
 }
 
 function executorOptions(root, testingHooks) {
