@@ -34,6 +34,15 @@ export async function applyModuleUpdate(input, options = {}) {
     { repositoryRoot },
   );
 
+  if (
+    plan.state === "install" &&
+    plan.module.databaseSchemaVersion !== null
+  ) {
+    throw new Error(
+      "FC5-B does not install database-owning modules before a migration execution contract exists.",
+    );
+  }
+
   await options.testingHooks?.afterPlan?.({
     plan,
     repositoryRoot,
