@@ -91,6 +91,34 @@ export async function verifyModuleDefinitions(repositoryRoot = process.cwd()) {
   return readModuleDefinitions(repositoryRoot);
 }
 
+export function assertAppModuleCompatibility(appDefinition, moduleDefinition) {
+  if (
+    !isPlainObject(appDefinition) ||
+    typeof appDefinition.appId !== "string" ||
+    !Number.isInteger(appDefinition.schemaVersion)
+  ) {
+    throw new Error("App/module compatibility requires a parsed app definition.");
+  }
+  if (
+    !isPlainObject(moduleDefinition) ||
+    typeof moduleDefinition.moduleId !== "string" ||
+    !isPlainObject(moduleDefinition.compatibility) ||
+    !Array.isArray(moduleDefinition.compatibility.appDefinitionSchemaVersions)
+  ) {
+    throw new Error("App/module compatibility requires a parsed module definition.");
+  }
+
+  if (
+    !moduleDefinition.compatibility.appDefinitionSchemaVersions.includes(
+      appDefinition.schemaVersion,
+    )
+  ) {
+    throw new Error(
+      `App ${appDefinition.appId} schemaVersion ${appDefinition.schemaVersion} is not compatible with module ${moduleDefinition.moduleId}.`,
+    );
+  }
+}
+
 async function verifyModuleOwnedArtifacts(
   repositoryRoot,
   directoryName,
