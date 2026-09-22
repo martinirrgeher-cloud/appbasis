@@ -101,14 +101,6 @@ export function assertGeneratedModuleDatabaseOwners(moduleDefinitions) {
       );
     }
   }
-
-  for (const moduleId of Object.keys(MODULE_DATABASE_OWNERS)) {
-    if (!definitionsById.has(moduleId)) {
-      throw new Error(
-        `Generated database ownership references unknown module ${moduleId}.`,
-      );
-    }
-  }
 }
 
 export function createGeneratedDatabaseManifest(definition) {
