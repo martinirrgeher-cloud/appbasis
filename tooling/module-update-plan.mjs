@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { verifyAppDefinitions } from "./app-definition.mjs";
@@ -45,8 +45,9 @@ export async function planModuleUpdate(input, options = {}) {
     "package.json",
   );
   const databaseManifestPath = join(appRoot, "appbasis.database.json");
+  const lockfilePath = join(repositoryRoot, "pnpm-lock.yaml");
 
-  const [appPackage, modulePackage, currentDatabaseManifest] = await Promise.all([
+  const [appPackage, modulePackage, currentDatabaseManifest, lockfile] = await Promise.all([
     readRequiredJson(appPackagePath, `apps/${appId}/package.json`),
     readRequiredJson(
       modulePackagePath,
@@ -56,6 +57,7 @@ export async function planModuleUpdate(input, options = {}) {
       databaseManifestPath,
       `apps/${appId}/appbasis.database.json`,
     ),
+    readRequiredText(lockfilePath, "pnpm-lock.yaml"),
   ]);
 
   const appPackageName = requiredPackageName(
@@ -80,11 +82,28 @@ export async function planModuleUpdate(input, options = {}) {
     );
   }
 
-  const dependencies = plainObject(appPackage.dependencies)
-    ? appPackage.dependencies
-    : {};
+  if (!plainObject(appPackage.dependencies)) {
+    throw new Error(`App ${appId} package.json dependencies must be an object.`);
+  }
+  const dependencies = appPackage.dependencies;
   const currentDependency = dependencies[modulePackageName];
   const alreadyDeclared = appDefinition.modules.includes(moduleId);
+  const lockfileDependency = readPnpmImporterDependency(
+    lockfile,
+    `apps/${appId}`,
+    modulePackageName,
+  );
+  const expectedWorkspaceLink = `link:${toPosixPath(
+    relative(appRoot, join(repositoryRoot, "modules", moduleId)),
+  )}`;
+
+  assertTargetDependencyLockfileState({
+    appId,
+    modulePackageName,
+    currentDependency,
+    lockfileDependency,
+    expectedWorkspaceLink,
+  });
 
   if (!alreadyDeclared && currentDependency !== undefined) {
     throw new Error(
@@ -233,6 +252,151 @@ function assertDatabaseManifestMatches(appId, actual, expected) {
 
 function canonicalJson(value) {
   return value === null ? "null" : JSON.stringify(value);
+}
+
+function assertTargetDependencyLockfileState({
+  appId,
+  modulePackageName,
+  currentDependency,
+  lockfileDependency,
+  expectedWorkspaceLink,
+}) {
+  if (currentDependency === undefined) {
+    if (lockfileDependency !== null) {
+      throw new Error(
+        `App ${appId} lockfile importer already declares ${modulePackageName} while package.json does not.`,
+      );
+    }
+    return;
+  }
+
+  if (currentDependency !== WORKSPACE_DEPENDENCY) return;
+
+  if (
+    lockfileDependency === null ||
+    lockfileDependency.specifier !== WORKSPACE_DEPENDENCY ||
+    lockfileDependency.version !== expectedWorkspaceLink
+  ) {
+    throw new Error(
+      `App ${appId} lockfile importer is stale for ${modulePackageName}.`,
+    );
+  }
+}
+
+function readPnpmImporterDependency(lockfile, importerName, dependencyName) {
+  const lines = lockfile.replaceAll("\r\n", "\n").split("\n");
+  const importersIndex = lines.findIndex((line) => line === "importers:");
+  if (importersIndex === -1) {
+    throw new Error("pnpm-lock.yaml is missing importers.");
+  }
+
+  const importerLine = `  ${importerName}:`;
+  const importerIndex = lines.findIndex(
+    (line, index) => index > importersIndex && line === importerLine,
+  );
+  if (importerIndex === -1) {
+    throw new Error(
+      `pnpm-lock.yaml is missing importer ${importerName}.`,
+    );
+  }
+
+  const importerEnd = findSectionEnd(lines, importerIndex + 1, 2);
+  const dependenciesIndex = lines.findIndex(
+    (line, index) =>
+      index > importerIndex &&
+      index < importerEnd &&
+      line === "    dependencies:",
+  );
+  if (dependenciesIndex === -1) return null;
+
+  const dependenciesEnd = findSectionEnd(
+    lines,
+    dependenciesIndex + 1,
+    4,
+    importerEnd,
+  );
+  const matches = [];
+  for (let index = dependenciesIndex + 1; index < dependenciesEnd; index += 1) {
+    const match = /^ {6}(.+):$/.exec(lines[index]);
+    if (match === null) continue;
+    if (yamlKey(match[1]) === dependencyName) matches.push(index);
+  }
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    throw new Error(
+      `pnpm-lock.yaml importer ${importerName} duplicates dependency ${dependencyName}.`,
+    );
+  }
+
+  const dependencyIndex = matches[0];
+  const dependencyEnd = findSectionEnd(
+    lines,
+    dependencyIndex + 1,
+    6,
+    dependenciesEnd,
+  );
+  let specifier;
+  let version;
+  for (let index = dependencyIndex + 1; index < dependencyEnd; index += 1) {
+    const match = /^ {8}(specifier|version):\s*(.+)$/.exec(lines[index]);
+    if (match === null) continue;
+    const value = yamlScalar(match[2]);
+    if (match[1] === "specifier") specifier = value;
+    if (match[1] === "version") version = value;
+  }
+  if (specifier === undefined || version === undefined) {
+    throw new Error(
+      `pnpm-lock.yaml importer ${importerName} dependency ${dependencyName} is incomplete.`,
+    );
+  }
+  return Object.freeze({ specifier, version });
+}
+
+function findSectionEnd(lines, startIndex, indentation, upperBound = lines.length) {
+  const prefix = " ".repeat(indentation);
+  for (let index = startIndex; index < upperBound; index += 1) {
+    const line = lines[index];
+    if (line.length === 0) continue;
+    if (!line.startsWith(prefix)) return index;
+    if (
+      line.startsWith(prefix) &&
+      !line.startsWith(`${prefix} `) &&
+      line.endsWith(":")
+    ) {
+      return index;
+    }
+  }
+  return upperBound;
+}
+
+function yamlKey(value) {
+  return yamlScalar(value);
+}
+
+function yamlScalar(value) {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function toPosixPath(value) {
+  return sep === "/" ? value : value.split(sep).join("/");
+}
+
+async function readRequiredText(path, label) {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`${label} is missing.`);
+    }
+    throw error;
+  }
 }
 
 async function readRequiredJson(path, label) {
