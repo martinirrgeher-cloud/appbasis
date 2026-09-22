@@ -60,8 +60,9 @@ Erster realer Verbraucher ist `ulc-linz` mit dem FC4-Countdown-Modul.
 - Fachmodule ändern keine Tabellen anderer Module.
 - `createAppSkeleton()` bleibt der Pfad für **neue** Apps und wird nicht als
   Updater für bestehende Apps missbraucht.
-- Vor FC5 werden bestehende ULC-Runtime- und M5/M6-Evidence-Verträge nicht nur
-  für einen einzelnen Fachslice manuell umgebaut oder neu gepinnt.
+- Bis der FC5-Updater reproduzierbar verifiziert ist, werden bestehende
+  ULC-Runtime- und M5/M6-Evidence-Verträge nicht nur für einen einzelnen
+  Fachslice manuell umgebaut oder neu gepinnt.
 - Permissions bleiben serverseitig; UI-Sichtbarkeit ist keine
   Sicherheitsgrenze.
 - Keine neue allgemeine Policy-/ABAC-Engine.
