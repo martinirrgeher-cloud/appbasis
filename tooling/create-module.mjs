@@ -17,6 +17,7 @@ import {
   verifyModuleDefinitions,
 } from "./module-definition.mjs";
 import { acquireModuleRegistryLock } from "./module-publication.mjs";
+import { acquireWorkspacePublicationLock } from "./workspace-publication.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-module-";
 const WORKSPACE_FINALIZATION_TIMEOUT_MS = 90_000;
@@ -69,6 +70,7 @@ export async function createModuleSkeleton(input, options = {}) {
   await mkdir(stagingDirectory);
 
   let registryLock;
+  let workspacePublicationLock;
   let lockfileSnapshot;
   let destinationReserved = false;
   let published = false;
@@ -102,6 +104,8 @@ export async function createModuleSkeleton(input, options = {}) {
         `Module destination already exists: modules/${definition.moduleId}.`,
       );
     }
+    workspacePublicationLock =
+      await acquireWorkspacePublicationLock(repositoryRoot);
     lockfileSnapshot = await readFile(lockfilePath, "utf8");
 
     try {
@@ -177,6 +181,7 @@ export async function createModuleSkeleton(input, options = {}) {
     }
     throw error;
   } finally {
+    await workspacePublicationLock?.release();
     await registryLock?.release();
   }
 
