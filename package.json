@@ -30,6 +30,6 @@
     "factory:dev": "node ./tooling/factory-ui/server.mjs",
     "reference:dev": "pnpm --filter @appbasis/reference dev",
     "reference:smoke": "node ./tooling/reference-preview-smoke.mjs",
-    "verify:modules": "node --test ./tooling/module-definition.test.mjs ./tooling/create-module.test.mjs && node ./tooling/verify-module-definitions.mjs"
+    "verify:modules": "node --test ./tooling/module-definition.test.mjs ./tooling/create-module.test.mjs ./tooling/countdown-module-generation.test.mjs && node ./tooling/verify-module-definitions.mjs"
   }
 }

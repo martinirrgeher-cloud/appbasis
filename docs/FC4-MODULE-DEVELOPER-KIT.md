@@ -78,11 +78,14 @@ zurückgerollt.
 
 FC4-A verändert keine bestehende App und insbesondere keine ULC-Produktionsruntime.
 
+Der Intervall-Countdown ist jetzt der erste reale, über diesen Vertrag erzeugte
+Fachmodul-Referenzfall. Sein eingecheckter Inhalt wird automatisiert gegen die
+kanonische Scaffolder-Ausgabe geprüft und besitzt bewusst keine Persistenz.
+
 Noch offen für die folgenden kleinen FC4-Slices:
 
-1. Countdown als erstes neu erzeugtes Modul ohne Persistenz.
-2. Generator-Integration für eine neue Test-App.
-3. Erst danach FC5: kontrolliertes Hinzufügen/Aktualisieren eines Moduls in
+1. Generator-Integration für eine neue Test-App mit `countdown`.
+2. Erst danach FC5: kontrolliertes Hinzufügen/Aktualisieren eines Moduls in
    einer bestehenden App wie `ulc-linz`.
 
 Damit bleibt die bisher verifizierte ULC-M5/M6-Runtime unverändert, bis ein
