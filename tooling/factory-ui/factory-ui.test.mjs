@@ -11,6 +11,7 @@ import {
   verifyAppDefinitions,
 } from "../app-definition.mjs";
 import { acquireAppRegistryLock } from "../app-publication.mjs";
+import { writeTasksModuleFixture } from "../test-fixtures/module-fixtures.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
 import {
   contrastRatioForHex,
@@ -47,7 +48,7 @@ test("factory snapshot ignores unpublished app directories without weakening str
   const fixtureRoot = await mkdtemp(join(tmpdir(), "appbasis-factory-readonly-"));
   await mkdir(join(fixtureRoot, "apps", "demo"), { recursive: true });
   await mkdir(join(fixtureRoot, "apps", "publishing"), { recursive: true });
-  await mkdir(join(fixtureRoot, "modules", "tasks"), { recursive: true });
+  await writeTasksModuleFixture(fixtureRoot);
   await writeFile(
     join(fixtureRoot, "apps", "demo", "appbasis.app.json"),
     `${JSON.stringify(
@@ -327,7 +328,7 @@ test("factory console exposes app details and local creation without enabling de
 test("factory local app creation is origin-locked, JSON-only and uses the existing generator", async (t) => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "appbasis-factory-create-"));
   await mkdir(join(fixtureRoot, "apps", "demo"), { recursive: true });
-  await mkdir(join(fixtureRoot, "modules", "tasks"), { recursive: true });
+  await writeTasksModuleFixture(fixtureRoot);
   await writeFile(
     join(fixtureRoot, "apps", "demo", "appbasis.app.json"),
     `${JSON.stringify(
