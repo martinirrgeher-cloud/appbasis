@@ -73,6 +73,11 @@ export async function applyModuleUpdate(input, options = {}) {
     }
 
     assertInstallWriteSet(plan, appId);
+    if (plan.changes.databaseManifest !== null) {
+      throw new Error(
+        "FC5-B install plans must not contain database manifest changes.",
+      );
+    }
 
     const currentAppDefinition = parseAppDefinition(
       parseJsonObject(
@@ -120,23 +125,10 @@ export async function applyModuleUpdate(input, options = {}) {
         [plan.module.packageName]: WORKSPACE_DEPENDENCY,
       }),
     };
+    const nextPackageContent = `${JSON.stringify(nextPackage, null, 2)}\n`;
 
-    await atomicWriteFile(
-      paths.appPackage,
-      `${JSON.stringify(nextPackage, null, 2)}\n`,
-    );
+    await atomicWriteFile(paths.appPackage, nextPackageContent);
     mutationStarted = true;
-
-    if (plan.changes.databaseManifest !== null) {
-      const databaseChange = plan.changes.databaseManifest;
-      if (databaseChange.path !== `apps/${appId}/appbasis.database.json`) {
-        throw new Error("Module install plan database manifest path is invalid.");
-      }
-      await atomicWriteFile(
-        paths.databaseManifest,
-        `${JSON.stringify(databaseChange.after, null, 2)}\n`,
-      );
-    }
 
     await options.testingHooks?.beforeWorkspaceFinalization?.({
       plan,
@@ -155,6 +147,7 @@ export async function applyModuleUpdate(input, options = {}) {
       appId,
       moduleId,
       modulePackageName: plan.module.packageName,
+      expectedPackageContent: nextPackageContent,
     });
 
     await options.testingHooks?.afterWorkspaceFinalization?.({
@@ -315,15 +308,18 @@ function assertNoopPlan(plan) {
 }
 
 function assertInstallWriteSet(plan, appId) {
+  const appDefinitionPath = `apps/${appId}/appbasis.app.json`;
+  const appPackagePath = `apps/${appId}/package.json`;
   const expected = [
-    `apps/${appId}/appbasis.app.json`,
-    `apps/${appId}/package.json`,
-    ...(plan.changes.databaseManifest === null
-      ? []
-      : [`apps/${appId}/appbasis.database.json`]),
+    appDefinitionPath,
+    appPackagePath,
     "pnpm-lock.yaml",
   ];
+
   if (
+    plan.changes.appDefinition?.path !== appDefinitionPath ||
+    plan.changes.packageDependency?.path !== appPackagePath ||
+    plan.changes.workspaceLockfile?.path !== "pnpm-lock.yaml" ||
     plan.writes.length !== expected.length ||
     plan.writes.some((path, index) => path !== expected[index])
   ) {
@@ -336,9 +332,16 @@ async function assertFinalizedWorkspace({
   appId,
   moduleId,
   modulePackageName,
+  expectedPackageContent,
 }) {
+  const packageContent = await readFile(paths.appPackage, "utf8");
+  if (packageContent !== expectedPackageContent) {
+    throw new Error(
+      `Workspace finalization changed apps/${appId}/package.json outside the planned dependency update.`,
+    );
+  }
   const packageJson = parseJsonObject(
-    await readFile(paths.appPackage, "utf8"),
+    packageContent,
     `apps/${appId}/package.json`,
   );
   if (
