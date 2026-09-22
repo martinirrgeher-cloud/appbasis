@@ -7,6 +7,7 @@ import {
 } from "../app-definition.mjs";
 import { readAppTheme } from "../app-theme.mjs";
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
+import { verifyModuleDefinitions } from "../module-definition.mjs";
 import { deriveGeneratedPreviewLifecycle } from "./generated-preview-lifecycle.mjs";
 import { deriveM3PreviewAcceptanceEvidence } from "./m3-preview-acceptance-evidence.mjs";
 import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
@@ -26,10 +27,11 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
     options.generatedPreviewRepositoryStateImpl;
   const ulcLinzM5JOwnerInputs = options.ulcLinzM5JOwnerInputs ?? {};
   const m5EvidenceNow = options.m5EvidenceNow ?? new Date();
-  const [appDefinitions, modules] = await Promise.all([
+  const [appDefinitions, moduleDefinitions] = await Promise.all([
     readAppDefinitions(root),
-    directoryNames(join(root, "modules")),
+    verifyModuleDefinitions(root),
   ]);
+  const modules = moduleDefinitions.map((definition) => definition.moduleId);
   const apps = await Promise.all(
     appDefinitions.map((definition) =>
       withFactoryReadiness(root, definition, {
@@ -37,6 +39,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
         generatedPreviewPublicationFetchImpl,
         generatedPreviewRunEvidenceFetchImpl,
         generatedPreviewRepositoryStateImpl,
+        moduleDefinitions,
         ulcLinzM5JOwnerInputs,
         m5EvidenceNow,
       }),
@@ -66,13 +69,14 @@ async function withFactoryReadiness(
     generatedPreviewPublicationFetchImpl,
     generatedPreviewRunEvidenceFetchImpl,
     generatedPreviewRepositoryStateImpl,
+    moduleDefinitions,
     ulcLinzM5JOwnerInputs,
     m5EvidenceNow,
   },
 ) {
   const appRoot = join(repositoryRoot, "apps", definition.appId);
   const databaseManifestRequired =
-    createGeneratedDatabaseManifest(definition) !== null;
+    createGeneratedDatabaseManifest(definition, { moduleDefinitions }) !== null;
   const [
     workerEntrypointPresent,
     packageManifestPresent,
