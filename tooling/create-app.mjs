@@ -61,7 +61,9 @@ export async function createAppSkeleton(input, options = {}) {
     brandMark: input.brandMark,
     accentColor: input.accentColor,
   });
-  const databaseManifest = renderGeneratedDatabaseManifest(definition);
+  const databaseManifest = renderGeneratedDatabaseManifest(definition, {
+    moduleDefinitions,
+  });
   const runtimeFiles = generatedRuntimeFiles(definition, appTheme);
   const publishesWorkspacePackage = runtimeFiles.some(
     (runtimeFile) => runtimeFile.path === "package.json",
