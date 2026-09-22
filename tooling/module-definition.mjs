@@ -1,6 +1,8 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { join, posix } from "node:path";
 
+import { assertGeneratedModuleDatabaseOwners } from "./generated-database-manifest.mjs";
+
 const MODULE_DEFINITION_FILE = "appbasis.module.json";
 const MODULE_DEFINITION_KEYS = new Set([
   "schemaVersion",
@@ -88,7 +90,9 @@ export async function readModuleDefinitions(repositoryRoot = process.cwd()) {
 }
 
 export async function verifyModuleDefinitions(repositoryRoot = process.cwd()) {
-  return readModuleDefinitions(repositoryRoot);
+  const definitions = await readModuleDefinitions(repositoryRoot);
+  assertGeneratedModuleDatabaseOwners(definitions);
+  return definitions;
 }
 
 export function assertAppModuleCompatibility(appDefinition, moduleDefinition) {
