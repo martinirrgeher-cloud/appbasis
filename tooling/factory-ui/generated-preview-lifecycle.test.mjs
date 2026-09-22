@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
+import { writeTasksModuleFixture } from "../test-fixtures/module-fixtures.mjs";
 import { deriveGeneratedPreviewLifecycle } from "./generated-preview-lifecycle.mjs";
 import {
   GENERATED_PREVIEW_PUBLICATION_FILES,
@@ -18,7 +19,7 @@ async function createPreviewFixture(t) {
 
   const appRoot = join(root, "apps", "checklist");
   await mkdir(join(appRoot, "worker"), { recursive: true });
-  await mkdir(join(root, "modules", "tasks"), { recursive: true });
+  await writeTasksModuleFixture(root);
   await mkdir(join(root, ".github", "workflows"), { recursive: true });
   await writeFile(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
   await writeFile(
