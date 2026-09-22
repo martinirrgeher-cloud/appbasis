@@ -13,6 +13,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { createAppSkeleton } from "./create-app.mjs";
+import { writeTasksModuleFixture } from "./test-fixtures/module-fixtures.mjs";
 import {
   createGeneratedDatabaseManifest,
   renderGeneratedDatabaseManifest,
@@ -37,7 +38,7 @@ test("createAppSkeleton publishes the generated database manifest before the app
   const root = await mkdtemp(join(tmpdir(), "appbasis-database-manifest-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "apps"), { recursive: true });
-  await mkdir(join(root, "modules", "tasks"), { recursive: true });
+  await writeTasksModuleFixture(root);
   await writeFile(
     join(root, "pnpm-lock.yaml"),
     "lockfileVersion: '9.0'\n\nimporters:\n  .: {}\n",
