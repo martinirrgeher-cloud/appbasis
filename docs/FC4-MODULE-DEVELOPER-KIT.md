@@ -45,16 +45,44 @@ verifizierten Moduldefinitionen.
 
 `tasks` ist der erste bestehende Referenzverbraucher des neuen Vertrags.
 
+## FC4-B – Modul-Scaffolder
+
+Neue Module werden über den kanonischen lokalen Scaffolder erzeugt:
+
+```bash
+pnpm appbasis:create-module -- \
+  --module-id countdown \
+  --display-name "Intervall-Countdown" \
+  --capability countdown:view
+```
+
+Der Scaffolder erzeugt Manifest, Workspace-Paket, TypeScript-Konfiguration,
+öffentlichen `MODULE_CAPABILITIES`-Export und README deterministisch. Capability-
+IDs werden sortiert und anschließend durch denselben strikten Modulparser
+validiert; fremde Namespaces und Duplikate werden abgewiesen. Bestehende
+Modulverzeichnisse werden nie überschrieben.
+
+Für den unmittelbar benötigten Countdown erzeugt FC4-B bewusst
+`database: null`. Generische Erzeugung von Modul-Migrationen wird erst ergänzt,
+wenn ein realer DB-ownender Modulverbraucher sie benötigt.
+
+Publikation und Modulverifikation werden über einen Registry-Lock serialisiert;
+das Modulmanifest wird erst nach erfolgreicher Workspace-Finalisierung
+veröffentlicht. App- und Modul-Generator teilen zusätzlich denselben
+Workspace-Publication-Lock, damit pnpm-Lockfile-Snapshot, Finalisierung und
+Rollback niemals gegeneinander laufen. Schlägt die Workspace-Finalisierung
+fehl, werden reservierter Modulordner und Lockfile auf den Ausgangszustand
+zurückgerollt.
+
 ## Noch nicht Teil dieses Slices
 
 FC4-A verändert keine bestehende App und insbesondere keine ULC-Produktionsruntime.
 
 Noch offen für die folgenden kleinen FC4-Slices:
 
-1. Modul-Scaffolder auf Basis dieses Manifests.
-2. Countdown als erstes neu erzeugtes Modul ohne Persistenz.
-3. Generator-Integration für eine neue Test-App.
-4. Erst danach FC5: kontrolliertes Hinzufügen/Aktualisieren eines Moduls in
+1. Countdown als erstes neu erzeugtes Modul ohne Persistenz.
+2. Generator-Integration für eine neue Test-App.
+3. Erst danach FC5: kontrolliertes Hinzufügen/Aktualisieren eines Moduls in
    einer bestehenden App wie `ulc-linz`.
 
 Damit bleibt die bisher verifizierte ULC-M5/M6-Runtime unverändert, bis ein

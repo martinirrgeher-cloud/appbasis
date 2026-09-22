@@ -1,0 +1,447 @@
+import assert from "node:assert/strict";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import test from "node:test";
+
+import { createAppSkeleton } from "./create-app.mjs";
+import {
+  createModuleSkeleton,
+  parseCreateModuleArguments,
+} from "./create-module.mjs";
+import { verifyModuleDefinitions } from "./module-definition.mjs";
+import { writeTasksModuleFixture } from "./test-fixtures/module-fixtures.mjs";
+
+test("parses the explicit module generator CLI contract", () => {
+  assert.deepEqual(
+    parseCreateModuleArguments([
+      "--module-id",
+      "countdown",
+      "--display-name",
+      "Intervall-Countdown",
+      "--capability",
+      "countdown:view",
+      "--capability",
+      "countdown:manage",
+    ]),
+    {
+      moduleId: "countdown",
+      displayName: "Intervall-Countdown",
+      capabilities: ["countdown:view", "countdown:manage"],
+    },
+  );
+
+  assert.throws(
+    () => parseCreateModuleArguments(["--module-id", "countdown"]),
+    /Missing required --display-name/,
+  );
+  assert.throws(
+    () => parseCreateModuleArguments(["--unknown", "value"]),
+    /Unknown module generator argument/,
+  );
+});
+
+test("creates a verified deterministic database-free module skeleton", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  const result = await createModuleSkeleton(
+    {
+      moduleId: "countdown",
+      displayName: "Intervall-Countdown",
+      capabilities: ["countdown:view", "countdown:manage"],
+    },
+    testGeneratorOptions(root),
+  );
+
+  assert.equal(result.relativeDestination, join("modules", "countdown"));
+  assert.deepEqual(result.definition, {
+    schemaVersion: 1,
+    moduleId: "countdown",
+    displayName: "Intervall-Countdown",
+    packageName: "@appbasis/countdown",
+    compatibility: {
+      appDefinitionSchemaVersions: [2],
+    },
+    capabilities: ["countdown:manage", "countdown:view"],
+    database: null,
+  });
+
+  const manifest = JSON.parse(
+    await readFile(
+      join(root, "modules", "countdown", "appbasis.module.json"),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(manifest, result.definition);
+
+  const packageJson = JSON.parse(
+    await readFile(join(root, "modules", "countdown", "package.json"), "utf8"),
+  );
+  assert.deepEqual(packageJson, {
+    name: "@appbasis/countdown",
+    version: "0.0.0",
+    private: true,
+    type: "module",
+    exports: {
+      ".": "./src/index.ts",
+    },
+    scripts: {
+      typecheck: "tsc --noEmit -p tsconfig.json",
+    },
+    devDependencies: {
+      typescript: "5.9.3",
+    },
+  });
+
+  assert.equal(
+    await readFile(join(root, "modules", "countdown", "tsconfig.json"), "utf8"),
+    '{\n  "extends": "../../tsconfig.base.json",\n  "include": ["src/**/*.ts"]\n}\n',
+  );
+
+  const entrypoint = await readFile(
+    join(root, "modules", "countdown", "src", "index.ts"),
+    "utf8",
+  );
+  assert.match(entrypoint, /from "\.\.\/appbasis\.module\.json"/);
+  assert.match(entrypoint, /export const MODULE_CAPABILITIES/);
+
+  const definitions = await verifyModuleDefinitions(root);
+  assert.deepEqual(
+    definitions.map((definition) => definition.moduleId),
+    ["countdown", "tasks"],
+  );
+  assert.equal(definitions[0]?.database, null);
+});
+
+test("rejects invalid capability ownership before writing", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  await assert.rejects(
+    () =>
+      createModuleSkeleton(
+        {
+          moduleId: "countdown",
+          displayName: "Intervall-Countdown",
+          capabilities: ["tasks:manage"],
+        },
+        testGeneratorOptions(root),
+      ),
+    /namespaced by countdown/,
+  );
+
+  assert.deepEqual(await readdir(join(root, "modules")), ["tasks"]);
+  assert.equal(
+    (await readdir(root)).some((entry) =>
+      entry.startsWith(".appbasis-create-module-"),
+    ),
+    false,
+  );
+});
+
+test("rejects duplicate capabilities instead of silently changing the contract", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  await assert.rejects(
+    () =>
+      createModuleSkeleton(
+        {
+          moduleId: "countdown",
+          displayName: "Intervall-Countdown",
+          capabilities: ["countdown:view", "countdown:view"],
+        },
+        testGeneratorOptions(root),
+      ),
+    /must not contain duplicates/,
+  );
+
+  assert.deepEqual(await readdir(join(root, "modules")), ["tasks"]);
+});
+
+test("never replaces a destination created after staging", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const destination = join(root, "modules", "countdown");
+
+  await assert.rejects(
+    () =>
+      createModuleSkeleton(
+        {
+          moduleId: "countdown",
+          displayName: "Intervall-Countdown",
+          capabilities: [],
+        },
+        testGeneratorOptions(root, {
+          afterStage: async () => mkdir(destination),
+        }),
+      ),
+    /Module destination already exists/,
+  );
+
+  assert.deepEqual(await readdir(destination), []);
+  assert.equal(
+    (await readdir(root)).some((entry) =>
+      entry.startsWith(".appbasis-create-module-"),
+    ),
+    false,
+  );
+});
+
+test("serializes verification until module publication is complete", async (t) => {
+  const root = await createRepositoryFixture(t);
+  let verificationOutcome;
+  let verificationSettled = false;
+
+  await createModuleSkeleton(
+    {
+      moduleId: "countdown",
+      displayName: "Intervall-Countdown",
+      capabilities: ["countdown:view"],
+    },
+    testGeneratorOptions(root, {
+      afterReserve: async () => {
+        verificationOutcome = verifyModuleDefinitions(root)
+          .then((definitions) => ({ ok: true, definitions }))
+          .catch((error) => ({ ok: false, error }))
+          .finally(() => {
+            verificationSettled = true;
+          });
+        await delay(60);
+        assert.equal(verificationSettled, false);
+      },
+    }),
+  );
+
+  assert.notEqual(verificationOutcome, undefined);
+  const outcome = await verificationOutcome;
+  assert.equal(outcome.ok, true);
+  assert.deepEqual(
+    outcome.definitions.map((definition) => definition.moduleId),
+    ["countdown", "tasks"],
+  );
+});
+
+test("serializes lockfile snapshots across concurrent module generators", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const lockfilePath = join(root, "pnpm-lock.yaml");
+  let releaseFirstFinalizer;
+  let firstFinalizerStartedResolve;
+  const firstFinalizerStarted = new Promise((resolvePromise) => {
+    firstFinalizerStartedResolve = resolvePromise;
+  });
+  const releaseFirst = new Promise((resolvePromise) => {
+    releaseFirstFinalizer = resolvePromise;
+  });
+
+  const first = createModuleSkeleton(
+    {
+      moduleId: "alpha",
+      displayName: "Alpha",
+      capabilities: [],
+    },
+    testGeneratorOptions(root, {
+      workspaceFinalizer: async () => {
+        await writeFile(lockfilePath, "after-alpha\n");
+        firstFinalizerStartedResolve();
+        await releaseFirst;
+      },
+    }),
+  );
+
+  await firstFinalizerStarted;
+
+  let secondFinalizerStarted = false;
+  const second = createModuleSkeleton(
+    {
+      moduleId: "beta",
+      displayName: "Beta",
+      capabilities: [],
+    },
+    testGeneratorOptions(root, {
+      workspaceFinalizer: async () => {
+        secondFinalizerStarted = true;
+        await writeFile(lockfilePath, "mutated-beta\n");
+        throw new Error("beta finalization failed");
+      },
+    }),
+  );
+  const secondOutcome = second.then(
+    () => ({ ok: true }),
+    (error) => ({ ok: false, error }),
+  );
+
+  await delay(60);
+  assert.equal(secondFinalizerStarted, false);
+
+  releaseFirstFinalizer();
+  await first;
+  const outcome = await secondOutcome;
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.error.message, /beta finalization failed/);
+
+  assert.equal(await readFile(lockfilePath, "utf8"), "after-alpha\n");
+  assert.deepEqual(await readdir(join(root, "modules")), ["alpha", "tasks"]);
+});
+
+test("serializes workspace rollback across app and module generators", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const lockfilePath = join(root, "pnpm-lock.yaml");
+  let releaseAppFinalizer;
+  let appFinalizerStartedResolve;
+  const appFinalizerStarted = new Promise((resolvePromise) => {
+    appFinalizerStartedResolve = resolvePromise;
+  });
+  const releaseApp = new Promise((resolvePromise) => {
+    releaseAppFinalizer = resolvePromise;
+  });
+
+  const app = createAppSkeleton(
+    {
+      appId: "checklist",
+      displayName: "Checklist",
+      modules: ["tasks"],
+      platformServices: ["identity"],
+    },
+    {
+      repositoryRoot: root,
+      testingHooks: {
+        workspaceFinalizer: async () => {
+          await writeFile(lockfilePath, "after-app\n");
+          appFinalizerStartedResolve();
+          await releaseApp;
+        },
+      },
+    },
+  );
+
+  await appFinalizerStarted;
+
+  let moduleFinalizerStarted = false;
+  const module = createModuleSkeleton(
+    {
+      moduleId: "countdown",
+      displayName: "Intervall-Countdown",
+      capabilities: [],
+    },
+    testGeneratorOptions(root, {
+      workspaceFinalizer: async () => {
+        moduleFinalizerStarted = true;
+        await writeFile(lockfilePath, "mutated-module\n");
+        throw new Error("module finalization failed");
+      },
+    }),
+  );
+  const moduleOutcome = module.then(
+    () => ({ ok: true }),
+    (error) => ({ ok: false, error }),
+  );
+
+  await delay(60);
+  assert.equal(moduleFinalizerStarted, false);
+
+  releaseAppFinalizer();
+  await app;
+  const outcome = await moduleOutcome;
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.error.message, /module finalization failed/);
+
+  assert.equal(await readFile(lockfilePath, "utf8"), "after-app\n");
+  assert.deepEqual(await readdir(join(root, "apps")), ["checklist"]);
+  assert.deepEqual(await readdir(join(root, "modules")), ["tasks"]);
+});
+
+test("rolls back module publication and lockfile when workspace finalization fails", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const lockfilePath = join(root, "pnpm-lock.yaml");
+  const originalLockfile = await readFile(lockfilePath, "utf8");
+
+  await assert.rejects(
+    () =>
+      createModuleSkeleton(
+        {
+          moduleId: "countdown",
+          displayName: "Intervall-Countdown",
+          capabilities: [],
+        },
+        testGeneratorOptions(root, {
+          workspaceFinalizer: async () => {
+            await writeFile(lockfilePath, "mutated\n");
+            throw new Error("workspace finalization failed");
+          },
+        }),
+      ),
+    /workspace finalization failed/,
+  );
+
+  assert.equal(await readFile(lockfilePath, "utf8"), originalLockfile);
+  assert.deepEqual(await readdir(join(root, "modules")), ["tasks"]);
+  const rootEntries = await readdir(root);
+  assert.equal(
+    rootEntries.some((entry) =>
+      entry.startsWith(".appbasis-create-module-"),
+    ),
+    false,
+  );
+  assert.equal(rootEntries.includes(".appbasis-module-registry.lock"), false);
+  assert.equal(
+    rootEntries.some((entry) =>
+      entry.startsWith(".appbasis-module-registry-candidate-"),
+    ),
+    false,
+  );
+});
+
+test("never overwrites an existing module", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const input = {
+    moduleId: "countdown",
+    displayName: "Intervall-Countdown",
+    capabilities: [],
+  };
+
+  await createModuleSkeleton(input, testGeneratorOptions(root));
+  const manifestPath = join(
+    root,
+    "modules",
+    "countdown",
+    "appbasis.module.json",
+  );
+  const firstManifest = await readFile(manifestPath, "utf8");
+
+  await assert.rejects(
+    () => createModuleSkeleton(input, testGeneratorOptions(root)),
+    /Module destination already exists/,
+  );
+
+  assert.equal(await readFile(manifestPath, "utf8"), firstManifest);
+});
+
+function testGeneratorOptions(root, hooks = {}) {
+  return {
+    repositoryRoot: root,
+    testingHooks: {
+      workspaceFinalizer: async () => {},
+      ...hooks,
+    },
+  };
+}
+
+async function createRepositoryFixture(t) {
+  const root = await mkdtemp(join(tmpdir(), "appbasis-create-module-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+
+  await mkdir(join(root, "apps"), { recursive: true });
+  await mkdir(join(root, "modules"), { recursive: true });
+  await writeTasksModuleFixture(root);
+  await writeFile(
+    join(root, "pnpm-lock.yaml"),
+    "lockfileVersion: '9.0'\n\nimporters:\n  .: {}\n",
+  );
+  return root;
+}
