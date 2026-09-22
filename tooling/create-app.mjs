@@ -19,7 +19,7 @@ import { renderGeneratedDatabaseManifest } from "./generated-database-manifest.m
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
 import {
   assertAppModuleCompatibility,
-  readModuleDefinitions,
+  verifyModuleDefinitions,
 } from "./module-definition.mjs";
 import { enforceUlcLinzM5TargetPolicy } from "./ulc-linz-m5-target-policy.mjs";
 
@@ -41,7 +41,7 @@ export async function createAppSkeleton(input, options = {}) {
   );
   enforceUlcLinzM5TargetPolicy(definition);
 
-  const moduleDefinitions = await readModuleDefinitions(repositoryRoot);
+  const moduleDefinitions = await verifyModuleDefinitions(repositoryRoot);
   const modulesById = new Map(
     moduleDefinitions.map((moduleDefinition) => [
       moduleDefinition.moduleId,
