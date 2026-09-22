@@ -42,14 +42,31 @@ test("parses the minimal FC4 module contract", () => {
   assert.equal(Object.isFrozen(definition.capabilities), true);
 });
 
-test("pins the existing tasks module to an explicit module-owned contract", async () => {
+test("pins the checked module inventory and tasks contract", async () => {
   const definitions = await verifyModuleDefinitions(repositoryRoot);
   assert.deepEqual(
     definitions.map((definition) => definition.moduleId),
-    ["tasks"],
+    ["countdown", "tasks"],
   );
 
-  const tasks = definitions[0];
+  const countdown = definitions.find(
+    (definition) => definition.moduleId === "countdown",
+  );
+  assert.deepEqual(countdown, {
+    schemaVersion: 1,
+    moduleId: "countdown",
+    displayName: "Intervall-Countdown",
+    packageName: "@appbasis/countdown",
+    compatibility: {
+      appDefinitionSchemaVersions: [2],
+    },
+    capabilities: ["countdown:view"],
+    database: null,
+  });
+
+  const tasks = definitions.find(
+    (definition) => definition.moduleId === "tasks",
+  );
   assert.deepEqual(tasks, {
     schemaVersion: 1,
     moduleId: "tasks",
