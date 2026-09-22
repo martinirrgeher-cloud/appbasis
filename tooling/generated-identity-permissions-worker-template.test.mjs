@@ -87,7 +87,6 @@ test("keeps the generic identity+permissions runtime when countdown is selected"
   assert.equal(paths.includes(PRODUCTION_BOOTSTRAP_CONFIG_PATH), true);
 
   assert.deepEqual(packageJson.dependencies, {
-    "@appbasis/database": "workspace:*",
     "@appbasis/countdown": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",
