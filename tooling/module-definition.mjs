@@ -1,6 +1,8 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { join, posix } from "node:path";
 
+import { withModuleRegistryLock } from "./module-publication.mjs";
+
 const MODULE_DEFINITION_FILE = "appbasis.module.json";
 const MODULE_DEFINITION_KEYS = new Set([
   "schemaVersion",
@@ -88,7 +90,9 @@ export async function readModuleDefinitions(repositoryRoot = process.cwd()) {
 }
 
 export async function verifyModuleDefinitions(repositoryRoot = process.cwd()) {
-  return readModuleDefinitions(repositoryRoot);
+  return withModuleRegistryLock(repositoryRoot, "verify", () =>
+    readModuleDefinitions(repositoryRoot),
+  );
 }
 
 export function assertAppModuleCompatibility(appDefinition, moduleDefinition) {
