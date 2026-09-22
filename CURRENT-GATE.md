@@ -54,6 +54,17 @@ FC5 liefert den kontrollierten Updatepfad für bestehende Apps:
 
 Erster realer Verbraucher ist `ulc-linz` mit dem FC4-Countdown-Modul.
 
+### Aktueller Teilslice: FC5-A
+
+Zuerst wird ein rein lesender, deterministischer Installationsplan eingeführt.
+Er muss für `ulc-linz + countdown` App-/Modulversionen, Kompatibilität,
+Manifest-/Dependency-Auswirkungen, Datenbank-Ownership und den minimalen
+Write-Satz fail-closed ableiten, ohne bestehende Appdateien zu verändern.
+
+Erst wenn dieser Plan durch CI und Review bestätigt ist, folgt FC5-B mit der
+atomaren Ausführung und Rollback. Preview, Produktion und produktive
+Datenbankänderungen bleiben danach weiterhin getrennte Gates.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
