@@ -6,6 +6,7 @@ import { createPostgresDatabase } from "../packages/database/src/node-runtime.mj
 
 import { createGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
+import { verifyModuleDefinitions } from "./module-definition.mjs";
 import {
   applyRepositoryMigrationPlan,
   loadRepositoryMigrationPlan,
@@ -36,8 +37,11 @@ const UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER = Object.freeze({
   ]),
 });
 
-export function createGeneratedAppPreviewDatabaseManifest(definition) {
-  const baseManifest = createGeneratedDatabaseManifest(definition);
+export function createGeneratedAppPreviewDatabaseManifest(
+  definition,
+  options = {},
+) {
+  const baseManifest = createGeneratedDatabaseManifest(definition, options);
   if (baseManifest === null || definition?.appId !== "unterrichtsverwaltung") {
     return baseManifest;
   }
@@ -61,8 +65,10 @@ export function createGeneratedAppPreviewDatabaseManifest(definition) {
 
 export async function loadGeneratedAppPreviewMigrationPlan({ appId } = {}) {
   const contract = await loadGeneratedAppPreviewContract(repositoryRoot, appId);
+  const moduleDefinitions = await verifyModuleDefinitions(repositoryRoot);
   const canonicalManifest = createGeneratedAppPreviewDatabaseManifest(
     contract.definition,
+    { moduleDefinitions },
   );
   if (canonicalManifest === null) {
     throw new GeneratedAppPreviewMigrationConfigurationError(
