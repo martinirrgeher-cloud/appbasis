@@ -157,6 +157,51 @@ test("returns a deterministic no-op for an already installed module", async (t) 
   assert.deepEqual(plan.writes, []);
 });
 
+test("fails closed when an installed module has a stale lockfile importer", async (t) => {
+  const root = await createFixture(t, {
+    modules: ["countdown"],
+    extraDependencies: {
+      "@appbasis/countdown": "workspace:*",
+    },
+  });
+  await writeFile(
+    join(root, "pnpm-lock.yaml"),
+    fixtureLockfile({ includeCountdown: false }),
+  );
+
+  await assert.rejects(
+    () =>
+      planModuleUpdate(
+        {
+          appId: "reference",
+          moduleId: "countdown",
+        },
+        { repositoryRoot: root },
+      ),
+    /lockfile importer is stale for @appbasis\/countdown/,
+  );
+});
+
+test("fails closed when the lockfile is ahead of package.json", async (t) => {
+  const root = await createFixture(t);
+  await writeFile(
+    join(root, "pnpm-lock.yaml"),
+    fixtureLockfile({ includeCountdown: true }),
+  );
+
+  await assert.rejects(
+    () =>
+      planModuleUpdate(
+        {
+          appId: "reference",
+          moduleId: "countdown",
+        },
+        { repositoryRoot: root },
+      ),
+    /lockfile importer already declares @appbasis\/countdown while package.json does not/,
+  );
+});
+
 test("fails closed when the current database ownership manifest has drifted", async (t) => {
   const root = await createFixture(t);
   const databasePath = join(
@@ -229,6 +274,13 @@ async function createFixture(
     )}\n`,
   );
   await writeFile(
+    join(root, "pnpm-lock.yaml"),
+    fixtureLockfile({
+      includeCountdown:
+        extraDependencies["@appbasis/countdown"] === "workspace:*",
+    }),
+  );
+  await writeFile(
     join(root, "apps", "reference", "appbasis.database.json"),
     `${JSON.stringify(
       {
@@ -253,4 +305,32 @@ async function createFixture(
   );
 
   return root;
+}
+
+function fixtureLockfile({ includeCountdown }) {
+  const countdown = includeCountdown
+    ? `      '@appbasis/countdown':
+        specifier: workspace:*
+        version: link:../../modules/countdown
+`
+    : "";
+  return `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/reference:
+    dependencies:
+${countdown}      '@appbasis/identity':
+        specifier: workspace:*
+        version: link:../../packages/identity
+      hono:
+        specifier: 4.13.1
+        version: 4.13.1
+`;
 }
