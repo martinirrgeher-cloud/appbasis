@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "countdown",
+  "displayName": "Intervall-Countdown",
+  "packageName": "@appbasis/countdown",
+  "compatibility": {
+    "appDefinitionSchemaVersions": [
+      2
+    ]
+  },
+  "capabilities": [
+    "countdown:view"
+  ],
+  "database": null
+}
