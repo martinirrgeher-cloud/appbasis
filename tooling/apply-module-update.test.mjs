@@ -8,12 +8,14 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
 import {
   applyModuleUpdate,
   parseApplyModuleUpdateArguments,
 } from "./apply-module-update.mjs";
+import { verifyAppDefinitions } from "./app-definition.mjs";
 import { writeCountdownModuleFixture } from "./test-fixtures/module-fixtures.mjs";
 
 test("parses the explicit FC5 executor CLI contract", () => {
@@ -156,6 +158,39 @@ test("publishes the app definition only after workspace finalization", async (t)
     ).modules,
     ["countdown"],
   );
+});
+
+test("serializes app verification until the updated manifest is published", async (t) => {
+  const root = await createFixture(t);
+  let verification;
+  let verificationSettled = false;
+
+  await applyModuleUpdate(
+    {
+      appId: "reference",
+      moduleId: "countdown",
+    },
+    executorOptions(root, {
+      workspaceFinalizer: async ({ lockfilePath }) => {
+        await writeFile(lockfilePath, fixtureLockfile({ includeCountdown: true }));
+      },
+      afterWorkspaceFinalization: async () => {
+        verification = verifyAppDefinitions(root)
+          .then((definitions) => ({ ok: true, definitions }))
+          .catch((error) => ({ ok: false, error }))
+          .finally(() => {
+            verificationSettled = true;
+          });
+        await delay(60);
+        assert.equal(verificationSettled, false);
+      },
+    }),
+  );
+
+  assert.notEqual(verification, undefined);
+  const outcome = await verification;
+  assert.equal(outcome.ok, true);
+  assert.deepEqual(outcome.definitions[0]?.modules, ["countdown"]);
 });
 
 test("rolls back package and lockfile when workspace finalization fails", async (t) => {
