@@ -77,15 +77,16 @@ zurückgerollt.
 ## FC4-C – Generator-Verbrauch
 
 Der normale App-Generator akzeptiert `countdown` jetzt als verifiziertes
-Standardmodul. Für eine neue Identity-App erzeugt er die Workspace-Abhängigkeit
-`@appbasis/countdown` und einen ausführbaren Selbsttest, der den öffentlichen
-`MODULE_CAPABILITIES`-Vertrag konsumiert. Weil `countdown` keine Persistenz
-besitzt, erscheint es nicht als Datenbank-Owner; vorhandene Identity-Owner
-bleiben davon unberührt.
+Standardmodul. Für eine neue Identity+Permissions-App erzeugt er die
+Workspace-Abhängigkeit `@appbasis/countdown` und einen ausführbaren Selbsttest,
+der den öffentlichen `MODULE_CAPABILITIES`-Vertrag konsumiert. Weil
+`countdown` keine Persistenz besitzt, erscheint es nicht als Datenbank-Owner;
+die vorhandenen Identity- und Permissions-Owner bleiben davon unberührt.
 
 Der Generatorpfad wird automatisiert mit einer frisch erzeugten
 `countdown-test`-App geprüft. Dabei werden Appmanifest, Paketabhängigkeit,
-generierter Modulvertrag und Datenbankmanifest gemeinsam verifiziert. Die
+generierter Modulvertrag, deploybarer Identity+Permissions-Worker und
+Datenbankmanifest gemeinsam verifiziert. Die
 generierte Oberfläche behauptet bei einem deklarierten, aber nicht
 UI-spezialisierten Modul nicht mehr fälschlich, es sei kein Fachmodul aktiviert.
 
