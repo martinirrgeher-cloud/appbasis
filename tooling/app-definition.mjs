@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { withAppRegistryLock } from "./app-publication.mjs";
 import {
   assertAppModuleCompatibility,
-  readModuleDefinitions,
+  verifyModuleDefinitions,
 } from "./module-definition.mjs";
 import { enforceUlcLinzM5TargetPolicy } from "./ulc-linz-m5-target-policy.mjs";
 
@@ -99,7 +99,7 @@ async function readAndValidateAppDefinitions(
 ) {
   const appsDirectory = join(repositoryRoot, "apps");
   const appEntries = await directoryNames(appsDirectory);
-  const moduleDefinitions = await readModuleDefinitions(repositoryRoot);
+  const moduleDefinitions = await verifyModuleDefinitions(repositoryRoot);
   const modulesById = new Map(
     moduleDefinitions.map((definition) => [definition.moduleId, definition]),
   );
