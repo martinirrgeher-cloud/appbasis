@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
 import {
@@ -191,6 +192,40 @@ test("never replaces a destination created after staging", async (t) => {
   );
 });
 
+test("serializes verification until module publication is complete", async (t) => {
+  const root = await createRepositoryFixture(t);
+  let verificationOutcome;
+  let verificationSettled = false;
+
+  await createModuleSkeleton(
+    {
+      moduleId: "countdown",
+      displayName: "Intervall-Countdown",
+      capabilities: ["countdown:view"],
+    },
+    testGeneratorOptions(root, {
+      afterReserve: async () => {
+        verificationOutcome = verifyModuleDefinitions(root)
+          .then((definitions) => ({ ok: true, definitions }))
+          .catch((error) => ({ ok: false, error }))
+          .finally(() => {
+            verificationSettled = true;
+          });
+        await delay(60);
+        assert.equal(verificationSettled, false);
+      },
+    }),
+  );
+
+  assert.notEqual(verificationOutcome, undefined);
+  const outcome = await verificationOutcome;
+  assert.equal(outcome.ok, true);
+  assert.deepEqual(
+    outcome.definitions.map((definition) => definition.moduleId),
+    ["countdown", "tasks"],
+  );
+});
+
 test("rolls back module publication and lockfile when workspace finalization fails", async (t) => {
   const root = await createRepositoryFixture(t);
   const lockfilePath = join(root, "pnpm-lock.yaml");
@@ -216,9 +251,17 @@ test("rolls back module publication and lockfile when workspace finalization fai
 
   assert.equal(await readFile(lockfilePath, "utf8"), originalLockfile);
   assert.deepEqual(await readdir(join(root, "modules")), ["tasks"]);
+  const rootEntries = await readdir(root);
   assert.equal(
-    (await readdir(root)).some((entry) =>
+    rootEntries.some((entry) =>
       entry.startsWith(".appbasis-create-module-"),
+    ),
+    false,
+  );
+  assert.equal(rootEntries.includes(".appbasis-module-registry.lock"), false);
+  assert.equal(
+    rootEntries.some((entry) =>
+      entry.startsWith(".appbasis-module-registry-candidate-"),
     ),
     false,
   );
