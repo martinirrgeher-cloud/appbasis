@@ -2,7 +2,7 @@ import { renderGeneratedAppUiModule } from "./generated-app-ui-template.mjs";
 import { renderGeneratedPreviewWorker } from "./generated-preview-worker-template.mjs";
 
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]*$/;
-const SUPPORTED_GENERATED_MODULES = new Set(["tasks"]);
+const SUPPORTED_GENERATED_MODULES = new Set(["countdown", "tasks"]);
 const SUPPORTED_GENERATED_PLATFORM_SERVICES = new Set([
   "identity",
   "permissions",
@@ -83,6 +83,9 @@ function generatedPackageJson(packageName, displayName, modules, platformService
     modules.includes("tasks") && platformServices.includes("permissions");
   const dependencies = {
     ...(guardedTasks ? { "@appbasis/database": "workspace:*" } : {}),
+    ...(modules.includes("countdown")
+      ? { "@appbasis/countdown": "workspace:*" }
+      : {}),
     "@appbasis/identity": "workspace:*",
     ...(platformServices.includes("permissions")
       ? { "@appbasis/permissions": "workspace:*" }
@@ -1074,16 +1077,25 @@ describe("generated Worker entrypoint", () => {
 }
 
 function generatedAppTest(modules, platformServices) {
+  const hasCountdown = modules.includes("countdown");
   const hasTasks = modules.includes("tasks");
   const guardedTasks = hasTasks && platformServices.includes("permissions");
-  const moduleImports = hasTasks
+  const countdownImport = hasCountdown
+    ? `import { MODULE_CAPABILITIES as COUNTDOWN_CAPABILITIES } from "@appbasis/countdown";\n`
+    : "";
+  const taskImports = hasTasks
     ? guardedTasks
       ? `import { InMemoryTaskRepository, TASK_CAPABILITIES } from "@appbasis/tasks";\nimport {\n  InMemoryPermissionStore,\n  capabilityId,\n  principalId,\n} from "@appbasis/permissions";\n`
       : `import { InMemoryTaskRepository } from "@appbasis/tasks";\n`
     : "";
-  const moduleTests = hasTasks
+  const moduleImports = countdownImport + taskImports;
+  const countdownTest = hasCountdown
+    ? `\n  it("consumes the declared countdown module contract", () => {\n    expect(COUNTDOWN_CAPABILITIES).toEqual(["countdown:view"]);\n  });\n`
+    : "";
+  const taskTest = hasTasks
     ? `\n  it("consumes the declared tasks module contract", async () => {\n    const tasks = new InMemoryTaskRepository();\n    const created = await tasks.create({ title: "Generated task" });\n\n    expect(created).toMatchObject({\n      title: "Generated task",\n      status: "open",\n    });\n    await expect(tasks.toggleStatus(created.id)).resolves.toMatchObject({\n      id: created.id,\n      status: "completed",\n    });\n  });\n`
     : "";
+  const moduleTests = countdownTest + taskTest;
   const guardedRouteTests = guardedTasks
     ? `\n  it("guards generated tasks HTTP routes with identity and permissions", async () => {\n    const tasks = new InMemoryTaskRepository();\n    const allowed = createGeneratedApp({\n      identity,\n      permissions: permissionStore(true),\n      tasks,\n      secureCookies: false,\n    });\n\n    const unauthenticated = await allowed.request("/api/tasks");\n    expect(unauthenticated.status).toBe(401);\n\n    const denied = await createGeneratedApp({\n      identity,\n      permissions: permissionStore(false),\n      tasks,\n      secureCookies: false,\n    }).request("/api/tasks", {\n      headers: { cookie: currentIdentity.sessionToken },\n    });\n    expect(denied.status).toBe(403);\n    await expect(denied.json()).resolves.toMatchObject({\n      error: { code: "PERMISSION_DENIED" },\n    });\n\n    const created = await allowed.request("/api/tasks", {\n      method: "POST",\n      headers: {\n        cookie: currentIdentity.sessionToken,\n        "content-type": "application/json",\n      },\n      body: JSON.stringify({ title: "Generated HTTP task" }),\n    });\n    expect(created.status).toBe(201);\n    const createdBody = await created.json();\n    expect(createdBody).toMatchObject({\n      task: { title: "Generated HTTP task", status: "open" },\n    });\n\n    const listed = await allowed.request("/api/tasks", {\n      headers: { cookie: currentIdentity.sessionToken },\n    });\n    expect(listed.status).toBe(200);\n    await expect(listed.json()).resolves.toMatchObject({\n      tasks: [{ title: "Generated HTTP task", status: "open" }],\n    });\n  });\n`
     : "";
