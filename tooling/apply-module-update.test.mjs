@@ -211,6 +211,40 @@ test("rolls back package and lockfile when workspace finalization fails", async 
   assert.equal(await readFile(customPath, "utf8"), before.custom);
 });
 
+test("rolls back if workspace finalization changes package.json unexpectedly", async (t) => {
+  const root = await createFixture(t);
+  const packagePath = join(root, "apps", "reference", "package.json");
+  const lockfilePath = join(root, "pnpm-lock.yaml");
+  const before = await snapshotFixture(root);
+
+  await assert.rejects(
+    () =>
+      applyModuleUpdate(
+        {
+          appId: "reference",
+          moduleId: "countdown",
+        },
+        executorOptions(root, {
+          workspaceFinalizer: async () => {
+            const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+            packageJson.description = "unexpected finalizer mutation";
+            await writeFile(
+              packagePath,
+              `${JSON.stringify(packageJson, null, 2)}\n`,
+            );
+            await writeFile(
+              lockfilePath,
+              fixtureLockfile({ includeCountdown: true }),
+            );
+          },
+        }),
+      ),
+    /changed apps\/reference\/package.json outside the planned dependency update/,
+  );
+
+  assert.deepEqual(await snapshotFixture(root), before);
+});
+
 test("fails closed if an update input changes after planning", async (t) => {
   const root = await createFixture(t);
   const packagePath = join(root, "apps", "reference", "package.json");
