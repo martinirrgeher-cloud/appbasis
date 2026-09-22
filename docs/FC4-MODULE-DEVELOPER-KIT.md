@@ -35,13 +35,13 @@ Paket gepflegt. Das Modul konsumiert die Capability-Liste aus
 `MODULE_CAPABILITIES`-Vertrag bereit. Modulspezifische Convenience-Konstanten
 müssen exakt dieselben IDs abbilden.
 
-Solange der bestehende Datenbank-Manifest-Renderer noch eine interne
-Modul-Owner-Registry benötigt, wird diese bei jeder strikten
-Modulverifikation ausführbar gegen `appbasis.module.json` geprüft.
-SchemaVersion, Root und vollständige Migrationsliste dürfen nicht driften.
-App-Verifikation und App-Generator verwenden nur so verifizierte
-Moduldefinitionen. Der folgende Scaffolder-Slice muss diesen Vertrag
-automatisieren, statt eine zweite manuelle Pflege einzuführen.
+Der Datenbank-Manifest-Renderer übernimmt Modul-Owner direkt aus den bereits
+verifizierten `appbasis.module.json`-Verträgen. Es gibt keine separate
+Modul-Owner-Registry mehr. Ein Modul mit `database: null` erzeugt bewusst
+keinen Datenbank-Owner; bei einem Modul mit Datenbankvertrag werden
+SchemaVersion, Modul-Root und vollständige Migrationsliste unmittelbar aus dem
+Manifest abgeleitet. App-Verifikation und App-Generator verwenden dieselben
+verifizierten Moduldefinitionen.
 
 `tasks` ist der erste bestehende Referenzverbraucher des neuen Vertrags.
 
