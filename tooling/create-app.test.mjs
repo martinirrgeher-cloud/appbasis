@@ -112,7 +112,7 @@ test("creates a deterministic identity app that passes the app manifest contract
   assert.deepEqual(definitions[0]?.platformServices, ["identity"]);
 });
 
-test("generates a new identity app that consumes the countdown module contract", async (t) => {
+test("generates a deployable identity+permissions app that consumes the countdown module contract", async (t) => {
   const root = await createRepositoryFixture(t);
 
   await createAppSkeleton(
@@ -120,7 +120,7 @@ test("generates a new identity app that consumes the countdown module contract",
       appId: "countdown-test",
       displayName: "Countdown Test",
       modules: ["countdown"],
-      platformServices: ["identity"],
+      platformServices: ["identity", "permissions"],
     },
     testGeneratorOptions(root),
   );
@@ -134,15 +134,17 @@ test("generates a new identity app that consumes the countdown module contract",
     appId: "countdown-test",
     displayName: "Countdown Test",
     modules: ["countdown"],
-    platformServices: ["identity"],
+    platformServices: ["identity", "permissions"],
   });
 
   const packageJson = JSON.parse(
     await readFile(join(appRoot, "package.json"), "utf8"),
   );
   assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/database": "workspace:*",
     "@appbasis/countdown": "workspace:*",
     "@appbasis/identity": "workspace:*",
+    "@appbasis/permissions": "workspace:*",
     hono: "4.13.1",
   });
 
@@ -154,17 +156,28 @@ test("generates a new identity app that consumes the countdown module contract",
   assert.match(generatedTest, /COUNTDOWN_CAPABILITIES/);
   assert.match(generatedTest, /countdown:view/);
 
+  const worker = await readFile(join(appRoot, "worker", "index.ts"), "utf8");
+  assert.match(worker, /createGeneratedPostgresApplicationRuntime/);
+  const postgres = await readFile(join(appRoot, "worker", "postgres.ts"), "utf8");
+  assert.match(postgres, /PostgresPermissionStore/);
+  assert.doesNotMatch(postgres, /PostgresTaskRepository/);
+  assert.match(
+    await readFile(join(appRoot, "wrangler.production.bootstrap.jsonc"), "utf8"),
+    /HYPERDRIVE/,
+  );
+
   const databaseManifest = JSON.parse(
     await readFile(join(appRoot, "appbasis.database.json"), "utf8"),
   );
   assert.deepEqual(
     databaseManifest.owners.map((owner) => owner.id),
-    ["identity"],
+    ["identity", "permissions"],
   );
 
   const definitions = await verifyAppDefinitions(root);
   assert.equal(definitions.length, 1);
   assert.deepEqual(definitions[0]?.modules, ["countdown"]);
+  assert.deepEqual(definitions[0]?.platformServices, ["identity", "permissions"]);
 });
 
 test("persists explicit app branding without changing the app definition schema", async (t) => {
