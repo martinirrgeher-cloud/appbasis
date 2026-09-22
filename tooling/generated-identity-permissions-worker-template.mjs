@@ -36,7 +36,7 @@ function requiresIdentityPermissionsWorker(input) {
   const modules = input?.modules ?? [];
   const platformServices = input?.platformServices ?? ["identity"];
   return (
-    modules.length === 0 &&
+    !modules.includes("tasks") &&
     platformServices.includes("identity") &&
     platformServices.includes("permissions")
   );
