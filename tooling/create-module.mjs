@@ -62,7 +62,6 @@ export async function createModuleSkeleton(input, options = {}) {
   }
 
   const lockfilePath = join(repositoryRoot, "pnpm-lock.yaml");
-  const lockfileSnapshot = await readFile(lockfilePath, "utf8");
   const stagingDirectory = join(
     repositoryRoot,
     `${STAGING_PREFIX}${definition.moduleId}-${randomUUID()}`,
@@ -70,6 +69,7 @@ export async function createModuleSkeleton(input, options = {}) {
   await mkdir(stagingDirectory);
 
   let registryLock;
+  let lockfileSnapshot;
   let destinationReserved = false;
   let published = false;
   let workspaceFinalizationStarted = false;
@@ -102,6 +102,7 @@ export async function createModuleSkeleton(input, options = {}) {
         `Module destination already exists: modules/${definition.moduleId}.`,
       );
     }
+    lockfileSnapshot = await readFile(lockfilePath, "utf8");
 
     try {
       await mkdir(destination);
@@ -148,7 +149,7 @@ export async function createModuleSkeleton(input, options = {}) {
   } catch (error) {
     const rollbackErrors = [];
 
-    if (workspaceFinalizationStarted) {
+    if (workspaceFinalizationStarted && lockfileSnapshot !== undefined) {
       try {
         await writeFile(lockfilePath, lockfileSnapshot);
       } catch (rollbackError) {
