@@ -19,6 +19,8 @@ apps/reference/wrangler.role-admin.preview.generated.json
 .appbasis-app-registry-candidate-*.json
 .appbasis-module-registry.lock
 .appbasis-module-registry-candidate-*.json
+.appbasis-workspace-publication.lock
+.appbasis-workspace-publication-candidate-*.json
 *.log
 
 .DS_Store
