@@ -98,6 +98,13 @@ test("keeps the generic identity+permissions runtime when countdown is selected"
   assert.match(postgres, /PostgresPermissionStore/);
   assert.doesNotMatch(postgres, /PostgresTaskRepository/);
   assert.doesNotMatch(worker, /tasks/i);
+
+  const bootstrap = JSON.parse(content(template, PRODUCTION_BOOTSTRAP_CONFIG_PATH));
+  assert.equal(bootstrap.main, "./worker/index.ts");
+  assert.equal(bootstrap.workers_dev, false);
+  assert.equal(bootstrap.preview_urls, false);
+  assert.equal("hyperdrive" in bootstrap, false);
+  assert.equal("secrets" in bootstrap, false);
 });
 
 test("keeps identity-only and guarded tasks generator contracts unchanged", () => {
