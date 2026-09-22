@@ -15,11 +15,60 @@ import { fileURLToPath } from "node:url";
 import { createAppSkeleton } from "./create-app.mjs";
 import { writeTasksModuleFixture } from "./test-fixtures/module-fixtures.mjs";
 import {
+  assertGeneratedModuleDatabaseOwners,
   createGeneratedDatabaseManifest,
   renderGeneratedDatabaseManifest,
 } from "./generated-database-manifest.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+test("pins generated module database ownership to the FC4 module manifest contract", () => {
+  const tasksDefinition = {
+    moduleId: "tasks",
+    database: {
+      schemaVersion: 1,
+      migrations: [
+        "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+      ],
+    },
+  };
+
+  assert.doesNotThrow(() =>
+    assertGeneratedModuleDatabaseOwners([tasksDefinition]),
+  );
+
+  assert.throws(
+    () =>
+      assertGeneratedModuleDatabaseOwners([
+        {
+          ...tasksDefinition,
+          database: {
+            schemaVersion: 2,
+            migrations: [
+              "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+              "modules/tasks/migrations/0001_extension.sql",
+            ],
+          },
+        },
+      ]),
+    /drifted from appbasis\.module\.json/,
+  );
+
+  assert.throws(
+    () =>
+      assertGeneratedModuleDatabaseOwners([
+        tasksDefinition,
+        {
+          moduleId: "inventory",
+          database: {
+            schemaVersion: 1,
+            migrations: ["modules/inventory/migrations/0000_foundation.sql"],
+          },
+        },
+      ]),
+    /ownership is not declared for module inventory/,
+  );
+});
 
 test("renders deterministic migration ownership from the declared app composition", () => {
   const rendered = renderGeneratedDatabaseManifest({
