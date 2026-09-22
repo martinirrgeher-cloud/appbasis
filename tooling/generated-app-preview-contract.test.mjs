@@ -6,13 +6,14 @@ import test from "node:test";
 
 import { createGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
+import { writeTasksModuleFixture } from "./test-fixtures/module-fixtures.mjs";
 
 async function createFixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "appbasis-generic-preview-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
 
   await mkdir(path.join(root, "apps", "demo", "worker"), { recursive: true });
-  await mkdir(path.join(root, "modules", "tasks"), { recursive: true });
+  await writeTasksModuleFixture(root);
 
   const definition = {
     schemaVersion: 2,
