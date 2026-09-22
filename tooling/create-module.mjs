@@ -11,7 +11,12 @@ import {
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parseModuleDefinition, verifyModuleDefinitions } from "./module-definition.mjs";
+import {
+  parseModuleDefinition,
+  readModuleDefinitions,
+  verifyModuleDefinitions,
+} from "./module-definition.mjs";
+import { acquireModuleRegistryLock } from "./module-publication.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-module-";
 const WORKSPACE_FINALIZATION_TIMEOUT_MS = 90_000;
@@ -64,11 +69,14 @@ export async function createModuleSkeleton(input, options = {}) {
   );
   await mkdir(stagingDirectory);
 
-  let destinationPublished = false;
+  let registryLock;
+  let destinationReserved = false;
+  let published = false;
   let workspaceFinalizationStarted = false;
 
   try {
-    for (const generatedFile of generatedModuleFiles(definition)) {
+    const generatedFiles = generatedModuleFiles(definition);
+    for (const generatedFile of generatedFiles) {
       await stageGeneratedFile(stagingDirectory, generatedFile);
     }
 
@@ -77,16 +85,45 @@ export async function createModuleSkeleton(input, options = {}) {
       stagingDirectory,
     });
 
+    registryLock = await acquireModuleRegistryLock(repositoryRoot, "publish");
+
     if (await pathExists(destination)) {
       throw new Error(
         `Module destination already exists: modules/${definition.moduleId}.`,
       );
     }
+    const currentDefinitions = await readModuleDefinitions(repositoryRoot);
+    if (
+      currentDefinitions.some(
+        (moduleDefinition) => moduleDefinition.moduleId === definition.moduleId,
+      )
+    ) {
+      throw new Error(
+        `Module destination already exists: modules/${definition.moduleId}.`,
+      );
+    }
 
-    await rename(stagingDirectory, destination);
-    destinationPublished = true;
+    try {
+      await mkdir(destination);
+      destinationReserved = true;
+    } catch (error) {
+      if (error?.code === "EEXIST") {
+        throw new Error(
+          `Module destination already exists: modules/${definition.moduleId}.`,
+        );
+      }
+      throw error;
+    }
 
-    await verifyModuleDefinitions(repositoryRoot);
+    await options.testingHooks?.afterReserve?.({
+      destination,
+      stagingDirectory,
+    });
+
+    for (const generatedFile of generatedFiles) {
+      if (generatedFile.path === "appbasis.module.json") continue;
+      await publishGeneratedFile(stagingDirectory, destination, generatedFile);
+    }
 
     const workspaceFinalizer =
       options.testingHooks?.workspaceFinalizer ?? finalizeGeneratedWorkspace;
@@ -96,6 +133,18 @@ export async function createModuleSkeleton(input, options = {}) {
       lockfilePath,
       destination,
     });
+
+    const manifestFile = generatedFiles.find(
+      (generatedFile) => generatedFile.path === "appbasis.module.json",
+    );
+    if (manifestFile === undefined) {
+      throw new Error("Generated module manifest is missing.");
+    }
+    await publishGeneratedFile(stagingDirectory, destination, manifestFile);
+
+    await readModuleDefinitions(repositoryRoot);
+    await rm(stagingDirectory, { recursive: true, force: true });
+    published = true;
   } catch (error) {
     const rollbackErrors = [];
 
@@ -106,7 +155,7 @@ export async function createModuleSkeleton(input, options = {}) {
         rollbackErrors.push(rollbackError);
       }
     }
-    if (destinationPublished) {
+    if (destinationReserved && !published) {
       try {
         await rm(destination, { recursive: true, force: true });
       } catch (rollbackError) {
@@ -126,6 +175,8 @@ export async function createModuleSkeleton(input, options = {}) {
       );
     }
     throw error;
+  } finally {
+    await registryLock?.release();
   }
 
   return Object.freeze({
@@ -258,6 +309,17 @@ async function stageGeneratedFile(stagingDirectory, generatedFile) {
   const target = join(stagingDirectory, generatedFile.path);
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, generatedFile.content, { flag: "wx" });
+}
+
+async function publishGeneratedFile(
+  stagingDirectory,
+  destination,
+  generatedFile,
+) {
+  const source = join(stagingDirectory, generatedFile.path);
+  const target = join(destination, generatedFile.path);
+  await mkdir(dirname(target), { recursive: true });
+  await rename(source, target);
 }
 
 async function finalizeGeneratedWorkspace({ repositoryRoot }) {
