@@ -55,6 +55,34 @@ test("uses a collision-resistant app package namespace and shared identity HTTP 
   });
 });
 
+test("wires the declared countdown module through its public workspace contract", () => {
+  const template = createIdentityRuntimeTemplate({
+    ...input,
+    modules: ["countdown"],
+  });
+  const worker = content(template, "worker/app.ts");
+  const packageJson = JSON.parse(content(template, "package.json"));
+  const generatedTest = content(template, "test/app.test.ts");
+
+  assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/countdown": "workspace:*",
+    "@appbasis/identity": "workspace:*",
+    hono: "4.13.1",
+  });
+  assert.match(generatedTest, /from "@appbasis\/countdown"/);
+  assert.match(generatedTest, /COUNTDOWN_CAPABILITIES/);
+  assert.match(generatedTest, /countdown:view/);
+  assert.doesNotMatch(worker, /\/api\/countdown/);
+  assert.equal(
+    template.files.some((entry) => entry.path === "worker/postgres.ts"),
+    false,
+  );
+  assert.equal(
+    template.files.some((entry) => entry.path === PRODUCTION_BOOTSTRAP_CONFIG_PATH),
+    false,
+  );
+});
+
 test("wires the declared tasks module through its public workspace contract without exposing business routes", () => {
   const template = createIdentityRuntimeTemplate({ ...input, modules: ["tasks"] });
   const worker = content(template, "worker/app.ts");
