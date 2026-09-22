@@ -17,6 +17,7 @@ import {
   createAppSkeleton,
   parseCreateAppArguments,
 } from "./create-app.mjs";
+import { writeCountdownModuleFixture } from "./test-fixtures/module-fixtures.mjs";
 
 test("parses the explicit generator CLI contract", () => {
   assert.deepEqual(
@@ -109,6 +110,61 @@ test("creates a deterministic identity app that passes the app manifest contract
   assert.equal(definitions.length, 1);
   assert.equal(definitions[0]?.appId, "checklist");
   assert.deepEqual(definitions[0]?.platformServices, ["identity"]);
+});
+
+test("generates a new identity app that consumes the countdown module contract", async (t) => {
+  const root = await createRepositoryFixture(t);
+
+  await createAppSkeleton(
+    {
+      appId: "countdown-test",
+      displayName: "Countdown Test",
+      modules: ["countdown"],
+      platformServices: ["identity"],
+    },
+    testGeneratorOptions(root),
+  );
+
+  const appRoot = join(root, "apps", "countdown-test");
+  const definition = JSON.parse(
+    await readFile(join(appRoot, "appbasis.app.json"), "utf8"),
+  );
+  assert.deepEqual(definition, {
+    schemaVersion: 2,
+    appId: "countdown-test",
+    displayName: "Countdown Test",
+    modules: ["countdown"],
+    platformServices: ["identity"],
+  });
+
+  const packageJson = JSON.parse(
+    await readFile(join(appRoot, "package.json"), "utf8"),
+  );
+  assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/countdown": "workspace:*",
+    "@appbasis/identity": "workspace:*",
+    hono: "4.13.1",
+  });
+
+  const generatedTest = await readFile(
+    join(appRoot, "test", "app.test.ts"),
+    "utf8",
+  );
+  assert.match(generatedTest, /from "@appbasis\/countdown"/);
+  assert.match(generatedTest, /COUNTDOWN_CAPABILITIES/);
+  assert.match(generatedTest, /countdown:view/);
+
+  const databaseManifest = JSON.parse(
+    await readFile(join(appRoot, "appbasis.database.json"), "utf8"),
+  );
+  assert.deepEqual(
+    databaseManifest.owners.map((owner) => owner.id),
+    ["identity"],
+  );
+
+  const definitions = await verifyAppDefinitions(root);
+  assert.equal(definitions.length, 1);
+  assert.deepEqual(definitions[0]?.modules, ["countdown"]);
 });
 
 test("persists explicit app branding without changing the app definition schema", async (t) => {
@@ -536,6 +592,7 @@ async function createRepositoryFixture(t) {
   t.after(async () => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "apps"), { recursive: true });
   await writeTasksModule(root);
+  await writeCountdownModuleFixture(root);
   await writeFile(
     join(root, "pnpm-lock.yaml"),
     "lockfileVersion: '9.0'\n\nimporters:\n  .: {}\n",
