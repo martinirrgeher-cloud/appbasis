@@ -5,6 +5,7 @@ import {
   createGeneratedAppPreviewDatabaseManifest,
   loadGeneratedAppPreviewMigrationPlan,
 } from "./generated-app-preview-migrate.mjs";
+import { verifyModuleDefinitions } from "./module-definition.mjs";
 
 test("keeps app-owned Unterrichtsverwaltung migrations out of the generic generator but canonical in preview", async () => {
   const definition = {
@@ -14,7 +15,10 @@ test("keeps app-owned Unterrichtsverwaltung migrations out of the generic genera
     modules: ["tasks"],
     platformServices: ["identity", "permissions"],
   };
-  const manifest = createGeneratedAppPreviewDatabaseManifest(definition);
+  const moduleDefinitions = await verifyModuleDefinitions();
+  const manifest = createGeneratedAppPreviewDatabaseManifest(definition, {
+    moduleDefinitions,
+  });
 
   assert.equal(manifest?.owners.at(-1)?.id, "unterrichtsverwaltung-master-data");
   assert.deepEqual(manifest?.owners.at(-1)?.migrations, [
