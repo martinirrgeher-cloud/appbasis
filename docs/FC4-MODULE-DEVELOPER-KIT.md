@@ -35,6 +35,14 @@ Paket gepflegt. Das Modul konsumiert die Capability-Liste aus
 `MODULE_CAPABILITIES`-Vertrag bereit. Modulspezifische Convenience-Konstanten
 müssen exakt dieselben IDs abbilden.
 
+Solange der bestehende Datenbank-Manifest-Renderer noch eine interne
+Modul-Owner-Registry benötigt, wird diese bei jeder strikten
+Modulverifikation ausführbar gegen `appbasis.module.json` geprüft.
+SchemaVersion, Root und vollständige Migrationsliste dürfen nicht driften.
+App-Verifikation und App-Generator verwenden nur so verifizierte
+Moduldefinitionen. Der folgende Scaffolder-Slice muss diesen Vertrag
+automatisieren, statt eine zweite manuelle Pflege einzuführen.
+
 `tasks` ist der erste bestehende Referenzverbraucher des neuen Vertrags.
 
 ## Noch nicht Teil dieses Slices
