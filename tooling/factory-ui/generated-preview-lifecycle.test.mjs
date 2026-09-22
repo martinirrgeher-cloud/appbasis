@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { createGeneratedDatabaseManifest } from "../generated-database-manifest.mjs";
+import { verifyModuleDefinitions } from "../module-definition.mjs";
 import { writeTasksModuleFixture } from "../test-fixtures/module-fixtures.mjs";
 import { deriveGeneratedPreviewLifecycle } from "./generated-preview-lifecycle.mjs";
 import {
@@ -55,9 +56,14 @@ async function createPreviewFixture(t) {
     join(appRoot, "package.json"),
     `${JSON.stringify({ name: "@appbasis/app-checklist" }, null, 2)}\n`,
   );
+  const moduleDefinitions = await verifyModuleDefinitions(root);
   await writeFile(
     join(appRoot, "appbasis.database.json"),
-    `${JSON.stringify(createGeneratedDatabaseManifest(definition), null, 2)}\n`,
+    `${JSON.stringify(
+      createGeneratedDatabaseManifest(definition, { moduleDefinitions }),
+      null,
+      2,
+    )}\n`,
   );
   await writeFile(
     join(appRoot, "worker", "index.ts"),
