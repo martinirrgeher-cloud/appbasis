@@ -12,6 +12,7 @@ export function renderGeneratedAppUiModule(input = {}) {
   );
   const hasTasks =
     modules.includes("tasks") && platformServices.includes("permissions");
+  const hasDeclaredModules = modules.length > 0;
   const brandMark = requiredBrandMark(
     input.brandMark ?? defaultBrandMark(displayName),
   );
@@ -34,7 +35,9 @@ export function renderGeneratedAppUiModule(input = {}) {
       "__TASK_PANEL__",
       hasTasks
         ? TASK_PANEL
-        : '<section class="ab-card empty-module"><strong>App bereit</strong><p>Für diese App ist noch kein Fachmodul aktiviert.</p></section>',
+        : hasDeclaredModules
+          ? '<section class="ab-card empty-module"><strong>Fachmodul aktiviert</strong><p>Das deklarierte Fachmodul ist über seinen öffentlichen AppBasis-Vertrag eingebunden.</p></section>'
+          : '<section class="ab-card empty-module"><strong>App bereit</strong><p>Für diese App ist noch kein Fachmodul aktiviert.</p></section>',
     );
 
   const css = CSS_TEMPLATE
