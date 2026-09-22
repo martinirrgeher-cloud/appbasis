@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { writeTasksModuleFixture } from "../test-fixtures/module-fixtures.mjs";
 import { isValidFactoryOrigin, startFactoryServer } from "./server.mjs";
 
 test("factory origin validation normalizes the default HTTP port", () => {
@@ -36,7 +37,7 @@ test("factory origin validation normalizes the default HTTP port", () => {
 test("factory write UI blocks framing and rejects unsafe creation input", async (t) => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "appbasis-factory-write-review-"));
   await mkdir(join(fixtureRoot, "apps", "demo"), { recursive: true });
-  await mkdir(join(fixtureRoot, "modules", "tasks"), { recursive: true });
+  await writeTasksModuleFixture(fixtureRoot);
   await writeFile(
     join(fixtureRoot, "apps", "demo", "appbasis.app.json"),
     `${JSON.stringify(

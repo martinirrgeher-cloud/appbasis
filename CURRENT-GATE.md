@@ -1,46 +1,89 @@
 # AppBasis – Current Gate
 
-Stand: 2026-09-01
+Stand: 2026-09-21
 
-Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze. Bei Widerspruch gelten die höher priorisierten Projektquellen.
+Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
+liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
+Volatile PR-, CI-, Review- und Branch-Zustände werden ausschließlich live aus
+GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**M5 – Security & Privacy Ready v0.1 abschließen und danach unmittelbar zur produktiven AppFactory-Entwicklung zurückkehren.**
+**FC4 – stabilen Modulvertrag und Module Developer Kit schaffen; danach FC5 –
+Module kontrolliert zu bestehenden Apps hinzufügen/aktualisieren.**
 
-M5 ist ein Gate auf dem Weg zur AppFactory und kein eigenständiges Forschungs- oder Hardening-Projekt.
+Der unmittelbare Produktverbraucher ist die ULC-Linz Vereins-App. Der erste
+Referenzfall ist ein kleiner Intervall-Countdown ohne fachliche Persistenz.
 
-## Verbindliche M5-Abnahme
+Der direkte Umbau einer bestehenden generierten App ist ausdrücklich **nicht**
+der Updatepfad. Bestehende Apps werden erst verändert, wenn ein reproduzierbarer
+Modul-Installations-/Updatevertrag vorhanden ist.
 
-M5 umfasst genau die zwölf Pflichtpunkte der Roadmap:
+## Verbindliche FC4-Abnahme
 
-1. Datenregion geklärt
-2. AVV/DPA geklärt
-3. Verschlüsselung bewertet
-4. Rollen/Rechte geprüft
-5. Löschkonzept vorhanden
-6. Aufbewahrungskonzept vorhanden
-7. Datenexport vorhanden/definiert
-8. Audit-/Security-Logging vorhanden
-9. Subprozessoren dokumentiert
-10. High-Privacy-Profil für sensible Szenarien definiert
-11. Secrets/Credentials getrennt vom normalen App-Manifest
-12. privilegierte Control-Plane-Funktionen nicht unnötig öffentlich erreichbar
+FC4 ist für den aktuellen Produktpfad DONE, wenn mindestens Folgendes
+reproduzierbar und ausführbar belegt ist:
 
-M5 ist DONE, wenn `evaluateProductionReadiness()` alle zwölf Kriterien aus gültiger, autoritativer und korrekt an App, Environment, Freshness, Runtime und Workflow gebundener Evidence mit dem primitiven Wert `true` bewertet. Fehlt ein gültiger Nachweis oder ist Evidence stale, cross-app, malformed oder falsch gebunden, bleibt das Gate fail-closed und `productionReady=false`. Maßgeblich bleiben `docs/M5-PRODUCTION-SECURITY-PRIVACY-SCOPE.md` und `docs/M5-J-ACCEPTANCE-MATRIX.md`.
+1. jedes Standardmodul besitzt einen strikten, maschinenlesbaren Modulvertrag;
+2. Modul-ID, Paketname und App-Kompatibilität sind eindeutig;
+3. Capability-IDs gehören eindeutig dem Modul;
+4. optionales Datenbankschema und Migrationen gehören ausschließlich dem Modul;
+5. Modulmanifest, reales Workspace-Paket und reale Migrationen können nicht
+   unbemerkt auseinanderlaufen;
+6. ein Modul kann über einen kanonischen Scaffolder neu erzeugt werden;
+7. der Intervall-Countdown wird über diesen Pfad als erstes neues Modul erzeugt;
+8. eine neue Test-App kann das Modul über den normalen Generator konsumieren;
+9. CI/Tests bestätigen den vollständigen Vertical Slice auf demselben exakten
+   Head.
+
+FC4 erzeugt noch **keinen** generischen Produktions-Updater für bestehende Apps.
+
+## Unmittelbar danach: FC5
+
+FC5 liefert den kontrollierten Updatepfad für bestehende Apps:
+
+- vorhandene App und Modulversion lesen;
+- Kompatibilität vor jeder Änderung fail-closed prüfen;
+- geplante Datei-/Manifest-/Dependency-/Migrationsänderungen deterministisch
+  ableiten;
+- bestehende fachliche App-Erweiterungen nicht überschreiben;
+- Preview/Tests vor Produktionsfreigabe;
+- Produktionsmigration, Deployment und Release bleiben getrennte,
+  ausdrücklich freizugebende Schritte.
+
+Erster realer Verbraucher ist `ulc-linz` mit dem FC4-Countdown-Modul.
+
+## Architektur- und Sicherheitsgrenzen
+
+- Core bleibt fachneutral und klein.
+- Fachmodule ändern keine Tabellen anderer Module.
+- `createAppSkeleton()` bleibt der Pfad für **neue** Apps und wird nicht als
+  Updater für bestehende Apps missbraucht.
+- Vor FC5 werden bestehende ULC-Runtime- und M5/M6-Evidence-Verträge nicht nur
+  für einen einzelnen Fachslice manuell umgebaut oder neu gepinnt.
+- Permissions bleiben serverseitig; UI-Sichtbarkeit ist keine
+  Sicherheitsgrenze.
+- Keine neue allgemeine Policy-/ABAC-Engine.
+- Keine Provider-Abstraktion ohne realen zweiten Bedarf.
+- Keine Produktivdeployments, Providerwrites, Secret-Rotationen oder
+  produktiven DB-Mutationen ohne ausdrückliche Nutzerfreigabe.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert das aktuelle Gate nur, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen FC4/FC5-Pfad, wenn mindestens eines gilt:
 
-- es verletzt einen der zwölf M5-Pflichtpunkte;
-- es verletzt eine bereits beschlossene ADR-/Security-/Privacy-Grenze;
-- es eröffnet einen real erreichbaren Sicherheits-, Datenschutz-, Datenverlust- oder Berechtigungspfad im aktuellen Produkt-/Betriebsvertrag;
-- es macht den unmittelbar benötigten Evidence-/Factory-Pfad falsch oder nicht reproduzierbar.
+- der Modulvertrag ist nicht deterministisch oder nicht reproduzierbar;
+- Paket, Capability, Datenbankbesitz oder Migrationen können vom Manifest
+  unbemerkt abweichen;
+- der neue Modulpfad kann bestehende Apps oder fremde Modulschemas
+  überschreiben;
+- Kompatibilität wird nur angenommen statt geprüft;
+- eine bestehende Security-/Privacy-/Release-Grenze wird abgeschwächt;
+- der unmittelbar benötigte Countdown-Vertical-Slice kann über den
+  vorgesehenen Modulpfad nicht sicher erreicht werden.
 
-Nicht gate-blockierend sind insbesondere neue theoretische Hardening-Anforderungen, zusätzliche Provider-/PostgreSQL-Vollständigkeitsbeweise oder Architekturverbreiterungen, die keinen der obigen Punkte verletzen. Solche Findings werden dokumentiert und ins Backlog verschoben.
-
-**Codex erweitert den vereinbarten Gate-Scope nicht nachträglich.** Codex darf reale Verletzungen des eingefrorenen Vertrags aufdecken; daraus entsteht aber nicht automatisch ein neuer Gate-Vertrag.
+Nicht gate-blockierend sind zusätzliche Plattformabstraktionen und allgemeines
+Hardening ohne konkreten Verbraucher.
 
 ## Loop-Grenze
 
@@ -54,35 +97,21 @@ Für einen Arbeitspfad gilt:
 6. ein finaler Codex-Review
 7. bei echtem Finding: genau ein gebündelter Fix + Exact-Head-CI + ein Re-Review
 
-Kommt danach ein weiteres Finding derselben expandierenden Prüfklasse, wird **nicht weiter gepatcht**. Der Pfad wird eingefroren und das Finding gegen diesen Current-Gate-Vertrag klassifiziert. Danach nur:
+Kommt danach ein weiteres Finding derselben expandierenden Prüfklasse, wird
+nicht blind weitergepatcht. Das Finding wird gegen diesen Gate-Vertrag
+klassifiziert und entweder als neues abgegrenztes Arbeitspaket behandelt oder
+zurückgestellt.
 
-- real gate-blockierend → ein neu abgegrenztes Arbeitspaket;
-- nicht gate-blockierend → Backlog/Hardening.
+## Nächste Produktfolge
 
-Keine fortlaufende Finding→Fix→Review-Schleife.
+**FC4 Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App →
+FC5 Existing-App-Updater → ULC Preview → kontrollierte ULC
+Produktionsvorbereitung.**
 
-## Arbeitsentscheid nach einer Loop-Grenze
-
-Volatile PR-, CI-, Review-, Branch- oder Freeze-Zustände werden **nicht** in dieser Datei gespeichert. Sie werden bei jedem Arbeitsstart live aus GitHub ermittelt.
-
-Wird ein gestoppter Arbeitspfad erneut aufgenommen, ist ein neuer Code-Fix nur zulässig, wenn das aktuelle Live-Finding mindestens eine der oben definierten gate-blockierenden Kategorien erfüllt. Der neue Fix erhält dann ein eigenes, klar abgegrenztes Arbeitspaket mit neuem Ziel und eigener Abnahme.
-
-## Out of Scope für den aktuellen Gate-Abschluss
-
-- allgemeine PostgreSQL-Hardening-Vollständigkeit über den realen M5-Bedrohungs-/Betriebsvertrag hinaus
-- neue Plattformabstraktionen ohne aktuellen Verbraucher
-- neue Providerdienste ohne Gate-Notwendigkeit
-- zusätzliche öffentliche Runtime-/Admin-Pfade
-- Produktivdeployments, Providerwrites, Secret-Rotationen oder produktive DB-Mutationen ohne ausdrückliche Nutzerfreigabe
-- M6-Detailhardening, das M5 nicht blockiert
-
-## Nächstes Produktziel nach M5
-
-Unmittelbar nach M5 geht der Hauptstrang zurück auf Produktfortschritt:
-
-**AppFactory bedienen → echte App über den kanonischen Generator erzeugen → Preview ansehen/testen → nutzbaren Vertical Slice verbessern.**
-
-Security/Privacy/Backup bleiben verbindliche Gates, dürfen aber die Produktentwicklung nicht ohne konkreten Gate-Grund verdrängen.
+Eine produktive ULC-Änderung setzt danach weiterhin aktuelle Migration-,
+Security/Privacy-, Backup/Restore-, Berechtigungs-, Deploy- und Smoke-Evidence
+voraus. Die endgültige Produktionsfreigabe bleibt ein separates ausdrückliches
+Gate.
 
 ## Arbeitsstart in jedem neuen Chat / jeder neuen Session
 
@@ -91,7 +120,9 @@ Vor Änderungen gilt überall dieselbe Reihenfolge:
 1. `CURRENT-GATE.md` lesen
 2. `AGENTS.md` lesen
 3. GitHub Live-State vollständig prüfen
-4. nur die für den aktuellen Gate-Entscheid relevanten ADRs/Roadmap-Abschnitte prüfen
+4. nur die für den aktuellen Gate-Entscheid relevanten ADRs/Roadmap-Abschnitte
+   prüfen
 5. kleinstes Arbeitspaket bis zum nächsten echten Gate ausführen
 
-Wenn ein vorgeschlagener Schritt nicht notwendig ist, um den Current Gate oder den unmittelbar folgenden Produkt-Vertical-Slice zu erreichen, wird er zurückgestellt.
+Wenn ein vorgeschlagener Schritt nicht notwendig ist, um FC4/FC5 oder den
+unmittelbaren ULC-Vertical-Slice zu erreichen, wird er zurückgestellt.

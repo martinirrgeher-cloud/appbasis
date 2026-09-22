@@ -2,6 +2,10 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { withAppRegistryLock } from "./app-publication.mjs";
+import {
+  assertAppModuleCompatibility,
+  verifyModuleDefinitions,
+} from "./module-definition.mjs";
 import { enforceUlcLinzM5TargetPolicy } from "./ulc-linz-m5-target-policy.mjs";
 
 const APP_DEFINITION_FILE = "appbasis.app.json";
@@ -94,9 +98,11 @@ async function readAndValidateAppDefinitions(
   { skipUnpublishedDirectories },
 ) {
   const appsDirectory = join(repositoryRoot, "apps");
-  const modulesDirectory = join(repositoryRoot, "modules");
   const appEntries = await directoryNames(appsDirectory);
-  const moduleNames = new Set(await directoryNames(modulesDirectory));
+  const moduleDefinitions = await verifyModuleDefinitions(repositoryRoot);
+  const modulesById = new Map(
+    moduleDefinitions.map((definition) => [definition.moduleId, definition]),
+  );
 
   if (appEntries.length === 0) {
     throw new Error("AppBasis requires at least one application under apps/.");
@@ -129,11 +135,13 @@ async function readAndValidateAppDefinitions(
     appIds.add(definition.appId);
 
     for (const moduleName of definition.modules) {
-      if (!moduleNames.has(moduleName)) {
+      const moduleDefinition = modulesById.get(moduleName);
+      if (moduleDefinition === undefined) {
         throw new Error(
           `App ${definition.appId} references unknown module ${moduleName}.`,
         );
       }
+      assertAppModuleCompatibility(definition, moduleDefinition);
     }
 
     definitions.push(definition);

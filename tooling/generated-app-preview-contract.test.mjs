@@ -6,13 +6,15 @@ import test from "node:test";
 
 import { createGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
+import { verifyModuleDefinitions } from "./module-definition.mjs";
+import { writeTasksModuleFixture } from "./test-fixtures/module-fixtures.mjs";
 
 async function createFixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "appbasis-generic-preview-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
 
   await mkdir(path.join(root, "apps", "demo", "worker"), { recursive: true });
-  await mkdir(path.join(root, "modules", "tasks"), { recursive: true });
+  await writeTasksModuleFixture(root);
 
   const definition = {
     schemaVersion: 2,
@@ -33,9 +35,14 @@ async function createFixture(t) {
       accentColor: "#2563eb",
     }),
   );
+  const moduleDefinitions = await verifyModuleDefinitions(root);
   await writeFile(
     path.join(root, "apps", "demo", "appbasis.database.json"),
-    JSON.stringify(createGeneratedDatabaseManifest(definition), null, 2),
+    JSON.stringify(
+      createGeneratedDatabaseManifest(definition, { moduleDefinitions }),
+      null,
+      2,
+    ),
   );
   await writeFile(
     path.join(root, "apps", "demo", "package.json"),

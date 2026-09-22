@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { writeTasksModuleFixture } from "../test-fixtures/module-fixtures.mjs";
 import { loadFactorySnapshot } from "./model.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -12,7 +13,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
 test("factory snapshot reports repository preview prerequisites without enabling deployment", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "appbasis-factory-preview-readiness-"));
   await mkdir(join(fixtureRoot, "apps"), { recursive: true });
-  await mkdir(join(fixtureRoot, "modules", "tasks"), { recursive: true });
+  await writeTasksModuleFixture(fixtureRoot);
 
   try {
     await writeAppDefinition(fixtureRoot, {

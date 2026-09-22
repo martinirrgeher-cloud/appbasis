@@ -420,6 +420,27 @@ test("does not replace a destination created after staging", async (t) => {
   );
 });
 
+test("fails before writing when a module is incompatible with the app schema", async (t) => {
+  const root = await createRepositoryFixture(t);
+  await writeTasksModule(root, [3]);
+
+  await assert.rejects(
+    () =>
+      createAppSkeleton(
+        {
+          appId: "checklist",
+          displayName: "Checklist",
+          modules: ["tasks"],
+          platformServices: ["identity"],
+        },
+        testGeneratorOptions(root),
+      ),
+    /App checklist schemaVersion 2 is not compatible with module tasks/,
+  );
+
+  assert.deepEqual(await readdir(join(root, "apps")), []);
+});
+
 test("fails before writing when a module is unknown", async (t) => {
   const root = await createRepositoryFixture(t);
 
@@ -514,7 +535,7 @@ async function createRepositoryFixture(t) {
   const root = await mkdtemp(join(tmpdir(), "appbasis-create-app-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "apps"), { recursive: true });
-  await mkdir(join(root, "modules", "tasks"), { recursive: true });
+  await writeTasksModule(root);
   await writeFile(
     join(root, "pnpm-lock.yaml"),
     "lockfileVersion: '9.0'\n\nimporters:\n  .: {}\n",
@@ -528,5 +549,55 @@ async function writeExistingApp(root, definition) {
   await writeFile(
     join(directory, "appbasis.app.json"),
     `${JSON.stringify(definition, null, 2)}\n`,
+  );
+}
+
+async function writeTasksModule(root, compatibility = [2]) {
+  const moduleRoot = join(root, "modules", "tasks");
+  await rm(moduleRoot, { recursive: true, force: true });
+  await mkdir(join(moduleRoot, "migrations"), { recursive: true });
+  await writeFile(
+    join(moduleRoot, "appbasis.module.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        moduleId: "tasks",
+        displayName: "Aufgaben",
+        packageName: "@appbasis/tasks",
+        compatibility: {
+          appDefinitionSchemaVersions: compatibility,
+        },
+        capabilities: ["tasks:manage"],
+        database: {
+          schemaVersion: 1,
+          migrations: [
+            "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+          ],
+        },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await writeFile(
+    join(moduleRoot, "package.json"),
+    JSON.stringify(
+      {
+        name: "@appbasis/tasks",
+        version: "0.0.0",
+        private: true,
+        type: "module",
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await writeFile(
+    join(
+      moduleRoot,
+      "migrations",
+      "0000_appbasis_tasks_foundation.sql",
+    ),
+    "SELECT 1;\n",
   );
 }

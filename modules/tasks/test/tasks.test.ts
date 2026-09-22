@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 
+import moduleDefinition from "../appbasis.module.json";
 import {
   InMemoryTaskRepository,
+  MODULE_CAPABILITIES,
   TASK_CAPABILITIES,
   TaskValidationError,
 } from "../src";
 
 describe("tasks module public contract", () => {
-  it("owns its stable permission capability identifiers", () => {
+  it("derives its public capability contract from the FC4 manifest", () => {
+    expect(MODULE_CAPABILITIES).toEqual(moduleDefinition.capabilities);
+    expect(Object.values(TASK_CAPABILITIES).sort()).toEqual([
+      ...MODULE_CAPABILITIES,
+    ].sort());
     expect(TASK_CAPABILITIES).toEqual({ manage: "tasks:manage" });
   });
 

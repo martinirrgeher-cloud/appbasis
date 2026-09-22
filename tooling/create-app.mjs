@@ -17,6 +17,10 @@ import { createAppTheme, renderAppTheme } from "./app-theme.mjs";
 import { acquireAppRegistryLock } from "./app-publication.mjs";
 import { renderGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import { createIdentityRuntimeTemplate } from "./generated-runtime-template.mjs";
+import {
+  assertAppModuleCompatibility,
+  verifyModuleDefinitions,
+} from "./module-definition.mjs";
 import { enforceUlcLinzM5TargetPolicy } from "./ulc-linz-m5-target-policy.mjs";
 
 const STAGING_PREFIX = ".appbasis-create-";
@@ -37,13 +41,19 @@ export async function createAppSkeleton(input, options = {}) {
   );
   enforceUlcLinzM5TargetPolicy(definition);
 
-  const availableModules = new Set(
-    await directoryNames(join(repositoryRoot, "modules")),
+  const moduleDefinitions = await verifyModuleDefinitions(repositoryRoot);
+  const modulesById = new Map(
+    moduleDefinitions.map((moduleDefinition) => [
+      moduleDefinition.moduleId,
+      moduleDefinition,
+    ]),
   );
   for (const moduleName of definition.modules) {
-    if (!availableModules.has(moduleName)) {
+    const moduleDefinition = modulesById.get(moduleName);
+    if (moduleDefinition === undefined) {
       throw new Error(`Unknown AppBasis module: ${moduleName}.`);
     }
+    assertAppModuleCompatibility(definition, moduleDefinition);
   }
 
   const appTheme = createAppTheme({
@@ -51,7 +61,9 @@ export async function createAppSkeleton(input, options = {}) {
     brandMark: input.brandMark,
     accentColor: input.accentColor,
   });
-  const databaseManifest = renderGeneratedDatabaseManifest(definition);
+  const databaseManifest = renderGeneratedDatabaseManifest(definition, {
+    moduleDefinitions,
+  });
   const runtimeFiles = generatedRuntimeFiles(definition, appTheme);
   const publishesWorkspacePackage = runtimeFiles.some(
     (runtimeFile) => runtimeFile.path === "package.json",
