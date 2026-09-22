@@ -270,13 +270,19 @@ test("serializes lockfile snapshots across concurrent module generators", async 
       },
     }),
   );
+  const secondOutcome = second.then(
+    () => ({ ok: true }),
+    (error) => ({ ok: false, error }),
+  );
 
   await delay(60);
   assert.equal(secondFinalizerStarted, false);
 
   releaseFirstFinalizer();
   await first;
-  await assert.rejects(() => second, /beta finalization failed/);
+  const outcome = await secondOutcome;
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.error.message, /beta finalization failed/);
 
   assert.equal(await readFile(lockfilePath, "utf8"), "after-alpha\n");
   assert.deepEqual(await readdir(join(root, "modules")), ["alpha", "tasks"]);
