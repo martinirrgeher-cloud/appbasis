@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
+import { createAppSkeleton } from "./create-app.mjs";
 import {
   createModuleSkeleton,
   parseCreateModuleArguments,
@@ -288,6 +289,73 @@ test("serializes lockfile snapshots across concurrent module generators", async 
   assert.deepEqual(await readdir(join(root, "modules")), ["alpha", "tasks"]);
 });
 
+test("serializes workspace rollback across app and module generators", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const lockfilePath = join(root, "pnpm-lock.yaml");
+  let releaseAppFinalizer;
+  let appFinalizerStartedResolve;
+  const appFinalizerStarted = new Promise((resolvePromise) => {
+    appFinalizerStartedResolve = resolvePromise;
+  });
+  const releaseApp = new Promise((resolvePromise) => {
+    releaseAppFinalizer = resolvePromise;
+  });
+
+  const app = createAppSkeleton(
+    {
+      appId: "checklist",
+      displayName: "Checklist",
+      modules: ["tasks"],
+      platformServices: ["identity"],
+    },
+    {
+      repositoryRoot: root,
+      testingHooks: {
+        workspaceFinalizer: async () => {
+          await writeFile(lockfilePath, "after-app\n");
+          appFinalizerStartedResolve();
+          await releaseApp;
+        },
+      },
+    },
+  );
+
+  await appFinalizerStarted;
+
+  let moduleFinalizerStarted = false;
+  const module = createModuleSkeleton(
+    {
+      moduleId: "countdown",
+      displayName: "Intervall-Countdown",
+      capabilities: [],
+    },
+    testGeneratorOptions(root, {
+      workspaceFinalizer: async () => {
+        moduleFinalizerStarted = true;
+        await writeFile(lockfilePath, "mutated-module\n");
+        throw new Error("module finalization failed");
+      },
+    }),
+  );
+  const moduleOutcome = module.then(
+    () => ({ ok: true }),
+    (error) => ({ ok: false, error }),
+  );
+
+  await delay(60);
+  assert.equal(moduleFinalizerStarted, false);
+
+  releaseAppFinalizer();
+  await app;
+  const outcome = await moduleOutcome;
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.error.message, /module finalization failed/);
+
+  assert.equal(await readFile(lockfilePath, "utf8"), "after-app\n");
+  assert.deepEqual(await readdir(join(root, "apps")), ["checklist"]);
+  assert.deepEqual(await readdir(join(root, "modules")), ["tasks"]);
+});
+
 test("rolls back module publication and lockfile when workspace finalization fails", async (t) => {
   const root = await createRepositoryFixture(t);
   const lockfilePath = join(root, "pnpm-lock.yaml");
@@ -368,6 +436,7 @@ async function createRepositoryFixture(t) {
   const root = await mkdtemp(join(tmpdir(), "appbasis-create-module-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
 
+  await mkdir(join(root, "apps"), { recursive: true });
   await mkdir(join(root, "modules"), { recursive: true });
   await writeTasksModuleFixture(root);
   await writeFile(
