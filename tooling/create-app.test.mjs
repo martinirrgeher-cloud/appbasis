@@ -141,7 +141,6 @@ test("generates a deployable identity+permissions app that consumes the countdow
     await readFile(join(appRoot, "package.json"), "utf8"),
   );
   assert.deepEqual(packageJson.dependencies, {
-    "@appbasis/database": "workspace:*",
     "@appbasis/countdown": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",
