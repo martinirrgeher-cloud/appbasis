@@ -13,69 +13,109 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { createAppSkeleton } from "./create-app.mjs";
-import { writeTasksModuleFixture } from "./test-fixtures/module-fixtures.mjs";
 import {
-  assertGeneratedModuleDatabaseOwners,
   createGeneratedDatabaseManifest,
   renderGeneratedDatabaseManifest,
 } from "./generated-database-manifest.mjs";
+import { verifyModuleDefinitions } from "./module-definition.mjs";
+import { writeTasksModuleFixture } from "./test-fixtures/module-fixtures.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const tasksModuleDefinition = {
+  moduleId: "tasks",
+  database: {
+    schemaVersion: 1,
+    migrations: [
+      "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+    ],
+  },
+};
 
-test("pins generated module database ownership to the FC4 module manifest contract", () => {
-  const tasksDefinition = {
-    moduleId: "tasks",
-    database: {
-      schemaVersion: 1,
-      migrations: [
-        "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
-      ],
+test("renders module database ownership directly from the FC4 module contract", () => {
+  const manifest = createGeneratedDatabaseManifest(
+    {
+      appId: "inventory-app",
+      platformServices: [],
+      modules: ["inventory"],
     },
-  };
-
-  assert.doesNotThrow(() =>
-    assertGeneratedModuleDatabaseOwners([tasksDefinition]),
-  );
-
-  assert.throws(
-    () =>
-      assertGeneratedModuleDatabaseOwners([
-        {
-          ...tasksDefinition,
-          database: {
-            schemaVersion: 2,
-            migrations: [
-              "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
-              "modules/tasks/migrations/0001_extension.sql",
-            ],
-          },
-        },
-      ]),
-    /drifted from appbasis\.module\.json/,
-  );
-
-  assert.throws(
-    () =>
-      assertGeneratedModuleDatabaseOwners([
-        tasksDefinition,
+    {
+      moduleDefinitions: [
         {
           moduleId: "inventory",
           database: {
-            schemaVersion: 1,
-            migrations: ["modules/inventory/migrations/0000_foundation.sql"],
+            schemaVersion: 7,
+            migrations: [
+              "modules/inventory/migrations/0000_foundation.sql",
+              "modules/inventory/migrations/0001_extension.sql",
+            ],
           },
         },
-      ]),
-    /ownership is not declared for module inventory/,
+      ],
+    },
+  );
+
+  assert.deepEqual(manifest?.owners, [
+    {
+      id: "inventory",
+      root: "modules/inventory",
+      schemaVersion: 7,
+      migrations: [
+        "modules/inventory/migrations/0000_foundation.sql",
+        "modules/inventory/migrations/0001_extension.sql",
+      ],
+    },
+  ]);
+});
+
+test("skips a verified database-free module instead of inventing database ownership", () => {
+  const manifest = createGeneratedDatabaseManifest(
+    {
+      appId: "countdown-app",
+      platformServices: [],
+      modules: ["countdown"],
+    },
+    {
+      moduleDefinitions: [
+        {
+          moduleId: "countdown",
+          database: null,
+        },
+      ],
+    },
+  );
+
+  assert.equal(manifest, null);
+
+  const identityManifest = createGeneratedDatabaseManifest(
+    {
+      appId: "countdown-app",
+      platformServices: ["identity"],
+      modules: ["countdown"],
+    },
+    {
+      moduleDefinitions: [
+        {
+          moduleId: "countdown",
+          database: null,
+        },
+      ],
+    },
+  );
+  assert.deepEqual(
+    identityManifest?.owners.map((owner) => owner.id),
+    ["identity"],
   );
 });
 
 test("renders deterministic migration ownership from the declared app composition", () => {
-  const rendered = renderGeneratedDatabaseManifest({
-    appId: "checklist",
-    platformServices: ["permissions", "identity"],
-    modules: ["tasks"],
-  });
+  const rendered = renderGeneratedDatabaseManifest(
+    {
+      appId: "checklist",
+      platformServices: ["permissions", "identity"],
+      modules: ["tasks"],
+    },
+    { moduleDefinitions: [tasksModuleDefinition] },
+  );
 
   assert.equal(
     rendered,
@@ -104,9 +144,13 @@ test("createAppSkeleton publishes the generated database manifest before the app
     testingHooks: { lockfileFinalizer: async () => {} },
   });
 
+  const moduleDefinitions = await verifyModuleDefinitions(root);
   assert.equal(
-    await readFile(join(root, "apps", "checklist", "appbasis.database.json"), "utf8"),
-    renderGeneratedDatabaseManifest(input),
+    await readFile(
+      join(root, "apps", "checklist", "appbasis.database.json"),
+      "utf8",
+    ),
+    renderGeneratedDatabaseManifest(input, { moduleDefinitions }),
   );
 });
 
@@ -121,7 +165,7 @@ test("omits a database manifest only when the app declares no database owner", (
   );
 });
 
-test("fails closed when migration ownership for a selected component is undeclared", () => {
+test("fails closed when database ownership inputs are unsupported or unverified", () => {
   assert.throws(
     () =>
       createGeneratedDatabaseManifest({
@@ -138,16 +182,19 @@ test("fails closed when migration ownership for a selected component is undeclar
         platformServices: [],
         modules: ["inventory"],
       }),
-    /ownership is not declared for module inventory/,
+    /requires verified module definitions/,
   );
   assert.throws(
     () =>
-      createGeneratedDatabaseManifest({
-        appId: "prototype-key",
-        platformServices: [],
-        modules: ["constructor"],
-      }),
-    /ownership is not declared for module constructor/,
+      createGeneratedDatabaseManifest(
+        {
+          appId: "missing-module",
+          platformServices: [],
+          modules: ["inventory"],
+        },
+        { moduleDefinitions: [tasksModuleDefinition] },
+      ),
+    /requires verified module definition inventory/,
   );
 });
 
@@ -166,7 +213,10 @@ test("checked generated tasks database manifest is byte-identical and migration-
   );
   const definition = JSON.parse(await readFile(definitionPath, "utf8"));
   const checked = await readFile(databaseManifestPath, "utf8");
-  const rendered = renderGeneratedDatabaseManifest(definition);
+  const moduleDefinitions = await verifyModuleDefinitions(repositoryRoot);
+  const rendered = renderGeneratedDatabaseManifest(definition, {
+    moduleDefinitions,
+  });
 
   assert.equal(checked, rendered);
   assert.doesNotMatch(checked, /postgres(?:ql)?:\/\//i);
