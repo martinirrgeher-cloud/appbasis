@@ -23,15 +23,6 @@ const PLATFORM_SERVICE_DATABASE_OWNERS = Object.freeze({
   }),
 });
 
-const MODULE_DATABASE_OWNERS = Object.freeze({
-  tasks: databaseOwner({
-    id: "tasks",
-    root: "modules/tasks",
-    schemaVersion: 1,
-    migrations: ["modules/tasks/migrations/0000_appbasis_tasks_foundation.sql"],
-  }),
-});
-
 const APP_DATABASE_OWNERS = Object.freeze({
   "ulc-linz": databaseOwner({
     id: "ulc-linz-lifecycle",
@@ -46,64 +37,7 @@ const APP_DATABASE_OWNERS = Object.freeze({
   }),
 });
 
-export function assertGeneratedModuleDatabaseOwners(moduleDefinitions) {
-  if (!Array.isArray(moduleDefinitions)) {
-    throw new Error("Generated module database ownership requires module definitions.");
-  }
-
-  const definitionsById = new Map();
-  for (const definition of moduleDefinitions) {
-    if (!isPlainObject(definition)) {
-      throw new Error("Generated module database ownership requires parsed module definitions.");
-    }
-    const moduleId = requiredIdentifier(definition.moduleId, "moduleId");
-    if (definitionsById.has(moduleId)) {
-      throw new Error(`Duplicate generated module database owner: ${moduleId}.`);
-    }
-    definitionsById.set(moduleId, definition);
-  }
-
-  for (const [moduleId, definition] of definitionsById) {
-    const declared = definition.database;
-    const generated = Object.hasOwn(MODULE_DATABASE_OWNERS, moduleId)
-      ? MODULE_DATABASE_OWNERS[moduleId]
-      : null;
-
-    if (declared === null) {
-      if (generated !== null) {
-        throw new Error(
-          `Generated database ownership for module ${moduleId} must be absent when appbasis.module.json declares database null.`,
-        );
-      }
-      continue;
-    }
-
-    if (!isPlainObject(declared)) {
-      throw new Error(
-        `Generated database ownership for module ${moduleId} requires a parsed database contract.`,
-      );
-    }
-    if (generated === null) {
-      throw new Error(
-        `Generated database ownership is not declared for module ${moduleId}.`,
-      );
-    }
-
-    const expectedRoot = `modules/${moduleId}`;
-    if (
-      generated.id !== moduleId ||
-      generated.root !== expectedRoot ||
-      generated.schemaVersion !== declared.schemaVersion ||
-      !sameStringArray(generated.migrations, declared.migrations)
-    ) {
-      throw new Error(
-        `Generated database ownership for module ${moduleId} drifted from appbasis.module.json.`,
-      );
-    }
-  }
-}
-
-export function createGeneratedDatabaseManifest(definition) {
+export function createGeneratedDatabaseManifest(definition, options = {}) {
   if (!isPlainObject(definition)) {
     throw new Error("Generated database manifest requires an app definition object.");
   }
@@ -113,6 +47,10 @@ export function createGeneratedDatabaseManifest(definition) {
     "platformServices",
   );
   const modules = identifierList(definition.modules, "modules");
+  const modulesById = verifiedModuleDefinitionsById(
+    options.moduleDefinitions,
+    modules,
+  );
 
   const owners = [];
   for (const platformService of Object.keys(
@@ -132,12 +70,16 @@ export function createGeneratedDatabaseManifest(definition) {
   for (const moduleName of [...modules].sort((left, right) =>
     left.localeCompare(right),
   )) {
-    if (!Object.hasOwn(MODULE_DATABASE_OWNERS, moduleName)) {
+    const moduleDefinition = modulesById.get(moduleName);
+    if (moduleDefinition === undefined) {
       throw new Error(
-        `Generated database ownership is not declared for module ${moduleName}.`,
+        `Generated database manifest requires verified module definition ${moduleName}.`,
       );
     }
-    owners.push(cloneOwner(MODULE_DATABASE_OWNERS[moduleName]));
+    const moduleOwner = databaseOwnerFromModuleDefinition(moduleDefinition);
+    if (moduleOwner !== null) {
+      owners.push(moduleOwner);
+    }
   }
 
   if (Object.hasOwn(APP_DATABASE_OWNERS, appId)) {
@@ -154,9 +96,76 @@ export function createGeneratedDatabaseManifest(definition) {
   });
 }
 
-export function renderGeneratedDatabaseManifest(definition) {
-  const manifest = createGeneratedDatabaseManifest(definition);
+export function renderGeneratedDatabaseManifest(definition, options = {}) {
+  const manifest = createGeneratedDatabaseManifest(definition, options);
   return manifest === null ? null : `${JSON.stringify(manifest, null, 2)}\n`;
+}
+
+function verifiedModuleDefinitionsById(value, selectedModules) {
+  if (selectedModules.length === 0) return new Map();
+  if (!Array.isArray(value)) {
+    throw new Error(
+      "Generated database manifest requires verified module definitions for selected modules.",
+    );
+  }
+
+  const byId = new Map();
+  for (const definition of value) {
+    if (!isPlainObject(definition)) {
+      throw new Error(
+        "Generated database manifest module definitions must be objects.",
+      );
+    }
+    const moduleId = requiredIdentifier(definition.moduleId, "moduleId");
+    if (byId.has(moduleId)) {
+      throw new Error(
+        `Generated database manifest module definition is duplicated: ${moduleId}.`,
+      );
+    }
+    byId.set(moduleId, definition);
+  }
+  return byId;
+}
+
+function databaseOwnerFromModuleDefinition(definition) {
+  const moduleId = requiredIdentifier(definition.moduleId, "moduleId");
+  const database = definition.database;
+  if (database === null) return null;
+  if (!isPlainObject(database)) {
+    throw new Error(
+      `Generated database manifest module ${moduleId} requires a verified database contract.`,
+    );
+  }
+  if (!Number.isInteger(database.schemaVersion) || database.schemaVersion < 1) {
+    throw new Error(
+      `Generated database manifest module ${moduleId} schemaVersion is invalid.`,
+    );
+  }
+  if (!Array.isArray(database.migrations) || database.migrations.length === 0) {
+    throw new Error(
+      `Generated database manifest module ${moduleId} migrations are invalid.`,
+    );
+  }
+
+  const migrations = database.migrations.map((migration, index) => {
+    if (
+      typeof migration !== "string" ||
+      migration.length === 0 ||
+      migration.trim() !== migration
+    ) {
+      throw new Error(
+        `Generated database manifest module ${moduleId} migration[${index}] is invalid.`,
+      );
+    }
+    return migration;
+  });
+
+  return databaseOwner({
+    id: moduleId,
+    root: `modules/${moduleId}`,
+    schemaVersion: database.schemaVersion,
+    migrations,
+  });
 }
 
 function databaseOwner({ id, root, schemaVersion, migrations }) {
@@ -175,15 +184,6 @@ function cloneOwner(owner) {
     schemaVersion: owner.schemaVersion,
     migrations: Object.freeze([...owner.migrations]),
   });
-}
-
-function sameStringArray(left, right) {
-  return (
-    Array.isArray(left) &&
-    Array.isArray(right) &&
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
-  );
 }
 
 function identifierList(value, field) {
