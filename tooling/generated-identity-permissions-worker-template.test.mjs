@@ -68,6 +68,45 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
   assert.doesNotMatch(postgres, /PostgresTaskRepository/);
 });
 
+test("keeps the generic identity+permissions runtime when countdown is selected", () => {
+  const template = createIdentityRuntimeTemplate({
+    appId: "countdown-test",
+    displayName: "Countdown Test",
+    modules: ["countdown"],
+    platformServices: ["identity", "permissions"],
+  });
+  const paths = template.files.map((entry) => entry.path);
+  const packageJson = JSON.parse(content(template, "package.json"));
+  const appTest = content(template, "test/app.test.ts");
+  const worker = content(template, "worker/index.ts");
+  const postgres = content(template, "worker/postgres.ts");
+
+  assert.equal(paths.includes("test/worker.test.ts"), true);
+  assert.equal(paths.includes("worker/index.ts"), true);
+  assert.equal(paths.includes("worker/postgres.ts"), true);
+  assert.equal(paths.includes(PRODUCTION_BOOTSTRAP_CONFIG_PATH), true);
+
+  assert.deepEqual(packageJson.dependencies, {
+    "@appbasis/countdown": "workspace:*",
+    "@appbasis/identity": "workspace:*",
+    "@appbasis/permissions": "workspace:*",
+    hono: "4.13.1",
+  });
+  assert.match(appTest, /COUNTDOWN_CAPABILITIES/);
+  assert.match(appTest, /countdown:view/);
+  assert.match(worker, /createGeneratedPostgresApplicationRuntime/);
+  assert.match(postgres, /PostgresPermissionStore/);
+  assert.doesNotMatch(postgres, /PostgresTaskRepository/);
+  assert.doesNotMatch(worker, /tasks/i);
+
+  const bootstrap = JSON.parse(content(template, PRODUCTION_BOOTSTRAP_CONFIG_PATH));
+  assert.equal(bootstrap.main, "./worker/index.ts");
+  assert.equal(bootstrap.workers_dev, false);
+  assert.equal(bootstrap.preview_urls, false);
+  assert.equal("hyperdrive" in bootstrap, false);
+  assert.equal("secrets" in bootstrap, false);
+});
+
 test("keeps identity-only and guarded tasks generator contracts unchanged", () => {
   const identityOnly = createIdentityRuntimeTemplate({
     appId: "checklist",

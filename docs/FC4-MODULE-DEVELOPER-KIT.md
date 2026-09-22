@@ -74,6 +74,22 @@ Rollback niemals gegeneinander laufen. Schlägt die Workspace-Finalisierung
 fehl, werden reservierter Modulordner und Lockfile auf den Ausgangszustand
 zurückgerollt.
 
+## FC4-C – Generator-Verbrauch
+
+Der normale App-Generator akzeptiert `countdown` jetzt als verifiziertes
+Standardmodul. Für eine neue Identity+Permissions-App erzeugt er die
+Workspace-Abhängigkeit `@appbasis/countdown` und einen ausführbaren Selbsttest,
+der den öffentlichen `MODULE_CAPABILITIES`-Vertrag konsumiert. Weil
+`countdown` keine Persistenz besitzt, erscheint es nicht als Datenbank-Owner;
+die vorhandenen Identity- und Permissions-Owner bleiben davon unberührt.
+
+Der Generatorpfad wird automatisiert mit einer frisch erzeugten
+`countdown-test`-App geprüft. Dabei werden Appmanifest, Paketabhängigkeit,
+generierter Modulvertrag, deploybarer Identity+Permissions-Worker und
+Datenbankmanifest gemeinsam verifiziert. Die
+generierte Oberfläche behauptet bei einem deklarierten, aber nicht
+UI-spezialisierten Modul nicht mehr fälschlich, es sei kein Fachmodul aktiviert.
+
 ## Noch nicht Teil dieses Slices
 
 FC4-A verändert keine bestehende App und insbesondere keine ULC-Produktionsruntime.
@@ -82,11 +98,11 @@ Der Intervall-Countdown ist jetzt der erste reale, über diesen Vertrag erzeugte
 Fachmodul-Referenzfall. Sein eingecheckter Inhalt wird automatisiert gegen die
 kanonische Scaffolder-Ausgabe geprüft und besitzt bewusst keine Persistenz.
 
-Noch offen für die folgenden kleinen FC4-Slices:
+Damit ist der FC4-Vertical-Slice vom Modulmanifest über Scaffolder und
+Countdown-Referenzmodul bis zum normalen App-Generator geschlossen.
 
-1. Generator-Integration für eine neue Test-App mit `countdown`.
-2. Erst danach FC5: kontrolliertes Hinzufügen/Aktualisieren eines Moduls in
-   einer bestehenden App wie `ulc-linz`.
+Als nächster Gate-Scope folgt FC5: kontrolliertes Hinzufügen/Aktualisieren eines
+Moduls in einer bestehenden App wie `ulc-linz`.
 
 Damit bleibt die bisher verifizierte ULC-M5/M6-Runtime unverändert, bis ein
 expliziter Updatepfad existiert.

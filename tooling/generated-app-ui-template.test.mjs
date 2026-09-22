@@ -25,16 +25,17 @@ test("generated app UI persists branding into executable static responses", () =
   assert.doesNotMatch(source, /<script[^>]*>[^<]/);
 });
 
-test("generated app UI omits task controls when tasks are not permission-backed", () => {
+test("generated app UI acknowledges declared modules without inventing unsupported controls", () => {
   const source = renderGeneratedAppUiModule({
     appId: "identity-only",
     displayName: "Identity Only",
-    modules: ["tasks"],
+    modules: ["countdown"],
     platformServices: ["identity"],
   });
 
   assert.match(source, /const HAS_TASKS = false/);
-  assert.match(source, /Für diese App ist noch kein Fachmodul aktiviert/);
+  assert.match(source, /Fachmodul aktiviert/);
+  assert.match(source, /öffentlichen AppBasis-Vertrag eingebunden/);
   assert.doesNotMatch(source, /Aufgaben verwalten/);
 });
 

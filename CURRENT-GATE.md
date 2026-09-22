@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-09-21
+Stand: 2026-09-22
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,20 +9,21 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**FC4 – stabilen Modulvertrag und Module Developer Kit schaffen; danach FC5 –
-Module kontrolliert zu bestehenden Apps hinzufügen/aktualisieren.**
+**FC5 – Module kontrolliert zu bestehenden Apps hinzufügen/aktualisieren.**
 
-Der unmittelbare Produktverbraucher ist die ULC-Linz Vereins-App. Der erste
-Referenzfall ist ein kleiner Intervall-Countdown ohne fachliche Persistenz.
+FC4 ist für den aktuellen Produktpfad abgeschlossen: Modulvertrag,
+Modul-Scaffolder, der persistenzfreie Intervall-Countdown und der normale
+Generator-Verbrauch durch eine neue Countdown-Test-App sind reproduzierbar
+abgedeckt. Der unmittelbare reale Produktverbraucher bleibt die ULC-Linz
+Vereins-App.
 
 Der direkte Umbau einer bestehenden generierten App ist ausdrücklich **nicht**
-der Updatepfad. Bestehende Apps werden erst verändert, wenn ein reproduzierbarer
-Modul-Installations-/Updatevertrag vorhanden ist.
+der Updatepfad. Bestehende Apps werden erst verändert, wenn der reproduzierbare
+FC5-Modul-Installations-/Updatevertrag vorhanden ist.
 
-## Verbindliche FC4-Abnahme
+## FC4-Abnahme – abgeschlossen
 
-FC4 ist für den aktuellen Produktpfad DONE, wenn mindestens Folgendes
-reproduzierbar und ausführbar belegt ist:
+Für den aktuellen Produktpfad ist reproduzierbar und ausführbar belegt:
 
 1. jedes Standardmodul besitzt einen strikten, maschinenlesbaren Modulvertrag;
 2. Modul-ID, Paketname und App-Kompatibilität sind eindeutig;
@@ -38,7 +39,7 @@ reproduzierbar und ausführbar belegt ist:
 
 FC4 erzeugt noch **keinen** generischen Produktions-Updater für bestehende Apps.
 
-## Unmittelbar danach: FC5
+## Aktueller Gate-Scope: FC5
 
 FC5 liefert den kontrollierten Updatepfad für bestehende Apps:
 
@@ -59,8 +60,9 @@ Erster realer Verbraucher ist `ulc-linz` mit dem FC4-Countdown-Modul.
 - Fachmodule ändern keine Tabellen anderer Module.
 - `createAppSkeleton()` bleibt der Pfad für **neue** Apps und wird nicht als
   Updater für bestehende Apps missbraucht.
-- Vor FC5 werden bestehende ULC-Runtime- und M5/M6-Evidence-Verträge nicht nur
-  für einen einzelnen Fachslice manuell umgebaut oder neu gepinnt.
+- Bis der FC5-Updater reproduzierbar verifiziert ist, werden bestehende
+  ULC-Runtime- und M5/M6-Evidence-Verträge nicht nur für einen einzelnen
+  Fachslice manuell umgebaut oder neu gepinnt.
 - Permissions bleiben serverseitig; UI-Sichtbarkeit ist keine
   Sicherheitsgrenze.
 - Keine neue allgemeine Policy-/ABAC-Engine.
@@ -104,9 +106,11 @@ zurückgestellt.
 
 ## Nächste Produktfolge
 
-**FC4 Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App →
-FC5 Existing-App-Updater → ULC Preview → kontrollierte ULC
+**FC5 Existing-App-Updater → ULC Preview → kontrollierte ULC
 Produktionsvorbereitung.**
+
+Der abgeschlossene FC4-Pfad bleibt die Referenz:
+**Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**
 
 Eine produktive ULC-Änderung setzt danach weiterhin aktuelle Migration-,
 Security/Privacy-, Backup/Restore-, Berechtigungs-, Deploy- und Smoke-Evidence
