@@ -226,6 +226,62 @@ test("serializes verification until module publication is complete", async (t) =
   );
 });
 
+test("serializes lockfile snapshots across concurrent module generators", async (t) => {
+  const root = await createRepositoryFixture(t);
+  const lockfilePath = join(root, "pnpm-lock.yaml");
+  let releaseFirstFinalizer;
+  let firstFinalizerStartedResolve;
+  const firstFinalizerStarted = new Promise((resolvePromise) => {
+    firstFinalizerStartedResolve = resolvePromise;
+  });
+  const releaseFirst = new Promise((resolvePromise) => {
+    releaseFirstFinalizer = resolvePromise;
+  });
+
+  const first = createModuleSkeleton(
+    {
+      moduleId: "alpha",
+      displayName: "Alpha",
+      capabilities: [],
+    },
+    testGeneratorOptions(root, {
+      workspaceFinalizer: async () => {
+        await writeFile(lockfilePath, "after-alpha\n");
+        firstFinalizerStartedResolve();
+        await releaseFirst;
+      },
+    }),
+  );
+
+  await firstFinalizerStarted;
+
+  let secondFinalizerStarted = false;
+  const second = createModuleSkeleton(
+    {
+      moduleId: "beta",
+      displayName: "Beta",
+      capabilities: [],
+    },
+    testGeneratorOptions(root, {
+      workspaceFinalizer: async () => {
+        secondFinalizerStarted = true;
+        await writeFile(lockfilePath, "mutated-beta\n");
+        throw new Error("beta finalization failed");
+      },
+    }),
+  );
+
+  await delay(60);
+  assert.equal(secondFinalizerStarted, false);
+
+  releaseFirstFinalizer();
+  await first;
+  await assert.rejects(() => second, /beta finalization failed/);
+
+  assert.equal(await readFile(lockfilePath, "utf8"), "after-alpha\n");
+  assert.deepEqual(await readdir(join(root, "modules")), ["alpha", "tasks"]);
+});
+
 test("rolls back module publication and lockfile when workspace finalization fails", async (t) => {
   const root = await createRepositoryFixture(t);
   const lockfilePath = join(root, "pnpm-lock.yaml");
