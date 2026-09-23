@@ -129,6 +129,7 @@ async function createFixture() {
   const identityServicePath = join(root, "packages", "identity", "src", "service.ts");
   let identityService = await readFile(identityServicePath, "utf8");
   const currentServiceImports = `import { assertIdentityActionAllowed } from "./access";
+export { assertIdentityActionAllowed } from "./access";
 import type {
   AuthSession,
   AccountStatus,
