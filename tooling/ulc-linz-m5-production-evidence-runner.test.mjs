@@ -262,15 +262,17 @@ function bundle() {
   };
 }
 
-test("sanitized production bundle can close all twelve M5 criteria only with bound lifecycle executors and without authorizing release", async () => {
+test("sanitized legacy production bundle stays blocked after the FC5 repository scope change", async () => {
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle(), { now: NOW });
-  assert.equal(result.securityPrivacyReady, true);
-  assert.equal(result.verifiedCount, 12);
+  assert.equal(result.securityPrivacyReady, false);
+  assert.equal(result.verifiedCount, 9);
   assert.equal(result.requiredCount, 12);
   assert.equal(result.productionReleaseAuthorized, false);
   assert.equal(result.lifecycleBindingVerifiedAt, LIVE_BINDING_AT);
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
-  assert.equal(result.criteria.every(({ status }) => status === "verified"), true);
+  for (const id of ["deletionConcept", "retention", "highPrivacyProfile"]) {
+    assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "open", id);
+  }
   const serialized = JSON.stringify(result);
   for (const internal of ["account-1", "worker-1", "project-1", "branch-1", "database-1", "hyperdrive-1", "restore-target-1"]) {
     assert.equal(serialized.includes(internal), false);
@@ -292,7 +294,7 @@ test("final readiness diagnostic exposes only bounded progress and open criterio
   const diagnostic = formatUlcLinzM5ReadinessDiagnostic(result);
   assert.equal(
     diagnostic,
-    "ULC M5 readiness blocked: 9/12; open criteria: dataExport,auditSecurityLogging,highPrivacyProfile.",
+    "ULC M5 readiness blocked: 7/12; open criteria: deletionConcept,retention,dataExport,auditSecurityLogging,highPrivacyProfile.",
   );
   for (const internal of ["account-1", "worker-1", "project-1", "branch-1", "database-1", "hyperdrive-1", "restore-target-1"]) {
     assert.equal(diagnostic.includes(internal), false);
