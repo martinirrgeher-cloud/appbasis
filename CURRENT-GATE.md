@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-09-22
+Stand: 2026-09-23
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -70,9 +70,9 @@ publiziert die Appdefinition zuletzt und rollt behandelte Fehler auf den
 Eingangszustand zurück. Datenbank-ownende Module bleiben bis zu einem eigenen
 Migrations-Ausführungsvertrag fail-closed.
 
-### Aktueller Teilslice: FC5-C – erster realer ULC-Verbraucher
+### FC5-C – erster realer ULC-Verbraucher – abgeschlossen
 
-Der verifizierte persistenzfreie Updatezustand wird jetzt für
+Der verifizierte persistenzfreie Updatezustand wurde für
 `ulc-linz + countdown` hergestellt. Der erlaubte produktneutrale Write-Satz
 bleibt exakt:
 
@@ -92,6 +92,26 @@ modullosen ULC-Stand gebunden. Durch die neue `countdown`-Deklaration muss sie
 fail-closed offen bleiben, bis Modulscope, Berechtigungen und Produktionsvertrag
 in einem späteren getrennten Gate neu geprüft wurden. FC5-C darf diese
 Produktionsevidenz nicht stillschweigend hochstufen oder neu baselinen.
+
+### Aktueller Teilslice: Countdown D1 – echter Domainvertrag
+
+Vor dem ULC-Preview-Gate wird der bislang nur deklarative Countdown zu einem
+echten Fachmodul erweitert. D1 liefert ausschließlich den persistenzfreien,
+deterministischen Domainvertrag für Übungen/Durchgänge, Belastung, Pause,
+Ansageintervalle, `3, 2, 1, Los`, die letzten fünf Sekunden und `Fertig`.
+
+Der zuvor vom FC4-Scaffolder erzeugte Modulvertrag bleibt unverändert Source of
+Truth. Produktlogik darf den Scaffold erweitern, aber Modul-ID, Paketidentität,
+Capability und Datenbankbesitz nicht umdeuten.
+
+Nach D1 folgen getrennt:
+
+1. D2 – ULC Runtime + serverseitige Berechtigung,
+2. D3 – mobile UI inklusive Pause/Weiter/Reset und Sprachausgabe,
+3. D4 – isolierte ULC Preview mit weiterhin getrenntem Application- und
+   Security-Log-Hyperdrive.
+
+Keine dieser Stufen revalidiert automatisch die alte M5/M6-Production-Evidence.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -145,7 +165,7 @@ zurückgestellt.
 
 ## Nächste Produktfolge
 
-**FC5 Existing-App-Updater → ULC Preview → kontrollierte ULC
+**FC5 Existing-App-Updater → Countdown D1–D3 → ULC Preview D4 → kontrollierte ULC
 Produktionsvorbereitung.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
