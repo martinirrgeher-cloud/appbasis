@@ -121,7 +121,7 @@ const ALLOWED_EXTERNAL_PREREQUISITES = new Set([
 ]);
 
 test("ULC M6 preflight separates controlled production preparation from Production Ready", async () => {
-  const result = await evaluateUlcLinzM6ProductionPreflight(REPOSITORY_ROOT);
+  const result = await evaluateApprovedScopePreflight();
 
   assert.equal(result.application, "ulc-linz");
   assert.equal(result.environment, "production");
@@ -171,6 +171,13 @@ test("ULC M6 preflight separates controlled production preparation from Producti
   assert.equal(Object.isFrozen(result), true);
   assert.equal(Object.isFrozen(result.nextAction), true);
   assert.equal(Object.isFrozen(result.executionPlan), true);
+});
+
+test("ULC M6 production preflight stays blocked for the FC5 countdown target until production contracts are renewed", async () => {
+  await assert.rejects(
+    evaluateUlcLinzM6ProductionPreflight(REPOSITORY_ROOT),
+    errorWithCode("APP_DEFINITION_INVALID"),
+  );
 });
 
 test("ULC M6 phase model permits approved non-public preparation before M4/M5 but requires them for Production Ready", () => {
@@ -480,6 +487,7 @@ test("ULC M6 preflight fails closed when app definition drifts", async () => {
 
 test("ULC M6 preflight fails closed when database ownership or migrations drift", async () => {
   await withRepositoryFixture(async (root, fixture) => {
+    fixture.appDefinition.modules = [];
     fixture.databaseManifest.owners[0].schemaVersion = 999;
     await writeFixture(root, fixture);
 
@@ -501,6 +509,16 @@ test("ULC M6 preflight fails closed on extra app manifest fields", async () => {
     );
   });
 });
+
+async function evaluateApprovedScopePreflight() {
+  let result;
+  await withRepositoryFixture(async (root, fixture) => {
+    fixture.appDefinition.modules = [];
+    await writeFixture(root, fixture);
+    result = await evaluateUlcLinzM6ProductionPreflight(root);
+  });
+  return result;
+}
 
 async function withRepositoryFixture(run) {
   const root = await mkdtemp(join(tmpdir(), "appbasis-m6-preflight-"));
