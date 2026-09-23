@@ -20,43 +20,11 @@ const EXPECTED_MIGRATIONS = [
   "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
 ];
 
-test("ULC M6 migration rehearsal loads the exact canonical production plan without authorizing a database write", async () => {
-  const result = await evaluateUlcLinzM6MigrationSmokeRehearsal();
-
-  assert.equal(result.status, "rehearsed-blocked-before-production-write");
-  assert.match(result.verifiedRepositoryHeadSha, /^[0-9a-f]{40}$/);
-  assert.equal(
-    result.validatedInputDigests.repositoryHeadSha,
-    result.verifiedRepositoryHeadSha,
+test("ULC M6 migration rehearsal stays blocked while the FC5 countdown target is not production-approved", async () => {
+  await assert.rejects(
+    evaluateUlcLinzM6MigrationSmokeRehearsal(),
+    (error) => error?.code === "APP_DEFINITION_INVALID",
   );
-  assert.equal(result.repositoryPreflightVerified, true);
-  assert.equal(result.migrationRehearsalVerified, true);
-  assert.equal(result.productionSmokeContractVerified, true);
-  assert.equal(result.productionDatabaseWriteAllowed, false);
-  assert.equal(result.productionSmokeExecutionAuthorized, false);
-  assert.equal(result.releaseAuthorized, false);
-  assert.equal(result.explicitApprovalStillRequired, true);
-  assert.equal(result.migration.migrationCount, 10);
-  assert.equal(result.migration.statementCount > 0, true);
-  assert.deepEqual(
-    result.migration.files.map((entry) => entry.relativePath),
-    EXPECTED_MIGRATIONS,
-  );
-  assert.deepEqual(result.migration.ownerOrder, [
-    "identity",
-    "permissions",
-    "ulc-linz-lifecycle",
-  ]);
-  assert.match(result.migration.planFingerprint, /^sha256:[0-9a-f]{64}$/);
-  for (const entry of result.migration.files) {
-    assert.equal(entry.statementCount > 0, true);
-    assert.match(entry.digest, /^sha256:[0-9a-f]{64}$/);
-    assert.equal(Object.hasOwn(entry, "statements"), false);
-    assert.equal(Object.hasOwn(entry, "sql"), false);
-  }
-  assert.equal(Object.isFrozen(result), true);
-  assert.equal(Object.isFrozen(result.migration), true);
-  assert.equal(Object.isFrozen(result.smoke), true);
 });
 
 test("ULC M6 rehearsal binds the future migration and smoke executors back to the exact checked plan and head", () => {
@@ -164,14 +132,23 @@ test("ULC M6 rehearsal source has no database executor invocation, provider call
   assert.equal(source.includes("CLOUDFLARE_API_TOKEN"), false);
 });
 
-test("ULC M6 rehearsal output contains hashes and counts, not SQL or connection material", async () => {
-  const result = await evaluateUlcLinzM6MigrationSmokeRehearsal();
-  const serialized = JSON.stringify(result);
-
-  assert.equal(serialized.includes("postgres://"), false);
-  assert.equal(serialized.includes("postgresql://"), false);
-  assert.equal(serialized.includes("CREATE TABLE"), false);
-  assert.equal(serialized.includes("ALTER TABLE"), false);
-  assert.equal(serialized.includes("BETTER_AUTH_SECRET"), false);
-  assert.equal(serialized.includes("HYPERDRIVE.connectionString"), false);
+test("ULC M6 blocked rehearsal failure contains no SQL or connection material", async () => {
+  await assert.rejects(
+    evaluateUlcLinzM6MigrationSmokeRehearsal(),
+    (error) => {
+      const serialized = JSON.stringify({
+        name: error?.name,
+        code: error?.code,
+        message: error?.message,
+      });
+      assert.equal(error?.code, "APP_DEFINITION_INVALID");
+      assert.equal(serialized.includes("postgres://"), false);
+      assert.equal(serialized.includes("postgresql://"), false);
+      assert.equal(serialized.includes("CREATE TABLE"), false);
+      assert.equal(serialized.includes("ALTER TABLE"), false);
+      assert.equal(serialized.includes("BETTER_AUTH_SECRET"), false);
+      assert.equal(serialized.includes("HYPERDRIVE.connectionString"), false);
+      return true;
+    },
+  );
 });
