@@ -12,8 +12,8 @@ import {
   assertUlcLinzCountdownAccess,
   UlcLinzCountdownAccessDeniedError,
   type UlcLinzCountdownAccessDependencies,
+  type UlcLinzCurrentIdentity,
 } from "../worker/countdown-access";
-import type { UlcLinzCurrentIdentity } from "../worker/authorization";
 
 const IDENTITY_ID = "identity-countdown-1";
 const ORGANIZATION_ID = "verein-1";
