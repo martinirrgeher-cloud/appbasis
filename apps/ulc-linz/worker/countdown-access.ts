@@ -53,7 +53,7 @@ export function createUlcLinzCountdownAccessService({
   securityEvents?: UlcLinzSecurityEventLogger;
 }): UlcLinzCountdownAccessService {
   return Object.freeze({
-    async assertViewAccess(current) {
+    async assertViewAccess(current: UlcLinzCurrentIdentity) {
       try {
         assertIdentityActionAllowed(current, "application");
       } catch (error) {
