@@ -87,6 +87,12 @@ liefern. Erst nach vollständiger CI sowie ChatGPT- und Codex-Review folgt das
 separate ULC-Preview-Gate; Produktion und produktive Datenbankänderungen bleiben
 weiterhin ausdrücklich getrennt.
 
+Wichtig: Die bisherige M5-/M6-Produktionsevidenz ist an den zuvor freigegebenen
+modullosen ULC-Stand gebunden. Durch die neue `countdown`-Deklaration muss sie
+fail-closed offen bleiben, bis Modulscope, Berechtigungen und Produktionsvertrag
+in einem späteren getrennten Gate neu geprüft wurden. FC5-C darf diese
+Produktionsevidenz nicht stillschweigend hochstufen oder neu baselinen.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
