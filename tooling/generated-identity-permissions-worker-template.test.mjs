@@ -31,6 +31,7 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "worker/security-events-postgres.ts",
     "migrations/0002_ulc_linz_security_event_log.sql",
     "migrations/0003_ulc_linz_security_event_access.sql",
+    "worker/role-data-scope.json",
     "worker/countdown-access.ts",
     "worker/countdown-membership-postgres.ts",
     "test/countdown-access.test.ts",
@@ -167,9 +168,9 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
 test("checked ULC generated deployment files stay byte-identical to createAppSkeleton's canonical runtime generator", () => {
   const template = createIdentityRuntimeTemplate(ulcInput);
   for (const path of [
-    "worker/app.ts",
     "worker/index.ts",
     "worker/postgres.ts",
+    "worker/role-data-scope.json",
     "worker/countdown-access.ts",
     "worker/countdown-membership-postgres.ts",
     "worker/security-events-postgres.ts",
