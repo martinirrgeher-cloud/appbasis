@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { IdentityHttpService } from "@appbasis/identity/http";
-import { InMemoryPermissionStore } from "@appbasis/permissions";
+import {
+  capabilityId,
+  InMemoryPermissionStore,
+  principalId,
+  roleId,
+} from "@appbasis/permissions";
 
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
@@ -52,13 +57,32 @@ function runtime(
   close = async () => {},
   flush = async () => {},
 ): GeneratedPostgresApplicationRuntime {
+  const countdownView = capabilityId("ulc-linz:module:countdown:view");
+  const trainerRole = roleId("ulc-linz:trainer");
   return {
     identity,
     permissions: new InMemoryPermissionStore({
-      knownCapabilities: [],
-      roles: [],
-      principals: [],
+      knownCapabilities: [countdownView],
+      roles: [{ roleId: trainerRole, capabilities: [] }],
+      principals: [
+        {
+          principalId: principalId(currentIdentity.identity.identityId),
+          roleIds: [trainerRole],
+          grants: [countdownView],
+          revokes: [],
+        },
+      ],
     }),
+    countdownMemberships: {
+      async resolveMembershipForIdentity(identityId) {
+        if (identityId !== currentIdentity.identity.identityId) return null;
+        return {
+          organizationId: "verein-worker-1",
+          sourceRole: "trainer",
+          active: true,
+        };
+      },
+    },
     securityEvents: {
       record() {},
       flush,
@@ -161,6 +185,63 @@ describe("generated identity+permissions Worker entrypoint", () => {
         validEnv.SECURITY_LOG_HYPERDRIVE.connectionString,
       baseURL: validEnv.APPBASIS_BASE_URL,
       secret: validEnv.BETTER_AUTH_SECRET,
+    });
+    expect(flushCalls).toBe(1);
+    expect(closeCalls).toBe(1);
+  });
+
+  it("serves countdown access only after session, membership, role and capability checks", async () => {
+    let flushCalls = 0;
+    let closeCalls = 0;
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {
+          closeCalls += 1;
+        },
+        async () => {
+          flushCalls += 1;
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown/access", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      moduleId: "countdown",
+      canView: true,
+    });
+    expect(flushCalls).toBe(1);
+    expect(closeCalls).toBe(1);
+  });
+
+  it("denies countdown access without a valid session and still flushes security events", async () => {
+    let flushCalls = 0;
+    let closeCalls = 0;
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {
+          closeCalls += 1;
+        },
+        async () => {
+          flushCalls += 1;
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown/access"),
+      validEnv,
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "SESSION_INVALID" },
     });
     expect(flushCalls).toBe(1);
     expect(closeCalls).toBe(1);

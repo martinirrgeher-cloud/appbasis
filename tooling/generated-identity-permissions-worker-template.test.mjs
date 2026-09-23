@@ -8,7 +8,7 @@ const PRODUCTION_BOOTSTRAP_CONFIG_PATH = "wrangler.production.bootstrap.jsonc";
 const ulcInput = {
   appId: "ulc-linz",
   displayName: "ULC Linz",
-  modules: [],
+  modules: ["countdown"],
   platformServices: ["identity", "permissions"],
 };
 
@@ -31,6 +31,11 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "worker/security-events-postgres.ts",
     "migrations/0002_ulc_linz_security_event_log.sql",
     "migrations/0003_ulc_linz_security_event_access.sql",
+    "worker/role-data-scope.json",
+    "worker/countdown-access.ts",
+    "worker/countdown-membership-postgres.ts",
+    "test/countdown-access.test.ts",
+    "test/countdown-membership-postgres.test.ts",
     PRODUCTION_BOOTSTRAP_CONFIG_PATH,
   ]);
 
@@ -40,6 +45,7 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
   const postgres = content(template, "worker/postgres.ts");
   const securityEvents = content(template, "worker/security-events.ts");
 
+  assert.equal(packageJson.dependencies["@appbasis/countdown"], "workspace:*");
   assert.equal(packageJson.dependencies["@appbasis/database"], "workspace:*");
   assert.match(app, /securityEvents\?: UlcLinzSecurityEventLogger/);
   assert.match(app, /identityResponseWithSecurityLogging/);
@@ -53,15 +59,21 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
   assert.match(worker, /APPBASIS_BASE_URL/);
   assert.match(worker, /BETTER_AUTH_SECRET/);
   assert.match(worker, /RUNTIME_NOT_CONFIGURED/);
+  assert.match(worker, /permissions: runtime\.permissions/);
+  assert.match(worker, /countdownMemberships: runtime\.countdownMemberships/);
   assert.match(worker, /securityEvents: runtime\.securityEvents/);
   assert.match(worker, /SECURITY_EVENT_FLUSH_ERROR/);
   assert.doesNotMatch(worker, /interface\s+.*Env/);
+  assert.match(app, /\/api\/modules\/countdown\/access/);
+  assert.match(app, /assertUlcLinzCountdownAccess/);
   assert.doesNotMatch(worker, /tasks/i);
 
   assert.match(postgres, /createPostgresIdentityApplicationRuntime/);
   assert.match(postgres, /@appbasis\/database\/postgres-runtime/);
   assert.match(postgres, /PostgresPermissionStore/);
   assert.match(postgres, /permissions: PermissionStore/);
+  assert.match(postgres, /countdownMemberships: UlcLinzCountdownMembershipResolver/);
+  assert.match(postgres, /PostgresUlcLinzCountdownMembershipResolver/);
   assert.match(postgres, /createPostgresUlcLinzSecurityEventLogger/);
   assert.match(postgres, /securityLogConnectionString/);
   assert.doesNotMatch(postgres, /@appbasis\/tasks/);
@@ -158,12 +170,17 @@ test("checked ULC generated deployment files stay byte-identical to createAppSke
   for (const path of [
     "worker/index.ts",
     "worker/postgres.ts",
+    "worker/role-data-scope.json",
+    "worker/countdown-access.ts",
+    "worker/countdown-membership-postgres.ts",
     "worker/security-events-postgres.ts",
     "migrations/0000_ulc_linz_lifecycle_scope.sql",
     "migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "migrations/0002_ulc_linz_security_event_log.sql",
     "migrations/0003_ulc_linz_security_event_access.sql",
     "test/worker.test.ts",
+    "test/countdown-access.test.ts",
+    "test/countdown-membership-postgres.test.ts",
   ]) {
     assert.equal(
       content(template, path),

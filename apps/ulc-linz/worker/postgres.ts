@@ -13,10 +13,16 @@ import {
   createPostgresUlcLinzSecurityEventLogger,
   type BufferedUlcLinzSecurityEventLogger,
 } from "./security-events-postgres";
+import {
+  PostgresUlcLinzCountdownMembershipResolver,
+  type UlcLinzCountdownSqlClient,
+} from "./countdown-membership-postgres";
+import type { UlcLinzCountdownMembershipResolver } from "./countdown-access";
 
 export interface GeneratedPostgresApplicationRuntime {
   identity: IdentityHttpService;
   permissions: PermissionStore;
+  countdownMemberships: UlcLinzCountdownMembershipResolver;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
 }
@@ -42,12 +48,17 @@ export async function createGeneratedPostgresApplicationRuntime(
     );
     const securityConnection = securityLogConnection;
     const permissions = createPermissionStore(identityRuntime.sql);
+    const countdownMemberships =
+      new PostgresUlcLinzCountdownMembershipResolver(
+        createCountdownSqlClient(identityRuntime.sql),
+      );
     const securityEvents = createPostgresUlcLinzSecurityEventLogger(
       securityConnection.client,
     );
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
+      countdownMemberships,
       securityEvents,
       async close() {
         let closeError: unknown = null;
@@ -83,6 +94,16 @@ export async function createGeneratedPostgresApplicationRuntime(
 
 function createPermissionStore(client: IdentityPostgresRuntimeSqlClient) {
   return new PostgresPermissionStore({
+    unsafe(query, parameters) {
+      return client.unsafe(query, parameters);
+    },
+  });
+}
+
+function createCountdownSqlClient(
+  client: IdentityPostgresRuntimeSqlClient,
+): UlcLinzCountdownSqlClient {
+  return Object.freeze({
     unsafe(query, parameters) {
       return client.unsafe(query, parameters);
     },

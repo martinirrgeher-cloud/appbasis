@@ -16,12 +16,12 @@ const PUBLIC_RUNTIME_FILES = Object.freeze([
   Object.freeze({
     path: "apps/ulc-linz/worker/app.ts",
     url: new URL("../apps/ulc-linz/worker/app.ts", import.meta.url),
-    gitBlobSha: "3acdcd47bf696c23334c15a11fe80c70368d608c",
+    gitBlobSha: "081508431b7b112f18cf9d8144352d6df8d8deb6",
   }),
   Object.freeze({
     path: "apps/ulc-linz/worker/index.ts",
     url: new URL("../apps/ulc-linz/worker/index.ts", import.meta.url),
-    gitBlobSha: "70ba03a284711cbc59f1590790dbf2590ce3b714",
+    gitBlobSha: "af6a2db275d2214f632b12df9b01ef4d3ee05f49",
   }),
 ]);
 

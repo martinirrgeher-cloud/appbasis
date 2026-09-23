@@ -46,6 +46,8 @@ export function createGeneratedWorker(
         runtime = await runtimeFactory(runtimeOptions);
         const app = createGeneratedApp({
           identity: runtime.identity,
+          permissions: runtime.permissions,
+          countdownMemberships: runtime.countdownMemberships,
           secureCookies: url.protocol === "https:",
           securityEvents: runtime.securityEvents,
         });

@@ -5,8 +5,11 @@ export function extendUlcLinzSecurityLoggingTemplate(input, generated) {
 
   const modules = input?.modules ?? [];
   const platformServices = input?.platformServices ?? ["identity"];
+  const supportedModules =
+    modules.length === 0 ||
+    (modules.length === 1 && modules[0] === "countdown");
   if (
-    modules.length !== 0 ||
+    !supportedModules ||
     !platformServices.includes("identity") ||
     !platformServices.includes("permissions")
   ) {
