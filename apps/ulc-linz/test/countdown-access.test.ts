@@ -51,21 +51,22 @@ function dependencies(input: {
   revokes?: ReturnType<typeof capabilityId>[];
   adminCapability?: boolean;
   membership?: boolean;
+  events?: Array<Record<string, unknown>>;
 } = {}): UlcLinzCountdownAccessDependencies {
   const sourceRole = input.sourceRole ?? "trainer";
   const runtimeRole = roleId(`ulc-linz:${sourceRole}`);
   return {
     permissions: new InMemoryPermissionStore({
       knownCapabilities: [COUNTDOWN_RUNTIME_CAPABILITY],
-      roles: [
-        {
-          roleId: runtimeRole,
+      roles: (["admin", "trainer", "athlete", "parent"] as const).map(
+        (role) => ({
+          roleId: roleId(`ulc-linz:${role}`),
           capabilities:
-            sourceRole === "admin" && input.adminCapability !== false
+            role === "admin" && input.adminCapability !== false
               ? [COUNTDOWN_RUNTIME_CAPABILITY]
               : [],
-        },
-      ],
+        }),
+      ),
       principals: [
         {
           principalId: principalId(IDENTITY_ID),
@@ -88,6 +89,15 @@ function dependencies(input: {
         };
       },
     },
+    ...(input.events === undefined
+      ? {}
+      : {
+          securityEvents: {
+            record(event: unknown) {
+              input.events?.push(event as Record<string, unknown>);
+            },
+          },
+        }),
   };
 }
 
@@ -174,6 +184,28 @@ describe("ULC Linz countdown runtime access", () => {
         }),
       ),
     ).rejects.toBeInstanceOf(UlcLinzCountdownAccessDeniedError);
+  });
+
+  it("records a normalized module denial without subject data", async () => {
+    const events: Array<Record<string, unknown>> = [];
+    await expect(
+      assertUlcLinzCountdownAccess(
+        currentIdentity(),
+        dependencies({ grants: [], events }),
+      ),
+    ).rejects.toBeInstanceOf(UlcLinzCountdownAccessDeniedError);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventType: "authorization.denied",
+      actorPrincipalId: IDENTITY_ID,
+      organizationId: ORGANIZATION_ID,
+      action: "view",
+      targetType: "module",
+      targetId: "countdown",
+      reasonCode: "capability-denied",
+    });
+    expect(JSON.stringify(events[0])).not.toContain("subject");
   });
 
   it("blocks countdown access while a required password change is pending", async () => {
