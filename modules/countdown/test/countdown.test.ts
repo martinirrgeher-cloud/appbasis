@@ -114,6 +114,57 @@ describe("countdown module", () => {
     }
   });
 
+  it("announces every second when work or rest itself is five seconds or shorter", () => {
+    const shortWork = createCountdownTimeline({
+      rounds: 1,
+      workSeconds: 5,
+      restSeconds: 0,
+    });
+    expect(
+      shortWork
+        .filter((cue) => cue.type === "remaining" && cue.phase === "work")
+        .map((cue) => cue.remainingSeconds),
+    ).toEqual([5, 4, 3, 2, 1]);
+
+    const shortRest = createCountdownTimeline({
+      rounds: 2,
+      workSeconds: 6,
+      restSeconds: 5,
+    });
+    expect(
+      shortRest
+        .filter(
+          (cue) =>
+            cue.type === "remaining" &&
+            cue.phase === "rest" &&
+            cue.round === 1,
+        )
+        .map((cue) => cue.remainingSeconds),
+    ).toEqual([5, 4, 3, 2, 1]);
+
+    const oneSecondRest = createCountdownTimeline({
+      rounds: 2,
+      workSeconds: 6,
+      restSeconds: 1,
+    });
+    expect(
+      oneSecondRest.filter(
+        (cue) =>
+          cue.type === "remaining" &&
+          cue.phase === "rest" &&
+          cue.round === 1,
+      ),
+    ).toEqual([
+      {
+        type: "remaining",
+        atSecond: 9,
+        phase: "rest",
+        round: 1,
+        remainingSeconds: 1,
+      },
+    ]);
+  });
+
   it("derives phase, round and displayed remaining seconds deterministically", () => {
     const configuration = {
       rounds: 2,
