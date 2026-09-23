@@ -93,7 +93,7 @@ fail-closed offen bleiben, bis Modulscope, Berechtigungen und Produktionsvertrag
 in einem späteren getrennten Gate neu geprüft wurden. FC5-C darf diese
 Produktionsevidenz nicht stillschweigend hochstufen oder neu baselinen.
 
-### Aktueller Teilslice: Countdown D1 – echter Domainvertrag
+### Countdown D1 – echter Domainvertrag – abgeschlossen
 
 Vor dem ULC-Preview-Gate wird der bislang nur deklarative Countdown zu einem
 echten Fachmodul erweitert. D1 liefert ausschließlich den persistenzfreien,
@@ -104,11 +104,29 @@ Der zuvor vom FC4-Scaffolder erzeugte Modulvertrag bleibt unverändert Source of
 Truth. Produktlogik darf den Scaffold erweitern, aber Modul-ID, Paketidentität,
 Capability und Datenbankbesitz nicht umdeuten.
 
-Nach D1 folgen getrennt:
+D1 ist mit vollständiger CI und finalem Codex-Re-Review abgeschlossen.
 
-1. D2 – ULC Runtime + serverseitige Berechtigung,
-2. D3 – mobile UI inklusive Pause/Weiter/Reset und Sprachausgabe,
-3. D4 – isolierte ULC Preview mit weiterhin getrenntem Application- und
+### Aktueller Teilslice: Countdown D2 – ULC Runtime + Berechtigung
+
+D2 bindet den persistenzfreien Countdown an die reale ULC-Runtime, ohne
+Fachdaten- oder Subject-Scope zu erfinden. Der Countdown ist ein
+vereinsdatenfreies Werkzeug. Zugriff wird deshalb ausschließlich serverseitig
+aus folgenden bereits vorhandenen Zuständen abgeleitet:
+
+1. gültige Identity-Session mit vollständigem Application-Zugriff,
+2. genau eine aktive ULC-Mitgliedschaft, serverseitig über `identity_id`
+   ermittelt,
+3. exakt zur Mitgliedschaft passende ULC-Rolle,
+4. wirksame `countdown:view`-Berechtigung aus dem öffentlichen Modulvertrag,
+   abgebildet auf den bestehenden ULC-Capability-Namespace.
+
+Der Browser liefert dafür weder `organizationId` noch `subjectId`. D2 führt
+keine Migrationen und keine neuen persistenten Owner ein.
+
+Nach D2 folgen getrennt:
+
+1. D3 – mobile UI inklusive Pause/Weiter/Reset und Sprachausgabe,
+2. D4 – isolierte ULC Preview mit weiterhin getrenntem Application- und
    Security-Log-Hyperdrive.
 
 Keine dieser Stufen revalidiert automatisch die alte M5/M6-Production-Evidence.
