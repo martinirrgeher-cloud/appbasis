@@ -4,6 +4,7 @@ import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
+import { recordUlcLinzSecurityEvent } from "./security-events";
 import {
   createGeneratedPostgresApplicationRuntime,
   type GeneratedPostgresApplicationRuntime,
@@ -111,7 +112,19 @@ async function countdownModuleResponse(
     secureCookies: url.protocol === "https:",
   });
   const current = await identityHttp.resolveCurrentIdentity(request);
-  if (current instanceof Response) return current;
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action: "view",
+        targetId: "countdown",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
 
   try {
     await runtime.countdownAccess.assertViewAccess(current);
