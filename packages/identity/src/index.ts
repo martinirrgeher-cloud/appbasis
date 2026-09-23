@@ -11,8 +11,8 @@ export type {
   IdentityStateStore,
 } from "./contracts";
 export { IdentityError, type IdentityErrorCode } from "./errors";
+export { assertIdentityActionAllowed } from "./access";
 export {
-  assertIdentityActionAllowed,
   IdentityService,
   type CreateInitialUserInput,
 } from "./service";
