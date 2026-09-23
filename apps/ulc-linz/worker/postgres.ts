@@ -10,6 +10,10 @@ import {
 } from "@appbasis/permissions";
 
 import {
+  createUlcLinzCountdownAccessService,
+  type UlcLinzCountdownAccessService,
+} from "./countdown-access";
+import {
   createPostgresUlcLinzSecurityEventLogger,
   type BufferedUlcLinzSecurityEventLogger,
 } from "./security-events-postgres";
@@ -17,6 +21,7 @@ import {
 export interface GeneratedPostgresApplicationRuntime {
   identity: IdentityHttpService;
   permissions: PermissionStore;
+  countdownAccess: UlcLinzCountdownAccessService;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
 }
@@ -45,9 +50,19 @@ export async function createGeneratedPostgresApplicationRuntime(
     const securityEvents = createPostgresUlcLinzSecurityEventLogger(
       securityConnection.client,
     );
+    const countdownAccess = createUlcLinzCountdownAccessService({
+      sql: {
+        unsafe(query, parameters) {
+          return identityRuntime.sql.unsafe(query, parameters);
+        },
+      },
+      permissions,
+      securityEvents,
+    });
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
+      countdownAccess,
       securityEvents,
       async close() {
         let closeError: unknown = null;
