@@ -1,12 +1,4 @@
-import { IdentityError } from "@appbasis/identity";
-
 import { createGeneratedApp } from "./app";
-import {
-  assertUlcLinzCountdownAccess,
-  ULC_LINZ_COUNTDOWN_MODULE_ID,
-  UlcLinzCountdownAccessDeniedError,
-} from "./countdown-access";
-import { recordUlcLinzSecurityEvent } from "./security-events";
 import {
   createGeneratedPostgresApplicationRuntime,
   type GeneratedPostgresApplicationRuntime,
@@ -52,16 +44,14 @@ export function createGeneratedWorker(
       let response: Response;
       try {
         runtime = await runtimeFactory(runtimeOptions);
-        if (url.pathname === "/api/modules/countdown/access") {
-          response = await countdownAccessResponse(request, runtime);
-        } else {
-          const app = createGeneratedApp({
-            identity: runtime.identity,
-            secureCookies: url.protocol === "https:",
-            securityEvents: runtime.securityEvents,
-          });
-          response = await app.fetch(request);
-        }
+        const app = createGeneratedApp({
+          identity: runtime.identity,
+          permissions: runtime.permissions,
+          countdownMemberships: runtime.countdownMemberships,
+          secureCookies: url.protocol === "https:",
+          securityEvents: runtime.securityEvents,
+        });
+        response = await app.fetch(request);
       } catch {
         logWorkerError("generated_worker_request_failed", "UNEXPECTED_RUNTIME_ERROR");
         response = Response.json(
@@ -85,117 +75,6 @@ export function createGeneratedWorker(
 }
 
 export default createGeneratedWorker();
-
-async function countdownAccessResponse(
-  request: Request,
-  runtime: GeneratedPostgresApplicationRuntime,
-): Promise<Response> {
-  if (request.method !== "GET") {
-    return Response.json(
-      {
-        error: {
-          code: "METHOD_NOT_ALLOWED",
-          message: "The countdown access endpoint only supports GET.",
-        },
-      },
-      { status: 405, headers: { allow: "GET" } },
-    );
-  }
-
-  const sessionToken = request.headers.get("cookie");
-  if (sessionToken === null || sessionToken.trim().length === 0) {
-    recordCountdownIdentityDenial(runtime);
-    return countdownAccessError(401, "SESSION_INVALID", "A valid session is required.");
-  }
-
-  let current;
-  try {
-    current = await runtime.identity.getCurrentIdentity(sessionToken);
-  } catch (error) {
-    recordCountdownIdentityDenial(runtime);
-    if (error instanceof IdentityError) {
-      if (
-        error.code === "SESSION_INVALID" ||
-        error.code === "IDENTITY_STATE_MISSING"
-      ) {
-        return countdownAccessError(
-          401,
-          "SESSION_INVALID",
-          "A valid session is required.",
-        );
-      }
-      if (
-        error.code === "IDENTITY_DISABLED" ||
-        error.code === "PASSWORD_CHANGE_REQUIRED"
-      ) {
-        return countdownAccessError(
-          403,
-          error.code,
-          "Countdown access is not available for the current identity state.",
-        );
-      }
-    }
-    throw error;
-  }
-
-  if (current === null) {
-    recordCountdownIdentityDenial(runtime);
-    return countdownAccessError(401, "SESSION_INVALID", "A valid session is required.");
-  }
-
-  try {
-    await assertUlcLinzCountdownAccess(current, {
-      permissions: runtime.permissions,
-      memberships: runtime.countdownMemberships,
-      securityEvents: runtime.securityEvents,
-    });
-  } catch (error) {
-    if (error instanceof UlcLinzCountdownAccessDeniedError) {
-      return countdownAccessError(
-        403,
-        error.code,
-        "Countdown access is denied.",
-      );
-    }
-    if (
-      error instanceof IdentityError &&
-      error.code === "PASSWORD_CHANGE_REQUIRED"
-    ) {
-      return countdownAccessError(
-        403,
-        error.code,
-        "Countdown access is not available until the required password change is complete.",
-      );
-    }
-    throw error;
-  }
-
-  return Response.json({
-    moduleId: ULC_LINZ_COUNTDOWN_MODULE_ID,
-    canView: true,
-  });
-}
-
-function recordCountdownIdentityDenial(
-  runtime: GeneratedPostgresApplicationRuntime,
-): void {
-  recordUlcLinzSecurityEvent(runtime.securityEvents, {
-    eventType: "authorization.denied",
-    actorPrincipalId: null,
-    organizationId: null,
-    action: "view",
-    targetId: ULC_LINZ_COUNTDOWN_MODULE_ID,
-    reasonCode: "identity-access-denied",
-  });
-}
-
-function countdownAccessError(
-  status: 401 | 403,
-  code: string,
-  message: string,
-): Response {
-  return Response.json({ error: { code, message } }, { status });
-}
 
 function runtimeConfiguration(
   env: unknown,
