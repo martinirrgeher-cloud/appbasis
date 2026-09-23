@@ -1,6 +1,7 @@
 import { extendIdentityPermissionsWorkerTemplate } from "./generated-identity-permissions-worker-template.mjs";
 import { renderGeneratedPrivateWorkerBootstrapConfig } from "./generated-private-worker-config.mjs";
 import { createIdentityRuntimeTemplate as createCoreIdentityRuntimeTemplate } from "./generated-runtime-template-core.mjs";
+import { extendUlcLinzCountdownTemplate } from "./generated-ulc-linz-countdown-template.mjs";
 import { extendUlcLinzDatabaseAssetsTemplate } from "./generated-ulc-linz-database-assets.mjs";
 import { extendUlcLinzSecurityAccessTemplate } from "./generated-ulc-linz-security-access-template.mjs";
 import { extendUlcLinzSecurityIngestTemplate } from "./generated-ulc-linz-security-ingest-template.mjs";
@@ -35,19 +36,22 @@ const APPLY_PRINCIPAL_PERMISSION_AUDIT =
   "  await applyMigration(principalPermissionAdministrationAuditMigrationUrl);";
 
 export function createIdentityRuntimeTemplate(input) {
-  const generated = extendUlcLinzSecurityIngestTemplate(
+  const generated = extendUlcLinzCountdownTemplate(
     input,
-    extendUlcLinzSecurityAccessTemplate(
+    extendUlcLinzSecurityIngestTemplate(
       input,
-      extendUlcLinzSecurityRetentionTemplate(
+      extendUlcLinzSecurityAccessTemplate(
         input,
-        extendUlcLinzSecurityLoggingTemplate(
+        extendUlcLinzSecurityRetentionTemplate(
           input,
-          extendUlcLinzDatabaseAssetsTemplate(
+          extendUlcLinzSecurityLoggingTemplate(
             input,
-            extendIdentityPermissionsWorkerTemplate(
+            extendUlcLinzDatabaseAssetsTemplate(
               input,
-              createCoreIdentityRuntimeTemplate(input),
+              extendIdentityPermissionsWorkerTemplate(
+                input,
+                createCoreIdentityRuntimeTemplate(input),
+              ),
             ),
           ),
         ),
