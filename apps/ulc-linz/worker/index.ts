@@ -1,4 +1,5 @@
 import { COUNTDOWN_CAPABILITIES } from "@appbasis/countdown";
+import { IdentityError } from "@appbasis/identity";
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
@@ -135,7 +136,10 @@ async function countdownModuleResponse(
         { status: 403 },
       );
     }
-    return identityHttp.identityErrorResponse(error);
+    if (error instanceof IdentityError) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
   }
 }
 
