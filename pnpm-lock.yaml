@@ -137,6 +137,9 @@ importers:
 
   apps/ulc-linz:
     dependencies:
+      '@appbasis/countdown':
+        specifier: workspace:*
+        version: link:../../modules/countdown
       '@appbasis/database':
         specifier: workspace:*
         version: link:../../packages/database
