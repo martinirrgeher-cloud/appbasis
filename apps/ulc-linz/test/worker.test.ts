@@ -173,10 +173,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
-  it("keeps the countdown contract closed without a valid session", async () => {
+  it("keeps the countdown contract closed and audited without a valid session", async () => {
     let accessCalls = 0;
-    const worker = createGeneratedWorker(() =>
-      runtime(
+    const events: unknown[] = [];
+    const worker = createGeneratedWorker(() => {
+      const value = runtime(
         async () => {},
         async () => {},
         {
@@ -185,8 +186,17 @@ describe("generated identity+permissions Worker entrypoint", () => {
             return { organizationId: "verein-1" };
           },
         },
-      ),
-    );
+      );
+      return {
+        ...value,
+        securityEvents: {
+          record(event: unknown) {
+            events.push(event);
+          },
+          async flush() {},
+        },
+      };
+    });
 
     const response = await worker.fetch(
       new Request("https://ulc.example.test/api/modules/countdown"),
@@ -197,6 +207,15 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(accessCalls).toBe(0);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "SESSION_INVALID" },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventType: "authorization.denied",
+      actorPrincipalId: null,
+      organizationId: null,
+      action: "view",
+      targetId: "countdown",
+      reasonCode: "identity-access-denied",
     });
   });
 
