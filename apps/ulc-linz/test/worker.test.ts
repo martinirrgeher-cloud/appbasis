@@ -232,6 +232,42 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("keeps unexpected countdown authorization failures generic and secret-free", async () => {
+    const originalError = console.error;
+    const logged: string[] = [];
+    console.error = (...values: unknown[]) => {
+      logged.push(values.map(String).join(" "));
+    };
+    try {
+      const worker = createGeneratedWorker(() =>
+        runtime(
+          async () => {},
+          async () => {},
+          {
+            async assertViewAccess() {
+              throw new Error("postgresql://countdown-secret/private");
+            },
+          },
+        ),
+      );
+
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/countdown", {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+
+      expect(response.status).toBe(500);
+      const body = JSON.stringify(await response.json());
+      expect(body).toContain("INTERNAL_ERROR");
+      expect(body).not.toContain("countdown-secret");
+      expect(logged.join("\n")).not.toContain("countdown-secret");
+    } finally {
+      console.error = originalError;
+    }
+  });
+
   it("does not accept mutating methods on the countdown contract endpoint", async () => {
     const worker = createGeneratedWorker(() => runtime());
 
