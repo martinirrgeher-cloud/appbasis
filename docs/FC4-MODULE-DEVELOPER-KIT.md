@@ -95,8 +95,12 @@ UI-spezialisierten Modul nicht mehr fälschlich, es sei kein Fachmodul aktiviert
 FC4-A verändert keine bestehende App und insbesondere keine ULC-Produktionsruntime.
 
 Der Intervall-Countdown ist jetzt der erste reale, über diesen Vertrag erzeugte
-Fachmodul-Referenzfall. Sein eingecheckter Inhalt wird automatisiert gegen die
-kanonische Scaffolder-Ausgabe geprüft und besitzt bewusst keine Persistenz.
+Fachmodul-Referenzfall. Zum FC4-Abschluss war sein Scaffold vollständig gegen
+die kanonische Scaffolder-Ausgabe geprüft. Ab dem nachfolgenden ULC-Countdown-
+Vertical-Slice darf die Produktimplementierung diesen Scaffold erweitern; der
+Scaffolder-eigene Modulvertrag, Paketidentität, Capability-Namespace und
+Datenbankbesitz bleiben weiterhin automatisiert gebunden. Das Modul besitzt
+bewusst keine Persistenz.
 
 Damit ist der FC4-Vertical-Slice vom Modulmanifest über Scaffolder und
 Countdown-Referenzmodul bis zum normalen App-Generator geschlossen.
