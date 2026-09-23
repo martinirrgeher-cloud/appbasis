@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   deriveUlcLinzM5HControlPlaneEvidence,
+  evaluateUlcLinzM5HControlPlaneEvidence,
 } from "./ulc-linz-m5-control-plane-evidence.mjs";
 import {
   ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
@@ -89,11 +90,24 @@ function derive({
   controlPlaneEvidence = validControlPlaneEvidence(),
   now = NOW,
 } = {}) {
-  return deriveUlcLinzM5HControlPlaneEvidence(
+  return evaluateUlcLinzM5HControlPlaneEvidence(
     { resourceBindingEvidence, controlPlaneEvidence },
     { now },
   );
 }
+
+test("keeps live M5-H evidence open after the D2 public runtime changes", () => {
+  assert.deepEqual(
+    deriveUlcLinzM5HControlPlaneEvidence(
+      {
+        resourceBindingEvidence: validResourceBindingEvidence(),
+        controlPlaneEvidence: validControlPlaneEvidence(),
+      },
+      { now: NOW },
+    ),
+    {},
+  );
+});
 
 test("verifies an exact complete empty privileged-component inventory without inventing a control-plane Worker", () => {
   const result = derive();
