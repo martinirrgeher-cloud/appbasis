@@ -9,15 +9,8 @@ import { createModuleSkeleton } from "./create-module.mjs";
 import { writeTasksModuleFixture } from "./test-fixtures/module-fixtures.mjs";
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const GENERATED_FILES = [
-  "appbasis.module.json",
-  "package.json",
-  "tsconfig.json",
-  "src/index.ts",
-  "README.md",
-];
 
-test("checked countdown module is byte-identical to the canonical FC4 scaffolder", async (t) => {
+test("countdown preserves the canonical FC4 scaffold contract while extending it with product behavior", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "appbasis-countdown-generated-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
 
@@ -42,19 +35,58 @@ test("checked countdown module is byte-identical to the canonical FC4 scaffolder
     },
   );
 
-  for (const relativePath of GENERATED_FILES) {
-    const generated = await readFile(
-      join(root, "modules", "countdown", relativePath),
+  const generatedManifest = await readFile(
+    join(root, "modules", "countdown", "appbasis.module.json"),
+    "utf8",
+  );
+  const checkedManifest = await readFile(
+    join(repositoryRoot, "modules", "countdown", "appbasis.module.json"),
+    "utf8",
+  );
+  assert.equal(
+    checkedManifest,
+    generatedManifest,
+    "the scaffold-owned countdown module manifest must remain canonical",
+  );
+
+  const generatedPackage = JSON.parse(
+    await readFile(join(root, "modules", "countdown", "package.json"), "utf8"),
+  );
+  const checkedPackage = JSON.parse(
+    await readFile(
+      join(repositoryRoot, "modules", "countdown", "package.json"),
       "utf8",
-    );
-    const checked = await readFile(
-      join(repositoryRoot, "modules", "countdown", relativePath),
-      "utf8",
-    );
-    assert.equal(
-      checked,
-      generated,
-      `modules/countdown/${relativePath} drifted from the canonical scaffolder`,
+    ),
+  );
+  for (const field of ["name", "version", "private", "type"]) {
+    assert.deepEqual(
+      checkedPackage[field],
+      generatedPackage[field],
+      `countdown package field drifted from scaffold: ${field}`,
     );
   }
+  assert.deepEqual(checkedPackage.exports, generatedPackage.exports);
+  assert.equal(
+    checkedPackage.devDependencies.typescript,
+    generatedPackage.devDependencies.typescript,
+  );
+  assert.equal(checkedPackage.scripts.typecheck, generatedPackage.scripts.typecheck);
+  assert.equal(checkedPackage.scripts.test, "vitest run");
+  assert.equal(checkedPackage.devDependencies.vitest, "4.1.10");
+
+  const checkedTsconfig = JSON.parse(
+    await readFile(
+      join(repositoryRoot, "modules", "countdown", "tsconfig.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(checkedTsconfig.extends, "../../tsconfig.base.json");
+  assert.deepEqual(checkedTsconfig.include, ["src/**/*.ts", "test/**/*.ts"]);
+
+  const implementation = await readFile(
+    join(repositoryRoot, "modules", "countdown", "src", "countdown.ts"),
+    "utf8",
+  );
+  assert.ok(implementation.includes("createCountdownTimeline"));
+  assert.ok(implementation.includes("getCountdownSnapshot"));
 });
