@@ -26,9 +26,12 @@ test("ULC countdown generator emits the protected access vertical slice", () => 
   assert.match(app, /countdownMemberships: UlcLinzCountdownMembershipResolver/);
   assert.match(worker, /countdownMemberships: runtime\.countdownMemberships/);
   assert.match(postgres, /PostgresUlcLinzCountdownMembershipResolver/);
+  const countdownAccess = content(template, "worker/countdown-access.ts");
+  assert.match(countdownAccess, /COUNTDOWN_CAPABILITIES/);
+  assert.doesNotMatch(countdownAccess, /from ".\/authorization"/);
   assert.match(
-    content(template, "worker/countdown-access.ts"),
-    /COUNTDOWN_CAPABILITIES/,
+    content(template, "worker/role-data-scope.json"),
+    /"ulc-linz-role-data-scope-v0\.1"/,
   );
   assert.match(
     content(template, "worker/countdown-membership-postgres.ts"),
