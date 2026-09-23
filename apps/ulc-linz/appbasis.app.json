@@ -2,7 +2,9 @@
   "schemaVersion": 2,
   "appId": "ulc-linz",
   "displayName": "ULC Linz",
-  "modules": [],
+  "modules": [
+    "countdown"
+  ],
   "platformServices": [
     "identity",
     "permissions"
