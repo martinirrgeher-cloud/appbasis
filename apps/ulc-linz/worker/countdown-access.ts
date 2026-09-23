@@ -14,9 +14,10 @@ import {
   type UlcLinzAuthorizationDenyReason,
   type UlcLinzSecurityEventLogger,
 } from "./security-events";
-import type { UlcLinzCurrentIdentity } from "./authorization";
-
 type UlcLinzSourceRole = keyof typeof roleDataScope.runtimeRoleIds;
+export type UlcLinzCurrentIdentity = Parameters<
+  typeof assertIdentityActionAllowed
+>[0];
 
 export interface UlcLinzCountdownMembership {
   readonly organizationId: string;
