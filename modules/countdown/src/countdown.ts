@@ -259,7 +259,9 @@ function appendRemainingCues(
   phase: "work" | "rest",
   round: number,
 ): void {
-  for (let remaining = durationSeconds - 1; remaining >= 1; remaining -= 1) {
+  const firstRemaining =
+    durationSeconds <= 5 ? durationSeconds : durationSeconds - 1;
+  for (let remaining = firstRemaining; remaining >= 1; remaining -= 1) {
     if (
       remaining <= 5 ||
       (intervalSeconds > 0 && remaining % intervalSeconds === 0)
