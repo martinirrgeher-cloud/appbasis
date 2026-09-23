@@ -1,10 +1,19 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 
+import { IdentityError } from "@appbasis/identity";
 import {
   createIdentityHttpHandlers,
+  type IdentityHttpHandlers,
   type IdentityHttpService,
 } from "@appbasis/identity/http";
+import type { PermissionStore } from "@appbasis/permissions";
 
+import {
+  assertUlcLinzCountdownAccess,
+  ULC_LINZ_COUNTDOWN_MODULE_ID,
+  UlcLinzCountdownAccessDeniedError,
+  type UlcLinzCountdownMembershipResolver,
+} from "./countdown-access";
 import {
   recordUlcLinzSecurityEvent,
   type UlcLinzIdentitySecurityOperation,
@@ -24,6 +33,8 @@ export type {
 
 export interface GeneratedAppDependencies {
   identity: IdentityHttpService;
+  permissions: PermissionStore;
+  countdownMemberships: UlcLinzCountdownMembershipResolver;
   secureCookies?: boolean;
   securityEvents?: UlcLinzSecurityEventLogger;
 }
@@ -59,8 +70,58 @@ export function createGeneratedApp(dependencies: GeneratedAppDependencies) {
       dependencies.securityEvents,
     ),
   );
+  app.get("/api/modules/countdown/access", (context) =>
+    countdownAccessResponse(context, dependencies, identityHttp),
+  );
 
   return app;
+}
+
+async function countdownAccessResponse(
+  context: Context,
+  dependencies: GeneratedAppDependencies,
+  identityHttp: IdentityHttpHandlers,
+): Promise<Response> {
+  const current = await identityHttp.resolveCurrentIdentity(context.req.raw);
+  if (current instanceof Response) {
+    recordUlcLinzSecurityEvent(dependencies.securityEvents, {
+      eventType: "authorization.denied",
+      actorPrincipalId: null,
+      organizationId: null,
+      action: "view",
+      targetId: ULC_LINZ_COUNTDOWN_MODULE_ID,
+      reasonCode: "identity-access-denied",
+    });
+    return current;
+  }
+
+  try {
+    await assertUlcLinzCountdownAccess(current, {
+      permissions: dependencies.permissions,
+      memberships: dependencies.countdownMemberships,
+      securityEvents: dependencies.securityEvents,
+    });
+    return context.json({
+      moduleId: ULC_LINZ_COUNTDOWN_MODULE_ID,
+      canView: true,
+    });
+  } catch (error) {
+    if (error instanceof UlcLinzCountdownAccessDeniedError) {
+      return context.json(
+        {
+          error: {
+            code: error.code,
+            message: "Countdown access is denied.",
+          },
+        },
+        403,
+      );
+    }
+    if (error instanceof IdentityError) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
 }
 
 async function identityResponseWithSecurityLogging(
