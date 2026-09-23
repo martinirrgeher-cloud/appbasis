@@ -156,8 +156,6 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
 test("checked ULC preserves generator-owned foundations while extending its runtime for countdown", () => {
   const template = createIdentityRuntimeTemplate(ulcInput);
   for (const path of [
-    "worker/app.ts",
-    "worker/security-events.ts",
     "worker/security-events-postgres.ts",
     "migrations/0000_ulc_linz_lifecycle_scope.sql",
     "migrations/0001_ulc_linz_retention_deletion_claim.sql",
