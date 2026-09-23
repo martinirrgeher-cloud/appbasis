@@ -113,7 +113,7 @@ async function countdownModuleResponse(
   if (current instanceof Response) return current;
 
   try {
-    const access = await runtime.countdownAccess.assertViewAccess(current);
+    await runtime.countdownAccess.assertViewAccess(current);
     return Response.json({
       module: {
         moduleId: "countdown",
@@ -121,7 +121,6 @@ async function countdownModuleResponse(
       },
       access: {
         view: true,
-        organizationId: access.organizationId,
       },
     });
   } catch (error) {
