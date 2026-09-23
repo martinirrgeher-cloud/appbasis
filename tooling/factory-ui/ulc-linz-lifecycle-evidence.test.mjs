@@ -85,6 +85,36 @@ async function createFixture() {
     "utf8",
   );
 
+  const inventoryAcceptancePath = join(
+    root,
+    "apps",
+    "ulc-linz",
+    "test",
+    "m5-data-inventory.test.ts",
+  );
+  const inventoryAcceptance = await readFile(inventoryAcceptancePath, "utf8");
+  const currentInventoryAssertions = `    expect(appManifest.modules).toEqual(["countdown"]);
+    expect(inventory.runtimeModules).toEqual([]);
+    expect(inventory.runtimeModules).not.toEqual(appManifest.modules);
+    expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
+`;
+  const approvedInventoryAssertions = `    expect(appManifest.modules).toEqual([]);
+    expect(inventory.runtimeModules).toEqual(appManifest.modules);
+`;
+  assert.equal(
+    inventoryAcceptance.split(currentInventoryAssertions).length,
+    2,
+    "FC5 inventory acceptance reconstruction must match exactly once",
+  );
+  await writeFile(
+    inventoryAcceptancePath,
+    inventoryAcceptance.replace(
+      currentInventoryAssertions,
+      approvedInventoryAssertions,
+    ),
+    "utf8",
+  );
+
   return root;
 }
 
