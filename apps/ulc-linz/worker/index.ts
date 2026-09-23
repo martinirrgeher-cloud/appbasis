@@ -1,5 +1,4 @@
 import { COUNTDOWN_CAPABILITIES } from "@appbasis/countdown";
-import { IdentityError } from "@appbasis/identity";
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
@@ -149,11 +148,22 @@ async function countdownModuleResponse(
         { status: 403 },
       );
     }
-    if (error instanceof IdentityError) {
+    if (isPasswordChangeRequiredError(error)) {
       return identityHttp.identityErrorResponse(error);
     }
     throw error;
   }
+}
+
+function isPasswordChangeRequiredError(
+  error: unknown,
+): error is Error & { readonly code: "PASSWORD_CHANGE_REQUIRED" } {
+  return (
+    error instanceof Error &&
+    error.name === "IdentityError" &&
+    "code" in error &&
+    (error as { readonly code?: unknown }).code === "PASSWORD_CHANGE_REQUIRED"
+  );
 }
 
 function runtimeConfiguration(
