@@ -121,9 +121,11 @@ describe("countdown module", () => {
       restSeconds: 0,
     });
     expect(
-      shortWork
-        .filter((cue) => cue.type === "remaining" && cue.phase === "work")
-        .map((cue) => cue.remainingSeconds),
+      shortWork.flatMap((cue) =>
+        cue.type === "remaining" && cue.phase === "work"
+          ? [cue.remainingSeconds]
+          : [],
+      ),
     ).toEqual([5, 4, 3, 2, 1]);
 
     const shortRest = createCountdownTimeline({
@@ -132,14 +134,13 @@ describe("countdown module", () => {
       restSeconds: 5,
     });
     expect(
-      shortRest
-        .filter(
-          (cue) =>
-            cue.type === "remaining" &&
-            cue.phase === "rest" &&
-            cue.round === 1,
-        )
-        .map((cue) => cue.remainingSeconds),
+      shortRest.flatMap((cue) =>
+        cue.type === "remaining" &&
+        cue.phase === "rest" &&
+        cue.round === 1
+          ? [cue.remainingSeconds]
+          : [],
+      ),
     ).toEqual([5, 4, 3, 2, 1]);
 
     const oneSecondRest = createCountdownTimeline({
