@@ -54,16 +54,26 @@ FC5 liefert den kontrollierten Updatepfad für bestehende Apps:
 
 Erster realer Verbraucher ist `ulc-linz` mit dem FC4-Countdown-Modul.
 
-### Aktueller Teilslice: FC5-A
+### FC5-A – abgeschlossen
 
-Zuerst wird ein rein lesender, deterministischer Installationsplan eingeführt.
-Er muss für `ulc-linz + countdown` App-/Modulversionen, Kompatibilität,
-Manifest-/Dependency-Auswirkungen, Datenbank-Ownership und den minimalen
-Write-Satz fail-closed ableiten, ohne bestehende Appdateien zu verändern.
+Der rein lesende, deterministische Installationsplan ist für
+`ulc-linz + countdown` verifiziert. Er prüft App-/Modulversionen,
+Kompatibilität, Paket- und Lockfile-Zustand, Datenbank-Ownership und den
+minimalen Write-Satz fail-closed, ohne bestehende Appdateien zu verändern.
 
-Erst wenn dieser Plan durch CI und Review bestätigt ist, folgt FC5-B mit der
-atomaren Ausführung und Rollback. Preview, Produktion und produktive
-Datenbankänderungen bleiben danach weiterhin getrennte Gates.
+### Aktueller Teilslice: FC5-B
+
+Auf Basis exakt dieses Plans wird die atomare Ausführung mit Rollback
+implementiert. Sie darf ausschließlich den geplanten Write-Satz verändern,
+muss konkurrierende Änderungen vor dem ersten Write erkennen, das Workspace-
+Lockfile erfolgreich finalisieren und die Appdefinition als
+Publikationsmarker zuletzt schreiben.
+
+Der FC5-B-Slice wird zunächst nur auf isolierten Test-Fixtures ausgeführt.
+Insbesondere wird `ulc-linz` in diesem Slice noch nicht verändert.
+Datenbank-ownende Module bleiben bis zu einem eigenen Migrations-
+Ausführungsvertrag fail-closed. ULC-Integration, Preview, Produktion und
+produktive Datenbankänderungen bleiben nachgelagerte getrennte Gates.
 
 ## Architektur- und Sicherheitsgrenzen
 

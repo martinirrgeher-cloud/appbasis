@@ -28,7 +28,8 @@ liest und verifiziert vor jeder geplanten Änderung:
 - den verifizierten Modulvertrag einschließlich Manifest-Version,
   Paketname/Paketversion und optionaler DB-Schema-Version;
 - die App/Modul-Kompatibilität;
-- die bestehende Paketabhängigkeit;
+- die bestehende Paketabhängigkeit und den dazugehörigen Ziel-App-Importer im
+  `pnpm-lock.yaml`;
 - das bestehende Datenbank-Ownership-Manifest gegen den aus den verifizierten
   Verträgen abgeleiteten Sollzustand.
 
@@ -46,23 +47,56 @@ keine Änderung am ULC-Datenbankmanifest geplant.
 Bereits vorhandene, aber widersprüchliche Zustände werden fail-closed
 abgewiesen. Dazu gehören insbesondere eine Modul-Paketabhängigkeit ohne
 Moduldeklaration, eine Moduldeklaration ohne kanonische Workspace-Abhängigkeit,
-eine inkompatible App-Schemaversion und Drift im bestehenden
-Datenbank-Ownership-Manifest.
+eine inkompatible App-Schemaversion, ein fehlender oder vorauseilender
+Lockfile-Eintrag und Drift im bestehenden Datenbank-Ownership-Manifest.
 
-Ein bereits korrekt installiertes Modul ergibt einen deterministischen No-op.
+Ein bereits korrekt installiertes Modul ergibt nur dann einen deterministischen
+No-op, wenn Appmanifest, `package.json` und der Ziel-App-Importer im
+`pnpm-lock.yaml` gemeinsam konsistent sind.
 
-## Nächster Slice
+## FC5-B – atomare Ausführung
 
-FC5-B implementiert auf Basis exakt dieses Plans die atomare Ausführung. Dabei
-müssen mindestens gelten:
+Der Executor konsumiert ausschließlich den FC5-A-Plan:
+
+```bash
+pnpm appbasis:apply-module-update -- \
+  --app-id <app-id> \
+  --module <module-id>
+```
+
+Vor dem ersten Write werden die relevanten App-, Modul- und Workspace-Eingaben
+gesnapshottet. Nach der Planung werden App-Registry und Workspace-Publikation
+serialisiert; unter den Locks müssen die Snapshots weiterhin byte-identisch
+sein. Damit wird eine zwischen Planung und Ausführung eingetretene Änderung
+fail-closed erkannt.
+
+Für einen Installationsplan gilt:
 
 - nur der vom Planner ausgewiesene Write-Satz darf verändert werden;
-- bestehende fachliche Runtime-Dateien der App werden nicht aus einem
-  Neugenerator überschrieben;
-- Manifest-/Package-Änderungen und Workspace-Lockfile-Finalisierung werden mit
-  Rollback geschützt;
-- ein DB-ownendes Modul darf Migrationen nur über seinen verifizierten
-  Modulvertrag einbringen;
-- Preview, Tests und Produktionsfreigabe bleiben getrennte Gates.
+- bestehende fachliche Runtime-Dateien werden nicht neu generiert oder
+  überschrieben;
+- die neue Workspace-Abhängigkeit wird in der bestehenden `package.json`
+  ergänzt, ohne andere Felder zu ersetzen;
+- die Workspace-Finalisierung läuft über den bestehenden pnpm-Vertrag und muss
+  anschließend den kanonischen Ziel-App-Lockfile-Importer enthalten;
+- die Appdefinition wird als Publikationsmarker zuletzt geschrieben;
+- schlägt ein Schritt nach Beginn der Mutation fehl, werden Appdefinition,
+  Paket, optionales Datenbankmanifest und Lockfile auf die Eingangssnapshots
+  zurückgerollt;
+- ein bereits vollständig konsistenter Zustand bleibt ein No-op.
 
-Für `ulc-linz` erfolgt keine Produktionsmutation durch FC5-A.
+FC5-B installiert bewusst noch **keine datenbank-ownenden Module**. Solche
+Installationen bleiben fail-closed, bis ein eigener atomarer
+Migrations-Ausführungsvertrag existiert. Das unmittelbar benötigte
+`countdown`-Modul ist persistenzfrei.
+
+Der FC5-B-Slice beweist den Executor zunächst ausschließlich auf isolierten
+Test-Fixtures. Er verändert `ulc-linz` noch nicht und führt weder Preview noch
+Produktionsdeployment aus.
+
+## Danach
+
+Nach erfolgreicher FC5-B-Abnahme wird derselbe verifizierte Updatepfad als
+erster realer Verbraucher auf `ulc-linz + countdown` angewandt. Erst danach
+folgen ULC-Preview/Tests und die davon getrennte kontrollierte
+Produktionsvorbereitung.

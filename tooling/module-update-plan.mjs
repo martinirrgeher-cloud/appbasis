@@ -283,7 +283,7 @@ function assertTargetDependencyLockfileState({
   }
 }
 
-function readPnpmImporterDependency(lockfile, importerName, dependencyName) {
+export function readPnpmImporterDependency(lockfile, importerName, dependencyName) {
   const lines = lockfile.replaceAll("\r\n", "\n").split("\n");
   const importersIndex = lines.findIndex((line) => line === "importers:");
   if (importersIndex === -1) {
