@@ -1,11 +1,5 @@
 import moduleDefinition from "../appbasis.module.json";
 
-import {
-  createCountdownTimeline,
-  getCountdownSnapshot,
-  normalizeCountdownConfiguration,
-} from "./countdown";
-
 const manifestCapabilities: readonly string[] = moduleDefinition.capabilities;
 
 export const MODULE_CAPABILITIES: readonly string[] = Object.freeze([
@@ -38,7 +32,3 @@ function requiredCountdownCapability<const T extends string>(capability: T): T {
   }
   return capability;
 }
-
-void createCountdownTimeline;
-void getCountdownSnapshot;
-void normalizeCountdownConfiguration;
