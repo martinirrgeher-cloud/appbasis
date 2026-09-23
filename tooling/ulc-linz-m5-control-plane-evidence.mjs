@@ -60,6 +60,18 @@ const SERVICE_BINDING_FIELDS = Object.freeze([
 
 export function deriveUlcLinzM5HControlPlaneEvidence(
   input,
+  options = {},
+) {
+  try {
+    assertCurrentPublicRuntimeContract();
+    return evaluateUlcLinzM5HControlPlaneEvidence(input, options);
+  } catch {
+    return EMPTY_EVIDENCE;
+  }
+}
+
+export function evaluateUlcLinzM5HControlPlaneEvidence(
+  input,
   { now = new Date() } = {},
 ) {
   try {
@@ -69,7 +81,6 @@ export function deriveUlcLinzM5HControlPlaneEvidence(
       root.resourceBindingEvidence,
       { now: nowDate },
     );
-    assertCurrentPublicRuntimeContract();
     const controlPlane = exactRecord(
       root.controlPlaneEvidence,
       CONTROL_PLANE_FIELDS,
