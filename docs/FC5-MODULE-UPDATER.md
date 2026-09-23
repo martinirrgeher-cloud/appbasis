@@ -113,3 +113,9 @@ Der erwartete Nachzustand ist vollständig konsistent:
 
 Erst nach vollständiger CI sowie Review dieses Zustands folgen ULC-Preview und
 Tests. Die kontrollierte Produktionsvorbereitung bleibt davon getrennt.
+
+Die bestehende M5-/M6-Produktionsevidenz bleibt dabei bewusst an den bisherigen
+modullosen Produktionsscope gebunden. `countdown` muss diese Evidenz bis zu einer
+separaten Revalidierung fail-closed öffnen; FC5-C darf weder Production Ready
+noch eine Produktionsfreigabe aus der reinen Manifest-/Workspace-Installation
+ableiten.
