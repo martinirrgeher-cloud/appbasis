@@ -169,7 +169,6 @@ describe("generated identity+permissions Worker entrypoint", () => {
       },
       access: {
         view: true,
-        organizationId: "verein-1",
       },
     });
   });
