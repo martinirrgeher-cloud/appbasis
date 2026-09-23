@@ -299,8 +299,8 @@ test("M5-J deterministic composition is all-required", () => {
   const readiness = evaluateProductionReadiness(
     composeUlcLinzM5JProductionEvidence(ownerEvidenceAllTrue()),
   );
-  assert.equal(readiness.productionReady, false);
-  assert.equal(readiness.verifiedCount, 9);
+  assert.equal(readiness.productionReady, true);
+  assert.equal(readiness.verifiedCount, 12);
 
   for (const criterion of REQUIRED_PRODUCTION_READINESS_CRITERIA) {
     const owners = ownerEvidenceAllTrue();
@@ -363,8 +363,11 @@ test("M5-J keeps the changed FC5 repository scope blocked until production evide
       { now: NOW },
     ),
   );
-  assert.equal(readiness.productionReady, true);
-  assert.equal(readiness.verifiedCount, 12);
+  assert.equal(readiness.productionReady, false);
+  assert.equal(readiness.verifiedCount, 9);
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
+  assert.equal(criterionStatus(readiness, "retention"), "open");
+  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
 });
 
 test("M5-J keeps C/D and High Privacy open without protected production lifecycle activation", async () => {
