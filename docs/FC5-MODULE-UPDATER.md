@@ -94,9 +94,28 @@ Der FC5-B-Slice beweist den Executor zunächst ausschließlich auf isolierten
 Test-Fixtures. Er verändert `ulc-linz` noch nicht und führt weder Preview noch
 Produktionsdeployment aus.
 
-## Danach
+## FC5-C – erster realer ULC-Verbraucher
 
-Nach erfolgreicher FC5-B-Abnahme wird derselbe verifizierte Updatepfad als
-erster realer Verbraucher auf `ulc-linz + countdown` angewandt. Erst danach
-folgen ULC-Preview/Tests und die davon getrennte kontrollierte
-Produktionsvorbereitung.
+Nach FC5-B wird der verifizierte persistenzfreie Zielzustand erstmals für
+`ulc-linz + countdown` hergestellt. Dabei bleibt der Write-Satz exakt auf
+`apps/ulc-linz/appbasis.app.json`, `apps/ulc-linz/package.json` und
+`pnpm-lock.yaml` begrenzt. Es werden keine bestehenden ULC-Runtime-, UI-,
+Security-, M5-/M6- oder Datenbankdateien neu generiert oder überschrieben.
+
+Der erwartete Nachzustand ist vollständig konsistent:
+
+- `appbasis.app.json` deklariert `countdown`;
+- `package.json` enthält `@appbasis/countdown: workspace:*`;
+- der ULC-Importer im `pnpm-lock.yaml` verweist kanonisch auf
+  `link:../../modules/countdown`;
+- ein erneuter FC5-A-Plan liefert `already-installed` und einen leeren
+  Write-Satz.
+
+Erst nach vollständiger CI sowie Review dieses Zustands folgen ULC-Preview und
+Tests. Die kontrollierte Produktionsvorbereitung bleibt davon getrennt.
+
+Die bestehende M5-/M6-Produktionsevidenz bleibt dabei bewusst an den bisherigen
+modullosen Produktionsscope gebunden. `countdown` muss diese Evidenz bis zu einer
+separaten Revalidierung fail-closed öffnen; FC5-C darf weder Production Ready
+noch eine Produktionsfreigabe aus der reinen Manifest-/Workspace-Installation
+ableiten.

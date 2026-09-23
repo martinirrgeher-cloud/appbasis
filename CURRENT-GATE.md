@@ -61,19 +61,37 @@ Der rein lesende, deterministische Installationsplan ist für
 Kompatibilität, Paket- und Lockfile-Zustand, Datenbank-Ownership und den
 minimalen Write-Satz fail-closed, ohne bestehende Appdateien zu verändern.
 
-### Aktueller Teilslice: FC5-B
+### FC5-B – abgeschlossen
 
-Auf Basis exakt dieses Plans wird die atomare Ausführung mit Rollback
-implementiert. Sie darf ausschließlich den geplanten Write-Satz verändern,
-muss konkurrierende Änderungen vor dem ersten Write erkennen, das Workspace-
-Lockfile erfolgreich finalisieren und die Appdefinition als
-Publikationsmarker zuletzt schreiben.
+Der atomare Executor ist auf isolierten Test-Fixtures verifiziert. Er konsumiert
+ausschließlich den FC5-A-Plan, serialisiert App-Registry und Workspace-
+Publikation, erkennt Drift vor dem ersten Write, finalisiert den Workspace,
+publiziert die Appdefinition zuletzt und rollt behandelte Fehler auf den
+Eingangszustand zurück. Datenbank-ownende Module bleiben bis zu einem eigenen
+Migrations-Ausführungsvertrag fail-closed.
 
-Der FC5-B-Slice wird zunächst nur auf isolierten Test-Fixtures ausgeführt.
-Insbesondere wird `ulc-linz` in diesem Slice noch nicht verändert.
-Datenbank-ownende Module bleiben bis zu einem eigenen Migrations-
-Ausführungsvertrag fail-closed. ULC-Integration, Preview, Produktion und
-produktive Datenbankänderungen bleiben nachgelagerte getrennte Gates.
+### Aktueller Teilslice: FC5-C – erster realer ULC-Verbraucher
+
+Der verifizierte persistenzfreie Updatezustand wird jetzt für
+`ulc-linz + countdown` hergestellt. Der erlaubte produktneutrale Write-Satz
+bleibt exakt:
+
+1. `apps/ulc-linz/appbasis.app.json`
+2. `apps/ulc-linz/package.json`
+3. `pnpm-lock.yaml`
+
+Bestehende ULC-Runtime-, UI-, Security-, M5-/M6- und Datenbankdateien bleiben
+unverändert. Nach dem Update muss der FC5-A-Plan für
+`ulc-linz + countdown` deterministisch `already-installed` ohne Writes
+liefern. Erst nach vollständiger CI sowie ChatGPT- und Codex-Review folgt das
+separate ULC-Preview-Gate; Produktion und produktive Datenbankänderungen bleiben
+weiterhin ausdrücklich getrennt.
+
+Wichtig: Die bisherige M5-/M6-Produktionsevidenz ist an den zuvor freigegebenen
+modullosen ULC-Stand gebunden. Durch die neue `countdown`-Deklaration muss sie
+fail-closed offen bleiben, bis Modulscope, Berechtigungen und Produktionsvertrag
+in einem späteren getrennten Gate neu geprüft wurden. FC5-C darf diese
+Produktionsevidenz nicht stillschweigend hochstufen oder neu baselinen.
 
 ## Architektur- und Sicherheitsgrenzen
 

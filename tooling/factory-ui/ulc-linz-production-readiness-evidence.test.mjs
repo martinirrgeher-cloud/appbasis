@@ -354,7 +354,7 @@ test("M5-J rejects unexpected, accessor, symbol and inherited owner evidence", (
   );
 });
 
-test("M5-J owner integration can produce all twelve only from current repository owners plus structured operational evidence", async () => {
+test("M5-J keeps the changed FC5 repository scope blocked until production evidence is renewed", async () => {
   const readiness = evaluateProductionReadiness(
     await deriveUlcLinzM5JProductionEvidence(
       repositoryRoot,
@@ -363,8 +363,11 @@ test("M5-J owner integration can produce all twelve only from current repository
       { now: NOW },
     ),
   );
-  assert.equal(readiness.productionReady, true);
-  assert.equal(readiness.verifiedCount, 12);
+  assert.equal(readiness.productionReady, false);
+  assert.equal(readiness.verifiedCount, 9);
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
+  assert.equal(criterionStatus(readiness, "retention"), "open");
+  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
 });
 
 test("M5-J keeps C/D and High Privacy open without protected production lifecycle activation", async () => {
@@ -451,8 +454,8 @@ test("M5-J rejects restore evidence for an older lifecycle schema or reconciliat
     await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
   );
   assert.equal(readiness.productionReady, false);
-  assert.equal(criterionStatus(readiness, "deletionConcept"), "verified");
-  assert.equal(criterionStatus(readiness, "retention"), "verified");
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
+  assert.equal(criterionStatus(readiness, "retention"), "open");
   assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
 });
 
@@ -493,8 +496,8 @@ test("Factory snapshot consumes M5-J while release production remains separately
   });
   const ulc = snapshot.apps.find((app) => app.appId === "ulc-linz");
   assert.ok(ulc);
-  assert.equal(ulc.productionReadiness.productionReady, true);
-  assert.equal(ulc.productionReadiness.verifiedCount, 12);
+  assert.equal(ulc.productionReadiness.productionReady, false);
+  assert.equal(ulc.productionReadiness.verifiedCount, 7);
   assert.equal(ulc.productionReleaseReadiness.releaseAuthorized, false);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });

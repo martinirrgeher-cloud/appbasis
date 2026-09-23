@@ -7,15 +7,23 @@ import test from "node:test";
 import { deriveUlcLinzDataExportEvidence } from "./ulc-linz-data-export-evidence.mjs";
 
 const repositoryRoot = process.cwd();
-const definition = JSON.parse(
+const currentDefinition = JSON.parse(
   await readFile(join(repositoryRoot, "apps", "ulc-linz", "appbasis.app.json"), "utf8"),
 );
+const definition = Object.freeze({
+  ...currentDefinition,
+  modules: Object.freeze([]),
+});
 const AUDIT_EVIDENCE = Object.freeze({ auditSecurityLogging: true });
 
 test("emits M5-E evidence only for exact current export acceptance plus independent audit evidence", async () => {
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(repositoryRoot, definition, AUDIT_EVIDENCE),
     { dataExport: true },
+  );
+  assert.deepEqual(
+    await deriveUlcLinzDataExportEvidence(repositoryRoot, currentDefinition, AUDIT_EVIDENCE),
+    {},
   );
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(repositoryRoot, definition, {}),

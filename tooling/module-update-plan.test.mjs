@@ -37,7 +37,43 @@ test("parses the explicit FC5 module planner CLI contract", () => {
   );
 });
 
-test("plans the first ULC countdown install without touching custom runtime files", async () => {
+test("plans the canonical countdown install write set for an existing compatible app", async (t) => {
+  const root = await createFixture(t);
+  const plan = await planModuleUpdate(
+    {
+      appId: "reference",
+      moduleId: "countdown",
+    },
+    { repositoryRoot: root },
+  );
+
+  assert.equal(plan.schemaVersion, 1);
+  assert.equal(plan.operation, "module-install");
+  assert.equal(plan.state, "install");
+  assert.deepEqual(plan.changes.appDefinition, {
+    path: "apps/reference/appbasis.app.json",
+    beforeModules: [],
+    afterModules: ["countdown"],
+  });
+  assert.deepEqual(plan.changes.packageDependency, {
+    path: "apps/reference/package.json",
+    dependency: "@appbasis/countdown",
+    before: null,
+    after: "workspace:*",
+  });
+  assert.equal(plan.changes.databaseManifest, null);
+  assert.deepEqual(plan.changes.workspaceLockfile, {
+    path: "pnpm-lock.yaml",
+    action: "finalize-workspace",
+  });
+  assert.deepEqual(plan.writes, [
+    "apps/reference/appbasis.app.json",
+    "apps/reference/package.json",
+    "pnpm-lock.yaml",
+  ]);
+});
+
+test("recognizes the real ULC countdown installation as a deterministic no-op", async () => {
   const plan = await planModuleUpdate(
     {
       appId: "ulc-linz",
@@ -48,7 +84,7 @@ test("plans the first ULC countdown install without touching custom runtime file
 
   assert.equal(plan.schemaVersion, 1);
   assert.equal(plan.operation, "module-install");
-  assert.equal(plan.state, "install");
+  assert.equal(plan.state, "already-installed");
   assert.deepEqual(plan.app, {
     appId: "ulc-linz",
     definitionSchemaVersion: 2,
@@ -62,27 +98,11 @@ test("plans the first ULC countdown install without touching custom runtime file
     packageVersion: "0.0.0",
     databaseSchemaVersion: null,
   });
-  assert.deepEqual(plan.changes.appDefinition, {
-    path: "apps/ulc-linz/appbasis.app.json",
-    beforeModules: [],
-    afterModules: ["countdown"],
-  });
-  assert.deepEqual(plan.changes.packageDependency, {
-    path: "apps/ulc-linz/package.json",
-    dependency: "@appbasis/countdown",
-    before: null,
-    after: "workspace:*",
-  });
+  assert.equal(plan.changes.appDefinition, null);
+  assert.equal(plan.changes.packageDependency, null);
   assert.equal(plan.changes.databaseManifest, null);
-  assert.deepEqual(plan.changes.workspaceLockfile, {
-    path: "pnpm-lock.yaml",
-    action: "finalize-workspace",
-  });
-  assert.deepEqual(plan.writes, [
-    "apps/ulc-linz/appbasis.app.json",
-    "apps/ulc-linz/package.json",
-    "pnpm-lock.yaml",
-  ]);
+  assert.equal(plan.changes.workspaceLockfile, null);
+  assert.deepEqual(plan.writes, []);
 
   const rendered = renderModuleUpdatePlan(plan);
   assert.equal(rendered.endsWith("\n"), true);
@@ -94,7 +114,7 @@ test("plans the first ULC countdown install without touching custom runtime file
       "utf8",
     ),
   );
-  assert.deepEqual(currentUlcDefinition.modules, []);
+  assert.deepEqual(currentUlcDefinition.modules, ["countdown"]);
 });
 
 test("fails closed before planning an incompatible module", async (t) => {

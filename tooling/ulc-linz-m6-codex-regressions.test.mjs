@@ -278,12 +278,43 @@ test("M6 adopted Neon production target requires exact case-sensitive project na
   );
 });
 
-test("M6 execution-bound migration fingerprint changes for every validated non-migration input class", async () => {
-  const result = await evaluateUlcLinzM6MigrationSmokeRehearsal();
-  const baseline = result.migration.planFingerprint;
+test("M6 execution-bound migration fingerprint changes for every validated non-migration input class", () => {
+  const migrationFiles = [
+    {
+      ownerId: "identity",
+      relativePath: "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
+      statementCount: 1,
+      digest: `sha256:${"1".repeat(64)}`,
+    },
+  ];
+  const inputs = {
+    repositoryHeadSha: "a".repeat(40),
+    manifest: {
+      path: "apps/ulc-linz/appbasis.database.json",
+      digest: `sha256:${"2".repeat(64)}`,
+    },
+    appDefinition: {
+      path: "apps/ulc-linz/appbasis.app.json",
+      digest: `sha256:${"3".repeat(64)}`,
+    },
+    publicRuntime: {
+      path: "apps/ulc-linz/worker/index.ts",
+      digest: `sha256:${"4".repeat(64)}`,
+    },
+    permissionSmokeContract: {
+      path: "apps/ulc-linz/worker/authorization.ts",
+      digest: `sha256:${"5".repeat(64)}`,
+    },
+    repositoryPreflight: `sha256:${"6".repeat(64)}`,
+    executionPlan: `sha256:${"7".repeat(64)}`,
+    smokeContract: `sha256:${"8".repeat(64)}`,
+  };
+  const baseline = createUlcLinzM6ExecutionBoundPlanFingerprint({
+    migrationFiles,
+    validatedInputDigests: inputs,
+  });
   assert.match(baseline, /^sha256:[0-9a-f]{64}$/);
-  const migrationFiles = result.migration.files;
-  const inputs = result.validatedInputDigests;
+
   for (const key of Object.keys(inputs)) {
     const changedInputs = structuredClone(inputs);
     if (typeof changedInputs[key] === "string") {
