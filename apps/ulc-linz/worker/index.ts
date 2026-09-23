@@ -1,4 +1,8 @@
+import { COUNTDOWN_CAPABILITIES } from "@appbasis/countdown";
+import { createIdentityHttpHandlers } from "@appbasis/identity/http";
+
 import { createGeneratedApp } from "./app";
+import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
 import {
   createGeneratedPostgresApplicationRuntime,
   type GeneratedPostgresApplicationRuntime,
@@ -44,12 +48,16 @@ export function createGeneratedWorker(
       let response: Response;
       try {
         runtime = await runtimeFactory(runtimeOptions);
-        const app = createGeneratedApp({
-          identity: runtime.identity,
-          secureCookies: url.protocol === "https:",
-          securityEvents: runtime.securityEvents,
-        });
-        response = await app.fetch(request);
+        if (url.pathname === "/api/modules/countdown") {
+          response = await countdownModuleResponse(request, runtime, url);
+        } else {
+          const app = createGeneratedApp({
+            identity: runtime.identity,
+            secureCookies: url.protocol === "https:",
+            securityEvents: runtime.securityEvents,
+          });
+          response = await app.fetch(request);
+        }
       } catch {
         logWorkerError("generated_worker_request_failed", "UNEXPECTED_RUNTIME_ERROR");
         response = Response.json(
@@ -73,6 +81,64 @@ export function createGeneratedWorker(
 }
 
 export default createGeneratedWorker();
+
+async function countdownModuleResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: "METHOD_NOT_ALLOWED",
+          message: "Only GET is supported for the countdown module.",
+        },
+      }),
+      {
+        status: 405,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          allow: "GET",
+        },
+      },
+    );
+  }
+
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) return current;
+
+  try {
+    const access = await runtime.countdownAccess.assertViewAccess(current);
+    return Response.json({
+      module: {
+        moduleId: "countdown",
+        capability: COUNTDOWN_CAPABILITIES.view,
+      },
+      access: {
+        view: true,
+        organizationId: access.organizationId,
+      },
+    });
+  } catch (error) {
+    if (error instanceof UlcLinzCountdownAccessDeniedError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "Countdown access denied.",
+          },
+        },
+        { status: 403 },
+      );
+    }
+    return identityHttp.identityErrorResponse(error);
+  }
+}
 
 function runtimeConfiguration(
   env: unknown,
