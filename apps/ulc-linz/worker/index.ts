@@ -3,6 +3,7 @@ import { IdentityError } from "@appbasis/identity";
 import { createGeneratedApp } from "./app";
 import {
   assertUlcLinzCountdownAccess,
+  ULC_LINZ_COUNTDOWN_MODULE_ID,
   UlcLinzCountdownAccessDeniedError,
 } from "./countdown-access";
 import { recordUlcLinzSecurityEvent } from "./security-events";
@@ -170,7 +171,7 @@ async function countdownAccessResponse(
   }
 
   return Response.json({
-    moduleId: "countdown",
+    moduleId: ULC_LINZ_COUNTDOWN_MODULE_ID,
     canView: true,
   });
 }
@@ -183,7 +184,7 @@ function recordCountdownIdentityDenial(
     actorPrincipalId: null,
     organizationId: null,
     action: "view",
-    targetId: "countdown",
+    targetId: ULC_LINZ_COUNTDOWN_MODULE_ID,
     reasonCode: "identity-access-denied",
   });
 }
