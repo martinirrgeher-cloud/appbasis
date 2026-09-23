@@ -103,8 +103,8 @@ import {
 }`,
     `export interface GeneratedAppDependencies {
   identity: IdentityHttpService;
-  permissions: PermissionStore;
-  countdownMemberships: UlcLinzCountdownMembershipResolver;
+  permissions?: PermissionStore;
+  countdownMemberships?: UlcLinzCountdownMembershipResolver;
   secureCookies?: boolean;
   securityEvents?: UlcLinzSecurityEventLogger;
 }`,
@@ -143,6 +143,21 @@ import {
   dependencies: GeneratedAppDependencies,
   identityHttp: IdentityHttpHandlers,
 ): Promise<Response> {
+  if (
+    dependencies.permissions === undefined ||
+    dependencies.countdownMemberships === undefined
+  ) {
+    return context.json(
+      {
+        error: {
+          code: "COUNTDOWN_RUNTIME_NOT_CONFIGURED",
+          message: "The countdown runtime is not configured.",
+        },
+      },
+      503,
+    );
+  }
+
   const current = await identityHttp.resolveCurrentIdentity(context.req.raw);
   if (current instanceof Response) {
     recordUlcLinzSecurityEvent(dependencies.securityEvents, {
