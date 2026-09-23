@@ -115,6 +115,100 @@ async function createFixture() {
     "utf8",
   );
 
+  // D2 deliberately moves the password-change guard into the lightweight
+  // identity/access contract. M5-C/D remains pinned to the earlier approved
+  // Identity source graph, so reconstruct those three source files inside the
+  // fixture rather than rebasing production evidence onto D2.
+  const identityAccessPath = join(root, "packages", "identity", "src", "access.ts");
+  await writeFile(
+    identityAccessPath,
+    'export { assertIdentityActionAllowed } from "./service";\n',
+    "utf8",
+  );
+
+  const identityServicePath = join(root, "packages", "identity", "src", "service.ts");
+  let identityService = await readFile(identityServicePath, "utf8");
+  const currentServiceImports = `import { assertIdentityActionAllowed } from "./access";
+import type {
+  AuthSession,
+  AccountStatus,
+  CurrentIdentity,
+  IdentityPersistenceState,
+`;
+  const approvedServiceImports = `import type {
+  AuthSession,
+  AccountStatus,
+  CurrentIdentity,
+  IdentityAction,
+  IdentityPersistenceState,
+`;
+  assert.equal(
+    identityService.split(currentServiceImports).length,
+    2,
+    "D2 Identity service import reconstruction must match exactly once",
+  );
+  identityService = identityService.replace(
+    currentServiceImports,
+    approvedServiceImports,
+  );
+  const serviceClassAnchor = `export class IdentityService {
+`;
+  const approvedAccessFunction = `export function assertIdentityActionAllowed(
+  current: CurrentIdentity,
+  action: IdentityAction,
+): void {
+  if (
+    current.access === "password-change-required" &&
+    action !== "change-password" &&
+    action !== "end-session"
+  ) {
+    throw new IdentityError(
+      "PASSWORD_CHANGE_REQUIRED",
+      "The password must be changed before using the application.",
+    );
+  }
+}
+
+`;
+  assert.equal(
+    identityService.split(serviceClassAnchor).length,
+    2,
+    "D2 Identity service access reconstruction anchor must match exactly once",
+  );
+  await writeFile(
+    identityServicePath,
+    identityService.replace(
+      serviceClassAnchor,
+      `${approvedAccessFunction}${serviceClassAnchor}`,
+    ),
+    "utf8",
+  );
+
+  const identityIndexPath = join(root, "packages", "identity", "src", "index.ts");
+  const identityIndex = await readFile(identityIndexPath, "utf8");
+  const currentIndexExports = `export { assertIdentityActionAllowed } from "./access";
+export {
+  IdentityService,
+  type CreateInitialUserInput,
+} from "./service";
+`;
+  const approvedIndexExports = `export {
+  assertIdentityActionAllowed,
+  IdentityService,
+  type CreateInitialUserInput,
+} from "./service";
+`;
+  assert.equal(
+    identityIndex.split(currentIndexExports).length,
+    2,
+    "D2 Identity index reconstruction must match exactly once",
+  );
+  await writeFile(
+    identityIndexPath,
+    identityIndex.replace(currentIndexExports, approvedIndexExports),
+    "utf8",
+  );
+
   return root;
 }
 
