@@ -1,4 +1,5 @@
 import { assertIdentityActionAllowed } from "./access";
+export { assertIdentityActionAllowed } from "./access";
 import type {
   AuthSession,
   AccountStatus,
