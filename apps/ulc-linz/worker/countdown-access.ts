@@ -36,6 +36,10 @@ export interface UlcLinzCountdownAccessDependencies {
   readonly securityEvents?: UlcLinzSecurityEventLogger;
 }
 
+const COUNTDOWN_CONTRACT = countdownCapabilityContract();
+
+export const ULC_LINZ_COUNTDOWN_MODULE_ID = COUNTDOWN_CONTRACT.moduleId;
+
 export class UlcLinzCountdownAccessDeniedError extends Error {
   readonly code = "ULC_LINZ_COUNTDOWN_ACCESS_DENIED";
 
@@ -49,7 +53,7 @@ export async function assertUlcLinzCountdownAccess(
   current: UlcLinzCurrentIdentity,
   dependencies: UlcLinzCountdownAccessDependencies,
 ): Promise<void> {
-  const contract = countdownCapabilityContract();
+  const contract = COUNTDOWN_CONTRACT;
   try {
     assertIdentityActionAllowed(current, "application");
   } catch (error) {
