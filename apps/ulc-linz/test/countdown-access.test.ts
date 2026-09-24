@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { CurrentIdentity } from "@appbasis/identity";
+import type { CurrentIdentity } from "@appbasis/identity/access";
 import {
   capabilityId,
   InMemoryPermissionStore,
