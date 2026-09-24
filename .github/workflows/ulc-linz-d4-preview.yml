@@ -179,6 +179,179 @@ jobs:
           APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
         run: node --experimental-transform-types ./tooling/generated-app-preview-migrate.mjs
 
+      - name: Bind and verify ULC preview security-log ingest role
+        if: inputs.operation == 'migrate' || inputs.operation == 'bootstrap' || inputs.operation == 'deploy'
+        shell: bash
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_SECURITY_LOG_ROLE_BINDING: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createPostgresDatabase } from "./packages/database/src/node-runtime.mjs";
+          import { validateUlcLinzD4PreviewDatabaseUrls } from "./tooling/ulc-linz-d4-preview-hyperdrive.mjs";
+
+          if (process.env.APPBASIS_APPLY_SECURITY_LOG_ROLE_BINDING !== "1") {
+            throw new Error("ULC D4 security-log role binding requires explicit authorization.");
+          }
+
+          const applicationDatabaseUrl = process.env.APPBASIS_DATABASE_URL;
+          const securityLogDatabaseUrl = process.env.APPBASIS_SECURITY_LOG_DATABASE_URL;
+          const { securityLog } = validateUlcLinzD4PreviewDatabaseUrls(
+            applicationDatabaseUrl,
+            securityLogDatabaseUrl,
+          );
+          const protectedRole = "ulc_linz_security_event_ingest";
+          const loginRole = requiredRoleName(securityLog.user);
+
+          const ownerDatabase = createPostgresDatabase(applicationDatabaseUrl);
+          try {
+            const roles = await ownerDatabase.client.unsafe(
+              `SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
+                      rolreplication, rolbypassrls
+               FROM pg_catalog.pg_roles
+               WHERE rolname = ANY($1::text[])
+               ORDER BY rolname`,
+              [[protectedRole, loginRole]],
+            );
+            const byName = new Map(roles.map((row) => [row?.rolname, row]));
+            const group = byName.get(protectedRole);
+            const login = byName.get(loginRole);
+            if (
+              byName.size !== 2 ||
+              group?.rolcanlogin !== false ||
+              group?.rolsuper !== false ||
+              group?.rolcreatedb !== false ||
+              group?.rolcreaterole !== false ||
+              group?.rolreplication !== false ||
+              group?.rolbypassrls !== false ||
+              login?.rolcanlogin !== true ||
+              login?.rolsuper !== false ||
+              login?.rolcreatedb !== false ||
+              login?.rolcreaterole !== false ||
+              login?.rolreplication !== false ||
+              login?.rolbypassrls !== false
+            ) {
+              throw new Error("ULC D4 security-log role inventory is unsafe or incomplete.");
+            }
+
+            let memberships = await readMemberships(ownerDatabase.client, loginRole);
+            validateMemberships(memberships, loginRole, true);
+            const effective = memberships.some(
+              (edge) =>
+                edge.parent === protectedRole &&
+                edge.member === loginRole &&
+                edge.admin_option === false &&
+                edge.inherit_option === true &&
+                edge.set_option === true,
+            );
+            if (!effective) {
+              if (typeof ownerDatabase.client.begin !== "function") {
+                throw new Error("ULC D4 security-log role-binding transaction is unavailable.");
+              }
+              await ownerDatabase.client.begin(async (transaction) => {
+                if (transaction == null || typeof transaction.unsafe !== "function") {
+                  throw new Error("ULC D4 security-log role-binding transaction is invalid.");
+                }
+                await transaction.unsafe(
+                  `GRANT ${quoteIdentifier(protectedRole)} TO ${quoteIdentifier(loginRole)} WITH INHERIT TRUE, SET TRUE`,
+                );
+              });
+              memberships = await readMemberships(ownerDatabase.client, loginRole);
+            }
+            validateMemberships(memberships, loginRole, false);
+          } finally {
+            await ownerDatabase.client.end().catch(() => {});
+          }
+
+          const securityDatabase = createPostgresDatabase(securityLogDatabaseUrl);
+          try {
+            const rows = await securityDatabase.client.unsafe(
+              `SELECT current_user AS current_user,
+                      pg_has_role(current_user, 'ulc_linz_security_event_ingest', 'USAGE') AS has_ingest_role,
+                      has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'INSERT') AS can_insert,
+                      has_sequence_privilege(current_user, 'public.ulc_linz_security_event_log_id_seq', 'USAGE') AS can_use_sequence,
+                      has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'SELECT') AS can_select,
+                      has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'UPDATE') AS can_update,
+                      has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'DELETE') AS can_delete,
+                      has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'TRUNCATE') AS can_truncate,
+                      has_sequence_privilege(current_user, 'public.ulc_linz_security_event_log_id_seq', 'SELECT') AS can_select_sequence,
+                      has_sequence_privilege(current_user, 'public.ulc_linz_security_event_log_id_seq', 'UPDATE') AS can_update_sequence`,
+            );
+            const access = rows[0];
+            if (
+              rows.length !== 1 ||
+              access?.current_user !== loginRole ||
+              access?.has_ingest_role !== true ||
+              access?.can_insert !== true ||
+              access?.can_use_sequence !== true ||
+              access?.can_select !== false ||
+              access?.can_update !== false ||
+              access?.can_delete !== false ||
+              access?.can_truncate !== false ||
+              access?.can_select_sequence !== false ||
+              access?.can_update_sequence !== false
+            ) {
+              throw new Error("ULC D4 security-log ingest ACL is not exact.");
+            }
+          } finally {
+            await securityDatabase.client.end().catch(() => {});
+          }
+
+          function requiredRoleName(value) {
+            if (
+              typeof value !== "string" ||
+              value.length === 0 ||
+              value.length > 63 ||
+              value !== value.trim() ||
+              value.includes("\u0000")
+            ) {
+              throw new Error("ULC D4 security-log login role is invalid.");
+            }
+            return value;
+          }
+
+          function quoteIdentifier(value) {
+            return `"${requiredRoleName(value).replaceAll('"', '""')}"`;
+          }
+
+          function readMemberships(client, member) {
+            return client.unsafe(
+              `SELECT parent.rolname AS parent, child.rolname AS member,
+                      membership.admin_option, membership.inherit_option, membership.set_option
+               FROM pg_catalog.pg_auth_members AS membership
+               JOIN pg_catalog.pg_roles AS parent ON parent.oid = membership.roleid
+               JOIN pg_catalog.pg_roles AS child ON child.oid = membership.member
+               WHERE child.rolname = $1
+               ORDER BY parent.rolname`,
+              [member],
+            );
+          }
+
+          function validateMemberships(rows, member, allowRepairable) {
+            if (!Array.isArray(rows) || rows.length > 1) {
+              throw new Error("ULC D4 security-log role membership is not exact.");
+            }
+            for (const edge of rows) {
+              if (
+                edge?.member !== member ||
+                edge?.parent !== protectedRole ||
+                edge?.admin_option !== false ||
+                (!allowRepairable && edge?.inherit_option !== true) ||
+                (!allowRepairable && edge?.set_option !== true) ||
+                (allowRepairable && edge?.inherit_option !== true && edge?.inherit_option !== false) ||
+                (allowRepairable && edge?.set_option !== true && edge?.set_option !== false)
+              ) {
+                throw new Error("ULC D4 security-log role membership is unsafe.");
+              }
+            }
+            if (!allowRepairable && rows.length !== 1) {
+              throw new Error("ULC D4 security-log role membership is missing.");
+            }
+          }
+          NODE
+
       - name: Resolve ULC workers.dev origin
         if: inputs.operation == 'bootstrap' || inputs.operation == 'deploy'
         shell: bash
@@ -358,9 +531,53 @@ jobs:
           --experimental-provision=false
           --experimental-auto-create=false
 
-      - name: Verify ULC preview UI and protected runtime
+      - name: Verify ULC preview UI and protected countdown runtime
         if: inputs.operation == 'deploy'
-        run: node ./tooling/generated-app-preview-smoke.mjs
+        shell: bash
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ env.APPBASIS_GENERATED_PREVIEW_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { verifyGeneratedAppPreviewUi } from "./tooling/generated-app-preview-smoke.mjs";
+          import { verifyGeneratedPreviewHealth } from "./tooling/generated-preview-smoke.mjs";
+
+          const baseURL = process.env.APPBASIS_GENERATED_PREVIEW_URL;
+          await verifyGeneratedPreviewHealth({ baseURL, appId: "ulc-linz" });
+          await verifyGeneratedAppPreviewUi({ baseURL });
+
+          const origin = new URL(baseURL).origin;
+          const response = await fetch(`${origin}/api/modules/countdown`, {
+            method: "GET",
+            headers: { accept: "application/json" },
+            redirect: "error",
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (response.status !== 401 || response.headers.has("set-cookie")) {
+            throw new Error("ULC D4 protected countdown runtime did not fail closed.");
+          }
+          let payload;
+          try {
+            payload = await response.json();
+          } catch {
+            throw new Error("ULC D4 protected countdown runtime returned invalid JSON.");
+          }
+          const keys = payload && typeof payload === "object" && !Array.isArray(payload)
+            ? Object.keys(payload)
+            : [];
+          const error = keys.length === 1 ? payload.error : null;
+          if (
+            error === null ||
+            typeof error !== "object" ||
+            Array.isArray(error) ||
+            Object.keys(error).length !== 2 ||
+            error.code !== "SESSION_INVALID" ||
+            error.message !== "A valid session is required."
+          ) {
+            throw new Error("ULC D4 protected countdown runtime returned an unexpected denial.");
+          }
+          console.log("ULC D4 preview health, UI and protected countdown smoke passed.");
+          NODE
 
       - name: Verify ULC preview application database binding
         if: inputs.operation == 'deploy'
