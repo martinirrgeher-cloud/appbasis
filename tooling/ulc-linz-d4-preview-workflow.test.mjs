@@ -46,6 +46,10 @@ test("ULC D4 preview lifecycle reuses the canonical plan and probes the ULC coun
   assert.match(workflow, /generated-app-preview-plan\.mjs/);
   assert.match(
     workflow,
+    /node \.\/tooling\/ulc-linz-d4-preview-migrate\.mjs/,
+  );
+  assert.doesNotMatch(
+    workflow,
     /node --experimental-transform-types \.\/tooling\/generated-app-preview-migrate\.mjs/,
   );
   assert.match(workflow, /ulc-linz-d4-preview-audit-smoke\.mjs/);
