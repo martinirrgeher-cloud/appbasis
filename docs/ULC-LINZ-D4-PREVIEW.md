@@ -22,8 +22,13 @@ Migration, Application und Security-Log verwenden dieselbe dedizierte
 Preview-Datenbank, aber drei getrennte PostgreSQL-Loginrollen. Nur Application
 und Security-Log werden über getrennte Cloudflare-Hyperdrives an den Worker
 gebunden. Die Migration-Owner-Credentials werden niemals in eine
-Runtime-Bindung übernommen. Identische Rollen oder Hyperdrive-IDs werden
-fail-closed abgewiesen.
+Runtime-Bindung übernommen. Der Security-Log-Login erhält keine direkten
+Objekt-Grants, sondern erbt ausschließlich von der Preview-spezifischen
+NOLOGIN-Rolle `appbasis_ulc_linz_preview_security_ingest`. Diese Rolle wird
+beim ersten Preview-Migrationslauf frisch erzeugt; ein bereits vorhandener
+gleichnamiger Cluster-Principal lässt die Migration fail-closed abbrechen.
+Identische Runtime-Rollen oder Hyperdrive-IDs werden ebenfalls fail-closed
+abgewiesen.
 
 ## Geschützte Environment-Werte
 
@@ -34,9 +39,13 @@ verwendeten Operationen:
   Preview-Datenbank; nur für Migrationen, Runtime-ACL-Reconciliation und
   Audit-Nachweise,
 - der Security-Log-Runtime-Principal wird datenbankweit auf den exakten
-  Ingest-Pfad begrenzt: keine Objekt-Ownership, keine direkten Grants, keine
-  Parent-Rollen der Ingest-Gruppe und kein effektiver Zugriff auf andere
-  Tabellen oder Sequenzen,
+  Ingest-Pfad begrenzt: keine Objekt-Ownership, keine direkten Grants und
+  ausschließlich eine Mitgliedschaft in der Preview-spezifischen Ingest-Rolle;
+  diese Gruppe besitzt keine Parent-Rollen und keine weiteren Cluster-Mitglieder,
+- die produktionsgleich benannten Rollen `ulc_linz_security_event_ingest`,
+  `ulc_linz_security_event_cleanup` und `ulc_linz_security_event_read`
+  werden im selben atomaren Preview-Migrationslauf von allen in der Preview
+  erzeugten Security-Log-Rechten entkoppelt,
 - `APPBASIS_DATABASE_URL`: getrennte, nicht privilegierte
   Application-Runtime-Verbindung zur selben Preview-Datenbank,
 - `APPBASIS_SECURITY_LOG_DATABASE_URL`: getrennte, nicht privilegierte
@@ -60,10 +69,15 @@ Jede Mutation ist main-only und benötigt `apply=true`.
 2. `migrate`
    - verwendet ausschließlich den getrennten Migration-Owner,
    - verwendet den kanonischen ULC-Datenbankmanifest-Vertrag,
-   - wendet ausschließlich Preview-Migrationen auf die dedizierte
-     Preview-Datenbank an,
+   - hängt danach in derselben Datenbanktransaktion die D4-spezifische
+     Security-Isolation an,
+   - erzeugt dabei die Preview-spezifische NOLOGIN-Ingest-Rolle frisch,
+     neutralisiert die gemeinsamen ULC-Security-Rollen ausschließlich in der
+     Preview-Datenbank und vergibt die exakten Ingest-Rechte nur an die
+     Preview-Rolle,
    - reconciled danach die nicht privilegierten Runtime-ACLs, wobei die
-     Application-Runtime keinen Zugriff auf das Security-Event-Log erhält.
+     Application-Runtime keinen Zugriff auf das Security-Event-Log erhält und
+     der Security-Login selbst keine direkten Objekt-Grants besitzt.
 
 3. `bootstrap`
    - verlangt beide bereits vorhandenen Hyperdrives,
