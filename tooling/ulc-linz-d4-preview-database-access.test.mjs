@@ -23,6 +23,7 @@ const SECURITY_URL =
   "/" +
   DATABASE +
   "?sslmode=require";
+const PREVIEW_SECURITY_GROUP = "appbasis_ulc_linz_preview_security_ingest";
 
 const SECURITY_INGEST_COLUMNS = [
   "schema_version",
@@ -42,10 +43,10 @@ const SECURITY_INGEST_COLUMNS = [
   "retained_until",
 ];
 
-function runtimeRole(name) {
+function runtimeRole(name, login) {
   return {
     rolname: name,
-    rolcanlogin: true,
+    rolcanlogin: login,
     rolsuper: false,
     rolcreatedb: false,
     rolcreaterole: false,
@@ -54,17 +55,7 @@ function runtimeRole(name) {
   };
 }
 
-function emptyOwnership() {
-  return [{
-    owned_database_count: 0,
-    owned_schema_count: 0,
-    owned_relation_count: 0,
-    owned_function_count: 0,
-    owned_type_count: 0,
-  }];
-}
-
-function exactSecurityDirectGrants() {
+function exactGroupGrants() {
   return [
     ...SECURITY_INGEST_COLUMNS.map((column_name) => ({
       object_kind: "column",
@@ -85,7 +76,30 @@ function exactSecurityDirectGrants() {
   ];
 }
 
-function applicationAccessRow() {
+function exactSecurityAccess(overrides = {}) {
+  return {
+    current_user: "ulc_preview_security_ingest",
+    schema_create: false,
+    non_security_schema_create_count: 0,
+    non_security_table_access_count: 0,
+    non_security_sequence_access_count: 0,
+    inherited_role_count: 1,
+    has_ingest_role: true,
+    has_table_insert: false,
+    can_insert_allowed_columns: true,
+    can_insert_recorded_at: false,
+    can_use_sequence: true,
+    can_select: false,
+    can_update: false,
+    can_delete: false,
+    can_truncate: false,
+    can_select_sequence: false,
+    can_update_sequence: false,
+    ...overrides,
+  };
+}
+
+function exactApplicationAccess() {
   return {
     current_user: "ulc_preview_app",
     schema_usage: true,
@@ -101,54 +115,93 @@ function applicationAccessRow() {
   };
 }
 
-function securityAccessRow(overrides = {}) {
+function securityMembership() {
   return {
-    current_user: "ulc_preview_security_ingest",
-    schema_create: false,
-    non_security_schema_create_count: 0,
-    non_security_table_access_count: 0,
-    non_security_sequence_access_count: 0,
-    inherited_role_count: 0,
-    has_table_insert: false,
-    can_insert_allowed_columns: true,
-    can_insert_recorded_at: false,
-    can_use_sequence: true,
-    can_select: false,
-    can_update: false,
-    can_delete: false,
-    can_truncate: false,
-    can_select_sequence: false,
-    can_update_sequence: false,
-    ...overrides,
+    parent: PREVIEW_SECURITY_GROUP,
+    member: "ulc_preview_security_ingest",
+    admin_option: false,
+    inherit_option: true,
+    set_option: true,
   };
 }
 
-function ownerClient({
-  ownership = emptyOwnership(),
-  memberships = new Map(),
-  preAcl = [],
-  postAcl = exactSecurityDirectGrants(),
-  statements = [],
+function ownerFixture({
+  loginOwnership = {
+    owned_database_count: 0,
+    owned_schema_count: 0,
+    owned_relation_count: 0,
+    owned_function_count: 0,
+    owned_type_count: 0,
+  },
+  loginDirectGrantCount = 0,
+  groupParents = [],
+  extraGroupMembers = [],
+  groupOwnership = {
+    group_owned_database_count: 0,
+    group_owned_schema_count: 0,
+    group_owned_relation_count: 0,
+    group_owned_function_count: 0,
+    group_owned_type_count: 0,
+  },
+  groupGrants = exactGroupGrants(),
+  sharedBoundary = {
+    shared_role_count: 3,
+    shared_owned_database_count: 0,
+    shared_owned_schema_count: 0,
+    shared_owned_relation_count: 0,
+    shared_owned_function_count: 0,
+    shared_owned_type_count: 0,
+    shared_direct_grant_count: 0,
+  },
 } = {}) {
-  let aclReads = 0;
-  return {
+  let bound = false;
+  const statements = [];
+
+  const client = {
     async unsafe(sql, params) {
       if (sql.includes("WHERE rolname = ANY($1::text[])")) {
         return [
-          runtimeRole("ulc_preview_app"),
-          runtimeRole("ulc_preview_security_ingest"),
+          runtimeRole(PREVIEW_SECURITY_GROUP, false),
+          runtimeRole("ulc_preview_app", true),
+          runtimeRole("ulc_preview_security_ingest", true),
         ];
       }
-      if (sql.includes("FROM pg_catalog.pg_auth_members")) {
-        return memberships.get(params?.[0]) ?? [];
+      if (sql.includes("WHERE child.rolname = $1")) {
+        const member = params?.[0];
+        if (member === "ulc_preview_app") return [];
+        if (member === PREVIEW_SECURITY_GROUP) return groupParents;
+        if (member === "ulc_preview_security_ingest") {
+          return bound ? [securityMembership()] : [];
+        }
       }
-      if (sql.includes("AS owned_database_count")) {
-        return ownership;
+      if (sql.includes("WHERE parent.rolname = $1")) {
+        assert.equal(params?.[0], PREVIEW_SECURITY_GROUP);
+        if (extraGroupMembers.length > 0) return extraGroupMembers;
+        return bound ? [securityMembership()] : [];
+      }
+      if (sql.includes("AS group_owned_database_count")) {
+        assert.equal(params?.[0], PREVIEW_SECURITY_GROUP);
+        return [groupOwnership];
       }
       if (sql.includes("'database'::text AS object_kind")) {
-        const result = aclReads === 0 ? preAcl : postAcl;
-        aclReads += 1;
-        return result;
+        assert.equal(params?.[0], PREVIEW_SECURITY_GROUP);
+        return groupGrants;
+      }
+      if (sql.includes("AS shared_role_count")) {
+        assert.deepEqual(params?.[0], [
+          "ulc_linz_security_event_ingest",
+          "ulc_linz_security_event_cleanup",
+          "ulc_linz_security_event_read",
+        ]);
+        return [sharedBoundary];
+      }
+      if (sql.includes("AS direct_grant_count")) {
+        assert.equal(params?.[0], "ulc_preview_security_ingest");
+        return [{ direct_grant_count: loginDirectGrantCount }];
+      }
+      if (sql.includes("AS owned_database_count")) {
+        assert.equal(params?.[0], "ulc_preview_security_ingest");
+        return [loginOwnership];
       }
       throw new Error("Unexpected owner SQL: " + sql);
     },
@@ -156,27 +209,32 @@ function ownerClient({
       return callback({
         async unsafe(sql) {
           statements.push(sql);
+          if (sql.startsWith(`GRANT "${PREVIEW_SECURITY_GROUP}"`)) {
+            bound = true;
+          }
           return [];
         },
       });
     },
     async end() {},
   };
+
+  return { client, statements, wasBound: () => bound };
 }
 
 function databaseFactory({
-  owner = ownerClient(),
-  securityRow = securityAccessRow(),
+  owner = ownerFixture(),
+  securityAccess = exactSecurityAccess(),
   ended = [],
 } = {}) {
   return (url) => {
     if (url === MIGRATION_URL) {
       return {
         client: {
-          ...owner,
+          ...owner.client,
           async end() {
             ended.push("owner");
-            await owner.end?.();
+            await owner.client.end();
           },
         },
       };
@@ -186,7 +244,7 @@ function databaseFactory({
         client: {
           async unsafe(sql) {
             assert.match(sql, /all_runtime_table_dml/);
-            return [applicationAccessRow()];
+            return [exactApplicationAccess()];
           },
           async end() {
             ended.push("application");
@@ -201,8 +259,9 @@ function databaseFactory({
             assert.match(sql, /can_insert_allowed_columns/);
             assert.match(sql, /non_security_schema_create_count/);
             assert.match(sql, /inherited_role_count/);
-            assert.doesNotMatch(sql, /pg_has_role/);
-            return [securityRow];
+            assert.match(sql, /pg_has_role/);
+            assert.match(sql, /appbasis_ulc_linz_preview_security_ingest/);
+            return [securityAccess];
           },
           async end() {
             ended.push("security");
@@ -214,7 +273,7 @@ function databaseFactory({
   };
 }
 
-async function reconcileWith(factory) {
+function reconcile(factory) {
   return reconcileUlcLinzD4PreviewDatabaseAccess(
     {
       migrationDatabaseUrl: MIGRATION_URL,
@@ -226,15 +285,10 @@ async function reconcileWith(factory) {
   );
 }
 
-test("reconciles security runtime with direct database-local ingest grants and no inherited role", async () => {
-  const statements = [];
+test("binds the security login only to the preview-specific ingest group", async () => {
+  const owner = ownerFixture();
   const ended = [];
-  const result = await reconcileWith(
-    databaseFactory({
-      owner: ownerClient({ statements }),
-      ended,
-    }),
-  );
+  const result = await reconcile(databaseFactory({ owner, ended }));
 
   assert.deepEqual(result, {
     schemaVersion: 1,
@@ -245,96 +299,112 @@ test("reconciles security runtime with direct database-local ingest grants and n
     securityLogRuntimeAccessVerified: true,
     securityLogDatabaseIsolationVerified: true,
   });
+  assert.equal(owner.wasBound(), true);
   assert.ok(
-    statements.some((sql) =>
-      sql.includes(
-        'GRANT INSERT ("schema_version", "app_id", "category", "event_type"',
-      ),
-    ),
-  );
-  assert.ok(
-    statements.some((sql) =>
-      sql.includes(
-        'GRANT USAGE ON SEQUENCE public.ulc_linz_security_event_log_id_seq TO "ulc_preview_security_ingest"',
-      ),
+    owner.statements.some((sql) =>
+      sql.startsWith(`GRANT "${PREVIEW_SECURITY_GROUP}"`),
     ),
   );
   assert.equal(
-    statements.some((sql) => /GRANT\s+"ulc_linz_security_event_ingest"/.test(sql)),
+    owner.statements.some((sql) =>
+      /GRANT\s+"ulc_linz_security_event_ingest"/.test(sql),
+    ),
+    false,
+  );
+  assert.equal(
+    owner.statements.some((sql) =>
+      sql.includes('TO "ulc_preview_security_ingest"') &&
+      (sql.includes("INSERT") || sql.includes("USAGE ON SEQUENCE")),
+    ),
     false,
   );
   assert.deepEqual(ended.sort(), ["application", "owner", "security"]);
 });
 
-test("accepts an already exact direct ACL for idempotent reconciliation", async () => {
-  const exact = exactSecurityDirectGrants();
-  await reconcileWith(
-    databaseFactory({
-      owner: ownerClient({ preAcl: exact, postAcl: exact }),
-    }),
+test("rejects direct grants on the security login", async () => {
+  const owner = ownerFixture({ loginDirectGrantCount: 1 });
+  await assert.rejects(
+    reconcile(databaseFactory({ owner })),
+    /security-log login has direct grants/,
   );
 });
 
-test("rejects a security login that owns user objects", async () => {
-  const owner = ownerClient({
-    ownership: [{
+test("rejects a preview ingest group that inherits another role", async () => {
+  const owner = ownerFixture({
+    groupParents: [{
+      parent: "unexpected_parent",
+      member: PREVIEW_SECURITY_GROUP,
+      admin_option: false,
+      inherit_option: true,
+      set_option: true,
+    }],
+  });
+  await assert.rejects(
+    reconcile(databaseFactory({ owner })),
+    /group must not inherit another database role/,
+  );
+});
+
+test("rejects unexpected cluster-wide members of the preview group", async () => {
+  const owner = ownerFixture({
+    extraGroupMembers: [
+      securityMembership(),
+      {
+        parent: PREVIEW_SECURITY_GROUP,
+        member: "unexpected_runtime",
+        admin_option: false,
+        inherit_option: true,
+        set_option: true,
+      },
+    ],
+  });
+  await assert.rejects(
+    reconcile(databaseFactory({ owner })),
+    /unexpected cluster-wide members/,
+  );
+});
+
+test("rejects shared ULC roles that retain preview database grants", async () => {
+  const owner = ownerFixture({
+    sharedBoundary: {
+      shared_role_count: 3,
+      shared_owned_database_count: 0,
+      shared_owned_schema_count: 0,
+      shared_owned_relation_count: 0,
+      shared_owned_function_count: 0,
+      shared_owned_type_count: 0,
+      shared_direct_grant_count: 1,
+    },
+  });
+  await assert.rejects(
+    reconcile(databaseFactory({ owner })),
+    /shared security roles are not neutral/,
+  );
+});
+
+test("rejects security login ownership", async () => {
+  const owner = ownerFixture({
+    loginOwnership: {
       owned_database_count: 0,
       owned_schema_count: 0,
       owned_relation_count: 1,
       owned_function_count: 0,
       owned_type_count: 0,
-    }],
+    },
   });
   await assert.rejects(
-    reconcileWith(databaseFactory({ owner })),
-    /owns database objects/,
+    reconcile(databaseFactory({ owner })),
+    /security-log login owns database objects/,
   );
 });
 
-test("rejects any inherited role on the preview security login", async () => {
-  const memberships = new Map([
-    ["ulc_preview_security_ingest", [{
-      parent: "ulc_linz_security_event_ingest",
-      member: "ulc_preview_security_ingest",
-      admin_option: false,
-      inherit_option: true,
-      set_option: true,
-    }]],
-  ]);
+test("rejects effective access outside the intended ingest path", async () => {
+  const owner = ownerFixture();
   await assert.rejects(
-    reconcileWith(
+    reconcile(
       databaseFactory({
-        owner: ownerClient({ memberships }),
-      }),
-    ),
-    /must not inherit another database role/,
-  );
-});
-
-test("rejects stale direct privileges outside the exact ingest ACL", async () => {
-  const stale = [{
-    object_kind: "function",
-    schema_name: "public",
-    object_name: "appbasis_ulc_linz_purge_expired_security_events",
-    column_name: null,
-    privilege_type: "EXECUTE",
-    is_grantable: false,
-  }];
-  await assert.rejects(
-    reconcileWith(
-      databaseFactory({
-        owner: ownerClient({ preAcl: stale }),
-      }),
-    ),
-    /direct ACL is not exact/,
-  );
-});
-
-test("rejects effective access from the security login to objects in any user schema", async () => {
-  await assert.rejects(
-    reconcileWith(
-      databaseFactory({
-        securityRow: securityAccessRow({
+        owner,
+        securityAccess: exactSecurityAccess({
           non_security_table_access_count: 1,
         }),
       }),
@@ -343,25 +413,14 @@ test("rejects effective access from the security login to objects in any user sc
   );
 });
 
-test("rejects CREATE access inherited on any non-system schema", async () => {
+test("rejects runtime inheritance drift even when effective object ACL looks exact", async () => {
+  const owner = ownerFixture();
   await assert.rejects(
-    reconcileWith(
+    reconcile(
       databaseFactory({
-        securityRow: securityAccessRow({
-          non_security_schema_create_count: 1,
-        }),
-      }),
-    ),
-    /security-log ingest ACL is not exact/,
-  );
-});
-
-test("rejects inherited runtime roles even if object ACLs look exact", async () => {
-  await assert.rejects(
-    reconcileWith(
-      databaseFactory({
-        securityRow: securityAccessRow({
-          inherited_role_count: 1,
+        owner,
+        securityAccess: exactSecurityAccess({
+          inherited_role_count: 2,
         }),
       }),
     ),
