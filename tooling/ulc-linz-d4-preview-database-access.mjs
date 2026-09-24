@@ -68,18 +68,30 @@ export async function preflightUlcLinzD4PreviewDatabaseAccess(
       ownerDatabase.client,
       applicationRole,
     );
+    await requireRuntimeLoginOwnershipBoundary(
+      ownerDatabase.client,
+      applicationRole,
+      "application runtime",
+    );
+    await requireRuntimeLoginNoDirectGrants(
+      ownerDatabase.client,
+      applicationRole,
+      "application runtime",
+    );
     await requireSecurityLoginMembershipBoundary(
       ownerDatabase.client,
       securityRole,
       true,
     );
-    await requireSecurityLoginOwnershipBoundary(
+    await requireRuntimeLoginOwnershipBoundary(
       ownerDatabase.client,
       securityRole,
+      "security-log runtime",
     );
-    await requireSecurityLoginNoDirectGrants(
+    await requireRuntimeLoginNoDirectGrants(
       ownerDatabase.client,
       securityRole,
+      "security-log runtime",
     );
 
     return Object.freeze({
@@ -139,13 +151,15 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
       securityRole,
       true,
     );
-    await requireSecurityLoginOwnershipBoundary(
+    await requireRuntimeLoginOwnershipBoundary(
       ownerDatabase.client,
       securityRole,
+      "security-log runtime",
     );
-    await requireSecurityLoginNoDirectGrants(
+    await requireRuntimeLoginNoDirectGrants(
       ownerDatabase.client,
       securityRole,
+      "security-log runtime",
     );
     await requireSecurityGroupCatalogBoundary(ownerDatabase.client);
     await requireSharedSecurityRolesNeutralInPreviewDatabase(
@@ -201,13 +215,15 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
       securityRole,
       false,
     );
-    await requireSecurityLoginOwnershipBoundary(
+    await requireRuntimeLoginOwnershipBoundary(
       ownerDatabase.client,
       securityRole,
+      "security-log runtime",
     );
-    await requireSecurityLoginNoDirectGrants(
+    await requireRuntimeLoginNoDirectGrants(
       ownerDatabase.client,
       securityRole,
+      "security-log runtime",
     );
   } finally {
     await ownerDatabase.client.end().catch(() => {});
@@ -371,7 +387,7 @@ async function requireSecurityGroupMemberBoundary(
   }
 }
 
-async function requireSecurityLoginOwnershipBoundary(client, securityRole) {
+async function requireRuntimeLoginOwnershipBoundary(client, runtimeRole, label) {
   const rows = await client.unsafe(
     `WITH target AS (
        SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1
@@ -399,7 +415,7 @@ async function requireSecurityLoginOwnershipBoundary(client, securityRole) {
          WHERE namespace.nspname !~ '^pg_'
            AND namespace.nspname <> 'information_schema'
            AND object.typowner = (SELECT oid FROM target)) AS owned_type_count`,
-    [securityRole],
+    [runtimeRole],
   );
   const boundary = rows?.[0];
   if (
@@ -411,11 +427,11 @@ async function requireSecurityLoginOwnershipBoundary(client, securityRole) {
     Number(boundary?.owned_function_count) !== 0 ||
     Number(boundary?.owned_type_count) !== 0
   ) {
-    throw new Error("ULC D4 security-log login owns database objects.");
+    throw new Error("ULC D4 " + label + " login owns database objects.");
   }
 }
 
-async function requireSecurityLoginNoDirectGrants(client, securityRole) {
+async function requireRuntimeLoginNoDirectGrants(client, runtimeRole, label) {
   const rows = await client.unsafe(
     `WITH target AS (
        SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1
@@ -457,14 +473,14 @@ async function requireSecurityLoginNoDirectGrants(client, securityRole) {
      SELECT count(*)::integer AS direct_grant_count
        FROM direct_grants
       WHERE grantee = (SELECT oid FROM target)`,
-    [securityRole],
+    [runtimeRole],
   );
   if (
     !Array.isArray(rows) ||
     rows.length !== 1 ||
     Number(rows[0]?.direct_grant_count) !== 0
   ) {
-    throw new Error("ULC D4 security-log login has direct grants.");
+    throw new Error("ULC D4 " + label + " login has direct grants.");
   }
 }
 
@@ -738,18 +754,39 @@ async function verifyApplicationRuntimeAccess({
         " WHERE sequence_schema = 'public'" +
         " AND sequence_name <> 'ulc_linz_security_event_log_id_seq'" +
         "), ownership AS (" +
-        " SELECT count(*)::integer AS owned_relations" +
-        " FROM pg_catalog.pg_class relation" +
-        " JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace" +
-        " WHERE namespace.nspname = 'public'" +
-        " AND relation.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')" +
-        " AND pg_catalog.pg_get_userbyid(relation.relowner) = current_user" +
+        " SELECT" +
+        " (SELECT count(*)::integer FROM pg_catalog.pg_database object" +
+        "   WHERE object.datname = current_database()" +
+        "     AND pg_catalog.pg_get_userbyid(object.datdba) = current_user) AS owned_database_count," +
+        " (SELECT count(*)::integer FROM pg_catalog.pg_namespace object" +
+        "   WHERE object.nspname !~ '^pg_'" +
+        "     AND object.nspname <> 'information_schema'" +
+        "     AND pg_catalog.pg_get_userbyid(object.nspowner) = current_user) AS owned_schema_count," +
+        " (SELECT count(*)::integer FROM pg_catalog.pg_class object" +
+        "   JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace" +
+        "   WHERE namespace.nspname !~ '^pg_'" +
+        "     AND namespace.nspname <> 'information_schema'" +
+        "     AND pg_catalog.pg_get_userbyid(object.relowner) = current_user) AS owned_relation_count," +
+        " (SELECT count(*)::integer FROM pg_catalog.pg_proc object" +
+        "   JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace" +
+        "   WHERE namespace.nspname !~ '^pg_'" +
+        "     AND namespace.nspname <> 'information_schema'" +
+        "     AND pg_catalog.pg_get_userbyid(object.proowner) = current_user) AS owned_function_count," +
+        " (SELECT count(*)::integer FROM pg_catalog.pg_type object" +
+        "   JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace" +
+        "   WHERE namespace.nspname !~ '^pg_'" +
+        "     AND namespace.nspname <> 'information_schema'" +
+        "     AND pg_catalog.pg_get_userbyid(object.typowner) = current_user) AS owned_type_count" +
         ") SELECT current_user AS current_user," +
         " has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage," +
         " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
         " (SELECT all_runtime_table_dml FROM table_access) AS all_runtime_table_dml," +
         " (SELECT all_runtime_sequence_access FROM sequence_access) AS all_runtime_sequence_access," +
-        " (SELECT owned_relations FROM ownership) AS owned_relations," +
+        " (SELECT owned_database_count FROM ownership) AS owned_database_count," +
+        " (SELECT owned_schema_count FROM ownership) AS owned_schema_count," +
+        " (SELECT owned_relation_count FROM ownership) AS owned_relation_count," +
+        " (SELECT owned_function_count FROM ownership) AS owned_function_count," +
+        " (SELECT owned_type_count FROM ownership) AS owned_type_count," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'SELECT') AS security_select," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'INSERT') AS security_insert," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'UPDATE') AS security_update," +
@@ -775,7 +812,11 @@ async function verifyApplicationRuntimeAccess({
       access?.schema_create !== false ||
       access?.all_runtime_table_dml !== true ||
       access?.all_runtime_sequence_access !== true ||
-      Number(access?.owned_relations) !== 0 ||
+      Number(access?.owned_database_count) !== 0 ||
+      Number(access?.owned_schema_count) !== 0 ||
+      Number(access?.owned_relation_count) !== 0 ||
+      Number(access?.owned_function_count) !== 0 ||
+      Number(access?.owned_type_count) !== 0 ||
       access?.security_select !== false ||
       access?.security_insert !== false ||
       access?.security_update !== false ||
