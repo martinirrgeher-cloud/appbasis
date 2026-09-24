@@ -161,6 +161,38 @@ describe("ULC Linz countdown access", () => {
     ).rejects.toBeInstanceOf(UlcLinzCountdownAccessDeniedError);
   });
 
+  it("audits malformed persisted membership identifiers before denying access", async () => {
+    for (const rows of [
+      [
+        {
+          organization_id: " ",
+          source_role: "trainer",
+          active: true,
+        },
+      ],
+      [
+        {
+          organization_id: ORGANIZATION_ID,
+          source_role: " trainer ",
+          active: true,
+        },
+      ],
+    ]) {
+      const events: UlcLinzSecurityEvent[] = [];
+      await expect(
+        service({ rows, events }).assertViewAccess(currentIdentity()),
+      ).rejects.toBeInstanceOf(UlcLinzCountdownAccessDeniedError);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        eventType: "authorization.denied",
+        actorPrincipalId: IDENTITY_ID,
+        action: "view",
+        targetId: "countdown",
+        reasonCode: "membership-denied",
+      });
+    }
+  });
+
   it("denies role drift, missing grants and explicit revokes", async () => {
     await expect(
       service({ extraRole: true }).assertViewAccess(currentIdentity()),
