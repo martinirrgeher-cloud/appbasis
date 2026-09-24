@@ -270,12 +270,13 @@ async function countdownAuditTargetId(
   }
 }
 
-function hexBytes(value: string): Uint8Array {
-  const bytes = new Uint8Array(value.length / 2);
+function hexBytes(value: string): ArrayBuffer {
+  const buffer = new ArrayBuffer(value.length / 2);
+  const bytes = new Uint8Array(buffer);
   for (let index = 0; index < value.length; index += 2) {
     bytes[index / 2] = Number.parseInt(value.slice(index, index + 2), 16);
   }
-  return bytes;
+  return buffer;
 }
 
 function invalidCountdownConfiguration(): Response {
