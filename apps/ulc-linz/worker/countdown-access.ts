@@ -54,14 +54,26 @@ export function createUlcLinzCountdownAccessService({
 }): UlcLinzCountdownAccessService {
   return Object.freeze({
     async assertViewAccess(current: UlcLinzCurrentIdentity) {
+      const identityId = optionalIdentifier(current.identity.identityId);
+      if (identityId === null) {
+        recordUlcLinzSecurityEvent(securityEvents, {
+          eventType: "authorization.denied",
+          actorPrincipalId: null,
+          organizationId: null,
+          action: "view",
+          targetId: COUNTDOWN_MODULE_ID,
+          reasonCode: "identity-access-denied",
+        });
+        throw new UlcLinzCountdownAccessDeniedError();
+      }
+
       try {
         assertIdentityActionAllowed(current, "application");
       } catch (error) {
-        recordDenial(securityEvents, current.identity.identityId, null, "identity-access-denied");
+        recordDenial(securityEvents, identityId, null, "identity-access-denied");
         throw error;
       }
 
-      const identityId = requiredIdentifier(current.identity.identityId);
       const rows = await sql.unsafe(
         `SELECT organization_id, source_role, active
          FROM ulc_linz_membership
