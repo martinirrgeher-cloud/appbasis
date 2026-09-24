@@ -203,6 +203,7 @@ test("reconciles separated application and security runtime access through the m
               {
                 current_user: "ulc_preview_security_ingest",
                 schema_create: false,
+                non_security_schema_create_count: 0,
                 non_security_table_access_count: 0,
                 non_security_sequence_access_count: 0,
                 has_ingest_role: true,
