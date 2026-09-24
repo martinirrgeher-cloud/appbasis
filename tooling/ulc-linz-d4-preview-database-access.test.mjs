@@ -110,7 +110,11 @@ function exactApplicationAccess(overrides = {}) {
     schema_create: false,
     all_runtime_table_dml: true,
     all_runtime_sequence_access: true,
-    owned_relations: 0,
+    owned_database_count: 0,
+    owned_schema_count: 0,
+    owned_relation_count: 0,
+    owned_function_count: 0,
+    owned_type_count: 0,
     security_select: false,
     security_insert: false,
     security_update: false,
@@ -141,14 +145,22 @@ function securityMembership() {
 }
 
 function ownerFixture({
-  loginOwnership = {
+  applicationOwnership = {
     owned_database_count: 0,
     owned_schema_count: 0,
     owned_relation_count: 0,
     owned_function_count: 0,
     owned_type_count: 0,
   },
-  loginDirectGrantCount = 0,
+  securityOwnership = {
+    owned_database_count: 0,
+    owned_schema_count: 0,
+    owned_relation_count: 0,
+    owned_function_count: 0,
+    owned_type_count: 0,
+  },
+  applicationDirectGrantCount = 0,
+  securityDirectGrantCount = 0,
   groupParents = [],
   extraGroupMembers = [],
   groupOwnership = {
@@ -218,12 +230,18 @@ function ownerFixture({
         return [sharedBoundary];
       }
       if (sql.includes("AS direct_grant_count")) {
-        assert.equal(params?.[0], "ulc_preview_security_ingest");
-        return [{ direct_grant_count: loginDirectGrantCount }];
+        const role = params?.[0];
+        if (role === "ulc_preview_app") {
+          return [{ direct_grant_count: applicationDirectGrantCount }];
+        }
+        assert.equal(role, "ulc_preview_security_ingest");
+        return [{ direct_grant_count: securityDirectGrantCount }];
       }
       if (sql.includes("AS owned_database_count")) {
-        assert.equal(params?.[0], "ulc_preview_security_ingest");
-        return [loginOwnership];
+        const role = params?.[0];
+        if (role === "ulc_preview_app") return [applicationOwnership];
+        assert.equal(role, "ulc_preview_security_ingest");
+        return [securityOwnership];
       }
       throw new Error("Unexpected owner SQL: " + sql);
     },
@@ -268,6 +286,10 @@ function databaseFactory({
           async unsafe(sql) {
             assert.match(sql, /all_runtime_table_dml/);
             assert.match(sql, /has_any_column_privilege/);
+            assert.match(sql, /owned_database_count/);
+            assert.match(sql, /owned_schema_count/);
+            assert.match(sql, /owned_function_count/);
+            assert.match(sql, /owned_type_count/);
             assert.match(sql, /security_purge_execute/);
             return [applicationAccess];
           },
@@ -344,10 +366,38 @@ test("preflight rejects an already-created preview ingest group", async () => {
   );
 });
 
+test("preflight rejects application runtime ownership before migration", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    applicationOwnership: {
+      owned_database_count: 0,
+      owned_schema_count: 1,
+      owned_relation_count: 0,
+      owned_function_count: 0,
+      owned_type_count: 0,
+    },
+  });
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /application runtime login owns database objects/,
+  );
+});
+
+test("preflight rejects direct application runtime grants before migration", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    applicationDirectGrantCount: 1,
+  });
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /application runtime login has direct grants/,
+  );
+});
+
 test("preflight rejects unsafe security principal state before migration", async () => {
   const owner = ownerFixture({
     previewGroupPresent: false,
-    loginDirectGrantCount: 1,
+    securityDirectGrantCount: 1,
   });
   await assert.rejects(
     preflight(databaseFactory({ owner })),
@@ -401,6 +451,21 @@ test("binds the security login only to the preview-specific ingest group", async
   assert.deepEqual(ended.sort(), ["application", "owner", "security"]);
 });
 
+test("rejects application runtime database ownership after reconciliation", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          owned_database_count: 1,
+        }),
+      }),
+    ),
+    /application runtime database ACL is not exact/,
+  );
+});
+
 test("rejects stale application column access to the security log", async () => {
   const owner = ownerFixture();
   await assert.rejects(
@@ -417,7 +482,7 @@ test("rejects stale application column access to the security log", async () => 
 });
 
 test("rejects direct grants on the security login", async () => {
-  const owner = ownerFixture({ loginDirectGrantCount: 1 });
+  const owner = ownerFixture({ securityDirectGrantCount: 1 });
   await assert.rejects(
     reconcile(databaseFactory({ owner })),
     /security-log login has direct grants/,
@@ -499,7 +564,7 @@ test("rejects inherited or PUBLIC effective access on shared ULC roles", async (
 
 test("rejects security login ownership", async () => {
   const owner = ownerFixture({
-    loginOwnership: {
+    securityOwnership: {
       owned_database_count: 0,
       owned_schema_count: 0,
       owned_relation_count: 1,
