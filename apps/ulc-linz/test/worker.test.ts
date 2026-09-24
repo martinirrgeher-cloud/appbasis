@@ -5,6 +5,10 @@ import { InMemoryPermissionStore } from "@appbasis/permissions";
 
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
+import {
+  ULC_LINZ_APP_CSS,
+  ULC_LINZ_APP_SCRIPT,
+} from "../worker/ui";
 
 const currentIdentity = {
   identity: {
@@ -74,6 +78,38 @@ function runtime(
 }
 
 describe("generated identity+permissions Worker entrypoint", () => {
+  it("serves the mobile countdown shell without creating a database runtime", async () => {
+    let runtimeCalls = 0;
+    const worker = createGeneratedWorker(() => {
+      runtimeCalls += 1;
+      throw new Error("runtime must not be created for static UI");
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/"),
+      undefined,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(response.headers.get("content-security-policy")).toContain(
+      "script-src 'self'",
+    );
+    expect(await response.text()).toContain("Intervall-Countdown");
+    expect(runtimeCalls).toBe(0);
+  });
+
+  it("ships the countdown controls and domain-backed plan integration in static assets", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain("/api/modules/countdown/plan");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("speechSynthesis");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("navigator.wakeLock");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("localStorage");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('runMode === "paused" ? "Weiter" : "Pause"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('timerHint.textContent = "3, 2, 1 – Los"');
+    expect(ULC_LINZ_APP_CSS).toContain('[data-phase="work"]');
+    expect(ULC_LINZ_APP_CSS).toContain('[data-phase="rest"]');
+  });
+
   it("keeps liveness available without database or secret bindings", async () => {
     let runtimeCalls = 0;
     const worker = createGeneratedWorker(() => {
