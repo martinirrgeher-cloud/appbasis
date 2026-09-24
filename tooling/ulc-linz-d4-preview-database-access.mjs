@@ -37,6 +37,62 @@ const SECURITY_ALL_COLUMNS = Object.freeze([
   "recorded_at",
 ]);
 
+export async function preflightUlcLinzD4PreviewDatabaseAccess(
+  {
+    migrationDatabaseUrl,
+    applicationDatabaseUrl,
+    securityLogDatabaseUrl,
+  } = {},
+  { databaseFactory = createPostgresDatabase } = {},
+) {
+  if (typeof databaseFactory !== "function") {
+    throw new Error("ULC D4 preview database factory is invalid.");
+  }
+
+  const credentials = validateUlcLinzD4PreviewDatabaseCredentials({
+    migrationDatabaseUrl,
+    applicationDatabaseUrl,
+    securityLogDatabaseUrl,
+  });
+  const applicationRole = requiredRoleName(credentials.application.user);
+  const securityRole = requiredRoleName(credentials.securityLog.user);
+
+  const ownerDatabase = databaseFactory(migrationDatabaseUrl);
+  try {
+    await requirePreMigrationRuntimeRoleInventory(
+      ownerDatabase.client,
+      applicationRole,
+      securityRole,
+    );
+    await requireApplicationMembershipBoundary(
+      ownerDatabase.client,
+      applicationRole,
+    );
+    await requireSecurityLoginMembershipBoundary(
+      ownerDatabase.client,
+      securityRole,
+      true,
+    );
+    await requireSecurityLoginOwnershipBoundary(
+      ownerDatabase.client,
+      securityRole,
+    );
+    await requireSecurityLoginNoDirectGrants(
+      ownerDatabase.client,
+      securityRole,
+    );
+
+    return Object.freeze({
+      schemaVersion: 1,
+      application: "ulc-linz",
+      environment: "generated-preview-ulc-linz",
+      runtimePrincipalPreflightVerified: true,
+    });
+  } finally {
+    await ownerDatabase.client.end().catch(() => {});
+  }
+}
+
 export async function reconcileUlcLinzD4PreviewDatabaseAccess(
   {
     migrationDatabaseUrl,
@@ -177,6 +233,38 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
     securityLogRuntimeAccessVerified: true,
     securityLogDatabaseIsolationVerified: true,
   });
+}
+
+async function requirePreMigrationRuntimeRoleInventory(
+  client,
+  applicationRole,
+  securityRole,
+) {
+  const rows = await client.unsafe(
+    "SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, " +
+      "rolreplication, rolbypassrls " +
+      "FROM pg_catalog.pg_roles " +
+      "WHERE rolname = ANY($1::text[]) ORDER BY rolname",
+    [[SECURITY_GROUP, applicationRole, securityRole]],
+  );
+  if (!Array.isArray(rows)) {
+    throw new Error("ULC D4 pre-migration runtime role inventory is invalid.");
+  }
+  const byName = new Map(rows.map((row) => [row?.rolname, row]));
+  if (byName.has(SECURITY_GROUP)) {
+    throw new Error(
+      "ULC D4 preview security-log group must not exist before migration.",
+    );
+  }
+  if (byName.size !== 2) {
+    throw new Error("ULC D4 runtime database role is unavailable or privileged.");
+  }
+  for (const roleName of [applicationRole, securityRole]) {
+    const role = byName.get(roleName);
+    if (role?.rolcanlogin !== true || elevated(role)) {
+      throw new Error("ULC D4 runtime database role is unavailable or privileged.");
+    }
+  }
 }
 
 async function requireRuntimeRoleInventory(client, applicationRole, securityRole) {
@@ -764,11 +852,17 @@ async function verifySecurityRuntimeAccess({
         " OR has_sequence_privilege(current_user, relation.oid, 'SELECT')" +
         " OR has_sequence_privilege(current_user, relation.oid, 'UPDATE')" +
         " )" +
+        "), non_security_routines AS (" +
+        " SELECT count(*)::integer AS access_count" +
+        " FROM pg_catalog.pg_proc routine" +
+        " JOIN user_schemas namespace ON namespace.oid = routine.pronamespace" +
+        " WHERE has_function_privilege(current_user, routine.oid, 'EXECUTE')" +
         ") SELECT current_user AS current_user," +
         " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
         " (SELECT access_count FROM non_security_schema_create) AS non_security_schema_create_count," +
         " (SELECT access_count FROM non_security_tables) AS non_security_table_access_count," +
         " (SELECT access_count FROM non_security_sequences) AS non_security_sequence_access_count," +
+        " (SELECT access_count FROM non_security_routines) AS non_security_function_access_count," +
         " (SELECT count(*)::integer FROM pg_catalog.pg_auth_members membership" +
         " JOIN pg_catalog.pg_roles member_role ON member_role.oid = membership.member" +
         " WHERE member_role.rolname = current_user) AS inherited_role_count," +
@@ -797,6 +891,7 @@ async function verifySecurityRuntimeAccess({
       Number(access?.non_security_schema_create_count) !== 0 ||
       Number(access?.non_security_table_access_count) !== 0 ||
       Number(access?.non_security_sequence_access_count) !== 0 ||
+      Number(access?.non_security_function_access_count) !== 0 ||
       Number(access?.inherited_role_count) !== 1 ||
       access?.has_ingest_role !== true ||
       access?.has_table_insert !== false ||
@@ -865,12 +960,23 @@ function isMainModule() {
 
 if (isMainModule()) {
   try {
-    const result = await reconcileUlcLinzD4PreviewDatabaseAccess({
+    const command = process.argv[2] ?? "reconcile";
+    const common = {
       migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
       applicationDatabaseUrl: process.env.APPBASIS_DATABASE_URL,
       securityLogDatabaseUrl: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
-      apply: process.env.APPBASIS_APPLY_DATABASE_ACCESS === "1",
-    });
+    };
+    const result =
+      command === "preflight"
+        ? await preflightUlcLinzD4PreviewDatabaseAccess(common)
+        : command === "reconcile"
+          ? await reconcileUlcLinzD4PreviewDatabaseAccess({
+              ...common,
+              apply: process.env.APPBASIS_APPLY_DATABASE_ACCESS === "1",
+            })
+          : (() => {
+              throw new Error("ULC D4 preview database access command is invalid.");
+            })();
     process.stdout.write(JSON.stringify(result) + "\n");
   } catch (error) {
     console.error(
