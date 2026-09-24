@@ -270,7 +270,36 @@ jobs:
             const rows = await securityDatabase.client.unsafe(
               `SELECT current_user AS current_user,
                       pg_has_role(current_user, 'ulc_linz_security_event_ingest', 'USAGE') AS has_ingest_role,
-                      has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'INSERT') AS can_insert,
+                      has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'INSERT') AS has_table_insert,
+                      (
+                        SELECT bool_and(
+                          has_column_privilege(
+                            current_user,
+                            'public.ulc_linz_security_event_log',
+                            column_name,
+                            'INSERT'
+                          )
+                        )
+                        FROM (
+                          VALUES
+                            ('schema_version'),
+                            ('app_id'),
+                            ('category'),
+                            ('event_type'),
+                            ('occurred_at'),
+                            ('actor_principal_id'),
+                            ('organization_id'),
+                            ('action'),
+                            ('target_type'),
+                            ('target_id'),
+                            ('operation'),
+                            ('http_status'),
+                            ('error_code'),
+                            ('reason_code'),
+                            ('retained_until')
+                        ) AS allowed_columns(column_name)
+                      ) AS can_insert_allowed_columns,
+                      has_column_privilege(current_user, 'public.ulc_linz_security_event_log', 'recorded_at', 'INSERT') AS can_insert_recorded_at,
                       has_sequence_privilege(current_user, 'public.ulc_linz_security_event_log_id_seq', 'USAGE') AS can_use_sequence,
                       has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'SELECT') AS can_select,
                       has_table_privilege(current_user, 'public.ulc_linz_security_event_log', 'UPDATE') AS can_update,
@@ -284,7 +313,9 @@ jobs:
               rows.length !== 1 ||
               access?.current_user !== loginRole ||
               access?.has_ingest_role !== true ||
-              access?.can_insert !== true ||
+              access?.has_table_insert !== false ||
+              access?.can_insert_allowed_columns !== true ||
+              access?.can_insert_recorded_at !== false ||
               access?.can_use_sequence !== true ||
               access?.can_select !== false ||
               access?.can_update !== false ||
