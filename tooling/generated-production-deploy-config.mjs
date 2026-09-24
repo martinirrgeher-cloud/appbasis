@@ -10,14 +10,18 @@ const PRODUCTION_COMPATIBILITY_DATE = "2026-08-21";
 
 export function renderGeneratedProductionWranglerConfig(input = {}) {
   assertProductionCompatibilityDate(input.compatibilityDate);
+  const {
+    securityLogHyperdriveId: rawSecurityLogHyperdriveId,
+    ...previewInput
+  } = input;
   const previewContract = renderGeneratedPreviewWranglerConfig({
-    ...input,
+    ...previewInput,
     compatibilityDate: PRODUCTION_COMPATIBILITY_DATE,
   });
   const { secrets: _requiredSecretMetadata, ...runtimeConfig } = previewContract;
   const workerName = requiredProductionWorkerName(input.appId);
   const securityLogHyperdriveId = requiredProviderId(
-    input.securityLogHyperdriveId,
+    rawSecurityLogHyperdriveId,
     "securityLogHyperdriveId",
   );
   if (securityLogHyperdriveId === input.hyperdriveId) {
