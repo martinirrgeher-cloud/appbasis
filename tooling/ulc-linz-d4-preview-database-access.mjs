@@ -9,6 +9,23 @@ const SECURITY_TABLE = "public.ulc_linz_security_event_log";
 const SECURITY_SEQUENCE = "public.ulc_linz_security_event_log_id_seq";
 const SECURITY_PURGE_FUNCTION =
   "public.appbasis_ulc_linz_purge_expired_security_events()";
+const SECURITY_INGEST_COLUMNS = Object.freeze([
+  "schema_version",
+  "app_id",
+  "category",
+  "event_type",
+  "occurred_at",
+  "actor_principal_id",
+  "organization_id",
+  "action",
+  "target_type",
+  "target_id",
+  "operation",
+  "http_status",
+  "error_code",
+  "reason_code",
+  "retained_until",
+]);
 
 export async function reconcileUlcLinzD4PreviewDatabaseAccess(
   {
@@ -50,6 +67,7 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
       ownerDatabase.client,
       securityRole,
     );
+    await requireSecurityGroupCatalogBoundary(ownerDatabase.client);
 
     if (typeof ownerDatabase.client.begin !== "function") {
       throw new Error("ULC D4 preview database access transaction is unavailable.");
@@ -274,6 +292,161 @@ async function requireSecurityLoginCatalogBoundary(client, securityRole) {
     throw new Error(
       "ULC D4 security-log login owns database objects or has direct grants.",
     );
+  }
+}
+
+async function requireSecurityGroupCatalogBoundary(client) {
+  const ownershipRows = await client.unsafe(
+    `WITH target AS (
+       SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1
+     )
+     SELECT
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_database object
+         WHERE object.datname = current_database()
+           AND object.datdba = (SELECT oid FROM target)) AS group_owned_database_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_namespace object
+         WHERE object.nspname !~ '^pg_'
+           AND object.nspname <> 'information_schema'
+           AND object.nspowner = (SELECT oid FROM target)) AS group_owned_schema_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_class object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
+         WHERE namespace.nspname !~ '^pg_'
+           AND namespace.nspname <> 'information_schema'
+           AND object.relowner = (SELECT oid FROM target)) AS group_owned_relation_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_proc object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
+         WHERE namespace.nspname !~ '^pg_'
+           AND namespace.nspname <> 'information_schema'
+           AND object.proowner = (SELECT oid FROM target)) AS group_owned_function_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_type object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
+         WHERE namespace.nspname !~ '^pg_'
+           AND namespace.nspname <> 'information_schema'
+           AND object.typowner = (SELECT oid FROM target)) AS group_owned_type_count`,
+    [SECURITY_GROUP],
+  );
+  const ownership = ownershipRows?.[0];
+  if (
+    !Array.isArray(ownershipRows) ||
+    ownershipRows.length !== 1 ||
+    Number(ownership?.group_owned_database_count) !== 0 ||
+    Number(ownership?.group_owned_schema_count) !== 0 ||
+    Number(ownership?.group_owned_relation_count) !== 0 ||
+    Number(ownership?.group_owned_function_count) !== 0 ||
+    Number(ownership?.group_owned_type_count) !== 0
+  ) {
+    throw new Error("ULC D4 security-log ingest group owns database objects.");
+  }
+
+  const grants = await client.unsafe(
+    `WITH target AS (
+       SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1
+     )
+     SELECT 'database'::text AS object_kind, NULL::text AS schema_name,
+            object.datname::text AS object_name, NULL::text AS column_name,
+            acl.privilege_type, acl.is_grantable
+       FROM pg_catalog.pg_database object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.datacl) acl
+      WHERE object.datname = current_database()
+        AND acl.grantee = (SELECT oid FROM target)
+     UNION ALL
+     SELECT 'schema'::text, NULL::text, object.nspname::text, NULL::text,
+            acl.privilege_type, acl.is_grantable
+       FROM pg_catalog.pg_namespace object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.nspacl) acl
+      WHERE object.nspname !~ '^pg_'
+        AND object.nspname <> 'information_schema'
+        AND acl.grantee = (SELECT oid FROM target)
+     UNION ALL
+     SELECT CASE WHEN object.relkind = 'S' THEN 'sequence'::text ELSE 'relation'::text END,
+            namespace.nspname::text, object.relname::text, NULL::text,
+            acl.privilege_type, acl.is_grantable
+       FROM pg_catalog.pg_class object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.relacl) acl
+      WHERE namespace.nspname !~ '^pg_'
+        AND namespace.nspname <> 'information_schema'
+        AND acl.grantee = (SELECT oid FROM target)
+     UNION ALL
+     SELECT 'column'::text, namespace.nspname::text, relation.relname::text,
+            attribute.attname::text, acl.privilege_type, acl.is_grantable
+       FROM pg_catalog.pg_attribute attribute
+       JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl
+      WHERE attribute.attnum > 0
+        AND NOT attribute.attisdropped
+        AND namespace.nspname !~ '^pg_'
+        AND namespace.nspname <> 'information_schema'
+        AND acl.grantee = (SELECT oid FROM target)
+     UNION ALL
+     SELECT 'function'::text, namespace.nspname::text, object.proname::text,
+            NULL::text, acl.privilege_type, acl.is_grantable
+       FROM pg_catalog.pg_proc object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.proacl) acl
+      WHERE namespace.nspname !~ '^pg_'
+        AND namespace.nspname <> 'information_schema'
+        AND acl.grantee = (SELECT oid FROM target)
+     UNION ALL
+     SELECT 'type'::text, namespace.nspname::text, object.typname::text,
+            NULL::text, acl.privilege_type, acl.is_grantable
+       FROM pg_catalog.pg_type object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.typacl) acl
+      WHERE namespace.nspname !~ '^pg_'
+        AND namespace.nspname <> 'information_schema'
+        AND acl.grantee = (SELECT oid FROM target)
+     UNION ALL
+     SELECT 'default'::text, NULL::text, object.defaclobjtype::text,
+            NULL::text, acl.privilege_type, acl.is_grantable
+       FROM pg_catalog.pg_default_acl object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.defaclacl) acl
+      WHERE acl.grantee = (SELECT oid FROM target)
+     ORDER BY object_kind, schema_name, object_name, column_name, privilege_type`,
+    [SECURITY_GROUP],
+  );
+  if (!Array.isArray(grants)) {
+    throw new Error("ULC D4 security-log ingest group ACL inventory is invalid.");
+  }
+
+  const expected = new Set(
+    SECURITY_INGEST_COLUMNS.map(
+      (column) =>
+        `column:public:ulc_linz_security_event_log:${column}:INSERT`,
+    ),
+  );
+  expected.add(
+    "sequence:public:ulc_linz_security_event_log_id_seq::USAGE",
+  );
+
+  const actual = new Set();
+  for (const row of grants) {
+    if (row?.is_grantable !== false) {
+      throw new Error("ULC D4 security-log ingest group grant option is forbidden.");
+    }
+    const key = [
+      String(row?.object_kind ?? ""),
+      String(row?.schema_name ?? ""),
+      String(row?.object_name ?? ""),
+      String(row?.column_name ?? ""),
+      String(row?.privilege_type ?? ""),
+    ].join(":");
+    if (actual.has(key)) {
+      throw new Error("ULC D4 security-log ingest group ACL is duplicated.");
+    }
+    actual.add(key);
+  }
+  if (
+    actual.size !== expected.size ||
+    [...expected].some((key) => !actual.has(key))
+  ) {
+    throw new Error("ULC D4 security-log ingest group ACL is not exact.");
   }
 }
 
