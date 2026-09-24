@@ -140,13 +140,21 @@ Verbindliche D4-Grenzen:
 
 - eigener Preview-Worker `appbasis-ulc-linz`,
 - eigene Preview-Datenbank `appbasis_ulc_linz_preview`,
-- getrennte Application- und Security-Log-Datenbankrollen,
-- getrennte Hyperdrives `HYPERDRIVE` und `SECURITY_LOG_HYPERDRIVE`,
-- beide Rollen zeigen auf dieselbe dedizierte ULC-Preview-Datenbank,
+- drei getrennte Datenbank-Principals für Migration-Owner, Application-Runtime
+  und Security-Log-Runtime,
+- der Migration-Owner wird niemals an den Worker gebunden,
+- getrennte Hyperdrives `HYPERDRIVE` und `SECURITY_LOG_HYPERDRIVE` verwenden
+  ausschließlich die beiden nicht privilegierten Runtime-Principals,
+- alle drei Principals zeigen auf dieselbe dedizierte ULC-Preview-Datenbank,
+- der Security-Log-Runtime-Principal besitzt keine Datenbankobjekte, keine
+  direkten Grants und keinen effektiven Zugriff außerhalb des vorgesehenen
+  Ingest-Pfads,
 - Preview-Mutationen sind main-only und benötigen je Operation eine explizite
   `apply`-Freigabe,
 - Reihenfolge: `hyperdrives → migrate → bootstrap → deploy`,
-- Deployment-Smokes prüfen UI, Session-Grenze und Datenbank-Erreichbarkeit,
+- Deployment-Smokes prüfen UI, Session-Grenze, Application-Datenbank-
+  Erreichbarkeit und beweisen zusätzlich, dass die erzeugte anonyme
+  Countdown-Ablehnung tatsächlich als neuer Security-Event persistiert wurde,
 - Produktion, Produktionsdatenbank und bestehende M5/M6-Evidence bleiben
   unverändert.
 
