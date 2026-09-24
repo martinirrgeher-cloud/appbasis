@@ -78,6 +78,11 @@ export async function preflightUlcLinzD4PreviewDatabaseAccess(
       applicationRole,
       "application runtime",
     );
+    await requirePreMigrationRuntimeEffectiveBoundary(
+      ownerDatabase.client,
+      applicationRole,
+      "application runtime",
+    );
     await requireSecurityLoginMembershipBoundary(
       ownerDatabase.client,
       securityRole,
@@ -89,6 +94,11 @@ export async function preflightUlcLinzD4PreviewDatabaseAccess(
       "security-log runtime",
     );
     await requireRuntimeLoginNoDirectGrants(
+      ownerDatabase.client,
+      securityRole,
+      "security-log runtime",
+    );
+    await requirePreMigrationRuntimeEffectiveBoundary(
       ownerDatabase.client,
       securityRole,
       "security-log runtime",
@@ -384,6 +394,27 @@ async function requireSecurityGroupMemberBoundary(
     edge?.set_option !== true
   ) {
     throw new Error("ULC D4 preview security-log group member is unsafe.");
+  }
+}
+
+async function requirePreMigrationRuntimeEffectiveBoundary(
+  client,
+  runtimeRole,
+  label,
+) {
+  const rows = await client.unsafe(
+    "SELECT " +
+      "has_schema_privilege($1, 'public', 'CREATE') AS public_schema_create",
+    [runtimeRole],
+  );
+  if (
+    !Array.isArray(rows) ||
+    rows.length !== 1 ||
+    rows[0]?.public_schema_create !== false
+  ) {
+    throw new Error(
+      "ULC D4 " + label + " login has effective pre-migration CREATE access.",
+    );
   }
 }
 
