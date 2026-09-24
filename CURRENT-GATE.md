@@ -93,22 +93,32 @@ fail-closed offen bleiben, bis Modulscope, Berechtigungen und Produktionsvertrag
 in einem späteren getrennten Gate neu geprüft wurden. FC5-C darf diese
 Produktionsevidenz nicht stillschweigend hochstufen oder neu baselinen.
 
-### Aktueller Teilslice: Countdown D1 – echter Domainvertrag
+### Countdown D1 – echter Domainvertrag – abgeschlossen
 
-Vor dem ULC-Preview-Gate wird der bislang nur deklarative Countdown zu einem
-echten Fachmodul erweitert. D1 liefert ausschließlich den persistenzfreien,
-deterministischen Domainvertrag für Übungen/Durchgänge, Belastung, Pause,
-Ansageintervalle, `3, 2, 1, Los`, die letzten fünf Sekunden und `Fertig`.
+Der Countdown besitzt jetzt einen getesteten persistenzfreien Domainvertrag für
+Übungen/Durchgänge, Belastung, Pause, Ansageintervalle, `3, 2, 1, Los`, die
+letzten fünf Sekunden und `Fertig`.
 
-Der zuvor vom FC4-Scaffolder erzeugte Modulvertrag bleibt unverändert Source of
-Truth. Produktlogik darf den Scaffold erweitern, aber Modul-ID, Paketidentität,
-Capability und Datenbankbesitz nicht umdeuten.
+### Aktueller Teilslice: Countdown D2 – ULC Runtime + Berechtigung
 
-Nach D1 folgen getrennt:
+ULC bindet den Countdown jetzt als echten geschützten Runtime-Verbraucher an.
+Der Countdown ist ein vereinsdatenfreies Werkzeug: Der Server ermittelt die
+eine app-eigene Mitgliedschaft selbst anhand der authentifizierten Identity und
+verlangt anschließend aktive Mitgliedschaft, exakt passende Runtime-Rolle und
+das bestehende individuelle Modulrecht `ulc-linz:module:countdown:view`.
 
-1. D2 – ULC Runtime + serverseitige Berechtigung,
-2. D3 – mobile UI inklusive Pause/Weiter/Reset und Sprachausgabe,
-3. D4 – isolierte ULC Preview mit weiterhin getrenntem Application- und
+Für D2 gilt ausdrücklich:
+
+- keine vom Client vorgegebene Organisations-ID als Autoritätsquelle,
+- kein Subject-Scope für Athleten oder Eltern,
+- keine Lockerung der strengeren Subject-Scope-Regeln anderer ULC-Module,
+- keine neue Datenbanktabelle oder Migration,
+- keine Production-Evidence-Revalidierung.
+
+Nach D2 folgen getrennt:
+
+1. D3 – mobile UI inklusive Pause/Weiter/Reset und Sprachausgabe,
+2. D4 – isolierte ULC Preview mit weiterhin getrenntem Application- und
    Security-Log-Hyperdrive.
 
 Keine dieser Stufen revalidiert automatisch die alte M5/M6-Production-Evidence.

@@ -153,24 +153,38 @@ test("keeps identity-only and guarded tasks generator contracts unchanged", () =
   );
 });
 
-test("checked ULC generated deployment files stay byte-identical to createAppSkeleton's canonical runtime generator", () => {
+test("checked ULC preserves generator-owned foundations while extending its runtime for countdown", () => {
   const template = createIdentityRuntimeTemplate(ulcInput);
   for (const path of [
-    "worker/index.ts",
-    "worker/postgres.ts",
     "worker/security-events-postgres.ts",
     "migrations/0000_ulc_linz_lifecycle_scope.sql",
     "migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "migrations/0002_ulc_linz_security_event_log.sql",
     "migrations/0003_ulc_linz_security_event_access.sql",
-    "test/worker.test.ts",
   ]) {
     assert.equal(
       content(template, path),
       readFileSync(new URL(`../apps/ulc-linz/${path}`, import.meta.url), "utf8"),
-      `Generated ULC file drifted: ${path}`,
+      `Generator-owned ULC foundation drifted: ${path}`,
     );
   }
+
+  const checkedWorker = readFileSync(
+    new URL("../apps/ulc-linz/worker/index.ts", import.meta.url),
+    "utf8",
+  );
+  const checkedPostgres = readFileSync(
+    new URL("../apps/ulc-linz/worker/postgres.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(checkedWorker, /createGeneratedPostgresApplicationRuntime/);
+  assert.match(checkedWorker, /SECURITY_LOG_HYPERDRIVE/);
+  assert.match(checkedWorker, /\/api\/modules\/countdown/);
+  assert.match(checkedWorker, /COUNTDOWN_CAPABILITIES/);
+  assert.match(checkedPostgres, /createPostgresIdentityApplicationRuntime/);
+  assert.match(checkedPostgres, /PostgresPermissionStore/);
+  assert.match(checkedPostgres, /createPostgresUlcLinzSecurityEventLogger/);
+  assert.match(checkedPostgres, /createUlcLinzCountdownAccessService/);
 });
 
 function content(template, path) {

@@ -51,6 +51,11 @@ const validEnv = Object.freeze({
 function runtime(
   close = async () => {},
   flush = async () => {},
+  countdownAccess: GeneratedPostgresApplicationRuntime["countdownAccess"] = {
+    async assertViewAccess() {
+      return { organizationId: "verein-1" };
+    },
+  },
 ): GeneratedPostgresApplicationRuntime {
   return {
     identity,
@@ -59,6 +64,7 @@ function runtime(
       roles: [],
       principals: [],
     }),
+    countdownAccess,
     securityEvents: {
       record() {},
       flush,
@@ -129,6 +135,171 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
     expect(response.status).toBe(503);
     expect(runtimeCalls).toBe(0);
+  });
+
+  it("serves the countdown contract only to an authenticated authorized member", async () => {
+    let accessCalls = 0;
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {},
+        async () => {},
+        {
+          async assertViewAccess(current) {
+            accessCalls += 1;
+            expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
+            return { organizationId: "verein-1" };
+          },
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(accessCalls).toBe(1);
+    await expect(response.json()).resolves.toEqual({
+      module: {
+        moduleId: "countdown",
+        capability: "countdown:view",
+      },
+      access: {
+        view: true,
+      },
+    });
+  });
+
+  it("keeps the countdown contract closed and audited without a valid session", async () => {
+    let accessCalls = 0;
+    const events: unknown[] = [];
+    const worker = createGeneratedWorker(() => {
+      const value = runtime(
+        async () => {},
+        async () => {},
+        {
+          async assertViewAccess() {
+            accessCalls += 1;
+            return { organizationId: "verein-1" };
+          },
+        },
+      );
+      return {
+        ...value,
+        securityEvents: {
+          record(event: unknown) {
+            events.push(event);
+          },
+          async flush() {},
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown"),
+      validEnv,
+    );
+
+    expect(response.status).toBe(401);
+    expect(accessCalls).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "SESSION_INVALID" },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventType: "authorization.denied",
+      actorPrincipalId: null,
+      organizationId: null,
+      action: "view",
+      targetId: "countdown",
+      reasonCode: "identity-access-denied",
+    });
+  });
+
+  it("returns a generic forbidden countdown response for denied module access", async () => {
+    const { UlcLinzCountdownAccessDeniedError } = await import(
+      "../worker/countdown-access"
+    );
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {},
+        async () => {},
+        {
+          async assertViewAccess() {
+            throw new UlcLinzCountdownAccessDeniedError();
+          },
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "ULC_LINZ_COUNTDOWN_ACCESS_DENIED",
+        message: "Countdown access denied.",
+      },
+    });
+  });
+
+  it("keeps unexpected countdown authorization failures generic and secret-free", async () => {
+    const originalError = console.error;
+    const logged: string[] = [];
+    console.error = (...values: unknown[]) => {
+      logged.push(values.map(String).join(" "));
+    };
+    try {
+      const worker = createGeneratedWorker(() =>
+        runtime(
+          async () => {},
+          async () => {},
+          {
+            async assertViewAccess() {
+              throw new Error("postgresql://countdown-secret/private");
+            },
+          },
+        ),
+      );
+
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/countdown", {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+
+      expect(response.status).toBe(500);
+      const body = JSON.stringify(await response.json());
+      expect(body).toContain("INTERNAL_ERROR");
+      expect(body).not.toContain("countdown-secret");
+      expect(logged.join("\n")).not.toContain("countdown-secret");
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("does not accept mutating methods on the countdown contract endpoint", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown", {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("GET");
   });
 
   it("maps validated bindings into one request-scoped runtime, flushes security events and closes it", async () => {

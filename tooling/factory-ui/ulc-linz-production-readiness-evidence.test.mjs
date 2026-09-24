@@ -364,9 +364,10 @@ test("M5-J keeps the changed FC5 repository scope blocked until production evide
     ),
   );
   assert.equal(readiness.productionReady, false);
-  assert.equal(readiness.verifiedCount, 9);
+  assert.equal(readiness.verifiedCount, 8);
   assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
   assert.equal(criterionStatus(readiness, "retention"), "open");
+  assert.equal(criterionStatus(readiness, "privilegedControlPlaneIsolation"), "open");
   assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
 });
 
@@ -497,7 +498,7 @@ test("Factory snapshot consumes M5-J while release production remains separately
   const ulc = snapshot.apps.find((app) => app.appId === "ulc-linz");
   assert.ok(ulc);
   assert.equal(ulc.productionReadiness.productionReady, false);
-  assert.equal(ulc.productionReadiness.verifiedCount, 7);
+  assert.equal(ulc.productionReadiness.verifiedCount, 6);
   assert.equal(ulc.productionReleaseReadiness.releaseAuthorized, false);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });
