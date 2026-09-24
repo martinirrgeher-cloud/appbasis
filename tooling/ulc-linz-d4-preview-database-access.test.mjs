@@ -152,6 +152,7 @@ function ownerFixture({
     shared_owned_function_count: 0,
     shared_owned_type_count: 0,
     shared_direct_grant_count: 0,
+    shared_effective_security_access_count: 0,
   },
 } = {}) {
   let bound = false;
@@ -374,6 +375,26 @@ test("rejects shared ULC roles that retain preview database grants", async () =>
       shared_owned_function_count: 0,
       shared_owned_type_count: 0,
       shared_direct_grant_count: 1,
+      shared_effective_security_access_count: 0,
+    },
+  });
+  await assert.rejects(
+    reconcile(databaseFactory({ owner })),
+    /shared security roles are not neutral/,
+  );
+});
+
+test("rejects inherited or PUBLIC effective access on shared ULC roles", async () => {
+  const owner = ownerFixture({
+    sharedBoundary: {
+      shared_role_count: 3,
+      shared_owned_database_count: 0,
+      shared_owned_schema_count: 0,
+      shared_owned_relation_count: 0,
+      shared_owned_function_count: 0,
+      shared_owned_type_count: 0,
+      shared_direct_grant_count: 0,
+      shared_effective_security_access_count: 1,
     },
   });
   await assert.rejects(
