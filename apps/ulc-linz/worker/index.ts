@@ -8,6 +8,7 @@ import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 import { createGeneratedApp } from "./app";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
 import { recordUlcLinzSecurityEvent } from "./security-events";
+import { generatedUiResponse } from "./ui";
 import {
   createGeneratedPostgresApplicationRuntime,
   type GeneratedPostgresApplicationRuntime,
@@ -32,6 +33,10 @@ export function createGeneratedWorker(
   return Object.freeze({
     async fetch(request: Request, env: unknown): Promise<Response> {
       const url = new URL(request.url);
+      const staticUiResponse = generatedUiResponse(request);
+      if (staticUiResponse !== null) {
+        return staticUiResponse;
+      }
       if (url.pathname === "/api/health") {
         return Response.json({ status: "ok", appId: "ulc-linz" });
       }
