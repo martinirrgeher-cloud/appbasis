@@ -177,6 +177,15 @@ jobs:
           APPBASIS_APPLY_HYPERDRIVES: ${{ inputs.apply && '1' || '0' }}
         run: node ./tooling/ulc-linz-d4-preview-hyperdrive.mjs ensure >/dev/null
 
+      - name: Preflight separated ULC preview runtime principals
+        if: inputs.operation == 'migrate'
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight >/dev/null
+
       - name: Apply ULC preview database manifest
         if: inputs.operation == 'migrate'
         shell: bash
