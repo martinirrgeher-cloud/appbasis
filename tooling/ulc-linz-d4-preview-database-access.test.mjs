@@ -161,6 +161,8 @@ function ownerFixture({
   },
   applicationDirectGrantCount = 0,
   securityDirectGrantCount = 0,
+  applicationPublicSchemaCreate = false,
+  securityPublicSchemaCreate = false,
   groupParents = [],
   extraGroupMembers = [],
   groupOwnership = {
@@ -242,6 +244,14 @@ function ownerFixture({
         if (role === "ulc_preview_app") return [applicationOwnership];
         assert.equal(role, "ulc_preview_security_ingest");
         return [securityOwnership];
+      }
+      if (sql.includes("AS public_schema_create")) {
+        const role = params?.[0];
+        if (role === "ulc_preview_app") {
+          return [{ public_schema_create: applicationPublicSchemaCreate }];
+        }
+        assert.equal(role, "ulc_preview_security_ingest");
+        return [{ public_schema_create: securityPublicSchemaCreate }];
       }
       throw new Error("Unexpected owner SQL: " + sql);
     },
@@ -391,6 +401,28 @@ test("preflight rejects direct application runtime grants before migration", asy
   await assert.rejects(
     preflight(databaseFactory({ owner })),
     /application runtime login has direct grants/,
+  );
+});
+
+test("preflight rejects effective application CREATE inherited through PUBLIC", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    applicationPublicSchemaCreate: true,
+  });
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /application runtime login has effective pre-migration CREATE access/,
+  );
+});
+
+test("preflight rejects effective security CREATE inherited through PUBLIC", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    securityPublicSchemaCreate: true,
+  });
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /security-log runtime login has effective pre-migration CREATE access/,
   );
 });
 
