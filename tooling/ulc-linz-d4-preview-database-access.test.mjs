@@ -60,6 +60,14 @@ function runtimeRole(name, login) {
 
 function exactGroupGrants() {
   return [
+    {
+      object_kind: "schema",
+      schema_name: null,
+      object_name: "public",
+      column_name: null,
+      privilege_type: "USAGE",
+      is_grantable: false,
+    },
     ...SECURITY_INGEST_COLUMNS.map((column_name) => ({
       object_kind: "column",
       schema_name: "public",
@@ -82,6 +90,7 @@ function exactGroupGrants() {
 function exactSecurityAccess(overrides = {}) {
   return {
     current_user: "ulc_preview_security_ingest",
+    schema_usage: true,
     schema_create: false,
     non_security_schema_create_count: 0,
     non_security_table_access_count: 0,
@@ -607,6 +616,21 @@ test("rejects security login ownership", async () => {
   await assert.rejects(
     reconcile(databaseFactory({ owner })),
     /security-log runtime login owns database objects/,
+  );
+});
+
+test("rejects missing public schema usage for the security runtime", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        securityAccess: exactSecurityAccess({
+          schema_usage: false,
+        }),
+      }),
+    ),
+    /security-log ingest ACL is not exact/,
   );
 });
 
