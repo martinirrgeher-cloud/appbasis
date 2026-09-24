@@ -151,10 +151,18 @@ async function countdownPlanResponse(
       rounds: input.rounds as number,
       workSeconds: input.workSeconds as number,
       restSeconds: input.restSeconds as number,
-      workAnnouncementIntervalSeconds:
-        input.workAnnouncementIntervalSeconds as number | undefined,
-      restAnnouncementIntervalSeconds:
-        input.restAnnouncementIntervalSeconds as number | undefined,
+      ...(input.workAnnouncementIntervalSeconds === undefined
+        ? {}
+        : {
+            workAnnouncementIntervalSeconds:
+              input.workAnnouncementIntervalSeconds as number,
+          }),
+      ...(input.restAnnouncementIntervalSeconds === undefined
+        ? {}
+        : {
+            restAnnouncementIntervalSeconds:
+              input.restAnnouncementIntervalSeconds as number,
+          }),
     });
     const timeline = createCountdownTimeline(configuration);
     return Response.json({ configuration, timeline });
