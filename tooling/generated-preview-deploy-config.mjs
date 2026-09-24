@@ -10,13 +10,21 @@ const DEFAULT_ENTRYPOINT = "./worker/index.ts";
 export function renderGeneratedPreviewWranglerConfig({
   appId,
   hyperdriveId,
+  securityLogHyperdriveId,
   baseURL,
   entrypoint = DEFAULT_ENTRYPOINT,
   compatibilityDate = "2026-08-14",
 } = {}) {
   const normalizedAppId = requiredIdentifier(appId, "appId");
   const workerName = generatedPreviewWorkerName(normalizedAppId);
-  const normalizedHyperdriveId = requiredProviderId(hyperdriveId);
+  const normalizedHyperdriveId = requiredProviderId(hyperdriveId, "hyperdriveId");
+  const normalizedSecurityLogHyperdriveId = optionalProviderId(
+    securityLogHyperdriveId,
+    "securityLogHyperdriveId",
+  );
+  if (normalizedSecurityLogHyperdriveId === normalizedHyperdriveId) {
+    throw new Error("Application and security-log Hyperdrive IDs must be distinct.");
+  }
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
   const normalizedEntrypoint = requiredEntrypoint(entrypoint);
   const normalizedCompatibilityDate = requiredCompatibilityDate(compatibilityDate);
@@ -41,6 +49,14 @@ export function renderGeneratedPreviewWranglerConfig({
         binding: "HYPERDRIVE",
         id: normalizedHyperdriveId,
       }),
+      ...(normalizedSecurityLogHyperdriveId === null
+        ? []
+        : [
+            Object.freeze({
+              binding: "SECURITY_LOG_HYPERDRIVE",
+              id: normalizedSecurityLogHyperdriveId,
+            }),
+          ]),
     ]),
   });
 }
@@ -97,9 +113,9 @@ function requiredIdentifier(value, field) {
   return value;
 }
 
-function requiredProviderId(value) {
+function requiredProviderId(value, field) {
   if (typeof value !== "string") {
-    throw new Error("hyperdriveId is required.");
+    throw new Error(`${field} is required.`);
   }
   const normalized = value.trim();
   if (
@@ -107,9 +123,15 @@ function requiredProviderId(value) {
     normalized.length > 256 ||
     /[\u0000-\u001f\u007f\s]/u.test(normalized)
   ) {
-    throw new Error("hyperdriveId is invalid.");
+    throw new Error(`${field} is invalid.`);
   }
   return normalized;
+}
+
+function optionalProviderId(value, field) {
+  return value === undefined
+    ? null
+    : requiredProviderId(value, field);
 }
 
 function requiredHttpsOrigin(value) {
