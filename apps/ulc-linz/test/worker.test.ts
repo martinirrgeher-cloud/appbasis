@@ -114,6 +114,27 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_CSS).toContain('[data-phase="rest"]');
   });
 
+  it("serializes initial session restoration before login interaction", () => {
+    const restoreIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function restoreSession()",
+    );
+    const loginIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function handleLogin(event)",
+      restoreIndex,
+    );
+    const restoreBody = ULC_LINZ_APP_SCRIPT.slice(restoreIndex, loginIndex);
+    const busyIndex = restoreBody.indexOf("setBusy(true);");
+    const sessionRequestIndex = restoreBody.indexOf(
+      'requestJson("/api/auth/session")',
+    );
+
+    expect(restoreIndex).toBeGreaterThanOrEqual(0);
+    expect(busyIndex).toBeGreaterThanOrEqual(0);
+    expect(busyIndex).toBeLessThan(sessionRequestIndex);
+    expect(restoreBody).toContain("finally {");
+    expect(restoreBody).toContain("setBusy(false);");
+  });
+
   it("freezes countdown settings before the plan request and keeps wake lock best effort", () => {
     const startCountdownIndex = ULC_LINZ_APP_SCRIPT.indexOf(
       "async function startCountdown()",
