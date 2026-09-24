@@ -99,6 +99,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(runtimeCalls).toBe(0);
   });
 
+  it("ships browser JavaScript that parses as standalone module-compatible code", () => {
+    expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
+  });
+
   it("ships the countdown controls and domain-backed plan integration in static assets", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("/api/modules/countdown/plan");
     expect(ULC_LINZ_APP_SCRIPT).toContain("speechSynthesis");
