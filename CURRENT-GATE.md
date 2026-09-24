@@ -148,7 +148,13 @@ Verbindliche D4-Grenzen:
 - alle drei Principals zeigen auf dieselbe dedizierte ULC-Preview-Datenbank,
 - der Security-Log-Runtime-Principal besitzt keine Datenbankobjekte, keine
   direkten Grants und keinen effektiven Zugriff außerhalb des vorgesehenen
-  Ingest-Pfads,
+  Ingest-Pfads; er erbt ausschließlich von der frisch im atomaren
+  Preview-Migrationslauf erzeugten NOLOGIN-Rolle
+  `appbasis_ulc_linz_preview_security_ingest`,
+- die produktionsgleich benannten ULC-Security-Rollen erhalten in der
+  Preview-Datenbank keine Security-Log-Rechte; die Preview-Ingest-Gruppe hat
+  keine Parent-Rollen und außer dem Security-Log-Runtime-Principal keine
+  Cluster-Mitglieder,
 - Preview-Mutationen sind main-only und benötigen je Operation eine explizite
   `apply`-Freigabe,
 - Reihenfolge: `hyperdrives → migrate → bootstrap → deploy`,
