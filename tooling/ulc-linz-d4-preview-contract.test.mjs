@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
+import { loadGeneratedAppPreviewMigrationPlan } from "./generated-app-preview-migrate.mjs";
 import { renderGeneratedPreviewWorker } from "./generated-preview-worker-template.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -21,6 +22,25 @@ test("ULC Linz satisfies the canonical generated preview contract for D4", async
   assert.equal(contract.target.workerName, "appbasis-ulc-linz");
   assert.equal(contract.target.database, "appbasis_ulc_linz_preview");
   assert.equal(contract.databaseManifest.application, "ulc-linz");
+});
+
+test("ULC Linz D4 migration plan includes all app-owned lifecycle and security migrations", async () => {
+  const { plan } = await loadGeneratedAppPreviewMigrationPlan({
+    appId: "ulc-linz",
+  });
+
+  assert.equal(plan.length, 10);
+  assert.deepEqual(
+    plan
+      .filter(({ ownerId }) => ownerId === "ulc-linz-lifecycle")
+      .map(({ relativePath }) => relativePath),
+    [
+      "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
+      "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
+      "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
+      "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+    ],
+  );
 });
 
 test("ULC Linz D4 uses the canonical generated preview wrapper without app-specific drift", async () => {
