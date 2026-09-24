@@ -27,21 +27,17 @@ test("ULC D4 preview lifecycle keeps provider writes explicit and main-only", as
 test("ULC D4 preview lifecycle binds distinct Hyperdrives and verifies the security-log ACL", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
+  assert.match(workflow, /APPBASIS_MIGRATION_DATABASE_URL/);
   assert.match(workflow, /APPBASIS_DATABASE_URL/);
   assert.match(workflow, /APPBASIS_SECURITY_LOG_DATABASE_URL/);
-  assert.match(workflow, /validateUlcLinzD4PreviewDatabaseUrls/);
+  assert.match(workflow, /validateUlcLinzD4PreviewDatabaseCredentials/);
   assert.match(workflow, /ulc-linz-d4-preview-hyperdrive\.mjs ensure/);
   assert.match(workflow, /ulc-linz-d4-preview-hyperdrive\.mjs resolve/);
   assert.match(workflow, /securityLogHyperdriveId:/);
   assert.match(workflow, /SECURITY_LOG_HYPERDRIVE/);
   assert.match(workflow, /Hyperdrive IDs must be distinct/);
-  assert.match(workflow, /ulc_linz_security_event_ingest/);
-  assert.match(workflow, /pg_has_role/);
-  assert.match(workflow, /has_table_privilege/);
-  assert.match(workflow, /has_column_privilege/);
-  assert.match(workflow, /can_insert_allowed_columns/);
-  assert.match(workflow, /can_insert_recorded_at/);
-  assert.match(workflow, /has_sequence_privilege/);
+  assert.match(workflow, /ulc-linz-d4-preview-database-access\.mjs/);
+  assert.match(workflow, /APPBASIS_APPLY_DATABASE_ACCESS/);
 });
 
 test("ULC D4 preview lifecycle reuses the canonical plan and probes the ULC countdown boundary", async () => {
@@ -52,15 +48,29 @@ test("ULC D4 preview lifecycle reuses the canonical plan and probes the ULC coun
     workflow,
     /node --experimental-transform-types \.\/tooling\/generated-app-preview-migrate\.mjs/,
   );
-  assert.match(workflow, /verifyGeneratedAppPreviewUi/);
-  assert.match(workflow, /verifyGeneratedPreviewHealth/);
-  assert.match(workflow, /\/api\/modules\/countdown/);
-  assert.match(workflow, /SESSION_INVALID/);
+  assert.match(workflow, /ulc-linz-d4-preview-audit-smoke\.mjs/);
+  assert.match(workflow, /APPBASIS_MIGRATION_DATABASE_URL/);
   assert.doesNotMatch(workflow, /node \.\/tooling\/generated-app-preview-smoke\.mjs/);
   assert.match(workflow, /generated-preview-database-smoke\.mjs/);
   assert.match(workflow, /\.\/worker\/preview\.ts|APPBASIS_ENTRYPOINT/);
   assert.match(workflow, /--experimental-provision=false/);
   assert.match(workflow, /--experimental-auto-create=false/);
+});
+
+test("ULC D4 migrations never run with the application runtime credential", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const stepStart = workflow.indexOf("      - name: Apply ULC preview database manifest\n");
+  const nextStep = workflow.indexOf("\n      - name: ", stepStart + 1);
+  assert.ok(stepStart >= 0);
+  const step = workflow.slice(stepStart, nextStep);
+  assert.match(
+    step,
+    /APPBASIS_DATABASE_URL: \$\{\{ secrets\.APPBASIS_MIGRATION_DATABASE_URL \}\}/,
+  );
+  assert.doesNotMatch(
+    step,
+    /APPBASIS_DATABASE_URL: \$\{\{ secrets\.APPBASIS_DATABASE_URL \}\}/,
+  );
 });
 
 test("ULC D4 preview lifecycle never targets ULC production resources", async () => {
