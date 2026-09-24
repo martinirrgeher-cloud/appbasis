@@ -33,6 +33,10 @@ verwendeten Operationen:
 - `APPBASIS_MIGRATION_DATABASE_URL`: direkte Owner-/Migration-Verbindung zur
   Preview-Datenbank; nur für Migrationen, Runtime-ACL-Reconciliation und
   Audit-Nachweise,
+- der Security-Log-Runtime-Principal wird datenbankweit auf den exakten
+  Ingest-Pfad begrenzt: keine Objekt-Ownership, keine direkten Grants, keine
+  Parent-Rollen der Ingest-Gruppe und kein effektiver Zugriff auf andere
+  Tabellen oder Sequenzen,
 - `APPBASIS_DATABASE_URL`: getrennte, nicht privilegierte
   Application-Runtime-Verbindung zur selben Preview-Datenbank,
 - `APPBASIS_SECURITY_LOG_DATABASE_URL`: getrennte, nicht privilegierte
