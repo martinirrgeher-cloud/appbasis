@@ -71,6 +71,38 @@ test("ULC D4 preview lifecycle reuses the canonical plan and probes the ULC coun
   assert.match(workflow, /--experimental-auto-create=false/);
 });
 
+test("ULC D4 migrate preflights separated runtime principals before committing the manifest", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const preflightStart = workflow.indexOf(
+    "      - name: Preflight separated ULC preview runtime principals\n",
+  );
+  const migrateStart = workflow.indexOf(
+    "      - name: Apply ULC preview database manifest\n",
+  );
+  assert.ok(preflightStart >= 0);
+  assert.ok(migrateStart > preflightStart);
+
+  const preflightEnd = workflow.indexOf("\n      - name: ", preflightStart + 1);
+  const preflightStep = workflow.slice(preflightStart, preflightEnd);
+  assert.match(
+    preflightStep,
+    /APPBASIS_MIGRATION_DATABASE_URL: \$\{\{ secrets\.APPBASIS_MIGRATION_DATABASE_URL \}\}/,
+  );
+  assert.match(
+    preflightStep,
+    /APPBASIS_DATABASE_URL: \$\{\{ secrets\.APPBASIS_DATABASE_URL \}\}/,
+  );
+  assert.match(
+    preflightStep,
+    /APPBASIS_SECURITY_LOG_DATABASE_URL: \$\{\{ secrets\.APPBASIS_SECURITY_LOG_DATABASE_URL \}\}/,
+  );
+  assert.match(
+    preflightStep,
+    /ulc-linz-d4-preview-database-access\.mjs preflight/,
+  );
+  assert.doesNotMatch(preflightStep, /APPBASIS_APPLY_DATABASE_ACCESS/);
+});
+
 test("ULC D4 migrations never run with the application runtime credential", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const stepStart = workflow.indexOf("      - name: Apply ULC preview database manifest\n");
