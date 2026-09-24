@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { reconcileUlcLinzD4PreviewDatabaseAccess } from "./ulc-linz-d4-preview-database-access.mjs";
+import {
+  preflightUlcLinzD4PreviewDatabaseAccess,
+  reconcileUlcLinzD4PreviewDatabaseAccess,
+} from "./ulc-linz-d4-preview-database-access.mjs";
 
 const HOST = "ep-ulc-preview.eu-central-1.aws.neon.tech";
 const DATABASE = "appbasis_ulc_linz_preview";
@@ -83,6 +86,7 @@ function exactSecurityAccess(overrides = {}) {
     non_security_schema_create_count: 0,
     non_security_table_access_count: 0,
     non_security_sequence_access_count: 0,
+    non_security_function_access_count: 0,
     inherited_role_count: 1,
     has_ingest_role: true,
     has_table_insert: false,
@@ -155,6 +159,7 @@ function ownerFixture({
     group_owned_type_count: 0,
   },
   groupGrants = exactGroupGrants(),
+  previewGroupPresent = true,
   sharedBoundary = {
     shared_role_count: 3,
     shared_owned_database_count: 0,
@@ -176,7 +181,9 @@ function ownerFixture({
         !sql.includes("AS shared_role_count")
       ) {
         return [
-          runtimeRole(PREVIEW_SECURITY_GROUP, false),
+          ...(previewGroupPresent
+            ? [runtimeRole(PREVIEW_SECURITY_GROUP, false)]
+            : []),
           runtimeRole("ulc_preview_app", true),
           runtimeRole("ulc_preview_security_ingest", true),
         ];
@@ -276,6 +283,7 @@ function databaseFactory({
           async unsafe(sql) {
             assert.match(sql, /can_insert_allowed_columns/);
             assert.match(sql, /non_security_schema_create_count/);
+            assert.match(sql, /non_security_function_access_count/);
             assert.match(sql, /inherited_role_count/);
             assert.match(sql, /pg_has_role/);
             assert.match(sql, /appbasis_ulc_linz_preview_security_ingest/);
@@ -302,6 +310,50 @@ function reconcile(factory) {
     { databaseFactory: factory },
   );
 }
+
+function preflight(factory) {
+  return preflightUlcLinzD4PreviewDatabaseAccess(
+    {
+      migrationDatabaseUrl: MIGRATION_URL,
+      applicationDatabaseUrl: APPLICATION_URL,
+      securityLogDatabaseUrl: SECURITY_URL,
+    },
+    { databaseFactory: factory },
+  );
+}
+
+test("preflights runtime principals before the preview migration without writes", async () => {
+  const owner = ownerFixture({ previewGroupPresent: false });
+  const result = await preflight(databaseFactory({ owner }));
+
+  assert.deepEqual(result, {
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "generated-preview-ulc-linz",
+    runtimePrincipalPreflightVerified: true,
+  });
+  assert.equal(owner.wasBound(), false);
+  assert.deepEqual(owner.statements, []);
+});
+
+test("preflight rejects an already-created preview ingest group", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /must not exist before migration/,
+  );
+});
+
+test("preflight rejects unsafe security principal state before migration", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    loginDirectGrantCount: 1,
+  });
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /security-log login has direct grants/,
+  );
+});
 
 test("binds the security login only to the preview-specific ingest group", async () => {
   const owner = ownerFixture();
@@ -469,6 +521,21 @@ test("rejects effective access outside the intended ingest path", async () => {
         owner,
         securityAccess: exactSecurityAccess({
           non_security_table_access_count: 1,
+        }),
+      }),
+    ),
+    /security-log ingest ACL is not exact/,
+  );
+});
+
+test("rejects effective function or procedure access outside the ingest path", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        securityAccess: exactSecurityAccess({
+          non_security_function_access_count: 1,
         }),
       }),
     ),
