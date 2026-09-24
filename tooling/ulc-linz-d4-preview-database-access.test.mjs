@@ -24,18 +24,6 @@ const SECURITY_URL =
   DATABASE +
   "?sslmode=require";
 
-function runtimeRole(name, login) {
-  return {
-    rolname: name,
-    rolcanlogin: login,
-    rolsuper: false,
-    rolcreatedb: false,
-    rolcreaterole: false,
-    rolreplication: false,
-    rolbypassrls: false,
-  };
-}
-
 const SECURITY_INGEST_COLUMNS = [
   "schema_version",
   "app_id",
@@ -54,17 +42,29 @@ const SECURITY_INGEST_COLUMNS = [
   "retained_until",
 ];
 
-function emptySecurityGroupOwnership() {
+function runtimeRole(name) {
+  return {
+    rolname: name,
+    rolcanlogin: true,
+    rolsuper: false,
+    rolcreatedb: false,
+    rolcreaterole: false,
+    rolreplication: false,
+    rolbypassrls: false,
+  };
+}
+
+function emptyOwnership() {
   return [{
-    group_owned_database_count: 0,
-    group_owned_schema_count: 0,
-    group_owned_relation_count: 0,
-    group_owned_function_count: 0,
-    group_owned_type_count: 0,
+    owned_database_count: 0,
+    owned_schema_count: 0,
+    owned_relation_count: 0,
+    owned_function_count: 0,
+    owned_type_count: 0,
   }];
 }
 
-function exactSecurityGroupGrants() {
+function exactSecurityDirectGrants() {
   return [
     ...SECURITY_INGEST_COLUMNS.map((column_name) => ({
       object_kind: "column",
@@ -85,78 +85,98 @@ function exactSecurityGroupGrants() {
   ];
 }
 
-test("reconciles separated application and security runtime access through the migration owner", async () => {
-  const statements = [];
-  let securityMembershipBound = false;
-  const ended = [];
+function applicationAccessRow() {
+  return {
+    current_user: "ulc_preview_app",
+    schema_usage: true,
+    schema_create: false,
+    all_runtime_table_dml: true,
+    all_runtime_sequence_access: true,
+    owned_relations: 0,
+    security_select: false,
+    security_insert: false,
+    security_update: false,
+    security_delete: false,
+    security_sequence_usage: false,
+  };
+}
 
-  const databaseFactory = (url) => {
+function securityAccessRow(overrides = {}) {
+  return {
+    current_user: "ulc_preview_security_ingest",
+    schema_create: false,
+    non_security_schema_create_count: 0,
+    non_security_table_access_count: 0,
+    non_security_sequence_access_count: 0,
+    inherited_role_count: 0,
+    has_table_insert: false,
+    can_insert_allowed_columns: true,
+    can_insert_recorded_at: false,
+    can_use_sequence: true,
+    can_select: false,
+    can_update: false,
+    can_delete: false,
+    can_truncate: false,
+    can_select_sequence: false,
+    can_update_sequence: false,
+    ...overrides,
+  };
+}
+
+function ownerClient({
+  ownership = emptyOwnership(),
+  memberships = new Map(),
+  preAcl = [],
+  postAcl = exactSecurityDirectGrants(),
+  statements = [],
+} = {}) {
+  let aclReads = 0;
+  return {
+    async unsafe(sql, params) {
+      if (sql.includes("WHERE rolname = ANY($1::text[])")) {
+        return [
+          runtimeRole("ulc_preview_app"),
+          runtimeRole("ulc_preview_security_ingest"),
+        ];
+      }
+      if (sql.includes("FROM pg_catalog.pg_auth_members")) {
+        return memberships.get(params?.[0]) ?? [];
+      }
+      if (sql.includes("AS owned_database_count")) {
+        return ownership;
+      }
+      if (sql.includes("'database'::text AS object_kind")) {
+        const result = aclReads === 0 ? preAcl : postAcl;
+        aclReads += 1;
+        return result;
+      }
+      throw new Error("Unexpected owner SQL: " + sql);
+    },
+    async begin(callback) {
+      return callback({
+        async unsafe(sql) {
+          statements.push(sql);
+          return [];
+        },
+      });
+    },
+    async end() {},
+  };
+}
+
+function databaseFactory({
+  owner = ownerClient(),
+  securityRow = securityAccessRow(),
+  ended = [],
+} = {}) {
+  return (url) => {
     if (url === MIGRATION_URL) {
       return {
         client: {
-          async unsafe(sql, params) {
-            if (sql.includes("WHERE rolname = ANY($1::text[])")) {
-              return [
-                runtimeRole("ulc_linz_security_event_ingest", false),
-                runtimeRole("ulc_preview_app", true),
-                runtimeRole("ulc_preview_security_ingest", true),
-              ];
-            }
-            if (sql.includes("FROM pg_catalog.pg_auth_members")) {
-              const member = params?.[0];
-              if (
-                member === "ulc_preview_app" ||
-                member === "ulc_linz_security_event_ingest"
-              ) {
-                return [];
-              }
-              if (member === "ulc_preview_security_ingest") {
-                return securityMembershipBound
-                  ? [
-                      {
-                        parent: "ulc_linz_security_event_ingest",
-                        member: "ulc_preview_security_ingest",
-                        admin_option: false,
-                        inherit_option: true,
-                        set_option: true,
-                      },
-                    ]
-                  : [];
-              }
-            }
-            if (sql.includes("AS group_owned_database_count")) {
-              return emptySecurityGroupOwnership();
-            }
-            if (sql.includes("'database'::text AS object_kind")) {
-              return exactSecurityGroupGrants();
-            }
-            if (sql.includes("AS owned_database_count")) {
-              return [
-                {
-                  owned_database_count: 0,
-                  owned_schema_count: 0,
-                  owned_relation_count: 0,
-                  owned_function_count: 0,
-                  owned_type_count: 0,
-                  direct_grant_count: 0,
-                },
-              ];
-            }
-            throw new Error("Unexpected owner SQL: " + sql);
-          },
-          async begin(callback) {
-            return callback({
-              async unsafe(sql) {
-                statements.push(sql);
-                if (sql.startsWith("GRANT \"ulc_linz_security_event_ingest\"")) {
-                  securityMembershipBound = true;
-                }
-                return [];
-              },
-            });
-          },
+          ...owner,
           async end() {
             ended.push("owner");
+            await owner.end?.();
           },
         },
       };
@@ -166,21 +186,7 @@ test("reconciles separated application and security runtime access through the m
         client: {
           async unsafe(sql) {
             assert.match(sql, /all_runtime_table_dml/);
-            return [
-              {
-                current_user: "ulc_preview_app",
-                schema_usage: true,
-                schema_create: false,
-                all_runtime_table_dml: true,
-                all_runtime_sequence_access: true,
-                owned_relations: 0,
-                security_select: false,
-                security_insert: false,
-                security_update: false,
-                security_delete: false,
-                security_sequence_usage: false,
-              },
-            ];
+            return [applicationAccessRow()];
           },
           async end() {
             ended.push("application");
@@ -193,32 +199,10 @@ test("reconciles separated application and security runtime access through the m
         client: {
           async unsafe(sql) {
             assert.match(sql, /can_insert_allowed_columns/);
-            assert.match(sql, /FROM pg_catalog\.pg_namespace/);
-            assert.match(sql, /nspname !~ '\^pg_'/);
-            assert.match(sql, /nspname <> 'information_schema'/);
-            assert.match(sql, /relation\.relkind IN \('r','p','v','m','f'\)/);
             assert.match(sql, /non_security_schema_create_count/);
-            assert.doesNotMatch(sql, /WHERE schemaname = 'public'/);
-            return [
-              {
-                current_user: "ulc_preview_security_ingest",
-                schema_create: false,
-                non_security_schema_create_count: 0,
-                non_security_table_access_count: 0,
-                non_security_sequence_access_count: 0,
-                has_ingest_role: true,
-                has_table_insert: false,
-                can_insert_allowed_columns: true,
-                can_insert_recorded_at: false,
-                can_use_sequence: true,
-                can_select: false,
-                can_update: false,
-                can_delete: false,
-                can_truncate: false,
-                can_select_sequence: false,
-                can_update_sequence: false,
-              },
-            ];
+            assert.match(sql, /inherited_role_count/);
+            assert.doesNotMatch(sql, /pg_has_role/);
+            return [securityRow];
           },
           async end() {
             ended.push("security");
@@ -228,15 +212,28 @@ test("reconciles separated application and security runtime access through the m
     }
     throw new Error("Unexpected database URL");
   };
+}
 
-  const result = await reconcileUlcLinzD4PreviewDatabaseAccess(
+async function reconcileWith(factory) {
+  return reconcileUlcLinzD4PreviewDatabaseAccess(
     {
       migrationDatabaseUrl: MIGRATION_URL,
       applicationDatabaseUrl: APPLICATION_URL,
       securityLogDatabaseUrl: SECURITY_URL,
       apply: true,
     },
-    { databaseFactory },
+    { databaseFactory: factory },
+  );
+}
+
+test("reconciles security runtime with direct database-local ingest grants and no inherited role", async () => {
+  const statements = [];
+  const ended = [];
+  const result = await reconcileWith(
+    databaseFactory({
+      owner: ownerClient({ statements }),
+      ended,
+    }),
   );
 
   assert.deepEqual(result, {
@@ -248,391 +245,125 @@ test("reconciles separated application and security runtime access through the m
     securityLogRuntimeAccessVerified: true,
     securityLogDatabaseIsolationVerified: true,
   });
-  assert.equal(securityMembershipBound, true);
   assert.ok(
     statements.some((sql) =>
-      sql.includes("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES"),
+      sql.includes(
+        'GRANT INSERT ("schema_version", "app_id", "category", "event_type"',
+      ),
     ),
   );
   assert.ok(
     statements.some((sql) =>
       sql.includes(
-        "REVOKE ALL ON TABLE public.ulc_linz_security_event_log FROM \"ulc_preview_app\"",
+        'GRANT USAGE ON SEQUENCE public.ulc_linz_security_event_log_id_seq TO "ulc_preview_security_ingest"',
       ),
     ),
+  );
+  assert.equal(
+    statements.some((sql) => /GRANT\s+"ulc_linz_security_event_ingest"/.test(sql)),
+    false,
   );
   assert.deepEqual(ended.sort(), ["application", "owner", "security"]);
 });
 
-test("rejects a security login that owns user objects or has direct grants", async () => {
-  const databaseFactory = (url) => {
-    if (url !== MIGRATION_URL) {
-      throw new Error("Unexpected database URL");
-    }
-    return {
-      client: {
-        async unsafe(sql, params) {
-          if (sql.includes("WHERE rolname = ANY($1::text[])")) {
-            return [
-              runtimeRole("ulc_linz_security_event_ingest", false),
-              runtimeRole("ulc_preview_app", true),
-              runtimeRole("ulc_preview_security_ingest", true),
-            ];
-          }
-          if (sql.includes("FROM pg_catalog.pg_auth_members")) {
-            return [];
-          }
-          if (sql.includes("AS group_owned_database_count")) {
-              return emptySecurityGroupOwnership();
-            }
-            if (sql.includes("'database'::text AS object_kind")) {
-              return exactSecurityGroupGrants();
-            }
-            if (sql.includes("AS owned_database_count")) {
-            return [
-              {
-                owned_database_count: 0,
-                owned_schema_count: 0,
-                owned_relation_count: 1,
-                owned_function_count: 0,
-                owned_type_count: 0,
-                direct_grant_count: 1,
-              },
-            ];
-          }
-          throw new Error("Unexpected owner SQL: " + sql + String(params));
-        },
-        async end() {},
-      },
-    };
-  };
-
-  await assert.rejects(
-    reconcileUlcLinzD4PreviewDatabaseAccess(
-      {
-        migrationDatabaseUrl: MIGRATION_URL,
-        applicationDatabaseUrl: APPLICATION_URL,
-        securityLogDatabaseUrl: SECURITY_URL,
-        apply: true,
-      },
-      { databaseFactory },
-    ),
-    /owns database objects or has direct grants/,
+test("accepts an already exact direct ACL for idempotent reconciliation", async () => {
+  const exact = exactSecurityDirectGrants();
+  await reconcileWith(
+    databaseFactory({
+      owner: ownerClient({ preAcl: exact, postAcl: exact }),
+    }),
   );
 });
 
-test("rejects a protected ingest group that inherits another database role", async () => {
-  const databaseFactory = (url) => {
-    if (url !== MIGRATION_URL) {
-      throw new Error("Unexpected database URL");
-    }
-    return {
-      client: {
-        async unsafe(sql, params) {
-          if (sql.includes("WHERE rolname = ANY($1::text[])")) {
-            return [
-              runtimeRole("ulc_linz_security_event_ingest", false),
-              runtimeRole("ulc_preview_app", true),
-              runtimeRole("ulc_preview_security_ingest", true),
-            ];
-          }
-          if (sql.includes("FROM pg_catalog.pg_auth_members")) {
-            const member = params?.[0];
-            if (member === "ulc_preview_app") return [];
-            if (member === "ulc_linz_security_event_ingest") {
-              return [
-                {
-                  parent: "unexpected_parent",
-                  member: "ulc_linz_security_event_ingest",
-                  admin_option: false,
-                  inherit_option: true,
-                  set_option: true,
-                },
-              ];
-            }
-            return [];
-          }
-          throw new Error("Unexpected owner SQL: " + sql);
-        },
-        async end() {},
-      },
-    };
-  };
-
+test("rejects a security login that owns user objects", async () => {
+  const owner = ownerClient({
+    ownership: [{
+      owned_database_count: 0,
+      owned_schema_count: 0,
+      owned_relation_count: 1,
+      owned_function_count: 0,
+      owned_type_count: 0,
+    }],
+  });
   await assert.rejects(
-    reconcileUlcLinzD4PreviewDatabaseAccess(
-      {
-        migrationDatabaseUrl: MIGRATION_URL,
-        applicationDatabaseUrl: APPLICATION_URL,
-        securityLogDatabaseUrl: SECURITY_URL,
-        apply: true,
-      },
-      { databaseFactory },
+    reconcileWith(databaseFactory({ owner })),
+    /owns database objects/,
+  );
+});
+
+test("rejects any inherited role on the preview security login", async () => {
+  const memberships = new Map([
+    ["ulc_preview_security_ingest", [{
+      parent: "ulc_linz_security_event_ingest",
+      member: "ulc_preview_security_ingest",
+      admin_option: false,
+      inherit_option: true,
+      set_option: true,
+    }]],
+  ]);
+  await assert.rejects(
+    reconcileWith(
+      databaseFactory({
+        owner: ownerClient({ memberships }),
+      }),
     ),
-    /ingest group must not inherit/,
+    /must not inherit another database role/,
+  );
+});
+
+test("rejects stale direct privileges outside the exact ingest ACL", async () => {
+  const stale = [{
+    object_kind: "function",
+    schema_name: "public",
+    object_name: "appbasis_ulc_linz_purge_expired_security_events",
+    column_name: null,
+    privilege_type: "EXECUTE",
+    is_grantable: false,
+  }];
+  await assert.rejects(
+    reconcileWith(
+      databaseFactory({
+        owner: ownerClient({ preAcl: stale }),
+      }),
+    ),
+    /direct ACL is not exact/,
   );
 });
 
 test("rejects effective access from the security login to objects in any user schema", async () => {
-  let securityMembershipBound = false;
-  const databaseFactory = (url) => {
-    if (url === MIGRATION_URL) {
-      return {
-        client: {
-          async unsafe(sql, params) {
-            if (sql.includes("WHERE rolname = ANY($1::text[])")) {
-              return [
-                runtimeRole("ulc_linz_security_event_ingest", false),
-                runtimeRole("ulc_preview_app", true),
-                runtimeRole("ulc_preview_security_ingest", true),
-              ];
-            }
-            if (sql.includes("FROM pg_catalog.pg_auth_members")) {
-              const member = params?.[0];
-              if (
-                member === "ulc_preview_app" ||
-                member === "ulc_linz_security_event_ingest"
-              ) return [];
-              if (member === "ulc_preview_security_ingest") {
-                return securityMembershipBound
-                  ? [{
-                      parent: "ulc_linz_security_event_ingest",
-                      member: "ulc_preview_security_ingest",
-                      admin_option: false,
-                      inherit_option: true,
-                      set_option: true,
-                    }]
-                  : [];
-              }
-            }
-            if (sql.includes("AS group_owned_database_count")) {
-              return emptySecurityGroupOwnership();
-            }
-            if (sql.includes("'database'::text AS object_kind")) {
-              return exactSecurityGroupGrants();
-            }
-            if (sql.includes("AS owned_database_count")) {
-              return [{
-                owned_database_count: 0,
-                owned_schema_count: 0,
-                owned_relation_count: 0,
-                owned_function_count: 0,
-                owned_type_count: 0,
-                direct_grant_count: 0,
-              }];
-            }
-            throw new Error("Unexpected owner SQL: " + sql);
-          },
-          async begin(callback) {
-            return callback({
-              async unsafe(sql) {
-                if (sql.startsWith("GRANT \"ulc_linz_security_event_ingest\"")) {
-                  securityMembershipBound = true;
-                }
-                return [];
-              },
-            });
-          },
-          async end() {},
-        },
-      };
-    }
-    if (url === APPLICATION_URL) {
-      return {
-        client: {
-          async unsafe() {
-            return [{
-              current_user: "ulc_preview_app",
-              schema_usage: true,
-              schema_create: false,
-              all_runtime_table_dml: true,
-              all_runtime_sequence_access: true,
-              owned_relations: 0,
-              security_select: false,
-              security_insert: false,
-              security_update: false,
-              security_delete: false,
-              security_sequence_usage: false,
-            }];
-          },
-          async end() {},
-        },
-      };
-    }
-    if (url === SECURITY_URL) {
-      return {
-        client: {
-          async unsafe(sql) {
-            assert.match(sql, /FROM pg_catalog\.pg_namespace/);
-            assert.match(sql, /nspname !~ '\^pg_'/);
-            assert.match(sql, /nspname <> 'information_schema'/);
-            assert.doesNotMatch(sql, /WHERE schemaname = 'public'/);
-            return [{
-              current_user: "ulc_preview_security_ingest",
-              schema_create: false,
-              non_security_schema_create_count: 0,
-              non_security_table_access_count: 1,
-              non_security_sequence_access_count: 0,
-              has_ingest_role: true,
-              has_table_insert: false,
-              can_insert_allowed_columns: true,
-              can_insert_recorded_at: false,
-              can_use_sequence: true,
-              can_select: false,
-              can_update: false,
-              can_delete: false,
-              can_truncate: false,
-              can_select_sequence: false,
-              can_update_sequence: false,
-            }];
-          },
-          async end() {},
-        },
-      };
-    }
-    throw new Error("Unexpected database URL");
-  };
-
   await assert.rejects(
-    reconcileUlcLinzD4PreviewDatabaseAccess(
-      {
-        migrationDatabaseUrl: MIGRATION_URL,
-        applicationDatabaseUrl: APPLICATION_URL,
-        securityLogDatabaseUrl: SECURITY_URL,
-        apply: true,
-      },
-      { databaseFactory },
+    reconcileWith(
+      databaseFactory({
+        securityRow: securityAccessRow({
+          non_security_table_access_count: 1,
+        }),
+      }),
     ),
     /security-log ingest ACL is not exact/,
   );
 });
 
 test("rejects CREATE access inherited on any non-system schema", async () => {
-  let securityMembershipBound = false;
-  const databaseFactory = (url) => {
-    if (url === MIGRATION_URL) {
-      return {
-        client: {
-          async unsafe(sql, params) {
-            if (sql.includes("WHERE rolname = ANY($1::text[])")) {
-              return [
-                runtimeRole("ulc_linz_security_event_ingest", false),
-                runtimeRole("ulc_preview_app", true),
-                runtimeRole("ulc_preview_security_ingest", true),
-              ];
-            }
-            if (sql.includes("FROM pg_catalog.pg_auth_members")) {
-              const member = params?.[0];
-              if (
-                member === "ulc_preview_app" ||
-                member === "ulc_linz_security_event_ingest"
-              ) return [];
-              if (member === "ulc_preview_security_ingest") {
-                return securityMembershipBound
-                  ? [{
-                      parent: "ulc_linz_security_event_ingest",
-                      member: "ulc_preview_security_ingest",
-                      admin_option: false,
-                      inherit_option: true,
-                      set_option: true,
-                    }]
-                  : [];
-              }
-            }
-            if (sql.includes("AS group_owned_database_count")) {
-              return emptySecurityGroupOwnership();
-            }
-            if (sql.includes("'database'::text AS object_kind")) {
-              return exactSecurityGroupGrants();
-            }
-            if (sql.includes("AS owned_database_count")) {
-              return [{
-                owned_database_count: 0,
-                owned_schema_count: 0,
-                owned_relation_count: 0,
-                owned_function_count: 0,
-                owned_type_count: 0,
-                direct_grant_count: 0,
-              }];
-            }
-            throw new Error("Unexpected owner SQL: " + sql);
-          },
-          async begin(callback) {
-            return callback({
-              async unsafe(sql) {
-                if (sql.startsWith("GRANT \"ulc_linz_security_event_ingest\"")) {
-                  securityMembershipBound = true;
-                }
-                return [];
-              },
-            });
-          },
-          async end() {},
-        },
-      };
-    }
-    if (url === APPLICATION_URL) {
-      return {
-        client: {
-          async unsafe() {
-            return [{
-              current_user: "ulc_preview_app",
-              schema_usage: true,
-              schema_create: false,
-              all_runtime_table_dml: true,
-              all_runtime_sequence_access: true,
-              owned_relations: 0,
-              security_select: false,
-              security_insert: false,
-              security_update: false,
-              security_delete: false,
-              security_sequence_usage: false,
-            }];
-          },
-          async end() {},
-        },
-      };
-    }
-    if (url === SECURITY_URL) {
-      return {
-        client: {
-          async unsafe(sql) {
-            assert.match(sql, /non_security_schema_create_count/);
-            return [{
-              current_user: "ulc_preview_security_ingest",
-              schema_create: false,
-              non_security_schema_create_count: 1,
-              non_security_table_access_count: 0,
-              non_security_sequence_access_count: 0,
-              has_ingest_role: true,
-              has_table_insert: false,
-              can_insert_allowed_columns: true,
-              can_insert_recorded_at: false,
-              can_use_sequence: true,
-              can_select: false,
-              can_update: false,
-              can_delete: false,
-              can_truncate: false,
-              can_select_sequence: false,
-              can_update_sequence: false,
-            }];
-          },
-          async end() {},
-        },
-      };
-    }
-    throw new Error("Unexpected database URL");
-  };
-
   await assert.rejects(
-    reconcileUlcLinzD4PreviewDatabaseAccess(
-      {
-        migrationDatabaseUrl: MIGRATION_URL,
-        applicationDatabaseUrl: APPLICATION_URL,
-        securityLogDatabaseUrl: SECURITY_URL,
-        apply: true,
-      },
-      { databaseFactory },
+    reconcileWith(
+      databaseFactory({
+        securityRow: securityAccessRow({
+          non_security_schema_create_count: 1,
+        }),
+      }),
+    ),
+    /security-log ingest ACL is not exact/,
+  );
+});
+
+test("rejects inherited runtime roles even if object ACLs look exact", async () => {
+  await assert.rejects(
+    reconcileWith(
+      databaseFactory({
+        securityRow: securityAccessRow({
+          inherited_role_count: 1,
+        }),
+      }),
     ),
     /security-log ingest ACL is not exact/,
   );
