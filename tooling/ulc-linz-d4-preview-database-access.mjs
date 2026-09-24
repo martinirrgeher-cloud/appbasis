@@ -526,36 +526,54 @@ async function verifySecurityRuntimeAccess({
   const database = databaseFactory(securityLogDatabaseUrl);
   try {
     const rows = await database.client.unsafe(
-      "WITH non_security_tables AS (" +
+      "WITH user_schemas AS (" +
+        " SELECT oid, nspname" +
+        " FROM pg_catalog.pg_namespace" +
+        " WHERE nspname !~ '^pg_'" +
+        " AND nspname <> 'information_schema'" +
+        "), non_security_schema_create AS (" +
         " SELECT count(*)::integer AS access_count" +
-        " FROM pg_catalog.pg_tables" +
-        " WHERE schemaname = 'public'" +
-        " AND tablename <> 'ulc_linz_security_event_log'" +
+        " FROM user_schemas" +
+        " WHERE has_schema_privilege(current_user, oid, 'CREATE')" +
+        "), non_security_tables AS (" +
+        " SELECT count(*)::integer AS access_count" +
+        " FROM pg_catalog.pg_class relation" +
+        " JOIN user_schemas namespace ON namespace.oid = relation.relnamespace" +
+        " WHERE relation.relkind IN ('r','p','v','m','f')" +
+        " AND NOT (" +
+        " namespace.nspname = 'public'" +
+        " AND relation.relname = 'ulc_linz_security_event_log'" +
+        " )" +
         " AND (" +
-        " has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT')" +
-        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT')" +
-        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE')" +
-        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'DELETE')" +
-        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE')" +
-        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')" +
-        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRIGGER')" +
-        " OR has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT')" +
-        " OR has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT')" +
-        " OR has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE')" +
-        " OR has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')" +
+        " has_table_privilege(current_user, relation.oid, 'SELECT')" +
+        " OR has_table_privilege(current_user, relation.oid, 'INSERT')" +
+        " OR has_table_privilege(current_user, relation.oid, 'UPDATE')" +
+        " OR has_table_privilege(current_user, relation.oid, 'DELETE')" +
+        " OR has_table_privilege(current_user, relation.oid, 'TRUNCATE')" +
+        " OR has_table_privilege(current_user, relation.oid, 'REFERENCES')" +
+        " OR has_table_privilege(current_user, relation.oid, 'TRIGGER')" +
+        " OR has_any_column_privilege(current_user, relation.oid, 'SELECT')" +
+        " OR has_any_column_privilege(current_user, relation.oid, 'INSERT')" +
+        " OR has_any_column_privilege(current_user, relation.oid, 'UPDATE')" +
+        " OR has_any_column_privilege(current_user, relation.oid, 'REFERENCES')" +
         " )" +
         "), non_security_sequences AS (" +
         " SELECT count(*)::integer AS access_count" +
-        " FROM information_schema.sequences" +
-        " WHERE sequence_schema = 'public'" +
-        " AND sequence_name <> 'ulc_linz_security_event_log_id_seq'" +
+        " FROM pg_catalog.pg_class relation" +
+        " JOIN user_schemas namespace ON namespace.oid = relation.relnamespace" +
+        " WHERE relation.relkind = 'S'" +
+        " AND NOT (" +
+        " namespace.nspname = 'public'" +
+        " AND relation.relname = 'ulc_linz_security_event_log_id_seq'" +
+        " )" +
         " AND (" +
-        " has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'USAGE')" +
-        " OR has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'SELECT')" +
-        " OR has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'UPDATE')" +
+        " has_sequence_privilege(current_user, relation.oid, 'USAGE')" +
+        " OR has_sequence_privilege(current_user, relation.oid, 'SELECT')" +
+        " OR has_sequence_privilege(current_user, relation.oid, 'UPDATE')" +
         " )" +
         ") SELECT current_user AS current_user," +
         " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
+        " (SELECT access_count FROM non_security_schema_create) AS non_security_schema_create_count," +
         " (SELECT access_count FROM non_security_tables) AS non_security_table_access_count," +
         " (SELECT access_count FROM non_security_sequences) AS non_security_sequence_access_count," +
         " pg_has_role(current_user, '" + SECURITY_GROUP + "', 'USAGE') AS has_ingest_role," +
@@ -580,6 +598,7 @@ async function verifySecurityRuntimeAccess({
       rows.length !== 1 ||
       access?.current_user !== securityRole ||
       access?.schema_create !== false ||
+      Number(access?.non_security_schema_create_count) !== 0 ||
       Number(access?.non_security_table_access_count) !== 0 ||
       Number(access?.non_security_sequence_access_count) !== 0 ||
       access?.has_ingest_role !== true ||
