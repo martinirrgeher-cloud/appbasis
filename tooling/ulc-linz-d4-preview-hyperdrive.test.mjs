@@ -6,6 +6,7 @@ import {
   resolveUlcLinzD4PreviewHyperdrives,
   ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE,
   ULC_LINZ_D4_PREVIEW_SECURITY_LOG_HYPERDRIVE,
+  validateUlcLinzD4PreviewDatabaseCredentials,
   validateUlcLinzD4PreviewDatabaseUrls,
 } from "./ulc-linz-d4-preview-hyperdrive.mjs";
 
@@ -13,6 +14,8 @@ const ACCOUNT_ID = "0123456789abcdef0123456789abcdef";
 const API_TOKEN = "cloudflare-test-token-000000000000";
 const HOST = "ep-ulc-preview.eu-central-1.aws.neon.tech";
 const DATABASE = "appbasis_ulc_linz_preview";
+const MIGRATION_URL =
+  `postgresql://ulc_preview_owner:owner-password@${HOST}/${DATABASE}?sslmode=require`;
 const APPLICATION_URL =
   `postgresql://ulc_preview_app:app-password@${HOST}/${DATABASE}?sslmode=require`;
 const SECURITY_LOG_URL =
@@ -74,6 +77,38 @@ test("requires application and security-log credentials for the same database bu
         APPLICATION_URL,
         "postgresql://ulc_preview_security_ingest:secret@ep-other-preview.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview",
       ),
+    /same dedicated preview database/,
+  );
+});
+
+test("requires a separate migration owner on the same preview database", () => {
+  const parsed = validateUlcLinzD4PreviewDatabaseCredentials({
+    migrationDatabaseUrl: MIGRATION_URL,
+    applicationDatabaseUrl: APPLICATION_URL,
+    securityLogDatabaseUrl: SECURITY_LOG_URL,
+  });
+
+  assert.equal(parsed.migration.user, "ulc_preview_owner");
+  assert.equal(parsed.application.user, "ulc_preview_app");
+  assert.equal(parsed.securityLog.user, "ulc_preview_security_ingest");
+
+  assert.throws(
+    () =>
+      validateUlcLinzD4PreviewDatabaseCredentials({
+        migrationDatabaseUrl: APPLICATION_URL,
+        applicationDatabaseUrl: APPLICATION_URL,
+        securityLogDatabaseUrl: SECURITY_LOG_URL,
+      }),
+    /roles must be distinct/,
+  );
+  assert.throws(
+    () =>
+      validateUlcLinzD4PreviewDatabaseCredentials({
+        migrationDatabaseUrl:
+          "postgresql://ulc_preview_owner:secret@ep-other-preview.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview",
+        applicationDatabaseUrl: APPLICATION_URL,
+        securityLogDatabaseUrl: SECURITY_LOG_URL,
+      }),
     /same dedicated preview database/,
   );
 });
