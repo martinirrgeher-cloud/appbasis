@@ -38,6 +38,9 @@ test("ULC D4 preview lifecycle binds distinct Hyperdrives and verifies the secur
   assert.match(workflow, /ulc_linz_security_event_ingest/);
   assert.match(workflow, /pg_has_role/);
   assert.match(workflow, /has_table_privilege/);
+  assert.match(workflow, /has_column_privilege/);
+  assert.match(workflow, /can_insert_allowed_columns/);
+  assert.match(workflow, /can_insert_recorded_at/);
   assert.match(workflow, /has_sequence_privilege/);
 });
 
