@@ -380,6 +380,7 @@ jobs:
         shell: bash
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
         run: node ./tooling/ulc-linz-d4-preview-audit-smoke.mjs
 
       - name: Verify ULC preview application database binding
