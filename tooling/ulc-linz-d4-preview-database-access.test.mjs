@@ -193,6 +193,12 @@ test("reconciles separated application and security runtime access through the m
         client: {
           async unsafe(sql) {
             assert.match(sql, /can_insert_allowed_columns/);
+            assert.match(sql, /FROM pg_catalog\.pg_namespace/);
+            assert.match(sql, /nspname !~ '\^pg_'/);
+            assert.match(sql, /nspname <> 'information_schema'/);
+            assert.match(sql, /relation\.relkind IN \('r','p','v','m','f'\)/);
+            assert.match(sql, /non_security_schema_create_count/);
+            assert.doesNotMatch(sql, /WHERE schemaname = 'public'/);
             return [
               {
                 current_user: "ulc_preview_security_ingest",
@@ -366,7 +372,7 @@ test("rejects a protected ingest group that inherits another database role", asy
   );
 });
 
-test("rejects effective access from the security login to non-security tables", async () => {
+test("rejects effective access from the security login to objects in any user schema", async () => {
   let securityMembershipBound = false;
   const databaseFactory = (url) => {
     if (url === MIGRATION_URL) {
@@ -455,11 +461,147 @@ test("rejects effective access from the security login to non-security tables", 
     if (url === SECURITY_URL) {
       return {
         client: {
-          async unsafe() {
+          async unsafe(sql) {
+            assert.match(sql, /FROM pg_catalog\.pg_namespace/);
+            assert.match(sql, /nspname !~ '\^pg_'/);
+            assert.match(sql, /nspname <> 'information_schema'/);
+            assert.doesNotMatch(sql, /WHERE schemaname = 'public'/);
             return [{
               current_user: "ulc_preview_security_ingest",
               schema_create: false,
+              non_security_schema_create_count: 0,
               non_security_table_access_count: 1,
+              non_security_sequence_access_count: 0,
+              has_ingest_role: true,
+              has_table_insert: false,
+              can_insert_allowed_columns: true,
+              can_insert_recorded_at: false,
+              can_use_sequence: true,
+              can_select: false,
+              can_update: false,
+              can_delete: false,
+              can_truncate: false,
+              can_select_sequence: false,
+              can_update_sequence: false,
+            }];
+          },
+          async end() {},
+        },
+      };
+    }
+    throw new Error("Unexpected database URL");
+  };
+
+  await assert.rejects(
+    reconcileUlcLinzD4PreviewDatabaseAccess(
+      {
+        migrationDatabaseUrl: MIGRATION_URL,
+        applicationDatabaseUrl: APPLICATION_URL,
+        securityLogDatabaseUrl: SECURITY_URL,
+        apply: true,
+      },
+      { databaseFactory },
+    ),
+    /security-log ingest ACL is not exact/,
+  );
+});
+
+test("rejects CREATE access inherited on any non-system schema", async () => {
+  let securityMembershipBound = false;
+  const databaseFactory = (url) => {
+    if (url === MIGRATION_URL) {
+      return {
+        client: {
+          async unsafe(sql, params) {
+            if (sql.includes("WHERE rolname = ANY($1::text[])")) {
+              return [
+                runtimeRole("ulc_linz_security_event_ingest", false),
+                runtimeRole("ulc_preview_app", true),
+                runtimeRole("ulc_preview_security_ingest", true),
+              ];
+            }
+            if (sql.includes("FROM pg_catalog.pg_auth_members")) {
+              const member = params?.[0];
+              if (
+                member === "ulc_preview_app" ||
+                member === "ulc_linz_security_event_ingest"
+              ) return [];
+              if (member === "ulc_preview_security_ingest") {
+                return securityMembershipBound
+                  ? [{
+                      parent: "ulc_linz_security_event_ingest",
+                      member: "ulc_preview_security_ingest",
+                      admin_option: false,
+                      inherit_option: true,
+                      set_option: true,
+                    }]
+                  : [];
+              }
+            }
+            if (sql.includes("AS group_owned_database_count")) {
+              return emptySecurityGroupOwnership();
+            }
+            if (sql.includes("'database'::text AS object_kind")) {
+              return exactSecurityGroupGrants();
+            }
+            if (sql.includes("AS owned_database_count")) {
+              return [{
+                owned_database_count: 0,
+                owned_schema_count: 0,
+                owned_relation_count: 0,
+                owned_function_count: 0,
+                owned_type_count: 0,
+                direct_grant_count: 0,
+              }];
+            }
+            throw new Error("Unexpected owner SQL: " + sql);
+          },
+          async begin(callback) {
+            return callback({
+              async unsafe(sql) {
+                if (sql.startsWith("GRANT \"ulc_linz_security_event_ingest\"")) {
+                  securityMembershipBound = true;
+                }
+                return [];
+              },
+            });
+          },
+          async end() {},
+        },
+      };
+    }
+    if (url === APPLICATION_URL) {
+      return {
+        client: {
+          async unsafe() {
+            return [{
+              current_user: "ulc_preview_app",
+              schema_usage: true,
+              schema_create: false,
+              all_runtime_table_dml: true,
+              all_runtime_sequence_access: true,
+              owned_relations: 0,
+              security_select: false,
+              security_insert: false,
+              security_update: false,
+              security_delete: false,
+              security_sequence_usage: false,
+            }];
+          },
+          async end() {},
+        },
+      };
+    }
+    if (url === SECURITY_URL) {
+      return {
+        client: {
+          async unsafe(sql) {
+            assert.match(sql, /non_security_schema_create_count/);
+            return [{
+              current_user: "ulc_preview_security_ingest",
+              schema_create: false,
+              non_security_schema_create_count: 1,
+              non_security_table_access_count: 0,
               non_security_sequence_access_count: 0,
               has_ingest_role: true,
               has_table_insert: false,
