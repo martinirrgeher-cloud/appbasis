@@ -4,7 +4,12 @@ import { pathToFileURL } from "node:url";
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { validateUlcLinzD4PreviewDatabaseCredentials } from "./ulc-linz-d4-preview-hyperdrive.mjs";
 
-const SECURITY_GROUP = "ulc_linz_security_event_ingest";
+const SECURITY_GROUP = "appbasis_ulc_linz_preview_security_ingest";
+const SHARED_SECURITY_ROLES = Object.freeze([
+  "ulc_linz_security_event_ingest",
+  "ulc_linz_security_event_cleanup",
+  "ulc_linz_security_event_read",
+]);
 const SECURITY_TABLE = "public.ulc_linz_security_event_log";
 const SECURITY_SEQUENCE = "public.ulc_linz_security_event_log_id_seq";
 const SECURITY_PURGE_FUNCTION =
@@ -63,11 +68,19 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
       applicationRole,
     );
     await requireSecurityGroupMembershipBoundary(ownerDatabase.client);
+    await requireSecurityGroupMemberBoundary(
+      ownerDatabase.client,
+      securityRole,
+      true,
+    );
     await requireSecurityLoginCatalogBoundary(
       ownerDatabase.client,
       securityRole,
     );
     await requireSecurityGroupCatalogBoundary(ownerDatabase.client);
+    await requireSharedSecurityRolesNeutralInPreviewDatabase(
+      ownerDatabase.client,
+    );
 
     if (typeof ownerDatabase.client.begin !== "function") {
       throw new Error("ULC D4 preview database access transaction is unavailable.");
@@ -115,6 +128,11 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
 
     const memberships = await readMemberships(ownerDatabase.client, securityRole);
     validateSecurityMemberships(memberships, securityRole, false);
+    await requireSecurityGroupMemberBoundary(
+      ownerDatabase.client,
+      securityRole,
+      false,
+    );
   } finally {
     await ownerDatabase.client.end().catch(() => {});
   }
@@ -189,6 +207,37 @@ async function requireSecurityGroupMembershipBoundary(client) {
   if (!Array.isArray(memberships) || memberships.length !== 0) {
     throw new Error(
       "ULC D4 security-log ingest group must not inherit another database role.",
+    );
+  }
+}
+
+async function requireSecurityGroupMemberBoundary(
+  client,
+  securityRole,
+  allowMissing,
+) {
+  const members = await readMembers(client, SECURITY_GROUP);
+  if (!Array.isArray(members) || members.length > 1) {
+    throw new Error(
+      "ULC D4 preview security-log group has unexpected cluster-wide members.",
+    );
+  }
+  if (members.length === 0) {
+    if (allowMissing) return;
+    throw new Error(
+      "ULC D4 preview security-log group membership is missing.",
+    );
+  }
+  const edge = members[0];
+  if (
+    edge?.parent !== SECURITY_GROUP ||
+    edge?.member !== securityRole ||
+    edge?.admin_option !== false ||
+    edge?.inherit_option !== true ||
+    edge?.set_option !== true
+  ) {
+    throw new Error(
+      "ULC D4 preview security-log group member is unsafe.",
     );
   }
 }
@@ -291,6 +340,112 @@ async function requireSecurityLoginCatalogBoundary(client, securityRole) {
   ) {
     throw new Error(
       "ULC D4 security-log login owns database objects or has direct grants.",
+    );
+  }
+}
+
+async function requireSharedSecurityRolesNeutralInPreviewDatabase(client) {
+  const rows = await client.unsafe(
+    `WITH targets AS (
+       SELECT oid
+       FROM pg_catalog.pg_roles
+       WHERE rolname = ANY($1::text[])
+     ),
+     direct_grants AS (
+       SELECT acl.grantee
+       FROM pg_catalog.pg_database object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.datacl) acl
+       WHERE object.datname = current_database()
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_namespace object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.nspacl) acl
+       WHERE object.nspname !~ '^pg_'
+         AND object.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_class object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.relacl) acl
+       WHERE namespace.nspname !~ '^pg_'
+         AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_attribute attribute
+       JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl
+       WHERE attribute.attnum > 0
+         AND NOT attribute.attisdropped
+         AND namespace.nspname !~ '^pg_'
+         AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_proc object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.proacl) acl
+       WHERE namespace.nspname !~ '^pg_'
+         AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_type object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.typacl) acl
+       WHERE namespace.nspname !~ '^pg_'
+         AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_default_acl object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.defaclacl) acl
+     )
+     SELECT
+       (SELECT count(*)::integer FROM targets) AS shared_role_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_database object
+         WHERE object.datname = current_database()
+           AND object.datdba IN (SELECT oid FROM targets)) AS shared_owned_database_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_namespace object
+         WHERE object.nspname !~ '^pg_'
+           AND object.nspname <> 'information_schema'
+           AND object.nspowner IN (SELECT oid FROM targets)) AS shared_owned_schema_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_class object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
+         WHERE namespace.nspname !~ '^pg_'
+           AND namespace.nspname <> 'information_schema'
+           AND object.relowner IN (SELECT oid FROM targets)) AS shared_owned_relation_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_proc object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
+         WHERE namespace.nspname !~ '^pg_'
+           AND namespace.nspname <> 'information_schema'
+           AND object.proowner IN (SELECT oid FROM targets)) AS shared_owned_function_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_type object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
+         WHERE namespace.nspname !~ '^pg_'
+           AND namespace.nspname <> 'information_schema'
+           AND object.typowner IN (SELECT oid FROM targets)) AS shared_owned_type_count,
+       (SELECT count(*)::integer
+          FROM direct_grants
+         WHERE grantee IN (SELECT oid FROM targets)) AS shared_direct_grant_count`,
+    [SHARED_SECURITY_ROLES],
+  );
+  const boundary = rows?.[0];
+  if (
+    !Array.isArray(rows) ||
+    rows.length !== 1 ||
+    Number(boundary?.shared_role_count) !== SHARED_SECURITY_ROLES.length ||
+    Number(boundary?.shared_owned_database_count) !== 0 ||
+    Number(boundary?.shared_owned_schema_count) !== 0 ||
+    Number(boundary?.shared_owned_relation_count) !== 0 ||
+    Number(boundary?.shared_owned_function_count) !== 0 ||
+    Number(boundary?.shared_owned_type_count) !== 0 ||
+    Number(boundary?.shared_direct_grant_count) !== 0
+  ) {
+    throw new Error(
+      "ULC D4 shared security roles are not neutral in the preview database.",
     );
   }
 }
@@ -629,6 +784,18 @@ async function readMemberships(client, member) {
       " JOIN pg_catalog.pg_roles AS child ON child.oid = membership.member" +
       " WHERE child.rolname = $1 ORDER BY parent.rolname",
     [member],
+  );
+}
+
+async function readMembers(client, parent) {
+  return client.unsafe(
+    "SELECT parent.rolname AS parent, child.rolname AS member," +
+      " membership.admin_option, membership.inherit_option, membership.set_option" +
+      " FROM pg_catalog.pg_auth_members AS membership" +
+      " JOIN pg_catalog.pg_roles AS parent ON parent.oid = membership.roleid" +
+      " JOIN pg_catalog.pg_roles AS child ON child.oid = membership.member" +
+      " WHERE parent.rolname = $1 ORDER BY child.rolname",
+    [parent],
   );
 }
 
