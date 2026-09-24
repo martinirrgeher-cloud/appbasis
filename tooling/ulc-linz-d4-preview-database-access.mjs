@@ -558,6 +558,7 @@ async function requireSecurityGroupCatalogBoundary(client) {
       (column) => `column:public:ulc_linz_security_event_log:${column}:INSERT`,
     ),
   );
+  expected.add("schema::public::USAGE");
   expected.add("sequence:public:ulc_linz_security_event_log_id_seq::USAGE");
   requireExactAcl(
     grants,
@@ -810,6 +811,7 @@ async function verifyApplicationRuntimeAccess({
         "     AND pg_catalog.pg_get_userbyid(object.typowner) = current_user) AS owned_type_count" +
         ") SELECT current_user AS current_user," +
         " has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage," +
+        " has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage," +
         " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
         " (SELECT all_runtime_table_dml FROM table_access) AS all_runtime_table_dml," +
         " (SELECT all_runtime_sequence_access FROM sequence_access) AS all_runtime_sequence_access," +
@@ -959,6 +961,7 @@ async function verifySecurityRuntimeAccess({
       !Array.isArray(rows) ||
       rows.length !== 1 ||
       access?.current_user !== securityRole ||
+      access?.schema_usage !== true ||
       access?.schema_create !== false ||
       Number(access?.non_security_schema_create_count) !== 0 ||
       Number(access?.non_security_table_access_count) !== 0 ||
