@@ -50,6 +50,16 @@ test("ULC D4 preview lifecycle reuses the canonical plan and probes the ULC coun
   );
   assert.match(workflow, /ulc-linz-d4-preview-audit-smoke\.mjs/);
   assert.match(workflow, /APPBASIS_MIGRATION_DATABASE_URL/);
+  const auditStepStart = workflow.indexOf(
+    "      - name: Verify ULC preview UI, protected countdown and persisted audit event\n",
+  );
+  const auditStepEnd = workflow.indexOf("\n      - name: ", auditStepStart + 1);
+  assert.ok(auditStepStart >= 0);
+  const auditStep = workflow.slice(auditStepStart, auditStepEnd);
+  assert.match(
+    auditStep,
+    /APPBASIS_BETTER_AUTH_SECRET: \$\{\{ secrets\.APPBASIS_BETTER_AUTH_SECRET \}\}/,
+  );
   assert.doesNotMatch(workflow, /node \.\/tooling\/generated-app-preview-smoke\.mjs/);
   assert.match(workflow, /generated-preview-database-smoke\.mjs/);
   assert.match(workflow, /\.\/worker\/preview\.ts|APPBASIS_ENTRYPOINT/);
