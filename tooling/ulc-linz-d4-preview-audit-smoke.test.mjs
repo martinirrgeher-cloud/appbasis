@@ -78,6 +78,8 @@ test("fails closed when the denial response is correct but no audit event is per
         baseURL: BASE_URL,
         migrationDatabaseUrl:
           "postgresql://owner:secret@example.test/appbasis_ulc_linz_preview",
+        betterAuthSecret: BETTER_AUTH_SECRET,
+        correlationId: CORRELATION_ID,
         fetchImpl: async (url) => responseFor(url),
       },
       { databaseFactory: databaseFactory([0, 0]) },
@@ -107,6 +109,8 @@ test("fails closed on a non-session countdown denial", async () => {
         baseURL: BASE_URL,
         migrationDatabaseUrl:
           "postgresql://owner:secret@example.test/appbasis_ulc_linz_preview",
+        betterAuthSecret: BETTER_AUTH_SECRET,
+        correlationId: CORRELATION_ID,
         fetchImpl,
       },
       { databaseFactory: databaseFactory([0]) },
