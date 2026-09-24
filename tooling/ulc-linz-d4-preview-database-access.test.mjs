@@ -99,7 +99,7 @@ function exactSecurityAccess(overrides = {}) {
   };
 }
 
-function exactApplicationAccess() {
+function exactApplicationAccess(overrides = {}) {
   return {
     current_user: "ulc_preview_app",
     schema_usage: true,
@@ -111,7 +111,18 @@ function exactApplicationAccess() {
     security_insert: false,
     security_update: false,
     security_delete: false,
+    security_truncate: false,
+    security_references: false,
+    security_trigger: false,
+    security_column_select: false,
+    security_column_insert: false,
+    security_column_update: false,
+    security_column_references: false,
     security_sequence_usage: false,
+    security_sequence_select: false,
+    security_sequence_update: false,
+    security_purge_execute: false,
+    ...overrides,
   };
 }
 
@@ -228,6 +239,7 @@ function ownerFixture({
 
 function databaseFactory({
   owner = ownerFixture(),
+  applicationAccess = exactApplicationAccess(),
   securityAccess = exactSecurityAccess(),
   ended = [],
 } = {}) {
@@ -248,7 +260,9 @@ function databaseFactory({
         client: {
           async unsafe(sql) {
             assert.match(sql, /all_runtime_table_dml/);
-            return [exactApplicationAccess()];
+            assert.match(sql, /has_any_column_privilege/);
+            assert.match(sql, /security_purge_execute/);
+            return [applicationAccess];
           },
           async end() {
             ended.push("application");
@@ -322,7 +336,32 @@ test("binds the security login only to the preview-specific ingest group", async
     ),
     false,
   );
+  assert.ok(
+    owner.statements.some(
+      (sql) =>
+        sql.startsWith("REVOKE SELECT (") &&
+        sql.includes("), INSERT (") &&
+        sql.includes("), UPDATE (") &&
+        sql.includes("), REFERENCES (") &&
+        sql.includes('FROM "ulc_preview_app"'),
+    ),
+  );
   assert.deepEqual(ended.sort(), ["application", "owner", "security"]);
+});
+
+test("rejects stale application column access to the security log", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          security_column_select: true,
+        }),
+      }),
+    ),
+    /application runtime database ACL is not exact/,
+  );
 });
 
 test("rejects direct grants on the security login", async () => {
