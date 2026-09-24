@@ -160,7 +160,10 @@ function ownerFixture({
 
   const client = {
     async unsafe(sql, params) {
-      if (sql.includes("WHERE rolname = ANY($1::text[])")) {
+      if (
+        sql.includes("WHERE rolname = ANY($1::text[])") &&
+        !sql.includes("AS shared_role_count")
+      ) {
         return [
           runtimeRole(PREVIEW_SECURITY_GROUP, false),
           runtimeRole("ulc_preview_app", true),
