@@ -100,34 +100,30 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
         "REVOKE ALL ON TABLE " + SECURITY_TABLE + " FROM " + app,
         "REVOKE ALL ON SEQUENCE " + SECURITY_SEQUENCE + " FROM " + app,
         "REVOKE ALL ON FUNCTION " + SECURITY_PURGE_FUNCTION + " FROM " + app,
+        "REVOKE ALL ON TABLE " + SECURITY_TABLE + " FROM " + security,
+        "GRANT INSERT (" + SECURITY_INGEST_COLUMNS.map(quoteIdentifier).join(", ") + ") ON TABLE " + SECURITY_TABLE + " TO " + security,
+        "REVOKE ALL ON SEQUENCE " + SECURITY_SEQUENCE + " FROM " + security,
+        "GRANT USAGE ON SEQUENCE " + SECURITY_SEQUENCE + " TO " + security,
+        "REVOKE ALL ON FUNCTION " + SECURITY_PURGE_FUNCTION + " FROM " + security,
       ];
       for (const statement of statements) {
         await transaction.unsafe(statement);
       }
-
-      const memberships = await readMemberships(ownerDatabase.client, securityRole);
-      validateSecurityMemberships(memberships, securityRole, true);
-      const effective = memberships.some(
-        (edge) =>
-          edge.parent === SECURITY_GROUP &&
-          edge.member === securityRole &&
-          edge.admin_option === false &&
-          edge.inherit_option === true &&
-          edge.set_option === true,
-      );
-      if (!effective) {
-        await transaction.unsafe(
-          "GRANT " +
-            quoteIdentifier(SECURITY_GROUP) +
-            " TO " +
-            security +
-            " WITH INHERIT TRUE, SET TRUE",
-        );
-      }
     });
 
-    const memberships = await readMemberships(ownerDatabase.client, securityRole);
-    validateSecurityMemberships(memberships, securityRole, false);
+    await requireSecurityLoginMembershipBoundary(
+      ownerDatabase.client,
+      securityRole,
+    );
+    await requireSecurityLoginOwnershipBoundary(
+      ownerDatabase.client,
+      securityRole,
+    );
+    await requireSecurityLoginDirectAclBoundary(
+      ownerDatabase.client,
+      securityRole,
+      false,
+    );
     await requireSecurityGroupMemberBoundary(
       ownerDatabase.client,
       securityRole,
@@ -165,15 +161,14 @@ async function requireRuntimeRoleInventory(client, applicationRole, securityRole
       "rolreplication, rolbypassrls " +
       "FROM pg_catalog.pg_roles " +
       "WHERE rolname = ANY($1::text[]) ORDER BY rolname",
-    [[SECURITY_GROUP, applicationRole, securityRole]],
+    [[applicationRole, securityRole]],
   );
   if (!Array.isArray(rows)) {
     throw new Error("ULC D4 preview database role inventory is invalid.");
   }
   const byName = new Map(rows.map((row) => [row?.rolname, row]));
-  const group = byName.get(SECURITY_GROUP);
-  if (byName.size !== 3 || group?.rolcanlogin !== false || elevated(group)) {
-    throw new Error("ULC D4 protected security-log group role is unsafe.");
+  if (byName.size !== 2) {
+    throw new Error("ULC D4 runtime database role inventory is incomplete.");
   }
   for (const roleName of [applicationRole, securityRole]) {
     const role = byName.get(roleName);
@@ -202,97 +197,19 @@ async function requireApplicationMembershipBoundary(client, applicationRole) {
   }
 }
 
-async function requireSecurityGroupMembershipBoundary(client) {
-  const memberships = await readMemberships(client, SECURITY_GROUP);
+async function requireSecurityLoginMembershipBoundary(client, securityRole) {
+  const memberships = await readMemberships(client, securityRole);
   if (!Array.isArray(memberships) || memberships.length !== 0) {
     throw new Error(
-      "ULC D4 security-log ingest group must not inherit another database role.",
+      "ULC D4 security-log runtime role must not inherit another database role.",
     );
   }
 }
 
-async function requireSecurityGroupMemberBoundary(
-  client,
-  securityRole,
-  allowMissing,
-) {
-  const members = await readMembers(client, SECURITY_GROUP);
-  if (!Array.isArray(members) || members.length > 1) {
-    throw new Error(
-      "ULC D4 preview security-log group has unexpected cluster-wide members.",
-    );
-  }
-  if (members.length === 0) {
-    if (allowMissing) return;
-    throw new Error(
-      "ULC D4 preview security-log group membership is missing.",
-    );
-  }
-  const edge = members[0];
-  if (
-    edge?.parent !== SECURITY_GROUP ||
-    edge?.member !== securityRole ||
-    edge?.admin_option !== false ||
-    edge?.inherit_option !== true ||
-    edge?.set_option !== true
-  ) {
-    throw new Error(
-      "ULC D4 preview security-log group member is unsafe.",
-    );
-  }
-}
-
-async function requireSecurityLoginCatalogBoundary(client, securityRole) {
+async function requireSecurityLoginOwnershipBoundary(client, securityRole) {
   const rows = await client.unsafe(
     `WITH target AS (
        SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1
-     ),
-     direct_grants AS (
-       SELECT acl.grantee
-       FROM pg_catalog.pg_database object
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.datacl) acl
-       WHERE object.datname = current_database()
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_namespace object
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.nspacl) acl
-       WHERE object.nspname !~ '^pg_'
-         AND object.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_class object
-       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.relacl) acl
-       WHERE namespace.nspname !~ '^pg_'
-         AND namespace.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_attribute attribute
-       JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
-       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-       CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl
-       WHERE attribute.attnum > 0
-         AND NOT attribute.attisdropped
-         AND namespace.nspname !~ '^pg_'
-         AND namespace.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_proc object
-       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.proacl) acl
-       WHERE namespace.nspname !~ '^pg_'
-         AND namespace.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_type object
-       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.typacl) acl
-       WHERE namespace.nspname !~ '^pg_'
-         AND namespace.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_default_acl object
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.defaclacl) acl
      )
      SELECT
        (SELECT count(*)::integer
@@ -321,10 +238,7 @@ async function requireSecurityLoginCatalogBoundary(client, securityRole) {
           JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
          WHERE namespace.nspname !~ '^pg_'
            AND namespace.nspname <> 'information_schema'
-           AND object.typowner = (SELECT oid FROM target)) AS owned_type_count,
-       (SELECT count(*)::integer
-          FROM direct_grants
-         WHERE grantee = (SELECT oid FROM target)) AS direct_grant_count`,
+           AND object.typowner = (SELECT oid FROM target)) AS owned_type_count`,
     [securityRole],
   );
   const boundary = rows?.[0];
@@ -335,169 +249,17 @@ async function requireSecurityLoginCatalogBoundary(client, securityRole) {
     Number(boundary?.owned_schema_count) !== 0 ||
     Number(boundary?.owned_relation_count) !== 0 ||
     Number(boundary?.owned_function_count) !== 0 ||
-    Number(boundary?.owned_type_count) !== 0 ||
-    Number(boundary?.direct_grant_count) !== 0
+    Number(boundary?.owned_type_count) !== 0
   ) {
-    throw new Error(
-      "ULC D4 security-log login owns database objects or has direct grants.",
-    );
+    throw new Error("ULC D4 security-log login owns database objects.");
   }
 }
 
-async function requireSharedSecurityRolesNeutralInPreviewDatabase(client) {
-  const rows = await client.unsafe(
-    `WITH targets AS (
-       SELECT oid
-       FROM pg_catalog.pg_roles
-       WHERE rolname = ANY($1::text[])
-     ),
-     direct_grants AS (
-       SELECT acl.grantee
-       FROM pg_catalog.pg_database object
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.datacl) acl
-       WHERE object.datname = current_database()
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_namespace object
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.nspacl) acl
-       WHERE object.nspname !~ '^pg_'
-         AND object.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_class object
-       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.relacl) acl
-       WHERE namespace.nspname !~ '^pg_'
-         AND namespace.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_attribute attribute
-       JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
-       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-       CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl
-       WHERE attribute.attnum > 0
-         AND NOT attribute.attisdropped
-         AND namespace.nspname !~ '^pg_'
-         AND namespace.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_proc object
-       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.proacl) acl
-       WHERE namespace.nspname !~ '^pg_'
-         AND namespace.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_type object
-       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.typacl) acl
-       WHERE namespace.nspname !~ '^pg_'
-         AND namespace.nspname <> 'information_schema'
-       UNION ALL
-       SELECT acl.grantee
-       FROM pg_catalog.pg_default_acl object
-       CROSS JOIN LATERAL pg_catalog.aclexplode(object.defaclacl) acl
-     )
-     SELECT
-       (SELECT count(*)::integer FROM targets) AS shared_role_count,
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_database object
-         WHERE object.datname = current_database()
-           AND object.datdba IN (SELECT oid FROM targets)) AS shared_owned_database_count,
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_namespace object
-         WHERE object.nspname !~ '^pg_'
-           AND object.nspname <> 'information_schema'
-           AND object.nspowner IN (SELECT oid FROM targets)) AS shared_owned_schema_count,
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_class object
-          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
-         WHERE namespace.nspname !~ '^pg_'
-           AND namespace.nspname <> 'information_schema'
-           AND object.relowner IN (SELECT oid FROM targets)) AS shared_owned_relation_count,
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_proc object
-          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
-         WHERE namespace.nspname !~ '^pg_'
-           AND namespace.nspname <> 'information_schema'
-           AND object.proowner IN (SELECT oid FROM targets)) AS shared_owned_function_count,
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_type object
-          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
-         WHERE namespace.nspname !~ '^pg_'
-           AND namespace.nspname <> 'information_schema'
-           AND object.typowner IN (SELECT oid FROM targets)) AS shared_owned_type_count,
-       (SELECT count(*)::integer
-          FROM direct_grants
-         WHERE grantee IN (SELECT oid FROM targets)) AS shared_direct_grant_count`,
-    [SHARED_SECURITY_ROLES],
-  );
-  const boundary = rows?.[0];
-  if (
-    !Array.isArray(rows) ||
-    rows.length !== 1 ||
-    Number(boundary?.shared_role_count) !== SHARED_SECURITY_ROLES.length ||
-    Number(boundary?.shared_owned_database_count) !== 0 ||
-    Number(boundary?.shared_owned_schema_count) !== 0 ||
-    Number(boundary?.shared_owned_relation_count) !== 0 ||
-    Number(boundary?.shared_owned_function_count) !== 0 ||
-    Number(boundary?.shared_owned_type_count) !== 0 ||
-    Number(boundary?.shared_direct_grant_count) !== 0
-  ) {
-    throw new Error(
-      "ULC D4 shared security roles are not neutral in the preview database.",
-    );
-  }
-}
-
-async function requireSecurityGroupCatalogBoundary(client) {
-  const ownershipRows = await client.unsafe(
-    `WITH target AS (
-       SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1
-     )
-     SELECT
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_database object
-         WHERE object.datname = current_database()
-           AND object.datdba = (SELECT oid FROM target)) AS group_owned_database_count,
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_namespace object
-         WHERE object.nspname !~ '^pg_'
-           AND object.nspname <> 'information_schema'
-           AND object.nspowner = (SELECT oid FROM target)) AS group_owned_schema_count,
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_class object
-          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
-         WHERE namespace.nspname !~ '^pg_'
-           AND namespace.nspname <> 'information_schema'
-           AND object.relowner = (SELECT oid FROM target)) AS group_owned_relation_count,
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_proc object
-          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
-         WHERE namespace.nspname !~ '^pg_'
-           AND namespace.nspname <> 'information_schema'
-           AND object.proowner = (SELECT oid FROM target)) AS group_owned_function_count,
-       (SELECT count(*)::integer
-          FROM pg_catalog.pg_type object
-          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
-         WHERE namespace.nspname !~ '^pg_'
-           AND namespace.nspname <> 'information_schema'
-           AND object.typowner = (SELECT oid FROM target)) AS group_owned_type_count`,
-    [SECURITY_GROUP],
-  );
-  const ownership = ownershipRows?.[0];
-  if (
-    !Array.isArray(ownershipRows) ||
-    ownershipRows.length !== 1 ||
-    Number(ownership?.group_owned_database_count) !== 0 ||
-    Number(ownership?.group_owned_schema_count) !== 0 ||
-    Number(ownership?.group_owned_relation_count) !== 0 ||
-    Number(ownership?.group_owned_function_count) !== 0 ||
-    Number(ownership?.group_owned_type_count) !== 0
-  ) {
-    throw new Error("ULC D4 security-log ingest group owns database objects.");
-  }
-
+async function requireSecurityLoginDirectAclBoundary(
+  client,
+  securityRole,
+  allowEmpty,
+) {
   const grants = await client.unsafe(
     `WITH target AS (
        SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1
@@ -564,11 +326,12 @@ async function requireSecurityGroupCatalogBoundary(client) {
        CROSS JOIN LATERAL pg_catalog.aclexplode(object.defaclacl) acl
       WHERE acl.grantee = (SELECT oid FROM target)
      ORDER BY object_kind, schema_name, object_name, column_name, privilege_type`,
-    [SECURITY_GROUP],
+    [securityRole],
   );
   if (!Array.isArray(grants)) {
-    throw new Error("ULC D4 security-log ingest group ACL inventory is invalid.");
+    throw new Error("ULC D4 security-log direct ACL inventory is invalid.");
   }
+  if (allowEmpty === true && grants.length === 0) return;
 
   const expected = new Set(
     SECURITY_INGEST_COLUMNS.map(
@@ -583,7 +346,7 @@ async function requireSecurityGroupCatalogBoundary(client) {
   const actual = new Set();
   for (const row of grants) {
     if (row?.is_grantable !== false) {
-      throw new Error("ULC D4 security-log ingest group grant option is forbidden.");
+      throw new Error("ULC D4 security-log direct grant option is forbidden.");
     }
     const key = [
       String(row?.object_kind ?? ""),
@@ -593,7 +356,7 @@ async function requireSecurityGroupCatalogBoundary(client) {
       String(row?.privilege_type ?? ""),
     ].join(":");
     if (actual.has(key)) {
-      throw new Error("ULC D4 security-log ingest group ACL is duplicated.");
+      throw new Error("ULC D4 security-log direct ACL is duplicated.");
     }
     actual.add(key);
   }
@@ -601,7 +364,7 @@ async function requireSecurityGroupCatalogBoundary(client) {
     actual.size !== expected.size ||
     [...expected].some((key) => !actual.has(key))
   ) {
-    throw new Error("ULC D4 security-log ingest group ACL is not exact.");
+    throw new Error("ULC D4 security-log direct ACL is not exact.");
   }
 }
 
@@ -731,7 +494,9 @@ async function verifySecurityRuntimeAccess({
         " (SELECT access_count FROM non_security_schema_create) AS non_security_schema_create_count," +
         " (SELECT access_count FROM non_security_tables) AS non_security_table_access_count," +
         " (SELECT access_count FROM non_security_sequences) AS non_security_sequence_access_count," +
-        " pg_has_role(current_user, '" + SECURITY_GROUP + "', 'USAGE') AS has_ingest_role," +
+        " (SELECT count(*)::integer FROM pg_catalog.pg_auth_members membership" +
+        " JOIN pg_catalog.pg_roles member_role ON member_role.oid = membership.member" +
+        " WHERE member_role.rolname = current_user) AS inherited_role_count," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'INSERT') AS has_table_insert," +
         " (SELECT bool_and(has_column_privilege(current_user, '" + SECURITY_TABLE + "', column_name, 'INSERT'))" +
         " FROM (VALUES ('schema_version'),('app_id'),('category'),('event_type'),('occurred_at')," +
@@ -756,7 +521,7 @@ async function verifySecurityRuntimeAccess({
       Number(access?.non_security_schema_create_count) !== 0 ||
       Number(access?.non_security_table_access_count) !== 0 ||
       Number(access?.non_security_sequence_access_count) !== 0 ||
-      access?.has_ingest_role !== true ||
+      Number(access?.inherited_role_count) !== 0 ||
       access?.has_table_insert !== false ||
       access?.can_insert_allowed_columns !== true ||
       access?.can_insert_recorded_at !== false ||
@@ -797,32 +562,6 @@ async function readMembers(client, parent) {
       " WHERE parent.rolname = $1 ORDER BY child.rolname",
     [parent],
   );
-}
-
-function validateSecurityMemberships(rows, securityRole, allowRepairable) {
-  if (!Array.isArray(rows) || rows.length > 1) {
-    throw new Error("ULC D4 security-log role membership is not exact.");
-  }
-  for (const edge of rows) {
-    if (
-      edge?.member !== securityRole ||
-      edge?.parent !== SECURITY_GROUP ||
-      edge?.admin_option !== false ||
-      (!allowRepairable && edge?.inherit_option !== true) ||
-      (!allowRepairable && edge?.set_option !== true) ||
-      (allowRepairable &&
-        edge?.inherit_option !== true &&
-        edge?.inherit_option !== false) ||
-      (allowRepairable &&
-        edge?.set_option !== true &&
-        edge?.set_option !== false)
-    ) {
-      throw new Error("ULC D4 security-log role membership is unsafe.");
-    }
-  }
-  if (!allowRepairable && rows.length !== 1) {
-    throw new Error("ULC D4 security-log role membership is missing.");
-  }
 }
 
 function requiredRoleName(value) {
