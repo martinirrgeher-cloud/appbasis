@@ -45,6 +45,10 @@ test("appends the preview-only security isolation after the canonical ULC migrat
   );
   assert.match(
     sql,
+    /GRANT USAGE ON SCHEMA public\s+TO appbasis_ulc_linz_preview_security_ingest/,
+  );
+  assert.match(
+    sql,
     /GRANT USAGE ON SEQUENCE public\.ulc_linz_security_event_log_id_seq/,
   );
 });
