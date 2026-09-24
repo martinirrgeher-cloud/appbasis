@@ -45,6 +45,11 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
       ownerDatabase.client,
       applicationRole,
     );
+    await requireSecurityGroupMembershipBoundary(ownerDatabase.client);
+    await requireSecurityLoginCatalogBoundary(
+      ownerDatabase.client,
+      securityRole,
+    );
 
     if (typeof ownerDatabase.client.begin !== "function") {
       throw new Error("ULC D4 preview database access transaction is unavailable.");
@@ -114,6 +119,7 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
     migrationPrincipalSeparated: true,
     applicationRuntimeAccessVerified: true,
     securityLogRuntimeAccessVerified: true,
+    securityLogDatabaseIsolationVerified: true,
   });
 }
 
@@ -156,6 +162,117 @@ async function requireApplicationMembershipBoundary(client, applicationRole) {
   if (!Array.isArray(memberships) || memberships.length !== 0) {
     throw new Error(
       "ULC D4 application runtime database role must not inherit another database role.",
+    );
+  }
+}
+
+async function requireSecurityGroupMembershipBoundary(client) {
+  const memberships = await readMemberships(client, SECURITY_GROUP);
+  if (!Array.isArray(memberships) || memberships.length !== 0) {
+    throw new Error(
+      "ULC D4 security-log ingest group must not inherit another database role.",
+    );
+  }
+}
+
+async function requireSecurityLoginCatalogBoundary(client, securityRole) {
+  const rows = await client.unsafe(
+    `WITH target AS (
+       SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1
+     ),
+     direct_grants AS (
+       SELECT acl.grantee
+       FROM pg_catalog.pg_database object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.datacl) acl
+       WHERE object.datname = current_database()
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_namespace object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.nspacl) acl
+       WHERE object.nspname !~ '^pg_'
+         AND object.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_class object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.relacl) acl
+       WHERE namespace.nspname !~ '^pg_'
+         AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_attribute attribute
+       JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl
+       WHERE attribute.attnum > 0
+         AND NOT attribute.attisdropped
+         AND namespace.nspname !~ '^pg_'
+         AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_proc object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.proacl) acl
+       WHERE namespace.nspname !~ '^pg_'
+         AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_type object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.typacl) acl
+       WHERE namespace.nspname !~ '^pg_'
+         AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee
+       FROM pg_catalog.pg_default_acl object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.defaclacl) acl
+     )
+     SELECT
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_database object
+         WHERE object.datname = current_database()
+           AND object.datdba = (SELECT oid FROM target)) AS owned_database_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_namespace object
+         WHERE object.nspname !~ '^pg_'
+           AND object.nspname <> 'information_schema'
+           AND object.nspowner = (SELECT oid FROM target)) AS owned_schema_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_class object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
+         WHERE namespace.nspname !~ '^pg_'
+           AND namespace.nspname <> 'information_schema'
+           AND object.relowner = (SELECT oid FROM target)) AS owned_relation_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_proc object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
+         WHERE namespace.nspname !~ '^pg_'
+           AND namespace.nspname <> 'information_schema'
+           AND object.proowner = (SELECT oid FROM target)) AS owned_function_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_type object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
+         WHERE namespace.nspname !~ '^pg_'
+           AND namespace.nspname <> 'information_schema'
+           AND object.typowner = (SELECT oid FROM target)) AS owned_type_count,
+       (SELECT count(*)::integer
+          FROM direct_grants
+         WHERE grantee = (SELECT oid FROM target)) AS direct_grant_count`,
+    [securityRole],
+  );
+  const boundary = rows?.[0];
+  if (
+    !Array.isArray(rows) ||
+    rows.length !== 1 ||
+    Number(boundary?.owned_database_count) !== 0 ||
+    Number(boundary?.owned_schema_count) !== 0 ||
+    Number(boundary?.owned_relation_count) !== 0 ||
+    Number(boundary?.owned_function_count) !== 0 ||
+    Number(boundary?.owned_type_count) !== 0 ||
+    Number(boundary?.direct_grant_count) !== 0
+  ) {
+    throw new Error(
+      "ULC D4 security-log login owns database objects or has direct grants.",
     );
   }
 }
@@ -236,7 +353,38 @@ async function verifySecurityRuntimeAccess({
   const database = databaseFactory(securityLogDatabaseUrl);
   try {
     const rows = await database.client.unsafe(
-      "SELECT current_user AS current_user," +
+      "WITH non_security_tables AS (" +
+        " SELECT count(*)::integer AS access_count" +
+        " FROM pg_catalog.pg_tables" +
+        " WHERE schemaname = 'public'" +
+        " AND tablename <> 'ulc_linz_security_event_log'" +
+        " AND (" +
+        " has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT')" +
+        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT')" +
+        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE')" +
+        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'DELETE')" +
+        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE')" +
+        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')" +
+        " OR has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRIGGER')" +
+        " OR has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT')" +
+        " OR has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT')" +
+        " OR has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE')" +
+        " OR has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')" +
+        " )" +
+        "), non_security_sequences AS (" +
+        " SELECT count(*)::integer AS access_count" +
+        " FROM information_schema.sequences" +
+        " WHERE sequence_schema = 'public'" +
+        " AND sequence_name <> 'ulc_linz_security_event_log_id_seq'" +
+        " AND (" +
+        " has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'USAGE')" +
+        " OR has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'SELECT')" +
+        " OR has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'UPDATE')" +
+        " )" +
+        ") SELECT current_user AS current_user," +
+        " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
+        " (SELECT access_count FROM non_security_tables) AS non_security_table_access_count," +
+        " (SELECT access_count FROM non_security_sequences) AS non_security_sequence_access_count," +
         " pg_has_role(current_user, '" + SECURITY_GROUP + "', 'USAGE') AS has_ingest_role," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'INSERT') AS has_table_insert," +
         " (SELECT bool_and(has_column_privilege(current_user, '" + SECURITY_TABLE + "', column_name, 'INSERT'))" +
@@ -258,6 +406,9 @@ async function verifySecurityRuntimeAccess({
       !Array.isArray(rows) ||
       rows.length !== 1 ||
       access?.current_user !== securityRole ||
+      access?.schema_create !== false ||
+      Number(access?.non_security_table_access_count) !== 0 ||
+      Number(access?.non_security_sequence_access_count) !== 0 ||
       access?.has_ingest_role !== true ||
       access?.has_table_insert !== false ||
       access?.can_insert_allowed_columns !== true ||
