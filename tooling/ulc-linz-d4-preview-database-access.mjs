@@ -10,6 +10,7 @@ const SHARED_SECURITY_ROLES = Object.freeze([
   "ulc_linz_security_event_cleanup",
   "ulc_linz_security_event_read",
 ]);
+const LEGACY_SECURITY_GROUP = "ulc_linz_security_event_ingest";
 const SECURITY_TABLE = "public.ulc_linz_security_event_log";
 const SECURITY_SEQUENCE = "public.ulc_linz_security_event_log_id_seq";
 const SECURITY_PURGE_FUNCTION =
@@ -67,19 +68,18 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
       ownerDatabase.client,
       applicationRole,
     );
-    await requireSecurityGroupMembershipBoundary(ownerDatabase.client);
-    await requireSecurityGroupMemberBoundary(
+    await requireSecurityLoginMembershipBoundary(
+      ownerDatabase.client,
+      securityRole,
+    );
+    await requireSecurityLoginOwnershipBoundary(
+      ownerDatabase.client,
+      securityRole,
+    );
+    await requireSecurityLoginDirectAclBoundary(
       ownerDatabase.client,
       securityRole,
       true,
-    );
-    await requireSecurityLoginCatalogBoundary(
-      ownerDatabase.client,
-      securityRole,
-    );
-    await requireSecurityGroupCatalogBoundary(ownerDatabase.client);
-    await requireSharedSecurityRolesNeutralInPreviewDatabase(
-      ownerDatabase.client,
     );
 
     if (typeof ownerDatabase.client.begin !== "function") {
@@ -105,6 +105,9 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
         "REVOKE ALL ON SEQUENCE " + SECURITY_SEQUENCE + " FROM " + security,
         "GRANT USAGE ON SEQUENCE " + SECURITY_SEQUENCE + " TO " + security,
         "REVOKE ALL ON FUNCTION " + SECURITY_PURGE_FUNCTION + " FROM " + security,
+        "REVOKE ALL ON TABLE " + SECURITY_TABLE + " FROM " + quoteIdentifier(LEGACY_SECURITY_GROUP),
+        "REVOKE ALL ON SEQUENCE " + SECURITY_SEQUENCE + " FROM " + quoteIdentifier(LEGACY_SECURITY_GROUP),
+        "REVOKE ALL ON FUNCTION " + SECURITY_PURGE_FUNCTION + " FROM " + quoteIdentifier(LEGACY_SECURITY_GROUP),
       ];
       for (const statement of statements) {
         await transaction.unsafe(statement);
@@ -120,11 +123,6 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
       securityRole,
     );
     await requireSecurityLoginDirectAclBoundary(
-      ownerDatabase.client,
-      securityRole,
-      false,
-    );
-    await requireSecurityGroupMemberBoundary(
       ownerDatabase.client,
       securityRole,
       false,
