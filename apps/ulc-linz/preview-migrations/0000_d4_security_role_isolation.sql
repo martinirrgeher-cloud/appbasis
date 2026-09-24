@@ -32,6 +32,9 @@ REVOKE ALL ON SEQUENCE public.ulc_linz_security_event_log_id_seq
 REVOKE ALL ON FUNCTION public.appbasis_ulc_linz_purge_expired_security_events()
   FROM ulc_linz_security_event_ingest, ulc_linz_security_event_cleanup, ulc_linz_security_event_read;
 --> statement-breakpoint
+GRANT USAGE ON SCHEMA public
+  TO appbasis_ulc_linz_preview_security_ingest;
+--> statement-breakpoint
 GRANT INSERT (
   schema_version, app_id, category, event_type, occurred_at, actor_principal_id,
   organization_id, action, target_type, target_id, operation, http_status,
