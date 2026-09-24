@@ -173,6 +173,92 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("builds an authorized countdown plan from the public domain contract", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown/plan", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          rounds: 2,
+          workSeconds: 20,
+          restSeconds: 10,
+          workAnnouncementIntervalSeconds: 10,
+          restAnnouncementIntervalSeconds: 5,
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.configuration).toEqual({
+      rounds: 2,
+      workSeconds: 20,
+      restSeconds: 10,
+      workAnnouncementIntervalSeconds: 10,
+      restAnnouncementIntervalSeconds: 5,
+      totalSeconds: 53,
+    });
+    expect(payload.timeline.slice(0, 4)).toEqual([
+      { type: "count", atSecond: 0, phase: "prepare", round: 1, value: 3 },
+      { type: "count", atSecond: 1, phase: "prepare", round: 1, value: 2 },
+      { type: "count", atSecond: 2, phase: "prepare", round: 1, value: 1 },
+      { type: "start", atSecond: 3, phase: "work", round: 1, value: "Los" },
+    ]);
+    expect(payload.timeline.at(-1)).toEqual({
+      type: "finished",
+      atSecond: 53,
+      phase: "finished",
+      round: 2,
+      value: "Fertig",
+    });
+  });
+
+  it("rejects invalid countdown plans without leaking validation details", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown/plan", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          rounds: 0,
+          workSeconds: 20,
+          restSeconds: 10,
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "INVALID_COUNTDOWN_CONFIGURATION",
+        message: "The countdown configuration is invalid.",
+      },
+    });
+  });
+
+  it("requires POST for the countdown plan endpoint", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown/plan", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+  });
+
   it("keeps the countdown contract closed and audited without a valid session", async () => {
     let accessCalls = 0;
     const events: unknown[] = [];
