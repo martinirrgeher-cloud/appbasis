@@ -46,7 +46,7 @@ test("reconciles separated application and security runtime access through the m
       return {
         client: {
           async unsafe(sql, params) {
-            if (sql.includes("FROM pg_catalog.pg_roles")) {
+            if (sql.includes("WHERE rolname = ANY($1::text[])")) {
               return [
                 runtimeRole("ulc_linz_security_event_ingest", false),
                 runtimeRole("ulc_preview_app", true),
@@ -210,7 +210,7 @@ test("rejects a security login that owns user objects or has direct grants", asy
     return {
       client: {
         async unsafe(sql, params) {
-          if (sql.includes("FROM pg_catalog.pg_roles")) {
+          if (sql.includes("WHERE rolname = ANY($1::text[])")) {
             return [
               runtimeRole("ulc_linz_security_event_ingest", false),
               runtimeRole("ulc_preview_app", true),
@@ -261,7 +261,7 @@ test("rejects a protected ingest group that inherits another database role", asy
     return {
       client: {
         async unsafe(sql, params) {
-          if (sql.includes("FROM pg_catalog.pg_roles")) {
+          if (sql.includes("WHERE rolname = ANY($1::text[])")) {
             return [
               runtimeRole("ulc_linz_security_event_ingest", false),
               runtimeRole("ulc_preview_app", true),
@@ -312,7 +312,7 @@ test("rejects effective access from the security login to non-security tables", 
       return {
         client: {
           async unsafe(sql, params) {
-            if (sql.includes("FROM pg_catalog.pg_roles")) {
+            if (sql.includes("WHERE rolname = ANY($1::text[])")) {
               return [
                 runtimeRole("ulc_linz_security_event_ingest", false),
                 runtimeRole("ulc_preview_app", true),
