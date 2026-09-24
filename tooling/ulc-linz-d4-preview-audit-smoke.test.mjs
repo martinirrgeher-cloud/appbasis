@@ -4,6 +4,8 @@ import test from "node:test";
 import { verifyUlcLinzD4PreviewAuditSmoke } from "./ulc-linz-d4-preview-audit-smoke.mjs";
 
 const BASE_URL = "https://appbasis-ulc-linz.example.test";
+const BETTER_AUTH_SECRET = "test-better-auth-secret-0123456789abcdef";
+const CORRELATION_ID = "0123456789abcdef0123456789abcdef";
 
 function responseFor(url) {
   const parsed = new URL(url);
@@ -56,9 +58,11 @@ test("passes only when the anonymous countdown denial persists a new audit event
       baseURL: BASE_URL,
       migrationDatabaseUrl:
         "postgresql://owner:secret@example.test/appbasis_ulc_linz_preview",
+      betterAuthSecret: BETTER_AUTH_SECRET,
+      correlationId: CORRELATION_ID,
       fetchImpl: async (url) => responseFor(url),
     },
-    { databaseFactory: databaseFactory([4, 5]) },
+    { databaseFactory: databaseFactory([0, 1]) },
   );
 
   assert.deepEqual(result, {
@@ -76,9 +80,9 @@ test("fails closed when the denial response is correct but no audit event is per
           "postgresql://owner:secret@example.test/appbasis_ulc_linz_preview",
         fetchImpl: async (url) => responseFor(url),
       },
-      { databaseFactory: databaseFactory([4, 4]) },
+      { databaseFactory: databaseFactory([0, 0]) },
     ),
-    /was not persisted/,
+    /was not uniquely persisted/,
   );
 });
 
@@ -105,7 +109,7 @@ test("fails closed on a non-session countdown denial", async () => {
           "postgresql://owner:secret@example.test/appbasis_ulc_linz_preview",
         fetchImpl,
       },
-      { databaseFactory: databaseFactory([1]) },
+      { databaseFactory: databaseFactory([0]) },
     ),
     /unexpected denial/,
   );
