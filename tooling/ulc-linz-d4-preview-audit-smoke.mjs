@@ -1,3 +1,4 @@
+import { createHmac, randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -12,6 +13,8 @@ export async function verifyUlcLinzD4PreviewAuditSmoke(
   {
     baseURL,
     migrationDatabaseUrl,
+    betterAuthSecret,
+    correlationId = randomBytes(16).toString("hex"),
     fetchImpl = globalThis.fetch,
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = {},
@@ -22,6 +25,13 @@ export async function verifyUlcLinzD4PreviewAuditSmoke(
   }
 
   const origin = requiredHttpsOrigin(baseURL);
+  const secret = requiredSecret(betterAuthSecret);
+  const correlation = requiredCorrelationId(correlationId);
+  const targetId = `countdown:smoke:${correlation}`;
+  const proof = createHmac("sha256", secret)
+    .update(`ulc-linz-d4:${correlation}`)
+    .digest("hex");
+
   await verifyGeneratedPreviewHealth({
     baseURL: origin,
     appId: "ulc-linz",
@@ -36,29 +46,34 @@ export async function verifyUlcLinzD4PreviewAuditSmoke(
 
   const database = databaseFactory(migrationDatabaseUrl);
   try {
-    const before = await matchingAuditCount(database.client);
+    const before = await matchingAuditCount(database.client, targetId);
+    if (before !== 0n) {
+      throw new Error("ULC D4 audit smoke correlation marker is not unique.");
+    }
     const response = await timedFetch(
       fetchImpl,
       origin + "/api/modules/countdown",
       timeoutMs,
+      correlation,
+      proof,
     );
     await requireAnonymousCountdownDenial(response);
-    const after = await matchingAuditCount(database.client);
-    if (after <= before) {
+    const after = await matchingAuditCount(database.client, targetId);
+    if (after !== 1n) {
       throw new Error(
-        "ULC D4 protected countdown denial was not persisted to the security log.",
+        "ULC D4 protected countdown denial was not uniquely persisted to the security log.",
       );
     }
     return Object.freeze({
       status: "preview-audit-verified",
-      persistedSecurityEvents: Number(after - before),
+      persistedSecurityEvents: 1,
     });
   } finally {
     await database.client.end().catch(() => {});
   }
 }
 
-async function timedFetch(fetchImpl, url, timeoutMs) {
+async function timedFetch(fetchImpl, url, timeoutMs, correlation, proof) {
   if (typeof fetchImpl !== "function") {
     throw new Error("ULC D4 audit smoke fetch transport is invalid.");
   }
@@ -70,7 +85,11 @@ async function timedFetch(fetchImpl, url, timeoutMs) {
   try {
     const response = await fetchImpl(url, {
       method: "GET",
-      headers: { accept: "application/json" },
+      headers: {
+        accept: "application/json",
+        "x-appbasis-audit-correlation": correlation,
+        "x-appbasis-audit-proof": proof,
+      },
       redirect: "error",
       signal: controller.signal,
     });
@@ -98,7 +117,7 @@ async function requireAnonymousCountdownDenial(response) {
   }
 }
 
-async function matchingAuditCount(client) {
+async function matchingAuditCount(client, targetId) {
   const rows = await client.unsafe(
     "SELECT count(*)::text AS matching_count " +
       "FROM public.ulc_linz_security_event_log " +
@@ -110,11 +129,12 @@ async function matchingAuditCount(client) {
       "AND organization_id IS NULL " +
       "AND action = 'view' " +
       "AND target_type = 'module' " +
-      "AND target_id = 'countdown' " +
+      "AND target_id = $1 " +
       "AND operation IS NULL " +
       "AND http_status IS NULL " +
       "AND error_code IS NULL " +
       "AND reason_code = 'identity-access-denied'",
+    [targetId],
   );
   if (!Array.isArray(rows) || rows.length !== 1) {
     throw new Error("ULC D4 audit smoke count query returned an invalid result.");
@@ -124,6 +144,24 @@ async function matchingAuditCount(client) {
     throw new Error("ULC D4 audit smoke count is invalid.");
   }
   return BigInt(raw);
+}
+
+function requiredSecret(value) {
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    value.length < 32
+  ) {
+    throw new Error("ULC D4 audit smoke requires the protected identity secret.");
+  }
+  return value;
+}
+
+function requiredCorrelationId(value) {
+  if (typeof value !== "string" || !/^[a-f0-9]{32}$/.test(value)) {
+    throw new Error("ULC D4 audit smoke correlation marker is invalid.");
+  }
+  return value;
 }
 
 function isExactSessionInvalidPayload(payload) {
@@ -175,6 +213,7 @@ if (isMainModule()) {
     const result = await verifyUlcLinzD4PreviewAuditSmoke({
       baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
       migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+      betterAuthSecret: process.env.APPBASIS_BETTER_AUTH_SECRET,
     });
     process.stdout.write(JSON.stringify(result) + "\n");
   } catch (error) {
