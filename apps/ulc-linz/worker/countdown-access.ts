@@ -1,8 +1,5 @@
 import { COUNTDOWN_CAPABILITIES } from "@appbasis/countdown";
-import {
-  assertIdentityActionAllowed,
-  type CurrentIdentity,
-} from "@appbasis/identity/access";
+import { assertIdentityActionAllowed } from "@appbasis/identity/access";
 import {
   can,
   capabilityId,
@@ -21,7 +18,7 @@ const COUNTDOWN_MODULE_ID = "countdown";
 const COUNTDOWN_ULC_CAPABILITY = countdownUlcCapability();
 
 type UlcLinzSourceRole = keyof typeof roleDataScope.runtimeRoleIds;
-type UlcLinzCurrentIdentity = CurrentIdentity;
+type UlcLinzCurrentIdentity = Parameters<typeof assertIdentityActionAllowed>[0];
 type SqlParameter = string | number | boolean | null;
 
 export interface UlcLinzCountdownSqlClient {
