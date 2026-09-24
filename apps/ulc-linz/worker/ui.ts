@@ -401,6 +401,7 @@ for (const link of document.querySelectorAll("[data-nav]")) {
 void restoreSession();
 
 async function restoreSession() {
+  setBusy(true);
   try {
     const restored = await requestJson("/api/auth/session");
     await acceptSession(restored);
@@ -411,6 +412,8 @@ async function restoreSession() {
     }
     showView("login");
     showMessage(elements.loginMessage, "Die App ist derzeit nicht erreichbar.");
+  } finally {
+    setBusy(false);
   }
 }
 
