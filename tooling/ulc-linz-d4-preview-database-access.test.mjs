@@ -36,6 +36,55 @@ function runtimeRole(name, login) {
   };
 }
 
+const SECURITY_INGEST_COLUMNS = [
+  "schema_version",
+  "app_id",
+  "category",
+  "event_type",
+  "occurred_at",
+  "actor_principal_id",
+  "organization_id",
+  "action",
+  "target_type",
+  "target_id",
+  "operation",
+  "http_status",
+  "error_code",
+  "reason_code",
+  "retained_until",
+];
+
+function emptySecurityGroupOwnership() {
+  return [{
+    group_owned_database_count: 0,
+    group_owned_schema_count: 0,
+    group_owned_relation_count: 0,
+    group_owned_function_count: 0,
+    group_owned_type_count: 0,
+  }];
+}
+
+function exactSecurityGroupGrants() {
+  return [
+    ...SECURITY_INGEST_COLUMNS.map((column_name) => ({
+      object_kind: "column",
+      schema_name: "public",
+      object_name: "ulc_linz_security_event_log",
+      column_name,
+      privilege_type: "INSERT",
+      is_grantable: false,
+    })),
+    {
+      object_kind: "sequence",
+      schema_name: "public",
+      object_name: "ulc_linz_security_event_log_id_seq",
+      column_name: null,
+      privilege_type: "USAGE",
+      is_grantable: false,
+    },
+  ];
+}
+
 test("reconciles separated application and security runtime access through the migration owner", async () => {
   const statements = [];
   let securityMembershipBound = false;
@@ -74,6 +123,12 @@ test("reconciles separated application and security runtime access through the m
                     ]
                   : [];
               }
+            }
+            if (sql.includes("AS group_owned_database_count")) {
+              return emptySecurityGroupOwnership();
+            }
+            if (sql.includes("'database'::text AS object_kind")) {
+              return exactSecurityGroupGrants();
             }
             if (sql.includes("AS owned_database_count")) {
               return [
@@ -220,7 +275,13 @@ test("rejects a security login that owns user objects or has direct grants", asy
           if (sql.includes("FROM pg_catalog.pg_auth_members")) {
             return [];
           }
-          if (sql.includes("AS owned_database_count")) {
+          if (sql.includes("AS group_owned_database_count")) {
+              return emptySecurityGroupOwnership();
+            }
+            if (sql.includes("'database'::text AS object_kind")) {
+              return exactSecurityGroupGrants();
+            }
+            if (sql.includes("AS owned_database_count")) {
             return [
               {
                 owned_database_count: 0,
@@ -336,6 +397,12 @@ test("rejects effective access from the security login to non-security tables", 
                     }]
                   : [];
               }
+            }
+            if (sql.includes("AS group_owned_database_count")) {
+              return emptySecurityGroupOwnership();
+            }
+            if (sql.includes("'database'::text AS object_kind")) {
+              return exactSecurityGroupGrants();
             }
             if (sql.includes("AS owned_database_count")) {
               return [{
