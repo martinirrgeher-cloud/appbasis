@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { CurrentIdentity } from "@appbasis/identity/access";
 import {
   capabilityId,
   InMemoryPermissionStore,
@@ -18,10 +17,13 @@ import type { UlcLinzSecurityEvent } from "../worker/security-events";
 const IDENTITY_ID = "identity-countdown-1";
 const ORGANIZATION_ID = "verein-1";
 const COUNTDOWN_VIEW = capabilityId("ulc-linz:module:countdown:view");
+type CountdownCurrentIdentity = Parameters<
+  ReturnType<typeof createUlcLinzCountdownAccessService>["assertViewAccess"]
+>[0];
 
 function currentIdentity(
-  access: CurrentIdentity["access"] = "full",
-): CurrentIdentity {
+  access: CountdownCurrentIdentity["access"] = "full",
+): CountdownCurrentIdentity {
   return {
     identity: {
       identityId: IDENTITY_ID,
