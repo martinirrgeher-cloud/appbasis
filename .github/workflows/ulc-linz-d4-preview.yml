@@ -534,8 +534,6 @@ jobs:
       - name: Verify ULC preview UI and protected countdown runtime
         if: inputs.operation == 'deploy'
         shell: bash
-        env:
-          APPBASIS_GENERATED_PREVIEW_URL: ${{ env.APPBASIS_GENERATED_PREVIEW_URL }}
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
