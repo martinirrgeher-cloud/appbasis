@@ -51,6 +51,42 @@ export function validateUlcLinzD4PreviewDatabaseUrls(
   return Object.freeze({ application, securityLog });
 }
 
+export function validateUlcLinzD4PreviewDatabaseCredentials({
+  migrationDatabaseUrl,
+  applicationDatabaseUrl,
+  securityLogDatabaseUrl,
+} = {}) {
+  const migration = parseGeneratedPreviewDatabaseUrl(
+    migrationDatabaseUrl,
+    ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE,
+  );
+  const { application, securityLog } = validateUlcLinzD4PreviewDatabaseUrls(
+    applicationDatabaseUrl,
+    securityLogDatabaseUrl,
+  );
+
+  for (const runtime of [application, securityLog]) {
+    if (
+      migration.host !== runtime.host ||
+      migration.port !== runtime.port ||
+      migration.database !== runtime.database
+    ) {
+      throw new Error(
+        "ULC D4 migration, application and security-log credentials must select the same dedicated preview database.",
+      );
+    }
+  }
+  if (
+    new Set([migration.user, application.user, securityLog.user]).size !== 3
+  ) {
+    throw new Error(
+      "ULC D4 migration, application and security-log database roles must be distinct.",
+    );
+  }
+
+  return Object.freeze({ migration, application, securityLog });
+}
+
 export async function resolveUlcLinzD4PreviewHyperdrives({
   accountId,
   apiToken,
