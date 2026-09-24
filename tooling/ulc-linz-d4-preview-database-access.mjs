@@ -31,6 +31,11 @@ const SECURITY_INGEST_COLUMNS = Object.freeze([
   "reason_code",
   "retained_until",
 ]);
+const SECURITY_ALL_COLUMNS = Object.freeze([
+  "id",
+  ...SECURITY_INGEST_COLUMNS,
+  "recorded_at",
+]);
 
 export async function reconcileUlcLinzD4PreviewDatabaseAccess(
   {
@@ -101,12 +106,16 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
 
       const app = quoteIdentifier(applicationRole);
       const security = quoteIdentifier(securityRole);
+      const securityColumns = SECURITY_ALL_COLUMNS.map(quoteIdentifier).join(", ");
       const statements = [
         "REVOKE CREATE ON SCHEMA public FROM " + app,
         "GRANT USAGE ON SCHEMA public TO " + app,
         "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO " + app,
         "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO " + app,
         "REVOKE ALL ON TABLE " + SECURITY_TABLE + " FROM " + app,
+        "REVOKE SELECT (" + securityColumns + "), INSERT (" + securityColumns +
+          "), UPDATE (" + securityColumns + "), REFERENCES (" + securityColumns +
+          ") ON TABLE " + SECURITY_TABLE + " FROM " + app,
         "REVOKE ALL ON SEQUENCE " + SECURITY_SEQUENCE + " FROM " + app,
         "REVOKE ALL ON FUNCTION " + SECURITY_PURGE_FUNCTION + " FROM " + app,
       ];
@@ -657,7 +666,17 @@ async function verifyApplicationRuntimeAccess({
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'INSERT') AS security_insert," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'UPDATE') AS security_update," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'DELETE') AS security_delete," +
-        " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'USAGE') AS security_sequence_usage",
+        " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'TRUNCATE') AS security_truncate," +
+        " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'REFERENCES') AS security_references," +
+        " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'TRIGGER') AS security_trigger," +
+        " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'SELECT') AS security_column_select," +
+        " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'INSERT') AS security_column_insert," +
+        " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'UPDATE') AS security_column_update," +
+        " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'REFERENCES') AS security_column_references," +
+        " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'USAGE') AS security_sequence_usage," +
+        " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'SELECT') AS security_sequence_select," +
+        " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'UPDATE') AS security_sequence_update," +
+        " has_function_privilege(current_user, '" + SECURITY_PURGE_FUNCTION + "', 'EXECUTE') AS security_purge_execute",
     );
     const access = rows?.[0];
     if (
@@ -673,7 +692,17 @@ async function verifyApplicationRuntimeAccess({
       access?.security_insert !== false ||
       access?.security_update !== false ||
       access?.security_delete !== false ||
-      access?.security_sequence_usage !== false
+      access?.security_truncate !== false ||
+      access?.security_references !== false ||
+      access?.security_trigger !== false ||
+      access?.security_column_select !== false ||
+      access?.security_column_insert !== false ||
+      access?.security_column_update !== false ||
+      access?.security_column_references !== false ||
+      access?.security_sequence_usage !== false ||
+      access?.security_sequence_select !== false ||
+      access?.security_sequence_update !== false ||
+      access?.security_purge_execute !== false
     ) {
       throw new Error("ULC D4 application runtime database ACL is not exact.");
     }
