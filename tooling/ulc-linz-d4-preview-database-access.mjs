@@ -482,7 +482,24 @@ async function requireSharedSecurityRolesNeutralInPreviewDatabase(client) {
          WHERE namespace.nspname !~ '^pg_' AND namespace.nspname <> 'information_schema'
            AND object.typowner IN (SELECT oid FROM targets)) AS shared_owned_type_count,
        (SELECT count(*)::integer FROM direct_grants
-         WHERE grantee IN (SELECT oid FROM targets)) AS shared_direct_grant_count`,
+         WHERE grantee IN (SELECT oid FROM targets)) AS shared_direct_grant_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_roles role
+         WHERE role.rolname = ANY($1::text[])
+           AND (
+             has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'SELECT')
+             OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'INSERT')
+             OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'UPDATE')
+             OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'DELETE')
+             OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'TRUNCATE')
+             OR has_any_column_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'SELECT')
+             OR has_any_column_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'INSERT')
+             OR has_any_column_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'UPDATE')
+             OR has_sequence_privilege(role.rolname, 'public.ulc_linz_security_event_log_id_seq', 'USAGE')
+             OR has_sequence_privilege(role.rolname, 'public.ulc_linz_security_event_log_id_seq', 'SELECT')
+             OR has_sequence_privilege(role.rolname, 'public.ulc_linz_security_event_log_id_seq', 'UPDATE')
+             OR has_function_privilege(role.rolname, 'public.appbasis_ulc_linz_purge_expired_security_events()', 'EXECUTE')
+           )) AS shared_effective_security_access_count`,
     [SHARED_SECURITY_ROLES],
   );
   const boundary = rows?.[0];
@@ -495,7 +512,8 @@ async function requireSharedSecurityRolesNeutralInPreviewDatabase(client) {
     Number(boundary?.shared_owned_relation_count) !== 0 ||
     Number(boundary?.shared_owned_function_count) !== 0 ||
     Number(boundary?.shared_owned_type_count) !== 0 ||
-    Number(boundary?.shared_direct_grant_count) !== 0
+    Number(boundary?.shared_direct_grant_count) !== 0 ||
+    Number(boundary?.shared_effective_security_access_count) !== 0
   ) {
     throw new Error(
       "ULC D4 shared security roles are not neutral in the preview database.",
