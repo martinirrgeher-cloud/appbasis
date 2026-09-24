@@ -1,9 +1,14 @@
-import { COUNTDOWN_CAPABILITIES } from "@appbasis/countdown";
+import {
+  COUNTDOWN_CAPABILITIES,
+  createCountdownTimeline,
+  normalizeCountdownConfiguration,
+} from "@appbasis/countdown";
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
 import { recordUlcLinzSecurityEvent } from "./security-events";
+import { generatedUiResponse } from "./ui";
 import {
   createGeneratedPostgresApplicationRuntime,
   type GeneratedPostgresApplicationRuntime,
@@ -28,6 +33,10 @@ export function createGeneratedWorker(
   return Object.freeze({
     async fetch(request: Request, env: unknown): Promise<Response> {
       const url = new URL(request.url);
+      const staticUiResponse = generatedUiResponse(request);
+      if (staticUiResponse !== null) {
+        return staticUiResponse;
+      }
       if (url.pathname === "/api/health") {
         return Response.json({ status: "ok", appId: "ulc-linz" });
       }
@@ -51,6 +60,8 @@ export function createGeneratedWorker(
         runtime = await runtimeFactory(runtimeOptions);
         if (url.pathname === "/api/modules/countdown") {
           response = await countdownModuleResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/countdown/plan") {
+          response = await countdownPlanResponse(request, runtime, url);
         } else {
           const app = createGeneratedApp({
             identity: runtime.identity,
@@ -89,23 +100,82 @@ async function countdownModuleResponse(
   url: URL,
 ): Promise<Response> {
   if (request.method !== "GET") {
-    return new Response(
-      JSON.stringify({
-        error: {
-          code: "METHOD_NOT_ALLOWED",
-          message: "Only GET is supported for the countdown module.",
-        },
-      }),
-      {
-        status: 405,
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          allow: "GET",
-        },
-      },
-    );
+    return methodNotAllowed("GET");
   }
 
+  const denied = await authorizeCountdownRequest(request, runtime, url);
+  if (denied !== null) return denied;
+
+  return Response.json({
+    module: {
+      moduleId: "countdown",
+      capability: COUNTDOWN_CAPABILITIES.view,
+    },
+    access: {
+      view: true,
+    },
+  });
+}
+
+async function countdownPlanResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowed("POST");
+  }
+
+  const denied = await authorizeCountdownRequest(request, runtime, url);
+  if (denied !== null) return denied;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return invalidCountdownConfiguration();
+  }
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return invalidCountdownConfiguration();
+  }
+
+  try {
+    const input = body as {
+      rounds?: unknown;
+      workSeconds?: unknown;
+      restSeconds?: unknown;
+      workAnnouncementIntervalSeconds?: unknown;
+      restAnnouncementIntervalSeconds?: unknown;
+    };
+    const configuration = normalizeCountdownConfiguration({
+      rounds: input.rounds as number,
+      workSeconds: input.workSeconds as number,
+      restSeconds: input.restSeconds as number,
+      ...(input.workAnnouncementIntervalSeconds === undefined
+        ? {}
+        : {
+            workAnnouncementIntervalSeconds:
+              input.workAnnouncementIntervalSeconds as number,
+          }),
+      ...(input.restAnnouncementIntervalSeconds === undefined
+        ? {}
+        : {
+            restAnnouncementIntervalSeconds:
+              input.restAnnouncementIntervalSeconds as number,
+          }),
+    });
+    const timeline = createCountdownTimeline(configuration);
+    return Response.json({ configuration, timeline });
+  } catch {
+    return invalidCountdownConfiguration();
+  }
+}
+
+async function authorizeCountdownRequest(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response | null> {
   const identityHttp = createIdentityHttpHandlers({
     identity: runtime.identity,
     secureCookies: url.protocol === "https:",
@@ -127,15 +197,7 @@ async function countdownModuleResponse(
 
   try {
     await runtime.countdownAccess.assertViewAccess(current);
-    return Response.json({
-      module: {
-        moduleId: "countdown",
-        capability: COUNTDOWN_CAPABILITIES.view,
-      },
-      access: {
-        view: true,
-      },
-    });
+    return null;
   } catch (error) {
     if (error instanceof UlcLinzCountdownAccessDeniedError) {
       return Response.json(
@@ -153,6 +215,36 @@ async function countdownModuleResponse(
     }
     throw error;
   }
+}
+
+function invalidCountdownConfiguration(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "INVALID_COUNTDOWN_CONFIGURATION",
+        message: "The countdown configuration is invalid.",
+      },
+    },
+    { status: 400 },
+  );
+}
+
+function methodNotAllowed(method: "GET" | "POST"): Response {
+  return new Response(
+    JSON.stringify({
+      error: {
+        code: "METHOD_NOT_ALLOWED",
+        message: `Only ${method} is supported for this countdown endpoint.`,
+      },
+    }),
+    {
+      status: 405,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        allow: method,
+      },
+    },
+  );
 }
 
 function isPasswordChangeRequiredError(

@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-09-23
+Stand: 2026-09-24
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -99,27 +99,39 @@ Der Countdown besitzt jetzt einen getesteten persistenzfreien Domainvertrag für
 Übungen/Durchgänge, Belastung, Pause, Ansageintervalle, `3, 2, 1, Los`, die
 letzten fünf Sekunden und `Fertig`.
 
-### Aktueller Teilslice: Countdown D2 – ULC Runtime + Berechtigung
+### Countdown D2 – ULC Runtime + Berechtigung – abgeschlossen
 
-ULC bindet den Countdown jetzt als echten geschützten Runtime-Verbraucher an.
-Der Countdown ist ein vereinsdatenfreies Werkzeug: Der Server ermittelt die
-eine app-eigene Mitgliedschaft selbst anhand der authentifizierten Identity und
-verlangt anschließend aktive Mitgliedschaft, exakt passende Runtime-Rolle und
-das bestehende individuelle Modulrecht `ulc-linz:module:countdown:view`.
+ULC bindet den Countdown als geschützten Runtime-Verbraucher an. Der Server
+ermittelt die Mitgliedschaft selbst anhand der authentifizierten Identity und
+verlangt aktive Mitgliedschaft, exakt passende Runtime-Rolle und das bestehende
+individuelle Modulrecht `ulc-linz:module:countdown:view`. Fehlerhafte
+Membership- und Identity-Zustände bleiben fail-closed und werden auditierbar
+abgewiesen.
 
-Für D2 gilt ausdrücklich:
+### Aktueller Teilslice: Countdown D3 – mobile ULC UI
 
-- keine vom Client vorgegebene Organisations-ID als Autoritätsquelle,
-- kein Subject-Scope für Athleten oder Eltern,
-- keine Lockerung der strengeren Subject-Scope-Regeln anderer ULC-Module,
-- keine neue Datenbanktabelle oder Migration,
-- keine Production-Evidence-Revalidierung.
+D3 liefert den ersten echten mobilen Countdown-Consumer. Die UI wird statisch
+und CSP-sicher aus dem Worker ausgeliefert; Login und App-Shell benötigen keine
+Datenbankverbindung. Beim Start erzeugt der geschützte Worker aus den
+Benutzereinstellungen über `@appbasis/countdown` den normierten Zeitplan und
+die Cues. Der Browser führt ausschließlich diesen Plan aus.
 
-Nach D2 folgen getrennt:
+Verbindlicher D3-Umfang:
 
-1. D3 – mobile UI inklusive Pause/Weiter/Reset und Sprachausgabe,
-2. D4 – isolierte ULC Preview mit weiterhin getrenntem Application- und
-   Security-Log-Hyperdrive.
+- mobile-first große Countdown-Anzeige,
+- `3, 2, 1, Los` vor der ersten Belastung,
+- Belastung rot, Pause grün,
+- letzte fünf Sekunden sowie konfigurierte Zwischenansagen,
+- Sprachausgabe auf Deutsch/Österreich mit deutschem Fallback,
+- Pause stoppt Zeit und Sprachausgabe gemeinsam,
+- Weiter setzt exakt an der pausierten Stelle fort,
+- Reset setzt Ablauf vollständig zurück,
+- Einstellungen werden lokal am Gerät gespeichert,
+- Wake-Lock wird während eines laufenden Countdowns best-effort gehalten,
+- Zugriff wird vor Nutzung über den D2-Vertrag serverseitig geprüft.
+
+Nach D3 folgt D4 – isolierte ULC Preview mit weiterhin getrenntem Application-
+und Security-Log-Hyperdrive.
 
 Keine dieser Stufen revalidiert automatisch die alte M5/M6-Production-Evidence.
 

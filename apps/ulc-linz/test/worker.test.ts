@@ -5,6 +5,10 @@ import { InMemoryPermissionStore } from "@appbasis/permissions";
 
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
+import {
+  ULC_LINZ_APP_CSS,
+  ULC_LINZ_APP_SCRIPT,
+} from "../worker/ui";
 
 const currentIdentity = {
   identity: {
@@ -74,6 +78,98 @@ function runtime(
 }
 
 describe("generated identity+permissions Worker entrypoint", () => {
+  it("serves the mobile countdown shell without creating a database runtime", async () => {
+    let runtimeCalls = 0;
+    const worker = createGeneratedWorker(() => {
+      runtimeCalls += 1;
+      throw new Error("runtime must not be created for static UI");
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/"),
+      undefined,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(response.headers.get("content-security-policy")).toContain(
+      "script-src 'self'",
+    );
+    expect(await response.text()).toContain("Intervall-Countdown");
+    expect(runtimeCalls).toBe(0);
+  });
+
+  it("ships browser JavaScript that parses as standalone module-compatible code", () => {
+    expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
+  });
+
+  it("ships the countdown controls and domain-backed plan integration in static assets", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain("/api/modules/countdown/plan");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("speechSynthesis");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("navigator.wakeLock");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("localStorage");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('runMode === "paused" ? "Weiter" : "Pause"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('timerHint.textContent = "3, 2, 1 – Los"');
+    expect(ULC_LINZ_APP_CSS).toContain('[data-phase="work"]');
+    expect(ULC_LINZ_APP_CSS).toContain('[data-phase="rest"]');
+  });
+
+  it("serializes initial session restoration before login interaction", () => {
+    const restoreIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function restoreSession()",
+    );
+    const loginIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function handleLogin(event)",
+      restoreIndex,
+    );
+    const restoreBody = ULC_LINZ_APP_SCRIPT.slice(restoreIndex, loginIndex);
+    const busyIndex = restoreBody.indexOf("setBusy(true);");
+    const sessionRequestIndex = restoreBody.indexOf(
+      'requestJson("/api/auth/session")',
+    );
+
+    expect(restoreIndex).toBeGreaterThanOrEqual(0);
+    expect(busyIndex).toBeGreaterThanOrEqual(0);
+    expect(busyIndex).toBeLessThan(sessionRequestIndex);
+    expect(restoreBody).toContain("finally {");
+    expect(restoreBody).toContain("setBusy(false);");
+  });
+
+  it("freezes countdown settings before the plan request and keeps wake lock best effort", () => {
+    const startCountdownIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function startCountdown()",
+    );
+    const lockSettingsIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "lockSettings(true);",
+      startCountdownIndex,
+    );
+    const planRequestIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      'requestJson("/api/modules/countdown/plan"',
+      startCountdownIndex,
+    );
+    const startTickerIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "startTicker();",
+      startCountdownIndex,
+    );
+    const wakeLockIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "void acquireWakeLock();",
+      startTickerIndex,
+    );
+    const togglePauseIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "function togglePause()",
+      startCountdownIndex,
+    );
+
+    expect(startCountdownIndex).toBeGreaterThanOrEqual(0);
+    expect(lockSettingsIndex).toBeGreaterThan(startCountdownIndex);
+    expect(lockSettingsIndex).toBeLessThan(planRequestIndex);
+    expect(wakeLockIndex).toBeGreaterThan(startTickerIndex);
+    expect(
+      ULC_LINZ_APP_SCRIPT.slice(startCountdownIndex, togglePauseIndex),
+    ).not.toContain("await acquireWakeLock()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("wakeLockRequestId += 1;");
+  });
+
   it("keeps liveness available without database or secret bindings", async () => {
     let runtimeCalls = 0;
     const worker = createGeneratedWorker(() => {
@@ -171,6 +267,92 @@ describe("generated identity+permissions Worker entrypoint", () => {
         view: true,
       },
     });
+  });
+
+  it("builds an authorized countdown plan from the public domain contract", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown/plan", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          rounds: 2,
+          workSeconds: 20,
+          restSeconds: 10,
+          workAnnouncementIntervalSeconds: 10,
+          restAnnouncementIntervalSeconds: 5,
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.configuration).toEqual({
+      rounds: 2,
+      workSeconds: 20,
+      restSeconds: 10,
+      workAnnouncementIntervalSeconds: 10,
+      restAnnouncementIntervalSeconds: 5,
+      totalSeconds: 53,
+    });
+    expect(payload.timeline.slice(0, 4)).toEqual([
+      { type: "count", atSecond: 0, phase: "prepare", round: 1, value: 3 },
+      { type: "count", atSecond: 1, phase: "prepare", round: 1, value: 2 },
+      { type: "count", atSecond: 2, phase: "prepare", round: 1, value: 1 },
+      { type: "start", atSecond: 3, phase: "work", round: 1, value: "Los" },
+    ]);
+    expect(payload.timeline.at(-1)).toEqual({
+      type: "finished",
+      atSecond: 53,
+      phase: "finished",
+      round: 2,
+      value: "Fertig",
+    });
+  });
+
+  it("rejects invalid countdown plans without leaking validation details", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown/plan", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          rounds: 0,
+          workSeconds: 20,
+          restSeconds: 10,
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "INVALID_COUNTDOWN_CONFIGURATION",
+        message: "The countdown configuration is invalid.",
+      },
+    });
+  });
+
+  it("requires POST for the countdown plan endpoint", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/countdown/plan", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
   });
 
   it("keeps the countdown contract closed and audited without a valid session", async () => {
