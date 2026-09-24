@@ -401,7 +401,7 @@ test("preflight rejects unsafe security principal state before migration", async
   });
   await assert.rejects(
     preflight(databaseFactory({ owner })),
-    /security-log login has direct grants/,
+    /security-log runtime login has direct grants/,
   );
 });
 
@@ -485,7 +485,7 @@ test("rejects direct grants on the security login", async () => {
   const owner = ownerFixture({ securityDirectGrantCount: 1 });
   await assert.rejects(
     reconcile(databaseFactory({ owner })),
-    /security-log login has direct grants/,
+    /security-log runtime login has direct grants/,
   );
 });
 
@@ -574,7 +574,7 @@ test("rejects security login ownership", async () => {
   });
   await assert.rejects(
     reconcile(databaseFactory({ owner })),
-    /security-log login owns database objects/,
+    /security-log runtime login owns database objects/,
   );
 });
 
