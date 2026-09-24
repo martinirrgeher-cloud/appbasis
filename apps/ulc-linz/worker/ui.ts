@@ -369,6 +369,7 @@ let resumedAt = 0;
 let timerHandle = null;
 let cueIndex = 0;
 let wakeLock = null;
+let wakeLockRequestId = 0;
 
 applySettings(loadSettings());
 renderIdle();
@@ -531,6 +532,7 @@ async function startCountdown() {
   }
 
   setBusy(true);
+  lockSettings(true);
   showMessage(elements.appMessage, "");
   try {
     saveSettings(settings);
@@ -556,12 +558,11 @@ async function startCountdown() {
     elapsedBeforeRunMs = 0;
     resumedAt = performance.now();
     cueIndex = 0;
-    lockSettings(true);
     refreshControls();
     renderAt(0);
     processCues(0);
     startTicker();
-    await acquireWakeLock();
+    void acquireWakeLock();
   } catch (error) {
     plan = null;
     runMode = "idle";
@@ -935,14 +936,25 @@ function formatDuration(seconds) {
 
 async function acquireWakeLock() {
   if (runMode !== "running" || !("wakeLock" in navigator)) return;
+  const requestId = ++wakeLockRequestId;
   try {
-    wakeLock = await navigator.wakeLock.request("screen");
+    const requested = await navigator.wakeLock.request("screen");
+    if (requestId !== wakeLockRequestId || runMode !== "running") {
+      try {
+        await requested.release();
+      } catch {
+        // A stale wake lock request is best effort only.
+      }
+      return;
+    }
+    wakeLock = requested;
   } catch {
-    wakeLock = null;
+    if (requestId === wakeLockRequestId) wakeLock = null;
   }
 }
 
 async function releaseWakeLock() {
+  wakeLockRequestId += 1;
   const current = wakeLock;
   wakeLock = null;
   try {
