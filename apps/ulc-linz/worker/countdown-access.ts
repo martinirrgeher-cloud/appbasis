@@ -76,10 +76,20 @@ export function createUlcLinzCountdownAccessService({
       if (row === undefined) {
         deny(securityEvents, identityId, null, "membership-denied");
       }
-      const organizationId = rowString(row, "organization_id");
-      const sourceRole = rowString(row, "source_role");
-      if (row.active !== true || !isSourceRole(sourceRole)) {
-        deny(securityEvents, identityId, null, "membership-denied");
+      const organizationId = optionalIdentifier(row["organization_id"]);
+      const sourceRole = optionalIdentifier(row["source_role"]);
+      if (
+        organizationId === null ||
+        sourceRole === null ||
+        row.active !== true ||
+        !isSourceRole(sourceRole)
+      ) {
+        deny(
+          securityEvents,
+          identityId,
+          organizationId,
+          "membership-denied",
+        );
       }
 
       const currentPrincipalId = principalId(identityId);
@@ -145,8 +155,12 @@ function requiredIdentifier(value: unknown): string {
   return value;
 }
 
-function rowString(row: Record<string, unknown>, key: string): string {
-  return requiredIdentifier(row[key]);
+function optionalIdentifier(value: unknown): string | null {
+  try {
+    return requiredIdentifier(value);
+  } catch {
+    return null;
+  }
 }
 
 function deny(
