@@ -114,6 +114,41 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_CSS).toContain('[data-phase="rest"]');
   });
 
+  it("freezes countdown settings before the plan request and keeps wake lock best effort", () => {
+    const startCountdownIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function startCountdown()",
+    );
+    const lockSettingsIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "lockSettings(true);",
+      startCountdownIndex,
+    );
+    const planRequestIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      'requestJson("/api/modules/countdown/plan"',
+      startCountdownIndex,
+    );
+    const startTickerIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "startTicker();",
+      startCountdownIndex,
+    );
+    const wakeLockIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "void acquireWakeLock();",
+      startTickerIndex,
+    );
+    const togglePauseIndex = ULC_LINZ_APP_SCRIPT.indexOf(
+      "function togglePause()",
+      startCountdownIndex,
+    );
+
+    expect(startCountdownIndex).toBeGreaterThanOrEqual(0);
+    expect(lockSettingsIndex).toBeGreaterThan(startCountdownIndex);
+    expect(lockSettingsIndex).toBeLessThan(planRequestIndex);
+    expect(wakeLockIndex).toBeGreaterThan(startTickerIndex);
+    expect(
+      ULC_LINZ_APP_SCRIPT.slice(startCountdownIndex, togglePauseIndex),
+    ).not.toContain("await acquireWakeLock()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("wakeLockRequestId += 1;");
+  });
+
   it("keeps liveness available without database or secret bindings", async () => {
     let runtimeCalls = 0;
     const worker = createGeneratedWorker(() => {
