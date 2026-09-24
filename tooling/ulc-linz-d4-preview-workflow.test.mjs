@@ -24,7 +24,7 @@ test("ULC D4 preview lifecycle keeps provider writes explicit and main-only", as
   assert.match(workflow, /environment:\s*\n\s*name: generated-preview-ulc-linz/);
 });
 
-test("ULC D4 preview lifecycle binds distinct application and security-log Hyperdrives", async () => {
+test("ULC D4 preview lifecycle binds distinct Hyperdrives and verifies the security-log ACL", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /APPBASIS_DATABASE_URL/);
@@ -35,9 +35,13 @@ test("ULC D4 preview lifecycle binds distinct application and security-log Hyper
   assert.match(workflow, /securityLogHyperdriveId:/);
   assert.match(workflow, /SECURITY_LOG_HYPERDRIVE/);
   assert.match(workflow, /Hyperdrive IDs must be distinct/);
+  assert.match(workflow, /ulc_linz_security_event_ingest/);
+  assert.match(workflow, /pg_has_role/);
+  assert.match(workflow, /has_table_privilege/);
+  assert.match(workflow, /has_sequence_privilege/);
 });
 
-test("ULC D4 preview lifecycle reuses the canonical preview plan, migration and smokes", async () => {
+test("ULC D4 preview lifecycle reuses the canonical plan and probes the ULC countdown boundary", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /generated-app-preview-plan\.mjs/);
@@ -45,7 +49,11 @@ test("ULC D4 preview lifecycle reuses the canonical preview plan, migration and 
     workflow,
     /node --experimental-transform-types \.\/tooling\/generated-app-preview-migrate\.mjs/,
   );
-  assert.match(workflow, /generated-app-preview-smoke\.mjs/);
+  assert.match(workflow, /verifyGeneratedAppPreviewUi/);
+  assert.match(workflow, /verifyGeneratedPreviewHealth/);
+  assert.match(workflow, /\/api\/modules\/countdown/);
+  assert.match(workflow, /SESSION_INVALID/);
+  assert.doesNotMatch(workflow, /node \.\/tooling\/generated-app-preview-smoke\.mjs/);
   assert.match(workflow, /generated-preview-database-smoke\.mjs/);
   assert.match(workflow, /\.\/worker\/preview\.ts|APPBASIS_ENTRYPOINT/);
   assert.match(workflow, /--experimental-provision=false/);
