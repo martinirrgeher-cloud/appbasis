@@ -184,7 +184,7 @@ jobs:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_MIGRATION_TARGET: ${{ steps.plan.outputs.migration_target }}
           APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
-        run: node --experimental-transform-types ./tooling/generated-app-preview-migrate.mjs
+        run: node ./tooling/ulc-linz-d4-preview-migrate.mjs
 
       - name: Reconcile separated ULC preview runtime database access
         if: inputs.operation == 'migrate' || inputs.operation == 'bootstrap' || inputs.operation == 'deploy'
