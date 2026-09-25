@@ -1017,6 +1017,10 @@ async function verifyApplicationRuntimeAccess({
         " AND has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT')" +
         " AND has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE')" +
         " AND has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'DELETE')" +
+        " AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE')" +
+        " AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')" +
+        " AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRIGGER')" +
+        " AND NOT has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')" +
         " ) AS all_runtime_table_dml" +
         " FROM pg_catalog.pg_tables" +
         " WHERE schemaname = 'public'" +
@@ -1025,6 +1029,7 @@ async function verifyApplicationRuntimeAccess({
         " SELECT COALESCE(bool_and(" +
         " has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'USAGE')" +
         " AND has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'SELECT')" +
+        " AND NOT has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'UPDATE')" +
         " ), true) AS all_runtime_sequence_access" +
         " FROM information_schema.sequences" +
         " WHERE sequence_schema = 'public'" +
