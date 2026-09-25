@@ -1006,7 +1006,12 @@ async function verifyApplicationRuntimeAccess({
   const database = databaseFactory(applicationDatabaseUrl);
   try {
     const rows = await database.client.unsafe(
-      "WITH table_access AS (" +
+      "WITH user_schemas AS (" +
+        " SELECT oid, nspname" +
+        " FROM pg_catalog.pg_namespace" +
+        " WHERE nspname !~ '^pg_'" +
+        " AND nspname <> 'information_schema'" +
+        "), table_access AS (" +
         " SELECT bool_and(" +
         " has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT')" +
         " AND has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT')" +
@@ -1024,6 +1029,47 @@ async function verifyApplicationRuntimeAccess({
         " FROM information_schema.sequences" +
         " WHERE sequence_schema = 'public'" +
         " AND sequence_name <> 'ulc_linz_security_event_log_id_seq'" +
+        "), unexpected_schema_create AS (" +
+        " SELECT count(*)::integer AS access_count" +
+        " FROM user_schemas" +
+        " WHERE nspname <> 'public'" +
+        " AND has_schema_privilege(current_user, oid, 'CREATE')" +
+        "), unexpected_tables AS (" +
+        " SELECT count(*)::integer AS access_count" +
+        " FROM pg_catalog.pg_class relation" +
+        " JOIN user_schemas namespace ON namespace.oid = relation.relnamespace" +
+        " WHERE namespace.nspname <> 'public'" +
+        " AND relation.relkind IN ('r','p','v','m','f')" +
+        " AND (" +
+        " has_table_privilege(current_user, relation.oid, 'SELECT')" +
+        " OR has_table_privilege(current_user, relation.oid, 'INSERT')" +
+        " OR has_table_privilege(current_user, relation.oid, 'UPDATE')" +
+        " OR has_table_privilege(current_user, relation.oid, 'DELETE')" +
+        " OR has_table_privilege(current_user, relation.oid, 'TRUNCATE')" +
+        " OR has_table_privilege(current_user, relation.oid, 'REFERENCES')" +
+        " OR has_table_privilege(current_user, relation.oid, 'TRIGGER')" +
+        " OR has_any_column_privilege(current_user, relation.oid, 'SELECT')" +
+        " OR has_any_column_privilege(current_user, relation.oid, 'INSERT')" +
+        " OR has_any_column_privilege(current_user, relation.oid, 'UPDATE')" +
+        " OR has_any_column_privilege(current_user, relation.oid, 'REFERENCES')" +
+        " )" +
+        "), unexpected_sequences AS (" +
+        " SELECT count(*)::integer AS access_count" +
+        " FROM pg_catalog.pg_class relation" +
+        " JOIN user_schemas namespace ON namespace.oid = relation.relnamespace" +
+        " WHERE namespace.nspname <> 'public'" +
+        " AND relation.relkind = 'S'" +
+        " AND (" +
+        " has_sequence_privilege(current_user, relation.oid, 'USAGE')" +
+        " OR has_sequence_privilege(current_user, relation.oid, 'SELECT')" +
+        " OR has_sequence_privilege(current_user, relation.oid, 'UPDATE')" +
+        " )" +
+        "), unexpected_routines AS (" +
+        " SELECT count(*)::integer AS access_count" +
+        " FROM pg_catalog.pg_proc routine" +
+        " JOIN user_schemas namespace ON namespace.oid = routine.pronamespace" +
+        " WHERE namespace.nspname <> 'public'" +
+        " AND has_function_privilege(current_user, routine.oid, 'EXECUTE')" +
         "), ownership AS (" +
         " SELECT" +
         " (SELECT count(*)::integer FROM pg_catalog.pg_database object" +
@@ -1053,6 +1099,10 @@ async function verifyApplicationRuntimeAccess({
         " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
         " (SELECT all_runtime_table_dml FROM table_access) AS all_runtime_table_dml," +
         " (SELECT all_runtime_sequence_access FROM sequence_access) AS all_runtime_sequence_access," +
+        " (SELECT access_count FROM unexpected_schema_create) AS non_public_schema_create_count," +
+        " (SELECT access_count FROM unexpected_tables) AS non_public_table_access_count," +
+        " (SELECT access_count FROM unexpected_sequences) AS non_public_sequence_access_count," +
+        " (SELECT access_count FROM unexpected_routines) AS non_public_function_access_count," +
         " (SELECT owned_database_count FROM ownership) AS owned_database_count," +
         " (SELECT owned_schema_count FROM ownership) AS owned_schema_count," +
         " (SELECT owned_relation_count FROM ownership) AS owned_relation_count," +
@@ -1083,6 +1133,10 @@ async function verifyApplicationRuntimeAccess({
       access?.schema_create !== false ||
       access?.all_runtime_table_dml !== true ||
       access?.all_runtime_sequence_access !== true ||
+      Number(access?.non_public_schema_create_count) !== 0 ||
+      Number(access?.non_public_table_access_count) !== 0 ||
+      Number(access?.non_public_sequence_access_count) !== 0 ||
+      Number(access?.non_public_function_access_count) !== 0 ||
       Number(access?.owned_database_count) !== 0 ||
       Number(access?.owned_schema_count) !== 0 ||
       Number(access?.owned_relation_count) !== 0 ||
