@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
 import { buildGeneratedAppPreviewPlan } from "./generated-app-preview-plan.mjs";
+import { buildUlcLinzD4PreviewPlan } from "./ulc-linz-d4-preview-plan.mjs";
 import { loadGeneratedAppPreviewMigrationPlan } from "./generated-app-preview-migrate.mjs";
 import { renderGeneratedPreviewWorker } from "./generated-preview-worker-template.mjs";
 
@@ -30,6 +31,16 @@ test("ULC Linz is excluded from the generic generated preview lifecycle", async 
     buildGeneratedAppPreviewPlan({ appId: "ulc-linz" }),
     /must use the dedicated D4 preview lifecycle/,
   );
+});
+
+test("ULC Linz D4 dedicated preview plan resolves the reserved ULC target", async () => {
+  const plan = await buildUlcLinzD4PreviewPlan();
+
+  assert.equal(plan.appId, "ulc-linz");
+  assert.equal(plan.environment, "generated-preview-ulc-linz");
+  assert.equal(plan.workerName, "appbasis-ulc-linz");
+  assert.equal(plan.migrationTarget, "appbasis_ulc_linz_preview");
+  assert.equal(plan.entrypoint, "./worker/preview.ts");
 });
 
 test("ULC Linz D4 migration plan includes all app-owned lifecycle and security migrations", async () => {
