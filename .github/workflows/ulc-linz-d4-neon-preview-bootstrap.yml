@@ -199,10 +199,27 @@ jobs:
           ensure_role "$APPLICATION_ROLE" "$APPLICATION_PASSWORD"
           ensure_role "$SECURITY_LOG_ROLE" "$SECURITY_LOG_PASSWORD"
 
+          OWNER_MEMBERSHIP_ACTIVE=0
+          cleanup_owner_membership() {
+            if test "$OWNER_MEMBERSHIP_ACTIVE" = '1'; then
+              psql "$ADMIN_URL" -v ON_ERROR_STOP=1                 -c "REVOKE \"$MIGRATION_ROLE\" FROM \"$ADMIN_ROLE\"" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup_owner_membership EXIT
+
+          psql "$ADMIN_URL" -v ON_ERROR_STOP=1             -c "GRANT \"$MIGRATION_ROLE\" TO \"$ADMIN_ROLE\"" >/dev/null
+          OWNER_MEMBERSHIP_ACTIVE=1
+
           DB_EXISTS="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -Atqc             "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_database WHERE datname = '$DATABASE_NAME')")"
           if test "$DB_EXISTS" = 'f'; then
-            psql "$ADMIN_URL" -v ON_ERROR_STOP=1               -c "CREATE DATABASE \"$DATABASE_NAME\" OWNER \"$MIGRATION_ROLE\""               >/dev/null
+            psql "$ADMIN_URL" -v ON_ERROR_STOP=1               -c "CREATE DATABASE \"$DATABASE_NAME\" OWNER \"$MIGRATION_ROLE\"" >/dev/null
+          else
+            psql "$ADMIN_URL" -v ON_ERROR_STOP=1               -c "ALTER DATABASE \"$DATABASE_NAME\" OWNER TO \"$MIGRATION_ROLE\"" >/dev/null
           fi
+
+          psql "$ADMIN_URL" -v ON_ERROR_STOP=1             -c "REVOKE \"$MIGRATION_ROLE\" FROM \"$ADMIN_ROLE\"" >/dev/null
+          OWNER_MEMBERSHIP_ACTIVE=0
+          trap - EXIT
 
           DB_OWNER="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -Atqc             "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_catalog.pg_database WHERE datname = '$DATABASE_NAME'")"
           test "$DB_OWNER" = "$MIGRATION_ROLE" || {
