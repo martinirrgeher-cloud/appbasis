@@ -7,6 +7,26 @@ import {
 } from "./generated-app-preview-migrate.mjs";
 import { verifyModuleDefinitions } from "./module-definition.mjs";
 
+test("ignores inherited prototype keys when resolving app-specific preview owners", async () => {
+  const definition = {
+    schemaVersion: 2,
+    appId: "constructor",
+    displayName: "Constructor App",
+    modules: ["tasks"],
+    platformServices: ["identity", "permissions"],
+  };
+  const moduleDefinitions = await verifyModuleDefinitions();
+  const manifest = createGeneratedAppPreviewDatabaseManifest(definition, {
+    moduleDefinitions,
+  });
+
+  assert.ok(manifest);
+  assert.equal(
+    manifest.owners.some((owner) => owner.id === "unterrichtsverwaltung-master-data"),
+    false,
+  );
+});
+
 test("keeps app-owned Unterrichtsverwaltung migrations out of the generic generator but canonical in preview", async () => {
   const definition = {
     schemaVersion: 2,
