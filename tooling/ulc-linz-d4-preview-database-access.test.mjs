@@ -472,6 +472,7 @@ test("preflight allows shared security roles to be absent on a fresh preview clu
     previewGroupPresent: false,
     sharedPreflightBoundary: {
       preflight_shared_role_count: 0,
+      preflight_shared_database_create_count: 0,
       preflight_shared_owned_database_count: 0,
       preflight_shared_owned_schema_count: 0,
       preflight_shared_owned_relation_count: 0,
