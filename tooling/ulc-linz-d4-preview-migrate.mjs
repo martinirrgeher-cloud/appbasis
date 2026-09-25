@@ -6,13 +6,13 @@ import { createPostgresDatabase } from "../packages/database/src/node-runtime.mj
 import {
   GeneratedAppPreviewMigrationConfigurationError,
   GeneratedAppPreviewMigrationExecutionError,
-  assertGeneratedAppPreviewMigrationEnvironment,
   loadGeneratedAppPreviewMigrationPlan,
 } from "./generated-app-preview-migrate.mjs";
 import {
   applyRepositoryMigrationPlan,
   migrationStatements,
 } from "./database-migration-executor.mjs";
+import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 const OVERLAY_RELATIVE_PATH =
@@ -81,13 +81,33 @@ export async function applyUlcLinzD4PreviewMigrations(
   return Object.freeze({ contract, ...result });
 }
 
-async function main() {
-  const contract = await assertGeneratedAppPreviewMigrationEnvironment();
-  if (contract.definition.appId !== "ulc-linz") {
+export async function assertUlcLinzD4PreviewMigrationEnvironment(
+  environment = process.env,
+) {
+  if (environment.APPBASIS_GENERATED_APP_ID !== "ulc-linz") {
     throw new GeneratedAppPreviewMigrationConfigurationError(
       "ULC D4 preview migration requires appId ulc-linz.",
     );
   }
+  const contract = await loadGeneratedAppPreviewContract(
+    repositoryRoot,
+    "ulc-linz",
+  );
+  if (environment.APPBASIS_MIGRATION_TARGET !== contract.target.database) {
+    throw new GeneratedAppPreviewMigrationConfigurationError(
+      "APPBASIS_MIGRATION_TARGET does not match the dedicated ULC preview database.",
+    );
+  }
+  if (environment.APPBASIS_APPLY_MIGRATIONS !== "1") {
+    throw new GeneratedAppPreviewMigrationConfigurationError(
+      "APPBASIS_APPLY_MIGRATIONS must explicitly confirm migration execution.",
+    );
+  }
+  return contract;
+}
+
+async function main() {
+  await assertUlcLinzD4PreviewMigrationEnvironment();
   const result = await applyUlcLinzD4PreviewMigrations({
     connectionString: process.env.APPBASIS_DATABASE_URL,
   });
