@@ -100,12 +100,18 @@ function exactSecurityAccess(overrides = {}) {
     has_ingest_role: true,
     has_table_insert: false,
     can_insert_allowed_columns: true,
+    can_insert_id: false,
     can_insert_recorded_at: false,
     can_use_sequence: true,
     can_select: false,
+    can_select_any_column: false,
     can_update: false,
+    can_update_any_column: false,
+    can_reference: false,
+    can_reference_any_column: false,
     can_delete: false,
     can_truncate: false,
+    can_trigger: false,
     can_select_sequence: false,
     can_update_sequence: false,
     ...overrides,
@@ -382,6 +388,10 @@ function databaseFactory({
               return [{ current_user: "ulc_preview_security_ingest" }];
             }
             assert.match(sql, /can_insert_allowed_columns/);
+            assert.match(sql, /can_insert_id/);
+            assert.match(sql, /can_select_any_column/);
+            assert.match(sql, /can_update_any_column/);
+            assert.match(sql, /can_reference_any_column/);
             assert.match(sql, /non_security_schema_create_count/);
             assert.match(sql, /non_security_function_access_count/);
             assert.match(sql, /inherited_role_count/);
@@ -802,6 +812,36 @@ test("rejects security login ownership", async () => {
   await assert.rejects(
     reconcile(databaseFactory({ owner })),
     /security-log runtime login owns database objects/,
+  );
+});
+
+test("rejects column-only read access on the security log", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        securityAccess: exactSecurityAccess({
+          can_select_any_column: true,
+        }),
+      }),
+    ),
+    /security-log ingest ACL is not exact/,
+  );
+});
+
+test("rejects insert access to forbidden security-log columns", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        securityAccess: exactSecurityAccess({
+          can_insert_id: true,
+        }),
+      }),
+    ),
+    /security-log ingest ACL is not exact/,
   );
 });
 
