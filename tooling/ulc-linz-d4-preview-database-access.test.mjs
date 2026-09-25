@@ -209,6 +209,7 @@ function ownerFixture({
   previewGroupPresent = true,
   sharedPreflightBoundary = {
     preflight_shared_role_count: 3,
+    preflight_shared_database_create_count: 0,
     preflight_shared_owned_database_count: 0,
     preflight_shared_owned_schema_count: 0,
     preflight_shared_owned_relation_count: 0,
@@ -223,6 +224,7 @@ function ownerFixture({
   },
   sharedBoundary = {
     shared_role_count: 3,
+    shared_database_create_count: 0,
     shared_owned_database_count: 0,
     shared_owned_schema_count: 0,
     shared_owned_relation_count: 0,
@@ -277,6 +279,7 @@ function ownerFixture({
           "ulc_linz_security_event_cleanup",
           "ulc_linz_security_event_read",
         ]);
+        assert.match(sql, /preflight_shared_database_create_count/);
         assert.match(sql, /preflight_shared_parent_membership_count/);
         assert.match(sql, /preflight_shared_table_access_count/);
         assert.match(sql, /preflight_shared_sequence_access_count/);
@@ -284,6 +287,7 @@ function ownerFixture({
         return [sharedPreflightBoundary];
       }
       if (sql.includes("AS shared_role_count")) {
+        assert.match(sql, /shared_database_create_count/);
         assert.deepEqual(params?.[0], [
           "ulc_linz_security_event_ingest",
           "ulc_linz_security_event_cleanup",
@@ -637,11 +641,38 @@ test("preflight rejects effective security routine access inherited through PUBL
   );
 });
 
+test("preflight rejects database CREATE on shared security roles before migration", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    sharedPreflightBoundary: {
+      preflight_shared_role_count: 3,
+      preflight_shared_database_create_count: 1,
+      preflight_shared_owned_database_count: 0,
+      preflight_shared_owned_schema_count: 0,
+      preflight_shared_owned_relation_count: 0,
+      preflight_shared_owned_function_count: 0,
+      preflight_shared_owned_type_count: 0,
+      preflight_shared_direct_grant_count: 0,
+      preflight_shared_parent_membership_count: 0,
+      preflight_shared_schema_create_count: 0,
+      preflight_shared_table_access_count: 0,
+      preflight_shared_sequence_access_count: 0,
+      preflight_shared_routine_access_count: 0,
+    },
+  });
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /shared security roles are not neutral before preview migration/,
+  );
+  assert.deepEqual(owner.statements, []);
+});
+
 test("preflight rejects shared security role direct grants before migration", async () => {
   const owner = ownerFixture({
     previewGroupPresent: false,
     sharedPreflightBoundary: {
       preflight_shared_role_count: 3,
+    preflight_shared_database_create_count: 0,
       preflight_shared_owned_database_count: 0,
       preflight_shared_owned_schema_count: 0,
       preflight_shared_owned_relation_count: 0,
@@ -667,6 +698,7 @@ test("preflight rejects inherited effective access on shared security roles befo
     previewGroupPresent: false,
     sharedPreflightBoundary: {
       preflight_shared_role_count: 3,
+    preflight_shared_database_create_count: 0,
       preflight_shared_owned_database_count: 0,
       preflight_shared_owned_schema_count: 0,
       preflight_shared_owned_relation_count: 0,
@@ -907,10 +939,31 @@ test("rejects unexpected cluster-wide members of the preview group", async () =>
   );
 });
 
+test("rejects database CREATE on shared ULC roles after migration", async () => {
+  const owner = ownerFixture({
+    sharedBoundary: {
+      shared_role_count: 3,
+      shared_database_create_count: 1,
+      shared_owned_database_count: 0,
+      shared_owned_schema_count: 0,
+      shared_owned_relation_count: 0,
+      shared_owned_function_count: 0,
+      shared_owned_type_count: 0,
+      shared_direct_grant_count: 0,
+      shared_effective_security_access_count: 0,
+    },
+  });
+  await assert.rejects(
+    reconcile(databaseFactory({ owner })),
+    /shared security roles are not neutral/,
+  );
+});
+
 test("rejects shared ULC roles that retain preview database grants", async () => {
   const owner = ownerFixture({
     sharedBoundary: {
       shared_role_count: 3,
+    shared_database_create_count: 0,
       shared_owned_database_count: 0,
       shared_owned_schema_count: 0,
       shared_owned_relation_count: 0,
@@ -930,6 +983,7 @@ test("rejects inherited or PUBLIC effective access on shared ULC roles", async (
   const owner = ownerFixture({
     sharedBoundary: {
       shared_role_count: 3,
+    shared_database_create_count: 0,
       shared_owned_database_count: 0,
       shared_owned_schema_count: 0,
       shared_owned_relation_count: 0,
