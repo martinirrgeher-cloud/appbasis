@@ -184,7 +184,14 @@ jobs:
             if test "$exists" = 'f'; then
               psql "$ADMIN_URL" -v ON_ERROR_STOP=1                 -c "CREATE ROLE \"$role\" WITH LOGIN PASSWORD '$password' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS"                 >/dev/null
             else
-              psql "$ADMIN_URL" -v ON_ERROR_STOP=1                 -c "ALTER ROLE \"$role\" WITH LOGIN PASSWORD '$password' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS"                 >/dev/null
+              local attributes
+              attributes="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -AtF '|' -c                 "SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+                 FROM pg_catalog.pg_roles
+                 WHERE rolname = '$role'")"
+              test "$attributes" = 't|f|f|f|f|f' || {
+                echo "Existing ULC D4 preview role has unsafe attributes: $role" >&2
+                exit 1
+              }
             fi
           }
 
