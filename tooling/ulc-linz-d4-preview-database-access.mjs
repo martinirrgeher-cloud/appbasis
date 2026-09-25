@@ -462,6 +462,7 @@ async function requirePreMigrationRuntimeEffectiveBoundary(
       " JOIN user_schemas namespace ON namespace.oid = routine.pronamespace" +
       " WHERE has_function_privilege($1, routine.oid, 'EXECUTE')" +
       ") SELECT" +
+      " has_database_privilege($1, current_database(), 'CREATE') AS database_create," +
       " (SELECT access_count FROM schema_create) AS schema_create_count," +
       " (SELECT access_count FROM table_access) AS table_access_count," +
       " (SELECT access_count FROM sequence_access) AS sequence_access_count," +
@@ -472,6 +473,7 @@ async function requirePreMigrationRuntimeEffectiveBoundary(
   if (
     !Array.isArray(rows) ||
     rows.length !== 1 ||
+    access?.database_create !== false ||
     Number(access?.schema_create_count) !== 0 ||
     Number(access?.table_access_count) !== 0 ||
     Number(access?.sequence_access_count) !== 0 ||
@@ -1100,6 +1102,7 @@ async function verifyApplicationRuntimeAccess({
         "     AND namespace.nspname <> 'information_schema'" +
         "     AND pg_catalog.pg_get_userbyid(object.typowner) = current_user) AS owned_type_count" +
         ") SELECT current_user AS current_user," +
+        " has_database_privilege(current_user, current_database(), 'CREATE') AS database_create," +
         " has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage," +
         " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
         " (SELECT all_runtime_table_dml FROM table_access) AS all_runtime_table_dml," +
@@ -1134,6 +1137,7 @@ async function verifyApplicationRuntimeAccess({
       !Array.isArray(rows) ||
       rows.length !== 1 ||
       access?.current_user !== applicationRole ||
+      access?.database_create !== false ||
       access?.schema_usage !== true ||
       access?.schema_create !== false ||
       access?.all_runtime_table_dml !== true ||
@@ -1229,6 +1233,7 @@ async function verifySecurityRuntimeAccess({
         " JOIN user_schemas namespace ON namespace.oid = routine.pronamespace" +
         " WHERE has_function_privilege(current_user, routine.oid, 'EXECUTE')" +
         ") SELECT current_user AS current_user," +
+        " has_database_privilege(current_user, current_database(), 'CREATE') AS database_create," +
         " has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage," +
         " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
         " (SELECT access_count FROM non_security_schema_create) AS non_security_schema_create_count," +
@@ -1265,6 +1270,7 @@ async function verifySecurityRuntimeAccess({
       !Array.isArray(rows) ||
       rows.length !== 1 ||
       access?.current_user !== securityRole ||
+      access?.database_create !== false ||
       access?.schema_usage !== true ||
       access?.schema_create !== false ||
       Number(access?.non_security_schema_create_count) !== 0 ||
