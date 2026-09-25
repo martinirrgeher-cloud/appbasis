@@ -193,6 +193,20 @@ function ownerFixture({
   },
   groupGrants = exactGroupGrants(),
   previewGroupPresent = true,
+  sharedPreflightBoundary = {
+    preflight_shared_role_count: 3,
+    preflight_shared_owned_database_count: 0,
+    preflight_shared_owned_schema_count: 0,
+    preflight_shared_owned_relation_count: 0,
+    preflight_shared_owned_function_count: 0,
+    preflight_shared_owned_type_count: 0,
+    preflight_shared_direct_grant_count: 0,
+    preflight_shared_parent_membership_count: 0,
+    preflight_shared_schema_create_count: 0,
+    preflight_shared_table_access_count: 0,
+    preflight_shared_sequence_access_count: 0,
+    preflight_shared_routine_access_count: 0,
+  },
   sharedBoundary = {
     shared_role_count: 3,
     shared_owned_database_count: 0,
@@ -241,6 +255,18 @@ function ownerFixture({
       if (sql.includes("'database'::text AS object_kind")) {
         assert.equal(params?.[0], PREVIEW_SECURITY_GROUP);
         return groupGrants;
+      }
+      if (sql.includes("AS preflight_shared_role_count")) {
+        assert.deepEqual(params?.[0], [
+          "ulc_linz_security_event_ingest",
+          "ulc_linz_security_event_cleanup",
+          "ulc_linz_security_event_read",
+        ]);
+        assert.match(sql, /preflight_shared_parent_membership_count/);
+        assert.match(sql, /preflight_shared_table_access_count/);
+        assert.match(sql, /preflight_shared_sequence_access_count/);
+        assert.match(sql, /preflight_shared_routine_access_count/);
+        return [sharedPreflightBoundary];
       }
       if (sql.includes("AS shared_role_count")) {
         assert.deepEqual(params?.[0], [
@@ -542,6 +568,56 @@ test("preflight rejects effective security routine access inherited through PUBL
     preflight(databaseFactory({ owner })),
     /security-log runtime login has effective pre-migration access/,
   );
+});
+
+test("preflight rejects shared security role direct grants before migration", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    sharedPreflightBoundary: {
+      preflight_shared_role_count: 3,
+      preflight_shared_owned_database_count: 0,
+      preflight_shared_owned_schema_count: 0,
+      preflight_shared_owned_relation_count: 0,
+      preflight_shared_owned_function_count: 0,
+      preflight_shared_owned_type_count: 0,
+      preflight_shared_direct_grant_count: 1,
+      preflight_shared_parent_membership_count: 0,
+      preflight_shared_schema_create_count: 0,
+      preflight_shared_table_access_count: 0,
+      preflight_shared_sequence_access_count: 0,
+      preflight_shared_routine_access_count: 0,
+    },
+  });
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /shared security roles are not neutral before preview migration/,
+  );
+  assert.deepEqual(owner.statements, []);
+});
+
+test("preflight rejects inherited effective access on shared security roles before migration", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    sharedPreflightBoundary: {
+      preflight_shared_role_count: 3,
+      preflight_shared_owned_database_count: 0,
+      preflight_shared_owned_schema_count: 0,
+      preflight_shared_owned_relation_count: 0,
+      preflight_shared_owned_function_count: 0,
+      preflight_shared_owned_type_count: 0,
+      preflight_shared_direct_grant_count: 0,
+      preflight_shared_parent_membership_count: 1,
+      preflight_shared_schema_create_count: 0,
+      preflight_shared_table_access_count: 1,
+      preflight_shared_sequence_access_count: 0,
+      preflight_shared_routine_access_count: 0,
+    },
+  });
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /shared security roles are not neutral before preview migration/,
+  );
+  assert.deepEqual(owner.statements, []);
 });
 
 test("preflight rejects unsafe security principal state before migration", async () => {
