@@ -6,6 +6,11 @@ import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contrac
 const repositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 
 export async function buildGeneratedAppPreviewPlan({ appId } = {}) {
+  if (appId === "ulc-linz") {
+    throw new Error(
+      "ULC Linz preview must use the dedicated D4 preview lifecycle.",
+    );
+  }
   const contract = await loadGeneratedAppPreviewContract(repositoryRoot, appId);
   return Object.freeze({
     appId: contract.definition.appId,
