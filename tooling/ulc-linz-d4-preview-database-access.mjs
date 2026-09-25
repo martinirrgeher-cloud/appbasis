@@ -727,6 +727,9 @@ async function requireSharedSecurityRolesNeutralBeforeMigration(client) {
      )
      SELECT
        (SELECT count(*)::integer FROM targets) AS preflight_shared_role_count,
+       (SELECT count(*)::integer FROM targets role
+         WHERE has_database_privilege(role.rolname, current_database(), 'CREATE'))
+         AS preflight_shared_database_create_count,
        (SELECT count(*)::integer FROM pg_catalog.pg_database object
          WHERE object.datname = current_database()
            AND object.datdba IN (SELECT oid FROM targets)) AS preflight_shared_owned_database_count,
@@ -762,6 +765,7 @@ async function requireSharedSecurityRolesNeutralBeforeMigration(client) {
     !Number.isInteger(Number(boundary?.preflight_shared_role_count)) ||
     Number(boundary?.preflight_shared_role_count) < 0 ||
     Number(boundary?.preflight_shared_role_count) > SHARED_SECURITY_ROLES.length ||
+    Number(boundary?.preflight_shared_database_create_count) !== 0 ||
     Number(boundary?.preflight_shared_owned_database_count) !== 0 ||
     Number(boundary?.preflight_shared_owned_schema_count) !== 0 ||
     Number(boundary?.preflight_shared_owned_relation_count) !== 0 ||
@@ -821,6 +825,11 @@ async function requireSharedSecurityRolesNeutralInPreviewDatabase(client) {
      )
      SELECT
        (SELECT count(*)::integer FROM targets) AS shared_role_count,
+       (SELECT count(*)::integer
+          FROM pg_catalog.pg_roles role
+         WHERE role.rolname = ANY($1::text[])
+           AND has_database_privilege(role.rolname, current_database(), 'CREATE'))
+         AS shared_database_create_count,
        (SELECT count(*)::integer FROM pg_catalog.pg_database object
          WHERE object.datname = current_database()
            AND object.datdba IN (SELECT oid FROM targets)) AS shared_owned_database_count,
@@ -865,6 +874,7 @@ async function requireSharedSecurityRolesNeutralInPreviewDatabase(client) {
     !Array.isArray(rows) ||
     rows.length !== 1 ||
     Number(boundary?.shared_role_count) !== SHARED_SECURITY_ROLES.length ||
+    Number(boundary?.shared_database_create_count) !== 0 ||
     Number(boundary?.shared_owned_database_count) !== 0 ||
     Number(boundary?.shared_owned_schema_count) !== 0 ||
     Number(boundary?.shared_owned_relation_count) !== 0 ||
