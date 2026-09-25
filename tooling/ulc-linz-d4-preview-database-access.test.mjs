@@ -90,6 +90,7 @@ function exactGroupGrants() {
 function exactSecurityAccess(overrides = {}) {
   return {
     current_user: "ulc_preview_security_ingest",
+    database_create: false,
     schema_usage: true,
     schema_create: false,
     non_security_schema_create_count: 0,
@@ -121,6 +122,7 @@ function exactSecurityAccess(overrides = {}) {
 function exactApplicationAccess(overrides = {}) {
   return {
     current_user: "ulc_preview_app",
+    database_create: false,
     schema_usage: true,
     schema_create: false,
     all_runtime_table_dml: true,
@@ -181,12 +183,14 @@ function ownerFixture({
   applicationDirectGrantCount = 0,
   securityDirectGrantCount = 0,
   applicationEffectiveAccess = {
+    database_create: false,
     schema_create_count: 0,
     table_access_count: 0,
     sequence_access_count: 0,
     routine_access_count: 0,
   },
   securityEffectiveAccess = {
+    database_create: false,
     schema_create_count: 0,
     table_access_count: 0,
     sequence_access_count: 0,
@@ -568,6 +572,23 @@ test("preflight rejects effective application schema CREATE inherited through PU
   );
 });
 
+test("preflight rejects effective database CREATE inherited through PUBLIC", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    securityEffectiveAccess: {
+      database_create: true,
+      schema_create_count: 0,
+      table_access_count: 0,
+      sequence_access_count: 0,
+      routine_access_count: 0,
+    },
+  });
+  await assert.rejects(
+    preflight(databaseFactory({ owner })),
+    /security-log runtime login has effective pre-migration access/,
+  );
+});
+
 test("preflight rejects effective security table access inherited through PUBLIC", async () => {
   const owner = ownerFixture({
     previewGroupPresent: false,
@@ -721,6 +742,36 @@ test("binds the security login only to the preview-specific ingest group", async
     ),
   );
   assert.deepEqual(ended.sort(), ["application", "owner", "security"]);
+});
+
+test("rejects database CREATE on the application runtime after reconciliation", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          database_create: true,
+        }),
+      }),
+    ),
+    /application runtime database ACL is not exact/,
+  );
+});
+
+test("rejects database CREATE on the security runtime after reconciliation", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        securityAccess: exactSecurityAccess({
+          database_create: true,
+        }),
+      }),
+    ),
+    /security-log ingest ACL is not exact/,
+  );
 });
 
 test("rejects application runtime database ownership after reconciliation", async () => {
