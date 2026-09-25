@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contract.mjs";
+import { buildGeneratedAppPreviewPlan } from "./generated-app-preview-plan.mjs";
 import { loadGeneratedAppPreviewMigrationPlan } from "./generated-app-preview-migrate.mjs";
 import { renderGeneratedPreviewWorker } from "./generated-preview-worker-template.mjs";
 
@@ -22,6 +23,13 @@ test("ULC Linz satisfies the canonical generated preview contract for D4", async
   assert.equal(contract.target.workerName, "appbasis-ulc-linz");
   assert.equal(contract.target.database, "appbasis_ulc_linz_preview");
   assert.equal(contract.databaseManifest.application, "ulc-linz");
+});
+
+test("ULC Linz is excluded from the generic generated preview lifecycle", async () => {
+  await assert.rejects(
+    buildGeneratedAppPreviewPlan({ appId: "ulc-linz" }),
+    /must use the dedicated D4 preview lifecycle/,
+  );
 });
 
 test("ULC Linz D4 migration plan includes all app-owned lifecycle and security migrations", async () => {
