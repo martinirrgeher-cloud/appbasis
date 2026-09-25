@@ -366,6 +366,10 @@ function databaseFactory({
               return [{ current_user: "ulc_preview_app" }];
             }
             assert.match(sql, /all_runtime_table_dml/);
+            assert.match(sql, /'TRUNCATE'/);
+            assert.match(sql, /'REFERENCES'/);
+            assert.match(sql, /'TRIGGER'/);
+            assert.match(sql, /sequence_name\), 'UPDATE'/);
             assert.match(sql, /non_public_schema_create_count/);
             assert.match(sql, /non_public_table_access_count/);
             assert.match(sql, /non_public_sequence_access_count/);
@@ -727,6 +731,36 @@ test("rejects application runtime database ownership after reconciliation", asyn
         owner,
         applicationAccess: exactApplicationAccess({
           owned_database_count: 1,
+        }),
+      }),
+    ),
+    /application runtime database ACL is not exact/,
+  );
+});
+
+test("rejects excess privileges on ordinary application tables", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          all_runtime_table_dml: false,
+        }),
+      }),
+    ),
+    /application runtime database ACL is not exact/,
+  );
+});
+
+test("rejects excess update privilege on application sequences", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          all_runtime_sequence_access: false,
         }),
       }),
     ),
