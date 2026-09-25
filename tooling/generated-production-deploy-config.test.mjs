@@ -61,6 +61,15 @@ test("requires a distinct dedicated security-log Hyperdrive", () => {
     () =>
       renderGeneratedProductionWranglerConfig({
         ...input,
+        hyperdriveId: ` ${input.hyperdriveId} `,
+        securityLogHyperdriveId: input.hyperdriveId,
+      }),
+    /must be distinct/,
+  );
+  assert.throws(
+    () =>
+      renderGeneratedProductionWranglerConfig({
+        ...input,
         securityLogHyperdriveId: "bad id",
       }),
     /securityLogHyperdriveId is invalid/,
