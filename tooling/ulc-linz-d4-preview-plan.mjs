@@ -5,18 +5,16 @@ import { loadGeneratedAppPreviewContract } from "./generated-app-preview-contrac
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 
-export async function buildGeneratedAppPreviewPlan({ appId } = {}) {
-  if (appId === "ulc-linz") {
-    throw new Error(
-      "ULC Linz preview must use the dedicated D4 preview lifecycle.",
-    );
-  }
-  const contract = await loadGeneratedAppPreviewContract(repositoryRoot, appId);
+export async function buildUlcLinzD4PreviewPlan() {
+  const contract = await loadGeneratedAppPreviewContract(
+    repositoryRoot,
+    "ulc-linz",
+  );
   return Object.freeze({
     appId: contract.definition.appId,
     packageName: contract.packageName,
     environment: contract.target.environment,
-    migrationTarget: contract.target.migrationTarget,
+    migrationTarget: contract.target.database,
     workerName: contract.target.workerName,
     hyperdriveName: contract.target.hyperdriveName,
     database: contract.target.database,
@@ -25,14 +23,19 @@ export async function buildGeneratedAppPreviewPlan({ appId } = {}) {
 }
 
 const invokedPath = process.argv[1];
-if (invokedPath !== undefined && path.resolve(invokedPath) === fileURLToPath(import.meta.url)) {
+if (
+  invokedPath !== undefined &&
+  path.resolve(invokedPath) === fileURLToPath(import.meta.url)
+) {
   try {
-    const plan = await buildGeneratedAppPreviewPlan({
-      appId: process.env.APPBASIS_GENERATED_APP_ID,
-    });
+    const plan = await buildUlcLinzD4PreviewPlan();
     process.stdout.write(`${JSON.stringify(plan)}\n`);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : "Generated app preview plan failed.");
+    console.error(
+      error instanceof Error
+        ? error.message
+        : "ULC Linz D4 preview plan failed.",
+    );
     process.exitCode = 1;
   }
 }

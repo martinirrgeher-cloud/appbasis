@@ -53,6 +53,47 @@ test("renders deployment-only Cloudflare bindings without secret values", () => 
   assert.doesNotMatch(serialized, /secret-value|postgres(?:ql)?:\/\//i);
 });
 
+test("adds a distinct security-log Hyperdrive only when explicitly supplied", () => {
+  const config = renderGeneratedPreviewWranglerConfig({
+    appId: "ulc-linz",
+    hyperdriveId: "application-hyperdrive-id",
+    securityLogHyperdriveId: "security-log-hyperdrive-id",
+    baseURL: "https://ulc-preview.example.test",
+    entrypoint: "./worker/preview.ts",
+  });
+
+  assert.deepEqual(config.hyperdrive, [
+    {
+      binding: "HYPERDRIVE",
+      id: "application-hyperdrive-id",
+    },
+    {
+      binding: "SECURITY_LOG_HYPERDRIVE",
+      id: "security-log-hyperdrive-id",
+    },
+  ]);
+  assert.throws(
+    () =>
+      renderGeneratedPreviewWranglerConfig({
+        appId: "ulc-linz",
+        hyperdriveId: "same-hyperdrive-id",
+        securityLogHyperdriveId: "same-hyperdrive-id",
+        baseURL: "https://ulc-preview.example.test",
+      }),
+    /must be distinct/,
+  );
+  assert.throws(
+    () =>
+      renderGeneratedPreviewWranglerConfig({
+        appId: "ulc-linz",
+        hyperdriveId: "application-hyperdrive-id",
+        securityLogHyperdriveId: "invalid id",
+        baseURL: "https://ulc-preview.example.test",
+      }),
+    /securityLogHyperdriveId is invalid/,
+  );
+});
+
 test("supports an explicit repository-local preview entrypoint without changing the default", () => {
   const config = renderGeneratedPreviewWranglerConfig({
     appId: "tasks-minimal",

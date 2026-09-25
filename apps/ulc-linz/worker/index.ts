@@ -26,6 +26,11 @@ type WorkerErrorKind =
   | "SECURITY_EVENT_FLUSH_ERROR"
   | "RUNTIME_CLOSE_ERROR";
 
+const AUDIT_CORRELATION_HEADER = "x-appbasis-audit-correlation";
+const AUDIT_CORRELATION_PROOF_HEADER = "x-appbasis-audit-proof";
+const AUDIT_CORRELATION_PATTERN = /^[a-f0-9]{32}$/;
+const AUDIT_CORRELATION_PROOF_PATTERN = /^[a-f0-9]{64}$/;
+
 export function createGeneratedWorker(
   runtimeFactory: GeneratedRuntimeFactory =
     createGeneratedPostgresApplicationRuntime,
@@ -59,9 +64,19 @@ export function createGeneratedWorker(
       try {
         runtime = await runtimeFactory(runtimeOptions);
         if (url.pathname === "/api/modules/countdown") {
-          response = await countdownModuleResponse(request, runtime, url);
+          response = await countdownModuleResponse(
+            request,
+            runtime,
+            url,
+            runtimeOptions.secret,
+          );
         } else if (url.pathname === "/api/modules/countdown/plan") {
-          response = await countdownPlanResponse(request, runtime, url);
+          response = await countdownPlanResponse(
+            request,
+            runtime,
+            url,
+            runtimeOptions.secret,
+          );
         } else {
           const app = createGeneratedApp({
             identity: runtime.identity,
@@ -98,12 +113,13 @@ async function countdownModuleResponse(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
   url: URL,
+  secret: string,
 ): Promise<Response> {
   if (request.method !== "GET") {
     return methodNotAllowed("GET");
   }
 
-  const denied = await authorizeCountdownRequest(request, runtime, url);
+  const denied = await authorizeCountdownRequest(request, runtime, url, secret);
   if (denied !== null) return denied;
 
   return Response.json({
@@ -121,12 +137,13 @@ async function countdownPlanResponse(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
   url: URL,
+  secret: string,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return methodNotAllowed("POST");
   }
 
-  const denied = await authorizeCountdownRequest(request, runtime, url);
+  const denied = await authorizeCountdownRequest(request, runtime, url, secret);
   if (denied !== null) return denied;
 
   let body: unknown;
@@ -175,6 +192,7 @@ async function authorizeCountdownRequest(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
   url: URL,
+  secret: string,
 ): Promise<Response | null> {
   const identityHttp = createIdentityHttpHandlers({
     identity: runtime.identity,
@@ -188,7 +206,7 @@ async function authorizeCountdownRequest(
         actorPrincipalId: null,
         organizationId: null,
         action: "view",
-        targetId: "countdown",
+        targetId: await countdownAuditTargetId(request, secret),
         reasonCode: "identity-access-denied",
       });
     }
@@ -215,6 +233,50 @@ async function authorizeCountdownRequest(
     }
     throw error;
   }
+}
+
+async function countdownAuditTargetId(
+  request: Request,
+  secret: string,
+): Promise<string> {
+  const correlation = request.headers.get(AUDIT_CORRELATION_HEADER);
+  const proof = request.headers.get(AUDIT_CORRELATION_PROOF_HEADER);
+  if (
+    correlation === null ||
+    proof === null ||
+    !AUDIT_CORRELATION_PATTERN.test(correlation) ||
+    !AUDIT_CORRELATION_PROOF_PATTERN.test(proof)
+  ) {
+    return "countdown";
+  }
+
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const verified = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      hexBytes(proof),
+      new TextEncoder().encode(`ulc-linz-d4:${correlation}`),
+    );
+    return verified ? `countdown:smoke:${correlation}` : "countdown";
+  } catch {
+    return "countdown";
+  }
+}
+
+function hexBytes(value: string): ArrayBuffer {
+  const buffer = new ArrayBuffer(value.length / 2);
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < value.length; index += 2) {
+    bytes[index / 2] = Number.parseInt(value.slice(index, index + 2), 16);
+  }
+  return buffer;
 }
 
 function invalidCountdownConfiguration(): Response {

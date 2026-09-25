@@ -10,17 +10,27 @@ const PRODUCTION_COMPATIBILITY_DATE = "2026-08-21";
 
 export function renderGeneratedProductionWranglerConfig(input = {}) {
   assertProductionCompatibilityDate(input.compatibilityDate);
+  const {
+    securityLogHyperdriveId: rawSecurityLogHyperdriveId,
+    ...previewInput
+  } = input;
   const previewContract = renderGeneratedPreviewWranglerConfig({
-    ...input,
+    ...previewInput,
     compatibilityDate: PRODUCTION_COMPATIBILITY_DATE,
   });
   const { secrets: _requiredSecretMetadata, ...runtimeConfig } = previewContract;
   const workerName = requiredProductionWorkerName(input.appId);
   const securityLogHyperdriveId = requiredProviderId(
-    input.securityLogHyperdriveId,
+    rawSecurityLogHyperdriveId,
     "securityLogHyperdriveId",
   );
-  if (securityLogHyperdriveId === input.hyperdriveId) {
+  const applicationHyperdriveId = runtimeConfig.hyperdrive.find(
+    ({ binding }) => binding === "HYPERDRIVE",
+  )?.id;
+  if (
+    typeof applicationHyperdriveId !== "string" ||
+    securityLogHyperdriveId === applicationHyperdriveId
+  ) {
     throw new Error("Production security-log Hyperdrive must be distinct from the application Hyperdrive.");
   }
 

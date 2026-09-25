@@ -108,7 +108,7 @@ individuelle Modulrecht `ulc-linz:module:countdown:view`. Fehlerhafte
 Membership- und Identity-Zustände bleiben fail-closed und werden auditierbar
 abgewiesen.
 
-### Aktueller Teilslice: Countdown D3 – mobile ULC UI
+### Countdown D3 – mobile ULC UI – abgeschlossen
 
 D3 liefert den ersten echten mobilen Countdown-Consumer. Die UI wird statisch
 und CSP-sicher aus dem Worker ausgeliefert; Login und App-Shell benötigen keine
@@ -130,8 +130,49 @@ Verbindlicher D3-Umfang:
 - Wake-Lock wird während eines laufenden Countdowns best-effort gehalten,
 - Zugriff wird vor Nutzung über den D2-Vertrag serverseitig geprüft.
 
-Nach D3 folgt D4 – isolierte ULC Preview mit weiterhin getrenntem Application-
-und Security-Log-Hyperdrive.
+### Aktueller Teilslice: Countdown D4 – isolierte ULC Preview
+
+D4 beweist den aktuellen Countdown-Slice zuerst außerhalb der Produktion. Der
+Repository-/Workflow-Vertrag bleibt app-spezifisch und nutzt die bestehende
+generische Preview-Infrastruktur, ohne die ULC-Produktionsverträge zu verändern.
+
+Verbindliche D4-Grenzen:
+
+- eigener Preview-Worker `appbasis-ulc-linz`,
+- eigene Preview-Datenbank `appbasis_ulc_linz_preview`,
+- drei getrennte Datenbank-Principals für Migration-Owner, Application-Runtime
+  und Security-Log-Runtime,
+- der Migration-Owner wird niemals an den Worker gebunden,
+- getrennte Hyperdrives `HYPERDRIVE` und `SECURITY_LOG_HYPERDRIVE` verwenden
+  ausschließlich die beiden nicht privilegierten Runtime-Principals,
+- alle drei Principals zeigen auf dieselbe dedizierte ULC-Preview-Datenbank,
+- der Security-Log-Runtime-Principal besitzt keine Datenbankobjekte, keine
+  direkten Grants und keinen effektiven Zugriff außerhalb des vorgesehenen
+  Ingest-Pfads; er erbt ausschließlich von der frisch im atomaren
+  Preview-Migrationslauf erzeugten NOLOGIN-Rolle
+  `appbasis_ulc_linz_preview_security_ingest`,
+- die produktionsgleich benannten ULC-Security-Rollen erhalten in der
+  Preview-Datenbank keine Security-Log-Rechte; die Preview-Ingest-Gruppe hat
+  keine Parent-Rollen und außer dem Security-Log-Runtime-Principal keine
+  Cluster-Mitglieder,
+- Preview-Mutationen sind main-only und benötigen je Operation eine explizite
+  `apply`-Freigabe,
+- Reihenfolge: `hyperdrives → migrate → bootstrap → deploy`,
+- Deployment-Smokes prüfen UI, Session-Grenze, Application-Datenbank-
+  Erreichbarkeit und beweisen zusätzlich, dass die erzeugte anonyme
+  Countdown-Ablehnung tatsächlich als neuer Security-Event persistiert wurde,
+- Produktion, Produktionsdatenbank und bestehende M5/M6-Evidence bleiben
+  unverändert.
+
+Der generische Preview-Access-Bootstrap reicht für D4 noch nicht aus: Er kennt
+den ULC-spezifischen D2-Vertrag aus aktiver Mitgliedschaft, exakt einer
+ULC-Runtime-Rolle und individuellem Countdown-Recht nicht. Ein D4-Preview-Benutzer
+wird deshalb erst in einem getrennten nächsten Schritt nach demselben
+serverseitigen Zugriffsvertrag provisioniert.
+
+Providerwrites, Preview-Migration, Worker-Bootstrap, Secret-Synchronisierung und
+Preview-Deployment bleiben bis zu einer ausdrücklichen Nutzerfreigabe
+ungeändert.
 
 Keine dieser Stufen revalidiert automatisch die alte M5/M6-Production-Evidence.
 

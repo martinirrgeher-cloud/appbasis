@@ -28,12 +28,16 @@ export class GeneratedAppPreviewMigrationExecutionError extends Error {
   }
 }
 
-const UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER = Object.freeze({
-  id: "unterrichtsverwaltung-master-data",
-  root: "apps/unterrichtsverwaltung",
-  schemaVersion: 1,
-  migrations: Object.freeze([
-    "apps/unterrichtsverwaltung/migrations/0000_unterrichtsverwaltung_master_data.sql",
+const APP_SPECIFIC_PREVIEW_DATABASE_OWNERS = Object.freeze({
+  unterrichtsverwaltung: Object.freeze([
+    Object.freeze({
+      id: "unterrichtsverwaltung-master-data",
+      root: "apps/unterrichtsverwaltung",
+      schemaVersion: 1,
+      migrations: Object.freeze([
+        "apps/unterrichtsverwaltung/migrations/0000_unterrichtsverwaltung_master_data.sql",
+      ]),
+    }),
   ]),
 });
 
@@ -42,7 +46,17 @@ export function createGeneratedAppPreviewDatabaseManifest(
   options = {},
 ) {
   const baseManifest = createGeneratedDatabaseManifest(definition, options);
-  if (baseManifest === null || definition?.appId !== "unterrichtsverwaltung") {
+  if (baseManifest === null) {
+    return null;
+  }
+
+  const appId = definition?.appId;
+  const appSpecificOwners =
+    typeof appId === "string" &&
+    Object.hasOwn(APP_SPECIFIC_PREVIEW_DATABASE_OWNERS, appId)
+      ? APP_SPECIFIC_PREVIEW_DATABASE_OWNERS[appId]
+      : [];
+  if (appSpecificOwners.length === 0) {
     return baseManifest;
   }
 
@@ -50,15 +64,14 @@ export function createGeneratedAppPreviewDatabaseManifest(
     ...baseManifest,
     owners: Object.freeze([
       ...baseManifest.owners,
-      Object.freeze({
-        id: UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER.id,
-        root: UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER.root,
-        schemaVersion:
-          UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER.schemaVersion,
-        migrations: Object.freeze([
-          ...UNTERRICHTSVERWALTUNG_PREVIEW_DATABASE_OWNER.migrations,
-        ]),
-      }),
+      ...appSpecificOwners.map((owner) =>
+        Object.freeze({
+          id: owner.id,
+          root: owner.root,
+          schemaVersion: owner.schemaVersion,
+          migrations: Object.freeze([...owner.migrations]),
+        }),
+      ),
     ]),
   });
 }
