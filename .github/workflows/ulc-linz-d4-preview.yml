@@ -78,7 +78,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PLAN="$(node ./tooling/generated-app-preview-plan.mjs)"
+          PLAN="$(node ./tooling/ulc-linz-d4-preview-plan.mjs)"
           test "$(jq -r '.appId' <<<"$PLAN")" = 'ulc-linz' || {
             echo 'ULC D4 preview plan resolved an unexpected app.' >&2
             exit 1
