@@ -1184,12 +1184,18 @@ async function verifySecurityRuntimeAccess({
         " ('actor_principal_id'),('organization_id'),('action'),('target_type'),('target_id')," +
         " ('operation'),('http_status'),('error_code'),('reason_code'),('retained_until'))" +
         " AS allowed_columns(column_name)) AS can_insert_allowed_columns," +
+        " has_column_privilege(current_user, '" + SECURITY_TABLE + "', 'id', 'INSERT') AS can_insert_id," +
         " has_column_privilege(current_user, '" + SECURITY_TABLE + "', 'recorded_at', 'INSERT') AS can_insert_recorded_at," +
         " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'USAGE') AS can_use_sequence," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'SELECT') AS can_select," +
+        " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'SELECT') AS can_select_any_column," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'UPDATE') AS can_update," +
+        " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'UPDATE') AS can_update_any_column," +
+        " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'REFERENCES') AS can_reference," +
+        " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'REFERENCES') AS can_reference_any_column," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'DELETE') AS can_delete," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'TRUNCATE') AS can_truncate," +
+        " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'TRIGGER') AS can_trigger," +
         " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'SELECT') AS can_select_sequence," +
         " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'UPDATE') AS can_update_sequence",
     );
@@ -1208,12 +1214,18 @@ async function verifySecurityRuntimeAccess({
       access?.has_ingest_role !== true ||
       access?.has_table_insert !== false ||
       access?.can_insert_allowed_columns !== true ||
+      access?.can_insert_id !== false ||
       access?.can_insert_recorded_at !== false ||
       access?.can_use_sequence !== true ||
       access?.can_select !== false ||
+      access?.can_select_any_column !== false ||
       access?.can_update !== false ||
+      access?.can_update_any_column !== false ||
+      access?.can_reference !== false ||
+      access?.can_reference_any_column !== false ||
       access?.can_delete !== false ||
       access?.can_truncate !== false ||
+      access?.can_trigger !== false ||
       access?.can_select_sequence !== false ||
       access?.can_update_sequence !== false
     ) {
