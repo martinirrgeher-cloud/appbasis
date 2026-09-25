@@ -57,6 +57,19 @@ export async function preflightUlcLinzD4PreviewDatabaseAccess(
   const applicationRole = requiredRoleName(credentials.application.user);
   const securityRole = requiredRoleName(credentials.securityLog.user);
 
+  await requireRuntimeCredentialAuthentication({
+    databaseUrl: applicationDatabaseUrl,
+    expectedRole: applicationRole,
+    label: "application runtime",
+    databaseFactory,
+  });
+  await requireRuntimeCredentialAuthentication({
+    databaseUrl: securityLogDatabaseUrl,
+    expectedRole: securityRole,
+    label: "security-log runtime",
+    databaseFactory,
+  });
+
   const ownerDatabase = databaseFactory(migrationDatabaseUrl);
   try {
     await requirePreMigrationRuntimeRoleInventory(
@@ -759,6 +772,34 @@ function requireExactAcl(grants, expected, label) {
   }
 }
 
+async function requireRuntimeCredentialAuthentication({
+  databaseUrl,
+  expectedRole,
+  label,
+  databaseFactory,
+}) {
+  let database;
+  try {
+    database = databaseFactory(databaseUrl);
+    const rows = await database.client.unsafe(
+      "SELECT current_user AS current_user",
+    );
+    if (
+      !Array.isArray(rows) ||
+      rows.length !== 1 ||
+      rows[0]?.current_user !== expectedRole
+    ) {
+      throw new Error("runtime credential identity mismatch");
+    }
+  } catch {
+    throw new Error("ULC D4 " + label + " credential authentication failed.");
+  } finally {
+    if (database !== undefined) {
+      await database.client.end().catch(() => {});
+    }
+  }
+}
+
 async function verifyApplicationRuntimeAccess({
   applicationDatabaseUrl,
   applicationRole,
@@ -810,7 +851,6 @@ async function verifyApplicationRuntimeAccess({
         "     AND namespace.nspname <> 'information_schema'" +
         "     AND pg_catalog.pg_get_userbyid(object.typowner) = current_user) AS owned_type_count" +
         ") SELECT current_user AS current_user," +
-        " has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage," +
         " has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage," +
         " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
         " (SELECT all_runtime_table_dml FROM table_access) AS all_runtime_table_dml," +
@@ -932,6 +972,7 @@ async function verifySecurityRuntimeAccess({
         " JOIN user_schemas namespace ON namespace.oid = routine.pronamespace" +
         " WHERE has_function_privilege(current_user, routine.oid, 'EXECUTE')" +
         ") SELECT current_user AS current_user," +
+        " has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage," +
         " has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create," +
         " (SELECT access_count FROM non_security_schema_create) AS non_security_schema_create_count," +
         " (SELECT access_count FROM non_security_tables) AS non_security_table_access_count," +
