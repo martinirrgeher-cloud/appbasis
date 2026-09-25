@@ -261,3 +261,43 @@ jobs:
           echo 'ULC D4 isolated Neon preview database and three principals are ready.'
           echo 'Runtime role passwords were intentionally masked and not persisted to repository/logs.'
           echo 'Reset the three role passwords before configuring the GitHub preview environment secrets.'
+
+
+  environment-preflight:
+    name: Check ULC D4 preview environment inputs
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    environment:
+      name: generated-preview-ulc-linz
+    steps:
+      - name: Report missing protected inputs without exposing values
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            APPBASIS_MIGRATION_DATABASE_URL \
+            APPBASIS_DATABASE_URL \
+            APPBASIS_SECURITY_LOG_DATABASE_URL \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_API_TOKEN \
+            APPBASIS_BETTER_AUTH_SECRET; do
+            value="${!name:-}"
+            if test -z "$value"; then
+              missing+=("$name")
+            else
+              echo "::add-mask::$value"
+            fi
+          done
+          if test "${#missing[@]}" -gt 0; then
+            printf 'Missing generated-preview-ulc-linz secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+          echo 'All ULC D4 protected environment inputs are present.'
