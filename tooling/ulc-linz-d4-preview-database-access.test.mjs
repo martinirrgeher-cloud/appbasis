@@ -225,7 +225,8 @@ function ownerFixture({
     async unsafe(sql, params) {
       if (
         sql.includes("WHERE rolname = ANY($1::text[])") &&
-        !sql.includes("AS shared_role_count")
+        !sql.includes("AS shared_role_count") &&
+        !sql.includes("AS preflight_shared_role_count")
       ) {
         return [
           ...(previewGroupPresent
