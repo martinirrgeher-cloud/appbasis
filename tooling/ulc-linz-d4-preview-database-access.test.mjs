@@ -125,6 +125,10 @@ function exactApplicationAccess(overrides = {}) {
     schema_create: false,
     all_runtime_table_dml: true,
     all_runtime_sequence_access: true,
+    non_public_schema_create_count: 0,
+    non_public_table_access_count: 0,
+    non_public_sequence_access_count: 0,
+    non_public_function_access_count: 0,
     owned_database_count: 0,
     owned_schema_count: 0,
     owned_relation_count: 0,
@@ -362,6 +366,10 @@ function databaseFactory({
               return [{ current_user: "ulc_preview_app" }];
             }
             assert.match(sql, /all_runtime_table_dml/);
+            assert.match(sql, /non_public_schema_create_count/);
+            assert.match(sql, /non_public_table_access_count/);
+            assert.match(sql, /non_public_sequence_access_count/);
+            assert.match(sql, /non_public_function_access_count/);
             assert.match(sql, /has_any_column_privilege/);
             assert.match(sql, /owned_database_count/);
             assert.match(sql, /owned_schema_count/);
@@ -719,6 +727,36 @@ test("rejects application runtime database ownership after reconciliation", asyn
         owner,
         applicationAccess: exactApplicationAccess({
           owned_database_count: 1,
+        }),
+      }),
+    ),
+    /application runtime database ACL is not exact/,
+  );
+});
+
+test("rejects application runtime access to tables outside public", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          non_public_table_access_count: 1,
+        }),
+      }),
+    ),
+    /application runtime database ACL is not exact/,
+  );
+});
+
+test("rejects application runtime routine access outside public", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          non_public_function_access_count: 1,
         }),
       }),
     ),
