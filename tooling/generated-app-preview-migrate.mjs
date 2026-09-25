@@ -50,8 +50,12 @@ export function createGeneratedAppPreviewDatabaseManifest(
     return null;
   }
 
+  const appId = definition?.appId;
   const appSpecificOwners =
-    APP_SPECIFIC_PREVIEW_DATABASE_OWNERS[definition?.appId] ?? [];
+    typeof appId === "string" &&
+    Object.hasOwn(APP_SPECIFIC_PREVIEW_DATABASE_OWNERS, appId)
+      ? APP_SPECIFIC_PREVIEW_DATABASE_OWNERS[appId]
+      : [];
   if (appSpecificOwners.length === 0) {
     return baseManifest;
   }
