@@ -24,7 +24,13 @@ export function renderGeneratedProductionWranglerConfig(input = {}) {
     rawSecurityLogHyperdriveId,
     "securityLogHyperdriveId",
   );
-  if (securityLogHyperdriveId === input.hyperdriveId) {
+  const applicationHyperdriveId = runtimeConfig.hyperdrive.find(
+    ({ binding }) => binding === "HYPERDRIVE",
+  )?.id;
+  if (
+    typeof applicationHyperdriveId !== "string" ||
+    securityLogHyperdriveId === applicationHyperdriveId
+  ) {
     throw new Error("Production security-log Hyperdrive must be distinct from the application Hyperdrive.");
   }
 
