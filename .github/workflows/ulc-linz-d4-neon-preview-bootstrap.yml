@@ -1,0 +1,239 @@
+name: ULC D4 Neon Preview Bootstrap
+
+on:
+  push:
+    branches:
+      - ops/ulc-d4-neon-preview-bootstrap
+    paths:
+      - .github/workflows/ulc-linz-d4-neon-preview-bootstrap.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ulc-d4-neon-preview-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Bootstrap isolated ULC D4 Neon preview
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PROJECT_NAME: appbasis-ulc-linz-preview
+      REGION_ID: aws-eu-central-1
+      DATABASE_NAME: appbasis_ulc_linz_preview
+      MIGRATION_ROLE: appbasis_ulc_linz_preview_migration
+      APPLICATION_ROLE: appbasis_ulc_linz_preview_application
+      SECURITY_LOG_ROLE: appbasis_ulc_linz_preview_security_log
+
+    steps:
+      - name: Require protected Neon credentials
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$NEON_API_KEY" || { echo 'Missing NEON_API_KEY.' >&2; exit 1; }
+          test -n "$NEON_ORG_ID" || { echo 'Missing NEON_ORG_ID.' >&2; exit 1; }
+          echo "::add-mask::$NEON_API_KEY"
+          echo "::add-mask::$NEON_ORG_ID"
+
+      - name: Ensure isolated Neon project
+        id: neon
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+        run: |
+          set -euo pipefail
+          API='https://console.neon.tech/api/v2'
+          AUTH=(-H "Authorization: Bearer $NEON_API_KEY" -H 'Accept: application/json')
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+
+          PROJECTS="$TMP_DIR/projects.json"
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}"             "$API/projects?org_id=$NEON_ORG_ID&search=$PROJECT_NAME&limit=100"             -o "$PROJECTS"
+
+          MATCH_COUNT="$(jq --arg name "$PROJECT_NAME" '
+            (if type == "array" then . else (.projects // []) end)
+            | map(select(.name == $name))
+            | length
+          ' "$PROJECTS")"
+          test "$MATCH_COUNT" -le 1 || {
+            echo 'Multiple exact ULC D4 Neon preview projects exist.' >&2
+            exit 1
+          }
+
+          if test "$MATCH_COUNT" = 0; then
+            CREATE="$TMP_DIR/create.json"
+            BODY="$(jq -nc               --arg name "$PROJECT_NAME"               --arg region "$REGION_ID"               '{project:{name:$name,region_id:$region,pg_version:18}}')"
+            curl --fail-with-body --silent --show-error               -X POST               "${AUTH[@]}"               -H 'Content-Type: application/json'               "$API/projects?org_id=$NEON_ORG_ID"               --data "$BODY"               -o "$CREATE"
+            PROJECT_ID="$(jq -r '.project.id // empty' "$CREATE")"
+            test -n "$PROJECT_ID" || {
+              echo 'Neon project creation returned no project id.' >&2
+              exit 1
+            }
+            echo 'Created isolated ULC D4 Neon preview project.'
+          else
+            PROJECT_ID="$(jq -r --arg name "$PROJECT_NAME" '
+              (if type == "array" then . else (.projects // []) end)
+              | map(select(.name == $name))
+              | .[0].id // empty
+            ' "$PROJECTS")"
+            test -n "$PROJECT_ID" || {
+              echo 'Existing ULC D4 Neon preview project has no project id.' >&2
+              exit 1
+            }
+            echo 'Reusing exact isolated ULC D4 Neon preview project.'
+          fi
+
+          PROJECT="$TMP_DIR/project.json"
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}"             "$API/projects/$PROJECT_ID"             -o "$PROJECT"
+          ACTUAL_NAME="$(jq -r '.project.name // .name // empty' "$PROJECT")"
+          ACTUAL_REGION="$(jq -r '.project.region_id // .region_id // empty' "$PROJECT")"
+          test "$ACTUAL_NAME" = "$PROJECT_NAME" || {
+            echo 'ULC D4 Neon project name mismatch.' >&2
+            exit 1
+          }
+          test "$ACTUAL_REGION" = "$REGION_ID" || {
+            echo 'ULC D4 Neon project region mismatch.' >&2
+            exit 1
+          }
+
+          BRANCHES="$TMP_DIR/branches.json"
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}"             "$API/projects/$PROJECT_ID/branches"             -o "$BRANCHES"
+          BRANCH_ID="$(jq -r '
+            ((.branches // []) | map(select(.default == true)) | .[0].id) //
+            ((.branches // [])[0].id) // empty
+          ' "$BRANCHES")"
+          test -n "$BRANCH_ID" || {
+            echo 'ULC D4 Neon default branch was not resolved.' >&2
+            exit 1
+          }
+
+          printf 'project_id=%s\nbranch_id=%s\n' "$PROJECT_ID" "$BRANCH_ID" >> "$GITHUB_OUTPUT"
+          echo "ULC D4 Neon project ready: $PROJECT_ID"
+          echo "ULC D4 Neon branch ready: $BRANCH_ID"
+
+      - name: Install PostgreSQL client when needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+
+      - name: Create isolated database principals and database
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          PROJECT_ID: ${{ steps.neon.outputs.project_id }}
+          BRANCH_ID: ${{ steps.neon.outputs.branch_id }}
+        run: |
+          set -euo pipefail
+          API='https://console.neon.tech/api/v2'
+          AUTH=(-H "Authorization: Bearer $NEON_API_KEY" -H 'Accept: application/json')
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+
+          ROLES="$TMP_DIR/roles.json"
+          DATABASES="$TMP_DIR/databases.json"
+          curl --fail-with-body --silent --show-error "${AUTH[@]}"             "$API/projects/$PROJECT_ID/branches/$BRANCH_ID/roles" -o "$ROLES"
+          curl --fail-with-body --silent --show-error "${AUTH[@]}"             "$API/projects/$PROJECT_ID/branches/$BRANCH_ID/databases" -o "$DATABASES"
+
+          ADMIN_ROLE="$(jq -r '
+            ((.roles // []) | map(select(.name == "neondb_owner")) | .[0].name) //
+            ((.roles // [])[0].name) // empty
+          ' "$ROLES")"
+          ADMIN_DB="$(jq -r '
+            ((.databases // []) | map(select(.name == "neondb")) | .[0].name) //
+            ((.databases // [])[0].name) // empty
+          ' "$DATABASES")"
+          test -n "$ADMIN_ROLE" || { echo 'Neon bootstrap owner role was not resolved.' >&2; exit 1; }
+          test -n "$ADMIN_DB" || { echo 'Neon bootstrap database was not resolved.' >&2; exit 1; }
+
+          URI_JSON="$TMP_DIR/uri.json"
+          curl --fail-with-body --silent --show-error "${AUTH[@]}"             "$API/projects/$PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&database_name=$ADMIN_DB&role_name=$ADMIN_ROLE&pooled=false"             -o "$URI_JSON"
+          ADMIN_URL="$(jq -r '.uri // .connection_uri // empty' "$URI_JSON")"
+          test -n "$ADMIN_URL" || { echo 'Direct Neon bootstrap connection URI was not resolved.' >&2; exit 1; }
+          case "$ADMIN_URL" in
+            *-pooler*) echo 'Neon bootstrap unexpectedly resolved a pooled URI.' >&2; exit 1 ;;
+          esac
+          echo "::add-mask::$ADMIN_URL"
+
+          for attempt in $(seq 1 30); do
+            if psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -Atqc 'SELECT 1' >/dev/null 2>&1; then
+              break
+            fi
+            if test "$attempt" = 30; then
+              echo 'Neon preview compute did not become connectable.' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+          ensure_role() {
+            local role="$1"
+            local password="$2"
+            local exists
+            exists="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -Atqc               "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = '$role')")"
+            if test "$exists" = 'f'; then
+              psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -v role_password="$password"                 -c "CREATE ROLE \"$role\" WITH LOGIN PASSWORD :'role_password' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS"                 >/dev/null
+            else
+              psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -v role_password="$password"                 -c "ALTER ROLE \"$role\" WITH LOGIN PASSWORD :'role_password' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS"                 >/dev/null
+            fi
+          }
+
+          MIGRATION_PASSWORD="$(openssl rand -hex 32)"
+          APPLICATION_PASSWORD="$(openssl rand -hex 32)"
+          SECURITY_LOG_PASSWORD="$(openssl rand -hex 32)"
+          echo "::add-mask::$MIGRATION_PASSWORD"
+          echo "::add-mask::$APPLICATION_PASSWORD"
+          echo "::add-mask::$SECURITY_LOG_PASSWORD"
+
+          ensure_role "$MIGRATION_ROLE" "$MIGRATION_PASSWORD"
+          ensure_role "$APPLICATION_ROLE" "$APPLICATION_PASSWORD"
+          ensure_role "$SECURITY_LOG_ROLE" "$SECURITY_LOG_PASSWORD"
+
+          DB_EXISTS="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -Atqc             "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_database WHERE datname = '$DATABASE_NAME')")"
+          if test "$DB_EXISTS" = 'f'; then
+            psql "$ADMIN_URL" -v ON_ERROR_STOP=1               -c "CREATE DATABASE \"$DATABASE_NAME\" OWNER \"$MIGRATION_ROLE\""               >/dev/null
+          fi
+
+          DB_OWNER="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -Atqc             "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_catalog.pg_database WHERE datname = '$DATABASE_NAME'")"
+          test "$DB_OWNER" = "$MIGRATION_ROLE" || {
+            echo 'ULC D4 preview database owner mismatch.' >&2
+            exit 1
+          }
+
+          ROLE_CHECK="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -AtF '|' -c             "SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+             FROM pg_catalog.pg_roles
+             WHERE rolname IN ('$APPLICATION_ROLE', '$SECURITY_LOG_ROLE')
+             ORDER BY rolname")"
+          EXPECTED_APPLICATION="$APPLICATION_ROLE|t|f|f|f|f|f"
+          EXPECTED_SECURITY="$SECURITY_LOG_ROLE|t|f|f|f|f|f"
+          grep -Fx "$EXPECTED_APPLICATION" <<<"$ROLE_CHECK" >/dev/null || {
+            echo 'ULC D4 application runtime role attributes are unsafe.' >&2
+            exit 1
+          }
+          grep -Fx "$EXPECTED_SECURITY" <<<"$ROLE_CHECK" >/dev/null || {
+            echo 'ULC D4 security-log runtime role attributes are unsafe.' >&2
+            exit 1
+          }
+
+          MEMBERSHIP_COUNT="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -Atqc             "SELECT count(*)
+             FROM pg_catalog.pg_auth_members m
+             JOIN pg_catalog.pg_roles member ON member.oid = m.member
+             WHERE member.rolname IN ('$APPLICATION_ROLE', '$SECURITY_LOG_ROLE')")"
+          test "$MEMBERSHIP_COUNT" = '0' || {
+            echo 'ULC D4 runtime roles unexpectedly inherit another role before migration.' >&2
+            exit 1
+          }
+
+          echo 'ULC D4 isolated Neon preview database and three principals are ready.'
+          echo 'Runtime role passwords were intentionally masked and not persisted to repository/logs.'
+          echo 'Reset the three role passwords before configuring the GitHub preview environment secrets.'
