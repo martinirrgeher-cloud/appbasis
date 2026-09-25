@@ -416,17 +416,66 @@ async function requirePreMigrationRuntimeEffectiveBoundary(
   label,
 ) {
   const rows = await client.unsafe(
-    "SELECT " +
-      "has_schema_privilege($1, 'public', 'CREATE') AS public_schema_create",
+    "WITH user_schemas AS (" +
+      " SELECT oid, nspname" +
+      " FROM pg_catalog.pg_namespace" +
+      " WHERE nspname !~ '^pg_'" +
+      " AND nspname <> 'information_schema'" +
+      "), schema_create AS (" +
+      " SELECT count(*)::integer AS access_count" +
+      " FROM user_schemas" +
+      " WHERE has_schema_privilege($1, oid, 'CREATE')" +
+      "), table_access AS (" +
+      " SELECT count(*)::integer AS access_count" +
+      " FROM pg_catalog.pg_class relation" +
+      " JOIN user_schemas namespace ON namespace.oid = relation.relnamespace" +
+      " WHERE relation.relkind IN ('r','p','v','m','f')" +
+      " AND (" +
+      " has_table_privilege($1, relation.oid, 'SELECT')" +
+      " OR has_table_privilege($1, relation.oid, 'INSERT')" +
+      " OR has_table_privilege($1, relation.oid, 'UPDATE')" +
+      " OR has_table_privilege($1, relation.oid, 'DELETE')" +
+      " OR has_table_privilege($1, relation.oid, 'TRUNCATE')" +
+      " OR has_table_privilege($1, relation.oid, 'REFERENCES')" +
+      " OR has_table_privilege($1, relation.oid, 'TRIGGER')" +
+      " OR has_any_column_privilege($1, relation.oid, 'SELECT')" +
+      " OR has_any_column_privilege($1, relation.oid, 'INSERT')" +
+      " OR has_any_column_privilege($1, relation.oid, 'UPDATE')" +
+      " OR has_any_column_privilege($1, relation.oid, 'REFERENCES')" +
+      " )" +
+      "), sequence_access AS (" +
+      " SELECT count(*)::integer AS access_count" +
+      " FROM pg_catalog.pg_class relation" +
+      " JOIN user_schemas namespace ON namespace.oid = relation.relnamespace" +
+      " WHERE relation.relkind = 'S'" +
+      " AND (" +
+      " has_sequence_privilege($1, relation.oid, 'USAGE')" +
+      " OR has_sequence_privilege($1, relation.oid, 'SELECT')" +
+      " OR has_sequence_privilege($1, relation.oid, 'UPDATE')" +
+      " )" +
+      "), routine_access AS (" +
+      " SELECT count(*)::integer AS access_count" +
+      " FROM pg_catalog.pg_proc routine" +
+      " JOIN user_schemas namespace ON namespace.oid = routine.pronamespace" +
+      " WHERE has_function_privilege($1, routine.oid, 'EXECUTE')" +
+      ") SELECT" +
+      " (SELECT access_count FROM schema_create) AS schema_create_count," +
+      " (SELECT access_count FROM table_access) AS table_access_count," +
+      " (SELECT access_count FROM sequence_access) AS sequence_access_count," +
+      " (SELECT access_count FROM routine_access) AS routine_access_count",
     [runtimeRole],
   );
+  const access = rows?.[0];
   if (
     !Array.isArray(rows) ||
     rows.length !== 1 ||
-    rows[0]?.public_schema_create !== false
+    Number(access?.schema_create_count) !== 0 ||
+    Number(access?.table_access_count) !== 0 ||
+    Number(access?.sequence_access_count) !== 0 ||
+    Number(access?.routine_access_count) !== 0
   ) {
     throw new Error(
-      "ULC D4 " + label + " login has effective pre-migration CREATE access.",
+      "ULC D4 " + label + " login has effective pre-migration access.",
     );
   }
 }
