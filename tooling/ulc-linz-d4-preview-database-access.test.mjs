@@ -447,6 +447,29 @@ test("preflights runtime principals before the preview migration without writes"
   assert.deepEqual(owner.statements, []);
 });
 
+test("preflight allows shared security roles to be absent on a fresh preview cluster", async () => {
+  const owner = ownerFixture({
+    previewGroupPresent: false,
+    sharedPreflightBoundary: {
+      preflight_shared_role_count: 0,
+      preflight_shared_owned_database_count: 0,
+      preflight_shared_owned_schema_count: 0,
+      preflight_shared_owned_relation_count: 0,
+      preflight_shared_owned_function_count: 0,
+      preflight_shared_owned_type_count: 0,
+      preflight_shared_direct_grant_count: 0,
+      preflight_shared_parent_membership_count: 0,
+      preflight_shared_schema_create_count: 0,
+      preflight_shared_table_access_count: 0,
+      preflight_shared_sequence_access_count: 0,
+      preflight_shared_routine_access_count: 0,
+    },
+  });
+  const result = await preflight(databaseFactory({ owner }));
+  assert.equal(result.runtimePrincipalPreflightVerified, true);
+  assert.deepEqual(owner.statements, []);
+});
+
 test("preflight authenticates application runtime credentials before opening the owner connection", async () => {
   const owner = ownerFixture({ previewGroupPresent: false });
   const opened = [];
