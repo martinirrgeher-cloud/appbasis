@@ -14,7 +14,7 @@ export async function buildUlcLinzD4PreviewPlan() {
     appId: contract.definition.appId,
     packageName: contract.packageName,
     environment: contract.target.environment,
-    migrationTarget: contract.target.migrationTarget,
+    migrationTarget: contract.target.database,
     workerName: contract.target.workerName,
     hyperdriveName: contract.target.hyperdriveName,
     database: contract.target.database,
