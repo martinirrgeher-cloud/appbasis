@@ -3,11 +3,34 @@ import test from "node:test";
 
 import {
   applyUlcLinzD4PreviewMigrations,
+  assertUlcLinzD4PreviewMigrationEnvironment,
   loadUlcLinzD4PreviewMigrationPlan,
 } from "./ulc-linz-d4-preview-migrate.mjs";
 
 const DATABASE_URL =
   "postgresql://preview_owner:secret@example.test/appbasis_ulc_linz_preview";
+
+test("accepts only the dedicated ULC preview database as migration target", async () => {
+  const contract = await assertUlcLinzD4PreviewMigrationEnvironment({
+    APPBASIS_GENERATED_APP_ID: "ulc-linz",
+    APPBASIS_MIGRATION_TARGET: "appbasis_ulc_linz_preview",
+    APPBASIS_APPLY_MIGRATIONS: "1",
+  });
+
+  assert.equal(contract.definition.appId, "ulc-linz");
+  assert.equal(contract.target.database, "appbasis_ulc_linz_preview");
+});
+
+test("rejects the generic preview environment as ULC migration target", async () => {
+  await assert.rejects(
+    assertUlcLinzD4PreviewMigrationEnvironment({
+      APPBASIS_GENERATED_APP_ID: "ulc-linz",
+      APPBASIS_MIGRATION_TARGET: "generated-preview-ulc-linz",
+      APPBASIS_APPLY_MIGRATIONS: "1",
+    }),
+    /does not match the dedicated ULC preview database/,
+  );
+});
 
 test("appends the preview-only security isolation after the canonical ULC migrations", async () => {
   const { plan } = await loadUlcLinzD4PreviewMigrationPlan();
