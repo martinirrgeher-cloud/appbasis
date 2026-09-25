@@ -43,7 +43,8 @@ test("ULC D4 preview lifecycle binds distinct Hyperdrives and verifies the secur
 test("ULC D4 preview lifecycle reuses the canonical plan and probes the ULC countdown boundary", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.match(workflow, /generated-app-preview-plan\.mjs/);
+  assert.match(workflow, /ulc-linz-d4-preview-plan\.mjs/);
+  assert.doesNotMatch(workflow, /node \.\/tooling\/generated-app-preview-plan\.mjs/);
   assert.match(
     workflow,
     /node \.\/tooling\/ulc-linz-d4-preview-migrate\.mjs/,
