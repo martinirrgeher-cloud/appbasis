@@ -441,6 +441,7 @@ async function requirePreMigrationRuntimeEffectiveBoundary(
       " OR has_table_privilege($1, relation.oid, 'TRUNCATE')" +
       " OR has_table_privilege($1, relation.oid, 'REFERENCES')" +
       " OR has_table_privilege($1, relation.oid, 'TRIGGER')" +
+      " OR has_table_privilege($1, relation.oid, 'MAINTAIN')" +
       " OR has_any_column_privilege($1, relation.oid, 'SELECT')" +
       " OR has_any_column_privilege($1, relation.oid, 'INSERT')" +
       " OR has_any_column_privilege($1, relation.oid, 'UPDATE')" +
@@ -700,6 +701,7 @@ async function requireSharedSecurityRolesNeutralBeforeMigration(client) {
            OR has_table_privilege(role.rolname, relation.oid, 'TRUNCATE')
            OR has_table_privilege(role.rolname, relation.oid, 'REFERENCES')
            OR has_table_privilege(role.rolname, relation.oid, 'TRIGGER')
+           OR has_table_privilege(role.rolname, relation.oid, 'MAINTAIN')
            OR has_any_column_privilege(role.rolname, relation.oid, 'SELECT')
            OR has_any_column_privilege(role.rolname, relation.oid, 'INSERT')
            OR has_any_column_privilege(role.rolname, relation.oid, 'UPDATE')
@@ -859,9 +861,13 @@ async function requireSharedSecurityRolesNeutralInPreviewDatabase(client) {
              OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'UPDATE')
              OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'DELETE')
              OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'TRUNCATE')
+             OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'REFERENCES')
+             OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'TRIGGER')
+             OR has_table_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'MAINTAIN')
              OR has_any_column_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'SELECT')
              OR has_any_column_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'INSERT')
              OR has_any_column_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'UPDATE')
+             OR has_any_column_privilege(role.rolname, 'public.ulc_linz_security_event_log', 'REFERENCES')
              OR has_sequence_privilege(role.rolname, 'public.ulc_linz_security_event_log_id_seq', 'USAGE')
              OR has_sequence_privilege(role.rolname, 'public.ulc_linz_security_event_log_id_seq', 'SELECT')
              OR has_sequence_privilege(role.rolname, 'public.ulc_linz_security_event_log_id_seq', 'UPDATE')
@@ -1032,6 +1038,7 @@ async function verifyApplicationRuntimeAccess({
         " AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE')" +
         " AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')" +
         " AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRIGGER')" +
+        " AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'MAINTAIN')" +
         " AND NOT has_any_column_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')" +
         " ) AS all_runtime_table_dml" +
         " FROM pg_catalog.pg_tables" +
@@ -1065,6 +1072,7 @@ async function verifyApplicationRuntimeAccess({
         " OR has_table_privilege(current_user, relation.oid, 'TRUNCATE')" +
         " OR has_table_privilege(current_user, relation.oid, 'REFERENCES')" +
         " OR has_table_privilege(current_user, relation.oid, 'TRIGGER')" +
+        " OR has_table_privilege(current_user, relation.oid, 'MAINTAIN')" +
         " OR has_any_column_privilege(current_user, relation.oid, 'SELECT')" +
         " OR has_any_column_privilege(current_user, relation.oid, 'INSERT')" +
         " OR has_any_column_privilege(current_user, relation.oid, 'UPDATE')" +
@@ -1133,6 +1141,7 @@ async function verifyApplicationRuntimeAccess({
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'TRUNCATE') AS security_truncate," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'REFERENCES') AS security_references," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'TRIGGER') AS security_trigger," +
+        " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'MAINTAIN') AS security_maintain," +
         " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'SELECT') AS security_column_select," +
         " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'INSERT') AS security_column_insert," +
         " has_any_column_privilege(current_user, '" + SECURITY_TABLE + "', 'UPDATE') AS security_column_update," +
@@ -1168,6 +1177,7 @@ async function verifyApplicationRuntimeAccess({
       access?.security_truncate !== false ||
       access?.security_references !== false ||
       access?.security_trigger !== false ||
+      access?.security_maintain !== false ||
       access?.security_column_select !== false ||
       access?.security_column_insert !== false ||
       access?.security_column_update !== false ||
@@ -1218,6 +1228,7 @@ async function verifySecurityRuntimeAccess({
         " OR has_table_privilege(current_user, relation.oid, 'TRUNCATE')" +
         " OR has_table_privilege(current_user, relation.oid, 'REFERENCES')" +
         " OR has_table_privilege(current_user, relation.oid, 'TRIGGER')" +
+        " OR has_table_privilege(current_user, relation.oid, 'MAINTAIN')" +
         " OR has_any_column_privilege(current_user, relation.oid, 'SELECT')" +
         " OR has_any_column_privilege(current_user, relation.oid, 'INSERT')" +
         " OR has_any_column_privilege(current_user, relation.oid, 'UPDATE')" +
@@ -1272,6 +1283,7 @@ async function verifySecurityRuntimeAccess({
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'DELETE') AS can_delete," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'TRUNCATE') AS can_truncate," +
         " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'TRIGGER') AS can_trigger," +
+        " has_table_privilege(current_user, '" + SECURITY_TABLE + "', 'MAINTAIN') AS can_maintain," +
         " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'SELECT') AS can_select_sequence," +
         " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'UPDATE') AS can_update_sequence",
     );
@@ -1303,6 +1315,7 @@ async function verifySecurityRuntimeAccess({
       access?.can_delete !== false ||
       access?.can_truncate !== false ||
       access?.can_trigger !== false ||
+      access?.can_maintain !== false ||
       access?.can_select_sequence !== false ||
       access?.can_update_sequence !== false
     ) {
