@@ -757,7 +757,9 @@ async function requireSharedSecurityRolesNeutralBeforeMigration(client) {
   if (
     !Array.isArray(rows) ||
     rows.length !== 1 ||
-    Number(boundary?.preflight_shared_role_count) !== SHARED_SECURITY_ROLES.length ||
+    !Number.isInteger(Number(boundary?.preflight_shared_role_count)) ||
+    Number(boundary?.preflight_shared_role_count) < 0 ||
+    Number(boundary?.preflight_shared_role_count) > SHARED_SECURITY_ROLES.length ||
     Number(boundary?.preflight_shared_owned_database_count) !== 0 ||
     Number(boundary?.preflight_shared_owned_schema_count) !== 0 ||
     Number(boundary?.preflight_shared_owned_relation_count) !== 0 ||
