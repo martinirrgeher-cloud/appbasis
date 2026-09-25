@@ -285,9 +285,13 @@ function databaseFactory({
   owner = ownerFixture(),
   applicationAccess = exactApplicationAccess(),
   securityAccess = exactSecurityAccess(),
+  applicationAuthenticationError = false,
+  securityAuthenticationError = false,
+  opened = [],
   ended = [],
 } = {}) {
   return (url) => {
+    opened.push(url);
     if (url === MIGRATION_URL) {
       return {
         client: {
@@ -303,6 +307,12 @@ function databaseFactory({
       return {
         client: {
           async unsafe(sql) {
+            if (sql === "SELECT current_user AS current_user") {
+              if (applicationAuthenticationError) {
+                throw new Error("authentication failed");
+              }
+              return [{ current_user: "ulc_preview_app" }];
+            }
             assert.match(sql, /all_runtime_table_dml/);
             assert.match(sql, /has_any_column_privilege/);
             assert.match(sql, /owned_database_count/);
@@ -310,6 +320,7 @@ function databaseFactory({
             assert.match(sql, /owned_function_count/);
             assert.match(sql, /owned_type_count/);
             assert.match(sql, /security_purge_execute/);
+            assert.equal((sql.match(/AS schema_usage/g) ?? []).length, 1);
             return [applicationAccess];
           },
           async end() {
@@ -322,12 +333,19 @@ function databaseFactory({
       return {
         client: {
           async unsafe(sql) {
+            if (sql === "SELECT current_user AS current_user") {
+              if (securityAuthenticationError) {
+                throw new Error("authentication failed");
+              }
+              return [{ current_user: "ulc_preview_security_ingest" }];
+            }
             assert.match(sql, /can_insert_allowed_columns/);
             assert.match(sql, /non_security_schema_create_count/);
             assert.match(sql, /non_security_function_access_count/);
             assert.match(sql, /inherited_role_count/);
             assert.match(sql, /pg_has_role/);
             assert.match(sql, /appbasis_ulc_linz_preview_security_ingest/);
+            assert.equal((sql.match(/AS schema_usage/g) ?? []).length, 1);
             return [securityAccess];
           },
           async end() {
@@ -374,6 +392,40 @@ test("preflights runtime principals before the preview migration without writes"
     runtimePrincipalPreflightVerified: true,
   });
   assert.equal(owner.wasBound(), false);
+  assert.deepEqual(owner.statements, []);
+});
+
+test("preflight authenticates application runtime credentials before opening the owner connection", async () => {
+  const owner = ownerFixture({ previewGroupPresent: false });
+  const opened = [];
+  await assert.rejects(
+    preflight(
+      databaseFactory({
+        owner,
+        applicationAuthenticationError: true,
+        opened,
+      }),
+    ),
+    /application runtime credential authentication failed/,
+  );
+  assert.deepEqual(opened, [APPLICATION_URL]);
+  assert.deepEqual(owner.statements, []);
+});
+
+test("preflight authenticates security runtime credentials before opening the owner connection", async () => {
+  const owner = ownerFixture({ previewGroupPresent: false });
+  const opened = [];
+  await assert.rejects(
+    preflight(
+      databaseFactory({
+        owner,
+        securityAuthenticationError: true,
+        opened,
+      }),
+    ),
+    /security-log runtime credential authentication failed/,
+  );
+  assert.deepEqual(opened, [APPLICATION_URL, SECURITY_URL]);
   assert.deepEqual(owner.statements, []);
 });
 
