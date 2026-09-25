@@ -182,9 +182,9 @@ jobs:
             local exists
             exists="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -Atqc               "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = '$role')")"
             if test "$exists" = 'f'; then
-              psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -v role_password="$password"                 -c "CREATE ROLE \"$role\" WITH LOGIN PASSWORD :'role_password' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS"                 >/dev/null
+              psql "$ADMIN_URL" -v ON_ERROR_STOP=1                 -c "CREATE ROLE \"$role\" WITH LOGIN PASSWORD '$password' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS"                 >/dev/null
             else
-              psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -v role_password="$password"                 -c "ALTER ROLE \"$role\" WITH LOGIN PASSWORD :'role_password' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS"                 >/dev/null
+              psql "$ADMIN_URL" -v ON_ERROR_STOP=1                 -c "ALTER ROLE \"$role\" WITH LOGIN PASSWORD '$password' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS"                 >/dev/null
             fi
           }
 
