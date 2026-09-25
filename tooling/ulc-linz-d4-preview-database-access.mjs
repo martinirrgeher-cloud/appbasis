@@ -116,6 +116,9 @@ export async function preflightUlcLinzD4PreviewDatabaseAccess(
       securityRole,
       "security-log runtime",
     );
+    await requireSharedSecurityRolesNeutralBeforeMigration(
+      ownerDatabase.client,
+    );
 
     return Object.freeze({
       schemaVersion: 1,
@@ -627,6 +630,150 @@ async function requireSecurityGroupCatalogBoundary(client) {
     expected,
     "ULC D4 preview security-log group",
   );
+}
+
+async function requireSharedSecurityRolesNeutralBeforeMigration(client) {
+  const rows = await client.unsafe(
+    `WITH targets AS (
+       SELECT oid, rolname
+       FROM pg_catalog.pg_roles
+       WHERE rolname = ANY($1::text[])
+     ),
+     user_schemas AS (
+       SELECT oid, nspname
+       FROM pg_catalog.pg_namespace
+       WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'
+     ),
+     direct_grants AS (
+       SELECT acl.grantee FROM pg_catalog.pg_database object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.datacl) acl
+       WHERE object.datname = current_database()
+       UNION ALL
+       SELECT acl.grantee FROM pg_catalog.pg_namespace object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.nspacl) acl
+       WHERE object.nspname !~ '^pg_' AND object.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee FROM pg_catalog.pg_class object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.relacl) acl
+       WHERE namespace.nspname !~ '^pg_' AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee FROM pg_catalog.pg_attribute attribute
+       JOIN pg_catalog.pg_class relation ON relation.oid = attribute.attrelid
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl
+       WHERE attribute.attnum > 0 AND NOT attribute.attisdropped
+         AND namespace.nspname !~ '^pg_' AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee FROM pg_catalog.pg_proc object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.proacl) acl
+       WHERE namespace.nspname !~ '^pg_' AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee FROM pg_catalog.pg_type object
+       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.typacl) acl
+       WHERE namespace.nspname !~ '^pg_' AND namespace.nspname <> 'information_schema'
+       UNION ALL
+       SELECT acl.grantee FROM pg_catalog.pg_default_acl object
+       CROSS JOIN LATERAL pg_catalog.aclexplode(object.defaclacl) acl
+     ),
+     effective_schema_create AS (
+       SELECT count(*)::integer AS access_count
+       FROM targets role
+       CROSS JOIN user_schemas namespace
+       WHERE has_schema_privilege(role.rolname, namespace.oid, 'CREATE')
+     ),
+     effective_tables AS (
+       SELECT count(*)::integer AS access_count
+       FROM targets role
+       CROSS JOIN pg_catalog.pg_class relation
+       JOIN user_schemas namespace ON namespace.oid = relation.relnamespace
+       WHERE relation.relkind IN ('r','p','v','m','f')
+         AND (
+           has_table_privilege(role.rolname, relation.oid, 'SELECT')
+           OR has_table_privilege(role.rolname, relation.oid, 'INSERT')
+           OR has_table_privilege(role.rolname, relation.oid, 'UPDATE')
+           OR has_table_privilege(role.rolname, relation.oid, 'DELETE')
+           OR has_table_privilege(role.rolname, relation.oid, 'TRUNCATE')
+           OR has_table_privilege(role.rolname, relation.oid, 'REFERENCES')
+           OR has_table_privilege(role.rolname, relation.oid, 'TRIGGER')
+           OR has_any_column_privilege(role.rolname, relation.oid, 'SELECT')
+           OR has_any_column_privilege(role.rolname, relation.oid, 'INSERT')
+           OR has_any_column_privilege(role.rolname, relation.oid, 'UPDATE')
+           OR has_any_column_privilege(role.rolname, relation.oid, 'REFERENCES')
+         )
+     ),
+     effective_sequences AS (
+       SELECT count(*)::integer AS access_count
+       FROM targets role
+       CROSS JOIN pg_catalog.pg_class relation
+       JOIN user_schemas namespace ON namespace.oid = relation.relnamespace
+       WHERE relation.relkind = 'S'
+         AND (
+           has_sequence_privilege(role.rolname, relation.oid, 'USAGE')
+           OR has_sequence_privilege(role.rolname, relation.oid, 'SELECT')
+           OR has_sequence_privilege(role.rolname, relation.oid, 'UPDATE')
+         )
+     ),
+     effective_routines AS (
+       SELECT count(*)::integer AS access_count
+       FROM targets role
+       CROSS JOIN pg_catalog.pg_proc routine
+       JOIN user_schemas namespace ON namespace.oid = routine.pronamespace
+       WHERE has_function_privilege(role.rolname, routine.oid, 'EXECUTE')
+     )
+     SELECT
+       (SELECT count(*)::integer FROM targets) AS preflight_shared_role_count,
+       (SELECT count(*)::integer FROM pg_catalog.pg_database object
+         WHERE object.datname = current_database()
+           AND object.datdba IN (SELECT oid FROM targets)) AS preflight_shared_owned_database_count,
+       (SELECT count(*)::integer FROM pg_catalog.pg_namespace object
+         WHERE object.nspname !~ '^pg_' AND object.nspname <> 'information_schema'
+           AND object.nspowner IN (SELECT oid FROM targets)) AS preflight_shared_owned_schema_count,
+       (SELECT count(*)::integer FROM pg_catalog.pg_class object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
+         WHERE namespace.nspname !~ '^pg_' AND namespace.nspname <> 'information_schema'
+           AND object.relowner IN (SELECT oid FROM targets)) AS preflight_shared_owned_relation_count,
+       (SELECT count(*)::integer FROM pg_catalog.pg_proc object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.pronamespace
+         WHERE namespace.nspname !~ '^pg_' AND namespace.nspname <> 'information_schema'
+           AND object.proowner IN (SELECT oid FROM targets)) AS preflight_shared_owned_function_count,
+       (SELECT count(*)::integer FROM pg_catalog.pg_type object
+          JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.typnamespace
+         WHERE namespace.nspname !~ '^pg_' AND namespace.nspname <> 'information_schema'
+           AND object.typowner IN (SELECT oid FROM targets)) AS preflight_shared_owned_type_count,
+       (SELECT count(*)::integer FROM direct_grants
+         WHERE grantee IN (SELECT oid FROM targets)) AS preflight_shared_direct_grant_count,
+       (SELECT count(*)::integer FROM pg_catalog.pg_auth_members membership
+         WHERE membership.member IN (SELECT oid FROM targets)) AS preflight_shared_parent_membership_count,
+       (SELECT access_count FROM effective_schema_create) AS preflight_shared_schema_create_count,
+       (SELECT access_count FROM effective_tables) AS preflight_shared_table_access_count,
+       (SELECT access_count FROM effective_sequences) AS preflight_shared_sequence_access_count,
+       (SELECT access_count FROM effective_routines) AS preflight_shared_routine_access_count`,
+    [SHARED_SECURITY_ROLES],
+  );
+  const boundary = rows?.[0];
+  if (
+    !Array.isArray(rows) ||
+    rows.length !== 1 ||
+    Number(boundary?.preflight_shared_role_count) !== SHARED_SECURITY_ROLES.length ||
+    Number(boundary?.preflight_shared_owned_database_count) !== 0 ||
+    Number(boundary?.preflight_shared_owned_schema_count) !== 0 ||
+    Number(boundary?.preflight_shared_owned_relation_count) !== 0 ||
+    Number(boundary?.preflight_shared_owned_function_count) !== 0 ||
+    Number(boundary?.preflight_shared_owned_type_count) !== 0 ||
+    Number(boundary?.preflight_shared_direct_grant_count) !== 0 ||
+    Number(boundary?.preflight_shared_parent_membership_count) !== 0 ||
+    Number(boundary?.preflight_shared_schema_create_count) !== 0 ||
+    Number(boundary?.preflight_shared_table_access_count) !== 0 ||
+    Number(boundary?.preflight_shared_sequence_access_count) !== 0 ||
+    Number(boundary?.preflight_shared_routine_access_count) !== 0
+  ) {
+    throw new Error(
+      "ULC D4 shared security roles are not neutral before preview migration.",
+    );
+  }
 }
 
 async function requireSharedSecurityRolesNeutralInPreviewDatabase(client) {
