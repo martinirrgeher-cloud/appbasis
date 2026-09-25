@@ -113,6 +113,7 @@ function exactSecurityAccess(overrides = {}) {
     can_delete: false,
     can_truncate: false,
     can_trigger: false,
+    can_maintain: false,
     can_select_sequence: false,
     can_update_sequence: false,
     ...overrides,
@@ -143,6 +144,7 @@ function exactApplicationAccess(overrides = {}) {
     security_truncate: false,
     security_references: false,
     security_trigger: false,
+    security_maintain: false,
     security_column_select: false,
     security_column_insert: false,
     security_column_update: false,
@@ -282,12 +284,14 @@ function ownerFixture({
         assert.match(sql, /preflight_shared_database_create_count/);
         assert.match(sql, /preflight_shared_parent_membership_count/);
         assert.match(sql, /preflight_shared_table_access_count/);
+        assert.match(sql, /'MAINTAIN'/);
         assert.match(sql, /preflight_shared_sequence_access_count/);
         assert.match(sql, /preflight_shared_routine_access_count/);
         return [sharedPreflightBoundary];
       }
       if (sql.includes("AS shared_role_count")) {
         assert.match(sql, /shared_database_create_count/);
+        assert.match(sql, /'MAINTAIN'/);
         assert.deepEqual(params?.[0], [
           "ulc_linz_security_event_ingest",
           "ulc_linz_security_event_cleanup",
@@ -314,6 +318,7 @@ function ownerFixture({
         assert.match(sql, /AS sequence_access_count/);
         assert.match(sql, /AS routine_access_count/);
         assert.match(sql, /has_any_column_privilege/);
+        assert.match(sql, /'MAINTAIN'/);
         assert.match(sql, /has_function_privilege/);
         const role = params?.[0];
         if (role === "ulc_preview_app") {
@@ -377,6 +382,8 @@ function databaseFactory({
             assert.match(sql, /'TRUNCATE'/);
             assert.match(sql, /'REFERENCES'/);
             assert.match(sql, /'TRIGGER'/);
+            assert.match(sql, /'MAINTAIN'/);
+            assert.match(sql, /security_maintain/);
             assert.match(sql, /sequence_name\), 'UPDATE'/);
             assert.match(sql, /non_public_schema_create_count/);
             assert.match(sql, /non_public_table_access_count/);
@@ -412,6 +419,8 @@ function databaseFactory({
             assert.match(sql, /can_select_any_column/);
             assert.match(sql, /can_update_any_column/);
             assert.match(sql, /can_reference_any_column/);
+            assert.match(sql, /can_maintain/);
+            assert.match(sql, /'MAINTAIN'/);
             assert.match(sql, /non_security_schema_create_count/);
             assert.match(sql, /non_security_function_access_count/);
             assert.match(sql, /inherited_role_count/);
@@ -882,6 +891,21 @@ test("rejects application runtime routine access outside public", async () => {
   );
 });
 
+test("rejects MAINTAIN on the security log for the application runtime", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          security_maintain: true,
+        }),
+      }),
+    ),
+    /application runtime database ACL is not exact/,
+  );
+});
+
 test("rejects stale application column access to the security log", async () => {
   const owner = ownerFixture();
   await assert.rejects(
@@ -1039,6 +1063,21 @@ test("rejects insert access to forbidden security-log columns", async () => {
         owner,
         securityAccess: exactSecurityAccess({
           can_insert_id: true,
+        }),
+      }),
+    ),
+    /security-log ingest ACL is not exact/,
+  );
+});
+
+test("rejects MAINTAIN on the security log for the security runtime", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        securityAccess: exactSecurityAccess({
+          can_maintain: true,
         }),
       }),
     ),
