@@ -260,7 +260,8 @@ function ownerFixture({
         !sql.includes("AS shared_role_count") &&
         !sql.includes("AS preflight_shared_role_count")
       ) {
-        return [
+        const requestedRoles = params?.[0] ?? [];
+        const availableRoles = [
           ...(previewGroupPresent
             ? [runtimeRole(PREVIEW_SECURITY_GROUP, false)]
             : []),
@@ -268,6 +269,9 @@ function ownerFixture({
           runtimeRole("ulc_preview_app", true),
           runtimeRole("ulc_preview_security_ingest", true),
         ];
+        return availableRoles.filter((role) =>
+          requestedRoles.includes(role.rolname),
+        );
       }
       if (sql.includes("WHERE child.rolname = $1")) {
         const member = params?.[0];
