@@ -12,7 +12,7 @@ const currentDefinition = JSON.parse(
 );
 const definition = Object.freeze({
   ...currentDefinition,
-  modules: Object.freeze([]),
+  modules: Object.freeze(["countdown"]),
 });
 const AUDIT_EVIDENCE = Object.freeze({ auditSecurityLogging: true });
 
@@ -23,7 +23,7 @@ test("emits M5-E evidence only for exact current export acceptance plus independ
   );
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(repositoryRoot, currentDefinition, AUDIT_EVIDENCE),
-    {},
+    { dataExport: true },
   );
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(repositoryRoot, definition, {}),
@@ -35,7 +35,7 @@ test("keeps M5-E open for future module scope or malformed audit evidence", asyn
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(
       repositoryRoot,
-      { ...definition, modules: ["tasks"] },
+      { ...definition, modules: ["countdown", "tasks"] },
       AUDIT_EVIDENCE,
     ),
     {},

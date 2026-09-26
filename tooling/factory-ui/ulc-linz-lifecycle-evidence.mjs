@@ -59,6 +59,7 @@ const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
 ]);
 const LIFECYCLE_CONTRACT_DIRECTORIES = Object.freeze([
   "apps/ulc-linz/worker",
+  "modules/countdown",
   "packages/database/src",
   "packages/identity/src",
   "packages/permissions/src",
@@ -66,14 +67,14 @@ const LIFECYCLE_CONTRACT_DIRECTORIES = Object.freeze([
 
 export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   appId: "ulc-linz",
-  modules: Object.freeze([]),
+  modules: Object.freeze(["countdown"]),
   platformServices: Object.freeze(["identity", "permissions"]),
   lifecycleContractPaths: LIFECYCLE_CONTRACT_PATHS,
   lifecycleContractDirectories: LIFECYCLE_CONTRACT_DIRECTORIES,
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
-      gitBlobSha: "8d51de15ba60e314d090c34d43a7e0776f96943f",
+      gitBlobSha: "291bda98ad668cec7b1c442c3b9e96accfecc14b",
     }),
     Object.freeze({
       path: "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
@@ -89,7 +90,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/package.json",
-      gitBlobSha: "44043d0352f1411d7f6fa22a1a19b3ddee11189c",
+      gitBlobSha: "226dc013ab5e6326f68a83fd7b1e7cc151f477ae",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/app.ts",
@@ -173,7 +174,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/m5-data-inventory.test.ts",
-      gitBlobSha: "af64204efb53425b828bf21987203adb67c114ef",
+      gitBlobSha: "7386acddca55761f4ef796071114b1b99d34b132",
     }),
     Object.freeze({
       path: "packages/permissions/test/permission-administration-audit-retention.postgres.e2e.ts",
@@ -317,6 +318,7 @@ function isClosedCurrentInventory(inventory) {
     inventory.schemaVersion === 2 &&
     inventory.application === "ulc-linz" &&
     inventory.scope === "current-materialized-v0.1" &&
+    isDeepStrictEqual(inventory.runtimeModules, ["countdown"]) &&
     inventory.objectStorage?.status === "not-configured" &&
     inventory.objectStorage?.futureIntroduction ===
       "invalidates-current-cd-evidence" &&

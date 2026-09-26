@@ -10,14 +10,14 @@ const VERIFIED_EVIDENCE = Object.freeze({ dataExport: true });
 
 export const ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY = Object.freeze({
   appId: "ulc-linz",
-  modules: Object.freeze([]),
+  modules: Object.freeze(["countdown"]),
   platformServices: Object.freeze(["identity", "permissions"]),
-  inventoryGitBlobSha: "8d51de15ba60e314d090c34d43a7e0776f96943f",
+  inventoryGitBlobSha: "291bda98ad668cec7b1c442c3b9e96accfecc14b",
   requiredPostgresTest: "./test/data-export.postgres.e2e.test.ts",
   requiredRepositoryEvidenceTest:
     "./tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs",
   evidenceFiles: Object.freeze([
-    Object.freeze({ path: "apps/ulc-linz/privacy/m5-export-contract.json", gitBlobSha: "c929f89d0ba54414d557a76408356b35b3d2058c" }),
+    Object.freeze({ path: "apps/ulc-linz/privacy/m5-export-contract.json", gitBlobSha: "cfe61ccbfacaef85905b72cc377e2484a2351352" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export.ts", gitBlobSha: "539c2f7455a0b847e0afda39ddfe0acd471cb8d2" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export-service.ts", gitBlobSha: "0bb1fefba10668348a6a18e4e296e5fb21497e75" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export-postgres.ts", gitBlobSha: "b1123c3d7f628c594159f79764a6a66fa600bd9b" }),
@@ -26,7 +26,7 @@ export const ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY = Object.freeze({
     Object.freeze({ path: "apps/ulc-linz/test/data-export-fail-closed.test.ts", gitBlobSha: "d73b5e2d30c30fa2c94547e1b003fb6c0093f649" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export.postgres.e2e.test.ts", gitBlobSha: "677fc91c4ba841a487c4ac7e227eeda510264701" }),
     Object.freeze({ path: "apps/ulc-linz/test/m5-export-contract.test.ts", gitBlobSha: "6673e39b195e9529c4d734024e162a36333581f2" }),
-    Object.freeze({ path: "tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs", gitBlobSha: "348f0f5f38bb8fa936984acb708c2fc79da8abb7" }),
+    Object.freeze({ path: "tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs", gitBlobSha: "e2231371963e5cb709e4ddfab4967c0c4f36caa5" }),
   ]),
 });
 
@@ -103,7 +103,7 @@ function isCurrentInventory(inventory) {
     inventory.scope === "current-materialized-v0.1" &&
     Array.isArray(inventory.persistentTables) &&
     inventory.persistentTables.length === 20 &&
-    inventory.runtimeModules?.length === 0 &&
+    isDeepStrictEqual(inventory.runtimeModules, ["countdown"]) &&
     inventory.backingStores?.memberships?.status === "bound" &&
     inventory.backingStores?.subjectScopes?.status === "bound" &&
     inventory.objectStorage?.status === "not-configured" &&
@@ -122,7 +122,7 @@ function isCompleteExportClassification(inventory, exportContract) {
     exportContract.canonicalFormat !== "json" ||
     !isDeepStrictEqual(exportContract.supplementaryFormats, ["csv"]) ||
     exportContract.unknownDataset !== "deny" ||
-    !isDeepStrictEqual(exportContract.runtimeModules, []) ||
+    !isDeepStrictEqual(exportContract.runtimeModules, ["countdown"]) ||
     !Array.isArray(exportContract.datasets) ||
     !Array.isArray(exportContract.excludedTables)
   ) {
