@@ -13,6 +13,7 @@ import {
   capabilityId,
   principalId,
 } from "@appbasis/permissions";
+import { provisionPostgresPermissions } from "@appbasis/permissions/provisioning";
 
 import {
   GENERATED_PREVIEW_ROOT_ADMIN_DISPLAY_NAME,
@@ -21,6 +22,7 @@ import {
   classifyTechnicalRootAdminState,
 } from "../../../tooling/generated-app-preview-access-bootstrap-contract.mjs";
 import { mapUlcLinzManagedPermissionsToPrincipalOverrides } from "../../../tooling/ulc-linz-m5-principal-permission-mapping.mjs";
+import { ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE } from "../../../tooling/ulc-linz-m5-permission-provisioning.mjs";
 import { ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY } from "../../../tooling/ulc-linz-m5-role-data-scope.mjs";
 
 const EXPECTED_DATABASE = "appbasis_ulc_linz_preview";
@@ -31,6 +33,11 @@ const PREVIEW_SUBJECT_ID = "ulc-linz-preview-admin";
 const PREVIEW_DISPLAY_NAME = "ULC Linz Preview Admin";
 const MINIMUM_PASSWORD_LENGTH = 8;
 const MAXIMUM_PASSWORD_LENGTH = 128;
+let bootstrapPhase = "not-started";
+
+function setBootstrapPhase(phase) {
+  bootstrapPhase = phase;
+}
 
 export class UlcLinzD4PreviewAccessBootstrapError extends Error {
   constructor(message) {
@@ -76,17 +83,20 @@ export async function bootstrapUlcLinzD4PreviewAccess(
   env = process.env,
   dependencies = {},
 ) {
+  setBootstrapPhase("input-validation");
   const config = readUlcLinzD4PreviewAccessEnvironment(env);
   const createDatabase =
     dependencies.createPostgresDatabase ?? createPostgresDatabase;
   const createRootAdmin =
     dependencies.createInitialTechnicalAdmin ?? createInitialTechnicalAdmin;
 
+  setBootstrapPhase("technical-root");
   await ensureTechnicalRootAdmin(config, {
     createDatabase,
     createRootAdmin,
   });
 
+  setBootstrapPhase("database-connect");
   const connection = createDatabase(config.connectionString);
   let backend = null;
   let rootSession = null;
@@ -108,6 +118,7 @@ export async function bootstrapUlcLinzD4PreviewAccess(
           baseURL: config.baseURL,
         });
 
+    setBootstrapPhase("root-login");
     rootSession = await backend.signInWithUsername({
       username: GENERATED_PREVIEW_ROOT_ADMIN_USERNAME,
       password: config.rootAdminPassword,
@@ -117,12 +128,19 @@ export async function bootstrapUlcLinzD4PreviewAccess(
       rootSession.identityId,
     );
 
+    setBootstrapPhase("permission-catalog");
+    await provisionPostgresPermissions(
+      connection.client,
+      ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE,
+    );
+
     const identity = (dependencies.createIdentityRuntime ?? createIdentityRuntime)({
       auth,
       sql: connection.client,
       baseURL: config.baseURL,
       administrativeSessionToken: rootSession.sessionToken,
     });
+    setBootstrapPhase("preview-identity");
     const created = await identity.service.createInitialUser({
       username: GENERATED_PREVIEW_USER_USERNAME,
       displayName: PREVIEW_DISPLAY_NAME,
@@ -137,12 +155,14 @@ export async function bootstrapUlcLinzD4PreviewAccess(
       );
     }
 
+    setBootstrapPhase("membership");
     await upsertPreviewAdminMembership(
       connection.client,
       created.identityId,
     );
 
     const previewPrincipalId = principalId(created.identityId);
+    setBootstrapPhase("permission-principal");
     await ensurePermissionPrincipal(connection.client, previewPrincipalId);
 
     const store = new PostgresPermissionStore(connection.client);
@@ -162,6 +182,7 @@ export async function bootstrapUlcLinzD4PreviewAccess(
     const administration = new PostgresPrincipalAccessAdministration(
       connection.client,
     );
+    setBootstrapPhase("role-assignment");
     await administration.replacePrincipalAccess(
       previewPrincipalId,
       [adminRoleId],
@@ -177,6 +198,7 @@ export async function bootstrapUlcLinzD4PreviewAccess(
       },
     );
 
+    setBootstrapPhase("state-verification");
     await requireExactPreviewAdminState(
       connection.client,
       store,
@@ -185,6 +207,7 @@ export async function bootstrapUlcLinzD4PreviewAccess(
       adminRoleId,
     );
 
+    setBootstrapPhase("countdown-permission");
     const countdownAllowed = await store.evaluatePermission({
       principalId: previewPrincipalId,
       capability: capabilityId("ulc-linz:module:countdown:view"),
@@ -195,6 +218,7 @@ export async function bootstrapUlcLinzD4PreviewAccess(
       );
     }
 
+    setBootstrapPhase("complete");
     return Object.freeze({
       username: GENERATED_PREVIEW_USER_USERNAME,
       mustChangePassword: created.mustChangePassword,
@@ -443,7 +467,7 @@ if (
     console.error(
       error instanceof UlcLinzD4PreviewAccessBootstrapError
         ? error.message
-        : "ULC D4 preview access bootstrap failed.",
+        : `ULC D4 preview access bootstrap failed at phase: ${bootstrapPhase}.`,
     );
     process.exitCode = 1;
   }
