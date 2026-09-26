@@ -35,6 +35,8 @@ const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
   "apps/ulc-linz/appbasis.app.json",
   "apps/ulc-linz/appbasis.database.json",
   "apps/ulc-linz/package.json",
+  "modules/countdown/appbasis.module.json",
+  "modules/countdown/package.json",
   "packages/database/package.json",
   "packages/identity/package.json",
   "packages/permissions/package.json",
@@ -59,7 +61,7 @@ const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
 ]);
 const LIFECYCLE_CONTRACT_DIRECTORIES = Object.freeze([
   "apps/ulc-linz/worker",
-  "modules/countdown",
+  "modules/countdown/src",
   "packages/database/src",
   "packages/identity/src",
   "packages/permissions/src",
