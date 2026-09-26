@@ -265,7 +265,7 @@ function bundle() {
 test("sanitized legacy production bundle stays blocked after the FC5 repository scope change", async () => {
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle(), { now: NOW });
   assert.equal(result.securityPrivacyReady, false);
-  assert.equal(result.verifiedCount, 8);
+  assert.equal(result.verifiedCount, 7);
   assert.equal(result.requiredCount, 12);
   assert.equal(result.productionReleaseAuthorized, false);
   assert.equal(result.lifecycleBindingVerifiedAt, LIVE_BINDING_AT);
@@ -274,6 +274,7 @@ test("sanitized legacy production bundle stays blocked after the FC5 repository 
     "deletionConcept",
     "retention",
     "privilegedControlPlaneIsolation",
+    "dataExport",
     "highPrivacyProfile",
   ]) {
     assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "open", id);
