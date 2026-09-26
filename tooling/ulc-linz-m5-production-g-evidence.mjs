@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare-current-deployment.mjs";
 import { collectUlcLinzM5ProviderLegalEvidence } from "./ulc-linz-m5-provider-legal-evidence.mjs";
 import { parseUlcLinzProductionDatabaseUrl } from "./ulc-linz-m6-production-hyperdrive.mjs";
+import { verifyUlcLinzProductionRuntimeEquivalence } from "./ulc-linz-m6-runtime-contract-equivalence.mjs";
 
 const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 const NEON_API = "https://console.neon.tech/api/v2";
@@ -41,6 +42,8 @@ export async function completeUlcLinzM5ProductionGBundle(
   },
   {
     fetchImpl = fetch,
+    githubFetchImpl = fetch,
+    repositoryRoot = process.cwd(),
     legalCollector = collectUlcLinzM5ProviderLegalEvidence,
   } = {},
 ) {
@@ -91,6 +94,8 @@ export async function completeUlcLinzM5ProductionGBundle(
       expectedOrigin: parsedDatabase,
       githubSha,
       fetchImpl,
+      githubFetchImpl,
+      repositoryRoot,
     }),
     observeNeonProject({
       apiKey: safeNeonKey,
@@ -169,6 +174,8 @@ async function observeCloudflareDatabaseBindings({
   expectedOrigin,
   githubSha,
   fetchImpl,
+  githubFetchImpl,
+  repositoryRoot,
 }) {
   const accountPath = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(accountId)}`;
   const deployments = await cloudflareJson(
@@ -188,15 +195,25 @@ async function observeCloudflareDatabaseBindings({
   );
   const version = versionResponse.result;
   const message = version?.annotations?.["workers/message"];
+  const runtimeMatch =
+    typeof message === "string"
+      ? /^AppBasis ulc-linz production runtime ([0-9a-f]{40}) auth-hmac:[0-9a-f]{64}(?: origin-hmac:[0-9a-f]{64})?$/.exec(
+          message,
+        )
+      : null;
   if (
     version?.id !== versionId ||
     version?.annotations?.["workers/tag"] !== TARGET_VERSION_TAG ||
-    typeof message !== "string" ||
-    !message.startsWith(`AppBasis ulc-linz production runtime ${githubSha} auth-hmac:`) ||
+    runtimeMatch === null ||
     !Array.isArray(version?.resources?.bindings)
   ) {
-    throw new Error("ULC M5-G deployed Worker is not bound to current main.");
+    throw new Error("ULC M5-G deployed Worker runtime annotation is invalid.");
   }
+  await verifyUlcLinzProductionRuntimeEquivalence(repositoryRoot, {
+    deployedGithubSha: runtimeMatch[1],
+    currentGithubSha: githubSha,
+    fetchImpl: githubFetchImpl,
+  });
   const bindings = version.resources.bindings;
   const appBindings = bindings.filter(
     (binding) => binding?.name === "HYPERDRIVE" && binding?.type === "hyperdrive",

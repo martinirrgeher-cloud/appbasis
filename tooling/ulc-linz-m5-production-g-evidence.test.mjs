@@ -227,9 +227,16 @@ function inputs(overrides = {}) {
   };
 }
 
-async function complete({ value = bundle(), input = inputs(), fetchImpl = providerFetch, legalCollector } = {}) {
+async function complete({
+  value = bundle(),
+  input = inputs(),
+  fetchImpl = providerFetch,
+  githubFetchImpl = async () => { throw new Error("unexpected GitHub comparison"); },
+  legalCollector,
+} = {}) {
   return completeUlcLinzM5ProductionGBundle(value, input, {
     fetchImpl,
+    githubFetchImpl,
     legalCollector:
       legalCollector ??
       (async (binding) => {
@@ -267,6 +274,73 @@ test("completes G from the active Cloudflare deployment even when older deployme
   assert.equal(JSON.stringify(result).includes("cf-token"), false);
   assert.equal(JSON.stringify(result).includes("neon-key"), false);
   assert.equal(JSON.stringify(result).includes("postgresql://"), false);
+});
+
+test("accepts an older deployed Worker SHA when the canonical runtime contract is unchanged", async () => {
+  const deployedSha = "c".repeat(40);
+  const fetchImpl = async (url) => {
+    const result = await providerFetch(url);
+    if (String(url).includes("/versions/")) {
+      const body = await result.json();
+      body.result.annotations["workers/message"] =
+        `AppBasis ulc-linz production runtime ${deployedSha} auth-hmac:${"b".repeat(64)}`;
+      return response(body);
+    }
+    return result;
+  };
+  const githubFetchImpl = async () =>
+    Response.json({
+      status: "ahead",
+      ahead_by: 1,
+      behind_by: 0,
+      total_commits: 1,
+      base_commit: { sha: deployedSha },
+      merge_base_commit: { sha: deployedSha },
+      commits: [{ sha: SHA }],
+      files: [
+        {
+          filename: "tooling/ulc-linz-m5-production-g-evidence.mjs",
+          status: "modified",
+        },
+      ],
+    });
+
+  const result = await complete({ fetchImpl, githubFetchImpl });
+  assert.equal(
+    result.ownerInputs.providerBoundEvidenceInput.complianceEvidence.providers.cloudflare
+      .transportEncryptionObserved,
+    true,
+  );
+});
+
+test("rejects an older deployed Worker SHA when a canonical runtime input changed", async () => {
+  const deployedSha = "c".repeat(40);
+  const fetchImpl = async (url) => {
+    const result = await providerFetch(url);
+    if (String(url).includes("/versions/")) {
+      const body = await result.json();
+      body.result.annotations["workers/message"] =
+        `AppBasis ulc-linz production runtime ${deployedSha} auth-hmac:${"b".repeat(64)}`;
+      return response(body);
+    }
+    return result;
+  };
+  const githubFetchImpl = async () =>
+    Response.json({
+      status: "ahead",
+      ahead_by: 1,
+      behind_by: 0,
+      total_commits: 1,
+      base_commit: { sha: deployedSha },
+      merge_base_commit: { sha: deployedSha },
+      commits: [{ sha: SHA }],
+      files: [{ filename: "apps/ulc-linz/worker/index.ts", status: "modified" }],
+    });
+
+  await assert.rejects(
+    () => complete({ fetchImpl, githubFetchImpl }),
+    /runtime contract changed/,
+  );
 });
 
 test("fails closed when the base flow inventory is missing, decorated or already includes unowned flow evidence", async () => {
@@ -335,7 +409,7 @@ test("fails closed on stale Worker head, missing dedicated binding, cross-accoun
     }
     return result;
   };
-  await assert.rejects(() => complete({ fetchImpl: staleWorker }), /not bound to current main/);
+  await assert.rejects(() => complete({ fetchImpl: staleWorker }), /runtime annotation is invalid/);
 
   const missingBinding = async (url) => {
     const result = await providerFetch(url);

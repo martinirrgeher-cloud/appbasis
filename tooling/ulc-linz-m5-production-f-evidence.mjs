@@ -6,6 +6,7 @@ import { requireCurrentUlcLinzCloudflareDeployment } from "./ulc-linz-cloudflare
 import { ULC_LINZ_M5_F_CONTROLLED_RETENTION_CONTRACT_DIGEST } from "./ulc-linz-m5-audit-security-logging-evidence.mjs";
 import { collectUlcLinzM5SecurityLogAccessEvidence } from "./ulc-linz-m5-security-log-access-evidence.mjs";
 import { collectUlcLinzM5SecurityLogDeliveryEvidence } from "./ulc-linz-m5-security-log-delivery-evidence.mjs";
+import { verifyUlcLinzProductionRuntimeEquivalence } from "./ulc-linz-m6-runtime-contract-equivalence.mjs";
 
 const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 const TARGET_WORKER = "appbasis-ulc-linz-production";
@@ -31,6 +32,7 @@ export async function completeUlcLinzM5ProductionFBundle(
   {
     fetchImpl = fetch,
     githubFetchImpl = fetch,
+    repositoryRoot = process.cwd(),
     now = new Date(),
     accessCollector = collectUlcLinzM5SecurityLogAccessEvidence,
     deliveryCollector = collectUlcLinzM5SecurityLogDeliveryEvidence,
@@ -74,6 +76,8 @@ export async function completeUlcLinzM5ProductionFBundle(
     apiToken,
     githubSha,
     fetchImpl,
+    githubFetchImpl,
+    repositoryRoot,
   });
   const access = await accessCollector({
     productionDatabaseUrl: safeProductionDatabaseUrl,
@@ -146,7 +150,14 @@ export async function completeUlcLinzM5ProductionFBundle(
   });
 }
 
-async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fetchImpl }) {
+async function observeSecurityLogHyperdrive({
+  accountId,
+  apiToken,
+  githubSha,
+  fetchImpl,
+  githubFetchImpl,
+  repositoryRoot,
+}) {
   const accountPath = `${CLOUDFLARE_API}/accounts/${encodeURIComponent(accountId)}`;
   const deployments = await cloudflareJson(
     `${accountPath}/workers/scripts/${TARGET_WORKER}/deployments`,
@@ -169,15 +180,25 @@ async function observeSecurityLogHyperdrive({ accountId, apiToken, githubSha, fe
   );
   const version = versionResponse.result;
   const message = version?.annotations?.["workers/message"];
+  const runtimeMatch =
+    typeof message === "string"
+      ? /^AppBasis ulc-linz production runtime ([0-9a-f]{40}) auth-hmac:[0-9a-f]{64}(?: origin-hmac:[0-9a-f]{64})?$/.exec(
+          message,
+        )
+      : null;
   if (
     version?.id !== versionId ||
     version?.annotations?.["workers/tag"] !== TARGET_VERSION_TAG ||
-    typeof message !== "string" ||
-    !message.startsWith(`AppBasis ulc-linz production runtime ${githubSha} auth-hmac:`) ||
+    runtimeMatch === null ||
     !Array.isArray(version?.resources?.bindings)
   ) {
-    throw new Error("M5-F deployed Worker is not bound to current main.");
+    throw new Error("M5-F deployed Worker runtime annotation is invalid.");
   }
+  await verifyUlcLinzProductionRuntimeEquivalence(repositoryRoot, {
+    deployedGithubSha: runtimeMatch[1],
+    currentGithubSha: githubSha,
+    fetchImpl: githubFetchImpl,
+  });
   const bindings = version.resources.bindings;
   const securityBindings = bindings.filter(
     (binding) => binding?.name === "SECURITY_LOG_HYPERDRIVE" && binding?.type === "hyperdrive",
