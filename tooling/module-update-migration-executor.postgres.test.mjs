@@ -3,6 +3,7 @@ import {
   cp,
   mkdtemp,
   mkdir,
+  readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -74,7 +75,10 @@ test("FC6-B applies tasks atomically to a non-empty existing app baseline and re
         FROM appbasis_person
         WHERE id = 'fc6-existing-person'
       `;
-      assert.deepEqual(seed, [{ display_name: "Existing Person" }]);
+      assert.deepEqual(
+        seed.map((row) => ({ display_name: row.display_name })),
+        [{ display_name: "Existing Person" }],
+      );
     } finally {
       await verification.client.end();
     }
@@ -163,9 +167,7 @@ test("FC6-B rolls the complete module delta back when a later target statement f
     "migrations",
     "0000_appbasis_tasks_foundation.sql",
   );
-  const originalTasksMigration = await import("node:fs/promises").then(({ readFile }) =>
-    readFile(taskMigrationPath, "utf8"),
-  );
+  const originalTasksMigration = await readFile(taskMigrationPath, "utf8");
   await writeFile(
     taskMigrationPath,
     `${originalTasksMigration}
@@ -205,14 +207,17 @@ CREATE TABLE appbasis_task_failure (
           AND table_name IN ('appbasis_task', 'appbasis_task_failure')
         ORDER BY table_name
       `;
-      assert.deepEqual(rows, []);
+      assert.deepEqual(rows.map((row) => row.table_name), []);
 
       const seed = await verification.client`
         SELECT display_name
         FROM appbasis_person
         WHERE id = 'fc6-existing-person'
       `;
-      assert.deepEqual(seed, [{ display_name: "Existing Person" }]);
+      assert.deepEqual(
+        seed.map((row) => ({ display_name: row.display_name })),
+        [{ display_name: "Existing Person" }],
+      );
     } finally {
       await verification.client.end();
     }
