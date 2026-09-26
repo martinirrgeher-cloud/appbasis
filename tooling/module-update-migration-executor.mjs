@@ -1,9 +1,9 @@
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 
 import {
-  loadRepositoryMigrationPlan,
   loadRepositoryOwnerMigrationPlan,
   validatePostgresConnectionString,
 } from "./database-migration-executor.mjs";
@@ -36,50 +36,35 @@ export async function loadModuleUpdateMigrationExecutionPlan(
     { repositoryRoot },
   );
 
-  if (
-    updatePlan.state !== "install" ||
-    updatePlan.changes.databaseMigrationDelta === null ||
-    updatePlan.changes.databaseManifest === null
-  ) {
+  if (updatePlan.module.databaseSchemaVersion === null) {
     throw new ModuleUpdateMigrationConfigurationError(
-      "FC6-B requires a pending database-owning module installation.",
+      "FC6-B requires a database-owning target module.",
     );
   }
 
-  const beforeManifest = updatePlan.changes.databaseManifest.before;
-  const afterManifest = updatePlan.changes.databaseManifest.after;
-  if (
-    !isDatabaseManifest(beforeManifest, updatePlan.app.appId) ||
-    !isDatabaseManifest(afterManifest, updatePlan.app.appId)
-  ) {
-    throw new ModuleUpdateMigrationConfigurationError(
-      "FC6-B requires canonical before/after database manifests.",
-    );
-  }
-
-  const baselineOwners = Object.fromEntries(
-    beforeManifest.owners.map((owner) => [owner.id, owner.root]),
-  );
-  if (Object.keys(baselineOwners).length !== beforeManifest.owners.length) {
-    throw new ModuleUpdateMigrationConfigurationError(
-      "FC6-B baseline database owners are not unique.",
-    );
-  }
-
-  const baselinePlan = await loadRepositoryMigrationPlan({
+  const repositoryContract = await resolveRepositoryMigrationContract({
     repositoryRoot,
-    manifestPath: resolve(
-      repositoryRoot,
-      "apps",
-      updatePlan.app.appId,
-      "appbasis.database.json",
-    ),
-    expectedApplication: updatePlan.app.appId,
-    expectedOwners: baselineOwners,
-    ConfigurationError: ModuleUpdateMigrationConfigurationError,
+    updatePlan,
   });
+  const { baselineOwners, targetOwner, repositoryState } = repositoryContract;
 
-  const targetOwner = updatePlan.changes.databaseMigrationDelta.addedOwner;
+  if (baselineOwners.length === 0) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B requires a non-empty existing database baseline.",
+    );
+  }
+
+  const baselinePlan = [];
+  for (const owner of baselineOwners) {
+    baselinePlan.push(
+      ...(await loadRepositoryOwnerMigrationPlan({
+        repositoryRoot,
+        owner,
+        ConfigurationError: ModuleUpdateMigrationConfigurationError,
+      })),
+    );
+  }
+
   const targetPlan = await loadRepositoryOwnerMigrationPlan({
     repositoryRoot,
     owner: targetOwner,
@@ -109,8 +94,9 @@ export async function loadModuleUpdateMigrationExecutionPlan(
     operation: "module-install-migrations",
     application: updatePlan.app.appId,
     moduleId: updatePlan.module.moduleId,
+    repositoryState,
     beforeOwnerIds: Object.freeze(
-      beforeManifest.owners.map((owner) => owner.id),
+      baselineOwners.map((owner) => owner.id),
     ),
     targetOwner: Object.freeze({
       id: targetOwner.id,
@@ -129,6 +115,89 @@ export async function loadModuleUpdateMigrationExecutionPlan(
         }),
       ),
     ),
+  });
+}
+
+async function resolveRepositoryMigrationContract({
+  repositoryRoot,
+  updatePlan,
+}) {
+  if (
+    updatePlan.state === "install" &&
+    updatePlan.changes.databaseMigrationDelta !== null &&
+    updatePlan.changes.databaseManifest !== null
+  ) {
+    const beforeManifest = updatePlan.changes.databaseManifest.before;
+    const afterManifest = updatePlan.changes.databaseManifest.after;
+    if (
+      !isDatabaseManifest(beforeManifest, updatePlan.app.appId) ||
+      !isDatabaseManifest(afterManifest, updatePlan.app.appId)
+    ) {
+      throw new ModuleUpdateMigrationConfigurationError(
+        "FC6-B requires canonical before/after database manifests.",
+      );
+    }
+
+    return Object.freeze({
+      repositoryState: "pending-repository-update",
+      baselineOwners: Object.freeze([...beforeManifest.owners]),
+      targetOwner: updatePlan.changes.databaseMigrationDelta.addedOwner,
+    });
+  }
+
+  if (updatePlan.state !== "already-installed") {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B requires a pending or canonically published database-owning module installation.",
+    );
+  }
+
+  const manifestPath = join(
+    repositoryRoot,
+    "apps",
+    updatePlan.app.appId,
+    "appbasis.database.json",
+  );
+  let currentManifest;
+  try {
+    currentManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B published target database manifest could not be read.",
+    );
+  }
+  if (!isDatabaseManifest(currentManifest, updatePlan.app.appId)) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B published target database manifest is invalid.",
+    );
+  }
+
+  const targetOwners = currentManifest.owners.filter(
+    (owner) => owner.id === updatePlan.module.moduleId,
+  );
+  if (targetOwners.length !== 1) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B published target must contain exactly one target module database owner.",
+    );
+  }
+
+  const targetOwner = targetOwners[0];
+  if (
+    targetOwner.root !== `modules/${updatePlan.module.moduleId}` ||
+    targetOwner.schemaVersion !== updatePlan.module.databaseSchemaVersion
+  ) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B published target owner does not match the verified module contract.",
+    );
+  }
+
+  const baselineOwners = currentManifest.owners.filter(
+    (owner) => owner.id !== updatePlan.module.moduleId,
+  );
+
+  return Object.freeze({
+    repositoryState: "published-target",
+    baselineOwners: Object.freeze(baselineOwners),
+    targetOwner: Object.freeze(targetOwner),
   });
 }
 
