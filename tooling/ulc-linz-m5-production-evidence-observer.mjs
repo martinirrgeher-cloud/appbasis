@@ -14,6 +14,7 @@ import {
 import { verifyUlcLinzM5BackupContract } from "./ulc-linz-m5-backup-contract.mjs";
 import { deriveUlcLinzM5GResourceBindingFingerprint } from "./ulc-linz-m5-provider-bound-evidence.mjs";
 import { deriveUlcLinzProductionRuntimeContractDigest } from "./ulc-linz-m6-production-resource-binding.mjs";
+import { verifyUlcLinzProductionRuntimeEquivalence } from "./ulc-linz-m6-runtime-contract-equivalence.mjs";
 
 const NEON_API = "https://console.neon.tech/api/v2";
 const TARGET_PROJECT = "appbasis-ulc-linz-production";
@@ -104,6 +105,7 @@ export async function collectUlcLinzM5ProductionEvidenceBundle(
   },
   {
     fetchImpl = fetch,
+    githubFetchImpl = fetch,
     now = new Date(),
     readProductionTables = readProductionLifecycleTables,
   } = {},
@@ -132,7 +134,14 @@ export async function collectUlcLinzM5ProductionEvidenceBundle(
     lifecycleInventory,
   ] = await Promise.all([
     observeNeon({ apiKey: safeNeonKey, orgId: safeOrgId, fetchImpl }),
-    observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }),
+    observeCloudflare({
+      repositoryRoot: root,
+      accountId,
+      apiToken,
+      githubSha,
+      fetchImpl,
+      githubFetchImpl,
+    }),
     deriveUlcLinzLifecycleContractDigest(root),
     verifyUlcLinzM5BackupContract(root),
     readJson(resolve(root, "apps/ulc-linz/appbasis.app.json")),
@@ -398,7 +407,14 @@ async function observeNeon({ apiKey, orgId, fetchImpl }) {
   });
 }
 
-async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) {
+async function observeCloudflare({
+  repositoryRoot,
+  accountId,
+  apiToken,
+  githubSha,
+  fetchImpl,
+  githubFetchImpl,
+}) {
   const initialRequests = buildUlcLinzM5CloudflareReadSurface(accountId);
   const responses = await Promise.all(
     initialRequests.map(({ requestClass, url }) =>
@@ -496,16 +512,27 @@ async function observeCloudflare({ accountId, apiToken, githubSha, fetchImpl }) 
   );
 
   const message = version?.annotations?.["workers/message"];
-  const expectedMessagePattern = new RegExp(
-    `^AppBasis ulc-linz production runtime ${githubSha} auth-hmac:[0-9a-f]{64} origin-hmac:${pilotOriginFingerprint}$`,
-  );
+  const deployedRuntimeMatch =
+    typeof message === "string"
+      ? /^AppBasis ulc-linz production runtime ([0-9a-f]{40}) auth-hmac:[0-9a-f]{64} origin-hmac:([0-9a-f]{64})$/.exec(
+          message,
+        )
+      : null;
   if (
     version?.annotations?.["workers/tag"] !== TARGET_VERSION_TAG ||
-    typeof message !== "string" ||
-    !expectedMessagePattern.test(message)
+    deployedRuntimeMatch === null ||
+    deployedRuntimeMatch[2] !== pilotOriginFingerprint
   ) {
-    throw new Error("ULC production Worker version is not bound to the current main runtime and pilot origin.");
+    throw new Error(
+      "ULC production Worker version is not bound to the approved runtime contract and pilot origin.",
+    );
   }
+
+  await verifyUlcLinzProductionRuntimeEquivalence(repositoryRoot, {
+    deployedGithubSha: deployedRuntimeMatch[1],
+    currentGithubSha: githubSha,
+    fetchImpl: githubFetchImpl,
+  });
 
   const telemetryActive = inspectCloudflareTelemetry(settingsResponse.result);
   return Object.freeze({ hyperdriveId, telemetryActive });
