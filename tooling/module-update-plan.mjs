@@ -272,7 +272,6 @@ function deriveDatabaseMigrationDelta({
   }
 
   assertUniqueDatabaseOwnerIds(beforeOwners, "current");
-  assertUniqueDatabaseOwnerIds(nextDatabaseManifest.owners, "target");
 
   const moduleId = moduleDefinition.moduleId;
   if (beforeOwners.some((owner) => owner?.id === moduleId)) {
@@ -280,6 +279,8 @@ function deriveDatabaseMigrationDelta({
       `Module ${moduleId} database owner collides with an existing database owner.`,
     );
   }
+
+  assertUniqueDatabaseOwnerIds(nextDatabaseManifest.owners, "target");
 
   const addedOwners = nextDatabaseManifest.owners.filter(
     (owner) => owner?.id === moduleId,
