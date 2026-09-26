@@ -406,7 +406,9 @@ function catalogMarkersFromStatement(statement) {
       { kind: "table", name: table, present: true },
     ];
     for (const segment of splitTopLevel(createTable[3])) {
-      const trimmed = segment.trim();
+      const trimmed = stripLeadingSqlComments(segment);
+      if (trimmed.length === 0) return [];
+
       const namedConstraint = new RegExp(
         `^CONSTRAINT\\s+${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
         "i",
@@ -421,17 +423,17 @@ function catalogMarkersFromStatement(statement) {
         continue;
       }
       if (/^(?:PRIMARY|UNIQUE|CHECK|FOREIGN|EXCLUDE)\b/i.test(trimmed)) {
-        continue;
+        return [];
       }
       const column = new RegExp(`^${IDENTIFIER_SOURCE}${IDENTIFIER_END}`, "i").exec(trimmed);
-      if (column !== null) {
-        markers.push({
-          kind: "column",
-          table,
-          name: capturedIdentifier(column, 1, 2),
-          present: true,
-        });
-      }
+      if (column === null) return [];
+
+      markers.push({
+        kind: "column",
+        table,
+        name: capturedIdentifier(column, 1, 2),
+        present: true,
+      });
     }
     return markers;
   }
@@ -983,6 +985,15 @@ function splitTopLevel(value) {
     }
     if (char === '"') {
       quote = '"';
+      continue;
+    }
+    if (char === "-" && next === "-") {
+      index += 2;
+      while (index < value.length && value[index] !== "\n") index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      index = skipSqlBlockComment(value, index) - 1;
       continue;
     }
     if (char === "$") {
