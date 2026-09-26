@@ -1,0 +1,120 @@
+name: ULC D4 Migration Apply
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ulc-linz-d4-migration-apply.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply isolated ULC D4 preview migration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: generated-preview-ulc-linz
+    env:
+      APPBASIS_GENERATED_APP_ID: ulc-linz
+
+    steps:
+      - name: Require main branch
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main' || {
+            echo 'ULC D4 preview mutations are main-only.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Resolve and validate ULC preview app
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN="$(node ./tooling/ulc-linz-d4-preview-plan.mjs)"
+          test "$(jq -r '.appId' <<<"$PLAN")" = 'ulc-linz' || {
+            echo 'ULC D4 preview plan resolved an unexpected app.' >&2
+            exit 1
+          }
+          printf 'migration_target=%s\n' "$(jq -r '.migrationTarget' <<<"$PLAN")" >> "$GITHUB_OUTPUT"
+
+      - name: Validate and mask isolated preview database credentials
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          for name in APPBASIS_MIGRATION_DATABASE_URL APPBASIS_DATABASE_URL APPBASIS_SECURITY_LOG_DATABASE_URL; do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing protected input: $name" >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+          node --input-type=module <<'NODE'
+          import { validateUlcLinzD4PreviewDatabaseCredentials } from "./tooling/ulc-linz-d4-preview-hyperdrive.mjs";
+          validateUlcLinzD4PreviewDatabaseCredentials({
+            migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            applicationDatabaseUrl: process.env.APPBASIS_DATABASE_URL,
+            securityLogDatabaseUrl: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
+          });
+          NODE
+
+      - name: Preflight separated ULC preview runtime principals
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight >/dev/null
+
+      - name: Apply ULC preview database manifest
+        shell: bash
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_MIGRATION_TARGET: ${{ steps.plan.outputs.migration_target }}
+          APPBASIS_APPLY_MIGRATIONS: "1"
+        run: node ./tooling/ulc-linz-d4-preview-migrate.mjs
+
+      - name: Reconcile separated ULC preview runtime database access
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_DATABASE_ACCESS: "1"
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs >/dev/null
