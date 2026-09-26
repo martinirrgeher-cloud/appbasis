@@ -985,6 +985,18 @@ function splitTopLevel(value) {
       quote = '"';
       continue;
     }
+    if (char === "$") {
+      const marker =
+        value.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)?.[0];
+      if (marker !== undefined) {
+        const closingIndex = value.indexOf(marker, index + marker.length);
+        index =
+          closingIndex === -1
+            ? value.length
+            : closingIndex + marker.length - 1;
+        continue;
+      }
+    }
     if (char === "(") {
       depth += 1;
       continue;
