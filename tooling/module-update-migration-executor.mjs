@@ -423,7 +423,7 @@ function catalogMarkersFromStatement(statement) {
         continue;
       }
       if (/^(?:PRIMARY|UNIQUE|CHECK|FOREIGN|EXCLUDE)\b/i.test(trimmed)) {
-        return [];
+        continue;
       }
       const column = new RegExp(`^${IDENTIFIER_SOURCE}${IDENTIFIER_END}`, "i").exec(trimmed);
       if (column === null) return [];
