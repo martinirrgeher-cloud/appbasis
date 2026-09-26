@@ -271,6 +271,7 @@ test("FC6-B loads the real tasks module as a pending incremental migration", asy
   assert.equal(plan.operation, "module-install-migrations");
   assert.equal(plan.application, "existing");
   assert.equal(plan.moduleId, "tasks");
+  assert.equal(plan.repositoryState, "pending-repository-update");
   assert.deepEqual(plan.beforeOwnerIds, ["identity"]);
   assert.deepEqual(plan.targetOwner, {
     id: "tasks",
@@ -305,6 +306,94 @@ test("FC6-B loads the real tasks module as a pending incremental migration", asy
   assert.equal(plan.migrations.length, 1);
   assert.match(plan.migrations[0].statements[0], /CREATE TABLE appbasis_task/);
 });
+
+test("FC6-B reconstructs the same tasks delta from the canonically published target manifest", async (t) => {
+  const root = await createExistingAppFixture(t);
+  await publishTasksModuleFixture(root);
+
+  const plan = await loadModuleUpdateMigrationExecutionPlan(
+    {
+      appId: "existing",
+      moduleId: "tasks",
+    },
+    { repositoryRoot: root },
+  );
+
+  assert.equal(plan.repositoryState, "published-target");
+  assert.deepEqual(plan.beforeOwnerIds, ["identity"]);
+  assert.deepEqual(plan.targetOwner, {
+    id: "tasks",
+    root: "modules/tasks",
+    schemaVersion: 1,
+    migrations: [
+      "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+    ],
+  });
+  assert.equal(
+    plan.targetCatalogContract.some(
+      (marker) =>
+        marker.kind === "table" &&
+        marker.name === "appbasis_task" &&
+        marker.present === true,
+    ),
+    true,
+  );
+});
+
+async function publishTasksModuleFixture(root) {
+  const appPath = join(root, "apps", "existing", "appbasis.app.json");
+  const app = JSON.parse(await readFile(appPath, "utf8"));
+  app.modules = ["tasks"];
+  await writeFile(appPath, `${JSON.stringify(app, null, 2)}\n`);
+
+  const packagePath = join(root, "apps", "existing", "package.json");
+  const appPackage = JSON.parse(await readFile(packagePath, "utf8"));
+  appPackage.dependencies["@appbasis/tasks"] = "workspace:*";
+  await writeFile(packagePath, `${JSON.stringify(appPackage, null, 2)}\n`);
+
+  const databasePath = join(
+    root,
+    "apps",
+    "existing",
+    "appbasis.database.json",
+  );
+  const database = JSON.parse(await readFile(databasePath, "utf8"));
+  database.owners.push({
+    id: "tasks",
+    root: "modules/tasks",
+    schemaVersion: 1,
+    migrations: [
+      "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+    ],
+  });
+  await writeFile(databasePath, `${JSON.stringify(database, null, 2)}\n`);
+
+  await writeFile(
+    join(root, "pnpm-lock.yaml"),
+    `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/existing:
+    dependencies:
+      '@appbasis/identity':
+        specifier: workspace:*
+        version: link:../../packages/identity
+      '@appbasis/tasks':
+        specifier: workspace:*
+        version: link:../../modules/tasks
+      hono:
+        specifier: 4.13.1
+        version: 4.13.1
+`,
+  );
+}
 
 async function createExistingAppFixture(t) {
   const root = await mkdtemp(join(tmpdir(), "appbasis-fc6-b-"));
