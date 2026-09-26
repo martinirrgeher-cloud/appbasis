@@ -271,6 +271,9 @@ function deriveDatabaseMigrationDelta({
     throw new Error("Current database ownership manifest owners are invalid.");
   }
 
+  assertUniqueDatabaseOwnerIds(beforeOwners, "current");
+  assertUniqueDatabaseOwnerIds(nextDatabaseManifest.owners, "target");
+
   const moduleId = moduleDefinition.moduleId;
   if (beforeOwners.some((owner) => owner?.id === moduleId)) {
     throw new Error(
@@ -323,6 +326,18 @@ function deriveDatabaseMigrationDelta({
       migrations: Object.freeze([...expectedOwner.migrations]),
     }),
   });
+}
+
+function assertUniqueDatabaseOwnerIds(owners, label) {
+  const ids = owners.map((owner) => owner?.id);
+  if (
+    ids.some((id) => typeof id !== "string" || id.length === 0) ||
+    new Set(ids).size !== ids.length
+  ) {
+    throw new Error(
+      `Database migration delta ${label} ownership manifest contains duplicate or invalid owner IDs.`,
+    );
+  }
 }
 
 function assertDatabaseManifestMatches(appId, actual, expected) {
