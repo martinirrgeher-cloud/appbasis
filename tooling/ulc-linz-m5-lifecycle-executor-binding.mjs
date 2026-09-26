@@ -20,10 +20,15 @@ const GITHUB_EVIDENCE_TIMEOUT_MS = 10000;
 const GITHUB_EVIDENCE_ATTEMPTS = 3;
 const GITHUB_EVIDENCE_RETRY_DELAY_MS = 250;
 const MAX_PREFLIGHT_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_SAFE_RESUME_DEPTH = 4;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const SAFE_RESUME_FILES = Object.freeze([
   "tooling/ulc-linz-m5-lifecycle-executor-binding.mjs",
   "tooling/ulc-linz-m5-lifecycle-executor-binding-retry.test.mjs",
+  ".github/workflows/m5-ulc-production-evidence.yml",
+  "tooling/ulc-linz-m5-production-evidence-workflow.test.mjs",
+  ".github/workflows/m6-ulc-production-refresh-chain.yml",
+  "tooling/ulc-linz-m6-refresh-chain-safe-resume.test.mjs",
 ]);
 
 const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
@@ -207,30 +212,38 @@ async function fetchCurrentMainHeadSha(fetchImpl, sleep) {
 }
 
 async function trustedLifecycleHeadsForCurrentMain(currentMainHead, fetchImpl, sleep) {
-  const currentOnly = Object.freeze([currentMainHead]);
-  const payload = await fetchJsonWithRetry(
-    fetchImpl,
-    new URL(`${GITHUB_API_BASE_URL}/repos/${GITHUB_REPOSITORY}/commits/${currentMainHead}`),
-    sleep,
-  );
-  if (!isPlainObject(payload) || payload.sha !== currentMainHead) return currentOnly;
-  if (!Array.isArray(payload.parents) || payload.parents.length !== 1) return currentOnly;
-  const parent = payload.parents[0];
-  if (!isPlainObject(parent) || typeof parent.sha !== "string" || !SHA_PATTERN.test(parent.sha)) {
-    return currentOnly;
+  const trustedHeads = [currentMainHead];
+  let cursor = currentMainHead;
+
+  for (let depth = 0; depth < MAX_SAFE_RESUME_DEPTH; depth += 1) {
+    const payload = await fetchJsonWithRetry(
+      fetchImpl,
+      new URL(`${GITHUB_API_BASE_URL}/repos/${GITHUB_REPOSITORY}/commits/${cursor}`),
+      sleep,
+    );
+    if (!isPlainObject(payload) || payload.sha !== cursor) break;
+    if (!Array.isArray(payload.parents) || payload.parents.length !== 1) break;
+    const parent = payload.parents[0];
+    if (!isPlainObject(parent) || typeof parent.sha !== "string" || !SHA_PATTERN.test(parent.sha)) {
+      break;
+    }
+    if (!Array.isArray(payload.files) || payload.files.length < 1) break;
+    if (
+      payload.files.length > SAFE_RESUME_FILES.length ||
+      payload.files.some(
+        (file) =>
+          !isPlainObject(file) ||
+          typeof file.filename !== "string" ||
+          !SAFE_RESUME_FILES.includes(file.filename),
+      )
+    ) {
+      break;
+    }
+    trustedHeads.push(parent.sha);
+    cursor = parent.sha;
   }
-  if (!Array.isArray(payload.files) || payload.files.length < 1) return currentOnly;
-  if (
-    payload.files.some(
-      (file) =>
-        !isPlainObject(file) ||
-        typeof file.filename !== "string" ||
-        !SAFE_RESUME_FILES.includes(file.filename),
-    )
-  ) {
-    return currentOnly;
-  }
-  return Object.freeze([currentMainHead, parent.sha]);
+
+  return Object.freeze(trustedHeads);
 }
 
 function latestProtectedLifecycleRunsUrl() {
