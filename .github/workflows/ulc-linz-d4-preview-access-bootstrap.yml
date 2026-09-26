@@ -88,7 +88,7 @@ jobs:
             test -n "$value" || { echo "Missing protected ULC D4 access input: $name" >&2; exit 1; }
             echo "::add-mask::$value"
           done
-          node --check ./apps/ulc-linz/tooling/bootstrap-preview-admin.mjs
+          node --experimental-transform-types --import ./apps/ulc-linz/tooling/register-native-typescript-resolution.mjs --input-type=module -e "await import('./apps/ulc-linz/tooling/bootstrap-preview-admin.mjs')"
 
       - name: Resolve exact ULC D4 preview origin
         shell: bash
