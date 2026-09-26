@@ -58,6 +58,41 @@ test("FC6-B derives verifiable catalog markers from quoted PostgreSQL DDL", () =
       present: true,
     },
     {
+      kind: "constraint-count",
+      table: "appbasis_person",
+      name: "c",
+      count: 1,
+      present: true,
+    },
+    {
+      kind: "constraint-count",
+      table: "appbasis_person",
+      name: "f",
+      count: 0,
+      present: true,
+    },
+    {
+      kind: "constraint-count",
+      table: "appbasis_person",
+      name: "p",
+      count: 1,
+      present: true,
+    },
+    {
+      kind: "constraint-count",
+      table: "appbasis_person",
+      name: "u",
+      count: 1,
+      present: true,
+    },
+    {
+      kind: "constraint-count",
+      table: "appbasis_person",
+      name: "x",
+      count: 0,
+      present: true,
+    },
+    {
       kind: "constraint",
       table: "appbasis_person",
       name: "appbasis_person_display_name_check",
@@ -131,6 +166,28 @@ test("FC6-B derives the final catalog state from canonical permissions files wit
       (marker) =>
         marker.kind === "table" &&
         marker.name === "appbasis_permission_administration_audit" &&
+        marker.present === true,
+    ),
+    true,
+  );
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "constraint-count" &&
+        marker.table === "appbasis_permission_role_capability" &&
+        marker.name === "p" &&
+        marker.count === 1 &&
+        marker.present === true,
+    ),
+    true,
+  );
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "constraint-count" &&
+        marker.table === "appbasis_permission_role_capability" &&
+        marker.name === "f" &&
+        marker.count === 2 &&
         marker.present === true,
     ),
     true,

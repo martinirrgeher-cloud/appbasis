@@ -113,8 +113,10 @@ Verbindliche Grenzen:
 Der konkrete kleine Nachweisvertrag für FC6-B verwendet keine zweite allgemeine
 Migration-History-Tabelle. Stattdessen werden aus der bereits verifizierten
 Baseline-Migrationsliste Katalogmarker (Tabellen, Spalten, benannte Constraints
-und Indizes) abgeleitet und innerhalb derselben Transaktion gegen PostgreSQL
-geprüft. Der neue Moduldelta muss ebenfalls einen nicht-destruktiven,
+und Indizes) sowie exakte Constraint-Anzahlen je Tabelle und Constraint-Typ
+(`PRIMARY KEY`, `UNIQUE`, `CHECK`, `FOREIGN KEY`, `EXCLUDE`) abgeleitet
+und innerhalb derselben Transaktion gegen PostgreSQL geprüft. Damit werden auch
+fehlende oder zusätzliche unbenannte Constraints als Baseline-Drift erkannt. Der neue Moduldelta muss ebenfalls einen nicht-destruktiven,
 verifizierbaren Katalogvertrag besitzen. Bereits vorhandene Zielmarker werden
 vor dem ersten DDL als bereits/teilweise angewendet fail-closed abgewiesen.
 
@@ -124,8 +126,9 @@ installationsspezifisch; es entsteht kein zweites allgemeines
 Migration-Framework.
 
 Der FC6-B-Katalognachweis unterstützt in diesem Slice bewusst nur die
-ausführbar geprüften DDL-Klassen Tabellen, Spalten, benannte Constraints und
-Indizes. Mehrere SQL-Kommandos innerhalb einer Migrationsdatei werden einzeln
+ausführbar geprüften DDL-Klassen Tabellen, Spalten, Constraints und Indizes.
+Bei Constraints werden benannte Constraints zusätzlich namentlich und alle
+unterstützten Constraint-Typen tabellenweise exakt gezählt. Mehrere SQL-Kommandos innerhalb einer Migrationsdatei werden einzeln
 ausgewertet. Migrationen mit anderen Wirkungsklassen wie Rollen-, Grant-,
 Funktions- oder frei programmierbarer DO-Block-Logik werden nicht stillschweigend
 ignoriert, sondern bleiben für diesen inkrementellen Pfad fail-closed, bis ein

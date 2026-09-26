@@ -108,7 +108,7 @@ test("FC6-B applies tasks atomically to a non-empty existing app baseline and re
   }
 });
 
-test("FC6-B rejects baseline drift before executing target module SQL", async (t) => {
+test("FC6-B rejects unnamed constraint baseline drift before executing target module SQL", async (t) => {
   const root = await createExistingAppFixture(t);
   const admin = createPostgresDatabase(databaseUrl);
 
@@ -118,7 +118,7 @@ test("FC6-B rejects baseline drift before executing target module SQL", async (t
     const drift = createPostgresDatabase(targetUrl.toString());
     try {
       await drift.client.unsafe(
-        "ALTER TABLE appbasis_person DROP COLUMN display_name",
+        "ALTER TABLE appbasis_person DROP CONSTRAINT appbasis_person_pkey",
       );
     } finally {
       await drift.client.end();
