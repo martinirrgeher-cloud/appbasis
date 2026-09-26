@@ -300,6 +300,7 @@ function assertNoopPlan(plan) {
     plan.changes.appDefinition !== null ||
     plan.changes.packageDependency !== null ||
     plan.changes.databaseManifest !== null ||
+    plan.changes.databaseMigrationDelta !== null ||
     plan.changes.workspaceLockfile !== null ||
     plan.writes.length !== 0
   ) {
