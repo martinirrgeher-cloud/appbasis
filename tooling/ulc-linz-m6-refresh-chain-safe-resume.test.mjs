@@ -12,18 +12,24 @@ test("M6 refresh chain reuses prerequisites only across a bounded evidence-only 
 
   for (const marker of [
     "trusted_prerequisite_heads()",
-    'while test "$depth" -lt 4',
+    'while test "$depth" -lt 20',
     '.parents | type == "array" and length == 1',
-    '.files | type == "array" and length >= 1 and length <= 6',
+    '.files | type == "array" and length >= 1 and length <= 16',
     "tooling/ulc-linz-m5-lifecycle-executor-binding.mjs",
     "tooling/ulc-linz-m5-lifecycle-executor-binding-retry.test.mjs",
+    "tooling/ulc-linz-m5-production-evidence-observer.mjs",
+    "tooling/ulc-linz-m5-production-evidence-observer.test.mjs",
+    "tooling/ulc-linz-m6-production-resource-binding.mjs",
+    "tooling/ulc-linz-m6-production-resource-binding.test.mjs",
+    "tooling/ulc-linz-m6-runtime-contract-equivalence.mjs",
+    "tooling/ulc-linz-m6-runtime-contract-equivalence.test.mjs",
     ".github/workflows/m5-ulc-production-evidence.yml",
     "tooling/ulc-linz-m5-production-evidence-workflow.test.mjs",
     ".github/workflows/m6-ulc-production-refresh-chain.yml",
     "tooling/ulc-linz-m6-refresh-chain-safe-resume.test.mjs",
     '(.head_sha as $head | ($heads | index($head)) != null)',
     "bounded evidence-only safe-resume ancestor qualified",
-    "runtime/provider changes still require a new exact-head chain",
+    "runtime-contract/provider changes still require a new exact-head chain",
   ]) {
     assert.equal(source.includes(marker), true, `missing safe-resume guard: ${marker}`);
   }
