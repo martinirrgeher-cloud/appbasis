@@ -394,8 +394,406 @@ function catalogMarkersFromStatement(statement) {
   const normalized = stripLeadingSqlComments(statement);
   if (normalized.length === 0) return [];
 
+  if (containsTopLevelCreateTableInheritance(normalized)) return [];
+
   const createTable = new RegExp(
-    `^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}\\s*\\(([\\s\\S]*)\\)\\s*;?$`,
+    `^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}\\s*\\(([\\s\\S]*)\\)\\s*;?import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+
+import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
+
+import {
+  loadRepositoryOwnerMigrationPlan,
+  validatePostgresConnectionString,
+} from "./database-migration-executor.mjs";
+import { planModuleUpdate } from "./module-update-plan.mjs";
+
+const IDENTIFIER_SOURCE = '(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_$]*))';
+const IDENTIFIER_END = '(?=\\s|$|\\(|,|;)';
+
+export class ModuleUpdateMigrationConfigurationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ModuleUpdateMigrationConfigurationError";
+  }
+}
+
+export class ModuleUpdateMigrationExecutionError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ModuleUpdateMigrationExecutionError";
+  }
+}
+
+export async function loadModuleUpdateMigrationExecutionPlan(
+  { appId, moduleId } = {},
+  options = {},
+) {
+  const repositoryRoot = resolve(options.repositoryRoot ?? process.cwd());
+  const updatePlan = await planModuleUpdate(
+    { appId, moduleId },
+    { repositoryRoot },
+  );
+
+  if (updatePlan.module.databaseSchemaVersion === null) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B requires a database-owning target module.",
+    );
+  }
+
+  const repositoryContract = await resolveRepositoryMigrationContract({
+    repositoryRoot,
+    updatePlan,
+  });
+  const { baselineOwners, targetOwner, repositoryState } = repositoryContract;
+
+  if (baselineOwners.length === 0) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B requires a non-empty existing database baseline.",
+    );
+  }
+
+  const baselinePlan = [];
+  for (const owner of baselineOwners) {
+    baselinePlan.push(
+      ...(await loadRepositoryOwnerMigrationPlan({
+        repositoryRoot,
+        owner,
+        ConfigurationError: ModuleUpdateMigrationConfigurationError,
+      })),
+    );
+  }
+
+  const targetPlan = await loadRepositoryOwnerMigrationPlan({
+    repositoryRoot,
+    owner: targetOwner,
+    ConfigurationError: ModuleUpdateMigrationConfigurationError,
+  });
+
+  const baselineCatalogContract = createCatalogContract(
+    baselinePlan,
+    "baseline",
+  );
+  const targetCatalogContract = createCatalogContract(targetPlan, "target");
+  assertTargetCatalogIsolation({
+    baselineCatalogContract,
+    targetCatalogContract,
+  });
+  if (
+    targetCatalogContract.length === 0 ||
+    targetCatalogContract.some((marker) => marker.present !== true)
+  ) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B target migrations require a non-destructive catalog marker contract.",
+    );
+  }
+
+  return Object.freeze({
+    schemaVersion: 1,
+    operation: "module-install-migrations",
+    application: updatePlan.app.appId,
+    moduleId: updatePlan.module.moduleId,
+    repositoryState,
+    beforeOwnerIds: Object.freeze(
+      baselineOwners.map((owner) => owner.id),
+    ),
+    targetOwner: Object.freeze({
+      id: targetOwner.id,
+      root: targetOwner.root,
+      schemaVersion: targetOwner.schemaVersion,
+      migrations: Object.freeze([...targetOwner.migrations]),
+    }),
+    baselineCatalogContract,
+    targetCatalogContract,
+    migrations: Object.freeze(
+      targetPlan.map((migration) =>
+        Object.freeze({
+          ownerId: migration.ownerId,
+          relativePath: migration.relativePath,
+          statements: Object.freeze([...migration.statements]),
+        }),
+      ),
+    ),
+  });
+}
+
+async function resolveRepositoryMigrationContract({
+  repositoryRoot,
+  updatePlan,
+}) {
+  if (
+    updatePlan.state === "install" &&
+    updatePlan.changes.databaseMigrationDelta !== null &&
+    updatePlan.changes.databaseManifest !== null
+  ) {
+    const beforeManifest = updatePlan.changes.databaseManifest.before;
+    const afterManifest = updatePlan.changes.databaseManifest.after;
+    if (
+      !isDatabaseManifest(beforeManifest, updatePlan.app.appId) ||
+      !isDatabaseManifest(afterManifest, updatePlan.app.appId)
+    ) {
+      throw new ModuleUpdateMigrationConfigurationError(
+        "FC6-B requires canonical before/after database manifests.",
+      );
+    }
+
+    return Object.freeze({
+      repositoryState: "pending-repository-update",
+      baselineOwners: Object.freeze([...beforeManifest.owners]),
+      targetOwner: updatePlan.changes.databaseMigrationDelta.addedOwner,
+    });
+  }
+
+  if (updatePlan.state !== "already-installed") {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B requires a pending or canonically published database-owning module installation.",
+    );
+  }
+
+  const manifestPath = join(
+    repositoryRoot,
+    "apps",
+    updatePlan.app.appId,
+    "appbasis.database.json",
+  );
+  let currentManifest;
+  try {
+    currentManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B published target database manifest could not be read.",
+    );
+  }
+  if (!isDatabaseManifest(currentManifest, updatePlan.app.appId)) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B published target database manifest is invalid.",
+    );
+  }
+
+  assertUniqueManifestOwnerIds(currentManifest.owners);
+
+  const targetOwners = currentManifest.owners.filter(
+    (owner) => owner.id === updatePlan.module.moduleId,
+  );
+  if (targetOwners.length !== 1) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B published target must contain exactly one target module database owner.",
+    );
+  }
+
+  const targetOwner = targetOwners[0];
+  const moduleManifestPath = join(
+    repositoryRoot,
+    "modules",
+    updatePlan.module.moduleId,
+    "appbasis.module.json",
+  );
+  let moduleManifest;
+  try {
+    moduleManifest = JSON.parse(await readFile(moduleManifestPath, "utf8"));
+  } catch {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B verified module manifest could not be read.",
+    );
+  }
+  const expectedTargetOwner = {
+    id: updatePlan.module.moduleId,
+    root: `modules/${updatePlan.module.moduleId}`,
+    schemaVersion: moduleManifest?.database?.schemaVersion,
+    migrations: moduleManifest?.database?.migrations,
+  };
+  if (
+    targetOwner.root !== expectedTargetOwner.root ||
+    targetOwner.schemaVersion !== updatePlan.module.databaseSchemaVersion ||
+    JSON.stringify(targetOwner) !== JSON.stringify(expectedTargetOwner)
+  ) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B published target owner does not match the verified module contract.",
+    );
+  }
+
+  const baselineOwners = currentManifest.owners.filter(
+    (owner) => owner.id !== updatePlan.module.moduleId,
+  );
+
+  return Object.freeze({
+    repositoryState: "published-target",
+    baselineOwners: Object.freeze(baselineOwners),
+    targetOwner: Object.freeze(targetOwner),
+  });
+}
+
+export async function applyModuleUpdateMigrations(
+  {
+    appId,
+    moduleId,
+    connectionString,
+    expectedDatabase,
+    expectedPrincipal,
+  } = {},
+  options = {},
+) {
+  const executionPlan = await loadModuleUpdateMigrationExecutionPlan(
+    { appId, moduleId },
+    options,
+  );
+  assertExpectedDatabase(expectedDatabase);
+  const normalizedConnectionString = validatePostgresConnectionString(
+    connectionString,
+    {
+      expectedDatabase,
+      ConfigurationError: ModuleUpdateMigrationConfigurationError,
+    },
+  );
+  assertConnectionPrincipal(
+    normalizedConnectionString,
+    expectedPrincipal,
+  );
+
+  const createDatabase = options.createDatabase ?? createPostgresDatabase;
+  if (typeof createDatabase !== "function") {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B migration database factory is unavailable.",
+    );
+  }
+
+  let connection;
+  try {
+    connection = createDatabase(normalizedConnectionString);
+  } catch {
+    throw new ModuleUpdateMigrationExecutionError(
+      "FC6-B migration database connection could not be created.",
+    );
+  }
+
+  let primaryError;
+  let statementCount = 0;
+  try {
+    await connection.client.begin(async (transaction) => {
+      await verifyTargetIdentity(transaction, {
+        expectedDatabase,
+        expectedPrincipal,
+      });
+
+      await transaction`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(
+            ${`${executionPlan.application}:${executionPlan.moduleId}`},
+            0
+          )
+        )
+      `;
+
+      await verifyCatalogContract(
+        transaction,
+        executionPlan.baselineCatalogContract,
+        "FC6-B existing database baseline does not match the expected app contract.",
+      );
+
+      if (
+        await anyCatalogMarkerExists(
+          transaction,
+          executionPlan.targetCatalogContract,
+        )
+      ) {
+        throw new ModuleUpdateMigrationExecutionError(
+          "FC6-B target module appears already or partially applied.",
+        );
+      }
+
+      for (const migration of executionPlan.migrations) {
+        for (const statement of migration.statements) {
+          await transaction.unsafe(statement);
+          statementCount += 1;
+        }
+      }
+
+      await verifyCatalogContract(
+        transaction,
+        executionPlan.targetCatalogContract,
+        "FC6-B target module migration did not reach its catalog contract.",
+      );
+    });
+
+    return Object.freeze({
+      state: "applied",
+      application: executionPlan.application,
+      moduleId: executionPlan.moduleId,
+      repositoryState: executionPlan.repositoryState,
+      migrationCount: executionPlan.migrations.length,
+      statementCount,
+      baselineMarkerCount: executionPlan.baselineCatalogContract.length,
+      targetMarkerCount: executionPlan.targetCatalogContract.length,
+    });
+  } catch (error) {
+    primaryError = error;
+    if (error instanceof ModuleUpdateMigrationExecutionError) throw error;
+    throw new ModuleUpdateMigrationExecutionError(
+      "FC6-B module migration transaction failed and was rolled back.",
+    );
+  } finally {
+    try {
+      await connection.client.end();
+    } catch {
+      if (primaryError === undefined) {
+        throw new ModuleUpdateMigrationExecutionError(
+          "FC6-B migration database connection could not be closed cleanly.",
+        );
+      }
+    }
+  }
+}
+
+export function createCatalogContract(plan, label = "migration") {
+  if (!Array.isArray(plan) || plan.length === 0) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      `FC6-B ${label} migration plan is empty.`,
+    );
+  }
+
+  const finalMarkers = new Map();
+  for (const migration of plan) {
+    if (!Array.isArray(migration?.statements) || migration.statements.length === 0) {
+      throw new ModuleUpdateMigrationConfigurationError(
+        `FC6-B ${label} migration entry is invalid.`,
+      );
+    }
+    for (const statement of migration.statements) {
+      const commands = splitSqlCommands(statement);
+      if (commands.length === 0) {
+        throw new ModuleUpdateMigrationConfigurationError(
+          `FC6-B ${label} migration contains no executable SQL command.`,
+        );
+      }
+      for (const command of commands) {
+        const markers = catalogMarkersFromStatement(command);
+        if (markers.length === 0) {
+          throw new ModuleUpdateMigrationConfigurationError(
+            `FC6-B ${label} migration contains a statement without a verifiable catalog marker.`,
+          );
+        }
+        for (const marker of markers) {
+          finalMarkers.set(catalogMarkerKey(marker), marker);
+        }
+      }
+    }
+  }
+
+  return Object.freeze(
+    [...finalMarkers.values()]
+      .sort((left, right) =>
+        catalogMarkerKey(left).localeCompare(catalogMarkerKey(right)),
+      )
+      .map((marker) => Object.freeze(marker)),
+  );
+}
+
+function catalogMarkersFromStatement(statement) {
+  if (typeof statement !== "string") return [];
+  const normalized = stripLeadingSqlComments(statement);
+  if (normalized.length === 0) return [];
+
+,
     "i",
   ).exec(normalized);
   if (createTable !== null) {
@@ -562,6 +960,70 @@ function assertTargetCatalogIsolation({
       );
     }
   }
+}
+
+function containsTopLevelCreateTableInheritance(value) {
+  if (!/^CREATE\s+TABLE\b/i.test(value)) return false;
+
+  let index = 0;
+  let depth = 0;
+  while (index < value.length) {
+    const char = value[index];
+    const next = value[index + 1];
+
+    if (char === "-" && next === "-") {
+      index += 2;
+      while (index < value.length && value[index] !== "\n") index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      index = skipSqlBlockComment(value, index);
+      continue;
+    }
+    if (char === "'") {
+      index = skipSqlSingleQuotedString(value, index);
+      continue;
+    }
+    if (char === '"') {
+      index = skipSqlDoubleQuotedIdentifier(value, index);
+      continue;
+    }
+    if (char === "$") {
+      const marker =
+        value.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)?.[0];
+      if (marker !== undefined) {
+        const closingIndex = value.indexOf(marker, index + marker.length);
+        index =
+          closingIndex === -1
+            ? value.length
+            : closingIndex + marker.length;
+        continue;
+      }
+    }
+
+    if (char === "(") {
+      depth += 1;
+      index += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      index += 1;
+      continue;
+    }
+
+    if (depth === 0 && /[A-Za-z_]/.test(char)) {
+      let end = index + 1;
+      while (end < value.length && /[A-Za-z0-9_$]/.test(value[end])) end += 1;
+      if (value.slice(index, end).toUpperCase() === "INHERITS") return true;
+      index = end;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  return false;
 }
 
 function stripLeadingSqlComments(value) {
@@ -759,8 +1221,11 @@ function isDatabaseManifest(value, application) {
 }
 
 function capturedIdentifier(match, quotedIndex, plainIndex) {
-  const value = match[quotedIndex] ?? match[plainIndex];
-  return value.replaceAll('""', '"');
+  const quoted = match[quotedIndex];
+  if (quoted !== undefined) return quoted.replaceAll('""', '"');
+
+  const plain = match[plainIndex];
+  return plain.toLowerCase();
 }
 
 function catalogMarkerKey(marker) {
