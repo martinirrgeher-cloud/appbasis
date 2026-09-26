@@ -116,7 +116,6 @@ jobs:
                   tooling/ulc-linz-m5-lifecycle-executor-binding-retry.test.mjs|\
                   tooling/ulc-linz-m5-production-evidence-observer.mjs|\
                   tooling/ulc-linz-m5-production-evidence-observer.test.mjs|\
-                  tooling/ulc-linz-m6-production-resource-binding.mjs|\
                   tooling/ulc-linz-m6-production-resource-binding.test.mjs|\
                   tooling/ulc-linz-m6-runtime-contract-equivalence.mjs|\
                   tooling/ulc-linz-m6-runtime-contract-equivalence.test.mjs|\
@@ -124,6 +123,13 @@ jobs:
                   tooling/ulc-linz-m5-production-evidence-workflow.test.mjs|\
                   .github/workflows/m6-ulc-production-refresh-chain.yml|\
                   tooling/ulc-linz-m6-refresh-chain-safe-resume.test.mjs)
+                    ;;
+                  tooling/ulc-linz-m6-production-resource-binding.mjs)
+                    resource_binding_blob="$(jq -er --arg file "$changed_file" '.files[] | select(.filename == $file) | .sha' "$commit_file" 2>/dev/null || true)"
+                    if test "$resource_binding_blob" != "837846c60c8337e746272cc1540ecc5adb61466c"; then
+                      safe_commit=false
+                      break
+                    fi
                     ;;
                   *)
                     safe_commit=false
