@@ -201,11 +201,11 @@ test("observer reports lifecycle executors unbound before repository binding whi
   for (const id of [
     "deletionConcept",
     "retention",
+    "privilegedControlPlaneIsolation",
   ]) {
     assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "verified", id);
   }
   for (const id of [
-    "privilegedControlPlaneIsolation",
     "auditSecurityLogging",
     "dataRegion",
     "dpa",
