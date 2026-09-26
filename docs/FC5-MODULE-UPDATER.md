@@ -119,3 +119,38 @@ modullosen Produktionsscope gebunden. `countdown` muss diese Evidenz bis zu eine
 separaten Revalidierung fail-closed öffnen; FC5-C darf weder Production Ready
 noch eine Produktionsfreigabe aus der reinen Manifest-/Workspace-Installation
 ableiten.
+
+## FC5-D – ULC Countdown Production Revalidation
+
+Nach der isolierten D4-Preview und der echten Benutzerabnahme wurde der bestehende
+ULC-Produktionspfad für den durch FC5 hinzugefügten `countdown`-Scope getrennt
+neu validiert. Das ist **kein erneuter M6-Meilensteinabschluss**, sondern die
+erforderliche Production-Revalidation des ersten realen FC5-Verbrauchers.
+
+Die akzeptierte Kette ist an den ULC-Produktions-Head
+`bab8b18fd9e88025a6df0ccbffe8c51b972fe4b3` gebunden und umfasst:
+
+- M5 Production Evidence: Run `36247785054`
+- kontrollierter workers.dev Pilot-Ingress: Run `36248019506`
+- dedizierter Production-Smoke-Principal: Run `36248085829`
+- Post-Deploy-Smoke: Run `36248243012`
+
+Der read-only Evidence-Reader unter
+`tooling/ulc-linz-fc5-production-revalidation-evidence.mjs` akzeptiert diesen
+Stand nur, wenn zusätzlich die D4-Preview-Acceptance weiter verifizierbar ist,
+alle vier Production-Runs erfolgreiche First Attempts auf dem akzeptierten Head
+sind, ihre Reihenfolge konsistent ist und seitdem kein Pfad des kanonischen
+ULC-Production-Runtime-Vertrags geändert wurde.
+
+Die maschinenlesbare Akzeptanz liegt unter
+`apps/ulc-linz/evidence/fc5-countdown-production-revalidation.json`.
+
+Damit ist der erste persistenzfreie FC5-Updatepfad
+`bestehende App → Modulinstallation → Runtime/UI → isolierte Preview →
+Production-Revalidation` für `ulc-linz + countdown` Ende-zu-Ende belegt.
+Datenbank-ownende Module bleiben weiterhin fail-closed, bis ein eigener
+atomarer Migrations-Ausführungsvertrag dafür existiert.
+
+Die finale organisatorische Produktionsfreigabe bleibt davon getrennt und wird
+durch diese Evidence ausdrücklich nicht autorisiert.
+
