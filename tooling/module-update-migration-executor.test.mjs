@@ -17,6 +17,7 @@ import {
   loadModuleUpdateMigrationExecutionPlan,
   ModuleUpdateMigrationConfigurationError,
 } from "./module-update-migration-executor.mjs";
+import { migrationStatements } from "./database-migration-executor.mjs";
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -101,6 +102,58 @@ test("FC6-B keeps the final catalog state when a constraint is replaced", () => 
       present: true,
     },
   ]);
+});
+
+test("FC6-B derives the final catalog state from canonical permissions files with consecutive SQL commands", async () => {
+  const migrations = [];
+  for (const migration of [
+    "0000_appbasis_permissions_foundation.sql",
+    "0001_appbasis_permission_role_lifecycle.sql",
+    "0002_appbasis_permission_administration_audit.sql",
+    "0003_appbasis_principal_permission_administration_audit.sql",
+  ]) {
+    const sql = await readFile(
+      join(repositoryRoot, "packages", "permissions", "migrations", migration),
+      "utf8",
+    );
+    migrations.push({
+      ownerId: "permissions",
+      relativePath: `packages/permissions/migrations/${migration}`,
+      statements: migrationStatements(sql),
+    });
+  }
+
+  const contract = createCatalogContract(migrations, "permissions baseline");
+
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "table" &&
+        marker.name === "appbasis_permission_administration_audit" &&
+        marker.present === true,
+    ),
+    true,
+  );
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "constraint" &&
+        marker.table === "appbasis_permission_administration_audit" &&
+        marker.name ===
+          "appbasis_permission_administration_audit_event_type_check" &&
+        marker.present === true,
+    ),
+    true,
+  );
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "index" &&
+        marker.name === "appbasis_permission_administration_audit_target_idx" &&
+        marker.present === true,
+    ),
+    true,
+  );
 });
 
 test("FC6-B fails closed when a migration statement has no catalog proof", () => {
