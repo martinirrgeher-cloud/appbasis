@@ -94,6 +94,96 @@ jobs:
           });
           NODE
 
+      - name: Align isolated preview role passwords with protected URLs
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          PROJECT_NAME: appbasis-ulc-linz-preview
+          DATABASE_NAME: appbasis_ulc_linz_preview
+          MIGRATION_ROLE: appbasis_ulc_linz_preview_migration
+          APPLICATION_ROLE: appbasis_ulc_linz_preview_application
+          SECURITY_LOG_ROLE: appbasis_ulc_linz_preview_security_log
+        run: |
+          set -euo pipefail
+          test -n "$NEON_API_KEY" || { echo 'Missing NEON_API_KEY.' >&2; exit 1; }
+          test -n "$NEON_ORG_ID" || { echo 'Missing NEON_ORG_ID.' >&2; exit 1; }
+          echo "::add-mask::$NEON_API_KEY"
+          echo "::add-mask::$NEON_ORG_ID"
+
+          API='https://console.neon.tech/api/v2'
+          AUTH=(-H "Authorization: Bearer $NEON_API_KEY" -H 'Accept: application/json')
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}"             "$API/projects?org_id=$NEON_ORG_ID&search=$PROJECT_NAME&limit=100"             -o "$TMP_DIR/projects.json"
+          PROJECT_ID="$(jq -r --arg name "$PROJECT_NAME" '
+            (if type == "array" then . else (.projects // []) end)
+            | map(select(.name == $name))
+            | if length == 1 then .[0].id else empty end
+          ' "$TMP_DIR/projects.json")"
+          test -n "$PROJECT_ID" || { echo 'Exact isolated ULC D4 Neon project was not uniquely resolved.' >&2; exit 1; }
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}" "$API/projects/$PROJECT_ID/branches" -o "$TMP_DIR/branches.json"
+          BRANCH_ID="$(jq -r '
+            ((.branches // []) | map(select(.default == true)) | .[0].id) //
+            ((.branches // [])[0].id) // empty
+          ' "$TMP_DIR/branches.json")"
+          test -n "$BRANCH_ID" || { echo 'ULC D4 Neon default branch was not resolved.' >&2; exit 1; }
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}" "$API/projects/$PROJECT_ID/branches/$BRANCH_ID/roles" -o "$TMP_DIR/roles.json"
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}" "$API/projects/$PROJECT_ID/branches/$BRANCH_ID/databases" -o "$TMP_DIR/databases.json"
+
+          ADMIN_ROLE="$(jq -r '
+            ((.roles // []) | map(select(.name == "neondb_owner")) | .[0].name) //
+            ((.roles // [])[0].name) // empty
+          ' "$TMP_DIR/roles.json")"
+          ADMIN_DB="$(jq -r '
+            ((.databases // []) | map(select(.name == "neondb")) | .[0].name) //
+            ((.databases // [])[0].name) // empty
+          ' "$TMP_DIR/databases.json")"
+          test -n "$ADMIN_ROLE" || { echo 'Neon owner role was not resolved.' >&2; exit 1; }
+          test -n "$ADMIN_DB" || { echo 'Neon admin database was not resolved.' >&2; exit 1; }
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}"             "$API/projects/$PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&database_name=$ADMIN_DB&role_name=$ADMIN_ROLE&pooled=false"             -o "$TMP_DIR/admin-uri.json"
+          ADMIN_URL="$(jq -r '.uri // .connection_uri // empty' "$TMP_DIR/admin-uri.json")"
+          test -n "$ADMIN_URL" || { echo 'Direct Neon admin connection URI was not resolved.' >&2; exit 1; }
+          echo "::add-mask::$ADMIN_URL"
+
+          extract_password() {
+            URL_VALUE="$1" node --input-type=module <<'NODE'
+          const url = new URL(process.env.URL_VALUE);
+          process.stdout.write(decodeURIComponent(url.password));
+          NODE
+          }
+
+          MIGRATION_PASSWORD="$(extract_password "$APPBASIS_MIGRATION_DATABASE_URL")"
+          APPLICATION_PASSWORD="$(extract_password "$APPBASIS_DATABASE_URL")"
+          SECURITY_LOG_PASSWORD="$(extract_password "$APPBASIS_SECURITY_LOG_DATABASE_URL")"
+          test -n "$MIGRATION_PASSWORD" || { echo 'Migration URL contains no password.' >&2; exit 1; }
+          test -n "$APPLICATION_PASSWORD" || { echo 'Application URL contains no password.' >&2; exit 1; }
+          test -n "$SECURITY_LOG_PASSWORD" || { echo 'Security-log URL contains no password.' >&2; exit 1; }
+          echo "::add-mask::$MIGRATION_PASSWORD"
+          echo "::add-mask::$APPLICATION_PASSWORD"
+          echo "::add-mask::$SECURITY_LOG_PASSWORD"
+
+          align_role_password() {
+            local role="$1"
+            local password="$2"
+            psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q               --set=role="$role"               --set=pw="$password" >/dev/null <<'SQL'
+          SELECT format('ALTER ROLE %I PASSWORD %L', :'role', :'pw') \gexec
+          SQL
+          }
+
+          align_role_password "$MIGRATION_ROLE" "$MIGRATION_PASSWORD"
+          align_role_password "$APPLICATION_ROLE" "$APPLICATION_PASSWORD"
+          align_role_password "$SECURITY_LOG_ROLE" "$SECURITY_LOG_PASSWORD"
+
+          echo 'ULC D4 preview role passwords aligned with protected environment credentials.'
+
       - name: Preflight separated ULC preview runtime principals
         shell: bash
         env:
