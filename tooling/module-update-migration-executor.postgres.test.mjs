@@ -175,7 +175,8 @@ test("FC6-B rolls the complete module delta back when a later target statement f
     `${originalTasksMigration}
 --> statement-breakpoint
 CREATE TABLE appbasis_task_failure (
-  id integer REFERENCES appbasis_missing_parent(id)
+  id integer,
+  id text
 );
 `,
   );
