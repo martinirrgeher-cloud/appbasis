@@ -193,7 +193,7 @@ test("M6 worker create workflow is manual, main-only and exact-confirmation gate
   assert.match(workflow, /test "\$CONFIRMATION" = "CREATE-CLOSED-ULC-WORKER"/);
 });
 
-test("M6 worker create workflow reverifies provider state and M3 gate before the POST", async () => {
+test("M6 worker create workflow reverifies provider state and ULC D4 gate before the POST", async () => {
   const workflow = await readFile(createWorkflowPath, "utf8");
 
   assert.match(

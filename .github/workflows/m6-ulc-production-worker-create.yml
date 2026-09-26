@@ -115,7 +115,7 @@ jobs:
           echo 'mode=reconciled' >> "$GITHUB_OUTPUT"
           echo 'Existing exact ULC production Worker reconciled read-only as closed and undeployed; no create POST is needed.' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Reverify provider state and M3 preparation gate
+      - name: Reverify provider state and ULC D4 preview acceptance gate
         if: steps.reconcile.outputs.mode == 'create'
         timeout-minutes: 4
         shell: bash
@@ -167,7 +167,7 @@ jobs:
             gate?.providerStateReverificationRequired !== true ||
             gate?.betaCapabilityReverificationRequired !== true
           ) {
-            throw new Error("M3 production-preparation gate is not satisfied.");
+            throw new Error("ULC D4 production-preparation gate is not satisfied.");
           }
 
           await writeFile(

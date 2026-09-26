@@ -92,7 +92,7 @@ jobs:
           NODE
           echo 'M6 read-only provider inventory verified; no provider write is authorized.' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Verify production worker target remains blocked before M3 gate evidence
+      - name: Verify production worker target remains blocked before ULC D4 gate evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -119,7 +119,7 @@ jobs:
           const prewrite = evaluateUlcLinzM6ProductionWorkerPrewrite(providerState);
           if (
             prewrite?.stepId !== "production-worker" ||
-            prewrite?.status !== "worker-target-verified-blocked-awaiting-m3-gate-evidence" ||
+            prewrite?.status !== "worker-target-verified-blocked-awaiting-d4-gate-evidence" ||
             prewrite?.worker?.name !== "appbasis-ulc-linz-production" ||
             prewrite?.worker?.workersDev !== false ||
             prewrite?.worker?.previewUrls !== false ||

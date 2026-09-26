@@ -14,7 +14,7 @@ function validPrewrite() {
     environment: "production",
     phase: "production-preparation",
     stepId: "production-worker",
-    status: "worker-target-verified-blocked-awaiting-m3-gate-evidence",
+    status: "worker-target-verified-blocked-awaiting-d4-gate-evidence",
     priorStepVerified: "neon-production-database",
     providerInventoryVerified: true,
     noExistingCloudflareWorkerCandidate: true,
@@ -26,7 +26,7 @@ function validPrewrite() {
       publicIngress: false,
       applicationCodeUploadAllowed: false,
     },
-    requiredPreparationGateEvidence: ["M3_DONE"],
+    requiredPreparationGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
     productionPreparationGateEvidenceConsumed: false,
     productionPreparationEligible: false,
     providerWriteRequired: true,
@@ -63,7 +63,7 @@ test("M6 worker create plan uses metadata-only closed Cloudflare beta create con
       logpush: false,
       tail_consumers: [],
     },
-    requiredPreparationGateEvidence: ["M3_DONE"],
+    requiredPreparationGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
     productionPreparationGateEvidenceConsumed: false,
     productionPreparationEligible: false,
     applicationCodeUploadAllowed: false,
@@ -111,7 +111,7 @@ for (const [field, value] of [
   });
 }
 
-test("M6 worker create plan fails closed when required M3 evidence drifts", () => {
+test("M6 worker create plan fails closed when required ULC D4 evidence drifts", () => {
   const state = validPrewrite();
   state.requiredPreparationGateEvidence = ["M4_DONE"];
   assert.throws(
@@ -158,7 +158,7 @@ test("M6 worker create plan rejects accessor-backed gate evidence", () => {
     enumerable: true,
     configurable: true,
     get() {
-      return "M3_DONE";
+      return "ULC_D4_PREVIEW_ACCEPTED";
     },
   });
   gateEvidence.length = 1;
