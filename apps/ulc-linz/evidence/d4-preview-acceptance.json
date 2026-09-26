@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "environment": "preview",
+  "acceptedAppDefinitionDigest": "49104357da0d3b54d40c052d51bd6f16bd8807435309164117c2884d0e95e97d",
+  "deployRunId": 36227898782,
+  "accessRunId": 36231597187,
+  "operatorConfirmed": true,
+  "operatorConfirmedOn": "2026-09-26",
+  "recordedAt": "2026-09-26T09:15:51.000Z",
+  "checks": [
+    "login",
+    "required-password-change",
+    "countdown-sequence",
+    "pause-resume",
+    "reset"
+  ]
+}

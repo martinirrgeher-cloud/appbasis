@@ -10,6 +10,7 @@ import { createGeneratedDatabaseManifest } from "../generated-database-manifest.
 import { verifyModuleDefinitions } from "../module-definition.mjs";
 import { deriveGeneratedPreviewLifecycle } from "./generated-preview-lifecycle.mjs";
 import { deriveM3PreviewAcceptanceEvidence } from "./m3-preview-acceptance-evidence.mjs";
+import { deriveUlcLinzD4PreviewAcceptanceEvidence } from "./ulc-linz-d4-preview-acceptance-evidence.mjs";
 import { evaluateM6ProductionReleaseReadiness } from "./production-release-readiness.mjs";
 import { evaluateProductionReadiness } from "./production-readiness.mjs";
 import { deriveRepositoryProductionReadinessEvidence } from "./repository-production-readiness-evidence.mjs";
@@ -19,6 +20,8 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
   const root = resolve(repositoryRoot);
   const m3PreviewAcceptanceFetchImpl =
     options.m3PreviewAcceptanceFetchImpl ?? fetch;
+  const ulcLinzD4PreviewAcceptanceFetchImpl =
+    options.ulcLinzD4PreviewAcceptanceFetchImpl ?? m3PreviewAcceptanceFetchImpl;
   const generatedPreviewPublicationFetchImpl =
     options.generatedPreviewPublicationFetchImpl ?? fetch;
   const generatedPreviewRunEvidenceFetchImpl =
@@ -36,6 +39,7 @@ export async function loadFactorySnapshot(repositoryRoot = process.cwd(), option
     appDefinitions.map((definition) =>
       withFactoryReadiness(root, definition, {
         m3PreviewAcceptanceFetchImpl,
+        ulcLinzD4PreviewAcceptanceFetchImpl,
         generatedPreviewPublicationFetchImpl,
         generatedPreviewRunEvidenceFetchImpl,
         generatedPreviewRepositoryStateImpl,
@@ -66,6 +70,7 @@ async function withFactoryReadiness(
   definition,
   {
     m3PreviewAcceptanceFetchImpl,
+    ulcLinzD4PreviewAcceptanceFetchImpl,
     generatedPreviewPublicationFetchImpl,
     generatedPreviewRunEvidenceFetchImpl,
     generatedPreviewRepositoryStateImpl,
@@ -83,7 +88,7 @@ async function withFactoryReadiness(
     databaseManifestPresent,
     appTheme,
     generatedPreviewLifecycle,
-    m3PreviewAcceptanceEvidence,
+    previewAcceptanceEvidence,
     productionReadinessEvidence,
   ] = await Promise.all([
     pathExists(join(appRoot, "worker", "index.ts")),
@@ -97,9 +102,13 @@ async function withFactoryReadiness(
       repositoryStateImpl: generatedPreviewRepositoryStateImpl,
       runEvidenceFetchImpl: generatedPreviewRunEvidenceFetchImpl,
     }),
-    deriveM3PreviewAcceptanceEvidence(definition, {
-      fetchImpl: m3PreviewAcceptanceFetchImpl,
-    }),
+    definition.appId === "ulc-linz"
+      ? deriveUlcLinzD4PreviewAcceptanceEvidence(repositoryRoot, definition, {
+          fetchImpl: ulcLinzD4PreviewAcceptanceFetchImpl,
+        })
+      : deriveM3PreviewAcceptanceEvidence(definition, {
+          fetchImpl: m3PreviewAcceptanceFetchImpl,
+        }),
     definition.appId === "ulc-linz"
       ? deriveUlcLinzM5JProductionEvidence(
           repositoryRoot,
@@ -119,7 +128,7 @@ async function withFactoryReadiness(
     productionReadinessEvidence,
   );
   const productionReleaseReadiness = evaluateM6ProductionReleaseReadiness({
-    ...m3PreviewAcceptanceEvidence,
+    ...previewAcceptanceEvidence,
     securityPrivacyReady: productionReadiness.productionReady === true,
   });
 
