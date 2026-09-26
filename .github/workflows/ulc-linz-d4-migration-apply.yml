@@ -223,6 +223,7 @@ jobs:
           ADMIN_URL="$(jq -r '.uri // .connection_uri // empty' "$TMP_DIR/admin-uri.json")"
           test -n "$ADMIN_URL" || { echo 'DIAG_ADMIN_URI=false'; exit 1; }
           echo "::add-mask::$ADMIN_URL"
+          export ADMIN_URL
 
           URLS_JSON="$(node --input-type=module <<'NODE'
           const values = {
