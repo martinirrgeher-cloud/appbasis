@@ -21,7 +21,7 @@ test("M6 refresh chain reuses prerequisites only across a bounded evidence-only 
     "tooling/ulc-linz-m5-production-evidence-workflow.test.mjs",
     ".github/workflows/m6-ulc-production-refresh-chain.yml",
     "tooling/ulc-linz-m6-refresh-chain-safe-resume.test.mjs",
-    '($heads | index(.head_sha)) != null',
+    '(.head_sha as $head | ($heads | index($head)) != null)',
     "bounded evidence-only safe-resume ancestor qualified",
     "runtime/provider changes still require a new exact-head chain",
   ]) {
@@ -49,4 +49,19 @@ test("M6 refresh chain does not allow runtime or provider implementation files i
       `runtime/provider file must not be safe-resumable: ${forbidden}`,
     );
   }
+});
+
+
+test("M6 safe-resume jq preserves the workflow-run object while checking trusted heads", async () => {
+  const source = await readFile(REFRESH_CHAIN, "utf8");
+
+  assert.equal(
+    source.includes('($heads | index(.head_sha)) != null'),
+    false,
+    "jq must not change dot to the trusted-head array before reading the run head SHA",
+  );
+  assert.equal(
+    source.includes('(.head_sha as $head | ($heads | index($head)) != null)'),
+    true,
+  );
 });
