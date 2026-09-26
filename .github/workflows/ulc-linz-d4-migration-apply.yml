@@ -184,6 +184,115 @@ jobs:
 
           echo 'ULC D4 preview role passwords aligned with protected environment credentials.'
 
+      - name: Diagnose protected URL identity and direct authentication
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          PROJECT_NAME: appbasis-ulc-linz-preview
+          DATABASE_NAME: appbasis_ulc_linz_preview
+          MIGRATION_ROLE: appbasis_ulc_linz_preview_migration
+          APPLICATION_ROLE: appbasis_ulc_linz_preview_application
+          SECURITY_LOG_ROLE: appbasis_ulc_linz_preview_security_log
+        run: |
+          set -euo pipefail
+          API='https://console.neon.tech/api/v2'
+          AUTH=(-H "Authorization: Bearer $NEON_API_KEY" -H 'Accept: application/json')
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}"             "$API/projects?org_id=$NEON_ORG_ID&search=$PROJECT_NAME&limit=100"             -o "$TMP_DIR/projects.json"
+          PROJECT_ID="$(jq -r --arg name "$PROJECT_NAME" '
+            (if type == "array" then . else (.projects // []) end)
+            | map(select(.name == $name))
+            | if length == 1 then .[0].id else empty end
+          ' "$TMP_DIR/projects.json")"
+          test -n "$PROJECT_ID" || { echo 'DIAG_PROJECT_MATCH=false'; exit 1; }
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}" "$API/projects/$PROJECT_ID/branches" -o "$TMP_DIR/branches.json"
+          BRANCH_ID="$(jq -r '
+            ((.branches // []) | map(select(.default == true)) | .[0].id) //
+            ((.branches // [])[0].id) // empty
+          ' "$TMP_DIR/branches.json")"
+          test -n "$BRANCH_ID" || { echo 'DIAG_BRANCH_MATCH=false'; exit 1; }
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}"             "$API/projects/$PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&database_name=neondb&role_name=neondb_owner&pooled=false"             -o "$TMP_DIR/admin-uri.json"
+          ADMIN_URL="$(jq -r '.uri // .connection_uri // empty' "$TMP_DIR/admin-uri.json")"
+          test -n "$ADMIN_URL" || { echo 'DIAG_ADMIN_URI=false'; exit 1; }
+          echo "::add-mask::$ADMIN_URL"
+
+          URLS_JSON="$(node --input-type=module <<'NODE'
+          const values = {
+            migration: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            application: process.env.APPBASIS_DATABASE_URL,
+            security: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
+            admin: process.env.ADMIN_URL,
+          };
+          const parsed = Object.fromEntries(
+            Object.entries(values).map(([key, value]) => {
+              const u = new URL(value);
+              return [key, {
+                host: u.hostname.toLowerCase(),
+                user: decodeURIComponent(u.username),
+                database: decodeURIComponent(u.pathname.slice(1)),
+              }];
+            }),
+          );
+          process.stdout.write(JSON.stringify(parsed));
+          NODE
+          )"
+
+          migration_user_ok="$(jq -r --arg expected "$MIGRATION_ROLE" '.migration.user == $expected' <<<"$URLS_JSON")"
+          application_user_ok="$(jq -r --arg expected "$APPLICATION_ROLE" '.application.user == $expected' <<<"$URLS_JSON")"
+          security_user_ok="$(jq -r --arg expected "$SECURITY_LOG_ROLE" '.security.user == $expected' <<<"$URLS_JSON")"
+          migration_host_ok="$(jq -r '.migration.host == .admin.host' <<<"$URLS_JSON")"
+          application_host_ok="$(jq -r '.application.host == .admin.host' <<<"$URLS_JSON")"
+          security_host_ok="$(jq -r '.security.host == .admin.host' <<<"$URLS_JSON")"
+          migration_db_ok="$(jq -r --arg expected "$DATABASE_NAME" '.migration.database == $expected' <<<"$URLS_JSON")"
+          application_db_ok="$(jq -r --arg expected "$DATABASE_NAME" '.application.database == $expected' <<<"$URLS_JSON")"
+          security_db_ok="$(jq -r --arg expected "$DATABASE_NAME" '.security.database == $expected' <<<"$URLS_JSON")"
+
+          echo "DIAG_MIGRATION_USER_MATCH=$migration_user_ok"
+          echo "DIAG_APPLICATION_USER_MATCH=$application_user_ok"
+          echo "DIAG_SECURITY_USER_MATCH=$security_user_ok"
+          echo "DIAG_MIGRATION_HOST_MATCH=$migration_host_ok"
+          echo "DIAG_APPLICATION_HOST_MATCH=$application_host_ok"
+          echo "DIAG_SECURITY_HOST_MATCH=$security_host_ok"
+          echo "DIAG_MIGRATION_DATABASE_MATCH=$migration_db_ok"
+          echo "DIAG_APPLICATION_DATABASE_MATCH=$application_db_ok"
+          echo "DIAG_SECURITY_DATABASE_MATCH=$security_db_ok"
+
+          identity_ok=true
+          for value in             "$migration_user_ok" "$application_user_ok" "$security_user_ok"             "$migration_host_ok" "$application_host_ok" "$security_host_ok"             "$migration_db_ok" "$application_db_ok" "$security_db_ok"; do
+            test "$value" = true || identity_ok=false
+          done
+          test "$identity_ok" = true || {
+            echo 'Protected database URLs do not identify the exact isolated ULC D4 Neon principals/project.' >&2
+            exit 1
+          }
+
+          if psql "$APPBASIS_DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc 'SELECT 1' >/dev/null 2>&1; then
+            echo 'DIAG_APPLICATION_PSQL_AUTH=true'
+          else
+            echo 'DIAG_APPLICATION_PSQL_AUTH=false'
+            exit 1
+          fi
+          if psql "$APPBASIS_SECURITY_LOG_DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc 'SELECT 1' >/dev/null 2>&1; then
+            echo 'DIAG_SECURITY_PSQL_AUTH=true'
+          else
+            echo 'DIAG_SECURITY_PSQL_AUTH=false'
+            exit 1
+          fi
+          if psql "$APPBASIS_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc 'SELECT 1' >/dev/null 2>&1; then
+            echo 'DIAG_MIGRATION_PSQL_AUTH=true'
+          else
+            echo 'DIAG_MIGRATION_PSQL_AUTH=false'
+            exit 1
+          fi
+
       - name: Preflight separated ULC preview runtime principals
         shell: bash
         env:
