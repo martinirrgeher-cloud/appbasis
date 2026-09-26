@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { verifyUlcLinzProductionRuntimeEquivalence } from "../ulc-linz-m6-runtime-contract-equivalence.mjs";
-import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
+import { deriveUlcLinzD4PreviewAcceptanceEvidence } from "./ulc-linz-d4-preview-acceptance-evidence.mjs";
+import { REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA } from "./production-release-readiness.mjs";
 
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
@@ -11,6 +12,7 @@ const ACCEPTANCE_RECORD_PATH =
   "apps/ulc-linz/evidence/m6-production-pilot-acceptance.json";
 const ACCEPTED_HEAD_SHA = "bab8b18fd9e88025a6df0ccbffe8c51b972fe4b3";
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const EMPTY_EVIDENCE = Object.freeze({});
 
 export const ULC_LINZ_M6_PRODUCTION_PILOT_ACCEPTANCE_RUNS = Object.freeze({
   m5: Object.freeze({
@@ -35,50 +37,38 @@ export const ULC_LINZ_M6_PRODUCTION_PILOT_ACCEPTANCE_RUNS = Object.freeze({
   }),
 });
 
-const M6_PILOT_CRITERIA = Object.freeze([
-  "productionDatabaseReady",
-  "productionWorkerReady",
-  "productionDomainReady",
-  "productionUsersAndPermissionsReady",
-  "backupRecoveryReady",
-  "productionMigrationsApplied",
-  "productionDeploymentCompleted",
-  "postDeploySmokePassed",
-]);
-
-const EMPTY_ACCEPTANCE = Object.freeze({
-  m5ProductionEvidence: Object.freeze({}),
-  m6ProductionEvidence: Object.freeze({}),
-});
-
-export async function deriveUlcLinzM6ProductionPilotAcceptanceEvidence(
+export async function deriveUlcLinzM6ProductionPilotCloseoutEvidence(
   repositoryRoot,
   definition,
   { fetchImpl = fetch } = {},
 ) {
-  if (
-    definition?.appId !== "ulc-linz" ||
-    typeof fetchImpl !== "function"
-  ) {
-    return EMPTY_ACCEPTANCE;
+  if (definition?.appId !== "ulc-linz" || typeof fetchImpl !== "function") {
+    return EMPTY_EVIDENCE;
   }
 
   const record = await readAcceptanceRecord(repositoryRoot);
-  if (!isExactAcceptanceRecord(record)) return EMPTY_ACCEPTANCE;
+  if (!isExactAcceptanceRecord(record)) return EMPTY_EVIDENCE;
+
+  const previewEvidence = await deriveUlcLinzD4PreviewAcceptanceEvidence(
+    repositoryRoot,
+    definition,
+    { fetchImpl },
+  );
+  if (previewEvidence.previewAccepted !== true) return EMPTY_EVIDENCE;
 
   const firstMainSha = await fetchCurrentMainSha(fetchImpl);
-  if (firstMainSha === null) return EMPTY_ACCEPTANCE;
+  if (firstMainSha === null) return EMPTY_EVIDENCE;
 
   const runEntries = Object.values(ULC_LINZ_M6_PRODUCTION_PILOT_ACCEPTANCE_RUNS);
   const runs = await Promise.all(
     runEntries.map((expected) => fetchVerifiedRun(expected, fetchImpl)),
   );
-  if (runs.some((run) => run === null)) return EMPTY_ACCEPTANCE;
-
-  if (!runsAreOrdered(runs)) return EMPTY_ACCEPTANCE;
+  if (runs.some((run) => run === null) || !runsAreOrdered(runs)) {
+    return EMPTY_EVIDENCE;
+  }
 
   const confirmedMainSha = await fetchCurrentMainSha(fetchImpl);
-  if (confirmedMainSha !== firstMainSha) return EMPTY_ACCEPTANCE;
+  if (confirmedMainSha !== firstMainSha) return EMPTY_EVIDENCE;
 
   try {
     await verifyUlcLinzProductionRuntimeEquivalence(resolve(repositoryRoot), {
@@ -87,21 +77,25 @@ export async function deriveUlcLinzM6ProductionPilotAcceptanceEvidence(
       fetchImpl,
     });
   } catch {
-    return EMPTY_ACCEPTANCE;
+    return EMPTY_EVIDENCE;
   }
 
-  const m5ProductionEvidence = Object.freeze(
-    Object.fromEntries(
-      REQUIRED_PRODUCTION_READINESS_CRITERIA.map(({ id }) => [id, true]),
-    ),
-  );
-  const m6ProductionEvidence = Object.freeze(
-    Object.fromEntries(M6_PILOT_CRITERIA.map((id) => [id, true])),
+  const acceptedCriteria = REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map(
+    ({ id }) => id,
   );
 
-  return Object.freeze({
-    m5ProductionEvidence,
-    m6ProductionEvidence,
+  return deepFreeze({
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "production-pilot",
+    milestone: "M6",
+    acceptedHeadSha: ACCEPTED_HEAD_SHA,
+    technicalEvidenceVerified: true,
+    verifiedCount: acceptedCriteria.length,
+    requiredCount: acceptedCriteria.length,
+    acceptedCriteria,
+    explicitApprovalRequiredForFinalRelease: true,
+    finalProductionReleaseAuthorized: false,
   });
 }
 
@@ -239,6 +233,14 @@ function canonicalTimestamp(value) {
   if (typeof value !== "string") return false;
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+function deepFreeze(value) {
+  if (value !== null && typeof value === "object") {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 function isPlainObject(value) {
