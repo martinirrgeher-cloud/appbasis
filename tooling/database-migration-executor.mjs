@@ -145,6 +145,85 @@ export async function loadRepositoryMigrationPlan({
   return migrations;
 }
 
+export async function loadRepositoryOwnerMigrationPlan({
+  repositoryRoot,
+  owner,
+  ConfigurationError = MigrationConfigurationError,
+}) {
+  const root = path.resolve(repositoryRoot);
+  const fail = (message) => {
+    throw new ConfigurationError(message);
+  };
+
+  if (
+    !isPlainObject(owner) ||
+    typeof owner.id !== 'string' ||
+    typeof owner.root !== 'string' ||
+    !Number.isInteger(owner.schemaVersion) ||
+    owner.schemaVersion < 1 ||
+    !Array.isArray(owner.migrations) ||
+    owner.migrations.length === 0
+  ) {
+    fail('Migration owner contract is invalid.');
+  }
+
+  validateRepositoryRelativePath(owner.root, 'Migration owner root', fail);
+  const absoluteOwnerRoot = path.resolve(root, ...owner.root.split('/'));
+  if (!isWithin(root, absoluteOwnerRoot)) {
+    fail('Migration owner root escapes the repository root.');
+  }
+  await assertDirectoryCanonicalPath(
+    root,
+    absoluteOwnerRoot,
+    'Migration owner root',
+    fail,
+  );
+
+  const seenMigrationPaths = new Set();
+  const migrations = [];
+  for (const migration of owner.migrations) {
+    validateRepositoryRelativePath(migration, 'Migration path', fail);
+    if (!migration.endsWith('.sql')) {
+      fail('Migration path must point to a SQL file.');
+    }
+    if (!isWithinOwnerRoot(owner.root, migration)) {
+      fail('Migration path is outside its declared owner root.');
+    }
+    if (seenMigrationPaths.has(migration)) {
+      fail('Migration owner contract contains a duplicate migration path.');
+    }
+    seenMigrationPaths.add(migration);
+
+    const absolutePath = path.resolve(root, ...migration.split('/'));
+    if (
+      !isWithin(root, absolutePath) ||
+      !isWithin(absoluteOwnerRoot, absolutePath)
+    ) {
+      fail('Migration path escapes its allowed repository tree.');
+    }
+    await assertRegularCanonicalPath(root, absolutePath, 'Migration file', fail);
+
+    let sql;
+    try {
+      sql = await readFile(absolutePath, 'utf8');
+    } catch {
+      fail('Migration file could not be read.');
+    }
+    const statements = migrationStatements(sql);
+    if (statements.length === 0) {
+      fail('Migration file contains no executable statements.');
+    }
+    migrations.push({
+      ownerId: owner.id,
+      relativePath: migration,
+      statements,
+    });
+  }
+
+  assertMigrationPlanSafety(migrations, fail);
+  return migrations;
+}
+
 export async function applyRepositoryMigrationPlan({
   connectionString,
   expectedDatabase,
@@ -261,7 +340,7 @@ export function validatePostgresConnectionString(
   return normalized;
 }
 
-function assertMigrationPlanSafety(plan, fail) {
+export function assertMigrationPlanSafety(plan, fail) {
   if (!Array.isArray(plan) || plan.length === 0) {
     fail('Migration plan is empty or invalid.');
   }
