@@ -45,6 +45,20 @@ globalThis.fetch = async (input, options) => {
       }],
     });
   }
+  if (url.includes("/compare/")) {
+    const deployed = "c".repeat(40);
+    return Response.json({
+      status: "ahead",
+      ahead_by: 1,
+      behind_by: 0,
+      total_commits: 1,
+      base_commit: { sha: deployed },
+      merge_base_commit: { sha: deployed },
+      head_commit: { sha: GITHUB_SHA },
+      commits: [{ sha: "d".repeat(40) }],
+      files: [{ filename: "apps/ulc-linz/worker/index.ts", status: "modified" }],
+    });
+  }
   return REAL_FETCH(input, options);
 };
 test.after(() => {
@@ -262,7 +276,7 @@ test("observer never lets a later matching deployment hide active runtime drift"
   };
   await assert.rejects(
     () => collect({ fetchImpl: driftFetch }),
-    /not bound to the current main runtime/,
+    /runtime contract changed/,
   );
 });
 
@@ -359,7 +373,47 @@ test("observer fails closed on public ingress or stale restore evidence", async 
   );
 });
 
-test("observer binds Cloudflare deployment to the current exact main SHA", async () => {
+test("observer accepts an older deployed SHA when GitHub proves the runtime contract is unchanged", async () => {
+  const deployed = "c".repeat(40);
+  const historicalFetch = async (url, options) => {
+    const result = await providerFetch(url, options);
+    if (String(url).includes(`/versions/${CURRENT_VERSION}`)) {
+      const body = await result.json();
+      body.result.annotations["workers/message"] = `AppBasis ulc-linz production runtime ${deployed} auth-hmac:${"b".repeat(64)} origin-hmac:${PILOT_ORIGIN_FINGERPRINT}`;
+      return response(body);
+    }
+    return result;
+  };
+  const githubFetchImpl = async (input) => {
+    const url = String(input);
+    if (!url.includes("/compare/")) throw new Error(`Unexpected GitHub URL: ${url}`);
+    return Response.json({
+      status: "ahead",
+      ahead_by: 2,
+      behind_by: 0,
+      total_commits: 2,
+      base_commit: { sha: deployed },
+      merge_base_commit: { sha: deployed },
+      head_commit: { sha: GITHUB_SHA },
+      commits: [{ sha: "d".repeat(40) }, { sha: "e".repeat(40) }],
+      files: [
+        { filename: "tooling/ulc-linz-m5-production-evidence-observer.mjs", status: "modified" },
+        { filename: ".github/workflows/m6-ulc-production-refresh-chain.yml", status: "modified" },
+      ],
+    });
+  };
+
+  const bundle = await collect({
+    fetchImpl: historicalFetch,
+    githubFetchImpl,
+  });
+  assert.equal(
+    bundle.ownerInputs.providerBoundEvidenceInput.resourceBindingEvidence.runtime.contractDigest.length,
+    71,
+  );
+});
+
+test("observer rejects an older deployed SHA when the runtime contract changed", async () => {
   const driftFetch = async (url, options) => {
     const result = await providerFetch(url, options);
     if (String(url).includes(`/versions/${CURRENT_VERSION}`)) {
@@ -371,7 +425,7 @@ test("observer binds Cloudflare deployment to the current exact main SHA", async
   };
   await assert.rejects(
     () => collect({ fetchImpl: driftFetch }),
-    /not bound to the current main runtime/,
+    /runtime contract changed/,
   );
 });
 
