@@ -82,7 +82,13 @@ Migrationsliste aus und bleibt ohne Repository-/Datenbankwrite.
 ## FC6-B – isolierter inkrementeller Migration-Executor – aktuell
 
 Erst nach FC6-A wird ein Executor für die **neuen** Modul-Migrationen gegen eine
-bereits bestehende Datenbankbasis eingeführt.
+bereits bestehende Datenbankbasis eingeführt. Der Executor akzeptiert denselben
+verifizierten Installationsdelta in zwei Repository-Zuständen: vor der
+Repository-Publikation direkt aus dem FC6-A-Plan oder danach aus dem kanonisch
+veröffentlichten Target-Manifest. Im veröffentlichten Zustand wird der neue
+Modul-Owner exakt gegen den verifizierten Modulvertrag rückgebunden und aus der
+Baseline herausgerechnet; ein bloßes `already-installed` gilt daher nicht als
+Beweis, dass die Datenbankmigration bereits gelaufen ist.
 
 Verbindliche Grenzen:
 
