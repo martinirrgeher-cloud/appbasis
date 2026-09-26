@@ -1,0 +1,59 @@
+name: ULC D4 Cloudflare Token Diagnostic
+
+on:
+  push:
+    branches:
+      - ops/ulc-d4-neon-preview-bootstrap
+    paths:
+      - .github/workflows/ulc-linz-d4-cloudflare-token-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Diagnose Cloudflare token without exposing secrets
+    runs-on: ubuntu-24.04
+    environment:
+      name: generated-preview-ulc-linz
+    steps:
+      - name: Verify token and Hyperdrive access
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          verify_status="$(curl --silent --show-error --output "$tmp/verify.json" --write-out '%{http_code}'             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             https://api.cloudflare.com/client/v4/user/tokens/verify || true)"
+          verify_success="$(jq -r '.success // false' "$tmp/verify.json" 2>/dev/null || echo false)"
+          verify_token_status="$(jq -r '.result.status // "unknown"' "$tmp/verify.json" 2>/dev/null || echo unknown)"
+          verify_codes="$(jq -r '[.errors[]?.code] | join(",")' "$tmp/verify.json" 2>/dev/null || true)"
+          echo "TOKEN_VERIFY_HTTP=$verify_status"
+          echo "TOKEN_VERIFY_SUCCESS=$verify_success"
+          echo "TOKEN_STATUS=$verify_token_status"
+          echo "TOKEN_VERIFY_ERROR_CODES=${verify_codes:-none}"
+
+          hyper_status="$(curl --silent --show-error --output "$tmp/hyper.json" --write-out '%{http_code}'             --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/hyperdrive/configs" || true)"
+          hyper_success="$(jq -r '.success // false' "$tmp/hyper.json" 2>/dev/null || echo false)"
+          hyper_codes="$(jq -r '[.errors[]?.code] | join(",")' "$tmp/hyper.json" 2>/dev/null || true)"
+          echo "HYPERDRIVE_HTTP=$hyper_status"
+          echo "HYPERDRIVE_SUCCESS=$hyper_success"
+          echo "HYPERDRIVE_ERROR_CODES=${hyper_codes:-none}"
+
+          if test "$verify_status" != "200" || test "$verify_success" != "true" || test "$verify_token_status" != "active"; then
+            echo "DIAGNOSIS=TOKEN_INVALID_OR_INACTIVE"
+            exit 0
+          fi
+          if test "$hyper_status" = "200" && test "$hyper_success" = "true"; then
+            echo "DIAGNOSIS=HYPERDRIVE_ACCESS_OK"
+            exit 0
+          fi
+          echo "DIAGNOSIS=TOKEN_ACTIVE_BUT_HYPERDRIVE_ACCESS_DENIED"
