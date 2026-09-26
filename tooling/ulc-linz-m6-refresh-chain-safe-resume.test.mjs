@@ -20,6 +20,7 @@ test("M6 refresh chain reuses prerequisites only across a bounded evidence-only 
     "tooling/ulc-linz-m5-production-evidence-observer.mjs",
     "tooling/ulc-linz-m5-production-evidence-observer.test.mjs",
     "tooling/ulc-linz-m6-production-resource-binding.mjs",
+    "837846c60c8337e746272cc1540ecc5adb61466c",
     "tooling/ulc-linz-m6-production-resource-binding.test.mjs",
     "tooling/ulc-linz-m6-runtime-contract-equivalence.mjs",
     "tooling/ulc-linz-m6-runtime-contract-equivalence.test.mjs",
@@ -69,5 +70,14 @@ test("M6 safe-resume jq preserves the workflow-run object while checking trusted
   assert.equal(
     source.includes('(.head_sha as $head | ($heads | index($head)) != null)'),
     true,
+  );
+});
+
+
+test("M6 safe-resume permits the runtime-scope helper change only at its pinned blob", async () => {
+  const source = await readFile(REFRESH_CHAIN, "utf8");
+  assert.match(
+    source,
+    /tooling\/ulc-linz-m6-production-resource-binding\.mjs\)[\s\S]*837846c60c8337e746272cc1540ecc5adb61466c/,
   );
 });
