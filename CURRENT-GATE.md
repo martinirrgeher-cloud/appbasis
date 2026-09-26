@@ -17,8 +17,10 @@ fachlich umgesetzt, in einer isolierten Preview abgenommen und anschließend
 getrennt gegen den bestehenden Produktionspfad revalidiert.
 
 FC6 schließt jetzt die bewusst verbliebene Lücke für datenbank-ownende Module.
-Der aktuelle Startslice ist **FC6-A: read-only Migration-Delta**. Es erfolgen
-dabei noch keine Datenbank- oder Providerwrites.
+**FC6-A ist abgeschlossen.** Der aktuelle Slice ist
+**FC6-B: isolierter inkrementeller Migration-Executor**. Er wird ausschließlich
+auf einer isolierten nicht leeren PostgreSQL-Baseline bewiesen; produktive
+Datenbank- und Providerwrites bleiben ausgeschlossen.
 
 FC4 ist für den aktuellen Produktpfad abgeschlossen: Modulvertrag,
 Modul-Scaffolder, der persistenzfreie Intervall-Countdown und der normale
@@ -226,7 +228,7 @@ Pfad für datenbank-ownende Standardmodule.
 Die verbindliche Spezifikation liegt in
 `docs/FC6-DATABASE-MODULE-UPDATER.md`.
 
-### FC6-A – read-only Migration-Delta – aktuell
+### FC6-A – read-only Migration-Delta – abgeschlossen
 
 Als kleinstes erstes Arbeitspaket wird der bestehende
 `module-update-plan.mjs` so erweitert, dass ein datenbank-ownendes Zielmodul
@@ -245,9 +247,31 @@ Abnahme für FC6-A:
 - der Planner bleibt vollständig read-only;
 - keine Datenbankverbindung, kein Providerwrite, keine Produktionsänderung.
 
-Erst nach vollständiger CI und Review von FC6-A folgt FC6-B mit einem
-inkrementellen, transaktionalen Executor auf einer isolierten nicht leeren
-PostgreSQL-Baseline.
+FC6-A ist auf `main` abgeschlossen. Der Planner liefert für ein
+datenbank-ownendes Zielmodul genau einen neuen Owner inklusive Root,
+Schema-Version und vollständiger Migrationsliste, ohne Repository- oder
+Datenbankwrite.
+
+### FC6-B – isolierter inkrementeller Migration-Executor – aktuell
+
+Der FC6-B-Executor konsumiert ausschließlich den FC6-A-Delta-Vertrag. Vor dem
+ersten Ziel-DDL muss er:
+
+- direkte PostgreSQL-Verbindung, logische Datenbank und Principal explizit
+  verifizieren;
+- den vorhandenen App-Baselinevertrag anhand aus den bestehenden Migrationen
+  abgeleiteter Katalogmarker prüfen;
+- bereits oder teilweise vorhandene Zielmodul-Artefakte fail-closed ablehnen;
+- alle neuen Modulstatements in einer einzigen PostgreSQL-Transaktion
+  ausführen;
+- bei jedem Fehler den vollständigen neuen Moduldelta zurückrollen;
+- einen Wiederholungslauf ohne Doppelanwendung fail-closed ablehnen;
+- konkurrierende Läufe für dieselbe App-/Modulkombination über einen
+  transaktionalen Advisory Lock serialisieren.
+
+Der erste E2E-Beweis verwendet eine nicht leere Identity-Baseline und das reale
+`tasks`-Modul. Es gibt weiterhin keinen Produktionsworkflow und keinen
+Providerwrite.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -267,7 +291,7 @@ PostgreSQL-Baseline.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen FC4/FC5-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen FC6-Pfad, wenn mindestens eines gilt:
 
 - der Modulvertrag ist nicht deterministisch oder nicht reproduzierbar;
 - Paket, Capability, Datenbankbesitz oder Migrationen können vom Manifest
@@ -329,5 +353,6 @@ Vor Änderungen gilt überall dieselbe Reihenfolge:
    prüfen
 5. kleinstes Arbeitspaket bis zum nächsten echten Gate ausführen
 
-Wenn ein vorgeschlagener Schritt nicht notwendig ist, um FC4/FC5 oder den
-unmittelbaren ULC-Vertical-Slice zu erreichen, wird er zurückgestellt.
+Wenn ein vorgeschlagener Schritt nicht notwendig ist, um den aktuellen
+FC6-Slice oder den unmittelbar folgenden FC6-Vertical-Slice zu erreichen, wird
+er zurückgestellt.
