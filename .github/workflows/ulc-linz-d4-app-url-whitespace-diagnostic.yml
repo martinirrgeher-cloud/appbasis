@@ -1,0 +1,41 @@
+name: ULC D4 App URL Whitespace Diagnostic
+
+on:
+  push:
+    branches:
+      - ops/ulc-d4-neon-preview-bootstrap
+    paths:
+      - .github/workflows/ulc-linz-d4-app-url-whitespace-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Diagnose App URL canonical whitespace
+    runs-on: ubuntu-24.04
+    environment:
+      name: generated-preview-ulc-linz
+    steps:
+      - name: Check canonical whitespace only
+        shell: bash
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const value = process.env.APPBASIS_DATABASE_URL ?? "";
+          const trimmed = value.trim();
+          console.log("VALUE_PRESENT=" + (value.length > 0));
+          console.log("VALUE_LENGTH=" + value.length);
+          console.log("TRIMMED_LENGTH=" + trimmed.length);
+          console.log("CANONICAL_WHITESPACE=" + (value === trimmed));
+          console.log("LEADING_WHITESPACE=" + (/^\s/u.test(value)));
+          console.log("TRAILING_WHITESPACE=" + (/\s$/u.test(value)));
+          if (value.length > 0) {
+            const url = new URL(trimmed);
+            console.log("PROTOCOL_OK=" + (url.protocol === "postgres:" || url.protocol === "postgresql:"));
+            console.log("SSLMODE=" + (url.searchParams.get("sslmode") ?? "missing"));
+            console.log("CHANNEL_BINDING=" + (url.searchParams.get("channel_binding") ?? "missing"));
+          }
+          NODE
