@@ -118,7 +118,7 @@ test("FC6-B rejects unnamed constraint baseline drift before executing target mo
     const drift = createPostgresDatabase(targetUrl.toString());
     try {
       await drift.client.unsafe(
-        "ALTER TABLE appbasis_person DROP CONSTRAINT appbasis_person_pkey",
+        "ALTER TABLE appbasis_identity_operation DROP CONSTRAINT appbasis_identity_operation_pkey",
       );
     } finally {
       await drift.client.end();
