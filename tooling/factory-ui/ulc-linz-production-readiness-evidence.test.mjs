@@ -454,8 +454,8 @@ test("M5-J rejects restore evidence for an older lifecycle schema or reconciliat
     await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
   );
   assert.equal(readiness.productionReady, false);
-  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
-  assert.equal(criterionStatus(readiness, "retention"), "open");
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "verified");
+  assert.equal(criterionStatus(readiness, "retention"), "verified");
   assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
 });
 
