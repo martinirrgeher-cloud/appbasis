@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: m6-ulc-production-runtime-config
@@ -403,6 +404,7 @@ jobs:
       - name: Require canonical M5 Security and Privacy Ready 12 of 12
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           WORK: ${{ steps.workspace.outputs.path }}
         run: |
           set -euo pipefail
