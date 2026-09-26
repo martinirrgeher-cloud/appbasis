@@ -2,6 +2,13 @@ import { isDeepStrictEqual } from "node:util";
 
 import { createGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 
+const ULC_LINZ_MODULE_DATABASE_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    moduleId: "countdown",
+    database: null,
+  }),
+]);
+
 export const ULC_LINZ_LIFECYCLE_DATABASE_OWNER = Object.freeze({
   id: "ulc-linz-lifecycle",
   root: "apps/ulc-linz",
@@ -24,7 +31,9 @@ export function createExpectedUlcLinzDatabaseManifest(definition) {
   if (definition?.appId !== "ulc-linz") {
     throw new Error("ULC Linz database contract requires appId ulc-linz.");
   }
-  const generated = createGeneratedDatabaseManifest(definition);
+  const generated = createGeneratedDatabaseManifest(definition, {
+    moduleDefinitions: ULC_LINZ_MODULE_DATABASE_DEFINITIONS,
+  });
   if (generated === null) {
     throw new Error("ULC Linz database contract requires generated platform owners.");
   }
