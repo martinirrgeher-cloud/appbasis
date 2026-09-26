@@ -27,7 +27,6 @@ const SAFE_RESUME_FILES = Object.freeze([
   "tooling/ulc-linz-m5-lifecycle-executor-binding-retry.test.mjs",
   "tooling/ulc-linz-m5-production-evidence-observer.mjs",
   "tooling/ulc-linz-m5-production-evidence-observer.test.mjs",
-  "tooling/ulc-linz-m6-production-resource-binding.mjs",
   "tooling/ulc-linz-m6-production-resource-binding.test.mjs",
   "tooling/ulc-linz-m6-runtime-contract-equivalence.mjs",
   "tooling/ulc-linz-m6-runtime-contract-equivalence.test.mjs",
