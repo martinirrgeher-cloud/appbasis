@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createPostgresDatabase } from "@appbasis/database/node-runtime";
+import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 
 import {
   applyRepositoryMigrationPlan,
