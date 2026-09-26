@@ -71,6 +71,8 @@ export async function loadModuleUpdateMigrationExecutionPlan(
     ConfigurationError: ModuleUpdateMigrationConfigurationError,
   });
 
+  assertTargetMigrationReferencePolicy(targetPlan);
+
   const baselineCatalogContract = createCatalogContract(
     baselinePlan,
     "baseline",
@@ -531,6 +533,20 @@ function catalogMarkersFromStatement(statement) {
   return [];
 }
 
+function assertTargetMigrationReferencePolicy(plan) {
+  for (const migration of plan) {
+    for (const statement of migration.statements) {
+      for (const command of splitSqlCommands(statement)) {
+        if (containsSqlKeyword(command, "REFERENCES")) {
+          throw new ModuleUpdateMigrationConfigurationError(
+            "FC6-B target migrations may not use REFERENCES until an explicit public module dependency contract exists.",
+          );
+        }
+      }
+    }
+  }
+}
+
 function assertTargetCatalogIsolation({
   baselineCatalogContract,
   targetCatalogContract,
@@ -840,6 +856,60 @@ function catalogMarkerKey(marker) {
     marker.table ?? "",
     marker.name,
   ].join(":");
+}
+
+function containsSqlKeyword(value, keyword) {
+  if (typeof value !== "string" || typeof keyword !== "string") return false;
+
+  const expected = keyword.toUpperCase();
+  let index = 0;
+
+  while (index < value.length) {
+    const char = value[index];
+    const next = value[index + 1];
+
+    if (char === "-" && next === "-") {
+      index += 2;
+      while (index < value.length && value[index] !== "\n") index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      index = skipSqlBlockComment(value, index);
+      continue;
+    }
+    if (char === "'") {
+      index = skipSqlSingleQuotedString(value, index);
+      continue;
+    }
+    if (char === '"') {
+      index = skipSqlDoubleQuotedIdentifier(value, index);
+      continue;
+    }
+    if (char === "$") {
+      const marker =
+        value.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)?.[0];
+      if (marker !== undefined) {
+        const closingIndex = value.indexOf(marker, index + marker.length);
+        index =
+          closingIndex === -1
+            ? value.length
+            : closingIndex + marker.length;
+        continue;
+      }
+    }
+    if (/[A-Za-z_]/.test(char)) {
+      const start = index;
+      index += 1;
+      while (index < value.length && /[A-Za-z0-9_$]/.test(value[index])) {
+        index += 1;
+      }
+      if (value.slice(start, index).toUpperCase() === expected) return true;
+      continue;
+    }
+    index += 1;
+  }
+
+  return false;
 }
 
 function splitSqlCommands(value) {

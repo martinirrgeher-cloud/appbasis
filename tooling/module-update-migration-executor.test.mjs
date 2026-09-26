@@ -331,6 +331,81 @@ CREATE INDEX appbasis_person_module_owned_idx
   );
 });
 
+test("FC6-B rejects target REFERENCES until a public module dependency contract exists", async (t) => {
+  const root = await createExistingAppFixture(t);
+  await writeFile(
+    join(
+      root,
+      "modules",
+      "tasks",
+      "migrations",
+      "0000_appbasis_tasks_foundation.sql",
+    ),
+    `CREATE TABLE appbasis_task (
+  id text PRIMARY KEY,
+  person_id text REFERENCES appbasis_person(id)
+);
+`,
+  );
+
+  await assert.rejects(
+    () =>
+      loadModuleUpdateMigrationExecutionPlan(
+        {
+          appId: "existing",
+          moduleId: "tasks",
+        },
+        { repositoryRoot: root },
+      ),
+    (error) =>
+      error instanceof ModuleUpdateMigrationConfigurationError &&
+      /REFERENCES.*public module dependency contract/.test(error.message),
+  );
+});
+
+test("FC6-B ignores REFERENCES text inside comments, literals and quoted identifiers", async (t) => {
+  const root = await createExistingAppFixture(t);
+  await writeFile(
+    join(
+      root,
+      "modules",
+      "tasks",
+      "migrations",
+      "0000_appbasis_tasks_foundation.sql",
+    ),
+    `CREATE TABLE appbasis_task (
+  id text PRIMARY KEY,
+  -- REFERENCES appbasis_person(id) is documentation only
+  note text NOT NULL DEFAULT 'REFERENCES appbasis_person(id)',
+  escaped text NOT NULL DEFAULT E'REFERENCES appbasis_person(id)',
+  tagged text NOT NULL DEFAULT $REFERENCES appbasis_person(id)$,
+  "REFERENCES" text NOT NULL DEFAULT 'literal'
+);
+`,
+  );
+
+  const plan = await loadModuleUpdateMigrationExecutionPlan(
+    {
+      appId: "existing",
+      moduleId: "tasks",
+    },
+    { repositoryRoot: root },
+  );
+
+  for (const name of ["note", "escaped", "tagged", "REFERENCES"]) {
+    assert.equal(
+      plan.targetCatalogContract.some(
+        (marker) =>
+          marker.kind === "column" &&
+          marker.table === "appbasis_task" &&
+          marker.name === name &&
+          marker.present === true,
+      ),
+      true,
+    );
+  }
+});
+
 test("FC6-B rejects CREATE TABLE inheritance from baseline-owned schemas", () => {
   assert.throws(
     () =>
