@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import {
   deriveUlcLinzProductionRuntimeContractDigest,
   evaluateUlcLinzProductionResourceBinding,
+  isUlcLinzProductionRuntimeContractPath,
   ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
   UlcLinzProductionResourceBindingError,
 } from "./ulc-linz-m6-production-resource-binding.mjs";
@@ -137,6 +138,29 @@ test("accepts only a complete dedicated ULC production resource binding and emit
     ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST,
   ]) {
     assert.equal(serialized.includes(internal), false);
+  }
+});
+
+test("runtime contract path classifier matches the exact digest scope and excludes evidence-only tooling", () => {
+  for (const path of [
+    "pnpm-lock.yaml",
+    "apps/ulc-linz/appbasis.app.json",
+    "apps/ulc-linz/worker/index.ts",
+    "apps/ulc-linz/privacy/m5-data-inventory.json",
+    "modules/countdown/appbasis.module.json",
+    "modules/countdown/src/countdown.ts",
+    "packages/database/src/node-runtime.mjs",
+    "packages/identity/src/http.ts",
+    "packages/permissions/src/index.ts",
+  ]) {
+    assert.equal(isUlcLinzProductionRuntimeContractPath(path), true, path);
+  }
+  for (const path of [
+    "tooling/ulc-linz-m5-production-evidence-observer.mjs",
+    ".github/workflows/m6-ulc-production-refresh-chain.yml",
+    "docs/ULC-LINZ-PRODUCTION-BACKUP-RESTORE.md",
+  ]) {
+    assert.equal(isUlcLinzProductionRuntimeContractPath(path), false, path);
   }
 });
 
