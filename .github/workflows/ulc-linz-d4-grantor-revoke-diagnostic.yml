@@ -1,0 +1,98 @@
+name: ULC D4 Grantor Revoke Diagnostic
+
+on:
+  push:
+    branches:
+      - ops/ulc-d4-neon-preview-bootstrap
+    paths:
+      - .github/workflows/ulc-linz-d4-grantor-revoke-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Test cloud_admin-granted membership revoke in rollback transaction
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: generated-preview-ulc-linz
+    steps:
+      - name: Resolve Neon admin connection
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+          PROJECT_NAME: appbasis-ulc-linz-preview
+        run: |
+          set -euo pipefail
+          API='https://console.neon.tech/api/v2'
+          AUTH=(-H "Authorization: Bearer $NEON_API_KEY" -H 'Accept: application/json')
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}" "$API/projects?org_id=$NEON_ORG_ID&search=$PROJECT_NAME&limit=100"             -o "$TMP/projects.json"
+          PROJECT_ID="$(jq -r --arg name "$PROJECT_NAME" '
+            (if type == "array" then . else (.projects // []) end)
+            | map(select(.name == $name))
+            | if length == 1 then .[0].id else empty end
+          ' "$TMP/projects.json")"
+          test -n "$PROJECT_ID"
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}" "$API/projects/$PROJECT_ID/branches" -o "$TMP/branches.json"
+          BRANCH_ID="$(jq -r '
+            ((.branches // []) | map(select(.default == true)) | .[0].id) //
+            ((.branches // [])[0].id) // empty
+          ' "$TMP/branches.json")"
+          test -n "$BRANCH_ID"
+
+          curl --fail-with-body --silent --show-error             "${AUTH[@]}"             "$API/projects/$PROJECT_ID/connection_uri?branch_id=$BRANCH_ID&database_name=appbasis_ulc_linz_preview&role_name=neondb_owner&pooled=false"             -o "$TMP/uri.json"
+          URL="$(jq -r '.uri // .connection_uri // empty' "$TMP/uri.json")"
+          test -n "$URL"
+          echo "::add-mask::$URL"
+          echo "ADMIN_URL=$URL" >> "$GITHUB_ENV"
+
+      - name: Test targeted grantor revoke and roll back
+        shell: bash
+        env:
+          MIGRATION_ROLE: appbasis_ulc_linz_preview_migration
+          PARENT_ROLE: appbasis_ulc_linz_preview_security_ingest
+        run: |
+          set -euo pipefail
+          set +e
+          OUTPUT="$(psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -Atq             --set=parent="$PARENT_ROLE"             --set=member="$MIGRATION_ROLE" 2>&1 <<'SQL'
+          BEGIN;
+          SELECT count(*)
+          FROM pg_catalog.pg_auth_members m
+          JOIN pg_catalog.pg_roles p ON p.oid = m.roleid
+          JOIN pg_catalog.pg_roles u ON u.oid = m.member
+          JOIN pg_catalog.pg_roles g ON g.oid = m.grantor
+          WHERE p.rolname = :'parent'
+            AND u.rolname = :'member'
+            AND g.rolname = 'cloud_admin';
+          REVOKE :"parent" FROM :"member" GRANTED BY cloud_admin;
+          SELECT count(*)
+          FROM pg_catalog.pg_auth_members m
+          JOIN pg_catalog.pg_roles p ON p.oid = m.roleid
+          JOIN pg_catalog.pg_roles u ON u.oid = m.member
+          WHERE p.rolname = :'parent'
+            AND u.rolname = :'member';
+          ROLLBACK;
+          SQL
+          )"
+          STATUS=$?
+          set -e
+          if (( STATUS == 0 )); then
+            echo "GRANTOR_REVOKE_SUPPORTED=true"
+            printf '%s
+' "$OUTPUT" | tail -n 2 | sed 's/^/DIAG_COUNT=/'
+          else
+            echo "GRANTOR_REVOKE_SUPPORTED=false"
+            if grep -qi 'permission denied' <<<"$OUTPUT"; then
+              echo "GRANTOR_REVOKE_FAILURE=permission_denied"
+            elif grep -qi 'must have' <<<"$OUTPUT"; then
+              echo "GRANTOR_REVOKE_FAILURE=insufficient_authority"
+            else
+              echo "GRANTOR_REVOKE_FAILURE=other"
+            fi
+          fi
