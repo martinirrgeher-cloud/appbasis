@@ -55,7 +55,7 @@ globalThis.fetch = async (input, options) => {
       base_commit: { sha: deployed },
       merge_base_commit: { sha: deployed },
       head_commit: { sha: GITHUB_SHA },
-      commits: [{ sha: "d".repeat(40) }],
+      commits: [{ sha: GITHUB_SHA }],
       files: [{ filename: "apps/ulc-linz/worker/index.ts", status: "modified" }],
     });
   }
@@ -395,7 +395,7 @@ test("observer accepts an older deployed SHA when GitHub proves the runtime cont
       base_commit: { sha: deployed },
       merge_base_commit: { sha: deployed },
       head_commit: { sha: GITHUB_SHA },
-      commits: [{ sha: "d".repeat(40) }, { sha: "e".repeat(40) }],
+      commits: [{ sha: "d".repeat(40) }, { sha: GITHUB_SHA }],
       files: [
         { filename: "tooling/ulc-linz-m5-production-evidence-observer.mjs", status: "modified" },
         { filename: ".github/workflows/m6-ulc-production-refresh-chain.yml", status: "modified" },
