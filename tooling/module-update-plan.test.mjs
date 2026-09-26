@@ -248,7 +248,31 @@ test("returns a deterministic no-op for an already installed module", async (t) 
   assert.equal(plan.changes.appDefinition, null);
   assert.equal(plan.changes.packageDependency, null);
   assert.equal(plan.changes.databaseManifest, null);
+  assert.equal(plan.changes.databaseMigrationDelta, null);
   assert.equal(plan.changes.workspaceLockfile, null);
+  assert.deepEqual(plan.writes, []);
+});
+
+test("FC6-A returns no migration delta for an already installed database-owning module", async (t) => {
+  const root = await createFixture(t, {
+    modules: ["tasks"],
+    extraDependencies: {
+      "@appbasis/tasks": "workspace:*",
+    },
+  });
+
+  const plan = await planModuleUpdate(
+    {
+      appId: "reference",
+      moduleId: "tasks",
+    },
+    { repositoryRoot: root },
+  );
+
+  assert.equal(plan.state, "already-installed");
+  assert.equal(plan.module.databaseSchemaVersion, 1);
+  assert.equal(plan.changes.databaseManifest, null);
+  assert.equal(plan.changes.databaseMigrationDelta, null);
   assert.deepEqual(plan.writes, []);
 });
 
@@ -390,6 +414,8 @@ async function createFixture(
     fixtureLockfile({
       includeCountdown:
         extraDependencies["@appbasis/countdown"] === "workspace:*",
+      includeTasks:
+        extraDependencies["@appbasis/tasks"] === "workspace:*",
     }),
   );
   await writeFile(
@@ -409,6 +435,18 @@ async function createFixture(
               "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
             ],
           },
+          ...(modules.includes("tasks")
+            ? [
+                {
+                  id: "tasks",
+                  root: "modules/tasks",
+                  schemaVersion: 1,
+                  migrations: [
+                    "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+                  ],
+                },
+              ]
+            : []),
         ],
       },
       null,
@@ -558,11 +596,17 @@ importers:
   return root;
 }
 
-function fixtureLockfile({ includeCountdown }) {
+function fixtureLockfile({ includeCountdown, includeTasks = false }) {
   const countdown = includeCountdown
     ? `      '@appbasis/countdown':
         specifier: workspace:*
         version: link:../../modules/countdown
+`
+    : "";
+  const tasks = includeTasks
+    ? `      '@appbasis/tasks':
+        specifier: workspace:*
+        version: link:../../modules/tasks
 `
     : "";
   return `lockfileVersion: '9.0'
@@ -577,7 +621,7 @@ importers:
 
   apps/reference:
     dependencies:
-${countdown}      '@appbasis/identity':
+${countdown}${tasks}      '@appbasis/identity':
         specifier: workspace:*
         version: link:../../packages/identity
       hono:
