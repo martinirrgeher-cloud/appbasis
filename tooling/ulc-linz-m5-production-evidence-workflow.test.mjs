@@ -67,6 +67,8 @@ test("M5 production evidence is main-only, explicitly approved and serialized wi
   assert.match(source, /test "\$APPLY_RESTORE" = "true"/);
   assert.match(source, /group: m6-ulc-production-runtime-config/);
   assert.match(source, /environment: m4-dr/);
+  assert.match(source, /permissions:[\s\S]*contents: read[\s\S]*actions: read/);
+  assert.match(source, /GITHUB_TOKEN: \$\{\{ github\.token \}\}/);
 });
 
 test("M5 production restore reads one authorized production snapshot, preserves ACLs and verifies reconciliation on the exact isolated restored database", async () => {
