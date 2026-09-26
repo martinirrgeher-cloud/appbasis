@@ -354,7 +354,7 @@ test("M5-J rejects unexpected, accessor, symbol and inherited owner evidence", (
   );
 });
 
-test("M5-J accepts the renewed FC5 countdown scope while unreverified control-plane gates stay open", async () => {
+test("M5-J accepts the renewed FC5 countdown scope after D4 control-plane reverification", async () => {
   const readiness = evaluateProductionReadiness(
     await deriveUlcLinzM5JProductionEvidence(
       repositoryRoot,
@@ -363,14 +363,10 @@ test("M5-J accepts the renewed FC5 countdown scope while unreverified control-pl
       { now: NOW },
     ),
   );
-  assert.equal(readiness.productionReady, false);
-  assert.equal(readiness.verifiedCount, 10);
+  assert.equal(readiness.productionReady, true);
+  assert.equal(readiness.verifiedCount, 12);
   for (const criterion of REQUIRED_PRODUCTION_READINESS_CRITERIA) {
-    const expected =
-      ["privilegedControlPlaneIsolation", "highPrivacyProfile"].includes(criterion.id)
-        ? "open"
-        : "verified";
-    assert.equal(criterionStatus(readiness, criterion.id), expected, criterion.id);
+    assert.equal(criterionStatus(readiness, criterion.id), "verified", criterion.id);
   }
 });
 
@@ -500,8 +496,8 @@ test("Factory snapshot consumes M5-J while release production remains separately
   });
   const ulc = snapshot.apps.find((app) => app.appId === "ulc-linz");
   assert.ok(ulc);
-  assert.equal(ulc.productionReadiness.productionReady, false);
-  assert.equal(ulc.productionReadiness.verifiedCount, 10);
+  assert.equal(ulc.productionReadiness.productionReady, true);
+  assert.equal(ulc.productionReadiness.verifiedCount, 12);
   assert.equal(ulc.productionReleaseReadiness.releaseAuthorized, false);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });

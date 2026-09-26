@@ -96,7 +96,7 @@ function derive({
   );
 }
 
-test("keeps live M5-H evidence open after the D2 public runtime changes", () => {
+test("reverifies live M5-H evidence for the accepted D4 public runtime contract", () => {
   assert.deepEqual(
     deriveUlcLinzM5HControlPlaneEvidence(
       {
@@ -105,7 +105,7 @@ test("keeps live M5-H evidence open after the D2 public runtime changes", () => 
       },
       { now: NOW },
     ),
-    {},
+    { privilegedControlPlaneIsolation: true },
   );
 });
 

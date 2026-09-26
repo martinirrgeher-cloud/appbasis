@@ -265,7 +265,7 @@ function bundle() {
 test("sanitized legacy production bundle stays blocked after the FC5 repository scope change", async () => {
   const result = await evaluateUlcLinzM5ProductionEvidenceBundle(process.cwd(), bundle(), { now: NOW });
   assert.equal(result.securityPrivacyReady, false);
-  assert.equal(result.verifiedCount, 7);
+  assert.equal(result.verifiedCount, 8);
   assert.equal(result.requiredCount, 12);
   assert.equal(result.productionReleaseAuthorized, false);
   assert.equal(result.lifecycleBindingVerifiedAt, LIVE_BINDING_AT);
@@ -273,7 +273,6 @@ test("sanitized legacy production bundle stays blocked after the FC5 repository 
   for (const id of [
     "deletionConcept",
     "retention",
-    "privilegedControlPlaneIsolation",
     "dataExport",
     "highPrivacyProfile",
   ]) {
@@ -300,7 +299,7 @@ test("final readiness diagnostic exposes only bounded progress and open criterio
   const diagnostic = formatUlcLinzM5ReadinessDiagnostic(result);
   assert.equal(
     diagnostic,
-    "ULC M5 readiness blocked: 6/12; open criteria: deletionConcept,retention,dataExport,auditSecurityLogging,highPrivacyProfile,privilegedControlPlaneIsolation.",
+    "ULC M5 readiness blocked: 7/12; open criteria: deletionConcept,retention,dataExport,auditSecurityLogging,highPrivacyProfile.",
   );
   for (const internal of ["account-1", "worker-1", "project-1", "branch-1", "database-1", "hyperdrive-1", "restore-target-1"]) {
     assert.equal(diagnostic.includes(internal), false);
