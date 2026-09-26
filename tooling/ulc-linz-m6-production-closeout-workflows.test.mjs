@@ -92,6 +92,10 @@ test("M6 post-deploy smoke stays dedicated, pilot-ingress bound and validates bo
     "/api/health",
     "/api/auth/sign-in",
     "/api/auth/session",
+    "/api/modules/countdown",
+    "/api/modules/countdown/plan",
+    '"countdown:view"',
+    "countdown_plan",
     "revoke-production-http-smoke-session.mjs",
     "node --experimental-transform-types --import ./tooling/register-native-typescript-resolution.mjs ./tooling/run-production-post-deploy-smoke.mjs",
     "ULC_LINZ_PRODUCTION_HTTP_SMOKE_COOKIE_FILE",
@@ -121,6 +125,7 @@ test("M6 post-deploy smoke stays dedicated, pilot-ingress bound and validates bo
     'const DENIED_MODULE = "__m6_smoke_unknown__"',
     "createPostgresUlcLinzSecurityEventLogger",
     "await securityEvents.flush()",
+    'applicationScope: "identity-permissions-countdown"',
     'fachmoduleDataMutated: false',
   ]) {
     assert.equal(runner.includes(marker), true, `missing protected smoke contract: ${marker}`);
