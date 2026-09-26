@@ -320,6 +320,7 @@ export async function applyModuleUpdateMigrations(
       state: "applied",
       application: executionPlan.application,
       moduleId: executionPlan.moduleId,
+      repositoryState: executionPlan.repositoryState,
       migrationCount: executionPlan.migrations.length,
       statementCount,
       baselineMarkerCount: executionPlan.baselineCatalogContract.length,
