@@ -2,9 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import {
-  M3_PREVIEW_ACCEPTANCE_RUN,
-  deriveM3PreviewAcceptanceEvidence,
-} from "./factory-ui/m3-preview-acceptance-evidence.mjs";
+  deriveUlcLinzD4PreviewAcceptanceEvidence,
+} from "./factory-ui/ulc-linz-d4-preview-acceptance-evidence.mjs";
 
 const APPLICATION = "ulc-linz";
 const ENVIRONMENT = "production";
@@ -48,7 +47,7 @@ const OBSERVABILITY_FIELDS = Object.freeze(["enabled"]);
 
 export class UlcLinzM6ProductionWorkerM3GateError extends Error {
   constructor(code) {
-    super("ULC Linz M6 production worker M3 gate failed.");
+    super("ULC Linz M6 production worker D4 preview gate failed.");
     this.name = "UlcLinzM6ProductionWorkerM3GateError";
     this.code = code;
   }
@@ -65,7 +64,7 @@ export async function evaluateUlcLinzM6ProductionWorkerM3Gate(
   try {
     definition = JSON.parse(
       await readFile(
-        join(resolve(repositoryRoot), "apps", M3_PREVIEW_ACCEPTANCE_RUN.appId, "appbasis.app.json"),
+        join(resolve(repositoryRoot), "apps", APPLICATION, "appbasis.app.json"),
         "utf8",
       ),
     );
@@ -75,7 +74,11 @@ export async function evaluateUlcLinzM6ProductionWorkerM3Gate(
 
   let evidence;
   try {
-    evidence = await deriveM3PreviewAcceptanceEvidence(definition, { fetchImpl });
+    evidence = await deriveUlcLinzD4PreviewAcceptanceEvidence(
+      repositoryRoot,
+      definition,
+      { fetchImpl },
+    );
   } catch {
     return blockedResult();
   }
@@ -90,7 +93,7 @@ export async function evaluateUlcLinzM6ProductionWorkerM3Gate(
     stepId: "production-worker",
     status: "worker-create-prepared-awaiting-operator-approval",
     workerName: TARGET_WORKER,
-    requiredPreparationGateEvidence: ["M3_DONE"],
+    requiredPreparationGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
     productionPreparationGateEvidenceConsumed: true,
     productionPreparationEligible: true,
     providerWriteRequired: true,
@@ -112,9 +115,9 @@ function blockedResult() {
     environment: ENVIRONMENT,
     phase: "production-preparation",
     stepId: "production-worker",
-    status: "worker-create-blocked-m3-evidence-unverified",
+    status: "worker-create-blocked-d4-evidence-unverified",
     workerName: TARGET_WORKER,
-    requiredPreparationGateEvidence: ["M3_DONE"],
+    requiredPreparationGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
     productionPreparationGateEvidenceConsumed: false,
     productionPreparationEligible: false,
     providerWriteRequired: true,
@@ -154,7 +157,7 @@ function assertSafeCreatePlan(value) {
     ownData(plan, "productionReady", "INVALID_CREATE_PLAN") !== false ||
     ownData(plan, "betaCapabilityReverificationRequired", "INVALID_CREATE_PLAN") !== true
   ) {
-    fail("WORKER_M3_GATE_PRECONDITIONS_NOT_MET");
+    fail("WORKER_D4_GATE_PRECONDITIONS_NOT_MET");
   }
 
   const gates = requiredArray(
@@ -167,9 +170,9 @@ function assertSafeCreatePlan(value) {
     gateOwnNames.length !== 2 ||
     !gateOwnNames.includes("0") ||
     !gateOwnNames.includes("length") ||
-    ownData(gates, "0", "INVALID_CREATE_PLAN") !== "M3_DONE"
+    ownData(gates, "0", "INVALID_CREATE_PLAN") !== "ULC_D4_PREVIEW_ACCEPTED"
   ) {
-    fail("WORKER_M3_GATE_PRECONDITIONS_NOT_MET");
+    fail("WORKER_D4_GATE_PRECONDITIONS_NOT_MET");
   }
 
   const body = exactPlainRecord(
@@ -196,7 +199,7 @@ function assertSafeCreatePlan(value) {
     ownData(body, "logpush", "INVALID_CREATE_PLAN") !== false ||
     !isExactEmptyArray(ownData(body, "tail_consumers", "INVALID_CREATE_PLAN"))
   ) {
-    fail("WORKER_M3_GATE_PRECONDITIONS_NOT_MET");
+    fail("WORKER_D4_GATE_PRECONDITIONS_NOT_MET");
   }
 }
 

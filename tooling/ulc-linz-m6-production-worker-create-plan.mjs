@@ -26,7 +26,7 @@ export const ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT = deepFreeze({
     logpush: false,
     tail_consumers: [],
   },
-  requiredPreparationGateEvidence: ["M3_DONE"],
+  requiredPreparationGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
   productionPreparationGateEvidenceConsumed: false,
   productionPreparationEligible: false,
   applicationCodeUploadAllowed: false,
@@ -58,7 +58,7 @@ export function planUlcLinzM6ProductionWorkerCreate(prewrite) {
     ownData(state, "phase", "INVALID_PREWRITE_STATE") !== "production-preparation" ||
     ownData(state, "stepId", "INVALID_PREWRITE_STATE") !== "production-worker" ||
     ownData(state, "status", "INVALID_PREWRITE_STATE") !==
-      "worker-target-verified-blocked-awaiting-m3-gate-evidence" ||
+      "worker-target-verified-blocked-awaiting-d4-gate-evidence" ||
     ownData(state, "priorStepVerified", "INVALID_PREWRITE_STATE") !==
       "neon-production-database" ||
     ownData(state, "providerInventoryVerified", "INVALID_PREWRITE_STATE") !== true ||
@@ -81,7 +81,7 @@ export function planUlcLinzM6ProductionWorkerCreate(prewrite) {
   );
   if (
     gateEvidence.length !== 1 ||
-    ownData(gateEvidence, "0", "INVALID_PREWRITE_STATE") !== "M3_DONE"
+    ownData(gateEvidence, "0", "INVALID_PREWRITE_STATE") !== "ULC_D4_PREVIEW_ACCEPTED"
   ) {
     fail("WORKER_CREATE_PLAN_PRECONDITIONS_NOT_MET");
   }

@@ -31,7 +31,7 @@ const VALID_ULC_DEFINITION = Object.freeze({
   schemaVersion: 2,
   appId: "ulc-linz",
   displayName: "ULC Linz",
-  modules: Object.freeze([]),
+  modules: Object.freeze(["countdown"]),
   platformServices: Object.freeze(["identity", "permissions"]),
 });
 
@@ -354,7 +354,7 @@ test("M5-J rejects unexpected, accessor, symbol and inherited owner evidence", (
   );
 });
 
-test("M5-J keeps the changed FC5 repository scope blocked until production evidence is renewed", async () => {
+test("M5-J accepts the renewed FC5 countdown scope while unreverified control-plane gates stay open", async () => {
   const readiness = evaluateProductionReadiness(
     await deriveUlcLinzM5JProductionEvidence(
       repositoryRoot,
@@ -364,11 +364,14 @@ test("M5-J keeps the changed FC5 repository scope blocked until production evide
     ),
   );
   assert.equal(readiness.productionReady, false);
-  assert.equal(readiness.verifiedCount, 8);
-  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
-  assert.equal(criterionStatus(readiness, "retention"), "open");
-  assert.equal(criterionStatus(readiness, "privilegedControlPlaneIsolation"), "open");
-  assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
+  assert.equal(readiness.verifiedCount, 10);
+  for (const criterion of REQUIRED_PRODUCTION_READINESS_CRITERIA) {
+    const expected =
+      ["privilegedControlPlaneIsolation", "highPrivacyProfile"].includes(criterion.id)
+        ? "open"
+        : "verified";
+    assert.equal(criterionStatus(readiness, criterion.id), expected, criterion.id);
+  }
 });
 
 test("M5-J keeps C/D and High Privacy open without protected production lifecycle activation", async () => {
@@ -455,8 +458,8 @@ test("M5-J rejects restore evidence for an older lifecycle schema or reconciliat
     await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
   );
   assert.equal(readiness.productionReady, false);
-  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
-  assert.equal(criterionStatus(readiness, "retention"), "open");
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "verified");
+  assert.equal(criterionStatus(readiness, "retention"), "verified");
   assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
 });
 
@@ -498,7 +501,7 @@ test("Factory snapshot consumes M5-J while release production remains separately
   const ulc = snapshot.apps.find((app) => app.appId === "ulc-linz");
   assert.ok(ulc);
   assert.equal(ulc.productionReadiness.productionReady, false);
-  assert.equal(ulc.productionReadiness.verifiedCount, 6);
+  assert.equal(ulc.productionReadiness.verifiedCount, 10);
   assert.equal(ulc.productionReleaseReadiness.releaseAuthorized, false);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });

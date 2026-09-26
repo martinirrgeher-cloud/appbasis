@@ -44,7 +44,7 @@ const MUTATING_STEP_KINDS = new Set([
   "authorization-gate",
 ]);
 const ALLOWED_PREREQUISITE_REFERENCES = Object.freeze([
-  "prerequisite:M3_DONE",
+  "prerequisite:ULC_D4_PREVIEW_ACCEPTED",
   "prerequisite:M4_DONE",
 ]);
 
@@ -52,7 +52,7 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
   {
     id: "neon-production-database",
     kind: "provider-write",
-    requires: ["prerequisite:M3_DONE"],
+    requires: ["prerequisite:ULC_D4_PREVIEW_ACCEPTED"],
   },
   {
     id: "production-worker",
@@ -145,7 +145,7 @@ const EXPECTED_EXECUTION_STEPS = deepFreeze([
 ]);
 
 const M6_CRITERION_COVERAGE = deepFreeze({
-  previewAccepted: ["prerequisite:M3_DONE"],
+  previewAccepted: ["prerequisite:ULC_D4_PREVIEW_ACCEPTED"],
   productionDatabaseReady: ["neon-production-database", "database-binding"],
   productionWorkerReady: ["production-worker", "production-worker-deploy"],
   productionDomainReady: ["production-pilot-ingress"],
@@ -169,7 +169,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
   firstProviderWriteStepId: "neon-production-database",
   phaseModel: {
     productionPreparation: {
-      requiredGateEvidence: ["M3_DONE"],
+      requiredGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
       m4RequiredBeforePreparationWrite: false,
       m5RequiredBeforePreparationWrite: false,
       explicitApprovalRequiredPerMutatingStep: true,
@@ -193,7 +193,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
       id: "neon-production-database",
       kind: "provider-write",
       approvalRequired: true,
-      requires: ["prerequisite:M3_DONE"],
+      requires: ["prerequisite:ULC_D4_PREVIEW_ACCEPTED"],
       target: {
         provider: "neon",
         dedicatedProductionResource: true,
@@ -235,7 +235,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
         baseURLSource: "provider-derived-workers-dev-origin",
         secretNames: ["BETTER_AUTH_SECRET"],
         plainConfigurationNames: ["APPBASIS_BASE_URL"],
-        requiredBindings: ["HYPERDRIVE"],
+        requiredBindings: ["HYPERDRIVE", "SECURITY_LOG_HYPERDRIVE"],
         secretValuesInRepository: false,
       },
     },
@@ -386,7 +386,7 @@ export const ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN = deepFreeze({
         "production-pilot-ingress",
       ],
       target: {
-        checks: ["health", "auth", "permissions", "application"],
+        checks: ["health", "auth", "permissions", "countdown", "application"],
       },
     },
     {
@@ -448,7 +448,7 @@ export async function evaluateUlcLinzM6ProductionPreflight(
     providerWriteAllowed: false,
     releaseAuthorized: false,
     explicitApprovalRequired: true,
-    productionPreparationPrerequisiteGates: ["M3_DONE"],
+    productionPreparationPrerequisiteGates: ["ULC_D4_PREVIEW_ACCEPTED"],
     productionReadyRequiredGates: ["M4_DONE", "M5_DONE"],
     publicExposureBeforeProductionReadyGatesAllowed: false,
     firstProviderWriteStepId:
@@ -505,7 +505,7 @@ function assertExecutionPlanContract() {
     plan.providerWritesEnabled !== false ||
     plan.firstProviderWriteStepId !== "neon-production-database" ||
     !isDeepStrictEqual(plan.phaseModel?.productionPreparation?.requiredGateEvidence, [
-      "M3_DONE",
+      "ULC_D4_PREVIEW_ACCEPTED",
     ]) ||
     plan.phaseModel?.productionPreparation?.m4RequiredBeforePreparationWrite !== false ||
     plan.phaseModel?.productionPreparation?.m5RequiredBeforePreparationWrite !== false ||
@@ -562,7 +562,7 @@ function assertExecutionPlanContract() {
     neonDatabase.target?.provider !== "neon" ||
     neonDatabase.target?.dedicatedProductionResource !== true ||
     neonDatabase.target?.region !== NEON_REGION ||
-    !neonDatabase.requires.includes("prerequisite:M3_DONE")
+    !neonDatabase.requires.includes("prerequisite:ULC_D4_PREVIEW_ACCEPTED")
   ) {
     fail("NEON_TARGET_DRIFT");
   }
@@ -598,6 +598,7 @@ function assertExecutionPlanContract() {
     ]) ||
     !isDeepStrictEqual(runtimeConfiguration.target?.requiredBindings, [
       "HYPERDRIVE",
+      "SECURITY_LOG_HYPERDRIVE",
     ]) ||
     runtimeConfiguration.target?.secretValuesInRepository !== false
   ) {
@@ -715,6 +716,7 @@ function assertExecutionPlanContract() {
       "health",
       "auth",
       "permissions",
+      "countdown",
       "application",
     ])
   ) {
@@ -777,7 +779,7 @@ function assertAppDefinition(value) {
     app.appId !== APPLICATION ||
     typeof app.displayName !== "string" ||
     app.displayName.length < 1 ||
-    !isDeepStrictEqual(app.modules, []) ||
+    !isDeepStrictEqual(app.modules, ["countdown"]) ||
     !isDeepStrictEqual(app.platformServices, ["identity", "permissions"])
   ) {
     fail("APP_DEFINITION_INVALID");

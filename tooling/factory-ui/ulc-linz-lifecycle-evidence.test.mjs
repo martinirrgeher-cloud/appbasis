@@ -21,7 +21,7 @@ const VALID_ULC_DEFINITION = Object.freeze({
   schemaVersion: 2,
   appId: "ulc-linz",
   displayName: "ULC Linz",
-  modules: Object.freeze([]),
+  modules: Object.freeze(["countdown"]),
   platformServices: Object.freeze(["identity", "permissions"]),
 });
 
@@ -52,68 +52,6 @@ async function createFixture() {
     await copyFile(join(repositoryRoot, path), destination);
   }
 
-  // M5-C/D remains intentionally pinned to the last production-approved
-  // module-less ULC scope. Reconstruct that approved scope inside the fixture
-  // so the contract itself stays testable while the live FC5 countdown target
-  // correctly invalidates current production evidence.
-  const appDefinitionPath = join(root, "apps", "ulc-linz", "appbasis.app.json");
-  const appDefinition = JSON.parse(await readFile(appDefinitionPath, "utf8"));
-  appDefinition.modules = [];
-  await writeFile(
-    appDefinitionPath,
-    `${JSON.stringify(appDefinition, null, 2)}\n`,
-    "utf8",
-  );
-
-  const packagePath = join(root, "apps", "ulc-linz", "package.json");
-  const appPackage = JSON.parse(await readFile(packagePath, "utf8"));
-  delete appPackage.dependencies["@appbasis/countdown"];
-  await writeFile(
-    packagePath,
-    `${JSON.stringify(appPackage, null, 2)}\n`,
-    "utf8",
-  );
-
-  const lockfilePath = join(root, "pnpm-lock.yaml");
-  const lockfile = await readFile(lockfilePath, "utf8");
-  await writeFile(
-    lockfilePath,
-    lockfile.replace(
-      `      '@appbasis/countdown':\n        specifier: workspace:*\n        version: link:../../modules/countdown\n`,
-      "",
-    ),
-    "utf8",
-  );
-
-  const inventoryAcceptancePath = join(
-    root,
-    "apps",
-    "ulc-linz",
-    "test",
-    "m5-data-inventory.test.ts",
-  );
-  const inventoryAcceptance = await readFile(inventoryAcceptancePath, "utf8");
-  const currentInventoryAssertions = `    expect(appManifest.modules).toEqual(["countdown"]);
-    expect(inventory.runtimeModules).toEqual([]);
-    expect(inventory.runtimeModules).not.toEqual(appManifest.modules);
-    expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
-`;
-  const approvedInventoryAssertions = `    expect(appManifest.modules).toEqual([]);
-    expect(inventory.runtimeModules).toEqual(appManifest.modules);
-`;
-  assert.equal(
-    inventoryAcceptance.split(currentInventoryAssertions).length,
-    2,
-    "FC5 inventory acceptance reconstruction must match exactly once",
-  );
-  await writeFile(
-    inventoryAcceptancePath,
-    inventoryAcceptance.replace(
-      currentInventoryAssertions,
-      approvedInventoryAssertions,
-    ),
-    "utf8",
-  );
 
   return root;
 }
@@ -250,7 +188,7 @@ test("keeps C/D fail closed for another app or a future module set", async () =>
   assert.deepEqual(
     await deriveUlcLinzLifecycleEvidence("/not-read", {
       ...VALID_ULC_DEFINITION,
-      modules: ["tasks"],
+      modules: ["countdown", "tasks"],
     }),
     {},
   );

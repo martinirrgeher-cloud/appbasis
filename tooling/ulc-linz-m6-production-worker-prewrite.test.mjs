@@ -27,11 +27,11 @@ function validProviderState() {
   };
 }
 
-test("ULC M6 production worker prewrite verifies the closed target but remains blocked before M3 gate consumption", () => {
+test("ULC M6 production worker prewrite verifies the closed target but remains blocked before ULC D4 gate consumption", () => {
   const result = evaluateUlcLinzM6ProductionWorkerPrewrite(validProviderState());
-  assert.equal(result.status, "worker-target-verified-blocked-awaiting-m3-gate-evidence");
+  assert.equal(result.status, "worker-target-verified-blocked-awaiting-d4-gate-evidence");
   assert.equal(result.priorStepVerified, "neon-production-database");
-  assert.deepEqual(result.requiredPreparationGateEvidence, ["M3_DONE"]);
+  assert.deepEqual(result.requiredPreparationGateEvidence, ["ULC_D4_PREVIEW_ACCEPTED"]);
   assert.equal(result.productionPreparationGateEvidenceConsumed, false);
   assert.equal(result.productionPreparationEligible, false);
   assert.equal(result.providerWriteRequired, true);
@@ -65,7 +65,7 @@ test("ULC M6 production worker prewrite contract is deny-by-default", () => {
     previewUrls: false,
     publicIngress: false,
     applicationCodeUploadAllowed: false,
-    requiredPreparationGateEvidence: ["M3_DONE"],
+    requiredPreparationGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
     productionPreparationGateEvidenceConsumed: false,
     productionPreparationEligible: false,
     explicitApprovalRequired: true,

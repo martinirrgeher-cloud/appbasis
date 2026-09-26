@@ -89,7 +89,9 @@
     { "id": "ulc_linz_lifecycle_audit", "owner": "ulc-linz-lifecycle", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" },
     { "id": "ulc_linz_security_event_log", "owner": "ulc-linz-lifecycle", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" }
   ],
-  "runtimeModules": [],
+  "runtimeModules": [
+    "countdown"
+  ],
   "backingStores": {
     "memberships": {
       "status": "bound",

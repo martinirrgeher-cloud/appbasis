@@ -201,6 +201,10 @@ test("observer reports lifecycle executors unbound before repository binding whi
   for (const id of [
     "deletionConcept",
     "retention",
+  ]) {
+    assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "verified", id);
+  }
+  for (const id of [
     "privilegedControlPlaneIsolation",
     "auditSecurityLogging",
     "dataRegion",
@@ -210,7 +214,7 @@ test("observer reports lifecycle executors unbound before repository binding whi
     "dataExport",
     "highPrivacyProfile",
   ]) {
-    assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "open");
+    assert.equal(result.criteria.find((criterion) => criterion.id === id)?.status, "open", id);
   }
 });
 

@@ -20,10 +20,13 @@ const RUNTIME_CONTRACT_PATHS = Object.freeze([
   "packages/database/package.json",
   "packages/identity/package.json",
   "packages/permissions/package.json",
+  "modules/countdown/appbasis.module.json",
+  "modules/countdown/package.json",
 ]);
 const RUNTIME_CONTRACT_DIRECTORIES = Object.freeze([
   "apps/ulc-linz/worker",
   "apps/ulc-linz/privacy",
+  "modules/countdown/src",
   "packages/database/src",
   "packages/identity/src",
   "packages/permissions/src",

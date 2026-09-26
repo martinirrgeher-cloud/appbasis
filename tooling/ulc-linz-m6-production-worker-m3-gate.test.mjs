@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { M3_PREVIEW_ACCEPTANCE_RUN } from "./factory-ui/m3-preview-acceptance-evidence.mjs";
+import { ULC_LINZ_D4_PREVIEW_ACCEPTANCE_RUNS } from "./factory-ui/ulc-linz-d4-preview-acceptance-evidence.mjs";
 import { ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT } from "./ulc-linz-m6-production-worker-create-plan.mjs";
 import {
   UlcLinzM6ProductionWorkerM3GateError,
@@ -9,33 +9,40 @@ import {
 } from "./ulc-linz-m6-production-worker-m3-gate.mjs";
 
 function successfulAcceptanceFetch() {
-  return async () => ({
-    ok: true,
-    headers: {
-      get(name) {
-        return name.toLowerCase() === "content-type" ? "application/json; charset=utf-8" : null;
-      },
-    },
-    async json() {
-      return {
-        id: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunId,
-        run_attempt: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunAttempt,
-        name: M3_PREVIEW_ACCEPTANCE_RUN.workflowName,
-        path: M3_PREVIEW_ACCEPTANCE_RUN.workflowPath,
-        event: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunEvent,
-        head_branch: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunBranch,
-        head_sha: M3_PREVIEW_ACCEPTANCE_RUN.workflowRunHeadSha,
-        status: "completed",
-        conclusion: "success",
-        repository: {
-          full_name: M3_PREVIEW_ACCEPTANCE_RUN.repository,
+  return async (url) => {
+    const id = Number(String(url).split("/").at(-1));
+    const expected = Object.values(ULC_LINZ_D4_PREVIEW_ACCEPTANCE_RUNS).find(
+      (entry) => entry.id === id,
+    );
+    if (expected === undefined) return { ok: false };
+    return {
+      ok: true,
+      headers: {
+        get(name) {
+          return name.toLowerCase() === "content-type"
+            ? "application/json; charset=utf-8"
+            : null;
         },
-      };
-    },
-  });
+      },
+      async json() {
+        return {
+          id: expected.id,
+          run_attempt: expected.attempt,
+          name: expected.name,
+          path: expected.path,
+          event: expected.event,
+          head_branch: expected.branch,
+          head_sha: expected.headSha,
+          status: "completed",
+          conclusion: "success",
+          repository: { full_name: "martinirrgeher-cloud/appbasis" },
+        };
+      },
+    };
+  };
 }
 
-test("M6 worker gate consumes canonical M3 preview acceptance without authorizing provider write", async () => {
+test("M6 worker gate consumes canonical ULC D4 preview acceptance without authorizing provider write", async () => {
   const result = await evaluateUlcLinzM6ProductionWorkerM3Gate(
     ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT,
     process.cwd(),
@@ -50,7 +57,7 @@ test("M6 worker gate consumes canonical M3 preview acceptance without authorizin
     stepId: "production-worker",
     status: "worker-create-prepared-awaiting-operator-approval",
     workerName: "appbasis-ulc-linz-production",
-    requiredPreparationGateEvidence: ["M3_DONE"],
+    requiredPreparationGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
     productionPreparationGateEvidenceConsumed: true,
     productionPreparationEligible: true,
     providerWriteRequired: true,
@@ -67,14 +74,14 @@ test("M6 worker gate consumes canonical M3 preview acceptance without authorizin
   assert.equal(Object.isFrozen(result.requiredPreparationGateEvidence), true);
 });
 
-test("M6 worker gate stays blocked when canonical M3 acceptance cannot be verified", async () => {
+test("M6 worker gate stays blocked when canonical ULC D4 acceptance cannot be verified", async () => {
   const result = await evaluateUlcLinzM6ProductionWorkerM3Gate(
     ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT,
     process.cwd(),
     { fetchImpl: async () => ({ ok: false }) },
   );
 
-  assert.equal(result.status, "worker-create-blocked-m3-evidence-unverified");
+  assert.equal(result.status, "worker-create-blocked-d4-evidence-unverified");
   assert.equal(result.productionPreparationGateEvidenceConsumed, false);
   assert.equal(result.productionPreparationEligible, false);
   assert.equal(result.providerWriteAllowed, false);
@@ -129,7 +136,7 @@ for (const mutate of [
         evaluateUlcLinzM6ProductionWorkerM3Gate(plan, process.cwd(), {
           fetchImpl: successfulAcceptanceFetch(),
         }),
-      errorWithCode("WORKER_M3_GATE_PRECONDITIONS_NOT_MET"),
+      errorWithCode("WORKER_D4_GATE_PRECONDITIONS_NOT_MET"),
     );
   });
 }
@@ -205,7 +212,7 @@ test("M6 worker gate rejects non-enumerable gate-evidence fields", async () => {
       evaluateUlcLinzM6ProductionWorkerM3Gate(plan, process.cwd(), {
         fetchImpl: successfulAcceptanceFetch(),
       }),
-    errorWithCode("WORKER_M3_GATE_PRECONDITIONS_NOT_MET"),
+    errorWithCode("WORKER_D4_GATE_PRECONDITIONS_NOT_MET"),
   );
 });
 

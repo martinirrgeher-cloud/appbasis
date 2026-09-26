@@ -127,7 +127,7 @@ export async function runUlcLinzProductionPostDeploySmoke(env = process.env) {
       auth: true,
       permissionsAllowed: true,
       permissionsDenied: true,
-      applicationScope: "identity-permissions-foundation",
+      applicationScope: "identity-permissions-countdown",
       fachmoduleDataMutated: false,
     });
   } finally {
