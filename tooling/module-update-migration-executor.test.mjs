@@ -218,7 +218,7 @@ test("FC6-B keeps dollar-quoted defaults with commas inside one table element", 
       ownerId: "tasks",
       relativePath: "dollar-default.sql",
       statements: [
-        "CREATE TABLE appbasis_task_note (id text PRIMARY KEY, value text DEFAULT $a,b$);",
+        "CREATE TABLE appbasis_task_note (id text PRIMARY KEY, value text DEFAULT $$a,b$$);",
       ],
     },
   ]);
@@ -238,7 +238,7 @@ test("FC6-B keeps dollar-quoted defaults with commas inside one table element", 
       (marker) =>
         marker.kind === "column" &&
         marker.table === "appbasis_task_note" &&
-        marker.name === "b$",
+        marker.name === "b$$",
     ),
     false,
   );
