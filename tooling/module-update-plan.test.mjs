@@ -513,7 +513,7 @@ async function createOwnerCollisionFixture(t) {
         appId: "ulc-linz",
         displayName: "ULC Linz",
         modules: [],
-        platformServices: ["identity"],
+        platformServices: ["identity", "permissions"],
       },
       null,
       2,
@@ -529,6 +529,7 @@ async function createOwnerCollisionFixture(t) {
         type: "module",
         dependencies: {
           "@appbasis/identity": "workspace:*",
+          "@appbasis/permissions": "workspace:*",
           hono: "4.13.1",
         },
       },
@@ -551,6 +552,17 @@ async function createOwnerCollisionFixture(t) {
             migrations: [
               "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
               "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+            ],
+          },
+          {
+            id: "permissions",
+            root: "packages/permissions",
+            schemaVersion: 4,
+            migrations: [
+              "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
+              "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
+              "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+              "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
             ],
           },
           {
@@ -587,6 +599,9 @@ importers:
       '@appbasis/identity':
         specifier: workspace:*
         version: link:../../packages/identity
+      '@appbasis/permissions':
+        specifier: workspace:*
+        version: link:../../packages/permissions
       hono:
         specifier: 4.13.1
         version: 4.13.1
