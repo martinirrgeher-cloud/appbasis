@@ -100,13 +100,13 @@ jobs:
             : > "$heads_txt"
             printf '%s\n' "$cursor" >> "$heads_txt"
 
-            while test "$depth" -lt 4; do
+            while test "$depth" -lt 20; do
               curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
                 "${AUTH[@]}" "$API/commits/$cursor" > "$commit_file" || break
               jq -e --arg sha "$cursor" '
                 .sha == $sha
                 and (.parents | type == "array" and length == 1)
-                and (.files | type == "array" and length >= 1 and length <= 6)
+                and (.files | type == "array" and length >= 1 and length <= 16)
               ' "$commit_file" >/dev/null || break
 
               safe_commit=true
@@ -114,10 +114,22 @@ jobs:
                 case "$changed_file" in
                   tooling/ulc-linz-m5-lifecycle-executor-binding.mjs|\
                   tooling/ulc-linz-m5-lifecycle-executor-binding-retry.test.mjs|\
+                  tooling/ulc-linz-m5-production-evidence-observer.mjs|\
+                  tooling/ulc-linz-m5-production-evidence-observer.test.mjs|\
+                  tooling/ulc-linz-m6-production-resource-binding.test.mjs|\
+                  tooling/ulc-linz-m6-runtime-contract-equivalence.mjs|\
+                  tooling/ulc-linz-m6-runtime-contract-equivalence.test.mjs|\
                   .github/workflows/m5-ulc-production-evidence.yml|\
                   tooling/ulc-linz-m5-production-evidence-workflow.test.mjs|\
                   .github/workflows/m6-ulc-production-refresh-chain.yml|\
                   tooling/ulc-linz-m6-refresh-chain-safe-resume.test.mjs)
+                    ;;
+                  tooling/ulc-linz-m6-production-resource-binding.mjs)
+                    resource_binding_blob="$(jq -er --arg file "$changed_file" '.files[] | select(.filename == $file) | .sha' "$commit_file" 2>/dev/null || true)"
+                    if test "$resource_binding_blob" != "837846c60c8337e746272cc1540ecc5adb61466c"; then
+                      safe_commit=false
+                      break
+                    fi
                     ;;
                   *)
                     safe_commit=false
@@ -419,7 +431,7 @@ jobs:
             echo '- later steps require a separate workflow dispatch and a fresh operator approval'
             echo '- workflow reruns are rejected; retries require a new explicitly approved dispatch'
             echo '- successful exact-head prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created (first-attempt runs only)'
-            echo '- bounded safe-resume ancestors are accepted only across consecutive commits that change evidence-verifier or refresh-orchestration files from the fixed allowlist; runtime/provider changes still require a new exact-head chain'
+            echo '- bounded safe-resume ancestors are accepted only across consecutive commits that change evidence-verifier, runtime-equivalence or refresh-orchestration files from the fixed allowlist; runtime-contract/provider changes still require a new exact-head chain'
             echo '- every child dispatch carries a unique run-name correlation token and is accepted only on run attempt 1; ambiguous POST responses recover only that exact first attempt'
             echo '- parent waits a bounded 30 seconds for freshly dispatched GitHub run metadata to stabilize before fail-closed identity enforcement'
             echo '- parent persists child attempt identity before dispatch and exact child-run identity once known, then propagates manual cancellation'

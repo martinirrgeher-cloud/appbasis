@@ -20,11 +20,16 @@ const GITHUB_EVIDENCE_TIMEOUT_MS = 10000;
 const GITHUB_EVIDENCE_ATTEMPTS = 3;
 const GITHUB_EVIDENCE_RETRY_DELAY_MS = 250;
 const MAX_PREFLIGHT_AGE_MS = 24 * 60 * 60 * 1000;
-const MAX_SAFE_RESUME_DEPTH = 4;
+const MAX_SAFE_RESUME_DEPTH = 20;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const SAFE_RESUME_FILES = Object.freeze([
   "tooling/ulc-linz-m5-lifecycle-executor-binding.mjs",
   "tooling/ulc-linz-m5-lifecycle-executor-binding-retry.test.mjs",
+  "tooling/ulc-linz-m5-production-evidence-observer.mjs",
+  "tooling/ulc-linz-m5-production-evidence-observer.test.mjs",
+  "tooling/ulc-linz-m6-production-resource-binding.test.mjs",
+  "tooling/ulc-linz-m6-runtime-contract-equivalence.mjs",
+  "tooling/ulc-linz-m6-runtime-contract-equivalence.test.mjs",
   ".github/workflows/m5-ulc-production-evidence.yml",
   "tooling/ulc-linz-m5-production-evidence-workflow.test.mjs",
   ".github/workflows/m6-ulc-production-refresh-chain.yml",

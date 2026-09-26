@@ -116,6 +116,10 @@ test("one correlated run completes G, account-bound DPA and F before canonical J
   const source = await workflow();
   assert.match(source, /ulc-linz-m5-backup-contract\.mjs/);
   assert.match(source, /ulc-linz-m5-production-evidence-observer\.mjs/);
+  assert.match(
+    source,
+    /Observe exact current providers and compose one correlated owner bundle[\s\S]*GITHUB_TOKEN: \$\{\{ github\.token \}\}/,
+  );
   assert.match(source, /ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE: \$\{\{ secrets\.ULC_LINZ_M5_DPA_ACCOUNT_BINDING_EVIDENCE \}\}/);
   assert.match(source, /ulc-linz-m5-production-g-evidence\.mjs "\$WORK\/m5-base-bundle\.json" > "\$WORK\/m5-g-baseline-bundle\.json"/);
   assert.match(source, /ulc-linz-m5-production-dpa-evidence\.mjs "\$WORK\/m5-g-baseline-bundle\.json" > "\$WORK\/m5-g-bundle\.json"/);

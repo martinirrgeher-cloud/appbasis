@@ -80,6 +80,30 @@ const UNSAFE_VALUE_PATTERNS = Object.freeze([
 export const ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_DIGEST =
   deriveUlcLinzProductionRuntimeContractDigest();
 
+export const ULC_LINZ_M6_PRODUCTION_RUNTIME_CONTRACT_SCOPE = Object.freeze({
+  files: Object.freeze([...RUNTIME_CONTRACT_PATHS]),
+  directories: Object.freeze([...RUNTIME_CONTRACT_DIRECTORIES]),
+});
+
+export function isUlcLinzProductionRuntimeContractPath(relativePath) {
+  if (
+    typeof relativePath !== "string" ||
+    relativePath.length < 1 ||
+    relativePath !== relativePath.trim() ||
+    relativePath.startsWith("/") ||
+    relativePath.includes("\\")
+  ) {
+    return false;
+  }
+  return (
+    RUNTIME_CONTRACT_PATHS.includes(relativePath) ||
+    RUNTIME_CONTRACT_DIRECTORIES.some(
+      (directory) =>
+        relativePath === directory || relativePath.startsWith(`${directory}/`),
+    )
+  );
+}
+
 export const ULC_LINZ_M6_PRODUCTION_RESOURCE_BINDING_CONTRACT = Object.freeze({
   schemaVersion: 1,
   application: APPLICATION,
