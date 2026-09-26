@@ -5,6 +5,7 @@ import { verifyUlcLinzM5LifecycleExecutorBinding } from "./ulc-linz-m5-lifecycle
 
 const HEAD = "a".repeat(40);
 const PARENT = "b".repeat(40);
+const GRANDPARENT = "c".repeat(40);
 const UPDATED_AT = "2026-09-14T16:29:15.000Z";
 const NOW = Date.parse("2026-09-14T16:35:00.000Z");
 
@@ -149,6 +150,54 @@ test("bridges one direct parent lifecycle checkpoint only across evidence-verifi
     if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
       return Response.json(successfulLifecycleRun({
         head: PARENT,
+        name: "m6-chain-34873471771-1-lifecycle_preflight",
+      }));
+    }
+    throw new Error(`Unexpected GitHub evidence URL: ${url}`);
+  };
+
+  const result = await verifyUlcLinzM5LifecycleExecutorBinding(process.cwd(), {
+    fetchImpl,
+    now: () => NOW,
+    sleep: async () => {},
+  });
+
+  assert.equal(result.verifiedHeadSha, HEAD);
+  assert.equal(result.verifiedAt, UPDATED_AT);
+});
+
+test("bridges multiple consecutive evidence-only commits to the latest trusted lifecycle checkpoint", async () => {
+  const fetchImpl = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/commits/main")) return Response.json({ sha: HEAD });
+    if (url.endsWith(`/commits/${HEAD}`)) {
+      return Response.json(currentCommit({
+        head: HEAD,
+        parent: PARENT,
+        files: [
+          ".github/workflows/m6-ulc-production-refresh-chain.yml",
+          "tooling/ulc-linz-m6-refresh-chain-safe-resume.test.mjs",
+        ],
+      }));
+    }
+    if (url.endsWith(`/commits/${PARENT}`)) {
+      return Response.json(currentCommit({
+        head: PARENT,
+        parent: GRANDPARENT,
+        files: [
+          "tooling/ulc-linz-m5-lifecycle-executor-binding.mjs",
+          "tooling/ulc-linz-m5-lifecycle-executor-binding-retry.test.mjs",
+          ".github/workflows/m5-ulc-production-evidence.yml",
+          "tooling/ulc-linz-m5-production-evidence-workflow.test.mjs",
+        ],
+      }));
+    }
+    if (url.endsWith(`/commits/${GRANDPARENT}`)) {
+      return Response.json(currentCommit({ head: GRANDPARENT }));
+    }
+    if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+      return Response.json(successfulLifecycleRun({
+        head: GRANDPARENT,
         name: "m6-chain-34873471771-1-lifecycle_preflight",
       }));
     }
