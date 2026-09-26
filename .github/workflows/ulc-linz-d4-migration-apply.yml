@@ -295,6 +295,7 @@ jobs:
           fi
 
       - name: Diagnose AppBasis postgres-js authentication
+        working-directory: packages/database
         shell: bash
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
