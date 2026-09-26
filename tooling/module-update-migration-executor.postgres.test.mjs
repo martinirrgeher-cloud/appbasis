@@ -40,6 +40,7 @@ test("FC6-B applies tasks atomically to a non-empty existing app baseline and re
 
   try {
     await resetIdentityBaseline(admin, root);
+    await publishTasksModuleFixture(root);
 
     const result = await applyModuleUpdateMigrations(
       {
@@ -55,6 +56,7 @@ test("FC6-B applies tasks atomically to a non-empty existing app baseline and re
     assert.equal(result.state, "applied");
     assert.equal(result.application, "existing");
     assert.equal(result.moduleId, "tasks");
+    assert.equal(result.repositoryState, "published-target");
     assert.equal(result.migrationCount, 1);
     assert.ok(result.statementCount > 0);
     assert.ok(result.baselineMarkerCount > 0);
@@ -228,6 +230,61 @@ CREATE TABLE appbasis_task_failure (
     await admin.client.end();
   }
 });
+
+async function publishTasksModuleFixture(root) {
+  const appPath = join(root, "apps", "existing", "appbasis.app.json");
+  const app = JSON.parse(await readFile(appPath, "utf8"));
+  app.modules = ["tasks"];
+  await writeFile(appPath, `${JSON.stringify(app, null, 2)}\n`);
+
+  const packagePath = join(root, "apps", "existing", "package.json");
+  const appPackage = JSON.parse(await readFile(packagePath, "utf8"));
+  appPackage.dependencies["@appbasis/tasks"] = "workspace:*";
+  await writeFile(packagePath, `${JSON.stringify(appPackage, null, 2)}\n`);
+
+  const databasePath = join(
+    root,
+    "apps",
+    "existing",
+    "appbasis.database.json",
+  );
+  const database = JSON.parse(await readFile(databasePath, "utf8"));
+  database.owners.push({
+    id: "tasks",
+    root: "modules/tasks",
+    schemaVersion: 1,
+    migrations: [
+      "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+    ],
+  });
+  await writeFile(databasePath, `${JSON.stringify(database, null, 2)}\n`);
+
+  await writeFile(
+    join(root, "pnpm-lock.yaml"),
+    `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/existing:
+    dependencies:
+      '@appbasis/identity':
+        specifier: workspace:*
+        version: link:../../packages/identity
+      '@appbasis/tasks':
+        specifier: workspace:*
+        version: link:../../modules/tasks
+      hono:
+        specifier: 4.13.1
+        version: 4.13.1
+`,
+  );
+}
 
 async function resetIdentityBaseline(admin, root) {
   await admin.client.unsafe(
