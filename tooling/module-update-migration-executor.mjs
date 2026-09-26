@@ -263,14 +263,22 @@ export function createCatalogContract(plan, label = "migration") {
       );
     }
     for (const statement of migration.statements) {
-      const markers = catalogMarkersFromStatement(statement);
-      if (markers.length === 0) {
+      const commands = splitSqlCommands(statement);
+      if (commands.length === 0) {
         throw new ModuleUpdateMigrationConfigurationError(
-          `FC6-B ${label} migration contains a statement without a verifiable catalog marker.`,
+          `FC6-B ${label} migration contains no executable SQL command.`,
         );
       }
-      for (const marker of markers) {
-        finalMarkers.set(catalogMarkerKey(marker), marker);
+      for (const command of commands) {
+        const markers = catalogMarkersFromStatement(command);
+        if (markers.length === 0) {
+          throw new ModuleUpdateMigrationConfigurationError(
+            `FC6-B ${label} migration contains a statement without a verifiable catalog marker.`,
+          );
+        }
+        for (const marker of markers) {
+          finalMarkers.set(catalogMarkerKey(marker), marker);
+        }
       }
     }
   }
@@ -329,7 +337,7 @@ function catalogMarkersFromStatement(statement) {
   }
 
   const createIndex = new RegExp(
-    `^CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+${IDENTIFIER_SOURCE}\\s+ON\\s+${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
+    `^CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}\\s+ON\\s+${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
     "i",
   ).exec(normalized);
   if (createIndex !== null) {
@@ -580,6 +588,117 @@ function catalogMarkerKey(marker) {
     marker.table ?? "",
     marker.name,
   ].join(":");
+}
+
+function splitSqlCommands(value) {
+  if (typeof value !== "string") return [];
+
+  const commands = [];
+  let start = 0;
+  let index = 0;
+
+  while (index < value.length) {
+    const char = value[index];
+    const next = value[index + 1];
+
+    if (char === "-" && next === "-") {
+      index += 2;
+      while (index < value.length && value[index] !== "\n") index += 1;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      index = skipSqlBlockComment(value, index);
+      continue;
+    }
+
+    if (char === "'") {
+      index = skipSqlSingleQuotedString(value, index);
+      continue;
+    }
+
+    if (char === '"') {
+      index = skipSqlDoubleQuotedIdentifier(value, index);
+      continue;
+    }
+
+    if (char === "$") {
+      const marker =
+        value.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)?.[0];
+      if (marker !== undefined) {
+        const closingIndex = value.indexOf(marker, index + marker.length);
+        index =
+          closingIndex === -1
+            ? value.length
+            : closingIndex + marker.length;
+        continue;
+      }
+    }
+
+    if (char === ";") {
+      const command = value.slice(start, index + 1).trim();
+      if (command.length > 0) commands.push(command);
+      start = index + 1;
+    }
+    index += 1;
+  }
+
+  const tail = value.slice(start).trim();
+  if (tail.length > 0) commands.push(tail);
+  return commands;
+}
+
+function skipSqlSingleQuotedString(value, start) {
+  const escapeBackslash =
+    start > 0 &&
+    (value[start - 1] === "E" || value[start - 1] === "e") &&
+    (start < 2 || !/[A-Za-z0-9_$]/.test(value[start - 2]));
+  let index = start + 1;
+  while (index < value.length) {
+    if (value[index] === "'" && value[index + 1] === "'") {
+      index += 2;
+      continue;
+    }
+    if (escapeBackslash && value[index] === "\\" && index + 1 < value.length) {
+      index += 2;
+      continue;
+    }
+    if (value[index] === "'") return index + 1;
+    index += 1;
+  }
+  return value.length;
+}
+
+function skipSqlDoubleQuotedIdentifier(value, start) {
+  let index = start + 1;
+  while (index < value.length) {
+    if (value[index] === '"' && value[index + 1] === '"') {
+      index += 2;
+      continue;
+    }
+    if (value[index] === '"') return index + 1;
+    index += 1;
+  }
+  return value.length;
+}
+
+function skipSqlBlockComment(value, start) {
+  let depth = 1;
+  let index = start + 2;
+  while (index < value.length && depth > 0) {
+    if (value[index] === "/" && value[index + 1] === "*") {
+      depth += 1;
+      index += 2;
+      continue;
+    }
+    if (value[index] === "*" && value[index + 1] === "/") {
+      depth -= 1;
+      index += 2;
+      continue;
+    }
+    index += 1;
+  }
+  return index;
 }
 
 function splitTopLevel(value) {
