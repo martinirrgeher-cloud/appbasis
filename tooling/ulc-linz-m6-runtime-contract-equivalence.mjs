@@ -74,7 +74,6 @@ function validateComparison(comparison, deployedGithubSha, currentGithubSha) {
     comparison.status !== "ahead" ||
     comparison?.base_commit?.sha !== deployedGithubSha ||
     comparison?.merge_base_commit?.sha !== deployedGithubSha ||
-    comparison?.head_commit?.sha !== currentGithubSha ||
     !Number.isSafeInteger(comparison.ahead_by) ||
     comparison.ahead_by < 1 ||
     comparison.ahead_by > MAX_COMPARE_COMMITS ||
@@ -82,6 +81,7 @@ function validateComparison(comparison, deployedGithubSha, currentGithubSha) {
     comparison.total_commits !== comparison.ahead_by ||
     !Array.isArray(comparison.commits) ||
     comparison.commits.length !== comparison.ahead_by ||
+    comparison.commits.at(-1)?.sha !== currentGithubSha ||
     !Array.isArray(comparison.files) ||
     comparison.files.length < 1 ||
     comparison.files.length >= MAX_COMPARE_FILES
