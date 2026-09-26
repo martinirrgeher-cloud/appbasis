@@ -152,6 +152,7 @@ jobs:
           ADMIN_URL="$(jq -r '.uri // .connection_uri // empty' "$TMP_DIR/admin-uri.json")"
           test -n "$ADMIN_URL" || { echo 'Direct Neon admin connection URI was not resolved.' >&2; exit 1; }
           echo "::add-mask::$ADMIN_URL"
+          echo "APPBASIS_NEON_ADMIN_URL=$ADMIN_URL" >> "$GITHUB_ENV"
 
           extract_password() {
             URL_VALUE="$1" node --input-type=module <<'NODE'
@@ -342,7 +343,32 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight >/dev/null
 
+      - name: Temporarily authorize migration role for protected role creation
+        shell: bash
+        env:
+          MIGRATION_ROLE: appbasis_ulc_linz_preview_migration
+        run: |
+          set -euo pipefail
+          test -n "${APPBASIS_NEON_ADMIN_URL:-}" || {
+            echo 'Ephemeral Neon admin connection is unavailable.' >&2
+            exit 1
+          }
+          psql "$APPBASIS_NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -q             --set=role="$MIGRATION_ROLE" >/dev/null <<'SQL'
+          SELECT format('ALTER ROLE %I CREATEROLE', :'role') \gexec
+          SQL
+          state="$(psql "$APPBASIS_NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -Atq             --set=role="$MIGRATION_ROLE" <<'SQL'
+          SELECT CASE WHEN rolcreaterole THEN 'true' ELSE 'false' END
+          FROM pg_catalog.pg_roles
+          WHERE rolname = :'role';
+          SQL
+          )"
+          test "$state" = true || {
+            echo 'ULC D4 migration role could not be temporarily authorized.' >&2
+            exit 1
+          }
+
       - name: Apply ULC preview database manifest
+        id: migration
         shell: bash
         env:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
@@ -350,7 +376,104 @@ jobs:
           APPBASIS_APPLY_MIGRATIONS: "1"
         run: node ./tooling/ulc-linz-d4-preview-migrate.mjs
 
+      - name: Restore least privilege after migration role creation
+        if: always()
+        shell: bash
+        env:
+          MIGRATION_OUTCOME: ${{ steps.migration.outcome }}
+          MIGRATION_ROLE: appbasis_ulc_linz_preview_migration
+          SECURITY_LOGIN_ROLE: appbasis_ulc_linz_preview_security_log
+          SECURITY_GROUP: appbasis_ulc_linz_preview_security_ingest
+        run: |
+          set -euo pipefail
+          test -n "${APPBASIS_NEON_ADMIN_URL:-}" || {
+            echo 'Ephemeral Neon admin connection is unavailable for privilege cleanup.' >&2
+            exit 1
+          }
+
+          # The elevated attribute must never survive this bracket.
+          psql "$APPBASIS_NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -q             --set=role="$MIGRATION_ROLE" >/dev/null <<'SQL'
+          SELECT format('ALTER ROLE %I NOCREATEROLE', :'role') \gexec
+          SQL
+
+          # On success, bind the preview security login exactly before removing the
+          # migration creator's implicit ADMIN memberships.
+          if test "$MIGRATION_OUTCOME" = success; then
+            psql "$APPBASIS_NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -q               --set=parent="$SECURITY_GROUP"               --set=member="$SECURITY_LOGIN_ROLE" >/dev/null <<'SQL'
+          SELECT format(
+            'GRANT %I TO %I WITH INHERIT TRUE, SET TRUE',
+            :'parent',
+            :'member'
+          ) \gexec
+          SQL
+          fi
+
+          for parent in             ulc_linz_security_event_ingest             ulc_linz_security_event_cleanup             ulc_linz_security_event_read             appbasis_ulc_linz_preview_security_ingest
+          do
+            exists="$(psql "$APPBASIS_NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -Atq               --set=parent="$parent" <<'SQL'
+          SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = :'parent'
+          ) THEN 'true' ELSE 'false' END;
+          SQL
+          )"
+            if test "$exists" = true; then
+              psql "$APPBASIS_NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -q                 --set=parent="$parent"                 --set=member="$MIGRATION_ROLE" >/dev/null <<'SQL'
+          SELECT format('REVOKE %I FROM %I', :'parent', :'member') \gexec
+          SQL
+            fi
+          done
+
+          elevated="$(psql "$APPBASIS_NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -Atq             --set=role="$MIGRATION_ROLE" <<'SQL'
+          SELECT CASE WHEN rolcreaterole THEN 'true' ELSE 'false' END
+          FROM pg_catalog.pg_roles
+          WHERE rolname = :'role';
+          SQL
+          )"
+          test "$elevated" = false || {
+            echo 'ULC D4 migration role remained elevated after cleanup.' >&2
+            exit 1
+          }
+
+          creator_memberships="$(psql "$APPBASIS_NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -Atq             --set=member="$MIGRATION_ROLE" <<'SQL'
+          SELECT count(*)
+          FROM pg_catalog.pg_auth_members membership
+          JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
+          JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+          WHERE member.rolname = :'member'
+            AND parent.rolname = ANY(ARRAY[
+              'ulc_linz_security_event_ingest',
+              'ulc_linz_security_event_cleanup',
+              'ulc_linz_security_event_read',
+              'appbasis_ulc_linz_preview_security_ingest'
+            ]::text[]);
+          SQL
+          )"
+          test "$creator_memberships" = 0 || {
+            echo 'ULC D4 migration role retained protected role memberships.' >&2
+            exit 1
+          }
+
+          if test "$MIGRATION_OUTCOME" = success; then
+            exact_security_membership="$(psql "$APPBASIS_NEON_ADMIN_URL" -v ON_ERROR_STOP=1 -Atq               --set=parent="$SECURITY_GROUP"               --set=member="$SECURITY_LOGIN_ROLE" <<'SQL'
+          SELECT count(*)
+          FROM pg_catalog.pg_auth_members membership
+          JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
+          JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+          WHERE parent.rolname = :'parent'
+            AND member.rolname = :'member'
+            AND membership.admin_option = false
+            AND membership.inherit_option = true
+            AND membership.set_option = true;
+          SQL
+          )"
+            test "$exact_security_membership" = 1 || {
+              echo 'ULC D4 preview security login membership was not restored exactly.' >&2
+              exit 1
+            }
+          fi
+
       - name: Reconcile separated ULC preview runtime database access
+        if: steps.migration.outcome == 'success'
         shell: bash
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
