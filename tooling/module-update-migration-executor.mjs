@@ -10,6 +10,7 @@ import {
 import { planModuleUpdate } from "./module-update-plan.mjs";
 
 const IDENTIFIER_SOURCE = '(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_$]*))';
+const IDENTIFIER_END = '(?=\\s|$|\\(|,|;)';
 
 export class ModuleUpdateMigrationConfigurationError extends Error {
   constructor(message) {
@@ -141,6 +142,7 @@ export async function applyModuleUpdateMigrations(
     { appId, moduleId },
     options,
   );
+  assertExpectedDatabase(expectedDatabase);
   const normalizedConnectionString = validatePostgresConnectionString(
     connectionString,
     {
@@ -509,6 +511,18 @@ async function catalogMarkerExists(transaction, marker) {
   throw new ModuleUpdateMigrationConfigurationError(
     "FC6-B catalog marker kind is unsupported.",
   );
+}
+
+function assertExpectedDatabase(expectedDatabase) {
+  if (
+    typeof expectedDatabase !== "string" ||
+    expectedDatabase.length === 0 ||
+    expectedDatabase.trim() !== expectedDatabase
+  ) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B expectedDatabase must be an explicit PostgreSQL database.",
+    );
+  }
 }
 
 function assertConnectionPrincipal(connectionString, expectedPrincipal) {
