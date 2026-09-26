@@ -6,7 +6,9 @@
     "csv"
   ],
   "unknownDataset": "deny",
-  "runtimeModules": [],
+  "runtimeModules": [
+    "countdown"
+  ],
   "datasets": [
     {
       "id": "member-contact",

@@ -132,8 +132,8 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(databaseManifest.application).toBe(inventory.application);
     expect(appManifest.appId).toBe(inventory.application);
     expect(appManifest.modules).toEqual(["countdown"]);
-    expect(inventory.runtimeModules).toEqual([]);
-    expect(inventory.runtimeModules).not.toEqual(appManifest.modules);
+    expect(inventory.runtimeModules).toEqual(["countdown"]);
+    expect(inventory.runtimeModules).toEqual(appManifest.modules);
     expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
 
     expect(sortedOwnerContracts(inventory.persistentOwners)).toEqual(
