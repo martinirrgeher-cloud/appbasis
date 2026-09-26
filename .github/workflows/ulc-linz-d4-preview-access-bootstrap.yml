@@ -114,7 +114,8 @@ jobs:
           APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
           APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
           APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_TEMPORARY_PASSWORD }}
-        run: node ./apps/ulc-linz/tooling/bootstrap-preview-admin.mjs
+        working-directory: apps/ulc-linz
+        run: node --experimental-transform-types --import ./tooling/register-native-typescript-resolution.mjs ./tooling/bootstrap-preview-admin.mjs
 
       - name: Record access result
         if: success()
