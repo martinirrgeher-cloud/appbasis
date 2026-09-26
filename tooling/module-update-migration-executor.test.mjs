@@ -244,6 +244,53 @@ test("FC6-B keeps dollar-quoted defaults with commas inside one table element", 
   );
 });
 
+test("FC6-B ignores commas inside CREATE TABLE comments and still proves the following column", () => {
+  const contract = createCatalogContract([
+    {
+      ownerId: "tasks",
+      relativePath: "commented-elements.sql",
+      statements: [
+        `CREATE TABLE appbasis_task_note (
+          id text PRIMARY KEY,
+          -- explanation, with comma
+          note text NOT NULL,
+          /* another, comma */
+          details text
+        );`,
+      ],
+    },
+  ]);
+
+  for (const name of ["id", "note", "details"]) {
+    assert.equal(
+      contract.some(
+        (marker) =>
+          marker.kind === "column" &&
+          marker.table === "appbasis_task_note" &&
+          marker.name === name &&
+          marker.present === true,
+      ),
+      true,
+    );
+  }
+});
+
+test("FC6-B rejects unsupported unaccounted CREATE TABLE elements", () => {
+  assert.throws(
+    () =>
+      createCatalogContract([
+        {
+          ownerId: "tasks",
+          relativePath: "unnamed-constraint.sql",
+          statements: [
+            "CREATE TABLE appbasis_task_note (id text, UNIQUE (id));",
+          ],
+        },
+      ]),
+    ModuleUpdateMigrationConfigurationError,
+  );
+});
+
 test("FC6-B rejects target module DDL that mutates a baseline-owned table", async (t) => {
   const root = await createExistingAppFixture(t);
   await writeFile(
