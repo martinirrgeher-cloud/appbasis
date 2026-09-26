@@ -254,8 +254,11 @@ Datenbankwrite.
 
 ### FC6-B – isolierter inkrementeller Migration-Executor – aktuell
 
-Der FC6-B-Executor konsumiert ausschließlich den FC6-A-Delta-Vertrag. Vor dem
-ersten Ziel-DDL muss er:
+Der FC6-B-Executor konsumiert den FC6-A-Delta-Vertrag entweder unmittelbar
+vor der Repository-Publikation oder rekonstruiert denselben Delta nach der
+Publikation aus dem kanonischen Target-Manifest. `already-installed` im
+Repository behauptet dabei ausdrücklich keinen bereits migrierten
+Datenbankzustand. Vor dem ersten Ziel-DDL muss er:
 
 - direkte PostgreSQL-Verbindung, logische Datenbank und Principal explizit
   verifizieren;
