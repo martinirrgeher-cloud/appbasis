@@ -31,7 +31,7 @@ function validEvidence() {
   };
 }
 
-test("ULC M6 first provider-write preflight verifies inventory but remains blocked before the production-preparation gate", () => {
+test("ULC M6 first provider-write preflight verifies inventory but remains blocked before the ULC D4 production-preparation gate", () => {
   const result = evaluateUlcLinzM6FirstProviderWritePreflight(validEvidence(), { now: NOW });
   assert.equal(result.phase, "production-preparation");
   assert.equal(result.status, "provider-inventory-verified-blocked-before-production-preparation-gate");
@@ -50,7 +50,7 @@ test("ULC M6 first provider-write preflight verifies inventory but remains block
   assert.equal(result.productionPreparationGateEvidenceConsumed, false);
   assert.equal(result.productionPreparationEligible, false);
   assert.equal(result.productionReady, false);
-  assert.deepEqual(result.requiredPreparationGates, ["M3_DONE"]);
+  assert.deepEqual(result.requiredPreparationGates, ["ULC_D4_PREVIEW_ACCEPTED"]);
   assert.deepEqual(result.requiredProductionReadyGates, ["M4_DONE", "M5_DONE"]);
   assert.equal(result.publicExposureAllowed, false);
   assert.equal(result.providerWriteAllowed, false);
@@ -85,7 +85,7 @@ test("ULC M6 provider preflight permits provider-404 region inventory only by de
 test("ULC M6 provider-write safety contract separates preparation from Production Ready", () => {
   const contract = ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT;
   assert.deepEqual(contract.productionPreparation, {
-    requiredGateEvidence: ["M3_DONE"],
+    requiredGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
     m4RequiredBeforePreparationWrite: false,
     m5RequiredBeforePreparationWrite: false,
     explicitApprovalRequiredPerMutatingStep: true,

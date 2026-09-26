@@ -43,7 +43,7 @@ export const ULC_LINZ_M6_PROVIDER_WRITE_SAFETY_CONTRACT = deepFreeze({
   application: APPLICATION,
   environment: ENVIRONMENT,
   productionPreparation: {
-    requiredGateEvidence: ["M3_DONE"],
+    requiredGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
     m4RequiredBeforePreparationWrite: false,
     m5RequiredBeforePreparationWrite: false,
     explicitApprovalRequiredPerMutatingStep: true,
@@ -201,7 +201,7 @@ function assertCanonicalContracts() {
     safety.environment !== ENVIRONMENT ||
     !Array.isArray(safety.productionPreparation.requiredGateEvidence) ||
     safety.productionPreparation.requiredGateEvidence.length !== 1 ||
-    safety.productionPreparation.requiredGateEvidence[0] !== "M3_DONE" ||
+    safety.productionPreparation.requiredGateEvidence[0] !== "ULC_D4_PREVIEW_ACCEPTED" ||
     safety.productionPreparation.m4RequiredBeforePreparationWrite !== false ||
     safety.productionPreparation.m5RequiredBeforePreparationWrite !== false ||
     safety.productionPreparation.explicitApprovalRequiredPerMutatingStep !== true ||

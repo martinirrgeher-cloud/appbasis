@@ -19,7 +19,7 @@ const EXPECTED_STEPS = [
   [
     "neon-production-database",
     "provider-write",
-    ["prerequisite:M3_DONE"],
+    ["prerequisite:ULC_D4_PREVIEW_ACCEPTED"],
   ],
   ["production-worker", "provider-write", ["neon-production-database"]],
   [
@@ -116,7 +116,7 @@ const MUTATING_STEP_KINDS = new Set([
   "authorization-gate",
 ]);
 const ALLOWED_EXTERNAL_PREREQUISITES = new Set([
-  "prerequisite:M3_DONE",
+  "prerequisite:ULC_D4_PREVIEW_ACCEPTED",
   "prerequisite:M4_DONE",
 ]);
 
@@ -131,7 +131,7 @@ test("ULC M6 preflight separates controlled production preparation from Producti
   assert.equal(result.releaseAuthorized, false);
   assert.equal(result.explicitApprovalRequired, true);
   assert.equal(result.firstProviderWriteStepId, "neon-production-database");
-  assert.deepEqual(result.productionPreparationPrerequisiteGates, ["M3_DONE"]);
+  assert.deepEqual(result.productionPreparationPrerequisiteGates, ["ULC_D4_PREVIEW_ACCEPTED"]);
   assert.deepEqual(result.productionReadyRequiredGates, ["M4_DONE", "M5_DONE"]);
   assert.equal(result.publicExposureBeforeProductionReadyGatesAllowed, false);
   assert.deepEqual(result.nextAction, {
@@ -173,18 +173,19 @@ test("ULC M6 preflight separates controlled production preparation from Producti
   assert.equal(Object.isFrozen(result.executionPlan), true);
 });
 
-test("ULC M6 production preflight stays blocked for the FC5 countdown target until production contracts are renewed", async () => {
-  await assert.rejects(
-    evaluateUlcLinzM6ProductionPreflight(REPOSITORY_ROOT),
-    errorWithCode("APP_DEFINITION_INVALID"),
-  );
+test("ULC M6 production preflight accepts the renewed FC5 countdown target while keeping provider writes blocked", async () => {
+  const result = await evaluateUlcLinzM6ProductionPreflight(REPOSITORY_ROOT);
+  assert.equal(result.repositoryPreflightVerified, true);
+  assert.equal(result.providerWriteAllowed, false);
+  assert.equal(result.releaseAuthorized, false);
+  assert.equal(result.nextAction.executionAuthorized, false);
 });
 
 test("ULC M6 phase model permits approved non-public preparation before M4/M5 but requires them for Production Ready", () => {
   const phaseModel = ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.phaseModel;
 
   assert.deepEqual(phaseModel.productionPreparation, {
-    requiredGateEvidence: ["M3_DONE"],
+    requiredGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
     m4RequiredBeforePreparationWrite: false,
     m5RequiredBeforePreparationWrite: false,
     explicitApprovalRequiredPerMutatingStep: true,
@@ -233,7 +234,7 @@ test("ULC M6 dependency graph preserves critical gates and ordering transitively
   for (const step of plan.steps) {
     if (!MUTATING_STEP_KINDS.has(step.kind)) continue;
     assert.equal(
-      dependencyClosure(plan, step.id).has("prerequisite:M3_DONE"),
+      dependencyClosure(plan, step.id).has("prerequisite:ULC_D4_PREVIEW_ACCEPTED"),
       true,
       `${step.id} must remain transitively behind M3`,
     );
@@ -249,7 +250,7 @@ test("ULC M6 dependency graph preserves critical gates and ordering transitively
   assert.equal(releaseClosure.has("post-deploy-smokes"), true);
   assert.equal(releaseClosure.has("m5-production-evidence"), true);
   assert.equal(releaseClosure.has("prerequisite:M4_DONE"), true);
-  assert.equal(releaseClosure.has("prerequisite:M3_DONE"), true);
+  assert.equal(releaseClosure.has("prerequisite:ULC_D4_PREVIEW_ACCEPTED"), true);
 });
 
 test("ULC M6 execution plan covers every canonical M6 release criterion exactly by id", () => {
@@ -273,7 +274,7 @@ test("ULC M6 execution plan covers every canonical M6 release criterion exactly 
   );
   assert.deepEqual(
     ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.m6CriterionCoverage.previewAccepted,
-    ["prerequisite:M3_DONE"],
+    ["prerequisite:ULC_D4_PREVIEW_ACCEPTED"],
   );
   assert.deepEqual(
     ULC_LINZ_M6_PRODUCTION_EXECUTION_PLAN.m6CriterionCoverage.productionDomainReady,
@@ -294,7 +295,7 @@ test("ULC M6 plan keeps every mutating or release action behind explicit approva
   }
 
   const firstStep = plan.steps[0];
-  assert.deepEqual(firstStep.requires, ["prerequisite:M3_DONE"]);
+  assert.deepEqual(firstStep.requires, ["prerequisite:ULC_D4_PREVIEW_ACCEPTED"]);
   assert.deepEqual(firstStep.target, {
     provider: "neon",
     dedicatedProductionResource: true,
@@ -357,7 +358,7 @@ test("ULC M6 runtime configuration names secrets without storing secret values",
 
   assert.deepEqual(step.target.secretNames, ["BETTER_AUTH_SECRET"]);
   assert.deepEqual(step.target.plainConfigurationNames, ["APPBASIS_BASE_URL"]);
-  assert.deepEqual(step.target.requiredBindings, ["HYPERDRIVE"]);
+  assert.deepEqual(step.target.requiredBindings, ["HYPERDRIVE", "SECURITY_LOG_HYPERDRIVE"]);
   assert.equal(step.target.baseURLSource, "provider-derived-workers-dev-origin");
   assert.equal(step.target.secretValuesInRepository, false);
   assert.deepEqual(step.requires, ["database-binding", "production-worker"]);
@@ -469,6 +470,7 @@ test("ULC M6 recovery precedes the final M5 gate and both precede pilot exposure
     "health",
     "auth",
     "permissions",
+    "countdown",
     "application",
   ]);
 });
@@ -487,7 +489,7 @@ test("ULC M6 preflight fails closed when app definition drifts", async () => {
 
 test("ULC M6 preflight fails closed when database ownership or migrations drift", async () => {
   await withRepositoryFixture(async (root, fixture) => {
-    fixture.appDefinition.modules = [];
+    fixture.appDefinition.modules = ["countdown"];
     fixture.databaseManifest.owners[0].schemaVersion = 999;
     await writeFixture(root, fixture);
 
@@ -513,7 +515,7 @@ test("ULC M6 preflight fails closed on extra app manifest fields", async () => {
 async function evaluateApprovedScopePreflight() {
   let result;
   await withRepositoryFixture(async (root, fixture) => {
-    fixture.appDefinition.modules = [];
+    fixture.appDefinition.modules = ["countdown"];
     await writeFixture(root, fixture);
     result = await evaluateUlcLinzM6ProductionPreflight(root);
   });
