@@ -243,6 +243,90 @@ CREATE INDEX appbasis_person_module_owned_idx
   );
 });
 
+test("FC6-B rejects CREATE TABLE inheritance from baseline-owned schemas", () => {
+  assert.throws(
+    () =>
+      createCatalogContract([
+        {
+          ownerId: "tasks",
+          relativePath: "inherits.sql",
+          statements: [
+            "CREATE TABLE module_child (id text) INHERITS (appbasis_person);",
+          ],
+        },
+      ]),
+    ModuleUpdateMigrationConfigurationError,
+  );
+});
+
+test("FC6-B folds unquoted PostgreSQL identifiers but preserves quoted spelling", () => {
+  const unquoted = createCatalogContract([
+    {
+      ownerId: "tasks",
+      relativePath: "unquoted.sql",
+      statements: [
+        "CREATE TABLE AppTask (ID text PRIMARY KEY); CREATE INDEX AppTaskIDIdx ON AppTask (ID);",
+      ],
+    },
+  ]);
+  assert.equal(
+    unquoted.some(
+      (marker) =>
+        marker.kind === "table" &&
+        marker.name === "apptask" &&
+        marker.present === true,
+    ),
+    true,
+  );
+  assert.equal(
+    unquoted.some(
+      (marker) =>
+        marker.kind === "column" &&
+        marker.table === "apptask" &&
+        marker.name === "id" &&
+        marker.present === true,
+    ),
+    true,
+  );
+  assert.equal(
+    unquoted.some(
+      (marker) =>
+        marker.kind === "index" &&
+        marker.table === "apptask" &&
+        marker.name === "apptaskididx" &&
+        marker.present === true,
+    ),
+    true,
+  );
+
+  const quoted = createCatalogContract([
+    {
+      ownerId: "tasks",
+      relativePath: "quoted-case.sql",
+      statements: ['CREATE TABLE "AppTaskQuoted" ("ID" text PRIMARY KEY);'],
+    },
+  ]);
+  assert.equal(
+    quoted.some(
+      (marker) =>
+        marker.kind === "table" &&
+        marker.name === "AppTaskQuoted" &&
+        marker.present === true,
+    ),
+    true,
+  );
+  assert.equal(
+    quoted.some(
+      (marker) =>
+        marker.kind === "column" &&
+        marker.table === "AppTaskQuoted" &&
+        marker.name === "ID" &&
+        marker.present === true,
+    ),
+    true,
+  );
+});
+
 test("FC6-B fails closed when a migration statement has no catalog proof", () => {
   assert.throws(
     () =>
