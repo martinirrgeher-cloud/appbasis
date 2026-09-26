@@ -957,43 +957,27 @@ function splitTopLevel(value) {
   const parts = [];
   let start = 0;
   let depth = 0;
-  let quote = null;
+  let index = 0;
 
-  for (let index = 0; index < value.length; index += 1) {
+  while (index < value.length) {
     const char = value[index];
     const next = value[index + 1];
 
-    if (quote === "'") {
-      if (char === "'" && next === "'") {
-        index += 1;
-        continue;
-      }
-      if (char === "'") quote = null;
-      continue;
-    }
-    if (quote === '"') {
-      if (char === '"' && next === '"') {
-        index += 1;
-        continue;
-      }
-      if (char === '"') quote = null;
-      continue;
-    }
-    if (char === "'") {
-      quote = "'";
-      continue;
-    }
-    if (char === '"') {
-      quote = '"';
-      continue;
-    }
     if (char === "-" && next === "-") {
       index += 2;
       while (index < value.length && value[index] !== "\n") index += 1;
       continue;
     }
     if (char === "/" && next === "*") {
-      index = skipSqlBlockComment(value, index) - 1;
+      index = skipSqlBlockComment(value, index);
+      continue;
+    }
+    if (char === "'") {
+      index = skipSqlSingleQuotedString(value, index);
+      continue;
+    }
+    if (char === '"') {
+      index = skipSqlDoubleQuotedIdentifier(value, index);
       continue;
     }
     if (char === "$") {
@@ -1004,22 +988,25 @@ function splitTopLevel(value) {
         index =
           closingIndex === -1
             ? value.length
-            : closingIndex + marker.length - 1;
+            : closingIndex + marker.length;
         continue;
       }
     }
     if (char === "(") {
       depth += 1;
+      index += 1;
       continue;
     }
     if (char === ")") {
       depth -= 1;
+      index += 1;
       continue;
     }
     if (char === "," && depth === 0) {
       parts.push(value.slice(start, index));
       start = index + 1;
     }
+    index += 1;
   }
 
   parts.push(value.slice(start));
