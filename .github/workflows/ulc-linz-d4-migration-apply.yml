@@ -294,6 +294,45 @@ jobs:
             exit 1
           fi
 
+      - name: Diagnose AppBasis postgres-js authentication
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import postgres from "postgres";
+
+          const targets = [
+            ["migration", process.env.APPBASIS_MIGRATION_DATABASE_URL],
+            ["application", process.env.APPBASIS_DATABASE_URL],
+            ["security", process.env.APPBASIS_SECURITY_LOG_DATABASE_URL],
+          ];
+
+          let failed = false;
+          for (const [label, url] of targets) {
+            const client = postgres(url, { prepare: false, connect_timeout: 10 });
+            try {
+              const rows = await client.unsafe("SELECT current_user AS current_user");
+              console.log(`POSTGRES_JS_${label.toUpperCase()}=success rows=${rows.length}`);
+            } catch (error) {
+              failed = true;
+              const safe = {
+                name: typeof error?.name === "string" ? error.name : "unknown",
+                code: typeof error?.code === "string" ? error.code : "unknown",
+                severity: typeof error?.severity === "string" ? error.severity : "unknown",
+                routine: typeof error?.routine === "string" ? error.routine : "unknown",
+              };
+              console.log(`POSTGRES_JS_${label.toUpperCase()}=failure ${JSON.stringify(safe)}`);
+            } finally {
+              await client.end({ timeout: 1 }).catch(() => {});
+            }
+          }
+          if (failed) process.exit(1);
+          NODE
+
       - name: Preflight separated ULC preview runtime principals
         shell: bash
         env:
