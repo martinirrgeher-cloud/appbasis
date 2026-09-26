@@ -212,6 +212,38 @@ CREATE INDEX appbasis_task_note_note_idx
   );
 });
 
+test("FC6-B keeps dollar-quoted defaults with commas inside one table element", () => {
+  const contract = createCatalogContract([
+    {
+      ownerId: "tasks",
+      relativePath: "dollar-default.sql",
+      statements: [
+        "CREATE TABLE appbasis_task_note (id text PRIMARY KEY, value text DEFAULT $a,b$);",
+      ],
+    },
+  ]);
+
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "column" &&
+        marker.table === "appbasis_task_note" &&
+        marker.name === "value" &&
+        marker.present === true,
+    ),
+    true,
+  );
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "column" &&
+        marker.table === "appbasis_task_note" &&
+        marker.name === "b$",
+    ),
+    false,
+  );
+});
+
 test("FC6-B rejects target module DDL that mutates a baseline-owned table", async (t) => {
   const root = await createExistingAppFixture(t);
   await writeFile(
