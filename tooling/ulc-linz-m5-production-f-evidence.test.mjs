@@ -169,13 +169,14 @@ const validDelivery = Object.freeze({ postDeploymentSinkActivityObserved: true }
 
 async function complete({
   fetchImpl = cloudflareFetch,
+  githubFetchImpl = async () => { throw new Error("unexpected GitHub comparison"); },
   access = validAccess,
   delivery = validDelivery,
   retention = retentionEvidence(),
 } = {}) {
   return completeUlcLinzM5ProductionFBundle(bundle(), inputs(), {
     fetchImpl,
-    githubFetchImpl: async () => { throw new Error("not used by injected reader"); },
+    githubFetchImpl,
     now: NOW,
     accessCollector: async (input) => {
       assert.equal(input.backupDatabaseUrl, inputs().backupDatabaseUrl);
@@ -193,11 +194,13 @@ async function complete({
 
 async function completeFromContract({
   fetchImpl = cloudflareFetch,
+  githubFetchImpl = async () => { throw new Error("unexpected GitHub comparison"); },
   access = validAccess,
   delivery = validDelivery,
 } = {}) {
   return completeUlcLinzM5ProductionFBundle(bundle(), inputs(), {
     fetchImpl,
+    githubFetchImpl,
     now: NOW,
     accessCollector: async (input) => {
       assert.equal(input.backupDatabaseUrl, inputs().backupDatabaseUrl);
@@ -245,6 +248,71 @@ test("adds M5-F from the active Cloudflare deployment even when older deployment
   });
   assert.equal(JSON.stringify(result).includes("ulc_security_ingest_login"), false);
   assert.equal(JSON.stringify(result).includes("postgresql://"), false);
+});
+
+test("accepts an older deployed Worker SHA when the canonical runtime contract is unchanged", async () => {
+  const deployedSha = "c".repeat(40);
+  const fetchImpl = async (url) => {
+    const response = await cloudflareFetch(url);
+    const body = await response.json();
+    if (String(url).includes("/versions/")) {
+      body.result.annotations["workers/message"] =
+        `AppBasis ulc-linz production runtime ${deployedSha} auth-hmac:${"b".repeat(64)}`;
+    }
+    return json(body);
+  };
+  const githubFetchImpl = async () =>
+    Response.json({
+      status: "ahead",
+      ahead_by: 1,
+      behind_by: 0,
+      total_commits: 1,
+      base_commit: { sha: deployedSha },
+      merge_base_commit: { sha: deployedSha },
+      commits: [{ sha: SHA }],
+      files: [
+        {
+          filename: "tooling/ulc-linz-m5-production-f-evidence.mjs",
+          status: "modified",
+        },
+      ],
+    });
+
+  const result = await complete({ fetchImpl, githubFetchImpl });
+  assert.equal(
+    result.ownerInputs.auditSecurityLoggingEvidenceInput.loggingEvidence
+      .structuredEventCaptureEnabled,
+    true,
+  );
+});
+
+test("rejects an older deployed Worker SHA when the canonical runtime contract changed", async () => {
+  const deployedSha = "c".repeat(40);
+  const fetchImpl = async (url) => {
+    const response = await cloudflareFetch(url);
+    const body = await response.json();
+    if (String(url).includes("/versions/")) {
+      body.result.annotations["workers/message"] =
+        `AppBasis ulc-linz production runtime ${deployedSha} auth-hmac:${"b".repeat(64)}`;
+    }
+    return json(body);
+  };
+  const githubFetchImpl = async () =>
+    Response.json({
+      status: "ahead",
+      ahead_by: 1,
+      behind_by: 0,
+      total_commits: 1,
+      base_commit: { sha: deployedSha },
+      merge_base_commit: { sha: deployedSha },
+      commits: [{ sha: SHA }],
+      files: [{ filename: "apps/ulc-linz/worker/index.ts", status: "modified" }],
+    });
+
+  await assert.rejects(
+    () => complete({ fetchImpl, githubFetchImpl }),
+    /runtime contract changed/,
+  );
 });
 
 test("uses the bounded production retention contract by default without a destructive run", async () => {
