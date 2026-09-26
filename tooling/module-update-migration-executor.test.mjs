@@ -71,6 +71,7 @@ test("FC6-B derives verifiable catalog markers from quoted PostgreSQL DDL", () =
     },
     {
       kind: "index",
+      table: "appbasis_person",
       name: "appbasis_person_display_name_idx",
       present: true,
     },
@@ -153,6 +154,92 @@ test("FC6-B derives the final catalog state from canonical permissions files wit
         marker.present === true,
     ),
     true,
+  );
+});
+
+test("FC6-B rejects a partially understood ALTER TABLE command", () => {
+  assert.throws(
+    () =>
+      createCatalogContract([
+        {
+          ownerId: "tasks",
+          relativePath: "mixed-alter.sql",
+          statements: [
+            "ALTER TABLE appbasis_task ADD COLUMN note text, ALTER COLUMN title DROP NOT NULL;",
+          ],
+        },
+      ]),
+    ModuleUpdateMigrationConfigurationError,
+  );
+});
+
+test("FC6-B accepts supported DDL with leading SQL comments without weakening proof", () => {
+  const contract = createCatalogContract([
+    {
+      ownerId: "tasks",
+      relativePath: "commented.sql",
+      statements: [
+        `-- module table
+CREATE TABLE appbasis_task_note (
+  id text PRIMARY KEY,
+  note text NOT NULL
+);
+/* index follows */
+CREATE INDEX appbasis_task_note_note_idx
+  ON appbasis_task_note (note);`,
+      ],
+    },
+  ]);
+
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "table" &&
+        marker.name === "appbasis_task_note" &&
+        marker.present === true,
+    ),
+    true,
+  );
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "index" &&
+        marker.table === "appbasis_task_note" &&
+        marker.name === "appbasis_task_note_note_idx" &&
+        marker.present === true,
+    ),
+    true,
+  );
+});
+
+test("FC6-B rejects target module DDL that mutates a baseline-owned table", async (t) => {
+  const root = await createExistingAppFixture(t);
+  await writeFile(
+    join(
+      root,
+      "modules",
+      "tasks",
+      "migrations",
+      "0000_appbasis_tasks_foundation.sql",
+    ),
+    `ALTER TABLE appbasis_person ADD COLUMN module_owned_field text;
+CREATE INDEX appbasis_person_module_owned_idx
+  ON appbasis_person (module_owned_field);
+`,
+  );
+
+  await assert.rejects(
+    () =>
+      loadModuleUpdateMigrationExecutionPlan(
+        {
+          appId: "existing",
+          moduleId: "tasks",
+        },
+        { repositoryRoot: root },
+      ),
+    (error) =>
+      error instanceof ModuleUpdateMigrationConfigurationError &&
+      /outside its own migration delta|baseline-owned table/.test(error.message),
   );
 });
 
