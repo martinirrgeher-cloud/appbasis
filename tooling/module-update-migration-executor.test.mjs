@@ -250,7 +250,7 @@ test("FC6-B keeps commas inside PostgreSQL E-strings with escaped quotes", () =>
       ownerId: "tasks",
       relativePath: "escape-default.sql",
       statements: [
-        "CREATE TABLE appbasis_task_note (id text PRIMARY KEY, value text DEFAULT E'a\\\\',b', details text);",
+        "CREATE TABLE appbasis_task_note (id text PRIMARY KEY, value text DEFAULT E'a\\',b', details text);",
       ],
     },
   ]);
