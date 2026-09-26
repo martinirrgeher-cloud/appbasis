@@ -38,6 +38,38 @@ function currentCommit({ head = HEAD, parent = null, files = [] } = {}) {
   };
 }
 
+test("authenticates GitHub evidence reads when the workflow token is available", async () => {
+  const previousToken = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = "test-github-token";
+  const authorizationHeaders = [];
+
+  try {
+    const fetchImpl = async (input, init = {}) => {
+      authorizationHeaders.push(init.headers?.authorization ?? null);
+      const url = String(input);
+      if (url.endsWith("/commits/main")) return Response.json({ sha: HEAD });
+      if (url.endsWith(`/commits/${HEAD}`)) return Response.json(currentCommit());
+      if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+        return Response.json(successfulLifecycleRun());
+      }
+      throw new Error(`Unexpected GitHub evidence URL: ${url}`);
+    };
+
+    const result = await verifyUlcLinzM5LifecycleExecutorBinding(process.cwd(), {
+      fetchImpl,
+      now: () => NOW,
+      sleep: async () => {},
+    });
+
+    assert.equal(result.verifiedHeadSha, HEAD);
+    assert.ok(authorizationHeaders.length >= 3);
+    assert.deepEqual(new Set(authorizationHeaders), new Set(["Bearer test-github-token"]));
+  } finally {
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+  }
+});
+
 test("retries transient GitHub main-head evidence failures without weakening exact-head binding", async () => {
   let mainHeadCalls = 0;
   let lifecycleCalls = 0;
