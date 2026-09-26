@@ -149,6 +149,12 @@ export async function planModuleUpdate(input, options = {}) {
         });
 
   const state = alreadyDeclared ? "already-installed" : "install";
+  const databaseMigrationDelta = deriveDatabaseMigrationDelta({
+    state,
+    moduleDefinition,
+    currentDatabaseManifest,
+    nextDatabaseManifest,
+  });
   const writes =
     state === "already-installed"
       ? []
@@ -197,6 +203,7 @@ export async function planModuleUpdate(input, options = {}) {
               after: WORKSPACE_DEPENDENCY,
             }),
       databaseManifest: databaseChanges,
+      databaseMigrationDelta,
       workspaceLockfile:
         state === "already-installed"
           ? null
@@ -240,6 +247,82 @@ async function runCli() {
   const input = parseModuleUpdatePlanArguments(process.argv.slice(2));
   const plan = await planModuleUpdate(input);
   process.stdout.write(renderModuleUpdatePlan(plan));
+}
+
+function deriveDatabaseMigrationDelta({
+  state,
+  moduleDefinition,
+  currentDatabaseManifest,
+  nextDatabaseManifest,
+}) {
+  if (state !== "install" || moduleDefinition.database === null) return null;
+  if (
+    nextDatabaseManifest === null ||
+    !Array.isArray(nextDatabaseManifest.owners)
+  ) {
+    throw new Error(
+      `Module ${moduleDefinition.moduleId} database install is missing the canonical target ownership manifest.`,
+    );
+  }
+
+  const beforeOwners =
+    currentDatabaseManifest === null ? [] : currentDatabaseManifest.owners;
+  if (!Array.isArray(beforeOwners)) {
+    throw new Error("Current database ownership manifest owners are invalid.");
+  }
+
+  const moduleId = moduleDefinition.moduleId;
+  if (beforeOwners.some((owner) => owner?.id === moduleId)) {
+    throw new Error(
+      `Module ${moduleId} database owner collides with an existing database owner.`,
+    );
+  }
+
+  const addedOwners = nextDatabaseManifest.owners.filter(
+    (owner) => owner?.id === moduleId,
+  );
+  if (addedOwners.length !== 1) {
+    throw new Error(
+      `Module ${moduleId} database migration delta must add exactly one module owner.`,
+    );
+  }
+
+  const remainingOwners = nextDatabaseManifest.owners.filter(
+    (owner) => owner?.id !== moduleId,
+  );
+  if (canonicalJson(remainingOwners) !== canonicalJson(beforeOwners)) {
+    throw new Error(
+      `Module ${moduleId} database migration delta would modify existing database owners.`,
+    );
+  }
+
+  const expectedOwner = {
+    id: moduleId,
+    root: `modules/${moduleId}`,
+    schemaVersion: moduleDefinition.database.schemaVersion,
+    migrations: [...moduleDefinition.database.migrations],
+  };
+  if (canonicalJson(addedOwners[0]) !== canonicalJson(expectedOwner)) {
+    throw new Error(
+      `Module ${moduleId} database migration delta does not match its verified module database contract.`,
+    );
+  }
+
+  return Object.freeze({
+    operation: "add-owner",
+    beforeOwnerIds: Object.freeze(
+      beforeOwners.map((owner) => owner.id),
+    ),
+    afterOwnerIds: Object.freeze(
+      nextDatabaseManifest.owners.map((owner) => owner.id),
+    ),
+    addedOwner: Object.freeze({
+      id: expectedOwner.id,
+      root: expectedOwner.root,
+      schemaVersion: expectedOwner.schemaVersion,
+      migrations: Object.freeze([...expectedOwner.migrations]),
+    }),
+  });
 }
 
 function assertDatabaseManifestMatches(appId, actual, expected) {
