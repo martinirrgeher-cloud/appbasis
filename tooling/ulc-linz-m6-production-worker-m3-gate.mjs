@@ -170,7 +170,7 @@ function assertSafeCreatePlan(value) {
     gateOwnNames.length !== 2 ||
     !gateOwnNames.includes("0") ||
     !gateOwnNames.includes("length") ||
-    ownData(gates, "0", "INVALID_CREATE_PLAN") !== "M3_DONE"
+    ownData(gates, "0", "INVALID_CREATE_PLAN") !== "ULC_D4_PREVIEW_ACCEPTED"
   ) {
     fail("WORKER_D4_GATE_PRECONDITIONS_NOT_MET");
   }
