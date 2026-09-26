@@ -171,6 +171,8 @@ async function resolveRepositoryMigrationContract({
     );
   }
 
+  assertUniqueManifestOwnerIds(currentManifest.owners);
+
   const targetOwners = currentManifest.owners.filter(
     (owner) => owner.id === updatePlan.module.moduleId,
   );
@@ -181,9 +183,30 @@ async function resolveRepositoryMigrationContract({
   }
 
   const targetOwner = targetOwners[0];
+  const moduleManifestPath = join(
+    repositoryRoot,
+    "modules",
+    updatePlan.module.moduleId,
+    "appbasis.module.json",
+  );
+  let moduleManifest;
+  try {
+    moduleManifest = JSON.parse(await readFile(moduleManifestPath, "utf8"));
+  } catch {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B verified module manifest could not be read.",
+    );
+  }
+  const expectedTargetOwner = {
+    id: updatePlan.module.moduleId,
+    root: `modules/${updatePlan.module.moduleId}`,
+    schemaVersion: moduleManifest?.database?.schemaVersion,
+    migrations: moduleManifest?.database?.migrations,
+  };
   if (
-    targetOwner.root !== `modules/${updatePlan.module.moduleId}` ||
-    targetOwner.schemaVersion !== updatePlan.module.databaseSchemaVersion
+    targetOwner.root !== expectedTargetOwner.root ||
+    targetOwner.schemaVersion !== updatePlan.module.databaseSchemaVersion ||
+    JSON.stringify(targetOwner) !== JSON.stringify(expectedTargetOwner)
   ) {
     throw new ModuleUpdateMigrationConfigurationError(
       "FC6-B published target owner does not match the verified module contract.",
@@ -705,6 +728,18 @@ function assertConnectionPrincipal(connectionString, expectedPrincipal) {
   ) {
     throw new ModuleUpdateMigrationConfigurationError(
       "FC6-B PostgreSQL connection principal does not match expectedPrincipal.",
+    );
+  }
+}
+
+function assertUniqueManifestOwnerIds(owners) {
+  const ids = owners.map((owner) => owner?.id);
+  if (
+    ids.some((id) => typeof id !== "string" || id.length === 0) ||
+    new Set(ids).size !== ids.length
+  ) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B published target database owners are not unique.",
     );
   }
 }
