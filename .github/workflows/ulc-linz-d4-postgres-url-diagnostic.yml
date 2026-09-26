@@ -37,20 +37,30 @@ jobs:
       - name: Compare connection parsing
         working-directory: packages/database
         env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: |
           node --input-type=module <<'NODE'
           import postgres from "postgres";
 
+          const sources = {
+            migration: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            application: process.env.APPBASIS_DATABASE_URL,
+            security: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
+          };
+          for (const [label, source] of Object.entries(sources)) {
+            const url = new URL(source);
+            console.log("URL_METADATA_" + label.toUpperCase() + "=" + JSON.stringify({
+              rawPasswordContainsPercentEncoding: /%[0-9a-f]{2}/i.test(url.password),
+              rawPasswordLength: url.password.length,
+              decodedPasswordLength: decodeURIComponent(url.password).length,
+              queryKeys: [...url.searchParams.keys()].sort(),
+              sslmode: url.searchParams.get("sslmode"),
+            }));
+          }
           const source = process.env.APPBASIS_DATABASE_URL;
           const url = new URL(source);
-          const meta = {
-            rawPasswordContainsPercentEncoding: /%[0-9a-f]{2}/i.test(url.password),
-            rawPasswordLength: url.password.length,
-            decodedPasswordLength: decodeURIComponent(url.password).length,
-            queryKeys: [...url.searchParams.keys()].sort(),
-          };
-          console.log("URL_METADATA=" + JSON.stringify(meta));
 
           async function attempt(label, client) {
             try {
