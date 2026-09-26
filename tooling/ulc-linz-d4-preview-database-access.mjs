@@ -152,6 +152,7 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
     applicationDatabaseUrl,
     securityLogDatabaseUrl,
   });
+  const migrationRole = requiredRoleName(credentials.migration.user);
   const applicationRole = requiredRoleName(credentials.application.user);
   const securityRole = requiredRoleName(credentials.securityLog.user);
 
@@ -159,6 +160,7 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
   try {
     await requireRuntimeRoleInventory(
       ownerDatabase.client,
+      migrationRole,
       applicationRole,
       securityRole,
     );
@@ -175,6 +177,7 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
     await requireSecurityGroupMemberBoundary(
       ownerDatabase.client,
       securityRole,
+      migrationRole,
       true,
     );
     await requireRuntimeLoginOwnershipBoundary(
@@ -239,6 +242,7 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
     await requireSecurityGroupMemberBoundary(
       ownerDatabase.client,
       securityRole,
+      migrationRole,
       false,
     );
     await requireRuntimeLoginOwnershipBoundary(
@@ -309,23 +313,28 @@ async function requirePreMigrationRuntimeRoleInventory(
   }
 }
 
-async function requireRuntimeRoleInventory(client, applicationRole, securityRole) {
+async function requireRuntimeRoleInventory(
+  client,
+  migrationRole,
+  applicationRole,
+  securityRole,
+) {
   const rows = await client.unsafe(
     "SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, " +
       "rolreplication, rolbypassrls " +
       "FROM pg_catalog.pg_roles " +
       "WHERE rolname = ANY($1::text[]) ORDER BY rolname",
-    [[SECURITY_GROUP, applicationRole, securityRole]],
+    [[SECURITY_GROUP, migrationRole, applicationRole, securityRole]],
   );
   if (!Array.isArray(rows)) {
     throw new Error("ULC D4 preview database role inventory is invalid.");
   }
   const byName = new Map(rows.map((row) => [row?.rolname, row]));
   const group = byName.get(SECURITY_GROUP);
-  if (byName.size !== 3 || group?.rolcanlogin !== false || elevated(group)) {
+  if (byName.size !== 4 || group?.rolcanlogin !== false || elevated(group)) {
     throw new Error("ULC D4 preview security-log group role is unsafe.");
   }
-  for (const roleName of [applicationRole, securityRole]) {
+  for (const roleName of [migrationRole, applicationRole, securityRole]) {
     const role = byName.get(roleName);
     if (role?.rolcanlogin !== true || elevated(role)) {
       throw new Error("ULC D4 runtime database role is unavailable or privileged.");
@@ -389,19 +398,56 @@ async function requireSecurityLoginMembershipBoundary(
 async function requireSecurityGroupMemberBoundary(
   client,
   securityRole,
+  migrationRole,
   allowMissing,
 ) {
   const members = await readMembers(client, SECURITY_GROUP);
-  if (!Array.isArray(members) || members.length > 1) {
+  if (!Array.isArray(members)) {
     throw new Error(
       "ULC D4 preview security-log group has unexpected cluster-wide members.",
     );
   }
-  if (members.length === 0) {
+
+  const migrationEdges = members.filter(
+    (edge) => edge?.member === migrationRole,
+  );
+  const securityEdges = members.filter(
+    (edge) => edge?.member === securityRole,
+  );
+  const unexpectedEdges = members.filter(
+    (edge) => edge?.member !== migrationRole && edge?.member !== securityRole,
+  );
+
+  if (
+    migrationEdges.length !== 1 ||
+    securityEdges.length > 1 ||
+    unexpectedEdges.length !== 0
+  ) {
+    throw new Error(
+      "ULC D4 preview security-log group has unexpected cluster-wide members.",
+    );
+  }
+
+  const creatorEdge = migrationEdges[0];
+  if (
+    creatorEdge?.parent !== SECURITY_GROUP ||
+    creatorEdge?.member !== migrationRole ||
+    creatorEdge?.grantor !== "cloud_admin" ||
+    creatorEdge?.admin_option !== true ||
+    creatorEdge?.inherit_option !== false ||
+    creatorEdge?.set_option !== false
+  ) {
+    throw new Error(
+      "ULC D4 preview migration creator membership is unsafe.",
+    );
+  }
+
+  if (securityEdges.length === 0) {
     if (allowMissing) return;
     throw new Error("ULC D4 preview security-log group membership is missing.");
   }
-  const edge = members[0];
+
+  const edge = securityEdges[0];
   if (
     edge?.parent !== SECURITY_GROUP ||
     edge?.member !== securityRole ||
@@ -1341,10 +1387,12 @@ async function readMemberships(client, member) {
 async function readMembers(client, parent) {
   return client.unsafe(
     "SELECT parent.rolname AS parent, child.rolname AS member," +
+      " grantor.rolname AS grantor," +
       " membership.admin_option, membership.inherit_option, membership.set_option" +
       " FROM pg_catalog.pg_auth_members AS membership" +
       " JOIN pg_catalog.pg_roles AS parent ON parent.oid = membership.roleid" +
       " JOIN pg_catalog.pg_roles AS child ON child.oid = membership.member" +
+      " JOIN pg_catalog.pg_roles AS grantor ON grantor.oid = membership.grantor" +
       " WHERE parent.rolname = $1 ORDER BY child.rolname",
     [parent],
   );
