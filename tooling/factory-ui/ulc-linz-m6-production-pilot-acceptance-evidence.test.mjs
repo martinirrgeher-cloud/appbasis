@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  deriveUlcLinzM6ProductionPilotAcceptanceEvidence,
+  deriveUlcLinzM6ProductionPilotCloseoutEvidence,
   ULC_LINZ_M6_PRODUCTION_PILOT_ACCEPTANCE_RUNS,
 } from "./ulc-linz-m6-production-pilot-acceptance-evidence.mjs";
-import { REQUIRED_PRODUCTION_READINESS_CRITERIA } from "./production-readiness.mjs";
+import { REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA } from "./production-release-readiness.mjs";
+import { ULC_LINZ_D4_PREVIEW_ACCEPTANCE_RUNS } from "./ulc-linz-d4-preview-acceptance-evidence.mjs";
 
 const ACCEPTED = "bab8b18fd9e88025a6df0ccbffe8c51b972fe4b3";
 const CURRENT = "c".repeat(40);
@@ -26,7 +27,7 @@ const runTimes = Object.freeze({
   postDeploySmoke: ["2026-09-26T14:21:42.000Z", "2026-09-26T14:23:16.000Z"],
 });
 
-function runPayload(key, overrides = {}) {
+function productionRunPayload(key, overrides = {}) {
   const expected = ULC_LINZ_M6_PRODUCTION_PILOT_ACCEPTANCE_RUNS[key];
   const [startedAt, completedAt] = runTimes[key];
   return {
@@ -46,6 +47,21 @@ function runPayload(key, overrides = {}) {
   };
 }
 
+function d4RunPayload(expected) {
+  return {
+    id: expected.id,
+    run_attempt: expected.attempt,
+    name: expected.name,
+    path: expected.path,
+    event: expected.event,
+    head_branch: expected.branch,
+    head_sha: expected.headSha,
+    status: "completed",
+    conclusion: "success",
+    repository: { full_name: REPOSITORY },
+  };
+}
+
 function successfulFetch({
   currentSha = CURRENT,
   compareFiles = [
@@ -61,19 +77,25 @@ function successfulFetch({
   ],
   runOverrides = {},
 } = {}) {
-  let mainReads = 0;
   return async (input) => {
     const url = String(input);
 
     if (url.endsWith("/branches/main")) {
-      mainReads += 1;
       return Response.json({ commit: { sha: currentSha } });
+    }
+
+    for (const expected of Object.values(ULC_LINZ_D4_PREVIEW_ACCEPTANCE_RUNS)) {
+      if (url.endsWith(`/actions/runs/${expected.id}`)) {
+        return Response.json(d4RunPayload(expected));
+      }
     }
 
     for (const key of Object.keys(ULC_LINZ_M6_PRODUCTION_PILOT_ACCEPTANCE_RUNS)) {
       const expected = ULC_LINZ_M6_PRODUCTION_PILOT_ACCEPTANCE_RUNS[key];
       if (url.endsWith(`/actions/runs/${expected.id}`)) {
-        return Response.json(runPayload(key, runOverrides[key] ?? {}));
+        return Response.json(
+          productionRunPayload(key, runOverrides[key] ?? {}),
+        );
       }
     }
 
@@ -90,41 +112,41 @@ function successfulFetch({
       });
     }
 
-    throw new Error(`Unexpected GitHub evidence URL: ${url}; main reads: ${mainReads}`);
+    throw new Error(`Unexpected GitHub evidence URL: ${url}`);
   };
 }
 
-test("accepted ULC M6 pilot produces complete durable M5 evidence and the eight non-preview M6 pilot criteria", async () => {
-  const result = await deriveUlcLinzM6ProductionPilotAcceptanceEvidence(
+test("accepted ULC M6 pilot closes the technical milestone without authorizing final production release", async () => {
+  const result = await deriveUlcLinzM6ProductionPilotCloseoutEvidence(
     process.cwd(),
     definition,
     { fetchImpl: successfulFetch() },
   );
 
+  assert.equal(result.schemaVersion, 1);
+  assert.equal(result.application, "ulc-linz");
+  assert.equal(result.environment, "production-pilot");
+  assert.equal(result.milestone, "M6");
+  assert.equal(result.acceptedHeadSha, ACCEPTED);
+  assert.equal(result.technicalEvidenceVerified, true);
+  assert.equal(
+    result.verifiedCount,
+    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.length,
+  );
+  assert.equal(
+    result.requiredCount,
+    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.length,
+  );
   assert.deepEqual(
-    Object.keys(result.m5ProductionEvidence).sort(),
-    REQUIRED_PRODUCTION_READINESS_CRITERIA.map(({ id }) => id).sort(),
+    result.acceptedCriteria,
+    REQUIRED_M6_PRODUCTION_RELEASE_CRITERIA.map(({ id }) => id),
   );
-  assert.ok(
-    Object.values(result.m5ProductionEvidence).every((value) => value === true),
-  );
-  assert.deepEqual(result.m6ProductionEvidence, {
-    productionDatabaseReady: true,
-    productionWorkerReady: true,
-    productionDomainReady: true,
-    productionUsersAndPermissionsReady: true,
-    backupRecoveryReady: true,
-    productionMigrationsApplied: true,
-    productionDeploymentCompleted: true,
-    postDeploySmokePassed: true,
-  });
-  assert.equal("previewAccepted" in result.m6ProductionEvidence, false);
-  assert.equal("securityPrivacyReady" in result.m6ProductionEvidence, false);
-  assert.equal("releaseAuthorized" in result.m6ProductionEvidence, false);
+  assert.equal(result.explicitApprovalRequiredForFinalRelease, true);
+  assert.equal(result.finalProductionReleaseAuthorized, false);
 });
 
-test("accepted ULC M6 pilot fails closed when the runtime contract changed after the accepted head", async () => {
-  const result = await deriveUlcLinzM6ProductionPilotAcceptanceEvidence(
+test("M6 closeout fails closed when the runtime contract changed after the accepted head", async () => {
+  const result = await deriveUlcLinzM6ProductionPilotCloseoutEvidence(
     process.cwd(),
     definition,
     {
@@ -136,12 +158,11 @@ test("accepted ULC M6 pilot fails closed when the runtime contract changed after
     },
   );
 
-  assert.deepEqual(result.m5ProductionEvidence, {});
-  assert.deepEqual(result.m6ProductionEvidence, {});
+  assert.deepEqual(result, {});
 });
 
-test("accepted ULC M6 pilot fails closed when any pinned production run drifts", async () => {
-  const result = await deriveUlcLinzM6ProductionPilotAcceptanceEvidence(
+test("M6 closeout fails closed when any pinned production run drifts", async () => {
+  const result = await deriveUlcLinzM6ProductionPilotCloseoutEvidence(
     process.cwd(),
     definition,
     {
@@ -153,11 +174,10 @@ test("accepted ULC M6 pilot fails closed when any pinned production run drifts",
     },
   );
 
-  assert.deepEqual(result.m5ProductionEvidence, {});
-  assert.deepEqual(result.m6ProductionEvidence, {});
+  assert.deepEqual(result, {});
 });
 
-test("accepted ULC M6 pilot fails closed when main changes during observation", async () => {
+test("M6 closeout fails closed when main changes during observation", async () => {
   let mainReads = 0;
   const baseFetch = successfulFetch();
   const fetchImpl = async (input, init) => {
@@ -171,12 +191,34 @@ test("accepted ULC M6 pilot fails closed when main changes during observation", 
     return baseFetch(input, init);
   };
 
-  const result = await deriveUlcLinzM6ProductionPilotAcceptanceEvidence(
+  const result = await deriveUlcLinzM6ProductionPilotCloseoutEvidence(
     process.cwd(),
     definition,
     { fetchImpl },
   );
 
-  assert.deepEqual(result.m5ProductionEvidence, {});
-  assert.deepEqual(result.m6ProductionEvidence, {});
+  assert.deepEqual(result, {});
+});
+
+test("M6 closeout fails closed when the accepted D4 preview evidence is unavailable", async () => {
+  const baseFetch = successfulFetch();
+  const fetchImpl = async (input, init) => {
+    const url = String(input);
+    if (
+      Object.values(ULC_LINZ_D4_PREVIEW_ACCEPTANCE_RUNS).some((expected) =>
+        url.endsWith(`/actions/runs/${expected.id}`),
+      )
+    ) {
+      return Response.json({ status: "completed", conclusion: "failure" });
+    }
+    return baseFetch(input, init);
+  };
+
+  const result = await deriveUlcLinzM6ProductionPilotCloseoutEvidence(
+    process.cwd(),
+    definition,
+    { fetchImpl },
+  );
+
+  assert.deepEqual(result, {});
 });
