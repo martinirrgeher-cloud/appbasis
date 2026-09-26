@@ -16,6 +16,7 @@ const ENVIRONMENT = "production";
 const MANIFEST_PATH = "apps/ulc-linz/appbasis.database.json";
 const APP_DEFINITION_PATH = "apps/ulc-linz/appbasis.app.json";
 const APP_RUNTIME_PATH = "apps/ulc-linz/worker/app.ts";
+const WORKER_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
 const AUTHORIZATION_PATH = "apps/ulc-linz/worker/authorization.ts";
 const EXPECTED_OWNERS = Object.freeze({
   identity: "packages/identity",
@@ -39,16 +40,25 @@ const EXPECTED_MIGRATIONS = Object.freeze([
   "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
   "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
 ]);
-const EXPECTED_PUBLIC_ROUTES = Object.freeze([
+const EXPECTED_APP_ROUTES = Object.freeze([
   Object.freeze({ method: "GET", path: "/api/health" }),
   Object.freeze({ method: "POST", path: "/api/auth/sign-in" }),
   Object.freeze({ method: "GET", path: "/api/auth/session" }),
   Object.freeze({ method: "POST", path: "/api/auth/change-required-password" }),
 ]);
+const EXPECTED_COUNTDOWN_ROUTES = Object.freeze([
+  Object.freeze({ method: "GET", path: "/api/modules/countdown" }),
+  Object.freeze({ method: "POST", path: "/api/modules/countdown/plan" }),
+]);
+const EXPECTED_PUBLIC_ROUTES = Object.freeze([
+  ...EXPECTED_APP_ROUTES,
+  ...EXPECTED_COUNTDOWN_ROUTES,
+]);
 const REQUIRED_SMOKE_CHECKS = Object.freeze([
   "health",
   "auth",
   "permissions",
+  "countdown",
   "application",
 ]);
 
@@ -127,9 +137,9 @@ export const ULC_LINZ_M6_MIGRATION_SMOKE_REHEARSAL_CONTRACT = deepFreeze({
       },
     },
     application: {
-      currentModules: [],
-      fachmoduleRouteSmokeApplicable: false,
-      currentScope: "identity-permissions-foundation",
+      currentModules: ["countdown"],
+      fachmoduleRouteSmokeApplicable: true,
+      currentScope: "identity-permissions-countdown",
       existingRoutesOnly: true,
       futureModuleChangeRequiresContractUpdate: true,
     },
@@ -168,18 +178,25 @@ export async function evaluateUlcLinzM6MigrationSmokeRehearsal(
   });
   assertMigrationPlan(plan);
 
-  const [manifestRaw, appDefinitionRaw, appRuntimeRaw, authorizationRaw] =
-    await Promise.all([
-      readBinary(join(root, MANIFEST_PATH), "MIGRATION_PLAN_DRIFT"),
-      readBinary(join(root, APP_DEFINITION_PATH), "APP_DEFINITION_INVALID"),
-      readBinary(join(root, APP_RUNTIME_PATH), "PUBLIC_RUNTIME_CONTRACT_DRIFT"),
-      readBinary(join(root, AUTHORIZATION_PATH), "PERMISSION_SMOKE_CONTRACT_DRIFT"),
-    ]);
+  const [
+    manifestRaw,
+    appDefinitionRaw,
+    appRuntimeRaw,
+    workerEntrypointRaw,
+    authorizationRaw,
+  ] = await Promise.all([
+    readBinary(join(root, MANIFEST_PATH), "MIGRATION_PLAN_DRIFT"),
+    readBinary(join(root, APP_DEFINITION_PATH), "APP_DEFINITION_INVALID"),
+    readBinary(join(root, APP_RUNTIME_PATH), "PUBLIC_RUNTIME_CONTRACT_DRIFT"),
+    readBinary(join(root, WORKER_ENTRYPOINT_PATH), "PUBLIC_RUNTIME_CONTRACT_DRIFT"),
+    readBinary(join(root, AUTHORIZATION_PATH), "PERMISSION_SMOKE_CONTRACT_DRIFT"),
+  ]);
   const appDefinition = parseJson(appDefinitionRaw, "APP_DEFINITION_INVALID");
   const appRuntimeSource = appRuntimeRaw.toString("utf8");
+  const workerEntrypointSource = workerEntrypointRaw.toString("utf8");
   const authorizationSource = authorizationRaw.toString("utf8");
   assertApplicationScope(appDefinition);
-  assertPublicRuntimeContract(appRuntimeSource);
+  assertPublicRuntimeContract(appRuntimeSource, workerEntrypointSource);
   assertPermissionSmokeContract(authorizationSource);
 
   const migrationFiles = [];
@@ -203,6 +220,10 @@ export async function evaluateUlcLinzM6MigrationSmokeRehearsal(
       digest: digestBytes(appDefinitionRaw),
     },
     publicRuntime: { path: APP_RUNTIME_PATH, digest: digestBytes(appRuntimeRaw) },
+    workerEntrypoint: {
+      path: WORKER_ENTRYPOINT_PATH,
+      digest: digestBytes(workerEntrypointRaw),
+    },
     permissionSmokeContract: {
       path: AUTHORIZATION_PATH,
       digest: digestBytes(authorizationRaw),
@@ -325,23 +346,32 @@ function assertMigrationPlan(plan) {
 function assertApplicationScope(app) {
   if (
     app?.appId !== APPLICATION ||
-    !isDeepStrictEqual(app.modules, []) ||
+    !isDeepStrictEqual(app.modules, ["countdown"]) ||
     !isDeepStrictEqual(app.platformServices, ["identity", "permissions"])
   ) {
     fail("APPLICATION_SCOPE_DRIFT");
   }
 }
 
-function assertPublicRuntimeContract(source) {
+function assertPublicRuntimeContract(appSource, workerSource) {
   const routes = [];
   const pattern = /\bapp\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/g;
-  for (const match of source.matchAll(pattern)) {
+  for (const match of appSource.matchAll(pattern)) {
     routes.push({ method: match[1].toUpperCase(), path: match[2] });
   }
-  if (!isDeepStrictEqual(routes, EXPECTED_PUBLIC_ROUTES)) {
+  if (!isDeepStrictEqual(routes, EXPECTED_APP_ROUTES)) {
     fail("PUBLIC_RUNTIME_CONTRACT_DRIFT");
   }
-  if (/\/api\/(?:smoke|admin\/smoke|permissions\/probe)/.test(source)) {
+  for (const route of EXPECTED_COUNTDOWN_ROUTES) {
+    const pathLiteral = JSON.stringify(route.path);
+    if (!workerSource.includes(`url.pathname === ${pathLiteral}`)) {
+      fail("PUBLIC_RUNTIME_CONTRACT_DRIFT");
+    }
+  }
+  if (
+    /\/api\/(?:smoke|admin\/smoke|permissions\/probe)/.test(appSource) ||
+    /\/api\/(?:smoke|admin\/smoke|permissions\/probe)/.test(workerSource)
+  ) {
     fail("PUBLIC_SMOKE_PROBE_FORBIDDEN");
   }
 }
