@@ -91,6 +91,10 @@ export async function loadModuleUpdateMigrationExecutionPlan(
     "baseline",
   );
   const targetCatalogContract = createCatalogContract(targetPlan, "target");
+  assertTargetCatalogIsolation({
+    baselineCatalogContract,
+    targetCatalogContract,
+  });
   if (
     targetCatalogContract.length === 0 ||
     targetCatalogContract.some((marker) => marker.present !== true)
@@ -294,7 +298,8 @@ export function createCatalogContract(plan, label = "migration") {
 
 function catalogMarkersFromStatement(statement) {
   if (typeof statement !== "string") return [];
-  const normalized = statement.trim();
+  const normalized = stripLeadingSqlComments(statement);
+  if (normalized.length === 0) return [];
 
   const createTable = new RegExp(
     `^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}\\s*\\(([\\s\\S]*)\\)\\s*;?$`,
@@ -344,6 +349,7 @@ function catalogMarkersFromStatement(statement) {
     return [
       {
         kind: "index",
+        table: capturedIdentifier(createIndex, 3, 4),
         name: capturedIdentifier(createIndex, 1, 2),
         present: true,
       },
@@ -359,6 +365,7 @@ function catalogMarkersFromStatement(statement) {
     const markers = [];
     for (const action of splitTopLevel(alterTable[3])) {
       const trimmed = action.trim();
+      let matched = false;
 
       const addConstraint = new RegExp(
         `^ADD\\s+CONSTRAINT\\s+${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
@@ -371,6 +378,7 @@ function catalogMarkersFromStatement(statement) {
           name: capturedIdentifier(addConstraint, 1, 2),
           present: true,
         });
+        matched = true;
         continue;
       }
 
@@ -385,6 +393,7 @@ function catalogMarkersFromStatement(statement) {
           name: capturedIdentifier(dropConstraint, 1, 2),
           present: false,
         });
+        matched = true;
         continue;
       }
 
@@ -399,6 +408,7 @@ function catalogMarkersFromStatement(statement) {
           name: capturedIdentifier(addColumn, 1, 2),
           present: true,
         });
+        matched = true;
         continue;
       }
 
@@ -413,12 +423,75 @@ function catalogMarkersFromStatement(statement) {
           name: capturedIdentifier(dropColumn, 1, 2),
           present: false,
         });
+        matched = true;
       }
+
+      if (!matched) return [];
     }
     return markers;
   }
 
   return [];
+}
+
+function assertTargetCatalogIsolation({
+  baselineCatalogContract,
+  targetCatalogContract,
+}) {
+  const baselineTables = new Set(
+    baselineCatalogContract
+      .filter((marker) => marker.kind === "table" && marker.present === true)
+      .map((marker) => marker.name),
+  );
+  const targetTables = new Set(
+    targetCatalogContract
+      .filter((marker) => marker.kind === "table" && marker.present === true)
+      .map((marker) => marker.name),
+  );
+
+  for (const table of targetTables) {
+    if (baselineTables.has(table)) {
+      throw new ModuleUpdateMigrationConfigurationError(
+        "FC6-B target module attempts to create or own a baseline-owned table.",
+      );
+    }
+  }
+
+  for (const marker of targetCatalogContract) {
+    if (marker.kind === "table") continue;
+    if (
+      typeof marker.table !== "string" ||
+      !targetTables.has(marker.table) ||
+      baselineTables.has(marker.table)
+    ) {
+      throw new ModuleUpdateMigrationConfigurationError(
+        "FC6-B target module attempts to modify a table outside its own migration delta.",
+      );
+    }
+  }
+}
+
+function stripLeadingSqlComments(value) {
+  let index = 0;
+
+  while (index < value.length) {
+    while (index < value.length && /\s/.test(value[index])) index += 1;
+
+    if (value[index] === "-" && value[index + 1] === "-") {
+      index += 2;
+      while (index < value.length && value[index] !== "\n") index += 1;
+      continue;
+    }
+
+    if (value[index] === "/" && value[index + 1] === "*") {
+      index = skipSqlBlockComment(value, index);
+      continue;
+    }
+
+    break;
+  }
+
+  return value.slice(index).trim();
 }
 
 async function verifyTargetIdentity(
@@ -480,9 +553,12 @@ async function catalogMarkerExists(transaction, marker) {
         SELECT 1
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid
+        JOIN pg_catalog.pg_class rel ON rel.oid = i.indrelid
         WHERE n.nspname = 'public'
           AND c.relname = ${marker.name}
           AND c.relkind = 'i'
+          AND rel.relname = ${marker.table}
       ) AS present
     `;
     return rows[0]?.present === true;
