@@ -1,0 +1,107 @@
+name: ULC D4 Migration Statement Diagnostic
+
+on:
+  push:
+    branches:
+      - ops/ulc-d4-neon-preview-bootstrap
+    paths:
+      - .github/workflows/ulc-linz-d4-migration-statement-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Identify failing ULC D4 migration statement
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: generated-preview-ulc-linz
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Execute migration plan diagnostically and force rollback
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createPostgresDatabase } from "./packages/database/src/node-runtime.mjs";
+          import { loadUlcLinzD4PreviewMigrationPlan } from "./tooling/ulc-linz-d4-preview-migrate.mjs";
+
+          class ForcedRollback extends Error {}
+
+          const { plan } = await loadUlcLinzD4PreviewMigrationPlan();
+          const database = createPostgresDatabase(process.env.APPBASIS_MIGRATION_DATABASE_URL);
+          let failure = null;
+          try {
+            await database.client.begin(async (tx) => {
+              for (let migrationIndex = 0; migrationIndex < plan.length; migrationIndex += 1) {
+                const migration = plan[migrationIndex];
+                for (let statementIndex = 0; statementIndex < migration.statements.length; statementIndex += 1) {
+                  try {
+                    await tx.unsafe(migration.statements[statementIndex]);
+                  } catch (error) {
+                    failure = {
+                      migrationIndex,
+                      ownerId: migration.ownerId,
+                      relativePath: migration.relativePath,
+                      statementIndex,
+                      code: typeof error?.code === "string" ? error.code : "unknown",
+                      name: typeof error?.name === "string" ? error.name : "unknown",
+                      severity: typeof error?.severity === "string" ? error.severity : "unknown",
+                      routine: typeof error?.routine === "string" ? error.routine : "unknown",
+                      constraint: typeof error?.constraint_name === "string" ? error.constraint_name : null,
+                      table: typeof error?.table_name === "string" ? error.table_name : null,
+                      column: typeof error?.column_name === "string" ? error.column_name : null,
+                    };
+                    throw error;
+                  }
+                }
+              }
+              throw new ForcedRollback("diagnostic rollback");
+            });
+          } catch (error) {
+            if (failure === null && !(error instanceof ForcedRollback)) {
+              failure = {
+                migrationIndex: null,
+                ownerId: null,
+                relativePath: null,
+                statementIndex: null,
+                code: typeof error?.code === "string" ? error.code : "unknown",
+                name: typeof error?.name === "string" ? error.name : "unknown",
+                severity: typeof error?.severity === "string" ? error.severity : "unknown",
+                routine: typeof error?.routine === "string" ? error.routine : "unknown",
+                constraint: typeof error?.constraint_name === "string" ? error.constraint_name : null,
+                table: typeof error?.table_name === "string" ? error.table_name : null,
+                column: typeof error?.column_name === "string" ? error.column_name : null,
+              };
+            }
+          } finally {
+            await database.client.end().catch(() => {});
+          }
+
+          if (failure !== null) {
+            console.log("MIGRATION_DIAGNOSTIC_FAILURE=" + JSON.stringify(failure));
+            process.exit(1);
+          }
+          console.log("MIGRATION_DIAGNOSTIC_ALL_STATEMENTS_OK=true");
+          NODE
