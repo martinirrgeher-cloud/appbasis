@@ -50,6 +50,17 @@ ULC-Runtime-Vertrag mit getrenntem Application- und Security-Log-Hyperdrive
 bleibt erhalten; die generische Single-Hyperdrive-Preview darf dafür nicht
 blind wiederverwendet werden.
 
+## Nach D4 – Production Revalidation
+
+D4 wurde mit echtem ULC-Preview-Zugang abgenommen. Danach wurde die durch FC5
+notwendig gewordene Production-Evidence für den Countdown-Scope getrennt neu
+durchlaufen: M5, kontrollierter workers.dev Pilot-Ingress, dedizierter
+Smoke-Principal und Post-Deploy-Smoke sind auf demselben akzeptierten
+Produktions-Head erfolgreich.
+
+Dieser Schritt revalidiert den aktuellen FC5-Verbraucher; er schließt **nicht**
+M6 erneut ab und erteilt keine finale Produktionsfreigabe.
+
 ## Abgrenzung
 
 Dieser Slice autorisiert weder Produktion noch produktive Migrationen,

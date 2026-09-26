@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "module": "countdown",
+  "environment": "production-pilot",
+  "acceptedHeadSha": "bab8b18fd9e88025a6df0ccbffe8c51b972fe4b3",
+  "m5ProductionEvidenceRunId": 36247785054,
+  "pilotIngressRunId": 36248019506,
+  "smokePrincipalRunId": 36248085829,
+  "postDeploySmokeRunId": 36248243012,
+  "fc5ProductionRevalidated": true,
+  "finalProductionReleaseAuthorized": false,
+  "recordedAt": "2026-09-26T14:23:19.000Z"
+}
