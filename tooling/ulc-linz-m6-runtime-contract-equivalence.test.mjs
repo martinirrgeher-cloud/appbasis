@@ -15,8 +15,7 @@ function comparison(overrides = {}) {
     total_commits: 1,
     base_commit: { sha: DEPLOYED },
     merge_base_commit: { sha: DEPLOYED },
-    head_commit: { sha: CURRENT },
-    commits: [{ sha: COMMIT }],
+    commits: [{ sha: CURRENT }],
     files: [{ filename: "tooling/example-evidence-only.mjs", status: "modified" }],
     ...overrides,
   };
@@ -106,6 +105,7 @@ test("fails closed when deployed SHA is not the exact ancestor or compare eviden
   for (const value of [
     comparison({ status: "diverged" }),
     comparison({ merge_base_commit: { sha: "d".repeat(40) } }),
+    comparison({ commits: [{ sha: COMMIT }] }),
     comparison({ behind_by: 1 }),
     comparison({ total_commits: 2 }),
     comparison({ commits: [] }),
@@ -143,4 +143,20 @@ test("retries transient GitHub comparison failures and then succeeds", async () 
   assert.equal(result.equivalent, true);
   assert.equal(calls, 3);
   assert.deepEqual(delays, [250, 500]);
+});
+
+
+test("accepts the real GitHub compare shape without a head_commit field", async () => {
+  const payload = comparison();
+  assert.equal(Object.hasOwn(payload, "head_commit"), false);
+
+  const result = await verifyUlcLinzProductionRuntimeEquivalence(process.cwd(), {
+    deployedGithubSha: DEPLOYED,
+    currentGithubSha: CURRENT,
+    fetchImpl: async () => Response.json(payload),
+    sleep: async () => {},
+  });
+
+  assert.equal(result.equivalent, true);
+  assert.equal(result.mode, "runtime-contract-unchanged");
 });
