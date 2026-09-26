@@ -1,0 +1,80 @@
+name: ULC D4 Postgres URL Diagnostic
+
+on:
+  push:
+    branches:
+      - ops/ulc-d4-neon-preview-bootstrap
+    paths:
+      - .github/workflows/ulc-linz-d4-postgres-url-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Compare postgres-js URL vs parsed options
+    runs-on: ubuntu-24.04
+    environment:
+      name: generated-preview-ulc-linz
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Compare connection parsing
+        working-directory: packages/database
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import postgres from "postgres";
+
+          const source = process.env.APPBASIS_DATABASE_URL;
+          const url = new URL(source);
+          const meta = {
+            rawPasswordContainsPercentEncoding: /%[0-9a-f]{2}/i.test(url.password),
+            rawPasswordLength: url.password.length,
+            decodedPasswordLength: decodeURIComponent(url.password).length,
+            queryKeys: [...url.searchParams.keys()].sort(),
+          };
+          console.log("URL_METADATA=" + JSON.stringify(meta));
+
+          async function attempt(label, client) {
+            try {
+              const rows = await client.unsafe("SELECT current_user AS current_user");
+              console.log(label + "=success rows=" + rows.length);
+            } catch (error) {
+              console.log(label + "=failure " + JSON.stringify({
+                name: error?.name ?? "unknown",
+                code: error?.code ?? "unknown",
+              }));
+            } finally {
+              await client.end({ timeout: 1 }).catch(() => {});
+            }
+          }
+
+          await attempt("URL_MODE", postgres(source, { prepare: false, connect_timeout: 10 }));
+          await attempt("PARSED_MODE", postgres({
+            host: url.hostname,
+            port: url.port ? Number(url.port) : 5432,
+            database: decodeURIComponent(url.pathname.slice(1)),
+            username: decodeURIComponent(url.username),
+            password: decodeURIComponent(url.password),
+            ssl: "require",
+            prepare: false,
+            connect_timeout: 10,
+          }));
+          NODE
