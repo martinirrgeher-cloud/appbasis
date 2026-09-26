@@ -114,6 +114,14 @@ Prüfung und Ausführung. Damit bleibt der Mechanismus klein und
 installationsspezifisch; es entsteht kein zweites allgemeines
 Migration-Framework.
 
+Der FC6-B-Katalognachweis unterstützt in diesem Slice bewusst nur die
+ausführbar geprüften DDL-Klassen Tabellen, Spalten, benannte Constraints und
+Indizes. Mehrere SQL-Kommandos innerhalb einer Migrationsdatei werden einzeln
+ausgewertet. Migrationen mit anderen Wirkungsklassen wie Rollen-, Grant-,
+Funktions- oder frei programmierbarer DO-Block-Logik werden nicht stillschweigend
+ignoriert, sondern bleiben für diesen inkrementellen Pfad fail-closed, bis ein
+konkreter Verbraucher dafür einen eigenen überprüfbaren Nachweis benötigt.
+
 ## FC6-C – Integration in den Existing-App-Updater
 
 Nach bewiesenem Delta- und Execution-Vertrag darf der bisherige FC5-Executor
