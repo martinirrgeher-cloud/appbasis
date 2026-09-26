@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-09-24
+Stand: 2026-09-26
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -10,6 +10,11 @@ GitHub abgeleitet.
 ## Aktuelles Ziel
 
 **FC5 – Module kontrolliert zu bestehenden Apps hinzufügen/aktualisieren.**
+
+Der erste persistenzfreie FC5-End-to-End-Pfad für `ulc-linz + countdown` ist
+inzwischen bis einschließlich isolierter Preview und getrennter
+Production-Revalidation durchlaufen. Der aktuelle Gate-Scope ist der formale
+FC5-Abschlussnachweis; M6 wird dabei nicht erneut geöffnet oder abgeschlossen.
 
 FC4 ist für den aktuellen Produktpfad abgeschlossen: Modulvertrag,
 Modul-Scaffolder, der persistenzfreie Intervall-Countdown und der normale
@@ -130,7 +135,7 @@ Verbindlicher D3-Umfang:
 - Wake-Lock wird während eines laufenden Countdowns best-effort gehalten,
 - Zugriff wird vor Nutzung über den D2-Vertrag serverseitig geprüft.
 
-### Aktueller Teilslice: Countdown D4 – isolierte ULC Preview
+### Countdown D4 – isolierte ULC Preview – abgeschlossen
 
 D4 beweist den aktuellen Countdown-Slice zuerst außerhalb der Produktion. Der
 Repository-/Workflow-Vertrag bleibt app-spezifisch und nutzt die bestehende
@@ -175,6 +180,39 @@ Preview-Deployment bleiben bis zu einer ausdrücklichen Nutzerfreigabe
 ungeändert.
 
 Keine dieser Stufen revalidiert automatisch die alte M5/M6-Production-Evidence.
+
+Die D4-Preview wurde am 26.09.2026 einschließlich des ULC-spezifischen
+Preview-Zugangs und der echten Benutzerabnahme erfolgreich abgeschlossen. Die
+akzeptierte D4-Evidence bleibt separat und ist Voraussetzung für die
+anschließende Production-Revalidation.
+
+### FC5-D – ULC Production Revalidation nach Countdown – abgeschlossen
+
+Nach D4 wurde der bestehende ULC-Produktionspfad für den durch FC5 hinzugefügten
+`countdown`-Scope getrennt neu validiert. Das ist kein erneuter
+M6-Meilensteinabschluss, sondern die notwendige Revalidation der zuvor durch
+FC5-C bewusst geöffneten Production-Evidence.
+
+Erfolgreich und gemeinsam an Head
+`bab8b18fd9e88025a6df0ccbffe8c51b972fe4b3` gebunden sind:
+
+1. M5 Production Evidence – Run `36247785054`
+2. kontrollierter workers.dev Pilot-Ingress – Run `36248019506`
+3. dedizierter Production-Smoke-Principal – Run `36248085829`
+4. Post-Deploy-Smoke – Run `36248243012`
+
+Der dauerhafte FC5-Revalidierungsnachweis akzeptiert diese Runs nur zusammen mit
+der bereits akzeptierten D4-Preview und nur solange der kanonische
+ULC-Production-Runtime-Vertrag gegenüber dem akzeptierten Head unverändert
+bleibt. Eine spätere Runtime-Änderung öffnet den Nachweis wieder fail-closed.
+
+Damit ist der erste persistenzfreie FC5-Updatepfad für
+`ulc-linz + countdown` Ende-zu-Ende belegt. Datenbank-ownende Module bleiben
+außerhalb dieses Abschlusses und weiterhin fail-closed, bis ihr eigener
+atomarer Migrations-Ausführungsvertrag existiert.
+
+Die finale organisatorische Produktionsfreigabe bleibt weiterhin ein separater
+ausdrücklicher Schritt und wird durch FC5-D nicht autorisiert.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -228,13 +266,20 @@ zurückgestellt.
 
 ## Nächste Produktfolge
 
-**FC5 Existing-App-Updater → Countdown D1–D3 → ULC Preview D4 → kontrollierte ULC
-Produktionsvorbereitung.**
+Der aktuelle persistenzfreie FC5-Pfad ist abgeschlossen:
+
+**FC5 Existing-App-Updater → Countdown D1–D3 → ULC Preview D4 →
+ULC Production Revalidation.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**
 
-Eine produktive ULC-Änderung setzt danach weiterhin aktuelle Migration-,
+Vor Beginn eines neuen Factory-Meilensteins wird ein eigener Gate-Scope
+festgelegt. FC5 wird nicht stillschweigend auf datenbank-ownende Module
+erweitert; dafür ist zuerst der bereits ausdrücklich fehlende atomare
+Migrations-Ausführungsvertrag erforderlich.
+
+Eine weitere produktive ULC-Änderung setzt weiterhin aktuelle Migration-,
 Security/Privacy-, Backup/Restore-, Berechtigungs-, Deploy- und Smoke-Evidence
 voraus. Die endgültige Produktionsfreigabe bleibt ein separates ausdrückliches
 Gate.
