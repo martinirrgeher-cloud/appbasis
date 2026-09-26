@@ -157,10 +157,23 @@ function exactApplicationAccess(overrides = {}) {
   };
 }
 
+function migrationCreatorMembership(overrides = {}) {
+  return {
+    parent: PREVIEW_SECURITY_GROUP,
+    member: "ulc_preview_owner",
+    grantor: "cloud_admin",
+    admin_option: true,
+    inherit_option: false,
+    set_option: false,
+    ...overrides,
+  };
+}
+
 function securityMembership() {
   return {
     parent: PREVIEW_SECURITY_GROUP,
     member: "ulc_preview_security_ingest",
+    grantor: "ulc_preview_owner",
     admin_option: false,
     inherit_option: true,
     set_option: true,
@@ -199,6 +212,7 @@ function ownerFixture({
     routine_access_count: 0,
   },
   groupParents = [],
+  creatorGroupMembership = migrationCreatorMembership(),
   extraGroupMembers = [],
   groupOwnership = {
     group_owned_database_count: 0,
@@ -250,6 +264,7 @@ function ownerFixture({
           ...(previewGroupPresent
             ? [runtimeRole(PREVIEW_SECURITY_GROUP, false)]
             : []),
+          runtimeRole("ulc_preview_owner", true),
           runtimeRole("ulc_preview_app", true),
           runtimeRole("ulc_preview_security_ingest", true),
         ];
@@ -264,8 +279,11 @@ function ownerFixture({
       }
       if (sql.includes("WHERE parent.rolname = $1")) {
         assert.equal(params?.[0], PREVIEW_SECURITY_GROUP);
-        if (extraGroupMembers.length > 0) return extraGroupMembers;
-        return bound ? [securityMembership()] : [];
+        return [
+          ...(creatorGroupMembership === null ? [] : [creatorGroupMembership]),
+          ...(bound ? [securityMembership()] : []),
+          ...extraGroupMembers,
+        ];
       }
       if (sql.includes("AS group_owned_database_count")) {
         assert.equal(params?.[0], PREVIEW_SECURITY_GROUP);
@@ -948,10 +966,10 @@ test("rejects a preview ingest group that inherits another role", async () => {
 test("rejects unexpected cluster-wide members of the preview group", async () => {
   const owner = ownerFixture({
     extraGroupMembers: [
-      securityMembership(),
       {
         parent: PREVIEW_SECURITY_GROUP,
         member: "unexpected_runtime",
+        grantor: "unexpected_grantor",
         admin_option: false,
         inherit_option: true,
         set_option: true,
@@ -962,6 +980,22 @@ test("rejects unexpected cluster-wide members of the preview group", async () =>
     reconcile(databaseFactory({ owner })),
     /unexpected cluster-wide members/,
   );
+});
+
+test("accepts only the Neon-managed non-inheriting migration creator edge", async () => {
+  for (const creatorGroupMembership of [
+    migrationCreatorMembership({ grantor: "unexpected_grantor" }),
+    migrationCreatorMembership({ admin_option: false }),
+    migrationCreatorMembership({ inherit_option: true }),
+    migrationCreatorMembership({ set_option: true }),
+    null,
+  ]) {
+    const owner = ownerFixture({ creatorGroupMembership });
+    await assert.rejects(
+      reconcile(databaseFactory({ owner })),
+      /migration creator membership is unsafe|unexpected cluster-wide members/,
+    );
+  }
 });
 
 test("rejects database CREATE on shared ULC roles after migration", async () => {
