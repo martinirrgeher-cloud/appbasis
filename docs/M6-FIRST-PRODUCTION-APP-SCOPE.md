@@ -126,23 +126,6 @@ Kontrollierte Produktionsvorbereitung bleibt davon getrennt: Sie darf nur über 
 4. Nach real belegtem M3 dürfen die für M4/M5-Evidence notwendigen dedizierten Produktionsressourcen kontrolliert und ohne öffentliches Ingress vorbereitet werden; jeder mutierende Schritt bleibt einzeln freigabepflichtig. Öffentliches Ingress setzt erfolgreiche Recovery- und M5-Evidence voraus.
 5. Post-Deploy-Smoke aus den bewährten M3-Prüfmustern für diese konkrete Produktions-App ableiten; Production Ready entsteht erst nach allen zehn M6-Nachweisen und autorisiert den Release weiterhin nicht automatisch.
 
-## Technischer M6-Closeout – ULC Linz
-
-Am 26.09.2026 wurde der erste reale ULC-Produktionspilotpfad vollständig durchlaufen und anschließend als read-only Closeout-Evidence festgehalten.
-
-Die akzeptierte technische Kette ist an den Produktions-Head `bab8b18fd9e88025a6df0ccbffe8c51b972fe4b3` gebunden und verweist auf die tatsächlich erfolgreichen GitHub-Actions-Läufe:
-
-- M5 Production Evidence: `36247785054`
-- kontrollierter workers.dev Pilot-Ingress: `36248019506`
-- dedizierter Production-Smoke-Principal: `36248085829`
-- Post-Deploy-Smoke: `36248243012`
-
-Der Closeout-Reader prüft zusätzlich die bereits akzeptierte D4-Preview-Evidence, die exakten Workflow-Identitäten, First-Attempt-Erfolg, zeitliche Reihenfolge, Repository-Zuordnung und die Runtime-Vertragsäquivalenz zwischen dem akzeptierten Produktions-Head und dem aktuellen `main`. Sobald ein späterer Commit den kanonischen Produktions-Runtime-Vertrag verändert, fällt der historische M6-Closeout fail-closed zurück.
-
-Die maschinenlesbare Akzeptanz liegt unter `apps/ulc-linz/evidence/m6-production-pilot-acceptance.json`. Sie dokumentiert ausdrücklich nur den **technisch vollständig bewiesenen M6-Pilotpfad**. Sie setzt weder `releaseAuthorized=true` noch aktiviert sie eine Organisationsdomain oder einen finalen Go-live.
-
-Damit ist das technische Ziel von M6 für die erste reale App nachweisbar erreicht. Die ausdrückliche finale Produktionsfreigabe bleibt weiterhin ein separater, frischer Betreiberentscheid unmittelbar vor einem zukünftigen Release-Write.
-
 ## Abgrenzung zu FC1
 
 M6 beweist **einen** echten Produktionspfad. Erst wenn dieser reale Verbraucher existiert und die notwendigen Verträge bewiesen sind, darf FC1 daraus den wiederholbaren Factory-Lifecycle `App anlegen → Preview → Tests → Production` ableiten.
