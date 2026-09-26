@@ -1,0 +1,176 @@
+name: ULC D4 Post-Migration Access Recovery
+
+on:
+  push:
+    branches:
+      - ops/ulc-d4-neon-preview-bootstrap
+    paths:
+      - .github/workflows/ulc-linz-d4-post-migration-access-recovery.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Recover ULC D4 post-migration least privilege
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: generated-preview-ulc-linz
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate exact recoverable creator state
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          MIGRATION_ROLE: appbasis_ulc_linz_preview_migration
+          SECURITY_LOGIN_ROLE: appbasis_ulc_linz_preview_security_log
+        run: |
+          set -euo pipefail
+          elevated="$(psql "$APPBASIS_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -Atq             --set=role="$MIGRATION_ROLE" <<'SQL'
+          SELECT CASE WHEN rolcreaterole THEN 'true' ELSE 'false' END
+          FROM pg_catalog.pg_roles
+          WHERE rolname = :'role';
+          SQL
+          )"
+          test "$elevated" = false || {
+            echo 'ULC D4 migration role is unexpectedly still elevated.' >&2
+            exit 1
+          }
+
+          protected_admin_edges="$(psql "$APPBASIS_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -Atq             --set=member="$MIGRATION_ROLE" <<'SQL'
+          SELECT count(*)
+          FROM pg_catalog.pg_auth_members membership
+          JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
+          JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+          WHERE member.rolname = :'member'
+            AND parent.rolname = ANY(ARRAY[
+              'ulc_linz_security_event_ingest',
+              'ulc_linz_security_event_cleanup',
+              'ulc_linz_security_event_read',
+              'appbasis_ulc_linz_preview_security_ingest'
+            ]::text[])
+            AND membership.admin_option = true;
+          SQL
+          )"
+          test "$protected_admin_edges" = 4 || {
+            echo 'ULC D4 migration creator memberships are not in the exact recoverable state.' >&2
+            exit 1
+          }
+
+          security_memberships="$(psql "$APPBASIS_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -Atq             --set=member="$SECURITY_LOGIN_ROLE" <<'SQL'
+          SELECT count(*)
+          FROM pg_catalog.pg_auth_members membership
+          JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+          WHERE member.rolname = :'member';
+          SQL
+          )"
+          test "$security_memberships" = 0 || {
+            echo 'ULC D4 security login already has unexpected memberships.' >&2
+            exit 1
+          }
+
+      - name: Bind security login and remove migration creator memberships
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          MIGRATION_ROLE: appbasis_ulc_linz_preview_migration
+          SECURITY_LOGIN_ROLE: appbasis_ulc_linz_preview_security_log
+          SECURITY_GROUP: appbasis_ulc_linz_preview_security_ingest
+        run: |
+          set -euo pipefail
+
+          # The migration role owns ADMIN OPTION on roles it created, even after
+          # CREATEROLE itself has already been revoked.
+          psql "$APPBASIS_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -q             --set=parent="$SECURITY_GROUP"             --set=member="$SECURITY_LOGIN_ROLE" >/dev/null <<'SQL'
+          SELECT format(
+            'GRANT %I TO %I WITH INHERIT TRUE, SET TRUE',
+            :'parent',
+            :'member'
+          ) \gexec
+          SQL
+
+          for parent in             ulc_linz_security_event_ingest             ulc_linz_security_event_cleanup             ulc_linz_security_event_read             appbasis_ulc_linz_preview_security_ingest
+          do
+            psql "$APPBASIS_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -q               --set=parent="$parent"               --set=member="$MIGRATION_ROLE" >/dev/null <<'SQL'
+          SELECT format('REVOKE %I FROM %I', :'parent', :'member') \gexec
+          SQL
+          done
+
+      - name: Verify least-privilege membership state
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          MIGRATION_ROLE: appbasis_ulc_linz_preview_migration
+          SECURITY_LOGIN_ROLE: appbasis_ulc_linz_preview_security_log
+          SECURITY_GROUP: appbasis_ulc_linz_preview_security_ingest
+        run: |
+          set -euo pipefail
+
+          creator_edges="$(psql "$APPBASIS_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -Atq             --set=member="$MIGRATION_ROLE" <<'SQL'
+          SELECT count(*)
+          FROM pg_catalog.pg_auth_members membership
+          JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
+          JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+          WHERE member.rolname = :'member'
+            AND parent.rolname = ANY(ARRAY[
+              'ulc_linz_security_event_ingest',
+              'ulc_linz_security_event_cleanup',
+              'ulc_linz_security_event_read',
+              'appbasis_ulc_linz_preview_security_ingest'
+            ]::text[]);
+          SQL
+          )"
+          test "$creator_edges" = 0 || {
+            echo 'ULC D4 migration role retained protected role memberships.' >&2
+            exit 1
+          }
+
+          exact_security_edge="$(psql "$APPBASIS_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -Atq             --set=parent="$SECURITY_GROUP"             --set=member="$SECURITY_LOGIN_ROLE" <<'SQL'
+          SELECT count(*)
+          FROM pg_catalog.pg_auth_members membership
+          JOIN pg_catalog.pg_roles parent ON parent.oid = membership.roleid
+          JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+          WHERE parent.rolname = :'parent'
+            AND member.rolname = :'member'
+            AND membership.admin_option = false
+            AND membership.inherit_option = true
+            AND membership.set_option = true;
+          SQL
+          )"
+          test "$exact_security_edge" = 1 || {
+            echo 'ULC D4 security login membership is not exact.' >&2
+            exit 1
+          }
+
+      - name: Reconcile separated ULC preview runtime database access
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_DATABASE_ACCESS: "1"
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs >/dev/null
