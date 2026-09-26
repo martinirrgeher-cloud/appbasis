@@ -1,0 +1,56 @@
+name: ULC D4 Post-Migration Reconcile
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ulc-linz-d4-post-migration-reconcile.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz-post-migration-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile isolated ULC D4 runtime database access
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: generated-preview-ulc-linz
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify ULC D4 database access guard
+        run: node --test ./tooling/ulc-linz-d4-preview-database-access.test.mjs
+
+      - name: Reconcile and verify separated ULC preview runtime database access
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_DATABASE_ACCESS: "1"
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs >/dev/null
