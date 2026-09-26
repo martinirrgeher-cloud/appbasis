@@ -9,12 +9,16 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**FC5 – Module kontrolliert zu bestehenden Apps hinzufügen/aktualisieren.**
+**FC6 – Datenbank-ownende Module kontrolliert zu bestehenden Apps hinzufügen.**
 
-Der erste persistenzfreie FC5-End-to-End-Pfad für `ulc-linz + countdown` ist
-inzwischen bis einschließlich isolierter Preview und getrennter
-Production-Revalidation durchlaufen. Der aktuelle Gate-Scope ist der formale
-FC5-Abschlussnachweis; M6 wird dabei nicht erneut geöffnet oder abgeschlossen.
+FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
+`ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
+fachlich umgesetzt, in einer isolierten Preview abgenommen und anschließend
+getrennt gegen den bestehenden Produktionspfad revalidiert.
+
+FC6 schließt jetzt die bewusst verbliebene Lücke für datenbank-ownende Module.
+Der aktuelle Startslice ist **FC6-A: read-only Migration-Delta**. Es erfolgen
+dabei noch keine Datenbank- oder Providerwrites.
 
 FC4 ist für den aktuellen Produktpfad abgeschlossen: Modulvertrag,
 Modul-Scaffolder, der persistenzfreie Intervall-Countdown und der normale
@@ -44,7 +48,7 @@ Für den aktuellen Produktpfad ist reproduzierbar und ausführbar belegt:
 
 FC4 erzeugt noch **keinen** generischen Produktions-Updater für bestehende Apps.
 
-## Aktueller Gate-Scope: FC5
+## Abgeschlossener Gate-Scope: FC5
 
 FC5 liefert den kontrollierten Updatepfad für bestehende Apps:
 
@@ -214,6 +218,37 @@ atomarer Migrations-Ausführungsvertrag existiert.
 Die finale organisatorische Produktionsfreigabe bleibt weiterhin ein separater
 ausdrücklicher Schritt und wird durch FC5-D nicht autorisiert.
 
+## Aktueller Gate-Scope: FC6
+
+FC6 erweitert den Existing-App-Updater ausschließlich um den fehlenden sicheren
+Pfad für datenbank-ownende Standardmodule.
+
+Die verbindliche Spezifikation liegt in
+`docs/FC6-DATABASE-MODULE-UPDATER.md`.
+
+### FC6-A – read-only Migration-Delta – aktuell
+
+Als kleinstes erstes Arbeitspaket wird der bestehende
+`module-update-plan.mjs` so erweitert, dass ein datenbank-ownendes Zielmodul
+einen deterministischen Migrationsdelta-Vertrag erhält.
+
+Abnahme für FC6-A:
+
+- aktuelle Appdefinition und `appbasis.database.json` müssen kanonisch zum
+  Ausgangszustand passen;
+- alle vorhandenen DB-Owner bleiben unverändert;
+- genau der neue Modul-Owner wird aus dem verifizierten Modulmanifest ergänzt;
+- Root, Schema-Version und vollständige Migrationen des neuen Owners werden
+  explizit im Plan ausgewiesen;
+- Änderungen an bestehenden Ownern, Migrationen oder deren Reihenfolge werden
+  fail-closed abgewiesen;
+- der Planner bleibt vollständig read-only;
+- keine Datenbankverbindung, kein Providerwrite, keine Produktionsänderung.
+
+Erst nach vollständiger CI und Review von FC6-A folgt FC6-B mit einem
+inkrementellen, transaktionalen Executor auf einer isolierten nicht leeren
+PostgreSQL-Baseline.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
@@ -266,23 +301,22 @@ zurückgestellt.
 
 ## Nächste Produktfolge
 
-Der aktuelle persistenzfreie FC5-Pfad ist abgeschlossen:
+Der persistenzfreie FC5-Pfad bleibt abgeschlossen:
 
 **FC5 Existing-App-Updater → Countdown D1–D3 → ULC Preview D4 →
 ULC Production Revalidation.**
 
+Der neue aktuelle Pfad ist:
+
+**FC6-A Migration-Delta → FC6-B inkrementeller DB-Executor →
+FC6-C Existing-App-Integration → FC6-D isolierter E2E-Beweis.**
+
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**
 
-Vor Beginn eines neuen Factory-Meilensteins wird ein eigener Gate-Scope
-festgelegt. FC5 wird nicht stillschweigend auf datenbank-ownende Module
-erweitert; dafür ist zuerst der bereits ausdrücklich fehlende atomare
-Migrations-Ausführungsvertrag erforderlich.
-
-Eine weitere produktive ULC-Änderung setzt weiterhin aktuelle Migration-,
-Security/Privacy-, Backup/Restore-, Berechtigungs-, Deploy- und Smoke-Evidence
-voraus. Die endgültige Produktionsfreigabe bleibt ein separates ausdrückliches
-Gate.
+FC6 verändert keine reale Produktapp nur für einen Testfall. Ein realer
+Produktverbraucher folgt erst bei tatsächlichem Bedarf. Produktionsmigration,
+Deployment und Release bleiben weiterhin getrennte ausdrückliche Gates.
 
 ## Arbeitsstart in jedem neuen Chat / jeder neuen Session
 
