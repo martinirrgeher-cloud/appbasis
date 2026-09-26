@@ -300,7 +300,7 @@ function catalogMarkersFromStatement(statement) {
     for (const segment of splitTopLevel(createTable[3])) {
       const trimmed = segment.trim();
       const namedConstraint = new RegExp(
-        `^CONSTRAINT\\s+${IDENTIFIER_SOURCE}\\b`,
+        `^CONSTRAINT\\s+${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
         "i",
       ).exec(trimmed);
       if (namedConstraint !== null) {
@@ -315,7 +315,7 @@ function catalogMarkersFromStatement(statement) {
       if (/^(?:PRIMARY|UNIQUE|CHECK|FOREIGN|EXCLUDE)\b/i.test(trimmed)) {
         continue;
       }
-      const column = new RegExp(`^${IDENTIFIER_SOURCE}\\b`, "i").exec(trimmed);
+      const column = new RegExp(`^${IDENTIFIER_SOURCE}${IDENTIFIER_END}`, "i").exec(trimmed);
       if (column !== null) {
         markers.push({
           kind: "column",
@@ -329,7 +329,7 @@ function catalogMarkersFromStatement(statement) {
   }
 
   const createIndex = new RegExp(
-    `^CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+${IDENTIFIER_SOURCE}\\s+ON\\s+${IDENTIFIER_SOURCE}\\b`,
+    `^CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+${IDENTIFIER_SOURCE}\\s+ON\\s+${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
     "i",
   ).exec(normalized);
   if (createIndex !== null) {
@@ -353,7 +353,7 @@ function catalogMarkersFromStatement(statement) {
       const trimmed = action.trim();
 
       const addConstraint = new RegExp(
-        `^ADD\\s+CONSTRAINT\\s+${IDENTIFIER_SOURCE}\\b`,
+        `^ADD\\s+CONSTRAINT\\s+${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
         "i",
       ).exec(trimmed);
       if (addConstraint !== null) {
@@ -367,7 +367,7 @@ function catalogMarkersFromStatement(statement) {
       }
 
       const dropConstraint = new RegExp(
-        `^DROP\\s+CONSTRAINT\\s+(?:IF\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}\\b`,
+        `^DROP\\s+CONSTRAINT\\s+(?:IF\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
         "i",
       ).exec(trimmed);
       if (dropConstraint !== null) {
@@ -381,7 +381,7 @@ function catalogMarkersFromStatement(statement) {
       }
 
       const addColumn = new RegExp(
-        `^ADD\\s+(?:COLUMN\\s+)?${IDENTIFIER_SOURCE}\\b`,
+        `^ADD\\s+(?:COLUMN\\s+)?${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
         "i",
       ).exec(trimmed);
       if (addColumn !== null) {
@@ -395,7 +395,7 @@ function catalogMarkersFromStatement(statement) {
       }
 
       const dropColumn = new RegExp(
-        `^DROP\\s+(?:COLUMN\\s+)?(?:IF\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}\\b`,
+        `^DROP\\s+(?:COLUMN\\s+)?(?:IF\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}${IDENTIFIER_END}`,
         "i",
       ).exec(trimmed);
       if (dropColumn !== null) {
