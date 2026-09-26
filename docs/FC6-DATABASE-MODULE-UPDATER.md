@@ -56,7 +56,7 @@ Stattdessen gilt:
 5. Ein Repository-Erfolg allein bedeutet niemals
    `productionMigrationsApplied=true`.
 
-## FC6-A – read-only Migration-Delta
+## FC6-A – read-only Migration-Delta – abgeschlossen
 
 Der bestehende Modulplan wird um einen kanonischen Migrationsdelta-Vertrag für
 datenbank-ownende Module ergänzt.
@@ -75,12 +75,20 @@ Der Delta-Vertrag muss fail-closed beweisen:
   umsortiert oder ersetzt;
 - der Planner führt keinerlei Datenbankzugriff oder Write aus.
 
-Der erste Slice endet mit einem deterministischen read-only Plan und Tests.
+Der Slice ist abgeschlossen: der deterministische read-only Plan weist genau
+den neuen Modul-Owner samt Root, Schema-Version und vollständiger
+Migrationsliste aus und bleibt ohne Repository-/Datenbankwrite.
 
-## FC6-B – isolierter inkrementeller Migration-Executor
+## FC6-B – isolierter inkrementeller Migration-Executor – aktuell
 
 Erst nach FC6-A wird ein Executor für die **neuen** Modul-Migrationen gegen eine
-bereits bestehende Datenbankbasis eingeführt.
+bereits bestehende Datenbankbasis eingeführt. Der Executor akzeptiert denselben
+verifizierten Installationsdelta in zwei Repository-Zuständen: vor der
+Repository-Publikation direkt aus dem FC6-A-Plan oder danach aus dem kanonisch
+veröffentlichten Target-Manifest. Im veröffentlichten Zustand wird der neue
+Modul-Owner exakt gegen den verifizierten Modulvertrag rückgebunden und aus der
+Baseline herausgerechnet; ein bloßes `already-installed` gilt daher nicht als
+Beweis, dass die Datenbankmigration bereits gelaufen ist.
 
 Verbindliche Grenzen:
 
@@ -99,9 +107,26 @@ Verbindliche Grenzen:
   fail-closed abgewiesen werden; Doppelanwendung ist nicht zulässig;
 - Tests beweisen explizit eine nicht leere bestehende Baseline.
 
-Der konkrete Mechanismus zur belastbaren Erkennung des angewendeten
-Migrationsstands wird innerhalb FC6-B als kleiner ausführbarer Vertrag
-festgelegt; es wird kein zweites allgemeines Migration-Framework aufgebaut.
+Der konkrete kleine Nachweisvertrag für FC6-B verwendet keine zweite allgemeine
+Migration-History-Tabelle. Stattdessen werden aus der bereits verifizierten
+Baseline-Migrationsliste Katalogmarker (Tabellen, Spalten, benannte Constraints
+und Indizes) abgeleitet und innerhalb derselben Transaktion gegen PostgreSQL
+geprüft. Der neue Moduldelta muss ebenfalls einen nicht-destruktiven,
+verifizierbaren Katalogvertrag besitzen. Bereits vorhandene Zielmarker werden
+vor dem ersten DDL als bereits/teilweise angewendet fail-closed abgewiesen.
+
+Für dieselbe App-/Modulkombination serialisiert ein PostgreSQL Advisory Lock die
+Prüfung und Ausführung. Damit bleibt der Mechanismus klein und
+installationsspezifisch; es entsteht kein zweites allgemeines
+Migration-Framework.
+
+Der FC6-B-Katalognachweis unterstützt in diesem Slice bewusst nur die
+ausführbar geprüften DDL-Klassen Tabellen, Spalten, benannte Constraints und
+Indizes. Mehrere SQL-Kommandos innerhalb einer Migrationsdatei werden einzeln
+ausgewertet. Migrationen mit anderen Wirkungsklassen wie Rollen-, Grant-,
+Funktions- oder frei programmierbarer DO-Block-Logik werden nicht stillschweigend
+ignoriert, sondern bleiben für diesen inkrementellen Pfad fail-closed, bis ein
+konkreter Verbraucher dafür einen eigenen überprüfbaren Nachweis benötigt.
 
 ## FC6-C – Integration in den Existing-App-Updater
 
