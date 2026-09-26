@@ -256,13 +256,19 @@ async function fetchJsonWithRetry(fetchImpl, url, sleep) {
 
 async function fetchJson(fetchImpl, url) {
   let response;
+  const token =
+    typeof process.env.GITHUB_TOKEN === "string"
+      ? process.env.GITHUB_TOKEN.trim()
+      : "";
+  const headers = {
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
+    ...(token.length > 0 ? { authorization: `Bearer ${token}` } : {}),
+  };
   try {
     response = await fetchImpl(url, {
       method: "GET",
-      headers: {
-        accept: "application/vnd.github+json",
-        "x-github-api-version": "2022-11-28",
-      },
+      headers,
       redirect: "error",
       signal: AbortSignal.timeout(GITHUB_EVIDENCE_TIMEOUT_MS),
     });
