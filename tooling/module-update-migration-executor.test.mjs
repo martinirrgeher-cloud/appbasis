@@ -378,7 +378,7 @@ test("FC6-B ignores REFERENCES text inside comments, literals and quoted identif
   -- REFERENCES appbasis_person(id) is documentation only
   note text NOT NULL DEFAULT 'REFERENCES appbasis_person(id)',
   escaped text NOT NULL DEFAULT E'REFERENCES appbasis_person(id)',
-  tagged text NOT NULL DEFAULT $REFERENCES appbasis_person(id)$,
+  tagged text NOT NULL DEFAULT $tag$REFERENCES appbasis_person(id)$tag$,
   "REFERENCES" text NOT NULL DEFAULT 'literal'
 );
 `,
