@@ -14,7 +14,7 @@ function responseFor(url) {
   }
   if (parsed.pathname === "/") {
     return new Response(
-      '<!doctype html><link rel="stylesheet" href="/app.css"><script src="/app.js"></script>',
+      '<!doctype html><link rel="stylesheet" href="/app.css"><section data-app-section="kindertraining"><button id="kindertraining-save"></button></section><script src="/app.js"></script>',
       {
         status: 200,
         headers: {
@@ -25,7 +25,19 @@ function responseFor(url) {
       },
     );
   }
-  if (parsed.pathname === "/api/modules/countdown") {
+  if (parsed.pathname === "/app.js") {
+    return new Response(
+      'requestJson("/api/modules/kindertraining"); "/api/modules/kindertraining/session?groupId="; requestJson("/api/modules/kindertraining/session", {});',
+      {
+        status: 200,
+        headers: { "content-type": "text/javascript; charset=utf-8" },
+      },
+    );
+  }
+  if (
+    parsed.pathname === "/api/modules/countdown" ||
+    parsed.pathname === "/api/modules/kindertraining"
+  ) {
     return Response.json(
       {
         error: {
@@ -68,6 +80,7 @@ test("passes only when the anonymous countdown denial persists a new audit event
   assert.deepEqual(result, {
     status: "preview-audit-verified",
     persistedSecurityEvents: 1,
+    kindertrainingSurface: "verified",
   });
 });
 

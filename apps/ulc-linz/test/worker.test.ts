@@ -179,6 +179,11 @@ function runtime(
     },
   },
   kindertraining: GeneratedPostgresApplicationRuntime["kindertraining"] = {
+    async listGroups() {
+      return [
+        { id: "group-test", name: "Kindertraining", shortName: "KT" },
+      ];
+    },
     async readSnapshot(_organizationId, groupId, sessionDate) {
       return {
         group: { id: groupId, name: "Kindertraining", shortName: "KT" },
@@ -259,6 +264,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
   it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" disabled');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
@@ -270,7 +276,13 @@ describe("generated identity+permissions Worker entrypoint", () => {
       "elements.masterdataQuickAction.disabled = !masterdataReady;",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.kindertrainingQuickAction.disabled = !kindertrainingReady;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
       '(section === "masterdata" && masterdataReady)',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '(section === "kindertraining" && kindertrainingReady)',
     );
   });
 
@@ -1289,6 +1301,48 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
 
 describe("Kindertraining runtime API", () => {
+  it("returns active Kindertraining groups from the server-authorized organization", async () => {
+    let receivedOrganization: string | null = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        kindertrainingAccess: {
+          ...base.kindertrainingAccess,
+          async assertViewAccess() {
+            return { organizationId: "verein-server" };
+          },
+        },
+        kindertraining: {
+          ...base.kindertraining,
+          async listGroups(organizationId) {
+            receivedOrganization = organizationId;
+            return [
+              { id: "group-1", name: "Kindertraining", shortName: "KT" },
+            ];
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/kindertraining", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(receivedOrganization).toBe("verein-server");
+    await expect(response.json()).resolves.toEqual({
+      module: { moduleId: "kindertraining" },
+      access: { view: true },
+      trainingGroups: [
+        { id: "group-1", name: "Kindertraining", shortName: "KT" },
+      ],
+    });
+  });
+
   it("reads a participant snapshot only for the server-authorized organization", async () => {
     let received: unknown = null;
     const worker = createGeneratedWorker(() => {

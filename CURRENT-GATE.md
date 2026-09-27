@@ -656,44 +656,48 @@ Generator, Manifest und Privacy-Inventur sind synchron. Die isolierte
 Preview-Migration besitzt zusätzlich einen eigenen inkrementellen
 `training-upgrade`-Pfad. Produktion blieb unverändert.
 
-## Aktueller Gate-Scope: ULC-E4B
+## Abgeschlossener Gate-Scope: ULC-E4B
 
-Abnahme für ULC-E4B:
+ULC-E4B ist auf `main` abgeschlossen. Die Kindertraining-Runtime leitet die
+Organisation serverseitig aus der authentifizierten Mitgliedschaft ab,
+erzwingt getrennte View-/Edit-Capabilities, erzeugt den datumswirksamen
+Teilnehmer-Snapshot über den öffentlichen Athletes-Vertrag und speichert
+Trainingseinheit plus vollständige Anwesenheit atomar.
 
-- E4B aktiviert ausschließlich die Kindertraining-Runtime auf dem gemeinsamen
-  E4A-Trainingsschema; U12/U14 bleiben noch ohne eigene Runtime/API;
-- Organisation und Benutzerkontext kommen ausschließlich aus der
-  authentifizierten ULC-Mitgliedschaft, niemals aus Browserdaten;
-- Lesen erfordert `ulc-linz:module:kindertraining:view`, Schreiben
-  `ulc-linz:module:kindertraining:edit`;
-- der organisationsweite Teilnehmer-Snapshot ist nur für Rollen zulässig, die
-  den bestehenden Organization-Scope passieren; Eltern/Athleten erhalten
-  dadurch trotz möglicher Subject-Scope-Rechte keine Gruppenliste fremder
-  Teilnehmer;
-- Trainingsgruppe und Teilnehmer werden über den öffentlichen
-  Stammdaten-Snapshot des Athletes-Moduls validiert; die ULC-App verändert
-  keine Athletes-Tabellen;
-- Teilnehmer werden für das Trainingsdatum aus den datumswirksamen
-  Athleten-Gruppenzuordnungen bestimmt;
-- der Browser sendet weder `organizationId` noch `moduleId`; die Runtime
-  bindet serverseitig immer `kindertraining`;
-- ein Save akzeptiert nur den vollständigen, exakt passenden
-  Teilnehmer-Snapshot; fremde, fehlende oder doppelte Athleten werden
-  fail-closed abgewiesen;
-- Trainingseinheit und vollständige Anwesenheit werden in genau einem
-  PostgreSQL-Statement atomar gespeichert; bestehende Einheit wird
-  organisations-/modul-/gruppen-/datumsgebunden aktualisiert und veraltete
-  Anwesenheitszeilen werden entfernt;
-- bestehende Einheiten können im selben organisationsgebundenen Scope gelesen
-  und mit dem aktuellen datumswirksamen Teilnehmer-Snapshot dargestellt
-  werden;
-- keine UI-Änderung, keine neue Migration, kein Preview-/Production-DB-Write,
-  kein Providerwrite und kein Deployment in E4B.
+## Aktueller Gate-Scope: ULC-E4C
 
-Nach E4B folgt E4C als eigener Slice für die mobile Kindertraining-UI und die
-praktische Preview-Verifikation. Optimistic Concurrency, Sondertrainings,
-Trainerzuordnung, Statistik, Import/Export und Realtime/Edit-Locks bleiben
-separate Folgearbeiten.
+Abnahme für ULC-E4C:
+
+- Kindertraining wird als eigener Bereich in die bestehende mobile ULC-App
+  integriert; keine zweite/alternative UI wird aufgebaut;
+- Navigation und Dashboard werden erst nach erfolgreicher
+  `kindertraining:view`-Prüfung freigeschaltet;
+- die Gruppenauswahl kommt ausschließlich aus dem geschützten
+  Kindertraining-Endpunkt und enthält nur aktive Gruppen der serverseitig
+  autorisierten Organisation;
+- der Browser sendet weiterhin weder `organizationId` noch `moduleId`;
+- Gruppe und Datum laden den E4B-Teilnehmer-Snapshot; eine noch nicht
+  gespeicherte Einheit erscheint mit `open`-Status;
+- pro Teilnehmer stehen `open`, `present`, `excused` und `absent`
+  touch-tauglich zur Verfügung; Sammelaktionen dürfen nur denselben lokalen
+  Snapshot verändern;
+- Session-Status und optionale Notiz können mit dem vollständigen
+  Teilnehmer-Snapshot gespeichert werden;
+- Gruppen-/Datumsänderungen verwerfen den geladenen UI-Snapshot, damit kein
+  Snapshot unter einem anderen Scope gespeichert wird;
+- UI-Ausgaben mit Fach-/Personendaten werden über DOM/`textContent`
+  aufgebaut; kein `innerHTML` für dynamische Daten;
+- der bestehende D4-Preview-Smoke prüft zusätzlich die ausgelieferte
+  Kindertraining-Oberfläche, ihre Runtime-Verdrahtung und den anonymen
+  fail-closed Zugriff auf `/api/modules/kindertraining`;
+- der Code-Slice selbst führt keinen Preview-/Production-Write und kein
+  Deployment aus. Die praktische Preview-Abnahme erfolgt nach Merge über den
+  bestehenden main-only D4-Pfad: Schema `migrate` falls erforderlich,
+  anschließend `deploy`, jeweils nur mit expliziter Nutzerfreigabe.
+
+Optimistic Concurrency, Sondertrainings, Trainerzuordnung, Statistik,
+Import/Export, Realtime/Edit-Locks sowie die Aktivierung der gemeinsamen
+Runtime für U12/U14 bleiben separate Folgearbeiten.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -713,24 +717,26 @@ separate Folgearbeiten.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E4B-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E4C-Pfad, wenn mindestens eines gilt:
 
-- eine Kindertraining-Anfrage kann eine Organisation aus Clientdaten wählen
-  oder die serverseitige Mitgliedschaftsgrenze umgehen;
-- View/Edit-Capabilities werden nicht serverseitig getrennt erzwungen;
-- Eltern oder Athleten können den organisationsweiten Teilnehmer-Snapshot
-  anderer Athleten lesen;
-- Trainingseinträge oder Anwesenheiten können organisationsfremde Gruppen oder
-  Athleten speichern;
-- ein Teilfehler kann Session und Anwesenheit nur teilweise persistieren;
-- E4B verändert Athletes-, Identity-, Permission-, Lifecycle- oder
-  Security-Tabellen;
-- E4B führt UI-, Provider-, Preview- oder Production-Writes ein.
+- die Kindertraining-UI kann eine Organisation oder ein Modul aus Clientdaten
+  bestimmen;
+- die Gruppenauswahl umgeht die Kindertraining-Berechtigungsgrenze oder
+  erfordert im Browser unnötig `athletes:view`;
+- ein Gruppen-/Datumswechsel kann einen alten Teilnehmer-Snapshot unter dem
+  neuen Scope speichern;
+- der Save sendet nicht den vollständigen aktuell geladenen
+  Teilnehmer-Snapshot;
+- dynamische Personendaten werden über `innerHTML` oder vergleichbar
+  unsichere HTML-Injektion gerendert;
+- der Preview-Smoke kann eine fehlende Kindertraining-Oberfläche oder einen
+  anonym erreichbaren Kindertraining-Endpunkt übersehen;
+- der Code-PR selbst mutiert Preview/Produktion oder deployt ohne gesonderte
+  Freigabe.
 
-Nicht gate-blockierend sind die mobile Kindertraining-UI, U12/U14-Runtime,
-Optimistic Concurrency, Sondertrainings, Trainerzuordnung, Statistik,
-Import/Export, Realtime/Edit-Locks und weitere ULC-Fachmodule; sie folgen in
-getrennten Vertical Slices.
+Nicht gate-blockierend sind Optimistic Concurrency, Sondertrainings,
+Trainerzuordnung, Statistik, Import/Export, Realtime/Edit-Locks und U12/U14;
+sie bleiben getrennte Folge-Slices.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 

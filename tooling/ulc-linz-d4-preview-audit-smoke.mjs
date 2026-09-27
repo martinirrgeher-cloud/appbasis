@@ -43,6 +43,11 @@ export async function verifyUlcLinzD4PreviewAuditSmoke(
     fetchImpl,
     timeoutMs,
   });
+  await verifyKindertrainingPreviewSurface({
+    origin,
+    fetchImpl,
+    timeoutMs,
+  });
 
   const database = databaseFactory(migrationDatabaseUrl);
   try {
@@ -67,9 +72,87 @@ export async function verifyUlcLinzD4PreviewAuditSmoke(
     return Object.freeze({
       status: "preview-audit-verified",
       persistedSecurityEvents: 1,
+      kindertrainingSurface: "verified",
     });
   } finally {
     await database.client.end().catch(() => {});
+  }
+}
+
+async function verifyKindertrainingPreviewSurface({
+  origin,
+  fetchImpl,
+  timeoutMs,
+}) {
+  const htmlResponse = await timedPlainFetch(
+    fetchImpl,
+    origin + "/",
+    timeoutMs,
+    "text/html",
+  );
+  const html = await htmlResponse.text();
+  if (
+    !html.includes('data-app-section="kindertraining"') ||
+    !html.includes('id="kindertraining-save"')
+  ) {
+    throw new Error("ULC D4 preview is missing the Kindertraining UI surface.");
+  }
+
+  const scriptResponse = await timedPlainFetch(
+    fetchImpl,
+    origin + "/app.js",
+    timeoutMs,
+    "text/javascript",
+  );
+  const script = await scriptResponse.text();
+  if (
+    !script.includes('requestJson("/api/modules/kindertraining")') ||
+    !script.includes('"/api/modules/kindertraining/session?groupId="') ||
+    !script.includes('requestJson("/api/modules/kindertraining/session", {')
+  ) {
+    throw new Error("ULC D4 preview is missing the Kindertraining runtime wiring.");
+  }
+
+  const protectedResponse = await timedPlainFetch(
+    fetchImpl,
+    origin + "/api/modules/kindertraining",
+    timeoutMs,
+    "application/json",
+  );
+  await requireAnonymousSessionDenial(
+    protectedResponse,
+    "ULC D4 protected Kindertraining runtime",
+  );
+}
+
+async function timedPlainFetch(fetchImpl, url, timeoutMs, accept) {
+  if (typeof fetchImpl !== "function") {
+    throw new Error("ULC D4 audit smoke fetch transport is invalid.");
+  }
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 30_000) {
+    throw new Error("ULC D4 audit smoke timeout is invalid.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers: { accept },
+      redirect: "error",
+      signal: controller.signal,
+    });
+    if (!(response instanceof Response)) {
+      throw new Error("ULC D4 preview surface returned an invalid response.");
+    }
+    if (response.status !== 200 && response.status !== 401) {
+      throw new Error("ULC D4 preview surface returned an unexpected status.");
+    }
+    if (response.headers.has("set-cookie")) {
+      throw new Error("ULC D4 preview surface unexpectedly established a session.");
+    }
+    return response;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -103,17 +186,24 @@ async function timedFetch(fetchImpl, url, timeoutMs, correlation, proof) {
 }
 
 async function requireAnonymousCountdownDenial(response) {
+  await requireAnonymousSessionDenial(
+    response,
+    "ULC D4 protected countdown runtime",
+  );
+}
+
+async function requireAnonymousSessionDenial(response, label) {
   if (response.status !== 401 || response.headers.has("set-cookie")) {
-    throw new Error("ULC D4 protected countdown runtime did not fail closed.");
+    throw new Error(label + " did not fail closed.");
   }
   let payload;
   try {
     payload = await response.json();
   } catch {
-    throw new Error("ULC D4 protected countdown runtime returned invalid JSON.");
+    throw new Error(label + " returned invalid JSON.");
   }
   if (!isExactSessionInvalidPayload(payload)) {
-    throw new Error("ULC D4 protected countdown runtime returned an unexpected denial.");
+    throw new Error(label + " returned an unexpected denial.");
   }
 }
 
