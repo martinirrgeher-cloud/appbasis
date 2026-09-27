@@ -413,6 +413,10 @@ Abnahme für ULC-E2B:
   Stammdatenmigration unverändert erhalten;
 - alle fünf Stammdatentabellen werden erzeugt und sind auf der isolierten
   PostgreSQL-Baseline nutzbar;
+- die ULC-Dateninventur klassifiziert den neuen `athletes`-Owner und alle fünf
+  Tabellen; personenbezogene Stammdaten bleiben bei Löschung/Aufbewahrung
+  ausdrücklich `fail-closed-pending-lifecycle` und erzeugen keine neue
+  Production-Evidence;
 - Repository-Rerun bleibt No-op und DB-Rerun wird fail-closed abgewiesen;
 - keine Runtime/API/UI-Änderung, kein Preview-/Production-DB-Write, kein
   Providerwrite und kein Deployment.
@@ -424,7 +428,9 @@ Strukturelles DDL in solchen Blöcken und sämtliche Zielmodul-DDL ohne
 Katalogmarker bleiben fail-closed.
 
 Nach E2B folgt ULC-E2C: serverseitige Stammdaten-Runtime/API mit
-Organisationsgrenze und `athletes:view`/`athletes:edit`.
+Organisationsgrenze und `athletes:view`/`athletes:edit`. Dabei muss auch
+der personenbezogene Stammdaten-Lifecycle für Löschung/Aufbewahrung aus dem
+E2B-Fail-closed-Status heraus explizit gelöst werden.
 
 ## Architektur- und Sicherheitsgrenzen
 
