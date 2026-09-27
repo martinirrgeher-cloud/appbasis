@@ -21,6 +21,48 @@ import { migrationStatements } from "./database-migration-executor.mjs";
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
+test("ULC-E2A Stammdaten migration stays inside the FC6 target DDL contract", async () => {
+  const relativePath =
+    "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql";
+  const sql = await readFile(join(repositoryRoot, relativePath), "utf8");
+
+  assert.doesNotMatch(sql, /\bREFERENCES\b/i);
+
+  const contract = createCatalogContract(
+    [
+      {
+        ownerId: "athletes",
+        relativePath,
+        statements: [sql],
+      },
+    ],
+    "athletes target",
+  );
+
+  assert.deepEqual(
+    contract
+      .filter((marker) => marker.kind === "table")
+      .map((marker) => marker.name),
+    [
+      "appbasis_athlete",
+      "appbasis_athlete_group_membership",
+      "appbasis_trainer",
+      "appbasis_trainer_group_membership",
+      "appbasis_training_group",
+    ],
+  );
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "constraint-count" &&
+        marker.table === "appbasis_athlete_group_membership" &&
+        marker.name === "p" &&
+        marker.count === 1,
+    ),
+    true,
+  );
+});
+
 test("FC6-B derives verifiable catalog markers from quoted PostgreSQL DDL", () => {
   const contract = createCatalogContract(
     [
