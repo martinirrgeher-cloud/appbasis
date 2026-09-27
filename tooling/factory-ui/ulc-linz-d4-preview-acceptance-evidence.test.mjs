@@ -9,9 +9,13 @@ import {
 } from "./ulc-linz-d4-preview-acceptance-evidence.mjs";
 
 const repositoryRoot = process.cwd();
-const definition = JSON.parse(
+const currentDefinition = JSON.parse(
   await readFile(join(repositoryRoot, "apps/ulc-linz/appbasis.app.json"), "utf8"),
 );
+const acceptedCountdownDefinition = Object.freeze({
+  ...currentDefinition,
+  modules: Object.freeze(["countdown"]),
+});
 
 function successfulFetch() {
   return async (url) => {
@@ -41,26 +45,39 @@ function successfulFetch() {
   };
 }
 
-test("ULC D4 acceptance requires the exact deploy, access and operator acceptance record", async () => {
+test("ULC D4 acceptance remains valid only for the accepted countdown-only definition", async () => {
   assert.deepEqual(
-    await deriveUlcLinzD4PreviewAcceptanceEvidence(repositoryRoot, definition, {
-      fetchImpl: successfulFetch(),
-    }),
+    await deriveUlcLinzD4PreviewAcceptanceEvidence(
+      repositoryRoot,
+      acceptedCountdownDefinition,
+      { fetchImpl: successfulFetch() },
+    ),
     { previewAccepted: true },
+  );
+
+  assert.deepEqual(
+    await deriveUlcLinzD4PreviewAcceptanceEvidence(
+      repositoryRoot,
+      currentDefinition,
+      { fetchImpl: successfulFetch() },
+    ),
+    {},
   );
 });
 
 test("ULC D4 acceptance fails closed on run or app-definition drift", async () => {
   assert.deepEqual(
-    await deriveUlcLinzD4PreviewAcceptanceEvidence(repositoryRoot, definition, {
-      fetchImpl: async () => ({ ok: false }),
-    }),
+    await deriveUlcLinzD4PreviewAcceptanceEvidence(
+      repositoryRoot,
+      acceptedCountdownDefinition,
+      { fetchImpl: async () => ({ ok: false }) },
+    ),
     {},
   );
   assert.deepEqual(
     await deriveUlcLinzD4PreviewAcceptanceEvidence(
       repositoryRoot,
-      { ...definition, modules: ["tasks"] },
+      { ...acceptedCountdownDefinition, modules: ["tasks"] },
       { fetchImpl: successfulFetch() },
     ),
     {},
