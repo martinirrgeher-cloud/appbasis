@@ -465,6 +465,25 @@ Ein Finding blockiert den aktuellen ULC-E2B-Pfad, wenn mindestens eines gilt:
 Nicht gate-blockierend sind Runtime/API/UI, Realtime,
 Benutzerverknüpfungen und Import/Export; sie folgen nach E2B.
 
+## E2B-Prozessfinding: Baseline-Ausnahme
+
+Die wiederholten Review-Findings zur heuristischen Erkennung historischer
+Access-Control-Blöcke werden nicht weiter mit einer wachsenden SQL-Denylist
+behandelt. Die Heuristik ist für E2B verworfen.
+
+Markerlose historische Baseline-Migrationen dürfen nur noch über eine
+app-spezifische Evidence-Datei zugelassen werden. Jede Ausnahme bindet exakt
+einen bestehenden App-Migrationspfad an den überprüften SHA-256-Inhalt. Die
+Ausnahme gilt ausschließlich im Baseline-Katalogvertrag; Zielmigrationen
+erhalten keine Ausnahme. Jede Byte-Änderung der gepinnten Migration macht den
+FC6-Plan fail-closed und verlangt eine neue ausdrückliche Prüfung.
+
+Für ULC-E2B ist ausschließlich
+`apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql`
+als bereits separat evidenzierte historische Access-Control-Migration gepinnt.
+Damit werden keine neuen SQL-Formen anhand unvollständiger Regex-Heuristiken
+freigeschaltet.
+
 ## Loop-Grenze
 
 Für einen Arbeitspfad gilt:
