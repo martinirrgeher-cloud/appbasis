@@ -32,6 +32,22 @@ export interface AthleteMasterdataRetentionResult {
   readonly deletedTrainerGroupMemberships: number;
 }
 
+export type AthleteMasterdataDeletionEntityType = 'athlete' | 'trainer';
+
+export interface AthleteMasterdataDeletionMarker {
+  readonly entityType: AthleteMasterdataDeletionEntityType;
+  readonly entityId: string;
+  readonly organizationId: string;
+  readonly completedAt: Date;
+  readonly purgeAfter: Date;
+}
+
+export interface AthleteMasterdataDeletionReplayResult {
+  readonly markerInserted: boolean;
+  readonly deletedEntity: boolean;
+  readonly deletedGroupMemberships: number;
+}
+
 export interface AthleteMasterdataSnapshot {
   readonly trainingGroups: readonly TrainingGroup[];
   readonly athletes: readonly Athlete[];
@@ -295,35 +311,71 @@ export class PostgresAthleteMasterdataRepository {
   ): Promise<AthleteMasterdataRetentionResult> {
     const retentionNow = requiredDate(now);
     const rows = await this.#client.unsafe(
-      `WITH due_athletes AS (
-         DELETE FROM appbasis_athlete
+      `WITH due_athletes AS MATERIALIZED (
+         SELECT organization_id, id
+         FROM appbasis_athlete
          WHERE is_active = false
            AND updated_at + interval '12 months' <= $1::timestamptz
-         RETURNING organization_id, id
+         FOR UPDATE
+       ),
+       athlete_markers AS (
+         INSERT INTO appbasis_athletes_deletion (
+           entity_type, entity_id, organization_id, completed_at, purge_after
+         )
+         SELECT 'athlete', id, organization_id,
+                $1::timestamptz,
+                $1::timestamptz + interval '35 days'
+         FROM due_athletes
+         RETURNING entity_id, organization_id
        ),
        deleted_athlete_memberships AS (
          DELETE FROM appbasis_athlete_group_membership m
-         USING due_athletes d
-         WHERE m.organization_id = d.organization_id
-           AND m.athlete_id = d.id
+         USING athlete_markers marker
+         WHERE m.organization_id = marker.organization_id
+           AND m.athlete_id = marker.entity_id
          RETURNING 1
        ),
-       due_trainers AS (
-         DELETE FROM appbasis_trainer
+       deleted_athletes AS (
+         DELETE FROM appbasis_athlete a
+         USING athlete_markers marker
+         WHERE a.organization_id = marker.organization_id
+           AND a.id = marker.entity_id
+         RETURNING a.id
+       ),
+       due_trainers AS MATERIALIZED (
+         SELECT organization_id, id
+         FROM appbasis_trainer
          WHERE is_active = false
            AND updated_at + interval '12 months' <= $1::timestamptz
-         RETURNING organization_id, id
+         FOR UPDATE
+       ),
+       trainer_markers AS (
+         INSERT INTO appbasis_athletes_deletion (
+           entity_type, entity_id, organization_id, completed_at, purge_after
+         )
+         SELECT 'trainer', id, organization_id,
+                $1::timestamptz,
+                $1::timestamptz + interval '35 days'
+         FROM due_trainers
+         RETURNING entity_id, organization_id
        ),
        deleted_trainer_memberships AS (
          DELETE FROM appbasis_trainer_group_membership m
-         USING due_trainers d
-         WHERE m.organization_id = d.organization_id
-           AND m.trainer_id = d.id
+         USING trainer_markers marker
+         WHERE m.organization_id = marker.organization_id
+           AND m.trainer_id = marker.entity_id
          RETURNING 1
+       ),
+       deleted_trainers AS (
+         DELETE FROM appbasis_trainer t
+         USING trainer_markers marker
+         WHERE t.organization_id = marker.organization_id
+           AND t.id = marker.entity_id
+         RETURNING t.id
        )
        SELECT
-         (SELECT count(*)::int FROM due_athletes) AS deleted_athletes,
-         (SELECT count(*)::int FROM due_trainers) AS deleted_trainers,
+         (SELECT count(*)::int FROM deleted_athletes) AS deleted_athletes,
+         (SELECT count(*)::int FROM deleted_trainers) AS deleted_trainers,
          (SELECT count(*)::int FROM deleted_athlete_memberships)
            AS deleted_athlete_group_memberships,
          (SELECT count(*)::int FROM deleted_trainer_memberships)
@@ -331,6 +383,194 @@ export class PostgresAthleteMasterdataRepository {
       [retentionNow.toISOString()],
     );
     return retentionResult(singleRawRow(rows));
+  }
+
+  async listCurrentDeletionMarkers(
+    now: Date = new Date(),
+  ): Promise<readonly AthleteMasterdataDeletionMarker[]> {
+    const current = requiredDate(now);
+    const rows = await this.#client.unsafe(
+      `SELECT entity_type,
+              entity_id,
+              organization_id,
+              completed_at,
+              purge_after,
+              completed_at <= $1::timestamptz AS completed_not_future,
+              purge_after = completed_at + interval '35 days' AS retention_window_valid
+       FROM appbasis_athletes_deletion
+       WHERE purge_after >= $1::timestamptz
+       ORDER BY completed_at ASC, entity_type ASC, entity_id ASC`,
+      [current.toISOString()],
+    );
+    return Object.freeze(
+      rows.map((row) => deletionMarkerFromRow(row, current)),
+    );
+  }
+
+  async reconcileDeletionMarker(
+    marker: AthleteMasterdataDeletionMarker,
+  ): Promise<AthleteMasterdataDeletionReplayResult> {
+    const normalized = requiredDeletionMarker(marker);
+    const rows = await this.#client.unsafe(
+      `WITH existing_marker AS MATERIALIZED (
+         SELECT entity_type, entity_id, organization_id, completed_at, purge_after
+         FROM appbasis_athletes_deletion
+         WHERE entity_type = $1 AND entity_id = $2
+       ),
+       live_entity AS MATERIALIZED (
+         SELECT organization_id
+         FROM appbasis_athlete
+         WHERE $1 = 'athlete' AND id = $2
+         UNION ALL
+         SELECT organization_id
+         FROM appbasis_trainer
+         WHERE $1 = 'trainer' AND id = $2
+       ),
+       state AS MATERIALIZED (
+         SELECT
+           (SELECT count(*)::int FROM existing_marker) AS existing_marker_count,
+           (SELECT count(*)::int FROM live_entity) AS live_entity_count,
+           COALESCE(
+             (SELECT organization_id = $3 FROM existing_marker LIMIT 1),
+             true
+           ) AS existing_marker_org_matches,
+           COALESCE(
+             (SELECT organization_id = $3 FROM live_entity LIMIT 1),
+             true
+           ) AS live_entity_org_matches,
+           COALESCE(
+             (
+               SELECT completed_at = $4::timestamptz
+                 AND purge_after = $5::timestamptz
+               FROM existing_marker
+               LIMIT 1
+             ),
+             true
+           ) AS existing_marker_time_matches
+       ),
+       inserted_marker AS (
+         INSERT INTO appbasis_athletes_deletion (
+           entity_type, entity_id, organization_id, completed_at, purge_after
+         )
+         SELECT $1, $2, $3, $4::timestamptz, $5::timestamptz
+         FROM state
+         WHERE existing_marker_count = 0
+           AND live_entity_count <= 1
+           AND live_entity_org_matches
+         RETURNING entity_type, entity_id, organization_id
+       ),
+       replay_marker AS MATERIALIZED (
+         SELECT entity_type, entity_id, organization_id
+         FROM inserted_marker
+         UNION ALL
+         SELECT existing.entity_type, existing.entity_id, existing.organization_id
+         FROM existing_marker existing
+         CROSS JOIN state
+         WHERE state.existing_marker_count = 1
+           AND state.live_entity_count = 0
+           AND state.existing_marker_org_matches
+           AND state.existing_marker_time_matches
+       ),
+       deleted_athlete_memberships AS (
+         DELETE FROM appbasis_athlete_group_membership m
+         USING replay_marker marker
+         WHERE marker.entity_type = 'athlete'
+           AND m.organization_id = marker.organization_id
+           AND m.athlete_id = marker.entity_id
+         RETURNING 1
+       ),
+       deleted_trainer_memberships AS (
+         DELETE FROM appbasis_trainer_group_membership m
+         USING replay_marker marker
+         WHERE marker.entity_type = 'trainer'
+           AND m.organization_id = marker.organization_id
+           AND m.trainer_id = marker.entity_id
+         RETURNING 1
+       ),
+       deleted_athlete AS (
+         DELETE FROM appbasis_athlete a
+         USING replay_marker marker
+         WHERE marker.entity_type = 'athlete'
+           AND a.organization_id = marker.organization_id
+           AND a.id = marker.entity_id
+         RETURNING a.id
+       ),
+       deleted_trainer AS (
+         DELETE FROM appbasis_trainer t
+         USING replay_marker marker
+         WHERE marker.entity_type = 'trainer'
+           AND t.organization_id = marker.organization_id
+           AND t.id = marker.entity_id
+         RETURNING t.id
+       )
+       SELECT state.*,
+              (SELECT count(*)::int FROM inserted_marker) AS inserted_marker_count,
+              (SELECT count(*)::int FROM replay_marker) AS replay_marker_count,
+              (
+                (SELECT count(*)::int FROM deleted_athlete)
+                + (SELECT count(*)::int FROM deleted_trainer)
+              ) AS deleted_entity_count,
+              (
+                (SELECT count(*)::int FROM deleted_athlete_memberships)
+                + (SELECT count(*)::int FROM deleted_trainer_memberships)
+              ) AS deleted_group_membership_count
+       FROM state`,
+      [
+        normalized.entityType,
+        normalized.entityId,
+        normalized.organizationId,
+        normalized.completedAt.toISOString(),
+        normalized.purgeAfter.toISOString(),
+      ],
+    );
+    const row = singleRawRow(rows);
+    const existingMarkerCount = rowNonNegativeInteger(
+      row,
+      'existing_marker_count',
+    );
+    const liveEntityCount = rowNonNegativeInteger(row, 'live_entity_count');
+    const insertedMarkerCount = rowNonNegativeInteger(
+      row,
+      'inserted_marker_count',
+    );
+    const replayMarkerCount = rowNonNegativeInteger(row, 'replay_marker_count');
+    const deletedEntityCount = rowNonNegativeInteger(
+      row,
+      'deleted_entity_count',
+    );
+    if (
+      existingMarkerCount > 1 ||
+      liveEntityCount > 1 ||
+      insertedMarkerCount > 1 ||
+      replayMarkerCount !== 1 ||
+      row['existing_marker_org_matches'] !== true ||
+      row['live_entity_org_matches'] !== true ||
+      row['existing_marker_time_matches'] !== true ||
+      (existingMarkerCount === 1 && liveEntityCount !== 0) ||
+      (existingMarkerCount === 0 && insertedMarkerCount !== 1) ||
+      deletedEntityCount !== liveEntityCount
+    ) {
+      invalidRow();
+    }
+    return Object.freeze({
+      markerInserted: insertedMarkerCount === 1,
+      deletedEntity: deletedEntityCount === 1,
+      deletedGroupMemberships: rowNonNegativeInteger(
+        row,
+        'deleted_group_membership_count',
+      ),
+    });
+  }
+
+  async purgeExpiredDeletionMarkers(now: Date = new Date()): Promise<number> {
+    const current = requiredDate(now);
+    const rows = await this.#client.unsafe(
+      `DELETE FROM appbasis_athletes_deletion
+       WHERE purge_after < $1::timestamptz
+       RETURNING entity_id`,
+      [current.toISOString()],
+    );
+    return rows.length;
   }
 
   async readOrganizationSnapshot(
@@ -403,6 +643,58 @@ export class PostgresAthleteMasterdataRepository {
   }
 }
 
+function deletionMarkerFromRow(
+  row: Record<string, unknown>,
+  now: Date,
+): AthleteMasterdataDeletionMarker {
+  if (
+    row['completed_not_future'] !== true ||
+    row['retention_window_valid'] !== true
+  ) {
+    invalidRow();
+  }
+  const marker = requiredDeletionMarker({
+    entityType: requiredDeletionEntityType(row['entity_type']),
+    entityId: rowString(row, 'entity_id'),
+    organizationId: rowString(row, 'organization_id'),
+    completedAt: requiredStoredDate(row['completed_at']),
+    purgeAfter: requiredStoredDate(row['purge_after']),
+  });
+  if (marker.purgeAfter.getTime() < now.getTime()) invalidRow();
+  return marker;
+}
+
+function requiredDeletionMarker(
+  marker: AthleteMasterdataDeletionMarker,
+): AthleteMasterdataDeletionMarker {
+  const entityType = requiredDeletionEntityType(marker.entityType);
+  const entityId = requiredIdentifier(marker.entityId, 'Deletion entity id');
+  const organizationId = requiredIdentifier(
+    marker.organizationId,
+    'Deletion organization id',
+  );
+  const completedAt = requiredDate(marker.completedAt);
+  const purgeAfter = requiredDate(marker.purgeAfter);
+  const expectedPurgeAfter = new Date(
+    completedAt.getTime() + 35 * 24 * 60 * 60 * 1000,
+  );
+  if (purgeAfter.getTime() !== expectedPurgeAfter.getTime()) invalidRow();
+  return Object.freeze({
+    entityType,
+    entityId,
+    organizationId,
+    completedAt,
+    purgeAfter,
+  });
+}
+
+function requiredDeletionEntityType(
+  value: unknown,
+): AthleteMasterdataDeletionEntityType {
+  if (value !== 'athlete' && value !== 'trainer') invalidRow();
+  return value;
+}
+
 function requiredGeneratedId(value: string): string {
   return requiredIdentifier(value, 'Generated entity id');
 }
@@ -412,6 +704,19 @@ function requiredDate(value: Date): Date {
     throw new Error('Retention clock is invalid.');
   }
   return new Date(value.getTime());
+}
+
+function requiredStoredDate(value: unknown): Date {
+  const date =
+    value instanceof Date
+      ? new Date(value.getTime())
+      : typeof value === 'string'
+        ? new Date(value)
+        : null;
+  if (date === null || !Number.isFinite(date.getTime())) {
+    invalidRow();
+  }
+  return date;
 }
 
 function singleRawRow(

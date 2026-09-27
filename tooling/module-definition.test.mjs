@@ -62,9 +62,10 @@ test("pins the checked module inventory and database-owning contracts", async ()
     },
     capabilities: ["athletes:edit", "athletes:view"],
     database: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       migrations: [
         "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+        "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
       ],
     },
   });

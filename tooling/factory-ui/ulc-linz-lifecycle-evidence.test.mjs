@@ -229,6 +229,7 @@ test("pins every destructive C/D implementation used by the current lifecycle cl
     "apps/ulc-linz/worker/retention.ts",
     "apps/ulc-linz/worker/protected-lifecycle-operations.ts",
     "modules/athletes/src/postgres-masterdata-repository.ts",
+    "modules/athletes/src/restore-reconciliation.ts",
     "packages/identity/src/postgres-deletion.ts",
     "packages/permissions/src/principal-lifecycle-administration.ts",
   ];
@@ -252,6 +253,14 @@ test("pins every destructive C/D implementation used by the current lifecycle cl
         entry.path === "apps/ulc-linz/test/athletes-masterdata.postgres.e2e.test.ts",
     ),
     "Stammdaten PostgreSQL lifecycle acceptance must be pinned",
+  );
+  assert.ok(
+    ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.evidenceFiles.some(
+      (entry) =>
+        entry.path ===
+        "apps/ulc-linz/test/athletes-restore-reconciliation.postgres.e2e.test.ts",
+    ),
+    "Stammdaten restore reconciliation acceptance must be pinned",
   );
 
   const root = await createFixture();
@@ -278,6 +287,7 @@ test("lifecycle contract digest covers schemas, dependency versions and executab
     "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
     "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+    "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
     ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
     "apps/ulc-linz/worker/restore-reconciliation.ts",
   ]) {

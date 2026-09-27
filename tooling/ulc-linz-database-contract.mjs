@@ -10,9 +10,10 @@ const ULC_LINZ_MODULE_DATABASE_DEFINITIONS = Object.freeze([
   Object.freeze({
     moduleId: "athletes",
     database: Object.freeze({
-      schemaVersion: 1,
+      schemaVersion: 2,
       migrations: Object.freeze([
         "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+        "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
       ]),
     }),
   }),

@@ -41,6 +41,7 @@ const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
   "modules/athletes/appbasis.module.json",
   "modules/athletes/package.json",
   "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+  "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
   "packages/database/package.json",
   "packages/identity/package.json",
   "packages/permissions/package.json",
@@ -83,11 +84,11 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
-      gitBlobSha: "8978a26e54821047ab892259f57111a92c13e9da",
+      gitBlobSha: "184f8faa1b9f9d34f5259f50462315d099e82b90",
     }),
     Object.freeze({
       path: "tooling/ulc-linz-database-contract.mjs",
-      gitBlobSha: "a552fbf773f6777ab809d7b5f3aab876fbf0ace2",
+      gitBlobSha: "6c43892ab601eb1d9468a799afbc711355770d3d",
     }),
     Object.freeze({
       path: "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
@@ -110,12 +111,16 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
       gitBlobSha: "7abe0cda515ac4bf8bd97feb583aad5418b5aed1",
     }),
     Object.freeze({
+      path: "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
+      gitBlobSha: "088e29173e17f8d957765f89ea04130778fb31c8",
+    }),
+    Object.freeze({
       path: "apps/ulc-linz/package.json",
-      gitBlobSha: "dc54d72e920a0fed230531970f8236819c02315b",
+      gitBlobSha: "734505199c00b9ef7b160145202348f559d02f27",
     }),
     Object.freeze({
       path: "modules/athletes/appbasis.module.json",
-      gitBlobSha: "c18c3ecfe6474fa36ccb11a776f82abe4fcec780",
+      gitBlobSha: "92a1a44449f3a6f0e5c7d5b5398ab8b9f652a225",
     }),
     Object.freeze({
       path: "modules/athletes/package.json",
@@ -127,7 +132,11 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "modules/athletes/src/postgres-masterdata-repository.ts",
-      gitBlobSha: "f59463cf8aa137c096d9895ef4f9f423dc601776",
+      gitBlobSha: "eb017a8e1d2fc6a9cdf636155ddf2054ba7952fa",
+    }),
+    Object.freeze({
+      path: "modules/athletes/src/restore-reconciliation.ts",
+      gitBlobSha: "9db064c3511f0d21d7df7d0bd38a1004675c3df5",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/app.ts",
@@ -199,11 +208,11 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle.postgres.e2e.test.ts",
-      gitBlobSha: "8edcfb05b2769247ceee9b3e2e2c6dac2d6aa92b",
+      gitBlobSha: "74491becf5cc03d43be1a28efe2edd55c6864a72",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle-persistence.postgres.e2e.test.ts",
-      gitBlobSha: "a9536d9d2552a54342a0fcb045c0966f7de32558",
+      gitBlobSha: "c63c578f68f4b89c5d14a61113b50792cb3682f3",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle-audit.postgres.e2e.test.ts",
@@ -219,15 +228,19 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/athletes-masterdata.postgres.e2e.test.ts",
-      gitBlobSha: "1b46bdd8790260481ac179c35e1b92e158fd68a9",
+      gitBlobSha: "66a718ad564fb8790be65fefc6250c20d7a5277e",
+    }),
+    Object.freeze({
+      path: "apps/ulc-linz/test/athletes-restore-reconciliation.postgres.e2e.test.ts",
+      gitBlobSha: "e19160f891b8dcfc4765a9bba93f8bfdd4550282",
     }),
     Object.freeze({
       path: "modules/athletes/test/postgres-masterdata-repository.test.ts",
-      gitBlobSha: "8cbe31ae864bf6736f5507ef58d170fc3c54bb65",
+      gitBlobSha: "74460a4a91e0c0ea8d13b9b30f949fd68f761cab",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/m5-data-inventory.test.ts",
-      gitBlobSha: "2caa09efb93a3700c689d89eb82b00751773d5a1",
+      gitBlobSha: "ceed10912911548b78bd7d95571cbf7b64f9e270",
     }),
     Object.freeze({
       path: "packages/permissions/test/permission-administration-audit-retention.postgres.e2e.ts",
