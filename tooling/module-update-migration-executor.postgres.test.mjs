@@ -14,10 +14,12 @@ import test from "node:test";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 
+import { applyModuleUpdate } from "./apply-module-update.mjs";
 import {
   applyRepositoryMigrationPlan,
   loadRepositoryMigrationPlan,
 } from "./database-migration-executor.mjs";
+import { planModuleUpdate } from "./module-update-plan.mjs";
 import {
   applyModuleUpdateMigrations,
   ModuleUpdateMigrationExecutionError,
@@ -25,7 +27,7 @@ import {
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
-  throw new Error("DATABASE_URL is required for FC6-B PostgreSQL E2E tests.");
+  throw new Error("DATABASE_URL is required for FC6-D PostgreSQL E2E tests.");
 }
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -34,13 +36,42 @@ const targetUrl = new URL(databaseUrl);
 targetUrl.pathname = `/${databaseName}`;
 const expectedPrincipal = decodeURIComponent(new URL(databaseUrl).username);
 
-test("FC6-B applies tasks atomically to a non-empty existing app baseline and refuses a rerun", async (t) => {
+test("FC6-D installs tasks end-to-end on a non-empty existing app baseline and refuses repository/database reruns", async (t) => {
   const root = await createExistingAppFixture(t);
   const admin = createPostgresDatabase(databaseUrl);
 
   try {
     await resetIdentityBaseline(admin, root);
-    await publishTasksModuleFixture(root);
+
+    const repositoryBeforePlan = await snapshotRepositoryPublicationState(root);
+    const readOnlyPlan = await planModuleUpdate(
+      {
+        appId: "existing",
+        moduleId: "tasks",
+      },
+      { repositoryRoot: root },
+    );
+    assert.equal(readOnlyPlan.state, "install");
+    assert.equal(readOnlyPlan.changes.databaseMigrationDelta?.operation, "add-owner");
+    assert.deepEqual(
+      readOnlyPlan.changes.databaseMigrationDelta?.beforeOwnerIds,
+      ["identity"],
+    );
+    assert.deepEqual(
+      readOnlyPlan.changes.databaseMigrationDelta?.afterOwnerIds,
+      ["identity", "tasks"],
+    );
+    assert.deepEqual(
+      await snapshotRepositoryPublicationState(root),
+      repositoryBeforePlan,
+    );
+
+    const repositoryUpdate = await publishTasksModuleWithUpdater(root);
+    assert.equal(repositoryUpdate.state, "installed");
+    assert.equal(
+      repositoryUpdate.plan.changes.databaseMigrationDelta?.addedOwner?.id,
+      "tasks",
+    );
 
     const result = await applyModuleUpdateMigrations(
       {
@@ -85,6 +116,27 @@ test("FC6-B applies tasks atomically to a non-empty existing app baseline and re
       await verification.client.end();
     }
 
+    const repositoryBeforeNoop = await snapshotRepositoryPublicationState(root);
+    const repositoryNoop = await applyModuleUpdate(
+      {
+        appId: "existing",
+        moduleId: "tasks",
+      },
+      {
+        repositoryRoot: root,
+        testingHooks: {
+          workspaceFinalizer: async () => {
+            throw new Error("workspace finalizer must not run for FC6-D no-op");
+          },
+        },
+      },
+    );
+    assert.equal(repositoryNoop.state, "already-installed");
+    assert.deepEqual(
+      await snapshotRepositoryPublicationState(root),
+      repositoryBeforeNoop,
+    );
+
     await assert.rejects(
       applyModuleUpdateMigrations(
         {
@@ -108,12 +160,13 @@ test("FC6-B applies tasks atomically to a non-empty existing app baseline and re
   }
 });
 
-test("FC6-B rejects unnamed constraint baseline drift before executing target module SQL", async (t) => {
+test("FC6-D rejects baseline drift after repository publication before executing target module SQL", async (t) => {
   const root = await createExistingAppFixture(t);
   const admin = createPostgresDatabase(databaseUrl);
 
   try {
     await resetIdentityBaseline(admin, root);
+    await publishTasksModuleWithUpdater(root);
 
     const drift = createPostgresDatabase(targetUrl.toString());
     try {
@@ -160,7 +213,7 @@ test("FC6-B rejects unnamed constraint baseline drift before executing target mo
   }
 });
 
-test("FC6-B rolls the complete module delta back when a later target statement fails", async (t) => {
+test("FC6-D rolls the complete database delta back after successful repository publication when a later target statement fails", async (t) => {
   const root = await createExistingAppFixture(t);
   const taskMigrationPath = join(
     root,
@@ -184,6 +237,7 @@ CREATE TABLE appbasis_task_failure (
   const admin = createPostgresDatabase(databaseUrl);
   try {
     await resetIdentityBaseline(admin, root);
+    await publishTasksModuleWithUpdater(root);
 
     await assert.rejects(
       applyModuleUpdateMigrations(
@@ -232,37 +286,41 @@ CREATE TABLE appbasis_task_failure (
   }
 });
 
-async function publishTasksModuleFixture(root) {
-  const appPath = join(root, "apps", "existing", "appbasis.app.json");
-  const app = JSON.parse(await readFile(appPath, "utf8"));
-  app.modules = ["tasks"];
-  await writeFile(appPath, `${JSON.stringify(app, null, 2)}\n`);
-
-  const packagePath = join(root, "apps", "existing", "package.json");
-  const appPackage = JSON.parse(await readFile(packagePath, "utf8"));
-  appPackage.dependencies["@appbasis/tasks"] = "workspace:*";
-  await writeFile(packagePath, `${JSON.stringify(appPackage, null, 2)}\n`);
-
-  const databasePath = join(
-    root,
-    "apps",
-    "existing",
-    "appbasis.database.json",
+async function publishTasksModuleWithUpdater(root) {
+  return applyModuleUpdate(
+    {
+      appId: "existing",
+      moduleId: "tasks",
+    },
+    {
+      repositoryRoot: root,
+      testingHooks: {
+        workspaceFinalizer: async ({ lockfilePath }) => {
+          await writeFile(lockfilePath, publishedTasksLockfile());
+        },
+      },
+    },
   );
-  const database = JSON.parse(await readFile(databasePath, "utf8"));
-  database.owners.push({
-    id: "tasks",
-    root: "modules/tasks",
-    schemaVersion: 1,
-    migrations: [
-      "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
-    ],
-  });
-  await writeFile(databasePath, `${JSON.stringify(database, null, 2)}\n`);
+}
 
-  await writeFile(
-    join(root, "pnpm-lock.yaml"),
-    `lockfileVersion: '9.0'
+async function snapshotRepositoryPublicationState(root) {
+  return Object.fromEntries(
+    await Promise.all(
+      [
+        "apps/existing/appbasis.app.json",
+        "apps/existing/package.json",
+        "apps/existing/appbasis.database.json",
+        "pnpm-lock.yaml",
+      ].map(async (relativePath) => [
+        relativePath,
+        await readFile(join(root, relativePath), "utf8"),
+      ]),
+    ),
+  );
+}
+
+function publishedTasksLockfile() {
+  return `lockfileVersion: '9.0'
 
 settings:
   autoInstallPeers: true
@@ -283,8 +341,7 @@ importers:
       hono:
         specifier: 4.13.1
         version: 4.13.1
-`,
-  );
+`;
 }
 
 async function resetIdentityBaseline(admin, root) {
@@ -325,7 +382,7 @@ async function resetIdentityBaseline(admin, root) {
 }
 
 async function createExistingAppFixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "appbasis-fc6-b-postgres-"));
+  const root = await mkdtemp(join(tmpdir(), "appbasis-fc6-d-postgres-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
   await mkdir(join(root, "apps", "existing"), { recursive: true });

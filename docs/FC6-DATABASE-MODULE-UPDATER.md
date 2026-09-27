@@ -134,7 +134,7 @@ Funktions- oder frei programmierbarer DO-Block-Logik werden nicht stillschweigen
 ignoriert, sondern bleiben für diesen inkrementellen Pfad fail-closed, bis ein
 konkreter Verbraucher dafür einen eigenen überprüfbaren Nachweis benötigt.
 
-## FC6-C – Integration in den Existing-App-Updater – aktuell
+## FC6-C – Integration in den Existing-App-Updater – abgeschlossen
 
 Nach bewiesenem Delta- und Execution-Vertrag ersetzt der bisherige FC5-Executor
 seine harte Sperre für datenbank-ownende Module gezielt durch den FC6-Vertrag.
@@ -161,25 +161,37 @@ ein DB-ownendes Fixture reproduzierbar publiziert, den bisherigen
 persistenzfreien Pfad unverändert lässt und einen Fehler nach DB-Manifest-
 Publikation vollständig zurückrollt.
 
-## FC6-D – Preview-/E2E-Beweis
+## FC6-D – isolierter Existing-App-E2E-Beweis – abgeschlossen
 
-Der erste vollständige Beweis verwendet ein isoliertes Existing-App-Fixture und
-ein reales datenbank-ownendes Standardmodul, bevorzugt den bereits vorhandenen
-`tasks`-Modulvertrag.
+Der vollständige Beweis verwendet ein isoliertes Existing-App-Fixture mit
+nicht leerer Identity-Baseline und das reale datenbank-ownende Standardmodul
+`tasks`. Entscheidend ist, dass Repository-Publikation und DB-Migration nicht
+mehr durch Test-Hilfsmanipulationen simuliert, sondern über die echten
+FC6-C- bzw. FC6-B-Executors hintereinander ausgeführt werden.
 
 Abnahme:
 
-1. bestehende App mit bereits vorhandenem nicht leerem Basisschema;
-2. read-only Installations- und Migrationsdelta;
-3. Repository-Update auf den neuen kanonischen Datenbankmanifest-Zustand;
-4. isolierte inkrementelle PostgreSQL-Migration;
-5. positive Funktions-/Schema-Prüfung;
-6. Failure-Injection mit vollständigem DB-Rollback;
-7. Wiederholung/Drift fail-closed;
-8. vollständige CI und Exact-Head-Review.
+1. bestehende App mit bereits vorhandenem nicht leerem Basisschema und
+   vorhandenen Identity-Daten;
+2. read-only Installations- und Migrationsdelta ohne Repositorywrite;
+3. echter Existing-App-Updater publiziert den kanonischen Repository-Zielstand;
+4. isolierter inkrementeller PostgreSQL-Executor migriert ausschließlich den
+   neuen Tasks-Owner;
+5. positive Schema- und Bestandserhaltungsprüfung;
+6. erneuter Repository-Lauf ist No-op, erneuter DB-Lauf fail-closed;
+7. Baseline-Drift nach Repository-Publikation verhindert Target-DDL;
+8. Failure-Injection nach erfolgreicher Repository-Publikation beweist
+   vollständigen DB-Rollback;
+9. vollständige CI und Exact-Head-Review.
 
 Kein realer Produktverbraucher wird allein für die Abnahme künstlich mit einem
 nicht benötigten Modul erweitert.
+
+FC6-D schließt den Gate ab: dieselbe isolierte Existing-App-Baseline durchläuft
+den read-only Planner, den echten Repository-Updater und anschließend den
+inkrementellen PostgreSQL-Executor. Positive Installation, Bestandserhalt,
+Repository-No-op, DB-Rerun-Abweisung, Baseline-Drift und transaktionaler
+Failure-Rollback sind gemeinsam automatisiert belegt.
 
 ## Nicht Teil von FC6
 
@@ -194,11 +206,11 @@ nicht benötigten Modul erweitert.
 
 ## Abschlusskriterium
 
-FC6 ist abgeschlossen, wenn ein datenbank-ownendes Standardmodul reproduzierbar
-zu einer bestehenden App hinzugefügt werden kann und der dazugehörige
-inkrementelle DB-Delta auf einer nicht leeren isolierten PostgreSQL-Baseline
-transaktional, idempotent/fail-closed und mit vollständiger automatisierter
-Evidence ausgeführt werden kann.
+**FC6 ist abgeschlossen.** Ein datenbank-ownendes Standardmodul kann
+reproduzierbar zu einer bestehenden App hinzugefügt werden und der zugehörige
+inkrementelle DB-Delta wird auf einer nicht leeren isolierten
+PostgreSQL-Baseline transaktional, idempotent/fail-closed und mit
+automatisierter Evidence ausgeführt.
 
-Produktionsmigration, Deployment und Release bleiben danach weiterhin eigene,
+Produktionsmigration, Deployment und Release bleiben weiterhin eigene,
 ausdrücklich freizugebende Schritte.
