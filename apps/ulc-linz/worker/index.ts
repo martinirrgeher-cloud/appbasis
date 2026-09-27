@@ -151,14 +151,18 @@ async function kindertrainingModuleResponse(
   );
   if (access instanceof Response) return access;
 
+  const trainingGroups = await runtime.kindertraining.listGroups(
+    access.organizationId,
+  );
+
   return Response.json({
     module: {
       moduleId: "kindertraining",
     },
     access: {
       view: true,
-      organizationId: access.organizationId,
     },
+    trainingGroups,
   });
 }
 
