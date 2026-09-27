@@ -182,11 +182,6 @@ export async function preflightExistingUlcLinzD4PreviewDatabaseAccess(
       applicationRole,
       "application runtime",
     );
-    await requireRuntimeLoginNoDirectGrants(
-      ownerDatabase.client,
-      applicationRole,
-      "application runtime",
-    );
     await requireSecurityGroupMembershipBoundary(ownerDatabase.client);
     await requireSecurityLoginMembershipBoundary(
       ownerDatabase.client,

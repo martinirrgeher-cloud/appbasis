@@ -9,7 +9,7 @@ import {
 test("binds the incremental preview upgrade to the published athletes target", async () => {
   let received;
   const result = await applyUlcLinzD4PreviewAthletesUpgrade(
-    { connectionString: "postgresql://example.test" },
+    { connectionString: "postgresql://ulc_preview_owner:owner-password@ep-ulc-preview.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview?sslmode=require" },
     {
       applyMigrations: async (input) => {
         received = input;
@@ -26,9 +26,9 @@ test("binds the incremental preview upgrade to the published athletes target", a
   assert.deepEqual(received, {
     appId: "ulc-linz",
     moduleId: "athletes",
-    connectionString: "postgresql://example.test",
+    connectionString: "postgresql://ulc_preview_owner:owner-password@ep-ulc-preview.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview?sslmode=require",
     expectedDatabase: "appbasis_ulc_linz_preview",
-    expectedPrincipal: "appbasis_ulc_linz_preview_migration",
+    expectedPrincipal: "ulc_preview_owner",
   });
   assert.equal(result.migrationCount, 2);
 });

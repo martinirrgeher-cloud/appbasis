@@ -497,8 +497,11 @@ function preflightExisting(factory) {
   );
 }
 
-test("preflights an established preview without requiring the security group to disappear", async () => {
-  const owner = ownerFixture({ securityBound: true });
+test("preflights an established preview with the exact application ACL created by reconciliation", async () => {
+  const owner = ownerFixture({
+    securityBound: true,
+    applicationDirectGrantCount: 12,
+  });
   const result = await preflightExisting(databaseFactory({ owner }));
 
   assert.deepEqual(result, {
@@ -509,6 +512,24 @@ test("preflights an established preview without requiring the security group to 
   });
   assert.equal(owner.wasBound(), true);
   assert.deepEqual(owner.statements, []);
+});
+
+test("established preview preflight still rejects expanded application runtime access", async () => {
+  const owner = ownerFixture({
+    securityBound: true,
+    applicationDirectGrantCount: 12,
+  });
+  await assert.rejects(
+    preflightExisting(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          security_select: true,
+        }),
+      }),
+    ),
+    /application runtime database ACL is not exact/,
+  );
 });
 
 test("preflights runtime principals before the preview migration without writes", async () => {
