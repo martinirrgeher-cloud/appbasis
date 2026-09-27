@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "athletes",
+  "displayName": "Stammdaten",
+  "packageName": "@appbasis/athletes",
+  "compatibility": {
+    "appDefinitionSchemaVersions": [
+      2
+    ]
+  },
+  "capabilities": [
+    "athletes:edit",
+    "athletes:view"
+  ],
+  "database": {
+    "schemaVersion": 1,
+    "migrations": [
+      "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql"
+    ]
+  }
+}
