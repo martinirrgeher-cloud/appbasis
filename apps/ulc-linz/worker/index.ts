@@ -1,3 +1,4 @@
+import { ATHLETE_CAPABILITIES } from "@appbasis/athletes";
 import {
   COUNTDOWN_CAPABILITIES,
   createCountdownTimeline,
@@ -6,6 +7,7 @@ import {
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
+import { UlcLinzAuthorizationDeniedError } from "./authorization";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
 import { recordUlcLinzSecurityEvent } from "./security-events";
 import { generatedUiResponse } from "./ui";
@@ -77,6 +79,10 @@ export function createGeneratedWorker(
             url,
             runtimeOptions.secret,
           );
+        } else if (url.pathname === "/api/modules/athletes") {
+          response = await athletesModuleResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/athletes/masterdata") {
+          response = await athletesMasterdataResponse(request, runtime, url);
         } else {
           const app = createGeneratedApp({
             identity: runtime.identity,
@@ -108,6 +114,96 @@ export function createGeneratedWorker(
 }
 
 export default createGeneratedWorker();
+
+async function athletesModuleResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return athletesMethodNotAllowed();
+  }
+
+  const access = await authorizeAthletesRequest(request, runtime, url, "view");
+  if (access instanceof Response) return access;
+
+  return Response.json({
+    module: {
+      moduleId: "athletes",
+      capabilities: ATHLETE_CAPABILITIES,
+    },
+    access: {
+      view: true,
+      organizationId: access.organizationId,
+    },
+  });
+}
+
+async function athletesMasterdataResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return athletesMethodNotAllowed();
+  }
+
+  const access = await authorizeAthletesRequest(request, runtime, url, "view");
+  if (access instanceof Response) return access;
+
+  const masterdata = await runtime.athleteMasterdata.readOrganizationSnapshot(
+    access.organizationId,
+  );
+  return Response.json({ masterdata });
+}
+
+async function authorizeAthletesRequest(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+  action: "view" | "edit",
+): Promise<Response | Readonly<{ organizationId: string }>> {
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action,
+        targetId: "athletes",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  try {
+    return action === "view"
+      ? await runtime.athletesAccess.assertViewAccess(current)
+      : await runtime.athletesAccess.assertEditAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "Stammdaten access denied.",
+          },
+        },
+        { status: 403 },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+}
 
 async function countdownModuleResponse(
   request: Request,
@@ -288,6 +384,24 @@ function invalidCountdownConfiguration(): Response {
       },
     },
     { status: 400 },
+  );
+}
+
+function athletesMethodNotAllowed(): Response {
+  return new Response(
+    JSON.stringify({
+      error: {
+        code: "METHOD_NOT_ALLOWED",
+        message: "Only GET is supported for this Stammdaten endpoint.",
+      },
+    }),
+    {
+      status: 405,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        allow: "GET",
+      },
+    },
   );
 }
 
