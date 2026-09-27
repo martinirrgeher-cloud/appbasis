@@ -365,7 +365,8 @@ test("M5-J keeps the old countdown evidence open after Stammdaten changes reposi
   );
   assert.equal(readiness.productionReady, false);
   assert.ok(readiness.verifiedCount < REQUIRED_PRODUCTION_READINESS_CRITERIA.length);
-  for (const id of ["rolesAndPermissions", "deletionConcept", "retention", "dataExport"]) {
+  assert.equal(criterionStatus(readiness, "rolesAndPermissions"), "verified");
+  for (const id of ["deletionConcept", "retention", "dataExport"]) {
     assert.equal(criterionStatus(readiness, id), "open", id);
   }
 });
