@@ -1,4 +1,3 @@
-import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { createPostgresDatabase } from "@appbasis/database";
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
@@ -32,8 +31,7 @@ type LifecycleSqlClient =
   ConstructorParameters<typeof PostgresPrincipalLifecycleAdministration>[0] &
   ConstructorParameters<typeof PostgresIdentityDeletion>[0] &
   ConstructorParameters<typeof PostgresIdentityDeletionRetention>[0] &
-  ConstructorParameters<typeof PostgresUlcLinzScopePersistence>[0] &
-  ConstructorParameters<typeof PostgresAthleteMasterdataRepository>[0];
+  ConstructorParameters<typeof PostgresUlcLinzScopePersistence>[0];
 
 type LifecyclePrivilege = "SELECT" | "INSERT" | "UPDATE" | "DELETE";
 
@@ -57,10 +55,6 @@ const REQUIRED_LIFECYCLE_TABLE_PRIVILEGES = Object.freeze([
   ["public.appbasis_permission_role_capability", ["SELECT"]],
   ["public.appbasis_permission_capability", ["SELECT"]],
   ["public.appbasis_permission_administration_audit", ["INSERT"]],
-  ["public.appbasis_athlete", ["SELECT", "DELETE"]],
-  ["public.appbasis_trainer", ["SELECT", "DELETE"]],
-  ["public.appbasis_athlete_group_membership", ["SELECT", "DELETE"]],
-  ["public.appbasis_trainer_group_membership", ["SELECT", "DELETE"]],
 ] as const satisfies readonly (readonly [string, readonly LifecyclePrivilege[]])[]);
 
 const REQUIRED_LIFECYCLE_IDENTITY_SEQUENCES = Object.freeze([
@@ -119,9 +113,6 @@ export async function createUlcLinzProtectedLifecycleOperations(
     const identityDeletionRetention = new PostgresIdentityDeletionRetention(
       lifecycleClient,
     );
-    const athleteMasterdata = new PostgresAthleteMasterdataRepository(
-      lifecycleClient,
-    );
 
     const dependencies = Object.freeze({
       identity: identityRuntime.service,
@@ -131,7 +122,6 @@ export async function createUlcLinzProtectedLifecycleOperations(
       principalLifecycle,
       scopes,
       identityDeletionRetention,
-      athleteMasterdata,
     });
 
     return Object.freeze({
