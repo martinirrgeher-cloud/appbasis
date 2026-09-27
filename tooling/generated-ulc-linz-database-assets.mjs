@@ -23,6 +23,10 @@ export function generatedUlcLinzDatabaseAssets() {
       "migrations/0001_ulc_linz_retention_deletion_claim.sql",
       retentionDeletionClaimMigration(),
     ),
+    file(
+      "migrations/0004_ulc_linz_training_sessions.sql",
+      trainingSessionsMigration(),
+    ),
   ]);
 }
 
@@ -32,6 +36,10 @@ function lifecycleScopeMigration() {
 
 function retentionDeletionClaimMigration() {
   return `ALTER TABLE "ulc_linz_membership"\n  ADD COLUMN "retention_deletion_claimed_at" timestamp with time zone;\n--> statement-breakpoint\nALTER TABLE "ulc_linz_membership"\n  ADD CONSTRAINT "ulc_linz_membership_retention_deletion_claim_check"\n  CHECK (\n    "retention_deletion_claimed_at" IS NULL\n    OR (\n      "active" = false\n      AND "ended_at" IS NOT NULL\n      AND "source_role" <> 'admin'\n      AND "ended_at" + interval '12 months' < "retention_deletion_claimed_at"\n      AND (\n        "retention_review_at" IS NULL\n        OR "retention_review_at" <= "retention_deletion_claimed_at"\n      )\n    )\n  );\n`;
+}
+
+function trainingSessionsMigration() {
+  return `CREATE TABLE "ulc_linz_training_session" (\n  "id" text PRIMARY KEY NOT NULL,\n  "organization_id" text NOT NULL,\n  "module_id" text NOT NULL,\n  "group_id" text NOT NULL,\n  "session_date" date NOT NULL,\n  "state" text DEFAULT 'scheduled' NOT NULL,\n  "note" text,\n  "created_at" timestamp with time zone DEFAULT now() NOT NULL,\n  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,\n  CONSTRAINT "ulc_linz_training_session_module_check"\n    CHECK ("module_id" IN ('kindertraining', 'u12', 'u14')),\n  CONSTRAINT "ulc_linz_training_session_state_check"\n    CHECK ("state" IN ('scheduled', 'cancelled')),\n  CONSTRAINT "ulc_linz_training_session_note_check"\n    CHECK ("note" IS NULL OR char_length("note") <= 3000),\n  CONSTRAINT "ulc_linz_training_session_scope_unique"\n    UNIQUE ("organization_id", "module_id", "group_id", "session_date")\n);\n--> statement-breakpoint\nCREATE INDEX "ulc_linz_training_session_scope_idx"\n  ON "ulc_linz_training_session" (\n    "organization_id",\n    "module_id",\n    "group_id",\n    "session_date"\n  );\n--> statement-breakpoint\nCREATE TABLE "ulc_linz_training_attendance" (\n  "organization_id" text NOT NULL,\n  "session_id" text NOT NULL,\n  "athlete_id" text NOT NULL,\n  "status" text DEFAULT 'open' NOT NULL,\n  "created_at" timestamp with time zone DEFAULT now() NOT NULL,\n  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,\n  CONSTRAINT "ulc_linz_training_attendance_status_check"\n    CHECK ("status" IN ('open', 'present', 'excused', 'absent')),\n  CONSTRAINT "ulc_linz_training_attendance_pk"\n    PRIMARY KEY ("session_id", "athlete_id")\n);\n--> statement-breakpoint\nCREATE INDEX "ulc_linz_training_attendance_org_athlete_idx"\n  ON "ulc_linz_training_attendance" (\n    "organization_id",\n    "athlete_id",\n    "session_id"\n  );\n`;
 }
 
 function file(path, content) {
