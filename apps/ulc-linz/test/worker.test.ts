@@ -170,6 +170,42 @@ function runtime(
       return true;
     },
   },
+  kindertrainingAccess: GeneratedPostgresApplicationRuntime["kindertrainingAccess"] = {
+    async assertViewAccess() {
+      return { organizationId: "verein-1" };
+    },
+    async assertEditAccess() {
+      return { organizationId: "verein-1" };
+    },
+  },
+  kindertraining: GeneratedPostgresApplicationRuntime["kindertraining"] = {
+    async readSnapshot(_organizationId, groupId, sessionDate) {
+      return {
+        group: { id: groupId, name: "Kindertraining", shortName: "KT" },
+        sessionDate,
+        session: null,
+        participants: [],
+      };
+    },
+    async saveSession(_organizationId, input) {
+      return {
+        group: { id: input.groupId, name: "Kindertraining", shortName: "KT" },
+        sessionDate: input.sessionDate,
+        session: {
+          id: "session-test",
+          state: input.state ?? "scheduled",
+          note: input.note ?? null,
+        },
+        participants: input.attendance.map((entry) => ({
+          athleteId: entry.athleteId,
+          firstName: "Test",
+          lastName: "Athlet",
+          birthYear: null,
+          status: entry.status,
+        })),
+      };
+    },
+  },
 ): GeneratedPostgresApplicationRuntime {
   return {
     identity,
@@ -180,7 +216,9 @@ function runtime(
     }),
     countdownAccess,
     athletesAccess,
+    kindertrainingAccess,
     athleteMasterdata,
+    kindertraining,
     securityEvents: {
       record() {},
       flush,
