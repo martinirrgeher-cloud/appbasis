@@ -21,7 +21,7 @@ const VALID_ULC_DEFINITION = Object.freeze({
   schemaVersion: 2,
   appId: "ulc-linz",
   displayName: "ULC Linz",
-  modules: Object.freeze(["countdown"]),
+  modules: Object.freeze(["countdown", "athletes"]),
   platformServices: Object.freeze(["identity", "permissions"]),
 });
 
@@ -122,10 +122,13 @@ async function deriveWithActivation(root, activation) {
   );
 }
 
-test("reopens M5-C/D after Stammdaten changes pinned lifecycle acceptance files", async () => {
+test("verifies the E2C Stammdaten lifecycle only with the exact synthetic activation contract", async () => {
   const root = await createFixture();
   try {
-    assert.deepEqual(await deriveWithActivation(root), {});
+    assert.deepEqual(await deriveWithActivation(root), {
+      deletionConcept: true,
+      retention: true,
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -185,7 +188,7 @@ test("keeps C/D fail closed for another app or a future module set", async () =>
   assert.deepEqual(
     await deriveUlcLinzLifecycleEvidence("/not-read", {
       ...VALID_ULC_DEFINITION,
-      modules: ["countdown", "tasks"],
+      modules: ["countdown", "athletes", "tasks"],
     }),
     {},
   );
@@ -226,6 +229,9 @@ test("fails closed when inventory policy or future object-storage scope changes"
 test("pins every destructive C/D implementation used by the current lifecycle claim", async () => {
   const destructivePaths = [
     "apps/ulc-linz/worker/lifecycle.ts",
+    "apps/ulc-linz/worker/retention.ts",
+    "apps/ulc-linz/worker/protected-lifecycle-operations.ts",
+    "modules/athletes/src/postgres-masterdata-repository.ts",
     "packages/identity/src/postgres-deletion.ts",
     "packages/permissions/src/principal-lifecycle-administration.ts",
   ];
@@ -242,6 +248,13 @@ test("pins every destructive C/D implementation used by the current lifecycle cl
       (entry) => entry.path === "apps/ulc-linz/test/retention-claim.postgres.e2e.test.ts",
     ),
     "retention claim PostgreSQL acceptance must be pinned",
+  );
+  assert.ok(
+    ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.evidenceFiles.some(
+      (entry) =>
+        entry.path === "apps/ulc-linz/test/athletes-masterdata.postgres.e2e.test.ts",
+    ),
+    "Stammdaten PostgreSQL lifecycle acceptance must be pinned",
   );
 
   const root = await createFixture();
@@ -266,12 +279,16 @@ test("lifecycle contract digest covers schemas, dependency versions and executab
     "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
     "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
     "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
+    "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+    "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+    ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
     "apps/ulc-linz/worker/restore-reconciliation.ts",
   ]) {
     assert.ok(ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.lifecycleContractPaths.includes(path), path);
   }
   for (const directory of [
     "apps/ulc-linz/worker",
+    "modules/athletes/src",
     "packages/database/src",
     "packages/identity/src",
     "packages/permissions/src",
