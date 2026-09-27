@@ -197,7 +197,7 @@ test("fails closed when the current app-owned database contract drifts", async (
     const activation = await lifecycleActivationEvidence(root);
     const manifest = createExpectedUlcLinzDatabaseManifest(VALID_ULC_DEFINITION);
     const changed = JSON.parse(JSON.stringify(manifest));
-    changed.owners.find((owner) => owner.id === "ulc-linz-lifecycle").schemaVersion = 5;
+    changed.owners.find((owner) => owner.id === "ulc-linz-lifecycle").schemaVersion = 6;
     await writeFile(
       join(root, "apps", "ulc-linz", "appbasis.database.json"),
       `${JSON.stringify(changed, null, 2)}\n`,
@@ -286,6 +286,7 @@ test("lifecycle contract digest covers schemas, dependency versions and executab
     "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
     "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+    "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
     "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
     "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
     ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",

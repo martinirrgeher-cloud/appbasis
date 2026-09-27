@@ -165,16 +165,32 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
       {
         id: "ulc-linz-lifecycle",
         root: "apps/ulc-linz",
-        schemaVersion: 4,
+        schemaVersion: 5,
         migrations: [
           "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
           "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
           "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
           "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+          "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
         ],
       },
     ],
   });
+
+  const trainingMigration = await readFile(
+    join(
+      root,
+      "apps",
+      "ulc-linz",
+      "migrations",
+      "0004_ulc_linz_training_sessions.sql",
+    ),
+    "utf8",
+  );
+  assert.match(trainingMigration, /CREATE TABLE "ulc_linz_training_session"/);
+  assert.match(trainingMigration, /CREATE TABLE "ulc_linz_training_attendance"/);
+  assert.match(trainingMigration, /'kindertraining', 'u12', 'u14'/);
+  assert.match(trainingMigration, /'open', 'present', 'excused', 'absent'/);
 
   const packageJson = JSON.parse(
     await readFile(join(root, "apps", "ulc-linz", "package.json"), "utf8"),

@@ -297,7 +297,7 @@ async function applyManifestMigrations(
     await readFile(new URL("../appbasis.database.json", import.meta.url), "utf8"),
   ) as DatabaseManifest;
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 12 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 13 || new Set(migrations).size !== migrations.length) {
     throw new Error("ULC E2D requires the exact manifest-owned migration set.");
   }
   for (const migration of migrations) {

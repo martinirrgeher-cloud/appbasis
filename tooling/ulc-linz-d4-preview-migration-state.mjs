@@ -19,6 +19,10 @@ const ATHLETES_TABLES = Object.freeze([
   "appbasis_trainer_group_membership",
   "appbasis_athletes_deletion",
 ]);
+const TRAINING_TABLES = Object.freeze([
+  "ulc_linz_training_session",
+  "ulc_linz_training_attendance",
+]);
 
 export async function resolveUlcLinzD4PreviewMigrationState(
   {
@@ -76,10 +80,18 @@ export async function resolveUlcLinzD4PreviewMigrationState(
     if (athletesPresent.length === 0) {
       return Object.freeze({ mode: "athletes-upgrade" });
     }
-    if (athletesPresent.length === ATHLETES_TABLES.length) {
+    if (athletesPresent.length !== ATHLETES_TABLES.length) {
+      throw new Error("ULC D4 preview Stammdaten schema is partially applied.");
+    }
+
+    const trainingPresent = TRAINING_TABLES.filter((table) => tables.has(table));
+    if (trainingPresent.length === 0) {
+      return Object.freeze({ mode: "training-upgrade" });
+    }
+    if (trainingPresent.length === TRAINING_TABLES.length) {
       return Object.freeze({ mode: "current" });
     }
-    throw new Error("ULC D4 preview Stammdaten schema is partially applied.");
+    throw new Error("ULC D4 preview training schema is partially applied.");
   } finally {
     await database.client.end().catch(() => {});
   }
