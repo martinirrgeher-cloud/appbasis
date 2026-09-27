@@ -9,20 +9,21 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E3C – bestehende Stammdaten sicher bearbeiten.**
+**ULC-E4A – gemeinsames Trainingsfundament für Kindertraining, U12 und U14.**
 
-ULC-E3B ist auf `main` abgeschlossen. E3C ergänzt einen expliziten
-serverseitigen Update-Vertrag für Athleten, Trainer und Trainingsgruppen und
-bindet ihn in die bestehende mobile Stammdaten-Oberfläche ein.
+ULC-E3C ist auf `main` abgeschlossen und wurde anschließend in der isolierten
+ULC-Preview erfolgreich deployed. Die Bearbeiten-Funktion ist damit für den
+weiteren Produktpfad freigegeben.
 
-Updates sind vollständige Ersatzoperationen der jeweils editierbaren Fachfelder.
-Datensatz-ID und Organisation werden niemals aus dem Request-Body übernommen,
-sondern aus Route und authentifiziertem Organisationskontext abgeleitet. Nur
-aktive Datensätze derselben Organisation dürfen bearbeitet werden.
+E4A übernimmt als nächsten echten ULC-Funktionsbereich das Kindertraining,
+modelliert die Persistenz aber bewusst gemeinsam für Kindertraining, U12 und U14.
+Damit werden die drei fachlich sehr ähnlichen Altmodule nicht als drei
+parallele Datenmodelle neu gebaut.
 
-Keine neue Datenbankmigration ist notwendig. Import/Export,
-Benutzer-/Elternlinks, Realtime/Edit-Locks sowie Preview-/Production-Deployment
-bleiben außerhalb E3C.
+E4A enthält ausschließlich den app-eigenen Schema- und Domainvertrag für
+Trainingstermine und Anwesenheit. Runtime/API, Teilnehmer-Snapshot,
+Konfliktschutz, UI, Preview-Migration und Production bleiben getrennte
+Folgeslices.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -616,7 +617,7 @@ ULC-E3B ist auf `main` abgeschlossen. Die bestehende UI nutzt weiterhin
 ausschließlich die bereits autorisierten E2C-Mutationsendpunkte; eine
 Preview-Neuauslieferung ist davon getrennt.
 
-## Aktueller Gate-Scope: ULC-E3C
+## Abgeschlossener Gate-Scope: ULC-E3C
 
 Abnahme für ULC-E3C:
 
@@ -643,6 +644,37 @@ Abnahme für ULC-E3C:
 - keine Datenbankmigration, kein Providerwrite und kein
   Preview-/Production-Deployment in diesem Repository-Slice.
 
+ULC-E3C ist zusätzlich auf der isolierten ULC-Preview mit dem aktuellen
+`main`-Commit deployed worden. Post-Merge-CI und Preview-Deploy waren
+erfolgreich; eine Datenbankmigration war für E3C nicht erforderlich.
+
+## Aktueller Gate-Scope: ULC-E4A
+
+Abnahme für ULC-E4A:
+
+- die ULC-App besitzt ein einziges gemeinsames Trainingsschema für
+  `kindertraining`, `u12` und `u14`;
+- pro Organisation, technischem Trainingsmodul, Trainingsgruppe und Datum kann
+  höchstens ein Training existieren;
+- Trainingszustände sind ausschließlich `scheduled` und `cancelled`;
+- Anwesenheitszustände sind ausschließlich `open`, `present`, `excused`
+  und `absent`;
+- Trainingsnotizen sind auf 3000 Zeichen begrenzt;
+- die Persistenz liegt beim bestehenden ULC-App-Owner und erzeugt keinen neuen
+  fachlichen Core- oder Standardmodul-Owner;
+- das Schema enthält keine Foreign-Key-Abhängigkeit auf Tabellen anderer Owner;
+  Organisations-, Gruppen- und Athletenreferenzen werden im folgenden
+  Runtime-/Repository-Slice serverseitig validiert;
+- der TypeScript-Domainvertrag validiert Modul, Datum, Status, IDs, Notiz und
+  doppelte Athleten in einem Anwesenheitssnapshot fail-closed;
+- Generator und kanonisches ULC-Datenbankmanifest enthalten die neue Migration
+  deterministisch;
+- keine Runtime/API/UI-Änderung, kein Preview-/Production-DB-Write, kein
+  Providerwrite und kein Deployment in E4A.
+
+Nach E4A folgt E4B: organisations- und berechtigungsgebundene
+Kindertraining-Runtime mit Teilnehmer-Snapshot und atomarem Speichern.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
@@ -661,7 +693,7 @@ Abnahme für ULC-E3C:
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E3C-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E4A-Pfad, wenn mindestens eines gilt:
 
 - der Browser kann eine Organisation oder andere Ownership-Grenze an eine
   Stammdatenmutation übergeben;
@@ -674,15 +706,17 @@ Ein Finding blockiert den aktuellen ULC-E3C-Pfad, wenn mindestens eines gilt:
   Validierungs-/Persistenzlogik vorbei geschrieben;
 - ein Fehler im Stammdatenbereich blockiert Login, Countdown oder die übrige
   App-Shell;
-- E3C verändert Datenbankschema, Permission-Semantik, Lifecycle-Retention,
-  Privacy-Evidence, Preview, Produktion oder Provider;
-- ein Update kann inaktive oder organisationsfremde Stammdaten verändern;
-- ein Update akzeptiert ID oder `organizationId` aus dem Request-Body;
-- ein unvollständiger Update-Body wird still als Teilupdate interpretiert.
+- E4A verändert bestehende Stammdaten-, Identity-, Permission-, Lifecycle- oder
+  Security-Tabellen;
+- Kindertraining, U12 und U14 erhalten getrennte, redundante Persistenzmodelle;
+- das neue Schema akzeptiert unbekannte Trainings- oder Anwesenheitszustände;
+- die Migration wird in Preview oder Produktion ausgeführt;
+- E4A führt bereits Runtime/API/UI- oder Provideränderungen ein.
 
-Nicht gate-blockierend sind Import/Export, Realtime, Edit-Locks,
-Benutzerkonto-/Eltern-Kind-Verknüpfungen und weitere ULC-Fachmodule; sie folgen
-in getrennten Vertical Slices.
+Nicht gate-blockierend sind Teilnehmer-Snapshot, atomarer Save,
+Optimistic-Concurrency, Sondertrainings, Trainerzuordnung, Statistik,
+Import/Export, Realtime/Edit-Locks und weitere ULC-Fachmodule; sie folgen in
+getrennten Vertical Slices.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 
@@ -738,7 +772,8 @@ Der neue Produktpfad ist:
 ULC-E2B kontrollierte ULC-Installation → ULC-E2C Stammdaten-Runtime/API →
 ULC-E2D athletes-eigene Restore-Reconciliation →
 ULC-E3A Stammdaten-UI → ULC-E3B Gruppenzuordnungen/Lifecycle-UI →
-ULC-E3C Stammdaten bearbeiten.**
+ULC-E3C Stammdaten bearbeiten → ULC-E4A gemeinsames Trainingsfundament →
+ULC-E4B Kindertraining-Runtime.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**
