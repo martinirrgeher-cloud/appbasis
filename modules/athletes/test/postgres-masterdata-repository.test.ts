@@ -233,7 +233,9 @@ describe('PostgresAthleteMasterdataRepository', () => {
     ).resolves.toBe(true);
     expect(calls[0]?.query).toContain('organization_id = $2');
     expect(calls[0]?.query).toContain('is_active = true');
-    expect(calls[0]?.query).toContain('ended_on = COALESCE(ended_on, CURRENT_DATE)');
+    expect(calls[0]?.query).toContain(
+      'GREATEST(CURRENT_DATE, started_on)',
+    );
     expect(calls[0]?.parameters).toEqual(['athlete-1', 'verein-1']);
   });
 
@@ -270,4 +272,37 @@ describe('PostgresAthleteMasterdataRepository', () => {
     expect(calls[0]?.query).toContain('DELETE FROM appbasis_trainer_group_membership');
     expect(calls[0]?.parameters).toEqual(['2027-09-27T10:00:00.000Z']);
   });
+
+  it('keeps the server organization authoritative even for decorated internal membership input', async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [
+          {
+            organization_id: 'verein-1',
+            athlete_id: 'athlete-1',
+            group_id: 'group-1',
+            started_on: '2026-09-01',
+            ended_on: null,
+          },
+        ];
+      },
+    });
+
+    await repository.createAthleteGroupMembership(
+      'verein-1',
+      {
+        organizationId: 'verein-2',
+        athleteId: 'athlete-1',
+        groupId: 'group-1',
+        startedOn: '2026-09-01',
+      } as unknown as Parameters<
+        PostgresAthleteMasterdataRepository['createAthleteGroupMembership']
+      >[1],
+    );
+
+    expect(calls[0]?.parameters?.[0]).toBe('verein-1');
+  });
+
 });
