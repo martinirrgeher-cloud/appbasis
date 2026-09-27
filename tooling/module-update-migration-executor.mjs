@@ -420,17 +420,56 @@ export function createCatalogContract(plan, label = "migration", options = {}) {
 
 function isExistingNonStructuralAccessControl(statement) {
   const normalized = stripLeadingSqlComments(statement).trim();
+
   if (/^(?:GRANT|REVOKE)\b/i.test(normalized)) return true;
-  if (/^CREATE\s+OR\s+REPLACE\s+FUNCTION\b/i.test(normalized)) return true;
+  if (/^(?:CREATE|ALTER|DROP)\s+ROLE\b/i.test(normalized)) return true;
+
+  if (/^CREATE\s+OR\s+REPLACE\s+FUNCTION\b/i.test(normalized)) {
+    const functionBody = normalized.replace(
+      /^CREATE\s+OR\s+REPLACE\s+FUNCTION\b/i,
+      "FUNCTION",
+    );
+    return !containsUnsupportedBaselineAccessControlMutation(functionBody);
+  }
 
   if (/^DO\b/i.test(normalized)) {
-    if (
-      /\b(?:CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+INDEX|TRUNCATE\s+TABLE)\b/i.test(
-        normalized,
-      )
-    ) {
-      return false;
-    }
+    const isRoleAccessBlock =
+      /\bpg_catalog\.pg_roles\b/i.test(normalized) ||
+      /\b(?:CREATE|ALTER|DROP)\s+ROLE\b/i.test(normalized);
+    if (!isRoleAccessBlock) return false;
+
+    const withoutAllowedRoleDdl = normalized
+      .replace(/\bCREATE\s+ROLE\b/gi, "APPBASIS_ALLOWED_CREATE_ROLE")
+      .replace(/\bALTER\s+ROLE\b/gi, "APPBASIS_ALLOWED_ALTER_ROLE")
+      .replace(/\bDROP\s+ROLE\b/gi, "APPBASIS_ALLOWED_DROP_ROLE");
+
+    return !containsUnsupportedBaselineAccessControlMutation(
+      withoutAllowedRoleDdl,
+      { rejectDataMutation: true },
+    );
+  }
+
+  return false;
+}
+
+function containsUnsupportedBaselineAccessControlMutation(
+  statement,
+  options = {},
+) {
+  if (
+    /\b(?:CREATE|ALTER|DROP|TRUNCATE|COMMENT|REINDEX|CLUSTER|VACUUM|REFRESH)\b/i.test(
+      statement,
+    )
+  ) {
+    return true;
+  }
+
+  if (/\bEXECUTE\b/i.test(statement)) return true;
+
+  if (
+    options.rejectDataMutation === true &&
+    /\b(?:INSERT|UPDATE|DELETE|MERGE)\b/i.test(statement)
+  ) {
     return true;
   }
 
