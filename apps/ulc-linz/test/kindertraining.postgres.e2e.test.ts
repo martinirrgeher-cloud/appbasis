@@ -136,6 +136,9 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
 
       const sessionId = first.session?.id;
       expect(typeof sessionId).toBe("string");
+      if (sessionId === undefined) {
+        throw new Error("Kindertraining session id was not persisted.");
+      }
 
       const second = await service.saveSession("verein-1", {
         groupId: group.id,
