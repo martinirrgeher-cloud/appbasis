@@ -41,7 +41,6 @@ export interface GeneratedPostgresApplicationRuntime {
     | "createTrainerGroupMembership"
     | "deactivateAthlete"
     | "deactivateTrainer"
-    | "purgeDeactivatedPersonalData"
   >;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
@@ -89,9 +88,72 @@ export async function createGeneratedPostgresApplicationRuntime(
       subjectScopes: scopes,
       securityEvents,
     });
-    const athleteMasterdata = new PostgresAthleteMasterdataRepository(
-      applicationSql,
-    );
+    const athleteMasterdataRepository =
+      new PostgresAthleteMasterdataRepository(applicationSql);
+    const athleteMasterdata = Object.freeze({
+      readOrganizationSnapshot(organizationId: string) {
+        return athleteMasterdataRepository.readOrganizationSnapshot(
+          organizationId,
+        );
+      },
+      createTrainingGroup(
+        organizationId: string,
+        input: Parameters<
+          PostgresAthleteMasterdataRepository["createTrainingGroup"]
+        >[1],
+      ) {
+        return athleteMasterdataRepository.createTrainingGroup(
+          organizationId,
+          input,
+        );
+      },
+      createAthlete(
+        organizationId: string,
+        input: Parameters<PostgresAthleteMasterdataRepository["createAthlete"]>[1],
+      ) {
+        return athleteMasterdataRepository.createAthlete(organizationId, input);
+      },
+      createTrainer(
+        organizationId: string,
+        input: Parameters<PostgresAthleteMasterdataRepository["createTrainer"]>[1],
+      ) {
+        return athleteMasterdataRepository.createTrainer(organizationId, input);
+      },
+      createAthleteGroupMembership(
+        organizationId: string,
+        input: Parameters<
+          PostgresAthleteMasterdataRepository["createAthleteGroupMembership"]
+        >[1],
+      ) {
+        return athleteMasterdataRepository.createAthleteGroupMembership(
+          organizationId,
+          input,
+        );
+      },
+      createTrainerGroupMembership(
+        organizationId: string,
+        input: Parameters<
+          PostgresAthleteMasterdataRepository["createTrainerGroupMembership"]
+        >[1],
+      ) {
+        return athleteMasterdataRepository.createTrainerGroupMembership(
+          organizationId,
+          input,
+        );
+      },
+      deactivateAthlete(organizationId: string, athleteId: string) {
+        return athleteMasterdataRepository.deactivateAthlete(
+          organizationId,
+          athleteId,
+        );
+      },
+      deactivateTrainer(organizationId: string, trainerId: string) {
+        return athleteMasterdataRepository.deactivateTrainer(
+          organizationId,
+          trainerId,
+        );
+      },
+    });
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
