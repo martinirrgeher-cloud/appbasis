@@ -74,7 +74,7 @@ describe('reconcileAthleteMasterdataRestoredDatabase', () => {
         },
       ),
     ).rejects.toThrow(/duplicate markers/);
-    expect(calls).toBe(1);
+    expect(calls).toBe(0);
   });
 
   it('fails closed on malformed marker retention metadata', async () => {
