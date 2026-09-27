@@ -53,8 +53,8 @@ describe("ULC training session PostgreSQL persistence", () => {
     expect(calls[0]?.parameters?.[0]).toBe("session-proposed");
     expect(calls[0]?.parameters?.[7]).toBe(
       JSON.stringify([
-        { athleteId: "athlete-1", status: "present" },
-        { athleteId: "athlete-2", status: "excused" },
+        { athlete_id: "athlete-1", status: "present" },
+        { athlete_id: "athlete-2", status: "excused" },
       ]),
     );
     expect(result).toEqual({
