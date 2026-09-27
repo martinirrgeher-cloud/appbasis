@@ -421,11 +421,11 @@ Abnahme für ULC-E2B:
 - keine Runtime/API/UI-Änderung, kein Preview-/Production-DB-Write, kein
   Providerwrite und kein Deployment.
 
-Die Baseline-Katalogprüfung darf bereits vorhandene, separat abgesicherte
-nicht-strukturelle `GRANT`-/`REVOKE`-/Rollen-/Function-DDL überspringen.
-Diese Ausnahme gilt ausschließlich für den bestehenden Baselinevertrag.
-Strukturelles DDL in solchen Blöcken und sämtliche Zielmodul-DDL ohne
-Katalogmarker bleiben fail-closed.
+Markerlose historische Baseline-SQL darf ausschließlich über die unten
+beschriebene digest-gepinnte Evidence-Datei zugelassen werden. Der Pin gilt für
+die vollständig überprüfte historische Migrationsdatei als unveränderliche
+Einheit; es gibt keine heuristische Freigabe einzelner SQL-Formen mehr.
+Zielmigrationen ohne Katalogmarker bleiben ausnahmslos fail-closed.
 
 Nach E2B folgt ULC-E2C: serverseitige Stammdaten-Runtime/API mit
 Organisationsgrenze und `athletes:view`/`athletes:edit`. Dabei muss auch
@@ -456,7 +456,8 @@ Ein Finding blockiert den aktuellen ULC-E2B-Pfad, wenn mindestens eines gilt:
 - bestehende DB-Owner, Appmodule oder Workspace-Abhängigkeiten werden außerhalb
   des geplanten `athletes`-Deltas verändert;
 - die reale ULC-Baseline kann nicht strukturell verifiziert werden;
-- die Baseline-Ausnahme akzeptiert strukturelles DDL oder wird auf
+- die Baseline-Ausnahme ist nicht exakt digest-gepinnt, bezieht sich nicht auf
+  eine bereits überprüfte historische App-Migration oder wird auf
   Zielmigrationen angewendet;
 - bestehende Identity-/ULC-Lifecycle-Daten gehen durch die Migration verloren;
 - Rerun-, Drift- oder Transaktionsgrenzen des FC6-Pfads werden abgeschwächt;
