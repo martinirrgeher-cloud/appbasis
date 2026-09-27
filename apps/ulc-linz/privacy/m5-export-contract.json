@@ -170,6 +170,16 @@
       "owner": "ulc-linz-lifecycle",
       "table": "ulc_linz_security_event_log",
       "privacyClass": "audit-security-data"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_session",
+      "privacyClass": "training-session-data"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_attendance",
+      "privacyClass": "athlete-training-attendance"
     }
   ],
   "excludedPrivacyClasses": [
@@ -188,7 +198,9 @@
     "athlete-master-data",
     "trainer-master-data",
     "athlete-training-membership",
-    "trainer-training-membership"
+    "trainer-training-membership",
+    "training-session-data",
+    "athlete-training-attendance"
   ],
   "credentialFieldNames": [
     "password",
