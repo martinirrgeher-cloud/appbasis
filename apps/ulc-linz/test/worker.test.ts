@@ -1476,6 +1476,37 @@ describe("Kindertraining runtime API", () => {
     expect(rejected.status).toBe(400);
   });
 
+  it("requires an explicit Kindertraining revision contract on save", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    for (const body of [
+      {
+        groupId: "group-1",
+        sessionDate: "2026-09-27",
+        attendance: [],
+      },
+      {
+        groupId: "group-1",
+        sessionDate: "2026-09-27",
+        expectedRevision: "not-a-revision",
+        attendance: [],
+      },
+    ]) {
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/kindertraining/session", {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }),
+        validEnv,
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+
   it("returns 409 when the loaded Kindertraining revision is stale", async () => {
     const worker = createGeneratedWorker(() => {
       const base = runtime();
