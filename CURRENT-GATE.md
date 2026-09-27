@@ -9,13 +9,15 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E1 – Vereins-App-Shell und Dashboard.**
+**ULC-E2A – Stammdaten-Modulvertrag und Datenfundament.**
 
-FC6 ist abgeschlossen. Der aktuelle Produkt-Vertical-Slice kehrt bewusst zur
-realen ULC-Linz-App zurück: Die bestehende sichere Countdown-Funktion bleibt
-unverändert verfügbar, wird aber in eine wieder erkennbare Vereins-App-Shell
-mit Startseite/Dashboard eingebettet. Dieser Slice enthält keine neue
-Fachdaten-Persistenz, keine Providerwrites und kein Deployment.
+ULC-E1 ist abgeschlossen. Der aktuelle Produkt-Vertical-Slice baut das erste
+echte datenbank-ownende ULC-Fachmodul auf: technischer Modulschlüssel
+`athletes`, sichtbarer Name **Stammdaten**. E2A liefert nur den
+wiederverwendbaren Modulvertrag, die eigene Datenbankmigration und die
+fachliche Validierung für Trainingsgruppen, Athleten, Trainer und deren
+Gruppenzuordnungen. Der Einbau in `ulc-linz`, Runtime/API, UI, Preview und
+Produktion folgen getrennt.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -343,7 +345,7 @@ Ende-zu-Ende auf einer isolierten nicht leeren PostgreSQL-Baseline bewiesen:
 Planung, Repository-Publikation, inkrementelle Migration, Bestandserhalt,
 Rerun-Schutz, Drift-Abweisung und vollständiger DB-Rollback greifen gemeinsam.
 
-## Aktueller Gate-Scope: ULC-E1
+## Abgeschlossener Gate-Scope: ULC-E1
 
 ULC-E1 stellt nach Abschluss der Plattform- und Update-Gates wieder den realen
 ULC-Linz-Produktfluss in den Vordergrund.
@@ -364,9 +366,35 @@ Abnahme für ULC-E1:
 - keine Datenbankmigration, kein Providerwrite, kein Preview-/Production-
   Deployment in diesem Slice.
 
-Nach ULC-E1 folgt der erste echte fachliche Rückhol-Slice aus dem früheren
-ULC-Funktionsumfang. Dieser wird erst anhand des realen Produktbedarfs gewählt;
-die alte Anwendung wird nicht als Ganzes kopiert.
+ULC-E1 ist auf `main` abgeschlossen. Die ULC-App besitzt wieder eine
+mobile Vereins-App-Shell mit Dashboard; Countdown und Einstellungen bleiben
+hinter dem bestehenden serverseitigen Zugriffsschutz.
+
+## Aktueller Gate-Scope: ULC-E2A
+
+E2A legt das Stammdatenfundament als Standardmodul `athletes` an.
+
+Abnahme für ULC-E2A:
+
+- Modulmanifest `athletes` mit sichtbarem Namen **Stammdaten**;
+- Capabilities `athletes:view` und `athletes:edit`, passend zum bereits
+  vorhandenen ULC-Rollenvertrag;
+- eigenes Datenbankschema mit ausschließlich modul-eigenen Tabellen für
+  Trainingsgruppen, Athleten, Trainer sowie Gruppenmitgliedschaften;
+- jede Stammdatenzeile bleibt explizit organisationsgebunden;
+- Athleten-Gruppenzuordnungen besitzen Start/Ende für Historie;
+- fachlicher TypeScript-Domänenvertrag validiert Namen, Längen, Jahrgang,
+  IDs und zeitliche Zuordnungen fail-closed;
+- die Migration bleibt mit dem aktuellen FC6-Executor kompatibel und enthält
+  insbesondere keine `REFERENCES`-Abhängigkeit auf fremde oder eigene
+  Tabellen;
+- Benutzerkonten, Eltern-Kind-Verknüpfungen, Realtime, Edit-Locks,
+  Import/Export und trainingsspezifische Einstellungen bleiben außerhalb E2A;
+- noch kein Write an `apps/ulc-linz`, keine App-/DB-Migration, kein
+  Providerwrite und kein Deployment.
+
+Unmittelbar danach folgt ULC-E2B: kontrollierte Installation des Moduls in die
+bestehende ULC-App über den FC6-Pfad und isolierte PostgreSQL-Evidence.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -386,21 +414,20 @@ die alte Anwendung wird nicht als Ganzes kopiert.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E1-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E2A-Pfad, wenn mindestens eines gilt:
 
-- Login, Passwortwechsel oder Session-Wiederherstellung werden geschwächt;
-- Countdown oder seine serverseitige D2-Berechtigungsgrenze verändern ihr
-  bewiesenes Verhalten;
-- eine nicht freigegebene Funktion wird in der neuen Shell als bedienbar
-  dargestellt;
-- die statische UI benötigt plötzlich eine Datenbank- oder Providerverbindung;
-- CSP-, Mobile-First- oder bestehende Security-/Privacy-/Release-Grenzen werden
-  abgeschwächt;
-- bestehende ULC-Fachdaten, Migrationen oder Produktionsressourcen werden für
-  diesen reinen Shell-Slice verändert.
+- `athletes` kollidiert mit dem bestehenden ULC-Berechtigungsvertrag oder
+  deklariert inkonsistente Capabilities;
+- das Modul greift auf Tabellen oder Migrationen eines anderen Owners zu;
+- Organisationsgrenzen fehlen im Stammdatenmodell;
+- ungültige Namen, Jahrgänge, IDs oder Mitgliedschaftszeiträume können den
+  Domänenvertrag ungeprüft passieren;
+- die Migration enthält vom aktuellen inkrementellen Executor nicht sicher
+  unterstütztes DDL oder `REFERENCES`;
+- E2A verändert bereits die bestehende ULC-App, deren Datenbank oder Provider.
 
-Nicht gate-blockierend sind weitere alte ULC-Fachbereiche, zusätzliche
-Plattformabstraktionen und allgemeines Hardening ohne unmittelbaren E1-Bedarf.
+Nicht gate-blockierend sind UI, Realtime, Benutzerverknüpfungen, Import/Export
+und weitere alte ULC-Fachbereiche; sie gehören in spätere Vertical Slices.
 
 ## Loop-Grenze
 
@@ -431,9 +458,10 @@ Der FC6-Pfad ist abgeschlossen:
 **FC6-A Migration-Delta → FC6-B inkrementeller DB-Executor →
 FC6-C Existing-App-Integration → FC6-D isolierter E2E-Beweis.**
 
-Der neue Produktpfad beginnt mit:
+Der neue Produktpfad ist:
 
-**ULC-E1 Vereins-App-Shell & Dashboard → erster echter ULC-Fachslice.**
+**ULC-E1 Vereins-App-Shell & Dashboard → ULC-E2A Stammdaten-Fundament →
+ULC-E2B kontrollierte ULC-Installation.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**

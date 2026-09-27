@@ -42,12 +42,32 @@ test("parses the minimal FC4 module contract", () => {
   assert.equal(Object.isFrozen(definition.capabilities), true);
 });
 
-test("pins the checked module inventory and tasks contract", async () => {
+test("pins the checked module inventory and database-owning contracts", async () => {
   const definitions = await verifyModuleDefinitions(repositoryRoot);
   assert.deepEqual(
     definitions.map((definition) => definition.moduleId),
-    ["countdown", "tasks"],
+    ["athletes", "countdown", "tasks"],
   );
+
+  const athletes = definitions.find(
+    (definition) => definition.moduleId === "athletes",
+  );
+  assert.deepEqual(athletes, {
+    schemaVersion: 1,
+    moduleId: "athletes",
+    displayName: "Stammdaten",
+    packageName: "@appbasis/athletes",
+    compatibility: {
+      appDefinitionSchemaVersions: [2],
+    },
+    capabilities: ["athletes:edit", "athletes:view"],
+    database: {
+      schemaVersion: 1,
+      migrations: [
+        "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+      ],
+    },
+  });
 
   const countdown = definitions.find(
     (definition) => definition.moduleId === "countdown",
