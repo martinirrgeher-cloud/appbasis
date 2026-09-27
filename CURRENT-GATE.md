@@ -9,7 +9,13 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**FC6 – Datenbank-ownende Module kontrolliert zu bestehenden Apps hinzufügen – abgeschlossen.**
+**ULC-E1 – Vereins-App-Shell und Dashboard.**
+
+FC6 ist abgeschlossen. Der aktuelle Produkt-Vertical-Slice kehrt bewusst zur
+realen ULC-Linz-App zurück: Die bestehende sichere Countdown-Funktion bleibt
+unverändert verfügbar, wird aber in eine wieder erkennbare Vereins-App-Shell
+mit Startseite/Dashboard eingebettet. Dieser Slice enthält keine neue
+Fachdaten-Persistenz, keine Providerwrites und kein Deployment.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -337,6 +343,31 @@ Ende-zu-Ende auf einer isolierten nicht leeren PostgreSQL-Baseline bewiesen:
 Planung, Repository-Publikation, inkrementelle Migration, Bestandserhalt,
 Rerun-Schutz, Drift-Abweisung und vollständiger DB-Rollback greifen gemeinsam.
 
+## Aktueller Gate-Scope: ULC-E1
+
+ULC-E1 stellt nach Abschluss der Plattform- und Update-Gates wieder den realen
+ULC-Linz-Produktfluss in den Vordergrund.
+
+Abnahme für ULC-E1:
+
+- nach erfolgreichem Login erscheint eine echte ULC-Startseite statt direkt der
+  Countdown-Ansicht;
+- die mobile Hauptnavigation unterscheidet mindestens Start, Countdown und
+  Einstellungen;
+- der vorhandene Countdown bleibt funktional unverändert und nutzt weiterhin
+  ausschließlich den bestehenden serverseitigen D2-Berechtigungsvertrag;
+- die Startseite zeigt nur tatsächlich verfügbare Funktionen als bedienbare
+  Aktionen und erfindet keine Berechtigung für noch nicht migrierte Altmodule;
+- die Vereins-App-Shell ist mobile-first und bleibt statisch/CSP-sicher;
+- Login, Passwortwechsel, Health und die bestehende Countdown-E2E-/Security-
+  Evidence bleiben durch Tests abgesichert;
+- keine Datenbankmigration, kein Providerwrite, kein Preview-/Production-
+  Deployment in diesem Slice.
+
+Nach ULC-E1 folgt der erste echte fachliche Rückhol-Slice aus dem früheren
+ULC-Funktionsumfang. Dieser wird erst anhand des realen Produktbedarfs gewählt;
+die alte Anwendung wird nicht als Ganzes kopiert.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
@@ -398,6 +429,10 @@ Der FC6-Pfad ist abgeschlossen:
 
 **FC6-A Migration-Delta → FC6-B inkrementeller DB-Executor →
 FC6-C Existing-App-Integration → FC6-D isolierter E2E-Beweis.**
+
+Der neue Produktpfad beginnt mit:
+
+**ULC-E1 Vereins-App-Shell & Dashboard → erster echter ULC-Fachslice.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**
