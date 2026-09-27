@@ -28,9 +28,9 @@ verbindet read-only Delta-Plan, echten Repository-Updater und inkrementellen
 PostgreSQL-Executor auf einer nicht leeren isolierten Baseline. Produktive
 Datenbank- und Providerwrites bleiben weiterhin ausgeschlossen.
 
-Ein neuer Gate-Scope wird durch den FC6-Abschluss nicht automatisch eröffnet.
-Der nächste Vertical Slice wird aus dem dokumentierten Produktbedarf bzw. der
-Roadmap abgeleitet.
+Der nach FC6 eröffnete Produkt-Scope ist ULC-E1. Er wurde aus dem realen
+ULC-Linz-Bedarf abgeleitet und erweitert bewusst nur die sichtbare App-Shell;
+weitere fachliche Bereiche bleiben bis zu ihrem eigenen Vertical Slice außen vor.
 
 FC4 ist für den aktuellen Produktpfad abgeschlossen: Modulvertrag,
 Modul-Scaffolder, der persistenzfreie Intervall-Countdown und der normale
@@ -386,20 +386,21 @@ die alte Anwendung wird nicht als Ganzes kopiert.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen FC6-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E1-Pfad, wenn mindestens eines gilt:
 
-- der Modulvertrag ist nicht deterministisch oder nicht reproduzierbar;
-- Paket, Capability, Datenbankbesitz oder Migrationen können vom Manifest
-  unbemerkt abweichen;
-- der neue Modulpfad kann bestehende Apps oder fremde Modulschemas
-  überschreiben;
-- Kompatibilität wird nur angenommen statt geprüft;
-- eine bestehende Security-/Privacy-/Release-Grenze wird abgeschwächt;
-- der unmittelbar benötigte Countdown-Vertical-Slice kann über den
-  vorgesehenen Modulpfad nicht sicher erreicht werden.
+- Login, Passwortwechsel oder Session-Wiederherstellung werden geschwächt;
+- Countdown oder seine serverseitige D2-Berechtigungsgrenze verändern ihr
+  bewiesenes Verhalten;
+- eine nicht freigegebene Funktion wird in der neuen Shell als bedienbar
+  dargestellt;
+- die statische UI benötigt plötzlich eine Datenbank- oder Providerverbindung;
+- CSP-, Mobile-First- oder bestehende Security-/Privacy-/Release-Grenzen werden
+  abgeschwächt;
+- bestehende ULC-Fachdaten, Migrationen oder Produktionsressourcen werden für
+  diesen reinen Shell-Slice verändert.
 
-Nicht gate-blockierend sind zusätzliche Plattformabstraktionen und allgemeines
-Hardening ohne konkreten Verbraucher.
+Nicht gate-blockierend sind weitere alte ULC-Fachbereiche, zusätzliche
+Plattformabstraktionen und allgemeines Hardening ohne unmittelbaren E1-Bedarf.
 
 ## Loop-Grenze
 
