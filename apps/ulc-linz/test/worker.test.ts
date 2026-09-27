@@ -387,6 +387,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
           },
         },
         {
+          ...runtime().athleteMasterdata,
           async readOrganizationSnapshot(organizationId) {
             readOrganization = organizationId;
             return {
