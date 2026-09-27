@@ -699,17 +699,6 @@ Kindertraining-Runtime mit Teilnehmer-Snapshot und atomarem Speichern.
 
 Ein Finding blockiert den aktuellen ULC-E4A-Pfad, wenn mindestens eines gilt:
 
-- der Browser kann eine Organisation oder andere Ownership-Grenze an eine
-  Stammdatenmutation übergeben;
-- UI-Sichtbarkeit wird als Ersatz für die bestehende serverseitige
-  `athletes:view`-/`athletes:edit`-Prüfung behandelt;
-- personenbezogene Stammdaten werden über untrusted `innerHTML` oder eine
-  vergleichbare HTML-Injektion gerendert;
-- Stammdaten werden aus einer anderen Quelle als dem bestehenden
-  organisationsgebundenen E2C-Snapshot geladen oder an einer parallelen
-  Validierungs-/Persistenzlogik vorbei geschrieben;
-- ein Fehler im Stammdatenbereich blockiert Login, Countdown oder die übrige
-  App-Shell;
 - E4A verändert bestehende Stammdaten-, Identity-, Permission-, Lifecycle- oder
   Security-Tabellen;
 - Kindertraining, U12 und U14 erhalten getrennte, redundante Persistenzmodelle;
