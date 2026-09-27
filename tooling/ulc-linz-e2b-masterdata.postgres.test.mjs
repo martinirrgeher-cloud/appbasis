@@ -78,9 +78,10 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
     assert.deepEqual(plan.changes.databaseMigrationDelta?.addedOwner, {
       id: "athletes",
       root: "modules/athletes",
-      schemaVersion: 1,
+      schemaVersion: 2,
       migrations: [
         "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+        "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
       ],
     });
     assert.deepEqual(await snapshotPublicationState(root), beforePlan);
@@ -122,7 +123,7 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
     assert.equal(migration.application, "ulc-linz");
     assert.equal(migration.moduleId, "athletes");
     assert.equal(migration.repositoryState, "published-target");
-    assert.equal(migration.migrationCount, 1);
+    assert.equal(migration.migrationCount, 2);
     assert.ok(migration.statementCount > 0);
     assert.ok(migration.baselineMarkerCount > 0);
     assert.ok(migration.targetMarkerCount > 0);
@@ -138,7 +139,8 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
             'appbasis_athlete',
             'appbasis_trainer',
             'appbasis_athlete_group_membership',
-            'appbasis_trainer_group_membership'
+            'appbasis_trainer_group_membership',
+            'appbasis_athletes_deletion'
           )
         ORDER BY table_name
       `;
@@ -147,6 +149,7 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
         [
           "appbasis_athlete",
           "appbasis_athlete_group_membership",
+          "appbasis_athletes_deletion",
           "appbasis_trainer",
           "appbasis_trainer_group_membership",
           "appbasis_training_group",
