@@ -9,13 +9,15 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E2B – Stammdaten kontrolliert in ULC Linz installieren.**
+**ULC-E2C – serverseitige Stammdaten-Runtime/API und Lifecycle.**
 
-ULC-E2A ist abgeschlossen. Der aktuelle Slice publiziert das datenbank-ownende
-Modul `athletes` über den kanonischen Existing-App-Zielzustand in
-`ulc-linz` und beweist denselben Zustand mit dem echten FC6-Updater sowie dem
-inkrementellen PostgreSQL-Executor auf einer isolierten Kopie der realen
-ULC-Baseline. Runtime/API, Stammdaten-UI, Preview und Produktion bleiben
+ULC-E2B ist abgeschlossen. Der aktuelle Slice bindet das installierte Modul
+`athletes` erstmals an die reale ULC-Serverruntime: Organisationsgrenze und
+`athletes:view`/`athletes:edit` werden serverseitig erzwungen, Stammdaten
+werden ausschließlich innerhalb der aus der authentifizierten Mitgliedschaft
+abgeleiteten Organisation gelesen oder verändert und der in E2B bewusst
+fail-closed gelassene personenbezogene Stammdaten-Lifecycle wird explizit
+geschlossen. UI, Preview, Produktion, Providerwrites und Deployment bleiben
 weiterhin getrennt.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
@@ -395,7 +397,7 @@ Abnahme für ULC-E2A:
 ULC-E2A ist auf `main` abgeschlossen. Modulvertrag, Domainvalidierung und
 FC6-kompatible Migration sind vollständig grün.
 
-## Aktueller Gate-Scope: ULC-E2B
+## Abgeschlossener Gate-Scope: ULC-E2B
 
 Abnahme für ULC-E2B:
 
@@ -427,10 +429,53 @@ die vollständig überprüfte historische Migrationsdatei als unveränderliche
 Einheit; es gibt keine heuristische Freigabe einzelner SQL-Formen mehr.
 Zielmigrationen ohne Katalogmarker bleiben ausnahmslos fail-closed.
 
-Nach E2B folgt ULC-E2C: serverseitige Stammdaten-Runtime/API mit
-Organisationsgrenze und `athletes:view`/`athletes:edit`. Dabei muss auch
-der personenbezogene Stammdaten-Lifecycle für Löschung/Aufbewahrung aus dem
-E2B-Fail-closed-Status heraus explizit gelöst werden.
+ULC-E2B ist auf `main` abgeschlossen. Installation, bestehender
+Datenbestand, fünf Stammdatentabellen, Rerun-Schutz und digest-gepinnte
+Baseline-Ausnahme sind auf demselben Exact Head durch CI und Review bestätigt.
+
+## Aktueller Gate-Scope: ULC-E2C
+
+Abnahme für ULC-E2C:
+
+- die reale ULC-Worker-Runtime bindet `athletes` als serverseitigen
+  Stammdaten-Consumer ein; es entsteht in diesem Slice noch keine UI;
+- die Organisation wird für jeden Stammdatenrequest ausschließlich aus der
+  authentifizierten, aktiven ULC-Mitgliedschaft des aktuellen Benutzers
+  abgeleitet; ein Client kann keine fremde `organizationId` wählen;
+- Lesen verlangt `athletes:view`, jede Mutation `athletes:edit`; die
+  bestehende kanonische ULC-Rollen-/Principal-Prüfung bleibt maßgeblich und
+  inaktive Mitgliedschaften, Rollen-Drift sowie fehlende/revozierte Rechte
+  bleiben fail-closed;
+- organisationsweite Stammdaten bleiben für die bestehenden Rollen `athlete`
+  und `parent` gesperrt; Admin/Trainer benötigen weiterhin den kanonischen
+  Rollen- und Capability-Vertrag;
+- jede SQL-Operation ist explizit an die serverseitig ermittelte Organisation
+  gebunden; referenzierte Athleten, Trainer und Trainingsgruppen müssen vor
+  Mitgliedschaftsänderungen derselben Organisation angehören;
+- die API deckt Trainingsgruppen, Athleten, Trainer sowie Athleten- und
+  Trainer-Gruppenzuordnungen ab und verwendet die bestehenden
+  `@appbasis/athletes`-Domänenvalidatoren statt paralleler Validierungslogik;
+- neue Stammdaten-IDs werden serverseitig erzeugt; Clientdaten dürfen keine
+  Organisation oder fremde IDs als Ownership-Grenze einschleusen;
+- personenbezogene Athleten- und Trainerstammdaten erhalten eine explizite
+  Lifecycle-Regel: Deaktivierung setzt den serverseitigen Lifecycle-Zeitpunkt,
+  aktive Datensätze werden niemals durch Retention gelöscht und deaktivierte
+  Datensätze werden nach 12 Kalendermonaten über einen moduleigenen,
+  transaktionalen Retention-Pfad einschließlich ihrer Gruppenzuordnungen
+  physisch gelöscht;
+- die Lifecycle-Regel darf keine Identity-/Permissions- oder
+  `ulc-linz-lifecycle`-Tabellen direkt verändern; Account-Lifecycle und
+  Stammdaten-Lifecycle bleiben getrennte Owner-Verträge;
+- die ULC-Dateninventur und Export-/Lifecycle-Gates werden erst dann vom
+  E2B-Fail-closed-Status hochgestuft, wenn Runtime, Löschung und Retention
+  automatisiert bewiesen sind;
+- keine Preview-/Produktionsmigration, kein Providerwrite, kein Deployment und
+  keine Revalidierung alter Production-Evidence in E2C.
+
+Kleinstes Arbeitspaket ist **E2C-A: kanonische serverseitige
+Organisations-/Capability-Grenze plus read-only Stammdaten-API**. Danach folgen
+Edit-Mutationen und der Lifecycle innerhalb desselben E2C-Gates; Codex wird
+sparsam erst am Abschluss-Gate eingesetzt.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -450,21 +495,26 @@ E2B-Fail-closed-Status heraus explizit gelöst werden.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E2B-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E2C-Pfad, wenn mindestens eines gilt:
 
-- der publizierte ULC-Zielzustand weicht vom echten Updater-Ziel ab;
-- bestehende DB-Owner, Appmodule oder Workspace-Abhängigkeiten werden außerhalb
-  des geplanten `athletes`-Deltas verändert;
-- die reale ULC-Baseline kann nicht strukturell verifiziert werden;
-- die Baseline-Ausnahme ist nicht exakt digest-gepinnt, bezieht sich nicht auf
-  eine bereits überprüfte historische App-Migration oder wird auf
-  Zielmigrationen angewendet;
-- bestehende Identity-/ULC-Lifecycle-Daten gehen durch die Migration verloren;
-- Rerun-, Drift- oder Transaktionsgrenzen des FC6-Pfads werden abgeschwächt;
-- Preview, Produktion oder Provider werden in E2B mutiert.
+- Organisation wird aus Clientdaten statt aus der authentifizierten
+  ULC-Mitgliedschaft übernommen oder eine SQL-Abfrage kann organisationsfremde
+  Stammdaten lesen bzw. verändern;
+- `athletes:view`/`athletes:edit`, exakte Runtime-Rolle, aktive Mitgliedschaft
+  oder bestehende Revokes werden nicht serverseitig erzwungen;
+- Athlete-/Parent-Rollen erhalten unbeabsichtigt organisationsweiten
+  Stammdatenzugriff;
+- Mutationen umgehen den bestehenden `@appbasis/athletes`-Domänenvertrag oder
+  können gruppenübergreifende/fremdorganisatorische Referenzen erzeugen;
+- Retention kann aktive Datensätze löschen, startet ohne explizite
+  Deaktivierung oder verändert Tabellen fremder Owner;
+- die bisher fail-closed klassifizierte Stammdaten-Privacy-Evidence wird ohne
+  ausführbaren Lösch-/Retention-Nachweis auf `verified` angehoben;
+- Preview, Produktion oder Provider werden in E2C mutiert.
 
-Nicht gate-blockierend sind Runtime/API/UI, Realtime,
-Benutzerverknüpfungen und Import/Export; sie folgen nach E2B.
+Nicht gate-blockierend sind Stammdaten-UI, Realtime, Edit-Locks,
+Benutzerkonto-/Eltern-Kind-Verknüpfungen, Import/Export und weitere
+ULC-Fachmodule; sie folgen in getrennten Vertical Slices.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 
