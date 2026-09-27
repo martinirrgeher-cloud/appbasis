@@ -79,6 +79,70 @@ function runtime(
         trainerGroupMemberships: [],
       };
     },
+    async createTrainingGroup(organizationId, input) {
+      return {
+        id: "group-test",
+        organizationId,
+        name: input.name,
+        shortName: input.shortName ?? null,
+        description: input.description ?? null,
+        isActive: true,
+        sortOrder: input.sortOrder ?? 100,
+      };
+    },
+    async createAthlete(organizationId, input) {
+      return {
+        id: "athlete-test",
+        organizationId,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        birthYear: input.birthYear ?? null,
+        notes: input.notes ?? null,
+        isActive: true,
+      };
+    },
+    async createTrainer(organizationId, input) {
+      return {
+        id: "trainer-test",
+        organizationId,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+        notes: input.notes ?? null,
+        isActive: true,
+      };
+    },
+    async createAthleteGroupMembership(organizationId, input) {
+      return {
+        organizationId,
+        athleteId: input.athleteId,
+        groupId: input.groupId,
+        startedOn: input.startedOn,
+        endedOn: input.endedOn ?? null,
+      };
+    },
+    async createTrainerGroupMembership(organizationId, input) {
+      return {
+        organizationId,
+        trainerId: input.trainerId,
+        groupId: input.groupId,
+      };
+    },
+    async deactivateAthlete() {
+      return true;
+    },
+    async deactivateTrainer() {
+      return true;
+    },
+    async purgeDeactivatedPersonalData() {
+      return {
+        deletedAthletes: 0,
+        deletedTrainers: 0,
+        deletedAthleteGroupMemberships: 0,
+        deletedTrainerGroupMemberships: 0,
+      };
+    },
   },
 ): GeneratedPostgresApplicationRuntime {
   return {
