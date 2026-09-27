@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   applyRepositoryMigrationPlan,
   loadRepositoryMigrationPlan,
+  loadRepositoryOwnerMigrationPlan,
   MigrationConfigurationError,
   migrationStatements,
   validatePostgresConnectionString,
@@ -52,6 +53,24 @@ test('loads migrations strictly in manifest order', async (t) => {
     expectedApplication: 'demo',
     expectedOwners: { alpha: 'owners/alpha' },
   });
+  assert.deepEqual(plan, [
+    {
+      ownerId: 'alpha',
+      relativePath: 'owners/alpha/migrations/0000.sql',
+      statements: ['SELECT 1;', 'SELECT 2;'],
+    },
+  ]);
+});
+
+test('loads one verified repository owner without requiring a published target manifest', async (t) => {
+  const { root } = await fixture(validManifest, sqlFiles);
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const plan = await loadRepositoryOwnerMigrationPlan({
+    repositoryRoot: root,
+    owner: validManifest.owners[0],
+  });
+
   assert.deepEqual(plan, [
     {
       ownerId: 'alpha',

@@ -84,6 +84,9 @@ jobs:
       - name: Run generated PostgreSQL tasks runtime E2E tests
         run: pnpm --filter @appbasis/app-tasks-minimal test:postgres
 
+      - name: Run FC6-B incremental module migration PostgreSQL E2E
+        run: node --test ./tooling/module-update-migration-executor.postgres.test.mjs
+
       - name: Run Unterrichtsverwaltung PostgreSQL E2E tests
         run: pnpm --filter @appbasis/app-unterrichtsverwaltung test:postgres
 
