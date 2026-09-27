@@ -664,40 +664,46 @@ erzwingt getrennte View-/Edit-Capabilities, erzeugt den datumswirksamen
 Teilnehmer-Snapshot über den öffentlichen Athletes-Vertrag und speichert
 Trainingseinheit plus vollständige Anwesenheit atomar.
 
-## Aktueller Gate-Scope: ULC-E4C
+## Abgeschlossener Gate-Scope: ULC-E4C
 
-Abnahme für ULC-E4C:
+ULC-E4C ist auf `main` abgeschlossen und praktisch in Preview verifiziert:
+Training-Migration und Deploy liefen erfolgreich; der Preview-Smoke bestätigte
+die ausgelieferte Kindertraining-Oberfläche, Runtime-Verdrahtung, fail-closed
+Authentifizierung und das Application-DB-Binding.
 
-- Kindertraining wird als eigener Bereich in die bestehende mobile ULC-App
-  integriert; keine zweite/alternative UI wird aufgebaut;
-- Navigation und Dashboard werden erst nach erfolgreicher
-  `kindertraining:view`-Prüfung freigeschaltet;
-- die Gruppenauswahl kommt ausschließlich aus dem geschützten
-  Kindertraining-Endpunkt und enthält nur aktive Gruppen der serverseitig
-  autorisierten Organisation;
+## Aktueller Gate-Scope: ULC-E4D
+
+Abnahme für ULC-E4D:
+
+- jeder geladene bestehende Kindertraining-Datensatz trägt einen opaken
+  Revisions-Token; eine noch nicht gespeicherte Einheit hat keinen Token;
+- der Browser muss beim Speichern explizit den geladenen Revisionsstand
+  mitsenden: bestehende Einheit = Token, neue Einheit = `null`;
+- der Token ist keine Berechtigungs- oder Organisationsinformation und wird
+  ausschließlich als Optimistic-Concurrency-Vorbedingung verwendet;
+- bestehende Trainingseinheiten werden nur aktualisiert, wenn der übermittelte
+  Token atomar zur aktuellen PostgreSQL-Zeilenversion passt;
+- ein Create mit `null` darf eine inzwischen parallel angelegte Einheit
+  nicht überschreiben;
+- bei einem Revisionskonflikt werden weder Session noch Anwesenheit verändert;
+  die API antwortet mit HTTP `409 TRAINING_SESSION_CONFLICT`;
+- die mobile UI zeigt den Konflikt verständlich an und fordert zum Neuladen
+  auf, statt einen älteren Stand erneut blind zu speichern;
+- die vollständige Anwesenheit bleibt im selben atomaren SQL-Statement wie
+  die erfolgreiche Session-Aktualisierung;
 - der Browser sendet weiterhin weder `organizationId` noch `moduleId`;
-- Gruppe und Datum laden den E4B-Teilnehmer-Snapshot; eine noch nicht
-  gespeicherte Einheit erscheint mit `open`-Status;
-- pro Teilnehmer stehen `open`, `present`, `excused` und `absent`
-  touch-tauglich zur Verfügung; Sammelaktionen dürfen nur denselben lokalen
-  Snapshot verändern;
-- Session-Status und optionale Notiz können mit dem vollständigen
-  Teilnehmer-Snapshot gespeichert werden;
-- Gruppen-/Datumsänderungen verwerfen den geladenen UI-Snapshot, damit kein
-  Snapshot unter einem anderen Scope gespeichert wird;
-- UI-Ausgaben mit Fach-/Personendaten werden über DOM/`textContent`
-  aufgebaut; kein `innerHTML` für dynamische Daten;
-- der bestehende D4-Preview-Smoke prüft zusätzlich die ausgelieferte
-  Kindertraining-Oberfläche, ihre Runtime-Verdrahtung und den anonymen
-  fail-closed Zugriff auf `/api/modules/kindertraining`;
-- der Code-Slice selbst führt keinen Preview-/Production-Write und kein
-  Deployment aus. Die praktische Preview-Abnahme erfolgt nach Merge über den
-  bestehenden main-only D4-Pfad: Schema `migrate` falls erforderlich,
-  anschließend `deploy`, jeweils nur mit expliziter Nutzerfreigabe.
+- E4D benötigt keine neue Datenbankmigration: der Revisions-Token wird aus der
+  PostgreSQL-Zeilenversion der bestehenden app-eigenen Session-Tabelle
+  abgeleitet;
+- PostgreSQL-E2E muss beweisen, dass ein Save mit veraltetem Token scheitert
+  und die zuvor erfolgreich gespeicherten Daten unverändert bleiben;
+- der Code-Slice führt keinen Preview-/Production-Write und kein Deployment
+  aus. Nach Merge ist für die praktische Preview-Abnahme nur ein erneutes
+  `deploy` erforderlich, keine Schema-Migration.
 
-Optimistic Concurrency, Sondertrainings, Trainerzuordnung, Statistik,
-Import/Export, Realtime/Edit-Locks sowie die Aktivierung der gemeinsamen
-Runtime für U12/U14 bleiben separate Folgearbeiten.
+Sondertrainings, Trainerzuordnung, Statistik, Import/Export,
+Realtime/Edit-Locks sowie die Aktivierung der gemeinsamen Runtime für U12/U14
+bleiben separate Folgearbeiten.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -717,26 +723,28 @@ Runtime für U12/U14 bleiben separate Folgearbeiten.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E4C-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E4D-Pfad, wenn mindestens eines gilt:
 
-- die Kindertraining-UI kann eine Organisation oder ein Modul aus Clientdaten
-  bestimmen;
-- die Gruppenauswahl umgeht die Kindertraining-Berechtigungsgrenze oder
-  erfordert im Browser unnötig `athletes:view`;
-- ein Gruppen-/Datumswechsel kann einen alten Teilnehmer-Snapshot unter dem
-  neuen Scope speichern;
-- der Save sendet nicht den vollständigen aktuell geladenen
-  Teilnehmer-Snapshot;
-- dynamische Personendaten werden über `innerHTML` oder vergleichbar
-  unsichere HTML-Injektion gerendert;
-- der Preview-Smoke kann eine fehlende Kindertraining-Oberfläche oder einen
-  anonym erreichbaren Kindertraining-Endpunkt übersehen;
-- der Code-PR selbst mutiert Preview/Produktion oder deployt ohne gesonderte
+- ein bestehendes Training kann ohne expliziten Revisions-Token gespeichert
+  werden;
+- ein veralteter oder fehlender Token kann eine bestehende Einheit
+  überschreiben;
+- ein paralleles Create kann bei `expectedRevision: null` eine inzwischen
+  vorhandene Einheit aktualisieren;
+- Anwesenheit wird trotz fehlgeschlagener Revisionsprüfung teilweise
+  geschrieben oder gelöscht;
+- Revisionskonflikte werden als generischer 500/400 statt als `409`
+  behandelt;
+- der Client löst Konflikte durch automatisches Überschreiben statt durch
+  Neuladen;
+- der Revisions-Token wird zur Scope-/Berechtigungsentscheidung verwendet;
+- der Browser kann `organizationId` oder `moduleId` bestimmen;
+- der Code-PR mutiert Preview/Produktion oder deployt ohne gesonderte
   Freigabe.
 
-Nicht gate-blockierend sind Optimistic Concurrency, Sondertrainings,
-Trainerzuordnung, Statistik, Import/Export, Realtime/Edit-Locks und U12/U14;
-sie bleiben getrennte Folge-Slices.
+Nicht gate-blockierend sind Sondertrainings, Trainerzuordnung, Statistik,
+Import/Export, Realtime/Edit-Locks und U12/U14; sie bleiben getrennte
+Folge-Slices.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 
