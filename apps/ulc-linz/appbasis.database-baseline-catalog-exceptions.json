@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "exceptions": [
+    {
+      "migration": "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+      "sha256": "53a04446fa4e31e6a9b6794d7c7d13b6e5f354008ae0198290bef58705fcdfe6",
+      "classification": "historical-access-control-only"
+    }
+  ]
+}
