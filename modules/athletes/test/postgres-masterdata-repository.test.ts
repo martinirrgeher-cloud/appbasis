@@ -115,4 +115,159 @@ describe('PostgresAthleteMasterdataRepository', () => {
       /invalid shape/,
     );
   });
+
+
+  it('creates athletes with a server-generated id and server-provided organization', async () => {
+    const calls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+    const repository = new PostgresAthleteMasterdataRepository(
+      {
+        async unsafe(query, parameters) {
+          calls.push({ query, parameters });
+          return [
+            {
+              id: 'athlete-server-1',
+              organization_id: 'verein-1',
+              first_name: 'Anna',
+              last_name: 'Muster',
+              birth_year: 2012,
+              notes: null,
+              is_active: true,
+            },
+          ];
+        },
+      },
+      () => 'athlete-server-1',
+    );
+
+    const athlete = await repository.createAthlete('verein-1', {
+      firstName: ' Anna ',
+      lastName: ' Muster ',
+      birthYear: 2012,
+    });
+
+    expect(athlete).toEqual({
+      id: 'athlete-server-1',
+      organizationId: 'verein-1',
+      firstName: 'Anna',
+      lastName: 'Muster',
+      birthYear: 2012,
+      notes: null,
+      isActive: true,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.parameters?.slice(0, 2)).toEqual([
+      'athlete-server-1',
+      'verein-1',
+    ]);
+  });
+
+  it('creates group memberships only through same-organization active references', async () => {
+    const calls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [
+          {
+            organization_id: 'verein-1',
+            athlete_id: 'athlete-1',
+            group_id: 'group-1',
+            started_on: '2026-09-01',
+            ended_on: null,
+          },
+        ];
+      },
+    });
+
+    await repository.createAthleteGroupMembership('verein-1', {
+      athleteId: 'athlete-1',
+      groupId: 'group-1',
+      startedOn: '2026-09-01',
+    });
+
+    expect(calls[0]?.query).toContain('g.organization_id = $1');
+    expect(calls[0]?.query).toContain('a.organization_id = $1');
+    expect(calls[0]?.query).toContain('g.is_active = true');
+    expect(calls[0]?.query).toContain('a.is_active = true');
+    expect(calls[0]?.parameters).toEqual([
+      'verein-1',
+      'athlete-1',
+      'group-1',
+      '2026-09-01',
+      null,
+    ]);
+  });
+
+  it('rejects cross-organization rows even if a SQL adapter returns them', async () => {
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe() {
+        return [
+          {
+            id: 'group-1',
+            organization_id: 'verein-2',
+            name: 'U14',
+            short_name: null,
+            description: null,
+            is_active: true,
+            sort_order: 10,
+          },
+        ];
+      },
+    });
+
+    await expect(repository.readOrganizationSnapshot('verein-1')).rejects.toThrow(
+      /invalid shape/,
+    );
+  });
+
+  it('deactivates personal masterdata only inside the requested organization', async () => {
+    const calls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [{ id: 'athlete-1' }];
+      },
+    });
+
+    await expect(
+      repository.deactivateAthlete('verein-1', 'athlete-1'),
+    ).resolves.toBe(true);
+    expect(calls[0]?.query).toContain('organization_id = $2');
+    expect(calls[0]?.query).toContain('is_active = true');
+    expect(calls[0]?.query).toContain('ended_on = COALESCE(ended_on, CURRENT_DATE)');
+    expect(calls[0]?.parameters).toEqual(['athlete-1', 'verein-1']);
+  });
+
+  it('purges only deactivated personal masterdata after the 12-month lifecycle ceiling', async () => {
+    const calls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [
+          {
+            deleted_athletes: 2,
+            deleted_trainers: 1,
+            deleted_athlete_group_memberships: 3,
+            deleted_trainer_group_memberships: 2,
+          },
+        ];
+      },
+    });
+
+    const result = await repository.purgeDeactivatedPersonalData(
+      new Date('2027-09-27T10:00:00.000Z'),
+    );
+
+    expect(result).toEqual({
+      deletedAthletes: 2,
+      deletedTrainers: 1,
+      deletedAthleteGroupMemberships: 3,
+      deletedTrainerGroupMemberships: 2,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.query).toContain('is_active = false');
+    expect(calls[0]?.query).toContain("updated_at + interval '12 months'");
+    expect(calls[0]?.query).toContain('DELETE FROM appbasis_athlete_group_membership');
+    expect(calls[0]?.query).toContain('DELETE FROM appbasis_trainer_group_membership');
+    expect(calls[0]?.parameters).toEqual(['2027-09-27T10:00:00.000Z']);
+  });
 });
