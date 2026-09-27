@@ -1272,6 +1272,8 @@ function isKindertrainingSnapshot(snapshot, groupId, sessionDate) {
   if (
     snapshot.session !== null &&
     (typeof snapshot.session?.id !== "string" ||
+      typeof snapshot.session?.revision !== "string" ||
+      !/^\d+$/.test(snapshot.session.revision) ||
       !["scheduled", "cancelled"].includes(snapshot.session?.state) ||
       (snapshot.session?.note !== null &&
         typeof snapshot.session?.note !== "string"))
@@ -1494,6 +1496,7 @@ async function saveKindertraining() {
         sessionDate,
         state: elements.kindertrainingState?.value || "scheduled",
         note: elements.kindertrainingNote?.value.trim() || null,
+        expectedRevision: kindertrainingSnapshot.session?.revision ?? null,
         attendance: kindertrainingSnapshot.participants.map((participant) => ({
           athleteId: participant.athleteId,
           status: participant.status,
@@ -1508,14 +1511,20 @@ async function saveKindertraining() {
     renderKindertrainingSnapshot();
     showMessage(elements.kindertrainingSuccess, "Training wurde gespeichert.");
   } catch (error) {
+    const conflict = error?.status === 409;
     showMessage(
       elements.kindertrainingMessage,
       error?.status === 403
         ? "Du darfst dieses Kindertraining ansehen, aber nicht speichern."
-        : error?.status === 400
-          ? "Die Teilnehmerliste hat sich geändert. Bitte das Training neu laden."
-          : "Das Kindertraining konnte nicht gespeichert werden.",
+        : conflict
+          ? "Dieses Training wurde inzwischen von jemand anderem geändert. Bitte neu laden, bevor du weiter speicherst."
+          : error?.status === 400
+            ? "Die Teilnehmerliste hat sich geändert. Bitte das Training neu laden."
+            : "Das Kindertraining konnte nicht gespeichert werden.",
     );
+    if (conflict && elements.kindertrainingSaveState) {
+      elements.kindertrainingSaveState.textContent = "Konflikt – neu laden";
+    }
   } finally {
     setKindertrainingLoading(false);
   }
