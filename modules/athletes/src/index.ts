@@ -18,6 +18,9 @@ export {
   createTrainer,
   createTrainerGroupMembership,
   createTrainingGroup,
+  updateAthlete,
+  updateTrainer,
+  updateTrainingGroup,
 } from "./domain/masterdata";
 export { PostgresAthleteMasterdataRepository } from "./postgres-masterdata-repository";
 export { reconcileAthleteMasterdataRestoredDatabase } from "./restore-reconciliation";
@@ -30,6 +33,9 @@ export type {
   CreateTrainerInput,
   CreateTrainingGroupInput,
   EntityContext,
+  UpdateAthleteInput,
+  UpdateTrainerInput,
+  UpdateTrainingGroupInput,
   Trainer,
   TrainerGroupMembership,
   TrainingGroup,

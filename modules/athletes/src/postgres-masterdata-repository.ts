@@ -14,6 +14,12 @@ import {
   type Trainer,
   type TrainerGroupMembership,
   type TrainingGroup,
+  type UpdateAthleteInput,
+  type UpdateTrainerInput,
+  type UpdateTrainingGroupInput,
+  updateAthlete,
+  updateTrainer,
+  updateTrainingGroup,
 } from './domain/masterdata';
 
 export type AthleteMasterdataSqlParameter = string | number | boolean | null;
@@ -172,6 +178,125 @@ export class PostgresAthleteMasterdataRepository {
       ],
     );
     return singleRow(rows, (row) =>
+      trainerFromRow(row, normalizedOrganizationId),
+    );
+  }
+
+  async updateTrainingGroup(
+    organizationId: string,
+    groupId: string,
+    input: UpdateTrainingGroupInput,
+  ): Promise<TrainingGroup | null> {
+    const normalizedOrganizationId = requiredIdentifier(
+      organizationId,
+      'Organization id',
+    );
+    const normalizedGroupId = requiredIdentifier(groupId, 'Training group id');
+    const group = updateTrainingGroup(input, {
+      id: normalizedGroupId,
+      organizationId: normalizedOrganizationId,
+    });
+    const rows = await this.#client.unsafe(
+      `UPDATE appbasis_training_group
+       SET name = $3,
+           short_name = $4,
+           description = $5,
+           sort_order = $6,
+           updated_at = now()
+       WHERE id = $1
+         AND organization_id = $2
+         AND is_active = true
+       RETURNING id, organization_id, name, short_name, description, is_active, sort_order`,
+      [
+        group.id,
+        group.organizationId,
+        group.name,
+        group.shortName,
+        group.description,
+        group.sortOrder,
+      ],
+    );
+    return optionalSingleRow(rows, (row) =>
+      trainingGroupFromRow(row, normalizedOrganizationId),
+    );
+  }
+
+  async updateAthlete(
+    organizationId: string,
+    athleteId: string,
+    input: UpdateAthleteInput,
+  ): Promise<Athlete | null> {
+    const normalizedOrganizationId = requiredIdentifier(
+      organizationId,
+      'Organization id',
+    );
+    const normalizedAthleteId = requiredIdentifier(athleteId, 'Athlete id');
+    const athlete = updateAthlete(input, {
+      id: normalizedAthleteId,
+      organizationId: normalizedOrganizationId,
+    });
+    const rows = await this.#client.unsafe(
+      `UPDATE appbasis_athlete
+       SET first_name = $3,
+           last_name = $4,
+           birth_year = $5,
+           notes = $6,
+           updated_at = now()
+       WHERE id = $1
+         AND organization_id = $2
+         AND is_active = true
+       RETURNING id, organization_id, first_name, last_name, birth_year, notes, is_active`,
+      [
+        athlete.id,
+        athlete.organizationId,
+        athlete.firstName,
+        athlete.lastName,
+        athlete.birthYear,
+        athlete.notes,
+      ],
+    );
+    return optionalSingleRow(rows, (row) =>
+      athleteFromRow(row, normalizedOrganizationId),
+    );
+  }
+
+  async updateTrainer(
+    organizationId: string,
+    trainerId: string,
+    input: UpdateTrainerInput,
+  ): Promise<Trainer | null> {
+    const normalizedOrganizationId = requiredIdentifier(
+      organizationId,
+      'Organization id',
+    );
+    const normalizedTrainerId = requiredIdentifier(trainerId, 'Trainer id');
+    const trainer = updateTrainer(input, {
+      id: normalizedTrainerId,
+      organizationId: normalizedOrganizationId,
+    });
+    const rows = await this.#client.unsafe(
+      `UPDATE appbasis_trainer
+       SET first_name = $3,
+           last_name = $4,
+           phone = $5,
+           email = $6,
+           notes = $7,
+           updated_at = now()
+       WHERE id = $1
+         AND organization_id = $2
+         AND is_active = true
+       RETURNING id, organization_id, first_name, last_name, phone, email, notes, is_active`,
+      [
+        trainer.id,
+        trainer.organizationId,
+        trainer.firstName,
+        trainer.lastName,
+        trainer.phone,
+        trainer.email,
+        trainer.notes,
+      ],
+    );
+    return optionalSingleRow(rows, (row) =>
       trainerFromRow(row, normalizedOrganizationId),
     );
   }
@@ -733,6 +858,17 @@ function singleRow<T>(
   map: (row: Record<string, unknown>) => T,
 ): T {
   return map(singleRawRow(rows));
+}
+
+function optionalSingleRow<T>(
+  rows: readonly Record<string, unknown>[],
+  map: (row: Record<string, unknown>) => T,
+): T | null {
+  if (rows.length === 0) return null;
+  if (rows.length !== 1 || rows[0] === undefined) {
+    throw new Error('Athletes masterdata persistence returned an invalid row count.');
+  }
+  return map(rows[0]);
 }
 
 function retentionResult(

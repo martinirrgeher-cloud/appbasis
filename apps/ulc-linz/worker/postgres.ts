@@ -37,6 +37,9 @@ export interface GeneratedPostgresApplicationRuntime {
     | "createTrainingGroup"
     | "createAthlete"
     | "createTrainer"
+    | "updateTrainingGroup"
+    | "updateAthlete"
+    | "updateTrainer"
     | "createAthleteGroupMembership"
     | "createTrainerGroupMembership"
     | "deactivateAthlete"
@@ -118,6 +121,45 @@ export async function createGeneratedPostgresApplicationRuntime(
         input: Parameters<PostgresAthleteMasterdataRepository["createTrainer"]>[1],
       ) {
         return athleteMasterdataRepository.createTrainer(organizationId, input);
+      },
+      updateTrainingGroup(
+        organizationId: string,
+        groupId: string,
+        input: Parameters<
+          PostgresAthleteMasterdataRepository["updateTrainingGroup"]
+        >[2],
+      ) {
+        return athleteMasterdataRepository.updateTrainingGroup(
+          organizationId,
+          groupId,
+          input,
+        );
+      },
+      updateAthlete(
+        organizationId: string,
+        athleteId: string,
+        input: Parameters<
+          PostgresAthleteMasterdataRepository["updateAthlete"]
+        >[2],
+      ) {
+        return athleteMasterdataRepository.updateAthlete(
+          organizationId,
+          athleteId,
+          input,
+        );
+      },
+      updateTrainer(
+        organizationId: string,
+        trainerId: string,
+        input: Parameters<
+          PostgresAthleteMasterdataRepository["updateTrainer"]
+        >[2],
+      ) {
+        return athleteMasterdataRepository.updateTrainer(
+          organizationId,
+          trainerId,
+          input,
+        );
       },
       createAthleteGroupMembership(
         organizationId: string,
