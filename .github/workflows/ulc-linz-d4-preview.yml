@@ -177,8 +177,26 @@ jobs:
           APPBASIS_APPLY_HYPERDRIVES: ${{ inputs.apply && '1' || '0' }}
         run: node ./tooling/ulc-linz-d4-preview-hyperdrive.mjs ensure >/dev/null
 
-      - name: Preflight separated ULC preview runtime principals
+      - name: Resolve ULC preview migration state
+        id: migration_state
         if: inputs.operation == 'migrate'
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
+          MODE="$(jq -r '.mode' <<<"$STATE")"
+          case "$MODE" in
+            initial|athletes-upgrade|current) ;;
+            *) echo 'ULC D4 preview migration mode is invalid.' >&2; exit 1 ;;
+          esac
+          printf 'mode=%s\n' "$MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight fresh ULC preview runtime principals
+        if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'initial'
         shell: bash
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
@@ -186,14 +204,37 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight >/dev/null
 
-      - name: Apply ULC preview database manifest
-        if: inputs.operation == 'migrate'
+      - name: Preflight established ULC preview runtime principals
+        if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode != 'initial'
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight-existing >/dev/null
+
+      - name: Apply initial ULC preview database manifest
+        if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'initial'
         shell: bash
         env:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_MIGRATION_TARGET: ${{ steps.plan.outputs.migration_target }}
           APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
         run: node ./tooling/ulc-linz-d4-preview-migrate.mjs
+
+      - name: Apply incremental ULC preview Stammdaten migration
+        if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'athletes-upgrade'
+        shell: bash
+        env:
+          APPBASIS_GENERATED_APP_ID: ulc-linz
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_MIGRATION_TARGET: ${{ steps.plan.outputs.migration_target }}
+          APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
+        run: node ./tooling/ulc-linz-d4-preview-athletes-upgrade.mjs
+
+      - name: Confirm current ULC preview schema
+        if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'current'
+        run: echo 'ULC D4 preview schema is already current; migration write skipped.'
 
       - name: Reconcile separated ULC preview runtime database access
         if: inputs.operation == 'migrate' || inputs.operation == 'bootstrap' || inputs.operation == 'deploy'
