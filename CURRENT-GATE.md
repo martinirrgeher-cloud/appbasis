@@ -9,15 +9,17 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E2C – serverseitige Stammdaten-Runtime/API und Lifecycle.**
+**ULC-E2C – serverseitige Stammdaten-Runtime/API sowie Lösch-/Retention-Lifecycle.**
 
 ULC-E2B ist abgeschlossen. Der aktuelle Slice bindet das installierte Modul
 `athletes` erstmals an die reale ULC-Serverruntime: Organisationsgrenze und
 `athletes:view`/`athletes:edit` werden serverseitig erzwungen, Stammdaten
 werden ausschließlich innerhalb der aus der authentifizierten Mitgliedschaft
 abgeleiteten Organisation gelesen oder verändert und der in E2B bewusst
-fail-closed gelassene personenbezogene Stammdaten-Lifecycle wird explizit
-geschlossen. UI, Preview, Produktion, Providerwrites und Deployment bleiben
+fail-closed gelassene personenbezogene Stammdaten-Lösch-/Retention-Pfad wird
+explizit geschlossen. Restore-Reconciliation bleibt separat fail-closed, bis
+athletes-eigene Löschmarker und deren Replay in einem eigenen Folgeslice
+implementiert sind. UI, Preview, Produktion, Providerwrites und Deployment bleiben
 weiterhin getrennt.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
@@ -466,20 +468,30 @@ Abnahme für ULC-E2C:
 - die Lifecycle-Regel darf keine Identity-/Permissions- oder
   `ulc-linz-lifecycle`-Tabellen direkt verändern; Account-Lifecycle und
   Stammdaten-Lifecycle bleiben getrennte Owner-Verträge;
-- die ULC-Dateninventur und das Repository-Lifecycle-Gate werden erst dann
-  vom E2B-Fail-closed-Status hochgestuft, wenn Runtime, Löschung und Retention
-  automatisiert bewiesen sind; die normale Datenexport-Evidence bleibt für
-  personenbezogene Stammdaten ausdrücklich fail-closed, weil deren
-  Subject-/Account-Zuordnung und Export erst in einem späteren Import/Export-Slice
-  umgesetzt werden;
+- die ULC-Dateninventur darf Löschung und Retention für Stammdaten erst dann
+  als verifiziert markieren, wenn Runtime, Deaktivierung und physische Löschung
+  automatisiert bewiesen sind; die übergreifende M5-Lifecycle-Evidence bleibt
+  jedoch fail-closed, solange ein nach einem Backup erfolgter Stammdaten-Delete
+  beim Restore noch nicht über athletes-eigene Löschmarker reproduzierbar
+  wiederholt werden kann;
+- die normale Datenexport-Evidence bleibt für personenbezogene Stammdaten
+  ausdrücklich fail-closed, weil deren Subject-/Account-Zuordnung und Export
+  erst in einem späteren Import/Export-Slice umgesetzt werden;
 - keine Preview-/Produktionsmigration, kein Providerwrite, kein Deployment und
   keine Revalidierung alter Production-Evidence in E2C.
 
 E2C-A (serverseitige Organisations-/Capability-Grenze und Read-API),
 E2C-B (autorisierte Stammdaten-Mutationen) und E2C-C (Deaktivierung plus
-12-Monats-Retention im geschützten Lifecycle-Pfad) sind implementiert. Vor dem
-Abschluss folgen vollständige CI, ChatGPT Diff-/Architektur-/Security-Prüfung
-und erst danach der eine finale Codex-Review auf Exact Head.
+12-Monats-Retention im geschützten Lifecycle-Pfad) sind implementiert.
+
+Der finale Codex-Review hat einen echten P1 gefunden: Stammdaten, die nach dem
+Backup durch Retention gelöscht wurden, könnten bei einem späteren Restore
+wieder erscheinen. E2C erweitert deshalb nicht nachträglich die Restore-
+Architektur. Stattdessen bleibt die M5-Lifecycle-/Restore-Evidence ausdrücklich
+fail-closed. Das athletes-eigene Delete-Marker-/Restore-Replay wird als
+separater unmittelbar folgender Slice abgegrenzt. Für E2C gilt nach diesem
+gebündelten Fix nur noch: Exact-Head-CI und genau ein Re-Review gemäß
+Loop-Grenze.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -571,7 +583,8 @@ FC6-C Existing-App-Integration → FC6-D isolierter E2E-Beweis.**
 Der neue Produktpfad ist:
 
 **ULC-E1 Vereins-App-Shell & Dashboard → ULC-E2A Stammdaten-Fundament →
-ULC-E2B kontrollierte ULC-Installation → ULC-E2C Stammdaten-Runtime/API.**
+ULC-E2B kontrollierte ULC-Installation → ULC-E2C Stammdaten-Runtime/API →
+ULC-E2D athletes-eigene Restore-Reconciliation.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**
