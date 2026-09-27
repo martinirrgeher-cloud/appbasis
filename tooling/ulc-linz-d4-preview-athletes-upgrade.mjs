@@ -6,9 +6,12 @@ import {
   ModuleUpdateMigrationConfigurationError,
   ModuleUpdateMigrationExecutionError,
 } from "./module-update-migration-executor.mjs";
+import {
+  ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE,
+} from "./ulc-linz-d4-preview-hyperdrive.mjs";
+import { parseGeneratedPreviewDatabaseUrl } from "./generated-preview-hyperdrive.mjs";
 
-const EXPECTED_DATABASE = "appbasis_ulc_linz_preview";
-const EXPECTED_PRINCIPAL = "appbasis_ulc_linz_preview_migration";
+const EXPECTED_DATABASE = ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE.database;
 
 export async function applyUlcLinzD4PreviewAthletesUpgrade(
   { connectionString } = {},
@@ -19,12 +22,16 @@ export async function applyUlcLinzD4PreviewAthletesUpgrade(
       "ULC D4 preview athletes upgrade executor is unavailable.",
     );
   }
+  const origin = parseGeneratedPreviewDatabaseUrl(
+    connectionString,
+    ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE,
+  );
   const result = await applyMigrations({
     appId: "ulc-linz",
     moduleId: "athletes",
     connectionString,
     expectedDatabase: EXPECTED_DATABASE,
-    expectedPrincipal: EXPECTED_PRINCIPAL,
+    expectedPrincipal: origin.user,
   });
   if (
     result?.state !== "applied" ||
