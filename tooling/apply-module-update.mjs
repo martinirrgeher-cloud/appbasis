@@ -34,15 +34,6 @@ export async function applyModuleUpdate(input, options = {}) {
     { repositoryRoot },
   );
 
-  if (
-    plan.state === "install" &&
-    plan.module.databaseSchemaVersion !== null
-  ) {
-    throw new Error(
-      "FC5-B does not install database-owning modules before a migration execution contract exists.",
-    );
-  }
-
   await options.testingHooks?.afterPlan?.({
     plan,
     repositoryRoot,
@@ -73,11 +64,10 @@ export async function applyModuleUpdate(input, options = {}) {
     }
 
     assertInstallWriteSet(plan, appId);
-    if (plan.changes.databaseManifest !== null) {
-      throw new Error(
-        "FC5-B install plans must not contain database manifest changes.",
-      );
-    }
+    const nextDatabaseManifestContent = databaseManifestContentForInstall(
+      plan,
+      appId,
+    );
 
     const currentAppDefinition = parseAppDefinition(
       parseJsonObject(
@@ -154,6 +144,17 @@ export async function applyModuleUpdate(input, options = {}) {
       plan,
       repositoryRoot,
     });
+
+    if (nextDatabaseManifestContent !== null) {
+      await atomicWriteFile(
+        paths.databaseManifest,
+        nextDatabaseManifestContent,
+      );
+      await options.testingHooks?.afterDatabaseManifestPublication?.({
+        plan,
+        repositoryRoot,
+      });
+    }
 
     // The app definition is the publication marker and is written last.
     await atomicWriteFile(
@@ -311,21 +312,59 @@ function assertNoopPlan(plan) {
 function assertInstallWriteSet(plan, appId) {
   const appDefinitionPath = `apps/${appId}/appbasis.app.json`;
   const appPackagePath = `apps/${appId}/package.json`;
+  const databaseManifestPath = `apps/${appId}/appbasis.database.json`;
   const expected = [
     appDefinitionPath,
     appPackagePath,
+    ...(plan.changes.databaseManifest === null
+      ? []
+      : [databaseManifestPath]),
     "pnpm-lock.yaml",
   ];
 
   if (
     plan.changes.appDefinition?.path !== appDefinitionPath ||
     plan.changes.packageDependency?.path !== appPackagePath ||
+    (plan.changes.databaseManifest !== null &&
+      plan.changes.databaseManifest?.path !== databaseManifestPath) ||
     plan.changes.workspaceLockfile?.path !== "pnpm-lock.yaml" ||
     plan.writes.length !== expected.length ||
     plan.writes.some((path, index) => path !== expected[index])
   ) {
     throw new Error("Module install plan write set is not canonical.");
   }
+}
+
+function databaseManifestContentForInstall(plan, appId) {
+  const databaseChange = plan.changes.databaseManifest;
+  const migrationDelta = plan.changes.databaseMigrationDelta;
+
+  if (plan.module.databaseSchemaVersion === null) {
+    if (databaseChange !== null || migrationDelta !== null) {
+      throw new Error(
+        "Persistenceless module install plan contains database changes.",
+      );
+    }
+    return null;
+  }
+
+  const expectedPath = `apps/${appId}/appbasis.database.json`;
+  if (
+    databaseChange === null ||
+    databaseChange.path !== expectedPath ||
+    !plainObject(databaseChange.after) ||
+    migrationDelta === null ||
+    migrationDelta.operation !== "add-owner" ||
+    migrationDelta.addedOwner?.id !== plan.module.moduleId ||
+    migrationDelta.addedOwner?.schemaVersion !==
+      plan.module.databaseSchemaVersion
+  ) {
+    throw new Error(
+      "Database-owning module install plan is missing its canonical FC6 migration contract.",
+    );
+  }
+
+  return `${JSON.stringify(databaseChange.after, null, 2)}\n`;
 }
 
 async function assertFinalizedWorkspace({
@@ -544,10 +583,23 @@ function toPosixPath(value) {
 async function runCli() {
   const input = parseApplyModuleUpdateArguments(process.argv.slice(2));
   const result = await applyModuleUpdate(input);
+
+  if (result.state === "already-installed") {
+    console.log(
+      `AppBasis module repository state already installed: ${input.appId} <- ${input.moduleId}. Database migration state is not inferred.`,
+    );
+    return;
+  }
+
+  if (result.plan.changes.databaseMigrationDelta !== null) {
+    console.log(
+      `Published AppBasis module repository state: ${input.appId} <- ${input.moduleId}. Database migration required separately.`,
+    );
+    return;
+  }
+
   console.log(
-    result.state === "already-installed"
-      ? `AppBasis module already installed: ${input.appId} <- ${input.moduleId}.`
-      : `Installed AppBasis module: ${input.appId} <- ${input.moduleId}.`,
+    `Installed AppBasis module: ${input.appId} <- ${input.moduleId}.`,
   );
 }
 

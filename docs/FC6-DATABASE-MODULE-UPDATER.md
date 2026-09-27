@@ -1,6 +1,6 @@
 # FC6 – Database-owning Module Updates für bestehende Apps
 
-Stand: 2026-09-26
+Stand: 2026-09-27
 
 ## Ausgangslage
 
@@ -79,7 +79,7 @@ Der Slice ist abgeschlossen: der deterministische read-only Plan weist genau
 den neuen Modul-Owner samt Root, Schema-Version und vollständiger
 Migrationsliste aus und bleibt ohne Repository-/Datenbankwrite.
 
-## FC6-B – isolierter inkrementeller Migration-Executor – aktuell
+## FC6-B – isolierter inkrementeller Migration-Executor – abgeschlossen
 
 Erst nach FC6-A wird ein Executor für die **neuen** Modul-Migrationen gegen eine
 bereits bestehende Datenbankbasis eingeführt. Der Executor akzeptiert denselben
@@ -134,22 +134,32 @@ Funktions- oder frei programmierbarer DO-Block-Logik werden nicht stillschweigen
 ignoriert, sondern bleiben für diesen inkrementellen Pfad fail-closed, bis ein
 konkreter Verbraucher dafür einen eigenen überprüfbaren Nachweis benötigt.
 
-## FC6-C – Integration in den Existing-App-Updater
+## FC6-C – Integration in den Existing-App-Updater – aktuell
 
-Nach bewiesenem Delta- und Execution-Vertrag darf der bisherige FC5-Executor
-seine harte Sperre für datenbank-ownende Module gezielt ersetzen.
+Nach bewiesenem Delta- und Execution-Vertrag ersetzt der bisherige FC5-Executor
+seine harte Sperre für datenbank-ownende Module gezielt durch den FC6-Vertrag.
 
 Dabei bleibt:
 
 - der Repository-Write-Satz vollständig aus dem Planner abgeleitet;
 - `appbasis.database.json` wird nur auf den verifizierten kanonischen
   Zielzustand geändert;
-- Workspace und Appdefinition behalten die bisherigen Locks,
+- Workspace, Datenbankmanifest und Appdefinition behalten die bisherigen Locks,
   Drift-Prüfungen und Rollback-Regeln;
+- schlägt die Publikation nach dem DB-Manifest-Write fehl, wird auch das
+  Datenbankmanifest auf den exakten Ausgangszustand zurückgesetzt;
 - die Appdefinition bleibt Repository-Publikationsmarker und wird zuletzt
   geschrieben;
+- FC6-C baut keine PostgreSQL-Verbindung auf und führt keinerlei Migration aus;
+- der im Plan enthaltene `databaseMigrationDelta` bleibt die explizite
+  Anforderung an den späteren Environment-Schritt;
 - eine erfolgte Repository-Installation behauptet **nicht**, dass irgendeine
   konkrete Preview-/Produktionsdatenbank bereits migriert wurde.
+
+Der Slice ist abgeschlossen, sobald der Existing-App-Updater diesen Vertrag für
+ein DB-ownendes Fixture reproduzierbar publiziert, den bisherigen
+persistenzfreien Pfad unverändert lässt und einen Fehler nach DB-Manifest-
+Publikation vollständig zurückrollt.
 
 ## FC6-D – Preview-/E2E-Beweis
 
