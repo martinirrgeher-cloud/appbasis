@@ -604,29 +604,26 @@ Stammdaten-UI.
 
 ## Scope-Freeze für Review und Implementierung
 
-Die folgenden E2C-Findings bleiben historische Abschlussgrenzen; für E2D gilt zusätzlich der oben definierte E2D-Scope-Freeze:
+Ein Finding blockiert den aktuellen ULC-E3A-Pfad, wenn mindestens eines gilt:
 
-- Organisation wird aus Clientdaten statt aus der authentifizierten
-  ULC-Mitgliedschaft übernommen oder eine SQL-Abfrage kann organisationsfremde
-  Stammdaten lesen bzw. verändern;
-- `athletes:view`/`athletes:edit`, exakte Runtime-Rolle, aktive Mitgliedschaft
-  oder bestehende Revokes werden nicht serverseitig erzwungen;
-- Athlete-/Parent-Rollen erhalten unbeabsichtigt organisationsweiten
-  Stammdatenzugriff;
-- Mutationen umgehen den bestehenden `@appbasis/athletes`-Domänenvertrag oder
-  können gruppenübergreifende/fremdorganisatorische Referenzen erzeugen;
-- Retention kann aktive Datensätze löschen, startet ohne explizite
-  Deaktivierung oder verändert Tabellen fremder Owner;
-- die bisher fail-closed klassifizierte Stammdaten-Privacy-Evidence wird ohne
-  ausführbaren Lösch-/Retention-Nachweis auf `verified` angehoben;
-- der bestehende Produktions-Lifecycle oder seine Preflight-Prüfung verlangt
-  vor dem ausdrücklich getrennten Athletes-Produktionsdeployment bereits
-  Athletes-Tabellen, Athletes-Grants oder andere noch nicht deployte Ressourcen;
-- Preview, Produktion oder Provider werden in E2C mutiert.
+- der Browser kann eine Organisation oder andere Ownership-Grenze an eine
+  Stammdatenmutation übergeben;
+- UI-Sichtbarkeit wird als Ersatz für die bestehende serverseitige
+  `athletes:view`-/`athletes:edit`-Prüfung behandelt;
+- personenbezogene Stammdaten werden über untrusted `innerHTML` oder eine
+  vergleichbare HTML-Injektion gerendert;
+- Stammdaten werden aus einer anderen Quelle als dem bestehenden
+  organisationsgebundenen E2C-Snapshot geladen oder an einer parallelen
+  Validierungs-/Persistenzlogik vorbei geschrieben;
+- ein Fehler im Stammdatenbereich blockiert Login, Countdown oder die übrige
+  App-Shell;
+- E3A verändert Datenbankschema, Backend-Authorization, Lifecycle,
+  Privacy-Evidence, Preview, Produktion oder Provider.
 
-Nicht gate-blockierend sind Stammdaten-UI, Realtime, Edit-Locks,
-Benutzerkonto-/Eltern-Kind-Verknüpfungen, Import/Export und weitere
-ULC-Fachmodule; sie folgen in getrennten Vertical Slices.
+Nicht gate-blockierend sind Gruppenzuordnungen, Bearbeiten/Deaktivieren
+bestehender Stammdaten, Import/Export, Realtime, Edit-Locks,
+Benutzerkonto-/Eltern-Kind-Verknüpfungen und weitere ULC-Fachmodule; sie
+folgen in getrennten Vertical Slices.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 
