@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "application": "ulc-linz",
-  "scope": "current-materialized-v0.2",
+  "scope": "current-materialized-v0.3",
   "basis": {
     "databaseManifest": "apps/ulc-linz/appbasis.database.json",
     "appManifest": "apps/ulc-linz/appbasis.app.json",
@@ -60,14 +60,15 @@
     },
     {
       "id": "ulc-linz-lifecycle",
-      "schemaVersion": 4,
+      "schemaVersion": 5,
       "migrations": [
         "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
         "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
         "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
-        "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql"
+        "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+        "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql"
       ],
-      "lifecycleStatus": "verified-current-scope",
+      "lifecycleStatus": "training-data-lifecycle-pending",
       "notes": [
         "app-owned-membership-subject-scope-lifecycle-audit-and-security-event-persistence",
         "member-contact-retention-12-calendar-months",
@@ -80,7 +81,8 @@
         "security-events-use-normalized-fields-without-free-payload-storage",
         "admin-membership-must-be-demoted-before-inactivation-or-deletion-db-enforced",
         "delete-marker-retention-35-days",
-        "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion"
+        "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion",
+        "app-owned-training-session-and-attendance-lifecycle-pending"
       ]
     }
   ],
@@ -292,6 +294,22 @@
       "retentionPolicy": "12-months",
       "deletionEvidence": "retained-by-policy",
       "retentionEvidence": "verified"
+    },
+    {
+      "id": "ulc_linz_training_session",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "training-session-data",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "ulc_linz_training_attendance",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "athlete-training-attendance",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
     }
   ],
   "runtimeModules": [
@@ -317,9 +335,9 @@
     "futureIntroduction": "invalidates-current-evidence"
   },
   "m5": {
-    "deletionPolicy": "verified-current-scope",
-    "retentionPolicy": "verified-current-scope",
-    "restoreReconciliation": "fail-closed-pending-athletes-production-activation",
+    "deletionPolicy": "fail-closed-pending-training-data-lifecycle",
+    "retentionPolicy": "fail-closed-pending-training-data-lifecycle",
+    "restoreReconciliation": "fail-closed-pending-training-data-lifecycle",
     "unknownPersistentOwner": "fail-closed",
     "unknownPersistentTable": "fail-closed",
     "unknownRuntimeModule": "fail-closed",
