@@ -871,6 +871,8 @@ elements.kindertrainingAllOpen?.addEventListener("click", () => setAllKindertrai
 elements.kindertrainingGroup?.addEventListener("change", resetKindertrainingSelection);
 elements.kindertrainingDate?.addEventListener("change", resetKindertrainingSelection);
 elements.kindertrainingParticipants?.addEventListener("click", handleKindertrainingStatusClick);
+elements.kindertrainingState?.addEventListener("change", markKindertrainingDirty);
+elements.kindertrainingNote?.addEventListener("input", markKindertrainingDirty);
 for (const control of document.querySelectorAll("[data-masterdata-tab]")) {
   control.addEventListener("click", () => showMasterdataTab(control.dataset.masterdataTab || "athletes"));
 }
@@ -1380,6 +1382,11 @@ function renderKindertrainingParticipants() {
   }
 }
 
+function markKindertrainingDirty() {
+  if (!kindertrainingSnapshot) return;
+  markKindertrainingDirty();
+}
+
 function handleKindertrainingStatusClick(event) {
   const button = event.target?.closest?.("[data-athlete-id][data-status]");
   if (!button || !elements.kindertrainingParticipants?.contains(button)) return;
@@ -1401,10 +1408,7 @@ function handleKindertrainingStatusClick(event) {
   };
   renderKindertrainingParticipants();
   updateKindertrainingSummary();
-  showMessage(elements.kindertrainingSuccess, "");
-  if (elements.kindertrainingSaveState) {
-    elements.kindertrainingSaveState.textContent = "Ungespeicherte Änderungen";
-  }
+  markKindertrainingDirty();
 }
 
 function setAllKindertrainingStatuses(status) {
@@ -1423,10 +1427,7 @@ function setAllKindertrainingStatuses(status) {
   };
   renderKindertrainingParticipants();
   updateKindertrainingSummary();
-  showMessage(elements.kindertrainingSuccess, "");
-  if (elements.kindertrainingSaveState) {
-    elements.kindertrainingSaveState.textContent = "Ungespeicherte Änderungen";
-  }
+  markKindertrainingDirty();
 }
 
 function updateKindertrainingSummary() {
