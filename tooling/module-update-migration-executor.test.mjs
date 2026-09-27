@@ -63,6 +63,48 @@ test("ULC-E2A Stammdaten migration stays inside the FC6 target DDL contract", as
   );
 });
 
+test("ULC-E2B accepts only existing non-structural access-control DDL in the baseline contract", async () => {
+  const relativePath =
+    "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql";
+  const sql = await readFile(join(repositoryRoot, relativePath), "utf8");
+  const plan = [
+    {
+      ownerId: "ulc-linz-lifecycle",
+      relativePath,
+      statements: migrationStatements(sql),
+    },
+  ];
+
+  assert.doesNotThrow(() =>
+    createCatalogContract(plan, "baseline", {
+      allowExistingNonStructuralAccessControl: true,
+    }),
+  );
+
+  assert.throws(
+    () => createCatalogContract(plan, "target"),
+    /statement without a verifiable catalog marker/,
+  );
+
+  assert.throws(
+    () =>
+      createCatalogContract(
+        [
+          {
+            ownerId: "baseline",
+            relativePath: "unsafe.sql",
+            statements: [
+              "DO $appbasis$ BEGIN CREATE TABLE hidden_target (id text); END $appbasis$;",
+            ],
+          },
+        ],
+        "baseline",
+        { allowExistingNonStructuralAccessControl: true },
+      ),
+    /statement without a verifiable catalog marker/,
+  );
+});
+
 test("FC6-B derives verifiable catalog markers from quoted PostgreSQL DDL", () => {
   const contract = createCatalogContract(
     [
