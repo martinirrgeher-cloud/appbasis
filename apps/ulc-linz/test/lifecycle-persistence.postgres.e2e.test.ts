@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 
 import { afterAll, describe, expect, it } from "vitest";
 
-import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
 import { PostgresIdentityDeletionRetention } from "@appbasis/identity/postgres-deletion-retention";
@@ -107,9 +106,6 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       const sourceIdentityRetention = new PostgresIdentityDeletionRetention(
         source.client,
         () => fixedNow,
-      );
-      const sourceAthleteMasterdata = new PostgresAthleteMasterdataRepository(
-        source.client,
       );
 
       const actorSession = await sourceRuntime.service.signInWithUsername({
@@ -233,7 +229,6 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         principalLifecycle: sourcePrincipalLifecycle,
         scopes: sourceScopes,
         identityDeletionRetention: sourceIdentityRetention,
-        athleteMasterdata: sourceAthleteMasterdata,
       });
       expect(retentionResult.deletedIdentityIds).toEqual([
         seeded.retentionTarget.identityId,
@@ -243,10 +238,6 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       ]);
       expect(retentionResult.purgedAppDeletionMarkers).toBe(0);
       expect(retentionResult.purgedIdentityDeletionTombstones).toBe(0);
-      expect(retentionResult.purgedAthletes).toBe(0);
-      expect(retentionResult.purgedTrainers).toBe(0);
-      expect(retentionResult.purgedAthleteGroupMemberships).toBe(0);
-      expect(retentionResult.purgedTrainerGroupMemberships).toBe(0);
 
       for (const deletedIdentityId of [
         seeded.manualTarget.identityId,
