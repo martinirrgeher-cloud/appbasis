@@ -880,7 +880,9 @@ async function loadMasterdata(force = false) {
     if (
       !Array.isArray(snapshot?.athletes) ||
       !Array.isArray(snapshot?.trainers) ||
-      !Array.isArray(snapshot?.trainingGroups)
+      !Array.isArray(snapshot?.trainingGroups) ||
+      !Array.isArray(snapshot?.athleteGroupMemberships) ||
+      !Array.isArray(snapshot?.trainerGroupMemberships)
     ) {
       throw new Error("INVALID_MASTERDATA_SNAPSHOT");
     }
