@@ -1,3 +1,4 @@
+import type { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { principalId } from "@appbasis/permissions";
 
 import {
@@ -29,6 +30,10 @@ export interface UlcLinzRetentionDependencies
     | "purgeExpiredLifecycleAuditEvents"
   >;
   readonly identityDeletionRetention: UlcLinzIdentityDeletionRetention;
+  readonly athleteMasterdata: Pick<
+    PostgresAthleteMasterdataRepository,
+    "purgeDeactivatedPersonalData"
+  >;
 }
 
 export interface UlcLinzRetentionRunResult {
@@ -37,6 +42,10 @@ export interface UlcLinzRetentionRunResult {
   readonly purgedAppDeletionMarkers: number;
   readonly purgedIdentityDeletionTombstones: number;
   readonly purgedLifecycleAuditEvents: number;
+  readonly purgedAthletes: number;
+  readonly purgedTrainers: number;
+  readonly purgedAthleteGroupMemberships: number;
+  readonly purgedTrainerGroupMemberships: number;
 }
 
 /**
@@ -93,6 +102,8 @@ export async function runUlcLinzRetention(
     await dependencies.identityDeletionRetention.purgeExpiredCompletedDeletions();
   const purgedLifecycleAuditEvents =
     await dependencies.scopes.purgeExpiredLifecycleAuditEvents();
+  const masterdataRetention =
+    await dependencies.athleteMasterdata.purgeDeactivatedPersonalData();
 
   return Object.freeze({
     deletedIdentityIds: Object.freeze(deletedIdentityIds),
@@ -100,6 +111,12 @@ export async function runUlcLinzRetention(
     purgedAppDeletionMarkers,
     purgedIdentityDeletionTombstones,
     purgedLifecycleAuditEvents,
+    purgedAthletes: masterdataRetention.deletedAthletes,
+    purgedTrainers: masterdataRetention.deletedTrainers,
+    purgedAthleteGroupMemberships:
+      masterdataRetention.deletedAthleteGroupMemberships,
+    purgedTrainerGroupMemberships:
+      masterdataRetention.deletedTrainerGroupMemberships,
   });
 }
 
