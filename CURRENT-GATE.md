@@ -9,18 +9,21 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E3A – erste echte Stammdaten-Oberfläche.**
+**ULC-E3B – Gruppenzuordnungen und Stammdaten-Lifecycle in der Oberfläche.**
 
-ULC-E2D ist abgeschlossen. Der aktuelle Produkt-Slice macht das bereits
-serverseitig abgesicherte Stammdatenmodul erstmals in der ULC-App sichtbar und
-nutzbar. Die mobile Oberfläche erhält einen eigenen Bereich **Stammdaten** mit
-Listen und Anlegen für Athleten, Trainer und Trainingsgruppen. Sie konsumiert
-ausschließlich die bestehende E2C-Runtime/API; Berechtigungen und
-Organisationsgrenzen bleiben unverändert serverseitig erzwungen.
+ULC-E3A ist abgeschlossen und in der isolierten ULC-Preview praktisch
+abgenommen. Die Preview-Datenbank wurde inkrementell um das Athletes-Schema
+erweitert und der aktuelle Worker erfolgreich deployed.
 
-Gruppenzuordnungen, Deaktivierung, Bearbeiten bestehender Datensätze,
-Import/Export, Preview-/Produktionsmigration und Deployment bleiben in E3A
-außerhalb des Scopes.
+E3B erweitert ausschließlich die bestehende mobile Stammdaten-Oberfläche:
+Athleten und Trainer können vorhandenen aktiven Trainingsgruppen zugeordnet
+werden, bestehende Zuordnungen werden sichtbar und aktive Athleten/Trainer
+können über die bereits serverseitig abgesicherten Lifecycle-Endpunkte
+deaktiviert werden.
+
+Bearbeiten bestehender Stammdaten benötigt einen eigenen serverseitigen
+Update-Vertrag und folgt deshalb in E3C. Import/Export, Benutzer-/Elternlinks,
+Realtime/Edit-Locks und Production-Migration/-Deployment bleiben außerhalb E3B.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -557,7 +560,7 @@ ULC-E2D ist auf `main` abgeschlossen. Athletes-eigene Löschmarker,
 Merge-Commit `7e0c3426146ca8d3b275ed4e0500ed4d64a7a588` durch Pre- und
 Post-Merge-CI bestätigt. Eine Produktionsaktivierung wurde nicht durchgeführt.
 
-## Aktueller Gate-Scope: ULC-E3A
+## Abgeschlossener Gate-Scope: ULC-E3A
 
 Abnahme für ULC-E3A:
 
@@ -583,8 +586,35 @@ Abnahme für ULC-E3A:
   Datensätze, keine Preview-/Produktionsmigration, kein Providerwrite und kein
   Deployment.
 
-Nach E3A folgt E3B für Gruppenzuordnungen und Lebenszyklus-Aktionen in der
-Stammdaten-UI.
+ULC-E3A wurde zusätzlich auf der isolierten ULC-Preview praktisch bestätigt:
+inkrementelle Athletes-Migration, Runtime-ACL-Reconciliation, Worker-Deploy,
+UI-Smoke und Datenbank-Binding waren erfolgreich. Produktion blieb unverändert.
+
+## Aktueller Gate-Scope: ULC-E3B
+
+Abnahme für ULC-E3B:
+
+- bestehende Athleten-/Trainer-Gruppenzuordnungen werden aus dem bereits
+  organisationsgebundenen Snapshot sichtbar dargestellt;
+- neue Athleten-Gruppenzuordnungen nutzen ausschließlich
+  `POST /api/modules/athletes/masterdata/athlete-group-memberships`;
+- neue Trainer-Gruppenzuordnungen nutzen ausschließlich
+  `POST /api/modules/athletes/masterdata/trainer-group-memberships`;
+- auswählbar sind clientseitig nur aktive Personen und aktive Gruppen; der
+  Server bleibt die autoritative Validierungs- und Organisationsgrenze;
+- aktive Athleten/Trainer können ausschließlich über die bestehenden
+  organisationsgebundenen Deaktivierungsendpunkte deaktiviert werden;
+- Deaktivierung erfordert eine explizite Benutzerbestätigung und lädt danach
+  den aktuellen Snapshot neu;
+- Clientmutationen enthalten weiterhin keine `organizationId`;
+- personenbezogene Werte werden weiterhin ausschließlich über sichere
+  DOM-Erzeugung/`textContent` gerendert;
+- Login, Countdown und E3A-Anlegen bleiben unverändert funktionsfähig;
+- keine neue Datenbankmigration, kein Providerwrite, kein Preview-/Production-
+  Deployment in diesem Repository-Slice.
+
+Nach E3B folgt E3C für das Bearbeiten bestehender Stammdaten über einen eigenen,
+serverseitig validierten Update-Vertrag.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -620,10 +650,9 @@ Ein Finding blockiert den aktuellen ULC-E3A-Pfad, wenn mindestens eines gilt:
 - E3A verändert Datenbankschema, Backend-Authorization, Lifecycle,
   Privacy-Evidence, Preview, Produktion oder Provider.
 
-Nicht gate-blockierend sind Gruppenzuordnungen, Bearbeiten/Deaktivieren
-bestehender Stammdaten, Import/Export, Realtime, Edit-Locks,
-Benutzerkonto-/Eltern-Kind-Verknüpfungen und weitere ULC-Fachmodule; sie
-folgen in getrennten Vertical Slices.
+Nicht gate-blockierend sind das Bearbeiten bestehender Stammdaten,
+Import/Export, Realtime, Edit-Locks, Benutzerkonto-/Eltern-Kind-Verknüpfungen
+und weitere ULC-Fachmodule; sie folgen in getrennten Vertical Slices.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 
