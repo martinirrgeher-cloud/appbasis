@@ -109,7 +109,7 @@ export function createUlcLinzAthletesAccessService({
         permissions,
         memberships,
         subjectScopes,
-        securityEvents,
+        ...(securityEvents === undefined ? {} : { securityEvents }),
       },
       {
         organizationId,
@@ -123,10 +123,10 @@ export function createUlcLinzAthletesAccessService({
   }
 
   return Object.freeze({
-    assertViewAccess(current) {
+    assertViewAccess(current: UlcLinzCurrentIdentity) {
       return assertAccess(current, "view");
     },
-    assertEditAccess(current) {
+    assertEditAccess(current: UlcLinzCurrentIdentity) {
       return assertAccess(current, "edit");
     },
   });
