@@ -268,6 +268,8 @@ describe('PostgresAthleteMasterdataRepository', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.query).toContain('is_active = false');
     expect(calls[0]?.query).toContain("updated_at + interval '12 months'");
+    expect(calls[0]?.query).toContain('INSERT INTO appbasis_athletes_deletion');
+    expect(calls[0]?.query).toContain("interval '35 days'");
     expect(calls[0]?.query).toContain('DELETE FROM appbasis_athlete_group_membership');
     expect(calls[0]?.query).toContain('DELETE FROM appbasis_trainer_group_membership');
     expect(calls[0]?.parameters).toEqual(['2027-09-27T10:00:00.000Z']);
@@ -303,6 +305,145 @@ describe('PostgresAthleteMasterdataRepository', () => {
     );
 
     expect(calls[0]?.parameters?.[0]).toBe('verein-1');
+  });
+
+
+  it('reads only current exact 35-day deletion markers', async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const completedAt = new Date('2026-09-01T10:00:00.000Z');
+    const purgeAfter = new Date('2026-10-06T10:00:00.000Z');
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [
+          {
+            entity_type: 'athlete',
+            entity_id: 'athlete-1',
+            organization_id: 'verein-1',
+            completed_at: completedAt,
+            purge_after: purgeAfter,
+            completed_not_future: true,
+            retention_window_valid: true,
+          },
+        ];
+      },
+    });
+
+    await expect(
+      repository.listCurrentDeletionMarkers(
+        new Date('2026-09-27T10:00:00.000Z'),
+      ),
+    ).resolves.toEqual([
+      {
+        entityType: 'athlete',
+        entityId: 'athlete-1',
+        organizationId: 'verein-1',
+        completedAt,
+        purgeAfter,
+      },
+    ]);
+    expect(calls[0]?.query).toContain('WHERE purge_after >= $1::timestamptz');
+    expect(calls[0]?.query).toContain(
+      "purge_after = completed_at + interval '35 days'",
+    );
+  });
+
+  it('fails closed when a deletion marker does not prove the exact retention window', async () => {
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe() {
+        return [
+          {
+            entity_type: 'trainer',
+            entity_id: 'trainer-1',
+            organization_id: 'verein-1',
+            completed_at: new Date('2026-09-01T10:00:00.000Z'),
+            purge_after: new Date('2026-10-05T10:00:00.000Z'),
+            completed_not_future: true,
+            retention_window_valid: false,
+          },
+        ];
+      },
+    });
+
+    await expect(
+      repository.listCurrentDeletionMarkers(
+        new Date('2026-09-27T10:00:00.000Z'),
+      ),
+    ).rejects.toThrow(/invalid shape/);
+  });
+
+  it('replays a same-organization deletion marker atomically', async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [
+          {
+            existing_marker_count: 0,
+            live_entity_count: 1,
+            existing_marker_org_matches: true,
+            live_entity_org_matches: true,
+            existing_marker_time_matches: true,
+            inserted_marker_count: 1,
+            replay_marker_count: 1,
+            deleted_entity_count: 1,
+            deleted_group_membership_count: 2,
+          },
+        ];
+      },
+    });
+
+    await expect(
+      repository.reconcileDeletionMarker({
+        entityType: 'athlete',
+        entityId: 'athlete-1',
+        organizationId: 'verein-1',
+        completedAt: new Date('2026-09-01T10:00:00.000Z'),
+        purgeAfter: new Date('2026-10-06T10:00:00.000Z'),
+      }),
+    ).resolves.toEqual({
+      markerInserted: true,
+      deletedEntity: true,
+      deletedGroupMemberships: 2,
+    });
+    expect(calls[0]?.query).toContain('live_entity_org_matches');
+    expect(calls[0]?.query).toContain('DELETE FROM appbasis_athlete');
+    expect(calls[0]?.query).toContain('DELETE FROM appbasis_trainer');
+    expect(calls[0]?.parameters?.slice(0, 3)).toEqual([
+      'athlete',
+      'athlete-1',
+      'verein-1',
+    ]);
+  });
+
+  it('fails closed without mutating through a cross-organization restore marker', async () => {
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe() {
+        return [
+          {
+            existing_marker_count: 0,
+            live_entity_count: 1,
+            existing_marker_org_matches: true,
+            live_entity_org_matches: false,
+            existing_marker_time_matches: true,
+            inserted_marker_count: 0,
+            replay_marker_count: 0,
+            deleted_entity_count: 0,
+            deleted_group_membership_count: 0,
+          },
+        ];
+      },
+    });
+
+    await expect(
+      repository.reconcileDeletionMarker({
+        entityType: 'trainer',
+        entityId: 'trainer-1',
+        organizationId: 'verein-1',
+        completedAt: new Date('2026-09-01T10:00:00.000Z'),
+        purgeAfter: new Date('2026-10-06T10:00:00.000Z'),
+      }),
+    ).rejects.toThrow(/invalid shape/);
   });
 
 });
