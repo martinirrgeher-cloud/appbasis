@@ -48,7 +48,7 @@ test("ULC Linz D4 migration plan includes all app-owned lifecycle and security m
     appId: "ulc-linz",
   });
 
-  assert.equal(plan.length, 12);
+  assert.equal(plan.length, 13);
   assert.deepEqual(
     plan
       .filter(({ ownerId }) => ownerId === "athletes")
@@ -67,6 +67,7 @@ test("ULC Linz D4 migration plan includes all app-owned lifecycle and security m
       "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
       "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
       "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+      "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
     ],
   );
 });
