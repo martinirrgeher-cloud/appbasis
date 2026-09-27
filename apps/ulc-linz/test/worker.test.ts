@@ -5,6 +5,7 @@ import { InMemoryPermissionStore } from "@appbasis/permissions";
 
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
+import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
 import {
   ULC_LINZ_APP_CSS,
   ULC_LINZ_APP_HTML,
@@ -198,6 +199,7 @@ function runtime(
         sessionDate: input.sessionDate,
         session: {
           id: "session-test",
+          revision: "1",
           state: input.state ?? "scheduled",
           note: input.note ?? null,
         },
@@ -1411,6 +1413,7 @@ describe("Kindertraining runtime API", () => {
               sessionDate: input.sessionDate,
               session: {
                 id: "session-1",
+                revision: "42",
                 state: input.state ?? "scheduled",
                 note: input.note ?? null,
               },
@@ -1433,6 +1436,7 @@ describe("Kindertraining runtime API", () => {
           sessionDate: "2026-09-27",
           state: "scheduled",
           note: "Halle",
+          expectedRevision: "41",
           attendance: [],
         }),
       }),
@@ -1447,6 +1451,7 @@ describe("Kindertraining runtime API", () => {
         sessionDate: "2026-09-27",
         state: "scheduled",
         note: "Halle",
+        expectedRevision: "41",
         attendance: [],
       },
     });
@@ -1462,12 +1467,53 @@ describe("Kindertraining runtime API", () => {
           organizationId: "verein-client",
           groupId: "group-1",
           sessionDate: "2026-09-27",
+          expectedRevision: null,
           attendance: [],
         }),
       }),
       validEnv,
     );
     expect(rejected.status).toBe(400);
+  });
+
+  it("returns 409 when the loaded Kindertraining revision is stale", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        kindertraining: {
+          ...base.kindertraining,
+          async saveSession() {
+            throw new UlcTrainingSessionConflictError();
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/kindertraining/session", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          groupId: "group-1",
+          sessionDate: "2026-09-27",
+          expectedRevision: "41",
+          attendance: [],
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "TRAINING_SESSION_CONFLICT",
+        message: "The training session changed since it was loaded.",
+      },
+    });
   });
 
   it("rejects unknown query parameters and duplicate scope parameters", async () => {
