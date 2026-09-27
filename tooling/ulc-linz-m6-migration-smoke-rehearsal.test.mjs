@@ -20,12 +20,11 @@ const EXPECTED_MIGRATIONS = [
   "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
 ];
 
-test("ULC M6 migration rehearsal accepts the renewed countdown scope while keeping production writes blocked", async () => {
-  const result = await evaluateUlcLinzM6MigrationSmokeRehearsal();
-  assert.equal(result.status, "rehearsed-blocked-before-production-write");
-  assert.equal(result.productionDatabaseWriteAllowed, false);
-  assert.equal(result.productionSmokeExecutionAuthorized, false);
-  assert.equal(result.releaseAuthorized, false);
+test("ULC M6 migration rehearsal rejects the current Stammdaten scope until revalidation", async () => {
+  await assert.rejects(
+    evaluateUlcLinzM6MigrationSmokeRehearsal(),
+    (error) => error?.code === "APP_DEFINITION_INVALID",
+  );
 });
 
 test("ULC M6 rehearsal binds the future migration and smoke executors back to the exact checked plan and head", () => {
@@ -135,14 +134,16 @@ test("ULC M6 rehearsal source has no database executor invocation, provider call
   assert.equal(source.includes("CLOUDFLARE_API_TOKEN"), false);
 });
 
-test("ULC M6 renewed rehearsal output contains no SQL or connection material", async () => {
-  const serialized = JSON.stringify(
-    await evaluateUlcLinzM6MigrationSmokeRehearsal(),
+test("ULC M6 current-scope rehearsal fails before exposing SQL or connection material", async () => {
+  await assert.rejects(
+    evaluateUlcLinzM6MigrationSmokeRehearsal(),
+    (error) =>
+      error?.code === "APP_DEFINITION_INVALID" &&
+      !String(error?.message ?? "").includes("postgres://") &&
+      !String(error?.message ?? "").includes("postgresql://") &&
+      !String(error?.message ?? "").includes("CREATE TABLE") &&
+      !String(error?.message ?? "").includes("ALTER TABLE") &&
+      !String(error?.message ?? "").includes("BETTER_AUTH_SECRET") &&
+      !String(error?.message ?? "").includes("HYPERDRIVE.connectionString"),
   );
-  assert.equal(serialized.includes("postgres://"), false);
-  assert.equal(serialized.includes("postgresql://"), false);
-  assert.equal(serialized.includes("CREATE TABLE"), false);
-  assert.equal(serialized.includes("ALTER TABLE"), false);
-  assert.equal(serialized.includes("BETTER_AUTH_SECRET"), false);
-  assert.equal(serialized.includes("HYPERDRIVE.connectionString"), false);
 });
