@@ -135,14 +135,6 @@ function runtime(
     async deactivateTrainer() {
       return true;
     },
-    async purgeDeactivatedPersonalData() {
-      return {
-        deletedAthletes: 0,
-        deletedTrainers: 0,
-        deletedAthleteGroupMemberships: 0,
-        deletedTrainerGroupMemberships: 0,
-      };
-    },
   },
 ): GeneratedPostgresApplicationRuntime {
   return {
