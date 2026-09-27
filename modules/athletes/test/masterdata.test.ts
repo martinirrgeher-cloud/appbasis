@@ -8,6 +8,9 @@ import {
   createTrainer,
   createTrainerGroupMembership,
   createTrainingGroup,
+  updateAthlete,
+  updateTrainer,
+  updateTrainingGroup,
 } from "../src";
 
 const context = Object.freeze({
@@ -78,6 +81,66 @@ describe("Stammdaten domain contract", () => {
       lastName: "Trainer",
       phone: "+43 660 123",
       email: "trainer@example.test",
+      isActive: true,
+    });
+  });
+
+  it("normalizes complete replacement inputs for active Stammdaten updates", () => {
+    expect(
+      updateAthlete(
+        {
+          firstName: " Anna ",
+          lastName: " Beispiel ",
+          birthYear: null,
+          notes: " neu ",
+        },
+        context,
+      ),
+    ).toEqual({
+      id: "entity-1",
+      organizationId: "ulc-linz",
+      firstName: "Anna",
+      lastName: "Beispiel",
+      birthYear: null,
+      notes: "neu",
+      isActive: true,
+    });
+
+    expect(
+      updateTrainer(
+        {
+          firstName: " Max ",
+          lastName: " Trainer ",
+          phone: null,
+          email: " max@example.test ",
+          notes: null,
+        },
+        context,
+      ),
+    ).toMatchObject({
+      firstName: "Max",
+      lastName: "Trainer",
+      phone: null,
+      email: "max@example.test",
+      notes: null,
+      isActive: true,
+    });
+
+    expect(
+      updateTrainingGroup(
+        {
+          name: " U16 ",
+          shortName: null,
+          description: " Sprint ",
+          sortOrder: 20,
+        },
+        context,
+      ),
+    ).toMatchObject({
+      name: "U16",
+      shortName: null,
+      description: "Sprint",
+      sortOrder: 20,
       isActive: true,
     });
   });
