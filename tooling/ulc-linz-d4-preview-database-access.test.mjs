@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  preflightExistingUlcLinzD4PreviewDatabaseAccess,
   preflightUlcLinzD4PreviewDatabaseAccess,
   reconcileUlcLinzD4PreviewDatabaseAccess,
 } from "./ulc-linz-d4-preview-database-access.mjs";
@@ -223,6 +224,7 @@ function ownerFixture({
   },
   groupGrants = exactGroupGrants(),
   previewGroupPresent = true,
+  securityBound = false,
   sharedPreflightBoundary = {
     preflight_shared_role_count: 3,
     preflight_shared_database_create_count: 0,
@@ -250,7 +252,7 @@ function ownerFixture({
     shared_effective_security_access_count: 0,
   },
 } = {}) {
-  let bound = false;
+  let bound = securityBound;
   const statements = [];
 
   const client = {
@@ -483,6 +485,31 @@ function preflight(factory) {
     { databaseFactory: factory },
   );
 }
+
+function preflightExisting(factory) {
+  return preflightExistingUlcLinzD4PreviewDatabaseAccess(
+    {
+      migrationDatabaseUrl: MIGRATION_URL,
+      applicationDatabaseUrl: APPLICATION_URL,
+      securityLogDatabaseUrl: SECURITY_URL,
+    },
+    { databaseFactory: factory },
+  );
+}
+
+test("preflights an established preview without requiring the security group to disappear", async () => {
+  const owner = ownerFixture({ securityBound: true });
+  const result = await preflightExisting(databaseFactory({ owner }));
+
+  assert.deepEqual(result, {
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "generated-preview-ulc-linz",
+    existingRuntimePrincipalPreflightVerified: true,
+  });
+  assert.equal(owner.wasBound(), true);
+  assert.deepEqual(owner.statements, []);
+});
 
 test("preflights runtime principals before the preview migration without writes", async () => {
   const owner = ownerFixture({ previewGroupPresent: false });
