@@ -33,17 +33,19 @@ export async function reconcileAthleteMasterdataRestoredDatabase(
 ): Promise<AthleteMasterdataRestoreReconciliationResult> {
   const markers = await source.listCurrentDeletionMarkers();
   const seen = new Set<string>();
-  let insertedMarkerCount = 0;
-  let deletedEntityCount = 0;
-  let deletedGroupMembershipCount = 0;
-
   for (const marker of markers) {
     const key = markerKey(marker);
     if (seen.has(key)) {
       throw new Error('Athletes restore reconciliation contains duplicate markers.');
     }
     seen.add(key);
+  }
 
+  let insertedMarkerCount = 0;
+  let deletedEntityCount = 0;
+  let deletedGroupMembershipCount = 0;
+
+  for (const marker of markers) {
     const replay = await target.reconcileDeletionMarker(marker);
     if (replay.markerInserted) insertedMarkerCount += 1;
     if (replay.deletedEntity) deletedEntityCount += 1;
