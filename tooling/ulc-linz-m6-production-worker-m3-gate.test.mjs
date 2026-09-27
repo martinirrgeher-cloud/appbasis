@@ -42,34 +42,21 @@ function successfulAcceptanceFetch() {
   };
 }
 
-test("M6 worker gate consumes canonical ULC D4 preview acceptance without authorizing provider write", async () => {
+test("M6 worker gate rejects old D4 preview acceptance after Stammdaten changes app scope", async () => {
   const result = await evaluateUlcLinzM6ProductionWorkerM3Gate(
     ULC_LINZ_M6_PRODUCTION_WORKER_CREATE_PLAN_CONTRACT,
     process.cwd(),
     { fetchImpl: successfulAcceptanceFetch() },
   );
 
-  assert.deepEqual(result, {
-    schemaVersion: 1,
-    application: "ulc-linz",
-    environment: "production",
-    phase: "production-preparation",
-    stepId: "production-worker",
-    status: "worker-create-prepared-awaiting-operator-approval",
-    workerName: "appbasis-ulc-linz-production",
-    requiredPreparationGateEvidence: ["ULC_D4_PREVIEW_ACCEPTED"],
-    productionPreparationGateEvidenceConsumed: true,
-    productionPreparationEligible: true,
-    providerWriteRequired: true,
-    providerWriteAllowed: false,
-    executionAuthorized: false,
-    explicitApprovalRequired: true,
-    publicExposureAllowed: false,
-    productionReady: false,
-    releaseAuthorized: false,
-    providerStateReverificationRequired: true,
-    betaCapabilityReverificationRequired: true,
-  });
+  assert.equal(result.status, "worker-create-blocked-d4-evidence-unverified");
+  assert.equal(result.productionPreparationGateEvidenceConsumed, false);
+  assert.equal(result.productionPreparationEligible, false);
+  assert.equal(result.providerWriteAllowed, false);
+  assert.equal(result.executionAuthorized, false);
+  assert.equal(result.publicExposureAllowed, false);
+  assert.equal(result.productionReady, false);
+  assert.equal(result.releaseAuthorized, false);
   assert.equal(Object.isFrozen(result), true);
   assert.equal(Object.isFrozen(result.requiredPreparationGateEvidence), true);
 });
