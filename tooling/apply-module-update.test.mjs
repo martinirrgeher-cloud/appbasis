@@ -319,7 +319,91 @@ test("fails closed if an update input changes after planning", async (t) => {
   assert.equal(await readFile(lockfilePath, "utf8"), lockfileBefore);
 });
 
-test("keeps database-owning module installation fail-closed in FC5-B", async (t) => {
+test("FC6-C publishes a database-owning module without applying database migrations", async (t) => {
+  const root = await createFixture(t);
+  await writeDatabaseModuleFixture(root);
+  const databasePath = join(
+    root,
+    "apps",
+    "reference",
+    "appbasis.database.json",
+  );
+  const databaseBefore = await readFile(databasePath, "utf8");
+  let observedPrePublicationState = false;
+
+  const result = await applyModuleUpdate(
+    {
+      appId: "reference",
+      moduleId: "inventory",
+    },
+    executorOptions(root, {
+      workspaceFinalizer: async ({ lockfilePath }) => {
+        await writeFile(
+          lockfilePath,
+          fixtureLockfile({
+            includeCountdown: false,
+            includeInventory: true,
+          }),
+        );
+      },
+      afterWorkspaceFinalization: async () => {
+        observedPrePublicationState = true;
+        assert.equal(await readFile(databasePath, "utf8"), databaseBefore);
+        assert.deepEqual(
+          JSON.parse(
+            await readFile(
+              join(root, "apps", "reference", "appbasis.app.json"),
+              "utf8",
+            ),
+          ).modules,
+          [],
+        );
+      },
+    }),
+  );
+
+  assert.equal(result.state, "installed");
+  assert.equal(observedPrePublicationState, true);
+  assert.equal(result.plan.changes.databaseMigrationDelta?.operation, "add-owner");
+  assert.equal(
+    result.plan.changes.databaseMigrationDelta?.addedOwner?.id,
+    "inventory",
+  );
+
+  const definition = JSON.parse(
+    await readFile(
+      join(root, "apps", "reference", "appbasis.app.json"),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(definition.modules, ["inventory"]);
+
+  const packageJson = JSON.parse(
+    await readFile(join(root, "apps", "reference", "package.json"), "utf8"),
+  );
+  assert.equal(packageJson.dependencies["@appbasis/inventory"], "workspace:*");
+
+  const database = JSON.parse(await readFile(databasePath, "utf8"));
+  assert.deepEqual(
+    database.owners.map((owner) => owner.id),
+    ["identity", "inventory"],
+  );
+  assert.deepEqual(database.owners[1], {
+    id: "inventory",
+    root: "modules/inventory",
+    schemaVersion: 1,
+    migrations: [
+      "modules/inventory/migrations/0000_inventory.sql",
+    ],
+  });
+
+  assert.match(
+    await readFile(join(root, "pnpm-lock.yaml"), "utf8"),
+    /'@appbasis\/inventory'/,
+  );
+});
+
+test("FC6-C rolls back the database manifest when repository publication fails", async (t) => {
   const root = await createFixture(t);
   await writeDatabaseModuleFixture(root);
   const before = await snapshotFixture(root);
@@ -332,12 +416,21 @@ test("keeps database-owning module installation fail-closed in FC5-B", async (t)
           moduleId: "inventory",
         },
         executorOptions(root, {
-          workspaceFinalizer: async () => {
-            throw new Error("workspace finalizer must not run");
+          workspaceFinalizer: async ({ lockfilePath }) => {
+            await writeFile(
+              lockfilePath,
+              fixtureLockfile({
+                includeCountdown: false,
+                includeInventory: true,
+              }),
+            );
+          },
+          afterDatabaseManifestPublication: async () => {
+            throw new Error("synthetic post-database publication failure");
           },
         }),
       ),
-    /does not install database-owning modules/,
+    /synthetic post-database publication failure/,
   );
 
   assert.deepEqual(await snapshotFixture(root), before);
@@ -481,7 +574,7 @@ async function writeDatabaseModuleFixture(root) {
   );
   await writeFile(
     join(moduleRoot, "migrations", "0000_inventory.sql"),
-    "SELECT 1;\n",
+    "CREATE TABLE appbasis_inventory_item (id text PRIMARY KEY);\n",
   );
 }
 
@@ -510,11 +603,20 @@ async function snapshotFixture(root) {
   );
 }
 
-function fixtureLockfile({ includeCountdown }) {
+function fixtureLockfile({
+  includeCountdown,
+  includeInventory = false,
+}) {
   const countdown = includeCountdown
     ? `      '@appbasis/countdown':
         specifier: workspace:*
         version: link:../../modules/countdown
+`
+    : "";
+  const inventory = includeInventory
+    ? `      '@appbasis/inventory':
+        specifier: workspace:*
+        version: link:../../modules/inventory
 `
     : "";
   return `lockfileVersion: '9.0'
@@ -529,7 +631,7 @@ importers:
 
   apps/reference:
     dependencies:
-${countdown}      '@appbasis/identity':
+${countdown}${inventory}      '@appbasis/identity':
         specifier: workspace:*
         version: link:../../packages/identity
       hono:
