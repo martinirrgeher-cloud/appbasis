@@ -114,6 +114,58 @@ describe("ULC Linz deterministic retention state", () => {
     });
   });
 
+  it("runs the module-owned Stammdaten retention inside the protected retention coordinator", async () => {
+    let masterdataCalls = 0;
+    const dependencies = {
+      scopes: {
+        async evaluateRetention() {
+          return [];
+        },
+        async claimDueRetentionDeletion() {
+          throw new Error("no member deletion expected");
+        },
+        async completeIdentityDeletion() {
+          throw new Error("no member deletion expected");
+        },
+        async purgeExpiredDeletionMarkers() {
+          return 1;
+        },
+        async purgeExpiredLifecycleAuditEvents() {
+          return 2;
+        },
+      },
+      identityDeletionRetention: {
+        async purgeExpiredCompletedDeletions() {
+          return 3;
+        },
+      },
+      athleteMasterdata: {
+        async purgeDeactivatedPersonalData() {
+          masterdataCalls += 1;
+          return {
+            deletedAthletes: 4,
+            deletedTrainers: 5,
+            deletedAthleteGroupMemberships: 6,
+            deletedTrainerGroupMemberships: 7,
+          };
+        },
+      },
+    } as unknown as Parameters<typeof runUlcLinzRetention>[0];
+
+    await expect(runUlcLinzRetention(dependencies)).resolves.toEqual({
+      deletedIdentityIds: [],
+      exceptionIdentityIds: [],
+      purgedAppDeletionMarkers: 1,
+      purgedIdentityDeletionTombstones: 3,
+      purgedLifecycleAuditEvents: 2,
+      purgedAthletes: 4,
+      purgedTrainers: 5,
+      purgedAthleteGroupMemberships: 6,
+      purgedTrainerGroupMemberships: 7,
+    });
+    expect(masterdataCalls).toBe(1);
+  });
+
   it("requires the atomic deletion claim before any destructive owner operation", async () => {
     const target = Object.freeze({
       identityId: "race-target",
