@@ -288,6 +288,29 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
   });
 
+  it("ships E3C editing through the existing forms and server-owned update routes", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="athlete-edit-cancel"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-edit-cancel"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="group-edit-cancel"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("beginMasterdataEdit");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("cancelMasterdataEdit");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"Athlet bearbeiten"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"Trainer bearbeiten"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"Trainingsgruppe bearbeiten"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/masterdata/athletes/" + encodeURIComponent(editId) + "/update"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/masterdata/trainers/" + encodeURIComponent(editId) + "/update"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/masterdata/training-groups/" + encodeURIComponent(editId) + "/update"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("return true;");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
+  });
+
   it("ships the countdown controls and domain-backed plan integration in static assets", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("/api/modules/countdown/plan");
     expect(ULC_LINZ_APP_SCRIPT).toContain("speechSynthesis");
