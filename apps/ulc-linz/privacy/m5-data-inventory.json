@@ -43,18 +43,19 @@
     },
     {
       "id": "athletes",
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "migrations": [
-        "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql"
+        "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+        "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql"
       ],
-      "lifecycleStatus": "deletion-retention-verified-production-activation-and-restore-pending",
+      "lifecycleStatus": "deletion-retention-restore-repository-verified-production-activation-pending",
       "notes": [
         "contains-athlete-and-trainer-master-data",
         "server-runtime-enforces-same-organization-view-and-edit-boundaries",
         "deactivation-sets-server-side-lifecycle-timestamp",
         "repository-retention-deletes-personal-masterdata-and-group-memberships-after-12-calendar-months",
         "production-retention-activation-pending-athletes-schema-deploy",
-        "restore-reconciliation-pending-athletes-owned-deletion-markers"
+        "restore-reconciliation-repository-verified-production-activation-pending"
       ]
     },
     {
@@ -245,6 +246,14 @@
       "retentionEvidence": "verified"
     },
     {
+      "id": "appbasis_athletes_deletion",
+      "owner": "athletes",
+      "privacyClass": "minimal-delete-reconciliation-state",
+      "retentionPolicy": "35-days",
+      "deletionEvidence": "retained-by-policy",
+      "retentionEvidence": "verified"
+    },
+    {
       "id": "ulc_linz_membership",
       "owner": "ulc-linz-lifecycle",
       "privacyClass": "membership-lifecycle-data",
@@ -310,7 +319,7 @@
   "m5": {
     "deletionPolicy": "verified-current-scope",
     "retentionPolicy": "verified-current-scope",
-    "restoreReconciliation": "fail-closed-pending-athletes-restore-reconciliation",
+    "restoreReconciliation": "fail-closed-pending-athletes-production-activation",
     "unknownPersistentOwner": "fail-closed",
     "unknownPersistentTable": "fail-closed",
     "unknownRuntimeModule": "fail-closed",
