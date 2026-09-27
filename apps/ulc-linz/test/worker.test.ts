@@ -113,6 +113,40 @@ function runtime(
         isActive: true,
       };
     },
+    async updateTrainingGroup(organizationId, groupId, input) {
+      return {
+        id: groupId,
+        organizationId,
+        name: input.name,
+        shortName: input.shortName,
+        description: input.description,
+        isActive: true,
+        sortOrder: input.sortOrder,
+      };
+    },
+    async updateAthlete(organizationId, athleteId, input) {
+      return {
+        id: athleteId,
+        organizationId,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        birthYear: input.birthYear,
+        notes: input.notes,
+        isActive: true,
+      };
+    },
+    async updateTrainer(organizationId, trainerId, input) {
+      return {
+        id: trainerId,
+        organizationId,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone: input.phone,
+        email: input.email,
+        notes: input.notes,
+        isActive: true,
+      };
+    },
     async createAthleteGroupMembership(organizationId, input) {
       return {
         organizationId,
@@ -652,6 +686,163 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
     expect(response.status).toBe(400);
     expect(createCalls).toBe(0);
+  });
+
+  it("updates Stammdaten only after edit authorization with route id and server-derived organization", async () => {
+    let editCalls = 0;
+    let received: unknown = null;
+    const base = runtime();
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {},
+        async () => {},
+        undefined,
+        {
+          async assertViewAccess() {
+            return { organizationId: "verein-1" };
+          },
+          async assertEditAccess() {
+            editCalls += 1;
+            return { organizationId: "verein-1" };
+          },
+        },
+        {
+          ...base.athleteMasterdata,
+          async updateAthlete(organizationId, athleteId, input) {
+            received = { organizationId, athleteId, input };
+            return {
+              id: athleteId,
+              organizationId,
+              firstName: input.firstName,
+              lastName: input.lastName,
+              birthYear: input.birthYear,
+              notes: input.notes,
+              isActive: true,
+            };
+          },
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/athletes/masterdata/athletes/athlete-1/update",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            firstName: "Anna",
+            lastName: "Beispiel",
+            birthYear: null,
+            notes: "neu",
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(editCalls).toBe(1);
+    expect(received).toEqual({
+      organizationId: "verein-1",
+      athleteId: "athlete-1",
+      input: {
+        firstName: "Anna",
+        lastName: "Beispiel",
+        birthYear: null,
+        notes: "neu",
+      },
+    });
+  });
+
+  it("requires the complete replacement field set for Stammdaten updates", async () => {
+    let updateCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {},
+        async () => {},
+        undefined,
+        undefined,
+        {
+          ...base.athleteMasterdata,
+          async updateTrainer(organizationId, trainerId, input) {
+            updateCalls += 1;
+            return base.athleteMasterdata.updateTrainer(
+              organizationId,
+              trainerId,
+              input,
+            );
+          },
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/athletes/masterdata/trainers/trainer-1/update",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            firstName: "Max",
+            lastName: "Trainer",
+            email: null,
+            notes: null,
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(400);
+    expect(updateCalls).toBe(0);
+  });
+
+  it("returns not found when an inactive, missing or foreign Stammdaten update target is not mutable", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {},
+        async () => {},
+        undefined,
+        undefined,
+        {
+          ...base.athleteMasterdata,
+          async updateTrainingGroup() {
+            return null;
+          },
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/athletes/masterdata/training-groups/group-1/update",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            name: "U14",
+            shortName: "U14",
+            description: null,
+            sortOrder: 10,
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(404);
   });
 
   it("deactivates Stammdaten only through edit authorization and the derived organization", async () => {
