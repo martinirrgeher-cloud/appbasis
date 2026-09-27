@@ -146,6 +146,29 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         throw new Error("Kindertraining session id was not persisted.");
       }
 
+      await expect(
+        service.saveSession("verein-1", {
+          groupId: group.id,
+          sessionDate: "2026-09-27",
+          note: "parallel create",
+          expectedRevision: null,
+          attendance: [
+            { athleteId: anna.id, status: "absent" },
+            { athleteId: berta.id, status: "absent" },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(UlcTrainingSessionConflictError);
+
+      const afterParallelCreateConflict = await service.readSnapshot(
+        "verein-1",
+        group.id,
+        "2026-09-27",
+      );
+      expect(afterParallelCreateConflict.session?.revision).toBe(firstRevision);
+      expect(
+        afterParallelCreateConflict.participants.map((entry) => entry.status),
+      ).toEqual(["present", "excused"]);
+
       const second = await service.saveSession("verein-1", {
         groupId: group.id,
         sessionDate: "2026-09-27",
