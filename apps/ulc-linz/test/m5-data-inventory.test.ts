@@ -155,14 +155,17 @@ describe("ULC Linz M5 C/D data inventory", () => {
     ]);
     expect(appManifest.platformServices).toEqual(["identity", "permissions"]);
     expect(
-      inventory.persistentOwners.every(
-        (owner) => owner.lifecycleStatus === "verified-current-scope",
-      ),
+      inventory.persistentOwners
+        .filter((owner) => owner.id !== "athletes")
+        .every((owner) => owner.lifecycleStatus === "verified-current-scope"),
     ).toBe(true);
     expect(
       inventory.persistentOwners.find((owner) => owner.id === "athletes"),
     ).toMatchObject({
-      lifecycleStatus: "verified-current-scope",
+      lifecycleStatus: "deletion-retention-verified-restore-pending",
+      notes: expect.arrayContaining([
+        "restore-reconciliation-pending-athletes-owned-deletion-markers",
+      ]),
     });
 
     expect(inventory.objectStorage).toEqual({
@@ -172,7 +175,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(inventory.m5).toEqual({
       deletionPolicy: "verified-current-scope",
       retentionPolicy: "verified-current-scope",
-      restoreReconciliation: "verified-current-scope",
+      restoreReconciliation: "fail-closed-pending-athletes-restore-reconciliation",
       unknownPersistentOwner: "fail-closed",
       unknownPersistentTable: "fail-closed",
       unknownRuntimeModule: "fail-closed",
@@ -329,7 +332,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(lifecycleServiceSource).toContain("target.sourceRole === \"admin\"");
   });
 
-  it("pins member retention, audited exceptions, delete audit and restore reconciliation to confirmed policies", async () => {
+  it("pins deletion/retention while keeping athletes restore reconciliation fail-closed", async () => {
     const [
       scopePersistenceSource,
       retentionSource,
@@ -368,5 +371,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(restoreSource).toContain("WHERE purge_after >= $1");
     expect(restoreSource).toContain("reconcileUlcLinzRestoredDatabase");
     expect(restoreSource).toContain("restoredMembership.sourceRole !== marker.sourceRole");
+    expect(restoreSource).not.toContain("appbasis_athlete");
+    expect(restoreSource).not.toContain("appbasis_trainer");
   });
 });
