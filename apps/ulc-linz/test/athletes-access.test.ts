@@ -50,7 +50,7 @@ function service(input: {
   const runtimeRoleId = roleId(`ulc-linz:${sourceRole}`);
   const view = capabilityId("ulc-linz:module:athletes:view");
   const edit = capabilityId("ulc-linz:module:athletes:edit");
-  const sqlCalls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+  const sqlCalls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
   const sql: UlcLinzAthletesAccessSqlClient = {
     async unsafe(query, parameters) {
       sqlCalls.push({ query, parameters });
