@@ -1384,7 +1384,10 @@ function renderKindertrainingParticipants() {
 
 function markKindertrainingDirty() {
   if (!kindertrainingSnapshot) return;
-  markKindertrainingDirty();
+  showMessage(elements.kindertrainingSuccess, "");
+  if (elements.kindertrainingSaveState) {
+    elements.kindertrainingSaveState.textContent = "Ungespeicherte Änderungen";
+  }
 }
 
 function handleKindertrainingStatusClick(event) {
