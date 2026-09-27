@@ -354,7 +354,7 @@ test("M5-J rejects unexpected, accessor, symbol and inherited owner evidence", (
   );
 });
 
-test("M5-J accepts the renewed FC5 countdown scope after D4 control-plane reverification", async () => {
+test("M5-J keeps the old countdown evidence open after Stammdaten changes repository scope", async () => {
   const readiness = evaluateProductionReadiness(
     await deriveUlcLinzM5JProductionEvidence(
       repositoryRoot,
@@ -363,10 +363,10 @@ test("M5-J accepts the renewed FC5 countdown scope after D4 control-plane reveri
       { now: NOW },
     ),
   );
-  assert.equal(readiness.productionReady, true);
-  assert.equal(readiness.verifiedCount, 12);
-  for (const criterion of REQUIRED_PRODUCTION_READINESS_CRITERIA) {
-    assert.equal(criterionStatus(readiness, criterion.id), "verified", criterion.id);
+  assert.equal(readiness.productionReady, false);
+  assert.ok(readiness.verifiedCount < REQUIRED_PRODUCTION_READINESS_CRITERIA.length);
+  for (const id of ["rolesAndPermissions", "deletionConcept", "retention", "dataExport"]) {
+    assert.equal(criterionStatus(readiness, id), "open", id);
   }
 });
 
@@ -454,8 +454,8 @@ test("M5-J rejects restore evidence for an older lifecycle schema or reconciliat
     await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
   );
   assert.equal(readiness.productionReady, false);
-  assert.equal(criterionStatus(readiness, "deletionConcept"), "verified");
-  assert.equal(criterionStatus(readiness, "retention"), "verified");
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
+  assert.equal(criterionStatus(readiness, "retention"), "open");
   assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
 });
 
