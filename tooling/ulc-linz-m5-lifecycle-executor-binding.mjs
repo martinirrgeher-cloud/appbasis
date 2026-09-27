@@ -10,8 +10,8 @@ const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const CREDENTIAL_ADAPTER_PATH =
   "apps/ulc-linz/worker/protected-lifecycle-credential-operation.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
-const WORKFLOW_GIT_BLOB_SHA = "5ccfd1a424d39cf70ab045189fc3fc7db7e3675f";
-const EXECUTOR_GIT_BLOB_SHA = "ec04bee631073724e491a2d19267a964747e8b87";
+const WORKFLOW_GIT_BLOB_SHA = "4066ebb3f3485cfd94a2c8952f35f01802be84e1";
+const EXECUTOR_GIT_BLOB_SHA = "ba3e24784f52ccdfceda3cce5b694f912785ea2a";
 const CREDENTIAL_ADAPTER_GIT_BLOB_SHA =
   "6f71345941deaf23a5c73770132b965e379176a5";
 const GITHUB_API_BASE_URL = "https://api.github.com";
@@ -59,8 +59,6 @@ const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
   "x-appbasis-lifecycle-operation",
   "dev: { ip: '127.0.0.1', port: 8787 }",
   "transient technical administrator session that was removed before completion",
-  "purgedAthletes: result.result.purgedAthletes",
-  "purgedTrainerGroupMemberships: result.result.purgedTrainerGroupMemberships",
 ]);
 
 const REQUIRED_EXECUTOR_ANCHORS = Object.freeze([
@@ -85,9 +83,6 @@ const REQUIRED_EXECUTOR_ANCHORS = Object.freeze([
   "new PostgresPrincipalAccessAdministration(",
   "new PostgresPrincipalLifecycleAdministration(",
   "new PostgresUlcLinzScopePersistence(lifecycleClient)",
-  "new PostgresAthleteMasterdataRepository(",
-  '["public.appbasis_athlete", ["SELECT", "DELETE"]]',
-  '["public.appbasis_trainer_group_membership", ["SELECT", "DELETE"]]',
   "verifyLifecycleDatabaseCapabilities(connection.client)",
   "pg_catalog.has_table_privilege",
   "pg_catalog.has_sequence_privilege",
