@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PostgresUlcTrainingSessionRepository,
+  UlcTrainingSessionConflictError,
   UlcTrainingSessionPersistenceError,
 } from "../worker/training-session-postgres";
 
@@ -21,6 +22,7 @@ describe("ULC training session PostgreSQL persistence", () => {
               session_date: "2026-09-27",
               state: "scheduled",
               note: "Halle",
+              revision: "8",
               saved_attendance_count: 2,
               deleted_stale_attendance_count: 1,
             },
@@ -42,12 +44,14 @@ describe("ULC training session PostgreSQL persistence", () => {
         { athleteId: "athlete-1", status: "present" },
         { athleteId: "athlete-2", status: "excused" },
       ],
+      "7",
     );
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.query).toContain(
-      "ON CONFLICT (organization_id, module_id, group_id, session_date)",
-    );
+    expect(calls[0]?.query).toContain("updated_session AS");
+    expect(calls[0]?.query).toContain("xmin::text = $9::text");
+    expect(calls[0]?.query).toContain("inserted_session AS");
+    expect(calls[0]?.query).toContain("DO NOTHING");
     expect(calls[0]?.query).toContain("saved_attendance AS");
     expect(calls[0]?.query).toContain("deleted_stale_attendance AS");
     expect(calls[0]?.parameters?.[0]).toBe("session-proposed");
@@ -57,6 +61,7 @@ describe("ULC training session PostgreSQL persistence", () => {
         { athlete_id: "athlete-2", status: "excused" },
       ]),
     );
+    expect(calls[0]?.parameters?.[8]).toBe("7");
     expect(result).toEqual({
       session: {
         id: "session-existing",
@@ -67,6 +72,7 @@ describe("ULC training session PostgreSQL persistence", () => {
         state: "scheduled",
         note: "Halle",
       },
+      revision: "8",
       attendance: [
         {
           organizationId: "verein-1",
@@ -100,6 +106,7 @@ describe("ULC training session PostgreSQL persistence", () => {
                 session_date: "2026-09-27",
                 state: "scheduled",
                 note: null,
+                revision: "11",
               },
             ];
           }
@@ -126,7 +133,37 @@ describe("ULC training session PostgreSQL persistence", () => {
     expect(queries[0]).toContain("organization_id = $1");
     expect(queries[0]).toContain("module_id = $2");
     expect(queries[1]).toContain("organization_id = $1");
+    expect(result?.revision).toBe("11");
     expect(result?.attendance[0]?.athleteId).toBe("athlete-1");
+  });
+
+  it("reports a stale revision without touching attendance", async () => {
+    const calls: string[] = [];
+    const repository = new PostgresUlcTrainingSessionRepository(
+      {
+        async unsafe(query) {
+          calls.push(query);
+          return [];
+        },
+      },
+      () => "session-proposed",
+    );
+
+    await expect(
+      repository.saveSession(
+        "verein-1",
+        {
+          moduleId: "kindertraining",
+          groupId: "group-1",
+          sessionDate: "2026-09-27",
+        },
+        [{ athleteId: "athlete-1", status: "present" }],
+        "7",
+      ),
+    ).rejects.toBeInstanceOf(UlcTrainingSessionConflictError);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("saved_session AS MATERIALIZED");
   });
 
   it("fails closed when the database returns a foreign organization", async () => {
