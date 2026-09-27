@@ -297,6 +297,71 @@ async function athletesMasterdataMutationResponse(
       return Response.json({ membership }, { status: 201 });
     }
 
+    const update = /^(athletes|trainers|training-groups)\/([^/]+)\/update$/.exec(route);
+    if (update !== null) {
+      const id = decodePathIdentifier(update[2]);
+
+      if (update[1] === "athletes") {
+        const body = await athletesJsonBody(
+          request,
+          ["firstName", "lastName", "birthYear", "notes"],
+          ["firstName", "lastName", "birthYear", "notes"],
+        );
+        const athlete = await runtime.athleteMasterdata.updateAthlete(
+          access.organizationId,
+          id,
+          {
+            firstName: body.firstName as string,
+            lastName: body.lastName as string,
+            birthYear: body.birthYear as number | null,
+            notes: body.notes as string | null,
+          },
+        );
+        if (athlete === null) return athletesNotFound();
+        return Response.json({ athlete });
+      }
+
+      if (update[1] === "trainers") {
+        const body = await athletesJsonBody(
+          request,
+          ["firstName", "lastName", "phone", "email", "notes"],
+          ["firstName", "lastName", "phone", "email", "notes"],
+        );
+        const trainer = await runtime.athleteMasterdata.updateTrainer(
+          access.organizationId,
+          id,
+          {
+            firstName: body.firstName as string,
+            lastName: body.lastName as string,
+            phone: body.phone as string | null,
+            email: body.email as string | null,
+            notes: body.notes as string | null,
+          },
+        );
+        if (trainer === null) return athletesNotFound();
+        return Response.json({ trainer });
+      }
+
+      const body = await athletesJsonBody(
+        request,
+        ["name", "shortName", "description", "sortOrder"],
+        ["name", "shortName", "description", "sortOrder"],
+      );
+      const trainingGroup =
+        await runtime.athleteMasterdata.updateTrainingGroup(
+          access.organizationId,
+          id,
+          {
+            name: body.name as string,
+            shortName: body.shortName as string | null,
+            description: body.description as string | null,
+            sortOrder: body.sortOrder as number,
+          },
+        );
+      if (trainingGroup === null) return athletesNotFound();
+      return Response.json({ trainingGroup });
+    }
+
     const deactivate = /^(athletes|trainers)\/([^/]+)\/deactivate$/.exec(route);
     if (deactivate !== null) {
       const id = decodePathIdentifier(deactivate[2]);
@@ -331,6 +396,7 @@ class InvalidAthletesRequestError extends Error {}
 async function athletesJsonBody(
   request: Request,
   allowedFields: readonly string[],
+  requiredFields: readonly string[] = [],
 ): Promise<Record<string, unknown>> {
   let value: unknown;
   try {
@@ -349,6 +415,9 @@ async function athletesJsonBody(
   const body = value as Record<string, unknown>;
   if (
     Object.keys(body).some((key) => !allowedFields.includes(key)) ||
+    requiredFields.some(
+      (key) => !Object.prototype.hasOwnProperty.call(body, key),
+    ) ||
     Object.getOwnPropertySymbols(body).length !== 0
   ) {
     throw new InvalidAthletesRequestError();
