@@ -466,16 +466,20 @@ Abnahme für ULC-E2C:
 - die Lifecycle-Regel darf keine Identity-/Permissions- oder
   `ulc-linz-lifecycle`-Tabellen direkt verändern; Account-Lifecycle und
   Stammdaten-Lifecycle bleiben getrennte Owner-Verträge;
-- die ULC-Dateninventur und Export-/Lifecycle-Gates werden erst dann vom
-  E2B-Fail-closed-Status hochgestuft, wenn Runtime, Löschung und Retention
-  automatisiert bewiesen sind;
+- die ULC-Dateninventur und das Repository-Lifecycle-Gate werden erst dann
+  vom E2B-Fail-closed-Status hochgestuft, wenn Runtime, Löschung und Retention
+  automatisiert bewiesen sind; die normale Datenexport-Evidence bleibt für
+  personenbezogene Stammdaten ausdrücklich fail-closed, weil deren
+  Subject-/Account-Zuordnung und Export erst in einem späteren Import/Export-Slice
+  umgesetzt werden;
 - keine Preview-/Produktionsmigration, kein Providerwrite, kein Deployment und
   keine Revalidierung alter Production-Evidence in E2C.
 
-Kleinstes Arbeitspaket ist **E2C-A: kanonische serverseitige
-Organisations-/Capability-Grenze plus read-only Stammdaten-API**. Danach folgen
-Edit-Mutationen und der Lifecycle innerhalb desselben E2C-Gates; Codex wird
-sparsam erst am Abschluss-Gate eingesetzt.
+E2C-A (serverseitige Organisations-/Capability-Grenze und Read-API),
+E2C-B (autorisierte Stammdaten-Mutationen) und E2C-C (Deaktivierung plus
+12-Monats-Retention im geschützten Lifecycle-Pfad) sind implementiert. Vor dem
+Abschluss folgen vollständige CI, ChatGPT Diff-/Architektur-/Security-Prüfung
+und erst danach der eine finale Codex-Review auf Exact Head.
 
 ## Architektur- und Sicherheitsgrenzen
 
