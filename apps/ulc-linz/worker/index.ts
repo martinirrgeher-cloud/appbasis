@@ -1,4 +1,7 @@
-import { ATHLETE_CAPABILITIES } from "@appbasis/athletes";
+import {
+  ATHLETE_CAPABILITIES,
+  MasterdataValidationError,
+} from "@appbasis/athletes";
 import {
   COUNTDOWN_CAPABILITIES,
   createCountdownTimeline,
@@ -83,6 +86,14 @@ export function createGeneratedWorker(
           response = await athletesModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes/masterdata") {
           response = await athletesMasterdataResponse(request, runtime, url);
+        } else if (
+          url.pathname.startsWith("/api/modules/athletes/masterdata/")
+        ) {
+          response = await athletesMasterdataMutationResponse(
+            request,
+            runtime,
+            url,
+          );
         } else {
           const app = createGeneratedApp({
             identity: runtime.identity,
@@ -155,6 +166,237 @@ async function athletesMasterdataResponse(
     access.organizationId,
   );
   return Response.json({ masterdata });
+}
+
+async function athletesMasterdataMutationResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return athletesMutationMethodNotAllowed();
+  }
+
+  const access = await authorizeAthletesRequest(request, runtime, url, "edit");
+  if (access instanceof Response) return access;
+
+  const base = "/api/modules/athletes/masterdata/";
+  const route = url.pathname.slice(base.length);
+
+  try {
+    if (route === "training-groups") {
+      const body = await athletesJsonBody(request, [
+        "name",
+        "shortName",
+        "description",
+        "sortOrder",
+      ]);
+      const trainingGroup = await runtime.athleteMasterdata.createTrainingGroup(
+        access.organizationId,
+        {
+          name: body.name as string,
+          shortName: body.shortName as string | null | undefined,
+          description: body.description as string | null | undefined,
+          sortOrder: body.sortOrder as number | undefined,
+        },
+      );
+      return Response.json({ trainingGroup }, { status: 201 });
+    }
+
+    if (route === "athletes") {
+      const body = await athletesJsonBody(request, [
+        "firstName",
+        "lastName",
+        "birthYear",
+        "notes",
+      ]);
+      const athlete = await runtime.athleteMasterdata.createAthlete(
+        access.organizationId,
+        {
+          firstName: body.firstName as string,
+          lastName: body.lastName as string,
+          birthYear: body.birthYear as number | null | undefined,
+          notes: body.notes as string | null | undefined,
+        },
+      );
+      return Response.json({ athlete }, { status: 201 });
+    }
+
+    if (route === "trainers") {
+      const body = await athletesJsonBody(request, [
+        "firstName",
+        "lastName",
+        "phone",
+        "email",
+        "notes",
+      ]);
+      const trainer = await runtime.athleteMasterdata.createTrainer(
+        access.organizationId,
+        {
+          firstName: body.firstName as string,
+          lastName: body.lastName as string,
+          phone: body.phone as string | null | undefined,
+          email: body.email as string | null | undefined,
+          notes: body.notes as string | null | undefined,
+        },
+      );
+      return Response.json({ trainer }, { status: 201 });
+    }
+
+    if (route === "athlete-group-memberships") {
+      const body = await athletesJsonBody(request, [
+        "athleteId",
+        "groupId",
+        "startedOn",
+        "endedOn",
+      ]);
+      const membership =
+        await runtime.athleteMasterdata.createAthleteGroupMembership(
+          access.organizationId,
+          {
+            athleteId: body.athleteId as string,
+            groupId: body.groupId as string,
+            startedOn: body.startedOn as string,
+            endedOn: body.endedOn as string | null | undefined,
+          },
+        );
+      return Response.json({ membership }, { status: 201 });
+    }
+
+    if (route === "trainer-group-memberships") {
+      const body = await athletesJsonBody(request, [
+        "trainerId",
+        "groupId",
+      ]);
+      const membership =
+        await runtime.athleteMasterdata.createTrainerGroupMembership(
+          access.organizationId,
+          {
+            trainerId: body.trainerId as string,
+            groupId: body.groupId as string,
+          },
+        );
+      return Response.json({ membership }, { status: 201 });
+    }
+
+    const deactivate = /^(athletes|trainers)\/([^/]+)\/deactivate$/.exec(route);
+    if (deactivate !== null) {
+      const id = decodePathIdentifier(deactivate[2]);
+      const changed =
+        deactivate[1] === "athletes"
+          ? await runtime.athleteMasterdata.deactivateAthlete(
+              access.organizationId,
+              id,
+            )
+          : await runtime.athleteMasterdata.deactivateTrainer(
+              access.organizationId,
+              id,
+            );
+      if (!changed) return athletesNotFound();
+      return Response.json({ deactivated: true });
+    }
+
+    return athletesNotFound();
+  } catch (error) {
+    if (error instanceof MasterdataValidationError) {
+      return invalidAthletesMasterdata();
+    }
+    if (error instanceof InvalidAthletesRequestError) {
+      return invalidAthletesMasterdata();
+    }
+    throw error;
+  }
+}
+
+class InvalidAthletesRequestError extends Error {}
+
+async function athletesJsonBody(
+  request: Request,
+  allowedFields: readonly string[],
+): Promise<Record<string, unknown>> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    throw new InvalidAthletesRequestError();
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new InvalidAthletesRequestError();
+  }
+  const body = value as Record<string, unknown>;
+  if (
+    Object.keys(body).some((key) => !allowedFields.includes(key)) ||
+    Object.getOwnPropertySymbols(body).length !== 0
+  ) {
+    throw new InvalidAthletesRequestError();
+  }
+  return body;
+}
+
+function decodePathIdentifier(value: string | undefined): string {
+  if (value === undefined) throw new InvalidAthletesRequestError();
+  try {
+    const decoded = decodeURIComponent(value);
+    if (
+      decoded.length === 0 ||
+      decoded.length > 200 ||
+      decoded.trim() !== decoded ||
+      decoded.includes("/")
+    ) {
+      throw new InvalidAthletesRequestError();
+    }
+    return decoded;
+  } catch (error) {
+    if (error instanceof InvalidAthletesRequestError) throw error;
+    throw new InvalidAthletesRequestError();
+  }
+}
+
+function invalidAthletesMasterdata(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "INVALID_MASTERDATA",
+        message: "The Stammdaten input is invalid.",
+      },
+    },
+    { status: 400 },
+  );
+}
+
+function athletesNotFound(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "MASTERDATA_NOT_FOUND",
+        message: "The Stammdaten resource was not found.",
+      },
+    },
+    { status: 404 },
+  );
+}
+
+function athletesMutationMethodNotAllowed(): Response {
+  return new Response(
+    JSON.stringify({
+      error: {
+        code: "METHOD_NOT_ALLOWED",
+        message: "Only POST is supported for this Stammdaten endpoint.",
+      },
+    }),
+    {
+      status: 405,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        allow: "POST",
+      },
+    },
+  );
 }
 
 async function authorizeAthletesRequest(
