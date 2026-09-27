@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   cp,
   mkdtemp,
@@ -14,6 +15,7 @@ import test from "node:test";
 
 import {
   createCatalogContract,
+  loadBaselineCatalogExceptionPaths,
   loadModuleUpdateMigrationExecutionPlan,
   ModuleUpdateMigrationConfigurationError,
 } from "./module-update-migration-executor.mjs";
@@ -63,7 +65,7 @@ test("ULC-E2A Stammdaten migration stays inside the FC6 target DDL contract", as
   );
 });
 
-test("ULC-E2B accepts only existing non-structural access-control DDL in the baseline contract", async () => {
+test("ULC-E2B accepts unsupported historical baseline SQL only from an exact reviewed digest", async (t) => {
   const relativePath =
     "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql";
   const sql = await readFile(join(repositoryRoot, relativePath), "utf8");
@@ -77,39 +79,83 @@ test("ULC-E2B accepts only existing non-structural access-control DDL in the bas
 
   assert.doesNotThrow(() =>
     createCatalogContract(plan, "baseline", {
-      allowExistingNonStructuralAccessControl: true,
+      allowedUnsupportedMigrationPaths: new Set([relativePath]),
     }),
   );
-
   assert.throws(
     () => createCatalogContract(plan, "target"),
     /statement without a verifiable catalog marker/,
   );
+  assert.throws(
+    () =>
+      createCatalogContract(
+        [
+          {
+            ownerId: "baseline",
+            relativePath: "unsafe.sql",
+            statements: [
+              "DO $appbasis$ BEGIN SELECT rewrite_existing_data() INTO result; END $appbasis$;",
+            ],
+          },
+        ],
+        "baseline",
+        { allowedUnsupportedMigrationPaths: new Set([relativePath]) },
+      ),
+    /statement without a verifiable catalog marker/,
+  );
 
-  for (const unsafeStatement of [
-    "DO $appbasis$ BEGIN CREATE TABLE hidden_target (id text); END $appbasis$;",
-    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN CREATE SEQUENCE hidden_seq; END IF; END $appbasis$;",
-    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN ALTER SEQUENCE hidden_seq RESTART WITH 2; END IF; END $appbasis$;",
-    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN EXECUTE 'CREATE TABLE hidden_dynamic (id text)'; END IF; END $appbasis$;",
-    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN CALL rewrite_existing_data(); END IF; END $appbasis$;",
-    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN PERFORM rewrite_existing_data(); END IF; END $appbasis$;",
-  ]) {
-    assert.throws(
-      () =>
-        createCatalogContract(
-          [
-            {
-              ownerId: "baseline",
-              relativePath: "unsafe.sql",
-              statements: [unsafeStatement],
-            },
-          ],
-          "baseline",
-          { allowExistingNonStructuralAccessControl: true },
-        ),
-      /statement without a verifiable catalog marker/,
-    );
-  }
+  const root = await mkdtemp(join(tmpdir(), "appbasis-fc6-baseline-exception-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "apps", "ulc-linz", "migrations"), {
+    recursive: true,
+  });
+  await writeFile(join(root, relativePath), sql);
+  const sha256 = createHash("sha256").update(sql, "utf8").digest("hex");
+  await writeFile(
+    join(
+      root,
+      "apps",
+      "ulc-linz",
+      "appbasis.database-baseline-catalog-exceptions.json",
+    ),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        application: "ulc-linz",
+        exceptions: [
+          {
+            migration: relativePath,
+            sha256,
+            classification: "historical-access-control-only",
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  const allowed = await loadBaselineCatalogExceptionPaths({
+    repositoryRoot: root,
+    appId: "ulc-linz",
+    baselinePlan: plan,
+    targetPlan: [],
+  });
+  assert.deepEqual([...allowed], [relativePath]);
+
+  await writeFile(
+    join(root, relativePath),
+    `${sql}\n-- drift that requires a new explicit review\n`,
+  );
+  await assert.rejects(
+    loadBaselineCatalogExceptionPaths({
+      repositoryRoot: root,
+      appId: "ulc-linz",
+      baselinePlan: plan,
+      targetPlan: [],
+    }),
+    /drifted from its reviewed digest/,
+  );
 });
 
 test("FC6-B derives verifiable catalog markers from quoted PostgreSQL DDL", () => {
