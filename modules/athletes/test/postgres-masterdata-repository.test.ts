@@ -4,7 +4,7 @@ import { PostgresAthleteMasterdataRepository } from '../src/postgres-masterdata-
 
 describe('PostgresAthleteMasterdataRepository', () => {
   it('reads every Stammdaten collection through the same organization boundary', async () => {
-    const calls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
     const rows = [
       [
         {
@@ -118,7 +118,7 @@ describe('PostgresAthleteMasterdataRepository', () => {
 
 
   it('creates athletes with a server-generated id and server-provided organization', async () => {
-    const calls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
     const repository = new PostgresAthleteMasterdataRepository(
       {
         async unsafe(query, parameters) {
@@ -162,7 +162,7 @@ describe('PostgresAthleteMasterdataRepository', () => {
   });
 
   it('creates group memberships only through same-organization active references', async () => {
-    const calls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
     const repository = new PostgresAthleteMasterdataRepository({
       async unsafe(query, parameters) {
         calls.push({ query, parameters });
@@ -220,7 +220,7 @@ describe('PostgresAthleteMasterdataRepository', () => {
   });
 
   it('deactivates personal masterdata only inside the requested organization', async () => {
-    const calls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
     const repository = new PostgresAthleteMasterdataRepository({
       async unsafe(query, parameters) {
         calls.push({ query, parameters });
@@ -238,7 +238,7 @@ describe('PostgresAthleteMasterdataRepository', () => {
   });
 
   it('purges only deactivated personal masterdata after the 12-month lifecycle ceiling', async () => {
-    const calls: Array<{ query: string; parameters?: readonly unknown[] }> = [];
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
     const repository = new PostgresAthleteMasterdataRepository({
       async unsafe(query, parameters) {
         calls.push({ query, parameters });
