@@ -1273,7 +1273,7 @@ function isKindertrainingSnapshot(snapshot, groupId, sessionDate) {
     snapshot.session !== null &&
     (typeof snapshot.session?.id !== "string" ||
       typeof snapshot.session?.revision !== "string" ||
-      !/^\d+$/.test(snapshot.session.revision) ||
+      !/^\\d+$/.test(snapshot.session.revision) ||
       !["scheduled", "cancelled"].includes(snapshot.session?.state) ||
       (snapshot.session?.note !== null &&
         typeof snapshot.session?.note !== "string"))
