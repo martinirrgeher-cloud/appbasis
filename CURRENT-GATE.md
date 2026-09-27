@@ -9,21 +9,18 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E2D – athletes-eigene Löschmarker und Restore-Reconciliation.**
+**ULC-E3A – erste echte Stammdaten-Oberfläche.**
 
-ULC-E2C ist abgeschlossen. Der aktuelle Slice schließt jetzt genau die im
-E2C-Review bewusst abgegrenzte Restore-Lücke: physisch gelöschte Athleten- und
-Trainerstammdaten erhalten moduleigene, minimalistische Löschmarker mit
-35-Tage-Retention. Ein Restore kann diese Marker aus einer autoritativen neueren
-Datenbank lesen und die Löschung in einer älteren wiederhergestellten Datenbank
-deterministisch erneut anwenden, ohne Identity-/Permissions- oder
-`ulc-linz-lifecycle`-Tabellen zu verändern.
+ULC-E2D ist abgeschlossen. Der aktuelle Produkt-Slice macht das bereits
+serverseitig abgesicherte Stammdatenmodul erstmals in der ULC-App sichtbar und
+nutzbar. Die mobile Oberfläche erhält einen eigenen Bereich **Stammdaten** mit
+Listen und Anlegen für Athleten, Trainer und Trainingsgruppen. Sie konsumiert
+ausschließlich die bestehende E2C-Runtime/API; Berechtigungen und
+Organisationsgrenzen bleiben unverändert serverseitig erzwungen.
 
-E2D bleibt zunächst vollständig repository-/testseitig. Die produktive
-Aktivierung des neuen Athletes-Schemas, der Stammdaten-Retention und des
-Restore-Replays erfolgt erst in einem getrennten Deployment-/Migrationsgate mit
-ausdrücklicher Freigabe. UI, Providerwrites und Produktionsmutationen bleiben in
-E2D ausgeschlossen.
+Gruppenzuordnungen, Deaktivierung, Bearbeiten bestehender Datensätze,
+Import/Export, Preview-/Produktionsmigration und Deployment bleiben in E3A
+außerhalb des Scopes.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -512,7 +509,7 @@ Organisations-/Capability-Grenzen, Deaktivierung und die moduleigene
 12-Monats-Retention sind implementiert und isoliert bewiesen. Produktive
 Retention-Aktivierung und Restore-Reconciliation bleiben getrennt.
 
-## Aktueller Gate-Scope: ULC-E2D
+## Abgeschlossener Gate-Scope: ULC-E2D
 
 Abnahme für ULC-E2D:
 
@@ -555,6 +552,40 @@ Restore-Fail-closed-Vertrags oder eine vorzeitige Produktionsbindung.
 Nicht gate-blockierend bleiben UI, Import/Export, Realtime, Edit-Locks,
 Benutzer-/Eltern-Verknüpfungen und die spätere Produktionsmigration.
 
+ULC-E2D ist auf `main` abgeschlossen. Athletes-eigene Löschmarker,
+35-Tage-Retention und organisationsgebundenes Restore-Replay sind auf dem
+Merge-Commit `7e0c3426146ca8d3b275ed4e0500ed4d64a7a588` durch Pre- und
+Post-Merge-CI bestätigt. Eine Produktionsaktivierung wurde nicht durchgeführt.
+
+## Aktueller Gate-Scope: ULC-E3A
+
+Abnahme für ULC-E3A:
+
+- die mobile Hauptnavigation erhält einen Bereich **Stammdaten**, der nur nach
+  erfolgreicher serverseitiger `athletes:view`-Prüfung bedienbar wird;
+- das Dashboard zeigt Stammdaten als echten verfügbaren Vereinsbereich, ohne
+  andere noch nicht migrierte Altmodule vorzutäuschen;
+- Stammdaten laden ausschließlich über
+  `GET /api/modules/athletes/masterdata`;
+- die Oberfläche zeigt Athleten, Trainer und Trainingsgruppen getrennt und
+  mobile-first an;
+- Athleten, Trainer und Trainingsgruppen können über die bestehenden
+  serverseitig geschützten E2C-POST-Routen angelegt werden;
+- nach erfolgreicher Mutation wird der aktuelle Organisations-Snapshot neu
+  geladen; Clientdaten enthalten keine `organizationId`;
+- Rendering personenbezogener Daten erfolgt über DOM-`textContent`/
+  Element-Erzeugung, nicht über untrusted `innerHTML`;
+- fehlende View-/Edit-Berechtigung, ungültige Eingaben und API-Fehler bleiben
+  verständlich sichtbar und umgehen keine Servergrenze;
+- Countdown, Login, Passwortwechsel und bestehende App-Shell bleiben
+  funktional unverändert;
+- noch keine Gruppenzuordnungs-UI, kein Bearbeiten/Deaktivieren bestehender
+  Datensätze, keine Preview-/Produktionsmigration, kein Providerwrite und kein
+  Deployment.
+
+Nach E3A folgt E3B für Gruppenzuordnungen und Lebenszyklus-Aktionen in der
+Stammdaten-UI.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
@@ -573,29 +604,26 @@ Benutzer-/Eltern-Verknüpfungen und die spätere Produktionsmigration.
 
 ## Scope-Freeze für Review und Implementierung
 
-Die folgenden E2C-Findings bleiben historische Abschlussgrenzen; für E2D gilt zusätzlich der oben definierte E2D-Scope-Freeze:
+Ein Finding blockiert den aktuellen ULC-E3A-Pfad, wenn mindestens eines gilt:
 
-- Organisation wird aus Clientdaten statt aus der authentifizierten
-  ULC-Mitgliedschaft übernommen oder eine SQL-Abfrage kann organisationsfremde
-  Stammdaten lesen bzw. verändern;
-- `athletes:view`/`athletes:edit`, exakte Runtime-Rolle, aktive Mitgliedschaft
-  oder bestehende Revokes werden nicht serverseitig erzwungen;
-- Athlete-/Parent-Rollen erhalten unbeabsichtigt organisationsweiten
-  Stammdatenzugriff;
-- Mutationen umgehen den bestehenden `@appbasis/athletes`-Domänenvertrag oder
-  können gruppenübergreifende/fremdorganisatorische Referenzen erzeugen;
-- Retention kann aktive Datensätze löschen, startet ohne explizite
-  Deaktivierung oder verändert Tabellen fremder Owner;
-- die bisher fail-closed klassifizierte Stammdaten-Privacy-Evidence wird ohne
-  ausführbaren Lösch-/Retention-Nachweis auf `verified` angehoben;
-- der bestehende Produktions-Lifecycle oder seine Preflight-Prüfung verlangt
-  vor dem ausdrücklich getrennten Athletes-Produktionsdeployment bereits
-  Athletes-Tabellen, Athletes-Grants oder andere noch nicht deployte Ressourcen;
-- Preview, Produktion oder Provider werden in E2C mutiert.
+- der Browser kann eine Organisation oder andere Ownership-Grenze an eine
+  Stammdatenmutation übergeben;
+- UI-Sichtbarkeit wird als Ersatz für die bestehende serverseitige
+  `athletes:view`-/`athletes:edit`-Prüfung behandelt;
+- personenbezogene Stammdaten werden über untrusted `innerHTML` oder eine
+  vergleichbare HTML-Injektion gerendert;
+- Stammdaten werden aus einer anderen Quelle als dem bestehenden
+  organisationsgebundenen E2C-Snapshot geladen oder an einer parallelen
+  Validierungs-/Persistenzlogik vorbei geschrieben;
+- ein Fehler im Stammdatenbereich blockiert Login, Countdown oder die übrige
+  App-Shell;
+- E3A verändert Datenbankschema, Backend-Authorization, Lifecycle,
+  Privacy-Evidence, Preview, Produktion oder Provider.
 
-Nicht gate-blockierend sind Stammdaten-UI, Realtime, Edit-Locks,
-Benutzerkonto-/Eltern-Kind-Verknüpfungen, Import/Export und weitere
-ULC-Fachmodule; sie folgen in getrennten Vertical Slices.
+Nicht gate-blockierend sind Gruppenzuordnungen, Bearbeiten/Deaktivieren
+bestehender Stammdaten, Import/Export, Realtime, Edit-Locks,
+Benutzerkonto-/Eltern-Kind-Verknüpfungen und weitere ULC-Fachmodule; sie
+folgen in getrennten Vertical Slices.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 
@@ -649,7 +677,8 @@ Der neue Produktpfad ist:
 
 **ULC-E1 Vereins-App-Shell & Dashboard → ULC-E2A Stammdaten-Fundament →
 ULC-E2B kontrollierte ULC-Installation → ULC-E2C Stammdaten-Runtime/API →
-ULC-E2D athletes-eigene Restore-Reconciliation.**
+ULC-E2D athletes-eigene Restore-Reconciliation →
+ULC-E3A Stammdaten-UI → ULC-E3B Gruppenzuordnungen/Lifecycle-UI.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**

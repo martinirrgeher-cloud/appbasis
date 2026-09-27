@@ -184,14 +184,51 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
   });
 
-  it("opens the authenticated app on the dashboard and gates countdown navigation on server-backed module access", () => {
+  it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" disabled');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshAppAvailability();");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.countdownQuickAction.disabled = !moduleReady;");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("control.disabled = !moduleReady;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.countdownQuickAction.disabled = !countdownReady;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.masterdataQuickAction.disabled = !masterdataReady;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '(section === "masterdata" && masterdataReady)',
+    );
+  });
+
+  it("ships the E3A Stammdaten UI on the existing server-authorized API contract", () => {
+    expect(ULC_LINZ_APP_HTML).toContain("<h1>Stammdaten</h1>");
+    expect(ULC_LINZ_APP_HTML).toContain('data-masterdata-tab="athletes"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-masterdata-tab="trainers"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-masterdata-tab="groups"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="athlete-form"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-form"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="group-form"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'requestJson("/api/modules/athletes")',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'requestJson("/api/modules/athletes/masterdata")',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/masterdata/athletes"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/masterdata/trainers"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/masterdata/training-groups"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("document.createElement");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(".textContent = description.title");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
   });
 
   it("ships the countdown controls and domain-backed plan integration in static assets", () => {

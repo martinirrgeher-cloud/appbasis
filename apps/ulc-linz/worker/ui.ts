@@ -49,6 +49,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
       <div id="app-view" hidden>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <button class="app-nav__link is-active" type="button" data-nav-view="home">Start</button>
+          <button class="app-nav__link" type="button" data-nav-view="masterdata" disabled>Stammdaten</button>
           <button class="app-nav__link" type="button" data-nav-view="countdown" disabled>Countdown</button>
           <button class="app-nav__link" type="button" data-nav-view="settings" disabled>Einstellungen</button>
         </nav>
@@ -64,6 +65,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <section class="dashboard-grid" aria-label="ULC Linz Funktionen">
               <article class="card dashboard-card dashboard-card--primary">
                 <div>
+                  <p class="eyebrow">Organisation</p>
+                  <h2>Stammdaten</h2>
+                  <p>Athleten, Trainer und Trainingsgruppen zentral verwalten.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="masterdata-quick-action" type="button" data-open-view="masterdata" disabled>Stammdaten öffnen</button>
+                <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card">
+                <div>
                   <p class="eyebrow">Nützliches</p>
                   <h2>Intervall-Countdown</h2>
                   <p>Belastungs- und Pausenintervalle direkt am Smartphone steuern.</p>
@@ -76,10 +87,81 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Vereins-App</p>
                   <h2>Weitere Bereiche folgen</h2>
-                  <p>Die bestehenden ULC-Funktionen werden jetzt schrittweise und kontrolliert in AppBasis übernommen.</p>
+                  <p>Die bestehenden ULC-Funktionen werden schrittweise und kontrolliert in AppBasis übernommen.</p>
                 </div>
-                <span class="dashboard-status">ULC-E1 · App-Shell</span>
+                <span class="dashboard-status">Stammdaten · E3A</span>
               </article>
+            </section>
+          </section>
+
+          <section class="app-section" data-app-section="masterdata" id="masterdata" hidden>
+            <section class="hero">
+              <p class="eyebrow">Organisation</p>
+              <h1>Stammdaten</h1>
+              <p class="summary">Athleten, Trainer und Trainingsgruppen deiner Organisation.</p>
+            </section>
+
+            <p class="message message--error" id="masterdata-message" role="alert" hidden></p>
+
+            <div class="masterdata-tabs" role="tablist" aria-label="Stammdatenbereiche">
+              <button class="masterdata-tab is-active" type="button" role="tab" aria-selected="true" data-masterdata-tab="athletes">Athleten</button>
+              <button class="masterdata-tab" type="button" role="tab" aria-selected="false" data-masterdata-tab="trainers">Trainer</button>
+              <button class="masterdata-tab" type="button" role="tab" aria-selected="false" data-masterdata-tab="groups">Gruppen</button>
+            </div>
+
+            <section class="masterdata-panel" data-masterdata-panel="athletes">
+              <div class="section-heading">
+                <div><p class="eyebrow">Athleten</p><h2>Aktuelle Athleten</h2></div>
+                <span id="athlete-count">0</span>
+              </div>
+              <div class="masterdata-list" id="athlete-list" aria-live="polite"></div>
+              <form class="card masterdata-form" id="athlete-form">
+                <div class="section-heading"><div><p class="eyebrow">Neu</p><h2>Athlet anlegen</h2></div></div>
+                <div class="settings-grid">
+                  <label>Vorname<input id="athlete-first-name" maxlength="80" required /></label>
+                  <label>Nachname<input id="athlete-last-name" maxlength="80" required /></label>
+                  <label>Jahrgang<input id="athlete-birth-year" type="number" min="1900" max="2100" inputmode="numeric" /></label>
+                  <label>Notiz<input id="athlete-notes" maxlength="3000" /></label>
+                </div>
+                <button class="button button--primary" type="submit">Athlet anlegen</button>
+              </form>
+            </section>
+
+            <section class="masterdata-panel" data-masterdata-panel="trainers" hidden>
+              <div class="section-heading">
+                <div><p class="eyebrow">Trainer</p><h2>Aktuelle Trainer</h2></div>
+                <span id="trainer-count">0</span>
+              </div>
+              <div class="masterdata-list" id="trainer-list" aria-live="polite"></div>
+              <form class="card masterdata-form" id="trainer-form">
+                <div class="section-heading"><div><p class="eyebrow">Neu</p><h2>Trainer anlegen</h2></div></div>
+                <div class="settings-grid">
+                  <label>Vorname<input id="trainer-first-name" maxlength="80" required /></label>
+                  <label>Nachname<input id="trainer-last-name" maxlength="80" required /></label>
+                  <label>Telefon<input id="trainer-phone" maxlength="80" inputmode="tel" /></label>
+                  <label>E-Mail<input id="trainer-email" type="email" maxlength="320" /></label>
+                  <label>Notiz<input id="trainer-notes" maxlength="3000" /></label>
+                </div>
+                <button class="button button--primary" type="submit">Trainer anlegen</button>
+              </form>
+            </section>
+
+            <section class="masterdata-panel" data-masterdata-panel="groups" hidden>
+              <div class="section-heading">
+                <div><p class="eyebrow">Trainingsgruppen</p><h2>Aktuelle Gruppen</h2></div>
+                <span id="group-count">0</span>
+              </div>
+              <div class="masterdata-list" id="group-list" aria-live="polite"></div>
+              <form class="card masterdata-form" id="group-form">
+                <div class="section-heading"><div><p class="eyebrow">Neu</p><h2>Trainingsgruppe anlegen</h2></div></div>
+                <div class="settings-grid">
+                  <label>Name<input id="group-name" minlength="2" maxlength="100" required /></label>
+                  <label>Kurzname<input id="group-short-name" maxlength="20" /></label>
+                  <label>Beschreibung<input id="group-description" maxlength="1000" /></label>
+                  <label>Sortierung<input id="group-sort-order" type="number" min="0" max="10000" value="100" inputmode="numeric" /></label>
+                </div>
+                <button class="button button--primary" type="submit">Gruppe anlegen</button>
+              </form>
             </section>
           </section>
 
@@ -264,7 +346,7 @@ input:focus-visible, button:focus-visible, a:focus-visible {
   left: 0;
   z-index: 25;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   padding: 8px 12px max(8px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
@@ -304,6 +386,52 @@ input:focus-visible, button:focus-visible, a:focus-visible {
   font-size: .74rem;
   font-weight: 800;
 }
+.masterdata-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.masterdata-tab {
+  min-height: var(--touch);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  background: white;
+  color: var(--secondary);
+  cursor: pointer;
+  font-weight: 800;
+}
+.masterdata-tab.is-active {
+  border-color: var(--accent);
+  background: #dbeafe;
+  color: var(--accent);
+}
+.masterdata-panel { display: grid; gap: 14px; }
+.masterdata-list { display: grid; gap: 8px; }
+.masterdata-row {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: white;
+}
+.masterdata-row strong { font-size: .96rem; }
+.masterdata-row span { color: var(--secondary); font-size: .8rem; line-height: 1.4; }
+.masterdata-empty {
+  padding: 18px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--control-radius);
+  color: #64748b;
+  text-align: center;
+}
+.masterdata-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 8px;
+  padding: 18px;
+}
+.masterdata-form .button { width: 100%; }
 .countdown-layout { display: grid; gap: 12px; }
 .timer-stage {
   display: grid;
@@ -394,6 +522,31 @@ const elements = {
   appMessage: document.querySelector("#app-message"),
   countdownQuickAction: document.querySelector("#countdown-quick-action"),
   countdownAccessLabel: document.querySelector("#countdown-access-label"),
+  masterdataQuickAction: document.querySelector("#masterdata-quick-action"),
+  masterdataAccessLabel: document.querySelector("#masterdata-access-label"),
+  masterdataMessage: document.querySelector("#masterdata-message"),
+  athleteList: document.querySelector("#athlete-list"),
+  trainerList: document.querySelector("#trainer-list"),
+  groupList: document.querySelector("#group-list"),
+  athleteCount: document.querySelector("#athlete-count"),
+  trainerCount: document.querySelector("#trainer-count"),
+  groupCount: document.querySelector("#group-count"),
+  athleteForm: document.querySelector("#athlete-form"),
+  athleteFirstName: document.querySelector("#athlete-first-name"),
+  athleteLastName: document.querySelector("#athlete-last-name"),
+  athleteBirthYear: document.querySelector("#athlete-birth-year"),
+  athleteNotes: document.querySelector("#athlete-notes"),
+  trainerForm: document.querySelector("#trainer-form"),
+  trainerFirstName: document.querySelector("#trainer-first-name"),
+  trainerLastName: document.querySelector("#trainer-last-name"),
+  trainerPhone: document.querySelector("#trainer-phone"),
+  trainerEmail: document.querySelector("#trainer-email"),
+  trainerNotes: document.querySelector("#trainer-notes"),
+  groupForm: document.querySelector("#group-form"),
+  groupName: document.querySelector("#group-name"),
+  groupShortName: document.querySelector("#group-short-name"),
+  groupDescription: document.querySelector("#group-description"),
+  groupSortOrder: document.querySelector("#group-sort-order"),
   timerStage: document.querySelector("#timer-stage"),
   phaseLabel: document.querySelector("#phase-label"),
   roundLabel: document.querySelector("#round-label"),
@@ -423,7 +576,10 @@ const defaultSettings = {
 };
 
 let busy = false;
-let moduleReady = false;
+let countdownReady = false;
+let masterdataReady = false;
+let masterdataLoading = false;
+let masterdataSnapshot = null;
 let plan = null;
 let runMode = "idle";
 let elapsedBeforeRunMs = 0;
@@ -442,6 +598,12 @@ elements.startButton?.addEventListener("click", () => void startCountdown());
 elements.pauseButton?.addEventListener("click", () => void togglePause());
 elements.resetButton?.addEventListener("click", () => void resetCountdown());
 elements.settingsForm?.addEventListener("input", handleSettingsInput);
+elements.athleteForm?.addEventListener("submit", (event) => void createMasterdataAthlete(event));
+elements.trainerForm?.addEventListener("submit", (event) => void createMasterdataTrainer(event));
+elements.groupForm?.addEventListener("submit", (event) => void createMasterdataGroup(event));
+for (const control of document.querySelectorAll("[data-masterdata-tab]")) {
+  control.addEventListener("click", () => showMasterdataTab(control.dataset.masterdataTab || "athletes"));
+}
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && runMode === "running") {
     void acquireWakeLock();
@@ -559,22 +721,22 @@ async function acceptSession(next) {
     const name = next?.identity?.displayName || next?.identity?.username || "Benutzer";
     elements.welcomeEyebrow.textContent = "Guten Tag, " + name;
   }
-  await bootstrapCountdown();
+  await Promise.all([bootstrapCountdown(), bootstrapMasterdata()]);
 }
 
 async function bootstrapCountdown() {
-  moduleReady = false;
+  countdownReady = false;
   refreshControls();
   showMessage(elements.appMessage, "");
   try {
     const payload = await requestJson("/api/modules/countdown");
-    moduleReady =
+    countdownReady =
       payload?.module?.moduleId === "countdown" &&
       payload?.module?.capability === "countdown:view" &&
       payload?.access?.view === true;
-    if (!moduleReady) throw new Error("INVALID_COUNTDOWN_CONTRACT");
+    if (!countdownReady) throw new Error("INVALID_COUNTDOWN_CONTRACT");
   } catch (error) {
-    moduleReady = false;
+    countdownReady = false;
     showMessage(
       elements.appMessage,
       error?.status === 403
@@ -586,22 +748,60 @@ async function bootstrapCountdown() {
   refreshAppAvailability();
 }
 
+async function bootstrapMasterdata() {
+  masterdataReady = false;
+  refreshAppAvailability();
+  showMessage(elements.masterdataMessage, "");
+  try {
+    const payload = await requestJson("/api/modules/athletes");
+    masterdataReady =
+      payload?.module?.moduleId === "athletes" &&
+      payload?.module?.capabilities?.view === "athletes:view" &&
+      payload?.module?.capabilities?.edit === "athletes:edit" &&
+      payload?.access?.view === true;
+    if (!masterdataReady) throw new Error("INVALID_MASTERDATA_CONTRACT");
+  } catch (error) {
+    masterdataReady = false;
+    showMessage(
+      elements.masterdataMessage,
+      error?.status === 403
+        ? "Für Stammdaten fehlt die Berechtigung."
+        : "Stammdaten sind derzeit nicht verfügbar.",
+    );
+  }
+  refreshAppAvailability();
+}
+
 function refreshAppAvailability() {
   for (const control of document.querySelectorAll("[data-nav-view='countdown'], [data-nav-view='settings']")) {
-    control.disabled = !moduleReady;
+    control.disabled = !countdownReady;
+  }
+  for (const control of document.querySelectorAll("[data-nav-view='masterdata']")) {
+    control.disabled = !masterdataReady;
   }
   if (elements.countdownQuickAction) {
-    elements.countdownQuickAction.disabled = !moduleReady;
+    elements.countdownQuickAction.disabled = !countdownReady;
   }
   if (elements.countdownAccessLabel) {
-    elements.countdownAccessLabel.textContent = moduleReady
+    elements.countdownAccessLabel.textContent = countdownReady
+      ? "Für deinen Benutzer freigeschaltet."
+      : "Für deinen Benutzer derzeit nicht freigeschaltet.";
+  }
+  if (elements.masterdataQuickAction) {
+    elements.masterdataQuickAction.disabled = !masterdataReady;
+  }
+  if (elements.masterdataAccessLabel) {
+    elements.masterdataAccessLabel.textContent = masterdataReady
       ? "Für deinen Benutzer freigeschaltet."
       : "Für deinen Benutzer derzeit nicht freigeschaltet.";
   }
 }
 
 function showAppSection(section) {
-  const allowed = section === "home" || moduleReady;
+  const allowed =
+    section === "home" ||
+    ((section === "countdown" || section === "settings") && countdownReady) ||
+    (section === "masterdata" && masterdataReady);
   const target = allowed ? section : "home";
   for (const candidate of document.querySelectorAll("[data-app-section]")) {
     candidate.hidden = candidate.dataset.appSection !== target;
@@ -614,6 +814,203 @@ function showAppSection(section) {
   } else {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  if (target === "masterdata") void loadMasterdata();
+}
+
+function showMasterdataTab(tab) {
+  const target = ["athletes", "trainers", "groups"].includes(tab) ? tab : "athletes";
+  for (const control of document.querySelectorAll("[data-masterdata-tab]")) {
+    const selected = control.dataset.masterdataTab === target;
+    control.classList.toggle("is-active", selected);
+    control.setAttribute("aria-selected", selected ? "true" : "false");
+  }
+  for (const panel of document.querySelectorAll("[data-masterdata-panel]")) {
+    panel.hidden = panel.dataset.masterdataPanel !== target;
+  }
+}
+
+async function loadMasterdata(force = false) {
+  if (!masterdataReady || masterdataLoading) return;
+  if (!force && masterdataSnapshot !== null) {
+    renderMasterdata(masterdataSnapshot);
+    return;
+  }
+  masterdataLoading = true;
+  showMessage(elements.masterdataMessage, "");
+  try {
+    const payload = await requestJson("/api/modules/athletes/masterdata");
+    const snapshot = payload?.masterdata;
+    if (
+      !Array.isArray(snapshot?.athletes) ||
+      !Array.isArray(snapshot?.trainers) ||
+      !Array.isArray(snapshot?.trainingGroups)
+    ) {
+      throw new Error("INVALID_MASTERDATA_SNAPSHOT");
+    }
+    masterdataSnapshot = snapshot;
+    renderMasterdata(snapshot);
+  } catch (error) {
+    masterdataSnapshot = null;
+    showMessage(
+      elements.masterdataMessage,
+      error?.status === 403
+        ? "Für Stammdaten fehlt die Berechtigung."
+        : "Stammdaten konnten nicht geladen werden.",
+    );
+  } finally {
+    masterdataLoading = false;
+  }
+}
+
+function renderMasterdata(snapshot) {
+  renderMasterdataList(
+    elements.athleteList,
+    snapshot.athletes,
+    "Noch keine Athleten angelegt.",
+    (item) => ({
+      title: String(item?.lastName || "") + ", " + String(item?.firstName || ""),
+      meta:
+        (item?.birthYear === null || item?.birthYear === undefined
+          ? "Jahrgang nicht erfasst"
+          : "Jahrgang " + String(item.birthYear)) +
+        (item?.isActive === false ? " · inaktiv" : ""),
+    }),
+  );
+  renderMasterdataList(
+    elements.trainerList,
+    snapshot.trainers,
+    "Noch keine Trainer angelegt.",
+    (item) => ({
+      title: String(item?.lastName || "") + ", " + String(item?.firstName || ""),
+      meta:
+        [item?.email, item?.phone].filter((value) => typeof value === "string" && value.length > 0).join(" · ") ||
+        "Keine Kontaktdaten erfasst",
+    }),
+  );
+  renderMasterdataList(
+    elements.groupList,
+    snapshot.trainingGroups,
+    "Noch keine Trainingsgruppen angelegt.",
+    (item) => ({
+      title: String(item?.name || ""),
+      meta:
+        (typeof item?.shortName === "string" && item.shortName.length > 0
+          ? item.shortName + " · "
+          : "") +
+        (item?.isActive === false ? "inaktiv" : "aktiv"),
+    }),
+  );
+  if (elements.athleteCount) elements.athleteCount.textContent = String(snapshot.athletes.length);
+  if (elements.trainerCount) elements.trainerCount.textContent = String(snapshot.trainers.length);
+  if (elements.groupCount) elements.groupCount.textContent = String(snapshot.trainingGroups.length);
+}
+
+function renderMasterdataList(container, items, emptyMessage, describe) {
+  if (!container) return;
+  container.replaceChildren();
+  if (items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "masterdata-empty";
+    empty.textContent = emptyMessage;
+    container.append(empty);
+    return;
+  }
+  for (const item of items) {
+    const description = describe(item);
+    const row = document.createElement("article");
+    row.className = "masterdata-row";
+    const title = document.createElement("strong");
+    title.textContent = description.title;
+    const meta = document.createElement("span");
+    meta.textContent = description.meta;
+    row.append(title, meta);
+    container.append(row);
+  }
+}
+
+async function createMasterdataAthlete(event) {
+  event.preventDefault();
+  const birthYearRaw = elements.athleteBirthYear?.value.trim() || "";
+  await submitMasterdataForm(
+    "/api/modules/athletes/masterdata/athletes",
+    {
+      firstName: elements.athleteFirstName?.value ?? "",
+      lastName: elements.athleteLastName?.value ?? "",
+      ...(birthYearRaw === "" ? {} : { birthYear: Number(birthYearRaw) }),
+      notes: emptyToNull(elements.athleteNotes?.value),
+    },
+    elements.athleteForm,
+  );
+}
+
+async function createMasterdataTrainer(event) {
+  event.preventDefault();
+  await submitMasterdataForm(
+    "/api/modules/athletes/masterdata/trainers",
+    {
+      firstName: elements.trainerFirstName?.value ?? "",
+      lastName: elements.trainerLastName?.value ?? "",
+      phone: emptyToNull(elements.trainerPhone?.value),
+      email: emptyToNull(elements.trainerEmail?.value),
+      notes: emptyToNull(elements.trainerNotes?.value),
+    },
+    elements.trainerForm,
+  );
+}
+
+async function createMasterdataGroup(event) {
+  event.preventDefault();
+  const sortOrderRaw = elements.groupSortOrder?.value.trim() || "100";
+  await submitMasterdataForm(
+    "/api/modules/athletes/masterdata/training-groups",
+    {
+      name: elements.groupName?.value ?? "",
+      shortName: emptyToNull(elements.groupShortName?.value),
+      description: emptyToNull(elements.groupDescription?.value),
+      sortOrder: Number(sortOrderRaw),
+    },
+    elements.groupForm,
+  );
+}
+
+async function submitMasterdataForm(path, body, form) {
+  if (!masterdataReady || masterdataLoading) return;
+  setMasterdataFormsDisabled(true);
+  showMessage(elements.masterdataMessage, "");
+  try {
+    await requestJson(path, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    form?.reset();
+    if (form === elements.groupForm && elements.groupSortOrder) {
+      elements.groupSortOrder.value = "100";
+    }
+    masterdataSnapshot = null;
+    await loadMasterdata(true);
+  } catch (error) {
+    showMessage(
+      elements.masterdataMessage,
+      error?.status === 403
+        ? "Du darfst Stammdaten ansehen, aber nicht bearbeiten."
+        : error?.status === 400
+          ? "Bitte prüfe die eingegebenen Stammdaten."
+          : "Die Stammdaten konnten nicht gespeichert werden.",
+    );
+  } finally {
+    setMasterdataFormsDisabled(false);
+  }
+}
+
+function setMasterdataFormsDisabled(disabled) {
+  for (const control of document.querySelectorAll(".masterdata-form input, .masterdata-form button")) {
+    control.disabled = disabled;
+  }
+}
+
+function emptyToNull(value) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized.length === 0 ? null : normalized;
 }
 
 function handleSettingsInput() {
@@ -626,7 +1023,7 @@ function handleSettingsInput() {
 }
 
 async function startCountdown() {
-  if (!moduleReady || busy || runMode === "running" || runMode === "paused") return;
+  if (!countdownReady || busy || runMode === "running" || runMode === "paused") return;
   const settings = readSettings();
   if (settings === null) {
     showMessage(elements.appMessage, "Bitte gültige Countdown-Einstellungen eingeben.");
@@ -906,7 +1303,7 @@ function phaseHint(phase) {
 function refreshControls() {
   if (elements.startButton) {
     elements.startButton.disabled =
-      !moduleReady || busy || runMode === "running" || runMode === "paused";
+      !countdownReady || busy || runMode === "running" || runMode === "paused";
     elements.startButton.textContent = runMode === "finished" ? "Neu starten" : "Start";
   }
   if (elements.pauseButton) {
