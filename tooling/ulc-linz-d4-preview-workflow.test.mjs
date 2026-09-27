@@ -76,7 +76,7 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(workflow, /Resolve ULC preview migration state/);
   assert.match(workflow, /ulc-linz-d4-preview-migration-state\.mjs/);
-  assert.match(workflow, /initial\\|athletes-upgrade\\|training-upgrade\\|current/);
+  assert.match(workflow, /initial\|athletes-upgrade\|training-upgrade\|current/);
   assert.match(workflow, /Preflight fresh ULC preview runtime principals/);
   assert.match(workflow, /database-access\.mjs preflight >\/dev\/null/);
   assert.match(workflow, /Preflight established ULC preview runtime principals/);
