@@ -136,7 +136,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "modules/athletes/src/restore-reconciliation.ts",
-      gitBlobSha: "4be718a66e6a6fc0a4c118e5077abd2423f6269a",
+      gitBlobSha: "9db064c3511f0d21d7df7d0bd38a1004675c3df5",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/app.ts",
