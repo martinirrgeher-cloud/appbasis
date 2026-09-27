@@ -402,6 +402,20 @@ async function createUlcBaselineFixture(t) {
     { recursive: true },
   );
   await cp(
+    join(
+      repositoryRoot,
+      "apps",
+      "ulc-linz",
+      "appbasis.database-baseline-catalog-exceptions.json",
+    ),
+    join(
+      root,
+      "apps",
+      "ulc-linz",
+      "appbasis.database-baseline-catalog-exceptions.json",
+    ),
+  );
+  await cp(
     join(repositoryRoot, "packages", "identity", "drizzle"),
     join(root, "packages", "identity", "drizzle"),
     { recursive: true },
