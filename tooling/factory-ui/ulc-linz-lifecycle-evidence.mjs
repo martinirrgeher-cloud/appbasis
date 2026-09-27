@@ -32,6 +32,7 @@ const ACTIVATION_FIELDS = Object.freeze([
 ]);
 const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
   "pnpm-lock.yaml",
+  "tooling/ulc-linz-database-contract.mjs",
   "apps/ulc-linz/appbasis.app.json",
   "apps/ulc-linz/appbasis.database.json",
   "apps/ulc-linz/package.json",
@@ -83,6 +84,10 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
       gitBlobSha: "b600056624b4e03cb08845fd1a6080eae946ad1f",
+    }),
+    Object.freeze({
+      path: "tooling/ulc-linz-database-contract.mjs",
+      gitBlobSha: "a552fbf773f6777ab809d7b5f3aab876fbf0ace2",
     }),
     Object.freeze({
       path: "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
