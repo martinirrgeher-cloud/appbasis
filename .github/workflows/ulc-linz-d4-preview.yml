@@ -190,7 +190,7 @@ jobs:
           STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
           MODE="$(jq -r '.mode' <<<"$STATE")"
           case "$MODE" in
-            initial|athletes-upgrade|current) ;;
+            initial|athletes-upgrade|training-upgrade|current) ;;
             *) echo 'ULC D4 preview migration mode is invalid.' >&2; exit 1 ;;
           esac
           printf 'mode=%s\n' "$MODE" >> "$GITHUB_OUTPUT"
@@ -231,6 +231,16 @@ jobs:
           APPBASIS_MIGRATION_TARGET: ${{ steps.plan.outputs.migration_target }}
           APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
         run: node ./tooling/ulc-linz-d4-preview-athletes-upgrade.mjs
+
+      - name: Apply incremental ULC preview training migration
+        if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'training-upgrade'
+        shell: bash
+        env:
+          APPBASIS_GENERATED_APP_ID: ulc-linz
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_MIGRATION_TARGET: ${{ steps.plan.outputs.migration_target }}
+          APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
+        run: node ./tooling/ulc-linz-d4-preview-training-upgrade.mjs
 
       - name: Confirm current ULC preview schema
         if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'current'
