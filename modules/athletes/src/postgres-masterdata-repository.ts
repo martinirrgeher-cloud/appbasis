@@ -169,8 +169,8 @@ export class PostgresAthleteMasterdataRepository {
       'Organization id',
     );
     const membership = createAthleteGroupMembership({
-      organizationId: normalizedOrganizationId,
       ...input,
+      organizationId: normalizedOrganizationId,
     });
     const rows = await this.#client.unsafe(
       `INSERT INTO appbasis_athlete_group_membership (
@@ -208,8 +208,8 @@ export class PostgresAthleteMasterdataRepository {
       'Organization id',
     );
     const membership = createTrainerGroupMembership({
-      organizationId: normalizedOrganizationId,
       ...input,
+      organizationId: normalizedOrganizationId,
     });
     const rows = await this.#client.unsafe(
       `INSERT INTO appbasis_trainer_group_membership (
