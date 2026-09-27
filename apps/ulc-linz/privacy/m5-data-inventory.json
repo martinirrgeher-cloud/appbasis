@@ -47,12 +47,13 @@
       "migrations": [
         "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql"
       ],
-      "lifecycleStatus": "verified-current-scope",
+      "lifecycleStatus": "deletion-retention-verified-restore-pending",
       "notes": [
         "contains-athlete-and-trainer-master-data",
         "server-runtime-enforces-same-organization-view-and-edit-boundaries",
         "deactivation-sets-server-side-lifecycle-timestamp",
-        "personal-masterdata-and-group-memberships-physically-delete-after-12-calendar-months-in-protected-retention"
+        "personal-masterdata-and-group-memberships-physically-delete-after-12-calendar-months-in-protected-retention",
+        "restore-reconciliation-pending-athletes-owned-deletion-markers"
       ]
     },
     {
@@ -308,7 +309,7 @@
   "m5": {
     "deletionPolicy": "verified-current-scope",
     "retentionPolicy": "verified-current-scope",
-    "restoreReconciliation": "verified-current-scope",
+    "restoreReconciliation": "fail-closed-pending-athletes-restore-reconciliation",
     "unknownPersistentOwner": "fail-closed",
     "unknownPersistentTable": "fail-closed",
     "unknownRuntimeModule": "fail-closed",
