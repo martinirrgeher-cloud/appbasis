@@ -37,6 +37,7 @@ export interface UlcKindertrainingSnapshot {
   readonly sessionDate: string;
   readonly session: Readonly<{
     id: string;
+    revision: string;
     state: UlcTrainingSessionState;
     note: string | null;
   }> | null;
@@ -69,6 +70,7 @@ export interface UlcKindertrainingSessionStore {
       readonly athleteId: string;
       readonly status: UlcTrainingAttendanceStatus;
     }[],
+    expectedRevision: string | null,
   ): Promise<UlcTrainingSessionSnapshot>;
 }
 
@@ -163,6 +165,7 @@ export function createUlcKindertrainingService({
         readonly sessionDate: string;
         readonly state?: UlcTrainingSessionState;
         readonly note?: string | null;
+        readonly expectedRevision: string | null;
         readonly attendance: readonly {
           readonly athleteId: string;
           readonly status: UlcTrainingAttendanceStatus;
@@ -182,6 +185,7 @@ export function createUlcKindertrainingService({
         true,
       );
       assertExactParticipantSet(context.participants, input.attendance);
+      const expectedRevision = revisionToken(input.expectedRevision);
 
       const stored = await sessions.saveSession(
         context.organizationId,
@@ -193,6 +197,7 @@ export function createUlcKindertrainingService({
           ...(input.note === undefined ? {} : { note: input.note }),
         },
         input.attendance,
+        expectedRevision,
       );
       return presentSnapshot(context, stored);
     },
@@ -343,6 +348,7 @@ function presentSnapshot(
         ? null
         : Object.freeze({
             id: stored.session.id,
+            revision: stored.revision,
             state: stored.session.state,
             note: stored.session.note,
           }),
@@ -391,6 +397,20 @@ function assertExactParticipantSet(
       "Training attendance must match the participant snapshot exactly.",
     );
   }
+}
+
+function revisionToken(value: unknown): string | null {
+  if (value === null) return null;
+  if (
+    typeof value !== "string" ||
+    !/^\d+$/.test(value) ||
+    value.length > 20
+  ) {
+    throw new UlcTrainingValidationError(
+      "Training revision is invalid.",
+    );
+  }
+  return value;
 }
 
 function requiredAttendanceStatus(
