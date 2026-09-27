@@ -173,12 +173,11 @@ test("ULC M6 preflight separates controlled production preparation from Producti
   assert.equal(Object.isFrozen(result.executionPlan), true);
 });
 
-test("ULC M6 production preflight accepts the renewed FC5 countdown target while keeping provider writes blocked", async () => {
-  const result = await evaluateUlcLinzM6ProductionPreflight(REPOSITORY_ROOT);
-  assert.equal(result.repositoryPreflightVerified, true);
-  assert.equal(result.providerWriteAllowed, false);
-  assert.equal(result.releaseAuthorized, false);
-  assert.equal(result.nextAction.executionAuthorized, false);
+test("ULC M6 production preflight rejects the current Stammdaten scope until it is revalidated", async () => {
+  await assert.rejects(
+    evaluateUlcLinzM6ProductionPreflight(REPOSITORY_ROOT),
+    errorWithCode("APP_DEFINITION_INVALID"),
+  );
 });
 
 test("ULC M6 phase model permits approved non-public preparation before M4/M5 but requires them for Production Ready", () => {
@@ -516,6 +515,9 @@ async function evaluateApprovedScopePreflight() {
   let result;
   await withRepositoryFixture(async (root, fixture) => {
     fixture.appDefinition.modules = ["countdown"];
+    fixture.databaseManifest.owners = fixture.databaseManifest.owners.filter(
+      (owner) => owner.id !== "athletes",
+    );
     await writeFixture(root, fixture);
     result = await evaluateUlcLinzM6ProductionPreflight(root);
   });
