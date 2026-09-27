@@ -48,12 +48,15 @@ test("ULC Linz D4 migration plan includes all app-owned lifecycle and security m
     appId: "ulc-linz",
   });
 
-  assert.equal(plan.length, 11);
+  assert.equal(plan.length, 12);
   assert.deepEqual(
     plan
       .filter(({ ownerId }) => ownerId === "athletes")
       .map(({ relativePath }) => relativePath),
-    ["modules/athletes/migrations/0000_appbasis_athletes_foundation.sql"],
+    [
+      "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+      "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
+    ],
   );
   assert.deepEqual(
     plan
