@@ -9,18 +9,21 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E2C – serverseitige Stammdaten-Runtime/API sowie Lösch-/Retention-Lifecycle.**
+**ULC-E2D – athletes-eigene Löschmarker und Restore-Reconciliation.**
 
-ULC-E2B ist abgeschlossen. Der aktuelle Slice bindet das installierte Modul
-`athletes` erstmals an die reale ULC-Serverruntime: Organisationsgrenze und
-`athletes:view`/`athletes:edit` werden serverseitig erzwungen, Stammdaten
-werden ausschließlich innerhalb der aus der authentifizierten Mitgliedschaft
-abgeleiteten Organisation gelesen oder verändert und der in E2B bewusst
-fail-closed gelassene personenbezogene Stammdaten-Lösch-/Retention-Pfad wird
-explizit geschlossen. Restore-Reconciliation bleibt separat fail-closed, bis
-athletes-eigene Löschmarker und deren Replay in einem eigenen Folgeslice
-implementiert sind. UI, Preview, Produktion, Providerwrites und Deployment bleiben
-weiterhin getrennt.
+ULC-E2C ist abgeschlossen. Der aktuelle Slice schließt jetzt genau die im
+E2C-Review bewusst abgegrenzte Restore-Lücke: physisch gelöschte Athleten- und
+Trainerstammdaten erhalten moduleigene, minimalistische Löschmarker mit
+35-Tage-Retention. Ein Restore kann diese Marker aus einer autoritativen neueren
+Datenbank lesen und die Löschung in einer älteren wiederhergestellten Datenbank
+deterministisch erneut anwenden, ohne Identity-/Permissions- oder
+`ulc-linz-lifecycle`-Tabellen zu verändern.
+
+E2D bleibt zunächst vollständig repository-/testseitig. Die produktive
+Aktivierung des neuen Athletes-Schemas, der Stammdaten-Retention und des
+Restore-Replays erfolgt erst in einem getrennten Deployment-/Migrationsgate mit
+ausdrücklicher Freigabe. UI, Providerwrites und Produktionsmutationen bleiben in
+E2D ausgeschlossen.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -435,7 +438,7 @@ ULC-E2B ist auf `main` abgeschlossen. Installation, bestehender
 Datenbestand, fünf Stammdatentabellen, Rerun-Schutz und digest-gepinnte
 Baseline-Ausnahme sind auf demselben Exact Head durch CI und Review bestätigt.
 
-## Aktueller Gate-Scope: ULC-E2C
+## Abgeschlossener Gate-Scope: ULC-E2C
 
 Abnahme für ULC-E2C:
 
@@ -504,6 +507,54 @@ isolierten PostgreSQL-Beweise bleiben erhalten. Für dieses Arbeitspaket gibt
 es keinen weiteren Codex-Patch-Loop; Abschlusskriterium sind ChatGPT
 Diff-/Architektur-/Security-Prüfung plus Exact-Head-CI.
 
+ULC-E2C ist auf `main` abgeschlossen. Runtime/API, serverseitige
+Organisations-/Capability-Grenzen, Deaktivierung und die moduleigene
+12-Monats-Retention sind implementiert und isoliert bewiesen. Produktive
+Retention-Aktivierung und Restore-Reconciliation bleiben getrennt.
+
+## Aktueller Gate-Scope: ULC-E2D
+
+Abnahme für ULC-E2D:
+
+- das Modul `athletes` erhält genau eine neue owner-eigene Migration für
+  minimale Löschmarker; keine Tabelle eines anderen Owners wird verändert;
+- Marker enthalten nur Entitätstyp, Entity-ID, Organisation,
+  Abschlusszeitpunkt und `purge_after`; Name, Kontakt-, Jahrgangs- oder
+  Notizdaten werden niemals in Löschmarkern gespeichert;
+- die Marker-Retention beträgt exakt 35 Tage und bleibt damit innerhalb des
+  bestehenden bestätigten Restore-/Backupfensters;
+- die physische 12-Monats-Retention schreibt den Löschmarker und löscht
+  Stammdaten plus Gruppenzuordnungen in demselben PostgreSQL-Statement;
+  Marker-Konflikte oder inkonsistente Zustände bleiben fail-closed;
+- ein autoritativer Read-Pfad liefert ausschließlich noch gültige Marker und
+  validiert deren Form sowie das exakte 35-Tage-Fenster fail-closed;
+- ein Restore-Replay löscht ausschließlich die im Marker bezeichnete
+  Athlete-/Trainer-Entität innerhalb derselben Organisation, entfernt deren
+  moduleigene Gruppenzuordnungen und persistiert denselben Marker im Restore;
+- bestehende exakte Marker sind idempotent; falsche Organisation,
+  widersprüchlicher Marker oder Marker+Live-Entity-Kombination blockieren den
+  Restore statt zu raten;
+- ein isolierter PostgreSQL-E2E-Test beweist mindestens:
+  Löschung auf der autoritativen Quelle, Restore einer älteren Kopie,
+  Wiederlöschung per Marker, Idempotenz, Organisationsgrenze und
+  35-Tage-Ablauf;
+- `m5-data-inventory.json` klassifiziert den neuen Marker als
+  `minimal-delete-reconciliation-state`; die übergreifende M5-
+  Restore-Evidence bleibt bis zur späteren produktiven Migration/Aktivierung
+  ausdrücklich fail-closed;
+- der bestehende produktive Lifecycle-/Restore-Workflow bleibt in E2D auf dem
+  heute deployten Schema gepinnt und darf die neue Athletes-Tabelle noch nicht
+  voraussetzen;
+- keine Preview-/Produktionsmigration, kein Providerwrite, kein Deployment und
+  keine Revalidierung alter Production-Evidence in E2D.
+
+Scope-Freeze für E2D: blockierend sind Datenwiederbelebung nach Restore,
+personenbezogene Daten im Löschmarker, Cross-Organization-Delete,
+nicht-atomare Marker/Lösch-Sequenzen, Abschwächung des bestehenden
+Restore-Fail-closed-Vertrags oder eine vorzeitige Produktionsbindung.
+Nicht gate-blockierend bleiben UI, Import/Export, Realtime, Edit-Locks,
+Benutzer-/Eltern-Verknüpfungen und die spätere Produktionsmigration.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
@@ -522,7 +573,7 @@ Diff-/Architektur-/Security-Prüfung plus Exact-Head-CI.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E2C-Pfad, wenn mindestens eines gilt:
+Die folgenden E2C-Findings bleiben historische Abschlussgrenzen; für E2D gilt zusätzlich der oben definierte E2D-Scope-Freeze:
 
 - Organisation wird aus Clientdaten statt aus der authentifizierten
   ULC-Mitgliedschaft übernommen oder eine SQL-Abfrage kann organisationsfremde
