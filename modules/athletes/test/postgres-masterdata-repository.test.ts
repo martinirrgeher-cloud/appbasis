@@ -161,6 +161,85 @@ describe('PostgresAthleteMasterdataRepository', () => {
     ]);
   });
 
+  it('updates athletes only when id, organization and active lifecycle all match', async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [
+          {
+            id: 'athlete-1',
+            organization_id: 'verein-1',
+            first_name: 'Anna',
+            last_name: 'Beispiel',
+            birth_year: null,
+            notes: 'neu',
+            is_active: true,
+          },
+        ];
+      },
+    });
+
+    await expect(
+      repository.updateAthlete('verein-1', 'athlete-1', {
+        firstName: ' Anna ',
+        lastName: ' Beispiel ',
+        birthYear: null,
+        notes: ' neu ',
+      }),
+    ).resolves.toEqual({
+      id: 'athlete-1',
+      organizationId: 'verein-1',
+      firstName: 'Anna',
+      lastName: 'Beispiel',
+      birthYear: null,
+      notes: 'neu',
+      isActive: true,
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.query).toContain('WHERE id = $1');
+    expect(calls[0]?.query).toContain('organization_id = $2');
+    expect(calls[0]?.query).toContain('is_active = true');
+    expect(calls[0]?.parameters).toEqual([
+      'athlete-1',
+      'verein-1',
+      'Anna',
+      'Beispiel',
+      null,
+      'neu',
+    ]);
+  });
+
+  it('returns null instead of mutating when an update target is absent, inactive or outside the organization', async () => {
+    let calls = 0;
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe() {
+        calls += 1;
+        return [];
+      },
+    });
+
+    await expect(
+      repository.updateTrainer('verein-1', 'trainer-1', {
+        firstName: 'Max',
+        lastName: 'Trainer',
+        phone: null,
+        email: null,
+        notes: null,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repository.updateTrainingGroup('verein-1', 'group-1', {
+        name: 'U14',
+        shortName: 'U14',
+        description: null,
+        sortOrder: 10,
+      }),
+    ).resolves.toBeNull();
+    expect(calls).toBe(2);
+  });
+
   it('creates group memberships only through same-organization active references', async () => {
     const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
     const repository = new PostgresAthleteMasterdataRepository({
