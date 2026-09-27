@@ -9,7 +9,13 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**FC6 – Datenbank-ownende Module kontrolliert zu bestehenden Apps hinzufügen – abgeschlossen.**
+**ULC-E1 – Vereins-App-Shell und Dashboard.**
+
+FC6 ist abgeschlossen. Der aktuelle Produkt-Vertical-Slice kehrt bewusst zur
+realen ULC-Linz-App zurück: Die bestehende sichere Countdown-Funktion bleibt
+unverändert verfügbar, wird aber in eine wieder erkennbare Vereins-App-Shell
+mit Startseite/Dashboard eingebettet. Dieser Slice enthält keine neue
+Fachdaten-Persistenz, keine Providerwrites und kein Deployment.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -22,9 +28,9 @@ verbindet read-only Delta-Plan, echten Repository-Updater und inkrementellen
 PostgreSQL-Executor auf einer nicht leeren isolierten Baseline. Produktive
 Datenbank- und Providerwrites bleiben weiterhin ausgeschlossen.
 
-Ein neuer Gate-Scope wird durch den FC6-Abschluss nicht automatisch eröffnet.
-Der nächste Vertical Slice wird aus dem dokumentierten Produktbedarf bzw. der
-Roadmap abgeleitet.
+Der nach FC6 eröffnete Produkt-Scope ist ULC-E1. Er wurde aus dem realen
+ULC-Linz-Bedarf abgeleitet und erweitert bewusst nur die sichtbare App-Shell;
+weitere fachliche Bereiche bleiben bis zu ihrem eigenen Vertical Slice außen vor.
 
 FC4 ist für den aktuellen Produktpfad abgeschlossen: Modulvertrag,
 Modul-Scaffolder, der persistenzfreie Intervall-Countdown und der normale
@@ -337,6 +343,31 @@ Ende-zu-Ende auf einer isolierten nicht leeren PostgreSQL-Baseline bewiesen:
 Planung, Repository-Publikation, inkrementelle Migration, Bestandserhalt,
 Rerun-Schutz, Drift-Abweisung und vollständiger DB-Rollback greifen gemeinsam.
 
+## Aktueller Gate-Scope: ULC-E1
+
+ULC-E1 stellt nach Abschluss der Plattform- und Update-Gates wieder den realen
+ULC-Linz-Produktfluss in den Vordergrund.
+
+Abnahme für ULC-E1:
+
+- nach erfolgreichem Login erscheint eine echte ULC-Startseite statt direkt der
+  Countdown-Ansicht;
+- die mobile Hauptnavigation unterscheidet mindestens Start, Countdown und
+  Einstellungen;
+- der vorhandene Countdown bleibt funktional unverändert und nutzt weiterhin
+  ausschließlich den bestehenden serverseitigen D2-Berechtigungsvertrag;
+- die Startseite zeigt nur tatsächlich verfügbare Funktionen als bedienbare
+  Aktionen und erfindet keine Berechtigung für noch nicht migrierte Altmodule;
+- die Vereins-App-Shell ist mobile-first und bleibt statisch/CSP-sicher;
+- Login, Passwortwechsel, Health und die bestehende Countdown-E2E-/Security-
+  Evidence bleiben durch Tests abgesichert;
+- keine Datenbankmigration, kein Providerwrite, kein Preview-/Production-
+  Deployment in diesem Slice.
+
+Nach ULC-E1 folgt der erste echte fachliche Rückhol-Slice aus dem früheren
+ULC-Funktionsumfang. Dieser wird erst anhand des realen Produktbedarfs gewählt;
+die alte Anwendung wird nicht als Ganzes kopiert.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
@@ -355,20 +386,21 @@ Rerun-Schutz, Drift-Abweisung und vollständiger DB-Rollback greifen gemeinsam.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen FC6-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E1-Pfad, wenn mindestens eines gilt:
 
-- der Modulvertrag ist nicht deterministisch oder nicht reproduzierbar;
-- Paket, Capability, Datenbankbesitz oder Migrationen können vom Manifest
-  unbemerkt abweichen;
-- der neue Modulpfad kann bestehende Apps oder fremde Modulschemas
-  überschreiben;
-- Kompatibilität wird nur angenommen statt geprüft;
-- eine bestehende Security-/Privacy-/Release-Grenze wird abgeschwächt;
-- der unmittelbar benötigte Countdown-Vertical-Slice kann über den
-  vorgesehenen Modulpfad nicht sicher erreicht werden.
+- Login, Passwortwechsel oder Session-Wiederherstellung werden geschwächt;
+- Countdown oder seine serverseitige D2-Berechtigungsgrenze verändern ihr
+  bewiesenes Verhalten;
+- eine nicht freigegebene Funktion wird in der neuen Shell als bedienbar
+  dargestellt;
+- die statische UI benötigt plötzlich eine Datenbank- oder Providerverbindung;
+- CSP-, Mobile-First- oder bestehende Security-/Privacy-/Release-Grenzen werden
+  abgeschwächt;
+- bestehende ULC-Fachdaten, Migrationen oder Produktionsressourcen werden für
+  diesen reinen Shell-Slice verändert.
 
-Nicht gate-blockierend sind zusätzliche Plattformabstraktionen und allgemeines
-Hardening ohne konkreten Verbraucher.
+Nicht gate-blockierend sind weitere alte ULC-Fachbereiche, zusätzliche
+Plattformabstraktionen und allgemeines Hardening ohne unmittelbaren E1-Bedarf.
 
 ## Loop-Grenze
 
@@ -398,6 +430,10 @@ Der FC6-Pfad ist abgeschlossen:
 
 **FC6-A Migration-Delta → FC6-B inkrementeller DB-Executor →
 FC6-C Existing-App-Integration → FC6-D isolierter E2E-Beweis.**
+
+Der neue Produktpfad beginnt mit:
+
+**ULC-E1 Vereins-App-Shell & Dashboard → erster echter ULC-Fachslice.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**

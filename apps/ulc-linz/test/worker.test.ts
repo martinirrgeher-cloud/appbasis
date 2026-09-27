@@ -7,6 +7,7 @@ import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import {
   ULC_LINZ_APP_CSS,
+  ULC_LINZ_APP_HTML,
   ULC_LINZ_APP_SCRIPT,
 } from "../worker/ui";
 
@@ -78,7 +79,7 @@ function runtime(
 }
 
 describe("generated identity+permissions Worker entrypoint", () => {
-  it("serves the mobile countdown shell without creating a database runtime", async () => {
+  it("serves the mobile ULC Vereins-App shell without creating a database runtime", async () => {
     let runtimeCalls = 0;
     const worker = createGeneratedWorker(() => {
       runtimeCalls += 1;
@@ -95,12 +96,25 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(response.headers.get("content-security-policy")).toContain(
       "script-src 'self'",
     );
-    expect(await response.text()).toContain("Intervall-Countdown");
+    const html = await response.text();
+    expect(html).toContain("Dein Vereinsbereich für Training und Organisation.");
+    expect(html).toContain("Intervall-Countdown");
+    expect(html).toContain('data-app-section="home"');
     expect(runtimeCalls).toBe(0);
   });
 
   it("ships browser JavaScript that parses as standalone module-compatible code", () => {
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
+  });
+
+  it("opens the authenticated app on the dashboard and gates countdown navigation on server-backed module access", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" disabled');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("refreshAppAvailability();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.countdownQuickAction.disabled = !moduleReady;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("control.disabled = !moduleReady;");
   });
 
   it("ships the countdown controls and domain-backed plan integration in static assets", () => {
