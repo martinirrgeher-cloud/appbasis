@@ -7,7 +7,10 @@ import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 
 import { createUlcKindertrainingService } from "../worker/kindertraining-service";
-import { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
+import {
+  PostgresUlcTrainingSessionRepository,
+  UlcTrainingSessionConflictError,
+} from "../worker/training-session-postgres";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -124,6 +127,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         groupId: group.id,
         sessionDate: "2026-09-27",
         note: "Halle",
+        expectedRevision: null,
         attendance: [
           { athleteId: anna.id, status: "present" },
           { athleteId: berta.id, status: "excused" },
@@ -135,8 +139,10 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       });
 
       const sessionId = first.session?.id;
+      const firstRevision = first.session?.revision;
       expect(typeof sessionId).toBe("string");
-      if (sessionId === undefined) {
+      expect(firstRevision).toMatch(/^\d+$/);
+      if (sessionId === undefined || firstRevision === undefined) {
         throw new Error("Kindertraining session id was not persisted.");
       }
 
@@ -145,16 +151,33 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         sessionDate: "2026-09-27",
         state: "cancelled",
         note: null,
+        expectedRevision: firstRevision,
         attendance: [
           { athleteId: anna.id, status: "absent" },
           { athleteId: berta.id, status: "present" },
         ],
       });
-      expect(second.session).toEqual({
+      expect(second.session).toMatchObject({
         id: sessionId,
         state: "cancelled",
         note: null,
       });
+      expect(second.session?.revision).toMatch(/^\d+$/);
+      expect(second.session?.revision).not.toBe(firstRevision);
+
+      await expect(
+        service.saveSession("verein-1", {
+          groupId: group.id,
+          sessionDate: "2026-09-27",
+          state: "scheduled",
+          note: "stale",
+          expectedRevision: firstRevision,
+          attendance: [
+            { athleteId: anna.id, status: "present" },
+            { athleteId: berta.id, status: "present" },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(UlcTrainingSessionConflictError);
 
       const rows = await connection.client.unsafe(
         `SELECT
