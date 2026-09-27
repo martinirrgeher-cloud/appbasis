@@ -482,16 +482,27 @@ Abnahme für ULC-E2C:
 
 E2C-A (serverseitige Organisations-/Capability-Grenze und Read-API),
 E2C-B (autorisierte Stammdaten-Mutationen) und E2C-C (Deaktivierung plus
-12-Monats-Retention im geschützten Lifecycle-Pfad) sind implementiert.
+12-Monats-Retention im moduleigenen Repository mit isoliertem PostgreSQL-E2E)
+sind implementiert. Die Produktionsaktivierung des Retention-Pfads ist bewusst
+noch nicht gebunden, weil E2C keine Produktionsmigration ausführt.
 
 Der finale Codex-Review hat einen echten P1 gefunden: Stammdaten, die nach dem
 Backup durch Retention gelöscht wurden, könnten bei einem späteren Restore
 wieder erscheinen. E2C erweitert deshalb nicht nachträglich die Restore-
 Architektur. Stattdessen bleibt die M5-Lifecycle-/Restore-Evidence ausdrücklich
 fail-closed. Das athletes-eigene Delete-Marker-/Restore-Replay wird als
-separater unmittelbar folgender Slice abgegrenzt. Für E2C gilt nach diesem
-gebündelten Fix nur noch: Exact-Head-CI und genau ein Re-Review gemäß
-Loop-Grenze.
+separater unmittelbar folgender Slice abgegrenzt.
+
+Der zulässige Re-Review fand anschließend eine **andere Prüfklasse**:
+Deployment-Sequencing. Weil E2C ausdrücklich keine Produktionsmigration
+durchführt, darf der bestehende geschützte Produktions-Lifecycle vor dem
+Athletes-Schema-Deployment weder Athletes-Tabellen noch neue Grants
+voraussetzen. Dieses Finding wird als abgegrenztes E2C-Abschlussarbeitspaket
+behandelt: die vorzeitige Produktionsbindung wird auf den bereits deployten
+Main-Vertrag zurückgesetzt; die moduleigene Retention-Implementierung und ihre
+isolierten PostgreSQL-Beweise bleiben erhalten. Für dieses Arbeitspaket gibt
+es keinen weiteren Codex-Patch-Loop; Abschlusskriterium sind ChatGPT
+Diff-/Architektur-/Security-Prüfung plus Exact-Head-CI.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -526,6 +537,9 @@ Ein Finding blockiert den aktuellen ULC-E2C-Pfad, wenn mindestens eines gilt:
   Deaktivierung oder verändert Tabellen fremder Owner;
 - die bisher fail-closed klassifizierte Stammdaten-Privacy-Evidence wird ohne
   ausführbaren Lösch-/Retention-Nachweis auf `verified` angehoben;
+- der bestehende Produktions-Lifecycle oder seine Preflight-Prüfung verlangt
+  vor dem ausdrücklich getrennten Athletes-Produktionsdeployment bereits
+  Athletes-Tabellen, Athletes-Grants oder andere noch nicht deployte Ressourcen;
 - Preview, Produktion oder Provider werden in E2C mutiert.
 
 Nicht gate-blockierend sind Stammdaten-UI, Realtime, Edit-Locks,
