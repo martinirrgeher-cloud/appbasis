@@ -54,7 +54,7 @@ export class PostgresAthleteMasterdataRepository {
          ORDER BY sort_order ASC, name ASC, id ASC`,
         [normalizedOrganizationId],
       )
-    ).map(trainingGroupFromRow);
+    ).map((row) => trainingGroupFromRow(row, normalizedOrganizationId));
 
     const athletes = (
       await this.#client.unsafe(
@@ -64,7 +64,7 @@ export class PostgresAthleteMasterdataRepository {
          ORDER BY last_name ASC, first_name ASC, id ASC`,
         [normalizedOrganizationId],
       )
-    ).map(athleteFromRow);
+    ).map((row) => athleteFromRow(row, normalizedOrganizationId));
 
     const trainers = (
       await this.#client.unsafe(
@@ -74,7 +74,7 @@ export class PostgresAthleteMasterdataRepository {
          ORDER BY last_name ASC, first_name ASC, id ASC`,
         [normalizedOrganizationId],
       )
-    ).map(trainerFromRow);
+    ).map((row) => trainerFromRow(row, normalizedOrganizationId));
 
     const athleteGroupMemberships = (
       await this.#client.unsafe(
@@ -86,7 +86,7 @@ export class PostgresAthleteMasterdataRepository {
          ORDER BY athlete_id ASC, started_on ASC, group_id ASC`,
         [normalizedOrganizationId],
       )
-    ).map(athleteGroupMembershipFromRow);
+    ).map((row) => athleteGroupMembershipFromRow(row, normalizedOrganizationId));
 
     const trainerGroupMemberships = (
       await this.#client.unsafe(
@@ -96,7 +96,7 @@ export class PostgresAthleteMasterdataRepository {
          ORDER BY trainer_id ASC, group_id ASC`,
         [normalizedOrganizationId],
       )
-    ).map(trainerGroupMembershipFromRow);
+    ).map((row) => trainerGroupMembershipFromRow(row, normalizedOrganizationId));
 
     return Object.freeze({
       trainingGroups: Object.freeze(trainingGroups),
@@ -108,10 +108,14 @@ export class PostgresAthleteMasterdataRepository {
   }
 }
 
-function trainingGroupFromRow(row: Record<string, unknown>): TrainingGroup {
+function trainingGroupFromRow(
+  row: Record<string, unknown>,
+  expectedOrganizationId: string,
+): TrainingGroup {
+  const organizationId = rowOrganization(row, expectedOrganizationId);
   return {
     id: rowString(row, 'id'),
-    organizationId: rowString(row, 'organization_id'),
+    organizationId,
     name: rowString(row, 'name'),
     shortName: rowNullableString(row, 'short_name'),
     description: rowNullableString(row, 'description'),
@@ -120,10 +124,14 @@ function trainingGroupFromRow(row: Record<string, unknown>): TrainingGroup {
   };
 }
 
-function athleteFromRow(row: Record<string, unknown>): Athlete {
+function athleteFromRow(
+  row: Record<string, unknown>,
+  expectedOrganizationId: string,
+): Athlete {
+  const organizationId = rowOrganization(row, expectedOrganizationId);
   return {
     id: rowString(row, 'id'),
-    organizationId: rowString(row, 'organization_id'),
+    organizationId,
     firstName: rowString(row, 'first_name'),
     lastName: rowString(row, 'last_name'),
     birthYear: rowNullableInteger(row, 'birth_year'),
@@ -132,10 +140,14 @@ function athleteFromRow(row: Record<string, unknown>): Athlete {
   };
 }
 
-function trainerFromRow(row: Record<string, unknown>): Trainer {
+function trainerFromRow(
+  row: Record<string, unknown>,
+  expectedOrganizationId: string,
+): Trainer {
+  const organizationId = rowOrganization(row, expectedOrganizationId);
   return {
     id: rowString(row, 'id'),
-    organizationId: rowString(row, 'organization_id'),
+    organizationId,
     firstName: rowString(row, 'first_name'),
     lastName: rowString(row, 'last_name'),
     phone: rowNullableString(row, 'phone'),
@@ -147,9 +159,10 @@ function trainerFromRow(row: Record<string, unknown>): Trainer {
 
 function athleteGroupMembershipFromRow(
   row: Record<string, unknown>,
+  expectedOrganizationId: string,
 ): AthleteGroupMembership {
   return {
-    organizationId: rowString(row, 'organization_id'),
+    organizationId: rowOrganization(row, expectedOrganizationId),
     athleteId: rowString(row, 'athlete_id'),
     groupId: rowString(row, 'group_id'),
     startedOn: rowString(row, 'started_on'),
@@ -159,9 +172,10 @@ function athleteGroupMembershipFromRow(
 
 function trainerGroupMembershipFromRow(
   row: Record<string, unknown>,
+  expectedOrganizationId: string,
 ): TrainerGroupMembership {
   return {
-    organizationId: rowString(row, 'organization_id'),
+    organizationId: rowOrganization(row, expectedOrganizationId),
     trainerId: rowString(row, 'trainer_id'),
     groupId: rowString(row, 'group_id'),
   };
@@ -176,6 +190,15 @@ function requiredIdentifier(value: string, label: string): string {
   ) {
     throw new Error(`${label} is invalid.`);
   }
+  return value;
+}
+
+function rowOrganization(
+  row: Record<string, unknown>,
+  expectedOrganizationId: string,
+): string {
+  const value = rowString(row, 'organization_id');
+  if (value !== expectedOrganizationId) invalidRow();
   return value;
 }
 
