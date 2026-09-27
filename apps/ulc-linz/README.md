@@ -1,9 +1,9 @@
 # ULC Linz
 
-ULC Linz AppBasis application with a mobile Vereins-App shell and the protected `countdown` module.
+ULC Linz AppBasis application with a mobile Vereins-App shell and the protected `countdown` and `athletes` (Stammdaten) modules.
 
 - App ID: `ulc-linz`
-- Modules: `countdown`
+- Modules: `countdown`, `athletes` (Stammdaten)
 - Platform services: identity, permissions
 
 This app includes the independently verified generated runtime and consumes declared AppBasis platform and module contracts without copying the Reference app.
