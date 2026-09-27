@@ -14,6 +14,12 @@ import type {
 
 const MODULE_ID = "kindertraining" as const;
 
+export interface UlcKindertrainingGroupOption {
+  readonly id: string;
+  readonly name: string;
+  readonly shortName: string | null;
+}
+
 export interface UlcKindertrainingParticipant {
   readonly athleteId: string;
   readonly firstName: string;
@@ -92,6 +98,43 @@ export function createUlcKindertrainingService({
   sessions: UlcKindertrainingSessionStore;
 }) {
   return Object.freeze({
+    async listGroups(
+      organizationId: string,
+    ): Promise<readonly UlcKindertrainingGroupOption[]> {
+      const normalizedOrganizationId = requiredIdentifier(
+        organizationId,
+        "Organization id",
+      );
+      const snapshot = await masterdata.readOrganizationSnapshot(
+        normalizedOrganizationId,
+      );
+      const seen = new Set<string>();
+      const groups = snapshot.trainingGroups
+        .filter((group) => {
+          if (group.organizationId !== normalizedOrganizationId) {
+            throw new UlcKindertrainingConsistencyError();
+          }
+          if (seen.has(group.id)) {
+            throw new UlcKindertrainingConsistencyError();
+          }
+          seen.add(group.id);
+          return group.isActive === true;
+        })
+        .map((group) =>
+          Object.freeze({
+            id: group.id,
+            name: group.name,
+            shortName: group.shortName,
+          }),
+        )
+        .sort(
+          (left, right) =>
+            left.name.localeCompare(right.name, "de") ||
+            left.id.localeCompare(right.id),
+        );
+      return Object.freeze(groups);
+    },
+
     async readSnapshot(
       organizationId: string,
       groupId: string,
