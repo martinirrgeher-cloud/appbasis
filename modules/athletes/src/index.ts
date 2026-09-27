@@ -35,6 +35,7 @@ export type {
 } from "./domain/masterdata";
 export type {
   AthleteMasterdataPostgresClient,
+  AthleteMasterdataRetentionResult,
   AthleteMasterdataSnapshot,
   AthleteMasterdataSqlParameter,
 } from "./postgres-masterdata-repository";
