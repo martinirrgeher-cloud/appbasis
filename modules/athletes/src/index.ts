@@ -20,6 +20,7 @@ export {
   createTrainingGroup,
 } from "./domain/masterdata";
 export { PostgresAthleteMasterdataRepository } from "./postgres-masterdata-repository";
+export { reconcileAthleteMasterdataRestoredDatabase } from "./restore-reconciliation";
 export type {
   Athlete,
   AthleteGroupMembership,
@@ -34,11 +35,19 @@ export type {
   TrainingGroup,
 } from "./domain/masterdata";
 export type {
+  AthleteMasterdataDeletionEntityType,
+  AthleteMasterdataDeletionMarker,
+  AthleteMasterdataDeletionReplayResult,
   AthleteMasterdataPostgresClient,
   AthleteMasterdataRetentionResult,
   AthleteMasterdataSnapshot,
   AthleteMasterdataSqlParameter,
 } from "./postgres-masterdata-repository";
+export type {
+  AthleteMasterdataDeletionReconciliationSource,
+  AthleteMasterdataDeletionReconciliationTarget,
+  AthleteMasterdataRestoreReconciliationResult,
+} from "./restore-reconciliation";
 
 function requiredAthleteCapability<const T extends string>(capability: T): T {
   if (!MODULE_CAPABILITIES.includes(capability)) {
