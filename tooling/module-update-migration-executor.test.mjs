@@ -91,6 +91,8 @@ test("ULC-E2B accepts only existing non-structural access-control DDL in the bas
     "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN CREATE SEQUENCE hidden_seq; END IF; END $appbasis$;",
     "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN ALTER SEQUENCE hidden_seq RESTART WITH 2; END IF; END $appbasis$;",
     "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN EXECUTE 'CREATE TABLE hidden_dynamic (id text)'; END IF; END $appbasis$;",
+    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN CALL rewrite_existing_data(); END IF; END $appbasis$;",
+    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN PERFORM rewrite_existing_data(); END IF; END $appbasis$;",
   ]) {
     assert.throws(
       () =>
