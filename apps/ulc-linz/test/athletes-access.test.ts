@@ -43,6 +43,7 @@ function service(input: {
   sourceRole?: "admin" | "trainer" | "athlete" | "parent";
   active?: boolean;
   grants?: Array<ReturnType<typeof capabilityId>>;
+  revokes?: Array<ReturnType<typeof capabilityId>>;
   roleCapabilities?: Array<ReturnType<typeof capabilityId>>;
   organizationRows?: readonly Record<string, unknown>[];
 }) {
@@ -75,7 +76,7 @@ function service(input: {
             principalId: principalId(IDENTITY_ID),
             roleIds: [runtimeRoleId],
             grants: input.grants ?? [],
-            revokes: [],
+            revokes: input.revokes ?? [],
           },
         ],
       }),
@@ -120,6 +121,20 @@ describe("ULC Linz Stammdaten access", () => {
     await expect(access.assertEditAccess(currentIdentity())).rejects.toBeInstanceOf(
       UlcLinzAuthorizationDeniedError,
     );
+  });
+
+  it("fails closed for inactive membership and explicit capability revocation", async () => {
+    const view = capabilityId("ulc-linz:module:athletes:view");
+
+    const inactive = service({ grants: [view], active: false });
+    await expect(
+      inactive.access.assertViewAccess(currentIdentity()),
+    ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+
+    const revoked = service({ grants: [view], revokes: [view] });
+    await expect(
+      revoked.access.assertViewAccess(currentIdentity()),
+    ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
   });
 
   it("keeps athlete and parent roles out of organization-wide Stammdaten", async () => {
