@@ -9,7 +9,6 @@ import {
   type UlcTrainingSessionState,
 } from "./training-session-domain";
 import type {
-  PostgresUlcTrainingSessionRepository,
   UlcTrainingSessionSnapshot,
 } from "./training-session-postgres";
 
@@ -90,7 +89,7 @@ export function createUlcKindertrainingService({
   sessions,
 }: {
   masterdata: UlcKindertrainingMasterdataReader;
-  sessions: UlcKindertrainingSessionStore | PostgresUlcTrainingSessionRepository;
+  sessions: UlcKindertrainingSessionStore;
 }) {
   return Object.freeze({
     async readSnapshot(
@@ -327,7 +326,13 @@ function assertExactParticipantSet(
   );
   const received = new Set<string>();
   for (const entry of attendance) {
-    const athleteId = requiredIdentifier(entry?.athleteId, "Athlete id");
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new UlcTrainingValidationError(
+        "Training attendance entry is invalid.",
+      );
+    }
+    const athleteId = requiredIdentifier(entry.athleteId, "Athlete id");
+    requiredAttendanceStatus(entry.status);
     if (received.has(athleteId)) {
       throw new UlcTrainingValidationError(
         "Training attendance contains a duplicate athlete.",
@@ -343,6 +348,22 @@ function assertExactParticipantSet(
       "Training attendance must match the participant snapshot exactly.",
     );
   }
+}
+
+function requiredAttendanceStatus(
+  value: unknown,
+): UlcTrainingAttendanceStatus {
+  if (
+    value !== "open" &&
+    value !== "present" &&
+    value !== "excused" &&
+    value !== "absent"
+  ) {
+    throw new UlcTrainingValidationError(
+      "Training attendance status is invalid.",
+    );
+  }
+  return value;
 }
 
 function requiredIdentifier(value: unknown, label: string): string {
