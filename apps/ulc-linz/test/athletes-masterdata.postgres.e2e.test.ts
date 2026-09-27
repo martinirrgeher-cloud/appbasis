@@ -78,6 +78,11 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         lastName: "Beispiel",
         birthYear: 2011,
       });
+      const activeAthlete = await repository.createAthlete("verein-1", {
+        firstName: "Clara",
+        lastName: "Aktiv",
+        birthYear: 2013,
+      });
       const trainerOne = await repository.createTrainer("verein-1", {
         firstName: "Max",
         lastName: "Trainer",
@@ -169,6 +174,12 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
          WHERE id = $1 AND organization_id = 'verein-2'`,
         [athleteTwo.id],
       );
+      await connection.client.unsafe(
+        `UPDATE appbasis_athlete
+         SET updated_at = '2020-01-01T00:00:00.000Z'::timestamptz
+         WHERE id = $1 AND organization_id = 'verein-1'`,
+        [activeAthlete.id],
+      );
 
       await expect(
         repository.purgeDeactivatedPersonalData(
@@ -186,13 +197,21 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
          FROM appbasis_athlete
          ORDER BY organization_id, id`,
       );
-      expect(remaining).toEqual([
-        {
-          organization_id: "verein-2",
-          id: athleteTwo.id,
-          is_active: false,
-        },
-      ]);
+      expect(remaining).toHaveLength(2);
+      expect(remaining).toEqual(
+        expect.arrayContaining([
+          {
+            organization_id: "verein-1",
+            id: activeAthlete.id,
+            is_active: true,
+          },
+          {
+            organization_id: "verein-2",
+            id: athleteTwo.id,
+            is_active: false,
+          },
+        ]),
+      );
 
       const memberships = await connection.client.unsafe(
         `SELECT
