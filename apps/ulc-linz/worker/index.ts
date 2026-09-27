@@ -195,9 +195,15 @@ async function athletesMasterdataMutationResponse(
         access.organizationId,
         {
           name: body.name as string,
-          shortName: body.shortName as string | null | undefined,
-          description: body.description as string | null | undefined,
-          sortOrder: body.sortOrder as number | undefined,
+          ...(body.shortName === undefined
+            ? {}
+            : { shortName: body.shortName as string | null }),
+          ...(body.description === undefined
+            ? {}
+            : { description: body.description as string | null }),
+          ...(body.sortOrder === undefined
+            ? {}
+            : { sortOrder: body.sortOrder as number }),
         },
       );
       return Response.json({ trainingGroup }, { status: 201 });
@@ -215,8 +221,12 @@ async function athletesMasterdataMutationResponse(
         {
           firstName: body.firstName as string,
           lastName: body.lastName as string,
-          birthYear: body.birthYear as number | null | undefined,
-          notes: body.notes as string | null | undefined,
+          ...(body.birthYear === undefined
+            ? {}
+            : { birthYear: body.birthYear as number | null }),
+          ...(body.notes === undefined
+            ? {}
+            : { notes: body.notes as string | null }),
         },
       );
       return Response.json({ athlete }, { status: 201 });
@@ -235,9 +245,15 @@ async function athletesMasterdataMutationResponse(
         {
           firstName: body.firstName as string,
           lastName: body.lastName as string,
-          phone: body.phone as string | null | undefined,
-          email: body.email as string | null | undefined,
-          notes: body.notes as string | null | undefined,
+          ...(body.phone === undefined
+            ? {}
+            : { phone: body.phone as string | null }),
+          ...(body.email === undefined
+            ? {}
+            : { email: body.email as string | null }),
+          ...(body.notes === undefined
+            ? {}
+            : { notes: body.notes as string | null }),
         },
       );
       return Response.json({ trainer }, { status: 201 });
@@ -257,7 +273,9 @@ async function athletesMasterdataMutationResponse(
             athleteId: body.athleteId as string,
             groupId: body.groupId as string,
             startedOn: body.startedOn as string,
-            endedOn: body.endedOn as string | null | undefined,
+            ...(body.endedOn === undefined
+              ? {}
+              : { endedOn: body.endedOn as string | null }),
           },
         );
       return Response.json({ membership }, { status: 201 });
