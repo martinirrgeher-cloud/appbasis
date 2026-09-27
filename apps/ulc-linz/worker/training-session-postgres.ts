@@ -123,7 +123,7 @@ export class PostgresUlcTrainingSessionRepository {
     );
     const payload = JSON.stringify(
       normalizedAttendance.map((entry) => ({
-        athleteId: entry.athleteId,
+        athlete_id: entry.athleteId,
         status: entry.status,
       })),
     );
