@@ -110,6 +110,19 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await expect(
         repository.createAthleteGroupMembership("verein-1", {
           athleteId: athleteOne.id,
+          groupId: groupOne.id,
+          startedOn: "2099-01-01",
+        }),
+      ).resolves.toMatchObject({
+        organizationId: "verein-1",
+        athleteId: athleteOne.id,
+        groupId: groupOne.id,
+        startedOn: "2099-01-01",
+      });
+
+      await expect(
+        repository.createAthleteGroupMembership("verein-1", {
+          athleteId: athleteOne.id,
           groupId: groupTwo.id,
           startedOn: "2026-09-01",
         }),
@@ -164,7 +177,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       ).resolves.toEqual({
         deletedAthletes: 1,
         deletedTrainers: 1,
-        deletedAthleteGroupMemberships: 1,
+        deletedAthleteGroupMemberships: 2,
         deletedTrainerGroupMemberships: 1,
       });
 
