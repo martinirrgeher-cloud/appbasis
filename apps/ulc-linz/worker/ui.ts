@@ -50,6 +50,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <button class="app-nav__link is-active" type="button" data-nav-view="home">Start</button>
           <button class="app-nav__link" type="button" data-nav-view="masterdata" disabled>Stammdaten</button>
+          <button class="app-nav__link" type="button" data-nav-view="kindertraining" disabled>Training</button>
           <button class="app-nav__link" type="button" data-nav-view="countdown" disabled>Countdown</button>
           <button class="app-nav__link" type="button" data-nav-view="settings" disabled>Einstellungen</button>
         </nav>
@@ -73,6 +74,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
               </article>
 
+              <article class="card dashboard-card dashboard-card--primary">
+                <div>
+                  <p class="eyebrow">Training</p>
+                  <h2>Kindertraining</h2>
+                  <p>Anwesenheit für eine Trainingsgruppe und einen Trainingstag direkt am Smartphone erfassen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="kindertraining-quick-action" type="button" data-open-view="kindertraining" disabled>Kindertraining öffnen</button>
+                <small id="kindertraining-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
               <article class="card dashboard-card">
                 <div>
                   <p class="eyebrow">Nützliches</p>
@@ -89,7 +100,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                   <h2>Weitere Bereiche folgen</h2>
                   <p>Die bestehenden ULC-Funktionen werden schrittweise und kontrolliert in AppBasis übernommen.</p>
                 </div>
-                <span class="dashboard-status">Stammdaten · E3B</span>
+                <span class="dashboard-status">Stammdaten · Kindertraining</span>
               </article>
             </section>
           </section>
@@ -188,6 +199,74 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                   <button class="button button--secondary" id="group-edit-cancel" type="button" hidden>Abbrechen</button>
                 </div>
               </form>
+            </section>
+          </section>
+
+          <section class="app-section" data-app-section="kindertraining" id="kindertraining" hidden>
+            <section class="hero">
+              <p class="eyebrow">Training</p>
+              <h1>Kindertraining</h1>
+              <p class="summary">Training auswählen, Anwesenheit erfassen und gemeinsam speichern.</p>
+            </section>
+
+            <p class="message message--error" id="kindertraining-message" role="alert" hidden></p>
+            <p class="message message--success" id="kindertraining-success" role="status" hidden></p>
+
+            <section class="card kindertraining-selector">
+              <div class="settings-grid">
+                <label>Trainingsgruppe
+                  <select id="kindertraining-group" required>
+                    <option value="">Gruppe wählen</option>
+                  </select>
+                </label>
+                <label>Datum
+                  <input id="kindertraining-date" type="date" required />
+                </label>
+              </div>
+              <button class="button button--secondary" id="kindertraining-load" type="button">Training laden</button>
+            </section>
+
+            <section class="kindertraining-session" id="kindertraining-session" hidden>
+              <section class="card kindertraining-session-card">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Trainingseinheit</p>
+                    <h2 id="kindertraining-title">Kindertraining</h2>
+                  </div>
+                  <span id="kindertraining-save-state">Noch nicht gespeichert</span>
+                </div>
+
+                <div class="settings-grid">
+                  <label>Status
+                    <select id="kindertraining-state">
+                      <option value="scheduled">Geplant</option>
+                      <option value="cancelled">Abgesagt</option>
+                    </select>
+                  </label>
+                  <label class="kindertraining-note-label">Notiz
+                    <textarea id="kindertraining-note" maxlength="3000" rows="3" placeholder="Optional"></textarea>
+                  </label>
+                </div>
+              </section>
+
+              <section class="card kindertraining-attendance-card">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Anwesenheit</p>
+                    <h2>Teilnehmer</h2>
+                  </div>
+                  <span id="kindertraining-count">0</span>
+                </div>
+
+                <div class="kindertraining-summary" id="kindertraining-summary" aria-live="polite"></div>
+                <div class="kindertraining-bulk-actions" aria-label="Anwesenheit gesammelt setzen">
+                  <button class="button button--secondary" id="kindertraining-all-present" type="button">Alle anwesend</button>
+                  <button class="button button--secondary" id="kindertraining-all-open" type="button">Alle offen</button>
+                </div>
+                <div class="kindertraining-participants" id="kindertraining-participants" aria-live="polite"></div>
+              </section>
+
+              <button class="button button--primary kindertraining-save" id="kindertraining-save" type="button">Training speichern</button>
             </section>
           </section>
 
@@ -292,7 +371,7 @@ export const ULC_LINZ_APP_CSS = `:root {
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--page); }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 [hidden] { display: none !important; }
 .app-shell { min-height: 100vh; }
 .app-header {
@@ -339,7 +418,7 @@ h2 { margin-bottom: 0; font-size: 1.3rem; }
 .summary { margin-bottom: 0; color: var(--secondary); line-height: 1.55; }
 .form-stack { display: grid; gap: 12px; margin-top: 20px; }
 label { display: grid; gap: 5px; color: var(--secondary); font-size: .82rem; font-weight: 750; }
-input, select {
+input, select, textarea {
   width: 100%;
   min-height: var(--touch);
   border: 1px solid var(--border-strong);
@@ -349,7 +428,12 @@ input, select {
   padding: 0 12px;
   font-size: 16px;
 }
-input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
+textarea {
+  min-height: 92px;
+  padding-block: 12px;
+  resize: vertical;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 35%, white);
   outline-offset: 2px;
 }
@@ -366,6 +450,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .button--secondary { border-color: var(--border-strong); background: white; color: var(--secondary); }
 .message { margin: 12px 0 0; padding: 12px; border-radius: var(--control-radius); font-size: .84rem; }
 .message--error { background: var(--danger-surface); color: var(--danger); }
+.message--success { background: #dcfce7; color: #166534; }
 .app-nav {
   position: fixed;
   right: 0;
@@ -373,7 +458,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
   left: 0;
   z-index: 25;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
   padding: 8px 12px max(8px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
@@ -389,8 +474,10 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
   background: transparent;
   color: #64748b;
   cursor: pointer;
-  font-size: .82rem;
+  padding: 4px;
+  font-size: .76rem;
   font-weight: 800;
+  line-height: 1.15;
 }
 .app-nav__link.is-active { background: #dbeafe; color: #1d4ed8; }
 .app-nav__link:disabled { cursor: not-allowed; opacity: .45; }
@@ -475,6 +562,95 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
   padding: 18px;
 }
 .masterdata-form .button { width: 100%; }
+.kindertraining-selector,
+.kindertraining-session-card,
+.kindertraining-attendance-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+.kindertraining-selector { margin-bottom: 14px; }
+.kindertraining-selector .button { width: 100%; }
+.kindertraining-session { display: grid; gap: 14px; }
+.kindertraining-note-label { grid-column: 1 / -1; }
+.kindertraining-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.kindertraining-summary__item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 6px;
+  border-radius: 10px;
+  background: var(--muted);
+  text-align: center;
+}
+.kindertraining-summary__item strong { font-size: 1rem; }
+.kindertraining-summary__item span { color: var(--secondary); font-size: .68rem; }
+.kindertraining-bulk-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.kindertraining-participants { display: grid; gap: 10px; }
+.kindertraining-participant {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: white;
+}
+.kindertraining-participant__identity { display: grid; gap: 3px; }
+.kindertraining-participant__identity strong { font-size: .96rem; }
+.kindertraining-participant__identity span { color: var(--secondary); font-size: .78rem; }
+.kindertraining-statuses {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.kindertraining-status {
+  min-height: 42px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: white;
+  color: var(--secondary);
+  cursor: pointer;
+  padding: 5px 4px;
+  font-size: .72rem;
+  font-weight: 800;
+}
+.kindertraining-status[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: #dbeafe;
+  color: var(--accent);
+}
+.kindertraining-status[data-status="present"][aria-pressed="true"] {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
+}
+.kindertraining-status[data-status="excused"][aria-pressed="true"] {
+  border-color: #fde68a;
+  background: #fef3c7;
+  color: #92400e;
+}
+.kindertraining-status[data-status="absent"][aria-pressed="true"] {
+  border-color: #fecaca;
+  background: #fee2e2;
+  color: var(--danger);
+}
+.kindertraining-empty {
+  padding: 18px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--control-radius);
+  color: #64748b;
+  text-align: center;
+}
+.kindertraining-save { width: 100%; min-height: 56px; }
+
 .countdown-layout { display: grid; gap: 12px; }
 .timer-stage {
   display: grid;
