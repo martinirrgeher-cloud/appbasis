@@ -264,6 +264,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
   it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" disabled');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
@@ -275,7 +276,13 @@ describe("generated identity+permissions Worker entrypoint", () => {
       "elements.masterdataQuickAction.disabled = !masterdataReady;",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.kindertrainingQuickAction.disabled = !kindertrainingReady;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
       '(section === "masterdata" && masterdataReady)',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '(section === "kindertraining" && kindertrainingReady)',
     );
   });
 
