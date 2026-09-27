@@ -254,7 +254,10 @@ export class PostgresAthleteMasterdataRepository {
        ),
        closed_memberships AS (
          UPDATE appbasis_athlete_group_membership
-         SET ended_on = COALESCE(ended_on, CURRENT_DATE),
+         SET ended_on = COALESCE(
+               ended_on,
+               GREATEST(CURRENT_DATE, started_on)
+             ),
              updated_at = now()
          WHERE organization_id = $2
            AND athlete_id IN (SELECT id FROM deactivated)
