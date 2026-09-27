@@ -137,9 +137,10 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       expect(snapshot.trainingGroups.map((entry) => entry.id)).toEqual([
         groupOne.id,
       ]);
-      expect(snapshot.athletes.map((entry) => entry.id)).toEqual([
-        athleteOne.id,
-      ]);
+      expect(snapshot.athletes.map((entry) => entry.id)).toHaveLength(2);
+      expect(snapshot.athletes.map((entry) => entry.id)).toEqual(
+        expect.arrayContaining([athleteOne.id, activeAthlete.id]),
+      );
       expect(snapshot.trainers.map((entry) => entry.id)).toEqual([
         trainerOne.id,
       ]);
