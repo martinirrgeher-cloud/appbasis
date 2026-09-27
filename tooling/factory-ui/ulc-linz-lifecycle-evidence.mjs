@@ -127,7 +127,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "modules/athletes/src/postgres-masterdata-repository.ts",
-      gitBlobSha: "ce261ef17b2cc729995a97581e966387aea9b205",
+      gitBlobSha: "b36e83ac5aab0c051db1f153d5654806848d1c53",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/app.ts",
