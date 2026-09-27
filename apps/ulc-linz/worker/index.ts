@@ -12,6 +12,10 @@ import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 import { createGeneratedApp } from "./app";
 import { UlcLinzAuthorizationDeniedError } from "./authorization";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
+import {
+  UlcKindertrainingNotFoundError,
+} from "./kindertraining-service";
+import { UlcTrainingValidationError } from "./training-session-domain";
 import { recordUlcLinzSecurityEvent } from "./security-events";
 import { generatedUiResponse } from "./ui";
 import {
@@ -82,6 +86,10 @@ export function createGeneratedWorker(
             url,
             runtimeOptions.secret,
           );
+        } else if (url.pathname === "/api/modules/kindertraining") {
+          response = await kindertrainingModuleResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/kindertraining/session") {
+          response = await kindertrainingSessionResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes") {
           response = await athletesModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes/masterdata") {
@@ -125,6 +133,240 @@ export function createGeneratedWorker(
 }
 
 export default createGeneratedWorker();
+
+async function kindertrainingModuleResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "Kindertraining");
+  }
+
+  const access = await authorizeKindertrainingRequest(
+    request,
+    runtime,
+    url,
+    "view",
+  );
+  if (access instanceof Response) return access;
+
+  return Response.json({
+    module: {
+      moduleId: "kindertraining",
+    },
+    access: {
+      view: true,
+      organizationId: access.organizationId,
+    },
+  });
+}
+
+async function kindertrainingSessionResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowedFor("GET, POST", "Kindertraining");
+  }
+
+  const action = request.method === "GET" ? "view" : "edit";
+  const access = await authorizeKindertrainingRequest(
+    request,
+    runtime,
+    url,
+    action,
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    if (request.method === "GET") {
+      const query = kindertrainingSessionQuery(url);
+      const snapshot = await runtime.kindertraining.readSnapshot(
+        access.organizationId,
+        query.groupId,
+        query.sessionDate,
+      );
+      return Response.json({ snapshot });
+    }
+
+    const body = await kindertrainingJsonBody(request);
+    const snapshot = await runtime.kindertraining.saveSession(
+      access.organizationId,
+      {
+        groupId: body.groupId as string,
+        sessionDate: body.sessionDate as string,
+        ...(body.state === undefined
+          ? {}
+          : { state: body.state as "scheduled" | "cancelled" }),
+        ...(body.note === undefined
+          ? {}
+          : { note: body.note as string | null }),
+        attendance: body.attendance as Array<{
+          athleteId: string;
+          status: "open" | "present" | "excused" | "absent";
+        }>,
+      },
+    );
+    return Response.json({ snapshot });
+  } catch (error) {
+    if (error instanceof UlcTrainingValidationError) {
+      return invalidKindertrainingSession();
+    }
+    if (error instanceof InvalidKindertrainingRequestError) {
+      return invalidKindertrainingSession();
+    }
+    if (error instanceof UlcKindertrainingNotFoundError) {
+      return kindertrainingGroupNotFound();
+    }
+    throw error;
+  }
+}
+
+async function authorizeKindertrainingRequest(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+  action: "view" | "edit",
+): Promise<Response | Readonly<{ organizationId: string }>> {
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action,
+        targetId: "kindertraining",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  try {
+    return action === "view"
+      ? await runtime.kindertrainingAccess.assertViewAccess(current)
+      : await runtime.kindertrainingAccess.assertEditAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "Kindertraining access denied.",
+          },
+        },
+        { status: 403 },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+}
+
+class InvalidKindertrainingRequestError extends Error {}
+
+function kindertrainingSessionQuery(url: URL): {
+  groupId: string;
+  sessionDate: string;
+} {
+  const keys = [...url.searchParams.keys()];
+  if (
+    keys.some((key) => key !== "groupId" && key !== "sessionDate") ||
+    url.searchParams.getAll("groupId").length !== 1 ||
+    url.searchParams.getAll("sessionDate").length !== 1
+  ) {
+    throw new InvalidKindertrainingRequestError();
+  }
+  const groupId = url.searchParams.get("groupId");
+  const sessionDate = url.searchParams.get("sessionDate");
+  if (
+    typeof groupId !== "string" ||
+    groupId.length === 0 ||
+    groupId.length > 200 ||
+    groupId.trim() !== groupId ||
+    typeof sessionDate !== "string"
+  ) {
+    throw new InvalidKindertrainingRequestError();
+  }
+  return { groupId, sessionDate };
+}
+
+async function kindertrainingJsonBody(
+  request: Request,
+): Promise<Record<string, unknown>> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    throw new InvalidKindertrainingRequestError();
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new InvalidKindertrainingRequestError();
+  }
+  const body = value as Record<string, unknown>;
+  const allowed = ["groupId", "sessionDate", "state", "note", "attendance"];
+  if (
+    Object.keys(body).some((key) => !allowed.includes(key)) ||
+    !Object.prototype.hasOwnProperty.call(body, "groupId") ||
+    !Object.prototype.hasOwnProperty.call(body, "sessionDate") ||
+    !Object.prototype.hasOwnProperty.call(body, "attendance") ||
+    Object.getOwnPropertySymbols(body).length !== 0 ||
+    !Array.isArray(body.attendance)
+  ) {
+    throw new InvalidKindertrainingRequestError();
+  }
+  for (const entry of body.attendance) {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      Object.getPrototypeOf(entry) !== Object.prototype ||
+      JSON.stringify(Object.keys(entry).sort()) !==
+        JSON.stringify(["athleteId", "status"])
+    ) {
+      throw new InvalidKindertrainingRequestError();
+    }
+  }
+  return body;
+}
+
+function invalidKindertrainingSession(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "INVALID_TRAINING_SESSION",
+        message: "The Kindertraining input is invalid.",
+      },
+    },
+    { status: 400 },
+  );
+}
+
+function kindertrainingGroupNotFound(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "TRAINING_GROUP_NOT_FOUND",
+        message: "The training group was not found.",
+      },
+    },
+    { status: 404 },
+  );
+}
 
 async function athletesModuleResponse(
   request: Request,
@@ -729,6 +971,27 @@ function athletesMethodNotAllowed(): Response {
       headers: {
         "content-type": "application/json; charset=utf-8",
         allow: "GET",
+      },
+    },
+  );
+}
+
+function methodNotAllowedFor(
+  allow: string,
+  label: string,
+): Response {
+  return new Response(
+    JSON.stringify({
+      error: {
+        code: "METHOD_NOT_ALLOWED",
+        message: `Only ${allow} is supported for this ${label} endpoint.`,
+      },
+    }),
+    {
+      status: 405,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        allow,
       },
     },
   );

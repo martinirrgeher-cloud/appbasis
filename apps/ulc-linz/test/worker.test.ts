@@ -170,6 +170,42 @@ function runtime(
       return true;
     },
   },
+  kindertrainingAccess: GeneratedPostgresApplicationRuntime["kindertrainingAccess"] = {
+    async assertViewAccess() {
+      return { organizationId: "verein-1" };
+    },
+    async assertEditAccess() {
+      return { organizationId: "verein-1" };
+    },
+  },
+  kindertraining: GeneratedPostgresApplicationRuntime["kindertraining"] = {
+    async readSnapshot(_organizationId, groupId, sessionDate) {
+      return {
+        group: { id: groupId, name: "Kindertraining", shortName: "KT" },
+        sessionDate,
+        session: null,
+        participants: [],
+      };
+    },
+    async saveSession(_organizationId, input) {
+      return {
+        group: { id: input.groupId, name: "Kindertraining", shortName: "KT" },
+        sessionDate: input.sessionDate,
+        session: {
+          id: "session-test",
+          state: input.state ?? "scheduled",
+          note: input.note ?? null,
+        },
+        participants: input.attendance.map((entry) => ({
+          athleteId: entry.athleteId,
+          firstName: "Test",
+          lastName: "Athlet",
+          birthYear: null,
+          status: entry.status,
+        })),
+      };
+    },
+  },
 ): GeneratedPostgresApplicationRuntime {
   return {
     identity,
@@ -180,7 +216,9 @@ function runtime(
     }),
     countdownAccess,
     athletesAccess,
+    kindertrainingAccess,
     athleteMasterdata,
+    kindertraining,
     securityEvents: {
       record() {},
       flush,
@@ -1245,6 +1283,154 @@ describe("generated identity+permissions Worker entrypoint", () => {
       expect(logged.join("\n")).not.toContain("close-secret");
     } finally {
       console.error = originalError;
+    }
+  });
+});
+
+
+describe("Kindertraining runtime API", () => {
+  it("reads a participant snapshot only for the server-authorized organization", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        kindertrainingAccess: {
+          ...base.kindertrainingAccess,
+          async assertViewAccess() {
+            return { organizationId: "verein-server" };
+          },
+        },
+        kindertraining: {
+          ...base.kindertraining,
+          async readSnapshot(organizationId, groupId, sessionDate) {
+            received = { organizationId, groupId, sessionDate };
+            return {
+              group: { id: groupId, name: "Kindertraining", shortName: "KT" },
+              sessionDate,
+              session: null,
+              participants: [],
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/kindertraining/session?groupId=group-1&sessionDate=2026-09-27",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      groupId: "group-1",
+      sessionDate: "2026-09-27",
+    });
+  });
+
+  it("saves attendance through edit access without accepting client organization scope", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        kindertrainingAccess: {
+          ...base.kindertrainingAccess,
+          async assertEditAccess() {
+            return { organizationId: "verein-server" };
+          },
+        },
+        kindertraining: {
+          ...base.kindertraining,
+          async saveSession(organizationId, input) {
+            received = { organizationId, input };
+            return {
+              group: {
+                id: input.groupId,
+                name: "Kindertraining",
+                shortName: "KT",
+              },
+              sessionDate: input.sessionDate,
+              session: {
+                id: "session-1",
+                state: input.state ?? "scheduled",
+                note: input.note ?? null,
+              },
+              participants: [],
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/kindertraining/session", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          groupId: "group-1",
+          sessionDate: "2026-09-27",
+          state: "scheduled",
+          note: "Halle",
+          attendance: [],
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      input: {
+        groupId: "group-1",
+        sessionDate: "2026-09-27",
+        state: "scheduled",
+        note: "Halle",
+        attendance: [],
+      },
+    });
+
+    const rejected = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/kindertraining/session", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: "verein-client",
+          groupId: "group-1",
+          sessionDate: "2026-09-27",
+          attendance: [],
+        }),
+      }),
+      validEnv,
+    );
+    expect(rejected.status).toBe(400);
+  });
+
+  it("rejects unknown query parameters and duplicate scope parameters", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    for (const query of [
+      "groupId=group-1&sessionDate=2026-09-27&organizationId=verein-client",
+      "groupId=group-1&groupId=group-2&sessionDate=2026-09-27",
+    ]) {
+      const response = await worker.fetch(
+        new Request(
+          `https://ulc.example.test/api/modules/kindertraining/session?${query}`,
+          { headers: { cookie: currentIdentity.sessionToken } },
+        ),
+        validEnv,
+      );
+      expect(response.status).toBe(400);
     }
   });
 });

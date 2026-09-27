@@ -20,7 +20,13 @@ import {
   createUlcLinzCountdownAccessService,
   type UlcLinzCountdownAccessService,
 } from "./countdown-access";
+import {
+  createUlcLinzKindertrainingAccessService,
+  type UlcLinzKindertrainingAccessService,
+} from "./kindertraining-access";
+import { createUlcKindertrainingService } from "./kindertraining-service";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
+import { PostgresUlcTrainingSessionRepository } from "./training-session-postgres";
 import {
   createPostgresUlcLinzSecurityEventLogger,
   type BufferedUlcLinzSecurityEventLogger,
@@ -31,6 +37,7 @@ export interface GeneratedPostgresApplicationRuntime {
   permissions: PermissionStore;
   countdownAccess: UlcLinzCountdownAccessService;
   athletesAccess: UlcLinzAthletesAccessService;
+  kindertrainingAccess: UlcLinzKindertrainingAccessService;
   athleteMasterdata: Pick<
     PostgresAthleteMasterdataRepository,
     | "readOrganizationSnapshot"
@@ -45,6 +52,7 @@ export interface GeneratedPostgresApplicationRuntime {
     | "deactivateAthlete"
     | "deactivateTrainer"
   >;
+  kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
 }
@@ -85,6 +93,13 @@ export async function createGeneratedPostgresApplicationRuntime(
       securityEvents,
     });
     const athletesAccess = createUlcLinzAthletesAccessService({
+      sql: applicationSql,
+      permissions,
+      memberships: scopes,
+      subjectScopes: scopes,
+      securityEvents,
+    });
+    const kindertrainingAccess = createUlcLinzKindertrainingAccessService({
       sql: applicationSql,
       permissions,
       memberships: scopes,
@@ -196,12 +211,20 @@ export async function createGeneratedPostgresApplicationRuntime(
         );
       },
     });
+    const trainingSessions =
+      new PostgresUlcTrainingSessionRepository(applicationSql);
+    const kindertraining = createUlcKindertrainingService({
+      masterdata: athleteMasterdata,
+      sessions: trainingSessions,
+    });
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
       countdownAccess,
       athletesAccess,
+      kindertrainingAccess,
       athleteMasterdata,
+      kindertraining,
       securityEvents,
       async close() {
         let closeError: unknown = null;
