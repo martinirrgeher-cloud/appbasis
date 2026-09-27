@@ -231,6 +231,29 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
   });
 
+  it("ships E3B group assignments and lifecycle actions without client-owned organization scope", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="athlete-group-form"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="athlete-group-athlete"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="athlete-group-group"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-group-form"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-group-trainer"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-group-group"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/masterdata/athlete-group-memberships"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/masterdata/trainer-group-memberships"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/deactivate"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("window.confirm");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("snapshot.athleteGroupMemberships");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("snapshot.trainerGroupMemberships");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("item?.isActive !== false");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(".textContent = description.meta");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
+  });
+
   it("ships the countdown controls and domain-backed plan integration in static assets", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("/api/modules/countdown/plan");
     expect(ULC_LINZ_APP_SCRIPT).toContain("speechSynthesis");
