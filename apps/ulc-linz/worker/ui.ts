@@ -361,10 +361,6 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
   cursor: pointer;
   font-weight: 800;
 }
-.masterdata-row__action--edit {
-  border-color: var(--border-strong);
-  color: var(--accent);
-}
 .button:disabled { cursor: not-allowed; opacity: .5; }
 .button--primary { background: var(--accent); color: var(--accent-foreground); }
 .button--secondary { border-color: var(--border-strong); background: white; color: var(--secondary); }
@@ -460,6 +456,10 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
   padding: 0 12px;
   cursor: pointer;
   font-weight: 800;
+}
+.masterdata-row__action--edit {
+  border-color: var(--border-strong);
+  color: var(--accent);
 }
 .masterdata-empty {
   padding: 18px;
@@ -1297,7 +1297,6 @@ async function deactivateMasterdataEntity(action) {
     );
     masterdataSnapshot = null;
     await loadMasterdata(true);
-    return true;
   } catch (error) {
     showMessage(
       elements.masterdataMessage,
@@ -1313,7 +1312,7 @@ async function deactivateMasterdataEntity(action) {
 }
 
 async function submitMasterdataForm(path, body, form) {
-  if (!masterdataReady || masterdataLoading) return;
+  if (!masterdataReady || masterdataLoading) return false;
   setMasterdataFormsDisabled(true);
   showMessage(elements.masterdataMessage, "");
   try {
@@ -1330,6 +1329,7 @@ async function submitMasterdataForm(path, body, form) {
     }
     masterdataSnapshot = null;
     await loadMasterdata(true);
+    return true;
   } catch (error) {
     showMessage(
       elements.masterdataMessage,
