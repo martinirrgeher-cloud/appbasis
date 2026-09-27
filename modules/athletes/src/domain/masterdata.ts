@@ -20,6 +20,13 @@ export interface CreateTrainingGroupInput {
   readonly sortOrder?: number;
 }
 
+export interface UpdateTrainingGroupInput {
+  readonly name: string;
+  readonly shortName: string | null;
+  readonly description: string | null;
+  readonly sortOrder: number;
+}
+
 export interface Athlete {
   readonly id: string;
   readonly organizationId: string;
@@ -35,6 +42,13 @@ export interface CreateAthleteInput {
   readonly lastName: string;
   readonly birthYear?: number | null;
   readonly notes?: string | null;
+}
+
+export interface UpdateAthleteInput {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly birthYear: number | null;
+  readonly notes: string | null;
 }
 
 export interface Trainer {
@@ -54,6 +68,14 @@ export interface CreateTrainerInput {
   readonly phone?: string | null;
   readonly email?: string | null;
   readonly notes?: string | null;
+}
+
+export interface UpdateTrainerInput {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly phone: string | null;
+  readonly email: string | null;
+  readonly notes: string | null;
 }
 
 export interface AthleteGroupMembership {
@@ -147,6 +169,27 @@ export function createTrainer(
     notes: optionalText(input.notes, 'Trainer notes', 3000),
     isActive: true,
   };
+}
+
+export function updateTrainingGroup(
+  input: UpdateTrainingGroupInput,
+  context: EntityContext,
+): TrainingGroup {
+  return createTrainingGroup(input, context);
+}
+
+export function updateAthlete(
+  input: UpdateAthleteInput,
+  context: EntityContext,
+): Athlete {
+  return createAthlete(input, context);
+}
+
+export function updateTrainer(
+  input: UpdateTrainerInput,
+  context: EntityContext,
+): Trainer {
+  return createTrainer(input, context);
 }
 
 export function createAthleteGroupMembership(
