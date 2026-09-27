@@ -161,7 +161,7 @@ ein DB-ownendes Fixture reproduzierbar publiziert, den bisherigen
 persistenzfreien Pfad unverändert lässt und einen Fehler nach DB-Manifest-
 Publikation vollständig zurückrollt.
 
-## FC6-D – isolierter Existing-App-E2E-Beweis – aktuell
+## FC6-D – isolierter Existing-App-E2E-Beweis – abgeschlossen
 
 Der vollständige Beweis verwendet ein isoliertes Existing-App-Fixture mit
 nicht leerer Identity-Baseline und das reale datenbank-ownende Standardmodul
@@ -187,6 +187,12 @@ Abnahme:
 Kein realer Produktverbraucher wird allein für die Abnahme künstlich mit einem
 nicht benötigten Modul erweitert.
 
+FC6-D schließt den Gate ab: dieselbe isolierte Existing-App-Baseline durchläuft
+den read-only Planner, den echten Repository-Updater und anschließend den
+inkrementellen PostgreSQL-Executor. Positive Installation, Bestandserhalt,
+Repository-No-op, DB-Rerun-Abweisung, Baseline-Drift und transaktionaler
+Failure-Rollback sind gemeinsam automatisiert belegt.
+
 ## Nicht Teil von FC6
 
 - kein generisches Upgrade beliebiger bestehender Modul-Schema-Versionen;
@@ -200,11 +206,11 @@ nicht benötigten Modul erweitert.
 
 ## Abschlusskriterium
 
-FC6 ist abgeschlossen, wenn ein datenbank-ownendes Standardmodul reproduzierbar
-zu einer bestehenden App hinzugefügt werden kann und der dazugehörige
-inkrementelle DB-Delta auf einer nicht leeren isolierten PostgreSQL-Baseline
-transaktional, idempotent/fail-closed und mit vollständiger automatisierter
-Evidence ausgeführt werden kann.
+**FC6 ist abgeschlossen.** Ein datenbank-ownendes Standardmodul kann
+reproduzierbar zu einer bestehenden App hinzugefügt werden und der zugehörige
+inkrementelle DB-Delta wird auf einer nicht leeren isolierten
+PostgreSQL-Baseline transaktional, idempotent/fail-closed und mit
+automatisierter Evidence ausgeführt.
 
-Produktionsmigration, Deployment und Release bleiben danach weiterhin eigene,
+Produktionsmigration, Deployment und Release bleiben weiterhin eigene,
 ausdrücklich freizugebende Schritte.
