@@ -583,10 +583,23 @@ function toPosixPath(value) {
 async function runCli() {
   const input = parseApplyModuleUpdateArguments(process.argv.slice(2));
   const result = await applyModuleUpdate(input);
+
+  if (result.state === "already-installed") {
+    console.log(
+      `AppBasis module repository state already installed: ${input.appId} <- ${input.moduleId}. Database migration state is not inferred.`,
+    );
+    return;
+  }
+
+  if (result.plan.changes.databaseMigrationDelta !== null) {
+    console.log(
+      `Published AppBasis module repository state: ${input.appId} <- ${input.moduleId}. Database migration required separately.`,
+    );
+    return;
+  }
+
   console.log(
-    result.state === "already-installed"
-      ? `AppBasis module already installed: ${input.appId} <- ${input.moduleId}.`
-      : `Installed AppBasis module: ${input.appId} <- ${input.moduleId}.`,
+    `Installed AppBasis module: ${input.appId} <- ${input.moduleId}.`,
   );
 }
 
