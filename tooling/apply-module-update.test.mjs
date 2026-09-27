@@ -401,6 +401,24 @@ test("FC6-C publishes a database-owning module without applying database migrati
     await readFile(join(root, "pnpm-lock.yaml"), "utf8"),
     /'@appbasis\/inventory'/,
   );
+
+  const verifiedDefinitions = await verifyAppDefinitions(root);
+  assert.deepEqual(verifiedDefinitions[0]?.modules, ["inventory"]);
+
+  const beforeNoop = await snapshotFixture(root);
+  const noop = await applyModuleUpdate(
+    {
+      appId: "reference",
+      moduleId: "inventory",
+    },
+    executorOptions(root, {
+      workspaceFinalizer: async () => {
+        throw new Error("workspace finalizer must not run for FC6-C no-op");
+      },
+    }),
+  );
+  assert.equal(noop.state, "already-installed");
+  assert.deepEqual(await snapshotFixture(root), beforeNoop);
 });
 
 test("FC6-C rolls back the database manifest when repository publication fails", async (t) => {
