@@ -86,23 +86,28 @@ test("ULC-E2B accepts only existing non-structural access-control DDL in the bas
     /statement without a verifiable catalog marker/,
   );
 
-  assert.throws(
-    () =>
-      createCatalogContract(
-        [
-          {
-            ownerId: "baseline",
-            relativePath: "unsafe.sql",
-            statements: [
-              "DO $appbasis$ BEGIN CREATE TABLE hidden_target (id text); END $appbasis$;",
-            ],
-          },
-        ],
-        "baseline",
-        { allowExistingNonStructuralAccessControl: true },
-      ),
-    /statement without a verifiable catalog marker/,
-  );
+  for (const unsafeStatement of [
+    "DO $appbasis$ BEGIN CREATE TABLE hidden_target (id text); END $appbasis$;",
+    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN CREATE SEQUENCE hidden_seq; END IF; END $appbasis$;",
+    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN ALTER SEQUENCE hidden_seq RESTART WITH 2; END IF; END $appbasis$;",
+    "DO $appbasis$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles) THEN EXECUTE 'CREATE TABLE hidden_dynamic (id text)'; END IF; END $appbasis$;",
+  ]) {
+    assert.throws(
+      () =>
+        createCatalogContract(
+          [
+            {
+              ownerId: "baseline",
+              relativePath: "unsafe.sql",
+              statements: [unsafeStatement],
+            },
+          ],
+          "baseline",
+          { allowExistingNonStructuralAccessControl: true },
+        ),
+      /statement without a verifiable catalog marker/,
+    );
+  }
 });
 
 test("FC6-B derives verifiable catalog markers from quoted PostgreSQL DDL", () => {
