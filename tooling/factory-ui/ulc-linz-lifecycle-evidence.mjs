@@ -83,7 +83,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
-      gitBlobSha: "ea0d98a497951ff9d9798095620b157504b5b7d4",
+      gitBlobSha: "8978a26e54821047ab892259f57111a92c13e9da",
     }),
     Object.freeze({
       path: "tooling/ulc-linz-database-contract.mjs",
@@ -167,15 +167,15 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/retention.ts",
-      gitBlobSha: "d9277a7721418f5b8c13a3f36421cf9034fcb56f",
+      gitBlobSha: "fdce5bff5b0d29093a868867b564ef20781c0b11",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/protected-lifecycle-operations.ts",
-      gitBlobSha: "ec04bee631073724e491a2d19267a964747e8b87",
+      gitBlobSha: "ba3e24784f52ccdfceda3cce5b694f912785ea2a",
     }),
     Object.freeze({
       path: ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
-      gitBlobSha: "5ccfd1a424d39cf70ab045189fc3fc7db7e3675f",
+      gitBlobSha: "4066ebb3f3485cfd94a2c8952f35f01802be84e1",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/restore-reconciliation.ts",
@@ -215,7 +215,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/retention-state.test.ts",
-      gitBlobSha: "3d1b2e148cea0e2eddc5d0b17b36cca16d4d94c6",
+      gitBlobSha: "32566b66903137b49a5c49f554b808e2d2f6f163",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/athletes-masterdata.postgres.e2e.test.ts",
@@ -227,7 +227,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/m5-data-inventory.test.ts",
-      gitBlobSha: "16c755eb2813069d7a911b6f8a9e0e75f62d1700",
+      gitBlobSha: "2caa09efb93a3700c689d89eb82b00751773d5a1",
     }),
     Object.freeze({
       path: "packages/permissions/test/permission-administration-audit-retention.postgres.e2e.ts",
