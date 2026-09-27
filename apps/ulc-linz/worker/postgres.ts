@@ -33,7 +33,15 @@ export interface GeneratedPostgresApplicationRuntime {
   athletesAccess: UlcLinzAthletesAccessService;
   athleteMasterdata: Pick<
     PostgresAthleteMasterdataRepository,
-    "readOrganizationSnapshot"
+    | "readOrganizationSnapshot"
+    | "createTrainingGroup"
+    | "createAthlete"
+    | "createTrainer"
+    | "createAthleteGroupMembership"
+    | "createTrainerGroupMembership"
+    | "deactivateAthlete"
+    | "deactivateTrainer"
+    | "purgeDeactivatedPersonalData"
   >;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
