@@ -203,8 +203,8 @@ function rowBoolean(row: Record<string, unknown>, key: string): boolean {
 
 function rowInteger(row: Record<string, unknown>, key: string): number {
   const value = row[key];
-  if (!Number.isSafeInteger(value)) invalidRow();
-  return value as number;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) invalidRow();
+  return value;
 }
 
 function rowNullableInteger(
@@ -213,8 +213,8 @@ function rowNullableInteger(
 ): number | null {
   const value = row[key];
   if (value === null) return null;
-  if (!Number.isSafeInteger(value)) invalidRow();
-  return value as number;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) invalidRow();
+  return value;
 }
 
 function invalidRow(): never {
