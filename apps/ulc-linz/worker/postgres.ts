@@ -1,3 +1,6 @@
+import {
+  PostgresAthleteMasterdataRepository,
+} from "@appbasis/athletes";
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
 import {
   createPostgresIdentityApplicationRuntime,
@@ -10,9 +13,14 @@ import {
 } from "@appbasis/permissions";
 
 import {
+  createUlcLinzAthletesAccessService,
+  type UlcLinzAthletesAccessService,
+} from "./athletes-access";
+import {
   createUlcLinzCountdownAccessService,
   type UlcLinzCountdownAccessService,
 } from "./countdown-access";
+import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
 import {
   createPostgresUlcLinzSecurityEventLogger,
   type BufferedUlcLinzSecurityEventLogger,
@@ -22,6 +30,11 @@ export interface GeneratedPostgresApplicationRuntime {
   identity: IdentityHttpService;
   permissions: PermissionStore;
   countdownAccess: UlcLinzCountdownAccessService;
+  athletesAccess: UlcLinzAthletesAccessService;
+  athleteMasterdata: Pick<
+    PostgresAthleteMasterdataRepository,
+    "readOrganizationSnapshot"
+  >;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
 }
@@ -47,22 +60,36 @@ export async function createGeneratedPostgresApplicationRuntime(
     );
     const securityConnection = securityLogConnection;
     const permissions = createPermissionStore(identityRuntime.sql);
+    const applicationSql = {
+      unsafe(query: string, parameters?: Array<string | number | boolean | null>) {
+        return identityRuntime.sql.unsafe(query, parameters);
+      },
+    };
+    const scopes = new PostgresUlcLinzScopePersistence(applicationSql);
     const securityEvents = createPostgresUlcLinzSecurityEventLogger(
       securityConnection.client,
     );
     const countdownAccess = createUlcLinzCountdownAccessService({
-      sql: {
-        unsafe(query, parameters) {
-          return identityRuntime.sql.unsafe(query, parameters);
-        },
-      },
+      sql: applicationSql,
       permissions,
       securityEvents,
     });
+    const athletesAccess = createUlcLinzAthletesAccessService({
+      sql: applicationSql,
+      permissions,
+      memberships: scopes,
+      subjectScopes: scopes,
+      securityEvents,
+    });
+    const athleteMasterdata = new PostgresAthleteMasterdataRepository(
+      applicationSql,
+    );
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
       countdownAccess,
+      athletesAccess,
+      athleteMasterdata,
       securityEvents,
       async close() {
         let closeError: unknown = null;
