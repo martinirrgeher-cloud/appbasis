@@ -68,6 +68,14 @@ const authorizationUrl = new URL("../worker/authorization.ts", import.meta.url);
 const scopePersistenceUrl = new URL("../worker/scope-persistence.ts", import.meta.url);
 const lifecycleServiceUrl = new URL("../worker/lifecycle-service.ts", import.meta.url);
 const retentionUrl = new URL("../worker/retention.ts", import.meta.url);
+const athleteRepositoryUrl = new URL(
+  "../../../modules/athletes/src/postgres-masterdata-repository.ts",
+  import.meta.url,
+);
+const protectedLifecycleUrl = new URL(
+  "../worker/protected-lifecycle-operations.ts",
+  import.meta.url,
+);
 const restoreUrl = new URL("../worker/restore-reconciliation.ts", import.meta.url);
 const repoRootUrl = new URL("../../../", import.meta.url);
 
@@ -147,14 +155,14 @@ describe("ULC Linz M5 C/D data inventory", () => {
     ]);
     expect(appManifest.platformServices).toEqual(["identity", "permissions"]);
     expect(
-      inventory.persistentOwners
-        .filter((owner) => owner.id !== "athletes")
-        .every((owner) => owner.lifecycleStatus === "verified-current-scope"),
+      inventory.persistentOwners.every(
+        (owner) => owner.lifecycleStatus === "verified-current-scope",
+      ),
     ).toBe(true);
     expect(
       inventory.persistentOwners.find((owner) => owner.id === "athletes"),
     ).toMatchObject({
-      lifecycleStatus: "classified-pending-lifecycle-integration",
+      lifecycleStatus: "verified-current-scope",
     });
 
     expect(inventory.objectStorage).toEqual({
@@ -162,8 +170,8 @@ describe("ULC Linz M5 C/D data inventory", () => {
       futureIntroduction: "invalidates-current-evidence",
     });
     expect(inventory.m5).toEqual({
-      deletionPolicy: "fail-closed-pending-stammdaten-lifecycle",
-      retentionPolicy: "fail-closed-pending-stammdaten-lifecycle",
+      deletionPolicy: "verified-current-scope",
+      retentionPolicy: "verified-current-scope",
       restoreReconciliation: "verified-current-scope",
       unknownPersistentOwner: "fail-closed",
       unknownPersistentTable: "fail-closed",
@@ -196,16 +204,37 @@ describe("ULC Linz M5 C/D data inventory", () => {
       inventory.persistentTables.find((table) => table.id === "appbasis_athlete"),
     ).toMatchObject({
       privacyClass: "athlete-master-data",
-      retentionPolicy: "pending-stammdaten-lifecycle-policy",
-      deletionEvidence: "fail-closed-pending-lifecycle",
-      retentionEvidence: "fail-closed-pending-lifecycle",
+      retentionPolicy: "12-months-after-deactivation",
+      deletionEvidence: "verified",
+      retentionEvidence: "verified",
     });
     expect(
       inventory.persistentTables.find((table) => table.id === "appbasis_trainer"),
     ).toMatchObject({
       privacyClass: "trainer-master-data",
-      deletionEvidence: "fail-closed-pending-lifecycle",
-      retentionEvidence: "fail-closed-pending-lifecycle",
+      retentionPolicy: "12-months-after-deactivation",
+      deletionEvidence: "verified",
+      retentionEvidence: "verified",
+    });
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "appbasis_athlete_group_membership",
+      ),
+    ).toMatchObject({
+      privacyClass: "athlete-training-membership",
+      retentionPolicy: "delete-with-athlete-after-12-months-deactivation",
+      deletionEvidence: "verified",
+      retentionEvidence: "verified",
+    });
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "appbasis_trainer_group_membership",
+      ),
+    ).toMatchObject({
+      privacyClass: "trainer-training-membership",
+      retentionPolicy: "delete-with-trainer-after-12-months-deactivation",
+      deletionEvidence: "verified",
+      retentionEvidence: "verified",
     });
     expect(
       inventory.persistentTables.find((table) => table.id === "appbasis_training_group"),
@@ -301,9 +330,17 @@ describe("ULC Linz M5 C/D data inventory", () => {
   });
 
   it("pins member retention, audited exceptions, delete audit and restore reconciliation to confirmed policies", async () => {
-    const [scopePersistenceSource, retentionSource, restoreSource] = await Promise.all([
+    const [
+      scopePersistenceSource,
+      retentionSource,
+      athleteRepositorySource,
+      protectedLifecycleSource,
+      restoreSource,
+    ] = await Promise.all([
       readFile(scopePersistenceUrl, "utf8"),
       readFile(retentionUrl, "utf8"),
+      readFile(athleteRepositoryUrl, "utf8"),
+      readFile(protectedLifecycleUrl, "utf8"),
       readFile(restoreUrl, "utf8"),
     ]);
 
@@ -316,6 +353,18 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(retentionSource).toContain("status === \"exception\"");
     expect(retentionSource).toContain("deleteUlcLinzIdentity(");
     expect(retentionSource).toContain("purgeExpiredLifecycleAuditEvents");
+    expect(retentionSource).toContain("purgeDeactivatedPersonalData");
+    expect(athleteRepositorySource).toContain("is_active = false");
+    expect(athleteRepositorySource).toContain("updated_at + interval '12 months'");
+    expect(athleteRepositorySource).toContain(
+      "DELETE FROM appbasis_athlete_group_membership",
+    );
+    expect(athleteRepositorySource).toContain(
+      "DELETE FROM appbasis_trainer_group_membership",
+    );
+    expect(protectedLifecycleSource).toContain(
+      "new PostgresAthleteMasterdataRepository",
+    );
     expect(restoreSource).toContain("WHERE purge_after >= $1");
     expect(restoreSource).toContain("reconcileUlcLinzRestoredDatabase");
     expect(restoreSource).toContain("restoredMembership.sourceRole !== marker.sourceRole");
