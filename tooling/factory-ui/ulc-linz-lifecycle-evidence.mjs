@@ -83,7 +83,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
-      gitBlobSha: "b600056624b4e03cb08845fd1a6080eae946ad1f",
+      gitBlobSha: "ea0d98a497951ff9d9798095620b157504b5b7d4",
     }),
     Object.freeze({
       path: "tooling/ulc-linz-database-contract.mjs",
@@ -227,7 +227,7 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/m5-data-inventory.test.ts",
-      gitBlobSha: "92ab58313a8b8e16ad85fdb8193cb392a26dcba0",
+      gitBlobSha: "16c755eb2813069d7a911b6f8a9e0e75f62d1700",
     }),
     Object.freeze({
       path: "packages/permissions/test/permission-administration-audit-retention.postgres.e2e.ts",
