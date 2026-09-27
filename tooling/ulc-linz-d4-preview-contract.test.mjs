@@ -19,7 +19,7 @@ test("ULC Linz satisfies the canonical generated preview contract for D4", async
   );
 
   assert.equal(contract.definition.appId, "ulc-linz");
-  assert.deepEqual(contract.definition.modules, ["countdown"]);
+  assert.deepEqual(contract.definition.modules, ["countdown", "athletes"]);
   assert.equal(contract.target.environment, "generated-preview-ulc-linz");
   assert.equal(contract.target.workerName, "appbasis-ulc-linz");
   assert.equal(contract.target.database, "appbasis_ulc_linz_preview");
@@ -48,7 +48,13 @@ test("ULC Linz D4 migration plan includes all app-owned lifecycle and security m
     appId: "ulc-linz",
   });
 
-  assert.equal(plan.length, 10);
+  assert.equal(plan.length, 11);
+  assert.deepEqual(
+    plan
+      .filter(({ ownerId }) => ownerId === "athletes")
+      .map(({ relativePath }) => relativePath),
+    ["modules/athletes/migrations/0000_appbasis_athletes_foundation.sql"],
+  );
   assert.deepEqual(
     plan
       .filter(({ ownerId }) => ownerId === "ulc-linz-lifecycle")

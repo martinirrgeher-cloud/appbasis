@@ -189,7 +189,32 @@ test("recognizes the real ULC countdown installation as a deterministic no-op", 
       "utf8",
     ),
   );
-  assert.deepEqual(currentUlcDefinition.modules, ["countdown"]);
+  assert.deepEqual(currentUlcDefinition.modules, ["countdown", "athletes"]);
+});
+
+test("recognizes the real ULC Stammdaten installation as a deterministic no-op", async () => {
+  const plan = await planModuleUpdate(
+    {
+      appId: "ulc-linz",
+      moduleId: "athletes",
+    },
+    { repositoryRoot },
+  );
+
+  assert.equal(plan.state, "already-installed");
+  assert.deepEqual(plan.module, {
+    moduleId: "athletes",
+    manifestSchemaVersion: 1,
+    packageName: "@appbasis/athletes",
+    packageVersion: "0.0.0",
+    databaseSchemaVersion: 1,
+  });
+  assert.equal(plan.changes.appDefinition, null);
+  assert.equal(plan.changes.packageDependency, null);
+  assert.equal(plan.changes.databaseManifest, null);
+  assert.equal(plan.changes.databaseMigrationDelta, null);
+  assert.equal(plan.changes.workspaceLockfile, null);
+  assert.deepEqual(plan.writes, []);
 });
 
 test("fails closed before planning an incompatible module", async (t) => {

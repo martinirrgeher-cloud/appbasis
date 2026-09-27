@@ -128,11 +128,11 @@ describe("ULC Linz M5 C/D data inventory", () => {
 
     expect(inventory.schemaVersion).toBe(2);
     expect(inventory.application).toBe("ulc-linz");
-    expect(inventory.scope).toBe("current-materialized-v0.1");
+    expect(inventory.scope).toBe("current-materialized-v0.2");
     expect(databaseManifest.application).toBe(inventory.application);
     expect(appManifest.appId).toBe(inventory.application);
-    expect(appManifest.modules).toEqual(["countdown"]);
-    expect(inventory.runtimeModules).toEqual(["countdown"]);
+    expect(appManifest.modules).toEqual(["countdown", "athletes"]);
+    expect(inventory.runtimeModules).toEqual(["countdown", "athletes"]);
     expect(inventory.runtimeModules).toEqual(appManifest.modules);
     expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
 
@@ -142,22 +142,28 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(databaseManifest.owners.map((owner) => owner.id)).toEqual([
       "identity",
       "permissions",
+      "athletes",
       "ulc-linz-lifecycle",
     ]);
     expect(appManifest.platformServices).toEqual(["identity", "permissions"]);
     expect(
-      inventory.persistentOwners.every(
-        (owner) => owner.lifecycleStatus === "verified-current-scope",
-      ),
+      inventory.persistentOwners
+        .filter((owner) => owner.id !== "athletes")
+        .every((owner) => owner.lifecycleStatus === "verified-current-scope"),
     ).toBe(true);
+    expect(
+      inventory.persistentOwners.find((owner) => owner.id === "athletes"),
+    ).toMatchObject({
+      lifecycleStatus: "classified-pending-lifecycle-integration",
+    });
 
     expect(inventory.objectStorage).toEqual({
       status: "not-configured",
-      futureIntroduction: "invalidates-current-cd-evidence",
+      futureIntroduction: "invalidates-current-evidence",
     });
     expect(inventory.m5).toEqual({
-      deletionPolicy: "verified-current-scope",
-      retentionPolicy: "verified-current-scope",
+      deletionPolicy: "fail-closed-pending-stammdaten-lifecycle",
+      retentionPolicy: "fail-closed-pending-stammdaten-lifecycle",
       restoreReconciliation: "verified-current-scope",
       unknownPersistentOwner: "fail-closed",
       unknownPersistentTable: "fail-closed",
@@ -177,7 +183,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(20);
+    expect(inventory.persistentTables).toHaveLength(25);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -185,6 +191,29 @@ describe("ULC Linz M5 C/D data inventory", () => {
       expect(table.deletionEvidence).not.toBe("open");
       expect(table.retentionEvidence).not.toBe("open");
     }
+
+    expect(
+      inventory.persistentTables.find((table) => table.id === "appbasis_athlete"),
+    ).toMatchObject({
+      privacyClass: "athlete-master-data",
+      retentionPolicy: "pending-stammdaten-lifecycle-policy",
+      deletionEvidence: "fail-closed-pending-lifecycle",
+      retentionEvidence: "fail-closed-pending-lifecycle",
+    });
+    expect(
+      inventory.persistentTables.find((table) => table.id === "appbasis_trainer"),
+    ).toMatchObject({
+      privacyClass: "trainer-master-data",
+      deletionEvidence: "fail-closed-pending-lifecycle",
+      retentionEvidence: "fail-closed-pending-lifecycle",
+    });
+    expect(
+      inventory.persistentTables.find((table) => table.id === "appbasis_training_group"),
+    ).toMatchObject({
+      privacyClass: "training-group-configuration",
+      deletionEvidence: "not-personal",
+      retentionEvidence: "not-personal",
+    });
 
     expect(
       inventory.persistentTables.find((table) => table.id === "appbasis_person"),

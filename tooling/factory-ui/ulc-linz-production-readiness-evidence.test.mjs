@@ -354,7 +354,7 @@ test("M5-J rejects unexpected, accessor, symbol and inherited owner evidence", (
   );
 });
 
-test("M5-J accepts the renewed FC5 countdown scope after D4 control-plane reverification", async () => {
+test("M5-J keeps the old countdown evidence open after Stammdaten changes repository scope", async () => {
   const readiness = evaluateProductionReadiness(
     await deriveUlcLinzM5JProductionEvidence(
       repositoryRoot,
@@ -363,10 +363,11 @@ test("M5-J accepts the renewed FC5 countdown scope after D4 control-plane reveri
       { now: NOW },
     ),
   );
-  assert.equal(readiness.productionReady, true);
-  assert.equal(readiness.verifiedCount, 12);
-  for (const criterion of REQUIRED_PRODUCTION_READINESS_CRITERIA) {
-    assert.equal(criterionStatus(readiness, criterion.id), "verified", criterion.id);
+  assert.equal(readiness.productionReady, false);
+  assert.ok(readiness.verifiedCount < REQUIRED_PRODUCTION_READINESS_CRITERIA.length);
+  assert.equal(criterionStatus(readiness, "rolesAndPermissions"), "verified");
+  for (const id of ["deletionConcept", "retention", "dataExport"]) {
+    assert.equal(criterionStatus(readiness, id), "open", id);
   }
 });
 
@@ -454,8 +455,8 @@ test("M5-J rejects restore evidence for an older lifecycle schema or reconciliat
     await deriveUlcLinzM5JProductionEvidence(repositoryRoot, VALID_ULC_DEFINITION, inputs, { now: NOW }),
   );
   assert.equal(readiness.productionReady, false);
-  assert.equal(criterionStatus(readiness, "deletionConcept"), "verified");
-  assert.equal(criterionStatus(readiness, "retention"), "verified");
+  assert.equal(criterionStatus(readiness, "deletionConcept"), "open");
+  assert.equal(criterionStatus(readiness, "retention"), "open");
   assert.equal(criterionStatus(readiness, "highPrivacyProfile"), "open");
 });
 
@@ -487,7 +488,7 @@ test("M5-J never reuses ULC evidence for another app", async () => {
   assert.deepEqual(evidence, {});
 });
 
-test("Factory snapshot consumes M5-J while release production remains separately locked", async () => {
+test("Factory snapshot reopens ULC production readiness after the Stammdaten module scope changes", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot, {
     ulcLinzM5JOwnerInputs: completeOwnerInputs(),
     m5EvidenceNow: NOW,
@@ -496,8 +497,9 @@ test("Factory snapshot consumes M5-J while release production remains separately
   });
   const ulc = snapshot.apps.find((app) => app.appId === "ulc-linz");
   assert.ok(ulc);
-  assert.equal(ulc.productionReadiness.productionReady, true);
-  assert.equal(ulc.productionReadiness.verifiedCount, 12);
+  assert.deepEqual(ulc.modules, ["countdown", "athletes"]);
+  assert.equal(ulc.productionReadiness.productionReady, false);
+  assert.ok(ulc.productionReadiness.verifiedCount < 12);
   assert.equal(ulc.productionReleaseReadiness.releaseAuthorized, false);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });

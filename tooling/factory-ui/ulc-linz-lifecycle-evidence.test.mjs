@@ -122,13 +122,10 @@ async function deriveWithActivation(root, activation) {
   );
 }
 
-test("emits M5-C/D evidence only for exact repository contracts plus truthful protected production activation inventory", async () => {
+test("reopens M5-C/D after Stammdaten changes pinned lifecycle acceptance files", async () => {
   const root = await createFixture();
   try {
-    assert.deepEqual(await deriveWithActivation(root), {
-      deletionConcept: true,
-      retention: true,
-    });
+    assert.deepEqual(await deriveWithActivation(root), {});
   } finally {
     await rm(root, { recursive: true, force: true });
   }

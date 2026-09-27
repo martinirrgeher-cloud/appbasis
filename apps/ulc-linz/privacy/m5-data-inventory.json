@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "application": "ulc-linz",
-  "scope": "current-materialized-v0.1",
+  "scope": "current-materialized-v0.2",
   "basis": {
     "databaseManifest": "apps/ulc-linz/appbasis.database.json",
     "appManifest": "apps/ulc-linz/appbasis.app.json",
@@ -42,6 +42,19 @@
       ]
     },
     {
+      "id": "athletes",
+      "schemaVersion": 1,
+      "migrations": [
+        "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql"
+      ],
+      "lifecycleStatus": "classified-pending-lifecycle-integration",
+      "notes": [
+        "contains-athlete-and-trainer-master-data",
+        "organization-scoped-foundation-installed-before-runtime-integration",
+        "deletion-and-retention-remain-fail-closed-until-a-dedicated-stammdaten-lifecycle-slice"
+      ]
+    },
+    {
       "id": "ulc-linz-lifecycle",
       "schemaVersion": 4,
       "migrations": [
@@ -68,29 +81,210 @@
     }
   ],
   "persistentTables": [
-    { "id": "appbasis_identity_security_state", "owner": "identity", "privacyClass": "identity-security-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "appbasis_person", "owner": "identity", "privacyClass": "member-contact-master-data", "retentionPolicy": "12-months-after-exit-or-purpose-end", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "account", "owner": "identity", "privacyClass": "authentication-credential-data", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "session", "owner": "identity", "privacyClass": "authentication-session-data", "retentionPolicy": "runtime-expiry-plus-12-month-member-lifecycle-ceiling", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "user", "owner": "identity", "privacyClass": "member-contact-master-data", "retentionPolicy": "12-months-after-exit-or-purpose-end", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "verification", "owner": "identity", "privacyClass": "authentication-verification-data", "retentionPolicy": "not-used-by-current-ulc-runtime-delete-blocks-if-present", "deletionEvidence": "fail-closed-unused", "retentionEvidence": "fail-closed-unused" },
-    { "id": "appbasis_identity_operation", "owner": "identity", "privacyClass": "identity-operation-state", "retentionPolicy": "identity-lifecycle-plus-35-day-completed-delete-marker", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "appbasis_permission_capability", "owner": "permissions", "privacyClass": "authorization-configuration", "retentionPolicy": "configuration-lifecycle-not-personal", "deletionEvidence": "not-personal", "retentionEvidence": "not-personal" },
-    { "id": "appbasis_permission_role", "owner": "permissions", "privacyClass": "authorization-configuration", "retentionPolicy": "configuration-lifecycle-not-personal", "deletionEvidence": "not-personal", "retentionEvidence": "not-personal" },
-    { "id": "appbasis_permission_role_capability", "owner": "permissions", "privacyClass": "authorization-configuration", "retentionPolicy": "configuration-lifecycle-not-personal", "deletionEvidence": "not-personal", "retentionEvidence": "not-personal" },
-    { "id": "appbasis_permission_principal", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "appbasis_permission_principal_role", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "appbasis_permission_principal_grant", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "appbasis_permission_principal_revoke", "owner": "permissions", "privacyClass": "authorization-state", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "appbasis_permission_administration_audit", "owner": "permissions", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" },
-    { "id": "ulc_linz_membership", "owner": "ulc-linz-lifecycle", "privacyClass": "membership-lifecycle-data", "retentionPolicy": "12-months-after-exit-or-purpose-end", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "ulc_linz_subject_scope", "owner": "ulc-linz-lifecycle", "privacyClass": "subject-access-link", "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle", "deletionEvidence": "verified", "retentionEvidence": "verified" },
-    { "id": "ulc_linz_lifecycle_deletion", "owner": "ulc-linz-lifecycle", "privacyClass": "minimal-delete-reconciliation-state", "retentionPolicy": "35-days", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" },
-    { "id": "ulc_linz_lifecycle_audit", "owner": "ulc-linz-lifecycle", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" },
-    { "id": "ulc_linz_security_event_log", "owner": "ulc-linz-lifecycle", "privacyClass": "audit-security-data", "retentionPolicy": "12-months", "deletionEvidence": "retained-by-policy", "retentionEvidence": "verified" }
+    {
+      "id": "appbasis_identity_security_state",
+      "owner": "identity",
+      "privacyClass": "identity-security-state",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "appbasis_person",
+      "owner": "identity",
+      "privacyClass": "member-contact-master-data",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "account",
+      "owner": "identity",
+      "privacyClass": "authentication-credential-data",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "session",
+      "owner": "identity",
+      "privacyClass": "authentication-session-data",
+      "retentionPolicy": "runtime-expiry-plus-12-month-member-lifecycle-ceiling",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "user",
+      "owner": "identity",
+      "privacyClass": "member-contact-master-data",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "verification",
+      "owner": "identity",
+      "privacyClass": "authentication-verification-data",
+      "retentionPolicy": "not-used-by-current-ulc-runtime-delete-blocks-if-present",
+      "deletionEvidence": "fail-closed-unused",
+      "retentionEvidence": "fail-closed-unused"
+    },
+    {
+      "id": "appbasis_identity_operation",
+      "owner": "identity",
+      "privacyClass": "identity-operation-state",
+      "retentionPolicy": "identity-lifecycle-plus-35-day-completed-delete-marker",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "appbasis_permission_capability",
+      "owner": "permissions",
+      "privacyClass": "authorization-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "appbasis_permission_role",
+      "owner": "permissions",
+      "privacyClass": "authorization-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "appbasis_permission_role_capability",
+      "owner": "permissions",
+      "privacyClass": "authorization-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "appbasis_permission_principal",
+      "owner": "permissions",
+      "privacyClass": "authorization-state",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "appbasis_permission_principal_role",
+      "owner": "permissions",
+      "privacyClass": "authorization-state",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "appbasis_permission_principal_grant",
+      "owner": "permissions",
+      "privacyClass": "authorization-state",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "appbasis_permission_principal_revoke",
+      "owner": "permissions",
+      "privacyClass": "authorization-state",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "appbasis_permission_administration_audit",
+      "owner": "permissions",
+      "privacyClass": "audit-security-data",
+      "retentionPolicy": "12-months",
+      "deletionEvidence": "retained-by-policy",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "appbasis_training_group",
+      "owner": "athletes",
+      "privacyClass": "training-group-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "appbasis_athlete",
+      "owner": "athletes",
+      "privacyClass": "athlete-master-data",
+      "retentionPolicy": "pending-stammdaten-lifecycle-policy",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_trainer",
+      "owner": "athletes",
+      "privacyClass": "trainer-master-data",
+      "retentionPolicy": "pending-stammdaten-lifecycle-policy",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_athlete_group_membership",
+      "owner": "athletes",
+      "privacyClass": "athlete-training-membership",
+      "retentionPolicy": "pending-stammdaten-lifecycle-policy",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_trainer_group_membership",
+      "owner": "athletes",
+      "privacyClass": "trainer-training-membership",
+      "retentionPolicy": "pending-stammdaten-lifecycle-policy",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "ulc_linz_membership",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "membership-lifecycle-data",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "ulc_linz_subject_scope",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "subject-access-link",
+      "retentionPolicy": "12-months-after-exit-or-purpose-end-via-member-lifecycle",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "ulc_linz_lifecycle_deletion",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "minimal-delete-reconciliation-state",
+      "retentionPolicy": "35-days",
+      "deletionEvidence": "retained-by-policy",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "ulc_linz_lifecycle_audit",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "audit-security-data",
+      "retentionPolicy": "12-months",
+      "deletionEvidence": "retained-by-policy",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "ulc_linz_security_event_log",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "audit-security-data",
+      "retentionPolicy": "12-months",
+      "deletionEvidence": "retained-by-policy",
+      "retentionEvidence": "verified"
+    }
   ],
   "runtimeModules": [
-    "countdown"
+    "countdown",
+    "athletes"
   ],
   "backingStores": {
     "memberships": {
@@ -108,11 +302,11 @@
   },
   "objectStorage": {
     "status": "not-configured",
-    "futureIntroduction": "invalidates-current-cd-evidence"
+    "futureIntroduction": "invalidates-current-evidence"
   },
   "m5": {
-    "deletionPolicy": "verified-current-scope",
-    "retentionPolicy": "verified-current-scope",
+    "deletionPolicy": "fail-closed-pending-stammdaten-lifecycle",
+    "retentionPolicy": "fail-closed-pending-stammdaten-lifecycle",
     "restoreReconciliation": "verified-current-scope",
     "unknownPersistentOwner": "fail-closed",
     "unknownPersistentTable": "fail-closed",

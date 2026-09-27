@@ -7,7 +7,8 @@
   ],
   "unknownDataset": "deny",
   "runtimeModules": [
-    "countdown"
+    "countdown",
+    "athletes"
   ],
   "datasets": [
     {
@@ -50,24 +51,121 @@
     }
   ],
   "excludedTables": [
-    { "owner": "identity", "table": "appbasis_identity_security_state", "privacyClass": "identity-security-state" },
-    { "owner": "identity", "table": "account", "privacyClass": "authentication-credential-data" },
-    { "owner": "identity", "table": "session", "privacyClass": "authentication-session-data" },
-    { "owner": "identity", "table": "verification", "privacyClass": "authentication-verification-data" },
-    { "owner": "identity", "table": "appbasis_identity_operation", "privacyClass": "identity-operation-state" },
-    { "owner": "permissions", "table": "appbasis_permission_capability", "privacyClass": "authorization-configuration" },
-    { "owner": "permissions", "table": "appbasis_permission_role", "privacyClass": "authorization-configuration" },
-    { "owner": "permissions", "table": "appbasis_permission_role_capability", "privacyClass": "authorization-configuration" },
-    { "owner": "permissions", "table": "appbasis_permission_principal", "privacyClass": "authorization-state" },
-    { "owner": "permissions", "table": "appbasis_permission_principal_role", "privacyClass": "authorization-state" },
-    { "owner": "permissions", "table": "appbasis_permission_principal_grant", "privacyClass": "authorization-state" },
-    { "owner": "permissions", "table": "appbasis_permission_principal_revoke", "privacyClass": "authorization-state" },
-    { "owner": "permissions", "table": "appbasis_permission_administration_audit", "privacyClass": "audit-security-data" },
-    { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_membership", "privacyClass": "membership-lifecycle-data" },
-    { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_subject_scope", "privacyClass": "subject-access-link" },
-    { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_lifecycle_deletion", "privacyClass": "minimal-delete-reconciliation-state" },
-    { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_lifecycle_audit", "privacyClass": "audit-security-data" },
-    { "owner": "ulc-linz-lifecycle", "table": "ulc_linz_security_event_log", "privacyClass": "audit-security-data" }
+    {
+      "owner": "identity",
+      "table": "appbasis_identity_security_state",
+      "privacyClass": "identity-security-state"
+    },
+    {
+      "owner": "identity",
+      "table": "account",
+      "privacyClass": "authentication-credential-data"
+    },
+    {
+      "owner": "identity",
+      "table": "session",
+      "privacyClass": "authentication-session-data"
+    },
+    {
+      "owner": "identity",
+      "table": "verification",
+      "privacyClass": "authentication-verification-data"
+    },
+    {
+      "owner": "identity",
+      "table": "appbasis_identity_operation",
+      "privacyClass": "identity-operation-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_capability",
+      "privacyClass": "authorization-configuration"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_role",
+      "privacyClass": "authorization-configuration"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_role_capability",
+      "privacyClass": "authorization-configuration"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_principal",
+      "privacyClass": "authorization-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_principal_role",
+      "privacyClass": "authorization-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_principal_grant",
+      "privacyClass": "authorization-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_principal_revoke",
+      "privacyClass": "authorization-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_administration_audit",
+      "privacyClass": "audit-security-data"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_training_group",
+      "privacyClass": "training-group-configuration"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_athlete",
+      "privacyClass": "athlete-master-data"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_trainer",
+      "privacyClass": "trainer-master-data"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_athlete_group_membership",
+      "privacyClass": "athlete-training-membership"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_trainer_group_membership",
+      "privacyClass": "trainer-training-membership"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_membership",
+      "privacyClass": "membership-lifecycle-data"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_subject_scope",
+      "privacyClass": "subject-access-link"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_lifecycle_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_lifecycle_audit",
+      "privacyClass": "audit-security-data"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_security_event_log",
+      "privacyClass": "audit-security-data"
+    }
   ],
   "excludedPrivacyClasses": [
     "authentication-credential-data",
@@ -80,7 +178,12 @@
     "audit-security-data",
     "membership-lifecycle-data",
     "subject-access-link",
-    "minimal-delete-reconciliation-state"
+    "minimal-delete-reconciliation-state",
+    "training-group-configuration",
+    "athlete-master-data",
+    "trainer-master-data",
+    "athlete-training-membership",
+    "trainer-training-membership"
   ],
   "credentialFieldNames": [
     "password",

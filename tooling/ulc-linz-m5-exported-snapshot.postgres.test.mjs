@@ -79,6 +79,7 @@ test("M5 least-privilege snapshot, pg_dump and pg_restore rehearse the canonical
       expectedOwners: {
         identity: "packages/identity",
         permissions: "packages/permissions",
+        athletes: "modules/athletes",
         "ulc-linz-lifecycle": "apps/ulc-linz",
       },
     });

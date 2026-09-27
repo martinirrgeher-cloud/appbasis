@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -73,9 +74,18 @@ export async function loadModuleUpdateMigrationExecutionPlan(
 
   assertTargetMigrationReferencePolicy(targetPlan);
 
+  const allowedUnsupportedMigrationPaths =
+    await loadBaselineCatalogExceptionPaths({
+      repositoryRoot,
+      appId: updatePlan.app.appId,
+      baselinePlan,
+      targetPlan,
+    });
+
   const baselineCatalogContract = createCatalogContract(
     baselinePlan,
     "baseline",
+    { allowedUnsupportedMigrationPaths },
   );
   const targetCatalogContract = createCatalogContract(targetPlan, "target");
   assertTargetCatalogIsolation({
@@ -347,10 +357,18 @@ export async function applyModuleUpdateMigrations(
   }
 }
 
-export function createCatalogContract(plan, label = "migration") {
+export function createCatalogContract(plan, label = "migration", options = {}) {
   if (!Array.isArray(plan) || plan.length === 0) {
     throw new ModuleUpdateMigrationConfigurationError(
       `FC6-B ${label} migration plan is empty.`,
+    );
+  }
+
+  const allowedUnsupportedMigrationPaths =
+    options.allowedUnsupportedMigrationPaths ?? new Set();
+  if (!(allowedUnsupportedMigrationPaths instanceof Set)) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      `FC6-B ${label} unsupported-migration allowlist is invalid.`,
     );
   }
 
@@ -358,11 +376,19 @@ export function createCatalogContract(plan, label = "migration") {
   const constraintEvidence = createConstraintEvidenceState();
 
   for (const migration of plan) {
-    if (!Array.isArray(migration?.statements) || migration.statements.length === 0) {
+    if (
+      typeof migration?.relativePath !== "string" ||
+      migration.relativePath.length === 0 ||
+      !Array.isArray(migration.statements) ||
+      migration.statements.length === 0
+    ) {
       throw new ModuleUpdateMigrationConfigurationError(
         `FC6-B ${label} migration entry is invalid.`,
       );
     }
+    const migrationAllowsUnsupportedStatements =
+      allowedUnsupportedMigrationPaths.has(migration.relativePath);
+
     for (const statement of migration.statements) {
       const commands = splitSqlCommands(statement);
       if (commands.length === 0) {
@@ -375,6 +401,7 @@ export function createCatalogContract(plan, label = "migration") {
 
         const markers = catalogMarkersFromStatement(command);
         if (markers.length === 0) {
+          if (migrationAllowsUnsupportedStatements) continue;
           throw new ModuleUpdateMigrationConfigurationError(
             `FC6-B ${label} migration contains a statement without a verifiable catalog marker.`,
           );
@@ -409,6 +436,110 @@ export function createCatalogContract(plan, label = "migration") {
       )
       .map((marker) => Object.freeze(marker)),
   );
+}
+
+export async function loadBaselineCatalogExceptionPaths({
+  repositoryRoot,
+  appId,
+  baselinePlan,
+  targetPlan,
+}) {
+  const path = join(
+    repositoryRoot,
+    "apps",
+    appId,
+    "appbasis.database-baseline-catalog-exceptions.json",
+  );
+
+  let raw;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return new Set();
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B baseline catalog exception evidence could not be read.",
+    );
+  }
+
+  let config;
+  try {
+    config = JSON.parse(raw);
+  } catch {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B baseline catalog exception evidence is invalid JSON.",
+    );
+  }
+
+  const configKeys =
+    config !== null && typeof config === "object" && !Array.isArray(config)
+      ? Object.keys(config).sort()
+      : [];
+  if (
+    JSON.stringify(configKeys) !==
+      JSON.stringify(["application", "exceptions", "schemaVersion"]) ||
+    config.schemaVersion !== 1 ||
+    config.application !== appId ||
+    !Array.isArray(config.exceptions) ||
+    config.exceptions.length === 0
+  ) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      "FC6-B baseline catalog exception evidence is invalid.",
+    );
+  }
+
+  const baselinePaths = new Set(
+    baselinePlan.map((migration) => migration.relativePath),
+  );
+  const targetPaths = new Set(
+    targetPlan.map((migration) => migration.relativePath),
+  );
+  const allowedPaths = new Set();
+
+  for (const exception of config.exceptions) {
+    const exceptionKeys =
+      exception !== null &&
+      typeof exception === "object" &&
+      !Array.isArray(exception)
+        ? Object.keys(exception).sort()
+        : [];
+    if (
+      JSON.stringify(exceptionKeys) !==
+        JSON.stringify(["classification", "migration", "sha256"]) ||
+      exception.classification !== "historical-access-control-only" ||
+      typeof exception.migration !== "string" ||
+      !exception.migration.startsWith(`apps/${appId}/migrations/`) ||
+      !/^[0-9a-f]{64}$/.test(exception.sha256) ||
+      !baselinePaths.has(exception.migration) ||
+      targetPaths.has(exception.migration) ||
+      allowedPaths.has(exception.migration)
+    ) {
+      throw new ModuleUpdateMigrationConfigurationError(
+        "FC6-B baseline catalog exception evidence contains an invalid entry.",
+      );
+    }
+
+    let migrationSql;
+    try {
+      migrationSql = await readFile(
+        join(repositoryRoot, exception.migration),
+        "utf8",
+      );
+    } catch {
+      throw new ModuleUpdateMigrationConfigurationError(
+        "FC6-B baseline catalog exception migration could not be read.",
+      );
+    }
+    const digest = createHash("sha256").update(migrationSql, "utf8").digest("hex");
+    if (digest !== exception.sha256) {
+      throw new ModuleUpdateMigrationConfigurationError(
+        "FC6-B baseline catalog exception migration has drifted from its reviewed digest.",
+      );
+    }
+
+    allowedPaths.add(exception.migration);
+  }
+
+  return allowedPaths;
 }
 
 function createConstraintEvidenceState() {

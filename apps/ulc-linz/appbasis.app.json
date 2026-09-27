@@ -3,7 +3,8 @@
   "appId": "ulc-linz",
   "displayName": "ULC Linz",
   "modules": [
-    "countdown"
+    "countdown",
+    "athletes"
   ],
   "platformServices": [
     "identity",

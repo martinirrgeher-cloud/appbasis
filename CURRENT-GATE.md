@@ -9,15 +9,14 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E2A – Stammdaten-Modulvertrag und Datenfundament.**
+**ULC-E2B – Stammdaten kontrolliert in ULC Linz installieren.**
 
-ULC-E1 ist abgeschlossen. Der aktuelle Produkt-Vertical-Slice baut das erste
-echte datenbank-ownende ULC-Fachmodul auf: technischer Modulschlüssel
-`athletes`, sichtbarer Name **Stammdaten**. E2A liefert nur den
-wiederverwendbaren Modulvertrag, die eigene Datenbankmigration und die
-fachliche Validierung für Trainingsgruppen, Athleten, Trainer und deren
-Gruppenzuordnungen. Der Einbau in `ulc-linz`, Runtime/API, UI, Preview und
-Produktion folgen getrennt.
+ULC-E2A ist abgeschlossen. Der aktuelle Slice publiziert das datenbank-ownende
+Modul `athletes` über den kanonischen Existing-App-Zielzustand in
+`ulc-linz` und beweist denselben Zustand mit dem echten FC6-Updater sowie dem
+inkrementellen PostgreSQL-Executor auf einer isolierten Kopie der realen
+ULC-Baseline. Runtime/API, Stammdaten-UI, Preview und Produktion bleiben
+weiterhin getrennt.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -370,7 +369,7 @@ ULC-E1 ist auf `main` abgeschlossen. Die ULC-App besitzt wieder eine
 mobile Vereins-App-Shell mit Dashboard; Countdown und Einstellungen bleiben
 hinter dem bestehenden serverseitigen Zugriffsschutz.
 
-## Aktueller Gate-Scope: ULC-E2A
+## Abgeschlossener Gate-Scope: ULC-E2A
 
 E2A legt das Stammdatenfundament als Standardmodul `athletes` an.
 
@@ -393,8 +392,45 @@ Abnahme für ULC-E2A:
 - noch kein Write an `apps/ulc-linz`, keine App-/DB-Migration, kein
   Providerwrite und kein Deployment.
 
-Unmittelbar danach folgt ULC-E2B: kontrollierte Installation des Moduls in die
-bestehende ULC-App über den FC6-Pfad und isolierte PostgreSQL-Evidence.
+ULC-E2A ist auf `main` abgeschlossen. Modulvertrag, Domainvalidierung und
+FC6-kompatible Migration sind vollständig grün.
+
+## Aktueller Gate-Scope: ULC-E2B
+
+Abnahme für ULC-E2B:
+
+- `apps/ulc-linz/appbasis.app.json` deklariert zusätzlich `athletes`;
+- `apps/ulc-linz/package.json` und der ULC-Lockfile-Importer enthalten
+  `@appbasis/athletes` als Workspace-Abhängigkeit;
+- `apps/ulc-linz/appbasis.database.json` ergänzt exakt den Owner
+  `athletes`, ohne bestehende Owner zu verändern;
+- ein isolierter Vorzustand der realen ULC-App wird durch den echten
+  `applyModuleUpdate()` in exakt denselben publizierten Zielzustand gebracht;
+- der FC6-Migrationsexecutor akzeptiert die reale strukturelle
+  Identity-/Permissions-/ULC-Baseline, ohne die bestehende Security-
+  Access-Control-Evidence in einen neuen generischen DDL-Vertrag umzudeuten;
+- bestehende Identity- und ULC-Lifecycle-Daten bleiben nach der
+  Stammdatenmigration unverändert erhalten;
+- alle fünf Stammdatentabellen werden erzeugt und sind auf der isolierten
+  PostgreSQL-Baseline nutzbar;
+- die ULC-Dateninventur klassifiziert den neuen `athletes`-Owner und alle fünf
+  Tabellen; personenbezogene Stammdaten bleiben bei Löschung/Aufbewahrung
+  ausdrücklich `fail-closed-pending-lifecycle` und erzeugen keine neue
+  Production-Evidence;
+- Repository-Rerun bleibt No-op und DB-Rerun wird fail-closed abgewiesen;
+- keine Runtime/API/UI-Änderung, kein Preview-/Production-DB-Write, kein
+  Providerwrite und kein Deployment.
+
+Markerlose historische Baseline-SQL darf ausschließlich über die unten
+beschriebene digest-gepinnte Evidence-Datei zugelassen werden. Der Pin gilt für
+die vollständig überprüfte historische Migrationsdatei als unveränderliche
+Einheit; es gibt keine heuristische Freigabe einzelner SQL-Formen mehr.
+Zielmigrationen ohne Katalogmarker bleiben ausnahmslos fail-closed.
+
+Nach E2B folgt ULC-E2C: serverseitige Stammdaten-Runtime/API mit
+Organisationsgrenze und `athletes:view`/`athletes:edit`. Dabei muss auch
+der personenbezogene Stammdaten-Lifecycle für Löschung/Aufbewahrung aus dem
+E2B-Fail-closed-Status heraus explizit gelöst werden.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -414,20 +450,40 @@ bestehende ULC-App über den FC6-Pfad und isolierte PostgreSQL-Evidence.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E2A-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E2B-Pfad, wenn mindestens eines gilt:
 
-- `athletes` kollidiert mit dem bestehenden ULC-Berechtigungsvertrag oder
-  deklariert inkonsistente Capabilities;
-- das Modul greift auf Tabellen oder Migrationen eines anderen Owners zu;
-- Organisationsgrenzen fehlen im Stammdatenmodell;
-- ungültige Namen, Jahrgänge, IDs oder Mitgliedschaftszeiträume können den
-  Domänenvertrag ungeprüft passieren;
-- die Migration enthält vom aktuellen inkrementellen Executor nicht sicher
-  unterstütztes DDL oder `REFERENCES`;
-- E2A verändert bereits die bestehende ULC-App, deren Datenbank oder Provider.
+- der publizierte ULC-Zielzustand weicht vom echten Updater-Ziel ab;
+- bestehende DB-Owner, Appmodule oder Workspace-Abhängigkeiten werden außerhalb
+  des geplanten `athletes`-Deltas verändert;
+- die reale ULC-Baseline kann nicht strukturell verifiziert werden;
+- die Baseline-Ausnahme ist nicht exakt digest-gepinnt, bezieht sich nicht auf
+  eine bereits überprüfte historische App-Migration oder wird auf
+  Zielmigrationen angewendet;
+- bestehende Identity-/ULC-Lifecycle-Daten gehen durch die Migration verloren;
+- Rerun-, Drift- oder Transaktionsgrenzen des FC6-Pfads werden abgeschwächt;
+- Preview, Produktion oder Provider werden in E2B mutiert.
 
-Nicht gate-blockierend sind UI, Realtime, Benutzerverknüpfungen, Import/Export
-und weitere alte ULC-Fachbereiche; sie gehören in spätere Vertical Slices.
+Nicht gate-blockierend sind Runtime/API/UI, Realtime,
+Benutzerverknüpfungen und Import/Export; sie folgen nach E2B.
+
+## E2B-Prozessfinding: Baseline-Ausnahme
+
+Die wiederholten Review-Findings zur heuristischen Erkennung historischer
+Access-Control-Blöcke werden nicht weiter mit einer wachsenden SQL-Denylist
+behandelt. Die Heuristik ist für E2B verworfen.
+
+Markerlose historische Baseline-Migrationen dürfen nur noch über eine
+app-spezifische Evidence-Datei zugelassen werden. Jede Ausnahme bindet exakt
+einen bestehenden App-Migrationspfad an den überprüften SHA-256-Inhalt. Die
+Ausnahme gilt ausschließlich im Baseline-Katalogvertrag; Zielmigrationen
+erhalten keine Ausnahme. Jede Byte-Änderung der gepinnten Migration macht den
+FC6-Plan fail-closed und verlangt eine neue ausdrückliche Prüfung.
+
+Für ULC-E2B ist ausschließlich
+`apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql`
+als bereits separat evidenzierte historische Access-Control-Migration gepinnt.
+Damit werden keine neuen SQL-Formen anhand unvollständiger Regex-Heuristiken
+freigeschaltet.
 
 ## Loop-Grenze
 
@@ -461,7 +517,7 @@ FC6-C Existing-App-Integration → FC6-D isolierter E2E-Beweis.**
 Der neue Produktpfad ist:
 
 **ULC-E1 Vereins-App-Shell & Dashboard → ULC-E2A Stammdaten-Fundament →
-ULC-E2B kontrollierte ULC-Installation.**
+ULC-E2B kontrollierte ULC-Installation → ULC-E2C Stammdaten-Runtime/API.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**

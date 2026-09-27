@@ -24,6 +24,14 @@
       ]
     },
     {
+      "id": "athletes",
+      "root": "modules/athletes",
+      "schemaVersion": 1,
+      "migrations": [
+        "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql"
+      ]
+    },
+    {
       "id": "ulc-linz-lifecycle",
       "root": "apps/ulc-linz",
       "schemaVersion": 4,

@@ -16,14 +16,14 @@ const definition = Object.freeze({
 });
 const AUDIT_EVIDENCE = Object.freeze({ auditSecurityLogging: true });
 
-test("emits M5-E evidence only for exact current export acceptance plus independent audit evidence", async () => {
+test("reopens M5-E after Stammdaten changes the accepted export scope", async () => {
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(repositoryRoot, definition, AUDIT_EVIDENCE),
-    { dataExport: true },
+    {},
   );
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(repositoryRoot, currentDefinition, AUDIT_EVIDENCE),
-    { dataExport: true },
+    {},
   );
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(repositoryRoot, definition, {}),
