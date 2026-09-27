@@ -9,21 +9,20 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E3B – Gruppenzuordnungen und Stammdaten-Lifecycle in der Oberfläche.**
+**ULC-E3C – bestehende Stammdaten sicher bearbeiten.**
 
-ULC-E3A ist abgeschlossen und in der isolierten ULC-Preview praktisch
-abgenommen. Die Preview-Datenbank wurde inkrementell um das Athletes-Schema
-erweitert und der aktuelle Worker erfolgreich deployed.
+ULC-E3B ist auf `main` abgeschlossen. E3C ergänzt einen expliziten
+serverseitigen Update-Vertrag für Athleten, Trainer und Trainingsgruppen und
+bindet ihn in die bestehende mobile Stammdaten-Oberfläche ein.
 
-E3B erweitert ausschließlich die bestehende mobile Stammdaten-Oberfläche:
-Athleten und Trainer können vorhandenen aktiven Trainingsgruppen zugeordnet
-werden, bestehende Zuordnungen werden sichtbar und aktive Athleten/Trainer
-können über die bereits serverseitig abgesicherten Lifecycle-Endpunkte
-deaktiviert werden.
+Updates sind vollständige Ersatzoperationen der jeweils editierbaren Fachfelder.
+Datensatz-ID und Organisation werden niemals aus dem Request-Body übernommen,
+sondern aus Route und authentifiziertem Organisationskontext abgeleitet. Nur
+aktive Datensätze derselben Organisation dürfen bearbeitet werden.
 
-Bearbeiten bestehender Stammdaten benötigt einen eigenen serverseitigen
-Update-Vertrag und folgt deshalb in E3C. Import/Export, Benutzer-/Elternlinks,
-Realtime/Edit-Locks und Production-Migration/-Deployment bleiben außerhalb E3B.
+Keine neue Datenbankmigration ist notwendig. Import/Export,
+Benutzer-/Elternlinks, Realtime/Edit-Locks sowie Preview-/Production-Deployment
+bleiben außerhalb E3C.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -590,7 +589,7 @@ ULC-E3A wurde zusätzlich auf der isolierten ULC-Preview praktisch bestätigt:
 inkrementelle Athletes-Migration, Runtime-ACL-Reconciliation, Worker-Deploy,
 UI-Smoke und Datenbank-Binding waren erfolgreich. Produktion blieb unverändert.
 
-## Aktueller Gate-Scope: ULC-E3B
+## Abgeschlossener Gate-Scope: ULC-E3B
 
 Abnahme für ULC-E3B:
 
@@ -613,8 +612,36 @@ Abnahme für ULC-E3B:
 - keine neue Datenbankmigration, kein Providerwrite, kein Preview-/Production-
   Deployment in diesem Repository-Slice.
 
-Nach E3B folgt E3C für das Bearbeiten bestehender Stammdaten über einen eigenen,
-serverseitig validierten Update-Vertrag.
+ULC-E3B ist auf `main` abgeschlossen. Die bestehende UI nutzt weiterhin
+ausschließlich die bereits autorisierten E2C-Mutationsendpunkte; eine
+Preview-Neuauslieferung ist davon getrennt.
+
+## Aktueller Gate-Scope: ULC-E3C
+
+Abnahme für ULC-E3C:
+
+- das Athletes-Modul definiert validierte Update-Inputs für Athleten, Trainer
+  und Trainingsgruppen;
+- Updates ändern ausschließlich editierbare Fachfelder und niemals ID,
+  Organisation oder Lifecycle-Status;
+- Repository-Updates wiederholen die Organisationsgrenze in SQL und mutieren
+  ausschließlich aktive Datensätze;
+- fehlende, inaktive oder organisationsfremde Ziele liefern keinen
+  erfolgreichen Updatezustand;
+- die ULC-Runtime exponiert die Update-Methoden ausschließlich hinter
+  `athletes:edit`;
+- Update-Requests verwenden vollständige Feldsätze; unbekannte oder fehlende
+  Felder werden fail-closed abgewiesen;
+- ID kommt ausschließlich aus dem validierten URL-Pfad; `organizationId`
+  bleibt im Browser verboten;
+- die bestehende mobile Anlegeoberfläche wird für aktive Datensätze in einen
+  Bearbeiten-/Speichern-/Abbrechen-Modus überführt;
+- personenbezogene Werte werden weiterhin ausschließlich über DOM-Eigenschaften
+  und `textContent` verarbeitet, nicht über untrusted `innerHTML`;
+- Gruppenzuordnung, Deaktivierung, Login und Countdown bleiben unverändert
+  funktionsfähig;
+- keine Datenbankmigration, kein Providerwrite und kein
+  Preview-/Production-Deployment in diesem Repository-Slice.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -634,7 +661,7 @@ serverseitig validierten Update-Vertrag.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E3A-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E3C-Pfad, wenn mindestens eines gilt:
 
 - der Browser kann eine Organisation oder andere Ownership-Grenze an eine
   Stammdatenmutation übergeben;
@@ -647,12 +674,15 @@ Ein Finding blockiert den aktuellen ULC-E3A-Pfad, wenn mindestens eines gilt:
   Validierungs-/Persistenzlogik vorbei geschrieben;
 - ein Fehler im Stammdatenbereich blockiert Login, Countdown oder die übrige
   App-Shell;
-- E3A verändert Datenbankschema, Backend-Authorization, Lifecycle,
-  Privacy-Evidence, Preview, Produktion oder Provider.
+- E3C verändert Datenbankschema, Permission-Semantik, Lifecycle-Retention,
+  Privacy-Evidence, Preview, Produktion oder Provider;
+- ein Update kann inaktive oder organisationsfremde Stammdaten verändern;
+- ein Update akzeptiert ID oder `organizationId` aus dem Request-Body;
+- ein unvollständiger Update-Body wird still als Teilupdate interpretiert.
 
-Nicht gate-blockierend sind das Bearbeiten bestehender Stammdaten,
-Import/Export, Realtime, Edit-Locks, Benutzerkonto-/Eltern-Kind-Verknüpfungen
-und weitere ULC-Fachmodule; sie folgen in getrennten Vertical Slices.
+Nicht gate-blockierend sind Import/Export, Realtime, Edit-Locks,
+Benutzerkonto-/Eltern-Kind-Verknüpfungen und weitere ULC-Fachmodule; sie folgen
+in getrennten Vertical Slices.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 
@@ -707,7 +737,8 @@ Der neue Produktpfad ist:
 **ULC-E1 Vereins-App-Shell & Dashboard → ULC-E2A Stammdaten-Fundament →
 ULC-E2B kontrollierte ULC-Installation → ULC-E2C Stammdaten-Runtime/API →
 ULC-E2D athletes-eigene Restore-Reconciliation →
-ULC-E3A Stammdaten-UI → ULC-E3B Gruppenzuordnungen/Lifecycle-UI.**
+ULC-E3A Stammdaten-UI → ULC-E3B Gruppenzuordnungen/Lifecycle-UI →
+ULC-E3C Stammdaten bearbeiten.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**
