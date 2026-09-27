@@ -27,7 +27,7 @@ import {
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
-  throw new Error("DATABASE_URL is required for FC6-B PostgreSQL E2E tests.");
+  throw new Error("DATABASE_URL is required for FC6-D PostgreSQL E2E tests.");
 }
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -382,7 +382,7 @@ async function resetIdentityBaseline(admin, root) {
 }
 
 async function createExistingAppFixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "appbasis-fc6-b-postgres-"));
+  const root = await mkdtemp(join(tmpdir(), "appbasis-fc6-d-postgres-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
   await mkdir(join(root, "apps", "existing"), { recursive: true });
