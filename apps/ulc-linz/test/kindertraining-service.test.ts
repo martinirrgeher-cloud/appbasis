@@ -114,6 +114,48 @@ function storedSession(): UlcTrainingSessionSnapshot {
 }
 
 describe("ULC Kindertraining service", () => {
+  it("lists only active groups from the server-owned organization snapshot", async () => {
+    const snapshot = masterdataSnapshot();
+    const service = createUlcKindertrainingService({
+      masterdata: {
+        async readOrganizationSnapshot(organizationId) {
+          expect(organizationId).toBe(ORGANIZATION_ID);
+          return {
+            ...snapshot,
+            trainingGroups: [
+              ...snapshot.trainingGroups,
+              {
+                id: "inactive-group",
+                organizationId: ORGANIZATION_ID,
+                name: "Altgruppe",
+                shortName: null,
+                description: null,
+                isActive: false,
+                sortOrder: 20,
+              },
+            ],
+          };
+        },
+      },
+      sessions: {
+        async readSession() {
+          return null;
+        },
+        async saveSession() {
+          throw new Error("not used");
+        },
+      },
+    });
+
+    await expect(service.listGroups(ORGANIZATION_ID)).resolves.toEqual([
+      {
+        id: GROUP_ID,
+        name: "Kindertraining",
+        shortName: "KT",
+      },
+    ]);
+  });
+
   it("builds the participant snapshot from the athletes module at the training date", async () => {
     const service = createUlcKindertrainingService({
       masterdata: {
