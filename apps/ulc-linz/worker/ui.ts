@@ -116,14 +116,17 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               </div>
               <div class="masterdata-list" id="athlete-list" aria-live="polite"></div>
               <form class="card masterdata-form" id="athlete-form">
-                <div class="section-heading"><div><p class="eyebrow">Neu</p><h2>Athlet anlegen</h2></div></div>
+                <div class="section-heading"><div><p class="eyebrow">Stammdaten</p><h2 id="athlete-form-title">Athlet anlegen</h2></div></div>
                 <div class="settings-grid">
                   <label>Vorname<input id="athlete-first-name" maxlength="80" required /></label>
                   <label>Nachname<input id="athlete-last-name" maxlength="80" required /></label>
                   <label>Jahrgang<input id="athlete-birth-year" type="number" min="1900" max="2100" inputmode="numeric" /></label>
                   <label>Notiz<input id="athlete-notes" maxlength="3000" /></label>
                 </div>
-                <button class="button button--primary" type="submit">Athlet anlegen</button>
+                <div class="masterdata-form-actions">
+                  <button class="button button--primary" id="athlete-submit-button" type="submit">Athlet anlegen</button>
+                  <button class="button button--secondary" id="athlete-edit-cancel" type="button" hidden>Abbrechen</button>
+                </div>
               </form>
               <form class="card masterdata-form" id="athlete-group-form">
                 <div class="section-heading"><div><p class="eyebrow">Gruppe</p><h2>Athlet zuordnen</h2></div></div>
@@ -143,7 +146,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               </div>
               <div class="masterdata-list" id="trainer-list" aria-live="polite"></div>
               <form class="card masterdata-form" id="trainer-form">
-                <div class="section-heading"><div><p class="eyebrow">Neu</p><h2>Trainer anlegen</h2></div></div>
+                <div class="section-heading"><div><p class="eyebrow">Stammdaten</p><h2 id="trainer-form-title">Trainer anlegen</h2></div></div>
                 <div class="settings-grid">
                   <label>Vorname<input id="trainer-first-name" maxlength="80" required /></label>
                   <label>Nachname<input id="trainer-last-name" maxlength="80" required /></label>
@@ -151,7 +154,10 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                   <label>E-Mail<input id="trainer-email" type="email" maxlength="320" /></label>
                   <label>Notiz<input id="trainer-notes" maxlength="3000" /></label>
                 </div>
-                <button class="button button--primary" type="submit">Trainer anlegen</button>
+                <div class="masterdata-form-actions">
+                  <button class="button button--primary" id="trainer-submit-button" type="submit">Trainer anlegen</button>
+                  <button class="button button--secondary" id="trainer-edit-cancel" type="button" hidden>Abbrechen</button>
+                </div>
               </form>
               <form class="card masterdata-form" id="trainer-group-form">
                 <div class="section-heading"><div><p class="eyebrow">Gruppe</p><h2>Trainer zuordnen</h2></div></div>
@@ -170,14 +176,17 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               </div>
               <div class="masterdata-list" id="group-list" aria-live="polite"></div>
               <form class="card masterdata-form" id="group-form">
-                <div class="section-heading"><div><p class="eyebrow">Neu</p><h2>Trainingsgruppe anlegen</h2></div></div>
+                <div class="section-heading"><div><p class="eyebrow">Stammdaten</p><h2 id="group-form-title">Trainingsgruppe anlegen</h2></div></div>
                 <div class="settings-grid">
                   <label>Name<input id="group-name" minlength="2" maxlength="100" required /></label>
                   <label>Kurzname<input id="group-short-name" maxlength="20" /></label>
                   <label>Beschreibung<input id="group-description" maxlength="1000" /></label>
                   <label>Sortierung<input id="group-sort-order" type="number" min="0" max="10000" value="100" inputmode="numeric" /></label>
                 </div>
-                <button class="button button--primary" type="submit">Gruppe anlegen</button>
+                <div class="masterdata-form-actions">
+                  <button class="button button--primary" id="group-submit-button" type="submit">Gruppe anlegen</button>
+                  <button class="button button--secondary" id="group-edit-cancel" type="button" hidden>Abbrechen</button>
+                </div>
               </form>
             </section>
           </section>
@@ -352,8 +361,13 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
   cursor: pointer;
   font-weight: 800;
 }
+.masterdata-row__action--edit {
+  border-color: var(--border-strong);
+  color: var(--accent);
+}
 .button:disabled { cursor: not-allowed; opacity: .5; }
 .button--primary { background: var(--accent); color: var(--accent-foreground); }
+.button--secondary { border-color: var(--border-strong); background: white; color: var(--secondary); }
 .message { margin: 12px 0 0; padding: 12px; border-radius: var(--control-radius); font-size: .84rem; }
 .message--error { background: var(--danger-surface); color: var(--danger); }
 .app-nav {
@@ -435,7 +449,8 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 }
 .masterdata-row strong { font-size: .96rem; }
 .masterdata-row span { color: var(--secondary); font-size: .8rem; line-height: 1.4; }
-.masterdata-row__actions { display: flex; justify-content: flex-end; padding-top: 5px; }
+.masterdata-row__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 5px; }
+.masterdata-form-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .masterdata-row__action {
   min-height: 40px;
   border: 1px solid #fecaca;
@@ -564,17 +579,26 @@ const elements = {
   athleteLastName: document.querySelector("#athlete-last-name"),
   athleteBirthYear: document.querySelector("#athlete-birth-year"),
   athleteNotes: document.querySelector("#athlete-notes"),
+  athleteFormTitle: document.querySelector("#athlete-form-title"),
+  athleteSubmitButton: document.querySelector("#athlete-submit-button"),
+  athleteEditCancel: document.querySelector("#athlete-edit-cancel"),
   trainerForm: document.querySelector("#trainer-form"),
   trainerFirstName: document.querySelector("#trainer-first-name"),
   trainerLastName: document.querySelector("#trainer-last-name"),
   trainerPhone: document.querySelector("#trainer-phone"),
   trainerEmail: document.querySelector("#trainer-email"),
   trainerNotes: document.querySelector("#trainer-notes"),
+  trainerFormTitle: document.querySelector("#trainer-form-title"),
+  trainerSubmitButton: document.querySelector("#trainer-submit-button"),
+  trainerEditCancel: document.querySelector("#trainer-edit-cancel"),
   groupForm: document.querySelector("#group-form"),
   groupName: document.querySelector("#group-name"),
   groupShortName: document.querySelector("#group-short-name"),
   groupDescription: document.querySelector("#group-description"),
   groupSortOrder: document.querySelector("#group-sort-order"),
+  groupFormTitle: document.querySelector("#group-form-title"),
+  groupSubmitButton: document.querySelector("#group-submit-button"),
+  groupEditCancel: document.querySelector("#group-edit-cancel"),
   athleteGroupForm: document.querySelector("#athlete-group-form"),
   athleteGroupAthlete: document.querySelector("#athlete-group-athlete"),
   athleteGroupGroup: document.querySelector("#athlete-group-group"),
@@ -615,6 +639,7 @@ let countdownReady = false;
 let masterdataReady = false;
 let masterdataLoading = false;
 let masterdataSnapshot = null;
+let masterdataEdit = null;
 let plan = null;
 let runMode = "idle";
 let elapsedBeforeRunMs = 0;
@@ -636,6 +661,9 @@ elements.settingsForm?.addEventListener("input", handleSettingsInput);
 elements.athleteForm?.addEventListener("submit", (event) => void createMasterdataAthlete(event));
 elements.trainerForm?.addEventListener("submit", (event) => void createMasterdataTrainer(event));
 elements.groupForm?.addEventListener("submit", (event) => void createMasterdataGroup(event));
+elements.athleteEditCancel?.addEventListener("click", cancelMasterdataEdit);
+elements.trainerEditCancel?.addEventListener("click", cancelMasterdataEdit);
+elements.groupEditCancel?.addEventListener("click", cancelMasterdataEdit);
 elements.athleteGroupForm?.addEventListener("submit", (event) => void createAthleteGroupMembership(event));
 elements.trainerGroupForm?.addEventListener("submit", (event) => void createTrainerGroupMembership(event));
 for (const control of document.querySelectorAll("[data-masterdata-tab]")) {
@@ -936,6 +964,9 @@ function renderMasterdata(snapshot) {
         " · " +
         ((activeAthleteGroups.get(item?.id) || []).join(", ") || "keine aktive Gruppe") +
         (item?.isActive === false ? " · inaktiv" : ""),
+      edit: item?.isActive !== false
+        ? { type: "athlete", id: String(item?.id || ""), item }
+        : null,
       deactivate: item?.isActive !== false
         ? { type: "athlete", id: String(item?.id || ""), label: "Athlet deaktivieren" }
         : null,
@@ -953,6 +984,9 @@ function renderMasterdata(snapshot) {
         " · " +
         ((trainerGroups.get(item?.id) || []).join(", ") || "keine Gruppe") +
         (item?.isActive === false ? " · inaktiv" : ""),
+      edit: item?.isActive !== false
+        ? { type: "trainer", id: String(item?.id || ""), item }
+        : null,
       deactivate: item?.isActive !== false
         ? { type: "trainer", id: String(item?.id || ""), label: "Trainer deaktivieren" }
         : null,
@@ -969,6 +1003,9 @@ function renderMasterdata(snapshot) {
           ? item.shortName + " · "
           : "") +
         (item?.isActive === false ? "inaktiv" : "aktiv"),
+      edit: item?.isActive !== false
+        ? { type: "group", id: String(item?.id || ""), item }
+        : null,
     }),
   );
   if (elements.athleteCount) elements.athleteCount.textContent = String(snapshot.athletes.length);
@@ -996,19 +1033,110 @@ function renderMasterdataList(container, items, emptyMessage, describe) {
     const meta = document.createElement("span");
     meta.textContent = description.meta;
     row.append(title, meta);
-    if (description.deactivate?.id) {
+    if (description.edit?.id || description.deactivate?.id) {
       const actions = document.createElement("div");
       actions.className = "masterdata-row__actions";
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "masterdata-row__action";
-      button.textContent = "Deaktivieren";
-      button.addEventListener("click", () => void deactivateMasterdataEntity(description.deactivate));
-      actions.append(button);
+      if (description.edit?.id) {
+        const editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.className = "masterdata-row__action masterdata-row__action--edit";
+        editButton.textContent = "Bearbeiten";
+        editButton.addEventListener("click", () => beginMasterdataEdit(description.edit));
+        actions.append(editButton);
+      }
+      if (description.deactivate?.id) {
+        const deactivateButton = document.createElement("button");
+        deactivateButton.type = "button";
+        deactivateButton.className = "masterdata-row__action";
+        deactivateButton.textContent = "Deaktivieren";
+        deactivateButton.addEventListener("click", () => void deactivateMasterdataEntity(description.deactivate));
+        actions.append(deactivateButton);
+      }
       row.append(actions);
     }
     container.append(row);
   }
+}
+
+function beginMasterdataEdit(action) {
+  const type = action?.type;
+  const id = typeof action?.id === "string" ? action.id : "";
+  const item = action?.item;
+  if (!["athlete", "trainer", "group"].includes(type) || !id || !item) return;
+
+  cancelMasterdataEdit();
+  masterdataEdit = { type, id };
+
+  if (type === "athlete") {
+    showMasterdataTab("athletes");
+    if (elements.athleteFirstName) elements.athleteFirstName.value = String(item.firstName || "");
+    if (elements.athleteLastName) elements.athleteLastName.value = String(item.lastName || "");
+    if (elements.athleteBirthYear) {
+      elements.athleteBirthYear.value =
+        item.birthYear === null || item.birthYear === undefined ? "" : String(item.birthYear);
+    }
+    if (elements.athleteNotes) elements.athleteNotes.value = String(item.notes || "");
+    elements.athleteForm?.scrollIntoView({ block: "start", behavior: "smooth" });
+  } else if (type === "trainer") {
+    showMasterdataTab("trainers");
+    if (elements.trainerFirstName) elements.trainerFirstName.value = String(item.firstName || "");
+    if (elements.trainerLastName) elements.trainerLastName.value = String(item.lastName || "");
+    if (elements.trainerPhone) elements.trainerPhone.value = String(item.phone || "");
+    if (elements.trainerEmail) elements.trainerEmail.value = String(item.email || "");
+    if (elements.trainerNotes) elements.trainerNotes.value = String(item.notes || "");
+    elements.trainerForm?.scrollIntoView({ block: "start", behavior: "smooth" });
+  } else {
+    showMasterdataTab("groups");
+    if (elements.groupName) elements.groupName.value = String(item.name || "");
+    if (elements.groupShortName) elements.groupShortName.value = String(item.shortName || "");
+    if (elements.groupDescription) elements.groupDescription.value = String(item.description || "");
+    if (elements.groupSortOrder) elements.groupSortOrder.value = String(item.sortOrder ?? 100);
+    elements.groupForm?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
+  refreshMasterdataEditMode();
+}
+
+function cancelMasterdataEdit() {
+  const previousType = masterdataEdit?.type;
+  masterdataEdit = null;
+  if (previousType === "athlete") elements.athleteForm?.reset();
+  if (previousType === "trainer") elements.trainerForm?.reset();
+  if (previousType === "group") {
+    elements.groupForm?.reset();
+    if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
+  }
+  refreshMasterdataEditMode();
+}
+
+function refreshMasterdataEditMode() {
+  const athleteEditing = masterdataEdit?.type === "athlete";
+  const trainerEditing = masterdataEdit?.type === "trainer";
+  const groupEditing = masterdataEdit?.type === "group";
+
+  if (elements.athleteFormTitle) {
+    elements.athleteFormTitle.textContent = athleteEditing ? "Athlet bearbeiten" : "Athlet anlegen";
+  }
+  if (elements.athleteSubmitButton) {
+    elements.athleteSubmitButton.textContent = athleteEditing ? "Änderungen speichern" : "Athlet anlegen";
+  }
+  if (elements.athleteEditCancel) elements.athleteEditCancel.hidden = !athleteEditing;
+
+  if (elements.trainerFormTitle) {
+    elements.trainerFormTitle.textContent = trainerEditing ? "Trainer bearbeiten" : "Trainer anlegen";
+  }
+  if (elements.trainerSubmitButton) {
+    elements.trainerSubmitButton.textContent = trainerEditing ? "Änderungen speichern" : "Trainer anlegen";
+  }
+  if (elements.trainerEditCancel) elements.trainerEditCancel.hidden = !trainerEditing;
+
+  if (elements.groupFormTitle) {
+    elements.groupFormTitle.textContent = groupEditing ? "Trainingsgruppe bearbeiten" : "Trainingsgruppe anlegen";
+  }
+  if (elements.groupSubmitButton) {
+    elements.groupSubmitButton.textContent = groupEditing ? "Änderungen speichern" : "Gruppe anlegen";
+  }
+  if (elements.groupEditCancel) elements.groupEditCancel.hidden = !groupEditing;
 }
 
 function renderMasterdataAssignmentOptions(snapshot) {
@@ -1072,22 +1200,31 @@ function localDateValue(date) {
 async function createMasterdataAthlete(event) {
   event.preventDefault();
   const birthYearRaw = elements.athleteBirthYear?.value.trim() || "";
-  await submitMasterdataForm(
-    "/api/modules/athletes/masterdata/athletes",
+  const editId = masterdataEdit?.type === "athlete" ? masterdataEdit.id : null;
+  const saved = await submitMasterdataForm(
+    editId
+      ? "/api/modules/athletes/masterdata/athletes/" + encodeURIComponent(editId) + "/update"
+      : "/api/modules/athletes/masterdata/athletes",
     {
       firstName: elements.athleteFirstName?.value ?? "",
       lastName: elements.athleteLastName?.value ?? "",
-      ...(birthYearRaw === "" ? {} : { birthYear: Number(birthYearRaw) }),
+      ...(editId
+        ? { birthYear: birthYearRaw === "" ? null : Number(birthYearRaw) }
+        : birthYearRaw === "" ? {} : { birthYear: Number(birthYearRaw) }),
       notes: emptyToNull(elements.athleteNotes?.value),
     },
     elements.athleteForm,
   );
+  if (saved && editId) cancelMasterdataEdit();
 }
 
 async function createMasterdataTrainer(event) {
   event.preventDefault();
-  await submitMasterdataForm(
-    "/api/modules/athletes/masterdata/trainers",
+  const editId = masterdataEdit?.type === "trainer" ? masterdataEdit.id : null;
+  const saved = await submitMasterdataForm(
+    editId
+      ? "/api/modules/athletes/masterdata/trainers/" + encodeURIComponent(editId) + "/update"
+      : "/api/modules/athletes/masterdata/trainers",
     {
       firstName: elements.trainerFirstName?.value ?? "",
       lastName: elements.trainerLastName?.value ?? "",
@@ -1097,13 +1234,17 @@ async function createMasterdataTrainer(event) {
     },
     elements.trainerForm,
   );
+  if (saved && editId) cancelMasterdataEdit();
 }
 
 async function createMasterdataGroup(event) {
   event.preventDefault();
   const sortOrderRaw = elements.groupSortOrder?.value.trim() || "100";
-  await submitMasterdataForm(
-    "/api/modules/athletes/masterdata/training-groups",
+  const editId = masterdataEdit?.type === "group" ? masterdataEdit.id : null;
+  const saved = await submitMasterdataForm(
+    editId
+      ? "/api/modules/athletes/masterdata/training-groups/" + encodeURIComponent(editId) + "/update"
+      : "/api/modules/athletes/masterdata/training-groups",
     {
       name: elements.groupName?.value ?? "",
       shortName: emptyToNull(elements.groupShortName?.value),
@@ -1112,6 +1253,7 @@ async function createMasterdataGroup(event) {
     },
     elements.groupForm,
   );
+  if (saved && editId) cancelMasterdataEdit();
 }
 
 async function createAthleteGroupMembership(event) {
@@ -1155,6 +1297,7 @@ async function deactivateMasterdataEntity(action) {
     );
     masterdataSnapshot = null;
     await loadMasterdata(true);
+    return true;
   } catch (error) {
     showMessage(
       elements.masterdataMessage,
@@ -1196,6 +1339,7 @@ async function submitMasterdataForm(path, body, form) {
           ? "Bitte prüfe die eingegebenen Stammdaten."
           : "Die Stammdaten konnten nicht gespeichert werden.",
     );
+    return false;
   } finally {
     setMasterdataFormsDisabled(false);
   }
