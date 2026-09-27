@@ -17,12 +17,11 @@ fachlich umgesetzt, in einer isolierten Preview abgenommen und anschließend
 getrennt gegen den bestehenden Produktionspfad revalidiert.
 
 FC6 schließt jetzt die bewusst verbliebene Lücke für datenbank-ownende Module.
-**FC6-A und FC6-B sind abgeschlossen.** Der aktuelle Slice ist
-**FC6-C: Integration in den Existing-App-Updater**. Der kontrollierte
-Repository-Updater darf den kanonischen Datenbankmanifest-Zielzustand eines
-neuen DB-Moduls publizieren, ohne daraus eine bereits ausgeführte
-Environment-Migration abzuleiten. Produktive Datenbank- und Providerwrites
-bleiben ausgeschlossen.
+**FC6-A, FC6-B und FC6-C sind abgeschlossen.** Der aktuelle Slice ist
+**FC6-D: isolierter Existing-App-End-to-End-Beweis**. Er verbindet den
+read-only Delta-Plan, den echten Repository-Updater und den inkrementellen
+PostgreSQL-Executor auf einer nicht leeren isolierten Baseline. Produktive
+Datenbank- und Providerwrites bleiben ausgeschlossen.
 
 FC4 ist für den aktuellen Produktpfad abgeschlossen: Modulvertrag,
 Modul-Scaffolder, der persistenzfreie Intervall-Countdown und der normale
@@ -282,7 +281,7 @@ FC6-B ist auf `main` abgeschlossen. Der Executor verifiziert die bestehende
 Baseline und den Ziel-Delta fail-closed, serialisiert konkurrierende Läufe und
 führt ausschließlich den neuen Moduldelta transaktional aus.
 
-### FC6-C – Existing-App-Integration – aktuell
+### FC6-C – Existing-App-Integration – abgeschlossen
 
 Der bestehende Repository-Updater ersetzt jetzt seine frühere harte Sperre für
 datenbank-ownende Module durch den bereits bewiesenen FC6-Vertrag.
@@ -301,8 +300,34 @@ Abnahme für FC6-C:
 - eine erfolgreiche Repository-Installation bedeutet nur
   `databaseMigrationDelta required`, niemals „Migration bereits angewendet“.
 
-Der unmittelbar folgende FC6-D-Slice verbindet diesen Repository-Pfad mit dem
-bereits bewiesenen FC6-B-Executor in einem isolierten End-to-End-Fixture.
+FC6-C ist auf `main` abgeschlossen. Der Existing-App-Updater kann den
+kanonischen Repository-Zielzustand eines datenbank-ownenden Moduls publizieren,
+ohne eine ausgeführte Environment-Migration zu behaupten.
+
+### FC6-D – isolierter Existing-App-End-to-End-Beweis – aktuell
+
+Der abschließende FC6-Slice verbindet die bereits getrennt bewiesenen Verträge
+in einer isolierten PostgreSQL-Testumgebung mit dem realen `tasks`-Modul.
+
+Abnahme für FC6-D:
+
+- eine bestehende App startet mit nicht leerer Identity-Baseline und bestehenden
+  Daten;
+- der read-only Planner liefert exakt den neuen Tasks-Owner und verändert das
+  Repository nicht;
+- der echte Existing-App-Updater publiziert Paket, Lockfile,
+  `appbasis.database.json` und zuletzt die Appdefinition;
+- der FC6-B-Executor migriert danach ausschließlich den Tasks-Delta;
+- bestehende Identity-Daten bleiben unverändert erhalten;
+- ein erneuter Repository-Lauf bleibt No-op und ein erneuter DB-Lauf wird
+  fail-closed abgewiesen;
+- Baseline-Drift nach Repository-Publikation verhindert jedes Target-DDL;
+- eine absichtlich fehlschlagende spätere Target-Anweisung rollt den gesamten
+  DB-Delta zurück, obwohl der Repository-Zielzustand bereits publiziert ist;
+- vollständige CI und Exact-Head-Review bestätigen denselben Head.
+
+Es gibt weiterhin keinen Produktionsworkflow, keinen Providerwrite und keine
+Änderung einer realen Produktapp für diesen Nachweis.
 
 ## Architektur- und Sicherheitsgrenzen
 
