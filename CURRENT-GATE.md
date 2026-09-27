@@ -669,6 +669,10 @@ Abnahme für ULC-E4A:
   doppelte Athleten in einem Anwesenheitssnapshot fail-closed;
 - Generator und kanonisches ULC-Datenbankmanifest enthalten die neue Migration
   deterministisch;
+- die Privacy-Inventur klassifiziert Trainingstermin und Anwesenheit
+  ausdrücklich als personenbezogene Persistenz mit noch offenem
+  Lifecycle-/Retention-/Restore-Vertrag; bestehende Production-Evidence bleibt
+  dadurch fail-closed;
 - keine Runtime/API/UI-Änderung, kein Preview-/Production-DB-Write, kein
   Providerwrite und kein Deployment in E4A.
 
