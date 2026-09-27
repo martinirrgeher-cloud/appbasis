@@ -76,6 +76,7 @@ export async function loadModuleUpdateMigrationExecutionPlan(
   const baselineCatalogContract = createCatalogContract(
     baselinePlan,
     "baseline",
+    { allowExistingNonStructuralAccessControl: true },
   );
   const targetCatalogContract = createCatalogContract(targetPlan, "target");
   assertTargetCatalogIsolation({
@@ -347,7 +348,7 @@ export async function applyModuleUpdateMigrations(
   }
 }
 
-export function createCatalogContract(plan, label = "migration") {
+export function createCatalogContract(plan, label = "migration", options = {}) {
   if (!Array.isArray(plan) || plan.length === 0) {
     throw new ModuleUpdateMigrationConfigurationError(
       `FC6-B ${label} migration plan is empty.`,
@@ -375,6 +376,12 @@ export function createCatalogContract(plan, label = "migration") {
 
         const markers = catalogMarkersFromStatement(command);
         if (markers.length === 0) {
+          if (
+            options.allowExistingNonStructuralAccessControl === true &&
+            isExistingNonStructuralAccessControl(command)
+          ) {
+            continue;
+          }
           throw new ModuleUpdateMigrationConfigurationError(
             `FC6-B ${label} migration contains a statement without a verifiable catalog marker.`,
           );
@@ -409,6 +416,25 @@ export function createCatalogContract(plan, label = "migration") {
       )
       .map((marker) => Object.freeze(marker)),
   );
+}
+
+function isExistingNonStructuralAccessControl(statement) {
+  const normalized = stripLeadingSqlComments(statement).trim();
+  if (/^(?:GRANT|REVOKE)\b/i.test(normalized)) return true;
+  if (/^CREATE\s+OR\s+REPLACE\s+FUNCTION\b/i.test(normalized)) return true;
+
+  if (/^DO\b/i.test(normalized)) {
+    if (
+      /\b(?:CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+INDEX|TRUNCATE\s+TABLE)\b/i.test(
+        normalized,
+      )
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function createConstraintEvidenceState() {
