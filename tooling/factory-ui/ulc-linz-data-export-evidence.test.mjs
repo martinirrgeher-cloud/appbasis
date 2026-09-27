@@ -12,19 +12,38 @@ const currentDefinition = JSON.parse(
 );
 const definition = Object.freeze({
   ...currentDefinition,
-  modules: Object.freeze(["countdown"]),
+  modules: Object.freeze(["countdown", "athletes"]),
 });
 const AUDIT_EVIDENCE = Object.freeze({ auditSecurityLogging: true });
 
-test("reopens M5-E after Stammdaten changes the accepted export scope", async () => {
+test("verifies the current E2C export classification while Stammdaten personal tables remain explicitly excluded", async () => {
   assert.deepEqual(
-    await deriveUlcLinzDataExportEvidence(repositoryRoot, definition, AUDIT_EVIDENCE),
-    {},
+    await deriveUlcLinzDataExportEvidence(
+      repositoryRoot,
+      definition,
+      AUDIT_EVIDENCE,
+    ),
+    { dataExport: true },
   );
-  assert.deepEqual(
-    await deriveUlcLinzDataExportEvidence(repositoryRoot, currentDefinition, AUDIT_EVIDENCE),
-    {},
+
+  const contract = JSON.parse(
+    await readFile(
+      join(repositoryRoot, "apps", "ulc-linz", "privacy", "m5-export-contract.json"),
+      "utf8",
+    ),
   );
+  const excludedTables = contract.excludedTables.map(
+    (entry) => `${entry.owner}:${entry.table}`,
+  );
+  assert.ok(excludedTables.includes("athletes:appbasis_athlete"));
+  assert.ok(excludedTables.includes("athletes:appbasis_trainer"));
+  assert.ok(
+    excludedTables.includes("athletes:appbasis_athlete_group_membership"),
+  );
+  assert.ok(
+    excludedTables.includes("athletes:appbasis_trainer_group_membership"),
+  );
+
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(repositoryRoot, definition, {}),
     {},
@@ -35,7 +54,7 @@ test("keeps M5-E open for future module scope or malformed audit evidence", asyn
   assert.deepEqual(
     await deriveUlcLinzDataExportEvidence(
       repositoryRoot,
-      { ...definition, modules: ["countdown", "tasks"] },
+      { ...definition, modules: ["countdown", "athletes", "tasks"] },
       AUDIT_EVIDENCE,
     ),
     {},
