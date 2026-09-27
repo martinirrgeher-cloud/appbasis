@@ -131,6 +131,111 @@ export async function preflightUlcLinzD4PreviewDatabaseAccess(
   }
 }
 
+export async function preflightExistingUlcLinzD4PreviewDatabaseAccess(
+  {
+    migrationDatabaseUrl,
+    applicationDatabaseUrl,
+    securityLogDatabaseUrl,
+  } = {},
+  { databaseFactory = createPostgresDatabase } = {},
+) {
+  if (typeof databaseFactory !== "function") {
+    throw new Error("ULC D4 preview database factory is invalid.");
+  }
+
+  const credentials = validateUlcLinzD4PreviewDatabaseCredentials({
+    migrationDatabaseUrl,
+    applicationDatabaseUrl,
+    securityLogDatabaseUrl,
+  });
+  const migrationRole = requiredRoleName(credentials.migration.user);
+  const applicationRole = requiredRoleName(credentials.application.user);
+  const securityRole = requiredRoleName(credentials.securityLog.user);
+
+  await requireRuntimeCredentialAuthentication({
+    databaseUrl: applicationDatabaseUrl,
+    expectedRole: applicationRole,
+    label: "application runtime",
+    databaseFactory,
+  });
+  await requireRuntimeCredentialAuthentication({
+    databaseUrl: securityLogDatabaseUrl,
+    expectedRole: securityRole,
+    label: "security-log runtime",
+    databaseFactory,
+  });
+
+  const ownerDatabase = databaseFactory(migrationDatabaseUrl);
+  try {
+    await requireRuntimeRoleInventory(
+      ownerDatabase.client,
+      migrationRole,
+      applicationRole,
+      securityRole,
+    );
+    await requireApplicationMembershipBoundary(
+      ownerDatabase.client,
+      applicationRole,
+    );
+    await requireRuntimeLoginOwnershipBoundary(
+      ownerDatabase.client,
+      applicationRole,
+      "application runtime",
+    );
+    await requireRuntimeLoginNoDirectGrants(
+      ownerDatabase.client,
+      applicationRole,
+      "application runtime",
+    );
+    await requireSecurityGroupMembershipBoundary(ownerDatabase.client);
+    await requireSecurityLoginMembershipBoundary(
+      ownerDatabase.client,
+      securityRole,
+      false,
+    );
+    await requireSecurityGroupMemberBoundary(
+      ownerDatabase.client,
+      securityRole,
+      migrationRole,
+      false,
+    );
+    await requireRuntimeLoginOwnershipBoundary(
+      ownerDatabase.client,
+      securityRole,
+      "security-log runtime",
+    );
+    await requireRuntimeLoginNoDirectGrants(
+      ownerDatabase.client,
+      securityRole,
+      "security-log runtime",
+    );
+    await requireSecurityGroupCatalogBoundary(ownerDatabase.client);
+    await requireSharedSecurityRolesNeutralInPreviewDatabase(
+      ownerDatabase.client,
+    );
+  } finally {
+    await ownerDatabase.client.end().catch(() => {});
+  }
+
+  await verifyApplicationRuntimeAccess({
+    applicationDatabaseUrl,
+    applicationRole,
+    databaseFactory,
+  });
+  await verifySecurityRuntimeAccess({
+    securityLogDatabaseUrl,
+    securityRole,
+    databaseFactory,
+  });
+
+  return Object.freeze({
+    schemaVersion: 1,
+    application: "ulc-linz",
+    environment: "generated-preview-ulc-linz",
+    existingRuntimePrincipalPreflightVerified: true,
+  });
+}
+
 export async function reconcileUlcLinzD4PreviewDatabaseAccess(
   {
     migrationDatabaseUrl,
@@ -1431,14 +1536,16 @@ if (isMainModule()) {
     const result =
       command === "preflight"
         ? await preflightUlcLinzD4PreviewDatabaseAccess(common)
-        : command === "reconcile"
-          ? await reconcileUlcLinzD4PreviewDatabaseAccess({
-              ...common,
-              apply: process.env.APPBASIS_APPLY_DATABASE_ACCESS === "1",
-            })
-          : (() => {
-              throw new Error("ULC D4 preview database access command is invalid.");
-            })();
+        : command === "preflight-existing"
+          ? await preflightExistingUlcLinzD4PreviewDatabaseAccess(common)
+          : command === "reconcile"
+            ? await reconcileUlcLinzD4PreviewDatabaseAccess({
+                ...common,
+                apply: process.env.APPBASIS_APPLY_DATABASE_ACCESS === "1",
+              })
+            : (() => {
+                throw new Error("ULC D4 preview database access command is invalid.");
+              })();
     process.stdout.write(JSON.stringify(result) + "\n");
   } catch (error) {
     console.error(
