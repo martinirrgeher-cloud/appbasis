@@ -214,7 +214,7 @@ test("observer reports lifecycle executors unbound before repository binding whi
   assert.match(result.resourceBindingFingerprint, /^sha256:[0-9a-f]{64}$/);
   assert.equal(
     result.criteria.find((criterion) => criterion.id === "privilegedControlPlaneIsolation")?.status,
-    "verified",
+    "open",
   );
   for (const id of [
     "deletionConcept",

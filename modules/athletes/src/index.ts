@@ -19,6 +19,7 @@ export {
   createTrainerGroupMembership,
   createTrainingGroup,
 } from "./domain/masterdata";
+export { PostgresAthleteMasterdataRepository } from "./postgres-masterdata-repository";
 export type {
   Athlete,
   AthleteGroupMembership,
@@ -32,6 +33,12 @@ export type {
   TrainerGroupMembership,
   TrainingGroup,
 } from "./domain/masterdata";
+export type {
+  AthleteMasterdataPostgresClient,
+  AthleteMasterdataRetentionResult,
+  AthleteMasterdataSnapshot,
+  AthleteMasterdataSqlParameter,
+} from "./postgres-masterdata-repository";
 
 function requiredAthleteCapability<const T extends string>(capability: T): T {
   if (!MODULE_CAPABILITIES.includes(capability)) {

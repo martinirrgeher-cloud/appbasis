@@ -32,11 +32,15 @@ const ACTIVATION_FIELDS = Object.freeze([
 ]);
 const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
   "pnpm-lock.yaml",
+  "tooling/ulc-linz-database-contract.mjs",
   "apps/ulc-linz/appbasis.app.json",
   "apps/ulc-linz/appbasis.database.json",
   "apps/ulc-linz/package.json",
   "modules/countdown/appbasis.module.json",
   "modules/countdown/package.json",
+  "modules/athletes/appbasis.module.json",
+  "modules/athletes/package.json",
+  "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
   "packages/database/package.json",
   "packages/identity/package.json",
   "packages/permissions/package.json",
@@ -49,6 +53,8 @@ const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
   "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
   "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
   "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
+  "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+  ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
   "apps/ulc-linz/worker/lifecycle.ts",
   "apps/ulc-linz/worker/lifecycle-service.ts",
   "apps/ulc-linz/worker/scope-persistence.ts",
@@ -62,6 +68,7 @@ const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
 const LIFECYCLE_CONTRACT_DIRECTORIES = Object.freeze([
   "apps/ulc-linz/worker",
   "modules/countdown/src",
+  "modules/athletes/src",
   "packages/database/src",
   "packages/identity/src",
   "packages/permissions/src",
@@ -69,14 +76,18 @@ const LIFECYCLE_CONTRACT_DIRECTORIES = Object.freeze([
 
 export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
   appId: "ulc-linz",
-  modules: Object.freeze(["countdown"]),
+  modules: Object.freeze(["countdown", "athletes"]),
   platformServices: Object.freeze(["identity", "permissions"]),
   lifecycleContractPaths: LIFECYCLE_CONTRACT_PATHS,
   lifecycleContractDirectories: LIFECYCLE_CONTRACT_DIRECTORIES,
   evidenceFiles: Object.freeze([
     Object.freeze({
       path: "apps/ulc-linz/privacy/m5-data-inventory.json",
-      gitBlobSha: "291bda98ad668cec7b1c442c3b9e96accfecc14b",
+      gitBlobSha: "8978a26e54821047ab892259f57111a92c13e9da",
+    }),
+    Object.freeze({
+      path: "tooling/ulc-linz-database-contract.mjs",
+      gitBlobSha: "a552fbf773f6777ab809d7b5f3aab876fbf0ace2",
     }),
     Object.freeze({
       path: "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
@@ -91,8 +102,32 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
       gitBlobSha: "0dea6b9c751e559b06e14d2d2e603bb9a99372d4",
     }),
     Object.freeze({
+      path: "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+      gitBlobSha: "1d1ef22e037fedbe8aa3206ce931e44a9ea2c672",
+    }),
+    Object.freeze({
+      path: "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+      gitBlobSha: "7abe0cda515ac4bf8bd97feb583aad5418b5aed1",
+    }),
+    Object.freeze({
       path: "apps/ulc-linz/package.json",
-      gitBlobSha: "226dc013ab5e6326f68a83fd7b1e7cc151f477ae",
+      gitBlobSha: "dc54d72e920a0fed230531970f8236819c02315b",
+    }),
+    Object.freeze({
+      path: "modules/athletes/appbasis.module.json",
+      gitBlobSha: "c18c3ecfe6474fa36ccb11a776f82abe4fcec780",
+    }),
+    Object.freeze({
+      path: "modules/athletes/package.json",
+      gitBlobSha: "1c45ec7666a76a4c59a51ddbedbdfc1dfc6d4af9",
+    }),
+    Object.freeze({
+      path: "modules/athletes/src/domain/masterdata.ts",
+      gitBlobSha: "80bca98f5607d996a98137d3217253e1872050e6",
+    }),
+    Object.freeze({
+      path: "modules/athletes/src/postgres-masterdata-repository.ts",
+      gitBlobSha: "f59463cf8aa137c096d9895ef4f9f423dc601776",
     }),
     Object.freeze({
       path: "apps/ulc-linz/worker/app.ts",
@@ -135,6 +170,14 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
       gitBlobSha: "fdce5bff5b0d29093a868867b564ef20781c0b11",
     }),
     Object.freeze({
+      path: "apps/ulc-linz/worker/protected-lifecycle-operations.ts",
+      gitBlobSha: "ba3e24784f52ccdfceda3cce5b694f912785ea2a",
+    }),
+    Object.freeze({
+      path: ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
+      gitBlobSha: "4066ebb3f3485cfd94a2c8952f35f01802be84e1",
+    }),
+    Object.freeze({
       path: "apps/ulc-linz/worker/restore-reconciliation.ts",
       gitBlobSha: "31b0637b08cde518fc10a7a4fcd2fbf8cf40aa53",
     }),
@@ -156,11 +199,11 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle.postgres.e2e.test.ts",
-      gitBlobSha: "4ccc2a838a10e45572dbc2e9a3fe39b0f7253a10",
+      gitBlobSha: "8edcfb05b2769247ceee9b3e2e2c6dac2d6aa92b",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle-persistence.postgres.e2e.test.ts",
-      gitBlobSha: "f0a834894867a37a28b830ee20be4bd2b89f621e",
+      gitBlobSha: "a9536d9d2552a54342a0fcb045c0966f7de32558",
     }),
     Object.freeze({
       path: "apps/ulc-linz/test/lifecycle-audit.postgres.e2e.test.ts",
@@ -175,8 +218,16 @@ export const ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY = Object.freeze({
       gitBlobSha: "32566b66903137b49a5c49f554b808e2d2f6f163",
     }),
     Object.freeze({
+      path: "apps/ulc-linz/test/athletes-masterdata.postgres.e2e.test.ts",
+      gitBlobSha: "1b46bdd8790260481ac179c35e1b92e158fd68a9",
+    }),
+    Object.freeze({
+      path: "modules/athletes/test/postgres-masterdata-repository.test.ts",
+      gitBlobSha: "8cbe31ae864bf6736f5507ef58d170fc3c54bb65",
+    }),
+    Object.freeze({
       path: "apps/ulc-linz/test/m5-data-inventory.test.ts",
-      gitBlobSha: "7386acddca55761f4ef796071114b1b99d34b132",
+      gitBlobSha: "2caa09efb93a3700c689d89eb82b00751773d5a1",
     }),
     Object.freeze({
       path: "packages/permissions/test/permission-administration-audit-retention.postgres.e2e.ts",
@@ -319,11 +370,11 @@ function isClosedCurrentInventory(inventory) {
   return (
     inventory.schemaVersion === 2 &&
     inventory.application === "ulc-linz" &&
-    inventory.scope === "current-materialized-v0.1" &&
-    isDeepStrictEqual(inventory.runtimeModules, ["countdown"]) &&
+    inventory.scope === "current-materialized-v0.2" &&
+    isDeepStrictEqual(inventory.runtimeModules, ["countdown", "athletes"]) &&
     inventory.objectStorage?.status === "not-configured" &&
     inventory.objectStorage?.futureIntroduction ===
-      "invalidates-current-cd-evidence" &&
+      "invalidates-current-evidence" &&
     inventory.m5?.deletionPolicy === "verified-current-scope" &&
     inventory.m5?.retentionPolicy === "verified-current-scope" &&
     inventory.m5?.restoreReconciliation === "verified-current-scope" &&

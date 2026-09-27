@@ -61,6 +61,81 @@ function runtime(
       return { organizationId: "verein-1" };
     },
   },
+  athletesAccess: GeneratedPostgresApplicationRuntime["athletesAccess"] = {
+    async assertViewAccess() {
+      return { organizationId: "verein-1" };
+    },
+    async assertEditAccess() {
+      return { organizationId: "verein-1" };
+    },
+  },
+  athleteMasterdata: GeneratedPostgresApplicationRuntime["athleteMasterdata"] = {
+    async readOrganizationSnapshot() {
+      return {
+        trainingGroups: [],
+        athletes: [],
+        trainers: [],
+        athleteGroupMemberships: [],
+        trainerGroupMemberships: [],
+      };
+    },
+    async createTrainingGroup(organizationId, input) {
+      return {
+        id: "group-test",
+        organizationId,
+        name: input.name,
+        shortName: input.shortName ?? null,
+        description: input.description ?? null,
+        isActive: true,
+        sortOrder: input.sortOrder ?? 100,
+      };
+    },
+    async createAthlete(organizationId, input) {
+      return {
+        id: "athlete-test",
+        organizationId,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        birthYear: input.birthYear ?? null,
+        notes: input.notes ?? null,
+        isActive: true,
+      };
+    },
+    async createTrainer(organizationId, input) {
+      return {
+        id: "trainer-test",
+        organizationId,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+        notes: input.notes ?? null,
+        isActive: true,
+      };
+    },
+    async createAthleteGroupMembership(organizationId, input) {
+      return {
+        organizationId,
+        athleteId: input.athleteId,
+        groupId: input.groupId,
+        startedOn: input.startedOn,
+        endedOn: input.endedOn ?? null,
+      };
+    },
+    async createTrainerGroupMembership(organizationId, input) {
+      return {
+        organizationId,
+        trainerId: input.trainerId,
+        groupId: input.groupId,
+      };
+    },
+    async deactivateAthlete() {
+      return true;
+    },
+    async deactivateTrainer() {
+      return true;
+    },
+  },
 ): GeneratedPostgresApplicationRuntime {
   return {
     identity,
@@ -70,6 +145,8 @@ function runtime(
       principals: [],
     }),
     countdownAccess,
+    athletesAccess,
+    athleteMasterdata,
     securityEvents: {
       record() {},
       flush,
@@ -281,6 +358,284 @@ describe("generated identity+permissions Worker entrypoint", () => {
         view: true,
       },
     });
+  });
+
+  it("serves organization-scoped Stammdaten only after server-side view authorization", async () => {
+    let authorizedOrganization: string | null = null;
+    let readOrganization: string | null = null;
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {},
+        async () => {},
+        undefined,
+        {
+          async assertViewAccess(current) {
+            expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
+            authorizedOrganization = "verein-1";
+            return { organizationId: "verein-1" };
+          },
+          async assertEditAccess() {
+            return { organizationId: "verein-1" };
+          },
+        },
+        {
+          ...runtime().athleteMasterdata,
+          async readOrganizationSnapshot(organizationId) {
+            readOrganization = organizationId;
+            return {
+              trainingGroups: [
+                {
+                  id: "group-1",
+                  organizationId,
+                  name: "U14",
+                  shortName: "U14",
+                  description: null,
+                  isActive: true,
+                  sortOrder: 10,
+                },
+              ],
+              athletes: [],
+              trainers: [],
+              athleteGroupMemberships: [],
+              trainerGroupMemberships: [],
+            };
+          },
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/masterdata", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(authorizedOrganization).toBe("verein-1");
+    expect(readOrganization).toBe("verein-1");
+    await expect(response.json()).resolves.toEqual({
+      masterdata: {
+        trainingGroups: [
+          {
+            id: "group-1",
+            organizationId: "verein-1",
+            name: "U14",
+            shortName: "U14",
+            description: null,
+            isActive: true,
+            sortOrder: 10,
+          },
+        ],
+        athletes: [],
+        trainers: [],
+        athleteGroupMemberships: [],
+        trainerGroupMemberships: [],
+      },
+    });
+  });
+
+  it("does not expose Stammdaten to unauthenticated requests", async () => {
+    let accessCalls = 0;
+    const worker = createGeneratedWorker(() => {
+      const value = runtime(
+        async () => {},
+        async () => {},
+        undefined,
+        {
+          async assertViewAccess() {
+            accessCalls += 1;
+            return { organizationId: "verein-1" };
+          },
+          async assertEditAccess() {
+            return { organizationId: "verein-1" };
+          },
+        },
+      );
+      return value;
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/masterdata"),
+      validEnv,
+    );
+
+    expect(response.status).toBe(401);
+    expect(accessCalls).toBe(0);
+  });
+
+  it("keeps the Stammdaten snapshot endpoint read-only", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/masterdata", {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("GET");
+  });
+
+  it("creates Stammdaten only after edit authorization and injects the server organization", async () => {
+    let editCalls = 0;
+    let receivedOrganization: string | null = null;
+    let receivedInput: unknown = null;
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {},
+        async () => {},
+        undefined,
+        {
+          async assertViewAccess() {
+            return { organizationId: "verein-1" };
+          },
+          async assertEditAccess(current) {
+            editCalls += 1;
+            expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
+            return { organizationId: "verein-1" };
+          },
+        },
+        {
+          ...runtime().athleteMasterdata,
+          async createAthlete(organizationId, input) {
+            receivedOrganization = organizationId;
+            receivedInput = input;
+            return {
+              id: "server-athlete-1",
+              organizationId,
+              firstName: input.firstName,
+              lastName: input.lastName,
+              birthYear: input.birthYear ?? null,
+              notes: input.notes ?? null,
+              isActive: true,
+            };
+          },
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/athletes/masterdata/athletes",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            firstName: "Anna",
+            lastName: "Muster",
+            birthYear: 2012,
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(editCalls).toBe(1);
+    expect(receivedOrganization).toBe("verein-1");
+    expect(receivedInput).toEqual({
+      firstName: "Anna",
+      lastName: "Muster",
+      birthYear: 2012,
+      notes: undefined,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      athlete: {
+        id: "server-athlete-1",
+        organizationId: "verein-1",
+      },
+    });
+  });
+
+  it("rejects client-controlled organization fields on Stammdaten mutations", async () => {
+    let createCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {},
+        async () => {},
+        undefined,
+        undefined,
+        {
+          ...base.athleteMasterdata,
+          async createAthlete(organizationId, input) {
+            createCalls += 1;
+            return base.athleteMasterdata.createAthlete(organizationId, input);
+          },
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/athletes/masterdata/athletes",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            organizationId: "verein-2",
+            firstName: "Anna",
+            lastName: "Muster",
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(400);
+    expect(createCalls).toBe(0);
+  });
+
+  it("deactivates Stammdaten only through edit authorization and the derived organization", async () => {
+    let editCalls = 0;
+    let deactivation: readonly string[] | null = null;
+    const base = runtime();
+    const worker = createGeneratedWorker(() =>
+      runtime(
+        async () => {},
+        async () => {},
+        undefined,
+        {
+          async assertViewAccess() {
+            return { organizationId: "verein-1" };
+          },
+          async assertEditAccess() {
+            editCalls += 1;
+            return { organizationId: "verein-1" };
+          },
+        },
+        {
+          ...base.athleteMasterdata,
+          async deactivateAthlete(organizationId, athleteId) {
+            deactivation = [organizationId, athleteId];
+            return true;
+          },
+        },
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/athletes/masterdata/athletes/athlete-1/deactivate",
+        {
+          method: "POST",
+          headers: { cookie: currentIdentity.sessionToken },
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(editCalls).toBe(1);
+    expect(deactivation).toEqual(["verein-1", "athlete-1"]);
   });
 
   it("builds an authorized countdown plan from the public domain contract", async () => {

@@ -7,6 +7,15 @@ const ULC_LINZ_MODULE_DATABASE_DEFINITIONS = Object.freeze([
     moduleId: "countdown",
     database: null,
   }),
+  Object.freeze({
+    moduleId: "athletes",
+    database: Object.freeze({
+      schemaVersion: 1,
+      migrations: Object.freeze([
+        "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+      ]),
+    }),
+  }),
 ]);
 
 export const ULC_LINZ_LIFECYCLE_DATABASE_OWNER = Object.freeze({

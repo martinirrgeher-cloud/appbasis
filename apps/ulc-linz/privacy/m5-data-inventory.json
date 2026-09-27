@@ -47,11 +47,14 @@
       "migrations": [
         "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql"
       ],
-      "lifecycleStatus": "classified-pending-lifecycle-integration",
+      "lifecycleStatus": "deletion-retention-verified-production-activation-and-restore-pending",
       "notes": [
         "contains-athlete-and-trainer-master-data",
-        "organization-scoped-foundation-installed-before-runtime-integration",
-        "deletion-and-retention-remain-fail-closed-until-a-dedicated-stammdaten-lifecycle-slice"
+        "server-runtime-enforces-same-organization-view-and-edit-boundaries",
+        "deactivation-sets-server-side-lifecycle-timestamp",
+        "repository-retention-deletes-personal-masterdata-and-group-memberships-after-12-calendar-months",
+        "production-retention-activation-pending-athletes-schema-deploy",
+        "restore-reconciliation-pending-athletes-owned-deletion-markers"
       ]
     },
     {
@@ -213,33 +216,33 @@
       "id": "appbasis_athlete",
       "owner": "athletes",
       "privacyClass": "athlete-master-data",
-      "retentionPolicy": "pending-stammdaten-lifecycle-policy",
-      "deletionEvidence": "fail-closed-pending-lifecycle",
-      "retentionEvidence": "fail-closed-pending-lifecycle"
+      "retentionPolicy": "12-months-after-deactivation",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
     },
     {
       "id": "appbasis_trainer",
       "owner": "athletes",
       "privacyClass": "trainer-master-data",
-      "retentionPolicy": "pending-stammdaten-lifecycle-policy",
-      "deletionEvidence": "fail-closed-pending-lifecycle",
-      "retentionEvidence": "fail-closed-pending-lifecycle"
+      "retentionPolicy": "12-months-after-deactivation",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
     },
     {
       "id": "appbasis_athlete_group_membership",
       "owner": "athletes",
       "privacyClass": "athlete-training-membership",
-      "retentionPolicy": "pending-stammdaten-lifecycle-policy",
-      "deletionEvidence": "fail-closed-pending-lifecycle",
-      "retentionEvidence": "fail-closed-pending-lifecycle"
+      "retentionPolicy": "delete-with-athlete-after-12-months-deactivation",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
     },
     {
       "id": "appbasis_trainer_group_membership",
       "owner": "athletes",
       "privacyClass": "trainer-training-membership",
-      "retentionPolicy": "pending-stammdaten-lifecycle-policy",
-      "deletionEvidence": "fail-closed-pending-lifecycle",
-      "retentionEvidence": "fail-closed-pending-lifecycle"
+      "retentionPolicy": "delete-with-trainer-after-12-months-deactivation",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
     },
     {
       "id": "ulc_linz_membership",
@@ -305,9 +308,9 @@
     "futureIntroduction": "invalidates-current-evidence"
   },
   "m5": {
-    "deletionPolicy": "fail-closed-pending-stammdaten-lifecycle",
-    "retentionPolicy": "fail-closed-pending-stammdaten-lifecycle",
-    "restoreReconciliation": "verified-current-scope",
+    "deletionPolicy": "verified-current-scope",
+    "retentionPolicy": "verified-current-scope",
+    "restoreReconciliation": "fail-closed-pending-athletes-restore-reconciliation",
     "unknownPersistentOwner": "fail-closed",
     "unknownPersistentTable": "fail-closed",
     "unknownRuntimeModule": "fail-closed",
