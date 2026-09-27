@@ -10,23 +10,23 @@ const VERIFIED_EVIDENCE = Object.freeze({ dataExport: true });
 
 export const ULC_LINZ_DATA_EXPORT_EVIDENCE_POLICY = Object.freeze({
   appId: "ulc-linz",
-  modules: Object.freeze(["countdown", "athletes"]),
+  modules: Object.freeze(["countdown"]),
   platformServices: Object.freeze(["identity", "permissions"]),
-  inventoryGitBlobSha: "b600056624b4e03cb08845fd1a6080eae946ad1f",
+  inventoryGitBlobSha: "291bda98ad668cec7b1c442c3b9e96accfecc14b",
   requiredPostgresTest: "./test/data-export.postgres.e2e.test.ts",
   requiredRepositoryEvidenceTest:
     "./tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs",
   evidenceFiles: Object.freeze([
-    Object.freeze({ path: "apps/ulc-linz/privacy/m5-export-contract.json", gitBlobSha: "e652add377a4010f932fe6250decb7cf6282783a" }),
+    Object.freeze({ path: "apps/ulc-linz/privacy/m5-export-contract.json", gitBlobSha: "cfe61ccbfacaef85905b72cc377e2484a2351352" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export.ts", gitBlobSha: "539c2f7455a0b847e0afda39ddfe0acd471cb8d2" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export-service.ts", gitBlobSha: "0bb1fefba10668348a6a18e4e296e5fb21497e75" }),
     Object.freeze({ path: "apps/ulc-linz/worker/data-export-postgres.ts", gitBlobSha: "b1123c3d7f628c594159f79764a6a66fa600bd9b" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export.test.ts", gitBlobSha: "de2d4b4d9c6a17b89d115cbcf7e8a141494e9dcf" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export-service.test.ts", gitBlobSha: "b238266283fa945671f80ae9359ec56505284151" }),
     Object.freeze({ path: "apps/ulc-linz/test/data-export-fail-closed.test.ts", gitBlobSha: "d73b5e2d30c30fa2c94547e1b003fb6c0093f649" }),
-    Object.freeze({ path: "apps/ulc-linz/test/data-export.postgres.e2e.test.ts", gitBlobSha: "fd24255fdfe27ba438c4914a185a5f3f0cd8a9a1" }),
-    Object.freeze({ path: "apps/ulc-linz/test/m5-export-contract.test.ts", gitBlobSha: "ea12003562c825b3978a1e69e64218a5179cc864" }),
-    Object.freeze({ path: "tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs", gitBlobSha: "0cb96ebbf2f1a2cb1eac3f09ec84e1428f56aa9a" }),
+    Object.freeze({ path: "apps/ulc-linz/test/data-export.postgres.e2e.test.ts", gitBlobSha: "677fc91c4ba841a487c4ac7e227eeda510264701" }),
+    Object.freeze({ path: "apps/ulc-linz/test/m5-export-contract.test.ts", gitBlobSha: "6673e39b195e9529c4d734024e162a36333581f2" }),
+    Object.freeze({ path: "tooling/factory-ui/ulc-linz-data-export-evidence.test.mjs", gitBlobSha: "e2231371963e5cb709e4ddfab4967c0c4f36caa5" }),
   ]),
 });
 
@@ -100,10 +100,10 @@ function isCurrentInventory(inventory) {
   return (
     inventory.schemaVersion === 2 &&
     inventory.application === "ulc-linz" &&
-    inventory.scope === "current-materialized-v0.2" &&
+    inventory.scope === "current-materialized-v0.1" &&
     Array.isArray(inventory.persistentTables) &&
-    inventory.persistentTables.length === 25 &&
-    isDeepStrictEqual(inventory.runtimeModules, ["countdown", "athletes"]) &&
+    inventory.persistentTables.length === 20 &&
+    isDeepStrictEqual(inventory.runtimeModules, ["countdown"]) &&
     inventory.backingStores?.memberships?.status === "bound" &&
     inventory.backingStores?.subjectScopes?.status === "bound" &&
     inventory.objectStorage?.status === "not-configured" &&
@@ -122,7 +122,7 @@ function isCompleteExportClassification(inventory, exportContract) {
     exportContract.canonicalFormat !== "json" ||
     !isDeepStrictEqual(exportContract.supplementaryFormats, ["csv"]) ||
     exportContract.unknownDataset !== "deny" ||
-    !isDeepStrictEqual(exportContract.runtimeModules, ["countdown", "athletes"]) ||
+    !isDeepStrictEqual(exportContract.runtimeModules, ["countdown"]) ||
     !Array.isArray(exportContract.datasets) ||
     !Array.isArray(exportContract.excludedTables)
   ) {
