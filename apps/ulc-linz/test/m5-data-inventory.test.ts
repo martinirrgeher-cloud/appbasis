@@ -162,8 +162,11 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(
       inventory.persistentOwners.find((owner) => owner.id === "athletes"),
     ).toMatchObject({
-      lifecycleStatus: "deletion-retention-verified-restore-pending",
+      lifecycleStatus:
+        "deletion-retention-verified-production-activation-and-restore-pending",
       notes: expect.arrayContaining([
+        "repository-retention-deletes-personal-masterdata-and-group-memberships-after-12-calendar-months",
+        "production-retention-activation-pending-athletes-schema-deploy",
         "restore-reconciliation-pending-athletes-owned-deletion-markers",
       ]),
     });
@@ -356,7 +359,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(retentionSource).toContain("status === \"exception\"");
     expect(retentionSource).toContain("deleteUlcLinzIdentity(");
     expect(retentionSource).toContain("purgeExpiredLifecycleAuditEvents");
-    expect(retentionSource).toContain("purgeDeactivatedPersonalData");
+    expect(retentionSource).not.toContain("purgeDeactivatedPersonalData");
     expect(athleteRepositorySource).toContain("is_active = false");
     expect(athleteRepositorySource).toContain("updated_at + interval '12 months'");
     expect(athleteRepositorySource).toContain(
@@ -365,8 +368,8 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(athleteRepositorySource).toContain(
       "DELETE FROM appbasis_trainer_group_membership",
     );
-    expect(protectedLifecycleSource).toContain(
-      "new PostgresAthleteMasterdataRepository",
+    expect(protectedLifecycleSource).not.toContain(
+      "PostgresAthleteMasterdataRepository",
     );
     expect(restoreSource).toContain("WHERE purge_after >= $1");
     expect(restoreSource).toContain("reconcileUlcLinzRestoredDatabase");
