@@ -122,13 +122,10 @@ async function deriveWithActivation(root, activation) {
   );
 }
 
-test("verifies the E2C Stammdaten lifecycle only with the exact synthetic activation contract", async () => {
+test("keeps M5 lifecycle evidence fail closed until athletes restore reconciliation exists", async () => {
   const root = await createFixture();
   try {
-    assert.deepEqual(await deriveWithActivation(root), {
-      deletionConcept: true,
-      retention: true,
-    });
+    assert.deepEqual(await deriveWithActivation(root), {});
   } finally {
     await rm(root, { recursive: true, force: true });
   }
