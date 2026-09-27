@@ -657,8 +657,8 @@ function deletionMarkerFromRow(
     entityType: requiredDeletionEntityType(row['entity_type']),
     entityId: rowString(row, 'entity_id'),
     organizationId: rowString(row, 'organization_id'),
-    completedAt: requiredDate(row['completed_at']),
-    purgeAfter: requiredDate(row['purge_after']),
+    completedAt: requiredStoredDate(row['completed_at']),
+    purgeAfter: requiredStoredDate(row['purge_after']),
   });
   if (marker.purgeAfter.getTime() < now.getTime()) invalidRow();
   return marker;
@@ -704,6 +704,19 @@ function requiredDate(value: Date): Date {
     throw new Error('Retention clock is invalid.');
   }
   return new Date(value.getTime());
+}
+
+function requiredStoredDate(value: unknown): Date {
+  const date =
+    value instanceof Date
+      ? new Date(value.getTime())
+      : typeof value === 'string'
+        ? new Date(value)
+        : null;
+  if (date === null || !Number.isFinite(date.getTime())) {
+    invalidRow();
+  }
+  return date;
 }
 
 function singleRawRow(
