@@ -23,6 +23,10 @@ const ATHLETES = [
   "appbasis_trainer_group_membership",
   "appbasis_athletes_deletion",
 ];
+const TRAINING = [
+  "ulc_linz_training_session",
+  "ulc_linz_training_attendance",
+];
 
 function factory({ tables = [], group = false } = {}) {
   return () => ({
@@ -65,10 +69,24 @@ test("classifies the established countdown preview as an athletes upgrade", asyn
   );
 });
 
-test("classifies a fully migrated preview as current", async () => {
+test("classifies a Stammdaten-complete preview as a training upgrade", async () => {
   assert.deepEqual(
     await resolve({ tables: [...BASELINE, ...ATHLETES], group: true }),
+    { mode: "training-upgrade" },
+  );
+});
+
+test("classifies a fully migrated preview as current", async () => {
+  assert.deepEqual(
+    await resolve({ tables: [...BASELINE, ...ATHLETES, ...TRAINING], group: true }),
     { mode: "current" },
+  );
+});
+
+test("fails closed on a partially applied training schema", async () => {
+  await assert.rejects(
+    resolve({ tables: [...BASELINE, ...ATHLETES, TRAINING[0]], group: true }),
+    /training schema is partially applied/,
   );
 });
 
