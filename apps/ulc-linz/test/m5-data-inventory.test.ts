@@ -163,11 +163,11 @@ describe("ULC Linz M5 C/D data inventory", () => {
       inventory.persistentOwners.find((owner) => owner.id === "athletes"),
     ).toMatchObject({
       lifecycleStatus:
-        "deletion-retention-verified-production-activation-and-restore-pending",
+        "deletion-retention-restore-repository-verified-production-activation-pending",
       notes: expect.arrayContaining([
         "repository-retention-deletes-personal-masterdata-and-group-memberships-after-12-calendar-months",
         "production-retention-activation-pending-athletes-schema-deploy",
-        "restore-reconciliation-pending-athletes-owned-deletion-markers",
+        "restore-reconciliation-repository-verified-production-activation-pending",
       ]),
     });
 
@@ -178,7 +178,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(inventory.m5).toEqual({
       deletionPolicy: "verified-current-scope",
       retentionPolicy: "verified-current-scope",
-      restoreReconciliation: "fail-closed-pending-athletes-restore-reconciliation",
+      restoreReconciliation: "fail-closed-pending-athletes-production-activation",
       unknownPersistentOwner: "fail-closed",
       unknownPersistentTable: "fail-closed",
       unknownRuntimeModule: "fail-closed",
@@ -197,7 +197,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(25);
+    expect(inventory.persistentTables).toHaveLength(26);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -248,6 +248,16 @@ describe("ULC Linz M5 C/D data inventory", () => {
       privacyClass: "training-group-configuration",
       deletionEvidence: "not-personal",
       retentionEvidence: "not-personal",
+    });
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "appbasis_athletes_deletion",
+      ),
+    ).toMatchObject({
+      privacyClass: "minimal-delete-reconciliation-state",
+      retentionPolicy: "35-days",
+      deletionEvidence: "retained-by-policy",
+      retentionEvidence: "verified",
     });
 
     expect(
@@ -367,6 +377,15 @@ describe("ULC Linz M5 C/D data inventory", () => {
     );
     expect(athleteRepositorySource).toContain(
       "DELETE FROM appbasis_trainer_group_membership",
+    );
+    expect(athleteRepositorySource).toContain(
+      "INSERT INTO appbasis_athletes_deletion",
+    );
+    expect(athleteRepositorySource).toContain(
+      "listCurrentDeletionMarkers",
+    );
+    expect(athleteRepositorySource).toContain(
+      "reconcileDeletionMarker",
     );
     expect(protectedLifecycleSource).not.toContain(
       "PostgresAthleteMasterdataRepository",
