@@ -177,6 +177,21 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     ],
   });
 
+  const trainingMigration = await readFile(
+    join(
+      root,
+      "apps",
+      "ulc-linz",
+      "migrations",
+      "0004_ulc_linz_training_sessions.sql",
+    ),
+    "utf8",
+  );
+  assert.match(trainingMigration, /CREATE TABLE "ulc_linz_training_session"/);
+  assert.match(trainingMigration, /CREATE TABLE "ulc_linz_training_attendance"/);
+  assert.match(trainingMigration, /'kindertraining', 'u12', 'u14'/);
+  assert.match(trainingMigration, /'open', 'present', 'excused', 'absent'/);
+
   const packageJson = JSON.parse(
     await readFile(join(root, "apps", "ulc-linz", "package.json"), "utf8"),
   );
