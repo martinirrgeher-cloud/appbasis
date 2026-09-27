@@ -464,7 +464,7 @@ function containsUnsupportedBaselineAccessControlMutation(
     return true;
   }
 
-  if (/\bEXECUTE\b/i.test(statement)) return true;
+  if (/\b(?:EXECUTE|CALL|PERFORM)\b/i.test(statement)) return true;
 
   if (
     options.rejectDataMutation === true &&
