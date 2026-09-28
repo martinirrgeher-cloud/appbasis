@@ -188,8 +188,30 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <p class="message message--error" id="trainer-identity-message" role="alert" hidden></p>
                 <p class="message message--success" id="trainer-identity-success" role="status" hidden></p>
                 <div id="trainer-identity-workspace" hidden>
+                  <form id="trainer-user-form">
+                    <div class="section-heading">
+                      <div><p class="eyebrow">Benutzerkonto</p><h3>Trainer-Benutzer anlegen</h3></div>
+                    </div>
+                    <div class="settings-grid">
+                      <label>Benutzername<input id="trainer-user-username" maxlength="30" autocomplete="off" required /></label>
+                      <label>Anzeigename<input id="trainer-user-display-name" maxlength="160" required /></label>
+                      <label>E-Mail (optional)<input id="trainer-user-contact-email" type="email" maxlength="320" /></label>
+                      <label>Temporäres Passwort<input id="trainer-user-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required /></label>
+                      <label>Profil
+                        <select id="trainer-user-profile" required>
+                          <option value="kindertrainer">Kindertrainer</option>
+                          <option value="leistungstrainer">Leistungstrainer</option>
+                        </select>
+                      </label>
+                    </div>
+                    <p class="settings-note">Beim ersten Login muss das temporäre Passwort geändert werden.</p>
+                    <button class="button button--primary" type="submit">Benutzer anlegen</button>
+                  </form>
                   <div class="masterdata-list" id="trainer-identity-list" aria-live="polite"></div>
                   <form id="trainer-identity-form">
+                    <div class="section-heading">
+                      <div><p class="eyebrow">Zuordnung</p><h3>Benutzer mit Trainer verknüpfen</h3></div>
+                    </div>
                     <div class="settings-grid">
                       <label>Benutzer<select id="trainer-identity-identity" required></select></label>
                       <label>Trainer<select id="trainer-identity-trainer" required></select></label>
@@ -878,6 +900,12 @@ const elements = {
   trainerIdentityForm: document.querySelector("#trainer-identity-form"),
   trainerIdentityIdentity: document.querySelector("#trainer-identity-identity"),
   trainerIdentityTrainer: document.querySelector("#trainer-identity-trainer"),
+  trainerUserForm: document.querySelector("#trainer-user-form"),
+  trainerUserUsername: document.querySelector("#trainer-user-username"),
+  trainerUserDisplayName: document.querySelector("#trainer-user-display-name"),
+  trainerUserContactEmail: document.querySelector("#trainer-user-contact-email"),
+  trainerUserPassword: document.querySelector("#trainer-user-password"),
+  trainerUserProfile: document.querySelector("#trainer-user-profile"),
   timerStage: document.querySelector("#timer-stage"),
   phaseLabel: document.querySelector("#phase-label"),
   roundLabel: document.querySelector("#round-label"),
@@ -947,6 +975,7 @@ elements.athleteGroupForm?.addEventListener("submit", (event) => void createAthl
 elements.trainerGroupForm?.addEventListener("submit", (event) => void createTrainerGroupMembership(event));
 elements.trainerIdentityLoad?.addEventListener("click", () => void loadTrainerIdentityAdmin());
 elements.trainerIdentityForm?.addEventListener("submit", (event) => void bindTrainerIdentity(event));
+elements.trainerUserForm?.addEventListener("submit", (event) => void createTrainerUser(event));
 elements.trainerIdentityIdentity?.addEventListener("change", syncTrainerIdentitySelection);
 elements.kindertrainingLoad?.addEventListener("click", () => void loadKindertraining());
 elements.kindertrainingSave?.addEventListener("click", () => void saveKindertraining());
@@ -1963,6 +1992,95 @@ async function bindTrainerIdentity(event) {
   }
 }
 
+async function createTrainerUser(event) {
+  event.preventDefault();
+  if (!trainerIdentityAdminReady || trainerIdentityLoading) return;
+
+  const username = elements.trainerUserUsername?.value ?? "";
+  const displayName = elements.trainerUserDisplayName?.value ?? "";
+  const contactEmail = emptyToNull(elements.trainerUserContactEmail?.value);
+  const temporaryPassword = elements.trainerUserPassword?.value ?? "";
+  const profile = elements.trainerUserProfile?.value ?? "";
+
+  showMessage(elements.trainerIdentityMessage, "");
+  showMessage(elements.trainerIdentitySuccess, "");
+  trainerIdentityLoading = true;
+  setTrainerIdentityControlsDisabled(true);
+
+  let createdIdentityId = "";
+  let createdNew = true;
+  try {
+    try {
+      const payload = await requestJson("/api/admin/trainer-users", {
+        method: "POST",
+        body: JSON.stringify({
+          username,
+          displayName,
+          contactEmail,
+          temporaryPassword,
+          profile,
+        }),
+      });
+      createdIdentityId = payload?.trainerUser?.identityId || "";
+      createdNew = payload?.trainerUser?.created !== false;
+      if (!createdIdentityId) {
+        throw new Error("INVALID_TRAINER_USER_RESPONSE");
+      }
+      if (elements.trainerUserPassword) elements.trainerUserPassword.value = "";
+    } catch (error) {
+      showMessage(
+        elements.trainerIdentityMessage,
+        error?.status === 403
+          ? "Die Benutzerverwaltung ist nur für Administratoren verfügbar."
+          : error?.status === 409
+            ? "Dieser Benutzername ist bereits mit einem anderen Benutzerzustand belegt."
+            : error?.status === 400
+              ? "Bitte Benutzername, Anzeigename, temporäres Passwort und Profil prüfen."
+              : "Der Trainer-Benutzer konnte nicht angelegt werden.",
+      );
+      return;
+    }
+
+    try {
+      trainerIdentityBindings = await fetchTrainerIdentityBindings();
+      trainerIdentityAdminReady = true;
+      renderTrainerIdentityAdmin();
+      if (
+        elements.trainerIdentityIdentity &&
+        [...elements.trainerIdentityIdentity.options].some(
+          (option) => option.value === createdIdentityId,
+        )
+      ) {
+        elements.trainerIdentityIdentity.value = createdIdentityId;
+        syncTrainerIdentitySelection();
+      }
+      elements.trainerUserForm?.reset();
+      if (elements.trainerUserProfile) {
+        elements.trainerUserProfile.value = "kindertrainer";
+      }
+      showMessage(
+        elements.trainerIdentitySuccess,
+        createdNew
+          ? "Trainer-Benutzer wurde angelegt. Beim ersten Login muss das temporäre Passwort geändert werden."
+          : "Trainer-Benutzer war bereits vorhanden und wurde geprüft.",
+      );
+    } catch {
+      trainerIdentityAdminReady = false;
+      trainerIdentityBindings = [];
+      if (elements.trainerIdentityWorkspace) {
+        elements.trainerIdentityWorkspace.hidden = true;
+      }
+      showMessage(
+        elements.trainerIdentitySuccess,
+        "Trainer-Benutzer wurde angelegt, aber die aktualisierte Benutzerliste konnte nicht geladen werden. Bitte neu laden.",
+      );
+    }
+  } finally {
+    trainerIdentityLoading = false;
+    setTrainerIdentityControlsDisabled(false);
+  }
+}
+
 function syncTrainerIdentitySelection() {
   if (!trainerIdentityAdminReady || !elements.trainerIdentityTrainer) return;
   const identityId = elements.trainerIdentityIdentity?.value || "";
@@ -1986,6 +2104,12 @@ function setTrainerIdentityControlsDisabled(disabled) {
     elements.trainerIdentityIdentity,
     elements.trainerIdentityTrainer,
     elements.trainerIdentityForm?.querySelector("button"),
+    elements.trainerUserUsername,
+    elements.trainerUserDisplayName,
+    elements.trainerUserContactEmail,
+    elements.trainerUserPassword,
+    elements.trainerUserProfile,
+    elements.trainerUserForm?.querySelector("button"),
   ]) {
     if (control) control.disabled = disabled || !trainerIdentityAdminReady;
   }
