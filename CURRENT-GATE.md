@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-09-27
+Stand: 2026-09-28
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -684,7 +684,7 @@ ULC-E4D.5 ist auf `main` abgeschlossen, in Preview ausgerollt und praktisch
 gesichtet. Die kompakte mobile Darstellung bleibt die aktuelle visuelle
 Baseline für die folgenden ULC-Slices.
 
-## Aktueller Gate-Scope: ULC-E4E-A / E4E-A2 Trainer-Identity-Link + Audit
+## Abgeschlossener Gate-Scope: ULC-E4E-A / E4E-A2 Trainer-Identity-Link + Audit
 
 Abnahme für ULC-E4E-A/E4E-A2:
 
@@ -737,9 +737,40 @@ Abnahme für ULC-E4E-A/E4E-A2:
   aus. Nach Merge ist wegen `0005` zuerst ein separater Preview-`migrate`
   und danach ein Preview-`deploy` erforderlich.
 
-E4E-B setzt die Trainer-Gruppenbegrenzung im Kindertraining um. E4E-C ergänzt
-die administrative UI. Sondertrainings, Statistik, Import/Export,
-Realtime/Edit-Locks sowie U12/U14 bleiben weitere Folgearbeiten.
+E4E-A/E4E-A2 ist auf `main` abgeschlossen; Migration `0005` und der
+anschließende Preview-Deploy wurden erfolgreich ausgeführt.
+
+## Aktueller Gate-Scope: ULC-E4E-B Trainer-Gruppenbegrenzung
+
+Abnahme für ULC-E4E-B:
+
+- die Organisation wird weiterhin ausschließlich serverseitig aus der
+  authentifizierten ULC-Membership bestimmt;
+- ein Admin mit kanonischem Kindertraining-Recht behält organisationsweiten
+  Zugriff auf alle Kindertraining-Gruppen;
+- eine Trainer-Membership muss über `subject_id` auf genau einen aktiven
+  Trainer derselben Organisation zeigen; fehlende, detachte, fremde oder
+  inaktive Trainer-Links failen geschlossen;
+- für Trainer wird der zulässige Gruppenumfang ausschließlich aus
+  `appbasis_trainer_group_membership` derselben Organisation abgeleitet;
+- die Gruppenliste liefert einem Trainer nur seine zugeordneten aktiven
+  Gruppen; ein Trainer ohne Gruppenzuordnung erhält eine leere Liste;
+- GET und POST eines Trainingstermins für eine nicht zugeordnete Gruppe werden
+  vor dem Kindertraining-Service fail-closed abgewiesen und als 404 behandelt,
+  damit fremde Gruppen nicht über die Antwort unterscheidbar werden;
+- eine solche Gruppenbereichs-Ablehnung wird als
+  `authorization.denied/scope-denied` mit dem authentifizierten Principal und
+  der serverseitigen Organisation protokolliert;
+- Eltern- und Athletenrollen erhalten weiterhin keinen organisationsweiten
+  Kindertraining-Teilnehmersnapshot;
+- der Client kann weder `organizationId`, `trainerId` noch eine Liste
+  erlaubter Gruppen vorgeben;
+- E4E-B benötigt keine Migration und verändert weder Athletes-Core noch die
+  bestehende Trainer↔Identity-Audit-Historie;
+- E4E-C ergänzt danach die administrative UI für Trainer↔Benutzer-Zuordnung.
+  Sondertrainings, Statistik, Import/Export, Realtime/Edit-Locks sowie U12/U14
+  bleiben weitere Folgearbeiten;
+- der Code-Slice führt keinen Preview-/Production-Write und kein Deployment aus.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -759,7 +790,7 @@ Realtime/Edit-Locks sowie U12/U14 bleiben weitere Folgearbeiten.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E4E-A-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E4E-B-Pfad, wenn mindestens eines gilt:
 
 - eine neue parallele Identity↔Trainer-Mapping-Tabelle wird eingeführt, obwohl
   der bestehende ULC-Membership-Subject-Vertrag ausreicht;
@@ -781,7 +812,16 @@ Ein Finding blockiert den aktuellen ULC-E4E-A-Pfad, wenn mindestens eines gilt:
 - E4E-A verändert bereits Kindertraining-Gruppenfilter oder andere
   Berechtigungswirkung außerhalb dieses Slices;
 - der Code-PR mutiert Preview/Produktion oder deployt ohne gesonderte
-  Freigabe.
+  Freigabe;
+- ein Trainer erhält organisationsweiten Kindertraining-Zugriff statt exakt
+  seiner persistierten Gruppenzuordnungen;
+- eine fehlende oder inaktive Trainer↔Identity-Zuordnung fällt auf
+  organisationsweiten Zugriff zurück;
+- eine nicht zugeordnete Gruppe erreicht den Kindertraining-Service oder kann
+  über unterschiedliche HTTP-Antworten enumeriert werden;
+- der Client kann Organisation, Traineridentität oder erlaubte Gruppen selbst
+  als Scope setzen;
+- eine Gruppenbereichs-Ablehnung bleibt ohne Security-Event.
 
 Nicht gate-blockierend sind die spätere administrative UI, Trainer-
 Gruppenfilterung, weitere visuelle Feinarbeiten, Sondertrainings, Statistik,

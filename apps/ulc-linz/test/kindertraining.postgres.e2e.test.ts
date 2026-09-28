@@ -4,8 +4,18 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
+import {
+  capabilityId,
+  InMemoryPermissionStore,
+  principalId,
+  roleId,
+} from "@appbasis/permissions";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 
+import {
+  createUlcLinzKindertrainingAccessService,
+} from "../worker/kindertraining-access";
+import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import { createUlcKindertrainingService } from "../worker/kindertraining-service";
 import {
   PostgresUlcTrainingSessionRepository,
@@ -241,6 +251,96 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       expect(afterMembershipEnd.participants.map((entry) => entry.athleteId)).toEqual([
         anna.id,
       ]);
+    });
+
+    it("resolves a trainer identity to only its persisted group assignments", async () => {
+      const connection = requiredConnection();
+      const masterdata = new PostgresAthleteMasterdataRepository(
+        connection.client,
+        () => randomUUID(),
+      );
+      const trainer = await masterdata.createTrainer("verein-scope", {
+        firstName: "Tina",
+        lastName: "Trainer",
+      });
+      const assigned = await masterdata.createTrainingGroup("verein-scope", {
+        name: "Assigned",
+      });
+      await masterdata.createTrainingGroup("verein-scope", {
+        name: "Other",
+      });
+      await masterdata.createTrainerGroupMembership("verein-scope", {
+        trainerId: trainer.id,
+        groupId: assigned.id,
+      });
+      await connection.client.unsafe(
+        `INSERT INTO ulc_linz_membership (
+           identity_id, organization_id, subject_id, source_role, active
+         ) VALUES ($1, $2, $3, 'trainer', true)`,
+        ["identity-scope", "verein-scope", trainer.id],
+      );
+
+      const view = capabilityId("ulc-linz:module:kindertraining:view");
+      const trainerRole = roleId("ulc-linz:trainer");
+      const access = createUlcLinzKindertrainingAccessService({
+        sql: connection.client,
+        permissions: new InMemoryPermissionStore({
+          knownCapabilities: [view],
+          roles: [{ roleId: trainerRole, capabilities: [] }],
+          principals: [
+            {
+              principalId: principalId("identity-scope"),
+              roleIds: [trainerRole],
+              grants: [view],
+              revokes: [],
+            },
+          ],
+        }),
+        memberships: {
+          async resolveMembership({ organizationId }) {
+            return {
+              organizationId,
+              sourceRole: "trainer",
+              active: true,
+            };
+          },
+        },
+        subjectScopes: {
+          async hasRelation() {
+            return false;
+          },
+        },
+      });
+      const current = {
+        identity: {
+          identityId: "identity-scope",
+          username: "trainer.scope",
+          displayName: "Trainer Scope",
+          contactEmail: null,
+          personId: null,
+          mustChangePassword: false,
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+          passwordChangedAt: new Date("2026-01-01T00:00:00.000Z"),
+          disabledAt: null,
+          accountStatus: "active" as const,
+        },
+        sessionToken: "appbasis.session=scope",
+        access: "full" as const,
+      };
+
+      await expect(access.assertViewAccess(current)).resolves.toEqual({
+        organizationId: "verein-scope",
+        actorPrincipalId: "identity-scope",
+        scope: "trainer",
+        trainerId: trainer.id,
+        groupIds: [assigned.id],
+      });
+
+      await masterdata.deactivateTrainer("verein-scope", trainer.id);
+      await expect(access.assertViewAccess(current)).rejects.toBeInstanceOf(
+        UlcLinzAuthorizationDeniedError,
+      );
     });
 
     function requiredConnection() {
