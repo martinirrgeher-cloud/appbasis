@@ -58,6 +58,7 @@ describe("ULC trainer identity PostgreSQL contract", () => {
             identity_exists: true,
             trainer_exists: true,
             binding_conflict: false,
+            released_conflict_count: 0,
             updated_count: 1,
             identity_id: "identity-1",
             username: "trainer.one",
@@ -76,6 +77,41 @@ describe("ULC trainer identity PostgreSQL contract", () => {
       }),
     ).resolves.toMatchObject({
       identityId: "identity-1",
+      trainerId: "trainer-1",
+    });
+  });
+
+  it("atomically releases a stale disabled identity before relinking its trainer", async () => {
+    const repository = new PostgresUlcLinzTrainerIdentityLinks({
+      async unsafe(query) {
+        expect(query).toContain("releasable_conflict AS MATERIALIZED");
+        expect(query).toContain("released_conflict AS");
+        expect(query).toContain("'ulc-detached-trainer:' || md5(identity_id)");
+        expect(query).toContain("account_banned = true");
+        return [
+          {
+            identity_exists: true,
+            trainer_exists: true,
+            binding_conflict: false,
+            released_conflict_count: 1,
+            updated_count: 1,
+            identity_id: "identity-2",
+            username: "trainer.two",
+            display_name: "Trainer Two",
+            trainer_id: "trainer-1",
+          },
+        ];
+      },
+    });
+
+    await expect(
+      repository.bindTrainer({
+        organizationId: "verein-1",
+        identityId: "identity-2",
+        trainerId: "trainer-1",
+      }),
+    ).resolves.toMatchObject({
+      identityId: "identity-2",
       trainerId: "trainer-1",
     });
   });
