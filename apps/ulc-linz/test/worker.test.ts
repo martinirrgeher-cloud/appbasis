@@ -1639,7 +1639,7 @@ describe("Kindertraining runtime API", () => {
     expect(deniedWrite.status).toBe(404);
     expect(saveCalls).toBe(0);
 
-    for (const groupId of [42, {}, "", " group-1 "]) {
+    for (const groupId of [42, {}, "", " group-1 ", "x".repeat(201)]) {
       const malformed = await worker.fetch(
         new Request("https://ulc.example.test/api/modules/kindertraining/session", {
           method: "POST",
