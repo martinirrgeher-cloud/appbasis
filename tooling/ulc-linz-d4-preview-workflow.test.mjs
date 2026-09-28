@@ -76,7 +76,10 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(workflow, /Resolve ULC preview migration state/);
   assert.match(workflow, /ulc-linz-d4-preview-migration-state\.mjs/);
-  assert.match(workflow, /initial\|athletes-upgrade\|training-upgrade\|current/);
+  assert.match(
+    workflow,
+    /initial\|athletes-upgrade\|training-upgrade\|trainer-identity-audit-upgrade\|current/,
+  );
   assert.match(workflow, /Preflight fresh ULC preview runtime principals/);
   assert.match(workflow, /database-access\.mjs preflight >\/dev\/null/);
   assert.match(workflow, /Preflight established ULC preview runtime principals/);
@@ -87,6 +90,14 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   assert.match(workflow, /ulc-linz-d4-preview-athletes-upgrade\.mjs/);
   assert.match(workflow, /Apply incremental ULC preview training migration/);
   assert.match(workflow, /ulc-linz-d4-preview-training-upgrade\.mjs/);
+  assert.match(
+    workflow,
+    /Apply incremental ULC preview trainer identity audit migration/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-d4-preview-trainer-identity-audit-upgrade\.mjs/,
+  );
   assert.match(workflow, /Confirm current ULC preview schema/);
 
   const stateStart = workflow.indexOf("      - name: Resolve ULC preview migration state\n");
@@ -95,12 +106,20 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   const initialMigrateStart = workflow.indexOf("      - name: Apply initial ULC preview database manifest\n");
   const upgradeStart = workflow.indexOf("      - name: Apply incremental ULC preview Stammdaten migration\n");
   const trainingUpgradeStart = workflow.indexOf("      - name: Apply incremental ULC preview training migration\n");
+  const trainerIdentityAuditUpgradeStart = workflow.indexOf(
+    "      - name: Apply incremental ULC preview trainer identity audit migration\n",
+  );
+  const currentStart = workflow.indexOf(
+    "      - name: Confirm current ULC preview schema\n",
+  );
   assert.ok(stateStart >= 0);
   assert.ok(freshPreflightStart > stateStart);
   assert.ok(existingPreflightStart > freshPreflightStart);
   assert.ok(initialMigrateStart > existingPreflightStart);
   assert.ok(upgradeStart > initialMigrateStart);
   assert.ok(trainingUpgradeStart > upgradeStart);
+  assert.ok(trainerIdentityAuditUpgradeStart > trainingUpgradeStart);
+  assert.ok(currentStart > trainerIdentityAuditUpgradeStart);
 });
 
 test("ULC D4 migrations never run with the application runtime credential", async () => {

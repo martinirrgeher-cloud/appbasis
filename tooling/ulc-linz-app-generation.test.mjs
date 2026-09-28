@@ -165,13 +165,14 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
       {
         id: "ulc-linz-lifecycle",
         root: "apps/ulc-linz",
-        schemaVersion: 5,
+        schemaVersion: 6,
         migrations: [
           "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
           "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
           "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
           "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
           "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
+          "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
         ],
       },
     ],
@@ -191,6 +192,24 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
   assert.match(trainingMigration, /CREATE TABLE "ulc_linz_training_attendance"/);
   assert.match(trainingMigration, /'kindertraining', 'u12', 'u14'/);
   assert.match(trainingMigration, /'open', 'present', 'excused', 'absent'/);
+
+  const trainerIdentityAuditMigration = await readFile(
+    join(
+      root,
+      "apps",
+      "ulc-linz",
+      "migrations",
+      "0005_ulc_linz_trainer_identity_audit.sql",
+    ),
+    "utf8",
+  );
+  assert.match(
+    trainerIdentityAuditMigration,
+    /CREATE TABLE "ulc_linz_trainer_identity_audit"/,
+  );
+  assert.match(trainerIdentityAuditMigration, /trainer\.identity\.bind/);
+  assert.match(trainerIdentityAuditMigration, /trainer\.identity\.detach-stale/);
+  assert.match(trainerIdentityAuditMigration, /retained_until/);
 
   const packageJson = JSON.parse(
     await readFile(join(root, "apps", "ulc-linz", "package.json"), "utf8"),

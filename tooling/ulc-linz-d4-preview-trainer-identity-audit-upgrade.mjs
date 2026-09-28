@@ -14,8 +14,6 @@ import { ULC_LINZ_LIFECYCLE_DATABASE_OWNER } from "./ulc-linz-database-contract.
 
 const EXPECTED_DATABASE = ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE.database;
 const TARGET_MIGRATION =
-  "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql";
-const NEXT_MIGRATION =
   "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql";
 const REQUIRED_BASELINE_TABLES = Object.freeze([
   "appbasis_person",
@@ -28,62 +26,61 @@ const REQUIRED_BASELINE_TABLES = Object.freeze([
   "appbasis_athlete_group_membership",
   "appbasis_trainer_group_membership",
   "appbasis_athletes_deletion",
-]);
-const TARGET_TABLES = Object.freeze([
   "ulc_linz_training_session",
   "ulc_linz_training_attendance",
 ]);
+const TARGET_TABLES = Object.freeze([
+  "ulc_linz_trainer_identity_audit",
+]);
 
-export class UlcLinzD4PreviewTrainingUpgradeConfigurationError extends Error {
+export class UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError extends Error {
   constructor(message) {
     super(message);
-    this.name = "UlcLinzD4PreviewTrainingUpgradeConfigurationError";
+    this.name = "UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError";
   }
 }
 
-export class UlcLinzD4PreviewTrainingUpgradeExecutionError extends Error {
+export class UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError extends Error {
   constructor(message) {
     super(message);
-    this.name = "UlcLinzD4PreviewTrainingUpgradeExecutionError";
+    this.name = "UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError";
   }
 }
 
-export async function loadUlcLinzD4PreviewTrainingUpgradePlan(
+export async function loadUlcLinzD4PreviewTrainerIdentityAuditUpgradePlan(
   { repositoryRoot = process.cwd() } = {},
   { loadOwnerMigrationPlan = loadRepositoryOwnerMigrationPlan } = {},
 ) {
   if (typeof loadOwnerMigrationPlan !== "function") {
-    throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
-      "ULC D4 preview training upgrade plan loader is unavailable.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
+      "ULC D4 preview trainer identity audit upgrade plan loader is unavailable.",
     );
   }
   if (
     ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion !== 6 ||
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.at(-2) !== TARGET_MIGRATION ||
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.at(-1) !== NEXT_MIGRATION
+    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.at(-1) !== TARGET_MIGRATION
   ) {
-    throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
-      "ULC D4 preview training upgrade owner contract is not the expected E4A target.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
+      "ULC D4 preview trainer identity audit upgrade owner contract is not the expected E4E-A2 target.",
     );
   }
 
   const ownerPlan = await loadOwnerMigrationPlan({
     repositoryRoot: resolve(repositoryRoot),
     owner: ULC_LINZ_LIFECYCLE_DATABASE_OWNER,
-    ConfigurationError: UlcLinzD4PreviewTrainingUpgradeConfigurationError,
+    ConfigurationError: UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError,
   });
   const matches = ownerPlan.filter(
     (migration) => migration.relativePath === TARGET_MIGRATION,
   );
   if (
     matches.length !== 1 ||
-    ownerPlan.at(-2)?.relativePath !== TARGET_MIGRATION ||
-    ownerPlan.at(-1)?.relativePath !== NEXT_MIGRATION ||
+    ownerPlan.at(-1)?.relativePath !== TARGET_MIGRATION ||
     !Array.isArray(matches[0]?.statements) ||
     matches[0].statements.length === 0
   ) {
-    throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
-      "ULC D4 preview training upgrade migration delta is unavailable or ambiguous.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
+      "ULC D4 preview trainer identity audit upgrade migration delta is unavailable or ambiguous.",
     );
   }
 
@@ -98,22 +95,22 @@ export async function loadUlcLinzD4PreviewTrainingUpgradePlan(
   });
 }
 
-export async function applyUlcLinzD4PreviewTrainingUpgrade(
+export async function applyUlcLinzD4PreviewTrainerIdentityAuditUpgrade(
   { connectionString } = {},
   {
     repositoryRoot = process.cwd(),
     databaseFactory = createPostgresDatabase,
-    loadPlan = loadUlcLinzD4PreviewTrainingUpgradePlan,
+    loadPlan = loadUlcLinzD4PreviewTrainerIdentityAuditUpgradePlan,
   } = {},
 ) {
   if (typeof loadPlan !== "function") {
-    throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
-      "ULC D4 preview training upgrade plan resolver is unavailable.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
+      "ULC D4 preview trainer identity audit upgrade plan resolver is unavailable.",
     );
   }
   if (typeof databaseFactory !== "function") {
-    throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
-      "ULC D4 preview training upgrade database factory is unavailable.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
+      "ULC D4 preview trainer identity audit upgrade database factory is unavailable.",
     );
   }
 
@@ -124,8 +121,8 @@ export async function applyUlcLinzD4PreviewTrainingUpgrade(
       ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE,
     );
   } catch {
-    throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
-      "ULC D4 preview training upgrade requires the dedicated direct preview database credential.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
+      "ULC D4 preview trainer identity audit upgrade requires the dedicated direct preview database credential.",
     );
   }
   const normalizedConnectionString = validatePostgresConnectionString(
@@ -133,7 +130,7 @@ export async function applyUlcLinzD4PreviewTrainingUpgrade(
     {
       expectedDatabase: EXPECTED_DATABASE,
       ConfigurationError:
-        UlcLinzD4PreviewTrainingUpgradeConfigurationError,
+        UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError,
     },
   );
   const plan = await loadPlan({ repositoryRoot });
@@ -142,8 +139,8 @@ export async function applyUlcLinzD4PreviewTrainingUpgrade(
   try {
     database = databaseFactory(normalizedConnectionString);
   } catch {
-    throw new UlcLinzD4PreviewTrainingUpgradeExecutionError(
-      "ULC D4 preview training upgrade database connection could not be created.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
+      "ULC D4 preview trainer identity audit upgrade database connection could not be created.",
     );
   }
 
@@ -160,24 +157,24 @@ export async function applyUlcLinzD4PreviewTrainingUpgrade(
         identity[0]?.database_name !== EXPECTED_DATABASE ||
         identity[0]?.principal_name !== origin.user
       ) {
-        throw new UlcLinzD4PreviewTrainingUpgradeExecutionError(
-          "ULC D4 preview training upgrade database identity does not match the validated migration credential.",
+        throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
+          "ULC D4 preview trainer identity audit upgrade database identity does not match the validated migration credential.",
         );
       }
 
       await transaction.unsafe(
-        "SELECT pg_advisory_xact_lock(hashtextextended('ulc-linz:preview-training-upgrade', 0))",
+        "SELECT pg_advisory_xact_lock(hashtextextended('ulc-linz:preview-trainer-identity-audit-upgrade', 0))",
       );
 
       const before = await publicTableInventory(transaction);
       if (!REQUIRED_BASELINE_TABLES.every((table) => before.has(table))) {
-        throw new UlcLinzD4PreviewTrainingUpgradeExecutionError(
-          "ULC D4 preview training upgrade requires the complete established Stammdaten baseline.",
+        throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
+          "ULC D4 preview trainer identity audit upgrade requires the complete established Stammdaten baseline.",
         );
       }
       if (TARGET_TABLES.some((table) => before.has(table))) {
-        throw new UlcLinzD4PreviewTrainingUpgradeExecutionError(
-          "ULC D4 preview training schema appears already or partially applied.",
+        throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
+          "ULC D4 preview trainer identity audit schema appears already or partially applied.",
         );
       }
 
@@ -188,8 +185,8 @@ export async function applyUlcLinzD4PreviewTrainingUpgrade(
 
       const after = await publicTableInventory(transaction);
       if (!TARGET_TABLES.every((table) => after.has(table))) {
-        throw new UlcLinzD4PreviewTrainingUpgradeExecutionError(
-          "ULC D4 preview training upgrade did not reach the expected training schema.",
+        throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
+          "ULC D4 preview trainer identity audit upgrade did not reach the expected audit schema.",
         );
       }
     });
@@ -204,41 +201,41 @@ export async function applyUlcLinzD4PreviewTrainingUpgrade(
     });
   } catch (error) {
     primaryError = error;
-    if (error instanceof UlcLinzD4PreviewTrainingUpgradeExecutionError) {
+    if (error instanceof UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError) {
       throw error;
     }
-    throw new UlcLinzD4PreviewTrainingUpgradeExecutionError(
-      "ULC D4 preview training upgrade transaction failed and was rolled back.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
+      "ULC D4 preview trainer identity audit upgrade transaction failed and was rolled back.",
     );
   } finally {
     try {
       await database.client.end();
     } catch {
       if (primaryError === undefined) {
-        throw new UlcLinzD4PreviewTrainingUpgradeExecutionError(
-          "ULC D4 preview training upgrade database connection could not be closed cleanly.",
+        throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
+          "ULC D4 preview trainer identity audit upgrade database connection could not be closed cleanly.",
         );
       }
     }
   }
 }
 
-export function assertUlcLinzD4PreviewTrainingUpgradeEnvironment(
+export function assertUlcLinzD4PreviewTrainerIdentityAuditUpgradeEnvironment(
   environment = process.env,
 ) {
   if (environment.APPBASIS_GENERATED_APP_ID !== "ulc-linz") {
-    throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
-      "ULC D4 preview training upgrade requires appId ulc-linz.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
+      "ULC D4 preview trainer identity audit upgrade requires appId ulc-linz.",
     );
   }
   if (environment.APPBASIS_MIGRATION_TARGET !== EXPECTED_DATABASE) {
-    throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
-      "ULC D4 preview training upgrade targets the wrong database.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
+      "ULC D4 preview trainer identity audit upgrade targets the wrong database.",
     );
   }
   if (environment.APPBASIS_APPLY_MIGRATIONS !== "1") {
-    throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
-      "ULC D4 preview training upgrade requires explicit migration approval.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
+      "ULC D4 preview trainer identity audit upgrade requires explicit migration approval.",
     );
   }
 }
@@ -248,8 +245,8 @@ async function publicTableInventory(transaction) {
     "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public' ORDER BY tablename",
   );
   if (!Array.isArray(rows)) {
-    throw new UlcLinzD4PreviewTrainingUpgradeExecutionError(
-      "ULC D4 preview training table inventory is unavailable.",
+    throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
+      "ULC D4 preview trainer identity audit table inventory is unavailable.",
     );
   }
   return new Set(rows.map((row) => row?.tablename).filter(Boolean));
@@ -262,18 +259,18 @@ function isMainModule() {
 
 if (isMainModule()) {
   try {
-    assertUlcLinzD4PreviewTrainingUpgradeEnvironment();
-    const result = await applyUlcLinzD4PreviewTrainingUpgrade({
+    assertUlcLinzD4PreviewTrainerIdentityAuditUpgradeEnvironment();
+    const result = await applyUlcLinzD4PreviewTrainerIdentityAuditUpgrade({
       connectionString: process.env.APPBASIS_DATABASE_URL,
     });
     console.log(
-      `ULC D4 preview training upgrade PASS: ${result.statementCount} statements applied.`,
+      `ULC D4 preview trainer identity audit upgrade PASS: ${result.statementCount} statements applied.`,
     );
   } catch (error) {
     console.error(
       error instanceof Error
         ? error.message
-        : "ULC D4 preview training upgrade failed.",
+        : "ULC D4 preview trainer identity audit upgrade failed.",
     );
     process.exitCode = 1;
   }

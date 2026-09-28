@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import { InMemoryPermissionStore } from "@appbasis/permissions";
 
+import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
@@ -224,6 +225,27 @@ function runtime(
     countdownAccess,
     athletesAccess,
     kindertrainingAccess,
+    trainerIdentityAccess: {
+      async assertAdminAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: "identity-worker-1",
+        };
+      },
+    },
+    trainerIdentityLinks: {
+      async listBindings() {
+        return [];
+      },
+      async bindTrainer(input) {
+        return {
+          identityId: input.identityId,
+          username: "trainer.user",
+          displayName: "Trainer User",
+          trainerId: input.trainerId,
+        };
+      },
+    },
     athleteMasterdata,
     kindertraining,
     securityEvents: {
@@ -1301,6 +1323,162 @@ describe("generated identity+permissions Worker entrypoint", () => {
   });
 });
 
+
+describe("Trainer identity administration API", () => {
+  it("lists trainer identities only inside the server-authorized organization", async () => {
+    let receivedOrganization: string | null = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            return {
+              organizationId: "verein-server",
+              actorPrincipalId: "identity-worker-1",
+            };
+          },
+        },
+        trainerIdentityLinks: {
+          ...base.trainerIdentityLinks,
+          async listBindings(organizationId) {
+            receivedOrganization = organizationId;
+            return [
+              {
+                identityId: "identity-1",
+                username: "trainer.one",
+                displayName: "Trainer One",
+                trainerId: "trainer-1",
+              },
+            ];
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/trainer-identities", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(receivedOrganization).toBe("verein-server");
+    await expect(response.json()).resolves.toEqual({
+      trainerIdentities: [
+        {
+          identityId: "identity-1",
+          username: "trainer.one",
+          displayName: "Trainer One",
+          trainerId: "trainer-1",
+        },
+      ],
+    });
+  });
+
+  it("binds a trainer identity using only server-owned organization scope", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            return {
+              organizationId: "verein-server",
+              actorPrincipalId: "identity-worker-1",
+            };
+          },
+        },
+        trainerIdentityLinks: {
+          ...base.trainerIdentityLinks,
+          async bindTrainer(input) {
+            received = input;
+            return {
+              identityId: input.identityId,
+              username: "trainer.one",
+              displayName: "Trainer One",
+              trainerId: input.trainerId,
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/trainer-identities", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          identityId: "identity-1",
+          trainerId: "trainer-1",
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      actorPrincipalId: "identity-worker-1",
+      identityId: "identity-1",
+      trainerId: "trainer-1",
+    });
+
+    const rejected = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/trainer-identities", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: "verein-client",
+          identityId: "identity-1",
+          trainerId: "trainer-1",
+        }),
+      }),
+      validEnv,
+    );
+    expect(rejected.status).toBe(400);
+
+    const rejectedQuery = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/admin/trainer-identities?organizationId=verein-client",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(rejectedQuery.status).toBe(400);
+  });
+
+  it("fails closed for non-admin trainer identity administration", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            throw new UlcLinzAuthorizationDeniedError();
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/trainer-identities", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(403);
+  });
+});
 
 describe("Kindertraining runtime API", () => {
   it("returns active Kindertraining groups from the server-authorized organization", async () => {

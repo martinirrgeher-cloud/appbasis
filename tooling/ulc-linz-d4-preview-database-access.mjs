@@ -14,6 +14,10 @@ const SECURITY_TABLE = "public.ulc_linz_security_event_log";
 const SECURITY_SEQUENCE = "public.ulc_linz_security_event_log_id_seq";
 const SECURITY_PURGE_FUNCTION =
   "public.appbasis_ulc_linz_purge_expired_security_events()";
+const TRAINER_IDENTITY_AUDIT_TABLE =
+  "public.ulc_linz_trainer_identity_audit";
+const TRAINER_IDENTITY_AUDIT_SEQUENCE =
+  "public.ulc_linz_trainer_identity_audit_event_id_seq";
 const SECURITY_INGEST_COLUMNS = Object.freeze([
   "schema_version",
   "app_id",
@@ -295,6 +299,9 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
       ownerDatabase.client,
     );
 
+    const trainerIdentityAuditPresent =
+      await resolveTrainerIdentityAuditSchemaPresence(ownerDatabase.client);
+
     if (typeof ownerDatabase.client.begin !== "function") {
       throw new Error("ULC D4 preview database access transaction is unavailable.");
     }
@@ -317,6 +324,14 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
           ") ON TABLE " + SECURITY_TABLE + " FROM " + app,
         "REVOKE ALL ON SEQUENCE " + SECURITY_SEQUENCE + " FROM " + app,
         "REVOKE ALL ON FUNCTION " + SECURITY_PURGE_FUNCTION + " FROM " + app,
+        ...(trainerIdentityAuditPresent
+          ? [
+              "REVOKE ALL ON TABLE " + TRAINER_IDENTITY_AUDIT_TABLE + " FROM " + app,
+              "GRANT SELECT, INSERT ON TABLE " + TRAINER_IDENTITY_AUDIT_TABLE + " TO " + app,
+              "REVOKE ALL ON SEQUENCE " + TRAINER_IDENTITY_AUDIT_SEQUENCE + " FROM " + app,
+              "GRANT USAGE ON SEQUENCE " + TRAINER_IDENTITY_AUDIT_SEQUENCE + " TO " + app,
+            ]
+          : []),
       ];
       for (const statement of statements) {
         await transaction.unsafe(statement);
@@ -1162,6 +1177,28 @@ async function requireRuntimeCredentialAuthentication({
   }
 }
 
+async function resolveTrainerIdentityAuditSchemaPresence(client) {
+  const rows = await client.unsafe(
+    `SELECT
+       to_regclass($1) IS NOT NULL AS table_present,
+       to_regclass($2) IS NOT NULL AS sequence_present`,
+    [TRAINER_IDENTITY_AUDIT_TABLE, TRAINER_IDENTITY_AUDIT_SEQUENCE],
+  );
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0] === undefined) {
+    throw new Error("ULC D4 trainer identity audit schema inventory is unavailable.");
+  }
+  const tablePresent = rows[0].table_present;
+  const sequencePresent = rows[0].sequence_present;
+  if (
+    typeof tablePresent !== "boolean" ||
+    typeof sequencePresent !== "boolean" ||
+    tablePresent !== sequencePresent
+  ) {
+    throw new Error("ULC D4 trainer identity audit schema is partially applied.");
+  }
+  return tablePresent;
+}
+
 async function verifyApplicationRuntimeAccess({
   applicationDatabaseUrl,
   applicationRole,
@@ -1189,7 +1226,7 @@ async function verifyApplicationRuntimeAccess({
         " ) AS all_runtime_table_dml" +
         " FROM pg_catalog.pg_tables" +
         " WHERE schemaname = 'public'" +
-        " AND tablename <> 'ulc_linz_security_event_log'" +
+        " AND tablename NOT IN ('ulc_linz_security_event_log', 'ulc_linz_trainer_identity_audit')" +
         "), sequence_access AS (" +
         " SELECT COALESCE(bool_and(" +
         " has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'USAGE')" +
@@ -1198,7 +1235,7 @@ async function verifyApplicationRuntimeAccess({
         " ), true) AS all_runtime_sequence_access" +
         " FROM information_schema.sequences" +
         " WHERE sequence_schema = 'public'" +
-        " AND sequence_name <> 'ulc_linz_security_event_log_id_seq'" +
+        " AND sequence_name NOT IN ('ulc_linz_security_event_log_id_seq', 'ulc_linz_trainer_identity_audit_event_id_seq')" +
         "), unexpected_schema_create AS (" +
         " SELECT count(*)::integer AS access_count" +
         " FROM user_schemas" +
@@ -1295,7 +1332,35 @@ async function verifyApplicationRuntimeAccess({
         " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'USAGE') AS security_sequence_usage," +
         " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'SELECT') AS security_sequence_select," +
         " has_sequence_privilege(current_user, '" + SECURITY_SEQUENCE + "', 'UPDATE') AS security_sequence_update," +
-        " has_function_privilege(current_user, '" + SECURITY_PURGE_FUNCTION + "', 'EXECUTE') AS security_purge_execute",
+        " has_function_privilege(current_user, '" + SECURITY_PURGE_FUNCTION + "', 'EXECUTE') AS security_purge_execute," +
+        " to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NOT NULL AS trainer_identity_audit_table_present," +
+        " to_regclass('" + TRAINER_IDENTITY_AUDIT_SEQUENCE + "') IS NOT NULL AS trainer_identity_audit_sequence_present," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_table_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'SELECT') END AS trainer_identity_audit_select," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_table_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'INSERT') END AS trainer_identity_audit_insert," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_table_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'UPDATE') END AS trainer_identity_audit_update," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_table_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'DELETE') END AS trainer_identity_audit_delete," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_table_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'TRUNCATE') END AS trainer_identity_audit_truncate," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_table_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'REFERENCES') END AS trainer_identity_audit_references," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_table_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'TRIGGER') END AS trainer_identity_audit_trigger," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_table_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'MAINTAIN') END AS trainer_identity_audit_maintain," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_any_column_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'UPDATE') END AS trainer_identity_audit_column_update," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "') IS NULL THEN false" +
+        " ELSE has_any_column_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_TABLE + "'), 'REFERENCES') END AS trainer_identity_audit_column_references," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_SEQUENCE + "') IS NULL THEN false" +
+        " ELSE has_sequence_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_SEQUENCE + "'), 'USAGE') END AS trainer_identity_audit_sequence_usage," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_SEQUENCE + "') IS NULL THEN false" +
+        " ELSE has_sequence_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_SEQUENCE + "'), 'SELECT') END AS trainer_identity_audit_sequence_select," +
+        " CASE WHEN to_regclass('" + TRAINER_IDENTITY_AUDIT_SEQUENCE + "') IS NULL THEN false" +
+        " ELSE has_sequence_privilege(current_user, to_regclass('" + TRAINER_IDENTITY_AUDIT_SEQUENCE + "'), 'UPDATE') END AS trainer_identity_audit_sequence_update",
     );
     const access = rows?.[0];
     if (
@@ -1331,7 +1396,23 @@ async function verifyApplicationRuntimeAccess({
       access?.security_sequence_usage !== false ||
       access?.security_sequence_select !== false ||
       access?.security_sequence_update !== false ||
-      access?.security_purge_execute !== false
+      access?.security_purge_execute !== false ||
+      access?.trainer_identity_audit_table_present !==
+        access?.trainer_identity_audit_sequence_present ||
+      (access?.trainer_identity_audit_table_present === true &&
+        (access?.trainer_identity_audit_select !== true ||
+          access?.trainer_identity_audit_insert !== true ||
+          access?.trainer_identity_audit_update !== false ||
+          access?.trainer_identity_audit_delete !== false ||
+          access?.trainer_identity_audit_truncate !== false ||
+          access?.trainer_identity_audit_references !== false ||
+          access?.trainer_identity_audit_trigger !== false ||
+          access?.trainer_identity_audit_maintain !== false ||
+          access?.trainer_identity_audit_column_update !== false ||
+          access?.trainer_identity_audit_column_references !== false ||
+          access?.trainer_identity_audit_sequence_usage !== true ||
+          access?.trainer_identity_audit_sequence_select !== false ||
+          access?.trainer_identity_audit_sequence_update !== false))
     ) {
       throw new Error("ULC D4 application runtime database ACL is not exact.");
     }
