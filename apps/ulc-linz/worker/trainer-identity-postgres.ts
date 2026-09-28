@@ -59,6 +59,7 @@ export class PostgresUlcLinzTrainerIdentityLinks {
        LEFT JOIN appbasis_trainer AS trainer
          ON trainer.id = membership.subject_id
         AND trainer.organization_id = membership.organization_id
+        AND trainer.is_active = true
        WHERE membership.organization_id = $1
          AND membership.source_role = 'trainer'
          AND membership.active = true
@@ -110,6 +111,8 @@ export class PostgresUlcLinzTrainerIdentityLinks {
        ),
        conflicting_binding AS MATERIALIZED (
          SELECT membership.identity_id,
+                membership.organization_id,
+                membership.source_role,
                 membership.active,
                 account.id IS NULL AS account_missing,
                 COALESCE(account.banned, true) AS account_banned
@@ -123,15 +126,21 @@ export class PostgresUlcLinzTrainerIdentityLinks {
        releasable_conflict AS MATERIALIZED (
          SELECT identity_id
          FROM conflicting_binding
-         WHERE active = false
-            OR account_missing = true
-            OR account_banned = true
+         WHERE organization_id = $2
+           AND source_role = 'trainer'
+           AND (
+             active = false
+             OR account_missing = true
+             OR account_banned = true
+           )
        ),
        released_conflict AS (
          UPDATE ulc_linz_membership
          SET subject_id = 'ulc-detached-trainer:' || md5(identity_id),
              updated_at = now()
          WHERE identity_id IN (SELECT identity_id FROM releasable_conflict)
+           AND EXISTS (SELECT 1 FROM target_identity)
+           AND EXISTS (SELECT 1 FROM target_trainer)
          RETURNING identity_id
        ),
        updated AS (

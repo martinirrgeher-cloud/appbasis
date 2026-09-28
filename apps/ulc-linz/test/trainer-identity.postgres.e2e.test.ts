@@ -131,6 +131,23 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await expect(
         repository.bindTrainer({
           organizationId: "verein-1",
+          identityId: "missing-identity",
+          trainerId: "trainer-1",
+        }),
+      ).rejects.toBeInstanceOf(UlcLinzTrainerIdentityNotFoundError);
+
+      const staleBindingAfterRejectedRelink = await client.unsafe(
+        `SELECT subject_id
+         FROM ulc_linz_membership
+         WHERE identity_id = 'identity-1'`,
+      );
+      expect(staleBindingAfterRejectedRelink).toEqual([
+        { subject_id: "trainer-1" },
+      ]);
+
+      await expect(
+        repository.bindTrainer({
+          organizationId: "verein-1",
           identityId: "identity-2",
           trainerId: "trainer-1",
         }),
@@ -146,6 +163,27 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
           organizationId: "verein-1",
           identityId: "identity-2",
           trainerId: "trainer-foreign",
+        }),
+      ).rejects.toBeInstanceOf(UlcLinzTrainerIdentityNotFoundError);
+
+      await client.unsafe(
+        `UPDATE appbasis_trainer
+         SET is_active = false
+         WHERE id = 'trainer-1'`,
+      );
+      await expect(repository.listBindings("verein-1")).resolves.toEqual([
+        {
+          identityId: "identity-2",
+          username: "trainer.two",
+          displayName: "Trainer Two",
+          trainerId: null,
+        },
+      ]);
+      await expect(
+        repository.bindTrainer({
+          organizationId: "verein-1",
+          identityId: "identity-2",
+          trainerId: "trainer-1",
         }),
       ).rejects.toBeInstanceOf(UlcLinzTrainerIdentityNotFoundError);
 

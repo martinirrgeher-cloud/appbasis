@@ -12,6 +12,7 @@ describe("ULC trainer identity PostgreSQL contract", () => {
       async unsafe(query, parameters) {
         expect(query).toContain("membership.source_role = 'trainer'");
         expect(query).toContain("COALESCE(account.banned, false) = false");
+        expect(query).toContain("trainer.is_active = true");
         expect(parameters).toEqual(["verein-1"]);
         return [
           {
@@ -52,6 +53,10 @@ describe("ULC trainer identity PostgreSQL contract", () => {
         expect(query).toContain("target_identity AS MATERIALIZED");
         expect(query).toContain("target_trainer AS MATERIALIZED");
         expect(query).toContain("releasable_conflict AS MATERIALIZED");
+        expect(query).toContain("organization_id = $2");
+        expect(query).toContain("source_role = 'trainer'");
+        expect(query).toContain("AND EXISTS (SELECT 1 FROM target_identity)");
+        expect(query).toContain("AND EXISTS (SELECT 1 FROM target_trainer)");
         expect(query).toContain("account_missing = false");
         expect(query).toContain("account_banned = false");
         expect(parameters).toEqual(["identity-1", "verein-1", "trainer-1"]);
