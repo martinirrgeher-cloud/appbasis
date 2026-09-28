@@ -1,7 +1,10 @@
 import { createPostgresDatabase } from "@appbasis/database";
 
 import { createBetterAuthRuntime } from "./better-auth";
-import { createIdentityRuntime } from "./server";
+import {
+  createIdentityRuntime,
+  createTrustedIdentityProvisioningService,
+} from "./server";
 import type {
   PostgresIdentityApplicationRuntime,
   PostgresIdentityApplicationRuntimeOptions,
@@ -37,11 +40,8 @@ export async function createPostgresIdentityApplicationRuntime(
       },
     });
 
-    const trustedProvisioningIdentity = Object.freeze({
-      createInitialUser(input: Parameters<typeof identity.service.createInitialUserTrusted>[0]) {
-        return identity.service.createInitialUserTrusted(input);
-      },
-    });
+    const trustedProvisioningIdentity =
+      createTrustedIdentityProvisioningService(identity);
 
     return Object.freeze({
       identity: identity.service,
