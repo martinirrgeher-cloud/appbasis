@@ -11,6 +11,7 @@ import {
 import roleDataScope from "./role-data-scope.json";
 import {
   recordUlcLinzSecurityEvent,
+  type UlcLinzAuthorizationDenyReason,
   type UlcLinzSecurityEventLogger,
 } from "./security-events";
 
@@ -25,13 +26,27 @@ export interface UlcLinzKindertrainingAccessSqlClient {
   ): PromiseLike<readonly Record<string, unknown>[]>;
 }
 
+export type UlcLinzKindertrainingAccessScope =
+  | Readonly<{
+      organizationId: string;
+      actorPrincipalId: string;
+      scope: "organization";
+    }>
+  | Readonly<{
+      organizationId: string;
+      actorPrincipalId: string;
+      scope: "trainer";
+      trainerId: string;
+      groupIds: readonly string[];
+    }>;
+
 export interface UlcLinzKindertrainingAccessService {
   assertViewAccess(
     current: UlcLinzCurrentIdentity,
-  ): Promise<Readonly<{ organizationId: string }>>;
+  ): Promise<UlcLinzKindertrainingAccessScope>;
   assertEditAccess(
     current: UlcLinzCurrentIdentity,
-  ): Promise<Readonly<{ organizationId: string }>>;
+  ): Promise<UlcLinzKindertrainingAccessScope>;
 }
 
 export function createUlcLinzKindertrainingAccessService({
@@ -52,15 +67,10 @@ export function createUlcLinzKindertrainingAccessService({
   async function assertAccess(
     current: UlcLinzCurrentIdentity,
     action: "view" | "edit",
-  ): Promise<Readonly<{ organizationId: string }>> {
+  ): Promise<UlcLinzKindertrainingAccessScope> {
     const identityId = optionalIdentifier(current.identity.identityId);
     if (identityId === null) {
-      denyBeforeOrganization(
-        securityEvents,
-        null,
-        action,
-        "identity-access-denied",
-      );
+      deny(securityEvents, null, null, action, "identity-access-denied");
     }
 
     try {
@@ -78,25 +88,47 @@ export function createUlcLinzKindertrainingAccessService({
     }
 
     const rows = await sql.unsafe(
-      `SELECT organization_id
-       FROM ulc_linz_membership
-       WHERE identity_id = $1`,
+      `SELECT membership.organization_id,
+              membership.source_role,
+              membership.active,
+              trainer.id AS trainer_id,
+              trainer_group.group_id
+       FROM ulc_linz_membership AS membership
+       LEFT JOIN appbasis_trainer AS trainer
+         ON membership.source_role = 'trainer'
+        AND trainer.id = membership.subject_id
+        AND trainer.organization_id = membership.organization_id
+        AND trainer.is_active = true
+       LEFT JOIN appbasis_trainer_group_membership AS trainer_group
+         ON trainer_group.organization_id = membership.organization_id
+        AND trainer_group.trainer_id = trainer.id
+       WHERE membership.identity_id = $1
+       ORDER BY trainer_group.group_id ASC`,
       [identityId],
     );
-    if (rows.length !== 1) {
-      denyBeforeOrganization(
-        securityEvents,
-        identityId,
-        action,
-        "membership-denied",
-      );
+    if (rows.length === 0) {
+      deny(securityEvents, identityId, null, action, "membership-denied");
     }
 
-    const organizationId = optionalIdentifier(rows[0]?.["organization_id"]);
-    if (organizationId === null) {
-      denyBeforeOrganization(
+    const first = rows[0];
+    const organizationId = optionalIdentifier(first?.["organization_id"]);
+    const sourceRole = first?.["source_role"];
+    const membershipActive = first?.["active"];
+    if (
+      organizationId === null ||
+      membershipActive !== true ||
+      typeof sourceRole !== "string" ||
+      rows.some(
+        (row) =>
+          row["organization_id"] !== organizationId ||
+          row["source_role"] !== sourceRole ||
+          row["active"] !== true,
+      )
+    ) {
+      deny(
         securityEvents,
         identityId,
+        organizationId,
         action,
         "membership-denied",
       );
@@ -118,7 +150,45 @@ export function createUlcLinzKindertrainingAccessService({
       },
     );
 
-    return Object.freeze({ organizationId });
+    if (sourceRole === "admin") {
+      return Object.freeze({
+        organizationId,
+        actorPrincipalId: identityId,
+        scope: "organization",
+      });
+    }
+    if (sourceRole !== "trainer") {
+      deny(securityEvents, identityId, organizationId, action, "scope-denied");
+    }
+
+    const trainerId = optionalIdentifier(first?.["trainer_id"]);
+    if (
+      trainerId === null ||
+      rows.some((row) => row["trainer_id"] !== trainerId)
+    ) {
+      deny(securityEvents, identityId, organizationId, action, "scope-denied");
+    }
+
+    const groupIds: string[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const rawGroupId = row["group_id"];
+      if (rawGroupId === null) continue;
+      const groupId = optionalIdentifier(rawGroupId);
+      if (groupId === null || seen.has(groupId)) {
+        deny(securityEvents, identityId, organizationId, action, "scope-denied");
+      }
+      seen.add(groupId);
+      groupIds.push(groupId);
+    }
+
+    return Object.freeze({
+      organizationId,
+      actorPrincipalId: identityId,
+      scope: "trainer",
+      trainerId,
+      groupIds: Object.freeze(groupIds),
+    });
   }
 
   return Object.freeze({
@@ -160,16 +230,17 @@ function optionalIdentifier(value: unknown): string | null {
   return value;
 }
 
-function denyBeforeOrganization(
+function deny(
   securityEvents: UlcLinzSecurityEventLogger | undefined,
   identityId: string | null,
+  organizationId: string | null,
   action: "view" | "edit",
-  reasonCode: "identity-access-denied" | "membership-denied",
+  reasonCode: UlcLinzAuthorizationDenyReason,
 ): never {
   recordUlcLinzSecurityEvent(securityEvents, {
     eventType: "authorization.denied",
     actorPrincipalId: identityId,
-    organizationId: null,
+    organizationId,
     action,
     targetId: KINDERTRAINING_MODULE_ID,
     reasonCode,

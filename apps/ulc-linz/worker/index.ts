@@ -12,6 +12,7 @@ import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 import { createGeneratedApp } from "./app";
 import { UlcLinzAuthorizationDeniedError } from "./authorization";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
+import type { UlcLinzKindertrainingAccessScope } from "./kindertraining-access";
 import {
   UlcKindertrainingNotFoundError,
 } from "./kindertraining-service";
@@ -158,9 +159,15 @@ async function kindertrainingModuleResponse(
   );
   if (access instanceof Response) return access;
 
-  const trainingGroups = await runtime.kindertraining.listGroups(
+  const availableTrainingGroups = await runtime.kindertraining.listGroups(
     access.organizationId,
   );
+  const trainingGroups =
+    access.scope === "organization"
+      ? availableTrainingGroups
+      : availableTrainingGroups.filter((group) =>
+          access.groupIds.includes(group.id),
+        );
 
   return Response.json({
     module: {
@@ -194,6 +201,9 @@ async function kindertrainingSessionResponse(
   try {
     if (request.method === "GET") {
       const query = kindertrainingSessionQuery(url);
+      if (!kindertrainingGroupAllowed(access, query.groupId)) {
+        return kindertrainingGroupScopeDenied(runtime, access, action);
+      }
       const snapshot = await runtime.kindertraining.readSnapshot(
         access.organizationId,
         query.groupId,
@@ -203,6 +213,9 @@ async function kindertrainingSessionResponse(
     }
 
     const body = await kindertrainingJsonBody(request);
+    if (!kindertrainingGroupAllowed(access, body.groupId as string)) {
+      return kindertrainingGroupScopeDenied(runtime, access, action);
+    }
     const snapshot = await runtime.kindertraining.saveSession(
       access.organizationId,
       {
@@ -244,7 +257,7 @@ async function authorizeKindertrainingRequest(
   runtime: GeneratedPostgresApplicationRuntime,
   url: URL,
   action: "view" | "edit",
-): Promise<Response | Readonly<{ organizationId: string }>> {
+): Promise<Response | UlcLinzKindertrainingAccessScope> {
   const identityHttp = createIdentityHttpHandlers({
     identity: runtime.identity,
     secureCookies: url.protocol === "https:",
@@ -285,6 +298,29 @@ async function authorizeKindertrainingRequest(
     }
     throw error;
   }
+}
+
+function kindertrainingGroupAllowed(
+  access: UlcLinzKindertrainingAccessScope,
+  groupId: string,
+): boolean {
+  return access.scope === "organization" || access.groupIds.includes(groupId);
+}
+
+function kindertrainingGroupScopeDenied(
+  runtime: GeneratedPostgresApplicationRuntime,
+  access: UlcLinzKindertrainingAccessScope,
+  action: "view" | "edit",
+): Response {
+  recordUlcLinzSecurityEvent(runtime.securityEvents, {
+    eventType: "authorization.denied",
+    actorPrincipalId: access.actorPrincipalId,
+    organizationId: access.organizationId,
+    action,
+    targetId: "kindertraining",
+    reasonCode: "scope-denied",
+  });
+  return kindertrainingGroupNotFound();
 }
 
 class InvalidKindertrainingRequestError extends Error {}
@@ -348,6 +384,10 @@ async function kindertrainingJsonBody(
     !Object.prototype.hasOwnProperty.call(body, "expectedRevision") ||
     !Object.prototype.hasOwnProperty.call(body, "attendance") ||
     Object.getOwnPropertySymbols(body).length !== 0 ||
+    typeof body.groupId !== "string" ||
+    body.groupId.length === 0 ||
+    body.groupId.length > 200 ||
+    body.groupId.trim() !== body.groupId ||
     !Array.isArray(body.attendance) ||
     !(
       body.expectedRevision === null ||

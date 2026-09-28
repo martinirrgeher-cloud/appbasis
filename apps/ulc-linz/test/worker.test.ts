@@ -43,6 +43,28 @@ const identity: IdentityHttpService = {
   },
 };
 
+function kindertrainingOrganizationAccess(organizationId: string) {
+  return Object.freeze({
+    organizationId,
+    actorPrincipalId: currentIdentity.identity.identityId,
+    scope: "organization" as const,
+  });
+}
+
+function kindertrainingTrainerAccess(
+  organizationId: string,
+  trainerId: string,
+  groupIds: readonly string[],
+) {
+  return Object.freeze({
+    organizationId,
+    actorPrincipalId: currentIdentity.identity.identityId,
+    scope: "trainer" as const,
+    trainerId,
+    groupIds: Object.freeze([...groupIds]),
+  });
+}
+
 const validEnv = Object.freeze({
   HYPERDRIVE: Object.freeze({
     connectionString: "postgresql://user:password@database.example.test/appbasis",
@@ -174,10 +196,10 @@ function runtime(
   },
   kindertrainingAccess: GeneratedPostgresApplicationRuntime["kindertrainingAccess"] = {
     async assertViewAccess() {
-      return { organizationId: "verein-1" };
+      return kindertrainingOrganizationAccess("verein-1");
     },
     async assertEditAccess() {
-      return { organizationId: "verein-1" };
+      return kindertrainingOrganizationAccess("verein-1");
     },
   },
   kindertraining: GeneratedPostgresApplicationRuntime["kindertraining"] = {
@@ -1490,7 +1512,7 @@ describe("Kindertraining runtime API", () => {
         kindertrainingAccess: {
           ...base.kindertrainingAccess,
           async assertViewAccess() {
-            return { organizationId: "verein-server" };
+            return kindertrainingOrganizationAccess("verein-server");
           },
         },
         kindertraining: {
@@ -1523,6 +1545,140 @@ describe("Kindertraining runtime API", () => {
     });
   });
 
+  it("filters trainer groups and hides unassigned read and write targets", async () => {
+    let readCalls = 0;
+    let saveCalls = 0;
+    const securityEvents: unknown[] = [];
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        kindertrainingAccess: {
+          ...base.kindertrainingAccess,
+          async assertViewAccess() {
+            return kindertrainingTrainerAccess(
+              "verein-server",
+              "trainer-1",
+              ["group-1"],
+            );
+          },
+          async assertEditAccess() {
+            return kindertrainingTrainerAccess(
+              "verein-server",
+              "trainer-1",
+              ["group-1"],
+            );
+          },
+        },
+        kindertraining: {
+          ...base.kindertraining,
+          async listGroups(organizationId) {
+            expect(organizationId).toBe("verein-server");
+            return [
+              { id: "group-1", name: "Kindertraining", shortName: "KT" },
+              { id: "group-2", name: "Unerlaubt", shortName: "X" },
+            ];
+          },
+          async readSnapshot() {
+            readCalls += 1;
+            throw new Error("unassigned group must not reach the service");
+          },
+          async saveSession() {
+            saveCalls += 1;
+            throw new Error("unassigned group must not reach the service");
+          },
+        },
+        securityEvents: {
+          ...base.securityEvents,
+          record(event) {
+            securityEvents.push(event);
+          },
+        },
+      };
+    });
+
+    const moduleResponse = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/kindertraining", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+    expect(moduleResponse.status).toBe(200);
+    await expect(moduleResponse.json()).resolves.toMatchObject({
+      trainingGroups: [
+        { id: "group-1", name: "Kindertraining", shortName: "KT" },
+      ],
+    });
+
+    const denied = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/kindertraining/session?groupId=group-2&sessionDate=2026-09-27",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(denied.status).toBe(404);
+    expect(readCalls).toBe(0);
+
+    const deniedWrite = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/kindertraining/session", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          groupId: "group-2",
+          sessionDate: "2026-09-27",
+          expectedRevision: null,
+          attendance: [],
+        }),
+      }),
+      validEnv,
+    );
+    expect(deniedWrite.status).toBe(404);
+    expect(saveCalls).toBe(0);
+
+    for (const groupId of [42, {}, "", " group-1 ", "x".repeat(201)]) {
+      const malformed = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/kindertraining/session", {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            groupId,
+            sessionDate: "2026-09-27",
+            expectedRevision: null,
+            attendance: [],
+          }),
+        }),
+        validEnv,
+      );
+      expect(malformed.status).toBe(400);
+    }
+    expect(saveCalls).toBe(0);
+    expect(securityEvents).toEqual([
+      expect.objectContaining({
+        eventType: "authorization.denied",
+        actorPrincipalId: currentIdentity.identity.identityId,
+        organizationId: "verein-server",
+        action: "view",
+        targetId: "kindertraining",
+        reasonCode: "scope-denied",
+      }),
+      expect.objectContaining({
+        eventType: "authorization.denied",
+        actorPrincipalId: currentIdentity.identity.identityId,
+        organizationId: "verein-server",
+        action: "edit",
+        targetId: "kindertraining",
+        reasonCode: "scope-denied",
+      }),
+    ]);
+  });
+
   it("reads a participant snapshot only for the server-authorized organization", async () => {
     let received: unknown = null;
     const worker = createGeneratedWorker(() => {
@@ -1532,7 +1688,7 @@ describe("Kindertraining runtime API", () => {
         kindertrainingAccess: {
           ...base.kindertrainingAccess,
           async assertViewAccess() {
-            return { organizationId: "verein-server" };
+            return kindertrainingOrganizationAccess("verein-server");
           },
         },
         kindertraining: {
@@ -1575,7 +1731,7 @@ describe("Kindertraining runtime API", () => {
         kindertrainingAccess: {
           ...base.kindertrainingAccess,
           async assertEditAccess() {
-            return { organizationId: "verein-server" };
+            return kindertrainingOrganizationAccess("verein-server");
           },
         },
         kindertraining: {

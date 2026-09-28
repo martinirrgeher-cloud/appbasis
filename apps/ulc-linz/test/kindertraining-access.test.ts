@@ -18,6 +18,7 @@ import {
 
 const IDENTITY_ID = "identity-kindertraining-1";
 const ORGANIZATION_ID = "verein-1";
+const TRAINER_ID = "trainer-1";
 
 function currentIdentity(): UlcLinzCurrentIdentity {
   return {
@@ -45,14 +46,41 @@ function service(input: {
   grants?: Array<ReturnType<typeof capabilityId>>;
   revokes?: Array<ReturnType<typeof capabilityId>>;
   roleCapabilities?: Array<ReturnType<typeof capabilityId>>;
+  linkedTrainerId?: string | null;
+  trainerActive?: boolean;
+  groupIds?: readonly string[];
 }) {
   const sourceRole = input.sourceRole ?? "trainer";
   const runtimeRoleId = roleId(`ulc-linz:${sourceRole}`);
   const view = capabilityId("ulc-linz:module:kindertraining:view");
   const edit = capabilityId("ulc-linz:module:kindertraining:edit");
+  const groupIds = input.groupIds ?? ["group-1", "group-2"];
+  const linkedTrainerId =
+    input.linkedTrainerId === undefined ? TRAINER_ID : input.linkedTrainerId;
+  const trainerId =
+    sourceRole === "trainer" &&
+    linkedTrainerId !== null &&
+    input.trainerActive !== false
+      ? linkedTrainerId
+      : null;
   const sql: UlcLinzKindertrainingAccessSqlClient = {
-    async unsafe() {
-      return [{ organization_id: ORGANIZATION_ID }];
+    async unsafe(query, parameters) {
+      expect(query).toContain("LEFT JOIN appbasis_trainer AS trainer");
+      expect(query).toContain(
+        "LEFT JOIN appbasis_trainer_group_membership AS trainer_group",
+      );
+      expect(query).toContain("trainer.is_active = true");
+      expect(parameters).toEqual([IDENTITY_ID]);
+      const base = {
+        organization_id: ORGANIZATION_ID,
+        source_role: sourceRole,
+        active: input.active ?? true,
+        trainer_id: trainerId,
+      };
+      if (sourceRole !== "trainer" || groupIds.length === 0) {
+        return [{ ...base, group_id: null }];
+      }
+      return groupIds.map((groupId) => ({ ...base, group_id: groupId }));
     },
   };
 
@@ -93,12 +121,16 @@ function service(input: {
 }
 
 describe("ULC Linz Kindertraining access", () => {
-  it("requires Kindertraining view and edit independently", async () => {
+  it("resolves an active linked trainer to exactly the assigned groups", async () => {
     const view = capabilityId("ulc-linz:module:kindertraining:view");
-    const access = service({ grants: [view] });
+    const access = service({ grants: [view], groupIds: ["group-1", "group-2"] });
 
     await expect(access.assertViewAccess(currentIdentity())).resolves.toEqual({
       organizationId: ORGANIZATION_ID,
+      actorPrincipalId: IDENTITY_ID,
+      scope: "trainer",
+      trainerId: TRAINER_ID,
+      groupIds: ["group-1", "group-2"],
     });
     await expect(access.assertEditAccess(currentIdentity())).rejects.toBeInstanceOf(
       UlcLinzAuthorizationDeniedError,
@@ -116,7 +148,7 @@ describe("ULC Linz Kindertraining access", () => {
     }
   });
 
-  it("allows a canonical admin role to edit Kindertraining", async () => {
+  it("keeps a canonical admin organization-wide", async () => {
     const edit = capabilityId("ulc-linz:module:kindertraining:edit");
     const access = service({
       sourceRole: "admin",
@@ -125,6 +157,35 @@ describe("ULC Linz Kindertraining access", () => {
 
     await expect(access.assertEditAccess(currentIdentity())).resolves.toEqual({
       organizationId: ORGANIZATION_ID,
+      actorPrincipalId: IDENTITY_ID,
+      scope: "organization",
+    });
+  });
+
+  it("denies a trainer without a valid active trainer identity link", async () => {
+    const view = capabilityId("ulc-linz:module:kindertraining:view");
+
+    for (const input of [
+      { linkedTrainerId: null },
+      { linkedTrainerId: TRAINER_ID, trainerActive: false },
+    ]) {
+      const access = service({ grants: [view], ...input });
+      await expect(access.assertViewAccess(currentIdentity())).rejects.toBeInstanceOf(
+        UlcLinzAuthorizationDeniedError,
+      );
+    }
+  });
+
+  it("allows a linked trainer with no assigned group but resolves an empty scope", async () => {
+    const view = capabilityId("ulc-linz:module:kindertraining:view");
+    const access = service({ grants: [view], groupIds: [] });
+
+    await expect(access.assertViewAccess(currentIdentity())).resolves.toEqual({
+      organizationId: ORGANIZATION_ID,
+      actorPrincipalId: IDENTITY_ID,
+      scope: "trainer",
+      trainerId: TRAINER_ID,
+      groupIds: [],
     });
   });
 
