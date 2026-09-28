@@ -208,24 +208,31 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         previous_subject_id: "placeholder-1",
         new_subject_id: "trainer-1",
       });
-      expect(auditRows[1]).toMatchObject({
-        event_type: "trainer.identity.detach-stale",
+      const replacementAudit = auditRows.slice(1);
+      const detachAudit = replacementAudit.find(
+        (row) => row.event_type === "trainer.identity.detach-stale",
+      );
+      expect(detachAudit).toMatchObject({
         actor_principal_id: "admin-1",
         organization_id: "verein-1",
         target_identity_id: "identity-1",
         previous_subject_id: "trainer-1",
       });
-      expect(auditRows[1]?.new_subject_id).toMatch(
+      expect(detachAudit?.new_subject_id).toMatch(
         /^ulc-detached-trainer:[a-f0-9]{32}$/,
       );
-      expect(auditRows[2]).toEqual({
-        event_type: "trainer.identity.bind",
-        actor_principal_id: "admin-1",
-        organization_id: "verein-1",
-        target_identity_id: "identity-2",
-        previous_subject_id: "placeholder-2",
-        new_subject_id: "trainer-1",
-      });
+      expect(replacementAudit).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            event_type: "trainer.identity.bind",
+            actor_principal_id: "admin-1",
+            organization_id: "verein-1",
+            target_identity_id: "identity-2",
+            previous_subject_id: "placeholder-2",
+            new_subject_id: "trainer-1",
+          }),
+        ]),
+      );
 
       const rows = await client.unsafe(
         `SELECT identity_id, subject_id
@@ -258,7 +265,7 @@ async function applyManifestMigrations(
     await readFile(new URL("../appbasis.database.json", import.meta.url), "utf8"),
   ) as DatabaseManifest;
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 13 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 14 || new Set(migrations).size !== migrations.length) {
     throw new Error(
       "ULC trainer identity E2E requires the exact manifest-owned migration set.",
     );

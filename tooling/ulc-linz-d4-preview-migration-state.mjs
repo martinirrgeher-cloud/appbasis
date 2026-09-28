@@ -23,6 +23,7 @@ const TRAINING_TABLES = Object.freeze([
   "ulc_linz_training_session",
   "ulc_linz_training_attendance",
 ]);
+const TRAINER_IDENTITY_AUDIT_TABLE = "ulc_linz_trainer_identity_audit";
 
 export async function resolveUlcLinzD4PreviewMigrationState(
   {
@@ -85,13 +86,22 @@ export async function resolveUlcLinzD4PreviewMigrationState(
     }
 
     const trainingPresent = TRAINING_TABLES.filter((table) => tables.has(table));
+    const trainerIdentityAuditPresent = tables.has(TRAINER_IDENTITY_AUDIT_TABLE);
     if (trainingPresent.length === 0) {
+      if (trainerIdentityAuditPresent) {
+        throw new Error(
+          "ULC D4 preview trainer identity audit exists before the training baseline.",
+        );
+      }
       return Object.freeze({ mode: "training-upgrade" });
     }
-    if (trainingPresent.length === TRAINING_TABLES.length) {
-      return Object.freeze({ mode: "current" });
+    if (trainingPresent.length !== TRAINING_TABLES.length) {
+      throw new Error("ULC D4 preview training schema is partially applied.");
     }
-    throw new Error("ULC D4 preview training schema is partially applied.");
+    if (!trainerIdentityAuditPresent) {
+      return Object.freeze({ mode: "trainer-identity-audit-upgrade" });
+    }
+    return Object.freeze({ mode: "current" });
   } finally {
     await database.client.end().catch(() => {});
   }

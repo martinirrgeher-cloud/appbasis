@@ -27,6 +27,7 @@ const TRAINING = [
   "ulc_linz_training_session",
   "ulc_linz_training_attendance",
 ];
+const TRAINER_IDENTITY_AUDIT = "ulc_linz_trainer_identity_audit";
 
 function factory({ tables = [], group = false } = {}) {
   return () => ({
@@ -76,10 +77,30 @@ test("classifies a Stammdaten-complete preview as a training upgrade", async () 
   );
 });
 
-test("classifies a fully migrated preview as current", async () => {
+test("classifies a training-complete preview as a trainer identity audit upgrade", async () => {
   assert.deepEqual(
     await resolve({ tables: [...BASELINE, ...ATHLETES, ...TRAINING], group: true }),
+    { mode: "trainer-identity-audit-upgrade" },
+  );
+});
+
+test("classifies a fully migrated preview as current", async () => {
+  assert.deepEqual(
+    await resolve({
+      tables: [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT],
+      group: true,
+    }),
     { mode: "current" },
+  );
+});
+
+test("fails closed when trainer identity audit appears before the training baseline", async () => {
+  await assert.rejects(
+    resolve({
+      tables: [...BASELINE, ...ATHLETES, TRAINER_IDENTITY_AUDIT],
+      group: true,
+    }),
+    /audit exists before the training baseline/,
   );
 });
 
