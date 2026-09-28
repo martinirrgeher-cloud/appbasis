@@ -740,37 +740,45 @@ Abnahme für ULC-E4E-A/E4E-A2:
 E4E-A/E4E-A2 ist auf `main` abgeschlossen; Migration `0005` und der
 anschließende Preview-Deploy wurden erfolgreich ausgeführt.
 
-## Aktueller Gate-Scope: ULC-E4E-B Trainer-Gruppenbegrenzung
+## Abgeschlossener Gate-Scope: ULC-E4E-B Trainer-Gruppenbegrenzung
 
-Abnahme für ULC-E4E-B:
+ULC-E4E-B ist auf `main` abgeschlossen. Die Kindertraining-Runtime begrenzt
+Trainer serverseitig auf ihre persistierten Gruppenzuordnungen; Admins bleiben
+organisationsweit berechtigt. Der Code-Slice benötigte keine Migration. Ein
+Preview-Deploy bleibt weiterhin eine gesondert freizugebende Mutation.
 
-- die Organisation wird weiterhin ausschließlich serverseitig aus der
-  authentifizierten ULC-Membership bestimmt;
-- ein Admin mit kanonischem Kindertraining-Recht behält organisationsweiten
-  Zugriff auf alle Kindertraining-Gruppen;
-- eine Trainer-Membership muss über `subject_id` auf genau einen aktiven
-  Trainer derselben Organisation zeigen; fehlende, detachte, fremde oder
-  inaktive Trainer-Links failen geschlossen;
-- für Trainer wird der zulässige Gruppenumfang ausschließlich aus
-  `appbasis_trainer_group_membership` derselben Organisation abgeleitet;
-- die Gruppenliste liefert einem Trainer nur seine zugeordneten aktiven
-  Gruppen; ein Trainer ohne Gruppenzuordnung erhält eine leere Liste;
-- GET und POST eines Trainingstermins für eine nicht zugeordnete Gruppe werden
-  vor dem Kindertraining-Service fail-closed abgewiesen und als 404 behandelt,
-  damit fremde Gruppen nicht über die Antwort unterscheidbar werden;
-- eine solche Gruppenbereichs-Ablehnung wird als
-  `authorization.denied/scope-denied` mit dem authentifizierten Principal und
-  der serverseitigen Organisation protokolliert;
-- Eltern- und Athletenrollen erhalten weiterhin keinen organisationsweiten
-  Kindertraining-Teilnehmersnapshot;
-- der Client kann weder `organizationId`, `trainerId` noch eine Liste
-  erlaubter Gruppen vorgeben;
-- E4E-B benötigt keine Migration und verändert weder Athletes-Core noch die
-  bestehende Trainer↔Identity-Audit-Historie;
-- E4E-C ergänzt danach die administrative UI für Trainer↔Benutzer-Zuordnung.
-  Sondertrainings, Statistik, Import/Export, Realtime/Edit-Locks sowie U12/U14
-  bleiben weitere Folgearbeiten;
-- der Code-Slice führt keinen Preview-/Production-Write und kein Deployment aus.
+## Aktueller Gate-Scope: ULC-E4E-C Administrative Trainer-Benutzerzuordnung
+
+Abnahme für ULC-E4E-C:
+
+- die bestehende geschützte API `/api/admin/trainer-identities` bleibt die
+  einzige Schreib- und Leseschnittstelle für Trainer↔Benutzer-Zuordnungen;
+- die UI wird im bestehenden Stammdaten-Bereich der Trainer ergänzt und führt
+  keine neue Navigation oder parallele Administrationslogik ein;
+- die Benutzerzuordnung wird erst nach einem ausdrücklichen Klick auf
+  „Verwalten“ geladen; normale Logins und das bloße Öffnen der Stammdaten
+  erzeugen dadurch keine automatischen Admin-Denials im Security-Log;
+- die UI sendet ausschließlich `identityId` und `trainerId`; Organisation,
+  Admin-Principal und Berechtigungsumfang bleiben vollständig serverseitig;
+- die vom Server gelieferten aktiven Trainer-Benutzer werden mit ihrer
+  aktuellen Trainer-Zuordnung angezeigt;
+- auswählbar sind nur aktive Trainer aus dem bereits serverautorisierten
+  Stammdaten-Snapshot;
+- eine bestehende Zuordnung wird bei Auswahl des Benutzerkontos im Formular
+  vorausgewählt, sofern der Trainer noch aktiv und sichtbar ist;
+- nach erfolgreichem POST wird die serverseitige Liste erneut geladen, damit
+  auch atomare stale-detach-/Re-Link-Effekte korrekt dargestellt werden;
+- 403, 404, 409 und ungültige Eingaben werden im UI eindeutig behandelt;
+  Konflikte dürfen nicht als erfolgreicher Save erscheinen;
+- dynamische Benutzer- und Trainerdaten werden ausschließlich über DOM-
+  Konstruktion und `textContent` gerendert; keine HTML-Injektion;
+- UI-Sichtbarkeit ist keine Sicherheitsgrenze: die bestehende Admin-Prüfung,
+  Organisationsbindung, Konfliktlogik und Audit-Persistenz bleiben unverändert
+  serverseitig wirksam;
+- E4E-C benötigt keine Migration und verändert weder Athletes-Core noch
+  Identity-, Membership-, Audit- oder Kindertraining-Datenmodell;
+- der Code-PR führt keinen Preview-/Production-Write und kein Deployment aus.
+  Eine praktische Sichtung erfolgt erst nach separater Deploy-Freigabe.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -790,42 +798,26 @@ Abnahme für ULC-E4E-B:
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E4E-B-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E4E-C-Pfad, wenn mindestens eines gilt:
 
-- eine neue parallele Identity↔Trainer-Mapping-Tabelle wird eingeführt, obwohl
-  der bestehende ULC-Membership-Subject-Vertrag ausreicht;
-- ein Nicht-Admin kann Trainer↔Identity-Verknüpfungen lesen oder ändern;
-- der Client kann die Organisation für die Zuordnung bestimmen;
-- eine aktive Trainer-Membership kann auf einen fremden oder inaktiven
-  Trainer verknüpft werden;
-- derselbe Trainer kann zwei aktiven Identities zugeordnet werden oder eine
-  aktive Alt-Bindung wird beim Re-Link still überschrieben;
-- eine gesperrte/gelöschte/inaktive Alt-Bindung blockiert dauerhaft die
-  Wiederverknüpfung desselben Trainers;
-- eine fremde, inaktive oder gesperrte Identity wird als gültiges Ziel
-  akzeptiert;
-- eine erfolgreiche Zuordnung oder stale-detach Änderung wird ohne
-  atomaren, dem authentifizierten Admin zurechenbaren Auditdatensatz
-  persistiert;
-- ein ungültiger Re-Link verändert eine bestehende Bindung oder Audit-Historie;
-- die Zuordnung verändert Athletes-Core-Tabellen oder dessen Domain-Vertrag;
-- E4E-A verändert bereits Kindertraining-Gruppenfilter oder andere
-  Berechtigungswirkung außerhalb dieses Slices;
+- die UI umgeht `/api/admin/trainer-identities` oder schreibt direkt auf
+  Membership-/Trainer-Daten;
+- Organisation, Admin-Principal oder erlaubter Scope werden vom Client
+  vorgegeben;
+- das Admin-API wird bei jedem Login oder ohne ausdrückliche Benutzeraktion
+  automatisch aufgerufen und erzeugt dadurch erwartbare Denial-Audit-Einträge;
+- ein 403/404/409 wird als erfolgreiche Zuordnung dargestellt;
+- nach einem erfolgreichen Re-Link bleibt die Anzeige auf einem rein lokal
+  angenommenen Zustand statt die serverseitige Bindung erneut einzulesen;
+- dynamische Benutzer- oder Trainerdaten werden über `innerHTML` oder eine
+  vergleichbare HTML-Injektion ausgegeben;
+- E4E-C verändert bestehende Admin-Berechtigungen, Organisationsgrenzen,
+  Konflikt-/Audit-Semantik, Datenbankschema oder Athletes-Core;
 - der Code-PR mutiert Preview/Produktion oder deployt ohne gesonderte
-  Freigabe;
-- ein Trainer erhält organisationsweiten Kindertraining-Zugriff statt exakt
-  seiner persistierten Gruppenzuordnungen;
-- eine fehlende oder inaktive Trainer↔Identity-Zuordnung fällt auf
-  organisationsweiten Zugriff zurück;
-- eine nicht zugeordnete Gruppe erreicht den Kindertraining-Service oder kann
-  über unterschiedliche HTTP-Antworten enumeriert werden;
-- der Client kann Organisation, Traineridentität oder erlaubte Gruppen selbst
-  als Scope setzen;
-- eine Gruppenbereichs-Ablehnung bleibt ohne Security-Event.
+  Freigabe.
 
-Nicht gate-blockierend sind die spätere administrative UI, weitere visuelle
-Feinarbeiten, Sondertrainings, Statistik, Import/Export, Realtime/Edit-Locks
-und U12/U14.
+Nicht gate-blockierend sind weitere visuelle Feinarbeiten, Sondertrainings,
+Statistik, Import/Export, Realtime/Edit-Locks und U12/U14.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 
