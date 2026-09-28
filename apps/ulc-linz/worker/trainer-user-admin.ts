@@ -171,7 +171,6 @@ export class PostgresUlcLinzTrainerUserAdministration {
         identityState.username !== username ||
         identityState.displayName !== displayName ||
         identityState.contactEmail !== contactEmail ||
-        identityState.accountStatus !== "active" ||
         identityState.mustChangePassword !== true
       ) {
         throw new UlcLinzTrainerUserConflictError();
@@ -444,7 +443,7 @@ function optionalContactEmail(value: unknown): string | null {
   if (
     normalized.length === 0 ||
     normalized.length > MAXIMUM_CONTACT_EMAIL_LENGTH ||
-    !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/u.test(normalized)
+    !/^[^@\s]+@[^@\s]+\\.[^@\s]+$/u.test(normalized)
   ) {
     throw new UlcLinzTrainerUserValidationError();
   }
@@ -457,7 +456,7 @@ function requiredTemporaryPassword(value: unknown): string {
     value.length < MINIMUM_PASSWORD_LENGTH ||
     value.length > MAXIMUM_PASSWORD_LENGTH ||
     value.trim().length === 0 ||
-    /[\\r\\n]/u.test(value)
+    /[\r\n]/u.test(value)
   ) {
     throw new UlcLinzTrainerUserValidationError();
   }
