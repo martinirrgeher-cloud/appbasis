@@ -126,27 +126,25 @@ export class PostgresUlcLinzTrainerIdentityLinks {
            AND EXISTS (SELECT 1 FROM target_identity)
            AND EXISTS (SELECT 1 FROM target_trainer)
            AND NOT EXISTS (SELECT 1 FROM conflicting_binding)
-         RETURNING identity_id
+         RETURNING identity_id, organization_id, subject_id
        )
        SELECT
          EXISTS (SELECT 1 FROM target_identity) AS identity_exists,
          EXISTS (SELECT 1 FROM target_trainer) AS trainer_exists,
          EXISTS (SELECT 1 FROM conflicting_binding) AS binding_conflict,
          (SELECT count(*)::int FROM updated) AS updated_count,
-         membership.identity_id,
+         updated.identity_id,
          account.username,
          account.name AS display_name,
          trainer.id AS trainer_id
        FROM (VALUES (1)) AS singleton(value)
        LEFT JOIN updated
          ON true
-       LEFT JOIN ulc_linz_membership AS membership
-         ON membership.identity_id = updated.identity_id
        LEFT JOIN "user" AS account
-         ON account.id = membership.identity_id
+         ON account.id = updated.identity_id
        LEFT JOIN appbasis_trainer AS trainer
-         ON trainer.id = membership.subject_id
-        AND trainer.organization_id = membership.organization_id`,
+         ON trainer.id = updated.subject_id
+        AND trainer.organization_id = updated.organization_id`,
       [identityId, organizationId, trainerId],
       );
     } catch (error) {
