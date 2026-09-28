@@ -125,7 +125,7 @@ export class PostgresUlcLinzTrainerUserAdministration {
         await this.options.trustedProvisioningIdentity.createInitialUser({
           username,
           displayName,
-          contactEmail: contactEmail ?? undefined,
+          ...(contactEmail === null ? {} : { contactEmail }),
           temporaryPassword,
         });
       requireExactIdentityState(
