@@ -28,17 +28,19 @@ describe("ULC trainer user administration service", () => {
       createDatabase as never,
     );
 
+    const input = {
+      organizationId: "verein-1",
+      actorPrincipalId: "admin-1",
+      username: "trainer.a",
+      displayName: "Trainer A",
+      contactEmail: "trainer.a@example.test",
+      temporaryPassword: "Temporary-123",
+      profile: "kindertrainer",
+    };
+    Object.assign(input, override);
+
     await expect(
-      service.createTrainerUser({
-        organizationId: "verein-1",
-        actorPrincipalId: "admin-1",
-        username: "trainer.a",
-        displayName: "Trainer A",
-        contactEmail: "trainer.a@example.test",
-        temporaryPassword: "Temporary-123",
-        profile: "kindertrainer",
-        ...override,
-      } as never),
+      service.createTrainerUser(input as never),
     ).rejects.toBeInstanceOf(UlcLinzTrainerUserValidationError);
     expect(createDatabase).not.toHaveBeenCalled();
   });
