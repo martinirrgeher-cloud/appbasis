@@ -59,13 +59,18 @@ describe("ULC trainer identity PostgreSQL contract", () => {
         expect(query).toContain("AND EXISTS (SELECT 1 FROM target_trainer)");
         expect(query).toContain("account_missing = false");
         expect(query).toContain("account_banned = false");
-        expect(parameters).toEqual(["identity-1", "verein-1", "trainer-1"]);
+        expect(query).toContain("FOR UPDATE OF membership");
+        expect(query).toContain("FOR SHARE");
+        expect(query).toContain("INSERT INTO ulc_linz_trainer_identity_audit");
+        expect(parameters).toEqual(["identity-1", "verein-1", "trainer-1", "admin-1"]);
         return [
           {
             identity_exists: true,
             trainer_exists: true,
             binding_conflict: false,
             released_conflict_count: 0,
+            released_audit_count: 0,
+            target_audit_count: 1,
             updated_count: 1,
             identity_id: "identity-1",
             username: "trainer.one",
@@ -79,6 +84,7 @@ describe("ULC trainer identity PostgreSQL contract", () => {
     await expect(
       repository.bindTrainer({
         organizationId: "verein-1",
+        actorPrincipalId: "admin-1",
         identityId: "identity-1",
         trainerId: "trainer-1",
       }),
@@ -101,6 +107,8 @@ describe("ULC trainer identity PostgreSQL contract", () => {
             trainer_exists: true,
             binding_conflict: false,
             released_conflict_count: 1,
+            released_audit_count: 1,
+            target_audit_count: 1,
             updated_count: 1,
             identity_id: "identity-2",
             username: "trainer.two",
@@ -114,6 +122,7 @@ describe("ULC trainer identity PostgreSQL contract", () => {
     await expect(
       repository.bindTrainer({
         organizationId: "verein-1",
+        actorPrincipalId: "admin-1",
         identityId: "identity-2",
         trainerId: "trainer-1",
       }),
@@ -136,6 +145,7 @@ describe("ULC trainer identity PostgreSQL contract", () => {
     await expect(
       repository.bindTrainer({
         organizationId: "verein-1",
+        actorPrincipalId: "admin-1",
         identityId: "identity-1",
         trainerId: "trainer-1",
       }),
@@ -162,6 +172,7 @@ describe("ULC trainer identity PostgreSQL contract", () => {
     await expect(
       missing.bindTrainer({
         organizationId: "verein-1",
+        actorPrincipalId: "admin-1",
         identityId: "missing",
         trainerId: "trainer-1",
       }),
@@ -186,6 +197,7 @@ describe("ULC trainer identity PostgreSQL contract", () => {
     await expect(
       conflict.bindTrainer({
         organizationId: "verein-1",
+        actorPrincipalId: "admin-1",
         identityId: "identity-1",
         trainerId: "trainer-1",
       }),

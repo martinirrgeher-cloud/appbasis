@@ -91,7 +91,10 @@ describe("ULC trainer identity administration access", () => {
   it("allows only an active own-organization admin", async () => {
     await expect(
       service("admin").assertAdminAccess(currentIdentity()),
-    ).resolves.toEqual({ organizationId: ORGANIZATION_ID });
+    ).resolves.toEqual({
+      organizationId: ORGANIZATION_ID,
+      actorPrincipalId: IDENTITY_ID,
+    });
   });
 
   it("denies a trainer even when that trainer has athletes edit capability", async () => {

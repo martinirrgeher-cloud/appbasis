@@ -81,10 +81,12 @@ export class PostgresUlcLinzTrainerIdentityLinks {
 
   async bindTrainer(input: {
     organizationId: string;
+    actorPrincipalId: string;
     identityId: string;
     trainerId: string;
   }): Promise<UlcLinzTrainerIdentityBinding> {
     const organizationId = requiredIdentifier(input.organizationId);
+    const actorPrincipalId = requiredIdentifier(input.actorPrincipalId);
     const identityId = requiredIdentifier(input.identityId);
     const trainerId = requiredIdentifier(input.trainerId);
 
@@ -92,7 +94,8 @@ export class PostgresUlcLinzTrainerIdentityLinks {
     try {
       rows = await this.sql.unsafe(
       `WITH target_identity AS MATERIALIZED (
-         SELECT membership.identity_id
+         SELECT membership.identity_id,
+                membership.subject_id AS previous_subject_id
          FROM ulc_linz_membership AS membership
          JOIN "user" AS account
            ON account.id = membership.identity_id
@@ -101,6 +104,7 @@ export class PostgresUlcLinzTrainerIdentityLinks {
            AND membership.source_role = 'trainer'
            AND membership.active = true
            AND COALESCE(account.banned, false) = false
+         FOR UPDATE OF membership
        ),
        target_trainer AS MATERIALIZED (
          SELECT id
@@ -108,6 +112,7 @@ export class PostgresUlcLinzTrainerIdentityLinks {
          WHERE id = $3
            AND organization_id = $2
            AND is_active = true
+         FOR SHARE
        ),
        conflicting_binding AS MATERIALIZED (
          SELECT membership.identity_id,
@@ -122,6 +127,7 @@ export class PostgresUlcLinzTrainerIdentityLinks {
          WHERE membership.subject_id = $3
            AND membership.identity_id <> $1
          LIMIT 1
+         FOR UPDATE OF membership
        ),
        releasable_conflict AS MATERIALIZED (
          SELECT identity_id
@@ -141,7 +147,7 @@ export class PostgresUlcLinzTrainerIdentityLinks {
          WHERE identity_id IN (SELECT identity_id FROM releasable_conflict)
            AND EXISTS (SELECT 1 FROM target_identity)
            AND EXISTS (SELECT 1 FROM target_trainer)
-         RETURNING identity_id
+         RETURNING identity_id, organization_id, subject_id AS new_subject_id
        ),
        updated AS (
          UPDATE ulc_linz_membership
@@ -163,6 +169,46 @@ export class PostgresUlcLinzTrainerIdentityLinks {
            AND (SELECT count(*) FROM released_conflict) =
                (SELECT count(*) FROM releasable_conflict)
          RETURNING identity_id, organization_id, subject_id
+       ),
+       released_audit AS (
+         INSERT INTO ulc_linz_trainer_identity_audit (
+           event_type,
+           actor_principal_id,
+           organization_id,
+           target_identity_id,
+           previous_subject_id,
+           new_subject_id
+         )
+         SELECT
+           'trainer.identity.detach-stale',
+           $4,
+           released.organization_id,
+           released.identity_id,
+           $3,
+           released.new_subject_id
+         FROM released_conflict AS released
+         RETURNING event_id
+       ),
+       target_audit AS (
+         INSERT INTO ulc_linz_trainer_identity_audit (
+           event_type,
+           actor_principal_id,
+           organization_id,
+           target_identity_id,
+           previous_subject_id,
+           new_subject_id
+         )
+         SELECT
+           'trainer.identity.bind',
+           $4,
+           updated.organization_id,
+           updated.identity_id,
+           target_identity.previous_subject_id,
+           updated.subject_id
+         FROM updated
+         JOIN target_identity
+           ON target_identity.identity_id = updated.identity_id
+         RETURNING event_id
        )
        SELECT
          EXISTS (SELECT 1 FROM target_identity) AS identity_exists,
@@ -175,6 +221,8 @@ export class PostgresUlcLinzTrainerIdentityLinks {
              AND account_banned = false
          ) AS binding_conflict,
          (SELECT count(*)::int FROM released_conflict) AS released_conflict_count,
+         (SELECT count(*)::int FROM released_audit) AS released_audit_count,
+         (SELECT count(*)::int FROM target_audit) AS target_audit_count,
          (SELECT count(*)::int FROM updated) AS updated_count,
          updated.identity_id,
          account.username,
@@ -188,7 +236,7 @@ export class PostgresUlcLinzTrainerIdentityLinks {
        LEFT JOIN appbasis_trainer AS trainer
          ON trainer.id = updated.subject_id
         AND trainer.organization_id = updated.organization_id`,
-      [identityId, organizationId, trainerId],
+      [identityId, organizationId, trainerId, actorPrincipalId],
       );
     } catch (error) {
       if (isSubjectUniquenessViolation(error)) {
@@ -210,6 +258,12 @@ export class PostgresUlcLinzTrainerIdentityLinks {
       !Number.isSafeInteger(row.released_conflict_count) ||
       row.released_conflict_count < 0 ||
       row.released_conflict_count > 1
+    ) {
+      blocked();
+    }
+    if (
+      row.released_audit_count !== row.released_conflict_count ||
+      row.target_audit_count !== 1
     ) {
       blocked();
     }

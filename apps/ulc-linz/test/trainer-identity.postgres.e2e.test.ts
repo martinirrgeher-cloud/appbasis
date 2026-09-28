@@ -104,6 +104,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await expect(
         repository.bindTrainer({
           organizationId: "verein-1",
+          actorPrincipalId: "admin-1",
           identityId: "identity-1",
           trainerId: "trainer-1",
         }),
@@ -117,6 +118,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await expect(
         repository.bindTrainer({
           organizationId: "verein-1",
+          actorPrincipalId: "admin-1",
           identityId: "identity-2",
           trainerId: "trainer-1",
         }),
@@ -131,6 +133,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await expect(
         repository.bindTrainer({
           organizationId: "verein-1",
+          actorPrincipalId: "admin-1",
           identityId: "missing-identity",
           trainerId: "trainer-1",
         }),
@@ -148,6 +151,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await expect(
         repository.bindTrainer({
           organizationId: "verein-1",
+          actorPrincipalId: "admin-1",
           identityId: "identity-2",
           trainerId: "trainer-1",
         }),
@@ -161,6 +165,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await expect(
         repository.bindTrainer({
           organizationId: "verein-1",
+          actorPrincipalId: "admin-1",
           identityId: "identity-2",
           trainerId: "trainer-foreign",
         }),
@@ -182,10 +187,45 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await expect(
         repository.bindTrainer({
           organizationId: "verein-1",
+          actorPrincipalId: "admin-1",
           identityId: "identity-2",
           trainerId: "trainer-1",
         }),
       ).rejects.toBeInstanceOf(UlcLinzTrainerIdentityNotFoundError);
+
+      const auditRows = await client.unsafe(
+        `SELECT event_type, actor_principal_id, organization_id,
+                target_identity_id, previous_subject_id, new_subject_id
+         FROM ulc_linz_trainer_identity_audit
+         ORDER BY event_id`,
+      );
+      expect(auditRows).toHaveLength(3);
+      expect(auditRows[0]).toEqual({
+        event_type: "trainer.identity.bind",
+        actor_principal_id: "admin-1",
+        organization_id: "verein-1",
+        target_identity_id: "identity-1",
+        previous_subject_id: "placeholder-1",
+        new_subject_id: "trainer-1",
+      });
+      expect(auditRows[1]).toMatchObject({
+        event_type: "trainer.identity.detach-stale",
+        actor_principal_id: "admin-1",
+        organization_id: "verein-1",
+        target_identity_id: "identity-1",
+        previous_subject_id: "trainer-1",
+      });
+      expect(auditRows[1]?.new_subject_id).toMatch(
+        /^ulc-detached-trainer:[a-f0-9]{32}$/,
+      );
+      expect(auditRows[2]).toEqual({
+        event_type: "trainer.identity.bind",
+        actor_principal_id: "admin-1",
+        organization_id: "verein-1",
+        target_identity_id: "identity-2",
+        previous_subject_id: "placeholder-2",
+        new_subject_id: "trainer-1",
+      });
 
       const rows = await client.unsafe(
         `SELECT identity_id, subject_id

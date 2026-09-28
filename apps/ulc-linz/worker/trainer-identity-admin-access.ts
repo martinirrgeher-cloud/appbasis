@@ -27,7 +27,7 @@ export interface UlcLinzTrainerIdentityAdminSqlClient {
 export interface UlcLinzTrainerIdentityAdminAccessService {
   assertAdminAccess(
     current: UlcLinzCurrentIdentity,
-  ): Promise<Readonly<{ organizationId: string }>>;
+  ): Promise<Readonly<{ organizationId: string; actorPrincipalId: string }>>;
 }
 
 export function createUlcLinzTrainerIdentityAdminAccessService({
@@ -46,7 +46,7 @@ export function createUlcLinzTrainerIdentityAdminAccessService({
   return Object.freeze({
     async assertAdminAccess(
       current: UlcLinzCurrentIdentity,
-    ): Promise<Readonly<{ organizationId: string }>> {
+    ): Promise<Readonly<{ organizationId: string; actorPrincipalId: string }>> {
       const identityId = optionalIdentifier(current.identity.identityId);
       if (identityId === null) {
         deny(securityEvents, null, null, "identity-access-denied");
@@ -106,7 +106,7 @@ export function createUlcLinzTrainerIdentityAdminAccessService({
         },
       );
 
-      return Object.freeze({ organizationId });
+      return Object.freeze({ organizationId, actorPrincipalId: identityId });
     },
   });
 }

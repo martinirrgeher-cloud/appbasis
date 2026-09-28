@@ -684,9 +684,9 @@ ULC-E4D.5 ist auf `main` abgeschlossen, in Preview ausgerollt und praktisch
 gesichtet. Die kompakte mobile Darstellung bleibt die aktuelle visuelle
 Baseline für die folgenden ULC-Slices.
 
-## Aktueller Gate-Scope: ULC-E4E-A Trainer-Identity-Link
+## Aktueller Gate-Scope: ULC-E4E-A / E4E-A2 Trainer-Identity-Link + Audit
 
-Abnahme für ULC-E4E-A:
+Abnahme für ULC-E4E-A/E4E-A2:
 
 - die bestehende app-eigene `ulc_linz_membership` bleibt der kanonische
   Identity↔ULC-Subject-Vertrag; es wird keine parallele Mapping-Tabelle
@@ -716,12 +716,22 @@ Abnahme für ULC-E4E-A:
 - bestehende Verknüpfungen dürfen idempotent erneut gesetzt werden;
 - E4E-A verändert noch nicht die Kindertraining-Gruppensicht und enthält noch
   keine UI für die Zuordnung; diese Wirkung bleibt E4E-B/E4E-C;
-- E4E-A benötigt keine Datenbankmigration, da der bestehende
-  `subject_id`-Vertrag verwendet wird;
-- PostgreSQL-E2E muss Same-Organization-Link, anschließendes Readback,
-  Doppelbelegung und Fremdorganisation abdecken;
+- die fachliche Zuordnung verwendet weiterhin ausschließlich den bestehenden
+  `subject_id`-Vertrag; E4E-A2 ergänzt jedoch genau eine app-eigene
+  Audit-Migration `0005_ulc_linz_trainer_identity_audit.sql`;
+- jede erfolgreiche Zuordnung persistiert im selben PostgreSQL-Statement einen
+  append-only Auditdatensatz mit authentifiziertem Admin-Principal,
+  Organisation, Ziel-Identity, vorherigem Subject und neuem Subject;
+- das atomare Freigeben einer gesperrten/gelöschten/inaktiven Alt-Bindung
+  erzeugt zusätzlich einen eigenen Auditdatensatz für die detach-Änderung;
+- ein fehlgeschlagenes oder ungültiges Re-Link darf weder die Alt-Bindung
+  verändern noch einen erfolgreichen Auditdatensatz erzeugen;
+- PostgreSQL-E2E muss Same-Organization-Link, Readback, Doppelbelegung,
+  Fremdorganisation, ungültiges Re-Link ohne Seiteneffekt, deaktivierte Trainer
+  und die vollständige Audit-Historie abdecken;
 - der Code-Slice führt keinen Preview-/Production-Write und kein Deployment
-  aus. Nach Merge genügt ein separater Preview-`deploy`; keine Migration.
+  aus. Nach Merge ist wegen `0005` zuerst ein separater Preview-`migrate`
+  und danach ein Preview-`deploy` erforderlich.
 
 E4E-B setzt die Trainer-Gruppenbegrenzung im Kindertraining um. E4E-C ergänzt
 die administrative UI. Sondertrainings, Statistik, Import/Export,
@@ -759,6 +769,10 @@ Ein Finding blockiert den aktuellen ULC-E4E-A-Pfad, wenn mindestens eines gilt:
   Wiederverknüpfung desselben Trainers;
 - eine fremde, inaktive oder gesperrte Identity wird als gültiges Ziel
   akzeptiert;
+- eine erfolgreiche Zuordnung oder stale-detach Änderung wird ohne
+  atomaren, dem authentifizierten Admin zurechenbaren Auditdatensatz
+  persistiert;
+- ein ungültiger Re-Link verändert eine bestehende Bindung oder Audit-Historie;
 - die Zuordnung verändert Athletes-Core-Tabellen oder dessen Domain-Vertrag;
 - E4E-A verändert bereits Kindertraining-Gruppenfilter oder andere
   Berechtigungswirkung außerhalb dieses Slices;

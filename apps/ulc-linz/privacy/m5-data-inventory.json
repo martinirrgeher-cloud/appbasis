@@ -60,13 +60,14 @@
     },
     {
       "id": "ulc-linz-lifecycle",
-      "schemaVersion": 5,
+      "schemaVersion": 6,
       "migrations": [
         "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
         "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
         "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
         "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
-        "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql"
+        "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
+        "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql"
       ],
       "lifecycleStatus": "training-data-lifecycle-pending",
       "notes": [
@@ -82,7 +83,9 @@
         "admin-membership-must-be-demoted-before-inactivation-or-deletion-db-enforced",
         "delete-marker-retention-35-days",
         "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion",
-        "app-owned-training-session-and-attendance-lifecycle-pending"
+        "app-owned-training-session-and-attendance-lifecycle-pending",
+        "trainer-identity-link-audit-is-append-only-and-atomically-written-with-membership-subject-changes",
+        "trainer-identity-audit-12-month-purge-activation-pending-schema-deploy"
       ]
     }
   ],
@@ -310,6 +313,14 @@
       "retentionPolicy": "pending-training-data-lifecycle-contract",
       "deletionEvidence": "fail-closed-pending-lifecycle",
       "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "ulc_linz_trainer_identity_audit",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "audit-security-data",
+      "retentionPolicy": "12-months",
+      "deletionEvidence": "retained-by-policy",
+      "retentionEvidence": "fail-closed-pending-purge-activation"
     }
   ],
   "runtimeModules": [

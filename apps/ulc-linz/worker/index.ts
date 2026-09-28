@@ -440,7 +440,7 @@ async function trainerIdentityAdminResponse(
     return current;
   }
 
-  let access: Readonly<{ organizationId: string }>;
+  let access: Readonly<{ organizationId: string; actorPrincipalId: string }>;
   try {
     access = await runtime.trainerIdentityAccess.assertAdminAccess(current);
   } catch (error) {
@@ -471,6 +471,7 @@ async function trainerIdentityAdminResponse(
     const body = await trainerIdentityJsonBody(request);
     const trainerIdentity = await runtime.trainerIdentityLinks.bindTrainer({
       organizationId: access.organizationId,
+      actorPrincipalId: access.actorPrincipalId,
       identityId: body.identityId as string,
       trainerId: body.trainerId as string,
     });
