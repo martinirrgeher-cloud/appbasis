@@ -706,8 +706,12 @@ Abnahme für ULC-E4E-A:
   aktiver ULC-Trainer-Membership in derselben Organisation;
 - eine Verknüpfung darf nur auf einen aktiven Trainer derselben Organisation
   zeigen;
-- ein Trainer darf nicht gleichzeitig zwei verschiedenen Identities
-  zugeordnet sein; Doppelbelegungen liefern einen expliziten Konflikt;
+- ein Trainer darf nicht gleichzeitig zwei aktiven Identities zugeordnet
+  sein; eine weiterhin aktive Bindung liefert einen expliziten Konflikt;
+- eine alte Trainer-Bindung darf beim Re-Link nur dann atomar freigegeben
+  werden, wenn das bisherige Benutzerkonto gesperrt/gelöscht oder die
+  Membership inaktiv ist; die alte Membership erhält dabei einen
+  app-eigenen detachten Subject-Marker statt weiter die Trainer-ID zu halten;
 - fehlende/fremde Identity- oder Trainer-Ziele failen geschlossen;
 - bestehende Verknüpfungen dürfen idempotent erneut gesetzt werden;
 - E4E-A verändert noch nicht die Kindertraining-Gruppensicht und enthält noch
@@ -749,7 +753,10 @@ Ein Finding blockiert den aktuellen ULC-E4E-A-Pfad, wenn mindestens eines gilt:
 - der Client kann die Organisation für die Zuordnung bestimmen;
 - eine aktive Trainer-Membership kann auf einen fremden oder inaktiven
   Trainer verknüpft werden;
-- derselbe Trainer kann zwei aktiven Identities zugeordnet werden;
+- derselbe Trainer kann zwei aktiven Identities zugeordnet werden oder eine
+  aktive Alt-Bindung wird beim Re-Link still überschrieben;
+- eine gesperrte/gelöschte/inaktive Alt-Bindung blockiert dauerhaft die
+  Wiederverknüpfung desselben Trainers;
 - eine fremde, inaktive oder gesperrte Identity wird als gültiges Ziel
   akzeptiert;
 - die Zuordnung verändert Athletes-Core-Tabellen oder dessen Domain-Vertrag;
