@@ -363,6 +363,8 @@ export class PostgresAthleteMasterdataRepository {
        WHERE t.id = $2
          AND t.organization_id = $1
          AND t.is_active = true
+       ON CONFLICT (organization_id, trainer_id, group_id)
+       DO UPDATE SET group_id = EXCLUDED.group_id
        RETURNING organization_id, trainer_id, group_id`,
       [
         normalizedOrganizationId,
