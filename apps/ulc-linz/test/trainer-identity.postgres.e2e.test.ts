@@ -122,10 +122,29 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         }),
       ).rejects.toBeInstanceOf(UlcLinzTrainerIdentityConflictError);
 
+      await client.unsafe(
+        `UPDATE "user"
+         SET banned = true
+         WHERE id = 'identity-1'`,
+      );
+
       await expect(
         repository.bindTrainer({
           organizationId: "verein-1",
-          identityId: "identity-1",
+          identityId: "identity-2",
+          trainerId: "trainer-1",
+        }),
+      ).resolves.toEqual({
+        identityId: "identity-2",
+        username: "trainer.two",
+        displayName: "Trainer Two",
+        trainerId: "trainer-1",
+      });
+
+      await expect(
+        repository.bindTrainer({
+          organizationId: "verein-1",
+          identityId: "identity-2",
           trainerId: "trainer-foreign",
         }),
       ).rejects.toBeInstanceOf(UlcLinzTrainerIdentityNotFoundError);
@@ -136,10 +155,13 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
          WHERE organization_id = 'verein-1'
          ORDER BY identity_id`,
       );
-      expect(rows).toEqual([
-        { identity_id: "identity-1", subject_id: "trainer-1" },
-        { identity_id: "identity-2", subject_id: "placeholder-2" },
-      ]);
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({ identity_id: "identity-1" });
+      expect(rows[0]?.subject_id).toMatch(/^ulc-detached-trainer:[a-f0-9]{32}$/);
+      expect(rows[1]).toEqual({
+        identity_id: "identity-2",
+        subject_id: "trainer-1",
+      });
     });
 
     function requiredConnection() {
