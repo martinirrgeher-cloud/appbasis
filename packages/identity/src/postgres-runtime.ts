@@ -37,9 +37,16 @@ export async function createPostgresIdentityApplicationRuntime(
       },
     });
 
+    const trustedProvisioningIdentity = Object.freeze({
+      createInitialUser(input: Parameters<typeof identity.service.createInitialUserTrusted>[0]) {
+        return identity.service.createInitialUserTrusted(input);
+      },
+    });
+
     return Object.freeze({
       identity: identity.service,
       lifecycleIdentity: identity.service,
+      trustedProvisioningIdentity,
       sql,
       async close() {
         await connection.client.end();
