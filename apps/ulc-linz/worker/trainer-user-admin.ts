@@ -1,8 +1,7 @@
 import {
   normalizeUsername,
   technicalEmailForUsername,
-  type IdentityState,
-} from "@appbasis/identity";
+} from "@appbasis/identity/username";
 import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
 import type {
   IdentityTrustedProvisioningService,
@@ -62,6 +61,9 @@ export class UlcLinzTrainerUserPersistenceError extends Error {
 }
 
 type DatabaseConnection = ReturnType<typeof createPostgresDatabase>;
+type TrustedIdentityState = Awaited<
+  ReturnType<IdentityTrustedProvisioningService["createInitialUser"]>
+>;
 type DatabaseFactory = (connectionString: string) => DatabaseConnection;
 
 type ExistingUser = Readonly<{
@@ -297,7 +299,7 @@ function requireRecoverableUser(
 }
 
 function requireExactIdentityState(
-  state: IdentityState,
+  state: TrustedIdentityState,
   username: string,
   displayName: string,
   contactEmail: string | null,
