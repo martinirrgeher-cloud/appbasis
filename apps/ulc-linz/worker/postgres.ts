@@ -148,8 +148,8 @@ export async function createGeneratedPostgresApplicationRuntime(
     const trainerUserAdmin =
       new PostgresUlcLinzTrainerUserAdministration({
         connectionString: options.connectionString,
-        baseURL: options.baseURL,
-        secret: options.secret,
+        trustedProvisioningIdentity:
+          identityRuntime.trustedProvisioningIdentity,
       });
     const athleteMasterdataRepository =
       new PostgresAthleteMasterdataRepository(applicationSql);
