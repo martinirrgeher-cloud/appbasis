@@ -44,7 +44,10 @@ export interface GeneratedPostgresApplicationRuntime {
   athletesAccess: UlcLinzAthletesAccessService;
   kindertrainingAccess: UlcLinzKindertrainingAccessService;
   trainerIdentityAccess: UlcLinzTrainerIdentityAdminAccessService;
-  trainerIdentityLinks: PostgresUlcLinzTrainerIdentityLinks;
+  trainerIdentityLinks: Pick<
+    PostgresUlcLinzTrainerIdentityLinks,
+    "listBindings" | "bindTrainer"
+  >;
   athleteMasterdata: Pick<
     PostgresAthleteMasterdataRepository,
     | "readOrganizationSnapshot"
