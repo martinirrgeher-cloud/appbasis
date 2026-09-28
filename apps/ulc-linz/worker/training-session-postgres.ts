@@ -18,7 +18,17 @@ export interface UlcTrainingSessionSqlClient {
 
 export interface UlcTrainingSessionSnapshot {
   readonly session: UlcTrainingSession;
+  readonly revision: string;
   readonly attendance: readonly UlcTrainingAttendance[];
+}
+
+export class UlcTrainingSessionConflictError extends Error {
+  readonly code = "ULC_TRAINING_SESSION_CONFLICT";
+
+  constructor() {
+    super("ULC training session was changed by another editor.");
+    this.name = "UlcTrainingSessionConflictError";
+  }
 }
 
 export class UlcTrainingSessionPersistenceError extends Error {
@@ -67,7 +77,8 @@ export class PostgresUlcTrainingSessionRepository {
               group_id,
               session_date::text AS session_date,
               state,
-              note
+              note,
+              xmin::text AS revision
        FROM ulc_linz_training_session
        WHERE organization_id = $1
          AND module_id = $2
@@ -98,7 +109,11 @@ export class PostgresUlcTrainingSessionRepository {
       ),
     );
 
-    return Object.freeze({ session, attendance });
+    return Object.freeze({
+      session,
+      revision: rowRevision(rows[0]),
+      attendance,
+    });
   }
 
   async saveSession(
@@ -108,6 +123,7 @@ export class PostgresUlcTrainingSessionRepository {
       readonly athleteId: string;
       readonly status: UlcTrainingAttendance["status"];
     }[],
+    expectedRevision: string | null,
   ): Promise<UlcTrainingSessionSnapshot> {
     const proposed = createUlcTrainingSession(input, {
       id: requiredGeneratedId(this.#createId()),
@@ -127,9 +143,31 @@ export class PostgresUlcTrainingSessionRepository {
         status: entry.status,
       })),
     );
+    const revision =
+      expectedRevision === null ? null : requiredRevisionToken(expectedRevision);
 
     const rows = await this.#sql.unsafe(
-      `WITH saved_session AS (
+      `WITH updated_session AS (
+         UPDATE ulc_linz_training_session
+         SET state = $6,
+             note = $7,
+             updated_at = now()
+         WHERE organization_id = $2
+           AND module_id = $3
+           AND group_id = $4
+           AND session_date = $5::date
+           AND $9::text IS NOT NULL
+           AND xmin::text = $9::text
+         RETURNING id,
+                   organization_id,
+                   module_id,
+                   group_id,
+                   session_date::text AS session_date,
+                   state,
+                   note,
+                   xmin::text AS revision
+       ),
+       inserted_session AS (
          INSERT INTO ulc_linz_training_session (
            id,
            organization_id,
@@ -139,19 +177,23 @@ export class PostgresUlcTrainingSessionRepository {
            state,
            note
          )
-         VALUES ($1, $2, $3, $4, $5::date, $6, $7)
+         SELECT $1, $2, $3, $4, $5::date, $6, $7
+         WHERE $9::text IS NULL
          ON CONFLICT (organization_id, module_id, group_id, session_date)
-         DO UPDATE SET
-           state = EXCLUDED.state,
-           note = EXCLUDED.note,
-           updated_at = now()
+         DO NOTHING
          RETURNING id,
                    organization_id,
                    module_id,
                    group_id,
                    session_date::text AS session_date,
                    state,
-                   note
+                   note,
+                   xmin::text AS revision
+       ),
+       saved_session AS MATERIALIZED (
+         SELECT * FROM updated_session
+         UNION ALL
+         SELECT * FROM inserted_session
        ),
        input_attendance AS MATERIALIZED (
          SELECT athlete_id, status
@@ -194,6 +236,7 @@ export class PostgresUlcTrainingSessionRepository {
               session.session_date,
               session.state,
               session.note,
+              session.revision,
               (SELECT count(*)::int FROM saved_attendance)
                 AS saved_attendance_count,
               (SELECT count(*)::int FROM deleted_stale_attendance)
@@ -208,9 +251,13 @@ export class PostgresUlcTrainingSessionRepository {
         proposed.state,
         proposed.note,
         payload,
+        revision,
       ],
     );
 
+    if (rows.length === 0) {
+      throw new UlcTrainingSessionConflictError();
+    }
     if (rows.length !== 1 || rows[0] === undefined) blocked();
     const session = sessionFromRow(rows[0], proposed.organizationId);
     if (
@@ -223,6 +270,7 @@ export class PostgresUlcTrainingSessionRepository {
 
     return Object.freeze({
       session,
+      revision: rowRevision(rows[0]),
       attendance: Object.freeze(
         normalizedAttendance.map((entry) =>
           Object.freeze({
@@ -317,6 +365,21 @@ function rowString(row: Record<string, unknown>, key: string): string {
     value.length === 0 ||
     value.length > 200 ||
     value.trim() !== value
+  ) {
+    blocked();
+  }
+  return value;
+}
+
+function rowRevision(row: Record<string, unknown>): string {
+  return requiredRevisionToken(row.revision);
+}
+
+function requiredRevisionToken(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    !/^\d+$/.test(value) ||
+    value.length > 20
   ) {
     blocked();
   }

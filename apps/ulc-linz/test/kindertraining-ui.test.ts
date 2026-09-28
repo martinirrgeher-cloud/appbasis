@@ -35,6 +35,9 @@ describe("ULC E4C Kindertraining UI", () => {
       'requestJson("/api/modules/kindertraining/session", {',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "expectedRevision: kindertrainingSnapshot.session?.revision ?? null",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
       "attendance: kindertrainingSnapshot.participants.map",
     );
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
@@ -58,5 +61,7 @@ describe("ULC E4C Kindertraining UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'showMessage(elements.kindertrainingSuccess, "Training wurde gespeichert.")',
     );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("error?.status === 409");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Konflikt – neu laden");
   });
 });

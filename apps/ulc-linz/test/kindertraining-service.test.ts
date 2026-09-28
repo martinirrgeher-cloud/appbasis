@@ -96,6 +96,7 @@ function storedSession(): UlcTrainingSessionSnapshot {
       state: "scheduled",
       note: "Halle",
     },
+    revision: "41",
     attendance: [
       {
         organizationId: ORGANIZATION_ID,
@@ -184,6 +185,7 @@ describe("ULC Kindertraining service", () => {
       sessionDate: DATE,
       session: {
         id: "session-1",
+        revision: "41",
         state: "scheduled",
         note: "Halle",
       },
@@ -214,6 +216,7 @@ describe("ULC Kindertraining service", () => {
           groupId: string;
           sessionDate: string;
           attendance: readonly unknown[];
+          expectedRevision: string | null;
         }
       | undefined;
 
@@ -227,13 +230,14 @@ describe("ULC Kindertraining service", () => {
         async readSession() {
           return null;
         },
-        async saveSession(organizationId, input, attendance) {
+        async saveSession(organizationId, input, attendance, expectedRevision) {
           received = {
             organizationId,
             moduleId: input.moduleId,
             groupId: input.groupId,
             sessionDate: input.sessionDate,
             attendance,
+            expectedRevision,
           };
           return {
             session: {
@@ -245,6 +249,7 @@ describe("ULC Kindertraining service", () => {
               state: input.state ?? "scheduled",
               note: input.note ?? null,
             },
+            revision: "42",
             attendance: attendance.map((entry) => ({
               organizationId,
               sessionId: "session-new",
@@ -260,6 +265,7 @@ describe("ULC Kindertraining service", () => {
       groupId: GROUP_ID,
       sessionDate: DATE,
       note: "  Halle  ",
+      expectedRevision: "41",
       attendance: [
         { athleteId: "athlete-1", status: "present" },
         { athleteId: "athlete-2", status: "absent" },
@@ -271,6 +277,7 @@ describe("ULC Kindertraining service", () => {
       moduleId: "kindertraining",
       groupId: GROUP_ID,
       sessionDate: DATE,
+      expectedRevision: "41",
     });
     expect(result.session?.id).toBe("session-new");
     expect(result.participants.map((entry) => entry.status)).toEqual([
@@ -311,6 +318,7 @@ describe("ULC Kindertraining service", () => {
         service.saveSession(ORGANIZATION_ID, {
           groupId: GROUP_ID,
           sessionDate: DATE,
+          expectedRevision: null,
           attendance,
         }),
       ).rejects.toBeInstanceOf(UlcTrainingValidationError);
@@ -346,6 +354,7 @@ describe("ULC Kindertraining service", () => {
       service.saveSession(ORGANIZATION_ID, {
         groupId: GROUP_ID,
         sessionDate: DATE,
+        expectedRevision: null,
         attendance: [],
       }),
     ).rejects.toBeInstanceOf(UlcKindertrainingNotFoundError);

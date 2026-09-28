@@ -16,6 +16,7 @@ import {
   UlcKindertrainingNotFoundError,
 } from "./kindertraining-service";
 import { UlcTrainingValidationError } from "./training-session-domain";
+import { UlcTrainingSessionConflictError } from "./training-session-postgres";
 import { recordUlcLinzSecurityEvent } from "./security-events";
 import { generatedUiResponse } from "./ui";
 import {
@@ -207,6 +208,7 @@ async function kindertrainingSessionResponse(
         ...(body.note === undefined
           ? {}
           : { note: body.note as string | null }),
+        expectedRevision: body.expectedRevision as string | null,
         attendance: body.attendance as Array<{
           athleteId: string;
           status: "open" | "present" | "excused" | "absent";
@@ -215,6 +217,9 @@ async function kindertrainingSessionResponse(
     );
     return Response.json({ snapshot });
   } catch (error) {
+    if (error instanceof UlcTrainingSessionConflictError) {
+      return kindertrainingSessionConflict();
+    }
     if (error instanceof UlcTrainingValidationError) {
       return invalidKindertrainingSession();
     }
@@ -322,14 +327,28 @@ async function kindertrainingJsonBody(
     throw new InvalidKindertrainingRequestError();
   }
   const body = value as Record<string, unknown>;
-  const allowed = ["groupId", "sessionDate", "state", "note", "attendance"];
+  const allowed = [
+    "groupId",
+    "sessionDate",
+    "state",
+    "note",
+    "expectedRevision",
+    "attendance",
+  ];
   if (
     Object.keys(body).some((key) => !allowed.includes(key)) ||
     !Object.prototype.hasOwnProperty.call(body, "groupId") ||
     !Object.prototype.hasOwnProperty.call(body, "sessionDate") ||
+    !Object.prototype.hasOwnProperty.call(body, "expectedRevision") ||
     !Object.prototype.hasOwnProperty.call(body, "attendance") ||
     Object.getOwnPropertySymbols(body).length !== 0 ||
-    !Array.isArray(body.attendance)
+    !Array.isArray(body.attendance) ||
+    !(
+      body.expectedRevision === null ||
+      (typeof body.expectedRevision === "string" &&
+        /^\d+$/.test(body.expectedRevision) &&
+        body.expectedRevision.length <= 20)
+    )
   ) {
     throw new InvalidKindertrainingRequestError();
   }
@@ -357,6 +376,18 @@ function invalidKindertrainingSession(): Response {
       },
     },
     { status: 400 },
+  );
+}
+
+function kindertrainingSessionConflict(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "TRAINING_SESSION_CONFLICT",
+        message: "The training session changed since it was loaded.",
+      },
+    },
+    { status: 409 },
   );
 }
 
