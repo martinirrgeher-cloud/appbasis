@@ -664,7 +664,9 @@ async function trainerUserAdminResponse(
       actorPrincipalId: access.actorPrincipalId,
       username: body.username as string,
       displayName: body.displayName as string,
-      contactEmail: body.contactEmail as string | null | undefined,
+      ...(body.contactEmail === undefined
+        ? {}
+        : { contactEmail: body.contactEmail as string | null }),
       temporaryPassword: body.temporaryPassword as string,
       profile: body.profile as "kindertrainer" | "leistungstrainer",
     });
