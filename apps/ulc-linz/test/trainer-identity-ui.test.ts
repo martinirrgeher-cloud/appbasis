@@ -1,0 +1,61 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  ULC_LINZ_APP_HTML,
+  ULC_LINZ_APP_SCRIPT,
+} from "../worker/ui";
+
+describe("ULC E4E-C trainer identity administration UI", () => {
+  it("adds a compact trainer-user assignment workspace to Stammdaten", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-identity-admin"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-identity-load"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-identity-list"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-identity-identity"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-identity-trainer"');
+    expect(ULC_LINZ_APP_HTML).toContain(
+      "Die Zuordnung wird erst auf ausdrücklichen Aufruf geladen.",
+    );
+  });
+
+  it("uses only the existing server-authorized trainer identity API", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'requestJson("/api/admin/trainer-identities")',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'requestJson("/api/admin/trainer-identities", {',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "body: JSON.stringify({ identityId, trainerId })",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
+  });
+
+  it("loads administration lazily instead of probing every signed-in user", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'elements.trainerIdentityLoad?.addEventListener("click", () => void loadTrainerIdentityAdmin());',
+    );
+    const start = ULC_LINZ_APP_SCRIPT.indexOf("async function acceptSession(next)");
+    const end = ULC_LINZ_APP_SCRIPT.indexOf("async function bootstrapKindertraining()", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const acceptSession = ULC_LINZ_APP_SCRIPT.slice(start, end);
+    expect(acceptSession).not.toContain("/api/admin/trainer-identities");
+    expect(acceptSession).not.toContain("loadTrainerIdentityAdmin");
+  });
+
+  it("handles protected and conflicting assignments without weakening server security", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "Die Benutzerzuordnung ist nur für Administratoren verfügbar.",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "Benutzer oder Trainer ist nicht mehr verfügbar.",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "Dieser Trainer ist bereits einem anderen aktiven Benutzer zugeordnet.",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "Trainer-Benutzerzuordnung wurde gespeichert.",
+    );
+  });
+});
