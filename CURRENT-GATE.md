@@ -823,9 +823,9 @@ Ein Finding blockiert den aktuellen ULC-E4E-B-Pfad, wenn mindestens eines gilt:
   als Scope setzen;
 - eine Gruppenbereichs-Ablehnung bleibt ohne Security-Event.
 
-Nicht gate-blockierend sind die spätere administrative UI, Trainer-
-Gruppenfilterung, weitere visuelle Feinarbeiten, Sondertrainings, Statistik,
-Import/Export, Realtime/Edit-Locks und U12/U14.
+Nicht gate-blockierend sind die spätere administrative UI, weitere visuelle
+Feinarbeiten, Sondertrainings, Statistik, Import/Export, Realtime/Edit-Locks
+und U12/U14.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 

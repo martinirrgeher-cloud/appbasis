@@ -1562,6 +1562,13 @@ describe("Kindertraining runtime API", () => {
               ["group-1"],
             );
           },
+          async assertEditAccess() {
+            return kindertrainingTrainerAccess(
+              "verein-server",
+              "trainer-1",
+              ["group-1"],
+            );
+          },
         },
         kindertraining: {
           ...base.kindertraining,
