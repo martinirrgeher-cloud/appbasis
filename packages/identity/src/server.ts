@@ -481,10 +481,30 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions) {
     stateStore,
     options.now ?? (() => new Date()),
     () => backend.assertProvisioningAuthorized(),
-    (input) => backend.createUsernameAccountTrusted(input),
   );
 
   return { backend, stateStore, service };
+}
+
+export function createTrustedIdentityProvisioningService(
+  runtime: Readonly<{
+    backend: BetterAuthIdentityBackend;
+    stateStore: PostgresIdentityStateStore;
+  }>,
+  now: () => Date = () => new Date(),
+) {
+  const service = new IdentityService(
+    runtime.backend,
+    runtime.stateStore,
+    now,
+    async () => {},
+    (input) => runtime.backend.createUsernameAccountTrusted(input),
+  );
+  return Object.freeze({
+    createInitialUser(input: Parameters<typeof service.createInitialUserTrusted>[0]) {
+      return service.createInitialUserTrusted(input);
+    },
+  });
 }
 
 type OperationRow = {
