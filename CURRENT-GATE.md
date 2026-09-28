@@ -671,37 +671,49 @@ Training-Migration und Deploy liefen erfolgreich; der Preview-Smoke bestätigte
 die ausgelieferte Kindertraining-Oberfläche, Runtime-Verdrahtung, fail-closed
 Authentifizierung und das Application-DB-Binding.
 
-## Aktueller Gate-Scope: ULC-E4D
+## Abgeschlossener Gate-Scope: ULC-E4D
 
-Abnahme für ULC-E4D:
+ULC-E4D ist auf `main` abgeschlossen und in Preview ausgerollt. Der
+PostgreSQL-E2E beweist stale-update- und parallel-create-Konflikte fail-closed;
+der Preview-Deploy bestätigte die ausgelieferte Kindertraining-Oberfläche,
+Runtime-Verdrahtung und das Application-DB-Binding.
 
-- jeder geladene bestehende Kindertraining-Datensatz trägt einen opaken
-  Revisions-Token; eine noch nicht gespeicherte Einheit hat keinen Token;
-- der Browser muss beim Speichern explizit den geladenen Revisionsstand
-  mitsenden: bestehende Einheit = Token, neue Einheit = `null`;
-- der Token ist keine Berechtigungs- oder Organisationsinformation und wird
-  ausschließlich als Optimistic-Concurrency-Vorbedingung verwendet;
-- bestehende Trainingseinheiten werden nur aktualisiert, wenn der übermittelte
-  Token atomar zur aktuellen PostgreSQL-Zeilenversion passt;
-- ein Create mit `null` darf eine inzwischen parallel angelegte Einheit
-  nicht überschreiben;
-- bei einem Revisionskonflikt werden weder Session noch Anwesenheit verändert;
-  die API antwortet mit HTTP `409 TRAINING_SESSION_CONFLICT`;
-- die mobile UI zeigt den Konflikt verständlich an und fordert zum Neuladen
-  auf, statt einen älteren Stand erneut blind zu speichern;
-- die vollständige Anwesenheit bleibt im selben atomaren SQL-Statement wie
-  die erfolgreiche Session-Aktualisierung;
-- der Browser sendet weiterhin weder `organizationId` noch `moduleId`;
-- E4D benötigt keine neue Datenbankmigration: der Revisions-Token wird aus der
-  PostgreSQL-Zeilenversion der bestehenden app-eigenen Session-Tabelle
-  abgeleitet;
-- PostgreSQL-E2E muss beweisen, dass ein Save mit veraltetem Token scheitert
-  und die zuvor erfolgreich gespeicherten Daten unverändert bleiben;
+## Aktueller Gate-Scope: ULC-E4D.5 Compact UI
+
+Abnahme für ULC-E4D.5:
+
+- die Runde verändert ausschließlich Layout/Responsive-Verhalten der
+  bestehenden ULC-Oberfläche; Fachlogik, API-Verträge, Berechtigungen,
+  Revisionslogik und Datenmodell bleiben unverändert;
+- die globale mobile Chrome wird verdichtet: Header, Content-Abstände,
+  Hero-Bereiche, Karten, Navigation und Meldungen benötigen weniger
+  Vertikalraum;
+- zentrale Touch-Ziele bleiben mindestens 44 px hoch; Platzersparnis erfolgt
+  primär über Abstände, Padding und mehrspaltige Anordnung statt über
+  unbrauchbar kleine Bedienelemente;
+- das Dashboard wird kompakter; ab Tabletbreite dürfen Funktionskarten
+  zweispaltig angeordnet werden;
+- Stammdatenlisten ordnen Bearbeiten-/Deaktivieren-Aktionen auf üblichen
+  Smartphonebreiten neben Titel/Metadaten an, mit einspaltigem Fallback auf
+  sehr schmalen Geräten;
+- Stammdatenformulare nutzen auf üblichen Smartphonebreiten zwei Spalten,
+  sofern die Felder sinnvoll nebeneinander bedienbar bleiben; schmale Geräte
+  unter 360 px fallen auf eine Spalte zurück;
+- Kindertraining ordnet Trainingsgruppe + Datum sowie Status + Notiz
+  platzsparender nebeneinander an und reduziert Abstände innerhalb der
+  Teilnehmer-/Anwesenheitskarten;
+- die vier Anwesenheitsstatus bleiben gleichzeitig sichtbar und
+  touch-tauglich; die vorhandenen Statuswerte und Save-Semantik werden nicht
+  geändert;
+- die bestehende DOM-/`textContent`-Strategie für dynamische Fach- und
+  Personendaten bleibt unverändert; keine neue HTML-Injektion;
+- automatisierte UI-Contract-Tests pinnen die Compact-Regeln inklusive
+  44-px-Touchziel und Narrow-Screen-Fallback;
 - der Code-Slice führt keinen Preview-/Production-Write und kein Deployment
-  aus. Nach Merge ist für die praktische Preview-Abnahme nur ein erneutes
-  `deploy` erforderlich, keine Schema-Migration.
+  aus. Nach Merge erfolgt die praktische Layout-Abnahme über einen separaten
+  Preview-`deploy` mit ausdrücklicher Nutzerfreigabe.
 
-Sondertrainings, Trainerzuordnung, Statistik, Import/Export,
+Trainerzuordnung, Sondertrainings, Statistik, Import/Export,
 Realtime/Edit-Locks sowie die Aktivierung der gemeinsamen Runtime für U12/U14
 bleiben separate Folgearbeiten.
 
@@ -723,28 +735,24 @@ bleiben separate Folgearbeiten.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E4D-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E4D.5-Pfad, wenn mindestens eines gilt:
 
-- ein bestehendes Training kann ohne expliziten Revisions-Token gespeichert
-  werden;
-- ein veralteter oder fehlender Token kann eine bestehende Einheit
-  überschreiben;
-- ein paralleles Create kann bei `expectedRevision: null` eine inzwischen
-  vorhandene Einheit aktualisieren;
-- Anwesenheit wird trotz fehlgeschlagener Revisionsprüfung teilweise
-  geschrieben oder gelöscht;
-- Revisionskonflikte werden als generischer 500/400 statt als `409`
-  behandelt;
-- der Client löst Konflikte durch automatisches Überschreiben statt durch
-  Neuladen;
-- der Revisions-Token wird zur Scope-/Berechtigungsentscheidung verwendet;
-- der Browser kann `organizationId` oder `moduleId` bestimmen;
+- die Layout-Runde ändert API-, Berechtigungs-, Datenbank- oder
+  Kindertraining-Save-Semantik;
+- zentrale Touch-Ziele werden unter 44 px verkleinert;
+- die kompakte Anordnung verursacht auf unterstützten Smartphonebreiten
+  horizontales Seiten-Scrolling oder abgeschnittene Hauptaktionen;
+- Stammdatenaktionen sind auf sehr schmalen Geräten nicht mehr erreichbar;
+- Anwesenheitsstatus werden versteckt, zusammengelegt oder fachlich
+  umgedeutet;
+- dynamische Personendaten werden über `innerHTML` oder vergleichbare
+  unsichere HTML-Injektion gerendert;
 - der Code-PR mutiert Preview/Produktion oder deployt ohne gesonderte
   Freigabe.
 
-Nicht gate-blockierend sind Sondertrainings, Trainerzuordnung, Statistik,
-Import/Export, Realtime/Edit-Locks und U12/U14; sie bleiben getrennte
-Folge-Slices.
+Nicht gate-blockierend sind weitere visuelle Feinarbeiten nach der
+Preview-Sichtung sowie Trainerzuordnung, Sondertrainings, Statistik,
+Import/Export, Realtime/Edit-Locks und U12/U14.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 
