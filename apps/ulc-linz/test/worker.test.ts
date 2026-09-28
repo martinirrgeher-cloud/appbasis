@@ -7,6 +7,7 @@ import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
+import { UlcLinzTrainerUserConflictError } from "../worker/trainer-user-admin";
 import {
   ULC_LINZ_APP_CSS,
   ULC_LINZ_APP_HTML,
@@ -265,6 +266,26 @@ function runtime(
           username: "trainer.user",
           displayName: "Trainer User",
           trainerId: input.trainerId,
+        };
+      },
+    },
+    userAdminAccess: {
+      async assertAdminAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: "identity-worker-1",
+        };
+      },
+    },
+    trainerUserAdmin: {
+      async createTrainerUser(input) {
+        return {
+          identityId: "trainer-user-test",
+          username: input.username,
+          displayName: input.displayName,
+          contactEmail: input.contactEmail ?? null,
+          profile: input.profile,
+          created: true,
         };
       },
     },
@@ -1499,6 +1520,176 @@ describe("Trainer identity administration API", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+});
+
+describe("Trainer user administration API", () => {
+  it("creates a trainer user with server-owned organization and actor scope", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        userAdminAccess: {
+          async assertAdminAccess() {
+            return {
+              organizationId: "verein-server",
+              actorPrincipalId: "identity-worker-1",
+            };
+          },
+        },
+        trainerUserAdmin: {
+          async createTrainerUser(input) {
+            received = input;
+            return {
+              identityId: "identity-trainer-a",
+              username: input.username,
+              displayName: input.displayName,
+              contactEmail: input.contactEmail ?? null,
+              profile: input.profile,
+              created: true,
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/trainer-users", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          username: "trainer.a",
+          displayName: "Trainer A",
+          contactEmail: "trainer.a@example.test",
+          temporaryPassword: "Temporary-123",
+          profile: "kindertrainer",
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      actorPrincipalId: "identity-worker-1",
+      username: "trainer.a",
+      displayName: "Trainer A",
+      contactEmail: "trainer.a@example.test",
+      temporaryPassword: "Temporary-123",
+      profile: "kindertrainer",
+    });
+    await expect(response.json()).resolves.toEqual({
+      trainerUser: {
+        identityId: "identity-trainer-a",
+        username: "trainer.a",
+        displayName: "Trainer A",
+        contactEmail: "trainer.a@example.test",
+        profile: "kindertrainer",
+        created: true,
+      },
+    });
+  });
+
+  it("rejects client-owned scope and unsupported trainer-user shapes", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    for (const body of [
+      {
+        organizationId: "verein-client",
+        username: "trainer.a",
+        displayName: "Trainer A",
+        temporaryPassword: "Temporary-123",
+        profile: "kindertrainer",
+      },
+      {
+        username: "trainer.a",
+        displayName: "Trainer A",
+        temporaryPassword: "Temporary-123",
+        profile: "admin",
+      },
+    ]) {
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test/api/admin/trainer-users", {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }),
+        validEnv,
+      );
+      expect(response.status).toBe(400);
+    }
+
+    const queryResponse = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/admin/trainer-users?organizationId=verein-client",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            username: "trainer.a",
+            displayName: "Trainer A",
+            temporaryPassword: "Temporary-123",
+            profile: "kindertrainer",
+          }),
+        },
+      ),
+      validEnv,
+    );
+    expect(queryResponse.status).toBe(400);
+  });
+
+  it("fails closed for non-admin user administration and maps state conflicts", async () => {
+    const deniedWorker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        userAdminAccess: {
+          async assertAdminAccess() {
+            throw new UlcLinzAuthorizationDeniedError();
+          },
+        },
+      };
+    });
+
+    const request = () =>
+      new Request("https://ulc.example.test/api/admin/trainer-users", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          username: "trainer.a",
+          displayName: "Trainer A",
+          temporaryPassword: "Temporary-123",
+          profile: "kindertrainer",
+        }),
+      });
+
+    expect((await deniedWorker.fetch(request(), validEnv)).status).toBe(403);
+
+    const conflictWorker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerUserAdmin: {
+          async createTrainerUser() {
+            throw new UlcLinzTrainerUserConflictError();
+          },
+        },
+      };
+    });
+    expect((await conflictWorker.fetch(request(), validEnv)).status).toBe(409);
   });
 });
 
