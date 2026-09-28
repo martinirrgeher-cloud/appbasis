@@ -20,14 +20,22 @@ export interface CreateInitialUserInput {
   contactEmail?: string;
 }
 
+type CreateUsernameAccountInput = {
+  operationId: string;
+  username: string;
+  displayName: string;
+  technicalEmail: string;
+  temporaryPassword: string;
+};
+
+type TrustedUsernameAccountCreator = (
+  input: CreateUsernameAccountInput,
+) => Promise<{ identityId: string }>;
+
 interface BetterAuthIdentityBackend {
-  createUsernameAccount(input: {
-    operationId: string;
-    username: string;
-    displayName: string;
-    technicalEmail: string;
-    temporaryPassword: string;
-  }): Promise<{ identityId: string }>;
+  createUsernameAccount(
+    input: CreateUsernameAccountInput,
+  ): Promise<{ identityId: string }>;
   signInWithUsername(input: {
     username: string;
     password: string;
@@ -74,20 +82,39 @@ export class IdentityService {
     private readonly stateStore: IdentityStateStore,
     private readonly now: () => Date = () => new Date(),
     private readonly authorizeProvisioning: () => Promise<void> = async () => {},
+    private readonly trustedCreateUsernameAccount?: TrustedUsernameAccountCreator,
   ) {}
 
   async createInitialUser(
     input: CreateInitialUserInput,
   ): Promise<IdentityState> {
+    // Production runtimes authorize before any reconciliation state is read,
+    // including already-completed idempotent retries.
+    await this.authorizeProvisioning();
+    return this.createInitialUserWith(
+      input,
+      (accountInput) => this.authProvider.createUsernameAccount(accountInput),
+    );
+  }
+
+  async createInitialUserTrusted(
+    input: CreateInitialUserInput,
+  ): Promise<IdentityState> {
+    const creator = this.trustedCreateUsernameAccount;
+    if (creator === undefined) {
+      throw new Error("Trusted identity provisioning is unavailable.");
+    }
+    return this.createInitialUserWith(input, creator);
+  }
+
+  private async createInitialUserWith(
+    input: CreateInitialUserInput,
+    createUsernameAccount: TrustedUsernameAccountCreator,
+  ): Promise<IdentityState> {
     const username = normalizeUsername(input.username);
     const displayName = requiredText(input.displayName, "displayName");
     const contactEmail = optionalText(input.contactEmail);
     const technicalEmail = await technicalEmailForUsername(username);
-
-    // Production runtimes provide an authorization callback here so every
-    // provisioning invocation is authorized before any reconciliation state
-    // is read, including already-completed idempotent retries.
-    await this.authorizeProvisioning();
 
     const operation = await this.stateStore.prepareOperation({
       operationKey: `provision:${username}`,
@@ -103,14 +130,14 @@ export class IdentityService {
         return withAccountStatus(existing, accountStatus);
       }
     }
-    const created = await this.authProvider.createUsernameAccount({
+
+    const created = await createUsernameAccount({
       operationId: operation.operationId,
       username,
       displayName,
       technicalEmail,
       temporaryPassword: input.temporaryPassword,
     });
-
     const state = await this.stateStore.completeProvisioning({
       operationId: operation.operationId,
       identityId: created.identityId,
