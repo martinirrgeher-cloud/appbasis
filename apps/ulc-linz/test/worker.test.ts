@@ -224,6 +224,24 @@ function runtime(
     countdownAccess,
     athletesAccess,
     kindertrainingAccess,
+    trainerIdentityAccess: {
+      async assertAdminAccess() {
+        return { organizationId: "verein-1" };
+      },
+    },
+    trainerIdentityLinks: {
+      async listBindings() {
+        return [];
+      },
+      async bindTrainer(input) {
+        return {
+          identityId: input.identityId,
+          username: "trainer.user",
+          displayName: "Trainer User",
+          trainerId: input.trainerId,
+        };
+      },
+    },
     athleteMasterdata,
     kindertraining,
     securityEvents: {
