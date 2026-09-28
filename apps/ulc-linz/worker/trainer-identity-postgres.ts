@@ -1,0 +1,212 @@
+type SqlParameter = string | number | boolean | null;
+
+export interface UlcLinzTrainerIdentitySqlClient {
+  unsafe(
+    query: string,
+    parameters?: SqlParameter[],
+  ): PromiseLike<readonly Record<string, unknown>[]>;
+}
+
+export interface UlcLinzTrainerIdentityBinding {
+  readonly identityId: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly trainerId: string | null;
+}
+
+export class UlcLinzTrainerIdentityNotFoundError extends Error {
+  readonly code = "ULC_LINZ_TRAINER_IDENTITY_NOT_FOUND";
+
+  constructor() {
+    super("Trainer identity or trainer was not found.");
+    this.name = "UlcLinzTrainerIdentityNotFoundError";
+  }
+}
+
+export class UlcLinzTrainerIdentityConflictError extends Error {
+  readonly code = "ULC_LINZ_TRAINER_IDENTITY_CONFLICT";
+
+  constructor() {
+    super("Trainer is already linked to another identity.");
+    this.name = "UlcLinzTrainerIdentityConflictError";
+  }
+}
+
+export class UlcLinzTrainerIdentityPersistenceError extends Error {
+  readonly code = "ULC_LINZ_TRAINER_IDENTITY_PERSISTENCE_ERROR";
+
+  constructor() {
+    super("Trainer identity persistence returned an inconsistent state.");
+    this.name = "UlcLinzTrainerIdentityPersistenceError";
+  }
+}
+
+export class PostgresUlcLinzTrainerIdentityLinks {
+  constructor(private readonly sql: UlcLinzTrainerIdentitySqlClient) {}
+
+  async listBindings(
+    organizationId: string,
+  ): Promise<readonly UlcLinzTrainerIdentityBinding[]> {
+    const normalizedOrganizationId = requiredIdentifier(organizationId);
+    const rows = await this.sql.unsafe(
+      `SELECT membership.identity_id,
+              account.username,
+              account.name AS display_name,
+              trainer.id AS trainer_id
+       FROM ulc_linz_membership AS membership
+       JOIN "user" AS account
+         ON account.id = membership.identity_id
+       LEFT JOIN appbasis_trainer AS trainer
+         ON trainer.id = membership.subject_id
+        AND trainer.organization_id = membership.organization_id
+       WHERE membership.organization_id = $1
+         AND membership.source_role = 'trainer'
+         AND membership.active = true
+         AND COALESCE(account.banned, false) = false
+       ORDER BY account.name ASC, account.username ASC, membership.identity_id ASC`,
+      [normalizedOrganizationId],
+    );
+
+    const seen = new Set<string>();
+    return Object.freeze(
+      rows.map((row) => {
+        const binding = bindingFromRow(row);
+        if (seen.has(binding.identityId)) blocked();
+        seen.add(binding.identityId);
+        return binding;
+      }),
+    );
+  }
+
+  async bindTrainer(input: {
+    organizationId: string;
+    identityId: string;
+    trainerId: string;
+  }): Promise<UlcLinzTrainerIdentityBinding> {
+    const organizationId = requiredIdentifier(input.organizationId);
+    const identityId = requiredIdentifier(input.identityId);
+    const trainerId = requiredIdentifier(input.trainerId);
+
+    const rows = await this.sql.unsafe(
+      `WITH target_identity AS MATERIALIZED (
+         SELECT membership.identity_id
+         FROM ulc_linz_membership AS membership
+         JOIN "user" AS account
+           ON account.id = membership.identity_id
+         WHERE membership.identity_id = $1
+           AND membership.organization_id = $2
+           AND membership.source_role = 'trainer'
+           AND membership.active = true
+           AND COALESCE(account.banned, false) = false
+       ),
+       target_trainer AS MATERIALIZED (
+         SELECT id
+         FROM appbasis_trainer
+         WHERE id = $3
+           AND organization_id = $2
+           AND is_active = true
+       ),
+       conflicting_binding AS MATERIALIZED (
+         SELECT identity_id
+         FROM ulc_linz_membership
+         WHERE subject_id = $3
+           AND identity_id <> $1
+         LIMIT 1
+       ),
+       updated AS (
+         UPDATE ulc_linz_membership
+         SET subject_id = $3,
+             updated_at = now()
+         WHERE identity_id = $1
+           AND organization_id = $2
+           AND source_role = 'trainer'
+           AND active = true
+           AND EXISTS (SELECT 1 FROM target_identity)
+           AND EXISTS (SELECT 1 FROM target_trainer)
+           AND NOT EXISTS (SELECT 1 FROM conflicting_binding)
+         RETURNING identity_id
+       )
+       SELECT
+         EXISTS (SELECT 1 FROM target_identity) AS identity_exists,
+         EXISTS (SELECT 1 FROM target_trainer) AS trainer_exists,
+         EXISTS (SELECT 1 FROM conflicting_binding) AS binding_conflict,
+         (SELECT count(*)::int FROM updated) AS updated_count,
+         membership.identity_id,
+         account.username,
+         account.name AS display_name,
+         trainer.id AS trainer_id
+       FROM (VALUES (1)) AS singleton(value)
+       LEFT JOIN updated
+         ON true
+       LEFT JOIN ulc_linz_membership AS membership
+         ON membership.identity_id = updated.identity_id
+       LEFT JOIN "user" AS account
+         ON account.id = membership.identity_id
+       LEFT JOIN appbasis_trainer AS trainer
+         ON trainer.id = membership.subject_id
+        AND trainer.organization_id = membership.organization_id`,
+      [identityId, organizationId, trainerId],
+    );
+
+    if (rows.length !== 1 || rows[0] === undefined) blocked();
+    const row = rows[0];
+    if (row.identity_exists !== true || row.trainer_exists !== true) {
+      throw new UlcLinzTrainerIdentityNotFoundError();
+    }
+    if (row.binding_conflict === true) {
+      throw new UlcLinzTrainerIdentityConflictError();
+    }
+    if (row.updated_count !== 1) blocked();
+    const binding = bindingFromRow(row);
+    if (
+      binding.identityId !== identityId ||
+      binding.trainerId !== trainerId
+    ) {
+      blocked();
+    }
+    return binding;
+  }
+}
+
+function bindingFromRow(
+  row: Record<string, unknown>,
+): UlcLinzTrainerIdentityBinding {
+  return Object.freeze({
+    identityId: requiredRowString(row, "identity_id"),
+    username: requiredRowString(row, "username"),
+    displayName: requiredRowString(row, "display_name"),
+    trainerId: nullableRowString(row, "trainer_id"),
+  });
+}
+
+function requiredIdentifier(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 200 ||
+    value.trim() !== value
+  ) {
+    blocked();
+  }
+  return value;
+}
+
+function requiredRowString(
+  row: Record<string, unknown>,
+  key: string,
+): string {
+  return requiredIdentifier(row[key]);
+}
+
+function nullableRowString(
+  row: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = row[key];
+  if (value === null) return null;
+  return requiredIdentifier(value);
+}
+
+function blocked(): never {
+  throw new UlcLinzTrainerIdentityPersistenceError();
+}
