@@ -88,12 +88,10 @@ export class IdentityService {
   async createInitialUser(
     input: CreateInitialUserInput,
   ): Promise<IdentityState> {
-    // Production runtimes authorize before any reconciliation state is read,
-    // including already-completed idempotent retries.
-    await this.authorizeProvisioning();
     return this.createInitialUserWith(
       input,
       (accountInput) => this.authProvider.createUsernameAccount(accountInput),
+      this.authorizeProvisioning,
     );
   }
 
@@ -110,11 +108,20 @@ export class IdentityService {
   private async createInitialUserWith(
     input: CreateInitialUserInput,
     createUsernameAccount: TrustedUsernameAccountCreator,
+    authorizeProvisioning?: () => Promise<void>,
   ): Promise<IdentityState> {
     const username = normalizeUsername(input.username);
     const displayName = requiredText(input.displayName, "displayName");
     const contactEmail = optionalText(input.contactEmail);
     const technicalEmail = await technicalEmailForUsername(username);
+
+    // Authorization stays after input normalization but before any
+    // reconciliation state is read, matching the existing provisioning
+    // contract. Trusted callers are separately pre-authorized by their
+    // application boundary and therefore omit this callback.
+    if (authorizeProvisioning !== undefined) {
+      await authorizeProvisioning();
+    }
 
     const operation = await this.stateStore.prepareOperation({
       operationKey: `provision:${username}`,
