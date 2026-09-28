@@ -423,7 +423,19 @@ async function trainerIdentityAdminResponse(
     secureCookies: url.protocol === "https:",
   });
   const current = await identityHttp.resolveCurrentIdentity(request);
-  if (current instanceof Response) return current;
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action: "edit",
+        targetId: "trainer-identity-admin",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
 
   let access: Readonly<{ organizationId: string }>;
   try {
