@@ -87,7 +87,9 @@ export class PostgresUlcLinzTrainerIdentityLinks {
     const identityId = requiredIdentifier(input.identityId);
     const trainerId = requiredIdentifier(input.trainerId);
 
-    const rows = await this.sql.unsafe(
+    let rows: readonly Record<string, unknown>[];
+    try {
+      rows = await this.sql.unsafe(
       `WITH target_identity AS MATERIALIZED (
          SELECT membership.identity_id
          FROM ulc_linz_membership AS membership
@@ -146,7 +148,13 @@ export class PostgresUlcLinzTrainerIdentityLinks {
          ON trainer.id = membership.subject_id
         AND trainer.organization_id = membership.organization_id`,
       [identityId, organizationId, trainerId],
-    );
+      );
+    } catch (error) {
+      if (isSubjectUniquenessViolation(error)) {
+        throw new UlcLinzTrainerIdentityConflictError();
+      }
+      throw error;
+    }
 
     if (rows.length !== 1 || rows[0] === undefined) blocked();
     const row = rows[0];
@@ -166,6 +174,15 @@ export class PostgresUlcLinzTrainerIdentityLinks {
     }
     return binding;
   }
+}
+
+function isSubjectUniquenessViolation(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const value = error as Record<string, unknown>;
+  return (
+    value.code === "23505" &&
+    value.constraint_name === "ulc_linz_membership_subject_id_unique"
+  );
 }
 
 function bindingFromRow(
