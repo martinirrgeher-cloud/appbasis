@@ -287,6 +287,7 @@ test("lifecycle contract digest covers schemas, dependency versions and executab
     "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
     "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
+    "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
     "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
     "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
     ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",

@@ -56,6 +56,7 @@ const LIFECYCLE_CONTRACT_PATHS = Object.freeze([
   "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
   "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
   "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
+  "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
   ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
   "apps/ulc-linz/worker/lifecycle.ts",
   "apps/ulc-linz/worker/lifecycle-service.ts",
