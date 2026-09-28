@@ -65,6 +65,38 @@ export class BetterAuthIdentityBackend {
     return { identityId };
   }
 
+  async createUsernameAccountTrusted(input: {
+    operationId: string;
+    username: string;
+    displayName: string;
+    technicalEmail: string;
+    temporaryPassword: string;
+  }): Promise<{ identityId: string }> {
+    const existing = await this.options.sql<{ id: string }[]>`
+      SELECT id FROM "user" WHERE username = ${input.username}
+    `;
+    if (existing[0] !== undefined) return { identityId: existing[0].id };
+
+    const response = await this.options.auth.api.createUser({
+      body: {
+        email: input.technicalEmail,
+        password: input.temporaryPassword,
+        name: input.displayName,
+        role: "user",
+        data: {
+          username: input.username,
+          displayUsername: input.username,
+        },
+      },
+    });
+    const identityId = response.user?.id;
+    if (typeof identityId !== "string" || identityId.length === 0) {
+      throw new Error("Better Auth trusted create-user returned no user id");
+    }
+    this.completedOperations.add(input.operationId);
+    return { identityId };
+  }
+
   async signInWithUsername(input: {
     username: string;
     password: string;
@@ -449,6 +481,7 @@ export function createIdentityRuntime(options: IdentityRuntimeOptions) {
     stateStore,
     options.now ?? (() => new Date()),
     () => backend.assertProvisioningAuthorized(),
+    (input) => backend.createUsernameAccountTrusted(input),
   );
 
   return { backend, stateStore, service };
