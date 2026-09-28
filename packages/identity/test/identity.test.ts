@@ -61,6 +61,49 @@ describe("IdentityService", () => {
     );
   });
 
+  it("keeps trusted provisioning separate from the administrative-session authorization callback", async () => {
+    const auth = new FakeAuthProvider();
+    const state = new FakeStateStore();
+    let authorizationCalls = 0;
+    let trustedCalls = 0;
+    const service = new IdentityService(
+      auth,
+      state,
+      () => fixedNow,
+      async () => {
+        authorizationCalls += 1;
+        throw new Error("technical admin session unavailable");
+      },
+      async (input) => {
+        trustedCalls += 1;
+        return auth.createUsernameAccount(input);
+      },
+    );
+
+    await expect(
+      service.createInitialUserTrusted({
+        username: "trusted.trainer",
+        temporaryPassword: "temporary-value",
+        displayName: "Trusted Trainer",
+      }),
+    ).resolves.toMatchObject({
+      username: "trusted.trainer",
+      mustChangePassword: true,
+      accountStatus: "active",
+    });
+
+    expect(authorizationCalls).toBe(0);
+    expect(trustedCalls).toBe(1);
+    await expect(
+      service.createInitialUser({
+        username: "admin.path",
+        temporaryPassword: "temporary-value",
+        displayName: "Admin Path",
+      }),
+    ).rejects.toThrow("technical admin session unavailable");
+    expect(authorizationCalls).toBe(1);
+  });
+
   it("restricts first-login access until the required password change succeeds", async () => {
     const auth = new FakeAuthProvider();
     const state = new FakeStateStore();
