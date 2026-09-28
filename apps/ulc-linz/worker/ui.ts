@@ -2310,6 +2310,7 @@ function setMasterdataFormsDisabled(disabled) {
   for (const control of document.querySelectorAll(".masterdata-form input, .masterdata-form select, .masterdata-form button, .masterdata-row__action")) {
     control.disabled = disabled;
   }
+  setTrainerIdentityControlsDisabled(disabled || trainerIdentityLoading);
 }
 
 function emptyToNull(value) {
