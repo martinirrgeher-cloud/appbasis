@@ -537,7 +537,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .masterdata-row__actions { grid-column: 2; grid-row: 1 / 3; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; padding: 0; }
 .masterdata-form-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .masterdata-row__action {
-  min-height: 34px;
+  min-height: var(--touch);
   border: 1px solid #fecaca;
   border-radius: 10px;
   background: #fff;
