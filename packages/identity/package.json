@@ -16,7 +16,8 @@
     },
     "./root-admin": "./src/root-admin.ts",
     "./schema": "./src/schema/index.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./username": "./src/technical-email.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
