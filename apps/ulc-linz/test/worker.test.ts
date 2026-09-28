@@ -1435,6 +1435,15 @@ describe("Trainer identity administration API", () => {
       validEnv,
     );
     expect(rejected.status).toBe(400);
+
+    const rejectedQuery = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/admin/trainer-identities?organizationId=verein-client",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(rejectedQuery.status).toBe(400);
   });
 
   it("fails closed for non-admin trainer identity administration", async () => {
