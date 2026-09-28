@@ -1917,30 +1917,46 @@ async function bindTrainerIdentity(event) {
   trainerIdentityLoading = true;
   setTrainerIdentityControlsDisabled(true);
   try {
-    await requestJson("/api/admin/trainer-identities", {
-      method: "POST",
-      body: JSON.stringify({ identityId, trainerId }),
-    });
-    trainerIdentityBindings = await fetchTrainerIdentityBindings();
-    trainerIdentityAdminReady = true;
-    renderTrainerIdentityAdmin();
-    showMessage(
-      elements.trainerIdentitySuccess,
-      "Trainer-Benutzerzuordnung wurde gespeichert.",
-    );
-  } catch (error) {
-    showMessage(
-      elements.trainerIdentityMessage,
-      error?.status === 403
-        ? "Die Benutzerzuordnung ist nur für Administratoren verfügbar."
-        : error?.status === 404
-          ? "Benutzer oder Trainer ist nicht mehr verfügbar."
-          : error?.status === 409
-            ? "Dieser Trainer ist bereits einem anderen aktiven Benutzer zugeordnet."
-            : error?.status === 400
-              ? "Bitte Benutzer und Trainer erneut auswählen."
-              : "Die Trainer-Benutzerzuordnung konnte nicht gespeichert werden.",
-    );
+    try {
+      await requestJson("/api/admin/trainer-identities", {
+        method: "POST",
+        body: JSON.stringify({ identityId, trainerId }),
+      });
+    } catch (error) {
+      showMessage(
+        elements.trainerIdentityMessage,
+        error?.status === 403
+          ? "Die Benutzerzuordnung ist nur für Administratoren verfügbar."
+          : error?.status === 404
+            ? "Benutzer oder Trainer ist nicht mehr verfügbar."
+            : error?.status === 409
+              ? "Dieser Trainer ist bereits einem anderen aktiven Benutzer zugeordnet."
+              : error?.status === 400
+                ? "Bitte Benutzer und Trainer erneut auswählen."
+                : "Die Trainer-Benutzerzuordnung konnte nicht gespeichert werden.",
+      );
+      return;
+    }
+
+    try {
+      trainerIdentityBindings = await fetchTrainerIdentityBindings();
+      trainerIdentityAdminReady = true;
+      renderTrainerIdentityAdmin();
+      showMessage(
+        elements.trainerIdentitySuccess,
+        "Trainer-Benutzerzuordnung wurde gespeichert.",
+      );
+    } catch {
+      trainerIdentityAdminReady = false;
+      trainerIdentityBindings = [];
+      if (elements.trainerIdentityWorkspace) {
+        elements.trainerIdentityWorkspace.hidden = true;
+      }
+      showMessage(
+        elements.trainerIdentitySuccess,
+        "Trainer-Benutzerzuordnung wurde gespeichert, aber die aktualisierte Liste konnte nicht geladen werden. Bitte neu laden.",
+      );
+    }
   } finally {
     trainerIdentityLoading = false;
     setTrainerIdentityControlsDisabled(false);
