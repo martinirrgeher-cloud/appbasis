@@ -60,15 +60,15 @@ function runtime(
   flush = async () => {},
   countdownAccess: GeneratedPostgresApplicationRuntime["countdownAccess"] = {
     async assertViewAccess() {
-      return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+      return { organizationId: "verein-1" };
     },
   },
   athletesAccess: GeneratedPostgresApplicationRuntime["athletesAccess"] = {
     async assertViewAccess() {
-      return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+      return { organizationId: "verein-1" };
     },
     async assertEditAccess() {
-      return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+      return { organizationId: "verein-1" };
     },
   },
   athleteMasterdata: GeneratedPostgresApplicationRuntime["athleteMasterdata"] = {
@@ -174,10 +174,10 @@ function runtime(
   },
   kindertrainingAccess: GeneratedPostgresApplicationRuntime["kindertrainingAccess"] = {
     async assertViewAccess() {
-      return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+      return { organizationId: "verein-1" };
     },
     async assertEditAccess() {
-      return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+      return { organizationId: "verein-1" };
     },
   },
   kindertraining: GeneratedPostgresApplicationRuntime["kindertraining"] = {
@@ -227,7 +227,10 @@ function runtime(
     kindertrainingAccess,
     trainerIdentityAccess: {
       async assertAdminAccess() {
-        return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: "identity-worker-1",
+        };
       },
     },
     trainerIdentityLinks: {
@@ -522,7 +525,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
           async assertViewAccess(current) {
             accessCalls += 1;
             expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
         },
       ),
@@ -560,10 +563,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
           async assertViewAccess(current) {
             expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
             authorizedOrganization = "verein-1";
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
           async assertEditAccess() {
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
         },
         {
@@ -633,10 +636,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
         {
           async assertViewAccess() {
             accessCalls += 1;
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
           async assertEditAccess() {
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
         },
       );
@@ -677,12 +680,12 @@ describe("generated identity+permissions Worker entrypoint", () => {
         undefined,
         {
           async assertViewAccess() {
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
           async assertEditAccess(current) {
             editCalls += 1;
             expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
         },
         {
@@ -793,11 +796,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
         undefined,
         {
           async assertViewAccess() {
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
           async assertEditAccess() {
             editCalls += 1;
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
         },
         {
@@ -950,11 +953,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
         undefined,
         {
           async assertViewAccess() {
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
           async assertEditAccess() {
             editCalls += 1;
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
         },
         {
@@ -1079,7 +1082,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         {
           async assertViewAccess() {
             accessCalls += 1;
-            return { organizationId: "verein-1", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-1" };
           },
         },
       );
@@ -1330,7 +1333,10 @@ describe("Trainer identity administration API", () => {
         ...base,
         trainerIdentityAccess: {
           async assertAdminAccess() {
-            return { organizationId: "verein-server", actorPrincipalId: "identity-worker-1" };
+            return {
+              organizationId: "verein-server",
+              actorPrincipalId: "identity-worker-1",
+            };
           },
         },
         trainerIdentityLinks: {
@@ -1379,7 +1385,10 @@ describe("Trainer identity administration API", () => {
         ...base,
         trainerIdentityAccess: {
           async assertAdminAccess() {
-            return { organizationId: "verein-server", actorPrincipalId: "identity-worker-1" };
+            return {
+              organizationId: "verein-server",
+              actorPrincipalId: "identity-worker-1",
+            };
           },
         },
         trainerIdentityLinks: {
@@ -1481,7 +1490,7 @@ describe("Kindertraining runtime API", () => {
         kindertrainingAccess: {
           ...base.kindertrainingAccess,
           async assertViewAccess() {
-            return { organizationId: "verein-server", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-server" };
           },
         },
         kindertraining: {
@@ -1523,7 +1532,7 @@ describe("Kindertraining runtime API", () => {
         kindertrainingAccess: {
           ...base.kindertrainingAccess,
           async assertViewAccess() {
-            return { organizationId: "verein-server", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-server" };
           },
         },
         kindertraining: {
@@ -1566,7 +1575,7 @@ describe("Kindertraining runtime API", () => {
         kindertrainingAccess: {
           ...base.kindertrainingAccess,
           async assertEditAccess() {
-            return { organizationId: "verein-server", actorPrincipalId: "identity-worker-1" };
+            return { organizationId: "verein-server" };
           },
         },
         kindertraining: {

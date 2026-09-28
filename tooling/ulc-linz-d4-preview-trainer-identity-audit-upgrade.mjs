@@ -57,7 +57,7 @@ export async function loadUlcLinzD4PreviewTrainerIdentityAuditUpgradePlan(
     );
   }
   if (
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion !== 5 ||
+    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion !== 6 ||
     ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.at(-1) !== TARGET_MIGRATION
   ) {
     throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
@@ -174,7 +174,7 @@ export async function applyUlcLinzD4PreviewTrainerIdentityAuditUpgrade(
       }
       if (TARGET_TABLES.some((table) => before.has(table))) {
         throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
-          "ULC D4 preview training schema appears already or partially applied.",
+          "ULC D4 preview trainer identity audit schema appears already or partially applied.",
         );
       }
 
@@ -186,7 +186,7 @@ export async function applyUlcLinzD4PreviewTrainerIdentityAuditUpgrade(
       const after = await publicTableInventory(transaction);
       if (!TARGET_TABLES.every((table) => after.has(table))) {
         throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
-          "ULC D4 preview trainer identity audit upgrade did not reach the expected training schema.",
+          "ULC D4 preview trainer identity audit upgrade did not reach the expected audit schema.",
         );
       }
     });
@@ -246,7 +246,7 @@ async function publicTableInventory(transaction) {
   );
   if (!Array.isArray(rows)) {
     throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeExecutionError(
-      "ULC D4 preview training table inventory is unavailable.",
+      "ULC D4 preview trainer identity audit table inventory is unavailable.",
     );
   }
   return new Set(rows.map((row) => row?.tablename).filter(Boolean));
