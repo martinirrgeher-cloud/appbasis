@@ -51,7 +51,9 @@ describe("ULC trainer identity PostgreSQL contract", () => {
       async unsafe(query, parameters) {
         expect(query).toContain("target_identity AS MATERIALIZED");
         expect(query).toContain("target_trainer AS MATERIALIZED");
-        expect(query).toContain("NOT EXISTS (SELECT 1 FROM conflicting_binding)");
+        expect(query).toContain("releasable_conflict AS MATERIALIZED");
+        expect(query).toContain("account_missing = false");
+        expect(query).toContain("account_banned = false");
         expect(parameters).toEqual(["identity-1", "verein-1", "trainer-1"]);
         return [
           {
