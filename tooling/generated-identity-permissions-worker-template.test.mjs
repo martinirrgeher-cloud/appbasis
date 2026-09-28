@@ -28,6 +28,7 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "migrations/0000_ulc_linz_lifecycle_scope.sql",
     "migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "migrations/0004_ulc_linz_training_sessions.sql",
+    "migrations/0005_ulc_linz_trainer_identity_audit.sql",
     "worker/security-events.ts",
     "worker/security-events-postgres.ts",
     "migrations/0002_ulc_linz_security_event_log.sql",
@@ -162,6 +163,8 @@ test("checked ULC preserves generator-owned foundations while extending its runt
     "migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "migrations/0002_ulc_linz_security_event_log.sql",
     "migrations/0003_ulc_linz_security_event_access.sql",
+    "migrations/0004_ulc_linz_training_sessions.sql",
+    "migrations/0005_ulc_linz_trainer_identity_audit.sql",
   ]) {
     assert.equal(
       content(template, path),
