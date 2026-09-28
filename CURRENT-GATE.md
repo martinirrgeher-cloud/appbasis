@@ -678,44 +678,50 @@ PostgreSQL-E2E beweist stale-update- und parallel-create-Konflikte fail-closed;
 der Preview-Deploy bestätigte die ausgelieferte Kindertraining-Oberfläche,
 Runtime-Verdrahtung und das Application-DB-Binding.
 
-## Aktueller Gate-Scope: ULC-E4D.5 Compact UI
+## Abgeschlossener Gate-Scope: ULC-E4D.5 Compact UI
 
-Abnahme für ULC-E4D.5:
+ULC-E4D.5 ist auf `main` abgeschlossen, in Preview ausgerollt und praktisch
+gesichtet. Die kompakte mobile Darstellung bleibt die aktuelle visuelle
+Baseline für die folgenden ULC-Slices.
 
-- die Runde verändert ausschließlich Layout/Responsive-Verhalten der
-  bestehenden ULC-Oberfläche; Fachlogik, API-Verträge, Berechtigungen,
-  Revisionslogik und Datenmodell bleiben unverändert;
-- die globale mobile Chrome wird verdichtet: Header, Content-Abstände,
-  Hero-Bereiche, Karten, Navigation und Meldungen benötigen weniger
-  Vertikalraum;
-- zentrale Touch-Ziele bleiben mindestens 44 px hoch; Platzersparnis erfolgt
-  primär über Abstände, Padding und mehrspaltige Anordnung statt über
-  unbrauchbar kleine Bedienelemente;
-- das Dashboard wird kompakter; ab Tabletbreite dürfen Funktionskarten
-  zweispaltig angeordnet werden;
-- Stammdatenlisten ordnen Bearbeiten-/Deaktivieren-Aktionen auf üblichen
-  Smartphonebreiten neben Titel/Metadaten an, mit einspaltigem Fallback auf
-  sehr schmalen Geräten;
-- Stammdatenformulare nutzen auf üblichen Smartphonebreiten zwei Spalten,
-  sofern die Felder sinnvoll nebeneinander bedienbar bleiben; schmale Geräte
-  unter 360 px fallen auf eine Spalte zurück;
-- Kindertraining ordnet Trainingsgruppe + Datum sowie Status + Notiz
-  platzsparender nebeneinander an und reduziert Abstände innerhalb der
-  Teilnehmer-/Anwesenheitskarten;
-- die vier Anwesenheitsstatus bleiben gleichzeitig sichtbar und
-  touch-tauglich; die vorhandenen Statuswerte und Save-Semantik werden nicht
-  geändert;
-- die bestehende DOM-/`textContent`-Strategie für dynamische Fach- und
-  Personendaten bleibt unverändert; keine neue HTML-Injektion;
-- automatisierte UI-Contract-Tests pinnen die Compact-Regeln inklusive
-  44-px-Touchziel und Narrow-Screen-Fallback;
+## Aktueller Gate-Scope: ULC-E4E-A Trainer-Identity-Link
+
+Abnahme für ULC-E4E-A:
+
+- die bestehende app-eigene `ulc_linz_membership` bleibt der kanonische
+  Identity↔ULC-Subject-Vertrag; es wird keine parallele Mapping-Tabelle
+  eingeführt;
+- für aktive Memberships mit `source_role='trainer'` darf
+  `subject_id` auf die zugehörige `appbasis_trainer.id` gesetzt werden;
+- der Athletes-Core und sein Trainer-Datenmodell bleiben unverändert;
+- nur ein aktiver ULC-Admin der eigenen Organisation darf
+  Trainer↔Identity-Verknüpfungen lesen oder ändern;
+- die Admin-Grenze wird zusätzlich über den bestehenden kanonischen
+  ULC-Rollen-/Permission-Vertrag verifiziert; ein Trainer mit
+  `athletes:edit` allein darf keine Benutzerkonten zuordnen;
+- der neue Admin-Endpunkt bestimmt die Organisation ausschließlich
+  serverseitig aus der eingeloggten Identity; der Browser/Client sendet keine
+  `organizationId`;
+- gelistet werden ausschließlich aktive, nicht gesperrte Benutzerkonten mit
+  aktiver ULC-Trainer-Membership in derselben Organisation;
+- eine Verknüpfung darf nur auf einen aktiven Trainer derselben Organisation
+  zeigen;
+- ein Trainer darf nicht gleichzeitig zwei verschiedenen Identities
+  zugeordnet sein; Doppelbelegungen liefern einen expliziten Konflikt;
+- fehlende/fremde Identity- oder Trainer-Ziele failen geschlossen;
+- bestehende Verknüpfungen dürfen idempotent erneut gesetzt werden;
+- E4E-A verändert noch nicht die Kindertraining-Gruppensicht und enthält noch
+  keine UI für die Zuordnung; diese Wirkung bleibt E4E-B/E4E-C;
+- E4E-A benötigt keine Datenbankmigration, da der bestehende
+  `subject_id`-Vertrag verwendet wird;
+- PostgreSQL-E2E muss Same-Organization-Link, anschließendes Readback,
+  Doppelbelegung und Fremdorganisation abdecken;
 - der Code-Slice führt keinen Preview-/Production-Write und kein Deployment
-  aus. Nach Merge erfolgt die praktische Layout-Abnahme über einen separaten
-  Preview-`deploy` mit ausdrücklicher Nutzerfreigabe.
+  aus. Nach Merge genügt ein separater Preview-`deploy`; keine Migration.
 
-Trainerzuordnung, Sondertrainings, Statistik, Import/Export,
-Realtime/Edit-Locks sowie die Aktivierung der gemeinsamen Runtime für U12/U14
-bleiben separate Folgearbeiten.
+E4E-B setzt die Trainer-Gruppenbegrenzung im Kindertraining um. E4E-C ergänzt
+die administrative UI. Sondertrainings, Statistik, Import/Export,
+Realtime/Edit-Locks sowie U12/U14 bleiben weitere Folgearbeiten.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -735,23 +741,25 @@ bleiben separate Folgearbeiten.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E4D.5-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E4E-A-Pfad, wenn mindestens eines gilt:
 
-- die Layout-Runde ändert API-, Berechtigungs-, Datenbank- oder
-  Kindertraining-Save-Semantik;
-- zentrale Touch-Ziele werden unter 44 px verkleinert;
-- die kompakte Anordnung verursacht auf unterstützten Smartphonebreiten
-  horizontales Seiten-Scrolling oder abgeschnittene Hauptaktionen;
-- Stammdatenaktionen sind auf sehr schmalen Geräten nicht mehr erreichbar;
-- Anwesenheitsstatus werden versteckt, zusammengelegt oder fachlich
-  umgedeutet;
-- dynamische Personendaten werden über `innerHTML` oder vergleichbare
-  unsichere HTML-Injektion gerendert;
+- eine neue parallele Identity↔Trainer-Mapping-Tabelle wird eingeführt, obwohl
+  der bestehende ULC-Membership-Subject-Vertrag ausreicht;
+- ein Nicht-Admin kann Trainer↔Identity-Verknüpfungen lesen oder ändern;
+- der Client kann die Organisation für die Zuordnung bestimmen;
+- eine aktive Trainer-Membership kann auf einen fremden oder inaktiven
+  Trainer verknüpft werden;
+- derselbe Trainer kann zwei aktiven Identities zugeordnet werden;
+- eine fremde, inaktive oder gesperrte Identity wird als gültiges Ziel
+  akzeptiert;
+- die Zuordnung verändert Athletes-Core-Tabellen oder dessen Domain-Vertrag;
+- E4E-A verändert bereits Kindertraining-Gruppenfilter oder andere
+  Berechtigungswirkung außerhalb dieses Slices;
 - der Code-PR mutiert Preview/Produktion oder deployt ohne gesonderte
   Freigabe.
 
-Nicht gate-blockierend sind weitere visuelle Feinarbeiten nach der
-Preview-Sichtung sowie Trainerzuordnung, Sondertrainings, Statistik,
+Nicht gate-blockierend sind die spätere administrative UI, Trainer-
+Gruppenfilterung, weitere visuelle Feinarbeiten, Sondertrainings, Statistik,
 Import/Export, Realtime/Edit-Locks und U12/U14.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
