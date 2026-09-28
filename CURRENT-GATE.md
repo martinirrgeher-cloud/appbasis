@@ -722,6 +722,10 @@ Abnahme für ULC-E4E-A/E4E-A2:
 - jede erfolgreiche Zuordnung persistiert im selben PostgreSQL-Statement einen
   append-only Auditdatensatz mit authentifiziertem Admin-Principal,
   Organisation, Ziel-Identity, vorherigem Subject und neuem Subject;
+- der Preview-Anwendungs-DB-Principal darf auf der Trainer-Identity-Audit-Tabelle
+  effektiv nur SELECT/INSERT und auf deren Identity-Sequenz nur USAGE besitzen;
+  UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN sowie Sequence-SELECT/UPDATE
+  müssen fail-closed ausgeschlossen und automatisiert verifiziert sein;
 - das atomare Freigeben einer gesperrten/gelöschten/inaktiven Alt-Bindung
   erzeugt zusätzlich einen eigenen Auditdatensatz für die detach-Änderung;
 - ein fehlgeschlagenes oder ungültiges Re-Link darf weder die Alt-Bindung

@@ -154,6 +154,21 @@ function exactApplicationAccess(overrides = {}) {
     security_sequence_select: false,
     security_sequence_update: false,
     security_purge_execute: false,
+    trainer_identity_audit_table_present: true,
+    trainer_identity_audit_sequence_present: true,
+    trainer_identity_audit_select: true,
+    trainer_identity_audit_insert: true,
+    trainer_identity_audit_update: false,
+    trainer_identity_audit_delete: false,
+    trainer_identity_audit_truncate: false,
+    trainer_identity_audit_references: false,
+    trainer_identity_audit_trigger: false,
+    trainer_identity_audit_maintain: false,
+    trainer_identity_audit_column_update: false,
+    trainer_identity_audit_column_references: false,
+    trainer_identity_audit_sequence_usage: true,
+    trainer_identity_audit_sequence_select: false,
+    trainer_identity_audit_sequence_update: false,
     ...overrides,
   };
 }
@@ -225,6 +240,7 @@ function ownerFixture({
   groupGrants = exactGroupGrants(),
   previewGroupPresent = true,
   securityBound = false,
+  trainerIdentityAuditSchemaPresent = true,
   sharedPreflightBoundary = {
     preflight_shared_role_count: 3,
     preflight_shared_database_create_count: 0,
@@ -257,6 +273,16 @@ function ownerFixture({
 
   const client = {
     async unsafe(sql, params) {
+      if (sql.includes("to_regclass($1) IS NOT NULL AS table_present")) {
+        assert.deepEqual(params, [
+          "public.ulc_linz_trainer_identity_audit",
+          "public.ulc_linz_trainer_identity_audit_event_id_seq",
+        ]);
+        return [{
+          table_present: trainerIdentityAuditSchemaPresent,
+          sequence_present: trainerIdentityAuditSchemaPresent,
+        }];
+      }
       if (
         sql.includes("WHERE rolname = ANY($1::text[])") &&
         !sql.includes("AS shared_role_count") &&
@@ -419,6 +445,14 @@ function databaseFactory({
             assert.match(sql, /owned_function_count/);
             assert.match(sql, /owned_type_count/);
             assert.match(sql, /security_purge_execute/);
+            assert.match(sql, /trainer_identity_audit_table_present/);
+            assert.match(sql, /trainer_identity_audit_select/);
+            assert.match(sql, /trainer_identity_audit_insert/);
+            assert.match(sql, /trainer_identity_audit_update/);
+            assert.match(sql, /trainer_identity_audit_delete/);
+            assert.match(sql, /trainer_identity_audit_sequence_usage/);
+            assert.match(sql, /trainer_identity_audit_sequence_select/);
+            assert.match(sql, /trainer_identity_audit_sequence_update/);
             assert.equal((sql.match(/AS schema_usage/g) ?? []).length, 1);
             return [applicationAccess];
           },
@@ -846,6 +880,34 @@ test("binds the security login only to the preview-specific ingest group", async
   assert.ok(
     owner.statements.some(
       (sql) =>
+        sql ===
+        'REVOKE ALL ON TABLE public.ulc_linz_trainer_identity_audit FROM "ulc_preview_app"',
+    ),
+  );
+  assert.ok(
+    owner.statements.some(
+      (sql) =>
+        sql ===
+        'GRANT SELECT, INSERT ON TABLE public.ulc_linz_trainer_identity_audit TO "ulc_preview_app"',
+    ),
+  );
+  assert.ok(
+    owner.statements.some(
+      (sql) =>
+        sql ===
+        'REVOKE ALL ON SEQUENCE public.ulc_linz_trainer_identity_audit_event_id_seq FROM "ulc_preview_app"',
+    ),
+  );
+  assert.ok(
+    owner.statements.some(
+      (sql) =>
+        sql ===
+        'GRANT USAGE ON SEQUENCE public.ulc_linz_trainer_identity_audit_event_id_seq TO "ulc_preview_app"',
+    ),
+  );
+  assert.ok(
+    owner.statements.some(
+      (sql) =>
         sql.startsWith("REVOKE SELECT (") &&
         sql.includes("), INSERT (") &&
         sql.includes("), UPDATE (") &&
@@ -854,6 +916,66 @@ test("binds the security login only to the preview-specific ingest group", async
     ),
   );
   assert.deepEqual(ended.sort(), ["application", "owner", "security"]);
+});
+
+test("keeps staged pre-audit preview reconciliation valid before migration 0005", async () => {
+  const owner = ownerFixture({ trainerIdentityAuditSchemaPresent: false });
+  const result = await reconcile(
+    databaseFactory({
+      owner,
+      applicationAccess: exactApplicationAccess({
+        trainer_identity_audit_table_present: false,
+        trainer_identity_audit_sequence_present: false,
+        trainer_identity_audit_select: false,
+        trainer_identity_audit_insert: false,
+        trainer_identity_audit_sequence_usage: false,
+      }),
+    }),
+  );
+
+  assert.equal(result.applicationRuntimeAccessVerified, true);
+  assert.equal(
+    owner.statements.some((sql) =>
+      sql.includes("ulc_linz_trainer_identity_audit"),
+    ),
+    false,
+  );
+});
+
+test("rejects update or delete capability on trainer identity audit history", async () => {
+  for (const overrides of [
+    { trainer_identity_audit_update: true },
+    { trainer_identity_audit_delete: true },
+    { trainer_identity_audit_column_update: true },
+    { trainer_identity_audit_sequence_select: true },
+    { trainer_identity_audit_sequence_update: true },
+  ]) {
+    const owner = ownerFixture();
+    await assert.rejects(
+      reconcile(
+        databaseFactory({
+          owner,
+          applicationAccess: exactApplicationAccess(overrides),
+        }),
+      ),
+      /application runtime database ACL is not exact/,
+    );
+  }
+});
+
+test("rejects a partially applied trainer identity audit schema", async () => {
+  const owner = ownerFixture();
+  const originalUnsafe = owner.client.unsafe.bind(owner.client);
+  owner.client.unsafe = async (sql, params) => {
+    if (sql.includes("to_regclass($1) IS NOT NULL AS table_present")) {
+      return [{ table_present: true, sequence_present: false }];
+    }
+    return originalUnsafe(sql, params);
+  };
+  await assert.rejects(
+    reconcile(databaseFactory({ owner })),
+    /trainer identity audit schema is partially applied/,
+  );
 });
 
 test("rejects database CREATE on the application runtime after reconciliation", async () => {
