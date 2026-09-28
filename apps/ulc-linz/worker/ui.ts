@@ -361,9 +361,9 @@ export const ULC_LINZ_APP_CSS = `:root {
   --rest: #15803d;
   --prepare: #1d4ed8;
   --finished: #0f172a;
-  --radius: 16px;
-  --control-radius: 12px;
-  --touch: 48px;
+  --radius: 14px;
+  --control-radius: 10px;
+  --touch: 44px;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--text);
   background: var(--page);
@@ -379,19 +379,19 @@ button, input, select, textarea { font: inherit; }
   top: 0;
   z-index: 30;
   display: flex;
-  min-height: 64px;
+  min-height: 56px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border);
   background: rgb(255 255 255 / 94%);
   backdrop-filter: blur(12px);
 }
-.app-brand { display: flex; min-height: var(--touch); align-items: center; gap: 10px; color: var(--text); text-decoration: none; }
+.app-brand { display: flex; min-height: var(--touch); align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
 .app-brand__mark {
   display: grid;
-  min-width: 44px;
-  height: 36px;
+  min-width: 40px;
+  height: 32px;
   place-items: center;
   border-radius: 10px;
   background: var(--accent);
@@ -402,7 +402,7 @@ button, input, select, textarea { font: inherit; }
 .app-brand__copy { display: grid; line-height: 1.12; }
 .app-brand__copy strong { font-size: .96rem; }
 .app-brand__copy small { margin-top: 3px; color: #64748b; font-size: .68rem; }
-.app-badge { padding: 5px 9px; border-radius: 999px; background: var(--muted); color: var(--secondary); font-size: .7rem; font-weight: 750; }
+.app-badge { padding: 4px 8px; border-radius: 999px; background: var(--muted); color: var(--secondary); font-size: .7rem; font-weight: 750; }
 .card {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -413,11 +413,11 @@ button, input, select, textarea { font: inherit; }
 .gate-card { width: min(100%, 32rem); margin-top: clamp(16px, 8vh, 5rem); padding: 24px; }
 .eyebrow { margin: 0 0 5px; color: var(--accent); font-size: .72rem; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
 h1, h2, p { margin-top: 0; }
-h1 { margin-bottom: 12px; font-size: clamp(2rem, 10vw, 3.2rem); line-height: 1.03; letter-spacing: -.04em; }
-h2 { margin-bottom: 0; font-size: 1.3rem; }
-.summary { margin-bottom: 0; color: var(--secondary); line-height: 1.55; }
+h1 { margin-bottom: 8px; font-size: clamp(1.7rem, 8vw, 2.5rem); line-height: 1.03; letter-spacing: -.04em; }
+h2 { margin-bottom: 0; font-size: 1.15rem; }
+.summary { margin-bottom: 0; color: var(--secondary); font-size: .9rem; line-height: 1.4; }
 .form-stack { display: grid; gap: 12px; margin-top: 20px; }
-label { display: grid; gap: 5px; color: var(--secondary); font-size: .82rem; font-weight: 750; }
+label { display: grid; gap: 4px; color: var(--secondary); font-size: .78rem; font-weight: 750; }
 input, select, textarea {
   width: 100%;
   min-height: var(--touch);
@@ -425,12 +425,12 @@ input, select, textarea {
   border-radius: var(--control-radius);
   background: white;
   color: var(--text);
-  padding: 0 12px;
+  padding: 0 10px;
   font-size: 16px;
 }
 textarea {
-  min-height: 92px;
-  padding-block: 12px;
+  min-height: 72px;
+  padding-block: 9px;
   resize: vertical;
 }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible {
@@ -441,14 +441,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   min-height: var(--touch);
   border: 1px solid transparent;
   border-radius: var(--control-radius);
-  padding: 0 18px;
+  padding: 0 14px;
   cursor: pointer;
   font-weight: 800;
 }
 .button:disabled { cursor: not-allowed; opacity: .5; }
 .button--primary { background: var(--accent); color: var(--accent-foreground); }
 .button--secondary { border-color: var(--border-strong); background: white; color: var(--secondary); }
-.message { margin: 12px 0 0; padding: 12px; border-radius: var(--control-radius); font-size: .84rem; }
+.message { margin: 8px 0 0; padding: 9px 10px; border-radius: var(--control-radius); font-size: .84rem; }
 .message--error { background: var(--danger-surface); color: var(--danger); }
 .message--success { background: #dcfce7; color: #166534; }
 .app-nav {
@@ -459,8 +459,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   z-index: 25;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
-  padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+  gap: 2px;
+  padding: 4px 8px max(4px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: white;
 }
@@ -475,22 +475,22 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   color: #64748b;
   cursor: pointer;
   padding: 4px;
-  font-size: .76rem;
+  font-size: .7rem;
   font-weight: 800;
   line-height: 1.15;
 }
 .app-nav__link.is-active { background: #dbeafe; color: #1d4ed8; }
 .app-nav__link:disabled { cursor: not-allowed; opacity: .45; }
-.content { width: min(100%, 52rem); margin: 0 auto; padding: 22px 16px 110px; }
+.content { width: min(100%, 52rem); margin: 0 auto; padding: 12px 12px 86px; }
 .app-section[hidden] { display: none !important; }
-.hero { padding: 6px 0 18px; }
-.dashboard-grid { display: grid; gap: 12px; }
-.dashboard-card { display: grid; gap: 18px; padding: 20px; }
-.dashboard-card h2 { margin-bottom: 8px; }
-.dashboard-card p:not(.eyebrow) { margin-bottom: 0; color: var(--secondary); line-height: 1.5; }
+.hero { padding: 2px 0 12px; }
+.dashboard-grid { display: grid; gap: 8px; }
+.dashboard-card { display: grid; gap: 9px; padding: 13px; }
+.dashboard-card h2 { margin-bottom: 4px; }
+.dashboard-card p:not(.eyebrow) { margin-bottom: 0; color: var(--secondary); font-size: .86rem; line-height: 1.35; }
 .dashboard-card--primary { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
 .dashboard-action { width: 100%; }
-.dashboard-card small { color: #64748b; line-height: 1.4; }
+.dashboard-card small { color: #64748b; font-size: .72rem; line-height: 1.3; }
 .dashboard-status {
   width: fit-content;
   padding: 6px 10px;
@@ -503,8 +503,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .masterdata-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: 5px;
+  margin-bottom: 10px;
 }
 .masterdata-tab {
   min-height: var(--touch);
@@ -520,28 +520,31 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   background: #dbeafe;
   color: var(--accent);
 }
-.masterdata-panel { display: grid; gap: 14px; }
-.masterdata-list { display: grid; gap: 8px; }
+.masterdata-panel { display: grid; gap: 10px; }
+.masterdata-list { display: grid; gap: 5px; }
 .masterdata-row {
   display: grid;
-  gap: 5px;
-  padding: 14px 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  padding: 9px 10px;
   border: 1px solid var(--border);
   border-radius: var(--control-radius);
   background: white;
 }
-.masterdata-row strong { font-size: .96rem; }
-.masterdata-row span { color: var(--secondary); font-size: .8rem; line-height: 1.4; }
-.masterdata-row__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 5px; }
+.masterdata-row strong { min-width: 0; font-size: .9rem; }
+.masterdata-row span { min-width: 0; color: var(--secondary); font-size: .74rem; line-height: 1.3; }
+.masterdata-row__actions { grid-column: 2; grid-row: 1 / 3; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; padding: 0; }
 .masterdata-form-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .masterdata-row__action {
-  min-height: 40px;
+  min-height: var(--touch);
   border: 1px solid #fecaca;
   border-radius: 10px;
   background: #fff;
   color: var(--danger);
-  padding: 0 12px;
+  padding: 0 8px;
   cursor: pointer;
+  font-size: .72rem;
   font-weight: 800;
 }
 .masterdata-row__action--edit {
@@ -549,7 +552,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   color: var(--accent);
 }
 .masterdata-empty {
-  padding: 18px;
+  padding: 12px;
   border: 1px dashed var(--border-strong);
   border-radius: var(--control-radius);
   color: #64748b;
@@ -557,22 +560,43 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 .masterdata-form {
   display: grid;
-  gap: 16px;
-  margin-top: 8px;
-  padding: 18px;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 12px;
 }
 .masterdata-form .button { width: 100%; }
+.masterdata-form .settings-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+#trainer-form .settings-grid label:last-child,
+#athlete-group-form .settings-grid label:last-child {
+  grid-column: 1 / -1;
+}
+.kindertraining-selector .settings-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(120px, .75fr);
+  gap: 8px;
+}
+.kindertraining-session-card .settings-grid {
+  grid-template-columns: minmax(104px, .55fr) minmax(0, 1.45fr);
+  gap: 8px;
+}
+.kindertraining-note-label textarea {
+  min-height: 44px;
+  height: 44px;
+  padding-block: 9px;
+}
 .kindertraining-selector,
 .kindertraining-session-card,
 .kindertraining-attendance-card {
   display: grid;
-  gap: 16px;
-  padding: 18px;
+  gap: 10px;
+  padding: 12px;
 }
-.kindertraining-selector { margin-bottom: 14px; }
+.kindertraining-selector { margin-bottom: 10px; }
 .kindertraining-selector .button { width: 100%; }
-.kindertraining-session { display: grid; gap: 14px; }
-.kindertraining-note-label { grid-column: 1 / -1; }
+.kindertraining-session { display: grid; gap: 10px; }
+.kindertraining-note-label { grid-column: auto; }
 .kindertraining-summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -582,7 +606,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 9px 6px;
+  padding: 6px 4px;
   border-radius: 10px;
   background: var(--muted);
   text-align: center;
@@ -594,25 +618,25 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-.kindertraining-participants { display: grid; gap: 10px; }
+.kindertraining-participants { display: grid; gap: 6px; }
 .kindertraining-participant {
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 6px;
+  padding: 8px 9px;
   border: 1px solid var(--border);
   border-radius: var(--control-radius);
   background: white;
 }
 .kindertraining-participant__identity { display: grid; gap: 3px; }
-.kindertraining-participant__identity strong { font-size: .96rem; }
-.kindertraining-participant__identity span { color: var(--secondary); font-size: .78rem; }
+.kindertraining-participant__identity strong { font-size: .9rem; }
+.kindertraining-participant__identity span { color: var(--secondary); font-size: .72rem; }
 .kindertraining-statuses {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 .kindertraining-status {
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
   background: white;
@@ -649,7 +673,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   color: #64748b;
   text-align: center;
 }
-.kindertraining-save { width: 100%; min-height: 56px; }
+.kindertraining-save { width: 100%; min-height: 48px; }
 
 .countdown-layout { display: grid; gap: 12px; }
 .timer-stage {
@@ -689,9 +713,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .button--pause { border-color: #f59e0b; background: #fef3c7; color: #92400e; }
 .button--reset { border-color: var(--border-strong); background: white; color: var(--secondary); }
 .settings-panel { margin-top: 18px; padding: 18px; scroll-margin-top: 80px; }
-.section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .section-heading > span { color: #64748b; font-size: .8rem; white-space: nowrap; }
-.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .toggle-label {
   display: flex;
   min-height: var(--touch);
@@ -708,16 +732,42 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .settings-panel.is-locked { opacity: .68; }
 @media (max-width: 480px) {
   .settings-grid { grid-template-columns: 1fr; }
+  .masterdata-form .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kindertraining-selector .settings-grid {
+    grid-template-columns: minmax(0, 1.25fr) minmax(120px, .75fr);
+  }
+  .kindertraining-session-card .settings-grid {
+    grid-template-columns: minmax(104px, .55fr) minmax(0, 1.45fr);
+  }
   .toggle-label { grid-column: auto; }
   .timer-actions { grid-template-columns: 1fr 1fr; }
   .button--start { grid-column: 1 / -1; }
   .timer-stage { min-height: 48vh; }
 }
+@media (max-width: 359px) {
+  .masterdata-row { grid-template-columns: 1fr; }
+  .masterdata-row__actions {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: flex-start;
+    padding-top: 4px;
+  }
+  .masterdata-form .settings-grid,
+  .kindertraining-selector .settings-grid,
+  .kindertraining-session-card .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  #trainer-form .settings-grid label:last-child,
+  #athlete-group-form .settings-grid label:last-child {
+    grid-column: auto;
+  }
+}
 @media (min-width: 640px) {
-  .app-header { padding-inline: 24px; }
-  .gate-card { padding: 32px; }
-  .content { padding-inline: 24px; }
-  .settings-panel { padding: 24px; }
+  .app-header { padding-inline: 20px; }
+  .gate-card { padding: 28px; }
+  .content { padding-inline: 20px; }
+  .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-panel { padding: 20px; }
 }
 `;
 
