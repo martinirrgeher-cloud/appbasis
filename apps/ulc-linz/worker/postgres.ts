@@ -28,6 +28,11 @@ import { createUlcKindertrainingService } from "./kindertraining-service";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
 import { PostgresUlcTrainingSessionRepository } from "./training-session-postgres";
 import {
+  createUlcLinzTrainerIdentityAdminAccessService,
+  type UlcLinzTrainerIdentityAdminAccessService,
+} from "./trainer-identity-admin-access";
+import { PostgresUlcLinzTrainerIdentityLinks } from "./trainer-identity-postgres";
+import {
   createPostgresUlcLinzSecurityEventLogger,
   type BufferedUlcLinzSecurityEventLogger,
 } from "./security-events-postgres";
@@ -38,6 +43,8 @@ export interface GeneratedPostgresApplicationRuntime {
   countdownAccess: UlcLinzCountdownAccessService;
   athletesAccess: UlcLinzAthletesAccessService;
   kindertrainingAccess: UlcLinzKindertrainingAccessService;
+  trainerIdentityAccess: UlcLinzTrainerIdentityAdminAccessService;
+  trainerIdentityLinks: PostgresUlcLinzTrainerIdentityLinks;
   athleteMasterdata: Pick<
     PostgresAthleteMasterdataRepository,
     | "readOrganizationSnapshot"
@@ -106,6 +113,16 @@ export async function createGeneratedPostgresApplicationRuntime(
       subjectScopes: scopes,
       securityEvents,
     });
+    const trainerIdentityAccess =
+      createUlcLinzTrainerIdentityAdminAccessService({
+        sql: applicationSql,
+        permissions,
+        memberships: scopes,
+        subjectScopes: scopes,
+        securityEvents,
+      });
+    const trainerIdentityLinks =
+      new PostgresUlcLinzTrainerIdentityLinks(applicationSql);
     const athleteMasterdataRepository =
       new PostgresAthleteMasterdataRepository(applicationSql);
     const athleteMasterdata = Object.freeze({
@@ -223,6 +240,8 @@ export async function createGeneratedPostgresApplicationRuntime(
       countdownAccess,
       athletesAccess,
       kindertrainingAccess,
+      trainerIdentityAccess,
+      trainerIdentityLinks,
       athleteMasterdata,
       kindertraining,
       securityEvents,
