@@ -1545,8 +1545,9 @@ describe("Kindertraining runtime API", () => {
     });
   });
 
-  it("filters trainer groups and hides an unassigned session group", async () => {
+  it("filters trainer groups and hides unassigned read and write targets", async () => {
     let readCalls = 0;
+    let saveCalls = 0;
     const securityEvents: unknown[] = [];
     const worker = createGeneratedWorker(() => {
       const base = runtime();
@@ -1573,6 +1574,10 @@ describe("Kindertraining runtime API", () => {
           },
           async readSnapshot() {
             readCalls += 1;
+            throw new Error("unassigned group must not reach the service");
+          },
+          async saveSession() {
+            saveCalls += 1;
             throw new Error("unassigned group must not reach the service");
           },
         },
@@ -1607,12 +1612,39 @@ describe("Kindertraining runtime API", () => {
     );
     expect(denied.status).toBe(404);
     expect(readCalls).toBe(0);
+
+    const deniedWrite = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/kindertraining/session", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          groupId: "group-2",
+          sessionDate: "2026-09-27",
+          expectedRevision: null,
+          attendance: [],
+        }),
+      }),
+      validEnv,
+    );
+    expect(deniedWrite.status).toBe(404);
+    expect(saveCalls).toBe(0);
     expect(securityEvents).toEqual([
       expect.objectContaining({
         eventType: "authorization.denied",
         actorPrincipalId: currentIdentity.identity.identityId,
         organizationId: "verein-server",
         action: "view",
+        targetId: "kindertraining",
+        reasonCode: "scope-denied",
+      }),
+      expect.objectContaining({
+        eventType: "authorization.denied",
+        actorPrincipalId: currentIdentity.identity.identityId,
+        organizationId: "verein-server",
+        action: "edit",
         targetId: "kindertraining",
         reasonCode: "scope-denied",
       }),
