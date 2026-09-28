@@ -384,6 +384,10 @@ async function kindertrainingJsonBody(
     !Object.prototype.hasOwnProperty.call(body, "expectedRevision") ||
     !Object.prototype.hasOwnProperty.call(body, "attendance") ||
     Object.getOwnPropertySymbols(body).length !== 0 ||
+    typeof body.groupId !== "string" ||
+    body.groupId.length === 0 ||
+    body.groupId.length > 200 ||
+    body.groupId.trim() !== body.groupId ||
     !Array.isArray(body.attendance) ||
     !(
       body.expectedRevision === null ||

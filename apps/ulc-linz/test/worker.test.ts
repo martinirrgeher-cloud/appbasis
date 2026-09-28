@@ -1638,6 +1638,27 @@ describe("Kindertraining runtime API", () => {
     );
     expect(deniedWrite.status).toBe(404);
     expect(saveCalls).toBe(0);
+
+    for (const groupId of [42, {}, "", " group-1 "]) {
+      const malformed = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/kindertraining/session", {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            groupId,
+            sessionDate: "2026-09-27",
+            expectedRevision: null,
+            attendance: [],
+          }),
+        }),
+        validEnv,
+      );
+      expect(malformed.status).toBe(400);
+    }
+    expect(saveCalls).toBe(0);
     expect(securityEvents).toEqual([
       expect.objectContaining({
         eventType: "authorization.denied",
