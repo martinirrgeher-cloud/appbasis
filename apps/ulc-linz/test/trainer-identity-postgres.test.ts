@@ -80,6 +80,25 @@ describe("ULC trainer identity PostgreSQL contract", () => {
     });
   });
 
+  it("maps a concurrent subject uniqueness race to an explicit conflict", async () => {
+    const repository = new PostgresUlcLinzTrainerIdentityLinks({
+      async unsafe() {
+        throw {
+          code: "23505",
+          constraint_name: "ulc_linz_membership_subject_id_unique",
+        };
+      },
+    });
+
+    await expect(
+      repository.bindTrainer({
+        organizationId: "verein-1",
+        identityId: "identity-1",
+        trainerId: "trainer-1",
+      }),
+    ).rejects.toBeInstanceOf(UlcLinzTrainerIdentityConflictError);
+  });
+
   it("distinguishes missing targets from an already-linked trainer", async () => {
     const missing = new PostgresUlcLinzTrainerIdentityLinks({
       async unsafe() {
