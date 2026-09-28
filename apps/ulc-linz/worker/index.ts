@@ -17,6 +17,10 @@ import {
 } from "./kindertraining-service";
 import { UlcTrainingValidationError } from "./training-session-domain";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
+import {
+  UlcLinzTrainerIdentityConflictError,
+  UlcLinzTrainerIdentityNotFoundError,
+} from "./trainer-identity-postgres";
 import { recordUlcLinzSecurityEvent } from "./security-events";
 import { generatedUiResponse } from "./ui";
 import {
@@ -91,6 +95,8 @@ export function createGeneratedWorker(
           response = await kindertrainingModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining/session") {
           response = await kindertrainingSessionResponse(request, runtime, url);
+        } else if (url.pathname === "/api/admin/trainer-identities") {
+          response = await trainerIdentityAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes") {
           response = await athletesModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes/masterdata") {
@@ -400,6 +406,136 @@ function kindertrainingGroupNotFound(): Response {
       },
     },
     { status: 404 },
+  );
+}
+
+async function trainerIdentityAdminResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowedFor("GET, POST", "Trainer identity administration");
+  }
+
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) return current;
+
+  let access: Readonly<{ organizationId: string }>;
+  try {
+    access = await runtime.trainerIdentityAccess.assertAdminAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "Trainer identity administration access denied.",
+          },
+        },
+        { status: 403 },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+
+  if (request.method === "GET") {
+    const trainerIdentities =
+      await runtime.trainerIdentityLinks.listBindings(access.organizationId);
+    return Response.json({ trainerIdentities });
+  }
+
+  try {
+    const body = await trainerIdentityJsonBody(request);
+    const trainerIdentity = await runtime.trainerIdentityLinks.bindTrainer({
+      organizationId: access.organizationId,
+      identityId: body.identityId as string,
+      trainerId: body.trainerId as string,
+    });
+    return Response.json({ trainerIdentity });
+  } catch (error) {
+    if (error instanceof InvalidTrainerIdentityRequestError) {
+      return Response.json(
+        {
+          error: {
+            code: "INVALID_TRAINER_IDENTITY_LINK",
+            message: "The trainer identity link input is invalid.",
+          },
+        },
+        { status: 400 },
+      );
+    }
+    if (error instanceof UlcLinzTrainerIdentityNotFoundError) {
+      return Response.json(
+        {
+          error: {
+            code: "TRAINER_IDENTITY_NOT_FOUND",
+            message: "The trainer identity or trainer was not found.",
+          },
+        },
+        { status: 404 },
+      );
+    }
+    if (error instanceof UlcLinzTrainerIdentityConflictError) {
+      return Response.json(
+        {
+          error: {
+            code: "TRAINER_IDENTITY_CONFLICT",
+            message: "The trainer is already linked to another identity.",
+          },
+        },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
+}
+
+class InvalidTrainerIdentityRequestError extends Error {}
+
+async function trainerIdentityJsonBody(
+  request: Request,
+): Promise<Record<string, unknown>> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    throw new InvalidTrainerIdentityRequestError();
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new InvalidTrainerIdentityRequestError();
+  }
+  const body = value as Record<string, unknown>;
+  const keys = Object.keys(body).sort();
+  if (
+    JSON.stringify(keys) !== JSON.stringify(["identityId", "trainerId"]) ||
+    Object.getOwnPropertySymbols(body).length !== 0 ||
+    !validRequestIdentifier(body.identityId) ||
+    !validRequestIdentifier(body.trainerId)
+  ) {
+    throw new InvalidTrainerIdentityRequestError();
+  }
+  return body;
+}
+
+function validRequestIdentifier(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 200 &&
+    value.trim() === value
   );
 }
 
