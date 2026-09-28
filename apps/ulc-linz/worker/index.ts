@@ -417,6 +417,9 @@ async function trainerIdentityAdminResponse(
   if (request.method !== "GET" && request.method !== "POST") {
     return methodNotAllowedFor("GET, POST", "Trainer identity administration");
   }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidTrainerIdentityLink();
+  }
 
   const identityHttp = createIdentityHttpHandlers({
     identity: runtime.identity,
@@ -474,15 +477,7 @@ async function trainerIdentityAdminResponse(
     return Response.json({ trainerIdentity });
   } catch (error) {
     if (error instanceof InvalidTrainerIdentityRequestError) {
-      return Response.json(
-        {
-          error: {
-            code: "INVALID_TRAINER_IDENTITY_LINK",
-            message: "The trainer identity link input is invalid.",
-          },
-        },
-        { status: 400 },
-      );
+      return invalidTrainerIdentityLink();
     }
     if (error instanceof UlcLinzTrainerIdentityNotFoundError) {
       return Response.json(
@@ -508,6 +503,18 @@ async function trainerIdentityAdminResponse(
     }
     throw error;
   }
+}
+
+function invalidTrainerIdentityLink(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "INVALID_TRAINER_IDENTITY_LINK",
+        message: "The trainer identity link input is invalid.",
+      },
+    },
+    { status: 400 },
+  );
 }
 
 class InvalidTrainerIdentityRequestError extends Error {}
