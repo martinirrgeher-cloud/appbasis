@@ -443,7 +443,7 @@ function optionalContactEmail(value: unknown): string | null {
   if (
     normalized.length === 0 ||
     normalized.length > MAXIMUM_CONTACT_EMAIL_LENGTH ||
-    !/^[^@\s]+@[^@\s]+\\.[^@\s]+$/u.test(normalized)
+    !/^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(normalized)
   ) {
     throw new UlcLinzTrainerUserValidationError();
   }
