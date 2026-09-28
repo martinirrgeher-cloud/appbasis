@@ -109,11 +109,30 @@ export class PostgresUlcLinzTrainerIdentityLinks {
            AND is_active = true
        ),
        conflicting_binding AS MATERIALIZED (
-         SELECT identity_id
-         FROM ulc_linz_membership
-         WHERE subject_id = $3
-           AND identity_id <> $1
+         SELECT membership.identity_id,
+                membership.active,
+                account.id IS NULL AS account_missing,
+                COALESCE(account.banned, true) AS account_banned
+         FROM ulc_linz_membership AS membership
+         LEFT JOIN "user" AS account
+           ON account.id = membership.identity_id
+         WHERE membership.subject_id = $3
+           AND membership.identity_id <> $1
          LIMIT 1
+       ),
+       releasable_conflict AS MATERIALIZED (
+         SELECT identity_id
+         FROM conflicting_binding
+         WHERE active = false
+            OR account_missing = true
+            OR account_banned = true
+       ),
+       released_conflict AS (
+         UPDATE ulc_linz_membership
+         SET subject_id = 'ulc-detached-trainer:' || md5(identity_id),
+             updated_at = now()
+         WHERE identity_id IN (SELECT identity_id FROM releasable_conflict)
+         RETURNING identity_id
        ),
        updated AS (
          UPDATE ulc_linz_membership
@@ -125,13 +144,28 @@ export class PostgresUlcLinzTrainerIdentityLinks {
            AND active = true
            AND EXISTS (SELECT 1 FROM target_identity)
            AND EXISTS (SELECT 1 FROM target_trainer)
-           AND NOT EXISTS (SELECT 1 FROM conflicting_binding)
+           AND NOT EXISTS (
+             SELECT 1
+             FROM conflicting_binding
+             WHERE active = true
+               AND account_missing = false
+               AND account_banned = false
+           )
+           AND (SELECT count(*) FROM released_conflict) =
+               (SELECT count(*) FROM releasable_conflict)
          RETURNING identity_id, organization_id, subject_id
        )
        SELECT
          EXISTS (SELECT 1 FROM target_identity) AS identity_exists,
          EXISTS (SELECT 1 FROM target_trainer) AS trainer_exists,
-         EXISTS (SELECT 1 FROM conflicting_binding) AS binding_conflict,
+         EXISTS (
+           SELECT 1
+           FROM conflicting_binding
+           WHERE active = true
+             AND account_missing = false
+             AND account_banned = false
+         ) AS binding_conflict,
+         (SELECT count(*)::int FROM released_conflict) AS released_conflict_count,
          (SELECT count(*)::int FROM updated) AS updated_count,
          updated.identity_id,
          account.username,
@@ -161,6 +195,14 @@ export class PostgresUlcLinzTrainerIdentityLinks {
     }
     if (row.binding_conflict === true) {
       throw new UlcLinzTrainerIdentityConflictError();
+    }
+    if (
+      typeof row.released_conflict_count !== "number" ||
+      !Number.isSafeInteger(row.released_conflict_count) ||
+      row.released_conflict_count < 0 ||
+      row.released_conflict_count > 1
+    ) {
+      blocked();
     }
     if (row.updated_count !== 1) blocked();
     const binding = bindingFromRow(row);
