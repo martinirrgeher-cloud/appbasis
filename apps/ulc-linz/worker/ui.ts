@@ -178,6 +178,26 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary" type="submit">Zuordnung anlegen</button>
               </form>
+
+              <section class="card masterdata-form" id="trainer-identity-admin">
+                <div class="section-heading">
+                  <div><p class="eyebrow">Benutzer</p><h2>Trainer-Benutzer zuordnen</h2></div>
+                  <button class="button button--secondary" id="trainer-identity-load" type="button">Verwalten</button>
+                </div>
+                <p class="settings-note">Nur für Administratoren. Die Zuordnung wird erst auf ausdrücklichen Aufruf geladen.</p>
+                <p class="message message--error" id="trainer-identity-message" role="alert" hidden></p>
+                <p class="message message--success" id="trainer-identity-success" role="status" hidden></p>
+                <div id="trainer-identity-workspace" hidden>
+                  <div class="masterdata-list" id="trainer-identity-list" aria-live="polite"></div>
+                  <form id="trainer-identity-form">
+                    <div class="settings-grid">
+                      <label>Benutzer<select id="trainer-identity-identity" required></select></label>
+                      <label>Trainer<select id="trainer-identity-trainer" required></select></label>
+                    </div>
+                    <button class="button button--primary" type="submit">Zuordnung speichern</button>
+                  </form>
+                </div>
+              </section>
             </section>
 
             <section class="masterdata-panel" data-masterdata-panel="groups" hidden>
@@ -850,6 +870,14 @@ const elements = {
   trainerGroupForm: document.querySelector("#trainer-group-form"),
   trainerGroupTrainer: document.querySelector("#trainer-group-trainer"),
   trainerGroupGroup: document.querySelector("#trainer-group-group"),
+  trainerIdentityLoad: document.querySelector("#trainer-identity-load"),
+  trainerIdentityMessage: document.querySelector("#trainer-identity-message"),
+  trainerIdentitySuccess: document.querySelector("#trainer-identity-success"),
+  trainerIdentityWorkspace: document.querySelector("#trainer-identity-workspace"),
+  trainerIdentityList: document.querySelector("#trainer-identity-list"),
+  trainerIdentityForm: document.querySelector("#trainer-identity-form"),
+  trainerIdentityIdentity: document.querySelector("#trainer-identity-identity"),
+  trainerIdentityTrainer: document.querySelector("#trainer-identity-trainer"),
   timerStage: document.querySelector("#timer-stage"),
   phaseLabel: document.querySelector("#phase-label"),
   roundLabel: document.querySelector("#round-label"),
@@ -888,6 +916,9 @@ let kindertrainingSnapshot = null;
 let masterdataLoading = false;
 let masterdataSnapshot = null;
 let masterdataEdit = null;
+let trainerIdentityAdminReady = false;
+let trainerIdentityLoading = false;
+let trainerIdentityBindings = [];
 let plan = null;
 let runMode = "idle";
 let elapsedBeforeRunMs = 0;
@@ -914,6 +945,9 @@ elements.trainerEditCancel?.addEventListener("click", cancelMasterdataEdit);
 elements.groupEditCancel?.addEventListener("click", cancelMasterdataEdit);
 elements.athleteGroupForm?.addEventListener("submit", (event) => void createAthleteGroupMembership(event));
 elements.trainerGroupForm?.addEventListener("submit", (event) => void createTrainerGroupMembership(event));
+elements.trainerIdentityLoad?.addEventListener("click", () => void loadTrainerIdentityAdmin());
+elements.trainerIdentityForm?.addEventListener("submit", (event) => void bindTrainerIdentity(event));
+elements.trainerIdentityIdentity?.addEventListener("change", syncTrainerIdentitySelection);
 elements.kindertrainingLoad?.addEventListener("click", () => void loadKindertraining());
 elements.kindertrainingSave?.addEventListener("click", () => void saveKindertraining());
 elements.kindertrainingAllPresent?.addEventListener("click", () => setAllKindertrainingStatuses("present"));
@@ -1745,6 +1779,200 @@ function renderMasterdata(snapshot) {
   if (elements.trainerCount) elements.trainerCount.textContent = String(snapshot.trainers.length);
   if (elements.groupCount) elements.groupCount.textContent = String(snapshot.trainingGroups.length);
   renderMasterdataAssignmentOptions(snapshot);
+  renderTrainerIdentityAdmin();
+}
+
+function renderTrainerIdentityAdmin() {
+  if (!trainerIdentityAdminReady) return;
+  const container = elements.trainerIdentityList;
+  if (container) {
+    container.replaceChildren();
+    if (trainerIdentityBindings.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "masterdata-empty";
+      empty.textContent = "Keine aktiven Trainer-Benutzer verfügbar.";
+      container.append(empty);
+    } else {
+      const trainersById = new Map(
+        (masterdataSnapshot?.trainers || []).map((trainer) => [
+          trainer.id,
+          String(trainer.lastName || "") + ", " + String(trainer.firstName || ""),
+        ]),
+      );
+      for (const binding of trainerIdentityBindings) {
+        const row = document.createElement("article");
+        row.className = "masterdata-row";
+        const title = document.createElement("strong");
+        title.textContent = binding.displayName;
+        const meta = document.createElement("span");
+        const trainerName =
+          binding.trainerId === null
+            ? "nicht zugeordnet"
+            : trainersById.get(binding.trainerId) || "zugeordneter Trainer";
+        meta.textContent = binding.username + " · " + trainerName;
+        row.append(title, meta);
+        container.append(row);
+      }
+    }
+  }
+
+  replaceSelectOptions(
+    elements.trainerIdentityIdentity,
+    trainerIdentityBindings,
+    "Benutzer auswählen",
+    (item) => item.identityId,
+    (item) => item.displayName + " (" + item.username + ")",
+  );
+  replaceSelectOptions(
+    elements.trainerIdentityTrainer,
+    (masterdataSnapshot?.trainers || []).filter((item) => item?.isActive !== false),
+    "Trainer auswählen",
+    (item) => String(item?.id || ""),
+    (item) => String(item?.lastName || "") + ", " + String(item?.firstName || ""),
+  );
+  syncTrainerIdentitySelection();
+}
+
+function normalizeTrainerIdentityBindings(value) {
+  if (!Array.isArray(value)) throw new Error("INVALID_TRAINER_IDENTITY_BINDINGS");
+  const seen = new Set();
+  const result = [];
+  for (const item of value) {
+    if (
+      item === null ||
+      typeof item !== "object" ||
+      typeof item.identityId !== "string" ||
+      item.identityId.length === 0 ||
+      typeof item.username !== "string" ||
+      item.username.length === 0 ||
+      typeof item.displayName !== "string" ||
+      item.displayName.length === 0 ||
+      !(item.trainerId === null || (typeof item.trainerId === "string" && item.trainerId.length > 0)) ||
+      seen.has(item.identityId)
+    ) {
+      throw new Error("INVALID_TRAINER_IDENTITY_BINDINGS");
+    }
+    seen.add(item.identityId);
+    result.push({
+      identityId: item.identityId,
+      username: item.username,
+      displayName: item.displayName,
+      trainerId: item.trainerId,
+    });
+  }
+  return result;
+}
+
+async function fetchTrainerIdentityBindings() {
+  const payload = await requestJson("/api/admin/trainer-identities");
+  return normalizeTrainerIdentityBindings(payload?.trainerIdentities);
+}
+
+async function loadTrainerIdentityAdmin() {
+  if (trainerIdentityLoading) return;
+  trainerIdentityLoading = true;
+  trainerIdentityAdminReady = false;
+  setTrainerIdentityControlsDisabled(true);
+  showMessage(elements.trainerIdentityMessage, "");
+  showMessage(elements.trainerIdentitySuccess, "");
+  try {
+    trainerIdentityBindings = await fetchTrainerIdentityBindings();
+    trainerIdentityAdminReady = true;
+    if (elements.trainerIdentityWorkspace) {
+      elements.trainerIdentityWorkspace.hidden = false;
+    }
+    renderTrainerIdentityAdmin();
+  } catch (error) {
+    trainerIdentityBindings = [];
+    if (elements.trainerIdentityWorkspace) {
+      elements.trainerIdentityWorkspace.hidden = true;
+    }
+    showMessage(
+      elements.trainerIdentityMessage,
+      error?.status === 403
+        ? "Die Benutzerzuordnung ist nur für Administratoren verfügbar."
+        : "Die Trainer-Benutzerzuordnung konnte nicht geladen werden.",
+    );
+  } finally {
+    trainerIdentityLoading = false;
+    setTrainerIdentityControlsDisabled(false);
+  }
+}
+
+async function bindTrainerIdentity(event) {
+  event.preventDefault();
+  if (!trainerIdentityAdminReady || trainerIdentityLoading) return;
+  const identityId = elements.trainerIdentityIdentity?.value || "";
+  const trainerId = elements.trainerIdentityTrainer?.value || "";
+  showMessage(elements.trainerIdentityMessage, "");
+  showMessage(elements.trainerIdentitySuccess, "");
+  if (!identityId || !trainerId) {
+    showMessage(
+      elements.trainerIdentityMessage,
+      "Bitte Benutzer und Trainer auswählen.",
+    );
+    return;
+  }
+
+  trainerIdentityLoading = true;
+  setTrainerIdentityControlsDisabled(true);
+  try {
+    await requestJson("/api/admin/trainer-identities", {
+      method: "POST",
+      body: JSON.stringify({ identityId, trainerId }),
+    });
+    trainerIdentityBindings = await fetchTrainerIdentityBindings();
+    trainerIdentityAdminReady = true;
+    renderTrainerIdentityAdmin();
+    showMessage(
+      elements.trainerIdentitySuccess,
+      "Trainer-Benutzerzuordnung wurde gespeichert.",
+    );
+  } catch (error) {
+    showMessage(
+      elements.trainerIdentityMessage,
+      error?.status === 403
+        ? "Die Benutzerzuordnung ist nur für Administratoren verfügbar."
+        : error?.status === 404
+          ? "Benutzer oder Trainer ist nicht mehr verfügbar."
+          : error?.status === 409
+            ? "Dieser Trainer ist bereits einem anderen aktiven Benutzer zugeordnet."
+            : error?.status === 400
+              ? "Bitte Benutzer und Trainer erneut auswählen."
+              : "Die Trainer-Benutzerzuordnung konnte nicht gespeichert werden.",
+    );
+  } finally {
+    trainerIdentityLoading = false;
+    setTrainerIdentityControlsDisabled(false);
+  }
+}
+
+function syncTrainerIdentitySelection() {
+  if (!trainerIdentityAdminReady || !elements.trainerIdentityTrainer) return;
+  const identityId = elements.trainerIdentityIdentity?.value || "";
+  const binding = trainerIdentityBindings.find((item) => item.identityId === identityId);
+  const trainerId = binding?.trainerId || "";
+  elements.trainerIdentityTrainer.value = [...elements.trainerIdentityTrainer.options].some(
+    (option) => option.value === trainerId,
+  )
+    ? trainerId
+    : "";
+}
+
+function setTrainerIdentityControlsDisabled(disabled) {
+  if (elements.trainerIdentityLoad) {
+    elements.trainerIdentityLoad.disabled = disabled;
+    elements.trainerIdentityLoad.textContent = trainerIdentityAdminReady
+      ? "Neu laden"
+      : "Verwalten";
+  }
+  for (const control of [
+    elements.trainerIdentityIdentity,
+    elements.trainerIdentityTrainer,
+    elements.trainerIdentityForm?.querySelector("button"),
+  ]) {
+    if (control) control.disabled = disabled || !trainerIdentityAdminReady;
+  }
 }
 
 function renderMasterdataList(container, items, emptyMessage, describe) {
