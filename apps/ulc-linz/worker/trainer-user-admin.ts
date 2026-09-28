@@ -1,10 +1,12 @@
 import {
-  PostgresIdentityStateStore,
   normalizeUsername,
   technicalEmailForUsername,
+  type IdentityState,
 } from "@appbasis/identity";
-import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
-import { createPostgresDatabase } from "@appbasis/database";
+import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import type {
+  IdentityTrustedProvisioningService,
+} from "@appbasis/identity/postgres-runtime";
 import {
   PostgresPermissionStore,
   PostgresPrincipalAccessAdministration,
@@ -34,6 +36,7 @@ export interface UlcLinzTrainerUserProvisioningResult {
 
 export class UlcLinzTrainerUserValidationError extends Error {
   readonly code = "ULC_LINZ_TRAINER_USER_INVALID";
+
   constructor() {
     super("Trainer user input is invalid.");
     this.name = "UlcLinzTrainerUserValidationError";
@@ -42,6 +45,7 @@ export class UlcLinzTrainerUserValidationError extends Error {
 
 export class UlcLinzTrainerUserConflictError extends Error {
   readonly code = "ULC_LINZ_TRAINER_USER_CONFLICT";
+
   constructor() {
     super("Trainer user conflicts with existing state.");
     this.name = "UlcLinzTrainerUserConflictError";
@@ -50,6 +54,7 @@ export class UlcLinzTrainerUserConflictError extends Error {
 
 export class UlcLinzTrainerUserPersistenceError extends Error {
   readonly code = "ULC_LINZ_TRAINER_USER_PERSISTENCE_ERROR";
+
   constructor() {
     super("Trainer user provisioning failed.");
     this.name = "UlcLinzTrainerUserPersistenceError";
@@ -66,12 +71,22 @@ type ExistingUser = Readonly<{
   displayName: string;
 }>;
 
+type ProvisioningOperation = Readonly<{
+  kind: string;
+  identityId: string | null;
+  completed: boolean;
+}>;
+
+type ProvisioningEvidence = Readonly<{
+  user: ExistingUser | null;
+  operation: ProvisioningOperation | null;
+}>;
+
 export class PostgresUlcLinzTrainerUserAdministration {
   constructor(
     private readonly options: Readonly<{
       connectionString: string;
-      baseURL: string;
-      secret: string;
+      trustedProvisioningIdentity: IdentityTrustedProvisioningService;
     }>,
     private readonly createDatabase: DatabaseFactory = createPostgresDatabase,
   ) {}
@@ -92,109 +107,62 @@ export class PostgresUlcLinzTrainerUserAdministration {
     const contactEmail = optionalContactEmail(input.contactEmail);
     const temporaryPassword = requiredTemporaryPassword(input.temporaryPassword);
     const profile = requiredProfile(input.profile);
+    const technicalEmail = await technicalEmailForUsername(username);
 
     const connection = this.createDatabase(this.options.connectionString);
     try {
-      const auth = createBetterAuthRuntime({
-        database: connection.database,
-        baseURL: this.options.baseURL,
-        secret: this.options.secret,
-      });
-      const stateStore = new PostgresIdentityStateStore(connection.client);
-      const technicalEmail = await technicalEmailForUsername(username);
-      const operationKey = "provision:" + username;
+      const before = await readProvisioningEvidence(connection, username);
+      assertRecoverableProvisioningEvidence(
+        before,
+        username,
+        displayName,
+        technicalEmail,
+      );
 
-      let operation = await stateStore.findOperation(operationKey);
-      let user = await readUser(connection, username);
-      if (operation === null && user !== null) {
-        throw new UlcLinzTrainerUserConflictError();
-      }
-      if (operation === null) {
-        operation = await stateStore.prepareOperation({
-          operationKey,
-          kind: "provision",
-          identityId: null,
+      const identityState =
+        await this.options.trustedProvisioningIdentity.createInitialUser({
+          username,
+          displayName,
+          contactEmail: contactEmail ?? undefined,
+          temporaryPassword,
         });
-      }
+      requireExactIdentityState(
+        identityState,
+        username,
+        displayName,
+        contactEmail,
+      );
 
-      let created = false;
-      if (user === null) {
-        try {
-          const response = await auth.api.createUser({
-            body: {
-              email: technicalEmail,
-              password: temporaryPassword,
-              name: displayName,
-              role: "user",
-              data: {
-                username,
-                displayUsername: username,
-              },
-            },
-          });
-          if (typeof response.user?.id !== "string" || response.user.id.length === 0) {
-            throw new UlcLinzTrainerUserPersistenceError();
-          }
-          created = true;
-        } catch (error) {
-          if (error instanceof UlcLinzTrainerUserPersistenceError) throw error;
-        }
-        user = await readUser(connection, username);
-      }
-
+      const user = await readUser(connection, username);
       const recovered = requireRecoverableUser(
         user,
         username,
         displayName,
         technicalEmail,
       );
-      if (
-        operation.identityId !== null &&
-        operation.identityId !== recovered.id
-      ) {
-        throw new UlcLinzTrainerUserConflictError();
-      }
-
-      let identityState = await stateStore.find(recovered.id);
-      if (identityState === null || operation.completedAt === null) {
-        identityState = await stateStore.completeProvisioning({
-          operationId: operation.operationId,
-          identityId: recovered.id,
-          username,
-          displayName,
-          contactEmail,
-          completedAt: new Date(),
-        });
-      }
-      if (
-        identityState.identityId !== recovered.id ||
-        identityState.username !== username ||
-        identityState.displayName !== displayName ||
-        identityState.contactEmail !== contactEmail ||
-        identityState.mustChangePassword !== true
-      ) {
+      if (recovered.id !== identityState.identityId) {
         throw new UlcLinzTrainerUserConflictError();
       }
 
       await ensureTrainerMembership(
         connection,
-        recovered.id,
+        identityState.identityId,
         organizationId,
       );
       await ensureTrainerPermissions(
         connection,
-        recovered.id,
+        identityState.identityId,
         actorPrincipalId,
         profile,
       );
 
       return Object.freeze({
-        identityId: recovered.id,
+        identityId: identityState.identityId,
         username,
         displayName,
         contactEmail,
         profile,
-        created,
+        created: before.user === null,
       });
     } catch (error) {
       if (
@@ -208,6 +176,74 @@ export class PostgresUlcLinzTrainerUserAdministration {
     } finally {
       await connection.client.end().catch(() => {});
     }
+  }
+}
+
+async function readProvisioningEvidence(
+  connection: DatabaseConnection,
+  username: string,
+): Promise<ProvisioningEvidence> {
+  const [user, operationRows] = await Promise.all([
+    readUser(connection, username),
+    connection.client.unsafe(
+      "SELECT kind, identity_id, completed_at " +
+        "FROM appbasis_identity_operation WHERE operation_key = $1",
+      ["provision:" + username],
+    ),
+  ]);
+  if (operationRows.length > 1) {
+    throw new UlcLinzTrainerUserPersistenceError();
+  }
+  const row = operationRows[0];
+  const operation =
+    row === undefined
+      ? null
+      : Object.freeze({
+          kind: typeof row.kind === "string" ? row.kind : "",
+          identityId:
+            row.identity_id === null
+              ? null
+              : typeof row.identity_id === "string"
+                ? row.identity_id
+                : "",
+          completed: row.completed_at !== null,
+        });
+  return Object.freeze({ user, operation });
+}
+
+function assertRecoverableProvisioningEvidence(
+  evidence: ProvisioningEvidence,
+  username: string,
+  displayName: string,
+  technicalEmail: string,
+): void {
+  const operation = evidence.operation;
+  if (operation === null) {
+    if (evidence.user !== null) throw new UlcLinzTrainerUserConflictError();
+    return;
+  }
+  if (operation.kind !== "provision") {
+    throw new UlcLinzTrainerUserConflictError();
+  }
+  if (
+    operation.identityId !== null &&
+    (operation.identityId.length === 0 ||
+      evidence.user === null ||
+      evidence.user.id !== operation.identityId ||
+      !operation.completed)
+  ) {
+    throw new UlcLinzTrainerUserConflictError();
+  }
+  if (operation.completed && operation.identityId === null) {
+    throw new UlcLinzTrainerUserConflictError();
+  }
+  if (evidence.user !== null) {
+    requireRecoverableUser(
+      evidence.user,
+      username,
+      displayName,
+      technicalEmail,
+    );
   }
 }
 
@@ -258,6 +294,23 @@ function requireRecoverableUser(
     throw new UlcLinzTrainerUserConflictError();
   }
   return user;
+}
+
+function requireExactIdentityState(
+  state: IdentityState,
+  username: string,
+  displayName: string,
+  contactEmail: string | null,
+): void {
+  if (
+    state.username !== username ||
+    state.displayName !== displayName ||
+    state.contactEmail !== contactEmail ||
+    state.accountStatus !== "active" ||
+    state.mustChangePassword !== true
+  ) {
+    throw new UlcLinzTrainerUserConflictError();
+  }
 }
 
 async function ensureTrainerMembership(
