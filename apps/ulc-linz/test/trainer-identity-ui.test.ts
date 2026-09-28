@@ -58,4 +58,27 @@ describe("ULC E4E-C trainer identity administration UI", () => {
       "Trainer-Benutzerzuordnung wurde gespeichert.",
     );
   });
+
+  it("does not report a committed assignment as failed when only refresh fails", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "Trainer-Benutzerzuordnung wurde gespeichert, aber die aktualisierte Liste konnte nicht geladen werden. Bitte neu laden.",
+    );
+    const start = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function bindTrainerIdentity(event)",
+    );
+    const end = ULC_LINZ_APP_SCRIPT.indexOf(
+      "function syncTrainerIdentitySelection()",
+      start,
+    );
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const bindingFlow = ULC_LINZ_APP_SCRIPT.slice(start, end);
+    expect(bindingFlow).toContain(
+      'await requestJson("/api/admin/trainer-identities", {',
+    );
+    expect(bindingFlow).toContain(
+      "trainerIdentityBindings = await fetchTrainerIdentityBindings();",
+    );
+    expect(bindingFlow).toContain("} catch {");
+  });
 });
