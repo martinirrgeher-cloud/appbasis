@@ -118,7 +118,7 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
     expect(rows[0]?.count).toBe(0);
   });
 
-  it("rejects technical admin targets at the PostgreSQL persistence boundary", async () => {
+  it("rejects pre-existing technical admin targets before AppBasis persistence", async () => {
     const targetAdminUsername = "guardrails.otheradmin";
     await createUserSession({
       auth,
@@ -141,7 +141,7 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
         temporaryPassword,
         displayName: "Other Technical Admin",
       }),
-    ).rejects.toThrow("Technical Better Auth administrators cannot be AppBasis identities");
+    ).rejects.toThrow("Existing Better Auth account is not recoverable for this provisioning operation.");
 
     const rows = await connection.client<{ count: number }[]>`
       SELECT count(*)::int AS count
@@ -229,7 +229,7 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
     }
   });
 
-  it("returns disabled for a banned existing user and for a completed retry after a later ban", async () => {
+  it("rejects a banned pre-existing user and returns disabled for a completed retry after a later ban", async () => {
     const bannedExistingUsername = "guardrails.bannedexisting";
     await createUserSession({
       auth,
@@ -255,7 +255,9 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
         temporaryPassword,
         displayName: "Banned Existing",
       }),
-    ).resolves.toMatchObject({ accountStatus: "disabled" });
+    ).rejects.toThrow(
+      "Existing Better Auth account is not recoverable for this provisioning operation.",
+    );
 
     const retryUsername = "guardrails.retry";
     const input = {
