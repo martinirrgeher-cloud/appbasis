@@ -38,6 +38,9 @@ export const identityOperation = pgTable("appbasis_identity_operation", {
   operationKey: text("operation_key").notNull().unique(),
   kind: text("kind").notNull(),
   identityId: text("identity_id"),
+  provisioningOwner: text("provisioning_owner"),
+  actorPrincipalId: text("actor_principal_id"),
+  reason: text("reason"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
