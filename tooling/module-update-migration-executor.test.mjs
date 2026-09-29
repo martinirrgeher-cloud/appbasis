@@ -849,6 +849,7 @@ async function createExistingAppFixture(t) {
   for (const migration of [
     "0000_appbasis_identity_foundation.sql",
     "0001_appbasis_identity_foundation.sql",
+    "0002_appbasis_identity_provisioning_audit.sql",
   ]) {
     await cp(
       join(repositoryRoot, "packages", "identity", "drizzle", migration),
@@ -901,10 +902,11 @@ async function createExistingAppFixture(t) {
           {
             id: "identity",
             root: "packages/identity",
-            schemaVersion: 2,
+            schemaVersion: 3,
             migrations: [
               "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
               "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+              "packages/identity/drizzle/0002_appbasis_identity_provisioning_audit.sql",
             ],
           },
         ],
