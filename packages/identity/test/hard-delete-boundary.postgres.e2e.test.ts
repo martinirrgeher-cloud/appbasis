@@ -28,9 +28,13 @@ describeWithPostgres("Identity hard-delete ownership boundary", () => {
 
   beforeAll(async () => {
     await client.unsafe(`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`);
-    for (const migration of ["0000", "0001"]) {
+    for (const migration of [
+      "0000_appbasis_identity_foundation.sql",
+      "0001_appbasis_identity_foundation.sql",
+      "0002_appbasis_identity_provisioning_audit.sql",
+    ]) {
       const sql = await readFile(
-        new URL(`../drizzle/${migration}_appbasis_identity_foundation.sql`, import.meta.url),
+        new URL(`../drizzle/${migration}`, import.meta.url),
         "utf8",
       );
       for (const statement of sql.split("--> statement-breakpoint")) {
