@@ -813,8 +813,12 @@ Abnahme für ULC-E4E-D:
   Trainer-Adminbereich; es entsteht keine neue Hauptnavigation;
 - die bestehende Trainerliste zeigt weiterhin die zugeordneten Gruppen aus dem
   serverautorisierten Stammdaten-Snapshot;
-- E4E-D benötigt keine Datenbankmigration und führt im Code-PR weder Preview-
-  noch Production-Write oder Deployment aus.
+- die neue Identity-Provisionierung speichert Owner, administrativen Actor und
+  Reason bereits in der vorbereiteten Identity-Operation; dafür wird die
+  additive Identity-Schema-Version 3 mit Migration
+  `0002_appbasis_identity_provisioning_audit.sql` benötigt;
+- der Code-PR führt weiterhin weder Preview-/Production-Write noch Deployment
+  aus. Migration und Deployment bleiben gesonderte Freigabe-Gates.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -852,8 +856,8 @@ Ein Finding blockiert den aktuellen ULC-E4E-D-Pfad, wenn mindestens eines gilt:
   still überschrieben;
 - die UI ruft die Admin-Funktionen ohne ausdrückliches „Verwalten“ auf oder
   rendert dynamische Benutzer-/Trainerdaten per HTML-Injektion;
-- der Code-PR führt eine Migration, einen Preview-/Production-Write oder ein
-  Deployment ohne gesonderte Freigabe aus.
+- der Code-PR führt die neue Migration, einen Preview-/Production-Write oder
+  ein Deployment ohne gesonderte Freigabe aus.
 
 Nicht gate-blockierend sind weitere visuelle Feinarbeiten, zusätzliche
 Trainer-Berechtigungsprofile, Sondertrainings, Statistik, Import/Export,
