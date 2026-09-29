@@ -1407,7 +1407,6 @@ describe("Trainer user administration API", () => {
 
     expect(response.status).toBe(201);
     expect(received).toEqual({
-      administrativeSessionToken: currentIdentity.sessionToken,
       organizationId: "verein-server",
       actorPrincipalId: "identity-worker-1",
       username: "trainer.a",
