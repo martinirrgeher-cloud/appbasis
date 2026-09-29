@@ -1,4 +1,7 @@
-import type { IdentityState } from "./contracts";
+import type {
+  IdentityProvisioningAuditContext,
+  IdentityState,
+} from "./contracts";
 import type { IdentityHttpService } from "./http";
 import type { CreateInitialUserInput } from "./service";
 
@@ -24,8 +27,8 @@ export interface IdentityPostgresRuntimeTransactionalSqlClient
 
 export interface IdentityPostgresProvisioningOwner {
   createInitialUser(
-    administrativeSessionToken: string,
     input: CreateInitialUserInput,
+    provisioningAudit: IdentityProvisioningAuditContext,
   ): Promise<IdentityState>;
 }
 
