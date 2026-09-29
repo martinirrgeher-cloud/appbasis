@@ -156,6 +156,7 @@ export function createUlcLinzTrainerUserProvisioningService({
           actorPrincipalId,
           identityId: identity.identityId,
           trainerId,
+          expectedSubjectId: unassignedTrainerSubject(identity.identityId),
         });
       } else {
         throw new UlcLinzTrainerUserProvisioningConflictError();
