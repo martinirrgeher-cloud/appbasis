@@ -4,7 +4,7 @@ import { createPostgresDatabase } from "@appbasis/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBetterAuthRuntime } from "../src/better-auth";
-import { IdentityService } from "../src/service";
+import { IdentityProvisioningConflictError, IdentityService } from "../src/service";
 import {
   BetterAuthIdentityBackend,
   createIdentityRuntime,
