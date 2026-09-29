@@ -50,6 +50,7 @@ export class BetterAuthIdentityBackend {
       }[]
     >`
       SELECT u.id,
+             u.name,
              u.created_at,
              u.role,
              u.banned,
