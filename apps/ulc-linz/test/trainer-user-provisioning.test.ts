@@ -57,8 +57,8 @@ describe("ULC trainer user provisioning", () => {
     let bindInput: unknown = null;
     let accessInput: unknown = null;
     const identityProvisioning: IdentityPostgresProvisioningOwner = {
-      async createInitialUser(administrativeSessionToken, input) {
-        identityInput = { administrativeSessionToken, input };
+      async createInitialUser(input, provisioningAudit) {
+        identityInput = { input, provisioningAudit };
         return identityState();
       },
     };
@@ -125,7 +125,6 @@ describe("ULC trainer user provisioning", () => {
 
     await expect(
       service.createTrainerUser({
-        administrativeSessionToken: "admin-cookie",
         organizationId: "verein-1",
         actorPrincipalId: "admin-1",
         username: "trainer.a",
@@ -142,11 +141,15 @@ describe("ULC trainer user provisioning", () => {
     });
 
     expect(identityInput).toEqual({
-      administrativeSessionToken: "admin-cookie",
       input: {
         username: "trainer.a",
         displayName: "Trainer A",
         temporaryPassword: "temporary-value-123",
+      },
+      provisioningAudit: {
+        provisioningOwner: "ulc-linz:trainer-user",
+        actorPrincipalId: "admin-1",
+        reason: "ULC Linz trainer user provisioning",
       },
     });
     expect(bindInput).toEqual({
@@ -234,7 +237,6 @@ describe("ULC trainer user provisioning", () => {
 
     await expect(
       service.createTrainerUser({
-        administrativeSessionToken: "admin-cookie",
         organizationId: "verein-1",
         actorPrincipalId: "admin-1",
         username: "trainer.a",
@@ -294,7 +296,6 @@ describe("ULC trainer user provisioning", () => {
 
     await expect(
       service.createTrainerUser({
-        administrativeSessionToken: "admin-cookie",
         organizationId: "verein-1",
         actorPrincipalId: "admin-1",
         username: "trainer.a",
