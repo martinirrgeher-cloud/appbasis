@@ -14,6 +14,9 @@ ALTER TABLE "appbasis_identity_operation"
     OR
     (
       "kind" = 'provision'
+      AND "provisioning_owner" IS NOT NULL
+      AND "actor_principal_id" IS NOT NULL
+      AND "reason" IS NOT NULL
       AND char_length("provisioning_owner") BETWEEN 1 AND 120
       AND "provisioning_owner" = btrim("provisioning_owner")
       AND char_length("actor_principal_id") BETWEEN 1 AND 200
