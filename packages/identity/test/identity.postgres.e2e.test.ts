@@ -87,6 +87,27 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     );
   });
 
+  it("rejects partial provisioning audit tuples at the database boundary", async () => {
+    await expect(
+      client`
+        INSERT INTO appbasis_identity_operation (
+          operation_id,
+          operation_key,
+          kind,
+          identity_id,
+          provisioning_owner
+        )
+        VALUES (
+          'partial-audit-operation',
+          'partial-audit-operation-key',
+          'provision',
+          NULL,
+          'ulc-linz:trainer-user'
+        )
+      `,
+    ).rejects.toThrow();
+  });
+
   it("validates admin provisioning, contact profile persistence, username login and the required first password change through the production runtime", async () => {
     const service = runtime.service;
     const identity = await service.createInitialUser({
