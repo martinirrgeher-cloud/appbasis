@@ -49,7 +49,10 @@ export async function createPostgresIdentityApplicationRuntime(
             }),
           ] as [T],
         );
-        return results[0];
+        // postgres.js recursively unwraps promise values returned from
+        // transaction tuples. The platform transaction port intentionally exposes
+        // the simpler Promise<T> contract used by permission administration.
+        return results[0] as unknown as T;
       },
     };
     Object.freeze(sql);
