@@ -84,11 +84,16 @@ export class PostgresUlcLinzTrainerIdentityLinks {
     actorPrincipalId: string;
     identityId: string;
     trainerId: string;
+    expectedSubjectId?: string;
   }): Promise<UlcLinzTrainerIdentityBinding> {
     const organizationId = requiredIdentifier(input.organizationId);
     const actorPrincipalId = requiredIdentifier(input.actorPrincipalId);
     const identityId = requiredIdentifier(input.identityId);
     const trainerId = requiredIdentifier(input.trainerId);
+    const expectedSubjectId =
+      input.expectedSubjectId === undefined
+        ? null
+        : requiredIdentifier(input.expectedSubjectId);
 
     let rows: readonly Record<string, unknown>[];
     try {
@@ -105,6 +110,13 @@ export class PostgresUlcLinzTrainerIdentityLinks {
            AND membership.active = true
            AND COALESCE(account.banned, false) = false
          FOR UPDATE OF membership
+       ),
+       target_subject_allowed AS MATERIALIZED (
+         SELECT identity_id
+         FROM target_identity
+         WHERE $5::text IS NULL
+            OR previous_subject_id = $5
+            OR previous_subject_id = $3
        ),
        target_trainer AS MATERIALIZED (
          SELECT id
@@ -145,7 +157,7 @@ export class PostgresUlcLinzTrainerIdentityLinks {
          SET subject_id = 'ulc-detached-trainer:' || md5(identity_id),
              updated_at = now()
          WHERE identity_id IN (SELECT identity_id FROM releasable_conflict)
-           AND EXISTS (SELECT 1 FROM target_identity)
+           AND EXISTS (SELECT 1 FROM target_subject_allowed)
            AND EXISTS (SELECT 1 FROM target_trainer)
          RETURNING identity_id, organization_id, subject_id AS new_subject_id
        ),
@@ -157,7 +169,7 @@ export class PostgresUlcLinzTrainerIdentityLinks {
            AND organization_id = $2
            AND source_role = 'trainer'
            AND active = true
-           AND EXISTS (SELECT 1 FROM target_identity)
+           AND EXISTS (SELECT 1 FROM target_subject_allowed)
            AND EXISTS (SELECT 1 FROM target_trainer)
            AND NOT EXISTS (
              SELECT 1
@@ -213,6 +225,10 @@ export class PostgresUlcLinzTrainerIdentityLinks {
        SELECT
          EXISTS (SELECT 1 FROM target_identity) AS identity_exists,
          EXISTS (SELECT 1 FROM target_trainer) AS trainer_exists,
+         (
+           EXISTS (SELECT 1 FROM target_identity)
+           AND NOT EXISTS (SELECT 1 FROM target_subject_allowed)
+         ) AS subject_conflict,
          EXISTS (
            SELECT 1
            FROM conflicting_binding
@@ -236,7 +252,13 @@ export class PostgresUlcLinzTrainerIdentityLinks {
        LEFT JOIN appbasis_trainer AS trainer
          ON trainer.id = updated.subject_id
         AND trainer.organization_id = updated.organization_id`,
-      [identityId, organizationId, trainerId, actorPrincipalId],
+      [
+        identityId,
+        organizationId,
+        trainerId,
+        actorPrincipalId,
+        expectedSubjectId,
+      ],
       );
     } catch (error) {
       if (isSubjectUniquenessViolation(error)) {
@@ -249,6 +271,9 @@ export class PostgresUlcLinzTrainerIdentityLinks {
     const row = rows[0];
     if (row.identity_exists !== true || row.trainer_exists !== true) {
       throw new UlcLinzTrainerIdentityNotFoundError();
+    }
+    if (row.subject_conflict === true) {
+      throw new UlcLinzTrainerIdentityConflictError();
     }
     if (row.binding_conflict === true) {
       throw new UlcLinzTrainerIdentityConflictError();
