@@ -3,6 +3,8 @@ import type { IdentityPostgresProvisioningOwner } from "@appbasis/identity/postg
 import { ensurePostgresPermissionPrincipal } from "@appbasis/permissions/provisioning";
 import {
   PostgresPrincipalAccessAdministration,
+  PrincipalPermissionAdministrationError,
+  RoleAdministrationError,
   capabilityId,
   principalId,
   roleId,
@@ -321,19 +323,50 @@ async function ensureTrainerAccess({
     });
   }
 
-  return accessAdministration.replacePrincipalAccess(
-    targetPrincipalId,
-    [trainerRole],
-    { grants, revokes: [] },
-    {
-      actorPrincipalId: principalId(actorPrincipalId),
-      reason: "ULC Linz trainer user provisioning",
-    },
-    {
-      expectedRoleIds: current.roleIds,
-      expectedGrants: current.grants,
-      expectedRevokes: current.revokes,
-    },
+  try {
+    return await accessAdministration.replacePrincipalAccess(
+      targetPrincipalId,
+      [trainerRole],
+      { grants, revokes: [] },
+      {
+        actorPrincipalId: principalId(actorPrincipalId),
+        reason: "ULC Linz trainer user provisioning",
+      },
+      {
+        expectedRoleIds: current.roleIds,
+        expectedGrants: current.grants,
+        expectedRevokes: current.revokes,
+      },
+    );
+  } catch (error) {
+    if (!isStalePrincipalAccess(error)) throw error;
+
+    // Another identical retry may have committed the canonical trainer access
+    // while this request was waiting for the permission transaction lock.
+    const reconciled = await permissions.findPrincipal(targetPrincipalId);
+    if (
+      reconciled !== null &&
+      reconciled.roleIds.length === 1 &&
+      reconciled.roleIds[0] === trainerRole &&
+      sameStrings(reconciled.grants, grants) &&
+      reconciled.revokes.length === 0
+    ) {
+      return Object.freeze({
+        roleIds: Object.freeze([...reconciled.roleIds]),
+        grants: Object.freeze([...reconciled.grants]),
+        revokes: Object.freeze([...reconciled.revokes]),
+      });
+    }
+    throw new UlcLinzTrainerUserProvisioningConflictError();
+  }
+}
+
+function isStalePrincipalAccess(error: unknown): boolean {
+  return (
+    (error instanceof RoleAdministrationError &&
+      error.code === "STALE_PRINCIPAL_ROLES") ||
+    (error instanceof PrincipalPermissionAdministrationError &&
+      error.code === "STALE_PRINCIPAL_PERMISSIONS")
   );
 }
 
