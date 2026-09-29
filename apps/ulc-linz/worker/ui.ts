@@ -189,13 +189,30 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <p class="message message--error" id="trainer-identity-message" role="alert" hidden></p>
                 <p class="message message--success" id="trainer-identity-success" role="status" hidden></p>
                 <div id="trainer-identity-workspace" hidden>
+                  <form id="trainer-user-form">
+                    <div class="section-heading">
+                      <div><p class="eyebrow">Neu</p><h3>Trainer-Benutzer anlegen</h3></div>
+                    </div>
+                    <p class="settings-note">Der Benutzer erhält die Rolle Trainer mit Kindertraining-Zugriff und muss beim ersten Login das temporäre Passwort ändern.</p>
+                    <div class="settings-grid">
+                      <label>Benutzername<input id="trainer-user-username" minlength="3" maxlength="30" pattern="[a-z0-9._]+" autocomplete="off" required /></label>
+                      <label>Anzeigename<input id="trainer-user-display-name" maxlength="120" autocomplete="off" required /></label>
+                      <label>E-Mail optional<input id="trainer-user-email" type="email" maxlength="320" autocomplete="off" /></label>
+                      <label>Temporäres Passwort<input id="trainer-user-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required /></label>
+                      <label>Trainer<select id="trainer-user-trainer" required></select></label>
+                    </div>
+                    <button class="button button--primary" type="submit">Benutzer anlegen</button>
+                  </form>
                   <div class="masterdata-list" id="trainer-identity-list" aria-live="polite"></div>
                   <form id="trainer-identity-form">
+                    <div class="section-heading">
+                      <div><p class="eyebrow">Bestehend</p><h3>Benutzerzuordnung ändern</h3></div>
+                    </div>
                     <div class="settings-grid">
                       <label>Benutzer<select id="trainer-identity-identity" required></select></label>
                       <label>Trainer<select id="trainer-identity-trainer" required></select></label>
                     </div>
-                    <button class="button button--primary" type="submit">Zuordnung speichern</button>
+                    <button class="button button--secondary" type="submit">Zuordnung speichern</button>
                   </form>
                 </div>
               </section>
@@ -594,6 +611,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 #athlete-group-form .settings-grid label:last-child {
   grid-column: 1 / -1;
 }
+#trainer-identity-workspace { display: grid; gap: 12px; }
+#trainer-identity-workspace[hidden] { display: none; }
+#trainer-user-form,
+#trainer-identity-form { display: grid; gap: 10px; }
+#trainer-user-form {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
 .kindertraining-selector .settings-grid {
   grid-template-columns: minmax(0, 1.25fr) minmax(120px, .75fr);
   gap: 8px;
@@ -876,6 +901,12 @@ const elements = {
   trainerIdentityMessage: document.querySelector("#trainer-identity-message"),
   trainerIdentitySuccess: document.querySelector("#trainer-identity-success"),
   trainerIdentityWorkspace: document.querySelector("#trainer-identity-workspace"),
+  trainerUserForm: document.querySelector("#trainer-user-form"),
+  trainerUserUsername: document.querySelector("#trainer-user-username"),
+  trainerUserDisplayName: document.querySelector("#trainer-user-display-name"),
+  trainerUserEmail: document.querySelector("#trainer-user-email"),
+  trainerUserPassword: document.querySelector("#trainer-user-password"),
+  trainerUserTrainer: document.querySelector("#trainer-user-trainer"),
   trainerIdentityList: document.querySelector("#trainer-identity-list"),
   trainerIdentityForm: document.querySelector("#trainer-identity-form"),
   trainerIdentityIdentity: document.querySelector("#trainer-identity-identity"),
@@ -948,6 +979,7 @@ elements.groupEditCancel?.addEventListener("click", cancelMasterdataEdit);
 elements.athleteGroupForm?.addEventListener("submit", (event) => void createAthleteGroupMembership(event));
 elements.trainerGroupForm?.addEventListener("submit", (event) => void createTrainerGroupMembership(event));
 elements.trainerIdentityLoad?.addEventListener("click", () => void loadTrainerIdentityAdmin());
+elements.trainerUserForm?.addEventListener("submit", (event) => void createTrainerUser(event));
 elements.trainerIdentityForm?.addEventListener("submit", (event) => void bindTrainerIdentity(event));
 elements.trainerIdentityIdentity?.addEventListener("change", syncTrainerIdentitySelection);
 elements.kindertrainingLoad?.addEventListener("click", () => void loadKindertraining());
@@ -1827,9 +1859,19 @@ function renderTrainerIdentityAdmin() {
     (item) => item.identityId,
     (item) => item.displayName + " (" + item.username + ")",
   );
+  const activeTrainers = (masterdataSnapshot?.trainers || []).filter(
+    (item) => item?.isActive !== false,
+  );
   replaceSelectOptions(
     elements.trainerIdentityTrainer,
-    (masterdataSnapshot?.trainers || []).filter((item) => item?.isActive !== false),
+    activeTrainers,
+    "Trainer auswählen",
+    (item) => String(item?.id || ""),
+    (item) => String(item?.lastName || "") + ", " + String(item?.firstName || ""),
+  );
+  replaceSelectOptions(
+    elements.trainerUserTrainer,
+    activeTrainers,
     "Trainer auswählen",
     (item) => String(item?.id || ""),
     (item) => String(item?.lastName || "") + ", " + String(item?.firstName || ""),
@@ -1897,6 +1939,81 @@ async function loadTrainerIdentityAdmin() {
         ? "Die Benutzerzuordnung ist nur für Administratoren verfügbar."
         : "Die Trainer-Benutzerzuordnung konnte nicht geladen werden.",
     );
+  } finally {
+    trainerIdentityLoading = false;
+    setTrainerIdentityControlsDisabled(false);
+  }
+}
+
+async function createTrainerUser(event) {
+  event.preventDefault();
+  if (!trainerIdentityAdminReady || trainerIdentityLoading) return;
+  const username = elements.trainerUserUsername?.value || "";
+  const displayName = elements.trainerUserDisplayName?.value || "";
+  const contactEmail = elements.trainerUserEmail?.value.trim() || "";
+  const temporaryPassword = elements.trainerUserPassword?.value || "";
+  const trainerId = elements.trainerUserTrainer?.value || "";
+  showMessage(elements.trainerIdentityMessage, "");
+  showMessage(elements.trainerIdentitySuccess, "");
+
+  if (!username || !displayName || !temporaryPassword || !trainerId) {
+    showMessage(
+      elements.trainerIdentityMessage,
+      "Bitte Benutzername, Anzeigename, temporäres Passwort und Trainer angeben.",
+    );
+    return;
+  }
+
+  trainerIdentityLoading = true;
+  setTrainerIdentityControlsDisabled(true);
+  try {
+    try {
+      await requestJson("/api/admin/trainer-users", {
+        method: "POST",
+        body: JSON.stringify({
+          username,
+          displayName,
+          temporaryPassword,
+          trainerId,
+          ...(contactEmail ? { contactEmail } : {}),
+        }),
+      });
+    } catch (error) {
+      showMessage(
+        elements.trainerIdentityMessage,
+        error?.status === 403
+          ? "Benutzer können nur von Administratoren angelegt werden."
+          : error?.status === 404
+            ? "Der ausgewählte Trainer ist nicht mehr verfügbar."
+            : error?.status === 409
+              ? "Benutzername oder Trainer ist bereits in einer widersprüchlichen Zuordnung vorhanden."
+              : error?.status === 400
+                ? "Bitte Benutzername, Passwort und Eingaben prüfen."
+                : "Der Trainer-Benutzer konnte nicht angelegt werden.",
+      );
+      return;
+    }
+
+    elements.trainerUserForm?.reset();
+    try {
+      trainerIdentityBindings = await fetchTrainerIdentityBindings();
+      trainerIdentityAdminReady = true;
+      renderTrainerIdentityAdmin();
+      showMessage(
+        elements.trainerIdentitySuccess,
+        "Trainer-Benutzer wurde angelegt. Beim ersten Login ist ein Passwortwechsel erforderlich.",
+      );
+    } catch {
+      trainerIdentityAdminReady = false;
+      trainerIdentityBindings = [];
+      if (elements.trainerIdentityWorkspace) {
+        elements.trainerIdentityWorkspace.hidden = true;
+      }
+      showMessage(
+        elements.trainerIdentitySuccess,
+        "Trainer-Benutzer wurde angelegt, aber die aktualisierte Liste konnte nicht geladen werden. Bitte neu laden.",
+      );
+    }
   } finally {
     trainerIdentityLoading = false;
     setTrainerIdentityControlsDisabled(false);
@@ -1987,6 +2104,12 @@ function setTrainerIdentityControlsDisabled(disabled) {
       : "Verwalten";
   }
   for (const control of [
+    elements.trainerUserUsername,
+    elements.trainerUserDisplayName,
+    elements.trainerUserEmail,
+    elements.trainerUserPassword,
+    elements.trainerUserTrainer,
+    elements.trainerUserForm?.querySelector("button"),
     elements.trainerIdentityIdentity,
     elements.trainerIdentityTrainer,
     elements.trainerIdentityForm?.querySelector("button"),
