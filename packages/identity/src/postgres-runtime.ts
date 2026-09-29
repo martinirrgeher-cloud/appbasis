@@ -36,14 +36,31 @@ export async function createPostgresIdentityApplicationRuntime(
       ) {
         return connection.client.unsafe(query, parameters);
       },
-      async begin(callback) {
-        return connection.client.begin(async (transaction) =>
-          callback({
-            unsafe(query, parameters) {
-              return transaction.unsafe(query, parameters);
-            },
-          }),
+      async begin<T>(
+        callback: (
+          transaction: IdentityPostgresRuntimeTransactionalSqlClient,
+        ) => Promise<T>,
+      ): Promise<T> {
+        const results = await connection.client.begin(async (transaction) =>
+          [
+            await callback({
+              unsafe(query, parameters) {
+                return transaction.unsafe(query, parameters);
+              },
+              async begin(nestedCallback) {
+                return nestedCallback({
+                  unsafe(query, parameters) {
+                    return transaction.unsafe(query, parameters);
+                  },
+                  begin() {
+                    throw new Error("Nested PostgreSQL transactions are not supported.");
+                  },
+                });
+              },
+            }),
+          ] as [T],
         );
+        return results[0];
       },
     };
     Object.freeze(sql);
