@@ -4,6 +4,7 @@ import { createPostgresDatabase } from "@appbasis/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBetterAuthRuntime } from "../src/better-auth";
+import { IdentityProvisioningConflictError } from "../src/service";
 import {
   createIdentityRuntime,
   PostgresIdentityStateStore,
@@ -141,7 +142,7 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
         temporaryPassword,
         displayName: "Other Technical Admin",
       }),
-    ).rejects.toThrow("Existing Better Auth account is not recoverable for this provisioning operation.");
+    ).rejects.toBeInstanceOf(IdentityProvisioningConflictError);
 
     const rows = await connection.client<{ count: number }[]>`
       SELECT count(*)::int AS count
@@ -255,9 +256,7 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
         temporaryPassword,
         displayName: "Banned Existing",
       }),
-    ).rejects.toThrow(
-      "Existing Better Auth account is not recoverable for this provisioning operation.",
-    );
+    ).rejects.toBeInstanceOf(IdentityProvisioningConflictError);
 
     const retryUsername = "guardrails.retry";
     const input = {
