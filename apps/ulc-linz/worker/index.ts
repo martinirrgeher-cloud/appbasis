@@ -644,7 +644,7 @@ function validContactEmail(value: unknown): value is string {
     value.length >= 3 &&
     value.length <= 320 &&
     value.trim() === value &&
-    /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(value)
+    /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)
   );
 }
 
