@@ -10,7 +10,7 @@ import type {
   IdentityStateStore,
 } from "./contracts";
 import { createBetterAuthRuntime } from "./better-auth";
-import { IdentityService } from "./service";
+import { IdentityProvisioningConflictError, IdentityService } from "./service";
 
 type SqlClient = ReturnType<typeof createPostgresDatabase>["client"];
 type AuthRuntime = ReturnType<typeof createBetterAuthRuntime>;
@@ -70,24 +70,50 @@ export class BetterAuthIdentityBackend {
         existingAccount.has_identity_state === true ||
         createdAt.getTime() < input.operationCreatedAt.getTime()
       ) {
-        throw new Error("Existing Better Auth account is not recoverable for this provisioning operation.");
+        throw new IdentityProvisioningConflictError();
       }
       return { identityId: existingAccount.id };
     }
 
     if (this.options.trustedProvisioning === true) {
-      await this.options.auth.api.createUser({
-        body: {
-          email: input.technicalEmail,
-          password: input.temporaryPassword,
-          name: input.displayName,
-          role: "user",
-          data: {
-            username: input.username,
-            displayUsername: input.username,
+      try {
+        await this.options.auth.api.createUser({
+          body: {
+            email: input.technicalEmail,
+            password: input.temporaryPassword,
+            name: input.displayName,
+            role: "user",
+            data: {
+              username: input.username,
+              displayUsername: input.username,
+            },
           },
-        },
-      });
+        });
+      } catch (error) {
+        // A concurrent retry can race after both requests observed no provider
+        // account. Reconcile the committed winner in a fresh statement rather
+        // than turning an idempotent duplicate into a 500.
+        const concurrentRows = await this.options.sql<
+          { id: string; created_at: Date | string; role: string | null; banned: boolean | null }[]
+        >`
+          SELECT id, created_at, role, banned
+          FROM "user"
+          WHERE username = ${input.username}
+          LIMIT 1
+        `;
+        const concurrent = concurrentRows[0];
+        if (concurrent === undefined) throw error;
+        if (
+          concurrent.banned === true ||
+          hasTechnicalAdminRole(concurrent.role) ||
+          toDate(concurrent.created_at).getTime() < input.operationCreatedAt.getTime()
+        ) {
+          throw new IdentityProvisioningConflictError();
+        }
+        this.completedOperations.add(input.operationId);
+        return { identityId: concurrent.id };
+      }
+
       const createdRows = await this.options.sql<
         { id: string; created_at: Date | string; role: string | null; banned: boolean | null }[]
       >`
@@ -102,7 +128,7 @@ export class BetterAuthIdentityBackend {
         hasTechnicalAdminRole(created.role) ||
         toDate(created.created_at).getTime() < input.operationCreatedAt.getTime()
       ) {
-        throw new Error("Trusted Better Auth create-user returned inconsistent state.");
+        throw new IdentityProvisioningConflictError();
       }
       this.completedOperations.add(input.operationId);
       return { identityId: created.id };
