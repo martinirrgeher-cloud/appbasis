@@ -29,7 +29,7 @@ export async function createPostgresIdentityApplicationRuntime(
       sql: connection.client,
       baseURL,
     });
-    const sql: IdentityPostgresRuntimeTransactionalSqlClient = Object.freeze({
+    const sql: IdentityPostgresRuntimeTransactionalSqlClient = {
       unsafe(
         query: string,
         parameters?: (string | number | boolean | null)[],
@@ -45,7 +45,8 @@ export async function createPostgresIdentityApplicationRuntime(
           }),
         );
       },
-    });
+    };
+    Object.freeze(sql);
     const provisioningIdentity = Object.freeze({
       createInitialUser(
         administrativeSessionToken: string,
