@@ -510,7 +510,6 @@ async function trainerUserAdminResponse(
   try {
     const body = await trainerUserJsonBody(request);
     const trainerUser = await runtime.trainerUserProvisioning.createTrainerUser({
-      administrativeSessionToken: current.sessionToken,
       organizationId: access.organizationId,
       actorPrincipalId: access.actorPrincipalId,
       username: body.username as string,
@@ -529,7 +528,10 @@ async function trainerUserAdminResponse(
     ) {
       return invalidTrainerUserRequest();
     }
-    if (error instanceof UlcLinzTrainerUserProvisioningNotFoundError) {
+    if (
+      error instanceof UlcLinzTrainerUserProvisioningNotFoundError ||
+      error instanceof UlcLinzTrainerIdentityNotFoundError
+    ) {
       return Response.json(
         {
           error: {
