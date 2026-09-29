@@ -35,11 +35,42 @@ export async function createPostgresIdentityApplicationRuntime(
       ) {
         return connection.client.unsafe(query, parameters);
       },
+      begin<T>(
+        callback: (transaction: {
+          unsafe(
+            query: string,
+            parameters?: (string | number | boolean | null)[],
+          ): PromiseLike<readonly Record<string, unknown>[]>;
+        }) => Promise<T>,
+      ) {
+        return connection.client.begin(async (transaction) =>
+          callback({
+            unsafe(query, parameters) {
+              return transaction.unsafe(query, parameters);
+            },
+          }),
+        );
+      },
+    });
+    const provisioningIdentity = Object.freeze({
+      createInitialUser(
+        administrativeSessionToken: string,
+        input: Parameters<typeof identity.service.createInitialUser>[0],
+      ) {
+        const provisioning = createIdentityRuntime({
+          auth,
+          sql: connection.client,
+          baseURL,
+          administrativeSessionToken,
+        });
+        return provisioning.service.createInitialUser(input);
+      },
     });
 
     return Object.freeze({
       identity: identity.service,
       lifecycleIdentity: identity.service,
+      provisioningIdentity,
       sql,
       async close() {
         await connection.client.end();
