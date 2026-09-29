@@ -20,6 +20,7 @@ export interface BetterAuthIdentityBackendOptions {
   sql: SqlClient;
   baseURL: string;
   administrativeSessionToken?: string;
+  trustedProvisioning?: boolean;
 }
 
 export class BetterAuthIdentityBackend {
@@ -34,14 +35,80 @@ export class BetterAuthIdentityBackend {
     displayName: string;
     technicalEmail: string;
     temporaryPassword: string;
+    operationCreatedAt: Date;
   }): Promise<{ identityId: string }> {
-    const administrativeSessionToken =
-      await this.requireAuthorizedAdministrativeSessionToken();
-    const existing = await this.options.sql<{ id: string }[]>`
-      SELECT id FROM "user" WHERE username = ${input.username}
-    `;
-    if (existing[0] !== undefined) return { identityId: existing[0].id };
+    await this.assertProvisioningAuthorized();
 
+    const existing = await this.options.sql<
+      {
+        id: string;
+        created_at: Date | string;
+        role: string | null;
+        banned: boolean | null;
+        has_identity_state: boolean;
+      }[]
+    >`
+      SELECT u.id,
+             u.created_at,
+             u.role,
+             u.banned,
+             EXISTS (
+               SELECT 1
+               FROM appbasis_identity_security_state state
+               WHERE state.identity_id = u.id
+             ) AS has_identity_state
+      FROM "user" u
+      WHERE u.username = ${input.username}
+      LIMIT 1
+    `;
+    const existingAccount = existing[0];
+    if (existingAccount !== undefined) {
+      const createdAt = toDate(existingAccount.created_at);
+      if (
+        existingAccount.banned === true ||
+        hasTechnicalAdminRole(existingAccount.role) ||
+        existingAccount.has_identity_state === true ||
+        createdAt.getTime() < input.operationCreatedAt.getTime()
+      ) {
+        throw new Error("Existing Better Auth account is not recoverable for this provisioning operation.");
+      }
+      return { identityId: existingAccount.id };
+    }
+
+    if (this.options.trustedProvisioning === true) {
+      await this.options.auth.api.createUser({
+        body: {
+          email: input.technicalEmail,
+          password: input.temporaryPassword,
+          name: input.displayName,
+          role: "user",
+          data: {
+            username: input.username,
+            displayUsername: input.username,
+          },
+        },
+      });
+      const createdRows = await this.options.sql<
+        { id: string; created_at: Date | string; role: string | null; banned: boolean | null }[]
+      >`
+        SELECT id, created_at, role, banned
+        FROM "user"
+        WHERE username = ${input.username}
+        LIMIT 1
+      `;
+      const created = requiredRow(createdRows);
+      if (
+        created.banned === true ||
+        hasTechnicalAdminRole(created.role) ||
+        toDate(created.created_at).getTime() < input.operationCreatedAt.getTime()
+      ) {
+        throw new Error("Trusted Better Auth create-user returned inconsistent state.");
+      }
+      this.completedOperations.add(input.operationId);
+      return { identityId: created.id };
+    }
+
+    const administrativeSessionToken = this.requireAdministrativeSessionToken();
     const response = await this.request(
       "/api/auth/admin/create-user",
       {
@@ -174,6 +241,7 @@ export class BetterAuthIdentityBackend {
   }
 
   async assertProvisioningAuthorized(): Promise<void> {
+    if (this.options.trustedProvisioning === true) return;
     await this.requireAuthorizedAdministrativeSessionToken();
   }
 
@@ -249,7 +317,9 @@ export class PostgresIdentityStateStore implements IdentityStateStore {
 
   async findOperation(operationKey: string): Promise<IdentityOperation | null> {
     const rows = await this.sql<OperationRow[]>`
-      SELECT operation_id, operation_key, kind, identity_id, completed_at, created_at
+      SELECT operation_id, operation_key, kind, identity_id,
+             provisioning_owner, actor_principal_id, reason,
+             completed_at, created_at
       FROM appbasis_identity_operation
       WHERE operation_key = ${operationKey}
     `;
@@ -260,15 +330,36 @@ export class PostgresIdentityStateStore implements IdentityStateStore {
     operationKey: string;
     kind: IdentityOperationKind;
     identityId: string | null;
+    provisioningAudit?: import("./contracts").IdentityProvisioningAuditContext;
   }): Promise<IdentityOperation> {
     const operationId = randomUUID();
+    const provisioningOwner = input.provisioningAudit?.provisioningOwner ?? null;
+    const actorPrincipalId = input.provisioningAudit?.actorPrincipalId ?? null;
+    const reason = input.provisioningAudit?.reason ?? null;
     const rows = await this.sql<OperationRow[]>`
-      INSERT INTO appbasis_identity_operation
-        (operation_id, operation_key, kind, identity_id)
-      VALUES (${operationId}, ${input.operationKey}, ${input.kind}, ${input.identityId})
+      INSERT INTO appbasis_identity_operation (
+        operation_id,
+        operation_key,
+        kind,
+        identity_id,
+        provisioning_owner,
+        actor_principal_id,
+        reason
+      )
+      VALUES (
+        ${operationId},
+        ${input.operationKey},
+        ${input.kind},
+        ${input.identityId},
+        ${provisioningOwner},
+        ${actorPrincipalId},
+        ${reason}
+      )
       ON CONFLICT (operation_key) DO UPDATE
         SET operation_key = EXCLUDED.operation_key
-      RETURNING operation_id, operation_key, kind, identity_id, completed_at, created_at
+      RETURNING operation_id, operation_key, kind, identity_id,
+                provisioning_owner, actor_principal_id, reason,
+                completed_at, created_at
     `;
     return operationFromRow(requiredRow(rows));
   }
@@ -459,6 +550,9 @@ type OperationRow = {
   operation_key: string;
   kind: string;
   identity_id: string | null;
+  provisioning_owner: string | null;
+  actor_principal_id: string | null;
+  reason: string | null;
   completed_at: Date | string | null;
   created_at: Date | string;
 };
@@ -511,6 +605,9 @@ function operationFromRow(row: OperationRow): IdentityOperation {
     identityId: row.identity_id,
     completedAt: nullableDate(row.completed_at),
     createdAt: toDate(row.created_at),
+    provisioningOwner: row.provisioning_owner,
+    actorPrincipalId: row.actor_principal_id,
+    reason: row.reason,
   };
 }
 
