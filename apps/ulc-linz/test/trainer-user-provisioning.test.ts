@@ -66,11 +66,9 @@ describe("ULC trainer user provisioning", () => {
     const sql = {
       async unsafe(query: string) {
         sqlCalls.push(query);
-        if (query.includes("WITH target_account AS MATERIALIZED")) {
+        if (query.includes("INSERT INTO ulc_linz_membership")) {
           return [
             {
-              identity_exists: true,
-              trainer_exists: true,
               organization_id: "verein-1",
               subject_id: "ulc-unassigned-trainer:identity-1",
               source_role: "trainer",
@@ -196,7 +194,10 @@ describe("ULC trainer user provisioning", () => {
       },
       sql: {
         async unsafe(query: string) {
-          if (query.includes("WITH target_account AS MATERIALIZED")) {
+          if (query.includes("INSERT INTO ulc_linz_membership")) {
+            return [];
+          }
+          if (query.includes("AS identity_exists")) {
             return [
               {
                 identity_exists: true,
@@ -261,7 +262,10 @@ describe("ULC trainer user provisioning", () => {
       },
       sql: {
         async unsafe(query: string) {
-          if (query.includes("WITH target_account AS MATERIALIZED")) {
+          if (query.includes("INSERT INTO ulc_linz_membership")) {
+            return [];
+          }
+          if (query.includes("AS identity_exists")) {
             return [
               {
                 identity_exists: true,
