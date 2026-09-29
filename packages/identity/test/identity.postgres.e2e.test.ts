@@ -108,6 +108,50 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     ).rejects.toThrow();
   });
 
+  it("allows the dedicated trusted provisioning owner without a technical-admin session and persists its audit", async () => {
+    const trustedRuntime = createIdentityRuntime({
+      auth,
+      sql: client,
+      baseURL,
+      trustedProvisioning: true,
+    });
+    const identity = await trustedRuntime.service.createInitialUserWithAudit(
+      {
+        username: "trusted.trainer",
+        temporaryPassword,
+        displayName: "Trusted Trainer",
+      },
+      {
+        provisioningOwner: "ulc-linz:trainer-user",
+        actorPrincipalId: "ulc-admin-1",
+        reason: "ULC Linz trainer user provisioning",
+      },
+    );
+
+    expect(identity).toMatchObject({
+      username: "trusted.trainer",
+      mustChangePassword: true,
+      accountStatus: "active",
+    });
+    await expect(
+      trustedRuntime.stateStore.findOperation("provision:trusted.trainer"),
+    ).resolves.toMatchObject({
+      identityId: identity.identityId,
+      provisioningOwner: "ulc-linz:trainer-user",
+      actorPrincipalId: "ulc-admin-1",
+      reason: "ULC Linz trainer user provisioning",
+    });
+    await expect(
+      trustedRuntime.service.signInWithUsername({
+        username: "trusted.trainer",
+        password: temporaryPassword,
+      }),
+    ).resolves.toMatchObject({
+      access: "password-change-required",
+      identity: { identityId: identity.identityId },
+    });
+  });
+
   it("validates admin provisioning, contact profile persistence, username login and the required first password change through the production runtime", async () => {
     const service = runtime.service;
     const identity = await service.createInitialUser({
