@@ -197,37 +197,50 @@ async function ensureTrainerMembership({
   readonly trainerId: string;
 }): Promise<Readonly<{ subjectId: string }>> {
   const subjectId = unassignedTrainerSubject(identityId);
-  const rows = await sql.unsafe(
-    `WITH target_account AS MATERIALIZED (
-       SELECT id
-       FROM "user"
-       WHERE id = $1
-         AND COALESCE(banned, false) = false
-     ),
-     target_trainer AS MATERIALIZED (
-       SELECT id
-       FROM appbasis_trainer
-       WHERE id = $3
-         AND organization_id = $2
-         AND is_active = true
-     ),
-     inserted AS (
-       INSERT INTO ulc_linz_membership (
-         identity_id,
-         organization_id,
-         subject_id,
-         source_role,
-         active
-       )
-       SELECT account.id, $2, $4, 'trainer', true
-       FROM target_account AS account
-       WHERE EXISTS (SELECT 1 FROM target_trainer)
-       ON CONFLICT (identity_id) DO NOTHING
-       RETURNING identity_id
+  const parameters = [identityId, organizationId, trainerId, subjectId];
+
+  const inserted = await sql.unsafe(
+    `INSERT INTO ulc_linz_membership (
+       identity_id,
+       organization_id,
+       subject_id,
+       source_role,
+       active
      )
-     SELECT
-       EXISTS (SELECT 1 FROM target_account) AS identity_exists,
-       EXISTS (SELECT 1 FROM target_trainer) AS trainer_exists,
+     SELECT account.id, $2, $4, 'trainer', true
+     FROM "user" AS account
+     INNER JOIN appbasis_trainer AS trainer
+       ON trainer.id = $3
+      AND trainer.organization_id = $2
+      AND trainer.is_active = true
+     WHERE account.id = $1
+       AND COALESCE(account.banned, false) = false
+     ON CONFLICT (identity_id) DO NOTHING
+     RETURNING organization_id, subject_id, source_role, active`,
+    parameters,
+  );
+  if (inserted.length === 1 && inserted[0] !== undefined) {
+    return trainerMembershipSubject(inserted[0], organizationId);
+  }
+  if (inserted.length !== 0) blocked();
+
+  // Re-read in a new statement. A concurrent identical request may have
+  // committed the membership only after the INSERT statement snapshot.
+  const rows = await sql.unsafe(
+    `SELECT
+       EXISTS (
+         SELECT 1
+         FROM "user"
+         WHERE id = $1
+           AND COALESCE(banned, false) = false
+       ) AS identity_exists,
+       EXISTS (
+         SELECT 1
+         FROM appbasis_trainer
+         WHERE id = $3
+           AND organization_id = $2
+           AND is_active = true
+       ) AS trainer_exists,
        membership.organization_id,
        membership.subject_id,
        membership.source_role,
@@ -235,13 +248,20 @@ async function ensureTrainerMembership({
      FROM (VALUES (1)) AS singleton(value)
      LEFT JOIN ulc_linz_membership AS membership
        ON membership.identity_id = $1`,
-    [identityId, organizationId, trainerId, subjectId],
+    parameters,
   );
   if (rows.length !== 1 || rows[0] === undefined) blocked();
   const row = rows[0];
   if (row.identity_exists !== true || row.trainer_exists !== true) {
     throw new UlcLinzTrainerUserProvisioningNotFoundError();
   }
+  return trainerMembershipSubject(row, organizationId);
+}
+
+function trainerMembershipSubject(
+  row: Readonly<Record<string, unknown>>,
+  organizationId: string,
+): Readonly<{ subjectId: string }> {
   if (
     row.organization_id !== organizationId ||
     row.source_role !== "trainer" ||
@@ -249,8 +269,9 @@ async function ensureTrainerMembership({
   ) {
     throw new UlcLinzTrainerUserProvisioningConflictError();
   }
-  const currentSubjectId = requiredRowIdentifier(row.subject_id);
-  return Object.freeze({ subjectId: currentSubjectId });
+  return Object.freeze({
+    subjectId: requiredRowIdentifier(row.subject_id),
+  });
 }
 
 async function ensureTrainerAccess({
