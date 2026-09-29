@@ -201,7 +201,7 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
         temporaryPassword: 'Unused-Temporary-789!',
       }),
     ).rejects.toThrow(
-      'Existing Better Auth account is not recoverable for this provisioning operation.',
+      'Identity provisioning conflicts with an existing owner or account.',
     );
   });
 
