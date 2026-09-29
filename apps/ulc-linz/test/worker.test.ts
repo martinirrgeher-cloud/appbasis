@@ -268,6 +268,17 @@ function runtime(
         };
       },
     },
+    trainerUserProvisioning: {
+      async createTrainerUser(input) {
+        return {
+          identityId: "identity-created",
+          username: input.username,
+          displayName: input.displayName,
+          trainerId: input.trainerId,
+          mustChangePassword: true,
+        };
+      },
+    },
     athleteMasterdata,
     kindertraining,
     securityEvents: {
@@ -1345,6 +1356,143 @@ describe("generated identity+permissions Worker entrypoint", () => {
   });
 });
 
+
+describe("Trainer user administration API", () => {
+  it("creates a trainer user only from server-owned admin scope and session", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            return {
+              organizationId: "verein-server",
+              actorPrincipalId: "identity-worker-1",
+            };
+          },
+        },
+        trainerUserProvisioning: {
+          async createTrainerUser(input) {
+            received = input;
+            return {
+              identityId: "identity-new",
+              username: input.username,
+              displayName: input.displayName,
+              trainerId: input.trainerId,
+              mustChangePassword: true as const,
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/trainer-users", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          username: "trainer.a",
+          displayName: "Trainer A",
+          temporaryPassword: "Startpasswort-1",
+          contactEmail: "trainer.a@example.test",
+          trainerId: "trainer-1",
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(received).toEqual({
+      administrativeSessionToken: currentIdentity.sessionToken,
+      organizationId: "verein-server",
+      actorPrincipalId: "identity-worker-1",
+      username: "trainer.a",
+      displayName: "Trainer A",
+      temporaryPassword: "Startpasswort-1",
+      contactEmail: "trainer.a@example.test",
+      trainerId: "trainer-1",
+    });
+    await expect(response.json()).resolves.toEqual({
+      trainerUser: {
+        identityId: "identity-new",
+        username: "trainer.a",
+        displayName: "Trainer A",
+        trainerId: "trainer-1",
+        mustChangePassword: true,
+      },
+    });
+
+    const rejectedClientScope = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/trainer-users", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: "verein-client",
+          username: "trainer.b",
+          displayName: "Trainer B",
+          temporaryPassword: "Startpasswort-2",
+          trainerId: "trainer-2",
+        }),
+      }),
+      validEnv,
+    );
+    expect(rejectedClientScope.status).toBe(400);
+  });
+
+  it("rejects non-admin trainer user creation before provisioning", async () => {
+    let provisioningCalls = 0;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            throw new UlcLinzAuthorizationDeniedError();
+          },
+        },
+        trainerUserProvisioning: {
+          async createTrainerUser(input) {
+            provisioningCalls += 1;
+            return {
+              identityId: "should-not-exist",
+              username: input.username,
+              displayName: input.displayName,
+              trainerId: input.trainerId,
+              mustChangePassword: true as const,
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/trainer-users", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          username: "trainer.a",
+          displayName: "Trainer A",
+          temporaryPassword: "Startpasswort-1",
+          trainerId: "trainer-1",
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(403);
+    expect(provisioningCalls).toBe(0);
+  });
+});
 
 describe("Trainer identity administration API", () => {
   it("lists trainer identities only inside the server-authorized organization", async () => {
