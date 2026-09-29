@@ -28,6 +28,12 @@ export type IdentityOperationKind =
   | "disable"
   | "delete";
 
+export interface IdentityProvisioningAuditContext {
+  provisioningOwner: string;
+  actorPrincipalId: string;
+  reason: string;
+}
+
 export interface IdentityOperation {
   operationId: string;
   operationKey: string;
@@ -35,6 +41,9 @@ export interface IdentityOperation {
   identityId: string | null;
   completedAt: Date | null;
   createdAt?: Date;
+  provisioningOwner?: string | null;
+  actorPrincipalId?: string | null;
+  reason?: string | null;
 }
 
 export interface IdentityStateStore {
@@ -43,6 +52,7 @@ export interface IdentityStateStore {
     operationKey: string;
     kind: IdentityOperationKind;
     identityId: string | null;
+    provisioningAudit?: IdentityProvisioningAuditContext;
   }): Promise<IdentityOperation>;
   completeProvisioning(input: {
     operationId: string;
