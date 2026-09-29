@@ -276,6 +276,50 @@ describe('PostgresAthleteMasterdataRepository', () => {
     ]);
   });
 
+  it('reuses an existing trainer-group membership on retry without weakening active same-org checks', async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [
+          {
+            organization_id: 'verein-1',
+            trainer_id: 'trainer-1',
+            group_id: 'group-1',
+          },
+        ];
+      },
+    });
+
+    await expect(
+      repository.createTrainerGroupMembership('verein-1', {
+        trainerId: 'trainer-1',
+        groupId: 'group-1',
+      }),
+    ).resolves.toEqual({
+      organizationId: 'verein-1',
+      trainerId: 'trainer-1',
+      groupId: 'group-1',
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.query).toContain('WITH valid_membership AS MATERIALIZED');
+    expect(calls[0]?.query).toContain('g.organization_id = $1');
+    expect(calls[0]?.query).toContain('t.organization_id = $1');
+    expect(calls[0]?.query).toContain('g.is_active = true');
+    expect(calls[0]?.query).toContain('t.is_active = true');
+    expect(calls[0]?.query).toContain(
+      'ON CONFLICT (organization_id, trainer_id, group_id) DO NOTHING',
+    );
+    expect(calls[0]?.query).toContain('WHERE NOT EXISTS (SELECT 1 FROM inserted)');
+    expect(calls[0]?.parameters).toEqual([
+      'verein-1',
+      'trainer-1',
+      'group-1',
+    ]);
+  });
+
+
   it('rejects cross-organization rows even if a SQL adapter returns them', async () => {
     const repository = new PostgresAthleteMasterdataRepository({
       async unsafe() {
