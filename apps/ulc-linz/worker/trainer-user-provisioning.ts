@@ -1,4 +1,6 @@
+import { IdentityProvisioningConflictError } from "@appbasis/identity";
 import type { IdentityPostgresProvisioningOwner } from "@appbasis/identity/postgres-runtime";
+import { ensurePostgresPermissionPrincipal } from "@appbasis/permissions/provisioning";
 import {
   PostgresPrincipalAccessAdministration,
   capabilityId,
@@ -29,7 +31,6 @@ export type UlcLinzTrainerUserAccessAdministration = Pick<
 >;
 
 export interface UlcLinzTrainerUserProvisioningInput {
-  readonly administrativeSessionToken: string;
   readonly organizationId: string;
   readonly actorPrincipalId: string;
   readonly username: string;
@@ -96,24 +97,33 @@ export function createUlcLinzTrainerUserProvisioningService({
     async createTrainerUser(
       input: UlcLinzTrainerUserProvisioningInput,
     ): Promise<UlcLinzTrainerUserProvisioningResult> {
-      const administrativeSessionToken = requiredText(
-        input.administrativeSessionToken,
-      );
       const organizationId = requiredIdentifier(input.organizationId);
       const actorPrincipalId = requiredIdentifier(input.actorPrincipalId);
       const trainerId = requiredIdentifier(input.trainerId);
 
-      const identity = await identityProvisioning.createInitialUser(
-        administrativeSessionToken,
-        {
-          username: input.username,
-          displayName: input.displayName,
-          temporaryPassword: input.temporaryPassword,
-          ...(input.contactEmail === undefined
-            ? {}
-            : { contactEmail: input.contactEmail }),
-        },
-      );
+      let identity;
+      try {
+        identity = await identityProvisioning.createInitialUser(
+          {
+            username: input.username,
+            displayName: input.displayName,
+            temporaryPassword: input.temporaryPassword,
+            ...(input.contactEmail === undefined
+              ? {}
+              : { contactEmail: input.contactEmail }),
+          },
+          {
+            provisioningOwner: "ulc-linz:trainer-user",
+            actorPrincipalId,
+            reason: "ULC Linz trainer user provisioning",
+          },
+        );
+      } catch (error) {
+        if (error instanceof IdentityProvisioningConflictError) {
+          throw new UlcLinzTrainerUserProvisioningConflictError();
+        }
+        throw error;
+      }
       if (
         identity.accountStatus !== "active" ||
         identity.mustChangePassword !== true
@@ -257,12 +267,7 @@ async function ensureTrainerAccess({
   readonly actorPrincipalId: string;
 }): Promise<PrincipalAccessState> {
   const targetPrincipalId = principalId(identityId);
-  await sql.unsafe(
-    `INSERT INTO appbasis_permission_principal (principal_id)
-     VALUES ($1)
-     ON CONFLICT (principal_id) DO NOTHING`,
-    [targetPrincipalId],
-  );
+  await ensurePostgresPermissionPrincipal(sql, targetPrincipalId);
 
   const current = await permissions.findPrincipal(targetPrincipalId);
   if (current === null) blocked();
