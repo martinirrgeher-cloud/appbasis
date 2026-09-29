@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { IdentityPostgresProvisioningOwner } from "@appbasis/identity/postgres-runtime";
 import {
+  RoleAdministrationError,
   capabilityId,
   principalId,
   roleId,
@@ -251,6 +252,93 @@ describe("ULC trainer user provisioning", () => {
     });
     expect(bindCalls).toBe(0);
     expect(accessCalls).toBe(0);
+  });
+
+  it("treats a concurrently committed canonical trainer access update as idempotent success", async () => {
+    let permissionReads = 0;
+    const permissions: PermissionStore = {
+      async findPrincipal(requestedPrincipalId) {
+        permissionReads += 1;
+        return {
+          principalId: requestedPrincipalId,
+          roleIds:
+            permissionReads === 1 ? [] : [roleId("ulc-linz:trainer")],
+          grants:
+            permissionReads === 1
+              ? []
+              : [
+                  capabilityId("ulc-linz:module:kindertraining:edit"),
+                  capabilityId("ulc-linz:module:kindertraining:view"),
+                ],
+          revokes: [],
+        };
+      },
+      async findRole() {
+        return null;
+      },
+      async isKnownCapability() {
+        return true;
+      },
+    };
+    const service = createUlcLinzTrainerUserProvisioningService({
+      identityProvisioning: {
+        async createInitialUser() {
+          return identityState();
+        },
+      },
+      sql: {
+        async unsafe(query: string) {
+          if (query.includes("INSERT INTO ulc_linz_membership")) {
+            return [];
+          }
+          if (query.includes("AS identity_exists")) {
+            return [
+              {
+                identity_exists: true,
+                trainer_exists: true,
+                organization_id: "verein-1",
+                subject_id: "trainer-1",
+                source_role: "trainer",
+                active: true,
+              },
+            ];
+          }
+          if (query.includes("INSERT INTO appbasis_permission_principal")) {
+            return [];
+          }
+          throw new Error("unexpected SQL");
+        },
+      },
+      permissions,
+      accessAdministration: {
+        async replacePrincipalAccess() {
+          throw new RoleAdministrationError(
+            "STALE_PRINCIPAL_ROLES",
+            "Concurrent trainer access write committed first.",
+          );
+        },
+      },
+      trainerIdentityLinks: {
+        async bindTrainer() {
+          throw new Error("matching trainer link must not be rewritten");
+        },
+      },
+    });
+
+    await expect(
+      service.createTrainerUser({
+        organizationId: "verein-1",
+        actorPrincipalId: "admin-1",
+        username: "trainer.a",
+        displayName: "Trainer A",
+        temporaryPassword: "temporary-value-123",
+        trainerId: "trainer-1",
+      }),
+    ).resolves.toMatchObject({
+      identityId: "identity-1",
+      trainerId: "trainer-1",
+    });
+    expect(permissionReads).toBe(2);
   });
 
   it("does not overwrite an existing non-trainer permission role", async () => {
