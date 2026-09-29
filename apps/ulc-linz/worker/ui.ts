@@ -113,6 +113,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             </section>
 
             <p class="message message--error" id="masterdata-message" role="alert" hidden></p>
+            <p class="message message--success" id="masterdata-success" role="status" hidden></p>
 
             <div class="masterdata-tabs" role="tablist" aria-label="Stammdatenbereiche">
               <button class="masterdata-tab is-active" type="button" role="tab" aria-selected="true" data-masterdata-tab="athletes">Athleten</button>
@@ -832,6 +833,7 @@ const elements = {
   kindertrainingParticipants: document.querySelector("#kindertraining-participants"),
   kindertrainingSave: document.querySelector("#kindertraining-save"),
   masterdataMessage: document.querySelector("#masterdata-message"),
+  masterdataSuccess: document.querySelector("#masterdata-success"),
   athleteList: document.querySelector("#athlete-list"),
   trainerList: document.querySelector("#trainer-list"),
   groupList: document.querySelector("#group-list"),
@@ -1662,10 +1664,10 @@ function showMasterdataTab(tab) {
 }
 
 async function loadMasterdata(force = false) {
-  if (!masterdataReady || masterdataLoading) return;
+  if (!masterdataReady || masterdataLoading) return false;
   if (!force && masterdataSnapshot !== null) {
     renderMasterdata(masterdataSnapshot);
-    return;
+    return true;
   }
   masterdataLoading = true;
   showMessage(elements.masterdataMessage, "");
@@ -1683,6 +1685,7 @@ async function loadMasterdata(force = false) {
     }
     masterdataSnapshot = snapshot;
     renderMasterdata(snapshot);
+    return true;
   } catch (error) {
     masterdataSnapshot = null;
     showMessage(
@@ -1691,6 +1694,7 @@ async function loadMasterdata(force = false) {
         ? "Für Stammdaten fehlt die Berechtigung."
         : "Stammdaten konnten nicht geladen werden.",
     );
+    return false;
   } finally {
     masterdataLoading = false;
   }
@@ -2292,21 +2296,12 @@ async function submitMasterdataForm(path, body, form) {
   if (!masterdataReady || masterdataLoading) return false;
   setMasterdataFormsDisabled(true);
   showMessage(elements.masterdataMessage, "");
+  showMessage(elements.masterdataSuccess, "");
   try {
     await requestJson(path, {
       method: "POST",
       body: JSON.stringify(body),
     });
-    form?.reset();
-    if (form === elements.groupForm && elements.groupSortOrder) {
-      elements.groupSortOrder.value = "100";
-    }
-    if (form === elements.athleteGroupForm && elements.athleteGroupStartedOn) {
-      elements.athleteGroupStartedOn.value = localDateValue(new Date());
-    }
-    masterdataSnapshot = null;
-    await loadMasterdata(true);
-    return true;
   } catch (error) {
     showMessage(
       elements.masterdataMessage,
@@ -2317,6 +2312,27 @@ async function submitMasterdataForm(path, body, form) {
           : "Die Stammdaten konnten nicht gespeichert werden.",
     );
     return false;
+  }
+
+  form?.reset();
+  if (form === elements.groupForm && elements.groupSortOrder) {
+    elements.groupSortOrder.value = "100";
+  }
+  if (form === elements.athleteGroupForm && elements.athleteGroupStartedOn) {
+    elements.athleteGroupStartedOn.value = localDateValue(new Date());
+  }
+  masterdataSnapshot = null;
+  const refreshed = await loadMasterdata(true);
+  if (refreshed) {
+    showMessage(elements.masterdataSuccess, "Stammdaten wurden gespeichert.");
+  } else {
+    showMessage(elements.masterdataMessage, "");
+    showMessage(
+      elements.masterdataSuccess,
+      "Stammdaten wurden gespeichert. Die aktualisierte Liste konnte nicht geladen werden; bitte die Ansicht neu öffnen.",
+    );
+  }
+  return true;
   } finally {
     setMasterdataFormsDisabled(false);
   }
