@@ -28,10 +28,11 @@ export const ULC_LINZ_ROLES_PERMISSIONS_EVIDENCE_POLICY = Object.freeze({
     Object.freeze({
       id: "identity",
       root: "packages/identity",
-      schemaVersion: 2,
+      schemaVersion: 3,
       migrations: Object.freeze([
         "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
         "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+        "packages/identity/drizzle/0002_appbasis_identity_provisioning_audit.sql",
       ]),
     }),
     Object.freeze({
