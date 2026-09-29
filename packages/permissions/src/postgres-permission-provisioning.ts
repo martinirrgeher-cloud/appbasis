@@ -45,6 +45,34 @@ export class PermissionProvisioningStateError extends Error {
   }
 }
 
+export async function ensurePostgresPermissionPrincipal(
+  client: PermissionPostgresClient,
+  requestedPrincipalId: PrincipalId,
+): Promise<boolean> {
+  const rows = await client.unsafe(
+    `INSERT INTO appbasis_permission_principal (principal_id)
+     VALUES ($1)
+     ON CONFLICT (principal_id) DO NOTHING
+     RETURNING principal_id`,
+    [requestedPrincipalId],
+  );
+  if (rows.length > 1) {
+    throw new PermissionProvisioningStateError(
+      "Permission principal provisioning returned an invalid row count.",
+    );
+  }
+  const row = rows[0];
+  if (
+    row !== undefined &&
+    textColumn(row, "principal_id") !== requestedPrincipalId
+  ) {
+    throw new PermissionProvisioningStateError(
+      "Permission principal provisioning returned an unexpected principal.",
+    );
+  }
+  return row !== undefined;
+}
+
 export async function provisionPostgresPermissions(
   client: PermissionProvisioningPostgresClient,
   bundle: PermissionProvisioningBundle,
