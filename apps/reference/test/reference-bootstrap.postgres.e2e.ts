@@ -189,22 +189,20 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
     }
   });
 
-  it('returns the actual Better Auth status for an existing disabled target', async () => {
-    const result = await bootstrapReferenceDemoUser({
-      connectionString: bootstrapDatabaseUrl.toString(),
-      secret,
-      baseURL,
-      administrativeSessionToken,
-      username: disabledUsername,
-      displayName: 'Disabled Existing User',
-      temporaryPassword: 'Unused-Temporary-789!',
-    });
-
-    expect(result).toMatchObject({
-      username: disabledUsername,
-      accountStatus: 'disabled',
-      mustChangePassword: true,
-    });
+  it('rejects an unrelated disabled Better Auth target before AppBasis provisioning', async () => {
+    await expect(
+      bootstrapReferenceDemoUser({
+        connectionString: bootstrapDatabaseUrl.toString(),
+        secret,
+        baseURL,
+        administrativeSessionToken,
+        username: disabledUsername,
+        displayName: 'Disabled Existing User',
+        temporaryPassword: 'Unused-Temporary-789!',
+      }),
+    ).rejects.toThrow(
+      'Existing Better Auth account is not recoverable for this provisioning operation.',
+    );
   });
 
   it('provisions one identity, reauthorizes completed retries and never replaces the temporary password', async () => {
@@ -299,7 +297,7 @@ describe('Reference demo user bootstrap PostgreSQL E2E', () => {
         SELECT count(*)::int AS count FROM appbasis_identity_security_state
       `;
       expect(userRows[0]?.count).toBe(5);
-      expect(identityRows[0]?.count).toBe(2);
+      expect(identityRows[0]?.count).toBe(1);
     } finally {
       await verificationConnection.client.end();
     }
