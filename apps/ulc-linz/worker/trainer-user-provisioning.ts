@@ -1,4 +1,4 @@
-import { IdentityProvisioningConflictError } from "@appbasis/identity";
+import { IdentityProvisioningConflictError } from "@appbasis/identity/service";
 import type { IdentityPostgresProvisioningOwner } from "@appbasis/identity/postgres-runtime";
 import { ensurePostgresPermissionPrincipal } from "@appbasis/permissions/provisioning";
 import {
