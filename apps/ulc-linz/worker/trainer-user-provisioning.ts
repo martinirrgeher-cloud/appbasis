@@ -396,12 +396,6 @@ function requiredRowIdentifier(value: unknown): string {
   return requiredIdentifier(value);
 }
 
-function requiredText(value: unknown): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    blocked();
-  }
-  return value;
-}
 
 function blocked(): never {
   throw new UlcLinzTrainerUserProvisioningPersistenceError();
