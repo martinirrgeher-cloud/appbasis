@@ -9,6 +9,7 @@ import {
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import {
   PostgresPermissionStore,
+  PostgresPrincipalAccessAdministration,
   type PermissionStore,
 } from "@appbasis/permissions";
 
@@ -32,6 +33,7 @@ import {
   type UlcLinzTrainerIdentityAdminAccessService,
 } from "./trainer-identity-admin-access";
 import { PostgresUlcLinzTrainerIdentityLinks } from "./trainer-identity-postgres";
+import { createUlcLinzTrainerUserProvisioningService } from "./trainer-user-provisioning";
 import {
   createPostgresUlcLinzSecurityEventLogger,
   type BufferedUlcLinzSecurityEventLogger,
@@ -47,6 +49,9 @@ export interface GeneratedPostgresApplicationRuntime {
   trainerIdentityLinks: Pick<
     PostgresUlcLinzTrainerIdentityLinks,
     "listBindings" | "bindTrainer"
+  >;
+  trainerUserProvisioning: ReturnType<
+    typeof createUlcLinzTrainerUserProvisioningService
   >;
   athleteMasterdata: Pick<
     PostgresAthleteMasterdataRepository,
@@ -126,6 +131,16 @@ export async function createGeneratedPostgresApplicationRuntime(
       });
     const trainerIdentityLinks =
       new PostgresUlcLinzTrainerIdentityLinks(applicationSql);
+    const trainerUserProvisioning =
+      createUlcLinzTrainerUserProvisioningService({
+        identityProvisioning: identityRuntime.provisioningIdentity,
+        sql: applicationSql,
+        permissions,
+        accessAdministration: new PostgresPrincipalAccessAdministration(
+          identityRuntime.sql,
+        ),
+        trainerIdentityLinks,
+      });
     const athleteMasterdataRepository =
       new PostgresAthleteMasterdataRepository(applicationSql);
     const athleteMasterdata = Object.freeze({
@@ -245,6 +260,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       kindertrainingAccess,
       trainerIdentityAccess,
       trainerIdentityLinks,
+      trainerUserProvisioning,
       athleteMasterdata,
       kindertraining,
       securityEvents,
