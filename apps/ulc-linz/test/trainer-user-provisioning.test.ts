@@ -156,6 +156,7 @@ describe("ULC trainer user provisioning", () => {
       actorPrincipalId: "admin-1",
       identityId: "identity-1",
       trainerId: "trainer-1",
+      expectedSubjectId: "ulc-unassigned-trainer:identity-1",
     });
     expect(accessInput).toEqual({
       targetPrincipalId: principalId("identity-1"),
