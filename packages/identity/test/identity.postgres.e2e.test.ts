@@ -235,6 +235,7 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
       displayName: "Concurrent Profile",
       technicalEmail: "concurrent-profile@identity.invalid",
       temporaryPassword,
+      operationCreatedAt: new Date(0),
     });
     await client`
       INSERT INTO appbasis_identity_operation
