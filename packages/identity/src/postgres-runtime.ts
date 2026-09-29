@@ -56,18 +56,23 @@ export async function createPostgresIdentityApplicationRuntime(
       },
     };
     Object.freeze(sql);
+    const trustedProvisioning = createIdentityRuntime({
+      auth,
+      sql: connection.client,
+      baseURL,
+      trustedProvisioning: true,
+    });
     const provisioningIdentity = Object.freeze({
       createInitialUser(
-        administrativeSessionToken: string,
-        input: Parameters<typeof identity.service.createInitialUser>[0],
+        input: Parameters<typeof trustedProvisioning.service.createInitialUser>[0],
+        provisioningAudit: Parameters<
+          typeof trustedProvisioning.service.createInitialUserWithAudit
+        >[1],
       ) {
-        const provisioning = createIdentityRuntime({
-          auth,
-          sql: connection.client,
-          baseURL,
-          administrativeSessionToken,
-        });
-        return provisioning.service.createInitialUser(input);
+        return trustedProvisioning.service.createInitialUserWithAudit(
+          input,
+          provisioningAudit,
+        );
       },
     });
 
