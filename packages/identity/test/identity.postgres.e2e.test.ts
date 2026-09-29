@@ -152,6 +152,43 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     });
   });
 
+  it("reconciles concurrent trusted create-user collisions as one idempotent provisioning operation", async () => {
+    const username = "trusted.concurrent";
+    const input = {
+      username,
+      temporaryPassword,
+      displayName: "Trusted Concurrent Trainer",
+    };
+    const audit = {
+      provisioningOwner: "ulc-linz:trainer-user",
+      actorPrincipalId: "ulc-admin-concurrent",
+      reason: "ULC Linz trainer user provisioning",
+    };
+    const runtimes = Array.from({ length: 6 }, () =>
+      createIdentityRuntime({
+        auth,
+        sql: client,
+        baseURL,
+        trustedProvisioning: true,
+      }),
+    );
+
+    const identities = await Promise.all(
+      runtimes.map((trustedRuntime) =>
+        trustedRuntime.service.createInitialUserWithAudit(input, audit),
+      ),
+    );
+
+    expect(new Set(identities.map((identity) => identity.identityId)).size).toBe(1);
+    expect(identities.every((identity) => identity.accountStatus === "active")).toBe(true);
+    const userRows = await client<{ count: number }[]>`
+      SELECT count(*)::int AS count
+      FROM "user"
+      WHERE username = ${username}
+    `;
+    expect(userRows[0]?.count).toBe(1);
+  });
+
   it("validates admin provisioning, contact profile persistence, username login and the required first password change through the production runtime", async () => {
     const service = runtime.service;
     const identity = await service.createInitialUser({
