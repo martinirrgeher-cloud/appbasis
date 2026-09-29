@@ -119,6 +119,23 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         repository.bindTrainer({
           organizationId: "verein-1",
           actorPrincipalId: "admin-1",
+          identityId: "identity-1",
+          trainerId: "trainer-2",
+          expectedSubjectId: "placeholder-1",
+        }),
+      ).rejects.toBeInstanceOf(UlcLinzTrainerIdentityConflictError);
+      await expect(
+        client.unsafe(
+          `SELECT subject_id
+           FROM ulc_linz_membership
+           WHERE identity_id = 'identity-1'`,
+        ),
+      ).resolves.toEqual([{ subject_id: "trainer-1" }]);
+
+      await expect(
+        repository.bindTrainer({
+          organizationId: "verein-1",
+          actorPrincipalId: "admin-1",
           identityId: "identity-2",
           trainerId: "trainer-1",
         }),
