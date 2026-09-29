@@ -42,6 +42,7 @@ export class BetterAuthIdentityBackend {
     const existing = await this.options.sql<
       {
         id: string;
+        name: string;
         created_at: Date | string;
         role: string | null;
         banned: boolean | null;
@@ -68,7 +69,13 @@ export class BetterAuthIdentityBackend {
         existingAccount.banned === true ||
         hasTechnicalAdminRole(existingAccount.role) ||
         existingAccount.has_identity_state === true ||
-        createdAt.getTime() < input.operationCreatedAt.getTime()
+        createdAt.getTime() < input.operationCreatedAt.getTime() ||
+        existingAccount.name !== input.displayName ||
+        !(await this.matchesUsernamePassword({
+          username: input.username,
+          password: input.temporaryPassword,
+          expectedIdentityId: existingAccount.id,
+        }))
       ) {
         throw new IdentityProvisioningConflictError();
       }
@@ -94,9 +101,9 @@ export class BetterAuthIdentityBackend {
         // account. Reconcile the committed winner in a fresh statement rather
         // than turning an idempotent duplicate into a 500.
         const concurrentRows = await this.options.sql<
-          { id: string; created_at: Date | string; role: string | null; banned: boolean | null }[]
+          { id: string; name: string; created_at: Date | string; role: string | null; banned: boolean | null }[]
         >`
-          SELECT id, created_at, role, banned
+          SELECT id, name, created_at, role, banned
           FROM "user"
           WHERE username = ${input.username}
           LIMIT 1
@@ -106,7 +113,13 @@ export class BetterAuthIdentityBackend {
         if (
           concurrent.banned === true ||
           hasTechnicalAdminRole(concurrent.role) ||
-          toDate(concurrent.created_at).getTime() < input.operationCreatedAt.getTime()
+          toDate(concurrent.created_at).getTime() < input.operationCreatedAt.getTime() ||
+          concurrent.name !== input.displayName ||
+          !(await this.matchesUsernamePassword({
+            username: input.username,
+            password: input.temporaryPassword,
+            expectedIdentityId: concurrent.id,
+          }))
         ) {
           throw new IdentityProvisioningConflictError();
         }
@@ -156,6 +169,33 @@ export class BetterAuthIdentityBackend {
     if (!identityId) throw new Error("Better Auth admin create-user returned no user id");
     this.completedOperations.add(input.operationId);
     return { identityId };
+  }
+
+  async matchesUsernamePassword(input: {
+    username: string;
+    password: string;
+    expectedIdentityId: string;
+  }): Promise<boolean> {
+    const response = await this.request("/api/auth/sign-in/username", {
+      username: input.username,
+      password: input.password,
+    });
+    if (!response.ok) return false;
+
+    const body = (await response.json()) as { user?: { id?: string } };
+    const identityId = body.user?.id;
+    let sessionToken: string;
+    try {
+      sessionToken = sessionCookie(response);
+    } catch {
+      return false;
+    }
+
+    try {
+      return identityId === input.expectedIdentityId;
+    } finally {
+      await this.endSession(sessionToken);
+    }
   }
 
   async signInWithUsername(input: {
