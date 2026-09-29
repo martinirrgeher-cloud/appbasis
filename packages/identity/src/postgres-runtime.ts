@@ -3,6 +3,7 @@ import { createPostgresDatabase } from "@appbasis/database";
 import { createBetterAuthRuntime } from "./better-auth";
 import { createIdentityRuntime } from "./server";
 import type {
+  IdentityPostgresRuntimeSqlClient,
   IdentityPostgresRuntimeTransactionalSqlClient,
   PostgresIdentityApplicationRuntime,
   PostgresIdentityApplicationRuntimeOptions,
@@ -37,25 +38,13 @@ export async function createPostgresIdentityApplicationRuntime(
         return connection.client.unsafe(query, parameters);
       },
       async begin<T>(
-        callback: (
-          transaction: IdentityPostgresRuntimeTransactionalSqlClient,
-        ) => Promise<T>,
+        callback: (transaction: IdentityPostgresRuntimeSqlClient) => Promise<T>,
       ): Promise<T> {
         const results = await connection.client.begin(async (transaction) =>
           [
             await callback({
               unsafe(query, parameters) {
                 return transaction.unsafe(query, parameters);
-              },
-              async begin(nestedCallback) {
-                return nestedCallback({
-                  unsafe(query, parameters) {
-                    return transaction.unsafe(query, parameters);
-                  },
-                  begin() {
-                    throw new Error("Nested PostgreSQL transactions are not supported.");
-                  },
-                });
               },
             }),
           ] as [T],
