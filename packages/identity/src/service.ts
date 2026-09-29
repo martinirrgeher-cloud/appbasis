@@ -128,9 +128,24 @@ export class IdentityService {
     if (operation.completedAt !== null && operation.identityId !== null) {
       const existing = await this.stateStore.find(operation.identityId);
       if (existing !== null) {
+        assertProvisioningStateMatches(existing, {
+          username,
+          displayName,
+          contactEmail,
+        });
         const accountStatus = await this.authProvider.getAccountStatus(
           operation.identityId,
         );
+        if (
+          accountStatus === "active" &&
+          !(await this.authProvider.matchesUsernamePassword({
+            username,
+            password: input.temporaryPassword,
+            expectedIdentityId: operation.identityId,
+          }))
+        ) {
+          throw new IdentityProvisioningConflictError();
+        }
         return withAccountStatus(existing, accountStatus);
       }
     }
@@ -152,6 +167,11 @@ export class IdentityService {
       displayName,
       contactEmail,
       completedAt: this.now(),
+    });
+    assertProvisioningStateMatches(state, {
+      username,
+      displayName,
+      contactEmail,
     });
     const accountStatus = await this.authProvider.getAccountStatus(
       created.identityId,
@@ -385,6 +405,27 @@ function withAccountStatus(
   accountStatus: "active" | "disabled",
 ): IdentityState {
   return { ...state, accountStatus };
+}
+
+function assertProvisioningStateMatches(
+  state: Readonly<{
+    username: string;
+    displayName: string;
+    contactEmail: string | null;
+  }>,
+  expected: Readonly<{
+    username: string;
+    displayName: string;
+    contactEmail: string | null;
+  }>,
+): void {
+  if (
+    state.username !== expected.username ||
+    state.displayName !== expected.displayName ||
+    state.contactEmail !== expected.contactEmail
+  ) {
+    throw new IdentityProvisioningConflictError();
+  }
 }
 
 function normalizeProvisioningAuditContext(
