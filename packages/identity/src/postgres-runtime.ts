@@ -3,6 +3,7 @@ import { createPostgresDatabase } from "@appbasis/database";
 import { createBetterAuthRuntime } from "./better-auth";
 import { createIdentityRuntime } from "./server";
 import type {
+  IdentityPostgresRuntimeTransactionalSqlClient,
   PostgresIdentityApplicationRuntime,
   PostgresIdentityApplicationRuntimeOptions,
 } from "./postgres-runtime-contract";
@@ -28,21 +29,14 @@ export async function createPostgresIdentityApplicationRuntime(
       sql: connection.client,
       baseURL,
     });
-    const sql = Object.freeze({
+    const sql: IdentityPostgresRuntimeTransactionalSqlClient = Object.freeze({
       unsafe(
         query: string,
         parameters?: (string | number | boolean | null)[],
       ) {
         return connection.client.unsafe(query, parameters);
       },
-      begin<T>(
-        callback: (transaction: {
-          unsafe(
-            query: string,
-            parameters?: (string | number | boolean | null)[],
-          ): PromiseLike<readonly Record<string, unknown>[]>;
-        }) => Promise<T>,
-      ) {
+      async begin(callback) {
         return connection.client.begin(async (transaction) =>
           callback({
             unsafe(query, parameters) {
