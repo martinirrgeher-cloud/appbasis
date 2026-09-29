@@ -74,7 +74,7 @@ describe('Reference database migration contract', () => {
       application: 'reference',
       dialect: 'postgresql',
       owners: [
-        { id: 'identity', schemaVersion: 2 },
+        { id: 'identity', schemaVersion: 3 },
         { id: 'permissions', schemaVersion: 4 },
         { id: 'tasks', schemaVersion: 1 },
       ],
