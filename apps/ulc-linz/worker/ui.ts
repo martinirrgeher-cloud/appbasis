@@ -2298,41 +2298,42 @@ async function submitMasterdataForm(path, body, form) {
   showMessage(elements.masterdataMessage, "");
   showMessage(elements.masterdataSuccess, "");
   try {
-    await requestJson(path, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  } catch (error) {
-    showMessage(
-      elements.masterdataMessage,
-      error?.status === 403
-        ? "Du darfst Stammdaten ansehen, aber nicht bearbeiten."
-        : error?.status === 400
-          ? "Bitte prüfe die eingegebenen Stammdaten."
-          : "Die Stammdaten konnten nicht gespeichert werden.",
-    );
-    return false;
-  }
+    try {
+      await requestJson(path, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      showMessage(
+        elements.masterdataMessage,
+        error?.status === 403
+          ? "Du darfst Stammdaten ansehen, aber nicht bearbeiten."
+          : error?.status === 400
+            ? "Bitte prüfe die eingegebenen Stammdaten."
+            : "Die Stammdaten konnten nicht gespeichert werden.",
+      );
+      return false;
+    }
 
-  form?.reset();
-  if (form === elements.groupForm && elements.groupSortOrder) {
-    elements.groupSortOrder.value = "100";
-  }
-  if (form === elements.athleteGroupForm && elements.athleteGroupStartedOn) {
-    elements.athleteGroupStartedOn.value = localDateValue(new Date());
-  }
-  masterdataSnapshot = null;
-  const refreshed = await loadMasterdata(true);
-  if (refreshed) {
-    showMessage(elements.masterdataSuccess, "Stammdaten wurden gespeichert.");
-  } else {
-    showMessage(elements.masterdataMessage, "");
-    showMessage(
-      elements.masterdataSuccess,
-      "Stammdaten wurden gespeichert. Die aktualisierte Liste konnte nicht geladen werden; bitte die Ansicht neu öffnen.",
-    );
-  }
-  return true;
+    form?.reset();
+    if (form === elements.groupForm && elements.groupSortOrder) {
+      elements.groupSortOrder.value = "100";
+    }
+    if (form === elements.athleteGroupForm && elements.athleteGroupStartedOn) {
+      elements.athleteGroupStartedOn.value = localDateValue(new Date());
+    }
+    masterdataSnapshot = null;
+    const refreshed = await loadMasterdata(true);
+    if (refreshed) {
+      showMessage(elements.masterdataSuccess, "Stammdaten wurden gespeichert.");
+    } else {
+      showMessage(elements.masterdataMessage, "");
+      showMessage(
+        elements.masterdataSuccess,
+        "Stammdaten wurden gespeichert. Die aktualisierte Liste konnte nicht geladen werden; bitte die Ansicht neu öffnen.",
+      );
+    }
+    return true;
   } finally {
     setMasterdataFormsDisabled(false);
   }
