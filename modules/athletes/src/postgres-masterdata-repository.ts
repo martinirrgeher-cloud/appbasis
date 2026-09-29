@@ -353,17 +353,34 @@ export class PostgresAthleteMasterdataRepository {
       organizationId: normalizedOrganizationId,
     });
     const rows = await this.#client.unsafe(
-      `INSERT INTO appbasis_trainer_group_membership (
-         organization_id, trainer_id, group_id
+      `WITH valid_membership AS MATERIALIZED (
+         SELECT $1::text AS organization_id, t.id AS trainer_id, g.id AS group_id
+         FROM appbasis_trainer t
+         INNER JOIN appbasis_training_group g
+           ON g.id = $3 AND g.organization_id = $1 AND g.is_active = true
+         WHERE t.id = $2
+           AND t.organization_id = $1
+           AND t.is_active = true
+       ),
+       inserted AS (
+         INSERT INTO appbasis_trainer_group_membership (
+           organization_id, trainer_id, group_id
+         )
+         SELECT organization_id, trainer_id, group_id
+         FROM valid_membership
+         ON CONFLICT (organization_id, trainer_id, group_id) DO NOTHING
+         RETURNING organization_id, trainer_id, group_id
        )
-       SELECT $1, t.id, g.id
-       FROM appbasis_trainer t
-       INNER JOIN appbasis_training_group g
-         ON g.id = $3 AND g.organization_id = $1 AND g.is_active = true
-       WHERE t.id = $2
-         AND t.organization_id = $1
-         AND t.is_active = true
-       RETURNING organization_id, trainer_id, group_id`,
+       SELECT organization_id, trainer_id, group_id
+       FROM inserted
+       UNION ALL
+       SELECT existing.organization_id, existing.trainer_id, existing.group_id
+       FROM appbasis_trainer_group_membership AS existing
+       INNER JOIN valid_membership AS valid
+         ON valid.organization_id = existing.organization_id
+        AND valid.trainer_id = existing.trainer_id
+        AND valid.group_id = existing.group_id
+       WHERE NOT EXISTS (SELECT 1 FROM inserted)`,
       [
         normalizedOrganizationId,
         membership.trainerId,
