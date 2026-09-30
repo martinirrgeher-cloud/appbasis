@@ -133,11 +133,13 @@ export class IdentityService {
     if (operation.completedAt !== null && operation.identityId !== null) {
       const existing = await this.stateStore.find(operation.identityId);
       if (existing !== null) {
-        assertProvisioningStateMatches(existing, {
-          username,
-          displayName,
-          contactEmail,
-        });
+        if (provisioningAudit !== undefined) {
+          assertProvisioningStateMatches(existing, {
+            username,
+            displayName,
+            contactEmail,
+          });
+        }
         const accountStatus = await this.authProvider.getAccountStatus(
           operation.identityId,
         );
