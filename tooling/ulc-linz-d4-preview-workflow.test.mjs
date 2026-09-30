@@ -15,7 +15,7 @@ test("ULC D4 preview lifecycle keeps provider writes explicit and main-only", as
 
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /operation:/);
-  for (const operation of ["hyperdrives", "migrate", "bootstrap", "deploy"]) {
+  for (const operation of ["inspect", "hyperdrives", "migrate", "bootstrap", "deploy"]) {
     assert.match(workflow, new RegExp("- " + operation));
   }
   assert.match(workflow, /apply:/);
@@ -78,7 +78,7 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   assert.match(workflow, /ulc-linz-d4-preview-migration-state\.mjs/);
   assert.match(
     workflow,
-    /initial\|athletes-upgrade\|training-upgrade\|trainer-identity-audit-upgrade\|current/,
+    /initial\|athletes-upgrade\|training-upgrade\|trainer-identity-audit-upgrade\|identity-provisioning-audit-upgrade\|current/,
   );
   assert.match(workflow, /Preflight fresh ULC preview runtime principals/);
   assert.match(workflow, /database-access\.mjs preflight >\/dev\/null/);
@@ -98,6 +98,8 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
     workflow,
     /ulc-linz-d4-preview-trainer-identity-audit-upgrade\.mjs/,
   );
+  assert.match(workflow, /Apply incremental ULC preview identity provisioning audit migration/);
+  assert.match(workflow, /ulc-linz-d4-preview-identity-audit-upgrade\.mjs/);
   assert.match(workflow, /Confirm current ULC preview schema/);
 
   const stateStart = workflow.indexOf("      - name: Resolve ULC preview migration state\n");
@@ -109,6 +111,9 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   const trainerIdentityAuditUpgradeStart = workflow.indexOf(
     "      - name: Apply incremental ULC preview trainer identity audit migration\n",
   );
+  const identityAuditUpgradeStart = workflow.indexOf(
+    "      - name: Apply incremental ULC preview identity provisioning audit migration\n",
+  );
   const currentStart = workflow.indexOf(
     "      - name: Confirm current ULC preview schema\n",
   );
@@ -119,7 +124,8 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   assert.ok(upgradeStart > initialMigrateStart);
   assert.ok(trainingUpgradeStart > upgradeStart);
   assert.ok(trainerIdentityAuditUpgradeStart > trainingUpgradeStart);
-  assert.ok(currentStart > trainerIdentityAuditUpgradeStart);
+  assert.ok(identityAuditUpgradeStart > trainerIdentityAuditUpgradeStart);
+  assert.ok(currentStart > identityAuditUpgradeStart);
 });
 
 test("ULC D4 migrations never run with the application runtime credential", async () => {
@@ -128,6 +134,8 @@ test("ULC D4 migrations never run with the application runtime credential", asyn
     "Apply initial ULC preview database manifest",
     "Apply incremental ULC preview Stammdaten migration",
     "Apply incremental ULC preview training migration",
+    "Apply incremental ULC preview trainer identity audit migration",
+    "Apply incremental ULC preview identity provisioning audit migration",
   ]) {
     const stepStart = workflow.indexOf("      - name: " + stepName + "\n");
     const nextStep = workflow.indexOf("\n      - name: ", stepStart + 1);
@@ -151,4 +159,22 @@ test("ULC D4 preview lifecycle never targets ULC production resources", async ()
   assert.doesNotMatch(workflow, /ULC_LINZ_PRODUCTION_DATABASE_URL/);
   assert.doesNotMatch(workflow, /ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL/);
   assert.doesNotMatch(workflow, /m4-dr/);
+});
+
+test("ULC preview inspect is read-only and deploy requires identity-v3 schema before provider writes", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  assert.match(workflow, /- inspect/);
+  assert.match(workflow, /if: inputs.operation != 'inspect'/);
+  assert.match(workflow, /inputs.operation == 'migrate' \|\| inputs.operation == 'inspect'/);
+  assert.match(workflow, /Report read-only ULC preview migration state/);
+  assert.match(workflow, /Require current ULC preview schema before deployment/);
+  assert.match(workflow, /fully migrated identity schema v3/);
+  const guard = workflow.indexOf("      - name: Require current ULC preview schema before deployment");
+  const reconcile = workflow.indexOf("      - name: Reconcile separated ULC preview runtime database access");
+  const secretWrite = workflow.indexOf("      - name: Synchronize ULC preview identity secret");
+  const providerDeploy = workflow.indexOf("      - name: Deploy ULC preview Worker");
+  assert.ok(guard >= 0);
+  assert.ok(reconcile > guard);
+  assert.ok(secretWrite > guard);
+  assert.ok(providerDeploy > guard);
 });
