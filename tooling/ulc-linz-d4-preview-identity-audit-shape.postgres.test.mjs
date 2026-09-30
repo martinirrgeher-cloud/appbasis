@@ -11,14 +11,29 @@ import {
 class ExpectedTestRollback extends Error {}
 
 const databaseUrl = process.env.DATABASE_URL;
+const isolatedName = "appbasis_preview_identity_shape_contract_e2e";
 
 test("PostgreSQL catalog deparser matches the real identity v3 migration", {
   skip: !databaseUrl,
 }, async () => {
-  const database = createPostgresDatabase(databaseUrl);
+  // Existing identity E2E fixtures may already have tables in DATABASE_URL.
+  // Create an exclusive disposable database; never alter or drop the baseline.
+  const administrator = createPostgresDatabase(databaseUrl);
+  const isolatedUrl = new URL(databaseUrl);
+  isolatedUrl.pathname = `/${isolatedName}`;
+  let isolatedDatabase;
+  let ownsDatabase = false;
   try {
+    const existing = await administrator.client.unsafe(
+      "SELECT datname FROM pg_catalog.pg_database WHERE datname = $1",
+      [isolatedName],
+    );
+    assert.equal(existing.length, 0, "Dedicated CI contract database must not preexist");
+    await administrator.client.unsafe(`CREATE DATABASE ${isolatedName}`);
+    ownsDatabase = true;
+    isolatedDatabase = createPostgresDatabase(isolatedUrl.toString());
     await assert.rejects(
-      database.client.begin(async (transaction) => {
+      isolatedDatabase.client.begin(async (transaction) => {
         // This CI PostgreSQL service is disposable, and the transaction is
         // deliberately rolled back even when all assertions pass.
         const before = await transaction.unsafe(
@@ -63,6 +78,15 @@ test("PostgreSQL catalog deparser matches the real identity v3 migration", {
       ExpectedTestRollback,
     );
   } finally {
-    await database.client.end();
+    if (isolatedDatabase !== undefined) await isolatedDatabase.client.end();
+    try {
+      if (ownsDatabase) {
+        await administrator.client.unsafe(
+          `DROP DATABASE ${isolatedName} WITH (FORCE)`,
+        );
+      }
+    } finally {
+      await administrator.client.end();
+    }
   }
 });
