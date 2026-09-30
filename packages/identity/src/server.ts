@@ -47,6 +47,7 @@ export class BetterAuthIdentityBackend {
         role: string | null;
         banned: boolean | null;
         has_identity_state: boolean;
+        owned_by_operation: boolean;
       }[]
     >`
       SELECT u.id,
@@ -58,7 +59,13 @@ export class BetterAuthIdentityBackend {
                SELECT 1
                FROM appbasis_identity_security_state state
                WHERE state.identity_id = u.id
-             ) AS has_identity_state
+             ) AS has_identity_state,
+             EXISTS (
+               SELECT 1
+               FROM appbasis_identity_operation operation
+               WHERE operation.operation_id = ${input.operationId}
+                 AND operation.identity_id = u.id
+             ) AS owned_by_operation
       FROM "user" u
       WHERE u.username = ${input.username}
       LIMIT 1
@@ -69,7 +76,8 @@ export class BetterAuthIdentityBackend {
       if (
         existingAccount.banned === true ||
         hasTechnicalAdminRole(existingAccount.role) ||
-        existingAccount.has_identity_state === true ||
+        (existingAccount.has_identity_state === true &&
+          existingAccount.owned_by_operation !== true) ||
         createdAt.getTime() < input.operationCreatedAt.getTime() ||
         existingAccount.name !== input.displayName ||
         !(await this.matchesUsernamePassword({
