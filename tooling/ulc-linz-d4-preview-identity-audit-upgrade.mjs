@@ -6,6 +6,11 @@ import {
   validatePostgresConnectionString,
 } from "./database-migration-executor.mjs";
 import { loadGeneratedAppPreviewMigrationPlan } from "./generated-app-preview-migrate.mjs";
+import {
+  isAbsentUlcPreviewIdentityAuditShape,
+  isCanonicalUlcPreviewIdentityAuditShape,
+  readUlcPreviewIdentityAuditShape,
+} from "./ulc-linz-d4-preview-identity-audit-shape.mjs";
 import { parseGeneratedPreviewDatabaseUrl } from "./generated-preview-hyperdrive.mjs";
 import { ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE } from "./ulc-linz-d4-preview-hyperdrive.mjs";
 
@@ -13,11 +18,6 @@ const TARGET_DATABASE = "appbasis_ulc_linz_preview";
 const TARGET_ROLE = "appbasis_ulc_linz_preview_migration";
 const TARGET_MIGRATION =
   "packages/identity/drizzle/0002_appbasis_identity_provisioning_audit.sql";
-const TARGET_COLUMNS = Object.freeze([
-  "provisioning_owner",
-  "actor_principal_id",
-  "reason",
-]);
 const TARGET_CONSTRAINT =
   "appbasis_identity_operation_provisioning_audit_shape_check";
 
@@ -64,7 +64,7 @@ export async function loadUlcLinzD4PreviewIdentityAuditUpgradePlan(
   const sql = migration.statements.join("\n");
   if (
     !sql.includes(TARGET_CONSTRAINT) ||
-    !TARGET_COLUMNS.every((column) => sql.includes(column))
+    !["provisioning_owner", "actor_principal_id", "reason"].every((column) => sql.includes(column))
   ) {
     throw new UlcLinzD4PreviewIdentityAuditUpgradeConfigurationError(
       "ULC D4 preview identity audit migration shape is invalid.",
@@ -155,8 +155,8 @@ export async function applyUlcLinzD4PreviewIdentityAuditUpgrade(
           );
         }
       }
-      const before = await identityAuditShape(transaction);
-      if (before.columns.length !== 0 || before.constraints.length !== 0) {
+      const before = await readUlcPreviewIdentityAuditShape(transaction);
+      if (!isAbsentUlcPreviewIdentityAuditShape(before)) {
         throw new UlcLinzD4PreviewIdentityAuditUpgradeExecutionError(
           "ULC D4 identity audit migration target is already or partially present.",
         );
@@ -164,13 +164,8 @@ export async function applyUlcLinzD4PreviewIdentityAuditUpgrade(
       for (const statement of plan.migration.statements) {
         await transaction.unsafe(statement);
       }
-      const after = await identityAuditShape(transaction);
-      if (
-        after.columns.length !== TARGET_COLUMNS.length ||
-        !TARGET_COLUMNS.every((column) => after.columns.includes(column)) ||
-        after.constraints.length !== 1 ||
-        !validConstraint(after.constraints[0]?.definition)
-      ) {
+      const after = await readUlcPreviewIdentityAuditShape(transaction);
+      if (!isCanonicalUlcPreviewIdentityAuditShape(after)) {
         throw new UlcLinzD4PreviewIdentityAuditUpgradeExecutionError(
           "ULC D4 identity audit migration did not reach the expected v3 schema.",
         );
@@ -203,50 +198,6 @@ export async function applyUlcLinzD4PreviewIdentityAuditUpgrade(
       }
     }
   }
-}
-
-async function identityAuditShape(client) {
-  const columns = await client.unsafe(
-    `SELECT attribute.attname AS column_name
-       FROM pg_catalog.pg_attribute AS attribute
-       JOIN pg_catalog.pg_class AS relation
-         ON relation.oid = attribute.attrelid
-       JOIN pg_catalog.pg_namespace AS namespace
-         ON namespace.oid = relation.relnamespace
-      WHERE namespace.nspname = 'public'
-        AND relation.relname = 'appbasis_identity_operation'
-        AND attribute.attname IN ('provisioning_owner', 'actor_principal_id', 'reason')
-        AND attribute.attnum > 0
-        AND NOT attribute.attisdropped`,
-  );
-  const constraints = await client.unsafe(
-    `SELECT pg_catalog.pg_get_constraintdef(guard.oid) AS definition
-       FROM pg_catalog.pg_constraint AS guard
-       JOIN pg_catalog.pg_class AS relation
-         ON relation.oid = guard.conrelid
-       JOIN pg_catalog.pg_namespace AS namespace
-         ON namespace.oid = relation.relnamespace
-      WHERE namespace.nspname = 'public'
-        AND relation.relname = 'appbasis_identity_operation'
-        AND guard.conname = '${TARGET_CONSTRAINT}'
-        AND guard.contype = 'c'`,
-  );
-  if (!Array.isArray(columns) || !Array.isArray(constraints)) {
-    throw new UlcLinzD4PreviewIdentityAuditUpgradeExecutionError(
-      "ULC D4 identity audit migration inventory is unavailable.",
-    );
-  }
-  return {
-    columns: columns.map((row) => row.column_name),
-    constraints,
-  };
-}
-
-function validConstraint(definition) {
-  return typeof definition === "string" &&
-    definition.includes("CHECK") &&
-    definition.includes("kind") &&
-    TARGET_COLUMNS.every((column) => definition.includes(column));
 }
 
 export function assertUlcLinzD4PreviewIdentityAuditUpgradeEnvironment(
