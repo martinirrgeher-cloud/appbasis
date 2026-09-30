@@ -82,17 +82,37 @@ export async function resolveUlcLinzD4PreviewMigrationState(
       throw new Error("ULC D4 established preview security group is missing.");
     }
 
+    // Inventory all migration markers before selecting an incremental route.
+    // Otherwise a later identity-v3 state with missing older tables could be
+    // misclassified as a safe earlier upgrade and silently mask schema drift.
     const athletesPresent = ATHLETES_TABLES.filter((table) => tables.has(table));
-    if (athletesPresent.length === 0) {
-      return Object.freeze({ mode: "athletes-upgrade" });
-    }
-    if (athletesPresent.length !== ATHLETES_TABLES.length) {
-      throw new Error("ULC D4 preview Stammdaten schema is partially applied.");
-    }
-
     const trainingPresent = TRAINING_TABLES.filter((table) => tables.has(table));
     const trainerIdentityAuditPresent = tables.has(TRAINER_IDENTITY_AUDIT_TABLE);
-    if (trainingPresent.length === 0) {
+    const auditShape = await readUlcPreviewIdentityAuditShape(database.client);
+    const identityAuditAbsent = isAbsentUlcPreviewIdentityAuditShape(auditShape);
+    if (!identityAuditAbsent && !isCanonicalUlcPreviewIdentityAuditShape(auditShape)) {
+      throw new Error(
+        "ULC D4 identity provisioning audit schema is partially applied or drifted.",
+      );
+    }
+    if (athletesPresent.length !== 0 && athletesPresent.length !== ATHLETES_TABLES.length) {
+      throw new Error("ULC D4 preview Stammdaten schema is partially applied.");
+    }
+    if (trainingPresent.length !== 0 && trainingPresent.length !== TRAINING_TABLES.length) {
+      throw new Error("ULC D4 preview training schema is partially applied.");
+    }
+    const athletesComplete = athletesPresent.length === ATHLETES_TABLES.length;
+    const trainingComplete = trainingPresent.length === TRAINING_TABLES.length;
+    if (!identityAuditAbsent && (!athletesComplete || !trainingComplete || !trainerIdentityAuditPresent)) {
+      throw new Error("ULC D4 identity provisioning audit exists before the complete app baseline.");
+    }
+    if (!athletesComplete) {
+      if (trainingPresent.length > 0 || trainerIdentityAuditPresent) {
+        throw new Error("ULC D4 training or trainer audit exists before Stammdaten baseline.");
+      }
+      return Object.freeze({ mode: "athletes-upgrade" });
+    }
+    if (!trainingComplete) {
       if (trainerIdentityAuditPresent) {
         throw new Error(
           "ULC D4 preview trainer identity audit exists before the training baseline.",
@@ -100,23 +120,11 @@ export async function resolveUlcLinzD4PreviewMigrationState(
       }
       return Object.freeze({ mode: "training-upgrade" });
     }
-    if (trainingPresent.length !== TRAINING_TABLES.length) {
-      throw new Error("ULC D4 preview training schema is partially applied.");
-    }
     if (!trainerIdentityAuditPresent) {
       return Object.freeze({ mode: "trainer-identity-audit-upgrade" });
     }
-
-    // A completed app-owned trainer audit does not imply identity schema v3.
-    // Inspect the owning identity operation table before allowing deployment.
-    const auditShape = await readUlcPreviewIdentityAuditShape(database.client);
-    if (isAbsentUlcPreviewIdentityAuditShape(auditShape)) {
+    if (identityAuditAbsent) {
       return Object.freeze({ mode: "identity-provisioning-audit-upgrade" });
-    }
-    if (!isCanonicalUlcPreviewIdentityAuditShape(auditShape)) {
-      throw new Error(
-        "ULC D4 identity provisioning audit schema is partially applied or drifted.",
-      );
     }
     return Object.freeze({ mode: "current" });
   } finally {
