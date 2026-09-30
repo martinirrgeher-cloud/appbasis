@@ -167,13 +167,16 @@ test("ULC preview inspect is read-only and deploy requires identity-v3 schema be
   assert.match(workflow, /if: inputs.operation != 'inspect'/);
   assert.match(workflow, /inputs.operation == 'migrate' \|\| inputs.operation == 'inspect'/);
   assert.match(workflow, /Report read-only ULC preview migration state/);
-  assert.match(workflow, /Require current ULC preview schema before deployment/);
+  assert.match(workflow, /Require current ULC preview schema before bootstrap or deployment/);
   assert.match(workflow, /fully migrated identity schema v3/);
-  const guard = workflow.indexOf("      - name: Require current ULC preview schema before deployment");
+  assert.match(workflow, /if: inputs.operation == 'bootstrap' \\|\\| inputs.operation == 'deploy'/);
+  const guard = workflow.indexOf("      - name: Require current ULC preview schema before bootstrap or deployment");
+  const bootstrapWorker = workflow.indexOf("      - name: Create ULC preview Worker when absent");
   const reconcile = workflow.indexOf("      - name: Reconcile separated ULC preview runtime database access");
   const secretWrite = workflow.indexOf("      - name: Synchronize ULC preview identity secret");
   const providerDeploy = workflow.indexOf("      - name: Deploy ULC preview Worker");
   assert.ok(guard >= 0);
+  assert.ok(bootstrapWorker > guard);
   assert.ok(reconcile > guard);
   assert.ok(secretWrite > guard);
   assert.ok(providerDeploy > guard);
