@@ -40,6 +40,10 @@ export class BetterAuthIdentityBackend {
   }): Promise<{ identityId: string }> {
     await this.assertProvisioningAuthorized();
 
+    if (this.options.trustedProvisioning === true) {
+      return this.createTrustedUsernameAccount(input);
+    }
+
     const existing = await this.options.sql<
       {
         id: string;
@@ -92,71 +96,6 @@ export class BetterAuthIdentityBackend {
       return { identityId: existingAccount.id };
     }
 
-    if (this.options.trustedProvisioning === true) {
-      try {
-        await this.options.auth.api.createUser({
-          body: {
-            email: input.technicalEmail,
-            password: input.temporaryPassword,
-            name: input.displayName,
-            role: "user",
-            data: {
-              username: input.username,
-              displayUsername: input.username,
-            },
-          },
-        });
-      } catch (error) {
-        // A concurrent retry can race after both requests observed no provider
-        // account. Reconcile the committed winner in a fresh statement rather
-        // than turning an idempotent duplicate into a 500.
-        const concurrentRows = await this.options.sql<
-          { id: string; name: string; created_at: Date | string; role: string | null; banned: boolean | null }[]
-        >`
-          SELECT id, name, created_at, role, banned
-          FROM "user"
-          WHERE username = ${input.username}
-          LIMIT 1
-        `;
-        const concurrent = concurrentRows[0];
-        if (concurrent === undefined) throw error;
-        if (
-          concurrent.banned === true ||
-          hasTechnicalAdminRole(concurrent.role) ||
-          toDate(concurrent.created_at).getTime() < input.operationCreatedAt.getTime() ||
-          concurrent.name !== input.displayName ||
-          !(await this.matchesUsernamePassword({
-            username: input.username,
-            password: input.temporaryPassword,
-            expectedIdentityId: concurrent.id,
-          }))
-        ) {
-          throw new IdentityProvisioningConflictError();
-        }
-        this.completedOperations.add(input.operationId);
-        return { identityId: concurrent.id };
-      }
-
-      const createdRows = await this.options.sql<
-        { id: string; created_at: Date | string; role: string | null; banned: boolean | null }[]
-      >`
-        SELECT id, created_at, role, banned
-        FROM "user"
-        WHERE username = ${input.username}
-        LIMIT 1
-      `;
-      const created = requiredRow(createdRows);
-      if (
-        created.banned === true ||
-        hasTechnicalAdminRole(created.role) ||
-        toDate(created.created_at).getTime() < input.operationCreatedAt.getTime()
-      ) {
-        throw new IdentityProvisioningConflictError();
-      }
-      this.completedOperations.add(input.operationId);
-      return { identityId: created.id };
-    }
-
     const administrativeSessionToken = this.requireAdministrativeSessionToken();
     const response = await this.request(
       "/api/auth/admin/create-user",
@@ -179,6 +118,149 @@ export class BetterAuthIdentityBackend {
     if (!identityId) throw new Error("Better Auth admin create-user returned no user id");
     this.completedOperations.add(input.operationId);
     return { identityId };
+  }
+
+  private async createTrustedUsernameAccount(input: {
+    operationId: string;
+    username: string;
+    displayName: string;
+    technicalEmail: string;
+    temporaryPassword: string;
+    operationCreatedAt: Date;
+  }): Promise<{ identityId: string }> {
+    return this.options.sql.begin(async (transaction) => {
+      const operationRows = await transaction<
+        { operation_id: string; identity_id: string | null }[]
+      >`
+        SELECT operation_id, identity_id
+        FROM appbasis_identity_operation
+        WHERE operation_id = ${input.operationId}
+        FOR UPDATE
+      `;
+      const operation = requiredRow(operationRows);
+
+      const existingRows = await transaction<
+        {
+          id: string;
+          name: string;
+          created_at: Date | string;
+          role: string | null;
+          banned: boolean | null;
+          has_identity_state: boolean;
+        }[]
+      >`
+        SELECT u.id,
+               u.name,
+               u.created_at,
+               u.role,
+               u.banned,
+               EXISTS (
+                 SELECT 1
+                 FROM appbasis_identity_security_state state
+                 WHERE state.identity_id = u.id
+               ) AS has_identity_state
+        FROM "user" u
+        WHERE u.username = ${input.username}
+        LIMIT 1
+      `;
+      const existing = existingRows[0];
+      if (existing !== undefined) {
+        if (
+          existing.banned === true ||
+          hasTechnicalAdminRole(existing.role) ||
+          (existing.has_identity_state === true &&
+            operation.identity_id !== existing.id) ||
+          toDate(existing.created_at).getTime() <
+            input.operationCreatedAt.getTime() ||
+          existing.name !== input.displayName ||
+          !(await this.matchesUsernamePassword({
+            username: input.username,
+            password: input.temporaryPassword,
+            expectedIdentityId: existing.id,
+          }))
+        ) {
+          throw new IdentityProvisioningConflictError();
+        }
+        this.completedOperations.add(input.operationId);
+        return { identityId: existing.id };
+      }
+
+      try {
+        await this.options.auth.api.createUser({
+          body: {
+            email: input.technicalEmail,
+            password: input.temporaryPassword,
+            name: input.displayName,
+            role: "user",
+            data: {
+              username: input.username,
+              displayUsername: input.username,
+            },
+          },
+        });
+      } catch (error) {
+        // The operation-row lock serializes AppBasis retries. A remaining
+        // provider collision can only come from state outside this operation,
+        // so reconcile it only when every request-visible invariant matches.
+        const concurrentRows = await transaction<
+          {
+            id: string;
+            name: string;
+            created_at: Date | string;
+            role: string | null;
+            banned: boolean | null;
+          }[]
+        >`
+          SELECT id, name, created_at, role, banned
+          FROM "user"
+          WHERE username = ${input.username}
+          LIMIT 1
+        `;
+        const concurrent = concurrentRows[0];
+        if (concurrent === undefined) throw error;
+        if (
+          concurrent.banned === true ||
+          hasTechnicalAdminRole(concurrent.role) ||
+          toDate(concurrent.created_at).getTime() <
+            input.operationCreatedAt.getTime() ||
+          concurrent.name !== input.displayName ||
+          !(await this.matchesUsernamePassword({
+            username: input.username,
+            password: input.temporaryPassword,
+            expectedIdentityId: concurrent.id,
+          }))
+        ) {
+          throw new IdentityProvisioningConflictError();
+        }
+        this.completedOperations.add(input.operationId);
+        return { identityId: concurrent.id };
+      }
+
+      const createdRows = await transaction<
+        {
+          id: string;
+          created_at: Date | string;
+          role: string | null;
+          banned: boolean | null;
+        }[]
+      >`
+        SELECT id, created_at, role, banned
+        FROM "user"
+        WHERE username = ${input.username}
+        LIMIT 1
+      `;
+      const created = requiredRow(createdRows);
+      if (
+        created.banned === true ||
+        hasTechnicalAdminRole(created.role) ||
+        toDate(created.created_at).getTime() <
+          input.operationCreatedAt.getTime()
+      ) {
+        throw new IdentityProvisioningConflictError();
+      }
+      this.completedOperations.add(input.operationId);
+      return { identityId: created.id };
+    });
   }
 
   async matchesUsernamePassword(input: {
