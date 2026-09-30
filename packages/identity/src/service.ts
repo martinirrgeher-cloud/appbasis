@@ -44,6 +44,11 @@ interface BetterAuthIdentityBackend {
     password: string;
   }): Promise<AuthSession>;
   getSession(sessionToken: string): Promise<AuthSession | null>;
+  matchesUsernamePassword(input: {
+    username: string;
+    password: string;
+    expectedIdentityId: string;
+  }): Promise<boolean>;
   changePassword(input: {
     operationId: string;
     sessionToken: string;
@@ -137,6 +142,7 @@ export class IdentityService {
           operation.identityId,
         );
         if (
+          provisioningAudit !== undefined &&
           accountStatus === "active" &&
           !(await this.authProvider.matchesUsernamePassword({
             username,
