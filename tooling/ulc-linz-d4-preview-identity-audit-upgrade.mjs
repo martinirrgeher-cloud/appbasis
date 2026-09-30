@@ -3,7 +3,6 @@ import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import {
-  loadRepositoryMigrationPlan,
   validatePostgresConnectionString,
 } from "./database-migration-executor.mjs";
 import { loadGeneratedAppPreviewMigrationPlan } from "./generated-app-preview-migrate.mjs";
