@@ -11,6 +11,7 @@ const SECURITY_URL = `postgresql://appbasis_ulc_linz_preview_security_log:x@${HO
 
 const BASELINE = [
   "appbasis_person",
+  "appbasis_identity_operation",
   "appbasis_permission_principal",
   "ulc_linz_membership",
   "ulc_linz_security_event_log",
@@ -29,7 +30,12 @@ const TRAINING = [
 ];
 const TRAINER_IDENTITY_AUDIT = "ulc_linz_trainer_identity_audit";
 
-function factory({ tables = [], group = false } = {}) {
+function factory({
+  tables = [],
+  group = false,
+  identityColumns = [],
+  identityConstraint = false,
+} = {}) {
   return () => ({
     client: {
       async unsafe(sql) {
@@ -39,6 +45,18 @@ function factory({ tables = [], group = false } = {}) {
         if (sql.includes("FROM pg_catalog.pg_roles")) {
           return group
             ? [{ rolname: "appbasis_ulc_linz_preview_security_ingest" }]
+            : [];
+        }
+        if (sql.includes("FROM pg_catalog.pg_attribute")) {
+          return identityColumns.map((column_name) => ({ column_name }));
+        }
+        if (sql.includes("FROM pg_catalog.pg_constraint")) {
+          return identityConstraint
+            ? [{
+                definition:
+                  "CHECK (kind = 'provision' AND provisioning_owner IS NOT NULL " +
+                  "AND actor_principal_id IS NOT NULL AND reason IS NOT NULL)",
+              }]
             : [];
         }
         throw new Error("unexpected SQL");
@@ -84,14 +102,40 @@ test("classifies a training-complete preview as a trainer identity audit upgrade
   );
 });
 
-test("classifies a fully migrated preview as current", async () => {
+test("classifies a trainer-audit-complete identity-v2 preview as requiring the identity audit delta", async () => {
   assert.deepEqual(
     await resolve({
       tables: [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT],
       group: true,
     }),
+    { mode: "identity-provisioning-audit-upgrade" },
+  );
+});
+
+test("classifies a fully migrated identity-v3 preview as current", async () => {
+  assert.deepEqual(
+    await resolve({
+      tables: [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT],
+      group: true,
+      identityColumns: ["provisioning_owner", "actor_principal_id", "reason"],
+      identityConstraint: true,
+    }),
     { mode: "current" },
   );
+});
+
+test("rejects partially upgraded identity provisioning audit schemas", async () => {
+  const establishedTables = [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT];
+  for (const incomplete of [
+    { identityColumns: ["provisioning_owner"], identityConstraint: false },
+    { identityColumns: ["provisioning_owner", "actor_principal_id", "reason"], identityConstraint: false },
+    { identityColumns: [], identityConstraint: true },
+  ]) {
+    await assert.rejects(
+      resolve({ tables: establishedTables, group: true, ...incomplete }),
+      /partially applied or drifted/,
+    );
+  }
 });
 
 test("fails closed when trainer identity audit appears before the training baseline", async () => {
