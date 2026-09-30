@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-09-28
+Stand: 2026-09-30
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,7 +9,16 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E4A – gemeinsames Trainingsfundament für Kindertraining, U12 und U14.**
+**ULC-E4E-D – isolierte Preview-Abnahme für Trainer-Testkonten, Rechte und Gruppenzuordnung.**
+
+Der E4E-D-Code ist fertig integriert. Vor der praktischen Abnahme muss die
+bestehende isolierte ULC-Preview die additive Identity-Schema-Version 3 erhalten.
+Das bisherige Preview-Migrationsrouting konnte die neue Identity-Audit-Migration
+noch nicht erkennen und würde sonst eine alte Preview fälschlich als
+\`current\` melden. Ein eigener read-only Inventory-Check, eine ausschließlich
+identity-eigene inkrementelle Migration und ein Fail-Closed-Deploy-Preflight
+schließen diese Lücke. Die nachstehenden E4A–E4E-C-Abschnitte dokumentieren
+die bereits erreichten fachlichen Grundlagen.
 
 ULC-E3C ist auf `main` abgeschlossen und wurde anschließend in der isolierten
 ULC-Preview erfolgreich deployed. Die Bearbeiten-Funktion ist damit für den
@@ -819,6 +828,25 @@ Abnahme für ULC-E4E-D:
   `0002_appbasis_identity_provisioning_audit.sql` benötigt;
 - der Code-PR führt weiterhin weder Preview-/Production-Write noch Deployment
   aus. Migration und Deployment bleiben gesonderte Freigabe-Gates.
+
+E4E-D-Preview-Gate nach dem Code-Merge, jeweils auf \`main\`:
+
+1. Read-only Inspect der dedizierten ULC-Preview (erwartet: fehlende
+   \`identity\`-Schema-v3-Migration oder bereits \`current\`).
+2. Separat und ausdrücklich freigegeben: \`migrate\` mit \`apply=true\`;
+   bei bestehender E4E-A2-Baseline ausschließlich
+   \`0002_appbasis_identity_provisioning_audit.sql\`, transaktional durch
+   den isolierten Preview-Migration-Principal.
+3. Read-only Inspect muss anschließend \`current\` ergeben. Ohne
+   diesen Nachweis darf \`deploy\` keine Provider-/Runtime-Writes ausführen.
+4. Separat und ausdrücklich freigegeben: Preview-`deploy` mit `apply=true`,
+   gefolgt von den bestehenden Audit-/Runtime-Smokes.
+5. Praktische Abnahme: Admin-Anlage von Trainer A und Trainer B mit
+   temporären Zugangsdaten, erzwungener Passwortwechsel, individuelle
+   Trainer↔Gruppen-Sicht, Negativfall gruppenfremde Daten und Konflikttest.
+
+Keine Preview-Migration, kein Preview-Deployment und keine
+Produktionsmutation werden allein durch diesen Code-PR ausgelöst.
 
 ## Architektur- und Sicherheitsgrenzen
 
