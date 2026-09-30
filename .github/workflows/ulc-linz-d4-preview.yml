@@ -10,6 +10,7 @@ on:
         required: true
         type: choice
         options:
+          - inspect
           - hyperdrives
           - migrate
           - bootstrap
@@ -88,6 +89,7 @@ jobs:
           printf 'entrypoint=%s\n' "$(jq -r '.entrypoint' <<<"$PLAN")" >> "$GITHUB_OUTPUT"
 
       - name: Require explicit preview authorization
+        if: inputs.operation != 'inspect'
         shell: bash
         env:
           APPBASIS_APPLY: ${{ inputs.apply && '1' || '0' }}
@@ -131,7 +133,7 @@ jobs:
           NODE
 
       - name: Validate and mask Cloudflare credentials
-        if: inputs.operation != 'migrate'
+        if: inputs.operation != 'migrate' && inputs.operation != 'inspect'
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -179,7 +181,7 @@ jobs:
 
       - name: Resolve ULC preview migration state
         id: migration_state
-        if: inputs.operation == 'migrate'
+        if: inputs.operation == 'migrate' || inputs.operation == 'inspect'
         shell: bash
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
@@ -190,10 +192,19 @@ jobs:
           STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
           MODE="$(jq -r '.mode' <<<"$STATE")"
           case "$MODE" in
-            initial|athletes-upgrade|training-upgrade|trainer-identity-audit-upgrade|current) ;;
+            initial|athletes-upgrade|training-upgrade|trainer-identity-audit-upgrade|identity-provisioning-audit-upgrade|current) ;;
             *) echo 'ULC D4 preview migration mode is invalid.' >&2; exit 1 ;;
           esac
           printf 'mode=%s\n' "$MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Report read-only ULC preview migration state
+        if: inputs.operation == 'inspect'
+        shell: bash
+        env:
+          RESOLVED_MODE: ${{ steps.migration_state.outputs.mode }}
+        run: |
+          echo "ULC preview schema state: $RESOLVED_MODE"
+          echo "ULC preview schema state: $RESOLVED_MODE (read-only; no apply)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preflight fresh ULC preview runtime principals
         if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'initial'
@@ -252,9 +263,34 @@ jobs:
           APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
         run: node ./tooling/ulc-linz-d4-preview-trainer-identity-audit-upgrade.mjs
 
+      - name: Apply incremental ULC preview identity provisioning audit migration
+        if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'identity-provisioning-audit-upgrade'
+        shell: bash
+        env:
+          APPBASIS_GENERATED_APP_ID: ulc-linz
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_MIGRATION_TARGET: ${{ steps.plan.outputs.migration_target }}
+          APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
+        run: node ./tooling/ulc-linz-d4-preview-identity-audit-upgrade.mjs
+
       - name: Confirm current ULC preview schema
         if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'current'
         run: echo 'ULC D4 preview schema is already current; migration write skipped.'
+
+      - name: Require current ULC preview schema before deployment
+        if: inputs.operation == 'deploy'
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
+          test "$(jq -r '.mode' <<<"$STATE")" = 'current' || {
+            echo 'ULC preview deployment requires fully migrated identity schema v3.' >&2
+            exit 1
+          }
 
       - name: Reconcile separated ULC preview runtime database access
         if: inputs.operation == 'migrate' || inputs.operation == 'bootstrap' || inputs.operation == 'deploy'
