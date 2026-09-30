@@ -277,8 +277,8 @@ jobs:
         if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'current'
         run: echo 'ULC D4 preview schema is already current; migration write skipped.'
 
-      - name: Require current ULC preview schema before deployment
-        if: inputs.operation == 'deploy'
+      - name: Require current ULC preview schema before bootstrap or deployment
+        if: inputs.operation == 'bootstrap' || inputs.operation == 'deploy'
         shell: bash
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
@@ -288,7 +288,7 @@ jobs:
           set -euo pipefail
           STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
           test "$(jq -r '.mode' <<<"$STATE")" = 'current' || {
-            echo 'ULC preview deployment requires fully migrated identity schema v3.' >&2
+            echo 'ULC preview bootstrap and deployment require fully migrated identity schema v3.' >&2
             exit 1
           }
 
