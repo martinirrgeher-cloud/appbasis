@@ -15,7 +15,7 @@ Der E4E-D-Code ist fertig integriert. Vor der praktischen Abnahme muss die
 bestehende isolierte ULC-Preview die additive Identity-Schema-Version 3 erhalten.
 Das bisherige Preview-Migrationsrouting konnte die neue Identity-Audit-Migration
 noch nicht erkennen und würde sonst eine alte Preview fälschlich als
-\`current\` melden. Ein eigener read-only Inventory-Check, eine ausschließlich
+`current` melden. Ein eigener read-only Inventory-Check, eine ausschließlich
 identity-eigene inkrementelle Migration und ein Fail-Closed-Deploy-Preflight
 schließen diese Lücke. Die nachstehenden E4A–E4E-C-Abschnitte dokumentieren
 die bereits erreichten fachlichen Grundlagen.
@@ -829,16 +829,16 @@ Abnahme für ULC-E4E-D:
 - der Code-PR führt weiterhin weder Preview-/Production-Write noch Deployment
   aus. Migration und Deployment bleiben gesonderte Freigabe-Gates.
 
-E4E-D-Preview-Gate nach dem Code-Merge, jeweils auf \`main\`:
+E4E-D-Preview-Gate nach dem Code-Merge, jeweils auf `main`:
 
 1. Read-only Inspect der dedizierten ULC-Preview (erwartet: fehlende
-   \`identity\`-Schema-v3-Migration oder bereits \`current\`).
-2. Separat und ausdrücklich freigegeben: \`migrate\` mit \`apply=true\`;
+   `identity`-Schema-v3-Migration oder bereits `current`).
+2. Separat und ausdrücklich freigegeben: `migrate` mit `apply=true`;
    bei bestehender E4E-A2-Baseline ausschließlich
-   \`0002_appbasis_identity_provisioning_audit.sql\`, transaktional durch
+   `0002_appbasis_identity_provisioning_audit.sql`, transaktional durch
    den isolierten Preview-Migration-Principal.
-3. Read-only Inspect muss anschließend \`current\` ergeben. Ohne
-   diesen Nachweis darf \`deploy\` keine Provider-/Runtime-Writes ausführen.
+3. Read-only Inspect muss anschließend `current` ergeben. Ohne
+   diesen Nachweis darf `deploy` keine Provider-/Runtime-Writes ausführen.
 4. Separat und ausdrücklich freigegeben: Preview-`deploy` mit `apply=true`,
    gefolgt von den bestehenden Audit-/Runtime-Smokes.
 5. Praktische Abnahme: Admin-Anlage von Trainer A und Trainer B mit
