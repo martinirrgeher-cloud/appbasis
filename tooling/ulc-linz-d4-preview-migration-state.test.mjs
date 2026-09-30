@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { resolveUlcLinzD4PreviewMigrationState } from "./ulc-linz-d4-preview-migration-state.mjs";
+import {
+  CANONICAL_PG_CHECK,
+  canonicalIdentityColumns,
+  canonicalIdentityConstraints,
+} from "./ulc-linz-d4-preview-identity-audit-test-fixture.mjs";
 
 const HOST = "ep-ulc-preview.eu-central-1.aws.neon.tech";
 const DATABASE = "appbasis_ulc_linz_preview";
@@ -48,16 +53,16 @@ function factory({
             : [];
         }
         if (sql.includes("FROM pg_catalog.pg_attribute")) {
-          return identityColumns.map((column_name) => ({ column_name }));
+          return identityColumns.map((value) =>
+            typeof value === "string"
+              ? canonicalIdentityColumns().find((entry) => entry.column_name === value)
+              : value,
+          );
         }
         if (sql.includes("FROM pg_catalog.pg_constraint")) {
-          return identityConstraint
-            ? [{
-                definition:
-                  "CHECK (kind = 'provision' AND provisioning_owner IS NOT NULL " +
-                  "AND actor_principal_id IS NOT NULL AND reason IS NOT NULL)",
-              }]
-            : [];
+          return identityConstraint === true
+            ? canonicalIdentityConstraints()
+            : (Array.isArray(identityConstraint) ? identityConstraint : []);
         }
         throw new Error("unexpected SQL");
       },
@@ -130,6 +135,25 @@ test("rejects partially upgraded identity provisioning audit schemas", async () 
     { identityColumns: ["provisioning_owner"], identityConstraint: false },
     { identityColumns: ["provisioning_owner", "actor_principal_id", "reason"], identityConstraint: false },
     { identityColumns: [], identityConstraint: true },
+    {
+      identityColumns: canonicalIdentityColumns().map((entry, i) =>
+        i === 0 ? { ...entry, data_type: "character varying" } : entry
+      ),
+      identityConstraint: true,
+    },
+    {
+      identityColumns: canonicalIdentityColumns().map((entry, i) =>
+        i === 0 ? { ...entry, has_default: true } : entry
+      ),
+      identityConstraint: true,
+    },
+    {
+      identityColumns: canonicalIdentityColumns(),
+      identityConstraint: [{
+        definition: CANONICAL_PG_CHECK.replace("char_length(reason) <= 500", "char_length(reason) <= 501"),
+        validated: true,
+      }],
+    },
   ]) {
     await assert.rejects(
       resolve({ tables: establishedTables, group: true, ...incomplete }),
