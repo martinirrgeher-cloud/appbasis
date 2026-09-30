@@ -178,3 +178,15 @@ test("ULC preview inspect is read-only and deploy requires identity-v3 schema be
   assert.ok(secretWrite > guard);
   assert.ok(providerDeploy > guard);
 });
+
+test("ULC E4E-D read-only inspect workflow runs only on main without apply or deployment", async () => {
+  const inspect = await readFile(
+    resolve(repositoryRoot, ".github/workflows/ulc-linz-e4e-d-preview-schema-inspect.yml"),
+    "utf8",
+  );
+  assert.match(inspect, /branches:\s*\n\s*- main/);
+  assert.match(inspect, /generated-preview-ulc-linz/);
+  assert.match(inspect, /ulc-linz-d4-preview-migration-state\.mjs/);
+  assert.match(inspect, /identity-provisioning-audit-upgrade\|current/);
+  assert.doesNotMatch(inspect, /APPBASIS_APPLY_MIGRATIONS|wrangler deploy|ALTER TABLE/);
+});
