@@ -4,7 +4,7 @@ import { createPostgresDatabase } from "@appbasis/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBetterAuthRuntime } from "../src/better-auth";
-import { IdentityService } from "../src/service";
+import { IdentityProvisioningConflictError, IdentityService } from "../src/service";
 import {
   BetterAuthIdentityBackend,
   createIdentityRuntime,
@@ -38,9 +38,13 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
 
   beforeAll(async () => {
     await client.unsafe(`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`);
-    for (const migration of ["0000", "0001"]) {
+    for (const migration of [
+      "0000_appbasis_identity_foundation.sql",
+      "0001_appbasis_identity_foundation.sql",
+      "0002_appbasis_identity_provisioning_audit.sql",
+    ]) {
       const sql = await readFile(
-        new URL(`../drizzle/${migration}_appbasis_identity_foundation.sql`, import.meta.url),
+        new URL(`../drizzle/${migration}`, import.meta.url),
         "utf8",
       );
       for (const statement of sql.split("--> statement-breakpoint")) {
@@ -81,6 +85,166 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
         "user",
       ]),
     );
+  });
+
+  it("rejects partial provisioning audit tuples at the database boundary", async () => {
+    await expect(
+      client`
+        INSERT INTO appbasis_identity_operation (
+          operation_id,
+          operation_key,
+          kind,
+          identity_id,
+          provisioning_owner
+        )
+        VALUES (
+          'partial-audit-operation',
+          'partial-audit-operation-key',
+          'provision',
+          NULL,
+          'ulc-linz:trainer-user'
+        )
+      `,
+    ).rejects.toThrow();
+  });
+
+  it("allows the dedicated trusted provisioning owner without a technical-admin session and persists its audit", async () => {
+    const trustedRuntime = createIdentityRuntime({
+      auth,
+      sql: client,
+      baseURL,
+      trustedProvisioning: true,
+    });
+    const identity = await trustedRuntime.service.createInitialUserWithAudit(
+      {
+        username: "trusted.trainer",
+        temporaryPassword,
+        displayName: "Trusted Trainer",
+      },
+      {
+        provisioningOwner: "ulc-linz:trainer-user",
+        actorPrincipalId: "ulc-admin-1",
+        reason: "ULC Linz trainer user provisioning",
+      },
+    );
+
+    expect(identity).toMatchObject({
+      username: "trusted.trainer",
+      mustChangePassword: true,
+      accountStatus: "active",
+    });
+    await expect(
+      trustedRuntime.stateStore.findOperation("provision:trusted.trainer"),
+    ).resolves.toMatchObject({
+      identityId: identity.identityId,
+      provisioningOwner: "ulc-linz:trainer-user",
+      actorPrincipalId: "ulc-admin-1",
+      reason: "ULC Linz trainer user provisioning",
+    });
+    await expect(
+      trustedRuntime.service.signInWithUsername({
+        username: "trusted.trainer",
+        password: temporaryPassword,
+      }),
+    ).resolves.toMatchObject({
+      access: "password-change-required",
+      identity: { identityId: identity.identityId },
+    });
+  });
+
+  it("reconciles concurrent trusted create-user collisions as one idempotent provisioning operation", async () => {
+    const username = "trusted.concurrent";
+    const input = {
+      username,
+      temporaryPassword,
+      displayName: "Trusted Concurrent Trainer",
+    };
+    const audit = {
+      provisioningOwner: "ulc-linz:trainer-user",
+      actorPrincipalId: "ulc-admin-concurrent",
+      reason: "ULC Linz trainer user provisioning",
+    };
+    const runtimes = Array.from({ length: 6 }, () =>
+      createIdentityRuntime({
+        auth,
+        sql: client,
+        baseURL,
+        trustedProvisioning: true,
+      }),
+    );
+
+    const identities = await Promise.all(
+      runtimes.map((trustedRuntime) =>
+        trustedRuntime.service.createInitialUserWithAudit(input, audit),
+      ),
+    );
+
+    expect(new Set(identities.map((identity) => identity.identityId)).size).toBe(1);
+    expect(identities.every((identity) => identity.accountStatus === "active")).toBe(true);
+    const userRows = await client<{ count: number }[]>`
+      SELECT count(*)::int AS count
+      FROM "user"
+      WHERE username = ${username}
+    `;
+    expect(userRows[0]?.count).toBe(1);
+  });
+
+  it("rejects a concurrent trusted retry that uses different temporary credentials", async () => {
+    const username = "trusted.concurrent.credentials";
+    const audit = {
+      provisioningOwner: "ulc-linz:trainer-user",
+      actorPrincipalId: "ulc-admin-concurrent-credentials",
+      reason: "ULC Linz trainer user provisioning",
+    };
+    const passwords = [temporaryPassword, replacementPassword] as const;
+    const runtimes = passwords.map(() =>
+      createIdentityRuntime({
+        auth,
+        sql: client,
+        baseURL,
+        trustedProvisioning: true,
+      }),
+    );
+
+    const results = await Promise.allSettled(
+      runtimes.map((trustedRuntime, index) =>
+        trustedRuntime.service.createInitialUserWithAudit(
+          {
+            username,
+            temporaryPassword: passwords[index]!,
+            displayName: "Trusted Concurrent Credential Trainer",
+          },
+          audit,
+        ),
+      ),
+    );
+
+    const fulfilledIndexes = results.flatMap((result, index) =>
+      result.status === "fulfilled" ? [index] : [],
+    );
+    const rejected = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(fulfilledIndexes).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(IdentityProvisioningConflictError);
+
+    const winnerIndex = fulfilledIndexes[0]!;
+    const loserIndex = winnerIndex === 0 ? 1 : 0;
+    await expect(
+      runtimes[winnerIndex]!.service.signInWithUsername({
+        username,
+        password: passwords[winnerIndex]!,
+      }),
+    ).resolves.toMatchObject({
+      access: "password-change-required",
+    });
+    await expect(
+      runtimes[loserIndex]!.service.signInWithUsername({
+        username,
+        password: passwords[loserIndex]!,
+      }),
+    ).rejects.toMatchObject({ code: "AUTHENTICATION_FAILED" });
   });
 
   it("validates admin provisioning, contact profile persistence, username login and the required first password change through the production runtime", async () => {
@@ -235,6 +399,7 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
       displayName: "Concurrent Profile",
       technicalEmail: "concurrent-profile@identity.invalid",
       temporaryPassword,
+      operationCreatedAt: new Date(0),
     });
     await client`
       INSERT INTO appbasis_identity_operation

@@ -276,6 +276,53 @@ describe('PostgresAthleteMasterdataRepository', () => {
     ]);
   });
 
+  it('re-reads an existing trainer-group membership after a duplicate insert loses a concurrent race', async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        if (calls.length === 1) return [];
+        return [
+          {
+            organization_id: 'verein-1',
+            trainer_id: 'trainer-1',
+            group_id: 'group-1',
+          },
+        ];
+      },
+    });
+
+    await expect(
+      repository.createTrainerGroupMembership('verein-1', {
+        trainerId: 'trainer-1',
+        groupId: 'group-1',
+      }),
+    ).resolves.toEqual({
+      organizationId: 'verein-1',
+      trainerId: 'trainer-1',
+      groupId: 'group-1',
+    });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.query).toContain('g.organization_id = $1');
+    expect(calls[0]?.query).toContain('t.organization_id = $1');
+    expect(calls[0]?.query).toContain('g.is_active = true');
+    expect(calls[0]?.query).toContain('t.is_active = true');
+    expect(calls[0]?.query).toContain(
+      'ON CONFLICT (organization_id, trainer_id, group_id) DO NOTHING',
+    );
+    expect(calls[1]?.query).toContain('FROM appbasis_trainer_group_membership AS membership');
+    expect(calls[1]?.query).toContain('trainer.is_active = true');
+    expect(calls[1]?.query).toContain('training_group.is_active = true');
+    expect(calls[0]?.parameters).toEqual([
+      'verein-1',
+      'trainer-1',
+      'group-1',
+    ]);
+    expect(calls[1]?.parameters).toEqual(calls[0]?.parameters);
+  });
+
+
   it('rejects cross-organization rows even if a SQL adapter returns them', async () => {
     const repository = new PostgresAthleteMasterdataRepository({
       async unsafe() {

@@ -118,10 +118,11 @@ test("FC6-A plans exactly one database-owner migration delta without writing the
     {
       id: "identity",
       root: "packages/identity",
-      schemaVersion: 2,
+      schemaVersion: 3,
       migrations: [
         "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
         "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+        "packages/identity/drizzle/0002_appbasis_identity_provisioning_audit.sql",
       ],
     },
   ]);
@@ -454,10 +455,11 @@ async function createFixture(
           {
             id: "identity",
             root: "packages/identity",
-            schemaVersion: 2,
+            schemaVersion: 3,
             migrations: [
               "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
               "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+              "packages/identity/drizzle/0002_appbasis_identity_provisioning_audit.sql",
             ],
           },
           ...(modules.includes("tasks")
@@ -573,10 +575,11 @@ async function createOwnerCollisionFixture(t) {
           {
             id: "identity",
             root: "packages/identity",
-            schemaVersion: 2,
+            schemaVersion: 3,
             migrations: [
               "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
               "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+              "packages/identity/drizzle/0002_appbasis_identity_provisioning_audit.sql",
             ],
           },
           {

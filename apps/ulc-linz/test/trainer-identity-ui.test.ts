@@ -5,7 +5,7 @@ import {
   ULC_LINZ_APP_SCRIPT,
 } from "../worker/ui";
 
-describe("ULC E4E-C trainer identity administration UI", () => {
+describe("ULC trainer identity administration UI", () => {
   it("adds a compact trainer-user assignment workspace to Stammdaten", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="trainer-identity-admin"');
     expect(ULC_LINZ_APP_HTML).toContain('id="trainer-identity-load"');
@@ -14,6 +14,22 @@ describe("ULC E4E-C trainer identity administration UI", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="trainer-identity-trainer"');
     expect(ULC_LINZ_APP_HTML).toContain(
       "Die Zuordnung wird erst auf ausdrücklichen Aufruf geladen.",
+    );
+  });
+
+  it("adds protected trainer-user creation with a forced first-login password change", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-user-form"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-user-username"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-user-password"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-user-trainer"');
+    expect(ULC_LINZ_APP_HTML).toContain(
+      "muss beim ersten Login das temporäre Passwort ändern",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'requestJson("/api/admin/trainer-users", {',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "Trainer-Benutzer wurde angelegt. Beim ersten Login ist ein Passwortwechsel erforderlich.",
     );
   });
 

@@ -7,12 +7,14 @@ export type {
   IdentityOperation,
   IdentityOperationKind,
   IdentityPersistenceState,
+  IdentityProvisioningAuditContext,
   IdentityState,
   IdentityStateStore,
 } from "./contracts";
 export { IdentityError, type IdentityErrorCode } from "./errors";
 export {
   assertIdentityActionAllowed,
+  IdentityProvisioningConflictError,
   IdentityService,
   type CreateInitialUserInput,
 } from "./service";

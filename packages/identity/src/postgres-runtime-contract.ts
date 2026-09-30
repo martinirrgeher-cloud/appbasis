@@ -1,4 +1,9 @@
+import type {
+  IdentityProvisioningAuditContext,
+  IdentityState,
+} from "./contracts";
 import type { IdentityHttpService } from "./http";
+import type { CreateInitialUserInput } from "./service";
 
 export type IdentityPostgresRuntimeParameter =
   | string
@@ -13,6 +18,20 @@ export interface IdentityPostgresRuntimeSqlClient {
   ): PromiseLike<readonly Record<string, unknown>[]>;
 }
 
+export interface IdentityPostgresRuntimeTransactionalSqlClient
+  extends IdentityPostgresRuntimeSqlClient {
+  begin<T>(
+    callback: (transaction: IdentityPostgresRuntimeSqlClient) => Promise<T>,
+  ): Promise<T>;
+}
+
+export interface IdentityPostgresProvisioningOwner {
+  createInitialUser(
+    input: CreateInitialUserInput,
+    provisioningAudit: IdentityProvisioningAuditContext,
+  ): Promise<IdentityState>;
+}
+
 export interface IdentityPostgresLifecycleOwner {
   disableIdentity(identityId: string): Promise<unknown>;
 }
@@ -20,7 +39,8 @@ export interface IdentityPostgresLifecycleOwner {
 export interface PostgresIdentityApplicationRuntime {
   readonly identity: IdentityHttpService;
   readonly lifecycleIdentity: IdentityPostgresLifecycleOwner;
-  readonly sql: IdentityPostgresRuntimeSqlClient;
+  readonly provisioningIdentity: IdentityPostgresProvisioningOwner;
+  readonly sql: IdentityPostgresRuntimeTransactionalSqlClient;
   close(): Promise<void>;
 }
 

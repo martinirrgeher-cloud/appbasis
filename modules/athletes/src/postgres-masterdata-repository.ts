@@ -352,7 +352,12 @@ export class PostgresAthleteMasterdataRepository {
       ...input,
       organizationId: normalizedOrganizationId,
     });
-    const rows = await this.#client.unsafe(
+    const parameters = [
+      normalizedOrganizationId,
+      membership.trainerId,
+      membership.groupId,
+    ];
+    const inserted = await this.#client.unsafe(
       `INSERT INTO appbasis_trainer_group_membership (
          organization_id, trainer_id, group_id
        )
@@ -363,14 +368,40 @@ export class PostgresAthleteMasterdataRepository {
        WHERE t.id = $2
          AND t.organization_id = $1
          AND t.is_active = true
+       ON CONFLICT (organization_id, trainer_id, group_id) DO NOTHING
        RETURNING organization_id, trainer_id, group_id`,
-      [
-        normalizedOrganizationId,
-        membership.trainerId,
-        membership.groupId,
-      ],
+      parameters,
     );
-    return singleRow(rows, (row) =>
+    if (inserted.length === 1) {
+      return trainerGroupMembershipFromRow(
+        inserted[0] as Record<string, unknown>,
+        normalizedOrganizationId,
+      );
+    }
+    if (inserted.length !== 0) invalidRow();
+
+    // A conflicting insert may have committed only after the first statement's
+    // snapshot was taken. Re-read in a new statement so concurrent identical
+    // submissions resolve to the already-existing active same-org membership.
+    const existing = await this.#client.unsafe(
+      `SELECT membership.organization_id,
+              membership.trainer_id,
+              membership.group_id
+       FROM appbasis_trainer_group_membership AS membership
+       INNER JOIN appbasis_trainer AS trainer
+         ON trainer.id = membership.trainer_id
+        AND trainer.organization_id = membership.organization_id
+        AND trainer.is_active = true
+       INNER JOIN appbasis_training_group AS training_group
+         ON training_group.id = membership.group_id
+        AND training_group.organization_id = membership.organization_id
+        AND training_group.is_active = true
+       WHERE membership.organization_id = $1
+         AND membership.trainer_id = $2
+         AND membership.group_id = $3`,
+      parameters,
+    );
+    return singleRow(existing, (row) =>
       trainerGroupMembershipFromRow(row, normalizedOrganizationId),
     );
   }

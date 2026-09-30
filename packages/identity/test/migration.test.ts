@@ -54,7 +54,7 @@ describe("versioned PostgreSQL migrations", () => {
        from drizzle.__drizzle_migrations`,
     );
 
-    expect(result.rows).toEqual([{ migration_count: 2 }]);
+    expect(result.rows).toEqual([{ migration_count: 3 }]);
   });
 
   it("keeps a person independent from an authentication identity", async () => {
@@ -186,12 +186,15 @@ describe("versioned PostgreSQL migrations", () => {
        order by column_name`,
     );
     expect(columns.rows.map(({ column_name }) => column_name)).toEqual([
+      "actor_principal_id",
       "completed_at",
       "created_at",
       "identity_id",
       "kind",
       "operation_id",
       "operation_key",
+      "provisioning_owner",
+      "reason",
     ]);
   });
 });

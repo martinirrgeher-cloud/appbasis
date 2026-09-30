@@ -24,6 +24,10 @@ test('loads the generated tasks manifest in its declared owner and migration ord
         relativePath: 'packages/identity/drizzle/0001_appbasis_identity_foundation.sql',
       },
       {
+        ownerId: 'identity',
+        relativePath: 'packages/identity/drizzle/0002_appbasis_identity_provisioning_audit.sql',
+      },
+      {
         ownerId: 'permissions',
         relativePath: 'packages/permissions/migrations/0000_appbasis_permissions_foundation.sql',
       },

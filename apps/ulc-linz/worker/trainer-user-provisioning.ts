@@ -1,0 +1,436 @@
+import { IdentityProvisioningConflictError } from "@appbasis/identity/service";
+import type { IdentityPostgresProvisioningOwner } from "@appbasis/identity/postgres-runtime";
+import { ensurePostgresPermissionPrincipal } from "@appbasis/permissions/provisioning";
+import {
+  PostgresPrincipalAccessAdministration,
+  PrincipalPermissionAdministrationError,
+  RoleAdministrationError,
+  capabilityId,
+  principalId,
+  roleId,
+  type PermissionStore,
+  type PrincipalAccessState,
+} from "@appbasis/permissions";
+
+import roleDataScope from "./role-data-scope.json";
+import {
+  type PostgresUlcLinzTrainerIdentityLinks,
+  type UlcLinzTrainerIdentityBinding,
+} from "./trainer-identity-postgres";
+
+type SqlParameter = string | number | boolean | null;
+
+export interface UlcLinzTrainerUserProvisioningSqlClient {
+  unsafe(
+    query: string,
+    parameters?: SqlParameter[],
+  ): PromiseLike<readonly Record<string, unknown>[]>;
+}
+
+export type UlcLinzTrainerUserAccessAdministration = Pick<
+  PostgresPrincipalAccessAdministration,
+  "replacePrincipalAccess"
+>;
+
+export interface UlcLinzTrainerUserProvisioningInput {
+  readonly organizationId: string;
+  readonly actorPrincipalId: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly temporaryPassword: string;
+  readonly contactEmail?: string;
+  readonly trainerId: string;
+}
+
+export interface UlcLinzTrainerUserProvisioningResult {
+  readonly identityId: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly trainerId: string;
+  readonly mustChangePassword: true;
+}
+
+export class UlcLinzTrainerUserProvisioningNotFoundError extends Error {
+  readonly code = "ULC_LINZ_TRAINER_USER_NOT_FOUND";
+
+  constructor() {
+    super("Trainer user provisioning target was not found.");
+    this.name = "UlcLinzTrainerUserProvisioningNotFoundError";
+  }
+}
+
+export class UlcLinzTrainerUserProvisioningConflictError extends Error {
+  readonly code = "ULC_LINZ_TRAINER_USER_CONFLICT";
+
+  constructor() {
+    super("Trainer user provisioning conflicts with existing state.");
+    this.name = "UlcLinzTrainerUserProvisioningConflictError";
+  }
+}
+
+export class UlcLinzTrainerUserProvisioningPersistenceError extends Error {
+  readonly code = "ULC_LINZ_TRAINER_USER_PERSISTENCE_ERROR";
+
+  constructor() {
+    super("Trainer user provisioning returned an inconsistent state.");
+    this.name = "UlcLinzTrainerUserProvisioningPersistenceError";
+  }
+}
+
+export function createUlcLinzTrainerUserProvisioningService({
+  identityProvisioning,
+  sql,
+  permissions,
+  accessAdministration,
+  trainerIdentityLinks,
+}: {
+  readonly identityProvisioning: IdentityPostgresProvisioningOwner;
+  readonly sql: UlcLinzTrainerUserProvisioningSqlClient;
+  readonly permissions: PermissionStore;
+  readonly accessAdministration: UlcLinzTrainerUserAccessAdministration;
+  readonly trainerIdentityLinks: Pick<
+    PostgresUlcLinzTrainerIdentityLinks,
+    "bindTrainer"
+  >;
+}) {
+  assertCanonicalTrainerProvisioningPolicy();
+
+  return Object.freeze({
+    async createTrainerUser(
+      input: UlcLinzTrainerUserProvisioningInput,
+    ): Promise<UlcLinzTrainerUserProvisioningResult> {
+      const organizationId = requiredIdentifier(input.organizationId);
+      const actorPrincipalId = requiredIdentifier(input.actorPrincipalId);
+      const trainerId = requiredIdentifier(input.trainerId);
+
+      let identity;
+      try {
+        identity = await identityProvisioning.createInitialUser(
+          {
+            username: input.username,
+            displayName: input.displayName,
+            temporaryPassword: input.temporaryPassword,
+            ...(input.contactEmail === undefined
+              ? {}
+              : { contactEmail: input.contactEmail }),
+          },
+          {
+            provisioningOwner: "ulc-linz:trainer-user",
+            actorPrincipalId,
+            reason: "ULC Linz trainer user provisioning",
+          },
+        );
+      } catch (error) {
+        if (error instanceof IdentityProvisioningConflictError) {
+          throw new UlcLinzTrainerUserProvisioningConflictError();
+        }
+        throw error;
+      }
+      if (
+        identity.accountStatus !== "active" ||
+        identity.mustChangePassword !== true
+      ) {
+        throw new UlcLinzTrainerUserProvisioningConflictError();
+      }
+
+      const membership = await ensureTrainerMembership({
+        sql,
+        identityId: identity.identityId,
+        organizationId,
+        trainerId,
+      });
+
+      let binding: UlcLinzTrainerIdentityBinding;
+      if (membership.subjectId === trainerId) {
+        binding = Object.freeze({
+          identityId: identity.identityId,
+          username: identity.username,
+          displayName: identity.displayName,
+          trainerId,
+        });
+      } else if (
+        membership.subjectId === unassignedTrainerSubject(identity.identityId)
+      ) {
+        binding = await trainerIdentityLinks.bindTrainer({
+          organizationId,
+          actorPrincipalId,
+          identityId: identity.identityId,
+          trainerId,
+          expectedSubjectId: unassignedTrainerSubject(identity.identityId),
+        });
+      } else {
+        throw new UlcLinzTrainerUserProvisioningConflictError();
+      }
+
+      if (
+        binding.identityId !== identity.identityId ||
+        binding.trainerId !== trainerId
+      ) {
+        blocked();
+      }
+
+      await ensureTrainerAccess({
+        sql,
+        permissions,
+        accessAdministration,
+        identityId: identity.identityId,
+        actorPrincipalId,
+      });
+
+      return Object.freeze({
+        identityId: identity.identityId,
+        username: identity.username,
+        displayName: identity.displayName,
+        trainerId,
+        mustChangePassword: true,
+      });
+    },
+  });
+}
+
+async function ensureTrainerMembership({
+  sql,
+  identityId,
+  organizationId,
+  trainerId,
+}: {
+  readonly sql: UlcLinzTrainerUserProvisioningSqlClient;
+  readonly identityId: string;
+  readonly organizationId: string;
+  readonly trainerId: string;
+}): Promise<Readonly<{ subjectId: string }>> {
+  const subjectId = unassignedTrainerSubject(identityId);
+  const parameters = [identityId, organizationId, trainerId, subjectId];
+
+  const inserted = await sql.unsafe(
+    `INSERT INTO ulc_linz_membership (
+       identity_id,
+       organization_id,
+       subject_id,
+       source_role,
+       active
+     )
+     SELECT account.id, $2, $4, 'trainer', true
+     FROM "user" AS account
+     INNER JOIN appbasis_trainer AS trainer
+       ON trainer.id = $3
+      AND trainer.organization_id = $2
+      AND trainer.is_active = true
+     WHERE account.id = $1
+       AND COALESCE(account.banned, false) = false
+     ON CONFLICT (identity_id) DO NOTHING
+     RETURNING organization_id, subject_id, source_role, active`,
+    parameters,
+  );
+  if (inserted.length === 1 && inserted[0] !== undefined) {
+    return trainerMembershipSubject(inserted[0], organizationId);
+  }
+  if (inserted.length !== 0) blocked();
+
+  // Re-read in a new statement. A concurrent identical request may have
+  // committed the membership only after the INSERT statement snapshot.
+  const rows = await sql.unsafe(
+    `SELECT
+       EXISTS (
+         SELECT 1
+         FROM "user"
+         WHERE id = $1
+           AND COALESCE(banned, false) = false
+       ) AS identity_exists,
+       EXISTS (
+         SELECT 1
+         FROM appbasis_trainer
+         WHERE id = $3
+           AND organization_id = $2
+           AND is_active = true
+       ) AS trainer_exists,
+       membership.organization_id,
+       membership.subject_id,
+       membership.source_role,
+       membership.active
+     FROM (VALUES (1)) AS singleton(value)
+     LEFT JOIN ulc_linz_membership AS membership
+       ON membership.identity_id = $1`,
+    parameters,
+  );
+  if (rows.length !== 1 || rows[0] === undefined) blocked();
+  const row = rows[0];
+  if (row.identity_exists !== true || row.trainer_exists !== true) {
+    throw new UlcLinzTrainerUserProvisioningNotFoundError();
+  }
+  return trainerMembershipSubject(row, organizationId);
+}
+
+function trainerMembershipSubject(
+  row: Readonly<Record<string, unknown>>,
+  organizationId: string,
+): Readonly<{ subjectId: string }> {
+  if (
+    row.organization_id !== organizationId ||
+    row.source_role !== "trainer" ||
+    row.active !== true
+  ) {
+    throw new UlcLinzTrainerUserProvisioningConflictError();
+  }
+  return Object.freeze({
+    subjectId: requiredRowIdentifier(row.subject_id),
+  });
+}
+
+async function ensureTrainerAccess({
+  sql,
+  permissions,
+  accessAdministration,
+  identityId,
+  actorPrincipalId,
+}: {
+  readonly sql: UlcLinzTrainerUserProvisioningSqlClient;
+  readonly permissions: PermissionStore;
+  readonly accessAdministration: UlcLinzTrainerUserAccessAdministration;
+  readonly identityId: string;
+  readonly actorPrincipalId: string;
+}): Promise<PrincipalAccessState> {
+  const targetPrincipalId = principalId(identityId);
+  await ensurePostgresPermissionPrincipal(sql, targetPrincipalId);
+
+  const current = await permissions.findPrincipal(targetPrincipalId);
+  if (current === null) blocked();
+
+  const trainerRole = roleId(roleDataScope.runtimeRoleIds.trainer);
+  const grants = trainerCapabilities();
+  if (
+    !(
+      current.roleIds.length === 0 ||
+      (current.roleIds.length === 1 && current.roleIds[0] === trainerRole)
+    ) ||
+    !(
+      current.grants.length === 0 ||
+      sameStrings(current.grants, grants)
+    ) ||
+    current.revokes.length !== 0
+  ) {
+    throw new UlcLinzTrainerUserProvisioningConflictError();
+  }
+
+  if (
+    current.roleIds.length === 1 &&
+    current.roleIds[0] === trainerRole &&
+    sameStrings(current.grants, grants)
+  ) {
+    return Object.freeze({
+      roleIds: Object.freeze([...current.roleIds]),
+      grants: Object.freeze([...current.grants]),
+      revokes: Object.freeze([...current.revokes]),
+    });
+  }
+
+  try {
+    return await accessAdministration.replacePrincipalAccess(
+      targetPrincipalId,
+      [trainerRole],
+      { grants, revokes: [] },
+      {
+        actorPrincipalId: principalId(actorPrincipalId),
+        reason: "ULC Linz trainer user provisioning",
+      },
+      {
+        expectedRoleIds: current.roleIds,
+        expectedGrants: current.grants,
+        expectedRevokes: current.revokes,
+      },
+    );
+  } catch (error) {
+    if (!isStalePrincipalAccess(error)) throw error;
+
+    // Another identical retry may have committed the canonical trainer access
+    // while this request was waiting for the permission transaction lock.
+    const reconciled = await permissions.findPrincipal(targetPrincipalId);
+    if (
+      reconciled !== null &&
+      reconciled.roleIds.length === 1 &&
+      reconciled.roleIds[0] === trainerRole &&
+      sameStrings(reconciled.grants, grants) &&
+      reconciled.revokes.length === 0
+    ) {
+      return Object.freeze({
+        roleIds: Object.freeze([...reconciled.roleIds]),
+        grants: Object.freeze([...reconciled.grants]),
+        revokes: Object.freeze([...reconciled.revokes]),
+      });
+    }
+    throw new UlcLinzTrainerUserProvisioningConflictError();
+  }
+}
+
+function isStalePrincipalAccess(error: unknown): boolean {
+  return (
+    (error instanceof RoleAdministrationError &&
+      error.code === "STALE_PRINCIPAL_ROLES") ||
+    (error instanceof PrincipalPermissionAdministrationError &&
+      error.code === "STALE_PRINCIPAL_PERMISSIONS")
+  );
+}
+
+function trainerCapabilities() {
+  const mapping = roleDataScope.principalPermissionMapping;
+  return Object.freeze(
+    [
+      capabilityId(
+        `${mapping.capabilityNamespace}:kindertraining:${mapping.viewAction}`,
+      ),
+      capabilityId(
+        `${mapping.capabilityNamespace}:kindertraining:${mapping.editAction}`,
+      ),
+    ].sort((left, right) => String(left).localeCompare(String(right))),
+  );
+}
+
+function assertCanonicalTrainerProvisioningPolicy(): void {
+  const template = roleDataScope.permissionTemplates.kindertrainer;
+  const mapping = roleDataScope.principalPermissionMapping;
+  if (
+    template.sourceRole !== "trainer" ||
+    !template.view.includes("kindertraining") ||
+    !template.edit.includes("kindertraining") ||
+    roleDataScope.runtimeRoleIds.trainer !== "ulc-linz:trainer" ||
+    mapping.capabilityNamespace !== "ulc-linz:module" ||
+    mapping.viewAction !== "view" ||
+    mapping.editAction !== "edit"
+  ) {
+    throw new Error("ULC Linz trainer provisioning policy drifted.");
+  }
+}
+
+function unassignedTrainerSubject(identityId: string): string {
+  return "ulc-unassigned-trainer:" + requiredIdentifier(identityId);
+}
+
+function sameStrings(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  if (left.length !== right.length) return false;
+  const expected = new Set(right);
+  return expected.size === right.length && left.every((value) => expected.has(value));
+}
+
+function requiredIdentifier(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 200 ||
+    value.trim() !== value
+  ) {
+    blocked();
+  }
+  return value;
+}
+
+function requiredRowIdentifier(value: unknown): string {
+  return requiredIdentifier(value);
+}
+
+
+function blocked(): never {
+  throw new UlcLinzTrainerUserProvisioningPersistenceError();
+}

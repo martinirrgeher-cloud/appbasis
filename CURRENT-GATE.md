@@ -747,7 +747,7 @@ Trainer serverseitig auf ihre persistierten Gruppenzuordnungen; Admins bleiben
 organisationsweit berechtigt. Der Code-Slice benötigte keine Migration. Ein
 Preview-Deploy bleibt weiterhin eine gesondert freizugebende Mutation.
 
-## Aktueller Gate-Scope: ULC-E4E-C Administrative Trainer-Benutzerzuordnung
+## Abgeschlossener Gate-Scope: ULC-E4E-C Administrative Trainer-Benutzerzuordnung
 
 Abnahme für ULC-E4E-C:
 
@@ -780,6 +780,46 @@ Abnahme für ULC-E4E-C:
 - der Code-PR führt keinen Preview-/Production-Write und kein Deployment aus.
   Eine praktische Sichtung erfolgt erst nach separater Deploy-Freigabe.
 
+## Aktueller Gate-Scope: ULC-E4E-D Trainer-Testkonten und stabile Gruppenzuordnung
+
+ULC-E4E-D beseitigt die beiden Blocker aus der praktischen E4E-Prüfung:
+wiederholbare Trainer↔Gruppen-Zuordnungen und administrativ erzeugbare
+Trainer-Testkonten.
+
+Abnahme für ULC-E4E-D:
+
+- Trainer↔Gruppen-Zuordnungen bleiben auf aktive Trainer und Gruppen derselben
+  Organisation begrenzt und sind bei identischer Wiederholung idempotent;
+- ein erfolgreicher Stammdaten-Write darf nicht als fehlgeschlagen erscheinen,
+  nur weil das anschließende Neuladen der Liste scheitert;
+- das Anlegen eines Trainer-Benutzers erfolgt ausschließlich über den neuen
+  geschützten POST-Endpunkt `/api/admin/trainer-users`;
+- der Endpunkt verlangt sowohl eine gültige Identity-Session als auch die
+  bestehende ULC-Admin-Autorisierung; Organisation, Actor, Runtime-Rolle und
+  Berechtigungsumfang werden niemals vom Client übernommen;
+- Benutzer werden über den bestehenden Identity-/Better-Auth-
+  Provisionierungsvertrag mit temporärem Passwort angelegt; der erste Login
+  bleibt durch `mustChangePassword` auf den Passwortwechsel beschränkt;
+- der ausgewählte aktive Trainer wird über die bestehende auditierte
+  Trainer↔Identity-Bindelogik verknüpft;
+- neue Trainer-Testkonten erhalten ausschließlich die Runtime-Rolle
+  `ulc-linz:trainer` sowie Kindertraining `view`/`edit`; Admin- oder
+  Benutzerverwaltungsrechte werden nicht vergeben;
+- vorhandene widersprüchliche Membership-, Trainer- oder Permission-Zustände
+  werden nicht still überschrieben, sondern fail-closed als Konflikt behandelt;
+- Wiederholungen nach einem Teilfehler müssen auf bereits korrekten
+  Zwischenzuständen weiterlaufen können, ohne Berechtigungen zu verbreitern;
+- die Benutzeranlage bleibt im bestehenden, erst durch „Verwalten“ geladenen
+  Trainer-Adminbereich; es entsteht keine neue Hauptnavigation;
+- die bestehende Trainerliste zeigt weiterhin die zugeordneten Gruppen aus dem
+  serverautorisierten Stammdaten-Snapshot;
+- die neue Identity-Provisionierung speichert Owner, administrativen Actor und
+  Reason bereits in der vorbereiteten Identity-Operation; dafür wird die
+  additive Identity-Schema-Version 3 mit Migration
+  `0002_appbasis_identity_provisioning_audit.sql` benötigt;
+- der Code-PR führt weiterhin weder Preview-/Production-Write noch Deployment
+  aus. Migration und Deployment bleiben gesonderte Freigabe-Gates.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
@@ -798,26 +838,30 @@ Abnahme für ULC-E4E-C:
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E4E-C-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E4E-D-Pfad, wenn mindestens eines gilt:
 
-- die UI umgeht `/api/admin/trainer-identities` oder schreibt direkt auf
-  Membership-/Trainer-Daten;
-- Organisation, Admin-Principal oder erlaubter Scope werden vom Client
-  vorgegeben;
-- das Admin-API wird bei jedem Login oder ohne ausdrückliche Benutzeraktion
-  automatisch aufgerufen und erzeugt dadurch erwartbare Denial-Audit-Einträge;
-- ein 403/404/409 wird als erfolgreiche Zuordnung dargestellt;
-- nach einem erfolgreichen Re-Link bleibt die Anzeige auf einem rein lokal
-  angenommenen Zustand statt die serverseitige Bindung erneut einzulesen;
-- dynamische Benutzer- oder Trainerdaten werden über `innerHTML` oder eine
-  vergleichbare HTML-Injektion ausgegeben;
-- E4E-C verändert bestehende Admin-Berechtigungen, Organisationsgrenzen,
-  Konflikt-/Audit-Semantik, Datenbankschema oder Athletes-Core;
-- der Code-PR mutiert Preview/Produktion oder deployt ohne gesonderte
-  Freigabe.
+- eine Trainer↔Gruppen-Zuordnung lockert die aktive Same-Organization-Prüfung
+  oder eine identische Wiederholung erzeugt weiterhin einen technischen Fehler;
+- ein erfolgreicher Write wird wegen eines nachgelagerten Refresh-Fehlers als
+  fehlgeschlagener Save dargestellt;
+- die Benutzeranlage akzeptiert Organisation, Actor, Rolle oder
+  Berechtigungsumfang aus dem Client;
+- ein Nicht-Admin kann `/api/admin/trainer-users` bis zur Provisionierung
+  durchlaufen;
+- ein neu angelegter Benutzer kann vor dem verpflichtenden Passwortwechsel
+  normalen App-Zugriff erhalten;
+- Trainer-Testkonten erhalten Admin-, Benutzerverwaltungs- oder andere nicht
+  für diesen E4E-Slice vorgesehene Modulrechte;
+- ein bestehender widersprüchlicher Rollen-, Membership- oder Trainer-Link wird
+  still überschrieben;
+- die UI ruft die Admin-Funktionen ohne ausdrückliches „Verwalten“ auf oder
+  rendert dynamische Benutzer-/Trainerdaten per HTML-Injektion;
+- der Code-PR führt die neue Migration, einen Preview-/Production-Write oder
+  ein Deployment ohne gesonderte Freigabe aus.
 
-Nicht gate-blockierend sind weitere visuelle Feinarbeiten, Sondertrainings,
-Statistik, Import/Export, Realtime/Edit-Locks und U12/U14.
+Nicht gate-blockierend sind weitere visuelle Feinarbeiten, zusätzliche
+Trainer-Berechtigungsprofile, Sondertrainings, Statistik, Import/Export,
+Realtime/Edit-Locks und U12/U14.
 
 ## E2B-Prozessfinding: Baseline-Ausnahme
 

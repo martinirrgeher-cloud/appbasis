@@ -4,6 +4,7 @@ import type {
   CurrentIdentity,
   IdentityAction,
   IdentityPersistenceState,
+  IdentityProvisioningAuditContext,
   IdentityState,
   IdentityStateStore,
 } from "./contracts";
@@ -20,6 +21,15 @@ export interface CreateInitialUserInput {
   contactEmail?: string;
 }
 
+export class IdentityProvisioningConflictError extends Error {
+  readonly code = "IDENTITY_PROVISIONING_CONFLICT";
+
+  constructor() {
+    super("Identity provisioning conflicts with an existing owner or account.");
+    this.name = "IdentityProvisioningConflictError";
+  }
+}
+
 interface BetterAuthIdentityBackend {
   createUsernameAccount(input: {
     operationId: string;
@@ -27,12 +37,18 @@ interface BetterAuthIdentityBackend {
     displayName: string;
     technicalEmail: string;
     temporaryPassword: string;
+    operationCreatedAt: Date;
   }): Promise<{ identityId: string }>;
   signInWithUsername(input: {
     username: string;
     password: string;
   }): Promise<AuthSession>;
   getSession(sessionToken: string): Promise<AuthSession | null>;
+  matchesUsernamePassword?(input: {
+    username: string;
+    password: string;
+    expectedIdentityId: string;
+  }): Promise<boolean>;
   changePassword(input: {
     operationId: string;
     sessionToken: string;
@@ -79,6 +95,23 @@ export class IdentityService {
   async createInitialUser(
     input: CreateInitialUserInput,
   ): Promise<IdentityState> {
+    return this.createInitialUserInternal(input);
+  }
+
+  async createInitialUserWithAudit(
+    input: CreateInitialUserInput,
+    provisioningAudit: IdentityProvisioningAuditContext,
+  ): Promise<IdentityState> {
+    return this.createInitialUserInternal(
+      input,
+      normalizeProvisioningAuditContext(provisioningAudit),
+    );
+  }
+
+  private async createInitialUserInternal(
+    input: CreateInitialUserInput,
+    provisioningAudit?: IdentityProvisioningAuditContext,
+  ): Promise<IdentityState> {
     const username = normalizeUsername(input.username);
     const displayName = requiredText(input.displayName, "displayName");
     const contactEmail = optionalText(input.contactEmail);
@@ -93,22 +126,47 @@ export class IdentityService {
       operationKey: `provision:${username}`,
       kind: "provision",
       identityId: null,
+      ...(provisioningAudit === undefined ? {} : { provisioningAudit }),
     });
+    assertProvisioningAuditOwnership(operation, provisioningAudit);
+
     if (operation.completedAt !== null && operation.identityId !== null) {
       const existing = await this.stateStore.find(operation.identityId);
       if (existing !== null) {
+        if (provisioningAudit !== undefined) {
+          assertProvisioningStateMatches(existing, {
+            username,
+            displayName,
+            contactEmail,
+          });
+        }
         const accountStatus = await this.authProvider.getAccountStatus(
           operation.identityId,
         );
+        if (
+          provisioningAudit !== undefined &&
+          accountStatus === "active" &&
+          (this.authProvider.matchesUsernamePassword === undefined ||
+            !(await this.authProvider.matchesUsernamePassword({
+              username,
+              password: input.temporaryPassword,
+              expectedIdentityId: operation.identityId,
+            })))
+        ) {
+          throw new IdentityProvisioningConflictError();
+        }
         return withAccountStatus(existing, accountStatus);
       }
     }
+
+    const operationCreatedAt = operation.createdAt ?? this.now();
     const created = await this.authProvider.createUsernameAccount({
       operationId: operation.operationId,
       username,
       displayName,
       technicalEmail,
       temporaryPassword: input.temporaryPassword,
+      operationCreatedAt,
     });
 
     const state = await this.stateStore.completeProvisioning({
@@ -118,6 +176,11 @@ export class IdentityService {
       displayName,
       contactEmail,
       completedAt: this.now(),
+    });
+    assertProvisioningStateMatches(state, {
+      username,
+      displayName,
+      contactEmail,
     });
     const accountStatus = await this.authProvider.getAccountStatus(
       created.identityId,
@@ -351,6 +414,83 @@ function withAccountStatus(
   accountStatus: "active" | "disabled",
 ): IdentityState {
   return { ...state, accountStatus };
+}
+
+function assertProvisioningStateMatches(
+  state: Readonly<{
+    username: string;
+    displayName: string;
+    contactEmail: string | null;
+  }>,
+  expected: Readonly<{
+    username: string;
+    displayName: string;
+    contactEmail: string | null;
+  }>,
+): void {
+  if (
+    state.username !== expected.username ||
+    state.displayName !== expected.displayName ||
+    state.contactEmail !== expected.contactEmail
+  ) {
+    throw new IdentityProvisioningConflictError();
+  }
+}
+
+function normalizeProvisioningAuditContext(
+  input: IdentityProvisioningAuditContext,
+): IdentityProvisioningAuditContext {
+  return Object.freeze({
+    provisioningOwner: requiredBoundedText(
+      input.provisioningOwner,
+      "provisioningOwner",
+      120,
+    ),
+    actorPrincipalId: requiredBoundedText(
+      input.actorPrincipalId,
+      "actorPrincipalId",
+      200,
+    ),
+    reason: requiredBoundedText(input.reason, "reason", 500),
+  });
+}
+
+function assertProvisioningAuditOwnership(
+  operation: Readonly<{
+    provisioningOwner?: string | null;
+    actorPrincipalId?: string | null;
+    reason?: string | null;
+  }>,
+  expected: IdentityProvisioningAuditContext | undefined,
+): void {
+  const actualOwner = operation.provisioningOwner ?? null;
+  const actualActor = operation.actorPrincipalId ?? null;
+  const actualReason = operation.reason ?? null;
+  if (expected === undefined) {
+    if (actualOwner !== null || actualActor !== null || actualReason !== null) {
+      throw new IdentityProvisioningConflictError();
+    }
+    return;
+  }
+  if (
+    actualOwner !== expected.provisioningOwner ||
+    actualActor !== expected.actorPrincipalId ||
+    actualReason !== expected.reason
+  ) {
+    throw new IdentityProvisioningConflictError();
+  }
+}
+
+function requiredBoundedText(
+  value: string,
+  field: string,
+  maxLength: number,
+): string {
+  const normalized = requiredText(value, field);
+  if (normalized.length > maxLength) {
+    throw new Error(`${field} exceeds its maximum length.`);
+  }
+  return normalized;
 }
 
 function requiredText(value: string, field: string): string {

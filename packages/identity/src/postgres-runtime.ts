@@ -3,6 +3,8 @@ import { createPostgresDatabase } from "@appbasis/database";
 import { createBetterAuthRuntime } from "./better-auth";
 import { createIdentityRuntime } from "./server";
 import type {
+  IdentityPostgresRuntimeSqlClient,
+  IdentityPostgresRuntimeTransactionalSqlClient,
   PostgresIdentityApplicationRuntime,
   PostgresIdentityApplicationRuntimeOptions,
 } from "./postgres-runtime-contract";
@@ -28,18 +30,56 @@ export async function createPostgresIdentityApplicationRuntime(
       sql: connection.client,
       baseURL,
     });
-    const sql = Object.freeze({
+    const sql: IdentityPostgresRuntimeTransactionalSqlClient = {
       unsafe(
         query: string,
         parameters?: (string | number | boolean | null)[],
       ) {
         return connection.client.unsafe(query, parameters);
       },
+      async begin<T>(
+        callback: (transaction: IdentityPostgresRuntimeSqlClient) => Promise<T>,
+      ): Promise<T> {
+        const results = await connection.client.begin(async (transaction) =>
+          [
+            await callback({
+              unsafe(query, parameters) {
+                return transaction.unsafe(query, parameters);
+              },
+            }),
+          ] as [T],
+        );
+        // postgres.js recursively unwraps promise values returned from
+        // transaction tuples. The platform transaction port intentionally exposes
+        // the simpler Promise<T> contract used by permission administration.
+        return results[0] as unknown as T;
+      },
+    };
+    Object.freeze(sql);
+    const trustedProvisioning = createIdentityRuntime({
+      auth,
+      sql: connection.client,
+      baseURL,
+      trustedProvisioning: true,
+    });
+    const provisioningIdentity = Object.freeze({
+      createInitialUser(
+        input: Parameters<typeof trustedProvisioning.service.createInitialUser>[0],
+        provisioningAudit: Parameters<
+          typeof trustedProvisioning.service.createInitialUserWithAudit
+        >[1],
+      ) {
+        return trustedProvisioning.service.createInitialUserWithAudit(
+          input,
+          provisioningAudit,
+        );
+      },
     });
 
     return Object.freeze({
       identity: identity.service,
       lifecycleIdentity: identity.service,
+      provisioningIdentity,
       sql,
       async close() {
         await connection.client.end();

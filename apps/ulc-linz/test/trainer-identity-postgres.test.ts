@@ -51,18 +51,27 @@ describe("ULC trainer identity PostgreSQL contract", () => {
     const repository = new PostgresUlcLinzTrainerIdentityLinks({
       async unsafe(query, parameters) {
         expect(query).toContain("target_identity AS MATERIALIZED");
+        expect(query).toContain("target_subject_allowed AS MATERIALIZED");
         expect(query).toContain("target_trainer AS MATERIALIZED");
         expect(query).toContain("releasable_conflict AS MATERIALIZED");
         expect(query).toContain("organization_id = $2");
         expect(query).toContain("source_role = 'trainer'");
-        expect(query).toContain("AND EXISTS (SELECT 1 FROM target_identity)");
+        expect(query).toContain("AND EXISTS (SELECT 1 FROM target_subject_allowed)");
+        expect(query).toContain("OR previous_subject_id = $5");
+        expect(query).toContain("OR previous_subject_id = $3");
         expect(query).toContain("AND EXISTS (SELECT 1 FROM target_trainer)");
         expect(query).toContain("account_missing = false");
         expect(query).toContain("account_banned = false");
         expect(query).toContain("FOR UPDATE OF membership");
         expect(query).toContain("FOR SHARE");
         expect(query).toContain("INSERT INTO ulc_linz_trainer_identity_audit");
-        expect(parameters).toEqual(["identity-1", "verein-1", "trainer-1", "admin-1"]);
+        expect(parameters).toEqual([
+          "identity-1",
+          "verein-1",
+          "trainer-1",
+          "admin-1",
+          null,
+        ]);
         return [
           {
             identity_exists: true,

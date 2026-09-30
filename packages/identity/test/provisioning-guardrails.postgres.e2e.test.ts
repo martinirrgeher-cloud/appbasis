@@ -4,6 +4,7 @@ import { createPostgresDatabase } from "@appbasis/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBetterAuthRuntime } from "../src/better-auth";
+import { IdentityProvisioningConflictError } from "../src/service";
 import {
   createIdentityRuntime,
   PostgresIdentityStateStore,
@@ -33,9 +34,13 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
     await adminConnection.client.unsafe(`CREATE DATABASE ${databaseName}`);
     connection = createPostgresDatabase(isolatedUrl.toString());
 
-    for (const migration of ["0000", "0001"]) {
+    for (const migration of [
+      "0000_appbasis_identity_foundation.sql",
+      "0001_appbasis_identity_foundation.sql",
+      "0002_appbasis_identity_provisioning_audit.sql",
+    ]) {
       const sql = await readFile(
-        new URL(`../drizzle/${migration}_appbasis_identity_foundation.sql`, import.meta.url),
+        new URL(`../drizzle/${migration}`, import.meta.url),
         "utf8",
       );
       for (const statement of sql.split("--> statement-breakpoint")) {
@@ -114,7 +119,7 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
     expect(rows[0]?.count).toBe(0);
   });
 
-  it("rejects technical admin targets at the PostgreSQL persistence boundary", async () => {
+  it("rejects pre-existing technical admin targets before AppBasis persistence", async () => {
     const targetAdminUsername = "guardrails.otheradmin";
     await createUserSession({
       auth,
@@ -137,7 +142,7 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
         temporaryPassword,
         displayName: "Other Technical Admin",
       }),
-    ).rejects.toThrow("Technical Better Auth administrators cannot be AppBasis identities");
+    ).rejects.toBeInstanceOf(IdentityProvisioningConflictError);
 
     const rows = await connection.client<{ count: number }[]>`
       SELECT count(*)::int AS count
@@ -225,7 +230,7 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
     }
   });
 
-  it("returns disabled for a banned existing user and for a completed retry after a later ban", async () => {
+  it("rejects a banned pre-existing user and returns disabled for a completed retry after a later ban", async () => {
     const bannedExistingUsername = "guardrails.bannedexisting";
     await createUserSession({
       auth,
@@ -251,7 +256,7 @@ describeWithPostgres("Identity provisioning guardrails with PostgreSQL", () => {
         temporaryPassword,
         displayName: "Banned Existing",
       }),
-    ).resolves.toMatchObject({ accountStatus: "disabled" });
+    ).rejects.toBeInstanceOf(IdentityProvisioningConflictError);
 
     const retryUsername = "guardrails.retry";
     const input = {

@@ -113,6 +113,31 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       });
 
       await expect(
+        repository.createTrainerGroupMembership("verein-1", {
+          trainerId: trainerOne.id,
+          groupId: groupOne.id,
+        }),
+      ).resolves.toMatchObject({
+        organizationId: "verein-1",
+        trainerId: trainerOne.id,
+        groupId: groupOne.id,
+      });
+
+      const trainerMembershipRows = await connection.client.unsafe(
+        `SELECT organization_id, trainer_id, group_id
+         FROM appbasis_trainer_group_membership
+         WHERE organization_id = $1 AND trainer_id = $2 AND group_id = $3`,
+        ["verein-1", trainerOne.id, groupOne.id],
+      );
+      expect(trainerMembershipRows).toEqual([
+        {
+          organization_id: "verein-1",
+          trainer_id: trainerOne.id,
+          group_id: groupOne.id,
+        },
+      ]);
+
+      await expect(
         repository.createAthleteGroupMembership("verein-1", {
           athleteId: athleteOne.id,
           groupId: groupOne.id,
@@ -243,7 +268,7 @@ async function applyManifestMigrations(
     await readFile(new URL("../appbasis.database.json", import.meta.url), "utf8"),
   ) as DatabaseManifest;
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 14 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 15 || new Set(migrations).size !== migrations.length) {
     throw new Error("ULC Stammdaten E2E requires the exact manifest-owned migration set.");
   }
 
