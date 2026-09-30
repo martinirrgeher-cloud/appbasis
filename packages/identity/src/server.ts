@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createPostgresDatabase } from "@appbasis/database";
+import { verifyPassword } from "better-auth/crypto";
 
 import type {
   AuthSession,
@@ -185,26 +186,19 @@ export class BetterAuthIdentityBackend {
     password: string;
     expectedIdentityId: string;
   }): Promise<boolean> {
-    const response = await this.request("/api/auth/sign-in/username", {
-      username: input.username,
-      password: input.password,
-    });
-    if (!response.ok) return false;
-
-    const body = (await response.json()) as { user?: { id?: string } };
-    const identityId = body.user?.id;
-    let sessionToken: string;
-    try {
-      sessionToken = sessionCookie(response);
-    } catch {
-      return false;
-    }
-
-    try {
-      return identityId === input.expectedIdentityId;
-    } finally {
-      await this.endSession(sessionToken);
-    }
+    const rows = await this.options.sql<{ password: string | null }[]>`
+      SELECT credential.password
+      FROM account AS credential
+      JOIN "user" AS account
+        ON account.id = credential.user_id
+      WHERE account.id = ${input.expectedIdentityId}
+        AND account.username = ${input.username}
+        AND credential.provider_id = 'credential'
+      LIMIT 1
+    `;
+    const hash = rows[0]?.password;
+    if (hash === undefined || hash === null) return false;
+    return verifyPassword({ hash, password: input.password });
   }
 
   async signInWithUsername(input: {
