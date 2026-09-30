@@ -192,3 +192,47 @@ test("fails closed when established preview security isolation is missing", asyn
     /security group is missing/,
   );
 });
+
+test("rejects identity v3 markers before every prerequisite migration stage", async () => {
+  for (const tables of [
+    [...BASELINE],
+    [...BASELINE, ...ATHLETES],
+    [...BASELINE, ...ATHLETES, ...TRAINING],
+    [...BASELINE, ...ATHLETES, TRAINER_IDENTITY_AUDIT],
+  ]) {
+    await assert.rejects(
+      resolve({
+        tables,
+        group: true,
+        identityColumns: canonicalIdentityColumns(),
+        identityConstraint: true,
+      }),
+      /identity provisioning audit exists before the complete app baseline/,
+    );
+  }
+});
+
+test("rejects partial identity v3 even before older migration stages", async () => {
+  await assert.rejects(
+    resolve({
+      tables: BASELINE,
+      group: true,
+      identityColumns: ["provisioning_owner"],
+      identityConstraint: false,
+    }),
+    /identity provisioning audit schema is partially applied or drifted/,
+  );
+});
+
+test("rejects trainer/training out-of-order markers before athlete upgrades", async () => {
+  for (const tables of [
+    [...BASELINE, ...TRAINING],
+    [...BASELINE, TRAINER_IDENTITY_AUDIT],
+    [...BASELINE, ...TRAINING, TRAINER_IDENTITY_AUDIT],
+  ]) {
+    await assert.rejects(
+      resolve({ tables, group: true }),
+      /training or trainer audit exists before Stammdaten baseline/,
+    );
+  }
+});
