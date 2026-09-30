@@ -8,16 +8,16 @@ import {
   UlcLinzD4PreviewIdentityAuditUpgradeConfigurationError,
   UlcLinzD4PreviewIdentityAuditUpgradeExecutionError,
 } from "./ulc-linz-d4-preview-identity-audit-upgrade.mjs";
+import {
+  canonicalIdentityColumns,
+  canonicalIdentityConstraints,
+} from "./ulc-linz-d4-preview-identity-audit-test-fixture.mjs";
 
 const CONNECTION =
   "postgresql://appbasis_ulc_linz_preview_migration:example@ep-ulc-preview.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview?sslmode=require";
 const RUNTIME_CONNECTION =
   CONNECTION.replace("_migration", "_application");
 const TARGET_COLUMNS = ["provisioning_owner", "actor_principal_id", "reason"];
-const DEFINITION =
-  "CHECK (kind = 'provision' AND provisioning_owner IS NOT NULL " +
-  "AND actor_principal_id IS NOT NULL AND reason IS NOT NULL)";
-
 function fakeDatabase({
   initialColumns = [],
   initialConstraint = false,
@@ -53,10 +53,14 @@ function fakeDatabase({
                 return tables.map((tablename) => ({ tablename }));
               }
               if (sql.includes("FROM pg_catalog.pg_attribute")) {
-                return columns.map((column_name) => ({ column_name }));
+                return columns.map((value) =>
+                  typeof value === "string"
+                    ? canonicalIdentityColumns().find((entry) => entry.column_name === value)
+                    : value,
+                );
               }
               if (sql.includes("FROM pg_catalog.pg_constraint")) {
-                return constraint ? [{ definition: DEFINITION }] : [];
+                return constraint ? canonicalIdentityConstraints() : [];
               }
               if (sql.includes("pg_advisory_xact_lock")) return [];
               if (throwOnMigration) throw new Error("simulated DDL failure");
