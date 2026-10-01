@@ -1,0 +1,73 @@
+name: ULC E4E-D Preview Schema Inspect
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ulc-linz-e4e-d-preview-schema-inspect.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Read-only isolated ULC preview schema inventory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment:
+      name: generated-preview-ulc-linz
+
+    steps:
+      - name: Require main branch
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main'
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Read-only isolated ULC preview schema check
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$APPBASIS_MIGRATION_DATABASE_URL"
+          test -n "$APPBASIS_DATABASE_URL"
+          test -n "$APPBASIS_SECURITY_LOG_DATABASE_URL"
+          echo "::add-mask::$APPBASIS_MIGRATION_DATABASE_URL"
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+          echo "::add-mask::$APPBASIS_SECURITY_LOG_DATABASE_URL"
+          STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
+          MODE="$(jq -r '.mode' <<<"$STATE")"
+          case "$MODE" in
+            identity-provisioning-audit-upgrade|current) ;;
+            *) echo "ULC Preview is not at expected E4E-D baseline: $MODE" >&2; exit 1 ;;
+          esac
+          echo "ULC E4E-D preview schema state: $MODE (read-only; no mutations)"
+          echo "ULC E4E-D preview schema state: $MODE (read-only)" >> "$GITHUB_STEP_SUMMARY"

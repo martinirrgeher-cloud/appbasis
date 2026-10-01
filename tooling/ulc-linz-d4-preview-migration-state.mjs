@@ -2,11 +2,17 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
+import {
+  isAbsentUlcPreviewIdentityAuditShape,
+  isCanonicalUlcPreviewIdentityAuditShape,
+  readUlcPreviewIdentityAuditShape,
+} from "./ulc-linz-d4-preview-identity-audit-shape.mjs";
 import { validateUlcLinzD4PreviewDatabaseCredentials } from "./ulc-linz-d4-preview-hyperdrive.mjs";
 
 const SECURITY_GROUP = "appbasis_ulc_linz_preview_security_ingest";
 const BASELINE_TABLES = Object.freeze([
   "appbasis_person",
+  "appbasis_identity_operation",
   "appbasis_permission_principal",
   "ulc_linz_membership",
   "ulc_linz_security_event_log",
@@ -24,7 +30,6 @@ const TRAINING_TABLES = Object.freeze([
   "ulc_linz_training_attendance",
 ]);
 const TRAINER_IDENTITY_AUDIT_TABLE = "ulc_linz_trainer_identity_audit";
-
 export async function resolveUlcLinzD4PreviewMigrationState(
   {
     migrationDatabaseUrl,
@@ -77,17 +82,37 @@ export async function resolveUlcLinzD4PreviewMigrationState(
       throw new Error("ULC D4 established preview security group is missing.");
     }
 
+    // Inventory all migration markers before selecting an incremental route.
+    // Otherwise a later identity-v3 state with missing older tables could be
+    // misclassified as a safe earlier upgrade and silently mask schema drift.
     const athletesPresent = ATHLETES_TABLES.filter((table) => tables.has(table));
-    if (athletesPresent.length === 0) {
-      return Object.freeze({ mode: "athletes-upgrade" });
-    }
-    if (athletesPresent.length !== ATHLETES_TABLES.length) {
-      throw new Error("ULC D4 preview Stammdaten schema is partially applied.");
-    }
-
     const trainingPresent = TRAINING_TABLES.filter((table) => tables.has(table));
     const trainerIdentityAuditPresent = tables.has(TRAINER_IDENTITY_AUDIT_TABLE);
-    if (trainingPresent.length === 0) {
+    const auditShape = await readUlcPreviewIdentityAuditShape(database.client);
+    const identityAuditAbsent = isAbsentUlcPreviewIdentityAuditShape(auditShape);
+    if (!identityAuditAbsent && !isCanonicalUlcPreviewIdentityAuditShape(auditShape)) {
+      throw new Error(
+        "ULC D4 identity provisioning audit schema is partially applied or drifted.",
+      );
+    }
+    if (athletesPresent.length !== 0 && athletesPresent.length !== ATHLETES_TABLES.length) {
+      throw new Error("ULC D4 preview Stammdaten schema is partially applied.");
+    }
+    if (trainingPresent.length !== 0 && trainingPresent.length !== TRAINING_TABLES.length) {
+      throw new Error("ULC D4 preview training schema is partially applied.");
+    }
+    const athletesComplete = athletesPresent.length === ATHLETES_TABLES.length;
+    const trainingComplete = trainingPresent.length === TRAINING_TABLES.length;
+    if (!identityAuditAbsent && (!athletesComplete || !trainingComplete || !trainerIdentityAuditPresent)) {
+      throw new Error("ULC D4 identity provisioning audit exists before the complete app baseline.");
+    }
+    if (!athletesComplete) {
+      if (trainingPresent.length > 0 || trainerIdentityAuditPresent) {
+        throw new Error("ULC D4 training or trainer audit exists before Stammdaten baseline.");
+      }
+      return Object.freeze({ mode: "athletes-upgrade" });
+    }
+    if (!trainingComplete) {
       if (trainerIdentityAuditPresent) {
         throw new Error(
           "ULC D4 preview trainer identity audit exists before the training baseline.",
@@ -95,11 +120,11 @@ export async function resolveUlcLinzD4PreviewMigrationState(
       }
       return Object.freeze({ mode: "training-upgrade" });
     }
-    if (trainingPresent.length !== TRAINING_TABLES.length) {
-      throw new Error("ULC D4 preview training schema is partially applied.");
-    }
     if (!trainerIdentityAuditPresent) {
       return Object.freeze({ mode: "trainer-identity-audit-upgrade" });
+    }
+    if (identityAuditAbsent) {
+      return Object.freeze({ mode: "identity-provisioning-audit-upgrade" });
     }
     return Object.freeze({ mode: "current" });
   } finally {

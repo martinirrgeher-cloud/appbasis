@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-09-28
+Stand: 2026-09-30
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,21 +9,26 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E4A – gemeinsames Trainingsfundament für Kindertraining, U12 und U14.**
+**ULC-E4E-D – isolierte Preview-Abnahme für Trainer-Testkonten, Rechte und Gruppenzuordnung.**
+
+Der E4E-D-Code ist fertig integriert. Vor der praktischen Abnahme muss die
+bestehende isolierte ULC-Preview die additive Identity-Schema-Version 3 erhalten.
+Das bisherige Preview-Migrationsrouting konnte die neue Identity-Audit-Migration
+noch nicht erkennen und würde sonst eine alte Preview fälschlich als
+`current` melden. Ein eigener read-only Inventory-Check, eine ausschließlich
+identity-eigene inkrementelle Migration und ein Fail-Closed-Preflight vor
+Bootstrap oder Deployment schließen diese Lücke. Die nachstehenden E4A–E4E-C-Abschnitte dokumentieren
+die bereits erreichten fachlichen Grundlagen.
 
 ULC-E3C ist auf `main` abgeschlossen und wurde anschließend in der isolierten
 ULC-Preview erfolgreich deployed. Die Bearbeiten-Funktion ist damit für den
 weiteren Produktpfad freigegeben.
 
-E4A übernimmt als nächsten echten ULC-Funktionsbereich das Kindertraining,
-modelliert die Persistenz aber bewusst gemeinsam für Kindertraining, U12 und U14.
-Damit werden die drei fachlich sehr ähnlichen Altmodule nicht als drei
-parallele Datenmodelle neu gebaut.
-
-E4A enthält ausschließlich den app-eigenen Schema- und Domainvertrag für
-Trainingstermine und Anwesenheit. Runtime/API, Teilnehmer-Snapshot,
-Konfliktschutz, UI, Preview-Migration und Production bleiben getrennte
-Folgeslices.
+E4A begründete den gemeinsamen Persistenzkern für Kindertraining, U12 und
+U14, damit diese fachlich ähnlichen Module nicht als drei unabhängige
+Datenmodelle entstehen. E4A selbst enthielt ausschließlich den app-eigenen
+Schema- und Domainvertrag; Runtime/API, Teilnehmer-Snapshot, Konfliktschutz,
+UI und Preview-Freigabe wurden in getrennten Folgeslices behandelt.
 
 FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
 `ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
@@ -819,6 +824,25 @@ Abnahme für ULC-E4E-D:
   `0002_appbasis_identity_provisioning_audit.sql` benötigt;
 - der Code-PR führt weiterhin weder Preview-/Production-Write noch Deployment
   aus. Migration und Deployment bleiben gesonderte Freigabe-Gates.
+
+E4E-D-Preview-Gate nach dem Code-Merge, jeweils auf `main`:
+
+1. Read-only Inspect der dedizierten ULC-Preview (erwartet: fehlende
+   `identity`-Schema-v3-Migration oder bereits `current`).
+2. Separat und ausdrücklich freigegeben: `migrate` mit `apply=true`;
+   bei bestehender E4E-A2-Baseline ausschließlich
+   `0002_appbasis_identity_provisioning_audit.sql`, transaktional durch
+   den isolierten Preview-Migration-Principal.
+3. Read-only Inspect muss anschließend `current` ergeben. Ohne
+   diesen Nachweis dürfen `bootstrap` und `deploy` keine Provider-/Runtime-Writes ausführen.
+4. Separat und ausdrücklich freigegeben: Preview-`deploy` mit `apply=true`,
+   gefolgt von den bestehenden Audit-/Runtime-Smokes.
+5. Praktische Abnahme: Admin-Anlage von Trainer A und Trainer B mit
+   temporären Zugangsdaten, erzwungener Passwortwechsel, individuelle
+   Trainer↔Gruppen-Sicht, Negativfall gruppenfremde Daten und Konflikttest.
+
+Keine Preview-Migration, kein Preview-Deployment und keine
+Produktionsmutation werden allein durch diesen Code-PR ausgelöst.
 
 ## Architektur- und Sicherheitsgrenzen
 

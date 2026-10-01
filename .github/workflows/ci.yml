@@ -63,6 +63,9 @@ jobs:
       - name: Run real PostgreSQL identity E2E tests
         run: pnpm run test:identity:e2e
 
+      - name: Verify canonical identity-v3 audit shape on PostgreSQL
+        run: node --test ./tooling/ulc-linz-d4-preview-identity-audit-shape.postgres.test.mjs
+
       - name: Run real PostgreSQL permissions E2E tests
         run: pnpm --filter @appbasis/permissions test:e2e
 

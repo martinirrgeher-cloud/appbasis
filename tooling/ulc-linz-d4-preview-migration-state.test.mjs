@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { resolveUlcLinzD4PreviewMigrationState } from "./ulc-linz-d4-preview-migration-state.mjs";
+import {
+  CANONICAL_PG_CHECK,
+  canonicalIdentityColumns,
+  canonicalIdentityConstraints,
+  canonicalIdentityDiscriminator,
+} from "./ulc-linz-d4-preview-identity-audit-test-fixture.mjs";
 
 const HOST = "ep-ulc-preview.eu-central-1.aws.neon.tech";
 const DATABASE = "appbasis_ulc_linz_preview";
@@ -11,6 +17,7 @@ const SECURITY_URL = `postgresql://appbasis_ulc_linz_preview_security_log:x@${HO
 
 const BASELINE = [
   "appbasis_person",
+  "appbasis_identity_operation",
   "appbasis_permission_principal",
   "ulc_linz_membership",
   "ulc_linz_security_event_log",
@@ -29,7 +36,12 @@ const TRAINING = [
 ];
 const TRAINER_IDENTITY_AUDIT = "ulc_linz_trainer_identity_audit";
 
-function factory({ tables = [], group = false } = {}) {
+function factory({
+  tables = [],
+  group = false,
+  identityColumns = [],
+  identityConstraint = false,
+} = {}) {
   return () => ({
     client: {
       async unsafe(sql) {
@@ -40,6 +52,21 @@ function factory({ tables = [], group = false } = {}) {
           return group
             ? [{ rolname: "appbasis_ulc_linz_preview_security_ingest" }]
             : [];
+        }
+        if (sql.includes("FROM pg_catalog.pg_attribute")) {
+          return [
+            canonicalIdentityDiscriminator(),
+            ...identityColumns.map((value) =>
+            typeof value === "string"
+              ? canonicalIdentityColumns().find((entry) => entry.column_name === value)
+              : value,
+            ),
+          ];
+        }
+        if (sql.includes("FROM pg_catalog.pg_constraint")) {
+          return identityConstraint === true
+            ? canonicalIdentityConstraints()
+            : (Array.isArray(identityConstraint) ? identityConstraint : []);
         }
         throw new Error("unexpected SQL");
       },
@@ -84,14 +111,59 @@ test("classifies a training-complete preview as a trainer identity audit upgrade
   );
 });
 
-test("classifies a fully migrated preview as current", async () => {
+test("classifies a trainer-audit-complete identity-v2 preview as requiring the identity audit delta", async () => {
   assert.deepEqual(
     await resolve({
       tables: [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT],
       group: true,
     }),
+    { mode: "identity-provisioning-audit-upgrade" },
+  );
+});
+
+test("classifies a fully migrated identity-v3 preview as current", async () => {
+  assert.deepEqual(
+    await resolve({
+      tables: [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT],
+      group: true,
+      identityColumns: ["provisioning_owner", "actor_principal_id", "reason"],
+      identityConstraint: true,
+    }),
     { mode: "current" },
   );
+});
+
+test("rejects partially upgraded identity provisioning audit schemas", async () => {
+  const establishedTables = [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT];
+  for (const incomplete of [
+    { identityColumns: ["provisioning_owner"], identityConstraint: false },
+    { identityColumns: ["provisioning_owner", "actor_principal_id", "reason"], identityConstraint: false },
+    { identityColumns: [], identityConstraint: true },
+    {
+      identityColumns: canonicalIdentityColumns().map((entry, i) =>
+        i === 0 ? { ...entry, data_type: "character varying" } : entry
+      ),
+      identityConstraint: true,
+    },
+    {
+      identityColumns: canonicalIdentityColumns().map((entry, i) =>
+        i === 0 ? { ...entry, has_default: true } : entry
+      ),
+      identityConstraint: true,
+    },
+    {
+      identityColumns: canonicalIdentityColumns(),
+      identityConstraint: [{
+        definition: CANONICAL_PG_CHECK.replace("char_length(reason) <= 500", "char_length(reason) <= 501"),
+        validated: true,
+      }],
+    },
+  ]) {
+    await assert.rejects(
+      resolve({ tables: establishedTables, group: true, ...incomplete }),
+      /partially applied or drifted/,
+    );
+  }
 });
 
 test("fails closed when trainer identity audit appears before the training baseline", async () => {
@@ -123,4 +195,95 @@ test("fails closed when established preview security isolation is missing", asyn
     resolve({ tables: BASELINE, group: false }),
     /security group is missing/,
   );
+});
+
+test("rejects identity v3 markers before every prerequisite migration stage", async () => {
+  for (const tables of [
+    [...BASELINE],
+    [...BASELINE, ...ATHLETES],
+    [...BASELINE, ...ATHLETES, ...TRAINING],
+    [...BASELINE, ...ATHLETES, TRAINER_IDENTITY_AUDIT],
+  ]) {
+    await assert.rejects(
+      resolve({
+        tables,
+        group: true,
+        identityColumns: canonicalIdentityColumns(),
+        identityConstraint: true,
+      }),
+      /identity provisioning audit exists before the complete app baseline/,
+    );
+  }
+});
+
+test("rejects partial identity v3 even before older migration stages", async () => {
+  await assert.rejects(
+    resolve({
+      tables: BASELINE,
+      group: true,
+      identityColumns: ["provisioning_owner"],
+      identityConstraint: false,
+    }),
+    /identity provisioning audit schema is partially applied or drifted/,
+  );
+});
+
+test("rejects a nullable identity operation kind on identity v2 and v3", async () => {
+  for (const identityColumns of [
+    [],
+    canonicalIdentityColumns(),
+  ]) {
+    await assert.rejects(
+      resolveUlcLinzD4PreviewMigrationState(
+        {
+          migrationDatabaseUrl: MIGRATION_URL,
+          applicationDatabaseUrl: APPLICATION_URL,
+          securityLogDatabaseUrl: SECURITY_URL,
+        },
+        {
+          databaseFactory: () => ({
+            client: {
+              async unsafe(sql) {
+                if (sql.includes("FROM pg_catalog.pg_tables")) {
+                  return [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT]
+                    .sort()
+                    .map((tablename) => ({ tablename }));
+                }
+                if (sql.includes("FROM pg_catalog.pg_roles")) {
+                  return [{ rolname: "appbasis_ulc_linz_preview_security_ingest" }];
+                }
+                if (sql.includes("FROM pg_catalog.pg_attribute")) {
+                  return [
+                    { ...canonicalIdentityDiscriminator(), not_null: false },
+                    ...identityColumns,
+                  ];
+                }
+                if (sql.includes("FROM pg_catalog.pg_constraint")) {
+                  return identityColumns.length === 0
+                    ? []
+                    : canonicalIdentityConstraints();
+                }
+                throw new Error("unexpected SQL");
+              },
+              async end() {},
+            },
+          }),
+        },
+      ),
+      /partially applied or drifted/,
+    );
+  }
+});
+
+test("rejects trainer/training out-of-order markers before athlete upgrades", async () => {
+  for (const tables of [
+    [...BASELINE, ...TRAINING],
+    [...BASELINE, TRAINER_IDENTITY_AUDIT],
+    [...BASELINE, ...TRAINING, TRAINER_IDENTITY_AUDIT],
+  ]) {
+    await assert.rejects(
+      resolve({ tables, group: true }),
+      /training or trainer audit exists before Stammdaten baseline/,
+    );
+  }
 });
