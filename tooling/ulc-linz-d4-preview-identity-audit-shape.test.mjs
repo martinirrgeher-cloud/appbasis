@@ -57,8 +57,8 @@ test("rejects wrong column type/default/nullability and unvalidated constraints"
       index === 0 ? { ...column, ...changes } : column,
     );
     assert.equal(isCanonicalUlcPreviewIdentityAuditShape({
+      ...canonical,
       columns: modified,
-      constraints: canonical.constraints,
     }), false);
   }
   for (const changes of [
@@ -79,12 +79,12 @@ test("rejects wrong column type/default/nullability and unvalidated constraints"
     discriminator: null,
   }), false);
   assert.equal(isCanonicalUlcPreviewIdentityAuditShape({
-    columns: canonical.columns,
+    ...canonical,
     constraints: [{ definition: CANONICAL_PG_CHECK, validated: false }],
   }), false);
   assert.equal(isCanonicalUlcPreviewIdentityAuditShape({
+    ...canonical,
     columns: [canonical.columns[0], canonical.columns[0], canonical.columns[2]],
-    constraints: canonical.constraints,
   }), false);
 });
 
