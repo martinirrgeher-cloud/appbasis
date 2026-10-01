@@ -6,6 +6,7 @@ import {
   CANONICAL_PG_CHECK,
   canonicalIdentityColumns,
   canonicalIdentityConstraints,
+  canonicalIdentityDiscriminator,
 } from "./ulc-linz-d4-preview-identity-audit-test-fixture.mjs";
 
 const HOST = "ep-ulc-preview.eu-central-1.aws.neon.tech";
@@ -53,11 +54,14 @@ function factory({
             : [];
         }
         if (sql.includes("FROM pg_catalog.pg_attribute")) {
-          return identityColumns.map((value) =>
+          return [
+            canonicalIdentityDiscriminator(),
+            ...identityColumns.map((value) =>
             typeof value === "string"
               ? canonicalIdentityColumns().find((entry) => entry.column_name === value)
               : value,
-          );
+            ),
+          ];
         }
         if (sql.includes("FROM pg_catalog.pg_constraint")) {
           return identityConstraint === true
@@ -222,6 +226,53 @@ test("rejects partial identity v3 even before older migration stages", async () 
     }),
     /identity provisioning audit schema is partially applied or drifted/,
   );
+});
+
+test("rejects a nullable identity operation kind on identity v2 and v3", async () => {
+  for (const identityColumns of [
+    [],
+    canonicalIdentityColumns(),
+  ]) {
+    await assert.rejects(
+      resolveUlcLinzD4PreviewMigrationState(
+        {
+          migrationDatabaseUrl: MIGRATION_URL,
+          applicationDatabaseUrl: APPLICATION_URL,
+          securityLogDatabaseUrl: SECURITY_URL,
+        },
+        {
+          databaseFactory: () => ({
+            client: {
+              async unsafe(sql) {
+                if (sql.includes("FROM pg_catalog.pg_tables")) {
+                  return [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT]
+                    .sort()
+                    .map((tablename) => ({ tablename }));
+                }
+                if (sql.includes("FROM pg_catalog.pg_roles")) {
+                  return [{ rolname: "appbasis_ulc_linz_preview_security_ingest" }];
+                }
+                if (sql.includes("FROM pg_catalog.pg_attribute")) {
+                  return [
+                    { ...canonicalIdentityDiscriminator(), not_null: false },
+                    ...identityColumns,
+                  ];
+                }
+                if (sql.includes("FROM pg_catalog.pg_constraint")) {
+                  return identityColumns.length === 0
+                    ? []
+                    : canonicalIdentityConstraints();
+                }
+                throw new Error("unexpected SQL");
+              },
+              async end() {},
+            },
+          }),
+        },
+      ),
+      /partially applied or drifted/,
+    );
+  }
 });
 
 test("rejects trainer/training out-of-order markers before athlete upgrades", async () => {
