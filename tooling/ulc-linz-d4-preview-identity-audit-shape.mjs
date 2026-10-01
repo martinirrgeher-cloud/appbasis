@@ -41,7 +41,7 @@ export async function readUlcPreviewIdentityAuditShape(client) {
          ON namespace.oid = relation.relnamespace
       WHERE namespace.nspname = 'public'
         AND relation.relname = 'appbasis_identity_operation'
-        AND attribute.attname IN ('provisioning_owner', 'actor_principal_id', 'reason')
+        AND attribute.attname IN ('kind', 'provisioning_owner', 'actor_principal_id', 'reason')
         AND attribute.attnum > 0
         AND NOT attribute.attisdropped`,
   );
@@ -61,11 +61,19 @@ export async function readUlcPreviewIdentityAuditShape(client) {
   if (!Array.isArray(columns) || !Array.isArray(constraints)) {
     throw new Error("ULC D4 identity provisioning audit inventory is unavailable.");
   }
-  return { columns, constraints };
+  const discriminatorRows = columns.filter((column) => column?.column_name === "kind");
+  const auditColumns = columns.filter((column) => COLUMNS.includes(column?.column_name));
+  return {
+    discriminator: discriminatorRows.length === 1 ? discriminatorRows[0] : null,
+    discriminatorCount: discriminatorRows.length,
+    columns: auditColumns,
+    constraints,
+  };
 }
 
 export function isAbsentUlcPreviewIdentityAuditShape(shape) {
-  return Array.isArray(shape?.columns) &&
+  return canonicalDiscriminator(shape) &&
+    Array.isArray(shape?.columns) &&
     Array.isArray(shape?.constraints) &&
     shape.columns.length === 0 &&
     shape.constraints.length === 0;
@@ -73,6 +81,7 @@ export function isAbsentUlcPreviewIdentityAuditShape(shape) {
 
 export function isCanonicalUlcPreviewIdentityAuditShape(shape) {
   if (
+    !canonicalDiscriminator(shape) ||
     !Array.isArray(shape?.columns) ||
     !Array.isArray(shape?.constraints) ||
     shape.columns.length !== COLUMNS.length ||
@@ -96,6 +105,17 @@ export function isCanonicalUlcPreviewIdentityAuditShape(shape) {
     shape.constraints[0]?.validated === true &&
     hasCanonicalConstraintDefinition(shape.constraints[0]?.definition)
   );
+}
+
+function canonicalDiscriminator(shape) {
+  const column = shape?.discriminator;
+  return shape?.discriminatorCount === 1 &&
+    column?.column_name === "kind" &&
+    column.data_type === "text" &&
+    column.not_null === true &&
+    column.has_default === false &&
+    column.generated === "" &&
+    column.identity === "";
 }
 
 export function hasCanonicalConstraintDefinition(definition) {
