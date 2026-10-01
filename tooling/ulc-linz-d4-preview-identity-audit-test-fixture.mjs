@@ -18,6 +18,17 @@ export const CANONICAL_PG_CHECK = `CHECK (
     AND ((reason)::text = btrim(reason)))
 )`;
 
+export function canonicalIdentityDiscriminator() {
+  return {
+    column_name: "kind",
+    data_type: "text",
+    not_null: true,
+    has_default: false,
+    generated: "",
+    identity: "",
+  };
+}
+
 export function canonicalIdentityColumns() {
   return ["provisioning_owner", "actor_principal_id", "reason"].map(
     (column_name) => ({
