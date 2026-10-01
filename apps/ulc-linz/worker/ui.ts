@@ -49,10 +49,10 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
       <div id="app-view" hidden>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <button class="app-nav__link is-active" type="button" data-nav-view="home">Start</button>
-          <button class="app-nav__link" type="button" data-nav-view="masterdata" disabled>Stammdaten</button>
-          <button class="app-nav__link" type="button" data-nav-view="kindertraining" disabled>Training</button>
-          <button class="app-nav__link" type="button" data-nav-view="countdown" disabled>Countdown</button>
-          <button class="app-nav__link" type="button" data-nav-view="settings" disabled>Einstellungen</button>
+          <button class="app-nav__link" type="button" data-nav-view="masterdata" hidden disabled>Stammdaten</button>
+          <button class="app-nav__link" type="button" data-nav-view="kindertraining" hidden disabled>Training</button>
+          <button class="app-nav__link" type="button" data-nav-view="countdown" hidden disabled>Countdown</button>
+          <button class="app-nav__link" type="button" data-nav-view="settings" hidden disabled>Einstellungen</button>
         </nav>
 
         <main class="content">
@@ -496,7 +496,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   left: 0;
   z-index: 25;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 2px;
   padding: 4px 8px max(4px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
@@ -1227,12 +1228,15 @@ async function bootstrapMasterdata() {
 
 function refreshAppAvailability() {
   for (const control of document.querySelectorAll("[data-nav-view='countdown'], [data-nav-view='settings']")) {
+    control.hidden = !countdownReady;
     control.disabled = !countdownReady;
   }
   for (const control of document.querySelectorAll("[data-nav-view='masterdata']")) {
+    control.hidden = !masterdataReady;
     control.disabled = !masterdataReady;
   }
   for (const control of document.querySelectorAll("[data-nav-view='kindertraining']")) {
+    control.hidden = !kindertrainingReady;
     control.disabled = !kindertrainingReady;
   }
   if (elements.countdownQuickAction) {
