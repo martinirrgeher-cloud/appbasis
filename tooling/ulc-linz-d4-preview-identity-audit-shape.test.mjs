@@ -11,6 +11,7 @@ import {
   CANONICAL_PG_CHECK,
   canonicalIdentityColumns,
   canonicalIdentityConstraints,
+  canonicalIdentityDiscriminator,
 } from "./ulc-linz-d4-preview-identity-audit-test-fixture.mjs";
 
 test("accepts only the canonical null-or-fully-audited identity v3 predicate", () => {
@@ -39,6 +40,8 @@ test("rejects ineffective or differently grouped checks that merely mention expe
 
 test("rejects wrong column type/default/nullability and unvalidated constraints", () => {
   const canonical = {
+    discriminator: canonicalIdentityDiscriminator(),
+    discriminatorCount: 1,
     columns: canonicalIdentityColumns(),
     constraints: canonicalIdentityConstraints(),
   };
@@ -58,6 +61,23 @@ test("rejects wrong column type/default/nullability and unvalidated constraints"
       constraints: canonical.constraints,
     }), false);
   }
+  for (const changes of [
+    { data_type: "character varying(20)" },
+    { not_null: false },
+    { has_default: true },
+    { generated: "s" },
+    { identity: "a" },
+  ]) {
+    assert.equal(isCanonicalUlcPreviewIdentityAuditShape({
+      ...canonical,
+      discriminator: { ...canonical.discriminator, ...changes },
+    }), false);
+  }
+  assert.equal(isCanonicalUlcPreviewIdentityAuditShape({
+    ...canonical,
+    discriminatorCount: 0,
+    discriminator: null,
+  }), false);
   assert.equal(isCanonicalUlcPreviewIdentityAuditShape({
     columns: canonical.columns,
     constraints: [{ definition: CANONICAL_PG_CHECK, validated: false }],
@@ -73,7 +93,9 @@ test("reads shared catalog metadata without touching application rows", async ()
   const client = {
     async unsafe(sql) {
       queries.push(sql);
-      if (sql.includes("FROM pg_catalog.pg_attribute")) return canonicalIdentityColumns();
+      if (sql.includes("FROM pg_catalog.pg_attribute")) {
+        return [canonicalIdentityDiscriminator(), ...canonicalIdentityColumns()];
+      }
       if (sql.includes("FROM pg_catalog.pg_constraint")) return canonicalIdentityConstraints();
       throw new Error("unexpected catalog query");
     },
@@ -81,7 +103,18 @@ test("reads shared catalog metadata without touching application rows", async ()
   const shape = await readUlcPreviewIdentityAuditShape(client);
   assert.equal(isCanonicalUlcPreviewIdentityAuditShape(shape), true);
   assert.equal(isAbsentUlcPreviewIdentityAuditShape(shape), false);
-  assert.equal(isAbsentUlcPreviewIdentityAuditShape({ columns: [], constraints: [] }), true);
+  assert.equal(isAbsentUlcPreviewIdentityAuditShape({
+    discriminator: canonicalIdentityDiscriminator(),
+    discriminatorCount: 1,
+    columns: [],
+    constraints: [],
+  }), true);
+  assert.equal(isAbsentUlcPreviewIdentityAuditShape({
+    discriminator: { ...canonicalIdentityDiscriminator(), not_null: false },
+    discriminatorCount: 1,
+    columns: [],
+    constraints: [],
+  }), false);
   assert.equal(queries.length, 2);
   assert.ok(queries.every((sql) => /^SELECT /i.test(sql)));
 });
