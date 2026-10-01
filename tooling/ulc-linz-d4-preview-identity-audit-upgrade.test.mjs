@@ -11,6 +11,7 @@ import {
 import {
   canonicalIdentityColumns,
   canonicalIdentityConstraints,
+  canonicalIdentityDiscriminator,
 } from "./ulc-linz-d4-preview-identity-audit-test-fixture.mjs";
 
 const CONNECTION =
@@ -53,11 +54,14 @@ function fakeDatabase({
                 return tables.map((tablename) => ({ tablename }));
               }
               if (sql.includes("FROM pg_catalog.pg_attribute")) {
-                return columns.map((value) =>
-                  typeof value === "string"
-                    ? canonicalIdentityColumns().find((entry) => entry.column_name === value)
-                    : value,
-                );
+                return [
+                  canonicalIdentityDiscriminator(),
+                  ...columns.map((value) =>
+                    typeof value === "string"
+                      ? canonicalIdentityColumns().find((entry) => entry.column_name === value)
+                      : value,
+                  ),
+                ];
               }
               if (sql.includes("FROM pg_catalog.pg_constraint")) {
                 return constraint ? canonicalIdentityConstraints() : [];
