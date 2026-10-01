@@ -9,7 +9,7 @@ import {
 describe("ULC E4C Kindertraining UI", () => {
   it("ships a mobile Kindertraining navigation and attendance workspace", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="kindertraining" disabled',
+      'data-nav-view="kindertraining" hidden disabled',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-app-section="kindertraining"',
