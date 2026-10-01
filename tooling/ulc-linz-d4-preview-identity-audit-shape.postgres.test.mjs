@@ -58,6 +58,15 @@ test("PostgreSQL catalog deparser matches the real identity v3 migration", {
         );
 
         await transaction.unsafe(
+          'ALTER TABLE public.appbasis_identity_operation ALTER COLUMN "kind" DROP NOT NULL',
+        );
+        const nullableKind = await readUlcPreviewIdentityAuditShape(transaction);
+        assert.equal(isCanonicalUlcPreviewIdentityAuditShape(nullableKind), false);
+        await transaction.unsafe(
+          'ALTER TABLE public.appbasis_identity_operation ALTER COLUMN "kind" SET NOT NULL',
+        );
+
+        await transaction.unsafe(
           'ALTER TABLE public.appbasis_identity_operation ALTER COLUMN "reason" SET DEFAULT \'x\'',
         );
         const withDefault = await readUlcPreviewIdentityAuditShape(transaction);
