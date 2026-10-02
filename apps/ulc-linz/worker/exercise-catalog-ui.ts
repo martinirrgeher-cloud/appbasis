@@ -882,6 +882,7 @@ function renderExerciseCatalogParameterSelect() {
 
 function addExerciseCatalogParameter() {
   if (!exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  syncExerciseCatalogParameterDraftsFromDom();
   const key = elements.exerciseCatalogParameterSelect?.value || "";
   const meta = parameterMeta(key);
   if (!meta || exerciseCatalogParameterDrafts.some((parameter) => parameter.key === key)) return;
@@ -977,15 +978,6 @@ function parameterInput(labelText, field, value, inputType) {
   if (inputType === "number") input.step = "any";
   input.value = value === null ? "" : String(value);
   input.dataset.exerciseCatalogParameterField = field;
-  input.dataset.exerciseCatalogParameterIndex = String(
-    labelText === "Standard"
-      ? exerciseCatalogParameterDrafts.findIndex((parameter) =>
-          parameter.defaultValue === value &&
-          parameter.inputType === inputType &&
-          !parameter.__renderedDefault,
-        )
-      : -1,
-  );
   label.append(input);
   return label;
 }
@@ -1094,7 +1086,11 @@ async function saveExerciseCatalogItem(event) {
     }
     const savedId = payload.item.id;
     await reloadExerciseCatalog();
-    await openExerciseCatalogItem(savedId);
+    const saved = exerciseCatalogItems.find((item) => item.id === savedId);
+    if (saved) {
+      exerciseCatalogSelectedId = saved.id;
+      populateExerciseCatalogEditor(saved);
+    }
     showMessage(elements.exerciseCatalogSuccess, "Übung wurde gespeichert.");
   } catch (error) {
     showMessage(
@@ -1188,7 +1184,15 @@ function setExerciseCatalogBusy(next) {
   }
   if (elements.exerciseCatalogSave) elements.exerciseCatalogSave.disabled = next;
   if (elements.exerciseCatalogDeactivate) elements.exerciseCatalogDeactivate.disabled = next;
-  renderExerciseCatalogParameters();
+  if (elements.exerciseCatalogParameterAdd) {
+    elements.exerciseCatalogParameterAdd.disabled = next || !exerciseCatalogCanEdit;
+  }
+  if (elements.exerciseCatalogParameterSelect) {
+    elements.exerciseCatalogParameterSelect.disabled = next || !exerciseCatalogCanEdit;
+  }
+  for (const control of elements.exerciseCatalogParameters?.querySelectorAll("input, button") || []) {
+    control.disabled = next || !exerciseCatalogCanEdit;
+  }
 }
 
 function handleExerciseCatalogListClick(event) {
