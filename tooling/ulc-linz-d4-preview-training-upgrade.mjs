@@ -57,10 +57,13 @@ export async function loadUlcLinzD4PreviewTrainingUpgradePlan(
       "ULC D4 preview training upgrade plan loader is unavailable.",
     );
   }
+  const targetIndex =
+    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.indexOf(TARGET_MIGRATION);
   if (
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion !== 6 ||
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.at(-2) !== TARGET_MIGRATION ||
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.at(-1) !== NEXT_MIGRATION
+    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion < 6 ||
+    targetIndex < 0 ||
+    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations[targetIndex + 1] !==
+      NEXT_MIGRATION
   ) {
     throw new UlcLinzD4PreviewTrainingUpgradeConfigurationError(
       "ULC D4 preview training upgrade owner contract is not the expected E4A target.",
@@ -77,8 +80,8 @@ export async function loadUlcLinzD4PreviewTrainingUpgradePlan(
   );
   if (
     matches.length !== 1 ||
-    ownerPlan.at(-2)?.relativePath !== TARGET_MIGRATION ||
-    ownerPlan.at(-1)?.relativePath !== NEXT_MIGRATION ||
+    ownerPlan[targetIndex]?.relativePath !== TARGET_MIGRATION ||
+    ownerPlan[targetIndex + 1]?.relativePath !== NEXT_MIGRATION ||
     !Array.isArray(matches[0]?.statements) ||
     matches[0].statements.length === 0
   ) {
