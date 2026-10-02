@@ -1,3 +1,9 @@
+import {
+  ULC_EXERCISE_CATALOG_CSS,
+  ULC_EXERCISE_CATALOG_HTML,
+  ULC_EXERCISE_CATALOG_SCRIPT,
+} from "./exercise-catalog-ui";
+
 export const ULC_LINZ_APP_HTML = `<!doctype html>
 <html lang="de">
   <head>
@@ -51,6 +57,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
           <button class="app-nav__link is-active" type="button" data-nav-view="home">Start</button>
           <button class="app-nav__link" type="button" data-nav-view="masterdata" hidden disabled>Stammdaten</button>
           <button class="app-nav__link" type="button" data-nav-view="kindertraining" hidden disabled>Training</button>
+          <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" hidden disabled>Übungskatalog</button>
           <button class="app-nav__link" type="button" data-nav-view="countdown" hidden disabled>Countdown</button>
           <button class="app-nav__link" type="button" data-nav-view="settings" hidden disabled>Einstellungen</button>
         </nav>
@@ -82,6 +89,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="kindertraining-quick-action" type="button" data-open-view="kindertraining" disabled>Kindertraining öffnen</button>
                 <small id="kindertraining-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary">
+                <div>
+                  <p class="eyebrow">Training</p>
+                  <h2>Übungskatalog</h2>
+                  <p>Übungen, Favoriten und Planungsparameter zentral verwalten.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="exercise-catalog-quick-action" type="button" data-open-view="exercise-catalog" disabled>Übungskatalog öffnen</button>
+                <small id="exercise-catalog-access-label">Berechtigung wird geprüft …</small>
               </article>
 
               <article class="card dashboard-card">
@@ -307,6 +324,8 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <button class="button button--primary kindertraining-save" id="kindertraining-save" type="button">Training speichern</button>
             </section>
           </section>
+
+${ULC_EXERCISE_CATALOG_HTML}
 
           <section class="app-section" data-app-section="countdown" id="countdown" hidden>
             <section class="hero">
@@ -816,6 +835,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-panel { padding: 20px; }
 }
+${ULC_EXERCISE_CATALOG_CSS}
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
@@ -1018,6 +1038,8 @@ for (const control of document.querySelectorAll("[data-open-view]")) {
   });
 }
 
+${ULC_EXERCISE_CATALOG_SCRIPT}
+
 void restoreSession();
 
 async function restoreSession() {
@@ -1116,6 +1138,7 @@ async function acceptSession(next) {
     bootstrapCountdown(),
     bootstrapMasterdata(),
     bootstrapKindertraining(),
+    bootstrapExerciseCatalog(),
   ]);
 }
 
@@ -1239,6 +1262,20 @@ function refreshAppAvailability() {
     control.hidden = !kindertrainingReady;
     control.disabled = !kindertrainingReady;
   }
+  for (const control of document.querySelectorAll("[data-nav-view='exercise-catalog']")) {
+    control.hidden = !exerciseCatalogReady;
+    control.disabled = !exerciseCatalogReady;
+  }
+  if (elements.exerciseCatalogQuickAction) {
+    elements.exerciseCatalogQuickAction.disabled = !exerciseCatalogReady;
+  }
+  if (elements.exerciseCatalogAccessLabel) {
+    elements.exerciseCatalogAccessLabel.textContent = exerciseCatalogReady
+      ? exerciseCatalogCanEdit
+        ? "Lesen und Bearbeiten freigeschaltet."
+        : "Lesen und Favoriten freigeschaltet."
+      : "Für deinen Benutzer derzeit nicht freigeschaltet.";
+  }
   if (elements.countdownQuickAction) {
     elements.countdownQuickAction.disabled = !countdownReady;
   }
@@ -1270,7 +1307,8 @@ function showAppSection(section) {
     section === "home" ||
     ((section === "countdown" || section === "settings") && countdownReady) ||
     (section === "masterdata" && masterdataReady) ||
-    (section === "kindertraining" && kindertrainingReady);
+    (section === "kindertraining" && kindertrainingReady) ||
+    (section === "exercise-catalog" && exerciseCatalogReady);
   const target = allowed ? section : "home";
   for (const candidate of document.querySelectorAll("[data-app-section]")) {
     candidate.hidden = candidate.dataset.appSection !== target;
@@ -1285,6 +1323,7 @@ function showAppSection(section) {
   }
   if (target === "masterdata") void loadMasterdata();
   if (target === "kindertraining") prepareKindertrainingView();
+  if (target === "exercise-catalog") prepareExerciseCatalogView();
 }
 
 function prepareKindertrainingView() {
