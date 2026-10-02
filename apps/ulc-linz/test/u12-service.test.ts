@@ -17,7 +17,10 @@ const DATE = "2026-09-27";
 
 function moduleGroups(groupId: string | null = GROUP_ID) {
   return {
-    async readGroupId(organizationId: string, moduleId: "u12") {
+    async readGroupId(
+      organizationId: string,
+      moduleId: "kindertraining" | "u12" | "u14",
+    ) {
       expect(organizationId).toBe(ORGANIZATION_ID);
       expect(moduleId).toBe("u12");
       return groupId;
