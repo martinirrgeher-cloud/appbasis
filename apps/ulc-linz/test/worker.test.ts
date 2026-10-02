@@ -236,6 +236,46 @@ function runtime(
       };
     },
   },
+  u12Access: GeneratedPostgresApplicationRuntime["u12Access"] = {
+    async assertViewAccess() {
+      return kindertrainingOrganizationAccess("verein-1");
+    },
+    async assertEditAccess() {
+      return kindertrainingOrganizationAccess("verein-1");
+    },
+  },
+  u12: GeneratedPostgresApplicationRuntime["u12"] = {
+    async listGroups() {
+      return [{ id: "group-u12", name: "U12", shortName: "U12" }];
+    },
+    async readSnapshot(_organizationId, groupId, sessionDate) {
+      return {
+        group: { id: groupId, name: "U12", shortName: "U12" },
+        sessionDate,
+        session: null,
+        participants: [],
+      };
+    },
+    async saveSession(_organizationId, input) {
+      return {
+        group: { id: input.groupId, name: "U12", shortName: "U12" },
+        sessionDate: input.sessionDate,
+        session: {
+          id: "session-u12-test",
+          revision: "1",
+          state: input.state ?? "scheduled",
+          note: input.note ?? null,
+        },
+        participants: input.attendance.map((entry) => ({
+          athleteId: entry.athleteId,
+          firstName: "Test",
+          lastName: "Athlet",
+          birthYear: null,
+          status: entry.status,
+        })),
+      };
+    },
+  },
 ): GeneratedPostgresApplicationRuntime {
   return {
     identity,
@@ -247,6 +287,7 @@ function runtime(
     countdownAccess,
     athletesAccess,
     kindertrainingAccess,
+    u12Access,
     trainerIdentityAccess: {
       async assertAdminAccess() {
         return {
@@ -281,6 +322,7 @@ function runtime(
     },
     athleteMasterdata,
     kindertraining,
+    u12,
     securityEvents: {
       record() {},
       flush,
