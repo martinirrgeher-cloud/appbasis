@@ -56,9 +56,11 @@ export async function loadUlcLinzD4PreviewTrainerIdentityAuditUpgradePlan(
       "ULC D4 preview trainer identity audit upgrade plan loader is unavailable.",
     );
   }
+  const targetIndex =
+    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.indexOf(TARGET_MIGRATION);
   if (
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion !== 6 ||
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.at(-1) !== TARGET_MIGRATION
+    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion < 6 ||
+    targetIndex < 0
   ) {
     throw new UlcLinzD4PreviewTrainerIdentityAuditUpgradeConfigurationError(
       "ULC D4 preview trainer identity audit upgrade owner contract is not the expected E4E-A2 target.",
@@ -75,7 +77,7 @@ export async function loadUlcLinzD4PreviewTrainerIdentityAuditUpgradePlan(
   );
   if (
     matches.length !== 1 ||
-    ownerPlan.at(-1)?.relativePath !== TARGET_MIGRATION ||
+    ownerPlan[targetIndex]?.relativePath !== TARGET_MIGRATION ||
     !Array.isArray(matches[0]?.statements) ||
     matches[0].statements.length === 0
   ) {
