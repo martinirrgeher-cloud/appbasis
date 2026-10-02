@@ -22,6 +22,12 @@ import {
   type UlcLinzCountdownAccessService,
 } from "./countdown-access";
 import {
+  createUlcLinzExerciseCatalogAccessService,
+  type UlcLinzExerciseCatalogAccessService,
+} from "./exercise-catalog-access";
+import { PostgresUlcExerciseCatalogRepository } from "./exercise-catalog-postgres";
+import { createUlcExerciseCatalogService } from "./exercise-catalog-service";
+import {
   createUlcLinzKindertrainingAccessService,
   type UlcLinzKindertrainingAccessService,
 } from "./kindertraining-access";
@@ -50,6 +56,7 @@ export interface GeneratedPostgresApplicationRuntime {
   permissions: PermissionStore;
   countdownAccess: UlcLinzCountdownAccessService;
   athletesAccess: UlcLinzAthletesAccessService;
+  exerciseCatalogAccess: UlcLinzExerciseCatalogAccessService;
   kindertrainingAccess: UlcLinzKindertrainingAccessService;
   u12Access: UlcLinzU12AccessService;
   trainerIdentityAccess: UlcLinzTrainerIdentityAdminAccessService;
@@ -76,6 +83,7 @@ export interface GeneratedPostgresApplicationRuntime {
   >;
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   u12: ReturnType<typeof createUlcU12Service>;
+  exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
 }
@@ -116,6 +124,13 @@ export async function createGeneratedPostgresApplicationRuntime(
       securityEvents,
     });
     const athletesAccess = createUlcLinzAthletesAccessService({
+      sql: applicationSql,
+      permissions,
+      memberships: scopes,
+      subjectScopes: scopes,
+      securityEvents,
+    });
+    const exerciseCatalogAccess = createUlcLinzExerciseCatalogAccessService({
       sql: applicationSql,
       permissions,
       memberships: scopes,
@@ -274,11 +289,16 @@ export async function createGeneratedPostgresApplicationRuntime(
       sessions: trainingSessions,
       moduleGroups: trainingModuleGroups,
     });
+    const exerciseCatalog = createUlcExerciseCatalogService({
+      repository: new PostgresUlcExerciseCatalogRepository(applicationSql),
+      masterdata: athleteMasterdata,
+    });
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
       countdownAccess,
       athletesAccess,
+      exerciseCatalogAccess,
       kindertrainingAccess,
       u12Access,
       trainerIdentityAccess,
@@ -287,6 +307,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       athleteMasterdata,
       kindertraining,
       u12,
+      exerciseCatalog,
       securityEvents,
       async close() {
         let closeError: unknown = null;
