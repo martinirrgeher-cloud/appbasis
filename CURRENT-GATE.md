@@ -36,6 +36,9 @@ Verbindliche E6C-Grenzen:
 
 - Navigation wird nur sichtbar, wenn der geschützte View-Vertrag erfolgreich
   geladen wurde;
+- die mobile Hauptnavigation zeigt höchstens drei direkte, berechtigte Bereiche
+  (Priorität Start, Training, Übungen); weitere freigeschaltete Bereiche werden
+  unter „Mehr“ aufklappbar zusammengefasst;
 - View und Edit bleiben getrennt: reine Leser sehen Details und dürfen
   persönliche Favoriten setzen, aber keine Katalogdaten verändern;
 - Suche und Filter umfassen mindestens Kategorie, Trainingsgruppe, Material,

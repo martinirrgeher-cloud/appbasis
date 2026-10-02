@@ -54,12 +54,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
 
       <div id="app-view" hidden>
         <nav class="app-nav" aria-label="Hauptnavigation">
-          <button class="app-nav__link is-active" type="button" data-nav-view="home">Start</button>
-          <button class="app-nav__link" type="button" data-nav-view="masterdata" hidden disabled>Stammdaten</button>
-          <button class="app-nav__link" type="button" data-nav-view="kindertraining" hidden disabled>Training</button>
-          <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" hidden disabled>Übungskatalog</button>
-          <button class="app-nav__link" type="button" data-nav-view="countdown" hidden disabled>Countdown</button>
-          <button class="app-nav__link" type="button" data-nav-view="settings" hidden disabled>Einstellungen</button>
+          <div class="app-nav__primary" id="app-nav-primary">
+            <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
+            <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="1" hidden disabled>Training</button>
+            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="2" hidden disabled>Übungen</button>
+            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="3" hidden disabled>Stammdaten</button>
+            <button class="app-nav__link" type="button" data-nav-view="countdown" data-nav-priority="4" hidden disabled>Countdown</button>
+            <button class="app-nav__link" type="button" data-nav-view="settings" data-nav-priority="5" hidden disabled>Einstellungen</button>
+            <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
+          </div>
+          <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden></div>
         </nav>
 
         <main class="content">
@@ -514,14 +518,30 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   bottom: 0;
   left: 0;
   z-index: 25;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 2px;
   padding: 4px 8px max(4px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: white;
 }
+.app-nav__primary {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+.app-nav__overflow {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  display: grid;
+  width: min(320px, calc(100vw - 16px));
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 12px 36px rgb(15 23 42 / 18%);
+}
+.app-nav__overflow[hidden] { display: none !important; }
 .app-nav__link {
   display: inline-flex;
   min-height: var(--touch);
@@ -537,6 +557,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   font-weight: 800;
   line-height: 1.15;
 }
+.app-nav__overflow .app-nav__link {
+  justify-content: flex-start;
+  min-height: 44px;
+  padding-inline: 12px;
+  font-size: .8rem;
+}
+.app-nav__more { font-weight: 900; }
 .app-nav__link.is-active { background: #dbeafe; color: #1d4ed8; }
 .app-nav__link:disabled { cursor: not-allowed; opacity: .45; }
 .content { width: min(100%, 52rem); margin: 0 auto; padding: 12px 12px 86px; }
@@ -845,6 +872,9 @@ const elements = {
   loginView: document.querySelector("#login-view"),
   passwordView: document.querySelector("#password-view"),
   appView: document.querySelector("#app-view"),
+  appNavPrimary: document.querySelector("#app-nav-primary"),
+  appNavMore: document.querySelector("#app-nav-more"),
+  appNavOverflow: document.querySelector("#app-nav-overflow"),
   loginForm: document.querySelector("#login-form"),
   loginUsername: document.querySelector("#login-username"),
   loginPassword: document.querySelector("#login-password"),
@@ -960,6 +990,16 @@ const defaultSettings = {
   speechEnabled: true,
 };
 
+const APP_NAV_PRIORITY = Object.freeze([
+  "home",
+  "kindertraining",
+  "exercise-catalog",
+  "masterdata",
+  "countdown",
+  "settings",
+]);
+
+let appNavMoreOpen = false;
 let busy = false;
 let countdownReady = false;
 let masterdataReady = false;
@@ -1025,9 +1065,20 @@ window.addEventListener("beforeunload", (event) => {
   event.preventDefault();
   event.returnValue = "";
 });
+elements.appNavMore?.addEventListener("click", () => {
+  setAppNavMoreOpen(!appNavMoreOpen);
+});
+document.addEventListener("click", (event) => {
+  if (!appNavMoreOpen || event.target?.closest?.(".app-nav")) return;
+  setAppNavMoreOpen(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setAppNavMoreOpen(false);
+});
 for (const control of document.querySelectorAll("[data-nav-view]")) {
   control.addEventListener("click", () => {
     if (control.disabled) return;
+    setAppNavMoreOpen(false);
     showAppSection(control.dataset.navView || "home");
   });
 }
@@ -1249,23 +1300,89 @@ async function bootstrapMasterdata() {
   refreshAppAvailability();
 }
 
+function isAppNavigationAvailable(section) {
+  if (section === "home") return true;
+  if (section === "masterdata") return masterdataReady;
+  if (section === "kindertraining") return kindertrainingReady;
+  if (section === "exercise-catalog") return exerciseCatalogReady;
+  if (section === "countdown" || section === "settings") return countdownReady;
+  return false;
+}
+
+function refreshAppNavigation() {
+  const controls = new Map();
+  for (const control of document.querySelectorAll("[data-nav-view]")) {
+    controls.set(control.dataset.navView || "", control);
+    control.hidden = true;
+    control.disabled = true;
+  }
+
+  const available = APP_NAV_PRIORITY
+    .map((section) => controls.get(section))
+    .filter(
+      (control) =>
+        control && isAppNavigationAvailable(control.dataset.navView || ""),
+    );
+  const primary = available.slice(0, 3);
+  const overflow = available.slice(3);
+
+  for (const control of primary) {
+    control.hidden = false;
+    control.disabled = false;
+    elements.appNavPrimary?.insertBefore(control, elements.appNavMore ?? null);
+  }
+  for (const control of overflow) {
+    control.hidden = false;
+    control.disabled = false;
+    elements.appNavOverflow?.append(control);
+  }
+
+  const hasOverflow = overflow.length > 0;
+  if (!hasOverflow) appNavMoreOpen = false;
+  if (elements.appNavMore) {
+    elements.appNavMore.hidden = !hasOverflow;
+    elements.appNavMore.setAttribute(
+      "aria-expanded",
+      hasOverflow && appNavMoreOpen ? "true" : "false",
+    );
+  }
+  if (elements.appNavOverflow) {
+    elements.appNavOverflow.hidden = !hasOverflow || !appNavMoreOpen;
+  }
+
+  const activeSection =
+    document.querySelector("[data-app-section]:not([hidden])")?.dataset.appSection ||
+    "home";
+  syncAppNavigationActive(activeSection);
+}
+
+function setAppNavMoreOpen(open) {
+  const hasOverflow =
+    (elements.appNavOverflow?.querySelectorAll("[data-nav-view]").length ?? 0) > 0;
+  appNavMoreOpen = hasOverflow && open;
+  if (elements.appNavMore) {
+    elements.appNavMore.setAttribute(
+      "aria-expanded",
+      appNavMoreOpen ? "true" : "false",
+    );
+  }
+  if (elements.appNavOverflow) {
+    elements.appNavOverflow.hidden = !appNavMoreOpen;
+  }
+}
+
+function syncAppNavigationActive(section) {
+  for (const control of document.querySelectorAll("[data-nav-view]")) {
+    control.classList.toggle("is-active", control.dataset.navView === section);
+  }
+  const overflowActive = [
+    ...(elements.appNavOverflow?.querySelectorAll("[data-nav-view]") ?? []),
+  ].some((control) => control.dataset.navView === section);
+  elements.appNavMore?.classList.toggle("is-active", overflowActive);
+}
+
 function refreshAppAvailability() {
-  for (const control of document.querySelectorAll("[data-nav-view='countdown'], [data-nav-view='settings']")) {
-    control.hidden = !countdownReady;
-    control.disabled = !countdownReady;
-  }
-  for (const control of document.querySelectorAll("[data-nav-view='masterdata']")) {
-    control.hidden = !masterdataReady;
-    control.disabled = !masterdataReady;
-  }
-  for (const control of document.querySelectorAll("[data-nav-view='kindertraining']")) {
-    control.hidden = !kindertrainingReady;
-    control.disabled = !kindertrainingReady;
-  }
-  for (const control of document.querySelectorAll("[data-nav-view='exercise-catalog']")) {
-    control.hidden = !exerciseCatalogReady;
-    control.disabled = !exerciseCatalogReady;
-  }
+  refreshAppNavigation();
   if (elements.exerciseCatalogQuickAction) {
     elements.exerciseCatalogQuickAction.disabled = !exerciseCatalogReady;
   }
@@ -1313,9 +1430,8 @@ function showAppSection(section) {
   for (const candidate of document.querySelectorAll("[data-app-section]")) {
     candidate.hidden = candidate.dataset.appSection !== target;
   }
-  for (const control of document.querySelectorAll("[data-nav-view]")) {
-    control.classList.toggle("is-active", control.dataset.navView === target);
-  }
+  setAppNavMoreOpen(false);
+  syncAppNavigationActive(target);
   if (target !== "home") {
     document.querySelector("[data-app-section='" + target + "']")?.scrollIntoView({ block: "start" });
   } else {
