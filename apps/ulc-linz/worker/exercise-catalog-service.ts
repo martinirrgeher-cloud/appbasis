@@ -5,10 +5,30 @@ import {
   type CreateUlcExerciseCatalogItemInput,
   type UlcExerciseCatalogItem,
 } from "./exercise-catalog-domain";
-import {
-  PostgresUlcExerciseCatalogRepository,
-  type UlcExerciseCatalogRecord,
+import type {
+  UlcExerciseCatalogRecord,
 } from "./exercise-catalog-postgres";
+
+export interface UlcExerciseCatalogRepository {
+  list(
+    organizationId: string,
+    identityId: string,
+  ): Promise<readonly UlcExerciseCatalogRecord[]>;
+  read(
+    organizationId: string,
+    identityId: string,
+    exerciseId: string,
+  ): Promise<UlcExerciseCatalogRecord | null>;
+  create(item: UlcExerciseCatalogItem): Promise<void>;
+  update(item: UlcExerciseCatalogItem): Promise<void>;
+  deactivate(organizationId: string, exerciseId: string): Promise<void>;
+  setFavorite(
+    organizationId: string,
+    identityId: string,
+    exerciseId: string,
+    favorite: boolean,
+  ): Promise<void>;
+}
 
 export interface UlcExerciseCatalogTrainingGroup {
   readonly id: string;
@@ -36,7 +56,7 @@ export function createUlcExerciseCatalogService({
   masterdata,
   createId = () => crypto.randomUUID(),
 }: {
-  repository: PostgresUlcExerciseCatalogRepository;
+  repository: UlcExerciseCatalogRepository;
   masterdata: Pick<
     {
       readOrganizationSnapshot(
