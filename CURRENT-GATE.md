@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-09-30
+Stand: 2026-10-02
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,59 +9,38 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E5A – U12 Runtime/API auf dem bereits bewiesenen gemeinsamen Trainingskern.**
+**ULC-E6A – Übungskatalog: Domain- und Persistenzfundament.**
 
-ULC-E4E-D ist abgeschlossen. Die isolierte Preview wurde auf Identity-Schema
-Version 3 angehoben, danach erneut read-only als `current` verifiziert und mit
-dem freigegebenen Stand deployed. Die praktische A/B-Abnahme bestätigte
-Trainer-Testkonten, verpflichtenden Passwortwechsel, gruppenbegrenzte
-Kindertraining-Sicht und die berechtigungsabhängige Navigation. Die
-serverseitigen Negativ- und Konfliktpfade bleiben zusätzlich durch die
-automatisierten Authorization-/PostgreSQL-Tests abgesichert.
+Der bisherige U12-Pfad wird bewusst geparkt. ULC-E5A ist auf `main`
+abgeschlossen, die additive Schema-v7-Migration wurde in Preview erfolgreich
+angewandt, der anschließende Deploy war erfolgreich und ein unabhängiger
+read-only Check bestätigte danach `current`. Die noch fehlende
+U12-Adminzuordnung und U12-Oberfläche werden erst später fortgesetzt.
 
-E5A aktiviert jetzt mit **U12** den zweiten realen Trainingsverbraucher des in
-E4A bewusst gemeinsam angelegten Session-/Attendance-Schemas. Damit U12 nicht
-versehentlich irgendeine bestehende Trainingsgruppe – insbesondere die
-Kindertraining-Gruppe – verwendet, ergänzt E5A eine kleine app-eigene
-Modul↔Gruppen-Zuordnung. U12 erhält eine eigene Route, eigene Capability-Grenze
-und eigene Runtime/API-Verträge. E5A enthält noch keine U12-Oberfläche, keinen
-Admin-Write für die Modulzuordnung und erweitert bestehende Trainer-Testkonten
-nicht still um neue U12-Rechte.
+Der aktuelle Produktfokus ist der **Übungskatalog**. Grundlage ist der
+bewährte frühere ULC-Linz-Katalog, nicht ein neuer Funktionsentwurf. Die
+Übernahme erfolgt jedoch auf den heutigen AppBasis-Sicherheits- und
+Persistenzvertrag.
 
-ULC-E3C ist auf `main` abgeschlossen und wurde anschließend in der isolierten
-ULC-Preview erfolgreich deployed. Die Bearbeiten-Funktion ist damit für den
-weiteren Produktpfad freigegeben.
+E6A liefert zuerst den kanonischen Fachvertrag für Übungen und
+Planungsparameter und danach die app-eigene PostgreSQL-Persistenz. Der
+Zielumfang und die Folgeslices sind in
+`docs/ULC-EXERCISE-CATALOG.md` festgehalten.
 
-E4A begründete den gemeinsamen Persistenzkern für Kindertraining, U12 und
-U14, damit diese fachlich ähnlichen Module nicht als drei unabhängige
-Datenmodelle entstehen. E4A selbst enthielt ausschließlich den app-eigenen
-Schema- und Domainvertrag; Runtime/API, Teilnehmer-Snapshot, Konfliktschutz,
-UI und Preview-Freigabe wurden in getrennten Folgeslices behandelt.
+Verbindliche E6A-Grenzen:
 
-FC5 ist für den ersten realen persistenzfreien Existing-App-Pfad abgeschlossen:
-`ulc-linz + countdown` wurde geplant, atomar im Repository installiert,
-fachlich umgesetzt, in einer isolierten Preview abgenommen und anschließend
-getrennt gegen den bestehenden Produktionspfad revalidiert.
+- Kategorien und Planungsparameter werden kanonisch und getestet definiert;
+- Übungen sind organisationsgebunden und werden später deaktiviert statt
+  historisch gelöscht;
+- geeignete Trainingsgruppen werden über IDs referenziert, aber ohne
+  Cross-Owner-Foreign-Key in das Athletes-Modul;
+- externe Links werden nur als HTTP/HTTPS akzeptiert;
+- Parameterbereiche, Schrittweiten und Dubletten werden fail-closed validiert;
+- E6A vergibt noch keine neue Trainerberechtigung und exponiert noch keine
+  sichtbare Übungskatalog-UI;
+- Preview-/Production-Migration und Deployment bleiben getrennte,
+  ausdrücklich freizugebende Schritte.
 
-FC6 schließt die bewusst verbliebene Lücke für datenbank-ownende Module.
-**FC6-A, FC6-B, FC6-C und FC6-D sind abgeschlossen.** Der vollständige Pfad
-verbindet read-only Delta-Plan, echten Repository-Updater und inkrementellen
-PostgreSQL-Executor auf einer nicht leeren isolierten Baseline. Produktive
-Datenbank- und Providerwrites bleiben weiterhin ausgeschlossen.
-
-Der nach FC6 eröffnete Produkt-Scope ist ULC-E1. Er wurde aus dem realen
-ULC-Linz-Bedarf abgeleitet und erweitert bewusst nur die sichtbare App-Shell;
-weitere fachliche Bereiche bleiben bis zu ihrem eigenen Vertical Slice außen vor.
-
-FC4 ist für den aktuellen Produktpfad abgeschlossen: Modulvertrag,
-Modul-Scaffolder, der persistenzfreie Intervall-Countdown und der normale
-Generator-Verbrauch durch eine neue Countdown-Test-App sind reproduzierbar
-abgedeckt. Der unmittelbare reale Produktverbraucher bleibt die ULC-Linz
-Vereins-App.
-
-Der direkte Umbau einer bestehenden generierten App ist ausdrücklich **nicht**
-der Updatepfad. Bestehende Apps werden erst verändert, wenn der reproduzierbare
-FC5-Modul-Installations-/Updatevertrag vorhanden ist.
 
 ## FC4-Abnahme – abgeschlossen
 
