@@ -1,5 +1,10 @@
 import { assertIdentityActionAllowed } from "@appbasis/identity/access";
-import type { PermissionStore } from "@appbasis/permissions";
+import {
+  can,
+  capabilityId,
+  principalId,
+  type PermissionStore,
+} from "@appbasis/permissions";
 
 import {
   assertUlcLinzModuleAccess,
@@ -28,6 +33,7 @@ export interface UlcLinzExerciseCatalogAccessSqlClient {
 export interface UlcLinzExerciseCatalogAccessScope {
   readonly organizationId: string;
   readonly actorPrincipalId: string;
+  readonly canEdit: boolean;
 }
 
 export interface UlcLinzExerciseCatalogAccessService {
@@ -123,9 +129,24 @@ export function createUlcLinzExerciseCatalogAccessService({
       },
     );
 
+    const canEdit =
+      action === "edit"
+        ? true
+        : await can(permissions, {
+            principalId: principalId(identityId),
+            capability: capabilityId(
+              roleDataScope.principalPermissionMapping.capabilityNamespace +
+                ":" +
+                EXERCISE_CATALOG_MODULE_ID +
+                ":" +
+                roleDataScope.principalPermissionMapping.editAction,
+            ),
+          });
+
     return Object.freeze({
       organizationId,
       actorPrincipalId: identityId,
+      canEdit,
     });
   }
 

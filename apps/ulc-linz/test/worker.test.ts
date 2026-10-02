@@ -313,12 +313,14 @@ function runtime(
         return {
           organizationId: "verein-1",
           actorPrincipalId: currentIdentity.identity.identityId,
+          canEdit: true,
         };
       },
       async assertEditAccess() {
         return {
           organizationId: "verein-1",
           actorPrincipalId: currentIdentity.identity.identityId,
+          canEdit: true,
         };
       },
     },
@@ -739,7 +741,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       module: { moduleId: "exercise_catalog" },
-      access: { view: true },
+      access: { view: true, edit: true },
       catalog: { items: [], trainingGroups: [] },
     });
   });
