@@ -15,6 +15,16 @@ const ORGANIZATION_ID = "verein-1";
 const GROUP_ID = "gruppe-1";
 const DATE = "2026-09-27";
 
+function moduleGroups(groupId: string | null = GROUP_ID) {
+  return {
+    async readGroupId(organizationId: string, moduleId: "u12") {
+      expect(organizationId).toBe(ORGANIZATION_ID);
+      expect(moduleId).toBe("u12");
+      return groupId;
+    },
+  };
+}
+
 function masterdataSnapshot(): AthleteMasterdataSnapshot {
   return {
     trainingGroups: [
@@ -115,7 +125,7 @@ function storedSession(): UlcTrainingSessionSnapshot {
 }
 
 describe("ULC U12 service", () => {
-  it("lists only active groups from the server-owned organization snapshot", async () => {
+  it("lists only the configured active U12 group from the server-owned organization snapshot", async () => {
     const snapshot = masterdataSnapshot();
     const service = createUlcU12Service({
       masterdata: {
@@ -138,6 +148,7 @@ describe("ULC U12 service", () => {
           };
         },
       },
+      moduleGroups: moduleGroups(),
       sessions: {
         async readSession() {
           return null;
@@ -164,6 +175,7 @@ describe("ULC U12 service", () => {
           return masterdataSnapshot();
         },
       },
+      moduleGroups: moduleGroups(),
       sessions: {
         async readSession() {
           return storedSession();
@@ -226,6 +238,7 @@ describe("ULC U12 service", () => {
           return masterdataSnapshot();
         },
       },
+      moduleGroups: moduleGroups(),
       sessions: {
         async readSession() {
           return null;
@@ -293,6 +306,7 @@ describe("ULC U12 service", () => {
           return masterdataSnapshot();
         },
       },
+      moduleGroups: moduleGroups(),
       sessions: {
         async readSession() {
           return null;
@@ -325,6 +339,68 @@ describe("ULC U12 service", () => {
     }
   });
 
+  it("stays unavailable until an U12 group is explicitly configured", async () => {
+    let masterdataReads = 0;
+    const service = createUlcU12Service({
+      masterdata: {
+        async readOrganizationSnapshot() {
+          masterdataReads += 1;
+          return masterdataSnapshot();
+        },
+      },
+      moduleGroups: moduleGroups(null),
+      sessions: {
+        async readSession() {
+          throw new Error("not used");
+        },
+        async saveSession() {
+          throw new Error("not used");
+        },
+      },
+    });
+
+    await expect(service.listGroups(ORGANIZATION_ID)).resolves.toEqual([]);
+    expect(masterdataReads).toBe(0);
+    await expect(
+      service.readSnapshot(ORGANIZATION_ID, GROUP_ID, DATE),
+    ).rejects.toBeInstanceOf(UlcU12NotFoundError);
+  });
+
+  it("does not read or write a different active training group", async () => {
+    let sessionCalls = 0;
+    const service = createUlcU12Service({
+      masterdata: {
+        async readOrganizationSnapshot() {
+          return masterdataSnapshot();
+        },
+      },
+      moduleGroups: moduleGroups(GROUP_ID),
+      sessions: {
+        async readSession() {
+          sessionCalls += 1;
+          return null;
+        },
+        async saveSession() {
+          sessionCalls += 1;
+          throw new Error("must not save");
+        },
+      },
+    });
+
+    await expect(
+      service.readSnapshot(ORGANIZATION_ID, "gruppe-fremd", DATE),
+    ).rejects.toBeInstanceOf(UlcU12NotFoundError);
+    await expect(
+      service.saveSession(ORGANIZATION_ID, {
+        groupId: "gruppe-fremd",
+        sessionDate: DATE,
+        expectedRevision: null,
+        attendance: [],
+      }),
+    ).rejects.toBeInstanceOf(UlcU12NotFoundError);
+    expect(sessionCalls).toBe(0);
+  });
+
   it("fails closed for missing or inactive groups on save", async () => {
     const snapshot = masterdataSnapshot();
     const inactive: AthleteMasterdataSnapshot = {
@@ -340,6 +416,7 @@ describe("ULC U12 service", () => {
           return inactive;
         },
       },
+      moduleGroups: moduleGroups(),
       sessions: {
         async readSession() {
           return null;
