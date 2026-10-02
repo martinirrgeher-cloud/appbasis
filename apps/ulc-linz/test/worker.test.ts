@@ -746,6 +746,37 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("reports read-only exercise catalog access without granting edit", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        exerciseCatalogAccess: {
+          ...base.exerciseCatalogAccess,
+          async assertViewAccess() {
+            return {
+              organizationId: "verein-1",
+              actorPrincipalId: currentIdentity.identity.identityId,
+              canEdit: false,
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/exercise-catalog", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access: { view: true, edit: false },
+    });
+  });
+
   it("rejects client-owned exercise catalog organization scope", async () => {
     const response = await createGeneratedWorker(() => runtime()).fetch(
       new Request("https://ulc.example.test/api/modules/exercise-catalog", {

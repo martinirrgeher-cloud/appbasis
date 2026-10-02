@@ -790,6 +790,9 @@ function populateExerciseCatalogEditor(item) {
   for (const control of elements.exerciseCatalogForm?.querySelectorAll("input, select, textarea") || []) {
     control.disabled = !editable;
   }
+  for (const control of elements.exerciseCatalogParameters?.querySelectorAll("button") || []) {
+    control.disabled = !editable;
+  }
   if (elements.exerciseCatalogSave) {
     elements.exerciseCatalogSave.hidden = !editable;
     elements.exerciseCatalogSave.disabled = !editable || exerciseCatalogBusy;
@@ -1209,7 +1212,12 @@ function handleExerciseCatalogListClick(event) {
 
 function handleExerciseCatalogParameterClick(event) {
   const remove = event.target.closest("[data-exercise-catalog-parameter-remove]");
-  if (!remove || !exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  if (
+    !remove ||
+    !exerciseCatalogCanEdit ||
+    exerciseCatalogBusy ||
+    remove.disabled
+  ) return;
   syncExerciseCatalogParameterDraftsFromDom();
   const key = remove.dataset.exerciseCatalogParameterRemove || "";
   exerciseCatalogParameterDrafts = exerciseCatalogParameterDrafts.filter(
