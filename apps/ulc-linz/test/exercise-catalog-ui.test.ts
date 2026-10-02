@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -92,23 +94,16 @@ describe("ULC E6C exercise catalog UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("reloadExerciseCatalog");
   });
 
-  it("parses the delivered browser script as an ES module", async () => {
-    const importModule = new Function(
-      "specifier",
-      "return import(specifier);",
-    ) as (specifier: string) => Promise<unknown>;
-    let thrown: unknown = null;
+  it("parses the delivered browser script as an ES module", () => {
+    const result = spawnSync(
+      process.execPath,
+      ["--check", "--input-type=module"],
+      {
+        input: ULC_LINZ_APP_SCRIPT,
+        encoding: "utf8",
+      },
+    );
 
-    try {
-      await importModule(
-        "data:text/javascript;charset=utf-8," +
-          encodeURIComponent(ULC_LINZ_APP_SCRIPT),
-      );
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBeInstanceOf(ReferenceError);
-    expect((thrown as Error).message).toContain("document is not defined");
+    expect(result.status, result.stderr).toBe(0);
   });
 });
