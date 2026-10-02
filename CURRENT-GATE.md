@@ -20,11 +20,13 @@ serverseitigen Negativ- und Konfliktpfade bleiben zusätzlich durch die
 automatisierten Authorization-/PostgreSQL-Tests abgesichert.
 
 E5A aktiviert jetzt mit **U12** den zweiten realen Trainingsverbraucher des in
-E4A bewusst gemeinsam angelegten Schemas. U12 erhält eine eigene Route,
-eigene Capability-Grenze und eigene Runtime/API-Verträge, verwendet aber
-dieselbe app-eigene Session-/Attendance-Persistenz. E5A enthält noch keine
-U12-Oberfläche und erweitert bestehende Trainer-Testkonten nicht still um neue
-U12-Rechte.
+E4A bewusst gemeinsam angelegten Session-/Attendance-Schemas. Damit U12 nicht
+versehentlich irgendeine bestehende Trainingsgruppe – insbesondere die
+Kindertraining-Gruppe – verwendet, ergänzt E5A eine kleine app-eigene
+Modul↔Gruppen-Zuordnung. U12 erhält eine eigene Route, eigene Capability-Grenze
+und eigene Runtime/API-Verträge. E5A enthält noch keine U12-Oberfläche, keinen
+Admin-Write für die Modulzuordnung und erweitert bestehende Trainer-Testkonten
+nicht still um neue U12-Rechte.
 
 ULC-E3C ist auf `main` abgeschlossen und wurde anschließend in der isolierten
 ULC-Preview erfolgreich deployed. Die Bearbeiten-Funktion ist damit für den
@@ -850,18 +852,24 @@ E4E-D-Preview-Gate nach dem Code-Merge, jeweils auf `main`:
 Keine Preview-Migration, kein Preview-Deployment und keine
 Produktionsmutation werden allein durch diesen Code-PR ausgelöst.
 
-E4E-D ist praktisch abgeschlossen: Admin-Anlage von Trainer A/B,
-Pflichtpasswortwechsel und getrennte Gruppensicht wurden in der isolierten
-Preview bestätigt. Die serverseitige Doppelbelegungs-/Konfliktlogik sowie
-gruppenfremde Scope-Denials bleiben automatisiert fail-closed abgedeckt.
+E4E-D ist für den weiteren Produktpfad abgeschlossen: Admin-Anlage von
+Trainer A/B, Pflichtpasswortwechsel und getrennte Gruppensicht wurden in der
+isolierten Preview bestätigt. Der zusätzlich vorgeschlagene manuelle
+Doppelbelegungsversuch wurde nicht als eigener Pass zurückgemeldet; die
+serverseitige Doppelbelegungs-/Konfliktlogik und gruppenfremde Scope-Denials
+bleiben jedoch automatisiert fail-closed abgedeckt.
 
 ## Aktueller Gate-Scope: ULC-E5A U12 Runtime/API
 
 Abnahme für E5A:
 
-- U12 nutzt ausschließlich das bestehende app-eigene
-  `ulc_linz_training_session`-/`ulc_linz_training_attendance`-Schema mit
-  `module_id='u12'`; keine neue Migration ist erforderlich;
+- U12 nutzt für Sitzungen und Anwesenheit ausschließlich das bestehende
+  app-eigene `ulc_linz_training_session`-/
+  `ulc_linz_training_attendance`-Schema mit `module_id='u12'`;
+- eine neue app-eigene Migration ergänzt ausschließlich
+  `ulc_linz_training_module_group`: pro Organisation genau eine Gruppe je
+  `kindertraining`/`u12`/`u14` und eine Gruppe höchstens für ein Modul;
+  es entstehen keine Foreign Keys in das Athletes-Modul;
 - U12 besitzt eigene Endpunkte `/api/modules/u12` und
   `/api/modules/u12/session`; der Client kann keine Organisation vorgeben;
 - View/Edit werden über die bereits vorhandenen
@@ -874,9 +882,13 @@ Abnahme für E5A:
   Anwesenheitsmenge verwenden denselben bewiesenen Trainingsvertrag, bleiben
   aber durch `module_id='u12'` fachlich vom Kindertraining getrennt;
 - U12 darf bestehende Kindertraining-Sessions weder lesen noch überschreiben;
+- ohne explizite U12-Modul↔Gruppen-Zuordnung liefert U12 keine Trainingsgruppe;
+  die Zuordnung selbst wird erst in einem folgenden Admin-Slice beschreibbar;
 - bestehende Trainer-Testkonten erhalten in E5A **keine** neuen Rechte;
   Berechtigungsverwaltung und U12-UI bleiben eigene Folgeslices;
-- E5A führt keine Preview-/Production-Mutation und kein Deployment aus.
+- der Code-PR führt keine Preview-/Production-Mutation und kein Deployment aus;
+  die isolierte Preview benötigt nach Merge separat die additive Schema-v7-
+  Migration, bevor ein späterer U12-Deploy freigegeben werden kann.
 
 ## Architektur- und Sicherheitsgrenzen
 
@@ -898,8 +910,9 @@ Abnahme für E5A:
 
 Ein Finding blockiert den aktuellen ULC-E5A-Pfad, wenn mindestens eines gilt:
 
-- U12 verwendet einen anderen Persistenzpfad als den bereits akzeptierten
-  gemeinsamen Trainingskern oder benötigt ohne fachlichen Grund eine neue Migration;
+- U12 verwendet einen anderen Session-/Attendance-Persistenzpfad als den
+  bereits akzeptierten gemeinsamen Trainingskern oder die neue Migration greift
+  in Tabellen eines anderen Owners ein;
 - U12 kann Kindertraining-/U14-Sessions lesen oder überschreiben;
 - Organisation oder Modul-ID werden aus Clientdaten übernommen statt serverseitig
   festgelegt;
