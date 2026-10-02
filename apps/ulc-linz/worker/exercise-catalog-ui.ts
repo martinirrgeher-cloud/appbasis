@@ -539,7 +539,7 @@ async function bootstrapExerciseCatalog() {
 }
 
 function initializeExerciseCatalogFilters() {
-  replaceSelectOptions(
+  replaceExerciseCatalogSelectOptions(
     elements.exerciseCatalogCategoryFilter,
     [{ value: "", label: "Alle Kategorien" }].concat(
       EXERCISE_CATEGORIES.map((category) => ({
@@ -548,14 +548,14 @@ function initializeExerciseCatalogFilters() {
       })),
     ),
   );
-  replaceSelectOptions(
+  replaceExerciseCatalogSelectOptions(
     elements.exerciseCatalogCategory,
     EXERCISE_CATEGORIES.map((category) => ({
       value: category.key,
       label: category.label,
     })),
   );
-  replaceSelectOptions(
+  replaceExerciseCatalogSelectOptions(
     elements.exerciseCatalogGroupFilter,
     [{ value: "", label: "Alle Gruppen" }].concat(
       exerciseCatalogGroups.map((group) => ({
@@ -570,7 +570,7 @@ function initializeExerciseCatalogFilters() {
   renderExerciseCatalogParameterSelect();
 }
 
-function replaceSelectOptions(select, options) {
+function replaceExerciseCatalogSelectOptions(select, options) {
   if (!select) return;
   const selected = select.value;
   select.replaceChildren();
@@ -867,7 +867,7 @@ function renderExerciseCatalogParameterSelect() {
   const selected = select.value;
   const used = new Set(exerciseCatalogParameterDrafts.map((parameter) => parameter.key));
   const available = EXERCISE_PARAMETER_META.filter((parameter) => !used.has(parameter.key));
-  replaceSelectOptions(
+  replaceExerciseCatalogSelectOptions(
     select,
     available.length === 0
       ? [{ value: "", label: "Alle Parameter verwendet" }]
