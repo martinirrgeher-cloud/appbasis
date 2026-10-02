@@ -29,6 +29,7 @@ test("generates a deployable Worker for the real identity+permissions ULC compos
     "migrations/0001_ulc_linz_retention_deletion_claim.sql",
     "migrations/0004_ulc_linz_training_sessions.sql",
     "migrations/0005_ulc_linz_trainer_identity_audit.sql",
+    "migrations/0006_ulc_linz_training_module_groups.sql",
     "worker/security-events.ts",
     "worker/security-events-postgres.ts",
     "migrations/0002_ulc_linz_security_event_log.sql",
