@@ -33,6 +33,7 @@ import {
 import { createUlcU12Service } from "./u12-service";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
 import { PostgresUlcTrainingSessionRepository } from "./training-session-postgres";
+import { PostgresUlcLinzTrainingModuleGroupReader } from "./training-module-group-postgres";
 import {
   createUlcLinzTrainerIdentityAdminAccessService,
   type UlcLinzTrainerIdentityAdminAccessService,
@@ -262,6 +263,8 @@ export async function createGeneratedPostgresApplicationRuntime(
     });
     const trainingSessions =
       new PostgresUlcTrainingSessionRepository(applicationSql);
+    const trainingModuleGroups =
+      new PostgresUlcLinzTrainingModuleGroupReader(applicationSql);
     const kindertraining = createUlcKindertrainingService({
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
@@ -269,6 +272,7 @@ export async function createGeneratedPostgresApplicationRuntime(
     const u12 = createUlcU12Service({
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
+      moduleGroups: trainingModuleGroups,
     });
     return Object.freeze({
       identity: identityRuntime.identity,
