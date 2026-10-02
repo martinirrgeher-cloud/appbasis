@@ -117,15 +117,27 @@ export async function resolveUlcLinzD4PreviewMigrationState(
       );
     }
     if (!athletesComplete) {
-      if (trainingPresent.length > 0 || trainerIdentityAuditPresent || trainingModuleGroupPresent) {
-        throw new Error("ULC D4 training, trainer audit or module configuration exists before Stammdaten baseline.");
+      if (trainingModuleGroupPresent) {
+        throw new Error(
+          "ULC preview training module configuration exists before Stammdaten baseline.",
+        );
+      }
+      if (trainingPresent.length > 0 || trainerIdentityAuditPresent) {
+        throw new Error(
+          "ULC D4 training or trainer audit exists before Stammdaten baseline.",
+        );
       }
       return Object.freeze({ mode: "athletes-upgrade" });
     }
     if (!trainingComplete) {
-      if (trainerIdentityAuditPresent || trainingModuleGroupPresent) {
+      if (trainingModuleGroupPresent) {
         throw new Error(
-          "ULC D4 preview trainer identity audit or module configuration exists before the training baseline.",
+          "ULC preview training module configuration exists before the training baseline.",
+        );
+      }
+      if (trainerIdentityAuditPresent) {
+        throw new Error(
+          "ULC D4 preview trainer identity audit exists before the training baseline.",
         );
       }
       return Object.freeze({ mode: "training-upgrade" });
