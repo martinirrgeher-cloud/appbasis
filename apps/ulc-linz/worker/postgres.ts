@@ -26,6 +26,11 @@ import {
   type UlcLinzKindertrainingAccessService,
 } from "./kindertraining-access";
 import { createUlcKindertrainingService } from "./kindertraining-service";
+import {
+  createUlcLinzU12AccessService,
+  type UlcLinzU12AccessService,
+} from "./u12-access";
+import { createUlcU12Service } from "./u12-service";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
 import { PostgresUlcTrainingSessionRepository } from "./training-session-postgres";
 import {
@@ -45,6 +50,7 @@ export interface GeneratedPostgresApplicationRuntime {
   countdownAccess: UlcLinzCountdownAccessService;
   athletesAccess: UlcLinzAthletesAccessService;
   kindertrainingAccess: UlcLinzKindertrainingAccessService;
+  u12Access: UlcLinzU12AccessService;
   trainerIdentityAccess: UlcLinzTrainerIdentityAdminAccessService;
   trainerIdentityLinks: Pick<
     PostgresUlcLinzTrainerIdentityLinks,
@@ -68,6 +74,7 @@ export interface GeneratedPostgresApplicationRuntime {
     | "deactivateTrainer"
   >;
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
+  u12: ReturnType<typeof createUlcU12Service>;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
 }
@@ -115,6 +122,13 @@ export async function createGeneratedPostgresApplicationRuntime(
       securityEvents,
     });
     const kindertrainingAccess = createUlcLinzKindertrainingAccessService({
+      sql: applicationSql,
+      permissions,
+      memberships: scopes,
+      subjectScopes: scopes,
+      securityEvents,
+    });
+    const u12Access = createUlcLinzU12AccessService({
       sql: applicationSql,
       permissions,
       memberships: scopes,
@@ -252,17 +266,23 @@ export async function createGeneratedPostgresApplicationRuntime(
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
     });
+    const u12 = createUlcU12Service({
+      masterdata: athleteMasterdata,
+      sessions: trainingSessions,
+    });
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
       countdownAccess,
       athletesAccess,
       kindertrainingAccess,
+      u12Access,
       trainerIdentityAccess,
       trainerIdentityLinks,
       trainerUserProvisioning,
       athleteMasterdata,
       kindertraining,
+      u12,
       securityEvents,
       async close() {
         let closeError: unknown = null;
