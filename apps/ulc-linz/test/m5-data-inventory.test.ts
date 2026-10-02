@@ -167,7 +167,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "ulc-linz-lifecycle",
       ),
     ).toMatchObject({
-      schemaVersion: 6,
+      schemaVersion: 7,
       lifecycleStatus: "training-data-lifecycle-pending",
       notes: expect.arrayContaining([
         "app-owned-training-session-and-attendance-lifecycle-pending",
@@ -211,7 +211,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(29);
+    expect(inventory.persistentTables).toHaveLength(30);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -348,6 +348,16 @@ describe("ULC Linz M5 C/D data inventory", () => {
       retentionPolicy: "pending-training-data-lifecycle-contract",
       deletionEvidence: "fail-closed-pending-lifecycle",
       retentionEvidence: "fail-closed-pending-lifecycle",
+    });
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "ulc_linz_training_module_group",
+      ),
+    ).toMatchObject({
+      privacyClass: "training-module-configuration",
+      retentionPolicy: "configuration-lifecycle-not-personal",
+      deletionEvidence: "not-personal",
+      retentionEvidence: "not-personal",
     });
     expect(
       inventory.persistentTables.find((table) => table.id === "verification"),
