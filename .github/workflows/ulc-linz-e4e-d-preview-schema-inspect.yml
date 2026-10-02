@@ -66,8 +66,8 @@ jobs:
           STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
           MODE="$(jq -r '.mode' <<<"$STATE")"
           case "$MODE" in
-            identity-provisioning-audit-upgrade|current) ;;
-            *) echo "ULC Preview is not at expected E4E-D baseline: $MODE" >&2; exit 1 ;;
+            identity-provisioning-audit-upgrade|training-module-config-upgrade|current) ;;
+            *) echo "ULC Preview is not at an expected incremental baseline: $MODE" >&2; exit 1 ;;
           esac
-          echo "ULC E4E-D preview schema state: $MODE (read-only; no mutations)"
-          echo "ULC E4E-D preview schema state: $MODE (read-only)" >> "$GITHUB_STEP_SUMMARY"
+          echo "ULC preview schema state: $MODE (read-only; no mutations)"
+          echo "ULC preview schema state: $MODE (read-only)" >> "$GITHUB_STEP_SUMMARY"
