@@ -130,10 +130,10 @@ export function createUlcLinzExerciseCatalogAccessService({
   }
 
   return Object.freeze({
-    assertViewAccess(current) {
+    assertViewAccess(current: UlcLinzCurrentIdentity) {
       return assertAccess(current, "view");
     },
-    assertEditAccess(current) {
+    assertEditAccess(current: UlcLinzCurrentIdentity) {
       return assertAccess(current, "edit");
     },
   });
