@@ -1073,28 +1073,31 @@ async function saveExerciseCatalogItem(event) {
   setExerciseCatalogBusy(true);
   showMessage(elements.exerciseCatalogMessage, "");
   showMessage(elements.exerciseCatalogSuccess, "");
+
+  let body;
   try {
-    const body = exerciseCatalogFormPayload();
-    const path = exerciseCatalogSelectedId
-      ? "/api/modules/exercise-catalog/" +
-        encodeURIComponent(exerciseCatalogSelectedId) +
-        "/update"
-      : "/api/modules/exercise-catalog";
-    const payload = await requestJson(path, {
+    body = exerciseCatalogFormPayload();
+  } catch {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Die Übung konnte nicht gespeichert werden. Bitte Eingaben prüfen.",
+    );
+    setExerciseCatalogBusy(false);
+    return;
+  }
+
+  const path = exerciseCatalogSelectedId
+    ? "/api/modules/exercise-catalog/" +
+      encodeURIComponent(exerciseCatalogSelectedId) +
+      "/update"
+    : "/api/modules/exercise-catalog";
+
+  let payload;
+  try {
+    payload = await requestJson(path, {
       method: "POST",
       body: JSON.stringify(body),
     });
-    if (!isExerciseCatalogItem(payload?.item)) {
-      throw new Error("INVALID_EXERCISE_CATALOG_SAVE");
-    }
-    const savedId = payload.item.id;
-    await reloadExerciseCatalog();
-    const saved = exerciseCatalogItems.find((item) => item.id === savedId);
-    if (saved) {
-      exerciseCatalogSelectedId = saved.id;
-      populateExerciseCatalogEditor(saved);
-    }
-    showMessage(elements.exerciseCatalogSuccess, "Übung wurde gespeichert.");
   } catch (error) {
     showMessage(
       elements.exerciseCatalogMessage,
@@ -1104,9 +1107,24 @@ async function saveExerciseCatalogItem(event) {
           ? "Eine ausgewählte Trainingsgruppe ist nicht mehr verfügbar."
           : "Die Übung konnte nicht gespeichert werden. Bitte Eingaben prüfen.",
     );
-  } finally {
     setExerciseCatalogBusy(false);
+    return;
   }
+
+  if (!isExerciseCatalogItem(payload?.item)) {
+    showMessage(
+      elements.exerciseCatalogSuccess,
+      "Übung wurde gespeichert. Die Ansicht konnte nicht automatisch aktualisiert werden.",
+    );
+    setExerciseCatalogBusy(false);
+    return;
+  }
+
+  reconcileExerciseCatalogItem(payload.item);
+  exerciseCatalogSelectedId = payload.item.id;
+  populateExerciseCatalogEditor(payload.item);
+  showMessage(elements.exerciseCatalogSuccess, "Übung wurde gespeichert.");
+  setExerciseCatalogBusy(false);
 }
 
 async function deactivateExerciseCatalogItem() {
@@ -1115,24 +1133,27 @@ async function deactivateExerciseCatalogItem() {
   if (!item || !item.isActive) return;
   if (!window.confirm("Übung „" + item.name + "“ deaktivieren? Sie bleibt im Archiv erhalten.")) return;
 
+  const deactivatedId = exerciseCatalogSelectedId;
   setExerciseCatalogBusy(true);
   showMessage(elements.exerciseCatalogMessage, "");
   showMessage(elements.exerciseCatalogSuccess, "");
   try {
     await requestJson(
       "/api/modules/exercise-catalog/" +
-        encodeURIComponent(exerciseCatalogSelectedId) +
+        encodeURIComponent(deactivatedId) +
         "/deactivate",
       { method: "POST" },
     );
-    closeExerciseCatalogEditor();
-    await reloadExerciseCatalog();
-    showMessage(elements.exerciseCatalogSuccess, "Übung wurde ins Archiv verschoben.");
   } catch {
     showMessage(elements.exerciseCatalogMessage, "Die Übung konnte nicht deaktiviert werden.");
-  } finally {
     setExerciseCatalogBusy(false);
+    return;
   }
+
+  archiveExerciseCatalogItemLocally(deactivatedId);
+  closeExerciseCatalogEditor();
+  showMessage(elements.exerciseCatalogSuccess, "Übung wurde ins Archiv verschoben.");
+  setExerciseCatalogBusy(false);
 }
 
 async function toggleExerciseCatalogFavorite(id) {
@@ -1159,25 +1180,36 @@ async function toggleExerciseCatalogFavorite(id) {
   }
 }
 
-async function reloadExerciseCatalog() {
-  const payload = await requestJson("/api/modules/exercise-catalog");
-  if (
-    payload?.module?.moduleId !== "exercise_catalog" ||
-    payload?.access?.view !== true ||
-    typeof payload?.access?.edit !== "boolean" ||
-    !Array.isArray(payload?.catalog?.items) ||
-    !payload.catalog.items.every(isExerciseCatalogItem) ||
-    !Array.isArray(payload?.catalog?.trainingGroups) ||
-    !payload.catalog.trainingGroups.every(isExerciseCatalogGroup)
-  ) {
-    throw new Error("INVALID_EXERCISE_CATALOG_RELOAD");
+function reconcileExerciseCatalogItem(item) {
+  const index = exerciseCatalogItems.findIndex(
+    (candidate) => candidate.id === item.id,
+  );
+  const next = exerciseCatalogItems.slice();
+  if (index >= 0) {
+    next[index] = item;
+  } else {
+    next.push(item);
   }
-  exerciseCatalogCanEdit = payload.access.edit;
-  exerciseCatalogItems = payload.catalog.items.slice();
-  exerciseCatalogGroups = payload.catalog.trainingGroups.slice();
-  initializeExerciseCatalogFilters();
+  exerciseCatalogItems = sortedExerciseCatalogItems(next);
   renderExerciseCatalogList();
-  refreshAppAvailability();
+}
+
+function archiveExerciseCatalogItemLocally(id) {
+  exerciseCatalogItems = sortedExerciseCatalogItems(
+    exerciseCatalogItems.map((item) =>
+      item.id === id ? { ...item, isActive: false } : item,
+    ),
+  );
+  renderExerciseCatalogList();
+}
+
+function sortedExerciseCatalogItems(items) {
+  return items.slice().sort(
+    (left, right) =>
+      Number(right.isActive) - Number(left.isActive) ||
+      left.name.localeCompare(right.name, "de", { sensitivity: "base" }) ||
+      left.id.localeCompare(right.id),
+  );
 }
 
 function setExerciseCatalogBusy(next) {
