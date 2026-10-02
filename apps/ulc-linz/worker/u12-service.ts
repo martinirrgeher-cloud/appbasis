@@ -11,6 +11,9 @@ import {
 import type {
   UlcTrainingSessionSnapshot,
 } from "./training-session-postgres";
+import type {
+  UlcLinzTrainingModuleGroupReader,
+} from "./training-module-group-postgres";
 
 const MODULE_ID = "u12" as const;
 
@@ -95,9 +98,11 @@ export class UlcU12ConsistencyError extends Error {
 export function createUlcU12Service({
   masterdata,
   sessions,
+  moduleGroups,
 }: {
   masterdata: UlcU12MasterdataReader;
   sessions: UlcU12SessionStore;
+  moduleGroups: UlcLinzTrainingModuleGroupReader;
 }) {
   return Object.freeze({
     async listGroups(
@@ -107,34 +112,30 @@ export function createUlcU12Service({
         organizationId,
         "Organization id",
       );
+      const configuredGroupId = await moduleGroups.readGroupId(
+        normalizedOrganizationId,
+        MODULE_ID,
+      );
+      if (configuredGroupId === null) return Object.freeze([]);
+
       const snapshot = await masterdata.readOrganizationSnapshot(
         normalizedOrganizationId,
       );
-      const seen = new Set<string>();
-      const groups = snapshot.trainingGroups
-        .filter((group) => {
-          if (group.organizationId !== normalizedOrganizationId) {
-            throw new UlcU12ConsistencyError();
-          }
-          if (seen.has(group.id)) {
-            throw new UlcU12ConsistencyError();
-          }
-          seen.add(group.id);
-          return group.isActive === true;
-        })
-        .map((group) =>
-          Object.freeze({
-            id: group.id,
-            name: group.name,
-            shortName: group.shortName,
-          }),
-        )
-        .sort(
-          (left, right) =>
-            left.name.localeCompare(right.name, "de") ||
-            left.id.localeCompare(right.id),
-        );
-      return Object.freeze(groups);
+      const group = configuredGroup(
+        snapshot,
+        normalizedOrganizationId,
+        configuredGroupId,
+        false,
+      );
+      if (group.isActive !== true) return Object.freeze([]);
+
+      return Object.freeze([
+        Object.freeze({
+          id: group.id,
+          name: group.name,
+          shortName: group.shortName,
+        }),
+      ]);
     },
 
     async readSnapshot(
@@ -142,10 +143,20 @@ export function createUlcU12Service({
       groupId: string,
       sessionDate: string,
     ): Promise<UlcU12Snapshot> {
+      const normalizedOrganizationId = requiredIdentifier(
+        organizationId,
+        "Organization id",
+      );
+      const normalizedGroupId = requiredIdentifier(groupId, "Training group id");
+      await requireConfiguredGroup(
+        moduleGroups,
+        normalizedOrganizationId,
+        normalizedGroupId,
+      );
       const context = await resolveContext(
         masterdata,
-        organizationId,
-        groupId,
+        normalizedOrganizationId,
+        normalizedGroupId,
         sessionDate,
         false,
       );
@@ -177,10 +188,23 @@ export function createUlcU12Service({
           "Training attendance must be an array.",
         );
       }
+      const normalizedOrganizationId = requiredIdentifier(
+        organizationId,
+        "Organization id",
+      );
+      const normalizedGroupId = requiredIdentifier(
+        input.groupId,
+        "Training group id",
+      );
+      await requireConfiguredGroup(
+        moduleGroups,
+        normalizedOrganizationId,
+        normalizedGroupId,
+      );
       const context = await resolveContext(
         masterdata,
-        organizationId,
-        input.groupId,
+        normalizedOrganizationId,
+        normalizedGroupId,
         input.sessionDate,
         true,
       );
@@ -202,6 +226,49 @@ export function createUlcU12Service({
       return presentSnapshot(context, stored);
     },
   });
+}
+
+async function requireConfiguredGroup(
+  moduleGroups: UlcLinzTrainingModuleGroupReader,
+  organizationId: string,
+  groupId: string,
+): Promise<void> {
+  const configuredGroupId = await moduleGroups.readGroupId(
+    organizationId,
+    MODULE_ID,
+  );
+  if (configuredGroupId !== groupId) {
+    throw new UlcU12NotFoundError();
+  }
+}
+
+function configuredGroup(
+  snapshot: AthleteMasterdataSnapshot,
+  organizationId: string,
+  groupId: string,
+  requireActive: boolean,
+): TrainingGroup {
+  const seen = new Set<string>();
+  for (const candidate of snapshot.trainingGroups) {
+    if (
+      candidate.organizationId !== organizationId ||
+      seen.has(candidate.id)
+    ) {
+      throw new UlcU12ConsistencyError();
+    }
+    seen.add(candidate.id);
+  }
+  const matches = snapshot.trainingGroups.filter(
+    (candidate) => candidate.id === groupId,
+  );
+  if (
+    matches.length !== 1 ||
+    matches[0] === undefined ||
+    (requireActive && matches[0].isActive !== true)
+  ) {
+    throw new UlcU12NotFoundError();
+  }
+  return matches[0];
 }
 
 interface ResolvedContext {
@@ -233,18 +300,12 @@ async function resolveContext(
   const snapshot = await masterdata.readOrganizationSnapshot(
     normalizedOrganizationId,
   );
-  const groups = snapshot.trainingGroups.filter(
-    (group) =>
-      group.id === normalizedGroupId &&
-      group.organizationId === normalizedOrganizationId,
+  const group = configuredGroup(
+    snapshot,
+    normalizedOrganizationId,
+    normalizedGroupId,
+    requireActiveGroup,
   );
-  if (groups.length !== 1 || groups[0] === undefined) {
-    throw new UlcU12NotFoundError();
-  }
-  const group = groups[0];
-  if (requireActiveGroup && group.isActive !== true) {
-    throw new UlcU12NotFoundError();
-  }
 
   const athletesById = new Map(
     snapshot.athletes
