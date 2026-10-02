@@ -167,10 +167,12 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "ulc-linz-lifecycle",
       ),
     ).toMatchObject({
-      schemaVersion: 7,
-      lifecycleStatus: "training-data-lifecycle-pending",
+      schemaVersion: 8,
+      lifecycleStatus: "training-and-catalog-data-lifecycle-pending",
       notes: expect.arrayContaining([
         "app-owned-training-session-and-attendance-lifecycle-pending",
+        "app-owned-exercise-catalog-configuration-not-personal",
+        "exercise-favorite-lifecycle-pending",
       ]),
     });
     expect(
@@ -190,9 +192,9 @@ describe("ULC Linz M5 C/D data inventory", () => {
       futureIntroduction: "invalidates-current-evidence",
     });
     expect(inventory.m5).toEqual({
-      deletionPolicy: "fail-closed-pending-training-data-lifecycle",
-      retentionPolicy: "fail-closed-pending-training-data-lifecycle",
-      restoreReconciliation: "fail-closed-pending-training-data-lifecycle",
+      deletionPolicy: "fail-closed-pending-training-and-catalog-data-lifecycle",
+      retentionPolicy: "fail-closed-pending-training-and-catalog-data-lifecycle",
+      restoreReconciliation: "fail-closed-pending-training-and-catalog-data-lifecycle",
       unknownPersistentOwner: "fail-closed",
       unknownPersistentTable: "fail-closed",
       unknownRuntimeModule: "fail-closed",
@@ -211,7 +213,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(30);
+    expect(inventory.persistentTables).toHaveLength(34);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -358,6 +360,30 @@ describe("ULC Linz M5 C/D data inventory", () => {
       retentionPolicy: "configuration-lifecycle-not-personal",
       deletionEvidence: "not-personal",
       retentionEvidence: "not-personal",
+    });
+    for (const id of [
+      "ulc_linz_exercise_catalog_item",
+      "ulc_linz_exercise_parameter",
+      "ulc_linz_exercise_group",
+    ]) {
+      expect(
+        inventory.persistentTables.find((table) => table.id === id),
+      ).toMatchObject({
+        privacyClass: "exercise-catalog-configuration",
+        retentionPolicy: "configuration-lifecycle-not-personal",
+        deletionEvidence: "not-personal",
+        retentionEvidence: "not-personal",
+      });
+    }
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "ulc_linz_exercise_favorite",
+      ),
+    ).toMatchObject({
+      privacyClass: "exercise-catalog-user-preference",
+      retentionPolicy: "pending-exercise-catalog-user-preference-lifecycle",
+      deletionEvidence: "fail-closed-pending-lifecycle",
+      retentionEvidence: "fail-closed-pending-lifecycle",
     });
     expect(
       inventory.persistentTables.find((table) => table.id === "verification"),
