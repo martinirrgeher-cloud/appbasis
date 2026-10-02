@@ -236,6 +236,11 @@ export class PostgresUlcExerciseCatalogRepository {
            AND exercise_id IN (SELECT id FROM updated)
          RETURNING 1
        ),
+       deletion_barrier AS MATERIALIZED (
+         SELECT
+           (SELECT count(*)::int FROM deleted_parameters)
+           + (SELECT count(*)::int FROM deleted_groups) AS deleted_count
+       ),
        inserted_parameters AS (
          INSERT INTO ulc_linz_exercise_parameter (
            organization_id, exercise_id, parameter_key, label, unit,
@@ -247,6 +252,7 @@ export class PostgresUlcExerciseCatalogRepository {
            p.input_type, p.default_value, p.min_value, p.max_value,
            p.step_value, p.is_required, p.sort_order
          FROM updated
+         CROSS JOIN deletion_barrier
          CROSS JOIN LATERAL jsonb_to_recordset($12::jsonb) AS p(
            parameter_key text,
            label text,
@@ -267,6 +273,7 @@ export class PostgresUlcExerciseCatalogRepository {
          )
          SELECT $2, updated.id, selected.group_id
          FROM updated
+         CROSS JOIN deletion_barrier
          CROSS JOIN LATERAL jsonb_array_elements_text($13::jsonb)
            AS selected(group_id)
          RETURNING 1

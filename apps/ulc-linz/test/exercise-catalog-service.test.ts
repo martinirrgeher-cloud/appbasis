@@ -33,7 +33,6 @@ function snapshot(): AthleteMasterdataSnapshot {
     trainingGroups: [
       group("group-1"),
       group("group-2", false),
-      group("foreign", true, "verein-2"),
     ],
     athletes: [],
     trainers: [],
@@ -92,6 +91,29 @@ describe("ULC exercise catalog service", () => {
         },
       ],
     });
+  });
+
+  it("fails closed if the server-side Athletes snapshot crosses organization boundaries", async () => {
+    const { repo } = repository();
+    const service = createUlcExerciseCatalogService({
+      repository: repo,
+      masterdata: {
+        async readOrganizationSnapshot() {
+          return {
+            ...snapshot(),
+            trainingGroups: [
+              ...snapshot().trainingGroups,
+              group("foreign", true, "verein-2"),
+            ],
+          };
+        },
+      },
+      createId: () => "exercise-1",
+    });
+
+    await expect(
+      service.list(ORGANIZATION_ID, IDENTITY_ID),
+    ).rejects.toThrow(/organization boundary/);
   });
 
   it("validates group suitability against the server-side Athletes snapshot before create", async () => {
