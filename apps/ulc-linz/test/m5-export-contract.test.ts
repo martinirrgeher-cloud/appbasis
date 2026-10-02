@@ -38,7 +38,7 @@ describe("ULC Linz M5-E export contract", () => {
     );
     const classifiedTables = [...exportedTables, ...exportContract.excludedTables];
 
-    expect(inventoriedTables).toHaveLength(30);
+    expect(inventoriedTables).toHaveLength(34);
     expect(sortedUnique(classifiedTables.map(tableKey))).toEqual(
       sortedUnique(inventoriedTables.map(tableKey)),
     );
@@ -129,6 +129,10 @@ describe("ULC Linz M5-E export contract", () => {
         "ulc-linz-lifecycle:ulc_linz_training_session",
         "ulc-linz-lifecycle:ulc_linz_training_attendance",
         "ulc-linz-lifecycle:ulc_linz_training_module_group",
+        "ulc-linz-lifecycle:ulc_linz_exercise_catalog_item",
+        "ulc-linz-lifecycle:ulc_linz_exercise_parameter",
+        "ulc-linz-lifecycle:ulc_linz_exercise_group",
+        "ulc-linz-lifecycle:ulc_linz_exercise_favorite",
       ]),
     );
 

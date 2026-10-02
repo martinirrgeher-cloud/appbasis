@@ -166,7 +166,7 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
       {
         id: "ulc-linz-lifecycle",
         root: "apps/ulc-linz",
-        schemaVersion: 7,
+        schemaVersion: 8,
         migrations: [
           "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
           "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -175,6 +175,7 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
           "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
           "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
           "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
+          "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
         ],
       },
     ],
@@ -236,6 +237,26 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
     /UNIQUE \("organization_id", "group_id"\)/,
   );
   assert.doesNotMatch(trainingModuleGroupMigration, /\bREFERENCES\b/i);
+
+  const exerciseCatalogMigration = await readFile(
+    join(
+      root,
+      "apps",
+      "ulc-linz",
+      "migrations",
+      "0007_ulc_linz_exercise_catalog.sql",
+    ),
+    "utf8",
+  );
+  for (const table of [
+    "ulc_linz_exercise_catalog_item",
+    "ulc_linz_exercise_parameter",
+    "ulc_linz_exercise_group",
+    "ulc_linz_exercise_favorite",
+  ]) {
+    assert.match(exerciseCatalogMigration, new RegExp('CREATE TABLE "' + table + '"'));
+  }
+  assert.doesNotMatch(exerciseCatalogMigration, /\bREFERENCES\b/i);
 
   const packageJson = JSON.parse(
     await readFile(join(root, "apps", "ulc-linz", "package.json"), "utf8"),

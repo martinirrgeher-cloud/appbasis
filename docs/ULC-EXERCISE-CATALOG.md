@@ -1,0 +1,134 @@
+# ULC Linz – Übungskatalog
+
+## Ziel
+
+Der Übungskatalog wird die gemeinsame fachliche Grundlage für spätere
+Trainingsblöcke, Trainingsplanung und Trainingsdokumentation. Die Umsetzung
+orientiert sich am bewährten früheren ULC-Linz-Katalog, wird aber auf den
+aktuellen AppBasis-Vertrag mit serverseitiger Organisation, Permission Store
+und app-eigener PostgreSQL-Persistenz übertragen.
+
+## Produktumfang
+
+Der vollständige Zielumfang umfasst:
+
+- Übungen anlegen, bearbeiten und deaktivieren statt historisch zu löschen;
+- sprintorientierte Kategorien und freie Unterkategorien;
+- Trainingsziel, Beschreibung, Trainerhinweise und typische Fehler;
+- Material;
+- geeignete Trainingsgruppen;
+- flexible Planungsparameter mit Standardwert, Minimum, Maximum, Schrittweite
+  und Pflichtfeld;
+- persönliche Favoriten;
+- Suche und Filter nach Kategorie, Unterkategorie, Material, Gruppe, Video,
+  Favorit und Aktivstatus;
+- externer Video-/Weblink und später privater Video-Upload;
+- später Schwierigkeitsgrad, ähnliche Übungen, Dublettenwarnung,
+  Verwendungsübersicht und letzte Verwendung.
+
+## Kanonische Kategorien
+
+1. Aufwärmen & Lauf-ABC
+2. Beschleunigung
+3. Maximalgeschwindigkeit
+4. Schnelligkeitsausdauer
+5. Start & Reaktion
+6. Technik
+7. Plyometrie
+8. Kraft
+9. Stabilisation
+10. Regeneration
+11. Sonstiges
+
+## Vorbereitete Planungsparameter
+
+- Sätze
+- Wiederholungen
+- Distanz
+- Gewicht
+- Dauer
+- Zielzeit
+- Intensität
+- Pause
+- Serienpause
+- Anlauf
+- fliegende Distanz
+- Kontakte
+- Widerstand
+- Höhe
+- Tempo
+- Untergrund
+- Startposition
+- Zusatzhinweis
+
+## Umsetzungsslices
+
+### ULC-E6A – Domain- und Persistenzfundament
+
+- kanonische Kategorie- und Parameterverträge;
+- app-eigene PostgreSQL-Tabellen für Übungen, Parameter, Gruppeneignung und
+  Favoriten;
+- organisationsgebundene IDs und keine Cross-Owner-Foreign-Keys in das
+  Athletes-Modul;
+- Normalisierung und Validierung für Namen, Texte, Links, Parameter und
+  Gruppenzuordnungen;
+- Deaktivieren statt Löschen;
+- noch keine sichtbare UI.
+
+### ULC-E6B – geschützte Runtime/API
+
+- eigener Modulschlüssel `exercise_catalog`;
+- serverseitige View-/Edit-Capabilities;
+- Organisation ausschließlich aus der authentifizierten Membership;
+- Übersicht, Detail, Anlegen, Bearbeiten, Deaktivieren und Favorit;
+- Gruppeneignung wird gegen den serverautorisierten Athletes-Snapshot geprüft.
+
+### ULC-E6C – kompakte mobile UI
+
+- Navigation nur bei Berechtigung sichtbar;
+- Suche und Filter;
+- kompakte Übungsliste mit Schnellinfos;
+- Detail-/Bearbeitungsansicht;
+- Parametereditor;
+- Archivansicht.
+
+### ULC-E6D – Medien
+
+- externe Links;
+- private Videoablage;
+- mehrere Videos je Übung;
+- Hauptvideo;
+- Upload vom Smartphone mit Größenlimit und Fortschritt.
+
+### ULC-E6E – Katalogintelligenz
+
+- organisationsbezogene Schwierigkeitsgrade;
+- ähnliche Übungen;
+- Dublettenwarnung;
+- Verwendungsübersicht in Trainingsblöcken und Trainingsplänen;
+- letzte Verwendung;
+- historische Snapshots in späteren Planungsmodulen.
+
+## Berechtigungen
+
+Der bestehende Rollenvertrag enthält `exercise_catalog` bereits im
+Leistungstrainer-Profil. Bis E6B wird daraus noch keine neue Laufzeitberechtigung
+provisioniert. Der Admin bleibt organisationsweit autorisiert; Trainerzugriffe
+werden erst mit dem serverseitigen E6B-Vertrag geöffnet.
+
+## Geparkter U12-Pfad
+
+ULC-E5A ist technisch abgeschlossen und in der isolierten Preview auf Schema v7
+ausgerollt. Die U12-Adminzuordnung und U12-Oberfläche werden auf ausdrücklichen
+Produktwunsch vorerst nicht weitergeführt. Der bestehende E5A-Vertrag bleibt
+unverändert und wird später wieder aufgenommen.
+
+## Sicherheitsgrenzen
+
+- Clientdaten enthalten niemals `organizationId`;
+- UI-Sichtbarkeit ersetzt keine serverseitige Autorisierung;
+- Gruppenzuordnungen referenzieren Athletes-IDs logisch, nicht über
+  Cross-Owner-Foreign-Keys;
+- historische Übungsdaten werden später durch Snapshots in Trainingsblöcken
+  und Trainingsplänen geschützt;
+- keine Preview- oder Produktionsmutation ohne separates Gate.

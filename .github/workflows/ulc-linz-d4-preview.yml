@@ -192,7 +192,7 @@ jobs:
           STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
           MODE="$(jq -r '.mode' <<<"$STATE")"
           case "$MODE" in
-            initial|athletes-upgrade|training-upgrade|trainer-identity-audit-upgrade|identity-provisioning-audit-upgrade|training-module-config-upgrade|current) ;;
+            initial|athletes-upgrade|training-upgrade|trainer-identity-audit-upgrade|identity-provisioning-audit-upgrade|training-module-config-upgrade|exercise-catalog-upgrade|current) ;;
             *) echo 'ULC D4 preview migration mode is invalid.' >&2; exit 1 ;;
           esac
           printf 'mode=%s\n' "$MODE" >> "$GITHUB_OUTPUT"
@@ -283,6 +283,16 @@ jobs:
           APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
         run: node ./tooling/ulc-linz-preview-training-module-config-upgrade.mjs
 
+      - name: Apply incremental ULC preview exercise catalog migration
+        if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'exercise-catalog-upgrade'
+        shell: bash
+        env:
+          APPBASIS_GENERATED_APP_ID: ulc-linz
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_MIGRATION_TARGET: ${{ steps.plan.outputs.migration_target }}
+          APPBASIS_APPLY_MIGRATIONS: ${{ inputs.apply && '1' || '0' }}
+        run: node ./tooling/ulc-linz-preview-exercise-catalog-upgrade.mjs
+
       - name: Confirm current ULC preview schema
         if: inputs.operation == 'migrate' && steps.migration_state.outputs.mode == 'current'
         run: echo 'ULC D4 preview schema is already current; migration write skipped.'
@@ -298,7 +308,7 @@ jobs:
           set -euo pipefail
           STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
           test "$(jq -r '.mode' <<<"$STATE")" = 'current' || {
-            echo 'ULC preview bootstrap and deployment require the fully migrated schema-v7 baseline.' >&2
+            echo 'ULC preview bootstrap and deployment require the fully migrated schema-v8 baseline.' >&2
             exit 1
           }
 
