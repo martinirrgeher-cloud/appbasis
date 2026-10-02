@@ -65,6 +65,28 @@ function kindertrainingTrainerAccess(
   });
 }
 
+function u12OrganizationAccess(organizationId: string) {
+  return Object.freeze({
+    organizationId,
+    actorPrincipalId: currentIdentity.identity.identityId,
+    scope: "organization" as const,
+  });
+}
+
+function u12TrainerAccess(
+  organizationId: string,
+  trainerId: string,
+  groupIds: readonly string[],
+) {
+  return Object.freeze({
+    organizationId,
+    actorPrincipalId: currentIdentity.identity.identityId,
+    scope: "trainer" as const,
+    trainerId,
+    groupIds: Object.freeze([...groupIds]),
+  });
+}
+
 const validEnv = Object.freeze({
   HYPERDRIVE: Object.freeze({
     connectionString: "postgresql://user:password@database.example.test/appbasis",
@@ -2080,6 +2102,404 @@ describe("Kindertraining runtime API", () => {
       const response = await worker.fetch(
         new Request(
           `https://ulc.example.test/api/modules/kindertraining/session?${query}`,
+          { headers: { cookie: currentIdentity.sessionToken } },
+        ),
+        validEnv,
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+});
+
+describe("U12 runtime API", () => {
+  it("returns active U12 groups from the server-authorized organization", async () => {
+    let receivedOrganization: string | null = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        u12Access: {
+          ...base.u12Access,
+          async assertViewAccess() {
+            return u12OrganizationAccess("verein-server");
+          },
+        },
+        u12: {
+          ...base.u12,
+          async listGroups(organizationId) {
+            receivedOrganization = organizationId;
+            return [
+              { id: "group-1", name: "U12", shortName: "KT" },
+            ];
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/u12", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(receivedOrganization).toBe("verein-server");
+    await expect(response.json()).resolves.toEqual({
+      module: { moduleId: "u12" },
+      access: { view: true },
+      trainingGroups: [
+        { id: "group-1", name: "U12", shortName: "KT" },
+      ],
+    });
+  });
+
+  it("filters trainer groups and hides unassigned read and write targets", async () => {
+    let readCalls = 0;
+    let saveCalls = 0;
+    const securityEvents: unknown[] = [];
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        u12Access: {
+          ...base.u12Access,
+          async assertViewAccess() {
+            return u12TrainerAccess(
+              "verein-server",
+              "trainer-1",
+              ["group-1"],
+            );
+          },
+          async assertEditAccess() {
+            return u12TrainerAccess(
+              "verein-server",
+              "trainer-1",
+              ["group-1"],
+            );
+          },
+        },
+        u12: {
+          ...base.u12,
+          async listGroups(organizationId) {
+            expect(organizationId).toBe("verein-server");
+            return [
+              { id: "group-1", name: "U12", shortName: "KT" },
+              { id: "group-2", name: "Unerlaubt", shortName: "X" },
+            ];
+          },
+          async readSnapshot() {
+            readCalls += 1;
+            throw new Error("unassigned group must not reach the service");
+          },
+          async saveSession() {
+            saveCalls += 1;
+            throw new Error("unassigned group must not reach the service");
+          },
+        },
+        securityEvents: {
+          ...base.securityEvents,
+          record(event) {
+            securityEvents.push(event);
+          },
+        },
+      };
+    });
+
+    const moduleResponse = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/u12", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+    expect(moduleResponse.status).toBe(200);
+    await expect(moduleResponse.json()).resolves.toMatchObject({
+      trainingGroups: [
+        { id: "group-1", name: "U12", shortName: "KT" },
+      ],
+    });
+
+    const denied = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/u12/session?groupId=group-2&sessionDate=2026-09-27",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(denied.status).toBe(404);
+    expect(readCalls).toBe(0);
+
+    const deniedWrite = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/u12/session", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          groupId: "group-2",
+          sessionDate: "2026-09-27",
+          expectedRevision: null,
+          attendance: [],
+        }),
+      }),
+      validEnv,
+    );
+    expect(deniedWrite.status).toBe(404);
+    expect(saveCalls).toBe(0);
+
+    for (const groupId of [42, {}, "", " group-1 ", "x".repeat(201)]) {
+      const malformed = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/u12/session", {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            groupId,
+            sessionDate: "2026-09-27",
+            expectedRevision: null,
+            attendance: [],
+          }),
+        }),
+        validEnv,
+      );
+      expect(malformed.status).toBe(400);
+    }
+    expect(saveCalls).toBe(0);
+    expect(securityEvents).toEqual([
+      expect.objectContaining({
+        eventType: "authorization.denied",
+        actorPrincipalId: currentIdentity.identity.identityId,
+        organizationId: "verein-server",
+        action: "view",
+        targetId: "u12",
+        reasonCode: "scope-denied",
+      }),
+      expect.objectContaining({
+        eventType: "authorization.denied",
+        actorPrincipalId: currentIdentity.identity.identityId,
+        organizationId: "verein-server",
+        action: "edit",
+        targetId: "u12",
+        reasonCode: "scope-denied",
+      }),
+    ]);
+  });
+
+  it("reads a participant snapshot only for the server-authorized organization", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        u12Access: {
+          ...base.u12Access,
+          async assertViewAccess() {
+            return u12OrganizationAccess("verein-server");
+          },
+        },
+        u12: {
+          ...base.u12,
+          async readSnapshot(organizationId, groupId, sessionDate) {
+            received = { organizationId, groupId, sessionDate };
+            return {
+              group: { id: groupId, name: "U12", shortName: "KT" },
+              sessionDate,
+              session: null,
+              participants: [],
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/u12/session?groupId=group-1&sessionDate=2026-09-27",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      groupId: "group-1",
+      sessionDate: "2026-09-27",
+    });
+  });
+
+  it("saves attendance through edit access without accepting client organization scope", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        u12Access: {
+          ...base.u12Access,
+          async assertEditAccess() {
+            return u12OrganizationAccess("verein-server");
+          },
+        },
+        u12: {
+          ...base.u12,
+          async saveSession(organizationId, input) {
+            received = { organizationId, input };
+            return {
+              group: {
+                id: input.groupId,
+                name: "U12",
+                shortName: "KT",
+              },
+              sessionDate: input.sessionDate,
+              session: {
+                id: "session-1",
+                revision: "42",
+                state: input.state ?? "scheduled",
+                note: input.note ?? null,
+              },
+              participants: [],
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/u12/session", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          groupId: "group-1",
+          sessionDate: "2026-09-27",
+          state: "scheduled",
+          note: "Halle",
+          expectedRevision: "41",
+          attendance: [],
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      input: {
+        groupId: "group-1",
+        sessionDate: "2026-09-27",
+        state: "scheduled",
+        note: "Halle",
+        expectedRevision: "41",
+        attendance: [],
+      },
+    });
+
+    const rejected = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/u12/session", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: "verein-client",
+          groupId: "group-1",
+          sessionDate: "2026-09-27",
+          expectedRevision: null,
+          attendance: [],
+        }),
+      }),
+      validEnv,
+    );
+    expect(rejected.status).toBe(400);
+  });
+
+  it("requires an explicit U12 revision contract on save", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    for (const body of [
+      {
+        groupId: "group-1",
+        sessionDate: "2026-09-27",
+        attendance: [],
+      },
+      {
+        groupId: "group-1",
+        sessionDate: "2026-09-27",
+        expectedRevision: "not-a-revision",
+        attendance: [],
+      },
+    ]) {
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/u12/session", {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }),
+        validEnv,
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it("returns 409 when the loaded U12 revision is stale", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        u12: {
+          ...base.u12,
+          async saveSession() {
+            throw new UlcTrainingSessionConflictError();
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/u12/session", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          groupId: "group-1",
+          sessionDate: "2026-09-27",
+          expectedRevision: "41",
+          attendance: [],
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "TRAINING_SESSION_CONFLICT",
+        message: "The training session changed since it was loaded.",
+      },
+    });
+  });
+
+  it("rejects unknown query parameters and duplicate scope parameters", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    for (const query of [
+      "groupId=group-1&sessionDate=2026-09-27&organizationId=verein-client",
+      "groupId=group-1&groupId=group-2&sessionDate=2026-09-27",
+    ]) {
+      const response = await worker.fetch(
+        new Request(
+          `https://ulc.example.test/api/modules/u12/session?${query}`,
           { headers: { cookie: currentIdentity.sessionToken } },
         ),
         validEnv,
