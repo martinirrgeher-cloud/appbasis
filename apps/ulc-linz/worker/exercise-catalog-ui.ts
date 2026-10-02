@@ -348,7 +348,7 @@ export const ULC_EXERCISE_CATALOG_CSS = `
 }
 `;
 
-export const ULC_EXERCISE_CATALOG_SCRIPT = `
+export const ULC_EXERCISE_CATALOG_SCRIPT = String.raw`
 const EXERCISE_CATEGORIES = Object.freeze([
   { key: "warmup", label: "Aufwärmen & Lauf-ABC" },
   { key: "acceleration", label: "Beschleunigung" },
