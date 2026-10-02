@@ -78,7 +78,7 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   assert.match(workflow, /ulc-linz-d4-preview-migration-state\.mjs/);
   assert.match(
     workflow,
-    /initial\|athletes-upgrade\|training-upgrade\|trainer-identity-audit-upgrade\|identity-provisioning-audit-upgrade\|current/,
+    /initial\|athletes-upgrade\|training-upgrade\|trainer-identity-audit-upgrade\|identity-provisioning-audit-upgrade\|training-module-config-upgrade\|current/,
   );
   assert.match(workflow, /Preflight fresh ULC preview runtime principals/);
   assert.match(workflow, /database-access\.mjs preflight >\/dev\/null/);
@@ -100,6 +100,14 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   );
   assert.match(workflow, /Apply incremental ULC preview identity provisioning audit migration/);
   assert.match(workflow, /ulc-linz-d4-preview-identity-audit-upgrade\.mjs/);
+  assert.match(
+    workflow,
+    /Apply incremental ULC preview training module configuration migration/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-preview-training-module-config-upgrade\.mjs/,
+  );
   assert.match(workflow, /Confirm current ULC preview schema/);
 
   const stateStart = workflow.indexOf("      - name: Resolve ULC preview migration state\n");
@@ -114,6 +122,9 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   const identityAuditUpgradeStart = workflow.indexOf(
     "      - name: Apply incremental ULC preview identity provisioning audit migration\n",
   );
+  const trainingModuleConfigUpgradeStart = workflow.indexOf(
+    "      - name: Apply incremental ULC preview training module configuration migration\n",
+  );
   const currentStart = workflow.indexOf(
     "      - name: Confirm current ULC preview schema\n",
   );
@@ -125,7 +136,8 @@ test("ULC D4 migrate routes fresh, established and current preview states explic
   assert.ok(trainingUpgradeStart > upgradeStart);
   assert.ok(trainerIdentityAuditUpgradeStart > trainingUpgradeStart);
   assert.ok(identityAuditUpgradeStart > trainerIdentityAuditUpgradeStart);
-  assert.ok(currentStart > identityAuditUpgradeStart);
+  assert.ok(trainingModuleConfigUpgradeStart > identityAuditUpgradeStart);
+  assert.ok(currentStart > trainingModuleConfigUpgradeStart);
 });
 
 test("ULC D4 migrations never run with the application runtime credential", async () => {
@@ -136,6 +148,7 @@ test("ULC D4 migrations never run with the application runtime credential", asyn
     "Apply incremental ULC preview training migration",
     "Apply incremental ULC preview trainer identity audit migration",
     "Apply incremental ULC preview identity provisioning audit migration",
+    "Apply incremental ULC preview training module configuration migration",
   ]) {
     const stepStart = workflow.indexOf("      - name: " + stepName + "\n");
     const nextStep = workflow.indexOf("\n      - name: ", stepStart + 1);
@@ -168,7 +181,7 @@ test("ULC preview inspect is read-only and deploy requires identity-v3 schema be
   assert.match(workflow, /inputs.operation == 'migrate' \|\| inputs.operation == 'inspect'/);
   assert.match(workflow, /Report read-only ULC preview migration state/);
   assert.match(workflow, /Require current ULC preview schema before bootstrap or deployment/);
-  assert.match(workflow, /fully migrated identity schema v3/);
+  assert.match(workflow, /fully migrated schema-v7 baseline/);
   assert.match(workflow, /if: inputs.operation == 'bootstrap' \\|\\| inputs.operation == 'deploy'/);
   const guard = workflow.indexOf("      - name: Require current ULC preview schema before bootstrap or deployment");
   const bootstrapWorker = workflow.indexOf("      - name: Create ULC preview Worker when absent");
@@ -190,6 +203,9 @@ test("ULC E4E-D read-only inspect workflow runs only on main without apply or de
   assert.match(inspect, /branches:\s*\n\s*- main/);
   assert.match(inspect, /generated-preview-ulc-linz/);
   assert.match(inspect, /ulc-linz-d4-preview-migration-state\.mjs/);
-  assert.match(inspect, /identity-provisioning-audit-upgrade\|current/);
+  assert.match(
+    inspect,
+    /identity-provisioning-audit-upgrade\|training-module-config-upgrade\|current/,
+  );
   assert.doesNotMatch(inspect, /APPBASIS_APPLY_MIGRATIONS|wrangler deploy|ALTER TABLE/);
 });

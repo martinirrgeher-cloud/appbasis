@@ -16,6 +16,8 @@ import type { UlcLinzKindertrainingAccessScope } from "./kindertraining-access";
 import {
   UlcKindertrainingNotFoundError,
 } from "./kindertraining-service";
+import type { UlcLinzU12AccessScope } from "./u12-access";
+import { UlcU12NotFoundError } from "./u12-service";
 import { UlcTrainingValidationError } from "./training-session-domain";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
 import {
@@ -100,6 +102,10 @@ export function createGeneratedWorker(
           response = await kindertrainingModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining/session") {
           response = await kindertrainingSessionResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/u12") {
+          response = await u12ModuleResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/u12/session") {
+          response = await u12SessionResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-users") {
           response = await trainerUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-identities") {
@@ -454,6 +460,314 @@ function kindertrainingGroupNotFound(): Response {
     { status: 404 },
   );
 }
+
+async function u12ModuleResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "U12");
+  }
+
+  const access = await authorizeU12Request(
+    request,
+    runtime,
+    url,
+    "view",
+  );
+  if (access instanceof Response) return access;
+
+  const availableTrainingGroups = await runtime.u12.listGroups(
+    access.organizationId,
+  );
+  const trainingGroups =
+    access.scope === "organization"
+      ? availableTrainingGroups
+      : availableTrainingGroups.filter((group) =>
+          access.groupIds.includes(group.id),
+        );
+
+  return Response.json({
+    module: {
+      moduleId: "u12",
+    },
+    access: {
+      view: true,
+    },
+    trainingGroups,
+  });
+}
+
+async function u12SessionResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowedFor("GET, POST", "U12");
+  }
+
+  const action = request.method === "GET" ? "view" : "edit";
+  const access = await authorizeU12Request(
+    request,
+    runtime,
+    url,
+    action,
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    if (request.method === "GET") {
+      const query = u12SessionQuery(url);
+      if (!u12GroupAllowed(access, query.groupId)) {
+        return u12GroupScopeDenied(runtime, access, action);
+      }
+      const snapshot = await runtime.u12.readSnapshot(
+        access.organizationId,
+        query.groupId,
+        query.sessionDate,
+      );
+      return Response.json({ snapshot });
+    }
+
+    const body = await u12JsonBody(request);
+    if (!u12GroupAllowed(access, body.groupId as string)) {
+      return u12GroupScopeDenied(runtime, access, action);
+    }
+    const snapshot = await runtime.u12.saveSession(
+      access.organizationId,
+      {
+        groupId: body.groupId as string,
+        sessionDate: body.sessionDate as string,
+        ...(body.state === undefined
+          ? {}
+          : { state: body.state as "scheduled" | "cancelled" }),
+        ...(body.note === undefined
+          ? {}
+          : { note: body.note as string | null }),
+        expectedRevision: body.expectedRevision as string | null,
+        attendance: body.attendance as Array<{
+          athleteId: string;
+          status: "open" | "present" | "excused" | "absent";
+        }>,
+      },
+    );
+    return Response.json({ snapshot });
+  } catch (error) {
+    if (error instanceof UlcTrainingSessionConflictError) {
+      return u12SessionConflict();
+    }
+    if (error instanceof UlcTrainingValidationError) {
+      return invalidU12Session();
+    }
+    if (error instanceof InvalidU12RequestError) {
+      return invalidU12Session();
+    }
+    if (error instanceof UlcU12NotFoundError) {
+      return u12GroupNotFound();
+    }
+    throw error;
+  }
+}
+
+async function authorizeU12Request(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+  action: "view" | "edit",
+): Promise<Response | UlcLinzU12AccessScope> {
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action,
+        targetId: "u12",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  try {
+    return action === "view"
+      ? await runtime.u12Access.assertViewAccess(current)
+      : await runtime.u12Access.assertEditAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "U12 access denied.",
+          },
+        },
+        { status: 403 },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+}
+
+function u12GroupAllowed(
+  access: UlcLinzU12AccessScope,
+  groupId: string,
+): boolean {
+  return access.scope === "organization" || access.groupIds.includes(groupId);
+}
+
+function u12GroupScopeDenied(
+  runtime: GeneratedPostgresApplicationRuntime,
+  access: UlcLinzU12AccessScope,
+  action: "view" | "edit",
+): Response {
+  recordUlcLinzSecurityEvent(runtime.securityEvents, {
+    eventType: "authorization.denied",
+    actorPrincipalId: access.actorPrincipalId,
+    organizationId: access.organizationId,
+    action,
+    targetId: "u12",
+    reasonCode: "scope-denied",
+  });
+  return u12GroupNotFound();
+}
+
+class InvalidU12RequestError extends Error {}
+
+function u12SessionQuery(url: URL): {
+  groupId: string;
+  sessionDate: string;
+} {
+  const keys = [...url.searchParams.keys()];
+  if (
+    keys.some((key) => key !== "groupId" && key !== "sessionDate") ||
+    url.searchParams.getAll("groupId").length !== 1 ||
+    url.searchParams.getAll("sessionDate").length !== 1
+  ) {
+    throw new InvalidU12RequestError();
+  }
+  const groupId = url.searchParams.get("groupId");
+  const sessionDate = url.searchParams.get("sessionDate");
+  if (
+    typeof groupId !== "string" ||
+    groupId.length === 0 ||
+    groupId.length > 200 ||
+    groupId.trim() !== groupId ||
+    typeof sessionDate !== "string"
+  ) {
+    throw new InvalidU12RequestError();
+  }
+  return { groupId, sessionDate };
+}
+
+async function u12JsonBody(
+  request: Request,
+): Promise<Record<string, unknown>> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    throw new InvalidU12RequestError();
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new InvalidU12RequestError();
+  }
+  const body = value as Record<string, unknown>;
+  const allowed = [
+    "groupId",
+    "sessionDate",
+    "state",
+    "note",
+    "expectedRevision",
+    "attendance",
+  ];
+  if (
+    Object.keys(body).some((key) => !allowed.includes(key)) ||
+    !Object.prototype.hasOwnProperty.call(body, "groupId") ||
+    !Object.prototype.hasOwnProperty.call(body, "sessionDate") ||
+    !Object.prototype.hasOwnProperty.call(body, "expectedRevision") ||
+    !Object.prototype.hasOwnProperty.call(body, "attendance") ||
+    Object.getOwnPropertySymbols(body).length !== 0 ||
+    typeof body.groupId !== "string" ||
+    body.groupId.length === 0 ||
+    body.groupId.length > 200 ||
+    body.groupId.trim() !== body.groupId ||
+    !Array.isArray(body.attendance) ||
+    !(
+      body.expectedRevision === null ||
+      (typeof body.expectedRevision === "string" &&
+        /^\d+$/.test(body.expectedRevision) &&
+        body.expectedRevision.length <= 20)
+    )
+  ) {
+    throw new InvalidU12RequestError();
+  }
+  for (const entry of body.attendance) {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      Object.getPrototypeOf(entry) !== Object.prototype ||
+      JSON.stringify(Object.keys(entry).sort()) !==
+        JSON.stringify(["athleteId", "status"])
+    ) {
+      throw new InvalidU12RequestError();
+    }
+  }
+  return body;
+}
+
+function invalidU12Session(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "INVALID_TRAINING_SESSION",
+        message: "The U12 input is invalid.",
+      },
+    },
+    { status: 400 },
+  );
+}
+
+function u12SessionConflict(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "TRAINING_SESSION_CONFLICT",
+        message: "The training session changed since it was loaded.",
+      },
+    },
+    { status: 409 },
+  );
+}
+
+function u12GroupNotFound(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "TRAINING_GROUP_NOT_FOUND",
+        message: "The training group was not found.",
+      },
+    },
+    { status: 404 },
+  );
+}
+
 
 async function trainerUserAdminResponse(
   request: Request,

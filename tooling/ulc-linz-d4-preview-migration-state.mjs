@@ -30,6 +30,7 @@ const TRAINING_TABLES = Object.freeze([
   "ulc_linz_training_attendance",
 ]);
 const TRAINER_IDENTITY_AUDIT_TABLE = "ulc_linz_trainer_identity_audit";
+const TRAINING_MODULE_GROUP_TABLE = "ulc_linz_training_module_group";
 export async function resolveUlcLinzD4PreviewMigrationState(
   {
     migrationDatabaseUrl,
@@ -88,6 +89,7 @@ export async function resolveUlcLinzD4PreviewMigrationState(
     const athletesPresent = ATHLETES_TABLES.filter((table) => tables.has(table));
     const trainingPresent = TRAINING_TABLES.filter((table) => tables.has(table));
     const trainerIdentityAuditPresent = tables.has(TRAINER_IDENTITY_AUDIT_TABLE);
+    const trainingModuleGroupPresent = tables.has(TRAINING_MODULE_GROUP_TABLE);
     const auditShape = await readUlcPreviewIdentityAuditShape(database.client);
     const identityAuditAbsent = isAbsentUlcPreviewIdentityAuditShape(auditShape);
     if (!identityAuditAbsent && !isCanonicalUlcPreviewIdentityAuditShape(auditShape)) {
@@ -106,13 +108,33 @@ export async function resolveUlcLinzD4PreviewMigrationState(
     if (!identityAuditAbsent && (!athletesComplete || !trainingComplete || !trainerIdentityAuditPresent)) {
       throw new Error("ULC D4 identity provisioning audit exists before the complete app baseline.");
     }
+    if (
+      trainingModuleGroupPresent &&
+      (identityAuditAbsent || !athletesComplete || !trainingComplete || !trainerIdentityAuditPresent)
+    ) {
+      throw new Error(
+        "ULC preview training module configuration exists before the complete identity-v3 app baseline.",
+      );
+    }
     if (!athletesComplete) {
+      if (trainingModuleGroupPresent) {
+        throw new Error(
+          "ULC preview training module configuration exists before Stammdaten baseline.",
+        );
+      }
       if (trainingPresent.length > 0 || trainerIdentityAuditPresent) {
-        throw new Error("ULC D4 training or trainer audit exists before Stammdaten baseline.");
+        throw new Error(
+          "ULC D4 training or trainer audit exists before Stammdaten baseline.",
+        );
       }
       return Object.freeze({ mode: "athletes-upgrade" });
     }
     if (!trainingComplete) {
+      if (trainingModuleGroupPresent) {
+        throw new Error(
+          "ULC preview training module configuration exists before the training baseline.",
+        );
+      }
       if (trainerIdentityAuditPresent) {
         throw new Error(
           "ULC D4 preview trainer identity audit exists before the training baseline.",
@@ -121,10 +143,23 @@ export async function resolveUlcLinzD4PreviewMigrationState(
       return Object.freeze({ mode: "training-upgrade" });
     }
     if (!trainerIdentityAuditPresent) {
+      if (trainingModuleGroupPresent) {
+        throw new Error(
+          "ULC preview training module configuration exists before the trainer identity audit baseline.",
+        );
+      }
       return Object.freeze({ mode: "trainer-identity-audit-upgrade" });
     }
     if (identityAuditAbsent) {
+      if (trainingModuleGroupPresent) {
+        throw new Error(
+          "ULC preview training module configuration exists before identity schema v3.",
+        );
+      }
       return Object.freeze({ mode: "identity-provisioning-audit-upgrade" });
+    }
+    if (!trainingModuleGroupPresent) {
+      return Object.freeze({ mode: "training-module-config-upgrade" });
     }
     return Object.freeze({ mode: "current" });
   } finally {
