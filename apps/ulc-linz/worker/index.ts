@@ -1159,7 +1159,7 @@ async function exerciseCatalogModuleResponse(
       );
       return Response.json({
         module: { moduleId: "exercise_catalog" },
-        access: { view: true },
+        access: { view: true, edit: access.canEdit },
         catalog,
       });
     }

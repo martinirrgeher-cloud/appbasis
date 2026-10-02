@@ -313,12 +313,14 @@ function runtime(
         return {
           organizationId: "verein-1",
           actorPrincipalId: currentIdentity.identity.identityId,
+          canEdit: true,
         };
       },
       async assertEditAccess() {
         return {
           organizationId: "verein-1",
           actorPrincipalId: currentIdentity.identity.identityId,
+          canEdit: true,
         };
       },
     },
@@ -739,8 +741,39 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       module: { moduleId: "exercise_catalog" },
-      access: { view: true },
+      access: { view: true, edit: true },
       catalog: { items: [], trainingGroups: [] },
+    });
+  });
+
+  it("reports read-only exercise catalog access without granting edit", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        exerciseCatalogAccess: {
+          ...base.exerciseCatalogAccess,
+          async assertViewAccess() {
+            return {
+              organizationId: "verein-1",
+              actorPrincipalId: currentIdentity.identity.identityId,
+              canEdit: false,
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/exercise-catalog", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access: { view: true, edit: false },
     });
   });
 
