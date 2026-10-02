@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6A – Übungskatalog: Domain- und Persistenzfundament.**
+**ULC-E6B – Übungskatalog: geschützte Runtime/API.**
 
 Der bisherige U12-Pfad wird bewusst geparkt. ULC-E5A ist auf `main`
 abgeschlossen, die additive Schema-v7-Migration wurde in Preview erfolgreich
@@ -22,22 +22,29 @@ bewährte frühere ULC-Linz-Katalog, nicht ein neuer Funktionsentwurf. Die
 Übernahme erfolgt jedoch auf den heutigen AppBasis-Sicherheits- und
 Persistenzvertrag.
 
-E6A liefert zuerst den kanonischen Fachvertrag für Übungen und
-Planungsparameter und danach die app-eigene PostgreSQL-Persistenz. Der
+ULC-E6A ist auf `main` abgeschlossen. Der kanonische Fachvertrag und die
+app-eigene PostgreSQL-Persistenz liegen als Schema v8 vor; Generator, Privacy,
+Preview-State und echte PostgreSQL-E2E sind synchron. Die Migration wurde durch
+den Code-Merge nicht auf Preview oder Produktion angewandt.
+
+E6B bindet dieses Fundament jetzt an die geschützte ULC-Runtime. Der
 Zielumfang und die Folgeslices sind in
 `docs/ULC-EXERCISE-CATALOG.md` festgehalten.
 
-Verbindliche E6A-Grenzen:
+Verbindliche E6B-Grenzen:
 
-- Kategorien und Planungsparameter werden kanonisch und getestet definiert;
-- Übungen sind organisationsgebunden und werden später deaktiviert statt
-  historisch gelöscht;
-- geeignete Trainingsgruppen werden über IDs referenziert, aber ohne
-  Cross-Owner-Foreign-Key in das Athletes-Modul;
-- externe Links werden nur als HTTP/HTTPS akzeptiert;
-- Parameterbereiche, Schrittweiten und Dubletten werden fail-closed validiert;
-- E6A vergibt noch keine neue Trainerberechtigung und exponiert noch keine
-  sichtbare Übungskatalog-UI;
+- Modulschlüssel `exercise_catalog` nutzt ausschließlich den bestehenden
+  ULC-Permission-Vertrag;
+- Organisation und Actor werden ausschließlich serverseitig aus der
+  authentifizierten Identity/Membership abgeleitet;
+- Übersicht, Detail, Anlegen, Bearbeiten, Deaktivieren und persönlicher Favorit
+  werden als geschützte API bereitgestellt;
+- Gruppeneignung wird vor jedem Katalog-Write gegen aktive Trainingsgruppen aus
+  dem serverautorisierten Athletes-Snapshot derselben Organisation geprüft;
+- Clientdaten enthalten niemals `organizationId` oder Actor-IDs;
+- bestehende Kindertrainer-Testkonten erhalten keine automatische
+  `exercise_catalog`-Berechtigung;
+- E6B enthält noch keine sichtbare Übungskatalog-UI;
 - Preview-/Production-Migration und Deployment bleiben getrennte,
   ausdrücklich freizugebende Schritte.
 
@@ -230,7 +237,7 @@ atomarer Migrations-Ausführungsvertrag existiert.
 Die finale organisatorische Produktionsfreigabe bleibt weiterhin ein separater
 ausdrücklicher Schritt und wird durch FC5-D nicht autorisiert.
 
-## Aktueller Gate-Scope: FC6
+## Abgeschlossener Gate-Scope: FC6
 
 FC6 erweitert den Existing-App-Updater ausschließlich um den fehlenden sicheren
 Pfad für datenbank-ownende Standardmodule.
@@ -838,7 +845,7 @@ Doppelbelegungsversuch wurde nicht als eigener Pass zurückgemeldet; die
 serverseitige Doppelbelegungs-/Konfliktlogik und gruppenfremde Scope-Denials
 bleiben jedoch automatisiert fail-closed abgedeckt.
 
-## Aktueller Gate-Scope: ULC-E5A U12 Runtime/API
+## Abgeschlossener Gate-Scope: ULC-E5A U12 Runtime/API
 
 Abnahme für E5A:
 
