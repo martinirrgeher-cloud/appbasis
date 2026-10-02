@@ -35,6 +35,7 @@ const TRAINING = [
   "ulc_linz_training_attendance",
 ];
 const TRAINER_IDENTITY_AUDIT = "ulc_linz_trainer_identity_audit";
+const TRAINING_MODULE_GROUP = "ulc_linz_training_module_group";
 
 function factory({
   tables = [],
@@ -121,7 +122,7 @@ test("classifies a trainer-audit-complete identity-v2 preview as requiring the i
   );
 });
 
-test("classifies a fully migrated identity-v3 preview as current", async () => {
+test("classifies an identity-v3 preview without module mapping as a training module config upgrade", async () => {
   assert.deepEqual(
     await resolve({
       tables: [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT],
@@ -129,8 +130,46 @@ test("classifies a fully migrated identity-v3 preview as current", async () => {
       identityColumns: ["provisioning_owner", "actor_principal_id", "reason"],
       identityConstraint: true,
     }),
+    { mode: "training-module-config-upgrade" },
+  );
+});
+
+test("classifies a fully migrated schema-v7 preview as current", async () => {
+  assert.deepEqual(
+    await resolve({
+      tables: [
+        ...BASELINE,
+        ...ATHLETES,
+        ...TRAINING,
+        TRAINER_IDENTITY_AUDIT,
+        TRAINING_MODULE_GROUP,
+      ],
+      group: true,
+      identityColumns: ["provisioning_owner", "actor_principal_id", "reason"],
+      identityConstraint: true,
+    }),
     { mode: "current" },
   );
+});
+
+test("rejects training module configuration before the complete identity-v3 app baseline", async () => {
+  for (const state of [
+    {
+      tables: [...BASELINE, TRAINING_MODULE_GROUP],
+      identityColumns: [],
+      identityConstraint: false,
+    },
+    {
+      tables: [...BASELINE, ...ATHLETES, ...TRAINING, TRAINER_IDENTITY_AUDIT, TRAINING_MODULE_GROUP],
+      identityColumns: [],
+      identityConstraint: false,
+    },
+  ]) {
+    await assert.rejects(
+      resolve({ ...state, group: true }),
+      /training module configuration exists before/,
+    );
+  }
 });
 
 test("rejects partially upgraded identity provisioning audit schemas", async () => {
@@ -280,10 +319,11 @@ test("rejects trainer/training out-of-order markers before athlete upgrades", as
     [...BASELINE, ...TRAINING],
     [...BASELINE, TRAINER_IDENTITY_AUDIT],
     [...BASELINE, ...TRAINING, TRAINER_IDENTITY_AUDIT],
+    [...BASELINE, TRAINING_MODULE_GROUP],
   ]) {
     await assert.rejects(
       resolve({ tables, group: true }),
-      /training or trainer audit exists before Stammdaten baseline/,
+      /training, trainer audit or module configuration exists before Stammdaten baseline/,
     );
   }
 });
