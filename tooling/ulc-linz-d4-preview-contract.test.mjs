@@ -80,6 +80,7 @@ test("ULC Linz D4 migration plan includes all app-owned lifecycle and security m
       "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
       "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
       "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
+      "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
     ],
   );
 });
