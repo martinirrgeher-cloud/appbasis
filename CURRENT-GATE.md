@@ -237,7 +237,7 @@ atomarer Migrations-Ausführungsvertrag existiert.
 Die finale organisatorische Produktionsfreigabe bleibt weiterhin ein separater
 ausdrücklicher Schritt und wird durch FC5-D nicht autorisiert.
 
-## Aktueller Gate-Scope: FC6
+## Abgeschlossener Gate-Scope: FC6
 
 FC6 erweitert den Existing-App-Updater ausschließlich um den fehlenden sicheren
 Pfad für datenbank-ownende Standardmodule.
@@ -845,7 +845,7 @@ Doppelbelegungsversuch wurde nicht als eigener Pass zurückgemeldet; die
 serverseitige Doppelbelegungs-/Konfliktlogik und gruppenfremde Scope-Denials
 bleiben jedoch automatisiert fail-closed abgedeckt.
 
-## Aktueller Gate-Scope: ULC-E5A U12 Runtime/API
+## Abgeschlossener Gate-Scope: ULC-E5A U12 Runtime/API
 
 Abnahme für E5A:
 
