@@ -12,6 +12,16 @@ import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 import { createGeneratedApp } from "./app";
 import { UlcLinzAuthorizationDeniedError } from "./authorization";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
+import type { UlcLinzExerciseCatalogAccessScope } from "./exercise-catalog-access";
+import {
+  UlcExerciseCatalogValidationError,
+  type CreateUlcExerciseCatalogItemInput,
+} from "./exercise-catalog-domain";
+import {
+  UlcExerciseCatalogConflictError,
+  UlcExerciseCatalogNotFoundError,
+} from "./exercise-catalog-postgres";
+import { UlcExerciseCatalogGroupNotFoundError } from "./exercise-catalog-service";
 import type { UlcLinzKindertrainingAccessScope } from "./kindertraining-access";
 import {
   UlcKindertrainingNotFoundError,
@@ -98,6 +108,12 @@ export function createGeneratedWorker(
             url,
             runtimeOptions.secret,
           );
+        } else if (url.pathname === "/api/modules/exercise-catalog") {
+          response = await exerciseCatalogModuleResponse(request, runtime, url);
+        } else if (
+          url.pathname.startsWith("/api/modules/exercise-catalog/")
+        ) {
+          response = await exerciseCatalogItemResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining") {
           response = await kindertrainingModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining/session") {
@@ -1111,6 +1127,321 @@ function validRequestIdentifier(value: unknown): value is string {
     value.length > 0 &&
     value.length <= 200 &&
     value.trim() === value
+  );
+}
+
+async function exerciseCatalogModuleResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowedFor("GET, POST", "exercise catalog");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidExerciseCatalogInput();
+  }
+
+  const action = request.method === "GET" ? "view" : "edit";
+  const access = await authorizeExerciseCatalogRequest(
+    request,
+    runtime,
+    url,
+    action,
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    if (request.method === "GET") {
+      const catalog = await runtime.exerciseCatalog.list(
+        access.organizationId,
+        access.actorPrincipalId,
+      );
+      return Response.json({
+        module: { moduleId: "exercise_catalog" },
+        access: { view: true },
+        catalog,
+      });
+    }
+
+    const body = await exerciseCatalogJsonBody(
+      request,
+      EXERCISE_CREATE_FIELDS,
+      ["name", "categoryKey"],
+    );
+    const item = await runtime.exerciseCatalog.create(
+      access.organizationId,
+      access.actorPrincipalId,
+      body as unknown as CreateUlcExerciseCatalogItemInput,
+    );
+    return Response.json({ item }, { status: 201 });
+  } catch (error) {
+    return exerciseCatalogErrorResponse(error);
+  }
+}
+
+async function exerciseCatalogItemResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidExerciseCatalogInput();
+  }
+
+  const base = "/api/modules/exercise-catalog/";
+  const route = url.pathname.slice(base.length);
+  const detail = /^([^/]+)$/.exec(route);
+  const update = /^([^/]+)\/update$/.exec(route);
+  const deactivate = /^([^/]+)\/deactivate$/.exec(route);
+  const favorite = /^([^/]+)\/favorite$/.exec(route);
+
+  let action: "view" | "edit";
+  if (detail !== null && request.method === "GET") {
+    action = "view";
+  } else if (
+    (update !== null || deactivate !== null) &&
+    request.method === "POST"
+  ) {
+    action = "edit";
+  } else if (
+    favorite !== null &&
+    (request.method === "PUT" || request.method === "DELETE")
+  ) {
+    action = "view";
+  } else {
+    return methodNotAllowedFor(
+      "GET, POST, PUT, DELETE",
+      "exercise catalog item",
+    );
+  }
+
+  const access = await authorizeExerciseCatalogRequest(
+    request,
+    runtime,
+    url,
+    action,
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    if (detail !== null) {
+      const id = decodeExerciseCatalogPathIdentifier(detail[1]);
+      const item = await runtime.exerciseCatalog.read(
+        access.organizationId,
+        access.actorPrincipalId,
+        id,
+      );
+      if (item === null) return exerciseCatalogNotFound();
+      return Response.json({ item });
+    }
+
+    if (update !== null) {
+      const id = decodeExerciseCatalogPathIdentifier(update[1]);
+      const body = await exerciseCatalogJsonBody(
+        request,
+        EXERCISE_UPDATE_FIELDS,
+        EXERCISE_UPDATE_FIELDS,
+      );
+      const item = await runtime.exerciseCatalog.update(
+        access.organizationId,
+        access.actorPrincipalId,
+        id,
+        body as unknown as CreateUlcExerciseCatalogItemInput,
+      );
+      return Response.json({ item });
+    }
+
+    if (deactivate !== null) {
+      const id = decodeExerciseCatalogPathIdentifier(deactivate[1]);
+      const body = await exerciseCatalogJsonBody(request, [], []);
+      if (Object.keys(body).length !== 0) return invalidExerciseCatalogInput();
+      await runtime.exerciseCatalog.deactivate(access.organizationId, id);
+      return Response.json({ deactivated: true });
+    }
+
+    if (favorite !== null) {
+      const id = decodeExerciseCatalogPathIdentifier(favorite[1]);
+      const item = await runtime.exerciseCatalog.setFavorite(
+        access.organizationId,
+        access.actorPrincipalId,
+        id,
+        request.method === "PUT",
+      );
+      return Response.json({ item });
+    }
+
+    return exerciseCatalogNotFound();
+  } catch (error) {
+    return exerciseCatalogErrorResponse(error);
+  }
+}
+
+const EXERCISE_CREATE_FIELDS = Object.freeze([
+  "name",
+  "categoryKey",
+  "subcategory",
+  "goal",
+  "description",
+  "coachingCues",
+  "commonMistakes",
+  "equipment",
+  "videoUrl",
+  "groupIds",
+  "parameters",
+]);
+
+const EXERCISE_UPDATE_FIELDS = EXERCISE_CREATE_FIELDS;
+
+class InvalidExerciseCatalogRequestError extends Error {}
+
+async function exerciseCatalogJsonBody(
+  request: Request,
+  allowedFields: readonly string[],
+  requiredFields: readonly string[],
+): Promise<Record<string, unknown>> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    throw new InvalidExerciseCatalogRequestError();
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new InvalidExerciseCatalogRequestError();
+  }
+  const body = value as Record<string, unknown>;
+  if (
+    Object.keys(body).some((key) => !allowedFields.includes(key)) ||
+    requiredFields.some(
+      (key) => !Object.prototype.hasOwnProperty.call(body, key),
+    ) ||
+    Object.getOwnPropertySymbols(body).length !== 0
+  ) {
+    throw new InvalidExerciseCatalogRequestError();
+  }
+  return body;
+}
+
+function decodeExerciseCatalogPathIdentifier(value: string | undefined): string {
+  if (value === undefined) throw new InvalidExerciseCatalogRequestError();
+  try {
+    const decoded = decodeURIComponent(value);
+    if (
+      decoded.length === 0 ||
+      decoded.length > 200 ||
+      decoded.trim() !== decoded ||
+      decoded.includes("/")
+    ) {
+      throw new InvalidExerciseCatalogRequestError();
+    }
+    return decoded;
+  } catch (error) {
+    if (error instanceof InvalidExerciseCatalogRequestError) throw error;
+    throw new InvalidExerciseCatalogRequestError();
+  }
+}
+
+async function authorizeExerciseCatalogRequest(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+  action: "view" | "edit",
+): Promise<Response | UlcLinzExerciseCatalogAccessScope> {
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action,
+        targetId: "exercise_catalog",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  try {
+    return action === "view"
+      ? await runtime.exerciseCatalogAccess.assertViewAccess(current)
+      : await runtime.exerciseCatalogAccess.assertEditAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "Exercise catalog access denied.",
+          },
+        },
+        { status: 403 },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+}
+
+function exerciseCatalogErrorResponse(error: unknown): Response {
+  if (
+    error instanceof UlcExerciseCatalogValidationError ||
+    error instanceof InvalidExerciseCatalogRequestError
+  ) {
+    return invalidExerciseCatalogInput();
+  }
+  if (
+    error instanceof UlcExerciseCatalogNotFoundError ||
+    error instanceof UlcExerciseCatalogGroupNotFoundError
+  ) {
+    return exerciseCatalogNotFound();
+  }
+  if (error instanceof UlcExerciseCatalogConflictError) {
+    return Response.json(
+      {
+        error: {
+          code: error.code,
+          message: "An exercise with this name already exists.",
+        },
+      },
+      { status: 409 },
+    );
+  }
+  throw error;
+}
+
+function invalidExerciseCatalogInput(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "INVALID_EXERCISE_CATALOG_INPUT",
+        message: "The exercise catalog input is invalid.",
+      },
+    },
+    { status: 400 },
+  );
+}
+
+function exerciseCatalogNotFound(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "EXERCISE_CATALOG_NOT_FOUND",
+        message: "The exercise or training group was not found.",
+      },
+    },
+    { status: 404 },
   );
 }
 
