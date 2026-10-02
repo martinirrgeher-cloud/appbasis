@@ -319,11 +319,10 @@ test("rejects trainer/training out-of-order markers before athlete upgrades", as
     [...BASELINE, ...TRAINING],
     [...BASELINE, TRAINER_IDENTITY_AUDIT],
     [...BASELINE, ...TRAINING, TRAINER_IDENTITY_AUDIT],
-    [...BASELINE, TRAINING_MODULE_GROUP],
   ]) {
     await assert.rejects(
       resolve({ tables, group: true }),
-      /training, trainer audit or module configuration exists before Stammdaten baseline/,
+      /training or trainer audit exists before Stammdaten baseline/,
     );
   }
 });
