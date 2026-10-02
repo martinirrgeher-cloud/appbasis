@@ -1254,8 +1254,6 @@ async function exerciseCatalogItemResponse(
 
     if (deactivate !== null) {
       const id = decodeExerciseCatalogPathIdentifier(deactivate[1]);
-      const body = await exerciseCatalogJsonBody(request, [], []);
-      if (Object.keys(body).length !== 0) return invalidExerciseCatalogInput();
       await runtime.exerciseCatalog.deactivate(access.organizationId, id);
       return Response.json({ deactivated: true });
     }

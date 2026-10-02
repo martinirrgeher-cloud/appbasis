@@ -308,6 +308,20 @@ function runtime(
     }),
     countdownAccess,
     athletesAccess,
+    exerciseCatalogAccess: {
+      async assertViewAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: currentIdentity.identity.identityId,
+        };
+      },
+      async assertEditAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: currentIdentity.identity.identityId,
+        };
+      },
+    },
     kindertrainingAccess,
     u12Access,
     trainerIdentityAccess: {
@@ -345,6 +359,72 @@ function runtime(
     athleteMasterdata,
     kindertraining,
     u12,
+    exerciseCatalog: {
+      async list() {
+        return { items: [], trainingGroups: [] };
+      },
+      async read() {
+        return null;
+      },
+      async create(organizationId, _identityId, input) {
+        return {
+          id: "exercise-worker-1",
+          organizationId,
+          name: input.name,
+          categoryKey: input.categoryKey,
+          subcategory: input.subcategory ?? null,
+          goal: input.goal ?? null,
+          description: input.description ?? null,
+          coachingCues: input.coachingCues ?? null,
+          commonMistakes: input.commonMistakes ?? null,
+          equipment: input.equipment ?? [],
+          videoUrl: input.videoUrl ?? null,
+          groupIds: input.groupIds ?? [],
+          parameters: [],
+          isActive: true,
+          isFavorite: false,
+        };
+      },
+      async update(organizationId, _identityId, exerciseId, input) {
+        return {
+          id: exerciseId,
+          organizationId,
+          name: input.name,
+          categoryKey: input.categoryKey,
+          subcategory: input.subcategory ?? null,
+          goal: input.goal ?? null,
+          description: input.description ?? null,
+          coachingCues: input.coachingCues ?? null,
+          commonMistakes: input.commonMistakes ?? null,
+          equipment: input.equipment ?? [],
+          videoUrl: input.videoUrl ?? null,
+          groupIds: input.groupIds ?? [],
+          parameters: [],
+          isActive: true,
+          isFavorite: false,
+        };
+      },
+      async deactivate() {},
+      async setFavorite(organizationId, _identityId, exerciseId, favorite) {
+        return {
+          id: exerciseId,
+          organizationId,
+          name: "Sprint",
+          categoryKey: "acceleration",
+          subcategory: null,
+          goal: null,
+          description: null,
+          coachingCues: null,
+          commonMistakes: null,
+          equipment: [],
+          videoUrl: null,
+          groupIds: [],
+          parameters: [],
+          isActive: true,
+          isFavorite: favorite,
+        };
+      },
+    },
     securityEvents: {
       record() {},
       flush,
@@ -645,6 +725,45 @@ describe("generated identity+permissions Worker entrypoint", () => {
       access: {
         view: true,
       },
+    });
+  });
+
+  it("serves exercise catalog overview only after protected server-side authorization", async () => {
+    const response = await createGeneratedWorker(() => runtime()).fetch(
+      new Request("https://ulc.example.test/api/modules/exercise-catalog", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      module: { moduleId: "exercise_catalog" },
+      access: { view: true },
+      catalog: { items: [], trainingGroups: [] },
+    });
+  });
+
+  it("rejects client-owned exercise catalog organization scope", async () => {
+    const response = await createGeneratedWorker(() => runtime()).fetch(
+      new Request("https://ulc.example.test/api/modules/exercise-catalog", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: "verein-2",
+          name: "Sprint",
+          categoryKey: "acceleration",
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_EXERCISE_CATALOG_INPUT" },
     });
   });
 

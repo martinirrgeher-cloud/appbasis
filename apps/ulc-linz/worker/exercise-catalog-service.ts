@@ -71,11 +71,15 @@ export function createUlcExerciseCatalogService({
     organizationId: string,
   ): Promise<readonly UlcExerciseCatalogTrainingGroup[]> {
     const snapshot = await masterdata.readOrganizationSnapshot(organizationId);
-    const groups = snapshot.trainingGroups
-      .filter(
-        (group) =>
-          group.organizationId === organizationId && group.isActive === true,
+    if (
+      snapshot.trainingGroups.some(
+        (group) => group.organizationId !== organizationId,
       )
+    ) {
+      throw new Error("Athletes snapshot crossed the exercise catalog organization boundary.");
+    }
+    const groups = snapshot.trainingGroups
+      .filter((group) => group.isActive === true)
       .map((group) =>
         Object.freeze({
           id: group.id,

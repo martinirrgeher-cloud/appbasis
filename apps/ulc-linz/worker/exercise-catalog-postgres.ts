@@ -430,27 +430,31 @@ function hydrate(
   return Object.freeze(
     itemRows.map((row) => {
       const id = rowIdentifier(row, "id");
-      const item = createUlcExerciseCatalogItem(
-        {
-          name: rowString(row, "name"),
-          categoryKey: rowIdentifier(row, "category_key") as UlcExerciseCatalogItem["categoryKey"],
-          subcategory: rowNullableString(row, "subcategory"),
-          goal: rowNullableString(row, "goal"),
-          description: rowNullableString(row, "description"),
-          coachingCues: rowNullableString(row, "coaching_cues"),
-          commonMistakes: rowNullableString(row, "common_mistakes"),
-          equipment: rowStringArray(row, "equipment"),
-          videoUrl: rowNullableString(row, "video_url"),
-          groupIds: groups.get(id) ?? [],
-          parameters: parameters.get(id) ?? [],
-          isActive: rowBoolean(row, "is_active"),
-        },
-        { id, organizationId },
-      );
-      return Object.freeze({
-        ...item,
-        isFavorite: favorites.has(id),
-      });
+      try {
+        const item = createUlcExerciseCatalogItem(
+          {
+            name: rowString(row, "name"),
+            categoryKey: rowIdentifier(row, "category_key") as UlcExerciseCatalogItem["categoryKey"],
+            subcategory: rowNullableString(row, "subcategory"),
+            goal: rowNullableString(row, "goal"),
+            description: rowNullableString(row, "description"),
+            coachingCues: rowNullableString(row, "coaching_cues"),
+            commonMistakes: rowNullableString(row, "common_mistakes"),
+            equipment: rowStringArray(row, "equipment"),
+            videoUrl: rowNullableString(row, "video_url"),
+            groupIds: groups.get(id) ?? [],
+            parameters: parameters.get(id) ?? [],
+            isActive: rowBoolean(row, "is_active"),
+          },
+          { id, organizationId },
+        );
+        return Object.freeze({
+          ...item,
+          isFavorite: favorites.has(id),
+        });
+      } catch {
+        blocked();
+      }
     }),
   );
 }
