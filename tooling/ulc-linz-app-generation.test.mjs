@@ -166,7 +166,7 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
       {
         id: "ulc-linz-lifecycle",
         root: "apps/ulc-linz",
-        schemaVersion: 6,
+        schemaVersion: 7,
         migrations: [
           "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
           "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -174,6 +174,7 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
           "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
           "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
           "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
+          "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
         ],
       },
     ],
@@ -211,6 +212,30 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
   assert.match(trainerIdentityAuditMigration, /trainer\.identity\.bind/);
   assert.match(trainerIdentityAuditMigration, /trainer\.identity\.detach-stale/);
   assert.match(trainerIdentityAuditMigration, /retained_until/);
+
+  const trainingModuleGroupMigration = await readFile(
+    join(
+      root,
+      "apps",
+      "ulc-linz",
+      "migrations",
+      "0006_ulc_linz_training_module_groups.sql",
+    ),
+    "utf8",
+  );
+  assert.match(
+    trainingModuleGroupMigration,
+    /CREATE TABLE "ulc_linz_training_module_group"/,
+  );
+  assert.match(
+    trainingModuleGroupMigration,
+    /PRIMARY KEY \("organization_id", "module_id"\)/,
+  );
+  assert.match(
+    trainingModuleGroupMigration,
+    /UNIQUE \("organization_id", "group_id"\)/,
+  );
+  assert.doesNotMatch(trainingModuleGroupMigration, /\bREFERENCES\b/i);
 
   const packageJson = JSON.parse(
     await readFile(join(root, "apps", "ulc-linz", "package.json"), "utf8"),
