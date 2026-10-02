@@ -36,6 +36,12 @@ const TRAINING = [
 ];
 const TRAINER_IDENTITY_AUDIT = "ulc_linz_trainer_identity_audit";
 const TRAINING_MODULE_GROUP = "ulc_linz_training_module_group";
+const EXERCISE_CATALOG = [
+  "ulc_linz_exercise_catalog_item",
+  "ulc_linz_exercise_parameter",
+  "ulc_linz_exercise_group",
+  "ulc_linz_exercise_favorite",
+];
 
 function factory({
   tables = [],
@@ -134,7 +140,7 @@ test("classifies an identity-v3 preview without module mapping as a training mod
   );
 });
 
-test("classifies a fully migrated schema-v7 preview as current", async () => {
+test("classifies a fully migrated schema-v7 preview as an exercise catalog upgrade", async () => {
   assert.deepEqual(
     await resolve({
       tables: [
@@ -148,7 +154,45 @@ test("classifies a fully migrated schema-v7 preview as current", async () => {
       identityColumns: ["provisioning_owner", "actor_principal_id", "reason"],
       identityConstraint: true,
     }),
+    { mode: "exercise-catalog-upgrade" },
+  );
+});
+
+test("classifies a fully migrated schema-v8 preview as current", async () => {
+  assert.deepEqual(
+    await resolve({
+      tables: [
+        ...BASELINE,
+        ...ATHLETES,
+        ...TRAINING,
+        TRAINER_IDENTITY_AUDIT,
+        TRAINING_MODULE_GROUP,
+        ...EXERCISE_CATALOG,
+      ],
+      group: true,
+      identityColumns: ["provisioning_owner", "actor_principal_id", "reason"],
+      identityConstraint: true,
+    }),
     { mode: "current" },
+  );
+});
+
+test("fails closed on a partially applied exercise catalog schema", async () => {
+  await assert.rejects(
+    resolve({
+      tables: [
+        ...BASELINE,
+        ...ATHLETES,
+        ...TRAINING,
+        TRAINER_IDENTITY_AUDIT,
+        TRAINING_MODULE_GROUP,
+        EXERCISE_CATALOG[0],
+      ],
+      group: true,
+      identityColumns: ["provisioning_owner", "actor_principal_id", "reason"],
+      identityConstraint: true,
+    }),
+    /exercise catalog schema is partially applied/,
   );
 });
 

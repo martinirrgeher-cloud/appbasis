@@ -31,6 +31,12 @@ const TRAINING_TABLES = Object.freeze([
 ]);
 const TRAINER_IDENTITY_AUDIT_TABLE = "ulc_linz_trainer_identity_audit";
 const TRAINING_MODULE_GROUP_TABLE = "ulc_linz_training_module_group";
+const EXERCISE_CATALOG_TABLES = Object.freeze([
+  "ulc_linz_exercise_catalog_item",
+  "ulc_linz_exercise_parameter",
+  "ulc_linz_exercise_group",
+  "ulc_linz_exercise_favorite",
+]);
 export async function resolveUlcLinzD4PreviewMigrationState(
   {
     migrationDatabaseUrl,
@@ -90,6 +96,9 @@ export async function resolveUlcLinzD4PreviewMigrationState(
     const trainingPresent = TRAINING_TABLES.filter((table) => tables.has(table));
     const trainerIdentityAuditPresent = tables.has(TRAINER_IDENTITY_AUDIT_TABLE);
     const trainingModuleGroupPresent = tables.has(TRAINING_MODULE_GROUP_TABLE);
+    const exerciseCatalogPresent = EXERCISE_CATALOG_TABLES.filter((table) =>
+      tables.has(table),
+    );
     const auditShape = await readUlcPreviewIdentityAuditShape(database.client);
     const identityAuditAbsent = isAbsentUlcPreviewIdentityAuditShape(auditShape);
     if (!identityAuditAbsent && !isCanonicalUlcPreviewIdentityAuditShape(auditShape)) {
@@ -103,6 +112,12 @@ export async function resolveUlcLinzD4PreviewMigrationState(
     if (trainingPresent.length !== 0 && trainingPresent.length !== TRAINING_TABLES.length) {
       throw new Error("ULC D4 preview training schema is partially applied.");
     }
+    if (
+      exerciseCatalogPresent.length !== 0 &&
+      exerciseCatalogPresent.length !== EXERCISE_CATALOG_TABLES.length
+    ) {
+      throw new Error("ULC D4 preview exercise catalog schema is partially applied.");
+    }
     const athletesComplete = athletesPresent.length === ATHLETES_TABLES.length;
     const trainingComplete = trainingPresent.length === TRAINING_TABLES.length;
     if (!identityAuditAbsent && (!athletesComplete || !trainingComplete || !trainerIdentityAuditPresent)) {
@@ -114,6 +129,11 @@ export async function resolveUlcLinzD4PreviewMigrationState(
     ) {
       throw new Error(
         "ULC preview training module configuration exists before the complete identity-v3 app baseline.",
+      );
+    }
+    if (exerciseCatalogPresent.length > 0 && !trainingModuleGroupPresent) {
+      throw new Error(
+        "ULC preview exercise catalog exists before the schema-v7 module configuration baseline.",
       );
     }
     if (!athletesComplete) {
@@ -160,6 +180,9 @@ export async function resolveUlcLinzD4PreviewMigrationState(
     }
     if (!trainingModuleGroupPresent) {
       return Object.freeze({ mode: "training-module-config-upgrade" });
+    }
+    if (exerciseCatalogPresent.length === 0) {
+      return Object.freeze({ mode: "exercise-catalog-upgrade" });
     }
     return Object.freeze({ mode: "current" });
   } finally {

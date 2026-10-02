@@ -18,8 +18,13 @@ import { ULC_LINZ_LIFECYCLE_DATABASE_OWNER } from "./ulc-linz-database-contract.
 
 const EXPECTED_DATABASE = ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE.database;
 const TARGET_MIGRATION =
-  "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql";
-const TARGET_TABLE = "ulc_linz_training_module_group";
+  "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql";
+const TARGET_TABLES = Object.freeze([
+  "ulc_linz_exercise_catalog_item",
+  "ulc_linz_exercise_parameter",
+  "ulc_linz_exercise_group",
+  "ulc_linz_exercise_favorite",
+]);
 const REQUIRED_BASELINE_TABLES = Object.freeze([
   "appbasis_person",
   "appbasis_identity_operation",
@@ -35,39 +40,38 @@ const REQUIRED_BASELINE_TABLES = Object.freeze([
   "ulc_linz_training_session",
   "ulc_linz_training_attendance",
   "ulc_linz_trainer_identity_audit",
+  "ulc_linz_training_module_group",
 ]);
 
-export class UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError extends Error {
+export class UlcLinzPreviewExerciseCatalogUpgradeConfigurationError extends Error {
   constructor(message) {
     super(message);
-    this.name = "UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError";
+    this.name = "UlcLinzPreviewExerciseCatalogUpgradeConfigurationError";
   }
 }
 
-export class UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError extends Error {
+export class UlcLinzPreviewExerciseCatalogUpgradeExecutionError extends Error {
   constructor(message) {
     super(message);
-    this.name = "UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError";
+    this.name = "UlcLinzPreviewExerciseCatalogUpgradeExecutionError";
   }
 }
 
-export async function loadUlcLinzPreviewTrainingModuleConfigUpgradePlan(
+export async function loadUlcLinzPreviewExerciseCatalogUpgradePlan(
   { repositoryRoot = process.cwd() } = {},
   { loadOwnerMigrationPlan = loadRepositoryOwnerMigrationPlan } = {},
 ) {
   if (typeof loadOwnerMigrationPlan !== "function") {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError(
-      "ULC preview training module configuration upgrade plan loader is unavailable.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeConfigurationError(
+      "ULC preview exercise catalog upgrade plan loader is unavailable.",
     );
   }
-  const targetIndex =
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.indexOf(TARGET_MIGRATION);
   if (
-    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion < 7 ||
-    targetIndex < 0
+    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion !== 8 ||
+    ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.at(-1) !== TARGET_MIGRATION
   ) {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError(
-      "ULC preview training module configuration owner contract does not contain the schema-v7 target.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeConfigurationError(
+      "ULC preview exercise catalog owner contract is not the expected schema-v8 target.",
     );
   }
 
@@ -75,18 +79,19 @@ export async function loadUlcLinzPreviewTrainingModuleConfigUpgradePlan(
     repositoryRoot: resolve(repositoryRoot),
     owner: ULC_LINZ_LIFECYCLE_DATABASE_OWNER,
     ConfigurationError:
-      UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError,
+      UlcLinzPreviewExerciseCatalogUpgradeConfigurationError,
   });
   const matches = ownerPlan.filter(
     (migration) => migration.relativePath === TARGET_MIGRATION,
   );
   if (
     matches.length !== 1 ||
+    ownerPlan.at(-1)?.relativePath !== TARGET_MIGRATION ||
     !Array.isArray(matches[0]?.statements) ||
     matches[0].statements.length === 0
   ) {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError(
-      "ULC preview training module configuration migration delta is unavailable or ambiguous.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeConfigurationError(
+      "ULC preview exercise catalog migration delta is unavailable or ambiguous.",
     );
   }
 
@@ -101,17 +106,17 @@ export async function loadUlcLinzPreviewTrainingModuleConfigUpgradePlan(
   });
 }
 
-export async function applyUlcLinzPreviewTrainingModuleConfigUpgrade(
+export async function applyUlcLinzPreviewExerciseCatalogUpgrade(
   { connectionString } = {},
   {
     repositoryRoot = process.cwd(),
     databaseFactory = createPostgresDatabase,
-    loadPlan = loadUlcLinzPreviewTrainingModuleConfigUpgradePlan,
+    loadPlan = loadUlcLinzPreviewExerciseCatalogUpgradePlan,
   } = {},
 ) {
   if (typeof loadPlan !== "function" || typeof databaseFactory !== "function") {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError(
-      "ULC preview training module configuration upgrade dependencies are unavailable.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeConfigurationError(
+      "ULC preview exercise catalog upgrade dependencies are unavailable.",
     );
   }
 
@@ -122,8 +127,8 @@ export async function applyUlcLinzPreviewTrainingModuleConfigUpgrade(
       ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE,
     );
   } catch {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError(
-      "ULC preview training module configuration upgrade requires the dedicated direct preview migration credential.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeConfigurationError(
+      "ULC preview exercise catalog upgrade requires the dedicated direct preview migration credential.",
     );
   }
   const normalizedConnectionString = validatePostgresConnectionString(
@@ -131,7 +136,7 @@ export async function applyUlcLinzPreviewTrainingModuleConfigUpgrade(
     {
       expectedDatabase: EXPECTED_DATABASE,
       ConfigurationError:
-        UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError,
+        UlcLinzPreviewExerciseCatalogUpgradeConfigurationError,
     },
   );
   const plan = await loadPlan({ repositoryRoot });
@@ -140,8 +145,8 @@ export async function applyUlcLinzPreviewTrainingModuleConfigUpgrade(
   try {
     database = databaseFactory(normalizedConnectionString);
   } catch {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError(
-      "ULC preview training module configuration database connection could not be created.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeExecutionError(
+      "ULC preview exercise catalog database connection could not be created.",
     );
   }
 
@@ -158,31 +163,31 @@ export async function applyUlcLinzPreviewTrainingModuleConfigUpgrade(
         identity[0]?.database_name !== EXPECTED_DATABASE ||
         identity[0]?.principal_name !== origin.user
       ) {
-        throw new UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError(
-          "ULC preview training module configuration database identity does not match the validated migration credential.",
+        throw new UlcLinzPreviewExerciseCatalogUpgradeExecutionError(
+          "ULC preview exercise catalog database identity does not match the validated migration credential.",
         );
       }
 
       await transaction.unsafe(
-        "SELECT pg_advisory_xact_lock(hashtextextended('ulc-linz:preview-training-module-config-upgrade', 0))",
+        "SELECT pg_advisory_xact_lock(hashtextextended('ulc-linz:preview-exercise-catalog-upgrade', 0))",
       );
 
       const before = await publicTableInventory(transaction);
       if (!REQUIRED_BASELINE_TABLES.every((table) => before.has(table))) {
-        throw new UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError(
-          "ULC preview training module configuration requires the complete established E4E-D baseline.",
+        throw new UlcLinzPreviewExerciseCatalogUpgradeExecutionError(
+          "ULC preview exercise catalog requires the complete established E4E-D baseline.",
         );
       }
-      if (before.has(TARGET_TABLE)) {
-        throw new UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError(
-          "ULC preview training module configuration schema appears already applied.",
+      if (TARGET_TABLES.some((table) => before.has(table))) {
+        throw new UlcLinzPreviewExerciseCatalogUpgradeExecutionError(
+          "ULC preview exercise catalog schema appears already or partially applied.",
         );
       }
       const identityAuditShape =
         await readUlcPreviewIdentityAuditShape(transaction);
       if (!isCanonicalUlcPreviewIdentityAuditShape(identityAuditShape)) {
-        throw new UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError(
-          "ULC preview training module configuration requires canonical identity schema v3.",
+        throw new UlcLinzPreviewExerciseCatalogUpgradeExecutionError(
+          "ULC preview exercise catalog requires canonical identity schema v3.",
         );
       }
 
@@ -192,9 +197,9 @@ export async function applyUlcLinzPreviewTrainingModuleConfigUpgrade(
       }
 
       const after = await publicTableInventory(transaction);
-      if (!after.has(TARGET_TABLE)) {
-        throw new UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError(
-          "ULC preview training module configuration upgrade did not reach schema v7.",
+      if (!TARGET_TABLES.every((table) => after.has(table))) {
+        throw new UlcLinzPreviewExerciseCatalogUpgradeExecutionError(
+          "ULC preview exercise catalog upgrade did not reach schema v8.",
         );
       }
     });
@@ -211,42 +216,42 @@ export async function applyUlcLinzPreviewTrainingModuleConfigUpgrade(
     primaryError = error;
     if (
       error instanceof
-      UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError
+      UlcLinzPreviewExerciseCatalogUpgradeExecutionError
     ) {
       throw error;
     }
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError(
-      "ULC preview training module configuration transaction failed and was rolled back.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeExecutionError(
+      "ULC preview exercise catalog transaction failed and was rolled back.",
     );
   } finally {
     try {
       await database.client.end();
     } catch {
       if (primaryError === undefined) {
-        throw new UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError(
-          "ULC preview training module configuration database connection could not be closed cleanly.",
+        throw new UlcLinzPreviewExerciseCatalogUpgradeExecutionError(
+          "ULC preview exercise catalog database connection could not be closed cleanly.",
         );
       }
     }
   }
 }
 
-export function assertUlcLinzPreviewTrainingModuleConfigUpgradeEnvironment(
+export function assertUlcLinzPreviewExerciseCatalogUpgradeEnvironment(
   environment = process.env,
 ) {
   if (environment.APPBASIS_GENERATED_APP_ID !== "ulc-linz") {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError(
-      "ULC preview training module configuration upgrade requires appId ulc-linz.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeConfigurationError(
+      "ULC preview exercise catalog upgrade requires appId ulc-linz.",
     );
   }
   if (environment.APPBASIS_MIGRATION_TARGET !== EXPECTED_DATABASE) {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError(
-      "ULC preview training module configuration upgrade targets the wrong database.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeConfigurationError(
+      "ULC preview exercise catalog upgrade targets the wrong database.",
     );
   }
   if (environment.APPBASIS_APPLY_MIGRATIONS !== "1") {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeConfigurationError(
-      "ULC preview training module configuration upgrade requires explicit migration approval.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeConfigurationError(
+      "ULC preview exercise catalog upgrade requires explicit migration approval.",
     );
   }
 }
@@ -256,8 +261,8 @@ async function publicTableInventory(transaction) {
     "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public' ORDER BY tablename",
   );
   if (!Array.isArray(rows)) {
-    throw new UlcLinzPreviewTrainingModuleConfigUpgradeExecutionError(
-      "ULC preview training module configuration table inventory is unavailable.",
+    throw new UlcLinzPreviewExerciseCatalogUpgradeExecutionError(
+      "ULC preview exercise catalog table inventory is unavailable.",
     );
   }
   return new Set(rows.map((row) => row?.tablename).filter(Boolean));
@@ -270,18 +275,18 @@ function isMainModule() {
 
 if (isMainModule()) {
   try {
-    assertUlcLinzPreviewTrainingModuleConfigUpgradeEnvironment();
-    const result = await applyUlcLinzPreviewTrainingModuleConfigUpgrade({
+    assertUlcLinzPreviewExerciseCatalogUpgradeEnvironment();
+    const result = await applyUlcLinzPreviewExerciseCatalogUpgrade({
       connectionString: process.env.APPBASIS_DATABASE_URL,
     });
     console.log(
-      `ULC preview training module configuration upgrade PASS: ${result.statementCount} statements applied.`,
+      `ULC preview exercise catalog upgrade PASS: ${result.statementCount} statements applied.`,
     );
   } catch (error) {
     console.error(
       error instanceof Error
         ? error.message
-        : "ULC preview training module configuration upgrade failed.",
+        : "ULC preview exercise catalog upgrade failed.",
     );
     process.exitCode = 1;
   }
