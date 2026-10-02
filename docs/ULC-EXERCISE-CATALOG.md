@@ -111,10 +111,11 @@ Der vollständige Zielumfang umfasst:
 
 ## Berechtigungen
 
-Der bestehende Rollenvertrag enthält `exercise_catalog` bereits im
-Leistungstrainer-Profil. Bis E6B wird daraus noch keine neue Laufzeitberechtigung
-provisioniert. Der Admin bleibt organisationsweit autorisiert; Trainerzugriffe
-werden erst mit dem serverseitigen E6B-Vertrag geöffnet.
+Der bestehende Rollenvertrag enthält `exercise_catalog` im
+Leistungstrainer-Profil. Seit E6B werden View und Edit serverseitig getrennt
+durchgesetzt; E6C erhält zusätzlich das bereits autorisierte Edit-Flag, damit
+reine Leser keine schreibenden Oberflächenelemente sehen. Der Admin bleibt
+organisationsweit autorisiert.
 
 ## Geparkter U12-Pfad
 

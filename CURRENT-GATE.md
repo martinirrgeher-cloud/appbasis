@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6B – Übungskatalog: geschützte Runtime/API.**
+**ULC-E6C – Übungskatalog: kompakte mobile UI.**
 
 Der bisherige U12-Pfad wird bewusst geparkt. ULC-E5A ist auf `main`
 abgeschlossen, die additive Schema-v7-Migration wurde in Preview erfolgreich
@@ -22,31 +22,35 @@ bewährte frühere ULC-Linz-Katalog, nicht ein neuer Funktionsentwurf. Die
 Übernahme erfolgt jedoch auf den heutigen AppBasis-Sicherheits- und
 Persistenzvertrag.
 
-ULC-E6A ist auf `main` abgeschlossen. Der kanonische Fachvertrag und die
-app-eigene PostgreSQL-Persistenz liegen als Schema v8 vor; Generator, Privacy,
-Preview-State und echte PostgreSQL-E2E sind synchron. Die Migration wurde durch
-den Code-Merge nicht auf Preview oder Produktion angewandt.
+ULC-E6A und ULC-E6B sind auf `main` abgeschlossen. Schema v8 wurde am
+02.10.2026 in die isolierte ULC-Preview migriert; der anschließende Preview-
+Deploy auf demselben Main-Head war erfolgreich. Der geschützte Runtime/API-
+Vertrag für Übersicht, Detail, Create/Update, Deaktivierung und Favoriten ist
+damit in der Preview aktiv.
 
-E6B bindet dieses Fundament jetzt an die geschützte ULC-Runtime. Der
-Zielumfang und die Folgeslices sind in
+E6C liefert jetzt die sichtbare, kompakte mobile Oberfläche auf genau diesem
+bestehenden Serververtrag. Der Zielumfang und die Folgeslices sind in
 `docs/ULC-EXERCISE-CATALOG.md` festgehalten.
 
-Verbindliche E6B-Grenzen:
+Verbindliche E6C-Grenzen:
 
-- Modulschlüssel `exercise_catalog` nutzt ausschließlich den bestehenden
-  ULC-Permission-Vertrag;
-- Organisation und Actor werden ausschließlich serverseitig aus der
-  authentifizierten Identity/Membership abgeleitet;
-- Übersicht, Detail, Anlegen, Bearbeiten, Deaktivieren und persönlicher Favorit
-  werden als geschützte API bereitgestellt;
-- Gruppeneignung wird vor jedem Katalog-Write gegen aktive Trainingsgruppen aus
-  dem serverautorisierten Athletes-Snapshot derselben Organisation geprüft;
-- Clientdaten enthalten niemals `organizationId` oder Actor-IDs;
-- bestehende Kindertrainer-Testkonten erhalten keine automatische
-  `exercise_catalog`-Berechtigung;
-- E6B enthält noch keine sichtbare Übungskatalog-UI;
-- Preview-/Production-Migration und Deployment bleiben getrennte,
-  ausdrücklich freizugebende Schritte.
+- Navigation wird nur sichtbar, wenn der geschützte View-Vertrag erfolgreich
+  geladen wurde;
+- View und Edit bleiben getrennt: reine Leser sehen Details und dürfen
+  persönliche Favoriten setzen, aber keine Katalogdaten verändern;
+- Suche und Filter umfassen mindestens Kategorie, Trainingsgruppe, Material,
+  Favorit, Aktiv/Archiv und vorhandenen Link;
+- aktive und archivierte Übungen werden kompakt mobil dargestellt;
+- Detail-/Bearbeitungsansicht enthält Stammdaten, geeignete Trainingsgruppen
+  und den kanonischen Planungsparametereditor;
+- Anlegen, Bearbeiten und Deaktivieren verwenden ausschließlich die bestehenden
+  E6B-Endpunkte;
+- Client-Requests enthalten niemals `organizationId` oder Actor-IDs;
+- kein `innerHTML`, keine Abschwächung der CSP- oder Serverautorisierung;
+- Medien-Upload, ähnliche Übungen, Dublettenwarnung und Nutzungsintelligenz
+  bleiben E6D/E6E;
+- Preview-/Production-Deployment dieses UI-Slices bleibt ein getrenntes,
+  ausdrücklich freizugebendes Gate.
 
 
 ## FC4-Abnahme – abgeschlossen
