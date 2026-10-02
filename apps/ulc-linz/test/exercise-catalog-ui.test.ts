@@ -79,6 +79,19 @@ describe("ULC E6C exercise catalog UI", () => {
     }
   });
 
+  it("acknowledges committed mutations without a second refresh request", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "reconcileExerciseCatalogItem(payload.item);",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "archiveExerciseCatalogItemLocally(deactivatedId);",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "Übung wurde gespeichert. Die Ansicht konnte nicht automatisch aktualisiert werden.",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("reloadExerciseCatalog");
+  });
+
   it("compiles the delivered browser script after UI composition", () => {
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
   });
