@@ -9,16 +9,22 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E4E-D – isolierte Preview-Abnahme für Trainer-Testkonten, Rechte und Gruppenzuordnung.**
+**ULC-E5A – U12 Runtime/API auf dem bereits bewiesenen gemeinsamen Trainingskern.**
 
-Der E4E-D-Code ist fertig integriert. Vor der praktischen Abnahme muss die
-bestehende isolierte ULC-Preview die additive Identity-Schema-Version 3 erhalten.
-Das bisherige Preview-Migrationsrouting konnte die neue Identity-Audit-Migration
-noch nicht erkennen und würde sonst eine alte Preview fälschlich als
-`current` melden. Ein eigener read-only Inventory-Check, eine ausschließlich
-identity-eigene inkrementelle Migration und ein Fail-Closed-Preflight vor
-Bootstrap oder Deployment schließen diese Lücke. Die nachstehenden E4A–E4E-C-Abschnitte dokumentieren
-die bereits erreichten fachlichen Grundlagen.
+ULC-E4E-D ist abgeschlossen. Die isolierte Preview wurde auf Identity-Schema
+Version 3 angehoben, danach erneut read-only als `current` verifiziert und mit
+dem freigegebenen Stand deployed. Die praktische A/B-Abnahme bestätigte
+Trainer-Testkonten, verpflichtenden Passwortwechsel, gruppenbegrenzte
+Kindertraining-Sicht und die berechtigungsabhängige Navigation. Die
+serverseitigen Negativ- und Konfliktpfade bleiben zusätzlich durch die
+automatisierten Authorization-/PostgreSQL-Tests abgesichert.
+
+E5A aktiviert jetzt mit **U12** den zweiten realen Trainingsverbraucher des in
+E4A bewusst gemeinsam angelegten Schemas. U12 erhält eine eigene Route,
+eigene Capability-Grenze und eigene Runtime/API-Verträge, verwendet aber
+dieselbe app-eigene Session-/Attendance-Persistenz. E5A enthält noch keine
+U12-Oberfläche und erweitert bestehende Trainer-Testkonten nicht still um neue
+U12-Rechte.
 
 ULC-E3C ist auf `main` abgeschlossen und wurde anschließend in der isolierten
 ULC-Preview erfolgreich deployed. Die Bearbeiten-Funktion ist damit für den
@@ -785,7 +791,7 @@ Abnahme für ULC-E4E-C:
 - der Code-PR führt keinen Preview-/Production-Write und kein Deployment aus.
   Eine praktische Sichtung erfolgt erst nach separater Deploy-Freigabe.
 
-## Aktueller Gate-Scope: ULC-E4E-D Trainer-Testkonten und stabile Gruppenzuordnung
+## Abgeschlossener Gate-Scope: ULC-E4E-D Trainer-Testkonten und stabile Gruppenzuordnung
 
 ULC-E4E-D beseitigt die beiden Blocker aus der praktischen E4E-Prüfung:
 wiederholbare Trainer↔Gruppen-Zuordnungen und administrativ erzeugbare
@@ -844,6 +850,34 @@ E4E-D-Preview-Gate nach dem Code-Merge, jeweils auf `main`:
 Keine Preview-Migration, kein Preview-Deployment und keine
 Produktionsmutation werden allein durch diesen Code-PR ausgelöst.
 
+E4E-D ist praktisch abgeschlossen: Admin-Anlage von Trainer A/B,
+Pflichtpasswortwechsel und getrennte Gruppensicht wurden in der isolierten
+Preview bestätigt. Die serverseitige Doppelbelegungs-/Konfliktlogik sowie
+gruppenfremde Scope-Denials bleiben automatisiert fail-closed abgedeckt.
+
+## Aktueller Gate-Scope: ULC-E5A U12 Runtime/API
+
+Abnahme für E5A:
+
+- U12 nutzt ausschließlich das bestehende app-eigene
+  `ulc_linz_training_session`-/`ulc_linz_training_attendance`-Schema mit
+  `module_id='u12'`; keine neue Migration ist erforderlich;
+- U12 besitzt eigene Endpunkte `/api/modules/u12` und
+  `/api/modules/u12/session`; der Client kann keine Organisation vorgeben;
+- View/Edit werden über die bereits vorhandenen
+  `ulc-linz:module:u12:view`-/`edit`-Capabilities serverseitig erzwungen;
+- Admins bleiben organisationsweit; Trainer werden – sofern sie U12-Rechte
+  besitzen – auf ihre persistierten Trainer↔Gruppen-Zuordnungen begrenzt;
+- gruppenfremde Ziele liefern keinen Datenhinweis und werden wie beim
+  Kindertraining fail-closed behandelt;
+- Teilnehmer-Snapshot, Revision-/Konfliktschutz und vollständige
+  Anwesenheitsmenge verwenden denselben bewiesenen Trainingsvertrag, bleiben
+  aber durch `module_id='u12'` fachlich vom Kindertraining getrennt;
+- U12 darf bestehende Kindertraining-Sessions weder lesen noch überschreiben;
+- bestehende Trainer-Testkonten erhalten in E5A **keine** neuen Rechte;
+  Berechtigungsverwaltung und U12-UI bleiben eigene Folgeslices;
+- E5A führt keine Preview-/Production-Mutation und kein Deployment aus.
+
 ## Architektur- und Sicherheitsgrenzen
 
 - Core bleibt fachneutral und klein.
@@ -862,26 +896,21 @@ Produktionsmutation werden allein durch diesen Code-PR ausgelöst.
 
 ## Scope-Freeze für Review und Implementierung
 
-Ein Finding blockiert den aktuellen ULC-E4E-D-Pfad, wenn mindestens eines gilt:
+Ein Finding blockiert den aktuellen ULC-E5A-Pfad, wenn mindestens eines gilt:
 
-- eine Trainer↔Gruppen-Zuordnung lockert die aktive Same-Organization-Prüfung
-  oder eine identische Wiederholung erzeugt weiterhin einen technischen Fehler;
-- ein erfolgreicher Write wird wegen eines nachgelagerten Refresh-Fehlers als
-  fehlgeschlagener Save dargestellt;
-- die Benutzeranlage akzeptiert Organisation, Actor, Rolle oder
-  Berechtigungsumfang aus dem Client;
-- ein Nicht-Admin kann `/api/admin/trainer-users` bis zur Provisionierung
-  durchlaufen;
-- ein neu angelegter Benutzer kann vor dem verpflichtenden Passwortwechsel
-  normalen App-Zugriff erhalten;
-- Trainer-Testkonten erhalten Admin-, Benutzerverwaltungs- oder andere nicht
-  für diesen E4E-Slice vorgesehene Modulrechte;
-- ein bestehender widersprüchlicher Rollen-, Membership- oder Trainer-Link wird
-  still überschrieben;
-- die UI ruft die Admin-Funktionen ohne ausdrückliches „Verwalten“ auf oder
-  rendert dynamische Benutzer-/Trainerdaten per HTML-Injektion;
-- der Code-PR führt die neue Migration, einen Preview-/Production-Write oder
-  ein Deployment ohne gesonderte Freigabe aus.
+- U12 verwendet einen anderen Persistenzpfad als den bereits akzeptierten
+  gemeinsamen Trainingskern oder benötigt ohne fachlichen Grund eine neue Migration;
+- U12 kann Kindertraining-/U14-Sessions lesen oder überschreiben;
+- Organisation oder Modul-ID werden aus Clientdaten übernommen statt serverseitig
+  festgelegt;
+- U12 umgeht die kanonische Identity-/Permission-Prüfung;
+- ein Trainer kann ohne explizite U12-Capability oder außerhalb seiner
+  Trainer↔Gruppen-Zuordnung U12-Daten lesen oder schreiben;
+- gruppenfremde Ziele verraten Daten, statt fail-closed zu bleiben;
+- der Revision-/Teilnehmer-Snapshot-Vertrag wird gegenüber Kindertraining
+  gelockert;
+- der Code-PR erweitert bestehende Trainerberechtigungen oder führt Preview-/
+  Production-Writes ohne gesonderte Freigabe aus.
 
 Nicht gate-blockierend sind weitere visuelle Feinarbeiten, zusätzliche
 Trainer-Berechtigungsprofile, Sondertrainings, Statistik, Import/Export,
@@ -937,12 +966,10 @@ FC6-C Existing-App-Integration → FC6-D isolierter E2E-Beweis.**
 
 Der neue Produktpfad ist:
 
-**ULC-E1 Vereins-App-Shell & Dashboard → ULC-E2A Stammdaten-Fundament →
-ULC-E2B kontrollierte ULC-Installation → ULC-E2C Stammdaten-Runtime/API →
-ULC-E2D athletes-eigene Restore-Reconciliation →
-ULC-E3A Stammdaten-UI → ULC-E3B Gruppenzuordnungen/Lifecycle-UI →
-ULC-E3C Stammdaten bearbeiten → ULC-E4A gemeinsames Trainingsfundament →
-ULC-E4B Kindertraining-Runtime.**
+**ULC-E1 Vereins-App-Shell & Dashboard → ULC-E2A–E2D Stammdaten →
+ULC-E3A–E3C Stammdaten-UI/Lifecycle → ULC-E4A gemeinsames Trainingsfundament →
+ULC-E4B–E4E-D Kindertraining inkl. Trainer-Identity/Scope-Abnahme →
+ULC-E5A U12 Runtime/API.**
 
 Der abgeschlossene FC4-Pfad bleibt die Referenz:
 **Modulvertrag → Modul-Scaffolder → Countdown-Modul → Generator-Test-App.**
