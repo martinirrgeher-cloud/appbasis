@@ -92,7 +92,23 @@ describe("ULC E6C exercise catalog UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("reloadExerciseCatalog");
   });
 
-  it("compiles the delivered browser script after UI composition", () => {
-    expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
+  it("parses the delivered browser script as an ES module", async () => {
+    const importModule = new Function(
+      "specifier",
+      "return import(specifier);",
+    ) as (specifier: string) => Promise<unknown>;
+    let thrown: unknown = null;
+
+    try {
+      await importModule(
+        "data:text/javascript;charset=utf-8," +
+          encodeURIComponent(ULC_LINZ_APP_SCRIPT),
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ReferenceError);
+    expect((thrown as Error).message).toContain("document is not defined");
   });
 });
