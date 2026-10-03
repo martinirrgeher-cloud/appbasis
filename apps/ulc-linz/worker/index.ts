@@ -1,6 +1,9 @@
 import {
   ATHLETE_CAPABILITIES,
+  ATHLETES_XLSX_CONTENT_TYPE,
   MasterdataValidationError,
+  createAthletesWorkbook,
+  type AthletesExchangeMode,
 } from "@appbasis/athletes";
 import {
   COUNTDOWN_CAPABILITIES,
@@ -169,6 +172,16 @@ export function createGeneratedWorker(
           response = await trainerIdentityAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes") {
           response = await athletesModuleResponse(request, runtime, url);
+        } else if (
+          url.pathname === "/api/modules/athletes/export.xlsx" ||
+          url.pathname === "/api/modules/athletes/template.xlsx"
+        ) {
+          response = await athletesWorkbookResponse(
+            request,
+            runtime,
+            url,
+            url.pathname.endsWith("/template.xlsx") ? "template" : "export",
+          );
         } else if (url.pathname === "/api/modules/athletes/masterdata") {
           response = await athletesMasterdataResponse(request, runtime, url);
         } else if (
@@ -1805,6 +1818,43 @@ async function athletesModuleResponse(
     access: {
       view: true,
       organizationId: access.organizationId,
+    },
+  });
+}
+
+async function athletesWorkbookResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+  mode: AthletesExchangeMode,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "athletes workbook");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidAthletesInput();
+  }
+
+  const access = await authorizeAthletesRequest(request, runtime, url, "view");
+  if (access instanceof Response) return access;
+
+  const snapshot = await runtime.athleteMasterdata.readOrganizationSnapshot(
+    access.organizationId,
+  );
+  const workbook = createAthletesWorkbook(snapshot, mode);
+  const responseBytes = new Uint8Array(workbook.byteLength);
+  responseBytes.set(workbook);
+
+  return new Response(responseBytes.buffer, {
+    status: 200,
+    headers: {
+      "content-type": ATHLETES_XLSX_CONTENT_TYPE,
+      "content-disposition":
+        mode === "template"
+          ? 'attachment; filename="athleten-importvorlage.xlsx"'
+          : 'attachment; filename="athleten-export.xlsx"',
+      "cache-control": "private, no-store",
+      "x-content-type-options": "nosniff",
     },
   });
 }
