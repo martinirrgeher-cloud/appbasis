@@ -20,7 +20,7 @@ export interface UlcExerciseCatalogWorkbookSheet {
   readonly rows: readonly (readonly string[])[];
 }
 
-const EXERCISE_HEADERS = Object.freeze([
+export const ULC_EXERCISE_CATALOG_EXERCISE_HEADERS = Object.freeze([
   "Datensatz-Schlüssel",
   "ID",
   "Name",
@@ -36,7 +36,7 @@ const EXERCISE_HEADERS = Object.freeze([
   "Aktiv",
 ]);
 
-const GROUP_HEADERS = Object.freeze([
+export const ULC_EXERCISE_CATALOG_GROUP_HEADERS = Object.freeze([
   "Datensatz-Schlüssel",
   "Übungs-ID",
   "Übung",
@@ -44,7 +44,7 @@ const GROUP_HEADERS = Object.freeze([
   "Trainingsgruppe",
 ]);
 
-const PARAMETER_HEADERS = Object.freeze([
+export const ULC_EXERCISE_CATALOG_PARAMETER_HEADERS = Object.freeze([
   "Datensatz-Schlüssel",
   "Übungs-ID",
   "Übung",
@@ -107,9 +107,9 @@ export function buildUlcExerciseCatalogExchangeSheets(
     ),
   );
 
-  const exercises: string[][] = [[...EXERCISE_HEADERS]];
-  const groups: string[][] = [[...GROUP_HEADERS]];
-  const parameters: string[][] = [[...PARAMETER_HEADERS]];
+  const exercises: string[][] = [[...ULC_EXERCISE_CATALOG_EXERCISE_HEADERS]];
+  const groups: string[][] = [[...ULC_EXERCISE_CATALOG_GROUP_HEADERS]];
+  const parameters: string[][] = [[...ULC_EXERCISE_CATALOG_PARAMETER_HEADERS]];
 
   if (mode === "template") {
     const exampleKey = "beispiel-1";
