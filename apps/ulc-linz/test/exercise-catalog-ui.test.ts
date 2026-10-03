@@ -59,6 +59,28 @@ describe("ULC E6C exercise catalog UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
   });
 
+  it("offers E6F2 read-only XLSX import preview and row review in the existing editor", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-import-open"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-import-file"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-import-preview" hidden');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-import-review" hidden');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/exercise-catalog/import-preview"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("value.applyAvailable !== false");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "populateExerciseCatalogEditor(row.draft, {",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("exerciseCatalogEditorReviewMode");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("/import-apply");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
+  });
+
   it("uses only the protected server-owned catalog API without client scope", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'requestJson("/api/modules/exercise-catalog")',
