@@ -1255,6 +1255,183 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("serves E6F4A athlete XLSX export from the server-authorized organization only", async () => {
+    let readOrganization: string | null = null;
+    let mutationCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athletesAccess: {
+        ...base.athletesAccess,
+        async assertViewAccess(current) {
+          expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
+          return { organizationId: "verein-server" };
+        },
+      },
+      athleteMasterdata: {
+        ...base.athleteMasterdata,
+        async readOrganizationSnapshot(organizationId) {
+          readOrganization = organizationId;
+          return {
+            trainingGroups: [
+              {
+                id: "group-1",
+                organizationId,
+                name: "Sprint",
+                shortName: "SP",
+                description: null,
+                isActive: true,
+                sortOrder: 10,
+              },
+            ],
+            athletes: [
+              {
+                id: "athlete-1",
+                organizationId,
+                firstName: "Anna",
+                lastName: "Muster",
+                birthYear: 2012,
+                notes: null,
+                isActive: true,
+              },
+            ],
+            trainers: [],
+            athleteGroupMemberships: [
+              {
+                organizationId,
+                athleteId: "athlete-1",
+                groupId: "group-1",
+                startedOn: "2026-01-01",
+                endedOn: null,
+              },
+            ],
+            trainerGroupMemberships: [],
+          };
+        },
+        async createAthlete(...args) {
+          mutationCalls += 1;
+          return base.athleteMasterdata.createAthlete(...args);
+        },
+        async updateAthlete(...args) {
+          mutationCalls += 1;
+          return base.athleteMasterdata.updateAthlete(...args);
+        },
+        async deactivateAthlete(...args) {
+          mutationCalls += 1;
+          return base.athleteMasterdata.deactivateAthlete(...args);
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/export.xlsx", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="athleten-export.xlsx"',
+    );
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(readOrganization).toBe("verein-server");
+    expect(mutationCalls).toBe(0);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect(Array.from(bytes.slice(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    const text = new TextDecoder().decode(bytes);
+    expect(text).toContain("Anna");
+    expect(text).toContain("Muster");
+    expect(text).not.toContain("verein-server");
+  });
+
+  it("serves the E6F4A athlete import template and keeps workbook endpoints GET-only", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athleteMasterdata: {
+        ...base.athleteMasterdata,
+        async readOrganizationSnapshot(organizationId) {
+          return {
+            trainingGroups: [
+              {
+                id: "group-1",
+                organizationId,
+                name: "Sprint",
+                shortName: "SP",
+                description: null,
+                isActive: true,
+                sortOrder: 10,
+              },
+            ],
+            athletes: [],
+            trainers: [],
+            athleteGroupMemberships: [],
+            trainerGroupMemberships: [],
+          };
+        },
+      },
+    }));
+
+    const template = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/template.xlsx", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+    expect(template.status).toBe(200);
+    expect(template.headers.get("content-disposition")).toBe(
+      'attachment; filename="athleten-importvorlage.xlsx"',
+    );
+    expect(new TextDecoder().decode(await template.arrayBuffer())).toContain(
+      "Mustermann",
+    );
+
+    const post = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/export.xlsx", {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+    expect(post.status).toBe(405);
+    expect(post.headers.get("allow")).toBe("GET");
+  });
+
+  it("denies E6F4A athlete workbook reads before loading masterdata", async () => {
+    let readCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athletesAccess: {
+        ...base.athletesAccess,
+        async assertViewAccess() {
+          throw new UlcLinzAuthorizationDeniedError();
+        },
+      },
+      athleteMasterdata: {
+        ...base.athleteMasterdata,
+        async readOrganizationSnapshot() {
+          readCalls += 1;
+          return base.athleteMasterdata.readOrganizationSnapshot("verein-1");
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/export.xlsx", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(403);
+    expect(readCalls).toBe(0);
+  });
+
   it("serves organization-scoped Stammdaten only after server-side view authorization", async () => {
     let authorizedOrganization: string | null = null;
     let readOrganization: string | null = null;
