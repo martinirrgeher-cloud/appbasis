@@ -885,9 +885,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         ...base.exerciseCatalogAccess,
         async assertEditAccess() {
           editCalls += 1;
-          throw new UlcLinzAuthorizationDeniedError(
-            "ULC_LINZ_EXERCISE_CATALOG_EDIT_DENIED",
-          );
+          throw new UlcLinzAuthorizationDeniedError();
         },
       },
     }));
