@@ -7,6 +7,8 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                 <p class="summary">Übungen suchen, filtern, favorisieren und für die Trainingsplanung vorbereiten.</p>
               </div>
               <div class="exercise-catalog-hero-actions">
+                <input id="exercise-catalog-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+                <button class="button button--secondary" id="exercise-catalog-import-open" type="button" hidden disabled>Import prüfen</button>
                 <button class="button button--secondary" id="exercise-catalog-template" type="button" disabled>Importvorlage</button>
                 <button class="button button--secondary" id="exercise-catalog-export" type="button" disabled>Export</button>
                 <button class="button button--primary" id="exercise-catalog-new" type="button" hidden>Neue Übung</button>
@@ -85,6 +87,24 @@ export const ULC_EXERCISE_CATALOG_HTML = `
               </footer>
             </section>
 
+            <div class="exercise-catalog-editor-backdrop" id="exercise-catalog-import-preview" hidden>
+              <section class="exercise-catalog-editor-dialog exercise-catalog-import-dialog" role="dialog" aria-modal="true" aria-labelledby="exercise-catalog-import-title">
+                <header class="exercise-catalog-overlay-header">
+                  <div>
+                    <p class="eyebrow">Import</p>
+                    <h2 id="exercise-catalog-import-title">Importvorschau</h2>
+                  </div>
+                  <button class="button button--secondary exercise-catalog-overlay-close" id="exercise-catalog-import-close" type="button" aria-label="Importvorschau schließen">Schließen</button>
+                </header>
+                <div class="exercise-catalog-import-body">
+                  <p class="exercise-catalog-import-notice">Nur Prüfung: In diesem Schritt werden keine Übungen angelegt, geändert oder deaktiviert.</p>
+                  <div class="exercise-catalog-import-summary" id="exercise-catalog-import-summary"></div>
+                  <div class="exercise-catalog-import-issues" id="exercise-catalog-import-issues"></div>
+                  <div class="exercise-catalog-import-rows" id="exercise-catalog-import-rows"></div>
+                </div>
+              </section>
+            </div>
+
             <div class="exercise-catalog-editor-backdrop" id="exercise-catalog-editor" hidden>
               <section class="exercise-catalog-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="exercise-catalog-editor-title">
                 <header class="exercise-catalog-overlay-header exercise-catalog-editor-header">
@@ -104,6 +124,10 @@ export const ULC_EXERCISE_CATALOG_HTML = `
 
                 <form id="exercise-catalog-form" class="exercise-catalog-editor-form">
                   <div class="exercise-catalog-editor-body">
+                    <section class="exercise-catalog-import-review" id="exercise-catalog-import-review" hidden>
+                      <strong>Importprüfung</strong>
+                      <div id="exercise-catalog-import-review-issues"></div>
+                    </section>
                     <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="basis">
                       <div class="exercise-catalog-form-grid">
                         <label class="exercise-catalog-wide">Name
@@ -646,6 +670,128 @@ body.exercise-catalog-editor-open { overflow: hidden; }
     left: max(18px, calc((100vw - 760px) / 2));
   }
 }
+.exercise-catalog-import-dialog {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.exercise-catalog-import-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+.exercise-catalog-import-notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--secondary);
+  font-size: .8rem;
+}
+.exercise-catalog-import-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.exercise-catalog-import-summary > div {
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-align: center;
+}
+.exercise-catalog-import-summary strong,
+.exercise-catalog-import-summary span { display: block; }
+.exercise-catalog-import-summary strong { font-size: 1rem; }
+.exercise-catalog-import-summary span {
+  margin-top: 2px;
+  color: var(--secondary);
+  font-size: .7rem;
+  font-weight: 750;
+}
+.exercise-catalog-import-issues,
+.exercise-catalog-import-review-issues {
+  display: grid;
+  gap: 6px;
+}
+.exercise-catalog-import-issue {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--muted);
+  color: var(--secondary);
+  font-size: .76rem;
+}
+.exercise-catalog-import-issue[data-level="error"] {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+.exercise-catalog-import-rows {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.exercise-catalog-import-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: white;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.exercise-catalog-import-row__main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.exercise-catalog-import-row__main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exercise-catalog-import-row__meta {
+  color: var(--secondary);
+  font-size: .72rem;
+}
+.exercise-catalog-import-action {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--secondary);
+  font-size: .68rem;
+  font-weight: 850;
+}
+.exercise-catalog-import-action[data-action="create"] {
+  background: #ecfdf5;
+  color: #047857;
+}
+.exercise-catalog-import-action[data-action="update"] {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.exercise-catalog-import-action[data-reason="invalid"] {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+.exercise-catalog-import-review {
+  margin: 12px 14px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--muted);
+}
+.exercise-catalog-import-review > strong {
+  display: block;
+  margin-bottom: 7px;
+}
+body.exercise-catalog-filter-open,
+body.exercise-catalog-editor-open,
+body.exercise-catalog-import-open { overflow: hidden; }
 
 `;
 
@@ -688,6 +834,15 @@ const EXERCISE_PARAMETER_META = Object.freeze([
 Object.assign(elements, {
   exerciseCatalogQuickAction: document.querySelector("#exercise-catalog-quick-action"),
   exerciseCatalogAccessLabel: document.querySelector("#exercise-catalog-access-label"),
+  exerciseCatalogImportOpen: document.querySelector("#exercise-catalog-import-open"),
+  exerciseCatalogImportFile: document.querySelector("#exercise-catalog-import-file"),
+  exerciseCatalogImportPreview: document.querySelector("#exercise-catalog-import-preview"),
+  exerciseCatalogImportClose: document.querySelector("#exercise-catalog-import-close"),
+  exerciseCatalogImportSummary: document.querySelector("#exercise-catalog-import-summary"),
+  exerciseCatalogImportIssues: document.querySelector("#exercise-catalog-import-issues"),
+  exerciseCatalogImportRows: document.querySelector("#exercise-catalog-import-rows"),
+  exerciseCatalogImportReview: document.querySelector("#exercise-catalog-import-review"),
+  exerciseCatalogImportReviewIssues: document.querySelector("#exercise-catalog-import-review-issues"),
   exerciseCatalogTemplate: document.querySelector("#exercise-catalog-template"),
   exerciseCatalogExport: document.querySelector("#exercise-catalog-export"),
   exerciseCatalogNew: document.querySelector("#exercise-catalog-new"),
@@ -744,6 +899,8 @@ let exerciseCatalogBusy = false;
 let exerciseCatalogFilterOpen = false;
 let exerciseCatalogEditorDirty = false;
 let exerciseCatalogEditorTab = "basis";
+let exerciseCatalogImportPreviewData = null;
+let exerciseCatalogEditorReviewMode = false;
 
 function categoryLabel(key) {
   return EXERCISE_CATEGORIES.find((category) => category.key === key)?.label || key;
@@ -813,6 +970,8 @@ async function bootstrapExerciseCatalog() {
   exerciseCatalogGroups = [];
   exerciseCatalogSelectedId = null;
   closeExerciseCatalogEditor(true);
+  closeExerciseCatalogImportPreview();
+  exerciseCatalogImportPreviewData = null;
   setExerciseCatalogFilterOpen(false);
   refreshAppAvailability();
   showMessage(elements.exerciseCatalogMessage, "");
@@ -970,6 +1129,11 @@ function prepareExerciseCatalogView() {
   }
   if (elements.exerciseCatalogExport) {
     elements.exerciseCatalogExport.disabled = exerciseCatalogBusy;
+  }
+  if (elements.exerciseCatalogImportOpen) {
+    elements.exerciseCatalogImportOpen.hidden = !exerciseCatalogCanEdit;
+    elements.exerciseCatalogImportOpen.disabled =
+      !exerciseCatalogCanEdit || exerciseCatalogBusy;
   }
   if (elements.exerciseCatalogNew) {
     elements.exerciseCatalogNew.hidden = !exerciseCatalogCanEdit;
@@ -1147,33 +1311,59 @@ function newExerciseCatalogItem() {
   });
 }
 
-function populateExerciseCatalogEditor(item) {
-  const editable = exerciseCatalogCanEdit && item.isActive;
+function populateExerciseCatalogEditor(item, options = {}) {
+  const review = options.review === true;
+  const editable = !review && exerciseCatalogCanEdit && item.isActive;
+  exerciseCatalogEditorReviewMode = review;
   setExerciseCatalogFilterOpen(false);
   if (elements.exerciseCatalogEditor) elements.exerciseCatalogEditor.hidden = false;
   document.body.classList.add("exercise-catalog-editor-open");
   setExerciseCatalogEditorTab("basis");
+
   if (elements.exerciseCatalogEditorEyebrow) {
-    elements.exerciseCatalogEditorEyebrow.textContent =
-      item.id.length === 0 ? "Neue Übung" : item.isActive ? "Übung" : "Archiv";
+    elements.exerciseCatalogEditorEyebrow.textContent = review
+      ? "Importvorschau · " + importActionLabel(options.action || "skip")
+      : item.id.length === 0
+        ? "Neue Übung"
+        : item.isActive
+          ? "Übung"
+          : "Archiv";
   }
   if (elements.exerciseCatalogEditorTitle) {
-    elements.exerciseCatalogEditorTitle.textContent =
-      item.id.length === 0 ? "Übung anlegen" : item.name;
+    elements.exerciseCatalogEditorTitle.textContent = review
+      ? "Zeile " + String(options.rowNumber || "") + " · " + (item.name || "Ohne Name")
+      : item.id.length === 0
+        ? "Übung anlegen"
+        : item.name;
   }
 
-  if (elements.exerciseCatalogName) elements.exerciseCatalogName.value = item.name;
-  if (elements.exerciseCatalogCategory) elements.exerciseCatalogCategory.value = item.categoryKey;
+  if (elements.exerciseCatalogImportReview) {
+    elements.exerciseCatalogImportReview.hidden = !review;
+  }
+  renderExerciseCatalogImportIssues(
+    elements.exerciseCatalogImportReviewIssues,
+    review && Array.isArray(options.issues) ? options.issues : [],
+    review ? "Keine Fehler oder Warnungen in dieser Zeile." : "",
+  );
+
+  if (elements.exerciseCatalogName) elements.exerciseCatalogName.value = item.name || "";
+  if (elements.exerciseCatalogCategory) elements.exerciseCatalogCategory.value = item.categoryKey || "";
   if (elements.exerciseCatalogSubcategory) elements.exerciseCatalogSubcategory.value = item.subcategory || "";
   if (elements.exerciseCatalogGoal) elements.exerciseCatalogGoal.value = item.goal || "";
   if (elements.exerciseCatalogDescription) elements.exerciseCatalogDescription.value = item.description || "";
   if (elements.exerciseCatalogCues) elements.exerciseCatalogCues.value = item.coachingCues || "";
   if (elements.exerciseCatalogMistakes) elements.exerciseCatalogMistakes.value = item.commonMistakes || "";
-  if (elements.exerciseCatalogEquipment) elements.exerciseCatalogEquipment.value = item.equipment.join(", ");
+  if (elements.exerciseCatalogEquipment) {
+    elements.exerciseCatalogEquipment.value = Array.isArray(item.equipment)
+      ? item.equipment.join(", ")
+      : "";
+  }
   if (elements.exerciseCatalogVideoUrl) elements.exerciseCatalogVideoUrl.value = item.videoUrl || "";
 
-  renderExerciseCatalogGroupChecks(item.groupIds);
-  exerciseCatalogParameterDrafts = item.parameters.map((parameter) => ({ ...parameter }));
+  renderExerciseCatalogGroupChecks(Array.isArray(item.groupIds) ? item.groupIds : []);
+  exerciseCatalogParameterDrafts = Array.isArray(item.parameters)
+    ? item.parameters.map((parameter) => ({ ...parameter }))
+    : [];
   renderExerciseCatalogParameters();
 
   for (const control of elements.exerciseCatalogForm?.querySelectorAll("input, select, textarea") || []) {
@@ -1182,17 +1372,23 @@ function populateExerciseCatalogEditor(item) {
   for (const control of elements.exerciseCatalogParameters?.querySelectorAll("button") || []) {
     control.disabled = !editable;
   }
+  for (const control of elements.exerciseCatalogParameters?.querySelectorAll("[data-exercise-catalog-parameter-remove]") || []) {
+    control.hidden = review || !exerciseCatalogCanEdit;
+  }
   if (elements.exerciseCatalogSave) {
     elements.exerciseCatalogSave.hidden = !editable;
     elements.exerciseCatalogSave.disabled = !editable || exerciseCatalogBusy;
   }
   if (elements.exerciseCatalogDeactivate) {
     elements.exerciseCatalogDeactivate.hidden =
-      !exerciseCatalogCanEdit || item.id.length === 0 || !item.isActive;
-    elements.exerciseCatalogDeactivate.disabled = exerciseCatalogBusy;
+      review || !exerciseCatalogCanEdit || item.id.length === 0 || !item.isActive;
+    elements.exerciseCatalogDeactivate.disabled = review || exerciseCatalogBusy;
   }
   if (elements.exerciseCatalogReadonly) {
     elements.exerciseCatalogReadonly.hidden = editable;
+    elements.exerciseCatalogReadonly.textContent = review
+      ? "Importvorschau: Diese Daten sind hier nur zur Prüfung geöffnet. Es wird nichts gespeichert."
+      : "Nur-Lese-Zugriff: Favoriten können weiterhin gesetzt werden.";
   }
   if (elements.exerciseCatalogParameterAdd) {
     elements.exerciseCatalogParameterAdd.disabled = !editable || exerciseCatalogBusy;
@@ -1218,6 +1414,7 @@ function populateExerciseCatalogEditor(item) {
 function closeExerciseCatalogEditor(force = false) {
   if (
     !force &&
+    !exerciseCatalogEditorReviewMode &&
     exerciseCatalogEditorDirty &&
     exerciseCatalogCanEdit &&
     !window.confirm("Ungespeicherte Änderungen verwerfen?")
@@ -1227,7 +1424,12 @@ function closeExerciseCatalogEditor(force = false) {
   exerciseCatalogSelectedId = null;
   exerciseCatalogParameterDrafts = [];
   exerciseCatalogEditorDirty = false;
+  exerciseCatalogEditorReviewMode = false;
   if (elements.exerciseCatalogEditor) elements.exerciseCatalogEditor.hidden = true;
+  if (elements.exerciseCatalogImportReview) elements.exerciseCatalogImportReview.hidden = true;
+  if (elements.exerciseCatalogImportReviewIssues) {
+    elements.exerciseCatalogImportReviewIssues.replaceChildren();
+  }
   document.body.classList.remove("exercise-catalog-editor-open");
   showMessage(elements.exerciseCatalogSuccess, "");
   return true;
@@ -1279,12 +1481,15 @@ function renderExerciseCatalogParameterSelect() {
   if (available.some((parameter) => parameter.key === selected)) select.value = selected;
   if (elements.exerciseCatalogParameterAdd) {
     elements.exerciseCatalogParameterAdd.disabled =
-      !exerciseCatalogCanEdit || available.length === 0 || exerciseCatalogBusy;
+      exerciseCatalogEditorReviewMode ||
+      !exerciseCatalogCanEdit ||
+      available.length === 0 ||
+      exerciseCatalogBusy;
   }
 }
 
 function addExerciseCatalogParameter() {
-  if (!exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  if (exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit || exerciseCatalogBusy) return;
   syncExerciseCatalogParameterDraftsFromDom();
   const key = elements.exerciseCatalogParameterSelect?.value || "";
   const meta = parameterMeta(key);
@@ -1469,7 +1674,7 @@ function exerciseCatalogFormPayload() {
 
 async function saveExerciseCatalogItem(event) {
   event.preventDefault();
-  if (!exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  if (exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit || exerciseCatalogBusy) return;
   setExerciseCatalogBusy(true);
   showMessage(elements.exerciseCatalogMessage, "");
   showMessage(elements.exerciseCatalogSuccess, "");
@@ -1530,7 +1735,12 @@ async function saveExerciseCatalogItem(event) {
 }
 
 async function deactivateExerciseCatalogItem() {
-  if (!exerciseCatalogCanEdit || !exerciseCatalogSelectedId || exerciseCatalogBusy) return;
+  if (
+    exerciseCatalogEditorReviewMode ||
+    !exerciseCatalogCanEdit ||
+    !exerciseCatalogSelectedId ||
+    exerciseCatalogBusy
+  ) return;
   const item = exerciseCatalogItems.find((candidate) => candidate.id === exerciseCatalogSelectedId);
   if (!item || !item.isActive) return;
   if (!window.confirm("Übung „" + item.name + "“ deaktivieren? Sie bleibt im Archiv erhalten.")) return;
@@ -1614,6 +1824,254 @@ function sortedExerciseCatalogItems(items) {
   );
 }
 
+const EXERCISE_CATALOG_XLSX_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
+
+function importActionLabel(action) {
+  if (action === "create") return "Neu";
+  if (action === "update") return "Änderung";
+  return "Überspringen";
+}
+
+function isExerciseCatalogImportIssue(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    ["error", "warning"].includes(value.level) &&
+    typeof value.code === "string" &&
+    typeof value.message === "string" &&
+    typeof value.sheet === "string" &&
+    (value.row === null || Number.isSafeInteger(value.row)) &&
+    (value.field === null || typeof value.field === "string")
+  );
+}
+
+function isExerciseCatalogImportPreview(value) {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    value.contractVersion !== "appbasis.exercise-catalog.exchange/v1" ||
+    value.applyAvailable !== false ||
+    value.summary === null ||
+    typeof value.summary !== "object" ||
+    !Array.isArray(value.issues) ||
+    !value.issues.every(isExerciseCatalogImportIssue) ||
+    !Array.isArray(value.rows)
+  ) return false;
+
+  for (const key of ["rows", "create", "update", "skip", "errors", "warnings"]) {
+    if (!Number.isSafeInteger(value.summary[key]) || value.summary[key] < 0) return false;
+  }
+
+  return value.rows.every((row) =>
+    row !== null &&
+    typeof row === "object" &&
+    Number.isSafeInteger(row.rowNumber) &&
+    typeof row.recordKey === "string" &&
+    (row.sourceId === null || typeof row.sourceId === "string") &&
+    (row.matchedExerciseId === null || typeof row.matchedExerciseId === "string") &&
+    ["create", "update", "skip"].includes(row.action) &&
+    ["new", "changed", "unchanged", "invalid"].includes(row.reason) &&
+    row.draft !== null &&
+    typeof row.draft === "object" &&
+    typeof row.draft.id === "string" &&
+    typeof row.draft.name === "string" &&
+    typeof row.draft.categoryKey === "string" &&
+    Array.isArray(row.draft.equipment) &&
+    Array.isArray(row.draft.groupIds) &&
+    Array.isArray(row.draft.parameters) &&
+    typeof row.draft.isActive === "boolean" &&
+    Array.isArray(row.issues) &&
+    row.issues.every(isExerciseCatalogImportIssue),
+  );
+}
+
+function setExerciseCatalogImportPreviewOpen(open) {
+  if (elements.exerciseCatalogImportPreview) {
+    elements.exerciseCatalogImportPreview.hidden = !open;
+  }
+  document.body.classList.toggle("exercise-catalog-import-open", Boolean(open));
+}
+
+function closeExerciseCatalogImportPreview() {
+  setExerciseCatalogImportPreviewOpen(false);
+}
+
+function renderExerciseCatalogImportIssues(container, issues, emptyMessage = "") {
+  if (!container) return;
+  container.replaceChildren();
+  if (issues.length === 0) {
+    if (emptyMessage) {
+      const empty = document.createElement("p");
+      empty.className = "exercise-catalog-import-issue";
+      empty.textContent = emptyMessage;
+      container.append(empty);
+    }
+    return;
+  }
+
+  for (const importIssue of issues) {
+    const entry = document.createElement("p");
+    entry.className = "exercise-catalog-import-issue";
+    entry.dataset.level = importIssue.level;
+    const location = [
+      importIssue.sheet,
+      importIssue.row === null ? null : "Zeile " + String(importIssue.row),
+      importIssue.field,
+    ].filter(Boolean).join(" · ");
+    entry.textContent =
+      (importIssue.level === "error" ? "Fehler" : "Warnung") +
+      (location ? " – " + location : "") +
+      ": " +
+      importIssue.message;
+    container.append(entry);
+  }
+}
+
+function renderExerciseCatalogImportPreview(preview) {
+  if (elements.exerciseCatalogImportSummary) {
+    elements.exerciseCatalogImportSummary.replaceChildren();
+    for (const entry of [
+      ["Neu", preview.summary.create],
+      ["Ändern", preview.summary.update],
+      ["Überspringen", preview.summary.skip],
+      ["Fehler", preview.summary.errors],
+      ["Warnungen", preview.summary.warnings],
+      ["Gesamt", preview.summary.rows],
+    ]) {
+      const card = document.createElement("div");
+      const value = document.createElement("strong");
+      value.textContent = String(entry[1]);
+      const label = document.createElement("span");
+      label.textContent = entry[0];
+      card.append(value, label);
+      elements.exerciseCatalogImportSummary.append(card);
+    }
+  }
+
+  renderExerciseCatalogImportIssues(
+    elements.exerciseCatalogImportIssues,
+    preview.issues,
+  );
+
+  if (!elements.exerciseCatalogImportRows) return;
+  elements.exerciseCatalogImportRows.replaceChildren();
+  if (preview.rows.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "exercise-catalog-empty";
+    empty.textContent = "Die Importdatei enthält keine Übungszeilen.";
+    elements.exerciseCatalogImportRows.append(empty);
+    return;
+  }
+
+  preview.rows.forEach((row, index) => {
+    const control = document.createElement("button");
+    control.type = "button";
+    control.className = "exercise-catalog-import-row";
+    control.dataset.exerciseCatalogImportRow = String(index);
+
+    const main = document.createElement("span");
+    main.className = "exercise-catalog-import-row__main";
+    const title = document.createElement("strong");
+    title.textContent = row.draft.name || "Ohne Name";
+    const meta = document.createElement("span");
+    meta.className = "exercise-catalog-import-row__meta";
+    const issueCount = row.issues.length;
+    meta.textContent =
+      "Excel-Zeile " +
+      String(row.rowNumber) +
+      (issueCount > 0 ? " · " + String(issueCount) + " Hinweis(e)" : "");
+    main.append(title, meta);
+
+    const status = document.createElement("span");
+    status.className = "exercise-catalog-import-action";
+    status.dataset.action = row.action;
+    status.dataset.reason = row.reason;
+    status.textContent =
+      row.reason === "invalid"
+        ? "Fehler"
+        : row.reason === "unchanged"
+          ? "Unverändert"
+          : importActionLabel(row.action);
+
+    control.append(main, status);
+    elements.exerciseCatalogImportRows.append(control);
+  });
+}
+
+function reviewExerciseCatalogImportRow(index) {
+  const row = exerciseCatalogImportPreviewData?.rows?.[index];
+  if (!row) return;
+  exerciseCatalogSelectedId = null;
+  populateExerciseCatalogEditor(row.draft, {
+    review: true,
+    action: row.action,
+    rowNumber: row.rowNumber,
+    issues: row.issues,
+  });
+}
+
+async function previewExerciseCatalogImportFile(file) {
+  if (!exerciseCatalogReady || !exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  showMessage(elements.exerciseCatalogMessage, "");
+  showMessage(elements.exerciseCatalogSuccess, "");
+
+  if (
+    !file ||
+    typeof file.name !== "string" ||
+    !file.name.toLocaleLowerCase("de").endsWith(".xlsx")
+  ) {
+    showMessage(elements.exerciseCatalogMessage, "Bitte eine XLSX-Datei auswählen.");
+    return;
+  }
+  if (file.size > EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES) {
+    showMessage(elements.exerciseCatalogMessage, "Die Importdatei darf höchstens 5 MB groß sein.");
+    return;
+  }
+
+  setExerciseCatalogBusy(true);
+  try {
+    const response = await fetch(
+      "/api/modules/exercise-catalog/import-preview",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
+        },
+        body: file,
+      },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload?.error?.code || "IMPORT_PREVIEW_FAILED");
+      error.status = response.status;
+      error.code = payload?.error?.code;
+      throw error;
+    }
+    if (!isExerciseCatalogImportPreview(payload?.preview)) {
+      throw new Error("INVALID_IMPORT_PREVIEW_CONTRACT");
+    }
+
+    exerciseCatalogImportPreviewData = payload.preview;
+    renderExerciseCatalogImportPreview(payload.preview);
+    setExerciseCatalogImportPreviewOpen(true);
+  } catch (error) {
+    const message =
+      error?.status === 403
+        ? "Für den Import fehlt die Bearbeitungsberechtigung."
+        : error?.status === 413 || error?.code === "IMPORT_FILE_TOO_LARGE"
+          ? "Die Importdatei darf höchstens 5 MB groß sein."
+          : error?.code === "IMPORT_ROW_LIMIT_EXCEEDED"
+            ? "Die Importdatei enthält mehr als 1.000 Übungen."
+            : "Die XLSX-Datei konnte nicht als Importvorschau gelesen werden.";
+    showMessage(elements.exerciseCatalogMessage, message);
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
+}
+
 async function downloadExerciseCatalogWorkbook(path, filename, successMessage) {
   if (!exerciseCatalogReady || exerciseCatalogBusy) return;
   setExerciseCatalogBusy(true);
@@ -1667,19 +2125,27 @@ function setExerciseCatalogBusy(next) {
   if (elements.exerciseCatalogExport) {
     elements.exerciseCatalogExport.disabled = next || !exerciseCatalogReady;
   }
-  if (elements.exerciseCatalogNew) {
-    elements.exerciseCatalogNew.disabled = next || !exerciseCatalogCanEdit;
+  if (elements.exerciseCatalogImportOpen) {
+    elements.exerciseCatalogImportOpen.disabled =
+      next || !exerciseCatalogReady || !exerciseCatalogCanEdit;
   }
-  if (elements.exerciseCatalogSave) elements.exerciseCatalogSave.disabled = next;
-  if (elements.exerciseCatalogDeactivate) elements.exerciseCatalogDeactivate.disabled = next;
+  if (elements.exerciseCatalogNew) {
+    elements.exerciseCatalogNew.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
+  }
+  if (elements.exerciseCatalogSave) {
+    elements.exerciseCatalogSave.disabled = next || exerciseCatalogEditorReviewMode;
+  }
+  if (elements.exerciseCatalogDeactivate) {
+    elements.exerciseCatalogDeactivate.disabled = next || exerciseCatalogEditorReviewMode;
+  }
   if (elements.exerciseCatalogParameterAdd) {
-    elements.exerciseCatalogParameterAdd.disabled = next || !exerciseCatalogCanEdit;
+    elements.exerciseCatalogParameterAdd.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
   }
   if (elements.exerciseCatalogParameterSelect) {
-    elements.exerciseCatalogParameterSelect.disabled = next || !exerciseCatalogCanEdit;
+    elements.exerciseCatalogParameterSelect.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
   }
   for (const control of elements.exerciseCatalogParameters?.querySelectorAll("input, button") || []) {
-    control.disabled = next || !exerciseCatalogCanEdit;
+    control.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
   }
 }
 
@@ -1699,6 +2165,7 @@ function handleExerciseCatalogParameterClick(event) {
   const remove = event.target.closest("[data-exercise-catalog-parameter-remove]");
   if (
     !remove ||
+    exerciseCatalogEditorReviewMode ||
     !exerciseCatalogCanEdit ||
     exerciseCatalogBusy ||
     remove.disabled
@@ -1737,6 +2204,22 @@ elements.exerciseCatalogFilterApply?.addEventListener("click", () => {
 });
 elements.exerciseCatalogFilterReset?.addEventListener("click", resetExerciseCatalogFilters);
 elements.exerciseCatalogList?.addEventListener("click", handleExerciseCatalogListClick);
+elements.exerciseCatalogImportOpen?.addEventListener("click", () => {
+  if (!exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  elements.exerciseCatalogImportFile?.click();
+});
+elements.exerciseCatalogImportFile?.addEventListener("change", () => {
+  const file = elements.exerciseCatalogImportFile?.files?.[0] || null;
+  if (elements.exerciseCatalogImportFile) elements.exerciseCatalogImportFile.value = "";
+  if (file) void previewExerciseCatalogImportFile(file);
+});
+elements.exerciseCatalogImportClose?.addEventListener("click", closeExerciseCatalogImportPreview);
+elements.exerciseCatalogImportRows?.addEventListener("click", (event) => {
+  const control = event.target.closest("[data-exercise-catalog-import-row]");
+  if (!control) return;
+  const index = Number(control.dataset.exerciseCatalogImportRow);
+  if (Number.isSafeInteger(index) && index >= 0) reviewExerciseCatalogImportRow(index);
+});
 elements.exerciseCatalogTemplate?.addEventListener("click", () => {
   void downloadExerciseCatalogWorkbook(
     "/api/modules/exercise-catalog/template.xlsx",
@@ -1754,12 +2237,20 @@ elements.exerciseCatalogExport?.addEventListener("click", () => {
 elements.exerciseCatalogNew?.addEventListener("click", newExerciseCatalogItem);
 elements.exerciseCatalogClose?.addEventListener("click", () => closeExerciseCatalogEditor(false));
 elements.exerciseCatalogForm?.addEventListener("input", () => {
-  if (!elements.exerciseCatalogEditor?.hidden && exerciseCatalogCanEdit) {
+  if (
+    !elements.exerciseCatalogEditor?.hidden &&
+    !exerciseCatalogEditorReviewMode &&
+    exerciseCatalogCanEdit
+  ) {
     exerciseCatalogEditorDirty = true;
   }
 });
 elements.exerciseCatalogForm?.addEventListener("change", () => {
-  if (!elements.exerciseCatalogEditor?.hidden && exerciseCatalogCanEdit) {
+  if (
+    !elements.exerciseCatalogEditor?.hidden &&
+    !exerciseCatalogEditorReviewMode &&
+    exerciseCatalogCanEdit
+  ) {
     exerciseCatalogEditorDirty = true;
   }
 });
@@ -1767,7 +2258,11 @@ elements.exerciseCatalogForm?.addEventListener("submit", (event) => void saveExe
 elements.exerciseCatalogDeactivate?.addEventListener("click", () => void deactivateExerciseCatalogItem());
 elements.exerciseCatalogParameterAdd?.addEventListener("click", () => {
   addExerciseCatalogParameter();
-  if (!elements.exerciseCatalogEditor?.hidden && exerciseCatalogCanEdit) {
+  if (
+    !elements.exerciseCatalogEditor?.hidden &&
+    !exerciseCatalogEditorReviewMode &&
+    exerciseCatalogCanEdit
+  ) {
     exerciseCatalogEditorDirty = true;
   }
 });
@@ -1775,6 +2270,7 @@ elements.exerciseCatalogParameters?.addEventListener("click", (event) => {
   const before = exerciseCatalogParameterDrafts.length;
   handleExerciseCatalogParameterClick(event);
   if (
+    !exerciseCatalogEditorReviewMode &&
     exerciseCatalogCanEdit &&
     exerciseCatalogParameterDrafts.length !== before
   ) {
@@ -1790,6 +2286,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!elements.exerciseCatalogEditor?.hidden) {
     closeExerciseCatalogEditor(false);
+    return;
+  }
+  if (!elements.exerciseCatalogImportPreview?.hidden) {
+    closeExerciseCatalogImportPreview();
     return;
   }
   if (exerciseCatalogFilterOpen) setExerciseCatalogFilterOpen(false);
