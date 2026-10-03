@@ -596,7 +596,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   margin-top: 9px;
 }
 .masterdata-exchange-actions .button {
-  min-height: 40px;
+  min-height: var(--touch);
   padding: 7px 11px;
   font-size: .78rem;
 }
