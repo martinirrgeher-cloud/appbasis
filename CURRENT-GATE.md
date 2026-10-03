@@ -41,8 +41,12 @@ Verbindliche E6C-Grenzen:
   unter „Mehr“ aufklappbar zusammengefasst;
 - View und Edit bleiben getrennt: reine Leser sehen Details und dürfen
   persönliche Favoriten setzen, aber keine Katalogdaten verändern;
-- Suche und Filter umfassen mindestens Kategorie, Trainingsgruppe, Material,
-  Favorit, Aktiv/Archiv und vorhandenen Link;
+- Suche bleibt dauerhaft kompakt sichtbar; die erweiterten Filter für Kategorie,
+  Trainingsgruppe, Material, Favorit, Aktiv/Archiv und vorhandenen Link öffnen
+  als mobiles Overlay/Bottom-Sheet statt dauerhaft Seitenfläche zu belegen;
+- Detail/Anlegen/Bearbeiten öffnen als klar getrenntes Editor-Overlay mit den
+  Bereichen Basis, Anleitung, Gruppen und Parameter; Speichern führt zurück zur
+  Katalogliste und ungespeicherte Änderungen werden beim Schließen geschützt;
 - aktive und archivierte Übungen werden kompakt mobil dargestellt;
 - Detail-/Bearbeitungsansicht enthält Stammdaten, geeignete Trainingsgruppen
   und den kanonischen Planungsparametereditor;

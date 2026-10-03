@@ -85,6 +85,15 @@ Der vollständige Zielumfang umfasst:
 
 ### ULC-E6C – kompakte mobile UI
 
+
+**Mobile UX-Präzisierung:** Die Katalogseite bleibt auf Suche, Filteraktion und
+Liste reduziert. Erweiterte Filter öffnen als Overlay/Bottom-Sheet. Anlegen,
+Anzeigen und Bearbeiten einer Übung erfolgen in einem eigenen, auf Smartphones
+bildschirmfüllenden Editor-Overlay mit getrennten Bereichen für Basis,
+Anleitung, Gruppen und Planungsparameter. Nach erfolgreichem Speichern kehrt die
+Ansicht zur Liste zurück; ein Schließen mit ungespeicherten Änderungen verlangt
+eine Bestätigung.
+
 - Navigation nur bei Berechtigung sichtbar;
 - Suche und Filter;
 - kompakte Übungsliste mit Schnellinfos;
