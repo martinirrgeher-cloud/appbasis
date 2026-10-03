@@ -96,6 +96,10 @@ Abnahme:
 - Apply parst Datei und Snapshot erneut und bindet beide über einen
   organisationsgebundenen Freshness-Token;
 - stale Preview führt vor dem ersten Write zu `409`;
+- bestehende Athleten werden zusätzlich atomar nur dann aktualisiert, wenn
+  Vorname, Nachname, Jahrgang und Notiz noch exakt dem Preview-Zustand
+  entsprechen; konkurrierender Drift ergibt `STALE_IMPORT_ROW` statt
+  Lost-Update;
 - Writes laufen über die vorhandenen Athletes-Create-/Update-/
   Membership-Verträge;
 - Ergebnis je Zeile als `created/updated/skipped/failed` plus CSV-Protokoll;
@@ -105,10 +109,11 @@ Abnahme:
 - keine neue Tabelle, Migration oder Provider-Mutation;
 - keine allgemeine Importplattform in diesem Gate.
 
-Begrenzung: Der Freshness-Token verhindert normale Reruns nach verändertem
-Snapshot. Zwei exakt parallele Create-Requests sind ohne fachlichen
-Athleten-Unique-Key bzw. verbindungsgebundenen Repository-Lock nicht als global
-exactly-once beweisbar. Dafür wird kein unsicherer Pseudo-Lock eingeführt; ein
+Begrenzung: Freshness-Token plus atomarer Compare-and-Update schützen
+bestehende Athleten auch bei parallel gestarteten Updates vor stillem
+Überschreiben. Zwei exakt parallele neue Create-Requests sind ohne fachlichen
+Athleten-Unique-Key bzw. verbindungsgebundenen Create-Idempotency-Vertrag
+weiterhin nicht als global exactly-once beweisbar. Dafür wird kein unsicherer Pseudo-Lock eingeführt; ein
 solcher Persistenz-/Idempotency-Vertrag wäre ein eigenes Gate.
 
 Nach E6F4B ist die Voraussetzung erfüllt, die nun doppelt bewiesene
