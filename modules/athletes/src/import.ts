@@ -277,6 +277,37 @@ export async function previewAthletesImport(
     }
   }
 
+  const blankIdPersonKeys = new Map<string, AthleteSource[]>();
+  for (const source of sources) {
+    if (source.sourceId !== null) continue;
+    const key =
+      source.birthYear === null
+        ? "name:" + personNameKey(source.firstName, source.lastName)
+        : "person:" + personKey(
+            source.firstName,
+            source.lastName,
+            source.birthYear,
+          );
+    const values = blankIdPersonKeys.get(key) ?? [];
+    values.push(source);
+    blankIdPersonKeys.set(key, values);
+  }
+  for (const values of blankIdPersonKeys.values()) {
+    if (values.length <= 1) continue;
+    for (const source of values) {
+      source.issues.push(
+        issue(
+          "error",
+          "DUPLICATE_PERSON_IN_FILE",
+          "Dieselbe neue Person kommt in der Importdatei mehrfach vor.",
+          "Athleten",
+          source.rowNumber,
+          "ID",
+        ),
+      );
+    }
+  }
+
   const membershipsByKey = new Map<string, MembershipSource[]>();
   for (const membership of memberships) {
     const owners = sourcesByKey.get(membership.recordKey) ?? [];
@@ -316,6 +347,7 @@ export async function previewAthletesImport(
   }
 
   const rows: AthletesImportPreviewRow[] = [];
+  const claimedExistingIds = new Set<string>();
   for (const source of sources) {
     const rowIssues = [...source.issues];
     let normalized: ReturnType<typeof createAthlete> | null = null;
@@ -400,6 +432,23 @@ export async function previewAthletesImport(
             "ID",
           ),
         );
+      }
+    }
+
+    if (existing !== null) {
+      if (claimedExistingIds.has(existing.id)) {
+        rowIssues.push(
+          issue(
+            "error",
+            "DUPLICATE_TARGET_ATHLETE",
+            "Mehrere Importzeilen würden denselben bestehenden Athleten verändern.",
+            "Athleten",
+            source.rowNumber,
+            "ID",
+          ),
+        );
+      } else {
+        claimedExistingIds.add(existing.id);
       }
     }
 
