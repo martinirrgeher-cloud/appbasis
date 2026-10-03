@@ -58,6 +58,22 @@ describe("ULC E4D.5 compact mobile layout", () => {
     );
   });
 
+  it("adds compact E6F4A athlete exchange downloads without client-owned scope", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="masterdata-template"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="masterdata-export"');
+    expect(ULC_LINZ_APP_CSS).toContain(".masterdata-exchange-actions {");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/template.xlsx"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/export.xlsx"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("downloadMasterdataWorkbook");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain(
+      'organizationId: "verein-server"',
+    );
+  });
+
   it("keeps masterdata actions beside row content on normal phone widths", () => {
     expect(ULC_LINZ_APP_CSS).toContain(
       "grid-template-columns: minmax(0, 1fr) auto;",
