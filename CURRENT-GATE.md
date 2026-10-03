@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6F1 – Read-only XLSX-Export und Importvorlage für den Übungskatalog.**
+**ULC-E6F2 – Read-only XLSX-Importvorschau für den Übungskatalog.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -66,31 +66,42 @@ Verbindliche E6C-Grenzen:
 - Preview-/Production-Deployment dieses UI-Slices bleibt ein getrenntes,
   ausdrücklich freizugebendes Gate.
 
-## Aktueller Gate-Scope: ULC-E6F1
+## Aktueller Gate-Scope: ULC-E6F2
 
-E6F0 ist auf `main` abgeschlossen. E6F1 liefert den ersten ausführbaren
-Exchange-Slice, bleibt aber vollständig read-only gegenüber den Fachdaten.
+E6F1 ist auf `main` abgeschlossen und in die isolierte ULC-Preview deployt.
+Die praktische Sichtprüfung der heruntergeladenen Excel-Dateien wurde vom
+Nutzer bewusst auf später verschoben und bleibt als manuelle Nachprüfung offen.
+E6F2 baut darauf ausschließlich einen read-only Parser-/Preview-Slice; ein
+Apply oder eine Fachdatenmutation gehört weiterhin erst zu E6F3.
 
 Abnahme:
 
-- geschützter XLSX-Export der aktuellen Übungen mit View-Berechtigung;
-- geschützte XLSX-Importvorlage mit Beispielzeile und aktuellen,
-  serverautorisierten Trainingsgruppen;
-- stabiler Vertrag `appbasis.exercise-catalog.exchange/v1`;
-- getrennte Blätter `Übungen`, `Gruppen`, `Parameter`, `Listen` und
-  `Hinweise`, damit Gruppen und Planungsparameter ohne JSON-Zellen
-  round-trip-fähig bleiben;
-- Export enthält bestehende Übungs-IDs, aber keine `organizationId`,
-  Actor-ID oder persönlichen Favoriten;
-- Vorlage dokumentiert neue Datensätze mit leerer ID und einem
-  dateiinternen Datensatz-Schlüssel für die Relationen;
-- XLSX wird ohne zusätzliche Runtime-Abhängigkeit erzeugt; noch keine
-  allgemeine Workbook-Plattform in Core;
-- keine Importdatei wird eingelesen, keine Vorschau erzeugt und keine
-  Fachdatenmutation ausgeführt;
-- E6F2 bleibt der erste Parser-/Preview-Slice, E6F3 der erste Apply-Slice;
-- Preview-/Production-Deployment bleibt ein getrenntes,
-  ausdrücklich freizugebendes Gate.
+- geschützter `POST /api/modules/exercise-catalog/import-preview` nur mit
+  bestehender Edit-Berechtigung; Autorisierung erfolgt vor Dateiprüfung;
+- ausschließlich `.xlsx` im stabilen Vertrag
+  `appbasis.exercise-catalog.exchange/v1`;
+- maximal 5 MB Uploadgröße und maximal 1.000 primäre Übungszeilen;
+- sichere ZIP-/OpenXML-Prüfung mit begrenzter Eintrags- und Entpackgröße,
+  Pfadschutz, CRC-Prüfung sowie Unterstützung normaler Deflate-komprimierter
+  Excel-Dateien;
+- die bestehenden E6F1-Blätter und Spalten bleiben der öffentliche Vertrag;
+- Kategorien, Texte, Material, Links, Gruppen und Planungsparameter werden
+  normalisiert und über die bestehende Katalog-Domain validiert;
+- bestehende Übungen werden über vorhandene ID oder bei leerer ID über den
+  normalisierten Namen erkannt;
+- unbekannte IDs, mehrdeutige Namen, ungültige Kategorien/Parameter und nicht
+  serverautorisierte Trainingsgruppen bleiben fail-closed sichtbar;
+- die Vorschau klassifiziert jede Übungszeile als
+  `create`, `update` oder `skip` und liefert Fehler/Warnungen;
+- problematische und unproblematische Vorschauzeilen können im bestehenden
+  Übungseditor schreibgeschützt geprüft werden;
+- der Client sendet weder `organizationId` noch Actor-ID und besitzt keinen
+  Apply-Endpunkt oder Apply-Button;
+- keine Datenbank-/Schema-Migration, keine neue Runtime-Abhängigkeit und noch
+  keine allgemeine Workbook-/Importplattform;
+- E6F3 bleibt der erste schreibende Import-Slice;
+- Preview-/Production-Deployment bleibt ein getrenntes, ausdrücklich
+  freizugebendes Gate.
 
 Details: `docs/ULC-LEGACY-FACTORY-AUDIT.md` und
 `docs/ULC-EXERCISE-CATALOG.md`.
