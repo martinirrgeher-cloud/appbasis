@@ -110,10 +110,13 @@ ULC-App und die Factory-Verträge abgeglichen.
   `main` abgeschlossen;
 - E6F1: read-only XLSX-Export und XLSX-Importvorlage mit stabilem
   `appbasis.exercise-catalog.exchange/v1`-Vertrag über die Blätter
-  `Übungen`, `Gruppen`, `Parameter`, `Listen` und `Hinweise`; keine
-  Importmutation;
-- E6F2: read-only Importvorschau mit Fehlern/Warnungen und
-  `create/update/skip`;
+  `Übungen`, `Gruppen`, `Parameter`, `Listen` und `Hinweise`; auf
+  `main` und in Preview deployt, ohne Importmutation;
+- E6F2: read-only XLSX-Importvorschau mit 5-MB-/1.000-Übungen-Grenze,
+  OpenXML-/ZIP-Prüfung, Domainnormalisierung, ID-/Namensabgleich,
+  serverautorisierter Gruppenauflösung, Fehlern/Warnungen und
+  `create/update/skip`; jede Zeile kann schreibgeschützt im bestehenden
+  Übungseditor geprüft werden; kein Apply;
 - E6F3: kontrollierter, serverautorisierter Import;
 - E6F4: zweiter Exchange-Verbraucher `athletes` als Grundlage für eine
   mögliche spätere gemeinsame Workbook-Hilfe;
