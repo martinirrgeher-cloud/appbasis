@@ -1371,6 +1371,18 @@ async function exerciseCatalogImportPreviewResponse(
       },
     );
   } catch (error) {
+    if (error instanceof XlsxRequestBodyError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
     if (error instanceof UlcExerciseCatalogImportFileError) {
       return Response.json(
         {
@@ -1468,6 +1480,18 @@ async function exerciseCatalogImportApplyResponse(
       },
     );
   } catch (error) {
+    if (error instanceof XlsxRequestBodyError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
     if (error instanceof UlcExerciseCatalogImportFileError) {
       return Response.json(
         {
@@ -1509,6 +1533,19 @@ async function exerciseCatalogImportApplyResponse(
   }
 }
 
+class XlsxRequestBodyError extends Error {
+  readonly code: "IMPORT_FILE_TOO_LARGE" | "INVALID_XLSX";
+
+  constructor(
+    code: "IMPORT_FILE_TOO_LARGE" | "INVALID_XLSX",
+    message: string,
+  ) {
+    super(message);
+    this.name = "XlsxRequestBodyError";
+    this.code = code;
+  }
+}
+
 async function readRequestBytesLimited(
   request: Request,
   maximumBytes: number,
@@ -1517,7 +1554,7 @@ async function readRequestBytesLimited(
   if (declaredLength !== null) {
     const parsed = Number(declaredLength);
     if (Number.isFinite(parsed) && parsed > maximumBytes) {
-      throw new UlcExerciseCatalogImportFileError(
+      throw new XlsxRequestBodyError(
         "IMPORT_FILE_TOO_LARGE",
         "Die XLSX-Datei überschreitet 5 MB.",
       );
@@ -1525,7 +1562,7 @@ async function readRequestBytesLimited(
   }
 
   if (request.body === null) {
-    throw new UlcExerciseCatalogImportFileError(
+    throw new XlsxRequestBodyError(
       "INVALID_XLSX",
       "Die XLSX-Datei fehlt.",
     );
@@ -1540,7 +1577,7 @@ async function readRequestBytesLimited(
     total += next.value.byteLength;
     if (total > maximumBytes) {
       await reader.cancel();
-      throw new UlcExerciseCatalogImportFileError(
+      throw new XlsxRequestBodyError(
         "IMPORT_FILE_TOO_LARGE",
         "Die XLSX-Datei überschreitet 5 MB.",
       );
@@ -1947,6 +1984,18 @@ async function athletesImportPreviewResponse(
       },
     );
   } catch (error) {
+    if (error instanceof XlsxRequestBodyError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
     if (error instanceof AthletesImportFileError) {
       return Response.json(
         { error: { code: error.code, message: error.message } },
@@ -2031,6 +2080,18 @@ async function athletesImportApplyResponse(
       },
     );
   } catch (error) {
+    if (error instanceof XlsxRequestBodyError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
     if (error instanceof AthletesImportFileError) {
       return Response.json(
         { error: { code: error.code, message: error.message } },
