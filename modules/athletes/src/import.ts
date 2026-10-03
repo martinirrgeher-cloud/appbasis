@@ -277,34 +277,57 @@ export async function previewAthletesImport(
     }
   }
 
-  const blankIdPersonKeys = new Map<string, AthleteSource[]>();
+  const blankIdByName = new Map<string, AthleteSource[]>();
   for (const source of sources) {
     if (source.sourceId !== null) continue;
-    const key =
-      source.birthYear === null
-        ? "name:" + personNameKey(source.firstName, source.lastName)
-        : "person:" + personKey(
-            source.firstName,
-            source.lastName,
-            source.birthYear,
-          );
-    const values = blankIdPersonKeys.get(key) ?? [];
+    const key = personNameKey(source.firstName, source.lastName);
+    const values = blankIdByName.get(key) ?? [];
     values.push(source);
-    blankIdPersonKeys.set(key, values);
+    blankIdByName.set(key, values);
   }
-  for (const values of blankIdPersonKeys.values()) {
+  for (const values of blankIdByName.values()) {
     if (values.length <= 1) continue;
+
+    const hasUnknownBirthYear = values.some(
+      (source) => source.birthYear === null,
+    );
+    if (hasUnknownBirthYear) {
+      for (const source of values) {
+        source.issues.push(
+          issue(
+            "error",
+            "DUPLICATE_PERSON_IN_FILE",
+            "Mehrere neue Zeilen haben denselben Namen und mindestens eine davon keinen Jahrgang. Bitte eindeutige IDs bzw. Jahrgänge verwenden.",
+            "Athleten",
+            source.rowNumber,
+            "ID",
+          ),
+        );
+      }
+      continue;
+    }
+
+    const byBirthYear = new Map<number, AthleteSource[]>();
     for (const source of values) {
-      source.issues.push(
-        issue(
-          "error",
-          "DUPLICATE_PERSON_IN_FILE",
-          "Dieselbe neue Person kommt in der Importdatei mehrfach vor.",
-          "Athleten",
-          source.rowNumber,
-          "ID",
-        ),
-      );
+      const birthYear = source.birthYear!;
+      const sameYear = byBirthYear.get(birthYear) ?? [];
+      sameYear.push(source);
+      byBirthYear.set(birthYear, sameYear);
+    }
+    for (const sameYear of byBirthYear.values()) {
+      if (sameYear.length <= 1) continue;
+      for (const source of sameYear) {
+        source.issues.push(
+          issue(
+            "error",
+            "DUPLICATE_PERSON_IN_FILE",
+            "Dieselbe neue Person kommt in der Importdatei mehrfach vor.",
+            "Athleten",
+            source.rowNumber,
+            "ID",
+          ),
+        );
+      }
     }
   }
 
@@ -894,8 +917,8 @@ function parseOptionalIntegerCell(
 
 function parseMembershipSource(row: SheetRow): MembershipSource {
   const issues: AthletesImportIssue[] = [];
-  const startedOn = normalizedCell(row.cells[5] ?? "");
-  const endedOn = optionalCell(row.cells[6] ?? "");
+  const startedOn = spreadsheetDateCell(row.cells[5] ?? "");
+  const endedOn = optionalSpreadsheetDateCell(row.cells[6] ?? "");
   try {
     createAthleteGroupMembership({
       organizationId: "import-preview",
@@ -929,6 +952,27 @@ function parseMembershipSource(row: SheetRow): MembershipSource {
   };
 }
 
+function spreadsheetDateCell(value: string): string {
+  const normalized = normalizedCell(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
+
+  if (/^\d+$/.test(normalized)) {
+    const serial = Number(normalized);
+    if (Number.isSafeInteger(serial) && serial > 0 && serial <= 100_000) {
+      const milliseconds =
+        Date.UTC(1899, 11, 30) + serial * 24 * 60 * 60 * 1_000;
+      const iso = new Date(milliseconds).toISOString().slice(0, 10);
+      if (iso >= "1900-01-01" && iso <= "2100-12-31") return iso;
+    }
+  }
+  return normalized;
+}
+
+function optionalSpreadsheetDateCell(value: string): string | null {
+  const normalized = normalizedCell(value);
+  return normalized.length === 0 ? null : spreadsheetDateCell(normalized);
+}
+
 function resolveMemberships(
   sources: readonly MembershipSource[],
   athleteSource: AthleteSource,
@@ -946,7 +990,10 @@ function resolveMemberships(
       (value): value is string => value !== null,
     )) {
       const key = normalizedName(label);
-      groupsByName.set(key, [...(groupsByName.get(key) ?? []), group]);
+      const current = groupsByName.get(key) ?? [];
+      if (!current.some((candidate) => candidate.id === group.id)) {
+        groupsByName.set(key, [...current, group]);
+      }
     }
   }
   const existingMemberships = snapshot.athleteGroupMemberships.filter(
