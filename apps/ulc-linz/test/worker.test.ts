@@ -1750,6 +1750,27 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("returns 413 for E6F4B oversized uploads detected by the shared request-body limiter", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/import-preview", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "content-length": String(5 * 1024 * 1024 + 1),
+        },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "IMPORT_FILE_TOO_LARGE" },
+    });
+  });
+
   it("keeps E6F4B endpoints POST-only and XLSX-only", async () => {
     const worker = createGeneratedWorker(() => runtime());
 
