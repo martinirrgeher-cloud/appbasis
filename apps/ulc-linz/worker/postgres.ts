@@ -75,6 +75,7 @@ export interface GeneratedPostgresApplicationRuntime {
     | "createTrainer"
     | "updateTrainingGroup"
     | "updateAthlete"
+    | "updateAthleteIfUnchanged"
     | "updateTrainer"
     | "createAthleteGroupMembership"
     | "createTrainerGroupMembership"
@@ -225,6 +226,23 @@ export async function createGeneratedPostgresApplicationRuntime(
         return athleteMasterdataRepository.updateAthlete(
           organizationId,
           athleteId,
+          input,
+        );
+      },
+      updateAthleteIfUnchanged(
+        organizationId: string,
+        athleteId: string,
+        expected: Parameters<
+          PostgresAthleteMasterdataRepository["updateAthleteIfUnchanged"]
+        >[2],
+        input: Parameters<
+          PostgresAthleteMasterdataRepository["updateAthleteIfUnchanged"]
+        >[3],
+      ) {
+        return athleteMasterdataRepository.updateAthleteIfUnchanged(
+          organizationId,
+          athleteId,
+          expected,
           input,
         );
       },
