@@ -1,5 +1,6 @@
 import {
   ULC_EXERCISE_CATEGORIES,
+  ULC_EXERCISE_PARAMETER_KEYS,
   type UlcExerciseParameterKey,
 } from "./exercise-catalog-domain";
 import type {
@@ -89,19 +90,21 @@ const PARAMETER_META: Readonly<
   note_text: Object.freeze({ label: "Zusatzhinweis", unit: "", inputType: "text" }),
 });
 
-const PARAMETER_KEYS = Object.freeze(
-  Object.keys(PARAMETER_META) as UlcExerciseParameterKey[],
-);
+const PARAMETER_KEYS = ULC_EXERCISE_PARAMETER_KEYS;
 
 export function buildUlcExerciseCatalogExchangeSheets(
   catalog: UlcExerciseCatalogOverview,
   mode: UlcExerciseCatalogExchangeMode,
 ): readonly UlcExerciseCatalogWorkbookSheet[] {
   const categoryLabels = new Map(
-    ULC_EXERCISE_CATEGORIES.map((category) => [category.key, category.label]),
+    ULC_EXERCISE_CATEGORIES.map(
+      (category) => [category.key, category.label] as const,
+    ),
   );
   const groupLabels = new Map(
-    catalog.trainingGroups.map((group) => [group.id, group.name]),
+    catalog.trainingGroups.map(
+      (group) => [group.id, group.name] as const,
+    ),
   );
 
   const exercises: string[][] = [[...EXERCISE_HEADERS]];
@@ -235,6 +238,7 @@ export function buildUlcExerciseCatalogExchangeSheets(
   }
 
   const notes: string[][] = [
+    ["Hinweis", "Wert"],
     ["AppBasis-Vertrag", ULC_EXERCISE_CATALOG_EXCHANGE_VERSION],
     [
       "Status",
@@ -490,7 +494,7 @@ function zipStored(
     localView.setUint16(6, 0x0800, true);
     localView.setUint16(8, 0, true);
     localView.setUint16(10, 0, true);
-    localView.setUint16(12, 0, true);
+    localView.setUint16(12, 33, true);
     localView.setUint32(14, checksum, true);
     localView.setUint32(18, file.content.length, true);
     localView.setUint32(22, file.content.length, true);
@@ -508,7 +512,7 @@ function zipStored(
     centralView.setUint16(8, 0x0800, true);
     centralView.setUint16(10, 0, true);
     centralView.setUint16(12, 0, true);
-    centralView.setUint16(14, 0, true);
+    centralView.setUint16(14, 33, true);
     centralView.setUint32(16, checksum, true);
     centralView.setUint32(20, file.content.length, true);
     centralView.setUint32(24, file.content.length, true);
