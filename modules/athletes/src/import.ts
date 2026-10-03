@@ -635,7 +635,7 @@ export async function applyAthletesImportPreview({
     }
 
     let athleteId = row.matchedAthleteId;
-    let athleteMutated = false;
+    let mutationApplied = false;
     try {
       if (row.action === "create") {
         const created = await service.createAthlete(
@@ -643,7 +643,7 @@ export async function applyAthletesImportPreview({
           athleteInput(row.draft),
         );
         athleteId = created.id;
-        athleteMutated = true;
+        mutationApplied = true;
       } else if (row.draft.scalarChanged) {
         if (athleteId === null) {
           throw new Error("missing matched athlete");
@@ -656,7 +656,7 @@ export async function applyAthletesImportPreview({
         if (updated === null) {
           throw new Error("athlete no longer updateable");
         }
-        athleteMutated = true;
+        mutationApplied = true;
       }
 
       if (athleteId === null) throw new Error("missing athlete id");
@@ -668,6 +668,7 @@ export async function applyAthletesImportPreview({
           startedOn: membership.startedOn,
           endedOn: membership.endedOn,
         });
+        mutationApplied = true;
       }
 
       results.push(
@@ -687,8 +688,8 @@ export async function applyAthletesImportPreview({
           row,
           "failed",
           athleteId,
-          athleteMutated ? "IMPORT_APPLY_PARTIAL" : "IMPORT_APPLY_FAILED",
-          athleteMutated
+          mutationApplied ? "IMPORT_APPLY_PARTIAL" : "IMPORT_APPLY_FAILED",
+          mutationApplied
             ? "Der Athlet wurde bereits geschrieben, aber eine nachgelagerte Gruppenzuordnung ist fehlgeschlagen. Bitte Import neu prüfen."
             : "Die Zeile konnte nicht angewendet werden. Bitte Import neu prüfen.",
         ),
@@ -861,7 +862,7 @@ function resolveMemberships(
   const groupsById = new Map(
     snapshot.trainingGroups.map((group) => [group.id, group] as const),
   );
-  const groupsByName = new Map<string, typeof snapshot.trainingGroups[number][]>();
+  const groupsByName = new Map<string, (typeof snapshot.trainingGroups)[number][]>();
   for (const group of snapshot.trainingGroups) {
     for (const label of [group.name, group.shortName].filter(
       (value): value is string => value !== null,
@@ -874,6 +875,7 @@ function resolveMemberships(
     (membership) => membership.athleteId === existingAthlete?.id,
   );
   const seen = new Set<string>();
+  const seenStarts = new Map<string, string | null>();
 
   for (const source of sources) {
     rowIssues.push(...source.issues);
@@ -981,24 +983,42 @@ function resolveMemberships(
       );
     }
 
+    const startKey = [group.id, source.startedOn].join("\u0000");
+    if (seenStarts.has(startKey)) {
+      const previousEnd = seenStarts.get(startKey) ?? null;
+      if (previousEnd !== source.endedOn) {
+        rowIssues.push(
+          issue(
+            "error",
+            "DUPLICATE_MEMBERSHIP_START",
+            "Für dieselbe Trainingsgruppe und denselben Beginn existieren unterschiedliche Enddaten.",
+            "Gruppen",
+            source.rowNumber,
+            "Ende",
+          ),
+        );
+      } else {
+        rowIssues.push(
+          issue(
+            "warning",
+            "DUPLICATE_MEMBERSHIP_ROW",
+            "Diese Gruppenzuordnung kommt in der Datei mehrfach vor und wird nur einmal berücksichtigt.",
+            "Gruppen",
+            source.rowNumber,
+            null,
+          ),
+        );
+      }
+      continue;
+    }
+    seenStarts.set(startKey, source.endedOn);
+
     const key = [
       group.id,
       source.startedOn,
       source.endedOn ?? "",
     ].join("\u0000");
-    if (seen.has(key)) {
-      rowIssues.push(
-        issue(
-          "warning",
-          "DUPLICATE_MEMBERSHIP_ROW",
-          "Diese Gruppenzuordnung kommt in der Datei mehrfach vor und wird nur einmal berücksichtigt.",
-          "Gruppen",
-          source.rowNumber,
-          null,
-        ),
-      );
-      continue;
-    }
+    if (seen.has(key)) continue;
     seen.add(key);
 
     const sameStart = existingMemberships.find(
