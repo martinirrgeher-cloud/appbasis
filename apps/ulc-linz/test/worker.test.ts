@@ -875,7 +875,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       },
       apply: {
         available: true,
-        previewToken: expect.stringMatching(/^e6f3-v1\\.[0-9a-f]{64}$/),
+        previewToken: expect.stringMatching(/^e6f3-v1\.[0-9a-f]{64}$/),
       },
     });
   });
