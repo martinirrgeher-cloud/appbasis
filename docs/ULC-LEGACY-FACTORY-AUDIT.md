@@ -259,14 +259,18 @@ Implementierter Write-Slice:
 - Apply liest XLSX und Snapshot erneut; der Preview-Token bindet Datei,
   Organisation, Athleten, Gruppen und Mitgliedschaften;
 - Drift führt vor dem ersten Write zu `409 STALE_IMPORT_PREVIEW`;
+- bestehende Athleten verwenden zusätzlich einen atomaren Compare-and-Update-
+  Pfad gegen die im Preview gesehenen Scalarwerte; ein Race nach der
+  Tokenprüfung liefert `STALE_IMPORT_ROW` statt einen späteren Stand zu
+  überschreiben;
 - Fachdatenwrites verwenden ausschließlich die bestehenden
   Athletes-Create-/Update-/Membership-Verträge;
 - Ergebnis pro Zeile plus CSV-Importprotokoll;
 - keine neue Tabelle, Migration oder allgemeine Importplattform.
 
-Der Token verhindert normale Wiederholung nach verändertem Snapshot. Eine
-globale Exactly-once-Garantie für zwei exakt parallele Create-Requests wird
-nicht behauptet: Athleten besitzen aktuell keinen fachlichen Unique-Key und der
+Token plus Compare-and-Update verhindern normale Wiederholungen und
+Lost-Updates bestehender Athleten. Eine globale Exactly-once-Garantie für zwei
+exakt parallele neue Create-Requests wird weiterhin nicht behauptet: Athleten besitzen aktuell keinen fachlichen Unique-Key und der
 Repositoryvertrag keinen verbindungsgebundenen Import-Lock. Das bleibt ein
 separates Persistenz-/Idempotency-Thema und wird nicht mit einem unsicheren
 Advisory-Lock simuliert.
