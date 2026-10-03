@@ -22,6 +22,18 @@ export {
   updateTrainer,
   updateTrainingGroup,
 } from "./domain/masterdata";
+export {
+  ATHLETES_EXCHANGE_ATHLETE_HEADERS,
+  ATHLETES_EXCHANGE_GROUP_HEADERS,
+  ATHLETES_EXCHANGE_VERSION,
+  ATHLETES_XLSX_CONTENT_TYPE,
+  buildAthletesExchangeSheets,
+  createAthletesWorkbook,
+} from "./exchange";
+export type {
+  AthletesExchangeMode,
+  AthletesWorkbookSheet,
+} from "./exchange";
 export { PostgresAthleteMasterdataRepository } from "./postgres-masterdata-repository";
 export { reconcileAthleteMasterdataRestoredDatabase } from "./restore-reconciliation";
 export type {
