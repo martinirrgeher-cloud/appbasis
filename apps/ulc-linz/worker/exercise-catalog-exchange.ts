@@ -272,7 +272,7 @@ export function buildUlcExerciseCatalogExchangeSheets(
     ],
     [
       "Sicherheit",
-      "Die Datei enthält keine organizationId, Actor-ID oder persönlichen Favoriten.",
+      "Die Datei enthält keine interne Organisations-ID, Actor-ID oder persönlichen Favoriten.",
     ],
     [
       "Hinweis",
