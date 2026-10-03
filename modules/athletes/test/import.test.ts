@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ATHLETES_IMPORT_MAX_FILE_BYTES,
   applyAthletesImportPreview,
   createAthletesImportPreviewToken,
   createAthletesWorkbook,
@@ -226,6 +227,48 @@ describe("athletes XLSX import", () => {
         expect.objectContaining({ code: "ACTIVE_STATUS_CHANGE_UNSUPPORTED" }),
       ]),
     );
+  });
+
+  it("enforces the 5 MB input limit before XLSX parsing", async () => {
+    const oversized = new Uint8Array(ATHLETES_IMPORT_MAX_FILE_BYTES + 1);
+    await expect(
+      previewAthletesImport(oversized, {
+        ...baseSnapshot,
+        athletes: [],
+        athleteGroupMemberships: [],
+      }),
+    ).rejects.toMatchObject({ code: "IMPORT_FILE_TOO_LARGE" });
+  });
+
+  it("enforces the 1,000-athlete row limit", async () => {
+    const athletes = Array.from({ length: 1_001 }, (_, index) => ({
+      id: "athlete-" + String(index + 1),
+      organizationId: "verein-1",
+      firstName: "Vorname" + String(index + 1),
+      lastName: "Nachname" + String(index + 1),
+      birthYear: 2000,
+      notes: null,
+      isActive: true,
+    }));
+    const workbook = createAthletesWorkbook(
+      {
+        trainingGroups: [],
+        athletes,
+        trainers: [],
+        athleteGroupMemberships: [],
+        trainerGroupMemberships: [],
+      },
+      "export",
+    );
+    await expect(
+      previewAthletesImport(workbook, {
+        trainingGroups: [],
+        athletes: [],
+        trainers: [],
+        athleteGroupMemberships: [],
+        trainerGroupMemberships: [],
+      }),
+    ).rejects.toMatchObject({ code: "IMPORT_ROW_LIMIT_EXCEEDED" });
   });
 
   it("binds the preview token to file, organization and current athlete state", async () => {
