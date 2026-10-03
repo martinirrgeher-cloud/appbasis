@@ -101,6 +101,28 @@ eine Bestätigung.
 - Parametereditor;
 - Archivansicht.
 
+### ULC-E6F – Import/Export und Factory-Vorbereitung
+
+Vor dem Medien-/Intelligence-Ausbau wird der heutige Katalog gegen die frühere
+ULC-App und die Factory-Verträge abgeglichen.
+
+- E6F0: Alt-App-/Factory-Audit und portabler Exchange-Vertrag;
+- E6F1: read-only Export und Importvorlage;
+- E6F2: read-only Importvorschau mit Fehlern/Warnungen und
+  `create/update/skip`;
+- E6F3: kontrollierter, serverautorisierter Import;
+- E6F4: zweiter Exchange-Verbraucher `athletes` als Grundlage für eine
+  mögliche spätere gemeinsame Workbook-Hilfe;
+- E6G: Promotion des bewiesenen Katalog-Vertical-Slices zum echten
+  Factory-Standardmodul vor weiteren Schemaerweiterungen.
+
+Der heutige Katalog ist noch app-eigen: Runtime und Migration liegen unter
+`apps/ulc-linz`. Seine bestehenden Tabellen dürfen nicht stillschweigend
+einem neuen Modulowner zugeschrieben oder doppelt angelegt werden. Die spätere
+Promotion benötigt einen eigenen Schema-/Ownership-Adoptionsvertrag.
+
+Siehe `docs/ULC-LEGACY-FACTORY-AUDIT.md`.
+
 ### ULC-E6D – Medien
 
 - externe Links;
