@@ -97,11 +97,15 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                   <button class="button button--secondary exercise-catalog-overlay-close" id="exercise-catalog-import-close" type="button" aria-label="Importvorschau schließen">Schließen</button>
                 </header>
                 <div class="exercise-catalog-import-body">
-                  <p class="exercise-catalog-import-notice">Nur Prüfung: In diesem Schritt werden keine Übungen angelegt, geändert oder deaktiviert.</p>
+                  <p class="exercise-catalog-import-notice" id="exercise-catalog-import-notice">Vorschau: Erst nach ausdrücklicher Bestätigung werden gültige neue oder geänderte Übungen angewendet.</p>
                   <div class="exercise-catalog-import-summary" id="exercise-catalog-import-summary"></div>
                   <div class="exercise-catalog-import-issues" id="exercise-catalog-import-issues"></div>
                   <div class="exercise-catalog-import-rows" id="exercise-catalog-import-rows"></div>
                 </div>
+                <footer class="exercise-catalog-form-actions">
+                  <button class="button button--secondary" id="exercise-catalog-import-log" type="button" hidden>Protokoll herunterladen</button>
+                  <button class="button button--primary" id="exercise-catalog-import-apply" type="button" disabled>Import anwenden</button>
+                </footer>
               </section>
             </div>
 
@@ -671,7 +675,7 @@ body.exercise-catalog-editor-open { overflow: hidden; }
   }
 }
 .exercise-catalog-import-dialog {
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 .exercise-catalog-import-body {
   min-height: 0;
@@ -838,6 +842,9 @@ Object.assign(elements, {
   exerciseCatalogImportFile: document.querySelector("#exercise-catalog-import-file"),
   exerciseCatalogImportPreview: document.querySelector("#exercise-catalog-import-preview"),
   exerciseCatalogImportClose: document.querySelector("#exercise-catalog-import-close"),
+  exerciseCatalogImportNotice: document.querySelector("#exercise-catalog-import-notice"),
+  exerciseCatalogImportApply: document.querySelector("#exercise-catalog-import-apply"),
+  exerciseCatalogImportLog: document.querySelector("#exercise-catalog-import-log"),
   exerciseCatalogImportSummary: document.querySelector("#exercise-catalog-import-summary"),
   exerciseCatalogImportIssues: document.querySelector("#exercise-catalog-import-issues"),
   exerciseCatalogImportRows: document.querySelector("#exercise-catalog-import-rows"),
@@ -900,6 +907,9 @@ let exerciseCatalogFilterOpen = false;
 let exerciseCatalogEditorDirty = false;
 let exerciseCatalogEditorTab = "basis";
 let exerciseCatalogImportPreviewData = null;
+let exerciseCatalogImportPreviewToken = null;
+let exerciseCatalogImportFileDraft = null;
+let exerciseCatalogImportResultData = null;
 let exerciseCatalogEditorReviewMode = false;
 
 function categoryLabel(key) {
@@ -971,7 +981,6 @@ async function bootstrapExerciseCatalog() {
   exerciseCatalogSelectedId = null;
   closeExerciseCatalogEditor(true);
   closeExerciseCatalogImportPreview();
-  exerciseCatalogImportPreviewData = null;
   setExerciseCatalogFilterOpen(false);
   refreshAppAvailability();
   showMessage(elements.exerciseCatalogMessage, "");
@@ -1887,6 +1896,49 @@ function isExerciseCatalogImportPreview(value) {
   );
 }
 
+function isExerciseCatalogImportApplyEnvelope(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof value.available === "boolean" &&
+    typeof value.previewToken === "string" &&
+    /^e6f3-v1\.[0-9a-f]{64}$/.test(value.previewToken)
+  );
+}
+
+function isExerciseCatalogImportResult(value) {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    value.contractVersion !== "appbasis.exercise-catalog.import-result/v1" ||
+    typeof value.previewToken !== "string" ||
+    typeof value.appliedAt !== "string" ||
+    value.summary === null ||
+    typeof value.summary !== "object" ||
+    !Array.isArray(value.rows) ||
+    typeof value.logCsv !== "string"
+  ) return false;
+
+  for (const key of ["rows", "created", "updated", "skipped", "failed"]) {
+    if (!Number.isSafeInteger(value.summary[key]) || value.summary[key] < 0) {
+      return false;
+    }
+  }
+
+  return value.rows.every((row) =>
+    row !== null &&
+    typeof row === "object" &&
+    Number.isSafeInteger(row.rowNumber) &&
+    typeof row.recordKey === "string" &&
+    ["create", "update", "skip"].includes(row.requestedAction) &&
+    ["created", "updated", "skipped", "failed"].includes(row.outcome) &&
+    (row.exerciseId === null || typeof row.exerciseId === "string") &&
+    typeof row.name === "string" &&
+    (row.code === null || typeof row.code === "string") &&
+    typeof row.message === "string"
+  );
+}
+
 function setExerciseCatalogImportPreviewOpen(open) {
   if (elements.exerciseCatalogImportPreview) {
     elements.exerciseCatalogImportPreview.hidden = !open;
@@ -1896,6 +1948,23 @@ function setExerciseCatalogImportPreviewOpen(open) {
 
 function closeExerciseCatalogImportPreview() {
   setExerciseCatalogImportPreviewOpen(false);
+  exerciseCatalogImportPreviewData = null;
+  exerciseCatalogImportPreviewToken = null;
+  exerciseCatalogImportFileDraft = null;
+  exerciseCatalogImportResultData = null;
+  if (elements.exerciseCatalogImportApply) {
+    elements.exerciseCatalogImportApply.hidden = false;
+    elements.exerciseCatalogImportApply.disabled = true;
+    elements.exerciseCatalogImportApply.textContent = "Import anwenden";
+  }
+  if (elements.exerciseCatalogImportLog) {
+    elements.exerciseCatalogImportLog.hidden = true;
+    elements.exerciseCatalogImportLog.disabled = false;
+  }
+  if (elements.exerciseCatalogImportNotice) {
+    elements.exerciseCatalogImportNotice.textContent =
+      "Vorschau: Erst nach ausdrücklicher Bestätigung werden gültige neue oder geänderte Übungen angewendet.";
+  }
 }
 
 function renderExerciseCatalogImportIssues(container, issues, emptyMessage = "") {
@@ -1998,6 +2067,32 @@ function renderExerciseCatalogImportPreview(preview) {
     control.append(main, status);
     elements.exerciseCatalogImportRows.append(control);
   });
+
+  const changes = preview.summary.create + preview.summary.update;
+  if (elements.exerciseCatalogImportApply) {
+    elements.exerciseCatalogImportApply.hidden = false;
+    elements.exerciseCatalogImportApply.disabled =
+      exerciseCatalogBusy ||
+      preview.summary.errors > 0 ||
+      changes === 0 ||
+      exerciseCatalogImportPreviewToken === null ||
+      exerciseCatalogImportFileDraft === null;
+    elements.exerciseCatalogImportApply.textContent =
+      changes > 0
+        ? "Import anwenden (" + String(changes) + ")"
+        : "Keine Änderungen";
+  }
+  if (elements.exerciseCatalogImportLog) {
+    elements.exerciseCatalogImportLog.hidden = true;
+  }
+  if (elements.exerciseCatalogImportNotice) {
+    elements.exerciseCatalogImportNotice.textContent =
+      preview.summary.errors > 0
+        ? "Die Vorschau enthält Fehler. Der Import bleibt gesperrt, bis die XLSX-Datei korrigiert und neu geprüft wurde."
+        : changes === 0
+          ? "Keine Änderungen erforderlich. Alle gültigen Zeilen sind bereits aktuell."
+          : "Vorschau geprüft: Der Server liest die XLSX beim Apply erneut und verwirft den Vorgang, falls sich Datei oder Katalogzustand geändert haben.";
+  }
 }
 
 function reviewExerciseCatalogImportRow(index) {
@@ -2050,12 +2145,22 @@ async function previewExerciseCatalogImportFile(file) {
       error.code = payload?.error?.code;
       throw error;
     }
-    if (!isExerciseCatalogImportPreview(payload?.preview)) {
+    if (
+      !isExerciseCatalogImportPreview(payload?.preview) ||
+      !isExerciseCatalogImportApplyEnvelope(payload?.apply)
+    ) {
       throw new Error("INVALID_IMPORT_PREVIEW_CONTRACT");
     }
 
     exerciseCatalogImportPreviewData = payload.preview;
+    exerciseCatalogImportPreviewToken = payload.apply.previewToken;
+    exerciseCatalogImportFileDraft = file;
+    exerciseCatalogImportResultData = null;
     renderExerciseCatalogImportPreview(payload.preview);
+    if (elements.exerciseCatalogImportApply) {
+      elements.exerciseCatalogImportApply.disabled =
+        !payload.apply.available || exerciseCatalogBusy;
+    }
     setExerciseCatalogImportPreviewOpen(true);
   } catch (error) {
     const message =
@@ -2069,6 +2174,216 @@ async function previewExerciseCatalogImportFile(file) {
     showMessage(elements.exerciseCatalogMessage, message);
   } finally {
     setExerciseCatalogBusy(false);
+  }
+}
+
+function renderExerciseCatalogImportResult(result) {
+  if (elements.exerciseCatalogImportSummary) {
+    elements.exerciseCatalogImportSummary.replaceChildren();
+    for (const entry of [
+      ["Angelegt", result.summary.created],
+      ["Aktualisiert", result.summary.updated],
+      ["Übersprungen", result.summary.skipped],
+      ["Fehler", result.summary.failed],
+      ["Gesamt", result.summary.rows],
+    ]) {
+      const card = document.createElement("div");
+      const value = document.createElement("strong");
+      value.textContent = String(entry[1]);
+      const label = document.createElement("span");
+      label.textContent = entry[0];
+      card.append(value, label);
+      elements.exerciseCatalogImportSummary.append(card);
+    }
+  }
+  if (elements.exerciseCatalogImportIssues) {
+    elements.exerciseCatalogImportIssues.replaceChildren();
+  }
+  if (elements.exerciseCatalogImportRows) {
+    elements.exerciseCatalogImportRows.replaceChildren();
+    for (const row of result.rows) {
+      const entry = document.createElement("article");
+      entry.className = "exercise-catalog-import-row";
+      const main = document.createElement("span");
+      main.className = "exercise-catalog-import-row__main";
+      const title = document.createElement("strong");
+      title.textContent = row.name || "Ohne Name";
+      const meta = document.createElement("span");
+      meta.className = "exercise-catalog-import-row__meta";
+      meta.textContent =
+        "Excel-Zeile " + String(row.rowNumber) + " · " + row.message;
+      main.append(title, meta);
+      const status = document.createElement("span");
+      status.className = "exercise-catalog-import-action";
+      status.dataset.action = row.requestedAction;
+      status.dataset.reason = row.outcome === "failed" ? "invalid" : row.outcome;
+      status.textContent =
+        row.outcome === "created"
+          ? "Angelegt"
+          : row.outcome === "updated"
+            ? "Aktualisiert"
+            : row.outcome === "skipped"
+              ? "Übersprungen"
+              : "Fehler";
+      entry.append(main, status);
+      elements.exerciseCatalogImportRows.append(entry);
+    }
+  }
+  if (elements.exerciseCatalogImportNotice) {
+    elements.exerciseCatalogImportNotice.textContent =
+      result.summary.failed === 0
+        ? "Import abgeschlossen. Das Protokoll kann als CSV heruntergeladen werden."
+        : "Import mit Teilfehlern abgeschlossen. Das CSV-Protokoll zeigt das Ergebnis jeder Zeile.";
+  }
+  if (elements.exerciseCatalogImportApply) {
+    elements.exerciseCatalogImportApply.hidden = true;
+    elements.exerciseCatalogImportApply.disabled = true;
+  }
+  if (elements.exerciseCatalogImportLog) {
+    elements.exerciseCatalogImportLog.hidden = false;
+    elements.exerciseCatalogImportLog.disabled = false;
+  }
+}
+
+async function refreshExerciseCatalogAfterImport() {
+  const payload = await requestJson("/api/modules/exercise-catalog");
+  const items = payload?.catalog?.items;
+  const groups = payload?.catalog?.trainingGroups;
+  const edit = payload?.access?.edit;
+  if (
+    payload?.module?.moduleId !== "exercise_catalog" ||
+    payload?.access?.view !== true ||
+    typeof edit !== "boolean" ||
+    !Array.isArray(items) ||
+    !items.every(isExerciseCatalogItem) ||
+    !Array.isArray(groups) ||
+    !groups.every(isExerciseCatalogGroup)
+  ) {
+    throw new Error("INVALID_EXERCISE_CATALOG_CONTRACT");
+  }
+  exerciseCatalogReady = true;
+  exerciseCatalogCanEdit = edit;
+  exerciseCatalogItems = items.slice();
+  exerciseCatalogGroups = groups.slice();
+  initializeExerciseCatalogFilters();
+  renderExerciseCatalogList();
+  refreshAppAvailability();
+}
+
+async function applyExerciseCatalogImport() {
+  if (
+    !exerciseCatalogReady ||
+    !exerciseCatalogCanEdit ||
+    exerciseCatalogBusy ||
+    exerciseCatalogImportPreviewData === null ||
+    exerciseCatalogImportPreviewToken === null ||
+    exerciseCatalogImportFileDraft === null
+  ) return;
+
+  const changes =
+    exerciseCatalogImportPreviewData.summary.create +
+    exerciseCatalogImportPreviewData.summary.update;
+  if (
+    changes <= 0 ||
+    exerciseCatalogImportPreviewData.summary.errors > 0 ||
+    !window.confirm(
+      String(changes) +
+        " Änderung(en) aus der geprüften XLSX-Datei jetzt anwenden? " +
+        "Der Server prüft Datei und Katalogzustand unmittelbar davor erneut.",
+    )
+  ) return;
+
+  setExerciseCatalogBusy(true);
+  showMessage(elements.exerciseCatalogMessage, "");
+  showMessage(elements.exerciseCatalogSuccess, "");
+  try {
+    const response = await fetch(
+      "/api/modules/exercise-catalog/import-apply",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
+          "x-appbasis-import-preview-token": exerciseCatalogImportPreviewToken,
+        },
+        body: exerciseCatalogImportFileDraft,
+      },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload?.error?.code || "IMPORT_APPLY_FAILED");
+      error.status = response.status;
+      error.code = payload?.error?.code;
+      throw error;
+    }
+    if (!isExerciseCatalogImportResult(payload?.result)) {
+      throw new Error("INVALID_IMPORT_RESULT_CONTRACT");
+    }
+
+    exerciseCatalogImportResultData = payload.result;
+    exerciseCatalogImportPreviewToken = null;
+    exerciseCatalogImportFileDraft = null;
+    exerciseCatalogImportPreviewData = null;
+    renderExerciseCatalogImportResult(payload.result);
+    try {
+      await refreshExerciseCatalogAfterImport();
+    } catch {
+      showMessage(
+        elements.exerciseCatalogMessage,
+        "Import wurde ausgeführt, aber die Katalogliste konnte nicht automatisch aktualisiert werden.",
+      );
+    }
+    showMessage(
+      elements.exerciseCatalogSuccess,
+      payload.result.summary.failed === 0
+        ? "Import wurde angewendet."
+        : "Import wurde mit Teilfehlern abgeschlossen. Bitte Protokoll prüfen.",
+    );
+  } catch (error) {
+    const stale =
+      error?.code === "STALE_IMPORT_PREVIEW" ||
+      error?.code === "INVALID_IMPORT_PREVIEW";
+    if (stale) {
+      exerciseCatalogImportPreviewToken = null;
+      if (elements.exerciseCatalogImportApply) {
+        elements.exerciseCatalogImportApply.disabled = true;
+      }
+    }
+    showMessage(
+      elements.exerciseCatalogMessage,
+      error?.status === 403
+        ? "Für den Import fehlt die Bearbeitungsberechtigung."
+        : stale
+          ? "Die Vorschau ist nicht mehr aktuell. Bitte XLSX-Datei erneut prüfen."
+          : error?.status === 413
+            ? "Die Importdatei darf höchstens 5 MB groß sein."
+            : "Der Import konnte nicht angewendet werden.",
+    );
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
+}
+
+function downloadExerciseCatalogImportLog() {
+  if (!exerciseCatalogImportResultData?.logCsv) return;
+  const blob = new Blob(
+    [exerciseCatalogImportResultData.logCsv],
+    { type: "text/csv;charset=utf-8" },
+  );
+  const href = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = href;
+    link.download =
+      "ulc-uebungskatalog-importprotokoll-" +
+      exerciseCatalogImportResultData.appliedAt.slice(0, 10) +
+      ".csv";
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(href), 0);
   }
 }
 
@@ -2128,6 +2443,21 @@ function setExerciseCatalogBusy(next) {
   if (elements.exerciseCatalogImportOpen) {
     elements.exerciseCatalogImportOpen.disabled =
       next || !exerciseCatalogReady || !exerciseCatalogCanEdit;
+  }
+  if (elements.exerciseCatalogImportApply) {
+    const previewChanges =
+      (exerciseCatalogImportPreviewData?.summary?.create || 0) +
+      (exerciseCatalogImportPreviewData?.summary?.update || 0);
+    elements.exerciseCatalogImportApply.disabled =
+      next ||
+      exerciseCatalogImportPreviewToken === null ||
+      exerciseCatalogImportFileDraft === null ||
+      (exerciseCatalogImportPreviewData?.summary?.errors || 0) > 0 ||
+      previewChanges === 0;
+  }
+  if (elements.exerciseCatalogImportLog) {
+    elements.exerciseCatalogImportLog.disabled =
+      next || exerciseCatalogImportResultData === null;
   }
   if (elements.exerciseCatalogNew) {
     elements.exerciseCatalogNew.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
@@ -2214,6 +2544,10 @@ elements.exerciseCatalogImportFile?.addEventListener("change", () => {
   if (file) void previewExerciseCatalogImportFile(file);
 });
 elements.exerciseCatalogImportClose?.addEventListener("click", closeExerciseCatalogImportPreview);
+elements.exerciseCatalogImportApply?.addEventListener("click", () => {
+  void applyExerciseCatalogImport();
+});
+elements.exerciseCatalogImportLog?.addEventListener("click", downloadExerciseCatalogImportLog);
 elements.exerciseCatalogImportRows?.addEventListener("click", (event) => {
   const control = event.target.closest("[data-exercise-catalog-import-row]");
   if (!control) return;
