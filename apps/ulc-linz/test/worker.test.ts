@@ -186,6 +186,22 @@ function runtime(
         isActive: true,
       };
     },
+    async updateAthleteIfUnchanged(
+      organizationId,
+      athleteId,
+      _expected,
+      input,
+    ) {
+      return {
+        id: athleteId,
+        organizationId,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        birthYear: input.birthYear,
+        notes: input.notes,
+        isActive: true,
+      };
+    },
     async updateTrainer(organizationId, trainerId, input) {
       return {
         id: trainerId,
