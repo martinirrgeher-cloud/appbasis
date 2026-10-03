@@ -1263,6 +1263,14 @@ async function exerciseCatalogImportPreviewResponse(
     return invalidExerciseCatalogInput();
   }
 
+  const access = await authorizeExerciseCatalogRequest(
+    request,
+    runtime,
+    url,
+    "edit",
+  );
+  if (access instanceof Response) return access;
+
   const contentType = (request.headers.get("content-type") ?? "")
     .split(";", 1)[0]!
     .trim()
@@ -1281,14 +1289,6 @@ async function exerciseCatalogImportPreviewResponse(
       },
     );
   }
-
-  const access = await authorizeExerciseCatalogRequest(
-    request,
-    runtime,
-    url,
-    "edit",
-  );
-  if (access instanceof Response) return access;
 
   try {
     const bytes = await readRequestBytesLimited(
