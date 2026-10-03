@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6F2 – Read-only XLSX-Importvorschau für den Übungskatalog.**
+**ULC-E6F3 – Kontrollierter XLSX-Import für den Übungskatalog.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -66,40 +66,45 @@ Verbindliche E6C-Grenzen:
 - Preview-/Production-Deployment dieses UI-Slices bleibt ein getrenntes,
   ausdrücklich freizugebendes Gate.
 
-## Aktueller Gate-Scope: ULC-E6F2
+## Aktueller Gate-Scope: ULC-E6F3
 
-E6F1 ist auf `main` abgeschlossen und in die isolierte ULC-Preview deployt.
-Die praktische Sichtprüfung der heruntergeladenen Excel-Dateien wurde vom
-Nutzer bewusst auf später verschoben und bleibt als manuelle Nachprüfung offen.
-E6F2 baut darauf ausschließlich einen read-only Parser-/Preview-Slice; ein
-Apply oder eine Fachdatenmutation gehört weiterhin erst zu E6F3.
+E6F2 ist auf `main` abgeschlossen. E6F3 ist der erste schreibende
+Import-Slice, bleibt aber bewusst auf den bereits bewiesenen
+Übungskatalog-Service beschränkt.
 
 Abnahme:
 
-- geschützter `POST /api/modules/exercise-catalog/import-preview` nur mit
-  bestehender Edit-Berechtigung; Autorisierung erfolgt vor Dateiprüfung;
-- ausschließlich `.xlsx` im stabilen Vertrag
-  `appbasis.exercise-catalog.exchange/v1`;
-- maximal 5 MB Uploadgröße und maximal 1.000 primäre Übungszeilen;
-- sichere ZIP-/OpenXML-Prüfung mit begrenzter Eintrags- und Entpackgröße,
-  Pfadschutz, CRC-Prüfung sowie Unterstützung normaler Deflate-komprimierter
-  Excel-Dateien;
-- die bestehenden E6F1-Blätter und Spalten bleiben der öffentliche Vertrag;
-- Kategorien, Texte, Material, Links, Gruppen und Planungsparameter werden
-  normalisiert und über die bestehende Katalog-Domain validiert;
-- bestehende Übungen werden über vorhandene ID oder bei leerer ID über den
-  normalisierten Namen erkannt;
-- unbekannte IDs, mehrdeutige Namen, ungültige Kategorien/Parameter und nicht
-  serverautorisierte Trainingsgruppen bleiben fail-closed sichtbar;
-- die Vorschau klassifiziert jede Übungszeile als
-  `create`, `update` oder `skip` und liefert Fehler/Warnungen;
-- problematische und unproblematische Vorschauzeilen können im bestehenden
-  Übungseditor schreibgeschützt geprüft werden;
-- der Client sendet weder `organizationId` noch Actor-ID und besitzt keinen
-  Apply-Endpunkt oder Apply-Button;
-- keine Datenbank-/Schema-Migration, keine neue Runtime-Abhängigkeit und noch
-  keine allgemeine Workbook-/Importplattform;
-- E6F3 bleibt der erste schreibende Import-Slice;
+- `POST /api/modules/exercise-catalog/import-preview` liefert zusätzlich einen
+  serverseitig erzeugten Preview-Token;
+- der Token bindet XLSX-Inhalt, serverautorisierte Organisation,
+  aktuellen Katalogzustand und aktuelle Trainingsgruppen;
+- `POST /api/modules/exercise-catalog/import-apply` verlangt Edit-Recht,
+  XLSX-MIME und exakt diesen Preview-Token;
+- Apply liest die XLSX erneut, lädt den aktuellen Katalog erneut und berechnet
+  den Token erneut, bevor die erste Fachdatenmutation erlaubt ist;
+- Drift zwischen Preview und Apply führt zu `409 STALE_IMPORT_PREVIEW` und
+  null Mutationen;
+- Create/Update laufen ausschließlich über den bestehenden
+  `exerciseCatalog.create/update`-Service und damit erneut durch
+  Organisations-, Gruppen- und Domainvalidierung;
+- `skip` erzeugt keine Mutation;
+- unbekannte oder ungültige Previewzustände bleiben fail-closed;
+- archivierte Übungen werden nur unverändert als `skip` akzeptiert;
+  Reaktivierung, Deaktivierung oder Änderung archivierter Datensätze wird
+  nicht still über den Import eingeführt;
+- Ergebnis wird pro Excel-Zeile als
+  `created/updated/skipped/failed` zurückgegeben;
+- Teilfehler bleiben sichtbar; erfolgreiche vorherige Zeilen werden nicht als
+  fehlgeschlagen ausgegeben;
+- ein UTF-8/Excel-taugliches CSV-Importprotokoll wird aus demselben
+  Ergebnisvertrag erzeugt;
+- der Client verwirft den Preview-Token nach Apply bzw. bei stale Preview;
+- ein unmittelbarer Rerun derselben Preview kann dadurch nicht blind erneut
+  angewendet werden; bestehende DB-Unique-Constraints schützen zusätzlich
+  gegen doppelte Create-Datensätze;
+- keine neue Tabelle, keine Migration, keine neue Runtime-Abhängigkeit;
+- E6F4 bleibt der zweite Exchange-Verbraucher `athletes`; erst danach darf
+  über gemeinsame Workbook-/Tabular-Helfer entschieden werden;
 - Preview-/Production-Deployment bleibt ein getrenntes, ausdrücklich
   freizugebendes Gate.
 
