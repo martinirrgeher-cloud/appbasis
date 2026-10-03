@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import { InMemoryPermissionStore } from "@appbasis/permissions";
+import { createAthletesWorkbook } from "@appbasis/athletes";
+
 
 import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import {
@@ -1430,6 +1432,350 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
     expect(response.status).toBe(403);
     expect(readCalls).toBe(0);
+  });
+
+  it("previews E6F4B athlete XLSX only after edit authorization without mutations", async () => {
+    let editCalls = 0;
+    let readCalls = 0;
+    let mutationCalls = 0;
+    const base = runtime();
+    const snapshot = {
+      trainingGroups: [
+        {
+          id: "group-1",
+          organizationId: "verein-server",
+          name: "Sprint",
+          shortName: "SP",
+          description: null,
+          isActive: true,
+          sortOrder: 10,
+        },
+      ],
+      athletes: [],
+      trainers: [],
+      athleteGroupMemberships: [],
+      trainerGroupMemberships: [],
+    };
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athletesAccess: {
+        ...base.athletesAccess,
+        async assertEditAccess() {
+          editCalls += 1;
+          return { organizationId: "verein-server" };
+        },
+      },
+      athleteMasterdata: {
+        ...base.athleteMasterdata,
+        async readOrganizationSnapshot(organizationId) {
+          readCalls += 1;
+          expect(organizationId).toBe("verein-server");
+          return snapshot;
+        },
+        async createAthlete(...args) {
+          mutationCalls += 1;
+          return base.athleteMasterdata.createAthlete(...args);
+        },
+        async updateAthlete(...args) {
+          mutationCalls += 1;
+          return base.athleteMasterdata.updateAthlete(...args);
+        },
+        async createAthleteGroupMembership(...args) {
+          mutationCalls += 1;
+          return base.athleteMasterdata.createAthleteGroupMembership(...args);
+        },
+      },
+    }));
+    const workbook = createAthletesWorkbook(snapshot, "template");
+    const body = new Uint8Array(workbook.byteLength);
+    body.set(workbook);
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/import-preview", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+        body: body.buffer,
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(editCalls).toBe(1);
+    expect(readCalls).toBe(1);
+    expect(mutationCalls).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      preview: {
+        contractVersion: "appbasis.athletes.exchange/v1",
+        applyAvailable: false,
+        summary: {
+          rows: 1,
+          create: 1,
+          update: 0,
+          errors: 0,
+        },
+      },
+      apply: {
+        available: true,
+        previewToken: expect.stringMatching(/^e6f4b-v1\.[0-9a-f]{64}$/),
+      },
+    });
+  });
+
+  it("authorizes E6F4B preview before inspecting content type", async () => {
+    let editCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athletesAccess: {
+        ...base.athletesAccess,
+        async assertEditAccess() {
+          editCalls += 1;
+          throw new UlcLinzAuthorizationDeniedError();
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/import-preview", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: "{}",
+      }),
+      validEnv,
+    );
+
+    expect(editCalls).toBe(1);
+    expect(response.status).toBe(403);
+  });
+
+  it("applies E6F4B with the exact preview token and server organization", async () => {
+    let createCalls = 0;
+    let membershipCalls = 0;
+    const base = runtime();
+    const snapshot = {
+      trainingGroups: [
+        {
+          id: "group-1",
+          organizationId: "verein-server",
+          name: "Sprint",
+          shortName: "SP",
+          description: null,
+          isActive: true,
+          sortOrder: 10,
+        },
+      ],
+      athletes: [],
+      trainers: [],
+      athleteGroupMemberships: [],
+      trainerGroupMemberships: [],
+    };
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athletesAccess: {
+        ...base.athletesAccess,
+        async assertEditAccess() {
+          return { organizationId: "verein-server" };
+        },
+      },
+      athleteMasterdata: {
+        ...base.athleteMasterdata,
+        async readOrganizationSnapshot(organizationId) {
+          expect(organizationId).toBe("verein-server");
+          return snapshot;
+        },
+        async createAthlete(organizationId, input) {
+          createCalls += 1;
+          expect(organizationId).toBe("verein-server");
+          return {
+            id: "athlete-imported",
+            organizationId,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            birthYear: input.birthYear ?? null,
+            notes: input.notes ?? null,
+            isActive: true,
+          };
+        },
+        async createAthleteGroupMembership(organizationId, input) {
+          membershipCalls += 1;
+          expect(organizationId).toBe("verein-server");
+          return {
+            organizationId,
+            athleteId: input.athleteId,
+            groupId: input.groupId,
+            startedOn: input.startedOn,
+            endedOn: input.endedOn ?? null,
+          };
+        },
+      },
+    }));
+    const workbook = createAthletesWorkbook(snapshot, "template");
+
+    const previewBody = new Uint8Array(workbook.byteLength);
+    previewBody.set(workbook);
+    const previewResponse = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/import-preview", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+        body: previewBody.buffer,
+      }),
+      validEnv,
+    );
+    expect(previewResponse.status).toBe(200);
+    const previewPayload = await previewResponse.json() as {
+      apply: { previewToken: string };
+    };
+
+    const applyBody = new Uint8Array(workbook.byteLength);
+    applyBody.set(workbook);
+    const applyResponse = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/import-apply", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "x-appbasis-import-preview-token": previewPayload.apply.previewToken,
+        },
+        body: applyBody.buffer,
+      }),
+      validEnv,
+    );
+
+    expect(applyResponse.status).toBe(200);
+    expect(createCalls).toBe(1);
+    expect(membershipCalls).toBe(1);
+    await expect(applyResponse.json()).resolves.toMatchObject({
+      result: {
+        contractVersion: "appbasis.athletes.import-result/v1",
+        summary: {
+          rows: 1,
+          created: 1,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+        },
+        rows: [
+          {
+            requestedAction: "create",
+            outcome: "created",
+            athleteId: "athlete-imported",
+          },
+        ],
+        logCsv: expect.stringContaining("Datensatz-Schlüssel"),
+      },
+    });
+  });
+
+  it("rejects stale E6F4B apply tokens before any mutation", async () => {
+    let mutations = 0;
+    const base = runtime();
+    const snapshot = {
+      trainingGroups: [
+        {
+          id: "group-1",
+          organizationId: "verein-server",
+          name: "Sprint",
+          shortName: "SP",
+          description: null,
+          isActive: true,
+          sortOrder: 10,
+        },
+      ],
+      athletes: [],
+      trainers: [],
+      athleteGroupMemberships: [],
+      trainerGroupMemberships: [],
+    };
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athletesAccess: {
+        ...base.athletesAccess,
+        async assertEditAccess() {
+          return { organizationId: "verein-server" };
+        },
+      },
+      athleteMasterdata: {
+        ...base.athleteMasterdata,
+        async readOrganizationSnapshot() {
+          return snapshot;
+        },
+        async createAthlete(...args) {
+          mutations += 1;
+          return base.athleteMasterdata.createAthlete(...args);
+        },
+        async updateAthlete(...args) {
+          mutations += 1;
+          return base.athleteMasterdata.updateAthlete(...args);
+        },
+        async createAthleteGroupMembership(...args) {
+          mutations += 1;
+          return base.athleteMasterdata.createAthleteGroupMembership(...args);
+        },
+      },
+    }));
+    const workbook = createAthletesWorkbook(snapshot, "template");
+    const body = new Uint8Array(workbook.byteLength);
+    body.set(workbook);
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes/import-apply", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "x-appbasis-import-preview-token": "e6f4b-v1." + "0".repeat(64),
+        },
+        body: body.buffer,
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(409);
+    expect(mutations).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "STALE_IMPORT_PREVIEW" },
+    });
+  });
+
+  it("keeps E6F4B endpoints POST-only and XLSX-only", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    for (const path of ["import-preview", "import-apply"]) {
+      const get = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/athletes/" + path, {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+      expect(get.status).toBe(405);
+      expect(get.headers.get("allow")).toBe("POST");
+
+      const json = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/athletes/" + path, {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: "{}",
+        }),
+        validEnv,
+      );
+      expect(json.status).toBe(415);
+    }
   });
 
   it("serves organization-scoped Stammdaten only after server-side view authorization", async () => {
