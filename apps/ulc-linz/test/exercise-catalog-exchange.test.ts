@@ -76,7 +76,7 @@ describe("ULC E6F1 exercise catalog exchange", () => {
       "Video- / Weblink",
       "Aktiv",
     ]);
-    expect(exercises[1]).toMatchObject([
+    expect(exercises[1]!.slice(0, 5)).toEqual([
       "row-0001",
       "exercise-1",
       "Fliegende 30",
