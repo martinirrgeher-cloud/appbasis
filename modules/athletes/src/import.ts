@@ -390,11 +390,27 @@ export async function previewAthletesImport(
         );
       }
     } else if (normalized !== null && source.birthYear !== null) {
+      const nameKey = personNameKey(normalized.firstName, normalized.lastName);
       const candidates =
         existingByPersonKey.get(
           personKey(normalized.firstName, normalized.lastName, source.birthYear),
         ) ?? [];
-      if (candidates.length === 1) {
+      const unknownBirthYearCandidates =
+        (existingByName.get(nameKey) ?? []).filter(
+          (athlete) => athlete.birthYear === null,
+        );
+      if (unknownBirthYearCandidates.length > 0) {
+        rowIssues.push(
+          issue(
+            "error",
+            "POTENTIAL_DUPLICATE_REQUIRES_ID",
+            "Mindestens ein Athlet mit demselben Namen hat keinen Jahrgang. Eine sichere automatische Zuordnung ist daher nicht möglich; bitte eine bestehende Athleten-ID verwenden.",
+            "Athleten",
+            source.rowNumber,
+            "ID",
+          ),
+        );
+      } else if (candidates.length === 1) {
         existing = candidates[0]!;
         rowIssues.push(
           issue(
@@ -491,6 +507,19 @@ export async function previewAthletesImport(
       normalized !== null &&
       existing !== null &&
       !sameAthlete(existing, normalized);
+
+    if (existing !== null && !existing.isActive && scalarChanged) {
+      rowIssues.push(
+        issue(
+          "error",
+          "INACTIVE_ATHLETE_UPDATE_UNSUPPORTED",
+          "Archivierte Athleten können über den Import nicht fachlich geändert werden.",
+          "Athleten",
+          source.rowNumber,
+          null,
+        ),
+      );
+    }
 
     if (
       existing !== null &&
@@ -1223,9 +1252,12 @@ function createImportLogCsv(
 
 function csvCell(value: string): string {
   const normalized = value.replace(/\r\n?/g, "\n");
-  return /[;"\n]/.test(normalized)
-    ? '"' + normalized.replaceAll('"', '""') + '"'
+  const safe = /^[\t ]*[=+\-@]/.test(normalized)
+    ? "'" + normalized
     : normalized;
+  return /[;"\n]/.test(safe)
+    ? '"' + safe.replaceAll('"', '""') + '"'
+    : safe;
 }
 
 async function readWorkbook(
