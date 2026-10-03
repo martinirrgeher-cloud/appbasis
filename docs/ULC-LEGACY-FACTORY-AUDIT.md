@@ -209,11 +209,20 @@ Read-only gegenüber Fachdaten:
 
 Write-Slice:
 
-- serverseitige Edit-Autorisierung;
-- organisationsgebundene Auflösung;
-- normale Katalog-Domainvalidierung;
-- Rerun-/Doppelimport-Schutz;
-- Ergebnis pro Zeile und Importprotokoll;
+- serverseitige Edit-Autorisierung vor Dateiinspektion;
+- Preview-Token bindet XLSX, serverautorisierte Organisation und aktuellen
+  Katalog-/Gruppenstand;
+- Apply parst und klassifiziert die Datei erneut und lehnt Drift vor dem ersten
+  Write mit `409` ab;
+- Create/Update verwenden ausschließlich den normalen Katalog-Service und
+  damit dieselbe organisationsgebundene Gruppen- und Domainvalidierung;
+- unveränderte Zeilen bleiben `skip`; archivierte Datensätze werden nicht
+  implizit reaktiviert, deaktiviert oder verändert;
+- Ergebnis pro Zeile als `created/updated/skipped/failed`;
+- CSV-Importprotokoll aus demselben Ergebnisvertrag;
+- der Preview-Token wird nach Apply clientseitig verworfen; Unique-Constraints
+  bleiben zusätzliche Create-Dublettenbarriere;
+- keine neue Tabelle/Migration und keine allgemeine Importplattform;
 - Preview-Mutation und Deploy bleiben eigene Gates.
 
 ### E6F4 – zweiter Exchange-Verbraucher

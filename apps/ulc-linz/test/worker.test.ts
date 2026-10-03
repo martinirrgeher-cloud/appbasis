@@ -873,6 +873,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
           errors: 0,
         },
       },
+      apply: {
+        available: true,
+        previewToken: expect.stringMatching(/^e6f3-v1\.[0-9a-f]{64}$/),
+      },
     });
   });
 
@@ -942,6 +946,243 @@ describe("generated identity+permissions Worker entrypoint", () => {
     await expect(jsonResponse.json()).resolves.toMatchObject({
       error: { code: "INVALID_IMPORT_CONTENT_TYPE" },
     });
+  });
+
+  it("applies E6F3 only with the exact server preview token and returns a row protocol", async () => {
+    let createCalls = 0;
+    let receivedOrganization: string | null = null;
+    let receivedIdentity: string | null = null;
+    const base = runtime();
+    const trainingGroups = [
+      {
+        id: "group-1",
+        name: "Sprint",
+        shortName: "SP",
+        sortOrder: 10,
+      },
+    ];
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      exerciseCatalog: {
+        ...base.exerciseCatalog,
+        async list() {
+          return { items: [], trainingGroups };
+        },
+        async create(organizationId, identityId, input) {
+          createCalls += 1;
+          receivedOrganization = organizationId;
+          receivedIdentity = identityId;
+          return base.exerciseCatalog.create(organizationId, identityId, input);
+        },
+      },
+    }));
+
+    const workbook = createUlcExerciseCatalogWorkbook(
+      { items: [], trainingGroups },
+      "template",
+    );
+    const previewBody = new Uint8Array(workbook.byteLength);
+    previewBody.set(workbook);
+    const previewResponse = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-preview",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type":
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          },
+          body: previewBody.buffer,
+        },
+      ),
+      validEnv,
+    );
+    expect(previewResponse.status).toBe(200);
+    const previewPayload = await previewResponse.json() as {
+      apply: { previewToken: string };
+    };
+
+    const applyBody = new Uint8Array(workbook.byteLength);
+    applyBody.set(workbook);
+    const applyResponse = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-apply",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type":
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "x-appbasis-import-preview-token":
+              previewPayload.apply.previewToken,
+          },
+          body: applyBody.buffer,
+        },
+      ),
+      validEnv,
+    );
+
+    expect(applyResponse.status).toBe(200);
+    expect(createCalls).toBe(1);
+    expect(receivedOrganization).toBe("verein-1");
+    expect(receivedIdentity).toBe(currentIdentity.identity.identityId);
+    await expect(applyResponse.json()).resolves.toMatchObject({
+      result: {
+        contractVersion: "appbasis.exercise-catalog.import-result/v1",
+        summary: {
+          rows: 1,
+          created: 1,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+        },
+        rows: [
+          {
+            requestedAction: "create",
+            outcome: "created",
+            exerciseId: "exercise-worker-1",
+          },
+        ],
+        logCsv: expect.stringContaining("Datensatz-Schlüssel"),
+      },
+    });
+  });
+
+  it("rejects stale E6F3 apply tokens before any mutation", async () => {
+    let mutationCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      exerciseCatalog: {
+        ...base.exerciseCatalog,
+        async list() {
+          return {
+            items: [],
+            trainingGroups: [
+              {
+                id: "group-1",
+                name: "Sprint",
+                shortName: "SP",
+                sortOrder: 10,
+              },
+            ],
+          };
+        },
+        async create(organizationId, identityId, input) {
+          mutationCalls += 1;
+          return base.exerciseCatalog.create(organizationId, identityId, input);
+        },
+        async update(organizationId, identityId, exerciseId, input) {
+          mutationCalls += 1;
+          return base.exerciseCatalog.update(
+            organizationId,
+            identityId,
+            exerciseId,
+            input,
+          );
+        },
+      },
+    }));
+    const workbook = createUlcExerciseCatalogWorkbook(
+      {
+        items: [],
+        trainingGroups: [
+          {
+            id: "group-1",
+            name: "Sprint",
+            shortName: "SP",
+            sortOrder: 10,
+          },
+        ],
+      },
+      "template",
+    );
+    const body = new Uint8Array(workbook.byteLength);
+    body.set(workbook);
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-apply",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type":
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "x-appbasis-import-preview-token":
+              "e6f3-v1." + "0".repeat(64),
+          },
+          body: body.buffer,
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(409);
+    expect(mutationCalls).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "STALE_IMPORT_PREVIEW" },
+    });
+  });
+
+  it("keeps E6F3 apply POST-only, XLSX-only and edit-authorized before file inspection", async () => {
+    const base = runtime();
+    let deniedEditCalls = 0;
+    const deniedWorker = createGeneratedWorker(() => ({
+      ...base,
+      exerciseCatalogAccess: {
+        ...base.exerciseCatalogAccess,
+        async assertEditAccess() {
+          deniedEditCalls += 1;
+          throw new UlcLinzAuthorizationDeniedError();
+        },
+      },
+    }));
+
+    const denied = await deniedWorker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-apply",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: "{}",
+        },
+      ),
+      validEnv,
+    );
+    expect(deniedEditCalls).toBe(1);
+    expect(denied.status).toBe(403);
+
+    const worker = createGeneratedWorker(() => runtime());
+    const getResponse = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-apply",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(getResponse.status).toBe(405);
+    expect(getResponse.headers.get("allow")).toBe("POST");
+
+    const jsonResponse = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-apply",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: "{}",
+        },
+      ),
+      validEnv,
+    );
+    expect(jsonResponse.status).toBe(415);
   });
 
   it("keeps E6F1 workbook endpoints read-only", async () => {

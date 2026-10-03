@@ -25,8 +25,13 @@ import {
 import {
   ULC_EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES,
   UlcExerciseCatalogImportFileError,
+  createUlcExerciseCatalogImportPreviewToken,
   previewUlcExerciseCatalogImport,
 } from "./exercise-catalog-import";
+import {
+  UlcExerciseCatalogImportApplyError,
+  applyUlcExerciseCatalogImportPreview,
+} from "./exercise-catalog-import-apply";
 import {
   UlcExerciseCatalogConflictError,
   UlcExerciseCatalogNotFoundError,
@@ -134,6 +139,14 @@ export function createGeneratedWorker(
           url.pathname === "/api/modules/exercise-catalog/import-preview"
         ) {
           response = await exerciseCatalogImportPreviewResponse(
+            request,
+            runtime,
+            url,
+          );
+        } else if (
+          url.pathname === "/api/modules/exercise-catalog/import-apply"
+        ) {
+          response = await exerciseCatalogImportApplyResponse(
             request,
             runtime,
             url,
@@ -1300,8 +1313,21 @@ async function exerciseCatalogImportPreviewResponse(
       access.actorPrincipalId,
     );
     const preview = await previewUlcExerciseCatalogImport(bytes, catalog);
+    const previewToken = await createUlcExerciseCatalogImportPreviewToken(
+      bytes,
+      catalog,
+      access.organizationId,
+    );
     return Response.json(
-      { preview },
+      {
+        preview,
+        apply: {
+          available:
+            preview.summary.errors === 0 &&
+            preview.summary.create + preview.summary.update > 0,
+          previewToken,
+        },
+      },
       {
         headers: {
           "cache-control": "private, no-store",
@@ -1320,6 +1346,123 @@ async function exerciseCatalogImportPreviewResponse(
         },
         {
           status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
+    throw error;
+  }
+}
+
+async function exerciseCatalogImportApplyResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor("POST", "exercise catalog import apply");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidExerciseCatalogInput();
+  }
+
+  const access = await authorizeExerciseCatalogRequest(
+    request,
+    runtime,
+    url,
+    "edit",
+  );
+  if (access instanceof Response) return access;
+
+  const contentType = (request.headers.get("content-type") ?? "")
+    .split(";", 1)[0]!
+    .trim()
+    .toLocaleLowerCase("en");
+  if (contentType !== ULC_EXERCISE_CATALOG_XLSX_CONTENT_TYPE) {
+    return Response.json(
+      {
+        error: {
+          code: "INVALID_IMPORT_CONTENT_TYPE",
+          message: "Only XLSX files are supported for exercise catalog import apply.",
+        },
+      },
+      {
+        status: 415,
+        headers: { "cache-control": "private, no-store" },
+      },
+    );
+  }
+
+  const expectedPreviewToken =
+    request.headers.get("x-appbasis-import-preview-token") ?? "";
+
+  try {
+    const bytes = await readRequestBytesLimited(
+      request,
+      ULC_EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES,
+    );
+    const catalog = await runtime.exerciseCatalog.list(
+      access.organizationId,
+      access.actorPrincipalId,
+    );
+    const preview = await previewUlcExerciseCatalogImport(bytes, catalog);
+    const actualPreviewToken =
+      await createUlcExerciseCatalogImportPreviewToken(
+        bytes,
+        catalog,
+        access.organizationId,
+      );
+    const result = await applyUlcExerciseCatalogImportPreview({
+      preview,
+      expectedPreviewToken,
+      actualPreviewToken,
+      organizationId: access.organizationId,
+      actorPrincipalId: access.actorPrincipalId,
+      service: runtime.exerciseCatalog,
+    });
+    return Response.json(
+      { result },
+      {
+        headers: {
+          "cache-control": "private, no-store",
+          "x-content-type-options": "nosniff",
+        },
+      },
+    );
+  } catch (error) {
+    if (error instanceof UlcExerciseCatalogImportFileError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
+    if (error instanceof UlcExerciseCatalogImportApplyError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        },
+        {
+          status:
+            error.code === "INVALID_IMPORT_TOKEN"
+              ? 400
+              : 409,
           headers: {
             "cache-control": "private, no-store",
             "x-content-type-options": "nosniff",

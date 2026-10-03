@@ -415,6 +415,28 @@ export async function previewUlcExerciseCatalogImport(
       }
     }
 
+    const unchanged =
+      normalized !== null &&
+      existing !== null &&
+      sameImportableExercise(existing, normalized);
+    if (
+      normalized !== null &&
+      normalized.isActive === false &&
+      !unchanged &&
+      !rowIssues.some((candidate) => candidate.level === "error")
+    ) {
+      rowIssues.push(
+        issue(
+          "error",
+          "INACTIVE_IMPORT_MUTATION_UNSUPPORTED",
+          "Inaktive Übungen können im kontrollierten Import nur unverändert übersprungen werden. Aktivieren, Deaktivieren oder Ändern archivierter Übungen bleibt ein eigener Vorgang.",
+          "Übungen",
+          source.rowNumber,
+          "Aktiv",
+        ),
+      );
+    }
+
     const hasErrors = rowIssues.some((candidate) => candidate.level === "error");
     let action: UlcExerciseCatalogImportAction;
     let reason: UlcExerciseCatalogImportPreviewRow["reason"];
@@ -424,7 +446,7 @@ export async function previewUlcExerciseCatalogImport(
     } else if (existing === null) {
       action = "create";
       reason = "new";
-    } else if (sameImportableExercise(existing, normalized)) {
+    } else if (unchanged) {
       action = "skip";
       reason = "unchanged";
     } else {
@@ -467,6 +489,91 @@ export async function previewUlcExerciseCatalogImport(
     issues: Object.freeze(globalIssues),
     rows: Object.freeze(rows),
   });
+}
+
+export async function createUlcExerciseCatalogImportPreviewToken(
+  bytes: Uint8Array,
+  catalog: UlcExerciseCatalogOverview,
+  organizationId: string,
+): Promise<string> {
+  const fileDigest = await sha256Hex(bytes);
+  const catalogState = JSON.stringify({
+    organizationId,
+    items: [...catalog.items]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        categoryKey: item.categoryKey,
+        subcategory: item.subcategory,
+        goal: item.goal,
+        description: item.description,
+        coachingCues: item.coachingCues,
+        commonMistakes: item.commonMistakes,
+        equipment: [...item.equipment],
+        videoUrl: item.videoUrl,
+        groupIds: [...item.groupIds],
+        parameters: item.parameters.map((parameter) => ({
+          key: parameter.key,
+          label: parameter.label,
+          unit: parameter.unit,
+          inputType: parameter.inputType,
+          defaultValue: parameter.defaultValue,
+          minValue: parameter.minValue,
+          maxValue: parameter.maxValue,
+          stepValue: parameter.stepValue,
+          isRequired: parameter.isRequired,
+          sortOrder: parameter.sortOrder,
+        })),
+        isActive: item.isActive,
+      })),
+    trainingGroups: [...catalog.trainingGroups]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((group) => ({
+        id: group.id,
+        name: group.name,
+        shortName: group.shortName,
+        sortOrder: group.sortOrder,
+      })),
+  });
+  const stateDigest = await sha256Hex(new TextEncoder().encode(catalogState));
+  const tokenSource = new TextEncoder().encode(
+    "appbasis.exercise-catalog.import-apply/v1\n" +
+      fileDigest +
+      "\n" +
+      stateDigest,
+  );
+  return "e6f3-v1." + (await sha256Hex(tokenSource));
+}
+
+export function ulcExerciseCatalogImportDraftToInput(
+  draft: UlcExerciseCatalogImportDraft,
+): CreateUlcExerciseCatalogItemInput {
+  return {
+    name: draft.name,
+    categoryKey: draft.categoryKey as UlcExerciseCategoryKey,
+    subcategory: draft.subcategory,
+    goal: draft.goal,
+    description: draft.description,
+    coachingCues: draft.coachingCues,
+    commonMistakes: draft.commonMistakes,
+    equipment: draft.equipment,
+    videoUrl: draft.videoUrl,
+    groupIds: draft.groupIds,
+    parameters: draft.parameters.map((parameter) => ({
+      key: parameter.key as UlcExerciseParameterKey,
+      label: parameter.label,
+      unit: parameter.unit,
+      inputType: parameter.inputType as UlcExerciseParameterInputType,
+      defaultValue: parameter.defaultValue,
+      minValue: parameter.minValue,
+      maxValue: parameter.maxValue,
+      stepValue: parameter.stepValue,
+      isRequired: parameter.isRequired,
+      sortOrder: parameter.sortOrder,
+    })),
+    isActive: draft.isActive,
+  };
 }
 
 function parseExerciseSource(row: SheetRow): ExerciseSource {
@@ -1325,6 +1432,15 @@ const CRC32_TABLE = (() => {
   }
   return table;
 })();
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const input = new Uint8Array(bytes.byteLength);
+  input.set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", input.buffer);
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 function crc32(bytes: Uint8Array): number {
   let value = 0xffffffff;
