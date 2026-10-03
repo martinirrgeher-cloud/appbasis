@@ -217,12 +217,32 @@ function utf8(value: string): Uint8Array {
 }
 
 function xmlEscape(value: string): string {
-  return value
+  return xml10SafeText(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+function xml10SafeText(value: string): string {
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const codePoint = value.codePointAt(index);
+    if (codePoint === undefined) continue;
+    if (codePoint > 0xffff) index += 1;
+
+    const allowed =
+      codePoint === 0x09 ||
+      codePoint === 0x0a ||
+      codePoint === 0x0d ||
+      (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+      (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+      (codePoint >= 0x10000 && codePoint <= 0x10ffff);
+
+    result += allowed ? String.fromCodePoint(codePoint) : "\ufffd";
+  }
+  return result;
 }
 
 function columnName(index: number): string {
