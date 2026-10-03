@@ -317,7 +317,7 @@ describe("athletes XLSX import", () => {
       "xl/worksheets/sheet2.xml",
       (xml) =>
         xml.replace(
-          /<c r="D2" t="inlineStr"><is><t>group-u12<\/t><\/is><\/c>/,
+          /<c r="D2"[^>]*>[\s\S]*?<\/c>/,
           '<c r="D2" t="inlineStr"><is><t></t></is></c>',
         ),
     );
