@@ -1832,7 +1832,7 @@ async function athletesWorkbookResponse(
     return methodNotAllowedFor("GET", "athletes workbook");
   }
   if ([...url.searchParams.keys()].length !== 0) {
-    return invalidAthletesInput();
+    return invalidAthletesMasterdata();
   }
 
   const access = await authorizeAthletesRequest(request, runtime, url, "view");
