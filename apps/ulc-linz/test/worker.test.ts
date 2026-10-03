@@ -809,17 +809,17 @@ describe("generated identity+permissions Worker entrypoint", () => {
             ],
           };
         },
-        async create(...args) {
+        async create() {
           mutationCalls += 1;
-          return base.exerciseCatalog.create(...args);
+          throw new Error("import preview must not create exercises");
         },
-        async update(...args) {
+        async update() {
           mutationCalls += 1;
-          return base.exerciseCatalog.update(...args);
+          throw new Error("import preview must not update exercises");
         },
-        async deactivate(...args) {
+        async deactivate() {
           mutationCalls += 1;
-          return base.exerciseCatalog.deactivate(...args);
+          throw new Error("import preview must not deactivate exercises");
         },
       },
     }));
@@ -874,6 +874,41 @@ describe("generated identity+permissions Worker entrypoint", () => {
         },
       },
     });
+  });
+
+  it("authorizes E6F2 import preview before inspecting the uploaded file", async () => {
+    let editCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      exerciseCatalogAccess: {
+        ...base.exerciseCatalogAccess,
+        async assertEditAccess() {
+          editCalls += 1;
+          throw new UlcLinzAuthorizationDeniedError(
+            "ULC_LINZ_EXERCISE_CATALOG_EDIT_DENIED",
+          );
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-preview",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: "{}",
+        },
+      ),
+      validEnv,
+    );
+
+    expect(editCalls).toBe(1);
+    expect(response.status).toBe(403);
   });
 
   it("keeps E6F2 import preview POST-only and XLSX-only", async () => {
