@@ -47,6 +47,7 @@ export {
 export type {
   AthletesImportAction,
   AthletesImportDraft,
+  AthletesImportExpectedAthleteState,
   AthletesImportIssue,
   AthletesImportMembershipDraft,
   AthletesImportMutationService,
