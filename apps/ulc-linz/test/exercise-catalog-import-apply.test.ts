@@ -236,6 +236,44 @@ describe("ULC E6F3 controlled exercise catalog import apply", () => {
     });
   });
 
+  it("neutralizes spreadsheet formulas in the CSV protocol", async () => {
+    const formulaItem = {
+      ...existingItem,
+      name: "=2+2",
+    };
+    const workbook = createUlcExerciseCatalogWorkbook(
+      { items: [formulaItem], trainingGroups: [group] },
+      "export",
+    );
+    const catalog = { items: [formulaItem], trainingGroups: [group] };
+    const preview = await previewUlcExerciseCatalogImport(workbook, catalog);
+    const token = await createUlcExerciseCatalogImportPreviewToken(
+      workbook,
+      catalog,
+      "verein-1",
+    );
+
+    const result = await applyUlcExerciseCatalogImportPreview({
+      preview,
+      expectedPreviewToken: token,
+      actualPreviewToken: token,
+      organizationId: "verein-1",
+      actorPrincipalId: "identity-1",
+      service: {
+        async create() {
+          throw new Error("unexpected create");
+        },
+        async update() {
+          throw new Error("unexpected update");
+        },
+      },
+    });
+
+    expect(result.summary.skipped).toBe(1);
+    expect(result.logCsv).toContain("'=2+2");
+    expect(result.logCsv).not.toContain(";=2+2;");
+  });
+
   it("rejects stale tokens before the first mutation", async () => {
     const workbook = createUlcExerciseCatalogWorkbook(
       { items: [], trainingGroups: [group] },
