@@ -74,6 +74,33 @@ describe("ULC E4D.5 compact mobile layout", () => {
     );
   });
 
+  it("adds E6F4B athlete import preview and controlled apply overlay", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="masterdata-import-open"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="masterdata-import-file"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="masterdata-import-preview" hidden');
+    expect(ULC_LINZ_APP_HTML).toContain('id="masterdata-import-apply"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="masterdata-import-log"');
+    expect(ULC_LINZ_APP_CSS).toContain(".masterdata-import-overlay {");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/import-preview"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/athletes/import-apply"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"x-appbasis-import-preview-token": masterdataImportPreviewToken',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("window.confirm(");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("STALE_IMPORT_PREVIEW");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"appbasis.athletes.import-result/v1"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"athleten-importprotokoll-"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
+  });
+
   it("keeps masterdata actions beside row content on normal phone widths", () => {
     expect(ULC_LINZ_APP_CSS).toContain(
       "grid-template-columns: minmax(0, 1fr) auto;",
