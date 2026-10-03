@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-02
+Stand: 2026-10-03
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,7 +9,14 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6C – Übungskatalog: kompakte mobile UI.**
+**ULC-E6F0 – Alt-App-/Factory-Audit und portabler Import-/Export-Vertrag.**
+
+ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
+einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
+getrennten Übungseditor-Overlays praktisch abgenommen worden. Vor Medien- oder
+Intelligence-Ausbau werden jetzt Alt-App-Funktionsumfang,
+Factory-Wiederverwendbarkeit und der künftige Modul-/Exchange-Vertrag
+verbindlich geklärt.
 
 Der bisherige U12-Pfad wird bewusst geparkt. ULC-E5A ist auf `main`
 abgeschlossen, die additive Schema-v7-Migration wurde in Preview erfolgreich
@@ -58,6 +65,31 @@ Verbindliche E6C-Grenzen:
   bleiben E6D/E6E;
 - Preview-/Production-Deployment dieses UI-Slices bleibt ein getrenntes,
   ausdrücklich freizugebendes Gate.
+
+## Aktueller Gate-Scope: ULC-E6F0
+
+E6F0 ist ein Architektur-/Produkt-Audit ohne Runtime-, Schema- oder
+Provider-Mutation.
+
+Abnahme:
+
+- Funktionsabgleich frühere ULC-App gegen aktuellen AppBasis-Stand;
+- Klassifikation in Plattform, Standardmodul, App-Adapter und ULC-spezifisch;
+- explizite Prüfung der Factory-Sichtbarkeit;
+- Übungskatalog als noch nicht factoryfähiger, aber bewiesener
+  Standardmodul-Kandidat dokumentiert;
+- Import/Export als portabler Exchange-Vertrag abgegrenzt;
+- keine direkte PostgreSQL-Nutzung aus Importparser/UI;
+- keine vorschnelle generische Importplattform;
+- bestehende ULC-Katalogtabellen bleiben bis zu einem eigenen Adoption-Gate
+  beim bisherigen App-Owner;
+- keine stille Ownership-Übernahme und keine Daten-Neuanlage nur zum Zweck der
+  Modularisierung;
+- Folgeslices E6F1 Export/Vorlage, E6F2 Preview, E6F3 Apply, E6F4 zweiter
+  Exchange-Verbraucher und E6G Standardmodul-Promotion sind dokumentiert.
+
+Details: `docs/ULC-LEGACY-FACTORY-AUDIT.md`.
+
 
 
 ## FC4-Abnahme – abgeschlossen
