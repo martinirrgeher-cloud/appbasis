@@ -188,6 +188,38 @@ describe("athletes XLSX import", () => {
     );
   });
 
+  it("blocks a blank-ID create when a same-name athlete has no birth year", async () => {
+    const current = {
+      ...baseSnapshot,
+      athletes: [
+        {
+          ...anna,
+          id: "athlete-unknown-year",
+          firstName: "Max",
+          lastName: "Mustermann",
+          birthYear: null,
+        },
+      ],
+      athleteGroupMemberships: [],
+    };
+    const workbook = createAthletesWorkbook(current, "template");
+    const preview = await previewAthletesImport(workbook, current);
+
+    expect(preview.summary.errors).toBeGreaterThan(0);
+    expect(preview.rows[0]).toMatchObject({
+      action: "skip",
+      reason: "invalid",
+      matchedAthleteId: null,
+    });
+    expect(preview.rows[0]?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "POTENTIAL_DUPLICATE_REQUIRES_ID",
+        }),
+      ]),
+    );
+  });
+
   it("blocks changing an existing membership end date", async () => {
     const changedSnapshot = {
       ...baseSnapshot,
@@ -225,6 +257,39 @@ describe("athletes XLSX import", () => {
     expect(preview.rows[0]?.issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: "ACTIVE_STATUS_CHANGE_UNSUPPORTED" }),
+      ]),
+    );
+  });
+
+  it("blocks scalar updates to archived athletes during preview", async () => {
+    const currentArchived = {
+      ...baseSnapshot,
+      athletes: [{ ...anna, isActive: false }],
+    };
+    const changedArchived = {
+      ...currentArchived,
+      athletes: [
+        {
+          ...anna,
+          isActive: false,
+          notes: "Geänderte Archivnotiz",
+        },
+      ],
+    };
+    const workbook = createAthletesWorkbook(changedArchived, "export");
+    const preview = await previewAthletesImport(workbook, currentArchived);
+
+    expect(preview.summary.errors).toBeGreaterThan(0);
+    expect(preview.rows[0]).toMatchObject({
+      action: "skip",
+      reason: "invalid",
+      matchedAthleteId: "athlete-1",
+    });
+    expect(preview.rows[0]?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "INACTIVE_ATHLETE_UPDATE_UNSUPPORTED",
+        }),
       ]),
     );
   });
@@ -373,6 +438,47 @@ describe("athletes XLSX import", () => {
       failed: 0,
     });
     expect(result.logCsv).toContain("athlete-created");
+  });
+
+  it("neutralizes spreadsheet formulas in the CSV import protocol", async () => {
+    const formulaSnapshot = {
+      ...baseSnapshot,
+      athletes: [
+        {
+          ...anna,
+          lastName: "=2+2",
+        },
+      ],
+    };
+    const workbook = createAthletesWorkbook(formulaSnapshot, "export");
+    const preview = await previewAthletesImport(workbook, formulaSnapshot);
+    const token = await createAthletesImportPreviewToken(
+      workbook,
+      formulaSnapshot,
+      "verein-1",
+    );
+
+    const result = await applyAthletesImportPreview({
+      preview,
+      expectedPreviewToken: token,
+      actualPreviewToken: token,
+      organizationId: "verein-1",
+      service: {
+        async createAthlete() {
+          throw new Error("unexpected create");
+        },
+        async updateAthlete() {
+          throw new Error("unexpected update");
+        },
+        async createAthleteGroupMembership() {
+          throw new Error("unexpected membership");
+        },
+      },
+    });
+
+    expect(result.summary.skipped).toBe(1);
+    expect(result.logCsv).toContain("'=2+2, Anna");
+    expect(result.logCsv).not.toContain(";=2+2, Anna;");
   });
 
   it("rejects a stale preview before any mutation", async () => {
