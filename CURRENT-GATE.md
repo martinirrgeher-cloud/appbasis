@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6F0 – Alt-App-/Factory-Audit und portabler Import-/Export-Vertrag.**
+**ULC-E6F1 – Read-only XLSX-Export und Importvorlage für den Übungskatalog.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -66,30 +66,34 @@ Verbindliche E6C-Grenzen:
 - Preview-/Production-Deployment dieses UI-Slices bleibt ein getrenntes,
   ausdrücklich freizugebendes Gate.
 
-## Aktueller Gate-Scope: ULC-E6F0
+## Aktueller Gate-Scope: ULC-E6F1
 
-E6F0 ist ein Architektur-/Produkt-Audit ohne Runtime-, Schema- oder
-Provider-Mutation.
+E6F0 ist auf `main` abgeschlossen. E6F1 liefert den ersten ausführbaren
+Exchange-Slice, bleibt aber vollständig read-only gegenüber den Fachdaten.
 
 Abnahme:
 
-- Funktionsabgleich frühere ULC-App gegen aktuellen AppBasis-Stand;
-- Klassifikation in Plattform, Standardmodul, App-Adapter und ULC-spezifisch;
-- explizite Prüfung der Factory-Sichtbarkeit;
-- Übungskatalog als noch nicht factoryfähiger, aber bewiesener
-  Standardmodul-Kandidat dokumentiert;
-- Import/Export als portabler Exchange-Vertrag abgegrenzt;
-- keine direkte PostgreSQL-Nutzung aus Importparser/UI;
-- keine vorschnelle generische Importplattform;
-- bestehende ULC-Katalogtabellen bleiben bis zu einem eigenen Adoption-Gate
-  beim bisherigen App-Owner;
-- keine stille Ownership-Übernahme und keine Daten-Neuanlage nur zum Zweck der
-  Modularisierung;
-- Folgeslices E6F1 Export/Vorlage, E6F2 Preview, E6F3 Apply, E6F4 zweiter
-  Exchange-Verbraucher und E6G Standardmodul-Promotion sind dokumentiert.
+- geschützter XLSX-Export der aktuellen Übungen mit View-Berechtigung;
+- geschützte XLSX-Importvorlage mit Beispielzeile und aktuellen,
+  serverautorisierten Trainingsgruppen;
+- stabiler Vertrag `appbasis.exercise-catalog.exchange/v1`;
+- getrennte Blätter `Übungen`, `Gruppen`, `Parameter`, `Listen` und
+  `Hinweise`, damit Gruppen und Planungsparameter ohne JSON-Zellen
+  round-trip-fähig bleiben;
+- Export enthält bestehende Übungs-IDs, aber keine `organizationId`,
+  Actor-ID oder persönlichen Favoriten;
+- Vorlage dokumentiert neue Datensätze mit leerer ID und einem
+  dateiinternen Datensatz-Schlüssel für die Relationen;
+- XLSX wird ohne zusätzliche Runtime-Abhängigkeit erzeugt; noch keine
+  allgemeine Workbook-Plattform in Core;
+- keine Importdatei wird eingelesen, keine Vorschau erzeugt und keine
+  Fachdatenmutation ausgeführt;
+- E6F2 bleibt der erste Parser-/Preview-Slice, E6F3 der erste Apply-Slice;
+- Preview-/Production-Deployment bleibt ein getrenntes,
+  ausdrücklich freizugebendes Gate.
 
-Details: `docs/ULC-LEGACY-FACTORY-AUDIT.md`.
-
+Details: `docs/ULC-LEGACY-FACTORY-AUDIT.md` und
+`docs/ULC-EXERCISE-CATALOG.md`.
 
 
 ## FC4-Abnahme – abgeschlossen

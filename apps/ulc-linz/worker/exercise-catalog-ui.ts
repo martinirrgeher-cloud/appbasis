@@ -6,7 +6,11 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                 <h1>Übungskatalog</h1>
                 <p class="summary">Übungen suchen, filtern, favorisieren und für die Trainingsplanung vorbereiten.</p>
               </div>
-              <button class="button button--primary" id="exercise-catalog-new" type="button" hidden>Neue Übung</button>
+              <div class="exercise-catalog-hero-actions">
+                <button class="button button--secondary" id="exercise-catalog-template" type="button" disabled>Importvorlage</button>
+                <button class="button button--secondary" id="exercise-catalog-export" type="button" disabled>Export</button>
+                <button class="button button--primary" id="exercise-catalog-new" type="button" hidden>Neue Übung</button>
+              </div>
             </section>
 
             <p class="message message--error" id="exercise-catalog-message" role="alert" hidden></p>
@@ -182,6 +186,12 @@ export const ULC_EXERCISE_CATALOG_CSS = `
   gap: 12px;
 }
 .exercise-catalog-hero .button { flex: 0 0 auto; }
+.exercise-catalog-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .exercise-catalog-filters {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -678,6 +688,8 @@ const EXERCISE_PARAMETER_META = Object.freeze([
 Object.assign(elements, {
   exerciseCatalogQuickAction: document.querySelector("#exercise-catalog-quick-action"),
   exerciseCatalogAccessLabel: document.querySelector("#exercise-catalog-access-label"),
+  exerciseCatalogTemplate: document.querySelector("#exercise-catalog-template"),
+  exerciseCatalogExport: document.querySelector("#exercise-catalog-export"),
   exerciseCatalogNew: document.querySelector("#exercise-catalog-new"),
   exerciseCatalogMessage: document.querySelector("#exercise-catalog-message"),
   exerciseCatalogSuccess: document.querySelector("#exercise-catalog-success"),
@@ -953,6 +965,12 @@ function prepareExerciseCatalogView() {
   setExerciseCatalogFilterOpen(false);
   updateExerciseCatalogFilterBadge();
   renderExerciseCatalogList();
+  if (elements.exerciseCatalogTemplate) {
+    elements.exerciseCatalogTemplate.disabled = exerciseCatalogBusy;
+  }
+  if (elements.exerciseCatalogExport) {
+    elements.exerciseCatalogExport.disabled = exerciseCatalogBusy;
+  }
   if (elements.exerciseCatalogNew) {
     elements.exerciseCatalogNew.hidden = !exerciseCatalogCanEdit;
     elements.exerciseCatalogNew.disabled = !exerciseCatalogCanEdit || exerciseCatalogBusy;
@@ -1596,8 +1614,59 @@ function sortedExerciseCatalogItems(items) {
   );
 }
 
+async function downloadExerciseCatalogWorkbook(path, filename, successMessage) {
+  if (!exerciseCatalogReady || exerciseCatalogBusy) return;
+  setExerciseCatalogBusy(true);
+  showMessage(elements.exerciseCatalogMessage, "");
+  showMessage(elements.exerciseCatalogSuccess, "");
+
+  try {
+    const response = await fetch(path, {
+      method: "GET",
+      headers: {
+        accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+    });
+    if (!response.ok) {
+      const error = new Error("EXERCISE_CATALOG_WORKBOOK_DOWNLOAD_FAILED");
+      error.status = response.status;
+      throw error;
+    }
+
+    const blob = await response.blob();
+    const href = URL.createObjectURL(blob);
+    try {
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = filename;
+      link.hidden = true;
+      document.body.append(link);
+      link.click();
+      link.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(href), 0);
+    }
+    showMessage(elements.exerciseCatalogSuccess, successMessage);
+  } catch (error) {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      error?.status === 403
+        ? "Für den Export fehlt die Berechtigung."
+        : "Die Excel-Datei konnte nicht erstellt werden.",
+    );
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
+}
+
 function setExerciseCatalogBusy(next) {
   exerciseCatalogBusy = next;
+  if (elements.exerciseCatalogTemplate) {
+    elements.exerciseCatalogTemplate.disabled = next || !exerciseCatalogReady;
+  }
+  if (elements.exerciseCatalogExport) {
+    elements.exerciseCatalogExport.disabled = next || !exerciseCatalogReady;
+  }
   if (elements.exerciseCatalogNew) {
     elements.exerciseCatalogNew.disabled = next || !exerciseCatalogCanEdit;
   }
@@ -1668,6 +1737,20 @@ elements.exerciseCatalogFilterApply?.addEventListener("click", () => {
 });
 elements.exerciseCatalogFilterReset?.addEventListener("click", resetExerciseCatalogFilters);
 elements.exerciseCatalogList?.addEventListener("click", handleExerciseCatalogListClick);
+elements.exerciseCatalogTemplate?.addEventListener("click", () => {
+  void downloadExerciseCatalogWorkbook(
+    "/api/modules/exercise-catalog/template.xlsx",
+    "ulc-uebungskatalog-importvorlage.xlsx",
+    "Importvorlage wurde erstellt.",
+  );
+});
+elements.exerciseCatalogExport?.addEventListener("click", () => {
+  void downloadExerciseCatalogWorkbook(
+    "/api/modules/exercise-catalog/export.xlsx",
+    "ulc-uebungskatalog-export.xlsx",
+    "Übungskatalog wurde exportiert.",
+  );
+});
 elements.exerciseCatalogNew?.addEventListener("click", newExerciseCatalogItem);
 elements.exerciseCatalogClose?.addEventListener("click", () => closeExerciseCatalogEditor(false));
 elements.exerciseCatalogForm?.addEventListener("input", () => {

@@ -746,6 +746,48 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("serves E6F1 catalog export and template as protected XLSX downloads", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    for (const [path, filename] of [
+      ["/api/modules/exercise-catalog/export.xlsx", "ulc-uebungskatalog-export.xlsx"],
+      ["/api/modules/exercise-catalog/template.xlsx", "ulc-uebungskatalog-importvorlage.xlsx"],
+    ] as const) {
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test" + path, {
+          headers: { cookie: currentIdentity.sessionToken },
+        }),
+        validEnv,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      expect(response.headers.get("content-disposition")).toContain(filename);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(
+        Array.from(new Uint8Array(await response.arrayBuffer()).slice(0, 4)),
+      ).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    }
+  });
+
+  it("keeps E6F1 workbook endpoints read-only", async () => {
+    const response = await createGeneratedWorker(() => runtime()).fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/export.xlsx",
+        {
+          method: "POST",
+          headers: { cookie: currentIdentity.sessionToken },
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("GET");
+  });
+
   it("reports read-only exercise catalog access without granting edit", async () => {
     const worker = createGeneratedWorker(() => {
       const base = runtime();

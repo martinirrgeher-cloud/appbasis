@@ -106,8 +106,12 @@ eine Bestätigung.
 Vor dem Medien-/Intelligence-Ausbau wird der heutige Katalog gegen die frühere
 ULC-App und die Factory-Verträge abgeglichen.
 
-- E6F0: Alt-App-/Factory-Audit und portabler Exchange-Vertrag;
-- E6F1: read-only Export und Importvorlage;
+- E6F0: Alt-App-/Factory-Audit und portabler Exchange-Vertrag – auf
+  `main` abgeschlossen;
+- E6F1: read-only XLSX-Export und XLSX-Importvorlage mit stabilem
+  `appbasis.exercise-catalog.exchange/v1`-Vertrag über die Blätter
+  `Übungen`, `Gruppen`, `Parameter`, `Listen` und `Hinweise`; keine
+  Importmutation;
 - E6F2: read-only Importvorschau mit Fehlern/Warnungen und
   `create/update/skip`;
 - E6F3: kontrollierter, serverautorisierter Import;

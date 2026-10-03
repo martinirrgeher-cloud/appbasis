@@ -46,6 +46,19 @@ describe("ULC E6C exercise catalog UI", () => {
     );
   });
 
+  it("offers read-only XLSX export and import-template actions", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-template"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-export"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/exercise-catalog/template.xlsx"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/exercise-catalog/export.xlsx"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("downloadExerciseCatalogWorkbook");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+  });
+
   it("uses only the protected server-owned catalog API without client scope", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'requestJson("/api/modules/exercise-catalog")',

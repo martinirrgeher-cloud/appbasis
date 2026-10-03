@@ -18,6 +18,11 @@ import {
   type CreateUlcExerciseCatalogItemInput,
 } from "./exercise-catalog-domain";
 import {
+  createUlcExerciseCatalogWorkbook,
+  ULC_EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
+  type UlcExerciseCatalogExchangeMode,
+} from "./exercise-catalog-exchange";
+import {
   UlcExerciseCatalogConflictError,
   UlcExerciseCatalogNotFoundError,
 } from "./exercise-catalog-postgres";
@@ -110,6 +115,16 @@ export function createGeneratedWorker(
           );
         } else if (url.pathname === "/api/modules/exercise-catalog") {
           response = await exerciseCatalogModuleResponse(request, runtime, url);
+        } else if (
+          url.pathname === "/api/modules/exercise-catalog/export.xlsx" ||
+          url.pathname === "/api/modules/exercise-catalog/template.xlsx"
+        ) {
+          response = await exerciseCatalogWorkbookResponse(
+            request,
+            runtime,
+            url,
+            url.pathname.endsWith("/template.xlsx") ? "template" : "export",
+          );
         } else if (
           url.pathname.startsWith("/api/modules/exercise-catalog/")
         ) {
@@ -1178,6 +1193,49 @@ async function exerciseCatalogModuleResponse(
   } catch (error) {
     return exerciseCatalogErrorResponse(error);
   }
+}
+
+async function exerciseCatalogWorkbookResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+  mode: UlcExerciseCatalogExchangeMode,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "exercise catalog workbook");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidExerciseCatalogInput();
+  }
+
+  const access = await authorizeExerciseCatalogRequest(
+    request,
+    runtime,
+    url,
+    "view",
+  );
+  if (access instanceof Response) return access;
+
+  const catalog = await runtime.exerciseCatalog.list(
+    access.organizationId,
+    access.actorPrincipalId,
+  );
+  const workbook = createUlcExerciseCatalogWorkbook(catalog, mode);
+  const responseBytes = new Uint8Array(workbook.byteLength);
+  responseBytes.set(workbook);
+
+  return new Response(responseBytes.buffer, {
+    status: 200,
+    headers: {
+      "content-type": ULC_EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
+      "content-disposition":
+        mode === "template"
+          ? 'attachment; filename="ulc-uebungskatalog-importvorlage.xlsx"'
+          : 'attachment; filename="ulc-uebungskatalog-export.xlsx"',
+      "cache-control": "private, no-store",
+      "x-content-type-options": "nosniff",
+    },
+  });
 }
 
 async function exerciseCatalogItemResponse(
