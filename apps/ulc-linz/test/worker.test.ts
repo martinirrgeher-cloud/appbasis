@@ -4,6 +4,9 @@ import type { IdentityHttpService } from "@appbasis/identity/http";
 import { InMemoryPermissionStore } from "@appbasis/permissions";
 
 import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
+import {
+  createUlcExerciseCatalogWorkbook,
+} from "../worker/exercise-catalog-exchange";
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
@@ -770,6 +773,142 @@ describe("generated identity+permissions Worker entrypoint", () => {
         Array.from(new Uint8Array(await response.arrayBuffer()).slice(0, 4)),
       ).toEqual([0x50, 0x4b, 0x03, 0x04]);
     }
+  });
+
+  it("previews E6F2 XLSX imports only after edit authorization without applying changes", async () => {
+    let editCalls = 0;
+    let listCalls = 0;
+    let mutationCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      exerciseCatalogAccess: {
+        ...base.exerciseCatalogAccess,
+        async assertEditAccess() {
+          editCalls += 1;
+          return {
+            organizationId: "verein-1",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      exerciseCatalog: {
+        ...base.exerciseCatalog,
+        async list() {
+          listCalls += 1;
+          return {
+            items: [],
+            trainingGroups: [
+              {
+                id: "group-1",
+                name: "Sprint",
+                shortName: "SP",
+                sortOrder: 10,
+              },
+            ],
+          };
+        },
+        async create(...args) {
+          mutationCalls += 1;
+          return base.exerciseCatalog.create(...args);
+        },
+        async update(...args) {
+          mutationCalls += 1;
+          return base.exerciseCatalog.update(...args);
+        },
+        async deactivate(...args) {
+          mutationCalls += 1;
+          return base.exerciseCatalog.deactivate(...args);
+        },
+      },
+    }));
+
+    const workbook = createUlcExerciseCatalogWorkbook(
+      {
+        items: [],
+        trainingGroups: [
+          {
+            id: "group-1",
+            name: "Sprint",
+            shortName: "SP",
+            sortOrder: 10,
+          },
+        ],
+      },
+      "template",
+    );
+    const body = new Uint8Array(workbook.byteLength);
+    body.set(workbook);
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-preview",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type":
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          },
+          body: body.buffer,
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(editCalls).toBe(1);
+    expect(listCalls).toBe(1);
+    expect(mutationCalls).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      preview: {
+        applyAvailable: false,
+        summary: {
+          rows: 1,
+          create: 1,
+          update: 0,
+          skip: 0,
+          errors: 0,
+        },
+      },
+    });
+  });
+
+  it("keeps E6F2 import preview POST-only and XLSX-only", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    const getResponse = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-preview",
+        {
+          headers: { cookie: currentIdentity.sessionToken },
+        },
+      ),
+      validEnv,
+    );
+    expect(getResponse.status).toBe(405);
+    expect(getResponse.headers.get("allow")).toBe("POST");
+
+    const jsonResponse = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/import-preview",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: "{}",
+        },
+      ),
+      validEnv,
+    );
+    expect(jsonResponse.status).toBe(415);
+    await expect(jsonResponse.json()).resolves.toMatchObject({
+      error: { code: "INVALID_IMPORT_CONTENT_TYPE" },
+    });
   });
 
   it("keeps E6F1 workbook endpoints read-only", async () => {
