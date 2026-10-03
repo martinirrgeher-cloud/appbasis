@@ -974,7 +974,9 @@ async function inflateRaw(
 ): Promise<Uint8Array> {
   let stream: ReadableStream<Uint8Array>;
   try {
-    const response = new Response(compressed);
+    const input = new Uint8Array(compressed.byteLength);
+    input.set(compressed);
+    const response = new Response(input.buffer);
     if (response.body === null) throw new Error("missing body");
     stream = response.body.pipeThrough(new DecompressionStream("deflate-raw"));
   } catch {
