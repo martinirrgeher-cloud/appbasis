@@ -116,8 +116,11 @@ ULC-App und die Factory-Verträge abgeglichen.
   OpenXML-/ZIP-Prüfung, Domainnormalisierung, ID-/Namensabgleich,
   serverautorisierter Gruppenauflösung, Fehlern/Warnungen und
   `create/update/skip`; jede Zeile kann schreibgeschützt im bestehenden
-  Übungseditor geprüft werden; kein Apply;
-- E6F3: kontrollierter, serverautorisierter Import;
+  Übungseditor geprüft werden;
+- E6F3: kontrollierter Apply mit serverseitigem Preview-Token, erneuter
+  XLSX-/Katalogprüfung unmittelbar vor dem ersten Write, `409` bei Drift,
+  Create/Update ausschließlich über den normalen Katalog-Service,
+  Ergebnis je Zeile und CSV-Importprotokoll; keine Schemaänderung;
 - E6F4: zweiter Exchange-Verbraucher `athletes` als Grundlage für eine
   mögliche spätere gemeinsame Workbook-Hilfe;
 - E6G: Promotion des bewiesenen Katalog-Vertical-Slices zum echten
