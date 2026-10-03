@@ -176,11 +176,18 @@ Dieser Audit. Keine Runtime-, Schema- oder Provider-Mutation.
 
 Read-only:
 
-- aktuelle Übungen exportieren;
-- Importvorlage mit Beispiel;
-- stabiler AppBasis-Spaltenvertrag;
-- Gruppen und Parameter;
-- keine Datenbankmutation.
+- aktuelle Übungen als echte XLSX-Datei exportieren;
+- XLSX-Importvorlage mit Beispiel erzeugen;
+- stabiler Vertrag `appbasis.exercise-catalog.exchange/v1`;
+- getrennte Blätter für Übungen, Gruppen, Parameter, Listen und Hinweise;
+- dateiinterner Datensatz-Schlüssel verbindet die Blätter, ohne
+  `organizationId` oder Actor-ID offenzulegen;
+- bestehende Übungs-ID wird für die spätere Update-Erkennung mitgeführt;
+- persönliche Favoriten sind bewusst kein Exchange-Feld;
+- aktuelle Trainingsgruppen stammen ausschließlich aus dem
+  serverautorisierten Resolver;
+- keine allgemeine Workbook-Plattform vor E6F4;
+- keine Datenbankmutation und noch kein Datei-Parser.
 
 ### E6F2 – Importvorschau
 
