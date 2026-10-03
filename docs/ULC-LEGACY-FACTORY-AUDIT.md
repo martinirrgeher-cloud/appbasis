@@ -34,7 +34,7 @@ App-Owners `ulc-linz-lifecycle` angelegt.
 | Countdown | vorhanden | migriert | Standardmodul |
 | Athleten / Gruppen / Trainer | vorhanden | migriert | Standardmodul |
 | Übungskatalog Basis | vorhanden | E6A–E6C | Standardmodul-Kandidat |
-| Übungs-Import/-Export | XLSX/XML, Vorlage, Export, Vorschau, Review, Protokoll | fehlt | Katalog-Exchange |
+| Übungs-Import/-Export | XLSX/XML, Vorlage, Export, Vorschau, Review, Protokoll | E6F1 Export/Vorlage; E6F2 Preview | Katalog-Exchange |
 | Athleten-Import/-Export | vorhanden | fehlt | Erweiterung von `athletes` |
 | Auswahllisten | vorhanden | teilweise fest verdrahtet | Modulkonfiguration |
 | Schwierigkeitsgrade | vorhanden | offen | Katalog-Erweiterung |
@@ -193,14 +193,17 @@ Read-only:
 
 Read-only gegenüber Fachdaten:
 
-- XLSX einlesen;
-- Dateigrenzen;
-- Zeilen normalisieren;
-- bestehende Übung erkennen;
-- Fehler/Warnungen;
-- `create/update/skip`;
-- problematische Zeilen im bestehenden Editor prüfbar;
-- kein Apply.
+- XLSX-v1-Dateien bis 5 MB und 1.000 primäre Übungszeilen einlesen;
+- ZIP/OpenXML fail-closed und größenbegrenzt prüfen;
+- Zeilen mit der normalen Katalog-Domain normalisieren und validieren;
+- bestehende Übung über ID oder bei leerer ID über normalisierten Namen
+  erkennen;
+- Trainingsgruppen ausschließlich gegen den serverautorisierten Resolver
+  auflösen;
+- Fehler/Warnungen sowie `create/update/skip` vor jeder Mutation liefern;
+- Vorschauzeilen im bestehenden Editor schreibgeschützt prüfbar machen;
+- kein Apply-Endpunkt, kein Apply-Button und keine Fachdatenmutation;
+- keine allgemeine Workbook-Plattform vor E6F4.
 
 ### E6F3 – kontrollierter Import
 
