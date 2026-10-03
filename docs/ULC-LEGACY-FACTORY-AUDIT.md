@@ -242,23 +242,39 @@ Read-only und bereits im Standardmodul `athletes` verankert:
 
 #### E6F4B – Preview + kontrollierter Apply
 
-Folgeslice:
+Implementierter Write-Slice:
 
-- XLSX fail-closed lesen und über die öffentliche Athletes-Domain validieren;
-- bestehende Athleten primär über ID und bei neuen Datensätzen über einen
-  konfliktarmen fachlichen Schlüssel erkennen;
+- XLSX bis 5 MB und 1.000 Athleten fail-closed lesen;
+- bestehende Athleten primär über ID erkennen; bei leerer ID nur eindeutigen
+  Fallback über normalisierten Vorname+Nachname+Geburtsjahr zulassen;
+- gleichnamige Datensätze ohne ausreichend eindeutigen Schlüssel blockieren;
 - Gruppen ausschließlich gegen den aktuellen serverautorisierten Snapshot
   auflösen;
-- `create/update/skip`, Fehler und Warnungen vor Apply sichtbar machen;
-- Apply erneut gegen aktuellen Snapshot prüfen und ausschließlich die
-  bestehenden Athletes-Repository-/Domainverträge verwenden;
-- Archivstatus und historische Gruppenänderungen nicht implizit erraten;
-- Ergebnis pro Zeile plus Importprotokoll.
+- bestehende Gruppenhistorie unverändert als `skip` akzeptieren;
+- ausschließlich neue Zuordnungen zu aktiven Gruppen additiv anlegen;
+- Änderungen/Schließen bestehender Historienzeilen und Aktiv-/Archivwechsel
+  blockieren statt zu erraten;
+- `create/update/skip`, Fehler und Warnungen vor Apply im separaten Overlay
+  sichtbar machen;
+- Apply liest XLSX und Snapshot erneut; der Preview-Token bindet Datei,
+  Organisation, Athleten, Gruppen und Mitgliedschaften;
+- Drift führt vor dem ersten Write zu `409 STALE_IMPORT_PREVIEW`;
+- Fachdatenwrites verwenden ausschließlich die bestehenden
+  Athletes-Create-/Update-/Membership-Verträge;
+- Ergebnis pro Zeile plus CSV-Importprotokoll;
+- keine neue Tabelle, Migration oder allgemeine Importplattform.
 
-Erst nach E6F4B wird entschieden, ob die nun real in zwei Fachdomains
-bewiesene Low-Level-XLSX-/Tabular-Mechanik in einen kleinen gemeinsamen Helper
-extrahiert wird. Eine allgemeine Importplattform bleibt ausdrücklich
-außerhalb dieses Gates.
+Der Token verhindert normale Wiederholung nach verändertem Snapshot. Eine
+globale Exactly-once-Garantie für zwei exakt parallele Create-Requests wird
+nicht behauptet: Athleten besitzen aktuell keinen fachlichen Unique-Key und der
+Repositoryvertrag keinen verbindungsgebundenen Import-Lock. Das bleibt ein
+separates Persistenz-/Idempotency-Thema und wird nicht mit einem unsicheren
+Advisory-Lock simuliert.
+
+Nach E6F4B darf nun entschieden werden, ob die in zwei Fachdomains bewiesene
+Low-Level-XLSX-/Tabular-Mechanik in einen kleinen gemeinsamen Helper extrahiert
+wird. Eine allgemeine Importplattform bleibt ausdrücklich außerhalb dieses
+Gates.
 
 ### E6G – Promotion zum Standardmodul
 
