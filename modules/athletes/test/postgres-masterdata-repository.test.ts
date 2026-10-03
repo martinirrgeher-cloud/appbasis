@@ -211,6 +211,102 @@ describe('PostgresAthleteMasterdataRepository', () => {
     ]);
   });
 
+  it('updates an athlete only when the previewed scalar state still matches atomically', async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return [
+          {
+            id: 'athlete-1',
+            organization_id: 'verein-1',
+            first_name: 'Anna',
+            last_name: 'Muster',
+            birth_year: 2012,
+            notes: 'neu',
+            is_active: true,
+          },
+        ];
+      },
+    });
+
+    await expect(
+      repository.updateAthleteIfUnchanged(
+        'verein-1',
+        'athlete-1',
+        {
+          firstName: 'Anna',
+          lastName: 'Muster',
+          birthYear: 2012,
+          notes: null,
+        },
+        {
+          firstName: 'Anna',
+          lastName: 'Muster',
+          birthYear: 2012,
+          notes: 'neu',
+        },
+      ),
+    ).resolves.toEqual({
+      id: 'athlete-1',
+      organizationId: 'verein-1',
+      firstName: 'Anna',
+      lastName: 'Muster',
+      birthYear: 2012,
+      notes: 'neu',
+      isActive: true,
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.query).toContain('AND first_name = $7');
+    expect(calls[0]?.query).toContain('AND last_name = $8');
+    expect(calls[0]?.query).toContain(
+      'AND birth_year IS NOT DISTINCT FROM $9',
+    );
+    expect(calls[0]?.query).toContain(
+      'AND notes IS NOT DISTINCT FROM $10',
+    );
+    expect(calls[0]?.parameters).toEqual([
+      'athlete-1',
+      'verein-1',
+      'Anna',
+      'Muster',
+      2012,
+      'neu',
+      'Anna',
+      'Muster',
+      2012,
+      null,
+    ]);
+  });
+
+  it('returns null from compare-and-update when the athlete changed after preview', async () => {
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe() {
+        return [];
+      },
+    });
+
+    await expect(
+      repository.updateAthleteIfUnchanged(
+        'verein-1',
+        'athlete-1',
+        {
+          firstName: 'Anna',
+          lastName: 'Muster',
+          birthYear: 2012,
+          notes: null,
+        },
+        {
+          firstName: 'Anna',
+          lastName: 'Muster',
+          birthYear: 2012,
+          notes: 'neu',
+        },
+      ),
+    ).resolves.toBeNull();
+  });
+
   it('returns null instead of mutating when an update target is absent, inactive or outside the organization', async () => {
     let calls = 0;
     const repository = new PostgresAthleteMasterdataRepository({

@@ -260,6 +260,69 @@ export class PostgresAthleteMasterdataRepository {
     );
   }
 
+  async updateAthleteIfUnchanged(
+    organizationId: string,
+    athleteId: string,
+    expected: Pick<
+      Athlete,
+      'firstName' | 'lastName' | 'birthYear' | 'notes'
+    >,
+    input: UpdateAthleteInput,
+  ): Promise<Athlete | null> {
+    const normalizedOrganizationId = requiredIdentifier(
+      organizationId,
+      'Organization id',
+    );
+    const normalizedAthleteId = requiredIdentifier(athleteId, 'Athlete id');
+    const expectedAthlete = updateAthlete(
+      {
+        firstName: expected.firstName,
+        lastName: expected.lastName,
+        birthYear: expected.birthYear,
+        notes: expected.notes,
+      },
+      {
+        id: normalizedAthleteId,
+        organizationId: normalizedOrganizationId,
+      },
+    );
+    const athlete = updateAthlete(input, {
+      id: normalizedAthleteId,
+      organizationId: normalizedOrganizationId,
+    });
+    const rows = await this.#client.unsafe(
+      `UPDATE appbasis_athlete
+       SET first_name = $3,
+           last_name = $4,
+           birth_year = $5,
+           notes = $6,
+           updated_at = now()
+       WHERE id = $1
+         AND organization_id = $2
+         AND is_active = true
+         AND first_name = $7
+         AND last_name = $8
+         AND birth_year IS NOT DISTINCT FROM $9
+         AND notes IS NOT DISTINCT FROM $10
+       RETURNING id, organization_id, first_name, last_name, birth_year, notes, is_active`,
+      [
+        athlete.id,
+        athlete.organizationId,
+        athlete.firstName,
+        athlete.lastName,
+        athlete.birthYear,
+        athlete.notes,
+        expectedAthlete.firstName,
+        expectedAthlete.lastName,
+        expectedAthlete.birthYear,
+        expectedAthlete.notes,
+      ],
+    );
+    return optionalSingleRow(rows, (row) =>
+      athleteFromRow(row, normalizedOrganizationId),
+    );
+  }
+
   async updateTrainer(
     organizationId: string,
     trainerId: string,

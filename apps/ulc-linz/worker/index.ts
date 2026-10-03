@@ -1,8 +1,14 @@
 import {
   ATHLETE_CAPABILITIES,
+  ATHLETES_IMPORT_MAX_FILE_BYTES,
   ATHLETES_XLSX_CONTENT_TYPE,
+  AthletesImportApplyError,
+  AthletesImportFileError,
   MasterdataValidationError,
+  applyAthletesImportPreview,
+  createAthletesImportPreviewToken,
   createAthletesWorkbook,
+  previewAthletesImport,
   type AthletesExchangeMode,
 } from "@appbasis/athletes";
 import {
@@ -181,6 +187,22 @@ export function createGeneratedWorker(
             runtime,
             url,
             url.pathname.endsWith("/template.xlsx") ? "template" : "export",
+          );
+        } else if (
+          url.pathname === "/api/modules/athletes/import-preview"
+        ) {
+          response = await athletesImportPreviewResponse(
+            request,
+            runtime,
+            url,
+          );
+        } else if (
+          url.pathname === "/api/modules/athletes/import-apply"
+        ) {
+          response = await athletesImportApplyResponse(
+            request,
+            runtime,
+            url,
           );
         } else if (url.pathname === "/api/modules/athletes/masterdata") {
           response = await athletesMasterdataResponse(request, runtime, url);
@@ -1349,6 +1371,18 @@ async function exerciseCatalogImportPreviewResponse(
       },
     );
   } catch (error) {
+    if (error instanceof XlsxRequestBodyError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
     if (error instanceof UlcExerciseCatalogImportFileError) {
       return Response.json(
         {
@@ -1446,6 +1480,18 @@ async function exerciseCatalogImportApplyResponse(
       },
     );
   } catch (error) {
+    if (error instanceof XlsxRequestBodyError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
     if (error instanceof UlcExerciseCatalogImportFileError) {
       return Response.json(
         {
@@ -1487,6 +1533,19 @@ async function exerciseCatalogImportApplyResponse(
   }
 }
 
+class XlsxRequestBodyError extends Error {
+  readonly code: "IMPORT_FILE_TOO_LARGE" | "INVALID_XLSX";
+
+  constructor(
+    code: "IMPORT_FILE_TOO_LARGE" | "INVALID_XLSX",
+    message: string,
+  ) {
+    super(message);
+    this.name = "XlsxRequestBodyError";
+    this.code = code;
+  }
+}
+
 async function readRequestBytesLimited(
   request: Request,
   maximumBytes: number,
@@ -1495,7 +1554,7 @@ async function readRequestBytesLimited(
   if (declaredLength !== null) {
     const parsed = Number(declaredLength);
     if (Number.isFinite(parsed) && parsed > maximumBytes) {
-      throw new UlcExerciseCatalogImportFileError(
+      throw new XlsxRequestBodyError(
         "IMPORT_FILE_TOO_LARGE",
         "Die XLSX-Datei überschreitet 5 MB.",
       );
@@ -1503,7 +1562,7 @@ async function readRequestBytesLimited(
   }
 
   if (request.body === null) {
-    throw new UlcExerciseCatalogImportFileError(
+    throw new XlsxRequestBodyError(
       "INVALID_XLSX",
       "Die XLSX-Datei fehlt.",
     );
@@ -1518,7 +1577,7 @@ async function readRequestBytesLimited(
     total += next.value.byteLength;
     if (total > maximumBytes) {
       await reader.cancel();
-      throw new UlcExerciseCatalogImportFileError(
+      throw new XlsxRequestBodyError(
         "IMPORT_FILE_TOO_LARGE",
         "Die XLSX-Datei überschreitet 5 MB.",
       );
@@ -1857,6 +1916,208 @@ async function athletesWorkbookResponse(
       "x-content-type-options": "nosniff",
     },
   });
+}
+
+async function athletesImportPreviewResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor("POST", "athletes import preview");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidAthletesMasterdata();
+  }
+
+  const access = await authorizeAthletesRequest(request, runtime, url, "edit");
+  if (access instanceof Response) return access;
+
+  const contentType = (request.headers.get("content-type") ?? "")
+    .split(";", 1)[0]!
+    .trim()
+    .toLocaleLowerCase("en");
+  if (contentType !== ATHLETES_XLSX_CONTENT_TYPE) {
+    return Response.json(
+      {
+        error: {
+          code: "INVALID_IMPORT_CONTENT_TYPE",
+          message: "Only XLSX files are supported for athletes import preview.",
+        },
+      },
+      {
+        status: 415,
+        headers: { "cache-control": "private, no-store" },
+      },
+    );
+  }
+
+  try {
+    const bytes = await readRequestBytesLimited(
+      request,
+      ATHLETES_IMPORT_MAX_FILE_BYTES,
+    );
+    const snapshot = await runtime.athleteMasterdata.readOrganizationSnapshot(
+      access.organizationId,
+    );
+    const preview = await previewAthletesImport(bytes, snapshot);
+    const previewToken = await createAthletesImportPreviewToken(
+      bytes,
+      snapshot,
+      access.organizationId,
+    );
+    return Response.json(
+      {
+        preview,
+        apply: {
+          available:
+            preview.summary.errors === 0 &&
+            preview.summary.create + preview.summary.update > 0,
+          previewToken,
+        },
+      },
+      {
+        headers: {
+          "cache-control": "private, no-store",
+          "x-content-type-options": "nosniff",
+        },
+      },
+    );
+  } catch (error) {
+    if (error instanceof XlsxRequestBodyError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
+    if (error instanceof AthletesImportFileError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
+    throw error;
+  }
+}
+
+async function athletesImportApplyResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor("POST", "athletes import apply");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidAthletesMasterdata();
+  }
+
+  const access = await authorizeAthletesRequest(request, runtime, url, "edit");
+  if (access instanceof Response) return access;
+
+  const contentType = (request.headers.get("content-type") ?? "")
+    .split(";", 1)[0]!
+    .trim()
+    .toLocaleLowerCase("en");
+  if (contentType !== ATHLETES_XLSX_CONTENT_TYPE) {
+    return Response.json(
+      {
+        error: {
+          code: "INVALID_IMPORT_CONTENT_TYPE",
+          message: "Only XLSX files are supported for athletes import apply.",
+        },
+      },
+      {
+        status: 415,
+        headers: { "cache-control": "private, no-store" },
+      },
+    );
+  }
+
+  const expectedPreviewToken =
+    request.headers.get("x-appbasis-import-preview-token") ?? "";
+
+  try {
+    const bytes = await readRequestBytesLimited(
+      request,
+      ATHLETES_IMPORT_MAX_FILE_BYTES,
+    );
+    const snapshot = await runtime.athleteMasterdata.readOrganizationSnapshot(
+      access.organizationId,
+    );
+    const preview = await previewAthletesImport(bytes, snapshot);
+    const actualPreviewToken = await createAthletesImportPreviewToken(
+      bytes,
+      snapshot,
+      access.organizationId,
+    );
+    const result = await applyAthletesImportPreview({
+      preview,
+      expectedPreviewToken,
+      actualPreviewToken,
+      organizationId: access.organizationId,
+      service: runtime.athleteMasterdata,
+    });
+    return Response.json(
+      { result },
+      {
+        headers: {
+          "cache-control": "private, no-store",
+          "x-content-type-options": "nosniff",
+        },
+      },
+    );
+  } catch (error) {
+    if (error instanceof XlsxRequestBodyError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
+    if (error instanceof AthletesImportFileError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
+    if (error instanceof AthletesImportApplyError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "INVALID_IMPORT_TOKEN" ? 400 : 409,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
+    throw error;
+  }
 }
 
 async function athletesMasterdataResponse(

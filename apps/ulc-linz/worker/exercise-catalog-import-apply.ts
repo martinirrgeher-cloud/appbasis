@@ -300,7 +300,10 @@ function createImportLogCsv(
 
 function csvCell(value: string): string {
   const normalized = value.replace(/\r\n?/g, "\n");
-  return /[;"\n]/.test(normalized)
-    ? '"' + normalized.replaceAll('"', '""') + '"'
+  const safe = /^[\t ]*[=+\-@]/.test(normalized)
+    ? "'" + normalized
     : normalized;
+  return /[;"\n]/.test(safe)
+    ? '"' + safe.replaceAll('"', '""') + '"'
+    : safe;
 }
