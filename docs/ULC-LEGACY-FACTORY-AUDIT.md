@@ -35,7 +35,7 @@ App-Owners `ulc-linz-lifecycle` angelegt.
 | Athleten / Gruppen / Trainer | vorhanden | migriert | Standardmodul |
 | Übungskatalog Basis | vorhanden | E6A–E6C | Standardmodul-Kandidat |
 | Übungs-Import/-Export | XLSX/XML, Vorlage, Export, Vorschau, Review, Protokoll | E6F1 Export/Vorlage; E6F2 Preview | Katalog-Exchange |
-| Athleten-Import/-Export | vorhanden | fehlt | Erweiterung von `athletes` |
+| Athleten-Import/-Export | vorhanden | E6F4A Export/Vorlage | Erweiterung von `athletes` |
 | Auswahllisten | vorhanden | teilweise fest verdrahtet | Modulkonfiguration |
 | Schwierigkeitsgrade | vorhanden | offen | Katalog-Erweiterung |
 | Ähnliche Übungen | vorhanden | offen | Katalog-Erweiterung |
@@ -227,8 +227,38 @@ Write-Slice:
 
 ### E6F4 – zweiter Exchange-Verbraucher
 
-Import/Export für `athletes`. Erst danach wird über gemeinsame
-Workbook-/Tabular-Helfer entschieden.
+#### E6F4A – Export + Importvorlage
+
+Read-only und bereits im Standardmodul `athletes` verankert:
+
+- stabiler Vertrag `appbasis.athletes.exchange/v1`;
+- XLSX-Blätter `Athleten`, `Gruppen`, `Listen`, `Hinweise`;
+- bestehende Athleten-ID plus dateiinterner Datensatz-Schlüssel;
+- aktive/inaktive Athleten und historische Gruppenzugehörigkeiten im Export;
+- Gruppen nur als serverautorisierte Referenzen, keine Gruppenmutation;
+- keine Organisations-ID, Actor-ID, Trainer-Identity oder Benutzerkontodaten;
+- ULC ist ausschließlich HTTP-/Autorisierungs-/UI-Adapter;
+- keine Datenbankmutation, keine Migration.
+
+#### E6F4B – Preview + kontrollierter Apply
+
+Folgeslice:
+
+- XLSX fail-closed lesen und über die öffentliche Athletes-Domain validieren;
+- bestehende Athleten primär über ID und bei neuen Datensätzen über einen
+  konfliktarmen fachlichen Schlüssel erkennen;
+- Gruppen ausschließlich gegen den aktuellen serverautorisierten Snapshot
+  auflösen;
+- `create/update/skip`, Fehler und Warnungen vor Apply sichtbar machen;
+- Apply erneut gegen aktuellen Snapshot prüfen und ausschließlich die
+  bestehenden Athletes-Repository-/Domainverträge verwenden;
+- Archivstatus und historische Gruppenänderungen nicht implizit erraten;
+- Ergebnis pro Zeile plus Importprotokoll.
+
+Erst nach E6F4B wird entschieden, ob die nun real in zwei Fachdomains
+bewiesene Low-Level-XLSX-/Tabular-Mechanik in einen kleinen gemeinsamen Helper
+extrahiert wird. Eine allgemeine Importplattform bleibt ausdrücklich
+außerhalb dieses Gates.
 
 ### E6G – Promotion zum Standardmodul
 

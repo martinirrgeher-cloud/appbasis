@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6F3 – Kontrollierter XLSX-Import für den Übungskatalog.**
+**ULC-E6F4A – Athleten-XLSX-Export und Importvorlage als zweiter Exchange-Verbraucher.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -66,50 +66,46 @@ Verbindliche E6C-Grenzen:
 - Preview-/Production-Deployment dieses UI-Slices bleibt ein getrenntes,
   ausdrücklich freizugebendes Gate.
 
-## Aktueller Gate-Scope: ULC-E6F3
+## Aktueller Gate-Scope: ULC-E6F4A
 
-E6F2 ist auf `main` abgeschlossen. E6F3 ist der erste schreibende
-Import-Slice, bleibt aber bewusst auf den bereits bewiesenen
-Übungskatalog-Service beschränkt.
+E6F3 ist auf `main` abgeschlossen und wurde am 03.10.2026 auf dem
+Merge-Commit `bfd2b40449e52c1e0ecadd22355669f01f46a7d8` erfolgreich in die
+isolierte ULC-Preview deployed. Worker-Deploy, Audit-Smoke und
+Application-DB-Binding waren grün. Eine Datenbankmigration war für E6F3 nicht
+erforderlich. Der manuelle XLSX-Praxistest bleibt bewusst nachgelagert.
 
-Abnahme:
+E6F4 verwendet jetzt `athletes` als zweiten realen Exchange-Verbraucher.
+Da `athletes` bereits ein Standardmodul ist, liegt der fachliche
+Exchange-Vertrag im Modul und nicht als ULC-Datenbank-Sonderpfad.
 
-- `POST /api/modules/exercise-catalog/import-preview` liefert zusätzlich einen
-  serverseitig erzeugten Preview-Token;
-- der Token bindet XLSX-Inhalt, serverautorisierte Organisation,
-  aktuellen Katalogzustand und aktuelle Trainingsgruppen;
-- `POST /api/modules/exercise-catalog/import-apply` verlangt Edit-Recht,
-  XLSX-MIME und exakt diesen Preview-Token;
-- Apply liest die XLSX erneut, lädt den aktuellen Katalog erneut und berechnet
-  den Token erneut, bevor die erste Fachdatenmutation erlaubt ist;
-- Drift zwischen Preview und Apply führt zu `409 STALE_IMPORT_PREVIEW` und
-  null Mutationen;
-- Create/Update laufen ausschließlich über den bestehenden
-  `exerciseCatalog.create/update`-Service und damit erneut durch
-  Organisations-, Gruppen- und Domainvalidierung;
-- `skip` erzeugt keine Mutation;
-- unbekannte oder ungültige Previewzustände bleiben fail-closed;
-- archivierte Übungen werden nur unverändert als `skip` akzeptiert;
-  Reaktivierung, Deaktivierung oder Änderung archivierter Datensätze wird
-  nicht still über den Import eingeführt;
-- Ergebnis wird pro Excel-Zeile als
-  `created/updated/skipped/failed` zurückgegeben;
-- Teilfehler bleiben sichtbar; erfolgreiche vorherige Zeilen werden nicht als
-  fehlgeschlagen ausgegeben;
-- ein UTF-8/Excel-taugliches CSV-Importprotokoll wird aus demselben
-  Ergebnisvertrag erzeugt;
-- der Client verwirft den Preview-Token nach Apply bzw. bei stale Preview;
-- ein unmittelbarer Rerun derselben Preview kann dadurch nicht blind erneut
-  angewendet werden; bestehende DB-Unique-Constraints schützen zusätzlich
-  gegen doppelte Create-Datensätze;
-- keine neue Tabelle, keine Migration, keine neue Runtime-Abhängigkeit;
-- E6F4 bleibt der zweite Exchange-Verbraucher `athletes`; erst danach darf
-  über gemeinsame Workbook-/Tabular-Helfer entschieden werden;
-- Preview-/Production-Deployment bleibt ein getrenntes, ausdrücklich
-  freizugebendes Gate.
+Abnahme E6F4A:
 
-Details: `docs/ULC-LEGACY-FACTORY-AUDIT.md` und
-`docs/ULC-EXERCISE-CATALOG.md`.
+- öffentlicher Modulvertrag `appbasis.athletes.exchange/v1`;
+- echte XLSX-Dateien für Export und Importvorlage;
+- Blätter `Athleten`, `Gruppen`, `Listen` und `Hinweise`;
+- Export enthält aktive und inaktive Athleten sowie historische
+  Gruppenzugehörigkeiten;
+- bestehende Athleten-ID wird für die spätere Update-Erkennung mitgeführt;
+- dateiinterner Datensatz-Schlüssel verbindet Athleten und Gruppenzeilen;
+- Trainingsgruppen sind Referenzwerte aus dem aktuellen
+  serverautorisierten Snapshot und werden durch diesen Exchange nicht angelegt
+  oder bearbeitet;
+- Workbook enthält keine `organizationId`, Actor-ID, Trainer-Identity oder
+  Benutzerkontodaten;
+- ULC-Endpunkte `GET /api/modules/athletes/export.xlsx` und
+  `GET /api/modules/athletes/template.xlsx` verlangen ausschließlich
+  serverseitiges View-Recht;
+- ULC liest dafür exakt den Snapshot der serverautorisierten Organisation;
+- UI bietet nur die kompakten Aktionen `Importvorlage` und `Export`;
+- noch kein Upload, kein Parser, kein Preview und kein Apply;
+- keine Tabelle, keine Migration und keine Provider-Mutation;
+- E6F4B ergänzt anschließend Import-Preview und kontrollierten Apply;
+- erst nach dem zweiten vollständigen Exchange-Verbraucher wird entschieden,
+  ob ein kleiner gemeinsamer XLSX-/Tabular-Helper die nachweislich doppelte
+  Low-Level-Mechanik ersetzt.
+
+Details: `modules/athletes/README.md` und
+`docs/ULC-LEGACY-FACTORY-AUDIT.md`.
 
 
 ## FC4-Abnahme – abgeschlossen

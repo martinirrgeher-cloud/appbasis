@@ -131,6 +131,10 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <p class="eyebrow">Organisation</p>
               <h1>Stammdaten</h1>
               <p class="summary">Athleten, Trainer und Trainingsgruppen deiner Organisation.</p>
+              <div class="masterdata-exchange-actions">
+                <button class="button button--secondary" id="masterdata-template" type="button" disabled>Importvorlage</button>
+                <button class="button button--secondary" id="masterdata-export" type="button" disabled>Export</button>
+              </div>
             </section>
 
             <p class="message message--error" id="masterdata-message" role="alert" hidden></p>
@@ -585,6 +589,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   font-size: .74rem;
   font-weight: 800;
 }
+.masterdata-exchange-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+.masterdata-exchange-actions .button {
+  min-height: var(--touch);
+  padding: 7px 11px;
+  font-size: .78rem;
+}
 .masterdata-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -910,6 +925,8 @@ const elements = {
   kindertrainingSave: document.querySelector("#kindertraining-save"),
   masterdataMessage: document.querySelector("#masterdata-message"),
   masterdataSuccess: document.querySelector("#masterdata-success"),
+  masterdataTemplate: document.querySelector("#masterdata-template"),
+  masterdataExport: document.querySelector("#masterdata-export"),
   athleteList: document.querySelector("#athlete-list"),
   trainerList: document.querySelector("#trainer-list"),
   groupList: document.querySelector("#group-list"),
@@ -1008,6 +1025,7 @@ let kindertrainingLoading = false;
 let kindertrainingGroups = [];
 let kindertrainingSnapshot = null;
 let masterdataLoading = false;
+let masterdataExchangeBusy = false;
 let masterdataSnapshot = null;
 let masterdataEdit = null;
 let trainerIdentityAdminReady = false;
@@ -1031,6 +1049,20 @@ elements.startButton?.addEventListener("click", () => void startCountdown());
 elements.pauseButton?.addEventListener("click", () => void togglePause());
 elements.resetButton?.addEventListener("click", () => void resetCountdown());
 elements.settingsForm?.addEventListener("input", handleSettingsInput);
+elements.masterdataTemplate?.addEventListener("click", () => {
+  void downloadMasterdataWorkbook(
+    "/api/modules/athletes/template.xlsx",
+    "athleten-importvorlage.xlsx",
+    "Athleten-Importvorlage wurde erstellt.",
+  );
+});
+elements.masterdataExport?.addEventListener("click", () => {
+  void downloadMasterdataWorkbook(
+    "/api/modules/athletes/export.xlsx",
+    "athleten-export.xlsx",
+    "Athleten-Export wurde erstellt.",
+  );
+});
 elements.athleteForm?.addEventListener("submit", (event) => void createMasterdataAthlete(event));
 elements.trainerForm?.addEventListener("submit", (event) => void createMasterdataTrainer(event));
 elements.groupForm?.addEventListener("submit", (event) => void createMasterdataGroup(event));
@@ -1411,6 +1443,12 @@ function refreshAppAvailability() {
   }
   if (elements.masterdataQuickAction) {
     elements.masterdataQuickAction.disabled = !masterdataReady;
+  }
+  if (elements.masterdataTemplate) {
+    elements.masterdataTemplate.disabled = !masterdataReady || masterdataExchangeBusy;
+  }
+  if (elements.masterdataExport) {
+    elements.masterdataExport.disabled = !masterdataReady || masterdataExchangeBusy;
   }
   if (elements.masterdataAccessLabel) {
     elements.masterdataAccessLabel.textContent = masterdataReady
@@ -1851,6 +1889,54 @@ function showMasterdataTab(tab) {
   }
   for (const panel of document.querySelectorAll("[data-masterdata-panel]")) {
     panel.hidden = panel.dataset.masterdataPanel !== target;
+  }
+}
+
+async function downloadMasterdataWorkbook(path, filename, successMessage) {
+  if (!masterdataReady || masterdataExchangeBusy) return;
+  masterdataExchangeBusy = true;
+  refreshAppAvailability();
+  showMessage(elements.masterdataMessage, "");
+  showMessage(elements.masterdataSuccess, "");
+
+  try {
+    const response = await fetch(path, {
+      method: "GET",
+      headers: {
+        accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      const error = new Error("MASTERDATA_WORKBOOK_DOWNLOAD_FAILED");
+      error.status = response.status;
+      throw error;
+    }
+
+    const blob = await response.blob();
+    const href = URL.createObjectURL(blob);
+    try {
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = filename;
+      link.hidden = true;
+      document.body.append(link);
+      link.click();
+      link.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(href), 0);
+    }
+    showMessage(elements.masterdataSuccess, successMessage);
+  } catch (error) {
+    showMessage(
+      elements.masterdataMessage,
+      error?.status === 403
+        ? "Für den Athleten-Export fehlt die Berechtigung."
+        : "Die Excel-Datei konnte nicht erstellt werden.",
+    );
+  } finally {
+    masterdataExchangeBusy = false;
+    refreshAppAvailability();
   }
 }
 
