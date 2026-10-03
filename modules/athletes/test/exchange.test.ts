@@ -171,6 +171,40 @@ describe("athletes exchange", () => {
     expect(JSON.stringify(lists.rows)).toContain("inaktiv");
   });
 
+  it("replaces XML 1.0-forbidden control characters before workbook serialization", () => {
+    const unsafeSnapshot = {
+      ...snapshot,
+      trainingGroups: [
+        {
+          ...snapshot.trainingGroups[0]!,
+          name: "Spr\u0008int",
+        },
+      ],
+      athletes: [
+        {
+          ...snapshot.athletes[0]!,
+          firstName: "An\u0001na",
+          notes: "Zeile 1\nZeile 2\u0000Ende",
+        },
+      ],
+      athleteGroupMemberships: [
+        {
+          ...snapshot.athleteGroupMemberships[0]!,
+        },
+      ],
+    };
+
+    const bytes = createAthletesWorkbook(unsafeSnapshot, "export");
+    const text = new TextDecoder().decode(bytes);
+
+    expect(text).not.toContain("\u0000");
+    expect(text).not.toContain("\u0001");
+    expect(text).not.toContain("\u0008");
+    expect(text).toContain("An�na");
+    expect(text).toContain("Spr�int");
+    expect(text).toContain("Zeile 1\nZeile 2�Ende");
+  });
+
   it("emits a real XLSX ZIP container", () => {
     const bytes = createAthletesWorkbook(snapshot, "export");
     expect(Array.from(bytes.slice(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04]);
