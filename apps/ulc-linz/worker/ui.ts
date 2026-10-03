@@ -639,7 +639,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   width: min(100%, 52rem);
   max-height: min(92vh, 54rem);
   margin: 0 auto;
-  background: var(--surface);
+  background: var(--card);
   border-radius: 18px 18px 0 0;
   box-shadow: 0 -18px 50px rgba(15, 23, 42, .22);
   overflow: hidden;
@@ -676,7 +676,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--surface-muted);
+  background: var(--muted);
 }
 .masterdata-import-summary strong,
 .masterdata-import-summary span {
@@ -691,7 +691,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .masterdata-import-issue {
   padding: 8px;
   border-radius: 10px;
-  background: var(--surface-muted);
+  background: var(--muted);
   font-size: .78rem;
 }
 .masterdata-import-issue[data-level="error"] { font-weight: 800; }
@@ -707,7 +707,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--card);
 }
 .masterdata-import-row__main,
 .masterdata-import-row__meta {
@@ -716,12 +716,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .masterdata-import-row__meta {
   margin-top: 3px;
   font-size: .72rem;
-  color: var(--text-muted);
+  color: var(--secondary);
 }
 .masterdata-import-action {
   padding: 4px 7px;
   border-radius: 999px;
-  background: var(--surface-muted);
+  background: var(--muted);
   font-size: .68rem;
   font-weight: 800;
   white-space: nowrap;
