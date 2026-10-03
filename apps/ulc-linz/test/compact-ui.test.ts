@@ -7,26 +7,27 @@ import {
 } from "../worker/ui";
 
 describe("ULC E4D.5 compact mobile layout", () => {
-  it("hides unauthorized navigation items and lets the remaining items fill the bar", () => {
+  it("keeps only three permission-aware primary navigation items and moves the rest under Mehr", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="app-nav-primary"');
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="masterdata" hidden disabled',
-    );
-    expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="kindertraining" hidden disabled',
+      'data-nav-view="home" data-nav-priority="0">Start',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="countdown" hidden disabled',
+      'data-nav-view="kindertraining" data-nav-priority="1" hidden disabled>Training',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="settings" hidden disabled',
+      'data-nav-view="exercise-catalog" data-nav-priority="2" hidden disabled>Übungen',
     );
-    expect(ULC_LINZ_APP_SCRIPT).toContain("control.hidden = !countdownReady");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("control.hidden = !masterdataReady");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("control.hidden = !kindertrainingReady");
-    expect(ULC_LINZ_APP_CSS).toContain("grid-auto-flow: column;");
-    expect(ULC_LINZ_APP_CSS).toContain(
-      "grid-auto-columns: minmax(0, 1fr);",
+    expect(ULC_LINZ_APP_HTML).toContain(
+      'id="app-nav-more" type="button" aria-expanded="false"',
     );
+    expect(ULC_LINZ_APP_HTML).toContain('id="app-nav-overflow"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const primary = available.slice(0, 3);");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const overflow = available.slice(3);");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("isAppNavigationAvailable");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("setAppNavMoreOpen(false);");
+    expect(ULC_LINZ_APP_CSS).toContain(".app-nav__overflow {");
+    expect(ULC_LINZ_APP_CSS).toContain("bottom: calc(100% + 6px);");
   });
 
   it("reduces vertical chrome without shrinking core touch targets below 44px", () => {

@@ -466,10 +466,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
   it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="3" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="1" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="4" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="5" hidden disabled');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshAppAvailability();");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
