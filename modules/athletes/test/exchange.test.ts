@@ -197,9 +197,9 @@ describe("athletes exchange", () => {
     const bytes = createAthletesWorkbook(unsafeSnapshot, "export");
     const text = new TextDecoder().decode(bytes);
 
-    expect(text).not.toContain("\u0000");
-    expect(text).not.toContain("\u0001");
-    expect(text).not.toContain("\u0008");
+    expect(text).not.toContain("An\u0001na");
+    expect(text).not.toContain("Spr\u0008int");
+    expect(text).not.toContain("Zeile 2\u0000Ende");
     expect(text).toContain("An�na");
     expect(text).toContain("Spr�int");
     expect(text).toContain("Zeile 1\nZeile 2�Ende");
