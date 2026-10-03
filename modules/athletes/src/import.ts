@@ -759,7 +759,7 @@ function parseAthleteSource(row: SheetRow): AthleteSource {
       ),
     );
   }
-  const birthYear = parseIntegerCell(
+  const birthYear = parseOptionalIntegerCell(
     row.cells[4] ?? "",
     "Athleten",
     row.rowNumber,
@@ -768,6 +768,7 @@ function parseAthleteSource(row: SheetRow): AthleteSource {
   );
   const active = parseBooleanCell(
     row.cells[6] ?? "",
+    true,
     "Athleten",
     row.rowNumber,
     "Aktiv",
@@ -784,6 +785,32 @@ function parseAthleteSource(row: SheetRow): AthleteSource {
     isActive: active ?? true,
     issues,
   };
+}
+
+function parseOptionalIntegerCell(
+  value: string,
+  sheet: string,
+  row: number,
+  field: string,
+  issues: AthletesImportIssue[],
+): number | null {
+  const normalized = normalizedCell(value);
+  if (normalized.length === 0) return null;
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed)) {
+    issues.push(
+      issue(
+        "error",
+        "INVALID_INTEGER",
+        "Der Wert in " + field + " muss eine ganze Zahl sein.",
+        sheet,
+        row,
+        field,
+      ),
+    );
+    return null;
+  }
+  return parsed;
 }
 
 function parseMembershipSource(row: SheetRow): MembershipSource {
