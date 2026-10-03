@@ -59,7 +59,7 @@ describe("ULC E6C exercise catalog UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
   });
 
-  it("offers E6F2 read-only XLSX import preview and row review in the existing editor", () => {
+  it("offers E6F2 XLSX preview and row review in the existing editor", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-import-open"');
     expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-import-file"');
     expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-import-preview" hidden');
@@ -75,7 +75,29 @@ describe("ULC E6C exercise catalog UI", () => {
       "populateExerciseCatalogEditor(row.draft, {",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain("exerciseCatalogEditorReviewMode");
-    expect(ULC_LINZ_APP_SCRIPT).not.toContain("/import-apply");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
+  });
+
+  it("adds E6F3 controlled apply, stale-preview protection and CSV result protocol", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-import-apply"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-import-log"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/exercise-catalog/import-apply"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"x-appbasis-import-preview-token": exerciseCatalogImportPreviewToken',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("window.confirm(");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("STALE_IMPORT_PREVIEW");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"appbasis.exercise-catalog.import-result/v1"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"ulc-uebungskatalog-importprotokoll-"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("new Blob(");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
