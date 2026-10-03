@@ -1597,21 +1597,12 @@ function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function germanValidationMessage(message: string): string {
-  const known: Record<string, string> = {
-    "Exercise category is invalid.": "Der Kategorie-Key ist ungültig.",
-    "Exercise parameter key is invalid.": "Ein Parameter-Key ist ungültig.",
-    "Exercise parameters contain a duplicate key.": "Ein Parameter-Key kommt mehrfach vor.",
-    "Exercise parameter minimum must not exceed maximum.": "Das Parameter-Minimum darf das Maximum nicht überschreiten.",
-    "Exercise parameter step must be greater than zero.": "Die Parameter-Schrittweite muss größer als null sein.",
-    "Exercise parameter input type is invalid.": "Der Parametertyp ist ungültig.",
-    "Numeric exercise parameter default value is invalid.": "Der Standardwert eines Zahlenparameters ist ungültig.",
-    "Exercise video URL is invalid.": "Der Video-/Weblink ist ungültig.",
-    "Exercise video URL must use HTTP or HTTPS.": "Der Video-/Weblink muss HTTP oder HTTPS verwenden.",
-  };
-  return known[message] ?? "Die Übungsdaten sind fachlich ungültig: " + message;
+function germanValidationMessage(error: unknown): string {
+  if (error instanceof MasterdataValidationError) {
+    return "Die Stammdaten sind fachlich ungültig: " + error.message;
+  }
+  return "Die Stammdaten sind fachlich ungültig.";
 }
-
 function decodeUtf8(bytes: Uint8Array): string {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
