@@ -517,7 +517,7 @@ describe("athletes XLSX import", () => {
             isActive: true,
           };
         },
-        async updateAthlete() {
+        async updateAthleteIfUnchanged() {
           throw new Error("unexpected update");
         },
         async createAthleteGroupMembership(organizationId, input) {
@@ -556,6 +556,142 @@ describe("athletes XLSX import", () => {
     expect(result.logCsv).toContain("athlete-created");
   });
 
+  it("applies scalar updates only through compare-and-update expected state", async () => {
+    const changedSnapshot = {
+      ...baseSnapshot,
+      athletes: [{ ...anna, notes: "Neue Notiz" }],
+    };
+    const workbook = createAthletesWorkbook(changedSnapshot, "export");
+    const preview = await previewAthletesImport(workbook, baseSnapshot);
+    const token = await createAthletesImportPreviewToken(
+      workbook,
+      baseSnapshot,
+      "verein-1",
+    );
+    let received: unknown = null;
+
+    const result = await applyAthletesImportPreview({
+      preview,
+      expectedPreviewToken: token,
+      actualPreviewToken: token,
+      organizationId: "verein-1",
+      service: {
+        async createAthlete() {
+          throw new Error("unexpected create");
+        },
+        async updateAthleteIfUnchanged(
+          organizationId,
+          athleteId,
+          expected,
+          input,
+        ) {
+          received = { organizationId, athleteId, expected, input };
+          return {
+            id: athleteId,
+            organizationId,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            birthYear: input.birthYear,
+            notes: input.notes,
+            isActive: true,
+          };
+        },
+        async createAthleteGroupMembership() {
+          throw new Error("unexpected membership");
+        },
+      },
+    });
+
+    expect(received).toEqual({
+      organizationId: "verein-1",
+      athleteId: "athlete-1",
+      expected: {
+        firstName: "Anna",
+        lastName: "Muster",
+        birthYear: 2012,
+        notes: null,
+      },
+      input: {
+        firstName: "Anna",
+        lastName: "Muster",
+        birthYear: 2012,
+        notes: "Neue Notiz",
+      },
+    });
+    expect(result.summary).toEqual({
+      rows: 1,
+      created: 0,
+      updated: 1,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(result.rows[0]).toMatchObject({
+      outcome: "updated",
+      athleteId: "athlete-1",
+      code: null,
+    });
+  });
+
+  it("fails a concurrent scalar update without overwriting newer athlete state", async () => {
+    const changedSnapshot = {
+      ...baseSnapshot,
+      athletes: [{ ...anna, notes: "Neue Notiz" }],
+    };
+    const workbook = createAthletesWorkbook(changedSnapshot, "export");
+    const preview = await previewAthletesImport(workbook, baseSnapshot);
+    const token = await createAthletesImportPreviewToken(
+      workbook,
+      baseSnapshot,
+      "verein-1",
+    );
+    let compareCalls = 0;
+
+    const result = await applyAthletesImportPreview({
+      preview,
+      expectedPreviewToken: token,
+      actualPreviewToken: token,
+      organizationId: "verein-1",
+      service: {
+        async createAthlete() {
+          throw new Error("unexpected create");
+        },
+        async updateAthleteIfUnchanged(
+          _organizationId,
+          _athleteId,
+          expected,
+          input,
+        ) {
+          compareCalls += 1;
+          expect(expected).toEqual({
+            firstName: "Anna",
+            lastName: "Muster",
+            birthYear: 2012,
+            notes: null,
+          });
+          expect(input.notes).toBe("Neue Notiz");
+          return null;
+        },
+        async createAthleteGroupMembership() {
+          throw new Error("unexpected membership");
+        },
+      },
+    });
+
+    expect(compareCalls).toBe(1);
+    expect(result.summary).toEqual({
+      rows: 1,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 1,
+    });
+    expect(result.rows[0]).toMatchObject({
+      outcome: "failed",
+      athleteId: "athlete-1",
+      code: "STALE_IMPORT_ROW",
+    });
+  });
+
   it("neutralizes spreadsheet formulas in the CSV import protocol", async () => {
     const formulaSnapshot = {
       ...baseSnapshot,
@@ -583,7 +719,7 @@ describe("athletes XLSX import", () => {
         async createAthlete() {
           throw new Error("unexpected create");
         },
-        async updateAthlete() {
+        async updateAthleteIfUnchanged() {
           throw new Error("unexpected update");
         },
         async createAthleteGroupMembership() {
@@ -623,7 +759,7 @@ describe("athletes XLSX import", () => {
             mutations += 1;
             throw new Error("unexpected");
           },
-          async updateAthlete() {
+          async updateAthleteIfUnchanged() {
             mutations += 1;
             throw new Error("unexpected");
           },
