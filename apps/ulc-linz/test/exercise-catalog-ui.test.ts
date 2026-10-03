@@ -9,7 +9,7 @@ import {
 } from "../worker/ui";
 
 describe("ULC E6C exercise catalog UI", () => {
-  it("ships permission-gated navigation, compact filters and an editor workspace", () => {
+  it("ships a compact catalog page with overlay filters and a separated tabbed editor", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="exercise-catalog" data-nav-priority="2" hidden disabled',
     );
@@ -17,21 +17,33 @@ describe("ULC E6C exercise catalog UI", () => {
       'data-app-section="exercise-catalog"',
     );
     expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-search"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-filter-toggle"');
     expect(ULC_LINZ_APP_HTML).toContain(
-      'id="exercise-catalog-category-filter"',
+      'id="exercise-catalog-filter-sheet" role="dialog" aria-modal="true"',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      'id="exercise-catalog-group-filter"',
+      'id="exercise-catalog-editor" hidden',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      'id="exercise-catalog-status-filter"',
+      'class="exercise-catalog-editor-dialog" role="dialog" aria-modal="true"',
     );
-    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-editor"');
-    expect(ULC_LINZ_APP_HTML).toContain(
-      'id="exercise-catalog-parameters"',
+    for (const tab of ["basis", "instructions", "groups", "parameters"]) {
+      expect(ULC_LINZ_APP_HTML).toContain(
+        'data-exercise-catalog-tab="' + tab + '"',
+      );
+      expect(ULC_LINZ_APP_HTML).toContain(
+        'data-exercise-catalog-panel="' + tab + '"',
+      );
+    }
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-parameters"');
+    expect(ULC_LINZ_APP_CSS).toContain(".exercise-catalog-filter-sheet");
+    expect(ULC_LINZ_APP_CSS).toContain(".exercise-catalog-editor-backdrop");
+    expect(ULC_LINZ_APP_CSS).toContain("position: sticky;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("setExerciseCatalogFilterOpen");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("setExerciseCatalogEditorTab");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'window.confirm("Ungespeicherte Änderungen verwerfen?")',
     );
-    expect(ULC_LINZ_APP_CSS).toContain(".exercise-catalog-workspace");
-    expect(ULC_LINZ_APP_CSS).toContain("min-height: 44px");
   });
 
   it("uses only the protected server-owned catalog API without client scope", () => {
@@ -84,6 +96,9 @@ describe("ULC E6C exercise catalog UI", () => {
   it("acknowledges committed mutations without a second refresh request", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "reconcileExerciseCatalogItem(payload.item);",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "closeExerciseCatalogEditor(true);",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "archiveExerciseCatalogItemLocally(deactivatedId);",

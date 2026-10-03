@@ -12,39 +12,14 @@ export const ULC_EXERCISE_CATALOG_HTML = `
             <p class="message message--error" id="exercise-catalog-message" role="alert" hidden></p>
             <p class="message message--success" id="exercise-catalog-success" role="status" hidden></p>
 
-            <section class="card exercise-catalog-filters" aria-label="Übungskatalog filtern">
+            <section class="card exercise-catalog-commandbar" aria-label="Übungskatalog durchsuchen">
               <label class="exercise-catalog-search">Suche
                 <input id="exercise-catalog-search" type="search" maxlength="160" placeholder="Name, Ziel, Unterkategorie, Material …" autocomplete="off" />
               </label>
-              <label>Kategorie
-                <select id="exercise-catalog-category-filter"></select>
-              </label>
-              <label>Trainingsgruppe
-                <select id="exercise-catalog-group-filter"></select>
-              </label>
-              <label>Material
-                <input id="exercise-catalog-material-filter" maxlength="80" placeholder="z. B. Hürden" autocomplete="off" />
-              </label>
-              <label>Favoriten
-                <select id="exercise-catalog-favorite-filter">
-                  <option value="all">Alle</option>
-                  <option value="favorite">Nur Favoriten</option>
-                </select>
-              </label>
-              <label>Status
-                <select id="exercise-catalog-status-filter">
-                  <option value="active">Aktiv</option>
-                  <option value="archived">Archiv</option>
-                  <option value="all">Alle</option>
-                </select>
-              </label>
-              <label>Video / Link
-                <select id="exercise-catalog-video-filter">
-                  <option value="all">Alle</option>
-                  <option value="with">Mit Link</option>
-                  <option value="without">Ohne Link</option>
-                </select>
-              </label>
+              <button class="button button--secondary exercise-catalog-filter-toggle" id="exercise-catalog-filter-toggle" type="button" aria-expanded="false" aria-controls="exercise-catalog-filter-sheet">
+                Filter
+                <span class="exercise-catalog-filter-badge" id="exercise-catalog-filter-badge" hidden>0</span>
+              </button>
             </section>
 
             <section class="exercise-catalog-workspace">
@@ -58,75 +33,144 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                 </div>
                 <div class="exercise-catalog-list" id="exercise-catalog-list" aria-live="polite"></div>
               </section>
+            </section>
 
-              <section class="card exercise-catalog-editor" id="exercise-catalog-editor" hidden>
-                <div class="section-heading exercise-catalog-editor-heading">
+            <button class="exercise-catalog-overlay-scrim" id="exercise-catalog-filter-scrim" type="button" aria-label="Filter schließen" hidden></button>
+            <section class="exercise-catalog-filter-sheet" id="exercise-catalog-filter-sheet" role="dialog" aria-modal="true" aria-labelledby="exercise-catalog-filter-title" hidden>
+              <header class="exercise-catalog-overlay-header">
+                <div>
+                  <p class="eyebrow">Katalog</p>
+                  <h2 id="exercise-catalog-filter-title">Filter</h2>
+                </div>
+                <button class="button button--secondary exercise-catalog-overlay-close" id="exercise-catalog-filter-close" type="button" aria-label="Filter schließen">Schließen</button>
+              </header>
+              <div class="exercise-catalog-filter-grid">
+                <label>Kategorie
+                  <select id="exercise-catalog-category-filter"></select>
+                </label>
+                <label>Trainingsgruppe
+                  <select id="exercise-catalog-group-filter"></select>
+                </label>
+                <label>Material
+                  <input id="exercise-catalog-material-filter" maxlength="80" placeholder="z. B. Hürden" autocomplete="off" />
+                </label>
+                <label>Favoriten
+                  <select id="exercise-catalog-favorite-filter">
+                    <option value="all">Alle</option>
+                    <option value="favorite">Nur Favoriten</option>
+                  </select>
+                </label>
+                <label>Status
+                  <select id="exercise-catalog-status-filter">
+                    <option value="active">Aktiv</option>
+                    <option value="archived">Archiv</option>
+                    <option value="all">Alle</option>
+                  </select>
+                </label>
+                <label>Video / Link
+                  <select id="exercise-catalog-video-filter">
+                    <option value="all">Alle</option>
+                    <option value="with">Mit Link</option>
+                    <option value="without">Ohne Link</option>
+                  </select>
+                </label>
+              </div>
+              <footer class="exercise-catalog-filter-actions">
+                <button class="button button--secondary" id="exercise-catalog-filter-reset" type="button">Zurücksetzen</button>
+                <button class="button button--primary" id="exercise-catalog-filter-apply" type="button">Anwenden</button>
+              </footer>
+            </section>
+
+            <div class="exercise-catalog-editor-backdrop" id="exercise-catalog-editor" hidden>
+              <section class="exercise-catalog-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="exercise-catalog-editor-title">
+                <header class="exercise-catalog-overlay-header exercise-catalog-editor-header">
                   <div>
                     <p class="eyebrow" id="exercise-catalog-editor-eyebrow">Übung</p>
                     <h2 id="exercise-catalog-editor-title">Details</h2>
                   </div>
-                  <button class="button button--secondary" id="exercise-catalog-close" type="button">Schließen</button>
-                </div>
+                  <button class="button button--secondary exercise-catalog-overlay-close" id="exercise-catalog-close" type="button" aria-label="Übungseditor schließen">Schließen</button>
+                </header>
 
-                <form id="exercise-catalog-form">
-                  <div class="exercise-catalog-form-grid">
-                    <label>Name
-                      <input id="exercise-catalog-name" minlength="2" maxlength="120" required />
-                    </label>
-                    <label>Kategorie
-                      <select id="exercise-catalog-category" required></select>
-                    </label>
-                    <label>Unterkategorie
-                      <input id="exercise-catalog-subcategory" maxlength="100" />
-                    </label>
-                    <label>Trainingsziel
-                      <input id="exercise-catalog-goal" maxlength="240" />
-                    </label>
-                    <label class="exercise-catalog-wide">Beschreibung / Ausführung
-                      <textarea id="exercise-catalog-description" maxlength="10000" rows="4"></textarea>
-                    </label>
-                    <label class="exercise-catalog-wide">Trainerhinweise
-                      <textarea id="exercise-catalog-cues" maxlength="10000" rows="3"></textarea>
-                    </label>
-                    <label class="exercise-catalog-wide">Typische Fehler
-                      <textarea id="exercise-catalog-mistakes" maxlength="10000" rows="3"></textarea>
-                    </label>
-                    <label class="exercise-catalog-wide">Material
-                      <input id="exercise-catalog-equipment" maxlength="2000" placeholder="Kommagetrennt, z. B. Hütchen, Minihürden" />
-                    </label>
-                    <label class="exercise-catalog-wide">Video- / Weblink
-                      <input id="exercise-catalog-video-url" type="url" maxlength="2000" inputmode="url" placeholder="https://…" />
-                    </label>
-                  </div>
+                <nav class="exercise-catalog-editor-tabs" aria-label="Übungsbereiche">
+                  <button type="button" class="is-active" data-exercise-catalog-tab="basis" aria-selected="true">Basis</button>
+                  <button type="button" data-exercise-catalog-tab="instructions" aria-selected="false">Anleitung</button>
+                  <button type="button" data-exercise-catalog-tab="groups" aria-selected="false">Gruppen</button>
+                  <button type="button" data-exercise-catalog-tab="parameters" aria-selected="false">Parameter</button>
+                </nav>
 
-                  <fieldset class="exercise-catalog-fieldset">
-                    <legend>Geeignete Trainingsgruppen</legend>
-                    <div class="exercise-catalog-check-grid" id="exercise-catalog-groups"></div>
-                  </fieldset>
-
-                  <fieldset class="exercise-catalog-fieldset">
-                    <div class="exercise-catalog-parameter-heading">
-                      <legend>Planungsparameter</legend>
-                      <div class="exercise-catalog-parameter-add">
-                        <select id="exercise-catalog-parameter-select" aria-label="Planungsparameter auswählen"></select>
-                        <button class="button button--secondary" id="exercise-catalog-parameter-add" type="button">Hinzufügen</button>
+                <form id="exercise-catalog-form" class="exercise-catalog-editor-form">
+                  <div class="exercise-catalog-editor-body">
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="basis">
+                      <div class="exercise-catalog-form-grid">
+                        <label class="exercise-catalog-wide">Name
+                          <input id="exercise-catalog-name" minlength="2" maxlength="120" required />
+                        </label>
+                        <label>Kategorie
+                          <select id="exercise-catalog-category" required></select>
+                        </label>
+                        <label>Unterkategorie
+                          <input id="exercise-catalog-subcategory" maxlength="100" />
+                        </label>
+                        <label class="exercise-catalog-wide">Trainingsziel
+                          <input id="exercise-catalog-goal" maxlength="240" />
+                        </label>
+                        <label class="exercise-catalog-wide">Material
+                          <input id="exercise-catalog-equipment" maxlength="2000" placeholder="Kommagetrennt, z. B. Hütchen, Minihürden" />
+                        </label>
                       </div>
-                    </div>
-                    <div class="exercise-catalog-parameters" id="exercise-catalog-parameters"></div>
-                  </fieldset>
+                    </section>
 
-                  <div class="exercise-catalog-link-row" id="exercise-catalog-link-row" hidden>
-                    <a id="exercise-catalog-link" rel="noopener noreferrer" target="_blank">Link öffnen</a>
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="instructions" hidden>
+                      <div class="exercise-catalog-form-grid">
+                        <label class="exercise-catalog-wide">Beschreibung / Ausführung
+                          <textarea id="exercise-catalog-description" maxlength="10000" rows="5"></textarea>
+                        </label>
+                        <label class="exercise-catalog-wide">Trainerhinweise
+                          <textarea id="exercise-catalog-cues" maxlength="10000" rows="4"></textarea>
+                        </label>
+                        <label class="exercise-catalog-wide">Typische Fehler
+                          <textarea id="exercise-catalog-mistakes" maxlength="10000" rows="4"></textarea>
+                        </label>
+                        <label class="exercise-catalog-wide">Video- / Weblink
+                          <input id="exercise-catalog-video-url" type="url" maxlength="2000" inputmode="url" placeholder="https://…" />
+                        </label>
+                        <div class="exercise-catalog-link-row exercise-catalog-wide" id="exercise-catalog-link-row" hidden>
+                          <a id="exercise-catalog-link" rel="noopener noreferrer" target="_blank">Link öffnen</a>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="groups" hidden>
+                      <fieldset class="exercise-catalog-fieldset">
+                        <legend>Geeignete Trainingsgruppen</legend>
+                        <p class="exercise-catalog-panel-hint">Keine Auswahl bedeutet: vereinsweit bzw. für alle Gruppen geeignet.</p>
+                        <div class="exercise-catalog-check-grid" id="exercise-catalog-groups"></div>
+                      </fieldset>
+                    </section>
+
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="parameters" hidden>
+                      <fieldset class="exercise-catalog-fieldset">
+                        <div class="exercise-catalog-parameter-heading">
+                          <legend>Planungsparameter</legend>
+                          <div class="exercise-catalog-parameter-add">
+                            <select id="exercise-catalog-parameter-select" aria-label="Planungsparameter auswählen"></select>
+                            <button class="button button--secondary" id="exercise-catalog-parameter-add" type="button">Hinzufügen</button>
+                          </div>
+                        </div>
+                        <div class="exercise-catalog-parameters" id="exercise-catalog-parameters"></div>
+                      </fieldset>
+                    </section>
+
+                    <p class="exercise-catalog-readonly" id="exercise-catalog-readonly" hidden>Nur-Lese-Zugriff: Favoriten können weiterhin gesetzt werden.</p>
                   </div>
 
-                  <div class="exercise-catalog-form-actions">
-                    <button class="button button--primary" id="exercise-catalog-save" type="submit">Speichern</button>
+                  <footer class="exercise-catalog-form-actions">
                     <button class="button button--danger" id="exercise-catalog-deactivate" type="button" hidden>Deaktivieren</button>
-                  </div>
-                  <p class="exercise-catalog-readonly" id="exercise-catalog-readonly" hidden>Nur-Lese-Zugriff: Favoriten können weiterhin gesetzt werden.</p>
+                    <button class="button button--primary" id="exercise-catalog-save" type="submit">Speichern</button>
+                  </footer>
                 </form>
               </section>
-            </section>
+            </div>
           </section>
 `;
 
@@ -346,6 +390,253 @@ export const ULC_EXERCISE_CATALOG_CSS = `
     overflow: auto;
   }
 }
+/* E6C UX polish: compact catalog page, overlay filters and a separated editor. */
+.exercise-catalog-commandbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 12px;
+  padding: 10px;
+}
+.exercise-catalog-commandbar .exercise-catalog-search { grid-column: auto; }
+.exercise-catalog-filter-toggle {
+  position: relative;
+  min-width: 92px;
+}
+.exercise-catalog-filter-badge {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  font-size: .7rem;
+  font-weight: 900;
+}
+.exercise-catalog-filter-badge[hidden] { display: none; }
+.exercise-catalog-workspace { display: block; }
+.exercise-catalog-list-card {
+  position: static;
+  max-height: none;
+  overflow: visible;
+  padding: 14px;
+}
+.exercise-catalog-overlay-scrim {
+  position: fixed;
+  z-index: 59;
+  inset: 0;
+  border: 0;
+  background: rgb(15 23 42 / 42%);
+}
+.exercise-catalog-overlay-scrim[hidden] { display: none; }
+.exercise-catalog-filter-sheet {
+  position: fixed;
+  z-index: 60;
+  right: 8px;
+  bottom: calc(70px + env(safe-area-inset-bottom));
+  left: 8px;
+  display: grid;
+  max-height: min(74dvh, 680px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 24px 70px rgb(15 23 42 / 28%);
+}
+.exercise-catalog-filter-sheet[hidden] { display: none; }
+.exercise-catalog-overlay-header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 97%);
+  backdrop-filter: blur(10px);
+}
+.exercise-catalog-overlay-header h2 { margin: 0; }
+.exercise-catalog-overlay-header .eyebrow { margin-bottom: 2px; }
+.exercise-catalog-overlay-close { flex: 0 0 auto; }
+.exercise-catalog-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  overflow-y: auto;
+  padding: 14px;
+}
+.exercise-catalog-filter-grid label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  color: var(--secondary);
+  font-size: .76rem;
+  font-weight: 800;
+}
+.exercise-catalog-filter-grid input,
+.exercise-catalog-filter-grid select {
+  width: 100%;
+  min-height: 44px;
+}
+.exercise-catalog-filter-actions {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 8px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: rgb(255 255 255 / 97%);
+}
+.exercise-catalog-editor-backdrop {
+  position: fixed;
+  z-index: 70;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(15 23 42 / 48%);
+}
+.exercise-catalog-editor-backdrop[hidden] { display: none; }
+.exercise-catalog-editor-dialog {
+  width: min(920px, 100%);
+  max-height: min(92dvh, 900px);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 28px 90px rgb(15 23 42 / 34%);
+}
+.exercise-catalog-editor-header { position: relative; }
+.exercise-catalog-editor-header h2 {
+  max-width: min(68vw, 620px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exercise-catalog-editor-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+.exercise-catalog-editor-tabs button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--secondary);
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+.exercise-catalog-editor-tabs button.is-active {
+  background: white;
+  color: var(--accent);
+  box-shadow: 0 1px 5px rgb(15 23 42 / 10%);
+}
+.exercise-catalog-editor-form {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+.exercise-catalog-editor-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+.exercise-catalog-editor-panel { padding: 14px; }
+.exercise-catalog-editor-panel[hidden] { display: none; }
+.exercise-catalog-editor-panel .exercise-catalog-form-grid { margin-top: 0; }
+.exercise-catalog-editor-panel .exercise-catalog-fieldset { margin-top: 0; }
+.exercise-catalog-panel-hint {
+  margin: 0 0 10px;
+  color: var(--secondary);
+  font-size: .78rem;
+}
+.exercise-catalog-form-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: rgb(255 255 255 / 97%);
+  backdrop-filter: blur(10px);
+}
+body.exercise-catalog-filter-open,
+body.exercise-catalog-editor-open { overflow: hidden; }
+
+@media (max-width: 639px) {
+  .exercise-catalog-hero .summary { display: none; }
+  .exercise-catalog-hero { align-items: center; }
+  .exercise-catalog-commandbar { grid-template-columns: minmax(0, 1fr) 88px; }
+  .exercise-catalog-commandbar .exercise-catalog-search input { font-size: 16px; }
+  .exercise-catalog-filter-sheet {
+    right: 6px;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    left: 6px;
+    max-height: 78dvh;
+  }
+  .exercise-catalog-filter-grid { grid-template-columns: 1fr 1fr; padding: 12px; }
+  .exercise-catalog-filter-grid input,
+  .exercise-catalog-filter-grid select { font-size: 16px; }
+  .exercise-catalog-editor-backdrop {
+    place-items: stretch;
+    padding: 0;
+    background: white;
+  }
+  .exercise-catalog-editor-dialog {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .exercise-catalog-overlay-header {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .exercise-catalog-editor-header h2 { max-width: 62vw; font-size: 1.08rem; }
+  .exercise-catalog-editor-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 6px;
+  }
+  .exercise-catalog-editor-tabs button {
+    min-height: 44px;
+    padding: 4px;
+    font-size: .72rem;
+  }
+  .exercise-catalog-editor-panel { padding: 12px; }
+  .exercise-catalog-form-grid { grid-template-columns: 1fr; }
+  .exercise-catalog-wide { grid-column: auto; }
+  .exercise-catalog-form-grid input,
+  .exercise-catalog-form-grid select,
+  .exercise-catalog-form-grid textarea { font-size: 16px; }
+  .exercise-catalog-form-actions > .button { flex: 1; }
+}
+
+@media (min-width: 640px) {
+  .exercise-catalog-filter-sheet {
+    right: max(18px, calc((100vw - 760px) / 2));
+    left: max(18px, calc((100vw - 760px) / 2));
+  }
+}
+
 `;
 
 export const ULC_EXERCISE_CATALOG_SCRIPT = String.raw`
@@ -391,6 +682,13 @@ Object.assign(elements, {
   exerciseCatalogMessage: document.querySelector("#exercise-catalog-message"),
   exerciseCatalogSuccess: document.querySelector("#exercise-catalog-success"),
   exerciseCatalogSearch: document.querySelector("#exercise-catalog-search"),
+  exerciseCatalogFilterToggle: document.querySelector("#exercise-catalog-filter-toggle"),
+  exerciseCatalogFilterBadge: document.querySelector("#exercise-catalog-filter-badge"),
+  exerciseCatalogFilterScrim: document.querySelector("#exercise-catalog-filter-scrim"),
+  exerciseCatalogFilterSheet: document.querySelector("#exercise-catalog-filter-sheet"),
+  exerciseCatalogFilterClose: document.querySelector("#exercise-catalog-filter-close"),
+  exerciseCatalogFilterReset: document.querySelector("#exercise-catalog-filter-reset"),
+  exerciseCatalogFilterApply: document.querySelector("#exercise-catalog-filter-apply"),
   exerciseCatalogCategoryFilter: document.querySelector("#exercise-catalog-category-filter"),
   exerciseCatalogGroupFilter: document.querySelector("#exercise-catalog-group-filter"),
   exerciseCatalogMaterialFilter: document.querySelector("#exercise-catalog-material-filter"),
@@ -431,6 +729,9 @@ let exerciseCatalogGroups = [];
 let exerciseCatalogSelectedId = null;
 let exerciseCatalogParameterDrafts = [];
 let exerciseCatalogBusy = false;
+let exerciseCatalogFilterOpen = false;
+let exerciseCatalogEditorDirty = false;
+let exerciseCatalogEditorTab = "basis";
 
 function categoryLabel(key) {
   return EXERCISE_CATEGORIES.find((category) => category.key === key)?.label || key;
@@ -499,7 +800,8 @@ async function bootstrapExerciseCatalog() {
   exerciseCatalogItems = [];
   exerciseCatalogGroups = [];
   exerciseCatalogSelectedId = null;
-  closeExerciseCatalogEditor();
+  closeExerciseCatalogEditor(true);
+  setExerciseCatalogFilterOpen(false);
   refreshAppAvailability();
   showMessage(elements.exerciseCatalogMessage, "");
   showMessage(elements.exerciseCatalogSuccess, "");
@@ -583,8 +885,73 @@ function replaceExerciseCatalogSelectOptions(select, options) {
   if (options.some((option) => option.value === selected)) select.value = selected;
 }
 
+function exerciseCatalogActiveFilterCount() {
+  return [
+    Boolean(elements.exerciseCatalogCategoryFilter?.value),
+    Boolean(elements.exerciseCatalogGroupFilter?.value),
+    Boolean((elements.exerciseCatalogMaterialFilter?.value || "").trim()),
+    (elements.exerciseCatalogFavoriteFilter?.value || "all") !== "all",
+    (elements.exerciseCatalogStatusFilter?.value || "active") !== "active",
+    (elements.exerciseCatalogVideoFilter?.value || "all") !== "all",
+  ].filter(Boolean).length;
+}
+
+function updateExerciseCatalogFilterBadge() {
+  const count = exerciseCatalogActiveFilterCount();
+  if (elements.exerciseCatalogFilterBadge) {
+    elements.exerciseCatalogFilterBadge.textContent = String(count);
+    elements.exerciseCatalogFilterBadge.hidden = count === 0;
+  }
+}
+
+function setExerciseCatalogFilterOpen(open) {
+  exerciseCatalogFilterOpen = Boolean(open);
+  if (elements.exerciseCatalogFilterSheet) {
+    elements.exerciseCatalogFilterSheet.hidden = !exerciseCatalogFilterOpen;
+  }
+  if (elements.exerciseCatalogFilterScrim) {
+    elements.exerciseCatalogFilterScrim.hidden = !exerciseCatalogFilterOpen;
+  }
+  if (elements.exerciseCatalogFilterToggle) {
+    elements.exerciseCatalogFilterToggle.setAttribute(
+      "aria-expanded",
+      exerciseCatalogFilterOpen ? "true" : "false",
+    );
+  }
+  document.body.classList.toggle(
+    "exercise-catalog-filter-open",
+    exerciseCatalogFilterOpen,
+  );
+}
+
+function resetExerciseCatalogFilters() {
+  if (elements.exerciseCatalogCategoryFilter) elements.exerciseCatalogCategoryFilter.value = "";
+  if (elements.exerciseCatalogGroupFilter) elements.exerciseCatalogGroupFilter.value = "";
+  if (elements.exerciseCatalogMaterialFilter) elements.exerciseCatalogMaterialFilter.value = "";
+  if (elements.exerciseCatalogFavoriteFilter) elements.exerciseCatalogFavoriteFilter.value = "all";
+  if (elements.exerciseCatalogStatusFilter) elements.exerciseCatalogStatusFilter.value = "active";
+  if (elements.exerciseCatalogVideoFilter) elements.exerciseCatalogVideoFilter.value = "all";
+  updateExerciseCatalogFilterBadge();
+  renderExerciseCatalogList();
+}
+
+function setExerciseCatalogEditorTab(tab) {
+  const allowed = ["basis", "instructions", "groups", "parameters"];
+  exerciseCatalogEditorTab = allowed.includes(tab) ? tab : "basis";
+  for (const control of document.querySelectorAll("[data-exercise-catalog-tab]")) {
+    const active = control.dataset.exerciseCatalogTab === exerciseCatalogEditorTab;
+    control.classList.toggle("is-active", active);
+    control.setAttribute("aria-selected", active ? "true" : "false");
+  }
+  for (const panel of document.querySelectorAll("[data-exercise-catalog-panel]")) {
+    panel.hidden = panel.dataset.exerciseCatalogPanel !== exerciseCatalogEditorTab;
+  }
+}
+
 function prepareExerciseCatalogView() {
   if (!exerciseCatalogReady) return;
+  setExerciseCatalogFilterOpen(false);
+  updateExerciseCatalogFilterBadge();
   renderExerciseCatalogList();
   if (elements.exerciseCatalogNew) {
     elements.exerciseCatalogNew.hidden = !exerciseCatalogCanEdit;
@@ -633,6 +1000,7 @@ function exerciseCatalogFilteredItems() {
 }
 
 function renderExerciseCatalogList() {
+  updateExerciseCatalogFilterBadge();
   const container = elements.exerciseCatalogList;
   if (!container) return;
   container.replaceChildren();
@@ -763,7 +1131,10 @@ function newExerciseCatalogItem() {
 
 function populateExerciseCatalogEditor(item) {
   const editable = exerciseCatalogCanEdit && item.isActive;
+  setExerciseCatalogFilterOpen(false);
   if (elements.exerciseCatalogEditor) elements.exerciseCatalogEditor.hidden = false;
+  document.body.classList.add("exercise-catalog-editor-open");
+  setExerciseCatalogEditorTab("basis");
   if (elements.exerciseCatalogEditorEyebrow) {
     elements.exerciseCatalogEditorEyebrow.textContent =
       item.id.length === 0 ? "Neue Übung" : item.isActive ? "Übung" : "Archiv";
@@ -823,14 +1194,25 @@ function populateExerciseCatalogEditor(item) {
     }
   }
 
-  elements.exerciseCatalogEditor?.scrollIntoView({ block: "start", behavior: "smooth" });
+  exerciseCatalogEditorDirty = false;
 }
 
-function closeExerciseCatalogEditor() {
+function closeExerciseCatalogEditor(force = false) {
+  if (
+    !force &&
+    exerciseCatalogEditorDirty &&
+    exerciseCatalogCanEdit &&
+    !window.confirm("Ungespeicherte Änderungen verwerfen?")
+  ) {
+    return false;
+  }
   exerciseCatalogSelectedId = null;
   exerciseCatalogParameterDrafts = [];
+  exerciseCatalogEditorDirty = false;
   if (elements.exerciseCatalogEditor) elements.exerciseCatalogEditor.hidden = true;
+  document.body.classList.remove("exercise-catalog-editor-open");
   showMessage(elements.exerciseCatalogSuccess, "");
+  return true;
 }
 
 function renderExerciseCatalogGroupChecks(selectedIds) {
@@ -1112,6 +1494,8 @@ async function saveExerciseCatalogItem(event) {
   }
 
   if (!isExerciseCatalogItem(payload?.item)) {
+    exerciseCatalogEditorDirty = false;
+    closeExerciseCatalogEditor(true);
     showMessage(
       elements.exerciseCatalogSuccess,
       "Übung wurde gespeichert. Die Ansicht konnte nicht automatisch aktualisiert werden.",
@@ -1121,8 +1505,8 @@ async function saveExerciseCatalogItem(event) {
   }
 
   reconcileExerciseCatalogItem(payload.item);
-  exerciseCatalogSelectedId = payload.item.id;
-  populateExerciseCatalogEditor(payload.item);
+  exerciseCatalogEditorDirty = false;
+  closeExerciseCatalogEditor(true);
   showMessage(elements.exerciseCatalogSuccess, "Übung wurde gespeichert.");
   setExerciseCatalogBusy(false);
 }
@@ -1151,7 +1535,7 @@ async function deactivateExerciseCatalogItem() {
   }
 
   archiveExerciseCatalogItemLocally(deactivatedId);
-  closeExerciseCatalogEditor();
+  closeExerciseCatalogEditor(true);
   showMessage(elements.exerciseCatalogSuccess, "Übung wurde ins Archiv verschoben.");
   setExerciseCatalogBusy(false);
 }
@@ -1270,11 +1654,61 @@ for (const control of [
   control?.addEventListener("input", renderExerciseCatalogList);
   control?.addEventListener("change", renderExerciseCatalogList);
 }
+elements.exerciseCatalogFilterToggle?.addEventListener("click", () => {
+  setExerciseCatalogFilterOpen(!exerciseCatalogFilterOpen);
+});
+elements.exerciseCatalogFilterClose?.addEventListener("click", () => {
+  setExerciseCatalogFilterOpen(false);
+});
+elements.exerciseCatalogFilterScrim?.addEventListener("click", () => {
+  setExerciseCatalogFilterOpen(false);
+});
+elements.exerciseCatalogFilterApply?.addEventListener("click", () => {
+  setExerciseCatalogFilterOpen(false);
+});
+elements.exerciseCatalogFilterReset?.addEventListener("click", resetExerciseCatalogFilters);
 elements.exerciseCatalogList?.addEventListener("click", handleExerciseCatalogListClick);
 elements.exerciseCatalogNew?.addEventListener("click", newExerciseCatalogItem);
-elements.exerciseCatalogClose?.addEventListener("click", closeExerciseCatalogEditor);
+elements.exerciseCatalogClose?.addEventListener("click", () => closeExerciseCatalogEditor(false));
+elements.exerciseCatalogForm?.addEventListener("input", () => {
+  if (!elements.exerciseCatalogEditor?.hidden && exerciseCatalogCanEdit) {
+    exerciseCatalogEditorDirty = true;
+  }
+});
+elements.exerciseCatalogForm?.addEventListener("change", () => {
+  if (!elements.exerciseCatalogEditor?.hidden && exerciseCatalogCanEdit) {
+    exerciseCatalogEditorDirty = true;
+  }
+});
 elements.exerciseCatalogForm?.addEventListener("submit", (event) => void saveExerciseCatalogItem(event));
 elements.exerciseCatalogDeactivate?.addEventListener("click", () => void deactivateExerciseCatalogItem());
-elements.exerciseCatalogParameterAdd?.addEventListener("click", addExerciseCatalogParameter);
-elements.exerciseCatalogParameters?.addEventListener("click", handleExerciseCatalogParameterClick);
+elements.exerciseCatalogParameterAdd?.addEventListener("click", () => {
+  addExerciseCatalogParameter();
+  if (!elements.exerciseCatalogEditor?.hidden && exerciseCatalogCanEdit) {
+    exerciseCatalogEditorDirty = true;
+  }
+});
+elements.exerciseCatalogParameters?.addEventListener("click", (event) => {
+  const before = exerciseCatalogParameterDrafts.length;
+  handleExerciseCatalogParameterClick(event);
+  if (
+    exerciseCatalogCanEdit &&
+    exerciseCatalogParameterDrafts.length !== before
+  ) {
+    exerciseCatalogEditorDirty = true;
+  }
+});
+for (const control of document.querySelectorAll("[data-exercise-catalog-tab]")) {
+  control.addEventListener("click", () => {
+    setExerciseCatalogEditorTab(control.dataset.exerciseCatalogTab || "basis");
+  });
+}
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (!elements.exerciseCatalogEditor?.hidden) {
+    closeExerciseCatalogEditor(false);
+    return;
+  }
+  if (exerciseCatalogFilterOpen) setExerciseCatalogFilterOpen(false);
+});
 `;
