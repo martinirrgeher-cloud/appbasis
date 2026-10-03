@@ -60,11 +60,19 @@ export interface AthletesImportDraft {
   readonly memberships: readonly AthletesImportMembershipDraft[];
 }
 
+export interface AthletesImportExpectedAthleteState {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly birthYear: number | null;
+  readonly notes: string | null;
+}
+
 export interface AthletesImportPreviewRow {
   readonly rowNumber: number;
   readonly recordKey: string;
   readonly sourceId: string | null;
   readonly matchedAthleteId: string | null;
+  readonly expectedAthlete: AthletesImportExpectedAthleteState | null;
   readonly action: AthletesImportAction;
   readonly reason: "new" | "changed" | "unchanged" | "invalid";
   readonly draft: AthletesImportDraft;
@@ -141,9 +149,10 @@ export interface AthletesImportMutationService {
     organizationId: string,
     input: CreateAthleteInput,
   ): Promise<Athlete>;
-  updateAthlete(
+  updateAthleteIfUnchanged(
     organizationId: string,
     athleteId: string,
+    expected: AthletesImportExpectedAthleteState,
     input: UpdateAthleteInput,
   ): Promise<Athlete | null>;
   createAthleteGroupMembership(
@@ -153,6 +162,13 @@ export interface AthletesImportMutationService {
       "organizationId"
     >,
   ): Promise<AthleteGroupMembership>;
+}
+
+class AthletesImportConcurrentUpdateError extends Error {
+  constructor() {
+    super("The athlete changed after import preview validation.");
+    this.name = "AthletesImportConcurrentUpdateError";
+  }
 }
 
 export class AthletesImportApplyError extends Error {
@@ -587,6 +603,15 @@ export async function previewAthletesImport(
         recordKey: source.recordKey,
         sourceId: source.sourceId,
         matchedAthleteId: existing?.id ?? null,
+        expectedAthlete:
+          existing === null
+            ? null
+            : Object.freeze({
+                firstName: existing.firstName,
+                lastName: existing.lastName,
+                birthYear: existing.birthYear,
+                notes: existing.notes,
+              }),
         action,
         reason,
         draft: Object.freeze({
@@ -749,13 +774,17 @@ export async function applyAthletesImportPreview({
         if (athleteId === null) {
           throw new Error("missing matched athlete");
         }
-        const updated = await service.updateAthlete(
+        if (row.expectedAthlete === null) {
+          throw new AthletesImportConcurrentUpdateError();
+        }
+        const updated = await service.updateAthleteIfUnchanged(
           organizationId,
           athleteId,
+          row.expectedAthlete,
           athleteInput(row.draft),
         );
         if (updated === null) {
-          throw new Error("athlete no longer updateable");
+          throw new AthletesImportConcurrentUpdateError();
         }
         mutationApplied = true;
       }
@@ -783,16 +812,24 @@ export async function applyAthletesImportPreview({
             : "Athlet bzw. neue Gruppenzuordnungen wurden aktualisiert.",
         ),
       );
-    } catch {
+    } catch (error) {
+      const concurrentUpdate =
+        error instanceof AthletesImportConcurrentUpdateError;
       results.push(
         resultRow(
           row,
           "failed",
           athleteId,
-          mutationApplied ? "IMPORT_APPLY_PARTIAL" : "IMPORT_APPLY_FAILED",
-          mutationApplied
-            ? "Der Athlet wurde bereits geschrieben, aber eine nachgelagerte Gruppenzuordnung ist fehlgeschlagen. Bitte Import neu prüfen."
-            : "Die Zeile konnte nicht angewendet werden. Bitte Import neu prüfen.",
+          concurrentUpdate
+            ? "STALE_IMPORT_ROW"
+            : mutationApplied
+              ? "IMPORT_APPLY_PARTIAL"
+              : "IMPORT_APPLY_FAILED",
+          concurrentUpdate
+            ? "Der Athlet wurde seit der Vorschau geändert. Diese Zeile wurde nicht überschrieben; bitte Import neu prüfen."
+            : mutationApplied
+              ? "Der Athlet wurde bereits geschrieben, aber eine nachgelagerte Gruppenzuordnung ist fehlgeschlagen. Bitte Import neu prüfen."
+              : "Die Zeile konnte nicht angewendet werden. Bitte Import neu prüfen.",
         ),
       );
     }
