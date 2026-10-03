@@ -23,6 +23,11 @@ import {
   type UlcExerciseCatalogExchangeMode,
 } from "./exercise-catalog-exchange";
 import {
+  ULC_EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES,
+  UlcExerciseCatalogImportFileError,
+  previewUlcExerciseCatalogImport,
+} from "./exercise-catalog-import";
+import {
   UlcExerciseCatalogConflictError,
   UlcExerciseCatalogNotFoundError,
 } from "./exercise-catalog-postgres";
@@ -124,6 +129,14 @@ export function createGeneratedWorker(
             runtime,
             url,
             url.pathname.endsWith("/template.xlsx") ? "template" : "export",
+          );
+        } else if (
+          url.pathname === "/api/modules/exercise-catalog/import-preview"
+        ) {
+          response = await exerciseCatalogImportPreviewResponse(
+            request,
+            runtime,
+            url,
           );
         } else if (
           url.pathname.startsWith("/api/modules/exercise-catalog/")
@@ -1236,6 +1249,134 @@ async function exerciseCatalogWorkbookResponse(
       "x-content-type-options": "nosniff",
     },
   });
+}
+
+async function exerciseCatalogImportPreviewResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor("POST", "exercise catalog import preview");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidExerciseCatalogInput();
+  }
+
+  const contentType = (request.headers.get("content-type") ?? "")
+    .split(";", 1)[0]!
+    .trim()
+    .toLocaleLowerCase("en");
+  if (contentType !== ULC_EXERCISE_CATALOG_XLSX_CONTENT_TYPE) {
+    return Response.json(
+      {
+        error: {
+          code: "INVALID_IMPORT_CONTENT_TYPE",
+          message: "Only XLSX files are supported for exercise catalog import preview.",
+        },
+      },
+      {
+        status: 415,
+        headers: { "cache-control": "private, no-store" },
+      },
+    );
+  }
+
+  const access = await authorizeExerciseCatalogRequest(
+    request,
+    runtime,
+    url,
+    "edit",
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    const bytes = await readRequestBytesLimited(
+      request,
+      ULC_EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES,
+    );
+    const catalog = await runtime.exerciseCatalog.list(
+      access.organizationId,
+      access.actorPrincipalId,
+    );
+    const preview = await previewUlcExerciseCatalogImport(bytes, catalog);
+    return Response.json(
+      { preview },
+      {
+        headers: {
+          "cache-control": "private, no-store",
+          "x-content-type-options": "nosniff",
+        },
+      },
+    );
+  } catch (error) {
+    if (error instanceof UlcExerciseCatalogImportFileError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        },
+        {
+          status: error.code === "IMPORT_FILE_TOO_LARGE" ? 413 : 400,
+          headers: {
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          },
+        },
+      );
+    }
+    throw error;
+  }
+}
+
+async function readRequestBytesLimited(
+  request: Request,
+  maximumBytes: number,
+): Promise<Uint8Array> {
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength !== null) {
+    const parsed = Number(declaredLength);
+    if (Number.isFinite(parsed) && parsed > maximumBytes) {
+      throw new UlcExerciseCatalogImportFileError(
+        "IMPORT_FILE_TOO_LARGE",
+        "Die XLSX-Datei überschreitet 5 MB.",
+      );
+    }
+  }
+
+  if (request.body === null) {
+    throw new UlcExerciseCatalogImportFileError(
+      "INVALID_XLSX",
+      "Die XLSX-Datei fehlt.",
+    );
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    total += next.value.byteLength;
+    if (total > maximumBytes) {
+      await reader.cancel();
+      throw new UlcExerciseCatalogImportFileError(
+        "IMPORT_FILE_TOO_LARGE",
+        "Die XLSX-Datei überschreitet 5 MB.",
+      );
+    }
+    chunks.push(next.value);
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 async function exerciseCatalogItemResponse(
