@@ -261,6 +261,51 @@ describe("athletes XLSX import", () => {
     }
   });
 
+  it("blocks a blank-ID create that collides with an ID-based rename", async () => {
+    const workbookSnapshot = {
+      ...baseSnapshot,
+      athletes: [
+        {
+          ...anna,
+          firstName: "Max",
+          lastName: "Mustermann",
+          birthYear: 2012,
+        },
+        {
+          ...anna,
+          id: "athlete-new-placeholder",
+          firstName: "Max",
+          lastName: "Mustermann",
+          birthYear: 2012,
+        },
+      ],
+      athleteGroupMemberships: [],
+    };
+    const stored = createAthletesWorkbook(workbookSnapshot, "export");
+    const workbook = rewriteStoredWorkbookEntry(
+      stored,
+      "xl/worksheets/sheet1.xml",
+      (xml) =>
+        xml.replace(
+          "<t>athlete-new-placeholder</t>",
+          "<t></t>",
+        ),
+    );
+
+    const preview = await previewAthletesImport(workbook, baseSnapshot);
+
+    expect(preview.summary.errors).toBeGreaterThanOrEqual(2);
+    expect(preview.rows).toHaveLength(2);
+    for (const row of preview.rows) {
+      expect(row).toMatchObject({ action: "skip", reason: "invalid" });
+      expect(row.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "DUPLICATE_PERSON_IN_FILE" }),
+        ]),
+      );
+    }
+  });
+
   it("normalizes Excel numeric date serials in membership cells", async () => {
     const stored = createAthletesWorkbook(
       {

@@ -293,22 +293,20 @@ export async function previewAthletesImport(
     }
   }
 
-  const blankIdByName = new Map<string, AthleteSource[]>();
+  const sourcesByName = new Map<string, AthleteSource[]>();
   for (const source of sources) {
-    if (source.sourceId !== null) continue;
     const key = personNameKey(source.firstName, source.lastName);
-    const values = blankIdByName.get(key) ?? [];
+    const values = sourcesByName.get(key) ?? [];
     values.push(source);
-    blankIdByName.set(key, values);
+    sourcesByName.set(key, values);
   }
-  for (const values of blankIdByName.values()) {
-    if (values.length <= 1) continue;
-
-    const hasUnknownBirthYear = values.some(
-      (source) => source.birthYear === null,
-    );
-    if (hasUnknownBirthYear) {
-      for (const source of values) {
+  for (const values of sourcesByName.values()) {
+    const blankIdValues = values.filter((source) => source.sourceId === null);
+    if (
+      blankIdValues.length > 1 &&
+      blankIdValues.some((source) => source.birthYear === null)
+    ) {
+      for (const source of blankIdValues) {
         source.issues.push(
           issue(
             "error",
@@ -320,24 +318,30 @@ export async function previewAthletesImport(
           ),
         );
       }
-      continue;
     }
 
     const byBirthYear = new Map<number, AthleteSource[]>();
     for (const source of values) {
-      const birthYear = source.birthYear!;
-      const sameYear = byBirthYear.get(birthYear) ?? [];
+      if (source.birthYear === null) continue;
+      const sameYear = byBirthYear.get(source.birthYear) ?? [];
       sameYear.push(source);
-      byBirthYear.set(birthYear, sameYear);
+      byBirthYear.set(source.birthYear, sameYear);
     }
     for (const sameYear of byBirthYear.values()) {
       if (sameYear.length <= 1) continue;
       for (const source of sameYear) {
+        if (
+          source.issues.some(
+            (candidate) => candidate.code === "DUPLICATE_PERSON_IN_FILE",
+          )
+        ) {
+          continue;
+        }
         source.issues.push(
           issue(
             "error",
             "DUPLICATE_PERSON_IN_FILE",
-            "Dieselbe neue Person kommt in der Importdatei mehrfach vor.",
+            "Mehrere Importzeilen würden dieselbe Person mit identischem Namen und Jahrgang ergeben. Bitte eindeutige IDs bzw. Personendaten verwenden.",
             "Athleten",
             source.rowNumber,
             "ID",
