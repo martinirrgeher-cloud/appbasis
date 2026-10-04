@@ -1160,6 +1160,7 @@ let appNavMoreOpen = false;
 let busy = false;
 let countdownReady = false;
 let masterdataReady = false;
+let masterdataCanEdit = false;
 let kindertrainingReady = false;
 let kindertrainingLoading = false;
 let kindertrainingGroups = [];
@@ -1194,7 +1195,7 @@ elements.pauseButton?.addEventListener("click", () => void togglePause());
 elements.resetButton?.addEventListener("click", () => void resetCountdown());
 elements.settingsForm?.addEventListener("input", handleSettingsInput);
 elements.masterdataImportOpen?.addEventListener("click", () => {
-  if (masterdataExchangeBusy || !masterdataReady) return;
+  if (masterdataExchangeBusy || !masterdataReady || !masterdataCanEdit) return;
   elements.masterdataImportFile?.click();
 });
 elements.masterdataImportFile?.addEventListener("change", () => {
@@ -1470,6 +1471,7 @@ async function bootstrapCountdown() {
 
 async function bootstrapMasterdata() {
   masterdataReady = false;
+  masterdataCanEdit = false;
   refreshAppAvailability();
   showMessage(elements.masterdataMessage, "");
   try {
@@ -1479,9 +1481,11 @@ async function bootstrapMasterdata() {
       payload?.module?.capabilities?.view === "athletes:view" &&
       payload?.module?.capabilities?.edit === "athletes:edit" &&
       payload?.access?.view === true;
+    masterdataCanEdit = masterdataReady && payload?.access?.edit === true;
     if (!masterdataReady) throw new Error("INVALID_MASTERDATA_CONTRACT");
   } catch (error) {
     masterdataReady = false;
+    masterdataCanEdit = false;
     showMessage(
       elements.masterdataMessage,
       error?.status === 403
@@ -1605,7 +1609,8 @@ function refreshAppAvailability() {
     elements.masterdataQuickAction.disabled = !masterdataReady;
   }
   if (elements.masterdataImportOpen) {
-    elements.masterdataImportOpen.disabled = !masterdataReady || masterdataExchangeBusy;
+    elements.masterdataImportOpen.disabled =
+      !masterdataReady || !masterdataCanEdit || masterdataExchangeBusy;
   }
   if (elements.masterdataTemplate) {
     elements.masterdataTemplate.disabled = !masterdataReady || masterdataExchangeBusy;
@@ -1619,6 +1624,7 @@ function refreshAppAvailability() {
       (masterdataImportPreviewData?.summary?.update || 0);
     elements.masterdataImportApply.disabled =
       masterdataExchangeBusy ||
+      !masterdataCanEdit ||
       masterdataImportPreviewToken === null ||
       masterdataImportFileDraft === null ||
       (masterdataImportPreviewData?.summary?.errors || 0) > 0 ||
@@ -1630,7 +1636,9 @@ function refreshAppAvailability() {
   }
   if (elements.masterdataAccessLabel) {
     elements.masterdataAccessLabel.textContent = masterdataReady
-      ? "Für deinen Benutzer freigeschaltet."
+      ? masterdataCanEdit
+        ? "Lesen und Bearbeiten freigeschaltet."
+        : "Nur Lesen freigeschaltet."
       : "Für deinen Benutzer derzeit nicht freigeschaltet.";
   }
 }

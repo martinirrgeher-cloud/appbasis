@@ -1876,6 +1876,7 @@ async function athletesModuleResponse(
     },
     access: {
       view: true,
+      edit: access.canEdit,
       organizationId: access.organizationId,
     },
   });
@@ -2461,7 +2462,10 @@ async function authorizeAthletesRequest(
   runtime: GeneratedPostgresApplicationRuntime,
   url: URL,
   action: "view" | "edit",
-): Promise<Response | Readonly<{ organizationId: string }>> {
+): Promise<
+  Response |
+  Readonly<{ organizationId: string; canEdit: boolean }>
+> {
   const identityHttp = createIdentityHttpHandlers({
     identity: runtime.identity,
     secureCookies: url.protocol === "https:",

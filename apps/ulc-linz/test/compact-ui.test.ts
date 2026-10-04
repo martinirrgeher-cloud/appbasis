@@ -74,6 +74,17 @@ describe("ULC E4D.5 compact mobile layout", () => {
     );
   });
 
+  it("keeps athlete import disabled for read-only Stammdaten access", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain("let masterdataCanEdit = false;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "masterdataCanEdit = masterdataReady && payload?.access?.edit === true;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "!masterdataReady || !masterdataCanEdit || masterdataExchangeBusy",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"Nur Lesen freigeschaltet."');
+  });
+
   it("adds E6F4B athlete import preview and controlled apply overlay", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="masterdata-import-open"');
     expect(ULC_LINZ_APP_HTML).toContain('id="masterdata-import-file"');

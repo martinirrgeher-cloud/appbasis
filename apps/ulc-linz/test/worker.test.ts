@@ -109,15 +109,15 @@ function runtime(
   flush = async () => {},
   countdownAccess: GeneratedPostgresApplicationRuntime["countdownAccess"] = {
     async assertViewAccess() {
-      return { organizationId: "verein-1" };
+      return { organizationId: "verein-1", canEdit: true };
     },
   },
   athletesAccess: GeneratedPostgresApplicationRuntime["athletesAccess"] = {
     async assertViewAccess() {
-      return { organizationId: "verein-1" };
+      return { organizationId: "verein-1", canEdit: true };
     },
     async assertEditAccess() {
-      return { organizationId: "verein-1" };
+      return { organizationId: "verein-1", canEdit: true };
     },
   },
   athleteMasterdata: GeneratedPostgresApplicationRuntime["athleteMasterdata"] = {
@@ -725,7 +725,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
           async assertViewAccess(current) {
             accessCalls += 1;
             expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
         },
       ),
@@ -1273,6 +1273,40 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("reports read-only athletes access without granting edit", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        athletesAccess: {
+          ...base.athletesAccess,
+          async assertViewAccess() {
+            return { organizationId: "verein-1", canEdit: false };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/athletes", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      module: {
+        moduleId: "athletes",
+        capabilities: {
+          view: "athletes:view",
+          edit: "athletes:edit",
+        },
+      },
+      access: { view: true, edit: false, organizationId: "verein-1" },
+    });
+  });
+
   it("serves E6F4A athlete XLSX export from the server-authorized organization only", async () => {
     let readOrganization: string | null = null;
     let mutationCalls = 0;
@@ -1283,7 +1317,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         ...base.athletesAccess,
         async assertViewAccess(current) {
           expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
-          return { organizationId: "verein-server" };
+          return { organizationId: "verein-server", canEdit: true };
         },
       },
       athleteMasterdata: {
@@ -1478,7 +1512,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         ...base.athletesAccess,
         async assertEditAccess() {
           editCalls += 1;
-          return { organizationId: "verein-server" };
+          return { organizationId: "verein-server", canEdit: true };
         },
       },
       athleteMasterdata: {
@@ -1597,7 +1631,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       athletesAccess: {
         ...base.athletesAccess,
         async assertEditAccess() {
-          return { organizationId: "verein-server" };
+          return { organizationId: "verein-server", canEdit: true };
         },
       },
       athleteMasterdata: {
@@ -1719,7 +1753,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       athletesAccess: {
         ...base.athletesAccess,
         async assertEditAccess() {
-          return { organizationId: "verein-server" };
+          return { organizationId: "verein-server", canEdit: true };
         },
       },
       athleteMasterdata: {
@@ -1827,10 +1861,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
           async assertViewAccess(current) {
             expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
             authorizedOrganization = "verein-1";
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
           async assertEditAccess() {
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
         },
         {
@@ -1900,10 +1934,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
         {
           async assertViewAccess() {
             accessCalls += 1;
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
           async assertEditAccess() {
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
         },
       );
@@ -1944,12 +1978,12 @@ describe("generated identity+permissions Worker entrypoint", () => {
         undefined,
         {
           async assertViewAccess() {
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
           async assertEditAccess(current) {
             editCalls += 1;
             expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
         },
         {
@@ -2060,11 +2094,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
         undefined,
         {
           async assertViewAccess() {
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
           async assertEditAccess() {
             editCalls += 1;
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
         },
         {
@@ -2217,11 +2251,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
         undefined,
         {
           async assertViewAccess() {
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
           async assertEditAccess() {
             editCalls += 1;
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
         },
         {
@@ -2346,7 +2380,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         {
           async assertViewAccess() {
             accessCalls += 1;
-            return { organizationId: "verein-1" };
+            return { organizationId: "verein-1", canEdit: true };
           },
         },
       );
