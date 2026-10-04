@@ -421,7 +421,7 @@ export async function previewAthletesImport(
             "Der bestehende Athlet wurde über Vorname, Nachname und Geburtsjahr erkannt.",
             "Athleten",
             source.rowNumber,
-            "ID",
+            null,
           ),
         );
       } else if (candidates.length > 1) {
@@ -447,7 +447,7 @@ export async function previewAthletesImport(
             "Ein Athlet mit demselben Namen existiert bereits. Ohne Geburtsjahr ist kein sicherer automatischer Abgleich möglich.",
             "Athleten",
             source.rowNumber,
-            "ID",
+            null,
           ),
         );
       }
@@ -533,9 +533,9 @@ export async function previewAthletesImport(
           "error",
           "INACTIVE_ATHLETE_MEMBERSHIP_UNSUPPORTED",
           "Für archivierte Athleten können keine neuen Gruppenzuordnungen importiert werden.",
-          "Gruppen",
-          null,
-          null,
+          "Athleten",
+          source.rowNumber,
+          "Trainingsgruppe",
         ),
       );
     }
