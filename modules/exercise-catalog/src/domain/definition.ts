@@ -44,13 +44,13 @@ export function createExerciseCatalogDefinition(input: {
     });
   });
 
-  const rawParameterKeys = input.parameterKeys ?? [];
-  if (!Array.isArray(rawParameterKeys)) {
+  const rawParameterKeys = input.parameterKeys;
+  if (rawParameterKeys !== undefined && !Array.isArray(rawParameterKeys)) {
     throw new ExerciseCatalogValidationError(
       "Exercise parameter keys must be an array.",
     );
   }
-  const parameterKeys = rawParameterKeys.map((key) =>
+  const parameterKeys = (rawParameterKeys ?? []).map((key) =>
     requiredKey(key, "Exercise parameter key"),
   );
   if (new Set(parameterKeys).size !== parameterKeys.length) {
