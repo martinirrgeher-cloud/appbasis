@@ -1559,7 +1559,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(mutationCalls).toBe(0);
     await expect(response.json()).resolves.toMatchObject({
       preview: {
-        contractVersion: "appbasis.athletes.exchange/v1",
+        contractVersion: "appbasis.athletes.exchange/v2",
         applyAvailable: false,
         summary: {
           rows: 1,
