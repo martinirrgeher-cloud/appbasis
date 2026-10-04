@@ -150,6 +150,14 @@ describe("@appbasis/xlsx low-level helpers", () => {
     );
   });
 
+  it("rejects ZIP64 EOCD and locator records with legacy fields still populated", async () => {
+    const bytes = injectZip64EndRecords(createReaderFixture());
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
   it("rejects literal XML 1.0-forbidden characters", async () => {
     const bytes = createReaderFixture(
       undefined,
@@ -349,6 +357,26 @@ function mutateNamedLocalEntryFlags(
   }
   const flags = view.getUint16(localOffset + 6, true);
   view.setUint16(localOffset + 6, flags | additionalFlags, true);
+  return result;
+}
+
+function injectZip64EndRecords(bytes: Uint8Array): Uint8Array {
+  const endOffset = findZipEndOffset(bytes);
+  const zip64End = new Uint8Array(56);
+  const zip64EndView = new DataView(zip64End.buffer);
+  zip64EndView.setUint32(0, 0x06064b50, true);
+  zip64EndView.setBigUint64(4, 44n, true);
+
+  const locator = new Uint8Array(20);
+  const locatorView = new DataView(locator.buffer);
+  locatorView.setUint32(0, 0x07064b50, true);
+
+  const inserted = zip64End.byteLength + locator.byteLength;
+  const result = new Uint8Array(bytes.byteLength + inserted);
+  result.set(bytes.slice(0, endOffset), 0);
+  result.set(zip64End, endOffset);
+  result.set(locator, endOffset + zip64End.byteLength);
+  result.set(bytes.slice(endOffset), endOffset + inserted);
   return result;
 }
 
