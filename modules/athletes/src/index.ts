@@ -34,6 +34,28 @@ export type {
   AthletesExchangeMode,
   AthletesWorkbookSheet,
 } from "./exchange";
+export {
+  ATHLETES_IMPORT_MAX_ATHLETES,
+  ATHLETES_IMPORT_MAX_FILE_BYTES,
+  ATHLETES_IMPORT_RESULT_VERSION,
+  AthletesImportApplyError,
+  AthletesImportFileError,
+  applyAthletesImportPreview,
+  createAthletesImportPreviewToken,
+  previewAthletesImport,
+} from "./import";
+export type {
+  AthletesImportAction,
+  AthletesImportDraft,
+  AthletesImportExpectedAthleteState,
+  AthletesImportIssue,
+  AthletesImportMembershipDraft,
+  AthletesImportMutationService,
+  AthletesImportPreview,
+  AthletesImportPreviewRow,
+  AthletesImportResult,
+  AthletesImportResultRow,
+} from "./import";
 export { PostgresAthleteMasterdataRepository } from "./postgres-masterdata-repository";
 export { reconcileAthleteMasterdataRestoredDatabase } from "./restore-reconciliation";
 export type {

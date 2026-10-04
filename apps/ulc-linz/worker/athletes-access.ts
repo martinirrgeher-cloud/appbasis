@@ -1,6 +1,11 @@
 import { ATHLETE_CAPABILITIES } from "@appbasis/athletes";
 import { assertIdentityActionAllowed } from "@appbasis/identity/access";
-import type { PermissionStore } from "@appbasis/permissions";
+import {
+  can,
+  capabilityId,
+  principalId,
+  type PermissionStore,
+} from "@appbasis/permissions";
 
 import {
   assertUlcLinzModuleAccess,
@@ -26,13 +31,18 @@ export interface UlcLinzAthletesAccessSqlClient {
   ): PromiseLike<readonly Record<string, unknown>[]>;
 }
 
+export interface UlcLinzAthletesAccessScope {
+  readonly organizationId: string;
+  readonly canEdit: boolean;
+}
+
 export interface UlcLinzAthletesAccessService {
   assertViewAccess(
     current: UlcLinzCurrentIdentity,
-  ): Promise<Readonly<{ organizationId: string }>>;
+  ): Promise<UlcLinzAthletesAccessScope>;
   assertEditAccess(
     current: UlcLinzCurrentIdentity,
-  ): Promise<Readonly<{ organizationId: string }>>;
+  ): Promise<UlcLinzAthletesAccessScope>;
 }
 
 export function createUlcLinzAthletesAccessService({
@@ -53,7 +63,7 @@ export function createUlcLinzAthletesAccessService({
   async function assertAccess(
     current: UlcLinzCurrentIdentity,
     action: "view" | "edit",
-  ): Promise<Readonly<{ organizationId: string }>> {
+  ): Promise<UlcLinzAthletesAccessScope> {
     const identityId = optionalIdentifier(current.identity.identityId);
     if (identityId === null) {
       denyBeforeOrganization(
@@ -119,7 +129,21 @@ export function createUlcLinzAthletesAccessService({
       },
     );
 
-    return Object.freeze({ organizationId });
+    const canEdit =
+      action === "edit"
+        ? true
+        : await can(permissions, {
+            principalId: principalId(identityId),
+            capability: capabilityId(
+              roleDataScope.principalPermissionMapping.capabilityNamespace +
+                ":" +
+                ATHLETES_MODULE_ID +
+                ":" +
+                roleDataScope.principalPermissionMapping.editAction,
+            ),
+          });
+
+    return Object.freeze({ organizationId, canEdit });
   }
 
   return Object.freeze({

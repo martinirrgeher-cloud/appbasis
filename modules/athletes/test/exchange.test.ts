@@ -171,6 +171,30 @@ describe("athletes exchange", () => {
     expect(JSON.stringify(lists.rows)).toContain("inaktiv");
   });
 
+  it("documents the live E6F4B preview/apply workflow without stale E6F4A guidance", () => {
+    const template = buildAthletesExchangeSheets(snapshot, "template");
+    const exported = buildAthletesExchangeSheets(snapshot, "export");
+    const templateNotes = JSON.stringify(
+      template.find((sheet) => sheet.name === "Hinweise")!.rows,
+    );
+    const exportNotes = JSON.stringify(
+      exported.find((sheet) => sheet.name === "Hinweise")!.rows,
+    );
+
+    expect(templateNotes).toContain("E6F4B");
+    expect(templateNotes).toContain("Import prüfen");
+    expect(templateNotes).toContain("ausdrücklich anwenden");
+    expect(templateNotes).toContain("primäre Match-Key");
+    expect(templateNotes).toContain("Aktiv-/Archivstatus nicht");
+    expect(templateNotes).not.toContain("E6F4A");
+    expect(templateNotes).not.toContain("Vorschau und Apply folgen separat");
+    expect(templateNotes).not.toContain("schreibt noch keine Daten");
+
+    expect(exportNotes).toContain("E6F4B");
+    expect(exportNotes).toContain("Importvorschau und Apply");
+    expect(exportNotes).not.toContain("E6F4A");
+  });
+
   it("replaces XML 1.0-forbidden control characters before workbook serialization", () => {
     const unsafeSnapshot = {
       ...snapshot,

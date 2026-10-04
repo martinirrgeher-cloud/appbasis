@@ -105,10 +105,22 @@ describe("ULC Linz Stammdaten access", () => {
 
     await expect(access.assertViewAccess(currentIdentity())).resolves.toEqual({
       organizationId: ORGANIZATION_ID,
+      canEdit: false,
     });
     expect(sqlCalls).toHaveLength(1);
     expect(sqlCalls[0]?.query).toContain("WHERE identity_id = $1");
     expect(sqlCalls[0]?.parameters).toEqual([IDENTITY_ID]);
+  });
+
+  it("reports edit capability on view access when granted", async () => {
+    const view = capabilityId("ulc-linz:module:athletes:view");
+    const edit = capabilityId("ulc-linz:module:athletes:edit");
+    const { access } = service({ grants: [view, edit] });
+
+    await expect(access.assertViewAccess(currentIdentity())).resolves.toEqual({
+      organizationId: ORGANIZATION_ID,
+      canEdit: true,
+    });
   });
 
   it("requires edit independently from view", async () => {
@@ -117,6 +129,7 @@ describe("ULC Linz Stammdaten access", () => {
 
     await expect(access.assertViewAccess(currentIdentity())).resolves.toEqual({
       organizationId: ORGANIZATION_ID,
+      canEdit: false,
     });
     await expect(access.assertEditAccess(currentIdentity())).rejects.toBeInstanceOf(
       UlcLinzAuthorizationDeniedError,
@@ -171,6 +184,7 @@ describe("ULC Linz Stammdaten access", () => {
 
     await expect(access.assertEditAccess(currentIdentity())).resolves.toEqual({
       organizationId: ORGANIZATION_ID,
+      canEdit: true,
     });
   });
 });

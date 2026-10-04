@@ -132,6 +132,8 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <h1>Stammdaten</h1>
               <p class="summary">Athleten, Trainer und Trainingsgruppen deiner Organisation.</p>
               <div class="masterdata-exchange-actions">
+                <input id="masterdata-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+                <button class="button button--secondary" id="masterdata-import-open" type="button" disabled>Import prüfen</button>
                 <button class="button button--secondary" id="masterdata-template" type="button" disabled>Importvorlage</button>
                 <button class="button button--secondary" id="masterdata-export" type="button" disabled>Export</button>
               </div>
@@ -264,6 +266,28 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               </form>
             </section>
           </section>
+
+          <div class="masterdata-import-overlay" id="masterdata-import-preview" hidden>
+            <section class="masterdata-import-dialog" role="dialog" aria-modal="true" aria-labelledby="masterdata-import-title">
+              <header class="masterdata-import-header">
+                <div>
+                  <p class="eyebrow">Athleten · XLSX</p>
+                  <h2 id="masterdata-import-title">Import prüfen</h2>
+                </div>
+                <button class="button button--secondary" id="masterdata-import-close" type="button">Schließen</button>
+              </header>
+              <div class="masterdata-import-body">
+                <p class="masterdata-import-notice" id="masterdata-import-notice">Vorschau: Erst nach ausdrücklicher Bestätigung werden gültige Athleten und neue Gruppenzuordnungen angewendet.</p>
+                <div class="masterdata-import-summary" id="masterdata-import-summary"></div>
+                <div class="masterdata-import-issues" id="masterdata-import-issues"></div>
+                <div class="masterdata-import-rows" id="masterdata-import-rows"></div>
+              </div>
+              <footer class="masterdata-import-footer">
+                <button class="button button--secondary" id="masterdata-import-log" type="button" hidden>Protokoll herunterladen</button>
+                <button class="button button--primary" id="masterdata-import-apply" type="button" disabled>Import anwenden</button>
+              </footer>
+            </section>
+          </div>
 
           <section class="app-section" data-app-section="kindertraining" id="kindertraining" hidden>
             <section class="hero">
@@ -600,6 +624,108 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   padding: 7px 11px;
   font-size: .78rem;
 }
+.masterdata-import-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  align-items: end;
+  background: rgba(15, 23, 42, .54);
+}
+.masterdata-import-overlay[hidden] { display: none; }
+.masterdata-import-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(100%, 52rem);
+  max-height: min(92vh, 54rem);
+  margin: 0 auto;
+  background: var(--card);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -18px 50px rgba(15, 23, 42, .22);
+  overflow: hidden;
+}
+.masterdata-import-header,
+.masterdata-import-footer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.masterdata-import-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+}
+.masterdata-import-body {
+  overflow: auto;
+  padding: 12px;
+}
+.masterdata-import-notice {
+  margin: 0 0 10px;
+  font-size: .82rem;
+}
+.masterdata-import-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.masterdata-import-summary > div {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--muted);
+}
+.masterdata-import-summary strong,
+.masterdata-import-summary span {
+  display: block;
+}
+.masterdata-import-summary span { font-size: .7rem; }
+.masterdata-import-issues {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.masterdata-import-issue {
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--muted);
+  font-size: .78rem;
+}
+.masterdata-import-issue[data-level="error"] { font-weight: 800; }
+.masterdata-import-rows {
+  display: grid;
+  gap: 7px;
+}
+.masterdata-import-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+.masterdata-import-row__main,
+.masterdata-import-row__meta {
+  display: block;
+}
+.masterdata-import-row__meta {
+  margin-top: 3px;
+  font-size: .72rem;
+  color: var(--secondary);
+}
+.masterdata-import-action {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--muted);
+  font-size: .68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
 .masterdata-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -925,6 +1051,16 @@ const elements = {
   kindertrainingSave: document.querySelector("#kindertraining-save"),
   masterdataMessage: document.querySelector("#masterdata-message"),
   masterdataSuccess: document.querySelector("#masterdata-success"),
+  masterdataImportFile: document.querySelector("#masterdata-import-file"),
+  masterdataImportOpen: document.querySelector("#masterdata-import-open"),
+  masterdataImportPreview: document.querySelector("#masterdata-import-preview"),
+  masterdataImportClose: document.querySelector("#masterdata-import-close"),
+  masterdataImportNotice: document.querySelector("#masterdata-import-notice"),
+  masterdataImportSummary: document.querySelector("#masterdata-import-summary"),
+  masterdataImportIssues: document.querySelector("#masterdata-import-issues"),
+  masterdataImportRows: document.querySelector("#masterdata-import-rows"),
+  masterdataImportApply: document.querySelector("#masterdata-import-apply"),
+  masterdataImportLog: document.querySelector("#masterdata-import-log"),
   masterdataTemplate: document.querySelector("#masterdata-template"),
   masterdataExport: document.querySelector("#masterdata-export"),
   athleteList: document.querySelector("#athlete-list"),
@@ -1007,6 +1143,10 @@ const defaultSettings = {
   speechEnabled: true,
 };
 
+const MASTERDATA_XLSX_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const MASTERDATA_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
+
 const APP_NAV_PRIORITY = Object.freeze([
   "home",
   "kindertraining",
@@ -1020,12 +1160,17 @@ let appNavMoreOpen = false;
 let busy = false;
 let countdownReady = false;
 let masterdataReady = false;
+let masterdataCanEdit = false;
 let kindertrainingReady = false;
 let kindertrainingLoading = false;
 let kindertrainingGroups = [];
 let kindertrainingSnapshot = null;
 let masterdataLoading = false;
 let masterdataExchangeBusy = false;
+let masterdataImportPreviewData = null;
+let masterdataImportPreviewToken = null;
+let masterdataImportFileDraft = null;
+let masterdataImportResultData = null;
 let masterdataSnapshot = null;
 let masterdataEdit = null;
 let trainerIdentityAdminReady = false;
@@ -1049,6 +1194,20 @@ elements.startButton?.addEventListener("click", () => void startCountdown());
 elements.pauseButton?.addEventListener("click", () => void togglePause());
 elements.resetButton?.addEventListener("click", () => void resetCountdown());
 elements.settingsForm?.addEventListener("input", handleSettingsInput);
+elements.masterdataImportOpen?.addEventListener("click", () => {
+  if (masterdataExchangeBusy || !masterdataReady || !masterdataCanEdit) return;
+  elements.masterdataImportFile?.click();
+});
+elements.masterdataImportFile?.addEventListener("change", () => {
+  const file = elements.masterdataImportFile?.files?.[0] ?? null;
+  if (elements.masterdataImportFile) elements.masterdataImportFile.value = "";
+  if (file) void previewMasterdataImportFile(file);
+});
+elements.masterdataImportClose?.addEventListener("click", closeMasterdataImportPreview);
+elements.masterdataImportApply?.addEventListener("click", () => {
+  void applyMasterdataImport();
+});
+elements.masterdataImportLog?.addEventListener("click", downloadMasterdataImportLog);
 elements.masterdataTemplate?.addEventListener("click", () => {
   void downloadMasterdataWorkbook(
     "/api/modules/athletes/template.xlsx",
@@ -1105,7 +1264,9 @@ document.addEventListener("click", (event) => {
   setAppNavMoreOpen(false);
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") setAppNavMoreOpen(false);
+  if (event.key !== "Escape") return;
+  setAppNavMoreOpen(false);
+  if (!elements.masterdataImportPreview?.hidden) closeMasterdataImportPreview();
 });
 for (const control of document.querySelectorAll("[data-nav-view]")) {
   control.addEventListener("click", () => {
@@ -1310,6 +1471,7 @@ async function bootstrapCountdown() {
 
 async function bootstrapMasterdata() {
   masterdataReady = false;
+  masterdataCanEdit = false;
   refreshAppAvailability();
   showMessage(elements.masterdataMessage, "");
   try {
@@ -1319,9 +1481,11 @@ async function bootstrapMasterdata() {
       payload?.module?.capabilities?.view === "athletes:view" &&
       payload?.module?.capabilities?.edit === "athletes:edit" &&
       payload?.access?.view === true;
+    masterdataCanEdit = masterdataReady && payload?.access?.edit === true;
     if (!masterdataReady) throw new Error("INVALID_MASTERDATA_CONTRACT");
   } catch (error) {
     masterdataReady = false;
+    masterdataCanEdit = false;
     showMessage(
       elements.masterdataMessage,
       error?.status === 403
@@ -1444,15 +1608,37 @@ function refreshAppAvailability() {
   if (elements.masterdataQuickAction) {
     elements.masterdataQuickAction.disabled = !masterdataReady;
   }
+  if (elements.masterdataImportOpen) {
+    elements.masterdataImportOpen.disabled =
+      !masterdataReady || !masterdataCanEdit || masterdataExchangeBusy;
+  }
   if (elements.masterdataTemplate) {
     elements.masterdataTemplate.disabled = !masterdataReady || masterdataExchangeBusy;
   }
   if (elements.masterdataExport) {
     elements.masterdataExport.disabled = !masterdataReady || masterdataExchangeBusy;
   }
+  if (elements.masterdataImportApply) {
+    const changes =
+      (masterdataImportPreviewData?.summary?.create || 0) +
+      (masterdataImportPreviewData?.summary?.update || 0);
+    elements.masterdataImportApply.disabled =
+      masterdataExchangeBusy ||
+      !masterdataCanEdit ||
+      masterdataImportPreviewToken === null ||
+      masterdataImportFileDraft === null ||
+      (masterdataImportPreviewData?.summary?.errors || 0) > 0 ||
+      changes === 0;
+  }
+  if (elements.masterdataImportLog) {
+    elements.masterdataImportLog.disabled =
+      masterdataExchangeBusy || masterdataImportResultData === null;
+  }
   if (elements.masterdataAccessLabel) {
     elements.masterdataAccessLabel.textContent = masterdataReady
-      ? "Für deinen Benutzer freigeschaltet."
+      ? masterdataCanEdit
+        ? "Lesen und Bearbeiten freigeschaltet."
+        : "Nur Lesen freigeschaltet."
       : "Für deinen Benutzer derzeit nicht freigeschaltet.";
   }
 }
@@ -1889,6 +2075,396 @@ function showMasterdataTab(tab) {
   }
   for (const panel of document.querySelectorAll("[data-masterdata-panel]")) {
     panel.hidden = panel.dataset.masterdataPanel !== target;
+  }
+}
+
+function isMasterdataImportPreview(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    value.contractVersion === "appbasis.athletes.exchange/v1" &&
+    value.applyAvailable === false &&
+    value.summary !== null &&
+    typeof value.summary === "object" &&
+    Array.isArray(value.issues) &&
+    Array.isArray(value.rows) &&
+    ["rows", "create", "update", "skip", "errors", "warnings"].every(
+      (key) => Number.isSafeInteger(value.summary[key]) && value.summary[key] >= 0,
+    )
+  );
+}
+
+function isMasterdataImportApplyEnvelope(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof value.available === "boolean" &&
+    typeof value.previewToken === "string" &&
+    /^e6f4b-v1\.[0-9a-f]{64}$/.test(value.previewToken)
+  );
+}
+
+function isMasterdataImportResult(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    value.contractVersion === "appbasis.athletes.import-result/v1" &&
+    typeof value.previewToken === "string" &&
+    typeof value.appliedAt === "string" &&
+    typeof value.logCsv === "string" &&
+    Array.isArray(value.rows) &&
+    value.summary !== null &&
+    typeof value.summary === "object" &&
+    ["rows", "created", "updated", "skipped", "failed"].every(
+      (key) => Number.isSafeInteger(value.summary[key]) && value.summary[key] >= 0,
+    )
+  );
+}
+
+function setMasterdataImportPreviewOpen(open) {
+  if (!elements.masterdataImportPreview) return;
+  elements.masterdataImportPreview.hidden = !open;
+  document.body.style.overflow = open ? "hidden" : "";
+}
+
+function closeMasterdataImportPreview() {
+  setMasterdataImportPreviewOpen(false);
+  masterdataImportPreviewData = null;
+  masterdataImportPreviewToken = null;
+  masterdataImportFileDraft = null;
+  masterdataImportResultData = null;
+  if (elements.masterdataImportApply) {
+    elements.masterdataImportApply.hidden = false;
+    elements.masterdataImportApply.disabled = true;
+    elements.masterdataImportApply.textContent = "Import anwenden";
+  }
+  if (elements.masterdataImportLog) elements.masterdataImportLog.hidden = true;
+}
+
+function appendMasterdataImportIssue(container, issueValue) {
+  const item = document.createElement("div");
+  item.className = "masterdata-import-issue";
+  item.dataset.level = issueValue?.level === "error" ? "error" : "warning";
+  const location = [
+    issueValue?.sheet,
+    Number.isSafeInteger(issueValue?.row) ? "Zeile " + String(issueValue.row) : "",
+  ].filter(Boolean).join(" · ");
+  item.textContent =
+    (issueValue?.level === "error" ? "Fehler" : "Warnung") +
+    (location ? " · " + location : "") +
+    ": " +
+    String(issueValue?.message || "Unbekannter Hinweis");
+  container.append(item);
+}
+
+function renderMasterdataImportPreview(preview) {
+  elements.masterdataImportSummary?.replaceChildren();
+  for (const [label, value] of [
+    ["Neu", preview.summary.create],
+    ["Ändern", preview.summary.update],
+    ["Überspringen", preview.summary.skip],
+    ["Fehler", preview.summary.errors],
+    ["Warnungen", preview.summary.warnings],
+    ["Gesamt", preview.summary.rows],
+  ]) {
+    const card = document.createElement("div");
+    const strong = document.createElement("strong");
+    strong.textContent = String(value);
+    const span = document.createElement("span");
+    span.textContent = label;
+    card.append(strong, span);
+    elements.masterdataImportSummary?.append(card);
+  }
+
+  elements.masterdataImportIssues?.replaceChildren();
+  for (const issueValue of preview.issues) {
+    appendMasterdataImportIssue(elements.masterdataImportIssues, issueValue);
+  }
+
+  elements.masterdataImportRows?.replaceChildren();
+  for (const row of preview.rows) {
+    const article = document.createElement("article");
+    article.className = "masterdata-import-row";
+    const main = document.createElement("span");
+    main.className = "masterdata-import-row__main";
+    const title = document.createElement("strong");
+    title.textContent =
+      String(row?.draft?.lastName || "") +
+      ", " +
+      String(row?.draft?.firstName || "");
+    const meta = document.createElement("span");
+    meta.className = "masterdata-import-row__meta";
+    const membershipCreates = Array.isArray(row?.draft?.memberships)
+      ? row.draft.memberships.filter((membership) => membership?.action === "create").length
+      : 0;
+    meta.textContent =
+      "Excel-Zeile " +
+      String(row?.rowNumber || "") +
+      (row?.draft?.birthYear ? " · Jahrgang " + String(row.draft.birthYear) : "") +
+      (membershipCreates > 0
+        ? " · " + String(membershipCreates) + " neue Gruppenzuordnung(en)"
+        : "");
+    main.append(title, meta);
+    for (const issueValue of row.issues || []) {
+      const issueLine = document.createElement("span");
+      issueLine.className = "masterdata-import-row__meta";
+      issueLine.textContent =
+        (issueValue?.level === "error" ? "Fehler: " : "Warnung: ") +
+        String(issueValue?.message || "");
+      main.append(issueLine);
+    }
+    const status = document.createElement("span");
+    status.className = "masterdata-import-action";
+    status.textContent =
+      row.action === "create"
+        ? "Neu"
+        : row.action === "update"
+          ? "Ändern"
+          : row.reason === "invalid"
+            ? "Fehler"
+            : "Unverändert";
+    article.append(main, status);
+    elements.masterdataImportRows?.append(article);
+  }
+
+  const changes = preview.summary.create + preview.summary.update;
+  if (elements.masterdataImportApply) {
+    elements.masterdataImportApply.hidden = false;
+    elements.masterdataImportApply.textContent =
+      changes > 0 ? "Import anwenden (" + String(changes) + ")" : "Keine Änderungen";
+  }
+  if (elements.masterdataImportLog) elements.masterdataImportLog.hidden = true;
+  if (elements.masterdataImportNotice) {
+    elements.masterdataImportNotice.textContent =
+      preview.summary.errors > 0
+        ? "Die Vorschau enthält Fehler. Der Import bleibt gesperrt, bis die XLSX-Datei korrigiert und neu geprüft wurde."
+        : changes === 0
+          ? "Keine Änderungen erforderlich."
+          : "Vorschau geprüft: Der Server liest Datei und aktuellen Stammdatenstand beim Apply erneut. Änderungen an bestehender Gruppenhistorie werden nicht automatisch umgeschrieben.";
+  }
+  refreshAppAvailability();
+}
+
+function renderMasterdataImportResult(result) {
+  elements.masterdataImportSummary?.replaceChildren();
+  for (const [label, value] of [
+    ["Angelegt", result.summary.created],
+    ["Aktualisiert", result.summary.updated],
+    ["Übersprungen", result.summary.skipped],
+    ["Fehler", result.summary.failed],
+    ["Gesamt", result.summary.rows],
+  ]) {
+    const card = document.createElement("div");
+    const strong = document.createElement("strong");
+    strong.textContent = String(value);
+    const span = document.createElement("span");
+    span.textContent = label;
+    card.append(strong, span);
+    elements.masterdataImportSummary?.append(card);
+  }
+  elements.masterdataImportIssues?.replaceChildren();
+  elements.masterdataImportRows?.replaceChildren();
+  for (const row of result.rows) {
+    const article = document.createElement("article");
+    article.className = "masterdata-import-row";
+    const main = document.createElement("span");
+    main.className = "masterdata-import-row__main";
+    const title = document.createElement("strong");
+    title.textContent = String(row.name || "Ohne Name");
+    const meta = document.createElement("span");
+    meta.className = "masterdata-import-row__meta";
+    meta.textContent = "Excel-Zeile " + String(row.rowNumber) + " · " + String(row.message || "");
+    main.append(title, meta);
+    const status = document.createElement("span");
+    status.className = "masterdata-import-action";
+    status.textContent =
+      row.outcome === "created"
+        ? "Angelegt"
+        : row.outcome === "updated"
+          ? "Aktualisiert"
+          : row.outcome === "skipped"
+            ? "Übersprungen"
+            : "Fehler";
+    article.append(main, status);
+    elements.masterdataImportRows?.append(article);
+  }
+  if (elements.masterdataImportNotice) {
+    elements.masterdataImportNotice.textContent =
+      result.summary.failed === 0
+        ? "Import abgeschlossen. Das Ergebnisprotokoll kann als CSV heruntergeladen werden."
+        : "Import mit Teilfehlern abgeschlossen. Bitte CSV-Protokoll prüfen und die Datei danach erneut prüfen.";
+  }
+  if (elements.masterdataImportApply) {
+    elements.masterdataImportApply.hidden = true;
+    elements.masterdataImportApply.disabled = true;
+  }
+  if (elements.masterdataImportLog) elements.masterdataImportLog.hidden = false;
+  refreshAppAvailability();
+}
+
+async function previewMasterdataImportFile(file) {
+  if (!masterdataReady || masterdataExchangeBusy) return;
+  if (
+    !file?.name?.toLocaleLowerCase("de").endsWith(".xlsx") ||
+    file.size > MASTERDATA_IMPORT_MAX_FILE_BYTES
+  ) {
+    showMessage(
+      elements.masterdataMessage,
+      file?.size > MASTERDATA_IMPORT_MAX_FILE_BYTES
+        ? "Die Importdatei darf höchstens 5 MB groß sein."
+        : "Bitte eine XLSX-Datei auswählen.",
+    );
+    return;
+  }
+
+  masterdataExchangeBusy = true;
+  refreshAppAvailability();
+  showMessage(elements.masterdataMessage, "");
+  showMessage(elements.masterdataSuccess, "");
+  try {
+    const response = await fetch("/api/modules/athletes/import-preview", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": MASTERDATA_XLSX_CONTENT_TYPE,
+      },
+      credentials: "same-origin",
+      body: file,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload?.error?.code || "ATHLETES_IMPORT_PREVIEW_FAILED");
+      error.status = response.status;
+      error.code = payload?.error?.code;
+      throw error;
+    }
+    if (
+      !isMasterdataImportPreview(payload?.preview) ||
+      !isMasterdataImportApplyEnvelope(payload?.apply)
+    ) {
+      throw new Error("INVALID_ATHLETES_IMPORT_PREVIEW_CONTRACT");
+    }
+    masterdataImportPreviewData = payload.preview;
+    masterdataImportPreviewToken = payload.apply.previewToken;
+    masterdataImportFileDraft = file;
+    masterdataImportResultData = null;
+    renderMasterdataImportPreview(payload.preview);
+    setMasterdataImportPreviewOpen(true);
+  } catch (error) {
+    showMessage(
+      elements.masterdataMessage,
+      error?.status === 403
+        ? "Für den Athleten-Import fehlt die Bearbeitungsberechtigung."
+        : error?.status === 413
+          ? "Die Importdatei darf höchstens 5 MB groß sein."
+          : "Die Athleten-Importdatei konnte nicht geprüft werden.",
+    );
+  } finally {
+    masterdataExchangeBusy = false;
+    refreshAppAvailability();
+  }
+}
+
+async function applyMasterdataImport() {
+  if (
+    !masterdataReady ||
+    masterdataExchangeBusy ||
+    masterdataImportPreviewData === null ||
+    masterdataImportPreviewToken === null ||
+    masterdataImportFileDraft === null
+  ) return;
+  const changes =
+    masterdataImportPreviewData.summary.create +
+    masterdataImportPreviewData.summary.update;
+  if (
+    changes <= 0 ||
+    masterdataImportPreviewData.summary.errors > 0 ||
+    !window.confirm(
+      String(changes) +
+        " Athletenänderung(en) jetzt anwenden? Bestehende Gruppenhistorie wird nicht überschrieben.",
+    )
+  ) return;
+
+  masterdataExchangeBusy = true;
+  refreshAppAvailability();
+  showMessage(elements.masterdataMessage, "");
+  showMessage(elements.masterdataSuccess, "");
+  try {
+    const response = await fetch("/api/modules/athletes/import-apply", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": MASTERDATA_XLSX_CONTENT_TYPE,
+        "x-appbasis-import-preview-token": masterdataImportPreviewToken,
+      },
+      credentials: "same-origin",
+      body: masterdataImportFileDraft,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload?.error?.code || "ATHLETES_IMPORT_APPLY_FAILED");
+      error.status = response.status;
+      error.code = payload?.error?.code;
+      throw error;
+    }
+    if (!isMasterdataImportResult(payload?.result)) {
+      throw new Error("INVALID_ATHLETES_IMPORT_RESULT_CONTRACT");
+    }
+    masterdataImportResultData = payload.result;
+    masterdataImportPreviewToken = null;
+    masterdataImportFileDraft = null;
+    masterdataImportPreviewData = null;
+    renderMasterdataImportResult(payload.result);
+    masterdataSnapshot = null;
+    await loadMasterdata(true);
+    showMessage(
+      elements.masterdataSuccess,
+      payload.result.summary.failed === 0
+        ? "Athleten-Import wurde angewendet."
+        : "Athleten-Import wurde mit Teilfehlern abgeschlossen.",
+    );
+  } catch (error) {
+    const stale =
+      error?.code === "STALE_IMPORT_PREVIEW" ||
+      error?.code === "INVALID_IMPORT_PREVIEW";
+    if (stale) {
+      masterdataImportPreviewToken = null;
+      masterdataImportFileDraft = null;
+    }
+    showMessage(
+      elements.masterdataMessage,
+      error?.status === 403
+        ? "Für den Athleten-Import fehlt die Bearbeitungsberechtigung."
+        : stale
+          ? "Die Vorschau ist nicht mehr aktuell. Bitte XLSX-Datei erneut prüfen."
+          : "Der Athleten-Import konnte nicht angewendet werden.",
+    );
+  } finally {
+    masterdataExchangeBusy = false;
+    refreshAppAvailability();
+  }
+}
+
+function downloadMasterdataImportLog() {
+  if (!masterdataImportResultData?.logCsv) return;
+  const blob = new Blob(
+    [masterdataImportResultData.logCsv],
+    { type: "text/csv;charset=utf-8" },
+  );
+  const href = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = href;
+    link.download =
+      "athleten-importprotokoll-" +
+      masterdataImportResultData.appliedAt.slice(0, 10) +
+      ".csv";
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(href), 0);
   }
 }
 

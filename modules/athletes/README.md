@@ -39,8 +39,31 @@ The module exposes the read-only XLSX contract
 - Application adapters remain responsible for authenticated organization scope
   and view/edit authorization.
 
-The first ULC consumer exposes only export/template downloads in E6F4A.
-Import preview/apply stays a separate E6F4B gate.
+The ULC consumer now uses the same module contract for E6F4B import preview and
+controlled apply.
+
+- Preview parses XLSX fail-closed with the same 5 MB / 1,000-athlete limits used
+  by the first catalog exchange.
+- Existing athletes are matched by explicit ID first; blank-ID rows may fall
+  back to normalized first name + last name + birth year only when unique.
+- Training groups resolve only against the current server-authorized snapshot.
+- Existing membership history is immutable through import. Exact existing rows
+  are skipped; only new memberships to active groups may be appended.
+- Active/archive state changes are intentionally unsupported in the import.
+- Apply is bound to XLSX bytes, organization and current athlete/group/membership
+  state through a preview token and reparses against a fresh snapshot.
+- Existing-athlete scalar updates use an atomic compare-and-update predicate on
+  the previewed first name, last name, birth year and notes. Concurrent drift
+  after token validation returns a failed row with `STALE_IMPORT_ROW` instead
+  of overwriting newer data.
+- Results are returned per row and as an Excel-friendly CSV log.
+- No schema migration is required.
+- The token prevents normal stale/repeated applies after state changes, while
+  compare-and-update closes the lost-update race for existing athletes.
+  Because athlete rows currently have no business-key unique constraint and the
+  repository exposes no connection-bound create idempotency/lock contract, two
+  exactly concurrent new-athlete creates are still not claimed to be globally
+  exactly-once. Solving that requires a separate persistence/idempotency gate.
 
 The initial migration deliberately contains no SQL `REFERENCES` clauses. The
 current incremental module migration contract rejects target references until a
