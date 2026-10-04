@@ -131,6 +131,21 @@ describe("exercise catalog runtime/schema parity", () => {
     ).toThrow(ExerciseCatalogValidationError);
   });
 
+  it("matches PostgreSQL character length for astral Unicode text", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "😀", categoryKey: "speed" },
+        { id: "item-short-unicode", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    const item = createExerciseCatalogItem(
+      { name: "😀".repeat(120), categoryKey: "speed" },
+      { id: "item-max-unicode", organizationId: "org-1", definition },
+    );
+    expect(Array.from(item.name)).toHaveLength(120);
+  });
+
   it("rejects a canonicalized video URL that exceeds the schema limit", () => {
     const unicodeUrl = "https://example.test/" + "é".repeat(400);
     expect(unicodeUrl.length).toBeLessThanOrEqual(2_000);
