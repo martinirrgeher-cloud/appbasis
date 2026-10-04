@@ -522,6 +522,7 @@ async function readZipText(
   }
   const data = await readZipEntry(bytes, entry, maxEntryBytes);
   const text = decodeUtf8(data);
+  assertXml10Text(text);
   if (/<!DOCTYPE|<!ENTITY/i.test(text)) {
     throw new XlsxReadError(
       "Nicht unterstützte XML-Deklarationen in der XLSX-Datei.",
@@ -655,6 +656,18 @@ function inflateRaw(
     throw new XlsxReadError(
       "Ein komprimierter XLSX-Bestandteil konnte nicht gelesen werden.",
     );
+  }
+}
+
+function assertXml10Text(value: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    const codePoint = value.codePointAt(index);
+    if (codePoint === undefined || !isXml10CodePoint(codePoint)) {
+      throw new XlsxReadError(
+        "Ein XLSX-XML-Bestandteil enthält ein ungültiges XML-Zeichen.",
+      );
+    }
+    if (codePoint > 0xffff) index += 1;
   }
 }
 
