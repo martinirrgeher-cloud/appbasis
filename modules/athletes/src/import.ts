@@ -10,9 +10,13 @@ import {
   type UpdateAthleteInput,
 } from "./domain/masterdata";
 import {
-  ATHLETES_EXCHANGE_ATHLETE_HEADERS,
-  ATHLETES_EXCHANGE_GROUP_HEADERS,
+  ATHLETES_EXCHANGE_ACTIVE_HEADER,
+  ATHLETES_EXCHANGE_CONTRACT_HEADER,
+  ATHLETES_EXCHANGE_GROUP_HEADER_PREFIX,
+  ATHLETES_EXCHANGE_GROUP_LIST_HEADER,
+  ATHLETES_EXCHANGE_ID_HEADER,
   ATHLETES_EXCHANGE_VERSION,
+  ATHLETES_EXCHANGE_VISIBLE_BASE_HEADERS,
 } from "./exchange";
 import type {
   AthleteMasterdataSnapshot,
@@ -21,7 +25,6 @@ import type {
 export const ATHLETES_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const ATHLETES_IMPORT_MAX_ATHLETES = 1_000;
 
-const MAX_RELATION_ROWS = 20_000;
 const MAX_ZIP_ENTRIES = 128;
 const MAX_UNCOMPRESSED_BYTES = 32 * 1024 * 1024;
 const MAX_ENTRY_BYTES = 16 * 1024 * 1024;
@@ -33,12 +36,7 @@ const BUILTIN_DATE_NUMBER_FORMAT_IDS = new Set([
 ]);
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1_000;
 
-const REQUIRED_SHEETS = Object.freeze([
-  "Athleten",
-  "Gruppen",
-  "Listen",
-  "Hinweise",
-]);
+const REQUIRED_SHEETS = Object.freeze(["Athleten"]);
 
 export type AthletesImportAction = "create" | "update" | "skip";
 
@@ -204,6 +202,14 @@ interface SheetRow {
   readonly cells: readonly string[];
 }
 
+interface AthleteSheetLayout {
+  readonly groupIndexes: readonly number[];
+  readonly idIndex: number;
+  readonly activeIndex: number;
+  readonly contractIndex: number;
+  readonly groupListIndex: number;
+}
+
 interface WorkbookDateContext {
   readonly date1904: boolean;
   readonly dateStyleIndexes: ReadonlySet<number>;
@@ -218,18 +224,7 @@ interface AthleteSource {
   readonly birthYear: number | null;
   readonly notes: string | null;
   readonly isActive: boolean;
-  readonly issues: AthletesImportIssue[];
-}
-
-interface MembershipSource {
-  readonly rowNumber: number;
-  readonly recordKey: string;
-  readonly athleteId: string | null;
-  readonly athleteLabel: string | null;
-  readonly groupId: string | null;
-  readonly groupName: string | null;
-  readonly startedOn: string;
-  readonly endedOn: string | null;
+  readonly groupNames: readonly string[];
   readonly issues: AthletesImportIssue[];
 }
 
@@ -258,54 +253,24 @@ export async function previewAthletesImport(
   }
 
   const workbook = await readWorkbook(bytes);
-  validateWorkbookContract(workbook);
-  const athleteRows = dataRowsWithHeader(
-    workbook.get("Athleten")!,
-    ATHLETES_EXCHANGE_ATHLETE_HEADERS,
-    "Athleten",
-  );
-  const membershipRows = dataRowsWithHeader(
-    workbook.get("Gruppen")!,
-    ATHLETES_EXCHANGE_GROUP_HEADERS,
-    "Gruppen",
-  );
+  const athleteSheet = workbook.get("Athleten");
+  if (athleteSheet === undefined) {
+    throw new AthletesImportFileError(
+      "INVALID_EXCHANGE_CONTRACT",
+      "Das erforderliche Blatt Athleten fehlt.",
+    );
+  }
+  const layout = validateWorkbookContract(athleteSheet);
+  const athleteRows = dataRowsWithLayout(athleteSheet, layout);
   if (athleteRows.length > ATHLETES_IMPORT_MAX_ATHLETES) {
     throw new AthletesImportFileError(
       "IMPORT_ROW_LIMIT_EXCEEDED",
       "Die Importdatei enthält mehr als 1.000 Athleten.",
     );
   }
-  if (membershipRows.length > MAX_RELATION_ROWS) {
-    throw new AthletesImportFileError(
-      "IMPORT_ROW_LIMIT_EXCEEDED",
-      "Die Importdatei enthält zu viele Gruppenzuordnungen.",
-    );
-  }
 
   const globalIssues: AthletesImportIssue[] = [];
-  const sources = athleteRows.map(parseAthleteSource);
-  const memberships = membershipRows.map(parseMembershipSource);
-  const sourcesByKey = new Map<string, AthleteSource[]>();
-  for (const source of sources) {
-    const values = sourcesByKey.get(source.recordKey) ?? [];
-    values.push(source);
-    sourcesByKey.set(source.recordKey, values);
-  }
-  for (const [recordKey, values] of sourcesByKey) {
-    if (recordKey.length === 0 || values.length <= 1) continue;
-    for (const source of values) {
-      source.issues.push(
-        issue(
-          "error",
-          "DUPLICATE_RECORD_KEY",
-          "Der Datensatz-Schlüssel kommt im Blatt Athleten mehrfach vor.",
-          "Athleten",
-          source.rowNumber,
-          "Datensatz-Schlüssel",
-        ),
-      );
-    }
-  }
+  const sources = athleteRows.map((row) => parseAthleteSource(row, layout));
 
   const sourcesByName = new Map<string, AthleteSource[]>();
   for (const source of sources) {
@@ -327,10 +292,10 @@ export async function previewAthletesImport(
           issue(
             "error",
             "DUPLICATE_PERSON_IN_FILE",
-            "Mehrere Importzeilen würden denselben Namen verwenden und mindestens eine davon hat keinen Jahrgang. Bitte eindeutige IDs bzw. Jahrgänge verwenden.",
+            "Mehrere Importzeilen verwenden denselben Namen und mindestens eine davon hat keinen Jahrgang. Bitte die Personendaten eindeutig machen oder mit einem aktuellen Export arbeiten.",
             "Athleten",
             source.rowNumber,
-            "ID",
+            null,
           ),
         );
       }
@@ -356,35 +321,14 @@ export async function previewAthletesImport(
           issue(
             "error",
             "DUPLICATE_PERSON_IN_FILE",
-            "Mehrere Importzeilen würden dieselbe Person mit identischem Namen und Jahrgang ergeben. Bitte eindeutige IDs bzw. Personendaten verwenden.",
+            "Mehrere Importzeilen würden dieselbe Person mit identischem Namen und Jahrgang ergeben. Bitte die Personendaten eindeutig machen oder mit einem aktuellen Export arbeiten.",
             "Athleten",
             source.rowNumber,
-            "ID",
+            null,
           ),
         );
       }
     }
-  }
-
-  const membershipsByKey = new Map<string, MembershipSource[]>();
-  for (const membership of memberships) {
-    const owners = sourcesByKey.get(membership.recordKey) ?? [];
-    if (membership.recordKey.length === 0 || owners.length !== 1) {
-      globalIssues.push(
-        issue(
-          "error",
-          "ORPHAN_GROUP_ROW",
-          "Eine Gruppenzeile verweist auf keinen eindeutigen Athleten-Datensatz.",
-          "Gruppen",
-          membership.rowNumber,
-          "Datensatz-Schlüssel",
-        ),
-      );
-      continue;
-    }
-    const values = membershipsByKey.get(membership.recordKey) ?? [];
-    values.push(membership);
-    membershipsByKey.set(membership.recordKey, values);
   }
 
   const existingById = new Map(
@@ -440,10 +384,10 @@ export async function previewAthletesImport(
           issue(
             "error",
             "UNKNOWN_ATHLETE_ID",
-            "Die angegebene Athleten-ID existiert in der aktuellen Organisation nicht.",
+            "Die technische Zuordnung dieser Zeile ist nicht mehr gültig. Bitte einen aktuellen Export verwenden.",
             "Athleten",
             source.rowNumber,
-            "ID",
+            null,
           ),
         );
       }
@@ -462,10 +406,10 @@ export async function previewAthletesImport(
           issue(
             "error",
             "POTENTIAL_DUPLICATE_REQUIRES_ID",
-            "Mindestens ein Athlet mit demselben Namen hat keinen Jahrgang. Eine sichere automatische Zuordnung ist daher nicht möglich; bitte eine bestehende Athleten-ID verwenden.",
+            "Mindestens ein Athlet mit demselben Namen hat keinen Jahrgang. Eine sichere automatische Zuordnung ist daher nicht möglich. Bitte die Personendaten eindeutig machen oder mit einem aktuellen Export arbeiten.",
             "Athleten",
             source.rowNumber,
-            "ID",
+            null,
           ),
         );
       } else if (candidates.length === 1) {
@@ -485,10 +429,10 @@ export async function previewAthletesImport(
           issue(
             "error",
             "AMBIGUOUS_PERSON_KEY",
-            "Vorname, Nachname und Geburtsjahr sind nicht eindeutig. Bitte eine bestehende Athleten-ID verwenden.",
+            "Vorname, Nachname und Geburtsjahr sind nicht eindeutig. Bitte mit einem aktuellen Export arbeiten, damit die technische Zuordnung erhalten bleibt.",
             "Athleten",
             source.rowNumber,
-            "ID",
+            null,
           ),
         );
       }
@@ -515,10 +459,10 @@ export async function previewAthletesImport(
           issue(
             "error",
             "DUPLICATE_TARGET_ATHLETE",
-            "Mehrere Importzeilen würden denselben bestehenden Athleten verändern.",
+            "Mehrere Importzeilen würden denselben bestehenden Athleten verändern. Bitte doppelte Zeilen entfernen.",
             "Athleten",
             source.rowNumber,
-            "ID",
+            null,
           ),
         );
       } else {
@@ -554,7 +498,7 @@ export async function previewAthletesImport(
     }
 
     const resolvedMemberships = resolveMemberships(
-      membershipsByKey.get(source.recordKey) ?? [],
+      source.groupNames,
       source,
       existing,
       snapshot,
@@ -764,6 +708,8 @@ export async function applyAthletesImportPreview({
     );
   }
 
+  const appliedDate = now();
+  const membershipStartDate = appliedDate.toISOString().slice(0, 10);
   const results: AthletesImportResultRow[] = [];
   for (const row of preview.rows) {
     if (row.action === "skip") {
@@ -814,7 +760,10 @@ export async function applyAthletesImportPreview({
         await service.createAthleteGroupMembership(organizationId, {
           athleteId,
           groupId: membership.groupId,
-          startedOn: membership.startedOn,
+          startedOn:
+            membership.startedOn.length === 0
+              ? membershipStartDate
+              : membership.startedOn,
           endedOn: membership.endedOn,
         });
         mutationApplied = true;
@@ -854,7 +803,7 @@ export async function applyAthletesImportPreview({
     }
   }
 
-  const appliedAt = now().toISOString();
+  const appliedAt = appliedDate.toISOString();
   const result = Object.freeze({
     contractVersion: ATHLETES_IMPORT_RESULT_VERSION,
     previewToken: actualPreviewToken,
@@ -902,45 +851,40 @@ function resultRow(
   });
 }
 
-function parseAthleteSource(row: SheetRow): AthleteSource {
+function parseAthleteSource(
+  row: SheetRow,
+  layout: AthleteSheetLayout,
+): AthleteSource {
   const issues: AthletesImportIssue[] = [];
-  const recordKey = normalizedCell(row.cells[0] ?? "");
-  if (recordKey.length === 0) {
-    issues.push(
-      issue(
-        "error",
-        "MISSING_RECORD_KEY",
-        "Der Datensatz-Schlüssel fehlt.",
-        "Athleten",
-        row.rowNumber,
-        "Datensatz-Schlüssel",
-      ),
-    );
-  }
   const birthYear = parseOptionalIntegerCell(
-    row.cells[4] ?? "",
+    row.cells[2] ?? "",
     "Athleten",
     row.rowNumber,
     "Geburtsjahr",
     issues,
   );
   const active = parseBooleanCell(
-    row.cells[6] ?? "",
+    row.cells[layout.activeIndex] ?? "",
     true,
     "Athleten",
     row.rowNumber,
     "Aktiv",
     issues,
   );
+  const groupNames = layout.groupIndexes
+    .map((index) => normalizedCell(row.cells[index] ?? ""))
+    .filter((value) => value.length > 0);
+
   return {
     rowNumber: row.rowNumber,
-    recordKey,
-    sourceId: optionalCell(row.cells[1] ?? ""),
-    firstName: normalizedCell(row.cells[2] ?? ""),
-    lastName: normalizedCell(row.cells[3] ?? ""),
+    recordKey: "row-" + String(row.rowNumber).padStart(4, "0"),
+    sourceId: optionalCell(row.cells[layout.idIndex] ?? ""),
+    firstName: normalizedCell(row.cells[0] ?? ""),
+    lastName: normalizedCell(row.cells[1] ?? ""),
     birthYear,
-    notes: optionalCell(row.cells[5] ?? ""),
+    notes: optionalCell(row.cells[3] ?? ""),
     isActive: active ?? true,
+    groupNames: Object.freeze(groupNames),
     issues,
   };
 }
@@ -971,64 +915,18 @@ function parseOptionalIntegerCell(
   return parsed;
 }
 
-function parseMembershipSource(row: SheetRow): MembershipSource {
-  const issues: AthletesImportIssue[] = [];
-  const startedOn = spreadsheetDateCell(row.cells[5] ?? "");
-  const endedOn = optionalSpreadsheetDateCell(row.cells[6] ?? "");
-  try {
-    createAthleteGroupMembership({
-      organizationId: "import-preview",
-      athleteId: "import-preview",
-      groupId: "import-preview",
-      startedOn,
-      endedOn,
-    });
-  } catch (error) {
-    issues.push(
-      issue(
-        "error",
-        "MEMBERSHIP_VALIDATION_ERROR",
-        germanValidationMessage(error),
-        "Gruppen",
-        row.rowNumber,
-        "Beginn / Ende",
-      ),
-    );
-  }
-  return {
-    rowNumber: row.rowNumber,
-    recordKey: normalizedCell(row.cells[0] ?? ""),
-    athleteId: optionalCell(row.cells[1] ?? ""),
-    athleteLabel: optionalCell(row.cells[2] ?? ""),
-    groupId: optionalCell(row.cells[3] ?? ""),
-    groupName: optionalCell(row.cells[4] ?? ""),
-    startedOn,
-    endedOn,
-    issues,
-  };
-}
-
-function spreadsheetDateCell(value: string): string {
-  return normalizedCell(value);
-}
-
-function optionalSpreadsheetDateCell(value: string): string | null {
-  const normalized = normalizedCell(value);
-  return normalized.length === 0 ? null : spreadsheetDateCell(normalized);
-}
-
 function resolveMemberships(
-  sources: readonly MembershipSource[],
+  groupNames: readonly string[],
   athleteSource: AthleteSource,
   existingAthlete: Athlete | null,
   snapshot: AthleteMasterdataSnapshot,
   rowIssues: AthletesImportIssue[],
 ): AthletesImportMembershipDraft[] {
   const result: AthletesImportMembershipDraft[] = [];
-  const groupsById = new Map(
-    snapshot.trainingGroups.map((group) => [group.id, group] as const),
-  );
-  const groupsByName = new Map<string, (typeof snapshot.trainingGroups)[number][]>();
+  const groupsByName = new Map<
+    string,
+    (typeof snapshot.trainingGroups)[number][]
+  >();
   for (const group of snapshot.trainingGroups) {
     for (const label of [group.name, group.shortName].filter(
       (value): value is string => value !== null,
@@ -1040,209 +938,99 @@ function resolveMemberships(
       }
     }
   }
+
   const existingMemberships = snapshot.athleteGroupMemberships.filter(
     (membership) => membership.athleteId === existingAthlete?.id,
   );
-  const seen = new Set<string>();
-  const seenStarts = new Map<string, string | null>();
+  const seenGroupIds = new Set<string>();
 
-  for (const source of sources) {
-    rowIssues.push(...source.issues);
-    if (
-      source.athleteId !== null &&
-      athleteSource.sourceId !== null &&
-      source.athleteId !== athleteSource.sourceId
-    ) {
+  for (const groupName of groupNames) {
+    const candidates = groupsByName.get(normalizedName(groupName)) ?? [];
+    if (candidates.length === 0) {
       rowIssues.push(
         issue(
           "error",
-          "ATHLETE_ID_MISMATCH",
-          "Die Athleten-ID der Gruppenzeile passt nicht zur Athletenzeile.",
-          "Gruppen",
-          source.rowNumber,
-          "Athleten-ID",
-        ),
-      );
-    }
-    if (source.athleteId !== null && athleteSource.sourceId === null) {
-      rowIssues.push(
-        issue(
-          "error",
-          "NEW_ATHLETE_WITH_MEMBERSHIP_ID",
-          "Bei neuen Athleten muss die Athleten-ID auch im Blatt Gruppen leer bleiben.",
-          "Gruppen",
-          source.rowNumber,
-          "Athleten-ID",
-        ),
-      );
-    }
-
-    let group = source.groupId === null
-      ? null
-      : groupsById.get(source.groupId) ?? null;
-    if (source.groupId !== null && group === null) {
-      rowIssues.push(
-        issue(
-          "error",
-          "UNKNOWN_GROUP_ID",
-          "Die Trainingsgruppen-ID ist in der aktuellen Organisation nicht verfügbar.",
-          "Gruppen",
-          source.rowNumber,
-          "Gruppen-ID",
-        ),
-      );
-      continue;
-    }
-    if (group === null && source.groupName !== null) {
-      const candidates = groupsByName.get(normalizedName(source.groupName)) ?? [];
-      if (candidates.length === 1) {
-        group = candidates[0]!;
-        rowIssues.push(
-          issue(
-            "warning",
-            "MATCHED_GROUP_BY_NAME",
-            "Die Trainingsgruppe wurde über ihren Namen erkannt.",
-            "Gruppen",
-            source.rowNumber,
-            "Gruppen-ID",
-          ),
-        );
-      } else if (candidates.length > 1) {
-        rowIssues.push(
-          issue(
-            "error",
-            "AMBIGUOUS_GROUP_NAME",
-            "Der Gruppenname ist nicht eindeutig. Bitte die Gruppen-ID verwenden.",
-            "Gruppen",
-            source.rowNumber,
-            "Gruppen-ID",
-          ),
-        );
-        continue;
-      }
-    }
-    if (group === null) {
-      rowIssues.push(
-        issue(
-          "error",
-          "MISSING_GROUP",
-          "Eine Gruppenzuordnung benötigt eine gültige Trainingsgruppe.",
-          "Gruppen",
-          source.rowNumber,
-          "Gruppen-ID",
-        ),
-      );
-      continue;
-    }
-    if (
-      source.groupName !== null &&
-      normalizedName(source.groupName) !== normalizedName(group.name) &&
-      (group.shortName === null ||
-        normalizedName(source.groupName) !== normalizedName(group.shortName))
-    ) {
-      rowIssues.push(
-        issue(
-          "warning",
-          "GROUP_LABEL_MISMATCH",
-          "Gruppen-ID und Gruppenbezeichnung unterscheiden sich; die ID ist maßgeblich.",
-          "Gruppen",
-          source.rowNumber,
+          "UNKNOWN_GROUP",
+          "Die ausgewählte Trainingsgruppe ist in der aktuellen Organisation nicht verfügbar.",
+          "Athleten",
+          athleteSource.rowNumber,
           "Trainingsgruppe",
         ),
       );
-    }
-
-    const startKey = [group.id, source.startedOn].join("\u0000");
-    if (seenStarts.has(startKey)) {
-      const previousEnd = seenStarts.get(startKey) ?? null;
-      if (previousEnd !== source.endedOn) {
-        rowIssues.push(
-          issue(
-            "error",
-            "DUPLICATE_MEMBERSHIP_START",
-            "Für dieselbe Trainingsgruppe und denselben Beginn existieren unterschiedliche Enddaten.",
-            "Gruppen",
-            source.rowNumber,
-            "Ende",
-          ),
-        );
-      } else {
-        rowIssues.push(
-          issue(
-            "warning",
-            "DUPLICATE_MEMBERSHIP_ROW",
-            "Diese Gruppenzuordnung kommt in der Datei mehrfach vor und wird nur einmal berücksichtigt.",
-            "Gruppen",
-            source.rowNumber,
-            null,
-          ),
-        );
-      }
       continue;
     }
-    seenStarts.set(startKey, source.endedOn);
+    if (candidates.length > 1) {
+      rowIssues.push(
+        issue(
+          "error",
+          "AMBIGUOUS_GROUP_NAME",
+          "Der Gruppenname ist nicht eindeutig. Bitte die Trainingsgruppen in den Stammdaten eindeutig benennen.",
+          "Athleten",
+          athleteSource.rowNumber,
+          "Trainingsgruppe",
+        ),
+      );
+      continue;
+    }
 
-    const key = [
-      group.id,
-      source.startedOn,
-      source.endedOn ?? "",
-    ].join("\u0000");
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const group = candidates[0]!;
+    if (seenGroupIds.has(group.id)) {
+      rowIssues.push(
+        issue(
+          "warning",
+          "DUPLICATE_GROUP_SELECTION",
+          "Dieselbe Trainingsgruppe wurde in dieser Zeile mehrfach ausgewählt und wird nur einmal berücksichtigt.",
+          "Athleten",
+          athleteSource.rowNumber,
+          "Trainingsgruppe",
+        ),
+      );
+      continue;
+    }
+    seenGroupIds.add(group.id);
 
-    const sameStart = existingMemberships.find(
+    const activeExisting = existingMemberships.find(
       (membership) =>
-        membership.groupId === group!.id &&
-        membership.startedOn === source.startedOn,
+        membership.groupId === group.id && membership.endedOn === null,
     );
-    if (sameStart !== undefined) {
-      if ((sameStart.endedOn ?? null) !== source.endedOn) {
-        rowIssues.push(
-          issue(
-            "error",
-            "MEMBERSHIP_CHANGE_UNSUPPORTED",
-            "Eine bestehende historische Gruppenzuordnung kann über diesen Import nicht geändert oder geschlossen werden.",
-            "Gruppen",
-            source.rowNumber,
-            "Ende",
-          ),
-        );
-        continue;
-      }
+    if (activeExisting !== undefined) {
       result.push(
         Object.freeze({
           groupId: group.id,
           groupName: group.name,
-          startedOn: source.startedOn,
-          endedOn: source.endedOn,
+          startedOn: activeExisting.startedOn,
+          endedOn: null,
           action: "skip" as const,
         }),
       );
       continue;
     }
+
     if (!group.isActive) {
       rowIssues.push(
         issue(
           "error",
           "INACTIVE_GROUP_CREATE_UNSUPPORTED",
           "Neue Zuordnungen können nur zu aktiven Trainingsgruppen angelegt werden.",
-          "Gruppen",
-          source.rowNumber,
-          "Gruppen-ID",
+          "Athleten",
+          athleteSource.rowNumber,
+          "Trainingsgruppe",
         ),
       );
       continue;
     }
+
     result.push(
       Object.freeze({
         groupId: group.id,
         groupName: group.name,
-        startedOn: source.startedOn,
-        endedOn: source.endedOn,
+        startedOn: "",
+        endedOn: null,
         action: "create" as const,
       }),
     );
   }
+
   return result;
 }
 
@@ -1270,47 +1058,94 @@ function personKey(
   return personNameKey(firstName, lastName) + "\u0000" + String(birthYear);
 }
 
-function dataRowsWithHeader(
-  rows: readonly SheetRow[],
-  expectedHeader: readonly string[],
-  sheet: string,
-): readonly SheetRow[] {
-  const header = trimTrailingEmpty(rows[0]?.cells ?? []);
-  if (!arraysEqual(header, expectedHeader)) {
-    throw new AthletesImportFileError(
-      "INVALID_EXCHANGE_CONTRACT",
-      "Die Spalten im Blatt " + sheet + " entsprechen nicht dem Exchange-v1-Vertrag.",
-    );
-  }
-  return rows.slice(1).filter((row) =>
-    row.cells.some((cell) => normalizedCell(cell).length > 0)
-  );
-}
-
 function validateWorkbookContract(
-  workbook: ReadonlyMap<string, readonly SheetRow[]>,
-): void {
-  for (const sheet of REQUIRED_SHEETS) {
-    if (!workbook.has(sheet)) {
-      throw new AthletesImportFileError(
-        "INVALID_EXCHANGE_CONTRACT",
-        "Das erforderliche Blatt " + sheet + " fehlt.",
-      );
-    }
-  }
-  const notes = workbook.get("Hinweise")!;
-  const contract = notes.find(
-    (row) => normalizedCell(row.cells[0] ?? "") === "AppBasis-Vertrag",
-  );
+  rows: readonly SheetRow[],
+): AthleteSheetLayout {
+  const header = trimTrailingEmpty(rows[0]?.cells ?? []);
+  const base = ATHLETES_EXCHANGE_VISIBLE_BASE_HEADERS;
   if (
-    contract === undefined ||
-    normalizedCell(contract.cells[1] ?? "") !== ATHLETES_EXCHANGE_VERSION
+    header.length < base.length + 5 ||
+    !arraysEqual(header.slice(0, base.length), base)
   ) {
     throw new AthletesImportFileError(
       "INVALID_EXCHANGE_CONTRACT",
-      "Die XLSX-Datei verwendet nicht den unterstützten Athletes-Exchange-v1-Vertrag.",
+      "Die Spalten im Blatt Athleten entsprechen nicht der aktuellen Importvorlage.",
     );
   }
+
+  const groupIndexes: number[] = [];
+  let index = base.length;
+  let groupNumber = 1;
+  while (
+    header[index] ===
+    ATHLETES_EXCHANGE_GROUP_HEADER_PREFIX + String(groupNumber)
+  ) {
+    groupIndexes.push(index);
+    index += 1;
+    groupNumber += 1;
+  }
+  if (groupIndexes.length === 0) {
+    throw new AthletesImportFileError(
+      "INVALID_EXCHANGE_CONTRACT",
+      "Die Importvorlage enthält keine Trainingsgruppen-Spalten.",
+    );
+  }
+
+  const idIndex = index;
+  const activeIndex = idIndex + 1;
+  const contractIndex = idIndex + 2;
+  const groupListIndex = idIndex + 3;
+  if (
+    header[idIndex] !== ATHLETES_EXCHANGE_ID_HEADER ||
+    header[activeIndex] !== ATHLETES_EXCHANGE_ACTIVE_HEADER ||
+    header[contractIndex] !== ATHLETES_EXCHANGE_CONTRACT_HEADER ||
+    header[groupListIndex] !== ATHLETES_EXCHANGE_GROUP_LIST_HEADER ||
+    header.length !== groupListIndex + 1
+  ) {
+    throw new AthletesImportFileError(
+      "INVALID_EXCHANGE_CONTRACT",
+      "Die technische Struktur der Importvorlage wurde verändert. Bitte eine aktuelle Vorlage verwenden.",
+    );
+  }
+
+  const contract = rows
+    .slice(1)
+    .map((row) => normalizedCell(row.cells[contractIndex] ?? ""))
+    .find((value) => value.length > 0);
+  if (contract !== ATHLETES_EXCHANGE_VERSION) {
+    throw new AthletesImportFileError(
+      "INVALID_EXCHANGE_CONTRACT",
+      "Die XLSX-Datei verwendet nicht die aktuelle Athleten-Importvorlage. Bitte eine neue Vorlage herunterladen.",
+    );
+  }
+
+  return Object.freeze({
+    groupIndexes: Object.freeze(groupIndexes),
+    idIndex,
+    activeIndex,
+    contractIndex,
+    groupListIndex,
+  });
+}
+
+function dataRowsWithLayout(
+  rows: readonly SheetRow[],
+  layout: AthleteSheetLayout,
+): readonly SheetRow[] {
+  const relevantIndexes = [
+    0,
+    1,
+    2,
+    3,
+    ...layout.groupIndexes,
+    layout.idIndex,
+    layout.activeIndex,
+  ];
+  return rows.slice(1).filter((row) =>
+    relevantIndexes.some(
+      (index) => normalizedCell(row.cells[index] ?? "").length > 0,
+    ),
+  );
 }
 
 function createImportLogCsv(
