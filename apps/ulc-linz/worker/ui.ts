@@ -2082,7 +2082,7 @@ function isMasterdataImportPreview(value) {
   return (
     value !== null &&
     typeof value === "object" &&
-    value.contractVersion === "appbasis.athletes.exchange/v1" &&
+    value.contractVersion === "appbasis.athletes.exchange/v2" &&
     value.applyAvailable === false &&
     value.summary !== null &&
     typeof value.summary === "object" &&
@@ -2336,6 +2336,10 @@ async function previewMasterdataImportFile(file) {
       const error = new Error(payload?.error?.code || "ATHLETES_IMPORT_PREVIEW_FAILED");
       error.status = response.status;
       error.code = payload?.error?.code;
+      error.detail =
+        typeof payload?.error?.message === "string"
+          ? payload.error.message
+          : null;
       throw error;
     }
     if (
@@ -2357,7 +2361,13 @@ async function previewMasterdataImportFile(file) {
         ? "Für den Athleten-Import fehlt die Bearbeitungsberechtigung."
         : error?.status === 413
           ? "Die Importdatei darf höchstens 5 MB groß sein."
-          : "Die Athleten-Importdatei konnte nicht geprüft werden.",
+          : error?.status === 400 &&
+              ["INVALID_XLSX", "INVALID_EXCHANGE_CONTRACT", "IMPORT_ROW_LIMIT_EXCEEDED"].includes(
+                error?.code,
+              ) &&
+              typeof error?.detail === "string"
+            ? error.detail
+            : "Die Athleten-Importdatei konnte nicht geprüft werden.",
     );
   } finally {
     masterdataExchangeBusy = false;

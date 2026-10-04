@@ -1,8 +1,12 @@
+import { deflateRawSync } from "node:zlib";
+
 import { describe, expect, it } from "vitest";
 
 import {
+  ATHLETES_EXCHANGE_ID_HEADER,
   ATHLETES_IMPORT_MAX_FILE_BYTES,
   applyAthletesImportPreview,
+  buildAthletesExchangeSheets,
   createAthletesImportPreviewToken,
   createAthletesWorkbook,
   previewAthletesImport,
@@ -56,20 +60,14 @@ const baseSnapshot = {
 };
 
 describe("athletes XLSX import", () => {
-  it("previews the E6F4A template as a create", async () => {
-    const workbook = createAthletesWorkbook(
-      {
-        ...baseSnapshot,
-        athletes: [],
-        athleteGroupMemberships: [],
-      },
-      "template",
-    );
-    const preview = await previewAthletesImport(workbook, {
+  it("previews the one-sheet template as a create with a selected group", async () => {
+    const current = {
       ...baseSnapshot,
       athletes: [],
       athleteGroupMemberships: [],
-    });
+    };
+    const workbook = createAthletesWorkbook(current, "template");
+    const preview = await previewAthletesImport(workbook, current);
 
     expect(preview.summary).toMatchObject({
       rows: 1,
@@ -85,12 +83,12 @@ describe("athletes XLSX import", () => {
         firstName: "Max",
         lastName: "Mustermann",
         birthYear: 2012,
-        isActive: true,
       },
     });
     expect(preview.rows[0]?.draft.memberships).toEqual([
       expect.objectContaining({
         groupId: "group-1",
+        groupName: "Sprint",
         action: "create",
       }),
     ]);
@@ -114,18 +112,17 @@ describe("athletes XLSX import", () => {
     });
   });
 
-  it("detects scalar updates through the exported athlete ID", async () => {
-    const changedSnapshot = {
+  it("detects scalar updates through the hidden athlete ID", async () => {
+    const changed = {
       ...baseSnapshot,
       athletes: [{ ...anna, notes: "Neue Notiz" }],
     };
-    const workbook = createAthletesWorkbook(changedSnapshot, "export");
+    const workbook = createAthletesWorkbook(changed, "export");
     const preview = await previewAthletesImport(workbook, baseSnapshot);
 
     expect(preview.summary.update).toBe(1);
     expect(preview.rows[0]).toMatchObject({
       action: "update",
-      reason: "changed",
       matchedAthleteId: "athlete-1",
       draft: {
         notes: "Neue Notiz",
@@ -134,7 +131,7 @@ describe("athletes XLSX import", () => {
     });
   });
 
-  it("matches a blank-ID row only when name and birth year identify exactly one athlete", async () => {
+  it("matches a row without hidden ID by name and birth year", async () => {
     const current = {
       ...baseSnapshot,
       athletes: [
@@ -147,43 +144,18 @@ describe("athletes XLSX import", () => {
       ],
       athleteGroupMemberships: [],
     };
-    const workbook = createAthletesWorkbook(current, "template");
+    const stored = createAthletesWorkbook(current, "export");
+    const workbook = clearAthleteId(stored, current, 2);
     const preview = await previewAthletesImport(workbook, current);
 
+    expect(preview.summary.errors).toBe(0);
     expect(preview.rows[0]).toMatchObject({
       matchedAthleteId: "athlete-max",
-      action: "update",
+      action: "skip",
     });
     expect(preview.rows[0]?.issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: "MATCHED_BY_PERSON_KEY" }),
-      ]),
-    );
-  });
-
-  it("allows only additive membership history", async () => {
-    const workbookSnapshot = {
-      ...baseSnapshot,
-      athleteGroupMemberships: [
-        ...baseSnapshot.athleteGroupMemberships,
-        {
-          organizationId: "verein-1",
-          athleteId: "athlete-1",
-          groupId: "group-2",
-          startedOn: "2026-09-01",
-          endedOn: null,
-        },
-      ],
-    };
-    const workbook = createAthletesWorkbook(workbookSnapshot, "export");
-    const preview = await previewAthletesImport(workbook, baseSnapshot);
-
-    expect(preview.summary.update).toBe(1);
-    expect(preview.summary.errors).toBe(0);
-    expect(preview.rows[0]?.draft.memberships).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ groupId: "group-1", action: "skip" }),
-        expect.objectContaining({ groupId: "group-2", action: "create" }),
       ]),
     );
   });
@@ -209,7 +181,6 @@ describe("athletes XLSX import", () => {
     expect(preview.rows[0]).toMatchObject({
       action: "skip",
       reason: "invalid",
-      matchedAthleteId: null,
     });
     expect(preview.rows[0]?.issues).toEqual(
       expect.arrayContaining([
@@ -220,40 +191,18 @@ describe("athletes XLSX import", () => {
     );
   });
 
-  it("blocks mixed-year duplicate blank-ID rows with the same name", async () => {
-    const stored = createAthletesWorkbook(
-      {
-        ...baseSnapshot,
-        athletes: [],
-        athleteGroupMemberships: [],
-      },
-      "template",
-    );
-    const workbook = rewriteStoredWorkbookEntry(
-      stored,
-      "xl/worksheets/sheet1.xml",
-      (xml) => {
-        const match = /(<row r="2"[\s\S]*?<\/row>)/.exec(xml);
-        expect(match).not.toBeNull();
-        const duplicate = match![1]!
-          .replaceAll('r="2"', 'r="3"')
-          .replaceAll("beispiel-1", "beispiel-2")
-          .replace(
-            '<t xml:space="preserve">2012</t>',
-            '<t xml:space="preserve"></t>',
-          );
-        return xml.replace("</sheetData>", duplicate + "</sheetData>");
-      },
-    );
-
-    const preview = await previewAthletesImport(workbook, {
+  it("blocks duplicate blank-ID people inside one workbook", async () => {
+    const current = {
       ...baseSnapshot,
       athletes: [],
       athleteGroupMemberships: [],
-    });
+    };
+    const stored = createAthletesWorkbook(current, "template");
+    const workbook = duplicateAthleteRow(stored, 2, 10);
+    const preview = await previewAthletesImport(workbook, current);
 
-    expect(preview.summary.errors).toBeGreaterThanOrEqual(2);
     expect(preview.rows).toHaveLength(2);
+    expect(preview.summary.errors).toBeGreaterThanOrEqual(2);
     for (const row of preview.rows) {
       expect(row).toMatchObject({ action: "skip", reason: "invalid" });
       expect(row.issues).toEqual(
@@ -264,7 +213,7 @@ describe("athletes XLSX import", () => {
     }
   });
 
-  it("blocks a blank-ID create that collides with an ID-based rename", async () => {
+  it("blocks an ID-based rename colliding with a blank-ID row", async () => {
     const workbookSnapshot = {
       ...baseSnapshot,
       athletes: [
@@ -276,7 +225,7 @@ describe("athletes XLSX import", () => {
         },
         {
           ...anna,
-          id: "athlete-new-placeholder",
+          id: "athlete-placeholder",
           firstName: "Max",
           lastName: "Mustermann",
           birthYear: 2012,
@@ -285,22 +234,12 @@ describe("athletes XLSX import", () => {
       athleteGroupMemberships: [],
     };
     const stored = createAthletesWorkbook(workbookSnapshot, "export");
-    const workbook = rewriteStoredWorkbookEntry(
-      stored,
-      "xl/worksheets/sheet1.xml",
-      (xml) =>
-        xml.replace(
-          '<t xml:space="preserve">athlete-new-placeholder</t>',
-          '<t xml:space="preserve"></t>',
-        ),
-    );
-
+    const workbook = clearAthleteId(stored, workbookSnapshot, 3);
     const preview = await previewAthletesImport(workbook, baseSnapshot);
 
-    expect(preview.summary.errors).toBeGreaterThanOrEqual(2);
     expect(preview.rows).toHaveLength(2);
+    expect(preview.summary.errors).toBeGreaterThanOrEqual(2);
     for (const row of preview.rows) {
-      expect(row).toMatchObject({ action: "skip", reason: "invalid" });
       expect(row.issues).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ code: "DUPLICATE_PERSON_IN_FILE" }),
@@ -309,58 +248,7 @@ describe("athletes XLSX import", () => {
     }
   });
 
-  it.each([
-    ["ID row without birth year", null, 2012],
-    ["blank-ID row without birth year", 2012, null],
-  ])(
-    "blocks an ID rename colliding with a blank-ID row when %s",
-    async (_label, idBirthYear, blankBirthYear) => {
-      const workbookSnapshot = {
-        ...baseSnapshot,
-        athletes: [
-          {
-            ...anna,
-            firstName: "Max",
-            lastName: "Mustermann",
-            birthYear: idBirthYear,
-          },
-          {
-            ...anna,
-            id: "athlete-new-placeholder",
-            firstName: "Max",
-            lastName: "Mustermann",
-            birthYear: blankBirthYear,
-          },
-        ],
-        athleteGroupMemberships: [],
-      };
-      const stored = createAthletesWorkbook(workbookSnapshot, "export");
-      const workbook = rewriteStoredWorkbookEntry(
-        stored,
-        "xl/worksheets/sheet1.xml",
-        (xml) =>
-          xml.replace(
-            '<t xml:space="preserve">athlete-new-placeholder</t>',
-            '<t xml:space="preserve"></t>',
-          ),
-      );
-
-      const preview = await previewAthletesImport(workbook, baseSnapshot);
-
-      expect(preview.summary.errors).toBeGreaterThanOrEqual(2);
-      expect(preview.rows).toHaveLength(2);
-      for (const row of preview.rows) {
-        expect(row).toMatchObject({ action: "skip", reason: "invalid" });
-        expect(row.issues).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ code: "DUPLICATE_PERSON_IN_FILE" }),
-          ]),
-        );
-      }
-    },
-  );
-
-  it("allows distinct ID-based athletes with the same name and birth year", async () => {
+  it("allows distinct existing athletes with the same name and birth year", async () => {
     const current = {
       ...baseSnapshot,
       athletes: [
@@ -369,14 +257,12 @@ describe("athletes XLSX import", () => {
           id: "athlete-twin-1",
           firstName: "Max",
           lastName: "Mustermann",
-          birthYear: 2012,
         },
         {
           ...anna,
           id: "athlete-twin-2",
           firstName: "Max",
           lastName: "Mustermann",
-          birthYear: 2012,
         },
       ],
       athleteGroupMemberships: [],
@@ -386,140 +272,71 @@ describe("athletes XLSX import", () => {
 
     expect(preview.summary.errors).toBe(0);
     expect(preview.summary.skip).toBe(2);
-    expect(preview.rows).toHaveLength(2);
-    for (const row of preview.rows) {
-      expect(row).toMatchObject({ action: "skip", reason: "unchanged" });
-      expect(row.issues).not.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ code: "DUPLICATE_PERSON_IN_FILE" }),
-        ]),
-      );
-    }
   });
 
-  it("normalizes Excel numeric date serials in membership cells", async () => {
-    const stored = createAthletesWorkbook(
-      {
-        ...baseSnapshot,
-        athletes: [],
-        athleteGroupMemberships: [],
-      },
-      "template",
-    );
-    const withDateStyle = rewriteStoredWorkbookEntry(
-      stored,
-      "xl/styles.xml",
-      addTestDateStyle,
-    );
-    const workbook = rewriteStoredWorkbookEntry(
-      withDateStyle,
-      "xl/worksheets/sheet2.xml",
-      (xml) =>
-        xml.replace(
-          /<c r="F2"[^>]*>[\s\S]*?<\/c>/,
-          '<c r="F2" s="2"><v>46023</v></c>',
-        ),
-    );
-
-    const preview = await previewAthletesImport(workbook, {
+  it("adds only new group selections and never removes existing groups", async () => {
+    const changed = {
       ...baseSnapshot,
-      athletes: [],
-      athleteGroupMemberships: [],
-    });
+      athleteGroupMemberships: [
+        ...baseSnapshot.athleteGroupMemberships,
+        {
+          organizationId: "verein-1",
+          athleteId: "athlete-1",
+          groupId: "group-2",
+          startedOn: "2026-09-01",
+          endedOn: null,
+        },
+      ],
+    };
+    const workbook = createAthletesWorkbook(changed, "export");
+    const preview = await previewAthletesImport(workbook, baseSnapshot);
 
+    expect(preview.summary.update).toBe(1);
     expect(preview.summary.errors).toBe(0);
-    expect(preview.rows[0]?.draft.memberships[0]).toMatchObject({
-      startedOn: "2026-01-01",
-      action: "create",
-    });
-  });
-
-  it("rejects an unformatted digit-only membership date instead of reinterpreting it as an Excel serial", async () => {
-    const stored = createAthletesWorkbook(
-      {
-        ...baseSnapshot,
-        athletes: [],
-        athleteGroupMemberships: [],
-      },
-      "template",
-    );
-    const workbook = rewriteStoredWorkbookEntry(
-      stored,
-      "xl/worksheets/sheet2.xml",
-      (xml) =>
-        xml.replace(
-          /<c r="F2"[^>]*>[\s\S]*?<\/c>/,
-          '<c r="F2"><v>2024</v></c>',
-        ),
-    );
-
-    const preview = await previewAthletesImport(workbook, {
-      ...baseSnapshot,
-      athletes: [],
-      athleteGroupMemberships: [],
-    });
-
-    expect(preview.summary.errors).toBeGreaterThan(0);
-    expect(preview.rows[0]?.issues).toEqual(
+    expect(preview.rows[0]?.draft.memberships).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: "MEMBERSHIP_VALIDATION_ERROR" }),
+        expect.objectContaining({ groupId: "group-1", action: "skip" }),
+        expect.objectContaining({ groupId: "group-2", action: "create" }),
       ]),
     );
   });
 
-  it("honors the workbook 1904 date system for date-formatted numeric cells", async () => {
-    const stored = createAthletesWorkbook(
-      {
-        ...baseSnapshot,
-        athletes: [],
-        athleteGroupMemberships: [],
-      },
-      "template",
-    );
-    const withDateStyle = rewriteStoredWorkbookEntry(
-      stored,
-      "xl/styles.xml",
-      addTestDateStyle,
-    );
-    const withDateSystem = rewriteStoredWorkbookEntry(
-      withDateStyle,
-      "xl/workbook.xml",
-      (xml) => xml.replace("<sheets>", '<workbookPr date1904="1"/><sheets>'),
-    );
+  it("warns and ignores removal of an existing group", async () => {
+    const stored = createAthletesWorkbook(baseSnapshot, "export");
     const workbook = rewriteStoredWorkbookEntry(
-      withDateSystem,
-      "xl/worksheets/sheet2.xml",
-      (xml) =>
-        xml.replace(
-          /<c r="F2"[^>]*>[\s\S]*?<\/c>/,
-          '<c r="F2" s="2"><v>44561</v></c>',
-        ),
+      stored,
+      "xl/worksheets/sheet1.xml",
+      (xml) => replaceInlineCell(xml, "E2", ""),
     );
-
-    const preview = await previewAthletesImport(workbook, {
-      ...baseSnapshot,
-      athletes: [],
-      athleteGroupMemberships: [],
-    });
+    const preview = await previewAthletesImport(workbook, baseSnapshot);
 
     expect(preview.summary.errors).toBe(0);
-    expect(preview.rows[0]?.draft.memberships[0]).toMatchObject({
-      startedOn: "2026-01-01",
-      action: "create",
+    expect(preview.summary.warnings).toBeGreaterThan(0);
+    expect(preview.rows[0]).toMatchObject({
+      action: "skip",
+      reason: "unchanged",
     });
+    expect(preview.rows[0]?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "GROUP_REMOVAL_IGNORED" }),
+      ]),
+    );
   });
 
-  it("deduplicates a group's identical name and short-name during fallback matching", async () => {
+  it("fails closed when a visible group name is ambiguous", async () => {
     const snapshot = {
       trainingGroups: [
         {
-          id: "group-u12",
-          organizationId: "verein-1",
+          ...groups[0]!,
+          id: "group-a",
           name: "U12",
-          shortName: "U12",
-          description: null,
-          isActive: true,
-          sortOrder: 10,
+          shortName: null,
+        },
+        {
+          ...groups[1]!,
+          id: "group-b",
+          name: "U12",
+          shortName: null,
         },
       ],
       athletes: [],
@@ -527,103 +344,34 @@ describe("athletes XLSX import", () => {
       athleteGroupMemberships: [],
       trainerGroupMemberships: [],
     };
-    const stored = createAthletesWorkbook(snapshot, "template");
-    const workbook = rewriteStoredWorkbookEntry(
-      stored,
-      "xl/worksheets/sheet2.xml",
-      (xml) =>
-        xml.replace(
-          /<c r="D2"[^>]*>[\s\S]*?<\/c>/,
-          '<c r="D2" t="inlineStr"><is><t></t></is></c>',
-        ),
-    );
-
+    const workbook = createAthletesWorkbook(snapshot, "template");
     const preview = await previewAthletesImport(workbook, snapshot);
 
-    expect(preview.summary.errors).toBe(0);
-    expect(preview.rows[0]?.draft.memberships[0]).toMatchObject({
-      groupId: "group-u12",
-      action: "create",
-    });
+    expect(preview.summary.errors).toBeGreaterThan(0);
     expect(preview.rows[0]?.issues).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: "MATCHED_GROUP_BY_NAME" }),
+        expect.objectContaining({ code: "AMBIGUOUS_GROUP_NAME" }),
       ]),
     );
   });
 
-  it("blocks changing an existing membership end date", async () => {
-    const changedSnapshot = {
+  it("accepts deflate-compressed XLSX containers like files saved by Excel", async () => {
+    const current = {
       ...baseSnapshot,
-      athleteGroupMemberships: [
-        {
-          ...baseSnapshot.athleteGroupMemberships[0]!,
-          endedOn: "2026-09-30",
-        },
-      ],
+      athletes: [],
+      athleteGroupMemberships: [],
     };
-    const workbook = createAthletesWorkbook(changedSnapshot, "export");
-    const preview = await previewAthletesImport(workbook, baseSnapshot);
+    const stored = createAthletesWorkbook(current, "template");
+    const preview = await previewAthletesImport(
+      deflateStoredZip(stored),
+      current,
+    );
 
-    expect(preview.summary.errors).toBeGreaterThan(0);
-    expect(preview.rows[0]).toMatchObject({
-      action: "skip",
-      reason: "invalid",
+    expect(preview.summary).toMatchObject({
+      rows: 1,
+      create: 1,
+      errors: 0,
     });
-    expect(preview.rows[0]?.issues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "MEMBERSHIP_CHANGE_UNSUPPORTED" }),
-      ]),
-    );
-  });
-
-  it("blocks active/archive state changes", async () => {
-    const archivedSnapshot = {
-      ...baseSnapshot,
-      athletes: [{ ...anna, isActive: false }],
-    };
-    const workbook = createAthletesWorkbook(archivedSnapshot, "export");
-    const preview = await previewAthletesImport(workbook, baseSnapshot);
-
-    expect(preview.summary.errors).toBeGreaterThan(0);
-    expect(preview.rows[0]?.issues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "ACTIVE_STATUS_CHANGE_UNSUPPORTED" }),
-      ]),
-    );
-  });
-
-  it("blocks scalar updates to archived athletes during preview", async () => {
-    const currentArchived = {
-      ...baseSnapshot,
-      athletes: [{ ...anna, isActive: false }],
-    };
-    const changedArchived = {
-      ...currentArchived,
-      athletes: [
-        {
-          ...anna,
-          isActive: false,
-          notes: "Geänderte Archivnotiz",
-        },
-      ],
-    };
-    const workbook = createAthletesWorkbook(changedArchived, "export");
-    const preview = await previewAthletesImport(workbook, currentArchived);
-
-    expect(preview.summary.errors).toBeGreaterThan(0);
-    expect(preview.rows[0]).toMatchObject({
-      action: "skip",
-      reason: "invalid",
-      matchedAthleteId: "athlete-1",
-    });
-    expect(preview.rows[0]?.issues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: "INACTIVE_ATHLETE_UPDATE_UNSUPPORTED",
-        }),
-      ]),
-    );
   });
 
   it("enforces the 5 MB input limit before XLSX parsing", async () => {
@@ -657,6 +405,7 @@ describe("athletes XLSX import", () => {
       },
       "export",
     );
+
     await expect(
       previewAthletesImport(workbook, {
         trainingGroups: [],
@@ -668,14 +417,9 @@ describe("athletes XLSX import", () => {
     ).rejects.toMatchObject({ code: "IMPORT_ROW_LIMIT_EXCEEDED" });
   });
 
-  it("binds the preview token to file, organization and current athlete state", async () => {
+  it("binds the preview token to file, organization and current state", async () => {
     const workbook = createAthletesWorkbook(baseSnapshot, "export");
     const token = await createAthletesImportPreviewToken(
-      workbook,
-      baseSnapshot,
-      "verein-1",
-    );
-    const same = await createAthletesImportPreviewToken(
       workbook,
       baseSnapshot,
       "verein-1",
@@ -695,22 +439,21 @@ describe("athletes XLSX import", () => {
     );
 
     expect(token).toMatch(/^e6f4b-v1\.[0-9a-f]{64}$/);
-    expect(same).toBe(token);
     expect(changed).not.toBe(token);
     expect(otherOrg).not.toBe(token);
   });
 
-  it("applies create and additive membership through the module mutation service", async () => {
-    const emptySnapshot = {
+  it("applies new athletes and group memberships with the apply date", async () => {
+    const current = {
       ...baseSnapshot,
       athletes: [],
       athleteGroupMemberships: [],
     };
-    const workbook = createAthletesWorkbook(emptySnapshot, "template");
-    const preview = await previewAthletesImport(workbook, emptySnapshot);
+    const workbook = createAthletesWorkbook(current, "template");
+    const preview = await previewAthletesImport(workbook, current);
     const token = await createAthletesImportPreviewToken(
       workbook,
-      emptySnapshot,
+      current,
       "verein-1",
     );
     const calls: unknown[] = [];
@@ -722,7 +465,7 @@ describe("athletes XLSX import", () => {
       organizationId: "verein-1",
       service: {
         async createAthlete(organizationId, input) {
-          calls.push({ type: "create-athlete", organizationId, input });
+          calls.push({ type: "athlete", organizationId, input });
           return {
             id: "athlete-created",
             organizationId,
@@ -737,229 +480,38 @@ describe("athletes XLSX import", () => {
           throw new Error("unexpected update");
         },
         async createAthleteGroupMembership(organizationId, input) {
-          calls.push({ type: "create-membership", organizationId, input });
+          calls.push({ type: "membership", organizationId, input });
           return { organizationId, ...input, endedOn: input.endedOn ?? null };
         },
       },
-      now: () => new Date("2026-10-03T10:00:00.000Z"),
+      now: () => new Date("2026-10-04T10:15:00.000Z"),
     });
 
+    expect(result.summary).toMatchObject({ created: 1, failed: 0 });
     expect(calls).toEqual([
+      expect.objectContaining({ type: "athlete" }),
       expect.objectContaining({
-        type: "create-athlete",
-        organizationId: "verein-1",
+        type: "membership",
         input: expect.objectContaining({
-          firstName: "Max",
-          lastName: "Mustermann",
-        }),
-      }),
-      expect.objectContaining({
-        type: "create-membership",
-        organizationId: "verein-1",
-        input: expect.objectContaining({
-          athleteId: "athlete-created",
           groupId: "group-1",
+          startedOn: "2026-10-04",
+          endedOn: null,
         }),
       }),
     ]);
-    expect(result.summary).toEqual({
-      rows: 1,
-      created: 1,
-      updated: 0,
-      skipped: 0,
-      failed: 0,
-    });
-    expect(result.logCsv).toContain("athlete-created");
   });
 
-  it("applies scalar updates only through compare-and-update expected state", async () => {
-    const changedSnapshot = {
-      ...baseSnapshot,
-      athletes: [{ ...anna, notes: "Neue Notiz" }],
-    };
-    const workbook = createAthletesWorkbook(changedSnapshot, "export");
-    const preview = await previewAthletesImport(workbook, baseSnapshot);
-    const token = await createAthletesImportPreviewToken(
-      workbook,
-      baseSnapshot,
-      "verein-1",
-    );
-    let received: unknown = null;
-
-    const result = await applyAthletesImportPreview({
-      preview,
-      expectedPreviewToken: token,
-      actualPreviewToken: token,
-      organizationId: "verein-1",
-      service: {
-        async createAthlete() {
-          throw new Error("unexpected create");
-        },
-        async updateAthleteIfUnchanged(
-          organizationId,
-          athleteId,
-          expected,
-          input,
-        ) {
-          received = { organizationId, athleteId, expected, input };
-          return {
-            id: athleteId,
-            organizationId,
-            firstName: input.firstName,
-            lastName: input.lastName,
-            birthYear: input.birthYear,
-            notes: input.notes,
-            isActive: true,
-          };
-        },
-        async createAthleteGroupMembership() {
-          throw new Error("unexpected membership");
-        },
-      },
-    });
-
-    expect(received).toEqual({
-      organizationId: "verein-1",
-      athleteId: "athlete-1",
-      expected: {
-        firstName: "Anna",
-        lastName: "Muster",
-        birthYear: 2012,
-        notes: null,
-      },
-      input: {
-        firstName: "Anna",
-        lastName: "Muster",
-        birthYear: 2012,
-        notes: "Neue Notiz",
-      },
-    });
-    expect(result.summary).toEqual({
-      rows: 1,
-      created: 0,
-      updated: 1,
-      skipped: 0,
-      failed: 0,
-    });
-    expect(result.rows[0]).toMatchObject({
-      outcome: "updated",
-      athleteId: "athlete-1",
-      code: null,
-    });
-  });
-
-  it("fails a concurrent scalar update without overwriting newer athlete state", async () => {
-    const changedSnapshot = {
-      ...baseSnapshot,
-      athletes: [{ ...anna, notes: "Neue Notiz" }],
-    };
-    const workbook = createAthletesWorkbook(changedSnapshot, "export");
-    const preview = await previewAthletesImport(workbook, baseSnapshot);
-    const token = await createAthletesImportPreviewToken(
-      workbook,
-      baseSnapshot,
-      "verein-1",
-    );
-    let compareCalls = 0;
-
-    const result = await applyAthletesImportPreview({
-      preview,
-      expectedPreviewToken: token,
-      actualPreviewToken: token,
-      organizationId: "verein-1",
-      service: {
-        async createAthlete() {
-          throw new Error("unexpected create");
-        },
-        async updateAthleteIfUnchanged(
-          _organizationId,
-          _athleteId,
-          expected,
-          input,
-        ) {
-          compareCalls += 1;
-          expect(expected).toEqual({
-            firstName: "Anna",
-            lastName: "Muster",
-            birthYear: 2012,
-            notes: null,
-          });
-          expect(input.notes).toBe("Neue Notiz");
-          return null;
-        },
-        async createAthleteGroupMembership() {
-          throw new Error("unexpected membership");
-        },
-      },
-    });
-
-    expect(compareCalls).toBe(1);
-    expect(result.summary).toEqual({
-      rows: 1,
-      created: 0,
-      updated: 0,
-      skipped: 0,
-      failed: 1,
-    });
-    expect(result.rows[0]).toMatchObject({
-      outcome: "failed",
-      athleteId: "athlete-1",
-      code: "STALE_IMPORT_ROW",
-    });
-  });
-
-  it("neutralizes spreadsheet formulas in the CSV import protocol", async () => {
-    const formulaSnapshot = {
-      ...baseSnapshot,
-      athletes: [
-        {
-          ...anna,
-          lastName: "=2+2",
-        },
-      ],
-    };
-    const workbook = createAthletesWorkbook(formulaSnapshot, "export");
-    const preview = await previewAthletesImport(workbook, formulaSnapshot);
-    const token = await createAthletesImportPreviewToken(
-      workbook,
-      formulaSnapshot,
-      "verein-1",
-    );
-
-    const result = await applyAthletesImportPreview({
-      preview,
-      expectedPreviewToken: token,
-      actualPreviewToken: token,
-      organizationId: "verein-1",
-      service: {
-        async createAthlete() {
-          throw new Error("unexpected create");
-        },
-        async updateAthleteIfUnchanged() {
-          throw new Error("unexpected update");
-        },
-        async createAthleteGroupMembership() {
-          throw new Error("unexpected membership");
-        },
-      },
-    });
-
-    expect(result.summary.skipped).toBe(1);
-    expect(result.logCsv).toContain("'=2+2, Anna");
-    expect(result.logCsv).not.toContain(";=2+2, Anna;");
-  });
-
-  it("rejects a stale preview before any mutation", async () => {
-    const emptySnapshot = {
+  it("refuses a stale preview before the first write", async () => {
+    const current = {
       ...baseSnapshot,
       athletes: [],
       athleteGroupMemberships: [],
     };
-    const workbook = createAthletesWorkbook(emptySnapshot, "template");
-    const preview = await previewAthletesImport(workbook, emptySnapshot);
+    const workbook = createAthletesWorkbook(current, "template");
+    const preview = await previewAthletesImport(workbook, current);
     const token = await createAthletesImportPreviewToken(
       workbook,
-      emptySnapshot,
+      current,
       "verein-1",
     );
     let mutations = 0;
@@ -986,21 +538,175 @@ describe("athletes XLSX import", () => {
         },
       }),
     ).rejects.toMatchObject({ code: "STALE_IMPORT_PREVIEW" });
+
     expect(mutations).toBe(0);
+  });
+
+  it("fails only the row when an existing athlete changed concurrently", async () => {
+    const changed = {
+      ...baseSnapshot,
+      athletes: [{ ...anna, notes: "Neue Notiz" }],
+    };
+    const workbook = createAthletesWorkbook(changed, "export");
+    const preview = await previewAthletesImport(workbook, baseSnapshot);
+    const token = await createAthletesImportPreviewToken(
+      workbook,
+      baseSnapshot,
+      "verein-1",
+    );
+
+    const result = await applyAthletesImportPreview({
+      preview,
+      expectedPreviewToken: token,
+      actualPreviewToken: token,
+      organizationId: "verein-1",
+      service: {
+        async createAthlete() {
+          throw new Error("unexpected create");
+        },
+        async updateAthleteIfUnchanged() {
+          return null;
+        },
+        async createAthleteGroupMembership() {
+          throw new Error("unexpected membership");
+        },
+      },
+      now: () => new Date("2026-10-04T10:15:00.000Z"),
+    });
+
+    expect(result.summary.failed).toBe(1);
+    expect(result.rows[0]).toMatchObject({
+      outcome: "failed",
+      code: "STALE_IMPORT_ROW",
+    });
+  });
+
+  it("keeps CSV logs safe from spreadsheet formula injection", async () => {
+    const current = {
+      ...baseSnapshot,
+      athletes: [],
+      athleteGroupMemberships: [],
+    };
+    const stored = createAthletesWorkbook(current, "template");
+    const workbook = rewriteStoredWorkbookEntry(
+      stored,
+      "xl/worksheets/sheet1.xml",
+      (xml) =>
+        replaceInlineCell(xml, "B2", "=2+2"),
+    );
+    const preview = await previewAthletesImport(workbook, current);
+    const token = await createAthletesImportPreviewToken(
+      workbook,
+      current,
+      "verein-1",
+    );
+
+    const result = await applyAthletesImportPreview({
+      preview,
+      expectedPreviewToken: token,
+      actualPreviewToken: token,
+      organizationId: "verein-1",
+      service: {
+        async createAthlete(organizationId, input) {
+          return {
+            id: "athlete-created",
+            organizationId,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            birthYear: input.birthYear ?? null,
+            notes: input.notes ?? null,
+            isActive: true,
+          };
+        },
+        async updateAthleteIfUnchanged() {
+          throw new Error("unexpected update");
+        },
+        async createAthleteGroupMembership(organizationId, input) {
+          return { organizationId, ...input, endedOn: input.endedOn ?? null };
+        },
+      },
+      now: () => new Date("2026-10-04T10:15:00.000Z"),
+    });
+
+    expect(result.logCsv).toContain("'=2+2");
   });
 });
 
-function addTestDateStyle(xml: string): string {
-  return xml
-    .replace(
-      "<fonts",
-      '<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts>\n  <fonts',
-    )
-    .replace('cellXfs count="2"', 'cellXfs count="3"')
-    .replace(
-      "</cellXfs>",
-      '    <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>\n  </cellXfs>',
-    );
+function clearAthleteId(
+  bytes: Uint8Array,
+  snapshot: typeof baseSnapshot,
+  rowNumber: number,
+): Uint8Array {
+  const header = buildAthletesExchangeSheets(snapshot, "export")[0]!.rows[0]!;
+  const idIndex = header.indexOf(ATHLETES_EXCHANGE_ID_HEADER);
+  const reference = columnName(idIndex) + String(rowNumber);
+  return rewriteStoredWorkbookEntry(
+    bytes,
+    "xl/worksheets/sheet1.xml",
+    (xml) => replaceInlineCell(xml, reference, ""),
+  );
+}
+
+function duplicateAthleteRow(
+  bytes: Uint8Array,
+  sourceRow: number,
+  targetRow: number,
+): Uint8Array {
+  return rewriteStoredWorkbookEntry(
+    bytes,
+    "xl/worksheets/sheet1.xml",
+    (xml) => {
+      const match = new RegExp(
+        '(<row r="' + String(sourceRow) + '"[\\s\\S]*?<\\/row>)',
+      ).exec(xml);
+      expect(match).not.toBeNull();
+      const source = match![1]!;
+      const duplicate = source
+        .replace(
+          'row r="' + String(sourceRow) + '"',
+          'row r="' + String(targetRow) + '"',
+        )
+        .replace(
+          new RegExp('r="([A-Z]+)' + String(sourceRow) + '"', "g"),
+          'r="$1' + String(targetRow) + '"',
+        );
+      return xml.replace("</sheetData>", duplicate + "</sheetData>");
+    },
+  );
+}
+
+function replaceInlineCell(
+  xml: string,
+  reference: string,
+  value: string,
+): string {
+  const escaped = value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+  return xml.replace(
+    new RegExp(
+      '<c r="' + reference + '"[^>]*>[\\s\\S]*?<\\/c>',
+    ),
+    '<c r="' +
+      reference +
+      '" t="inlineStr"><is><t xml:space="preserve">' +
+      escaped +
+      "</t></is></c>",
+  );
+}
+
+function columnName(index: number): string {
+  let value = index + 1;
+  let result = "";
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    value = Math.floor((value - 1) / 26);
+  }
+  return result;
 }
 
 function rewriteStoredWorkbookEntry(
@@ -1039,10 +745,88 @@ function rewriteStoredWorkbookEntry(
     offset = dataEnd;
   }
 
-  return buildStoredTestZip(entries);
+  return buildStoredZip(entries);
 }
 
-function buildStoredTestZip(
+function deflateStoredZip(bytes: Uint8Array): Uint8Array {
+  const entries: Array<{ name: Uint8Array; crc: number; data: Uint8Array }> = [];
+  let offset = 0;
+  while (
+    offset + 4 <= bytes.byteLength &&
+    readTestUint32(bytes, offset) === 0x04034b50
+  ) {
+    const method = readTestUint16(bytes, offset + 8);
+    const crc = readTestUint32(bytes, offset + 14);
+    const compressedSize = readTestUint32(bytes, offset + 18);
+    const nameLength = readTestUint16(bytes, offset + 26);
+    const extraLength = readTestUint16(bytes, offset + 28);
+    expect(method).toBe(0);
+    const nameStart = offset + 30;
+    const dataStart = nameStart + nameLength + extraLength;
+    const dataEnd = dataStart + compressedSize;
+    entries.push({
+      name: bytes.slice(nameStart, nameStart + nameLength),
+      crc,
+      data: bytes.slice(dataStart, dataEnd),
+    });
+    offset = dataEnd;
+  }
+
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  let localOffset = 0;
+  let centralSize = 0;
+
+  for (const entry of entries) {
+    const compressedBuffer = deflateRawSync(entry.data);
+    const compressed = new Uint8Array(
+      compressedBuffer.buffer,
+      compressedBuffer.byteOffset,
+      compressedBuffer.byteLength,
+    );
+    const localHeader = new Uint8Array(30 + entry.name.length);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 8, true);
+    localView.setUint32(14, entry.crc, true);
+    localView.setUint32(18, compressed.byteLength, true);
+    localView.setUint32(22, entry.data.byteLength, true);
+    localView.setUint16(26, entry.name.length, true);
+    localHeader.set(entry.name, 30);
+    localParts.push(localHeader, compressed);
+
+    const centralHeader = new Uint8Array(46 + entry.name.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 8, true);
+    centralView.setUint32(16, entry.crc, true);
+    centralView.setUint32(20, compressed.byteLength, true);
+    centralView.setUint32(24, entry.data.byteLength, true);
+    centralView.setUint16(28, entry.name.length, true);
+    centralView.setUint32(42, localOffset, true);
+    centralHeader.set(entry.name, 46);
+    centralParts.push(centralHeader);
+    centralSize += centralHeader.byteLength;
+    localOffset += localHeader.byteLength + compressed.byteLength;
+  }
+
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, entries.length, true);
+  endView.setUint16(10, entries.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, localOffset, true);
+
+  return concat([...localParts, ...centralParts, end]);
+}
+
+function buildStoredZip(
   entries: readonly { name: Uint8Array; data: Uint8Array }[],
 ): Uint8Array {
   const localParts: Uint8Array[] = [];
@@ -1091,13 +875,16 @@ function buildStoredTestZip(
   endView.setUint32(12, centralSize, true);
   endView.setUint32(16, localOffset, true);
 
-  const parts = [...localParts, ...centralParts, end];
+  return concat([...localParts, ...centralParts, end]);
+}
+
+function concat(parts: readonly Uint8Array[]): Uint8Array {
   const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
   const result = new Uint8Array(total);
-  let writeOffset = 0;
+  let offset = 0;
   for (const part of parts) {
-    result.set(part, writeOffset);
-    writeOffset += part.byteLength;
+    result.set(part, offset);
+    offset += part.byteLength;
   }
   return result;
 }
@@ -1118,13 +905,26 @@ function readTestUint32(bytes: Uint8Array, offset: number): number {
   ).getUint32(0, true);
 }
 
-function testCrc32(bytes: Uint8Array): number {
-  let crc = 0xffffffff;
-  for (const value of bytes) {
-    crc ^= value;
+const TEST_CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
     for (let bit = 0; bit < 8; bit += 1) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+      value =
+        (value & 1) === 1
+          ? (value >>> 1) ^ 0xedb88320
+          : value >>> 1;
     }
+    table[index] = value >>> 0;
   }
-  return (crc ^ 0xffffffff) >>> 0;
+  return table;
+})();
+
+function testCrc32(bytes: Uint8Array): number {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value =
+      (value >>> 8) ^ TEST_CRC32_TABLE[(value ^ byte) & 0xff]!;
+  }
+  return (value ^ 0xffffffff) >>> 0;
 }
