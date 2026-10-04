@@ -91,8 +91,7 @@ describe("@appbasis/xlsx low-level helpers", () => {
 
   it("detects CRC drift before exposing worksheet data", async () => {
     const bytes = createReaderFixture();
-    const text = new TextDecoder().decode(bytes);
-    const marker = text.indexOf("Anna");
+    const marker = findAsciiOffset(bytes, "Anna");
     expect(marker).toBeGreaterThanOrEqual(0);
     const corrupted = bytes.slice();
     corrupted[marker] = "X".charCodeAt(0);
@@ -165,4 +164,16 @@ function createReaderFixture(workbookOverride?: string): Uint8Array {
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>`),
     },
   ]);
+}
+
+
+function findAsciiOffset(bytes: Uint8Array, value: string): number {
+  const needle = new TextEncoder().encode(value);
+  outer: for (let offset = 0; offset <= bytes.length - needle.length; offset += 1) {
+    for (let index = 0; index < needle.length; index += 1) {
+      if (bytes[offset + index] !== needle[index]) continue outer;
+    }
+    return offset;
+  }
+  return -1;
 }
