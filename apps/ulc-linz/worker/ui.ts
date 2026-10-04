@@ -2082,7 +2082,7 @@ function isMasterdataImportPreview(value) {
   return (
     value !== null &&
     typeof value === "object" &&
-    value.contractVersion === "appbasis.athletes.exchange/v1" &&
+    value.contractVersion === "appbasis.athletes.exchange/v2" &&
     value.applyAvailable === false &&
     value.summary !== null &&
     typeof value.summary === "object" &&
