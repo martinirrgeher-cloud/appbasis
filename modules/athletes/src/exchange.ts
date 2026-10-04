@@ -142,8 +142,8 @@ export function buildAthletesExchangeSheets(
     [
       "Status",
       mode === "template"
-        ? "Importvorlage – in E6F4A nur Download; Vorschau und Apply folgen separat."
-        : "Export – diese Datei verändert keine Stammdaten.",
+        ? "Importvorlage – in E6F4B zuerst über „Import prüfen“ validieren und erst danach ausdrücklich anwenden."
+        : "Export – kann als Basis für E6F4B Importvorschau und Apply verwendet werden; die Datei allein verändert keine Stammdaten.",
     ],
     [
       "Datensatz-Schlüssel",
@@ -151,7 +151,7 @@ export function buildAthletesExchangeSheets(
     ],
     [
       "ID",
-      "Bei neuen Athleten leer lassen. Bestehende IDs werden exportiert und dienen später der Update-Erkennung.",
+      "Bei neuen Athleten leer lassen. Bestehende IDs werden exportiert und sind beim Import der primäre Match-Key für Updates.",
     ],
     [
       "Trainingsgruppen",
@@ -163,7 +163,7 @@ export function buildAthletesExchangeSheets(
     ],
     [
       "Aktiv",
-      "ja/nein. E6F4A schreibt noch keine Daten; der spätere Import behandelt Archivstatus ausdrücklich fail-closed.",
+      "ja/nein. E6F4B ändert den Aktiv-/Archivstatus nicht; entsprechende Abweichungen werden beim Import fail-closed abgelehnt.",
     ],
     [
       "Sicherheit",
