@@ -289,7 +289,12 @@ function worksheetXml(
         const value = xmlEscape(row[columnIndex] ?? "");
         return `<c r="${reference}" t="inlineStr"${style}><is><t xml:space="preserve">${value}</t></is></c>`;
       }).join("");
-      return `<row r="${rowIndex + 1}">${cells}</row>`;
+      const hidden =
+        rowIndex > 0 &&
+        row.slice(0, visibleColumnCount).every((value) => value.length === 0)
+          ? ' hidden="1"'
+          : "";
+      return `<row r="${rowIndex + 1}"${hidden}>${cells}</row>`;
     })
     .join("");
 
