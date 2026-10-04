@@ -7,8 +7,10 @@ export interface ExerciseCatalogRepository {
     exerciseId: string,
   ): Promise<ExerciseCatalogItem | undefined>;
   createItem(item: ExerciseCatalogItem): Promise<ExerciseCatalogItem>;
-  updateItem(
-    item: ExerciseCatalogItem,
+  updateItemFromCurrent(
+    organizationId: string,
+    exerciseId: string,
+    update: (current: ExerciseCatalogItem) => ExerciseCatalogItem,
   ): Promise<ExerciseCatalogItem | undefined>;
   listFavoriteExerciseIds(
     organizationId: string,
