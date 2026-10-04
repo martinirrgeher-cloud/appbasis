@@ -58,6 +58,8 @@ The module exposes XLSX exchange contract
 - Excel-saved DEFLATE-compressed XLSX containers are supported.
 - No schema migration is required.
 
-Low-level workbook serialization primitives shared with the exercise-catalog
-exchange live in `@appbasis/xlsx`. Domain mapping, matching, authorization,
-preview/apply and persistence remain owned by this module/application boundary.
+Low-level workbook serialization and fail-closed ZIP/OpenXML reading shared
+with the exercise-catalog exchange live in `@appbasis/xlsx`. The athletes
+consumer explicitly enables Excel date-style decoding; product file/row limits,
+domain mapping, matching, authorization, preview/apply and persistence remain
+owned by this module/application boundary.

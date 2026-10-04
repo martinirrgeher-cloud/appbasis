@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  XlsxReadError,
   createStoredXlsxZip,
+  readXlsxWorkbook,
   xlsxColumnName,
   xlsxUtf8,
   xlsxXmlEscape,
@@ -56,4 +58,385 @@ describe("@appbasis/xlsx low-level helpers", () => {
       ),
     ).toThrow(/too many/i);
   });
+
+  it("reads shared strings and date-formatted numeric cells", async () => {
+    const bytes = createReaderFixture();
+    const workbook = await readXlsxWorkbook(bytes, {
+      sheetNames: ["Daten"],
+      decodeDates: true,
+    });
+
+    expect([...workbook.keys()]).toEqual(["Daten"]);
+    expect(workbook.get("Daten")).toEqual([
+      { rowNumber: 1, cells: ["Kopf", "Wert"] },
+      { rowNumber: 2, cells: ["Anna", "1900-01-01"] },
+    ]);
+
+    const rawDates = await readXlsxWorkbook(bytes, {
+      sheetNames: ["Daten"],
+      decodeDates: false,
+    });
+    expect(rawDates.get("Daten")?.[1]?.cells[1]).toBe("1");
+  });
+
+  it("rejects XML declarations that could expand external entities", async () => {
+    const bytes = createReaderFixture(
+      '<?xml version="1.0"?><!DOCTYPE workbook [<!ENTITY x SYSTEM "file:///etc/passwd">]><workbook/>',
+    );
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
+  it("rejects ZIP entries marked for strong encryption", async () => {
+    const bytes = mutateFirstZipEntryFlags(createReaderFixture(), 0x0040);
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
+  it("rejects a data-descriptor flag when the descriptor is missing", async () => {
+    const bytes = mutateFirstZipEntryFlags(createReaderFixture(), 0x0008);
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
+  it("validates local headers even for unrequested ZIP entries", async () => {
+    const bytes = mutateNamedLocalEntryFlags(
+      createReaderFixture(),
+      "xl/worksheets/sheet2.xml",
+      0x0008,
+    );
+
+    await expect(
+      readXlsxWorkbook(bytes, { sheetNames: ["Daten"] }),
+    ).rejects.toBeInstanceOf(XlsxReadError);
+  });
+
+  it("validates CRC payloads even for unrequested ZIP entries", async () => {
+    const bytes = createReaderFixture();
+    const marker = findAsciiOffset(bytes, "sheetData/>");
+    expect(marker).toBeGreaterThanOrEqual(0);
+    const corrupted = bytes.slice();
+    corrupted[marker] = "X".charCodeAt(0);
+
+    await expect(
+      readXlsxWorkbook(corrupted, { sheetNames: ["Daten"] }),
+    ).rejects.toBeInstanceOf(XlsxReadError);
+  });
+
+  it("rejects EOCD entry-count drift", async () => {
+    const bytes = createReaderFixture().slice();
+    const endOffset = findZipEndOffset(bytes);
+    const view = new DataView(bytes.buffer, bytes.byteOffset);
+    const totalEntries = view.getUint16(endOffset + 10, true);
+    expect(totalEntries).toBeGreaterThan(1);
+    view.setUint16(endOffset + 8, totalEntries - 1, true);
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
+  it("rejects ZIP64 extra fields even when ZIP32 sizes are populated", async () => {
+    const bytes = injectZip64CentralExtraField(createReaderFixture());
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
+  it("rejects ZIP64 EOCD and locator records with legacy fields still populated", async () => {
+    const bytes = injectZip64EndRecords(createReaderFixture());
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
+  it("rejects literal XML 1.0-forbidden characters", async () => {
+    const bytes = createReaderFixture(
+      undefined,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Ungültig\u0000</t></is></c></row>
+  </sheetData>
+</worksheet>`,
+    );
+
+    await expect(
+      readXlsxWorkbook(bytes, { sheetNames: ["Daten"] }),
+    ).rejects.toBeInstanceOf(XlsxReadError);
+  });
+
+  it("ignores XML comments instead of parsing commented worksheet rows", async () => {
+    const bytes = createReaderFixture(
+      undefined,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s"><v>0</v></c>
+      <c r="B1" t="inlineStr"><is><t>Wert</t></is></c>
+    </row>
+    <!-- <row r="2"><c r="A2" t="inlineStr"><is><t>Versteckt</t></is></c></row> -->
+    <row r="3">
+      <c r="A3" t="inlineStr"><is><t>Sichtbar</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>`,
+    );
+
+    const workbook = await readXlsxWorkbook(bytes, {
+      sheetNames: ["Daten"],
+    });
+
+    expect(workbook.get("Daten")).toEqual([
+      { rowNumber: 1, cells: ["Kopf", "Wert"] },
+      { rowNumber: 3, cells: ["Sichtbar"] },
+    ]);
+  });
+
+  it("ignores processing-instruction bodies instead of parsing hidden rows", async () => {
+    const bytes = createReaderFixture(
+      undefined,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s"><v>0</v></c>
+      <c r="B1" t="inlineStr"><is><t>Wert</t></is></c>
+    </row>
+    <?appbasis <row r="2"><c r="A2" t="inlineStr"><is><t>Versteckt</t></is></c></row> ?>
+    <row r="3">
+      <c r="A3" t="inlineStr"><is><t>Sichtbar</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>`,
+    );
+
+    const workbook = await readXlsxWorkbook(bytes, {
+      sheetNames: ["Daten"],
+    });
+
+    expect(workbook.get("Daten")).toEqual([
+      { rowNumber: 1, cells: ["Kopf", "Wert"] },
+      { rowNumber: 3, cells: ["Sichtbar"] },
+    ]);
+  });
+
+  it("rejects CDATA before regex-based XML extraction", async () => {
+    const bytes = createReaderFixture(
+      undefined,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData><![CDATA[<row r="2"><c r="A2"><v>hidden</v></c></row>]]></sheetData>
+</worksheet>`,
+    );
+
+    await expect(
+      readXlsxWorkbook(bytes, { sheetNames: ["Daten"] }),
+    ).rejects.toBeInstanceOf(XlsxReadError);
+  });
+
+  it("detects CRC drift before exposing worksheet data", async () => {
+    const bytes = createReaderFixture();
+    const marker = findAsciiOffset(bytes, "Anna");
+    expect(marker).toBeGreaterThanOrEqual(0);
+    const corrupted = bytes.slice();
+    corrupted[marker] = "X".charCodeAt(0);
+
+    await expect(
+      readXlsxWorkbook(corrupted, { sheetNames: ["Daten"] }),
+    ).rejects.toBeInstanceOf(XlsxReadError);
+  });
+
 });
+
+
+function createReaderFixture(
+  workbookOverride?: string,
+  sheetOverride?: string,
+): Uint8Array {
+  const workbook =
+    workbookOverride ??
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Daten" sheetId="1" r:id="rId1"/>
+    <sheet name="Ignoriert" sheetId="2" r:id="rId2"/>
+  </sheets>
+</workbook>`;
+
+  return createStoredXlsxZip([
+    { name: "xl/workbook.xml", content: xlsxUtf8(workbook) },
+    {
+      name: "xl/_rels/workbook.xml.rels",
+      content: xlsxUtf8(`<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+</Relationships>`),
+    },
+    {
+      name: "xl/sharedStrings.xml",
+      content: xlsxUtf8(`<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="1" uniqueCount="1">
+  <si><t>Kopf</t></si>
+</sst>`),
+    },
+    {
+      name: "xl/styles.xml",
+      content: xlsxUtf8(`<?xml version="1.0" encoding="UTF-8"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <cellXfs count="2">
+    <xf numFmtId="0"/>
+    <xf numFmtId="14"/>
+  </cellXfs>
+</styleSheet>`),
+    },
+    {
+      name: "xl/worksheets/sheet1.xml",
+      content: xlsxUtf8(
+        sheetOverride ??
+          `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s"><v>0</v></c>
+      <c r="B1" t="inlineStr"><is><t>Wert</t></is></c>
+    </row>
+    <row r="2">
+      <c r="A2" t="inlineStr"><is><t>Anna</t></is></c>
+      <c r="B2" s="1"><v>1</v></c>
+    </row>
+  </sheetData>
+</worksheet>`,
+      ),
+    },
+    {
+      name: "xl/worksheets/sheet2.xml",
+      content: xlsxUtf8(`<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>`),
+    },
+  ]);
+}
+
+
+function findAsciiOffset(bytes: Uint8Array, value: string): number {
+  const needle = new TextEncoder().encode(value);
+  outer: for (let offset = 0; offset <= bytes.length - needle.length; offset += 1) {
+    for (let index = 0; index < needle.length; index += 1) {
+      if (bytes[offset + index] !== needle[index]) continue outer;
+    }
+    return offset;
+  }
+  return -1;
+}
+
+
+function mutateNamedLocalEntryFlags(
+  bytes: Uint8Array,
+  name: string,
+  additionalFlags: number,
+): Uint8Array {
+  const result = bytes.slice();
+  const nameOffset = findAsciiOffset(result, name);
+  if (nameOffset < 30) {
+    throw new Error("Named local ZIP entry missing in test fixture.");
+  }
+  const localOffset = nameOffset - 30;
+  const view = new DataView(result.buffer, result.byteOffset);
+  if (view.getUint32(localOffset, true) !== 0x04034b50) {
+    throw new Error("Named ZIP entry is not a local header.");
+  }
+  const flags = view.getUint16(localOffset + 6, true);
+  view.setUint16(localOffset + 6, flags | additionalFlags, true);
+  return result;
+}
+
+function injectZip64EndRecords(bytes: Uint8Array): Uint8Array {
+  const endOffset = findZipEndOffset(bytes);
+  const zip64End = new Uint8Array(56);
+  const zip64EndView = new DataView(zip64End.buffer);
+  zip64EndView.setUint32(0, 0x06064b50, true);
+  zip64EndView.setBigUint64(4, 44n, true);
+
+  const locator = new Uint8Array(20);
+  const locatorView = new DataView(locator.buffer);
+  locatorView.setUint32(0, 0x07064b50, true);
+
+  const inserted = zip64End.byteLength + locator.byteLength;
+  const result = new Uint8Array(bytes.byteLength + inserted);
+  result.set(bytes.slice(0, endOffset), 0);
+  result.set(zip64End, endOffset);
+  result.set(locator, endOffset + zip64End.byteLength);
+  result.set(bytes.slice(endOffset), endOffset + inserted);
+  return result;
+}
+
+function injectZip64CentralExtraField(bytes: Uint8Array): Uint8Array {
+  const endOffset = findZipEndOffset(bytes);
+  const sourceView = new DataView(bytes.buffer, bytes.byteOffset);
+  const centralOffset = sourceView.getUint32(endOffset + 16, true);
+  if (sourceView.getUint32(centralOffset, true) !== 0x02014b50) {
+    throw new Error("Central ZIP entry missing in test fixture.");
+  }
+
+  const nameLength = sourceView.getUint16(centralOffset + 28, true);
+  const oldExtraLength = sourceView.getUint16(centralOffset + 30, true);
+  const insertOffset = centralOffset + 46 + nameLength + oldExtraLength;
+  const zip64Extra = new Uint8Array([0x01, 0x00, 0x00, 0x00]);
+  const result = new Uint8Array(bytes.byteLength + zip64Extra.byteLength);
+  result.set(bytes.slice(0, insertOffset), 0);
+  result.set(zip64Extra, insertOffset);
+  result.set(bytes.slice(insertOffset), insertOffset + zip64Extra.byteLength);
+
+  const view = new DataView(result.buffer, result.byteOffset);
+  view.setUint16(
+    centralOffset + 30,
+    oldExtraLength + zip64Extra.byteLength,
+    true,
+  );
+  const newEndOffset = endOffset + zip64Extra.byteLength;
+  const oldCentralSize = sourceView.getUint32(endOffset + 12, true);
+  view.setUint32(
+    newEndOffset + 12,
+    oldCentralSize + zip64Extra.byteLength,
+    true,
+  );
+  return result;
+}
+
+function mutateFirstZipEntryFlags(
+  bytes: Uint8Array,
+  additionalFlags: number,
+): Uint8Array {
+  const result = bytes.slice();
+  const localView = new DataView(result.buffer, result.byteOffset);
+  const localFlags = localView.getUint16(6, true);
+  localView.setUint16(6, localFlags | additionalFlags, true);
+
+  const endOffset = findZipEndOffset(result);
+  const centralOffset = localView.getUint32(endOffset + 16, true);
+  const centralFlags = localView.getUint16(centralOffset + 8, true);
+  localView.setUint16(
+    centralOffset + 8,
+    centralFlags | additionalFlags,
+    true,
+  );
+  return result;
+}
+
+function findZipEndOffset(bytes: Uint8Array): number {
+  const view = new DataView(bytes.buffer, bytes.byteOffset);
+  for (let offset = bytes.byteLength - 22; offset >= 0; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) return offset;
+  }
+  throw new Error("ZIP end record missing in test fixture.");
+}

@@ -1,4 +1,10 @@
 import {
+  XlsxReadError,
+  readXlsxWorkbook,
+  type XlsxSheetRow,
+} from "@appbasis/xlsx";
+
+import {
   ULC_EXERCISE_CATEGORIES,
   ULC_EXERCISE_PARAMETER_KEYS,
   UlcExerciseCatalogValidationError,
@@ -23,9 +29,6 @@ export const ULC_EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const ULC_EXERCISE_CATALOG_IMPORT_MAX_EXERCISES = 1_000;
 
 const MAX_RELATION_ROWS = 20_000;
-const MAX_ZIP_ENTRIES = 128;
-const MAX_UNCOMPRESSED_BYTES = 32 * 1024 * 1024;
-const MAX_ENTRY_BYTES = 16 * 1024 * 1024;
 
 const REQUIRED_SHEETS = Object.freeze([
   "Übungen",
@@ -121,10 +124,7 @@ export class UlcExerciseCatalogImportFileError extends Error {
   }
 }
 
-interface SheetRow {
-  readonly rowNumber: number;
-  readonly cells: readonly string[];
-}
+type SheetRow = XlsxSheetRow;
 
 interface ExerciseSource {
   readonly rowNumber: number;
@@ -922,368 +922,17 @@ function validateWorkbookContract(
 async function readWorkbook(
   bytes: Uint8Array,
 ): Promise<ReadonlyMap<string, readonly SheetRow[]>> {
-  const entries = readZipDirectory(bytes);
-  const workbookXml = await readZipText(bytes, entries, "xl/workbook.xml");
-  const relationshipsXml = await readZipText(bytes, entries, "xl/_rels/workbook.xml.rels");
-  const sharedStrings = entries.has("xl/sharedStrings.xml")
-    ? parseSharedStrings(await readZipText(bytes, entries, "xl/sharedStrings.xml"))
-    : [];
-
-  const relations = parseRelationships(relationshipsXml);
-  const sheets = parseWorkbookSheets(workbookXml);
-  const result = new Map<string, readonly SheetRow[]>();
-
-  for (const sheet of sheets) {
-    if (!REQUIRED_SHEETS.includes(sheet.name)) continue;
-    const target = relations.get(sheet.relationshipId);
-    if (target === undefined) {
-      throw invalidXlsx("Eine Tabellenbeziehung der XLSX-Datei fehlt.");
-    }
-    const path = resolveZipPath("xl/workbook.xml", target);
-    const xml = await readZipText(bytes, entries, path);
-    result.set(sheet.name, Object.freeze(parseWorksheet(xml, sharedStrings)));
-  }
-
-  return result;
-}
-
-function readZipDirectory(bytes: Uint8Array): ReadonlyMap<string, ZipEntry> {
-  if (bytes.byteLength < 22 || readUint32(bytes, 0) !== 0x04034b50) {
-    throw invalidXlsx("Die Datei ist kein gültiger XLSX-ZIP-Container.");
-  }
-
-  const minimum = Math.max(0, bytes.byteLength - 65_557);
-  let endOffset = -1;
-  for (let offset = bytes.byteLength - 22; offset >= minimum; offset -= 1) {
-    if (readUint32(bytes, offset) === 0x06054b50) {
-      endOffset = offset;
-      break;
-    }
-  }
-  if (endOffset < 0) throw invalidXlsx("Das ZIP-Endverzeichnis fehlt.");
-
-  const disk = readUint16(bytes, endOffset + 4);
-  const centralDisk = readUint16(bytes, endOffset + 6);
-  const count = readUint16(bytes, endOffset + 10);
-  const centralSize = readUint32(bytes, endOffset + 12);
-  const centralOffset = readUint32(bytes, endOffset + 16);
-  if (
-    disk !== 0 ||
-    centralDisk !== 0 ||
-    count === 0xffff ||
-    centralSize === 0xffffffff ||
-    centralOffset === 0xffffffff ||
-    count > MAX_ZIP_ENTRIES ||
-    centralOffset + centralSize > bytes.byteLength
-  ) {
-    throw invalidXlsx("Der XLSX-ZIP-Container wird nicht unterstützt.");
-  }
-
-  const result = new Map<string, ZipEntry>();
-  let offset = centralOffset;
-  let totalUncompressed = 0;
-  for (let index = 0; index < count; index += 1) {
-    if (readUint32(bytes, offset) !== 0x02014b50) {
-      throw invalidXlsx("Das ZIP-Zentralverzeichnis ist beschädigt.");
-    }
-    const flags = readUint16(bytes, offset + 8);
-    const method = readUint16(bytes, offset + 10);
-    const crc = readUint32(bytes, offset + 16);
-    const compressedSize = readUint32(bytes, offset + 20);
-    const uncompressedSize = readUint32(bytes, offset + 24);
-    const nameLength = readUint16(bytes, offset + 28);
-    const extraLength = readUint16(bytes, offset + 30);
-    const commentLength = readUint16(bytes, offset + 32);
-    const diskStart = readUint16(bytes, offset + 34);
-    const localOffset = readUint32(bytes, offset + 42);
-    const entryEnd = offset + 46 + nameLength + extraLength + commentLength;
-
-    if (
-      entryEnd > bytes.byteLength ||
-      diskStart !== 0 ||
-      compressedSize === 0xffffffff ||
-      uncompressedSize === 0xffffffff ||
-      localOffset === 0xffffffff ||
-      (flags & 0x0001) !== 0 ||
-      (method !== 0 && method !== 8) ||
-      uncompressedSize > MAX_ENTRY_BYTES
-    ) {
-      throw invalidXlsx("Ein ZIP-Eintrag der XLSX-Datei wird nicht unterstützt.");
-    }
-
-    const name = decodeUtf8(bytes.slice(offset + 46, offset + 46 + nameLength));
-    const normalized = normalizeZipPath(name);
-    if (normalized !== name || normalized.startsWith("/") || normalized.includes("\\")) {
-      throw invalidXlsx("Ein ZIP-Pfad der XLSX-Datei ist ungültig.");
-    }
-    totalUncompressed += uncompressedSize;
-    if (totalUncompressed > MAX_UNCOMPRESSED_BYTES) {
-      throw invalidXlsx("Die entpackte XLSX-Datei ist zu groß.");
-    }
-    if (result.has(name)) throw invalidXlsx("Die XLSX-Datei enthält doppelte ZIP-Einträge.");
-
-    result.set(
-      name,
-      Object.freeze({
-        name,
-        flags,
-        method,
-        crc,
-        compressedSize,
-        uncompressedSize,
-        localOffset,
-      }),
-    );
-    offset = entryEnd;
-  }
-
-  return result;
-}
-
-async function readZipText(
-  bytes: Uint8Array,
-  entries: ReadonlyMap<string, ZipEntry>,
-  name: string,
-): Promise<string> {
-  const entry = entries.get(name);
-  if (entry === undefined) throw invalidXlsx("Ein erforderlicher XLSX-Bestandteil fehlt.");
-  const data = await readZipEntry(bytes, entry);
-  const text = decodeUtf8(data);
-  if (/<!DOCTYPE|<!ENTITY/i.test(text)) {
-    throw invalidXlsx("Nicht unterstützte XML-Deklarationen in der XLSX-Datei.");
-  }
-  return text;
-}
-
-async function readZipEntry(bytes: Uint8Array, entry: ZipEntry): Promise<Uint8Array> {
-  const offset = entry.localOffset;
-  if (offset + 30 > bytes.byteLength || readUint32(bytes, offset) !== 0x04034b50) {
-    throw invalidXlsx("Ein lokaler ZIP-Header ist beschädigt.");
-  }
-  const nameLength = readUint16(bytes, offset + 26);
-  const extraLength = readUint16(bytes, offset + 28);
-  const dataOffset = offset + 30 + nameLength + extraLength;
-  const dataEnd = dataOffset + entry.compressedSize;
-  if (dataEnd > bytes.byteLength) throw invalidXlsx("Ein ZIP-Eintrag ist unvollständig.");
-  const compressed = bytes.slice(dataOffset, dataEnd);
-  const result = entry.method === 0
-    ? compressed
-    : await inflateRaw(compressed, entry.uncompressedSize);
-  if (result.byteLength !== entry.uncompressedSize || crc32(result) !== entry.crc) {
-    throw invalidXlsx("Ein ZIP-Eintrag ist beschädigt.");
-  }
-  return result;
-}
-
-async function inflateRaw(
-  compressed: Uint8Array,
-  expectedLength: number,
-): Promise<Uint8Array> {
-  let stream: ReadableStream<Uint8Array>;
   try {
-    const input = new Uint8Array(compressed.byteLength);
-    input.set(compressed);
-    const response = new Response(input.buffer);
-    if (response.body === null) throw new Error("missing body");
-    stream = response.body.pipeThrough(new DecompressionStream("deflate-raw"));
-  } catch {
-    throw invalidXlsx("Deflate-komprimierte XLSX-Dateien werden in dieser Laufzeit nicht unterstützt.");
-  }
-
-  const reader = stream.getReader();
-  const parts: Uint8Array[] = [];
-  let length = 0;
-  try {
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      length += chunk.value.byteLength;
-      if (length > expectedLength || length > MAX_ENTRY_BYTES) {
-        await reader.cancel();
-        throw invalidXlsx("Ein entpackter XLSX-Bestandteil ist größer als angekündigt.");
-      }
-      parts.push(chunk.value);
-    }
+    return await readXlsxWorkbook(bytes, {
+      sheetNames: REQUIRED_SHEETS,
+      decodeDates: false,
+    });
   } catch (error) {
-    if (error instanceof UlcExerciseCatalogImportFileError) throw error;
-    throw invalidXlsx("Ein komprimierter XLSX-Bestandteil konnte nicht gelesen werden.");
-  }
-
-  const result = new Uint8Array(length);
-  let offset = 0;
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.byteLength;
-  }
-  return result;
-}
-
-function parseWorkbookSheets(
-  xml: string,
-): readonly { readonly name: string; readonly relationshipId: string }[] {
-  const result: { name: string; relationshipId: string }[] = [];
-  for (const match of xml.matchAll(/<sheet\b[^>]*\/?>/g)) {
-    const tag = match[0];
-    const name = xmlAttribute(tag, "name");
-    const relationshipId = xmlAttribute(tag, "r:id");
-    if (name !== null && relationshipId !== null) result.push({ name, relationshipId });
-  }
-  if (result.length === 0) throw invalidXlsx("Die XLSX-Datei enthält keine Tabellenblätter.");
-  return Object.freeze(result);
-}
-
-function parseRelationships(xml: string): ReadonlyMap<string, string> {
-  const result = new Map<string, string>();
-  for (const match of xml.matchAll(/<Relationship\b[^>]*\/?>/g)) {
-    const tag = match[0];
-    const id = xmlAttribute(tag, "Id");
-    const target = xmlAttribute(tag, "Target");
-    const mode = xmlAttribute(tag, "TargetMode");
-    if (id !== null && target !== null && mode !== "External") result.set(id, target);
-  }
-  return result;
-}
-
-function parseSharedStrings(xml: string): readonly string[] {
-  const result: string[] = [];
-  for (const match of xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)) {
-    result.push(xmlTextRuns(match[1] ?? ""));
-  }
-  return Object.freeze(result);
-}
-
-function parseWorksheet(
-  xml: string,
-  sharedStrings: readonly string[],
-): SheetRow[] {
-  const result: SheetRow[] = [];
-  let fallbackRow = 1;
-  for (const rowMatch of xml.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/g)) {
-    const attributes = rowMatch[1] ?? "";
-    const body = rowMatch[2] ?? "";
-    const explicitRow = numericAttribute(attributes, "r");
-    const rowNumber = explicitRow ?? fallbackRow;
-    fallbackRow = rowNumber + 1;
-
-    const cells: string[] = [];
-    let fallbackColumn = 0;
-    for (const cellMatch of body.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>|<c\b([^>]*)\/>/g)) {
-      const cellAttributes = cellMatch[1] ?? cellMatch[3] ?? "";
-      const cellBody = cellMatch[2] ?? "";
-      const reference = xmlAttribute("<c " + cellAttributes + ">", "r");
-      const column = reference === null ? fallbackColumn : cellColumn(reference);
-      if (column < 0 || column > 255) {
-        throw invalidXlsx("Eine XLSX-Zelle liegt außerhalb des unterstützten Bereichs.");
-      }
-      fallbackColumn = column + 1;
-      cells[column] = cellValue(cellAttributes, cellBody, sharedStrings);
+    if (error instanceof XlsxReadError) {
+      throw invalidXlsx(error.message);
     }
-    result.push(
-      Object.freeze({
-        rowNumber,
-        cells: Object.freeze(trimTrailingEmpty(cells.map((value) => value ?? ""))),
-      }),
-    );
+    throw error;
   }
-  return result;
-}
-
-function cellValue(
-  attributes: string,
-  body: string,
-  sharedStrings: readonly string[],
-): string {
-  const type = xmlAttribute("<c " + attributes + ">", "t");
-  if (type === "inlineStr") return xmlTextRuns(body);
-  const raw = firstTagText(body, "v");
-  if (raw === null) return "";
-  if (type === "s") {
-    const index = Number(raw);
-    if (!Number.isSafeInteger(index) || index < 0 || index >= sharedStrings.length) {
-      throw invalidXlsx("Ein Shared-String-Verweis der XLSX-Datei ist ungültig.");
-    }
-    return sharedStrings[index]!;
-  }
-  if (type === "b") return raw === "1" ? "ja" : "nein";
-  return decodeXmlEntities(raw);
-}
-
-function xmlTextRuns(fragment: string): string {
-  return Array.from(fragment.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g))
-    .map((match) => decodeXmlEntities(match[1] ?? ""))
-    .join("");
-}
-
-function firstTagText(fragment: string, tagName: string): string | null {
-  const match = new RegExp("<" + tagName + "\\b[^>]*>([\\s\\S]*?)<\\/" + tagName + ">").exec(fragment);
-  return match === null ? null : match[1] ?? "";
-}
-
-function xmlAttribute(tag: string, name: string): string | null {
-  const double = new RegExp("(?:^|\\s)" + name + '="([^"]*)"').exec(tag);
-  if (double !== null) return decodeXmlEntities(double[1] ?? "");
-  const single = new RegExp("(?:^|\\s)" + name + "='([^']*)'").exec(tag);
-  return single === null ? null : decodeXmlEntities(single[1] ?? "");
-}
-
-function numericAttribute(attributes: string, name: string): number | null {
-  const value = xmlAttribute("<x " + attributes + ">", name);
-  if (value === null) return null;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function decodeXmlEntities(value: string): string {
-  return value.replace(
-    /&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi,
-    (_entity, token: string) => {
-      switch (token.toLocaleLowerCase("en")) {
-        case "amp": return "&";
-        case "lt": return "<";
-        case "gt": return ">";
-        case "quot": return '"';
-        case "apos": return "'";
-        default: {
-          const numeric = token.startsWith("#x") || token.startsWith("#X")
-            ? Number.parseInt(token.slice(2), 16)
-            : Number.parseInt(token.slice(1), 10);
-          if (!Number.isFinite(numeric) || numeric < 0 || numeric > 0x10ffff) {
-            throw invalidXlsx("Eine XML-Zeichenreferenz der XLSX-Datei ist ungültig.");
-          }
-          return String.fromCodePoint(numeric);
-        }
-      }
-    },
-  );
-}
-
-function resolveZipPath(baseFile: string, target: string): string {
-  const candidate = target.startsWith("/")
-    ? target.slice(1)
-    : baseFile.slice(0, baseFile.lastIndexOf("/") + 1) + target;
-  return normalizeZipPath(candidate);
-}
-
-function normalizeZipPath(path: string): string {
-  const result: string[] = [];
-  for (const part of path.replaceAll("\\", "/").split("/")) {
-    if (part === "" || part === ".") continue;
-    if (part === "..") {
-      if (result.length === 0) throw invalidXlsx("Ein XLSX-Pfad verlässt den ZIP-Container.");
-      result.pop();
-      continue;
-    }
-    result.push(part);
-  }
-  return result.join("/");
-}
-
-function cellColumn(reference: string): number {
-  const match = /^([A-Z]+)\d+$/i.exec(reference);
-  if (match === null) throw invalidXlsx("Eine XLSX-Zellreferenz ist ungültig.");
-  let value = 0;
-  for (const char of match[1]!.toUpperCase()) value = value * 26 + char.charCodeAt(0) - 64;
-  return value - 1;
 }
 
 function parseBooleanCell(
@@ -1399,39 +1048,9 @@ function germanValidationMessage(message: string): string {
   return known[message] ?? "Die Übungsdaten sind fachlich ungültig: " + message;
 }
 
-function decodeUtf8(bytes: Uint8Array): string {
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    throw invalidXlsx("Ein XLSX-Bestandteil ist nicht gültig UTF-8-kodiert.");
-  }
-}
-
 function invalidXlsx(message: string): UlcExerciseCatalogImportFileError {
   return new UlcExerciseCatalogImportFileError("INVALID_XLSX", message);
 }
-
-function readUint16(bytes: Uint8Array, offset: number): number {
-  if (offset < 0 || offset + 2 > bytes.byteLength) throw invalidXlsx("Die XLSX-Datei ist abgeschnitten.");
-  return new DataView(bytes.buffer, bytes.byteOffset + offset, 2).getUint16(0, true);
-}
-
-function readUint32(bytes: Uint8Array, offset: number): number {
-  if (offset < 0 || offset + 4 > bytes.byteLength) throw invalidXlsx("Die XLSX-Datei ist abgeschnitten.");
-  return new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, true);
-}
-
-const CRC32_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let index = 0; index < 256; index += 1) {
-    let value = index;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = (value & 1) === 1 ? (value >>> 1) ^ 0xedb88320 : value >>> 1;
-    }
-    table[index] = value >>> 0;
-  }
-  return table;
-})();
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const input = new Uint8Array(bytes.byteLength);
@@ -1440,10 +1059,4 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("");
-}
-
-function crc32(bytes: Uint8Array): number {
-  let value = 0xffffffff;
-  for (const byte of bytes) value = (value >>> 8) ^ CRC32_TABLE[(value ^ byte) & 0xff]!;
-  return (value ^ 0xffffffff) >>> 0;
 }

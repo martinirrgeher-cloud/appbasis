@@ -285,11 +285,25 @@ Daraus wird nur die tatsächlich fachneutrale Mechanik extrahiert.
   (`athletes.exchange/v2`, `exercise-catalog.exchange/v1`);
 - keine Migration und kein Deployment erforderlich.
 
-Die Reader-/Parser-Duplizierung bleibt zunächst bewusst in den beiden
-Fachpfaden. Ein späteres E6F5B darf sie nur dann extrahieren, wenn die
-fail-closed ZIP-/OpenXML-Grenzen inklusive Größenlimits, CRC, Pfadvalidierung,
-Shared Strings und Datumsformaten vollständig erhalten bleiben. Eine
-allgemeine Importplattform bleibt ausdrücklich außerhalb des Scopes.
+#### E6F5B – Reader-Primitiven
+
+Nach dem Writer-Slice wird auch die tatsächlich doppelte Reader-Mechanik
+zentralisiert:
+
+- gemeinsamer fail-closed ZIP32/OpenXML-Reader in `@appbasis/xlsx`;
+- Grenzen für ZIP-Einträge, Einzelgröße, Gesamtgröße und Zellspalten bleiben
+  explizit;
+- CRC, lokale Header, Zentralverzeichnis, Pfade, UTF-8 und XML-Deklarationen
+  werden vor Freigabe der Zellwerte geprüft;
+- Shared Strings und Zelltypen werden gemeinsam dekodiert;
+- Excel-Datumsdekodierung bleibt eine explizite Reader-Option und wird nur vom
+  Athletes-Consumer aktiviert;
+- beide Fachconsumer behalten ihre eigenen 5-MB-/Zeilenlimits, Vertragsprüfung,
+  Domainlogik, Matching, Autorisierung, Preview/Apply und Persistenz;
+- der Übungskatalog erhält damit denselben `node:zlib`-DEFLATE-Pfad wie der
+  praktisch bereits getestete Athletenimport;
+- keine allgemeine Importplattform, Migration oder Deployment.
+
 
 ### E6G – Promotion zum Standardmodul
 

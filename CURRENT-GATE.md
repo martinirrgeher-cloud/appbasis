@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6F5A – kleiner gemeinsamer Low-Level-XLSX-Helper.**
+**ULC-E6F5B – gemeinsamer fail-closed XLSX-Reader.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -89,7 +89,7 @@ Dateiinspektion, read-only Preview, organisationsgebundener Freshness-Token,
 atomarer Compare-and-Update für bestehende Athleten, Writes nur über die
 bestehenden Athletes-Verträge und explizite Teilfehlerprotokollierung.
 
-## Aktueller Gate-Scope: ULC-E6F5A
+## Abgeschlossener Gate-Scope: ULC-E6F5A
 
 Nach zwei realen Exchange-Verbrauchern wird jetzt ausschließlich die bereits
 doppelt vorhandene, fachneutrale Low-Level-XLSX-Writer-Mechanik extrahiert.
@@ -108,10 +108,39 @@ Abnahme:
 - beide bestehenden Consumer-Tests plus eigene Helper-Tests müssen grün sein;
 - keine Migration, kein Providerwrite und kein Preview-/Production-Deployment.
 
-Die deutlich größere Reader-/Parser-Duplizierung wird in E6F5A bewusst noch
-nicht verschoben. Ihre fail-closed ZIP/OpenXML-Grenzen werden erst in einem
-separaten Folge-Slice extrahiert, falls dies ohne Vertragsaufweichung möglich
-ist.
+E6F5A ist auf `main` abgeschlossen. PR #380 wurde nach grüner Exact-Head-CI
+und einem Codex-Review ohne Major Finding gemerged; der Post-Merge-CI auf
+`fc906d04d0b7baf0b7c8c96b1e922a5f2ca3ecbb` ist grün. Keine Migration und
+kein Deployment waren erforderlich.
+
+## Aktueller Gate-Scope: ULC-E6F5B
+
+Die Reader-/Parser-Duplizierung wird jetzt als eigener, enger Folge-Slice
+extrahiert. Der gemeinsame Reader muss die strengere der beiden vorhandenen
+Sicherheitsgrenzen übernehmen, ohne Domainlogik in das Helper-Paket zu ziehen.
+
+Abnahme:
+
+- `@appbasis/xlsx` liest ZIP32/OpenXML fail-closed mit begrenzter Zahl an
+  ZIP-Einträgen, Einzelgröße und Gesamtgröße;
+- verschlüsselte, ZIP64-, unbekannt komprimierte, doppelte oder pfadunsichere
+  Einträge werden abgewiesen;
+- lokale Header, Zentralverzeichnis, erwartete Größe und CRC müssen
+  übereinstimmen;
+- XML mit DOCTYPE/ENTITY wird abgewiesen; UTF-8 und XML-Zeichenreferenzen werden
+  strikt validiert;
+- Shared Strings, Inline Strings, Booleans und normale Zellwerte werden
+  fachneutral gelesen;
+- Datumskonvertierung ist explizit optional und berücksichtigt Excel-Styles
+  sowie 1900-/1904-Datumssystem; Athletes aktiviert sie, Exercise Catalog nicht;
+- beide Importer verwenden denselben Reader und mappen Helper-Fehler zurück auf
+  ihre bestehenden fachlichen `INVALID_XLSX`-Verträge;
+- der bereits praktisch relevante Excel-DEFLATE-Fall läuft dadurch auch im
+  Übungskatalog über denselben Workers-kompatiblen `node:zlib`-Pfad wie bei
+  Athletes;
+- 5-MB-/1.000-Zeilen-, Domain-, Matching-, Auth-, Preview-/Apply- und
+  Persistenzregeln verbleiben vollständig bei den jeweiligen Consumern;
+- keine Migration, kein Providerwrite und kein Deployment.
 
 
 ## FC4-Abnahme – abgeschlossen
