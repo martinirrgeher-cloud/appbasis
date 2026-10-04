@@ -436,6 +436,101 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     }
   });
 
+  it("keeps concurrent partial updates from reactivating a deactivated item", async () => {
+    const editorConnection =
+      createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+    const deactivatorConnection =
+      createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+    let releaseEditor!: () => void;
+    let observeEditorRead!: () => void;
+    let observeDeactivateAttempt!: () => void;
+    const editorCanCommit = new Promise<void>((resolve) => {
+      releaseEditor = resolve;
+    });
+    const editorReadObserved = new Promise<void>((resolve) => {
+      observeEditorRead = resolve;
+    });
+    const deactivateAttemptObserved = new Promise<void>((resolve) => {
+      observeDeactivateAttempt = resolve;
+    });
+
+    try {
+      const baseService = new ExerciseCatalogService({
+        repository: new PostgresExerciseCatalogRepository(
+          catalogClient(deactivatorConnection.client),
+        ),
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+        createId: () => "partial-race-exercise",
+      });
+      await baseService.create("partial-race-org", {
+        name: "Partial race",
+        categoryKey: "strength",
+        goal: "Initial goal",
+      });
+
+      const editor = new ExerciseCatalogService({
+        repository: new PostgresExerciseCatalogRepository(
+          catalogClient(editorConnection.client, async () => {
+            observeEditorRead();
+            await editorCanCommit;
+          }),
+        ),
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+      });
+      const deactivator = new ExerciseCatalogService({
+        repository: new PostgresExerciseCatalogRepository(
+          catalogClient(
+            deactivatorConnection.client,
+            undefined,
+            observeDeactivateAttempt,
+          ),
+        ),
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+      });
+
+      const edit = editor.update(
+        "partial-race-org",
+        "partial-race-exercise",
+        { goal: "Concurrent goal" },
+      );
+      await editorReadObserved;
+
+      const deactivate = deactivator.deactivate(
+        "partial-race-org",
+        "partial-race-exercise",
+      );
+      await expect(
+        promiseWithin(deactivateAttemptObserved, 1_000),
+      ).resolves.toBeUndefined();
+
+      releaseEditor();
+      await expect(edit).resolves.toMatchObject({
+        goal: "Concurrent goal",
+        isActive: true,
+      });
+      await expect(deactivate).resolves.toMatchObject({
+        goal: "Concurrent goal",
+        isActive: false,
+      });
+
+      await expect(
+        baseService.findById(
+          "partial-race-org",
+          "partial-race-exercise",
+        ),
+      ).resolves.toMatchObject({
+        item: {
+          goal: "Concurrent goal",
+          isActive: false,
+        },
+      });
+    } finally {
+      releaseEditor?.();
+      await editorConnection.client.end();
+      await deactivatorConnection.client.end();
+    }
+  });
+
   it("denies an authenticated principal without module capabilities", async () => {
     const runtime =
       createExerciseCatalogMinimalPostgresRuntime(isolatedDatabaseUrl);
@@ -463,8 +558,10 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
 function catalogClient(
   client: ReturnType<typeof createPostgresProvisioningDatabase>["client"],
   afterItemRead?: () => Promise<void>,
+  beforeLockedItemRead?: () => void,
 ): ExerciseCatalogPostgresClient {
   let itemReadObserved = false;
+  let lockedItemReadObserved = false;
   return {
     unsafe(query, parameters) {
       return client.unsafe(query, parameters);
@@ -473,12 +570,23 @@ function catalogClient(
       return client.begin(async (transaction) =>
         callback({
           async unsafe(query, parameters) {
+            const isItemRead =
+              query.includes("SELECT id") &&
+              query.includes("FROM appbasis_exercise_catalog_item");
+            if (
+              !lockedItemReadObserved &&
+              beforeLockedItemRead !== undefined &&
+              isItemRead &&
+              query.includes("FOR UPDATE")
+            ) {
+              lockedItemReadObserved = true;
+              beforeLockedItemRead();
+            }
             const rows = await transaction.unsafe(query, parameters);
             if (
               !itemReadObserved &&
               afterItemRead !== undefined &&
-              query.includes("SELECT id") &&
-              query.includes("FROM appbasis_exercise_catalog_item")
+              isItemRead
             ) {
               itemReadObserved = true;
               await afterItemRead();
@@ -489,6 +597,26 @@ function catalogClient(
       );
     },
   };
+}
+
+async function promiseWithin<T>(
+  promise: Promise<T>,
+  milliseconds: number,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("Expected concurrent database operation did not start.")),
+          milliseconds,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
 }
 
 async function applyMigration(url: URL) {
