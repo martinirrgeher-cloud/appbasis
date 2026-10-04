@@ -60,12 +60,18 @@ export class ExerciseCatalogService {
       "Organization id",
     );
     const principal = optionalPrincipalId(principalId);
-    const [storedItems, favoriteIds] = await Promise.all([
-      this.#repository.listItems(organization),
+    const snapshot =
       principal === null
-        ? Promise.resolve([] as readonly string[])
-        : this.#repository.listFavoriteExerciseIds(organization, principal),
-    ]);
+        ? Object.freeze({
+            items: await this.#repository.listItems(organization),
+            favoriteExerciseIds: Object.freeze([] as string[]),
+          })
+        : await this.#repository.listItemsWithFavorites(
+            organization,
+            principal,
+          );
+    const storedItems = snapshot.items;
+    const favoriteIds = snapshot.favoriteExerciseIds;
 
     const items = storedItems.map((item) =>
       this.#normalizePersistedItem(item, organization),
