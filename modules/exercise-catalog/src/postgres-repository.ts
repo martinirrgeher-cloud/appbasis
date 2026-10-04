@@ -39,6 +39,24 @@ export class PostgresExerciseCatalogRepository
     return readItemsConsistently(this.#client, organizationId);
   }
 
+  async listItemsWithFavorites(
+    organizationId: string,
+    principalId: string,
+  ) {
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+      );
+      const items = await readItems(transaction, organizationId);
+      const favoriteExerciseIds = await readFavoriteExerciseIds(
+        transaction,
+        organizationId,
+        principalId,
+      );
+      return Object.freeze({ items, favoriteExerciseIds });
+    });
+  }
+
   async findItemById(
     organizationId: string,
     exerciseId: string,
@@ -107,19 +125,10 @@ export class PostgresExerciseCatalogRepository
     organizationId: string,
     principalId: string,
   ): Promise<readonly string[]> {
-    const rows = await this.#client.unsafe(
-      `SELECT favorite.exercise_id
-       FROM appbasis_exercise_catalog_favorite AS favorite
-       INNER JOIN appbasis_exercise_catalog_item AS item
-         ON item.organization_id = favorite.organization_id
-        AND item.id = favorite.exercise_id
-       WHERE favorite.organization_id = $1
-         AND favorite.principal_id = $2
-       ORDER BY favorite.exercise_id ASC`,
-      [organizationId, principalId],
-    );
-    return Object.freeze(
-      rows.map((row) => requiredRowString(row.exercise_id, "exercise_id")),
+    return readFavoriteExerciseIds(
+      this.#client,
+      organizationId,
+      principalId,
     );
   }
 
@@ -155,6 +164,27 @@ export class PostgresExerciseCatalogRepository
       [organizationId, principalId, exerciseId],
     );
   }
+}
+
+async function readFavoriteExerciseIds(
+  client: ExerciseCatalogPostgresQueryClient,
+  organizationId: string,
+  principalId: string,
+): Promise<readonly string[]> {
+  const rows = await client.unsafe(
+    `SELECT favorite.exercise_id
+     FROM appbasis_exercise_catalog_favorite AS favorite
+     INNER JOIN appbasis_exercise_catalog_item AS item
+       ON item.organization_id = favorite.organization_id
+      AND item.id = favorite.exercise_id
+     WHERE favorite.organization_id = $1
+       AND favorite.principal_id = $2
+     ORDER BY favorite.exercise_id ASC`,
+    [organizationId, principalId],
+  );
+  return Object.freeze(
+    rows.map((row) => requiredRowString(row.exercise_id, "exercise_id")),
+  );
 }
 
 async function readItemsConsistently(
