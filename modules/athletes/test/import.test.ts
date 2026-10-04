@@ -238,7 +238,10 @@ describe("athletes XLSX import", () => {
         const duplicate = match![1]!
           .replaceAll('r="2"', 'r="3"')
           .replaceAll("beispiel-1", "beispiel-2")
-          .replace("<t>2012</t>", "<t></t>");
+          .replace(
+            '<t xml:space="preserve">2012</t>',
+            '<t xml:space="preserve"></t>',
+          );
         return xml.replace("</sheetData>", duplicate + "</sheetData>");
       },
     );
@@ -287,8 +290,8 @@ describe("athletes XLSX import", () => {
       "xl/worksheets/sheet1.xml",
       (xml) =>
         xml.replace(
-          "<t>athlete-new-placeholder</t>",
-          "<t></t>",
+          '<t xml:space="preserve">athlete-new-placeholder</t>',
+          '<t xml:space="preserve"></t>',
         ),
     );
 
@@ -337,8 +340,8 @@ describe("athletes XLSX import", () => {
         "xl/worksheets/sheet1.xml",
         (xml) =>
           xml.replace(
-            "<t>athlete-new-placeholder</t>",
-            "<t></t>",
+            '<t xml:space="preserve">athlete-new-placeholder</t>',
+            '<t xml:space="preserve"></t>',
           ),
       );
 
@@ -408,7 +411,7 @@ describe("athletes XLSX import", () => {
       "xl/worksheets/sheet2.xml",
       (xml) =>
         xml.replace(
-          /<c r="F2" t="inlineStr"><is><t>2026-01-01<\/t><\/is><\/c>/,
+          /<c r="F2"[^>]*>[\s\S]*?<\/c>/,
           '<c r="F2"><v>46023</v></c>',
         ),
     );
