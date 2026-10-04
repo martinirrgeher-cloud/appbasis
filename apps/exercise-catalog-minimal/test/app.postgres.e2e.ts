@@ -436,6 +436,83 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     }
   });
 
+  it("reads items and favorites from the same repeatable-read snapshot", async () => {
+    const writerConnection =
+      createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+    const readerConnection =
+      createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+    let nextId = 0;
+
+    try {
+      const writerService = new ExerciseCatalogService({
+        repository: new PostgresExerciseCatalogRepository(
+          catalogClient(writerConnection.client),
+        ),
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+        createId: () => "favorite-snapshot-" + String(++nextId),
+      });
+      const first = await writerService.create("favorite-snapshot-org", {
+        name: "Existing favorite",
+        categoryKey: "strength",
+      });
+      await writerService.setFavorite(
+        "favorite-snapshot-org",
+        "favorite-snapshot-principal",
+        first.id,
+        true,
+      );
+
+      const readerRepository = new PostgresExerciseCatalogRepository(
+        catalogClient(readerConnection.client, async () => {
+          const second = await writerService.create(
+            "favorite-snapshot-org",
+            {
+              name: "New concurrent favorite",
+              categoryKey: "mobility",
+            },
+          );
+          await writerService.setFavorite(
+            "favorite-snapshot-org",
+            "favorite-snapshot-principal",
+            second.id,
+            true,
+          );
+        }),
+      );
+      const readerService = new ExerciseCatalogService({
+        repository: readerRepository,
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+      });
+
+      const snapshot = await readerService.list(
+        "favorite-snapshot-org",
+        "favorite-snapshot-principal",
+      );
+      expect(snapshot).toHaveLength(1);
+      expect(snapshot[0]).toMatchObject({
+        isFavorite: true,
+        item: {
+          id: first.id,
+          name: "Existing favorite",
+        },
+      });
+
+      const current = await writerService.list(
+        "favorite-snapshot-org",
+        "favorite-snapshot-principal",
+      );
+      expect(current).toHaveLength(2);
+      expect(current.every((entry) => entry.isFavorite)).toBe(true);
+      expect(current.map((entry) => entry.item.name).sort()).toEqual([
+        "Existing favorite",
+        "New concurrent favorite",
+      ]);
+    } finally {
+      await readerConnection.client.end();
+      await writerConnection.client.end();
+    }
+  });
+
   it("keeps concurrent partial updates from reactivating a deactivated item", async () => {
     const editorConnection =
       createPostgresProvisioningDatabase(isolatedDatabaseUrl);
