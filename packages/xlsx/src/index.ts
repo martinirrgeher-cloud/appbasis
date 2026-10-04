@@ -16,9 +16,19 @@ export function xlsxXmlEscape(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
+const ZIP_UINT16_MAX = 0xffff;
+const ZIP_UINT32_MAX = 0xffffffff;
+const XLSX_MAX_COLUMN_INDEX = 16_383;
+
 export function xlsxColumnName(index: number): string {
-  if (!Number.isSafeInteger(index) || index < 0) {
-    throw new RangeError("XLSX column index must be a non-negative safe integer.");
+  if (
+    !Number.isSafeInteger(index) ||
+    index < 0 ||
+    index > XLSX_MAX_COLUMN_INDEX
+  ) {
+    throw new RangeError(
+      "XLSX column index must be between 0 and 16383.",
+    );
   }
   let value = index + 1;
   let result = "";
@@ -35,6 +45,9 @@ export function createStoredXlsxZip(
 ): Uint8Array {
   if (files.length === 0) {
     throw new Error("XLSX package must contain at least one part.");
+  }
+  if (files.length > ZIP_UINT16_MAX) {
+    throw new Error("XLSX package contains too many parts for ZIP32.");
   }
 
   const names = new Set<string>();
@@ -58,6 +71,15 @@ export function createStoredXlsxZip(
     names.add(file.name);
 
     const name = xlsxUtf8(file.name);
+    if (name.length > ZIP_UINT16_MAX) {
+      throw new Error("XLSX package part name is too long for ZIP32.");
+    }
+    if (file.content.byteLength > ZIP_UINT32_MAX) {
+      throw new Error("XLSX package part is too large for ZIP32.");
+    }
+    if (localOffset > ZIP_UINT32_MAX) {
+      throw new Error("XLSX package offset exceeds ZIP32.");
+    }
     const checksum = crc32(file.content);
 
     const localHeader = new Uint8Array(30 + name.length);
@@ -100,6 +122,9 @@ export function createStoredXlsxZip(
 
     centralSize += centralHeader.length;
     localOffset += localHeader.length + file.content.length;
+    if (centralSize > ZIP_UINT32_MAX || localOffset > ZIP_UINT32_MAX) {
+      throw new Error("XLSX package exceeds ZIP32 limits.");
+    }
   }
 
   const end = new Uint8Array(22);
