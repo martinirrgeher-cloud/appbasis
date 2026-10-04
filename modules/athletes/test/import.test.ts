@@ -406,13 +406,93 @@ describe("athletes XLSX import", () => {
       },
       "template",
     );
+    const withDateStyle = rewriteStoredWorkbookEntry(
+      stored,
+      "xl/styles.xml",
+      addTestDateStyle,
+    );
+    const workbook = rewriteStoredWorkbookEntry(
+      withDateStyle,
+      "xl/worksheets/sheet2.xml",
+      (xml) =>
+        xml.replace(
+          /<c r="F2"[^>]*>[\s\S]*?<\/c>/,
+          '<c r="F2" s="2"><v>46023</v></c>',
+        ),
+    );
+
+    const preview = await previewAthletesImport(workbook, {
+      ...baseSnapshot,
+      athletes: [],
+      athleteGroupMemberships: [],
+    });
+
+    expect(preview.summary.errors).toBe(0);
+    expect(preview.rows[0]?.draft.memberships[0]).toMatchObject({
+      startedOn: "2026-01-01",
+      action: "create",
+    });
+  });
+
+  it("rejects an unformatted digit-only membership date instead of reinterpreting it as an Excel serial", async () => {
+    const stored = createAthletesWorkbook(
+      {
+        ...baseSnapshot,
+        athletes: [],
+        athleteGroupMemberships: [],
+      },
+      "template",
+    );
     const workbook = rewriteStoredWorkbookEntry(
       stored,
       "xl/worksheets/sheet2.xml",
       (xml) =>
         xml.replace(
           /<c r="F2"[^>]*>[\s\S]*?<\/c>/,
-          '<c r="F2"><v>46023</v></c>',
+          '<c r="F2"><v>2024</v></c>',
+        ),
+    );
+
+    const preview = await previewAthletesImport(workbook, {
+      ...baseSnapshot,
+      athletes: [],
+      athleteGroupMemberships: [],
+    });
+
+    expect(preview.summary.errors).toBeGreaterThan(0);
+    expect(preview.rows[0]?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "MEMBERSHIP_VALIDATION_ERROR" }),
+      ]),
+    );
+  });
+
+  it("honors the workbook 1904 date system for date-formatted numeric cells", async () => {
+    const stored = createAthletesWorkbook(
+      {
+        ...baseSnapshot,
+        athletes: [],
+        athleteGroupMemberships: [],
+      },
+      "template",
+    );
+    const withDateStyle = rewriteStoredWorkbookEntry(
+      stored,
+      "xl/styles.xml",
+      addTestDateStyle,
+    );
+    const withDateSystem = rewriteStoredWorkbookEntry(
+      withDateStyle,
+      "xl/workbook.xml",
+      (xml) => xml.replace("<sheets>", '<workbookPr date1904="1"/><sheets>'),
+    );
+    const workbook = rewriteStoredWorkbookEntry(
+      withDateSystem,
+      "xl/worksheets/sheet2.xml",
+      (xml) =>
+        xml.replace(
+          /<c r="F2"[^>]*>[\s\S]*?<\/c>/,
+          '<c r="F2" s="2"><v>44561</v></c>',
         ),
     );
 
@@ -909,6 +989,19 @@ describe("athletes XLSX import", () => {
     expect(mutations).toBe(0);
   });
 });
+
+function addTestDateStyle(xml: string): string {
+  return xml
+    .replace(
+      "<fonts",
+      '<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts>\n  <fonts',
+    )
+    .replace('cellXfs count="2"', 'cellXfs count="3"')
+    .replace(
+      "</cellXfs>",
+      '    <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>\n  </cellXfs>',
+    );
+}
 
 function rewriteStoredWorkbookEntry(
   bytes: Uint8Array,

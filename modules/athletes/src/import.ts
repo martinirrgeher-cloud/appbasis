@@ -24,6 +24,13 @@ const MAX_ZIP_ENTRIES = 128;
 const MAX_UNCOMPRESSED_BYTES = 32 * 1024 * 1024;
 const MAX_ENTRY_BYTES = 16 * 1024 * 1024;
 
+const BUILTIN_DATE_NUMBER_FORMAT_IDS = new Set([
+  14, 15, 16, 17, 22,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
+  50, 51, 52, 53, 54, 55, 56, 57, 58,
+]);
+const DAY_MILLISECONDS = 24 * 60 * 60 * 1_000;
+
 const REQUIRED_SHEETS = Object.freeze([
   "Athleten",
   "Gruppen",
@@ -193,6 +200,11 @@ export class AthletesImportApplyError extends Error {
 interface SheetRow {
   readonly rowNumber: number;
   readonly cells: readonly string[];
+}
+
+interface WorkbookDateContext {
+  readonly date1904: boolean;
+  readonly dateStyleIndexes: ReadonlySet<number>;
 }
 
 interface AthleteSource {
@@ -995,19 +1007,7 @@ function parseMembershipSource(row: SheetRow): MembershipSource {
 }
 
 function spreadsheetDateCell(value: string): string {
-  const normalized = normalizedCell(value);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
-
-  if (/^\d+$/.test(normalized)) {
-    const serial = Number(normalized);
-    if (Number.isSafeInteger(serial) && serial > 0 && serial <= 100_000) {
-      const milliseconds =
-        Date.UTC(1899, 11, 30) + serial * 24 * 60 * 60 * 1_000;
-      const iso = new Date(milliseconds).toISOString().slice(0, 10);
-      if (iso >= "1900-01-01" && iso <= "2100-12-31") return iso;
-    }
-  }
-  return normalized;
+  return normalizedCell(value);
 }
 
 function optionalSpreadsheetDateCell(value: string): string | null {
@@ -1358,6 +1358,14 @@ async function readWorkbook(
   const sharedStrings = entries.has("xl/sharedStrings.xml")
     ? parseSharedStrings(await readZipText(bytes, entries, "xl/sharedStrings.xml"))
     : [];
+  const dateContext: WorkbookDateContext = Object.freeze({
+    date1904: workbookUses1904DateSystem(workbookXml),
+    dateStyleIndexes: entries.has("xl/styles.xml")
+      ? parseDateStyleIndexes(
+          await readZipText(bytes, entries, "xl/styles.xml"),
+        )
+      : new Set<number>(),
+  });
 
   const relations = parseRelationships(relationshipsXml);
   const sheets = parseWorkbookSheets(workbookXml);
@@ -1371,7 +1379,10 @@ async function readWorkbook(
     }
     const path = resolveZipPath("xl/workbook.xml", target);
     const xml = await readZipText(bytes, entries, path);
-    result.set(sheet.name, Object.freeze(parseWorksheet(xml, sharedStrings)));
+    result.set(
+      sheet.name,
+      Object.freeze(parseWorksheet(xml, sharedStrings, dateContext)),
+    );
   }
 
   return result;
@@ -1582,9 +1593,71 @@ function parseSharedStrings(xml: string): readonly string[] {
   return Object.freeze(result);
 }
 
+function workbookUses1904DateSystem(xml: string): boolean {
+  const workbookProperties = /<workbookPr\b[^>]*\/?>/.exec(xml)?.[0];
+  if (workbookProperties === undefined) return false;
+  const value = xmlAttribute(workbookProperties, "date1904");
+  if (value === null) return false;
+  const normalized = value.toLocaleLowerCase("en");
+  if (normalized === "1" || normalized === "true") return true;
+  if (normalized === "0" || normalized === "false") return false;
+  throw invalidXlsx("Das XLSX-Datumssystem ist ungültig.");
+}
+
+function parseDateStyleIndexes(xml: string): ReadonlySet<number> {
+  const customFormats = new Map<number, string>();
+  for (const match of xml.matchAll(/<numFmt\b[^>]*\/?>/g)) {
+    const tag = match[0];
+    const id = nonNegativeIntegerAttribute(tag, "numFmtId");
+    const code = xmlAttribute(tag, "formatCode");
+    if (id !== null && code !== null) customFormats.set(id, code);
+  }
+
+  const cellXfs = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(xml)?.[1];
+  if (cellXfs === undefined) return new Set<number>();
+
+  const result = new Set<number>();
+  let styleIndex = 0;
+  for (const match of cellXfs.matchAll(/<xf\b[^>]*\/?>/g)) {
+    const tag = match[0];
+    const numFmtId = nonNegativeIntegerAttribute(tag, "numFmtId") ?? 0;
+    const customFormat = customFormats.get(numFmtId);
+    if (
+      BUILTIN_DATE_NUMBER_FORMAT_IDS.has(numFmtId) ||
+      (customFormat !== undefined && isDateNumberFormat(customFormat))
+    ) {
+      result.add(styleIndex);
+    }
+    styleIndex += 1;
+  }
+  return result;
+}
+
+function isDateNumberFormat(formatCode: string): boolean {
+  const semantic = formatCode
+    .replace(/"[^"]*"/g, "")
+    .replace(/\\./g, "")
+    .replace(/_.?/g, "")
+    .replace(/\*./g, "")
+    .replace(/\[[^\]]*\]/g, "")
+    .toLocaleLowerCase("en");
+  return /[dy]/.test(semantic);
+}
+
+function nonNegativeIntegerAttribute(tag: string, name: string): number | null {
+  const value = xmlAttribute(tag, name);
+  if (value === null) return null;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw invalidXlsx("Ein numerisches XLSX-Attribut ist ungültig.");
+  }
+  return parsed;
+}
+
 function parseWorksheet(
   xml: string,
   sharedStrings: readonly string[],
+  dateContext: WorkbookDateContext,
 ): SheetRow[] {
   const result: SheetRow[] = [];
   let fallbackRow = 1;
@@ -1606,7 +1679,12 @@ function parseWorksheet(
         throw invalidXlsx("Eine XLSX-Zelle liegt außerhalb des unterstützten Bereichs.");
       }
       fallbackColumn = column + 1;
-      cells[column] = cellValue(cellAttributes, cellBody, sharedStrings);
+      cells[column] = cellValue(
+        cellAttributes,
+        cellBody,
+        sharedStrings,
+        dateContext,
+      );
     }
     result.push(
       Object.freeze({
@@ -1622,8 +1700,10 @@ function cellValue(
   attributes: string,
   body: string,
   sharedStrings: readonly string[],
+  dateContext: WorkbookDateContext,
 ): string {
-  const type = xmlAttribute("<c " + attributes + ">", "t");
+  const cellTag = "<c " + attributes + ">";
+  const type = xmlAttribute(cellTag, "t");
   if (type === "inlineStr") return xmlTextRuns(body);
   const raw = firstTagText(body, "v");
   if (raw === null) return "";
@@ -1635,7 +1715,43 @@ function cellValue(
     return sharedStrings[index]!;
   }
   if (type === "b") return raw === "1" ? "ja" : "nein";
-  return decodeXmlEntities(raw);
+
+  const decoded = decodeXmlEntities(raw);
+  if (type === "d") {
+    const explicitDate = /^(\d{4}-\d{2}-\d{2})(?:T.*)?$/.exec(decoded);
+    return explicitDate?.[1] ?? decoded;
+  }
+
+  const styleIndex = nonNegativeIntegerAttribute(cellTag, "s") ?? 0;
+  if (
+    (type === null || type === "n") &&
+    dateContext.dateStyleIndexes.has(styleIndex)
+  ) {
+    return excelSerialToIsoDate(decoded, dateContext.date1904) ?? decoded;
+  }
+  return decoded;
+}
+
+function excelSerialToIsoDate(
+  value: string,
+  date1904: boolean,
+): string | null {
+  const serial = Number(value);
+  if (!Number.isFinite(serial) || serial < 0) return null;
+  const wholeDays = Math.floor(serial);
+
+  let milliseconds: number;
+  if (date1904) {
+    milliseconds = Date.UTC(1904, 0, 1) + wholeDays * DAY_MILLISECONDS;
+  } else {
+    if (wholeDays <= 0 || wholeDays === 60) return null;
+    milliseconds =
+      Date.UTC(1899, 11, 31) +
+      (wholeDays < 60 ? wholeDays : wholeDays - 1) * DAY_MILLISECONDS;
+  }
+
+  const iso = new Date(milliseconds).toISOString().slice(0, 10);
+  return iso >= "1900-01-01" && iso <= "2100-12-31" ? iso : null;
 }
 
 function xmlTextRuns(fragment: string): string {
