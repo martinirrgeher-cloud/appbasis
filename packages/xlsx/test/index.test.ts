@@ -105,6 +105,34 @@ describe("@appbasis/xlsx low-level helpers", () => {
     );
   });
 
+  it("ignores XML comments instead of parsing commented worksheet rows", async () => {
+    const bytes = createReaderFixture(
+      undefined,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s"><v>0</v></c>
+      <c r="B1" t="inlineStr"><is><t>Wert</t></is></c>
+    </row>
+    <!-- <row r="2"><c r="A2" t="inlineStr"><is><t>Versteckt</t></is></c></row> -->
+    <row r="3">
+      <c r="A3" t="inlineStr"><is><t>Sichtbar</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>`,
+    );
+
+    const workbook = await readXlsxWorkbook(bytes, {
+      sheetNames: ["Daten"],
+    });
+
+    expect(workbook.get("Daten")).toEqual([
+      { rowNumber: 1, cells: ["Kopf", "Wert"] },
+      { rowNumber: 3, cells: ["Sichtbar"] },
+    ]);
+  });
+
   it("detects CRC drift before exposing worksheet data", async () => {
     const bytes = createReaderFixture();
     const marker = findAsciiOffset(bytes, "Anna");
@@ -120,7 +148,10 @@ describe("@appbasis/xlsx low-level helpers", () => {
 });
 
 
-function createReaderFixture(workbookOverride?: string): Uint8Array {
+function createReaderFixture(
+  workbookOverride?: string,
+  sheetOverride?: string,
+): Uint8Array {
   const workbook =
     workbookOverride ??
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -160,7 +191,9 @@ function createReaderFixture(workbookOverride?: string): Uint8Array {
     },
     {
       name: "xl/worksheets/sheet1.xml",
-      content: xlsxUtf8(`<?xml version="1.0" encoding="UTF-8"?>
+      content: xlsxUtf8(
+        sheetOverride ??
+          `<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <sheetData>
     <row r="1">
@@ -172,7 +205,8 @@ function createReaderFixture(workbookOverride?: string): Uint8Array {
       <c r="B2" s="1"><v>1</v></c>
     </row>
   </sheetData>
-</worksheet>`),
+</worksheet>`,
+      ),
     },
     {
       name: "xl/worksheets/sheet2.xml",
