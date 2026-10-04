@@ -22,16 +22,22 @@ export class InMemoryExerciseCatalogRepository
   async listItems(
     organizationId: string,
   ): Promise<readonly ExerciseCatalogItem[]> {
-    return Object.freeze(
-      [...this.#items.values()]
-        .filter((item) => item.organizationId === organizationId)
-        .sort(
-          (left, right) =>
-            left.name.localeCompare(right.name, "de", { sensitivity: "base" }) ||
-            left.id.localeCompare(right.id),
-        )
-        .map(cloneItem),
-    );
+    return listItemsSnapshot(this.#items, organizationId);
+  }
+
+  async listItemsWithFavorites(
+    organizationId: string,
+    principalId: string,
+  ) {
+    return Object.freeze({
+      items: listItemsSnapshot(this.#items, organizationId),
+      favoriteExerciseIds: favoriteIdsSnapshot(
+        this.#items,
+        this.#favorites,
+        organizationId,
+        principalId,
+      ),
+    });
   }
 
   async findItemById(
@@ -80,15 +86,12 @@ export class InMemoryExerciseCatalogRepository
     organizationId: string,
     principalId: string,
   ): Promise<readonly string[]> {
-    const prefix = favoritePrefix(organizationId, principalId);
-    const ids = [...this.#favorites]
-      .filter((entry) => entry.startsWith(prefix))
-      .map((entry) => entry.slice(prefix.length))
-      .filter((exerciseId) =>
-        this.#items.has(itemKey(organizationId, exerciseId)),
-      )
-      .sort();
-    return Object.freeze(ids);
+    return favoriteIdsSnapshot(
+      this.#items,
+      this.#favorites,
+      organizationId,
+      principalId,
+    );
   }
 
   async setFavorite(
@@ -119,6 +122,40 @@ export class InMemoryExerciseCatalogRepository
       throw new Error("Exercise catalog item name already exists.");
     }
   }
+}
+
+function listItemsSnapshot(
+  items: ReadonlyMap<string, ExerciseCatalogItem>,
+  organizationId: string,
+): readonly ExerciseCatalogItem[] {
+  return Object.freeze(
+    [...items.values()]
+      .filter((item) => item.organizationId === organizationId)
+      .sort(
+        (left, right) =>
+          left.name.localeCompare(right.name, "de", { sensitivity: "base" }) ||
+          left.id.localeCompare(right.id),
+      )
+      .map(cloneItem),
+  );
+}
+
+function favoriteIdsSnapshot(
+  items: ReadonlyMap<string, ExerciseCatalogItem>,
+  favorites: ReadonlySet<string>,
+  organizationId: string,
+  principalId: string,
+): readonly string[] {
+  const prefix = favoritePrefix(organizationId, principalId);
+  return Object.freeze(
+    [...favorites]
+      .filter((entry) => entry.startsWith(prefix))
+      .map((entry) => entry.slice(prefix.length))
+      .filter((exerciseId) =>
+        items.has(itemKey(organizationId, exerciseId)),
+      )
+      .sort(),
+  );
 }
 
 function itemKey(organizationId: string, exerciseId: string): string {
