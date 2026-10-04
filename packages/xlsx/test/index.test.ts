@@ -117,6 +117,18 @@ describe("@appbasis/xlsx low-level helpers", () => {
     ).rejects.toBeInstanceOf(XlsxReadError);
   });
 
+  it("validates CRC payloads even for unrequested ZIP entries", async () => {
+    const bytes = createReaderFixture();
+    const marker = findAsciiOffset(bytes, "sheetData/>");
+    expect(marker).toBeGreaterThanOrEqual(0);
+    const corrupted = bytes.slice();
+    corrupted[marker] = "X".charCodeAt(0);
+
+    await expect(
+      readXlsxWorkbook(corrupted, { sheetNames: ["Daten"] }),
+    ).rejects.toBeInstanceOf(XlsxReadError);
+  });
+
   it("rejects EOCD entry-count drift", async () => {
     const bytes = createReaderFixture().slice();
     const endOffset = findZipEndOffset(bytes);
