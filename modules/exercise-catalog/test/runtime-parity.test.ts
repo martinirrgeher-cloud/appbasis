@@ -76,6 +76,61 @@ describe("exercise catalog runtime/schema parity", () => {
     ).toThrow(ExerciseCatalogValidationError);
   });
 
+  it("rejects sparse arrays at every public array boundary", () => {
+    expect(() =>
+      createExerciseCatalogDefinition({
+        categories: new Array(1) as never[],
+      }),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogDefinition({
+        categories: [{ key: "speed", label: "Speed" }],
+        parameterKeys: new Array(1) as never[],
+      }),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    for (const sparseInput of [
+      { equipment: new Array(1) },
+      { audienceIds: new Array(1) },
+      { parameters: new Array(1) },
+    ]) {
+      expect(() =>
+        createExerciseCatalogItem(
+          {
+            name: "Sparse input",
+            categoryKey: "speed",
+            ...sparseInput,
+          } as never,
+          { id: "item-sparse", organizationId: "org-1", definition },
+        ),
+      ).toThrow(ExerciseCatalogValidationError);
+    }
+  });
+
+  it("rejects PostgreSQL-incompatible NUL in persisted text and identifiers", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "A\0B", categoryKey: "speed" },
+        { id: "item-nul-name", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Valid name", categoryKey: "speed", goal: "A\0B" },
+        { id: "item-nul-goal", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Valid name", categoryKey: "speed" },
+        { id: "item\0nul", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+
   it("rejects a canonicalized video URL that exceeds the schema limit", () => {
     const unicodeUrl = "https://example.test/" + "é".repeat(400);
     expect(unicodeUrl.length).toBeLessThanOrEqual(2_000);
