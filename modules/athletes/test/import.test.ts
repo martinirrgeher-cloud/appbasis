@@ -306,6 +306,94 @@ describe("athletes XLSX import", () => {
     }
   });
 
+  it.each([
+    ["ID row without birth year", null, 2012],
+    ["blank-ID row without birth year", 2012, null],
+  ])(
+    "blocks an ID rename colliding with a blank-ID row when %s",
+    async (_label, idBirthYear, blankBirthYear) => {
+      const workbookSnapshot = {
+        ...baseSnapshot,
+        athletes: [
+          {
+            ...anna,
+            firstName: "Max",
+            lastName: "Mustermann",
+            birthYear: idBirthYear,
+          },
+          {
+            ...anna,
+            id: "athlete-new-placeholder",
+            firstName: "Max",
+            lastName: "Mustermann",
+            birthYear: blankBirthYear,
+          },
+        ],
+        athleteGroupMemberships: [],
+      };
+      const stored = createAthletesWorkbook(workbookSnapshot, "export");
+      const workbook = rewriteStoredWorkbookEntry(
+        stored,
+        "xl/worksheets/sheet1.xml",
+        (xml) =>
+          xml.replace(
+            "<t>athlete-new-placeholder</t>",
+            "<t></t>",
+          ),
+      );
+
+      const preview = await previewAthletesImport(workbook, baseSnapshot);
+
+      expect(preview.summary.errors).toBeGreaterThanOrEqual(2);
+      expect(preview.rows).toHaveLength(2);
+      for (const row of preview.rows) {
+        expect(row).toMatchObject({ action: "skip", reason: "invalid" });
+        expect(row.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ code: "DUPLICATE_PERSON_IN_FILE" }),
+          ]),
+        );
+      }
+    },
+  );
+
+  it("allows distinct ID-based athletes with the same name and birth year", async () => {
+    const current = {
+      ...baseSnapshot,
+      athletes: [
+        {
+          ...anna,
+          id: "athlete-twin-1",
+          firstName: "Max",
+          lastName: "Mustermann",
+          birthYear: 2012,
+        },
+        {
+          ...anna,
+          id: "athlete-twin-2",
+          firstName: "Max",
+          lastName: "Mustermann",
+          birthYear: 2012,
+        },
+      ],
+      athleteGroupMemberships: [],
+    };
+    const workbook = createAthletesWorkbook(current, "export");
+    const preview = await previewAthletesImport(workbook, current);
+
+    expect(preview.summary.errors).toBe(0);
+    expect(preview.summary.skip).toBe(2);
+    expect(preview.rows).toHaveLength(2);
+    for (const row of preview.rows) {
+      expect(row).toMatchObject({ action: "skip", reason: "unchanged" });
+      expect(row.issues).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "DUPLICATE_PERSON_IN_FILE" }),
+        ]),
+      );
+    }
+  });
+
   it("normalizes Excel numeric date serials in membership cells", async () => {
     const stored = createAthletesWorkbook(
       {

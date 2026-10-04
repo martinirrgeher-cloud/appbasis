@@ -302,22 +302,25 @@ export async function previewAthletesImport(
   }
   for (const values of sourcesByName.values()) {
     const blankIdValues = values.filter((source) => source.sourceId === null);
+    if (blankIdValues.length === 0) continue;
+
     if (
-      blankIdValues.length > 1 &&
-      blankIdValues.some((source) => source.birthYear === null)
+      values.length > 1 &&
+      values.some((source) => source.birthYear === null)
     ) {
-      for (const source of blankIdValues) {
+      for (const source of values) {
         source.issues.push(
           issue(
             "error",
             "DUPLICATE_PERSON_IN_FILE",
-            "Mehrere neue Zeilen haben denselben Namen und mindestens eine davon keinen Jahrgang. Bitte eindeutige IDs bzw. Jahrgänge verwenden.",
+            "Mehrere Importzeilen würden denselben Namen verwenden und mindestens eine davon hat keinen Jahrgang. Bitte eindeutige IDs bzw. Jahrgänge verwenden.",
             "Athleten",
             source.rowNumber,
             "ID",
           ),
         );
       }
+      continue;
     }
 
     const byBirthYear = new Map<number, AthleteSource[]>();
@@ -328,15 +331,13 @@ export async function previewAthletesImport(
       byBirthYear.set(source.birthYear, sameYear);
     }
     for (const sameYear of byBirthYear.values()) {
-      if (sameYear.length <= 1) continue;
+      if (
+        sameYear.length <= 1 ||
+        !sameYear.some((source) => source.sourceId === null)
+      ) {
+        continue;
+      }
       for (const source of sameYear) {
-        if (
-          source.issues.some(
-            (candidate) => candidate.code === "DUPLICATE_PERSON_IN_FILE",
-          )
-        ) {
-          continue;
-        }
         source.issues.push(
           issue(
             "error",
