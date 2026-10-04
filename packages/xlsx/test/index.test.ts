@@ -13,6 +13,8 @@ describe("@appbasis/xlsx low-level helpers", () => {
     expect(xlsxColumnName(25)).toBe("Z");
     expect(xlsxColumnName(26)).toBe("AA");
     expect(xlsxColumnName(701)).toBe("ZZ");
+    expect(xlsxColumnName(16_383)).toBe("XFD");
+    expect(() => xlsxColumnName(16_384)).toThrow(RangeError);
   });
 
   it("escapes XML and replaces XML 1.0-forbidden control characters", () => {
@@ -45,5 +47,13 @@ describe("@appbasis/xlsx low-level helpers", () => {
         { name: "../workbook.xml", content: new Uint8Array() },
       ]),
     ).toThrow(/invalid/i);
+    expect(() =>
+      createStoredXlsxZip(
+        Array.from({ length: 65_536 }, (_, index) => ({
+          name: "part-" + String(index),
+          content: new Uint8Array(),
+        })),
+      ),
+    ).toThrow(/too many/i);
   });
 });
