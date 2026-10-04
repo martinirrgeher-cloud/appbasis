@@ -229,7 +229,7 @@ function optionalArray<T>(
   if (!Array.isArray(value)) {
     throw new ExerciseCatalogValidationError(label + " list is invalid.");
   }
-  return value;
+  return Array.from(value);
 }
 
 function optionalBoolean(
