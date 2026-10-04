@@ -1,3 +1,5 @@
+import { deflateRawSync } from "node:zlib";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -626,6 +628,30 @@ describe("athletes XLSX import", () => {
     );
   });
 
+  it("accepts deflate-compressed XLSX containers like files saved by Excel", async () => {
+    const stored = createAthletesWorkbook(
+      {
+        ...baseSnapshot,
+        athletes: [],
+        athleteGroupMemberships: [],
+      },
+      "template",
+    );
+    const deflated = deflateStoredAthletesZip(stored);
+
+    const preview = await previewAthletesImport(deflated, {
+      ...baseSnapshot,
+      athletes: [],
+      athleteGroupMemberships: [],
+    });
+
+    expect(preview.summary).toMatchObject({
+      rows: 1,
+      create: 1,
+      errors: 0,
+    });
+  });
+
   it("enforces the 5 MB input limit before XLSX parsing", async () => {
     const oversized = new Uint8Array(ATHLETES_IMPORT_MAX_FILE_BYTES + 1);
     await expect(
@@ -989,6 +1015,96 @@ describe("athletes XLSX import", () => {
     expect(mutations).toBe(0);
   });
 });
+
+function deflateStoredAthletesZip(bytes: Uint8Array): Uint8Array {
+  const entries: Array<{ name: Uint8Array; crc: number; data: Uint8Array }> = [];
+  let offset = 0;
+
+  while (
+    offset + 4 <= bytes.byteLength &&
+    readTestUint32(bytes, offset) === 0x04034b50
+  ) {
+    const method = readTestUint16(bytes, offset + 8);
+    const crc = readTestUint32(bytes, offset + 14);
+    const compressedSize = readTestUint32(bytes, offset + 18);
+    const nameLength = readTestUint16(bytes, offset + 26);
+    const extraLength = readTestUint16(bytes, offset + 28);
+    expect(method).toBe(0);
+    const nameStart = offset + 30;
+    const dataStart = nameStart + nameLength + extraLength;
+    const dataEnd = dataStart + compressedSize;
+    entries.push({
+      name: bytes.slice(nameStart, nameStart + nameLength),
+      crc,
+      data: bytes.slice(dataStart, dataEnd),
+    });
+    offset = dataEnd;
+  }
+
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  let localOffset = 0;
+  let centralSize = 0;
+
+  for (const entry of entries) {
+    const compressedBuffer = deflateRawSync(entry.data);
+    const compressed = new Uint8Array(
+      compressedBuffer.buffer,
+      compressedBuffer.byteOffset,
+      compressedBuffer.byteLength,
+    );
+    const localHeader = new Uint8Array(30 + entry.name.length);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 8, true);
+    localView.setUint32(14, entry.crc, true);
+    localView.setUint32(18, compressed.byteLength, true);
+    localView.setUint32(22, entry.data.byteLength, true);
+    localView.setUint16(26, entry.name.length, true);
+    localHeader.set(entry.name, 30);
+    localParts.push(localHeader, compressed);
+
+    const centralHeader = new Uint8Array(46 + entry.name.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 8, true);
+    centralView.setUint32(16, entry.crc, true);
+    centralView.setUint32(20, compressed.byteLength, true);
+    centralView.setUint32(24, entry.data.byteLength, true);
+    centralView.setUint16(28, entry.name.length, true);
+    centralView.setUint32(42, localOffset, true);
+    centralHeader.set(entry.name, 46);
+    centralParts.push(centralHeader);
+    centralSize += centralHeader.byteLength;
+    localOffset += localHeader.byteLength + compressed.byteLength;
+  }
+
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, entries.length, true);
+  endView.setUint16(10, entries.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, localOffset, true);
+
+  return concatTestParts([...localParts, ...centralParts, end]);
+}
+
+function concatTestParts(parts: readonly Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.byteLength;
+  }
+  return result;
+}
 
 function addTestDateStyle(xml: string): string {
   return xml

@@ -1,3 +1,5 @@
+import { inflateRawSync } from "node:zlib";
+
 import {
   MasterdataValidationError,
   createAthlete,
@@ -1520,43 +1522,22 @@ async function inflateRaw(
   compressed: Uint8Array,
   expectedLength: number,
 ): Promise<Uint8Array> {
-  let stream: ReadableStream<Uint8Array>;
   try {
     const input = new Uint8Array(compressed.byteLength);
     input.set(compressed);
-    const response = new Response(input.buffer);
-    if (response.body === null) throw new Error("missing body");
-    stream = response.body.pipeThrough(new DecompressionStream("deflate-raw"));
-  } catch {
-    throw invalidXlsx("Deflate-komprimierte XLSX-Dateien werden in dieser Laufzeit nicht unterstützt.");
-  }
-
-  const reader = stream.getReader();
-  const parts: Uint8Array[] = [];
-  let length = 0;
-  try {
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      length += chunk.value.byteLength;
-      if (length > expectedLength || length > MAX_ENTRY_BYTES) {
-        await reader.cancel();
-        throw invalidXlsx("Ein entpackter XLSX-Bestandteil ist größer als angekündigt.");
-      }
-      parts.push(chunk.value);
+    const inflated = inflateRawSync(input, {
+      maxOutputLength: Math.min(expectedLength, MAX_ENTRY_BYTES),
+    });
+    if (inflated.byteLength !== expectedLength) {
+      throw invalidXlsx("Ein entpackter XLSX-Bestandteil hat eine unerwartete Größe.");
     }
+    const result = new Uint8Array(inflated.byteLength);
+    result.set(inflated);
+    return result;
   } catch (error) {
     if (error instanceof AthletesImportFileError) throw error;
     throw invalidXlsx("Ein komprimierter XLSX-Bestandteil konnte nicht gelesen werden.");
   }
-
-  const result = new Uint8Array(length);
-  let offset = 0;
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.byteLength;
-  }
-  return result;
 }
 
 function parseWorkbookSheets(
