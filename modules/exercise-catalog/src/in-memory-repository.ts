@@ -53,12 +53,24 @@ export class InMemoryExerciseCatalogRepository
     return cloneItem(stored);
   }
 
-  async updateItem(
-    item: ExerciseCatalogItem,
+  async updateItemFromCurrent(
+    organizationId: string,
+    exerciseId: string,
+    update: (current: ExerciseCatalogItem) => ExerciseCatalogItem,
   ): Promise<ExerciseCatalogItem | undefined> {
-    const stored = cloneItem(item);
-    const key = itemKey(stored.organizationId, stored.id);
-    if (!this.#items.has(key)) return undefined;
+    const key = itemKey(organizationId, exerciseId);
+    const current = this.#items.get(key);
+    if (current === undefined) return undefined;
+
+    const stored = cloneItem(update(cloneItem(current)));
+    if (
+      stored.organizationId !== organizationId ||
+      stored.id !== exerciseId
+    ) {
+      throw new Error(
+        "Exercise catalog update changed its organization or item id.",
+      );
+    }
     this.#assertUniqueName(stored, stored.id);
     this.#items.set(key, stored);
     return cloneItem(stored);
