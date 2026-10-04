@@ -273,7 +273,11 @@ function optionalHttpUrl(value: unknown): string | null {
       "Exercise video URL must use HTTP or HTTPS.",
     );
   }
-  return parsed.toString();
+  const canonical = parsed.toString();
+  if (canonical.length > 2_000) {
+    throw new ExerciseCatalogValidationError("Exercise video URL is too long.");
+  }
+  return canonical;
 }
 
 function optionalFiniteNumber(value: unknown, label: string): number | null {
