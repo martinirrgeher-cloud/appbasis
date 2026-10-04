@@ -140,6 +140,9 @@ importers:
       '@appbasis/athletes':
         specifier: workspace:*
         version: link:../../modules/athletes
+      '@appbasis/xlsx':
+        specifier: workspace:*
+        version: link:../../packages/xlsx
       '@appbasis/countdown':
         specifier: workspace:*
         version: link:../../modules/countdown
@@ -195,6 +198,10 @@ importers:
         version: 4.1.10(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(tsx@4.23.12))
 
   modules/athletes:
+    dependencies:
+      '@appbasis/xlsx':
+        specifier: workspace:*
+        version: link:../../packages/xlsx
     devDependencies:
       '@types/node':
         specifier: 24.13.3
@@ -288,6 +295,15 @@ importers:
       vitest:
         specifier: 4.1.10
         version: 4.1.10(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(tsx@4.23.12))
+  packages/xlsx:
+    devDependencies:
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(tsx@4.23.12))
+
 
 packages:
 
