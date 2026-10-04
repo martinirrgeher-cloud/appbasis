@@ -252,6 +252,9 @@ export async function readXlsxWorkbook(
 ): Promise<ReadonlyMap<string, readonly XlsxSheetRow[]>> {
   const limits = normalizeReaderLimits(options);
   const entries = readZipDirectory(bytes, limits);
+  for (const entry of entries.values()) {
+    await readZipEntry(bytes, entry, limits.maxEntryBytes);
+  }
   const workbookXml = await readZipText(
     bytes,
     entries,
