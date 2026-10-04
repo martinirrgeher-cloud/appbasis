@@ -24,6 +24,7 @@ import {
 
 import { createExerciseCatalogMinimalApp } from "../worker/app";
 import {
+  EXERCISE_CATALOG_MINIMAL_DEFINITION,
   EXERCISE_CATALOG_MINIMAL_ORGANIZATION_ID,
 } from "../worker/catalog-config";
 import {
