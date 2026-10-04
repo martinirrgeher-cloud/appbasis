@@ -147,7 +147,7 @@ export function buildAthletesExchangeSheets(
     ],
     [
       "Datensatz-Schlüssel",
-      "Innerhalb der Datei eindeutig. Verknüpft Athleten mit ihren Gruppenzugehörigkeiten.",
+      "Technischer Schlüssel innerhalb der Datei. Für neue Athleten nicht leeren (z. B. neu-1); er verknüpft Athleten mit Gruppenzugehörigkeiten. Nur die Spalte ID bleibt bei neuen Athleten leer.",
     ],
     [
       "ID",

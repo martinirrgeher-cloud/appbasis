@@ -185,6 +185,8 @@ describe("athletes exchange", () => {
     expect(templateNotes).toContain("Import prüfen");
     expect(templateNotes).toContain("ausdrücklich anwenden");
     expect(templateNotes).toContain("primäre Match-Key");
+    expect(templateNotes).toContain("Für neue Athleten nicht leeren");
+    expect(templateNotes).toContain("Nur die Spalte ID bleibt");
     expect(templateNotes).toContain("Aktiv-/Archivstatus nicht");
     expect(templateNotes).not.toContain("E6F4A");
     expect(templateNotes).not.toContain("Vorschau und Apply folgen separat");
