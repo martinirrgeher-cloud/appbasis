@@ -131,6 +131,29 @@ describe("exercise catalog runtime/schema parity", () => {
     ).toThrow(ExerciseCatalogValidationError);
   });
 
+  it("rejects lone UTF-16 surrogates before UTF-8 persistence", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Valid name", categoryKey: "speed" },
+        { id: "item-\ud800", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "A\udc00B", categoryKey: "speed" },
+        { id: "item-low-surrogate", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Valid name", categoryKey: "speed", goal: "A\ud800B" },
+        { id: "item-surrogate-goal", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+
   it("matches PostgreSQL character length for astral Unicode text", () => {
     expect(() =>
       createExerciseCatalogItem(
