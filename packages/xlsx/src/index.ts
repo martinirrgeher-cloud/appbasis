@@ -238,6 +238,7 @@ const DEFAULT_MAX_ENTRY_BYTES = 16 * 1024 * 1024;
 const DEFAULT_MAX_COLUMN_INDEX = 255;
 const ZIP_ENCRYPTION_FLAGS = 0x0001 | 0x0040 | 0x2000;
 const ZIP_DATA_DESCRIPTOR_SIGNATURE = 0x08074b50;
+const ZIP64_EXTRA_FIELD_ID = 0x0001;
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1_000;
 const BUILTIN_DATE_NUMBER_FORMAT_IDS = new Set([
   14, 15, 16, 17, 22,
@@ -415,12 +416,16 @@ function readZipDirectory(
 
   const disk = readUint16(bytes, endOffset + 4);
   const centralDisk = readUint16(bytes, endOffset + 6);
+  const entriesOnDisk = readUint16(bytes, endOffset + 8);
   const count = readUint16(bytes, endOffset + 10);
   const centralSize = readUint32(bytes, endOffset + 12);
   const centralOffset = readUint32(bytes, endOffset + 16);
+  const commentLength = readUint16(bytes, endOffset + 20);
   if (
     disk !== 0 ||
     centralDisk !== 0 ||
+    entriesOnDisk !== count ||
+    endOffset + 22 + commentLength !== bytes.byteLength ||
     count === 0xffff ||
     centralSize === 0xffffffff ||
     centralOffset === 0xffffffff ||
@@ -464,9 +469,11 @@ function readZipDirectory(
       );
     }
 
-    const name = decodeUtf8(
-      bytes.slice(offset + 46, offset + 46 + nameLength),
-    );
+    const nameStart = offset + 46;
+    const nameEnd = nameStart + nameLength;
+    const extraEnd = nameEnd + extraLength;
+    const name = decodeUtf8(bytes.slice(nameStart, nameEnd));
+    assertSupportedZipExtraFields(bytes.slice(nameEnd, extraEnd));
     const normalized = normalizeZipPath(name);
     if (
       normalized !== name ||
@@ -505,6 +512,10 @@ function readZipDirectory(
     throw new XlsxReadError("Das ZIP-Zentralverzeichnis ist inkonsistent.");
   }
 
+  for (const entry of result.values()) {
+    validateZipEntryEnvelope(bytes, entry, centralOffset);
+  }
+
   return result;
 }
 
@@ -528,7 +539,7 @@ async function readZipText(
       "Nicht unterstützte XML-Deklarationen in der XLSX-Datei.",
     );
   }
-  return stripXmlComments(text);
+  return sanitizeXmlForRegexParsing(text);
 }
 
 async function readZipEntry(
@@ -536,8 +547,29 @@ async function readZipEntry(
   entry: XlsxZipEntry,
   maxEntryBytes: number,
 ): Promise<Uint8Array> {
+  const envelope = validateZipEntryEnvelope(bytes, entry, bytes.byteLength);
+  const compressed = bytes.slice(envelope.dataOffset, envelope.dataEnd);
+  const result =
+    entry.method === 0
+      ? compressed
+      : inflateRaw(compressed, entry.uncompressedSize, maxEntryBytes);
+  if (
+    result.byteLength !== entry.uncompressedSize ||
+    crc32(result) !== entry.crc
+  ) {
+    throw new XlsxReadError("Ein ZIP-Eintrag ist beschädigt.");
+  }
+  return result;
+}
+
+function validateZipEntryEnvelope(
+  bytes: Uint8Array,
+  entry: XlsxZipEntry,
+  archiveDataEnd: number,
+): { readonly dataOffset: number; readonly dataEnd: number } {
   const offset = entry.localOffset;
   if (
+    offset + 30 > archiveDataEnd ||
     offset + 30 > bytes.byteLength ||
     readUint32(bytes, offset) !== 0x04034b50
   ) {
@@ -553,10 +585,13 @@ async function readZipEntry(
   const extraLength = readUint16(bytes, offset + 28);
   const nameStart = offset + 30;
   const nameEnd = nameStart + nameLength;
-  if (nameEnd > bytes.byteLength) {
+  const extraEnd = nameEnd + extraLength;
+  if (extraEnd > archiveDataEnd || extraEnd > bytes.byteLength) {
     throw new XlsxReadError("Ein lokaler ZIP-Header ist beschädigt.");
   }
+
   const localName = decodeUtf8(bytes.slice(nameStart, nameEnd));
+  assertSupportedZipExtraFields(bytes.slice(nameEnd, extraEnd));
   const usesDataDescriptor = (localFlags & 0x0008) !== 0;
   if (
     localMethod !== entry.method ||
@@ -572,36 +607,51 @@ async function readZipEntry(
     );
   }
 
-  const dataOffset = nameEnd + extraLength;
+  const dataOffset = extraEnd;
   const dataEnd = dataOffset + entry.compressedSize;
-  if (dataEnd > bytes.byteLength) {
+  if (dataEnd > archiveDataEnd || dataEnd > bytes.byteLength) {
     throw new XlsxReadError("Ein ZIP-Eintrag ist unvollständig.");
   }
   if (usesDataDescriptor) {
-    validateDataDescriptor(bytes, dataEnd, entry);
+    validateDataDescriptor(bytes, dataEnd, entry, archiveDataEnd);
   }
 
-  const compressed = bytes.slice(dataOffset, dataEnd);
-  const result =
-    entry.method === 0
-      ? compressed
-      : inflateRaw(compressed, entry.uncompressedSize, maxEntryBytes);
-  if (
-    result.byteLength !== entry.uncompressedSize ||
-    crc32(result) !== entry.crc
-  ) {
-    throw new XlsxReadError("Ein ZIP-Eintrag ist beschädigt.");
+  return Object.freeze({ dataOffset, dataEnd });
+}
+
+function assertSupportedZipExtraFields(extra: Uint8Array): void {
+  let offset = 0;
+  while (offset < extra.byteLength) {
+    if (offset + 4 > extra.byteLength) {
+      throw new XlsxReadError("Ein ZIP-Extra-Feld ist beschädigt.");
+    }
+    const headerId = readUint16(extra, offset);
+    const dataSize = readUint16(extra, offset + 2);
+    offset += 4;
+    if (offset + dataSize > extra.byteLength) {
+      throw new XlsxReadError("Ein ZIP-Extra-Feld ist beschädigt.");
+    }
+    if (headerId === ZIP64_EXTRA_FIELD_ID) {
+      throw new XlsxReadError("ZIP64-Einträge werden nicht unterstützt.");
+    }
+    offset += dataSize;
   }
-  return result;
 }
 
 function validateDataDescriptor(
   bytes: Uint8Array,
   offset: number,
   entry: XlsxZipEntry,
+  archiveDataEnd: number,
 ): void {
   const matches = (valueOffset: number): boolean => {
-    if (valueOffset < 0 || valueOffset + 12 > bytes.byteLength) return false;
+    if (
+      valueOffset < 0 ||
+      valueOffset + 12 > archiveDataEnd ||
+      valueOffset + 12 > bytes.byteLength
+    ) {
+      return false;
+    }
     return (
       readUint32(bytes, valueOffset) === entry.crc &&
       readUint32(bytes, valueOffset + 4) === entry.compressedSize &&
@@ -610,6 +660,7 @@ function validateDataDescriptor(
   };
 
   const hasSignature =
+    offset + 4 <= archiveDataEnd &&
     offset + 4 <= bytes.byteLength &&
     readUint32(bytes, offset) === ZIP_DATA_DESCRIPTOR_SIGNATURE;
 
@@ -671,42 +722,69 @@ function assertXml10Text(value: string): void {
   }
 }
 
-function stripXmlComments(xml: string): string {
+function sanitizeXmlForRegexParsing(xml: string): string {
   let cursor = 0;
   let result = "";
 
-  for (;;) {
-    const start = xml.indexOf("<!--", cursor);
-    const strayEnd = xml.indexOf("-->", cursor);
-    if (start < 0) {
-      if (strayEnd >= 0) {
+  while (cursor < xml.length) {
+    const commentStart = xml.indexOf("<!--", cursor);
+    const processingStart = xml.indexOf("<?", cursor);
+    const cdataStart = xml.indexOf("<![CDATA[", cursor);
+    const starts = [commentStart, processingStart, cdataStart].filter(
+      (value) => value >= 0,
+    );
+    if (starts.length === 0) {
+      const strayCommentEnd = xml.indexOf("-->", cursor);
+      if (strayCommentEnd >= 0) {
         throw new XlsxReadError(
           "Ein XML-Kommentar der XLSX-Datei ist ungültig.",
         );
       }
       return result + xml.slice(cursor);
     }
-    if (strayEnd >= 0 && strayEnd < start) {
+
+    const start = Math.min(...starts);
+    const strayCommentEnd = xml.indexOf("-->", cursor);
+    if (strayCommentEnd >= 0 && strayCommentEnd < start) {
       throw new XlsxReadError(
         "Ein XML-Kommentar der XLSX-Datei ist ungültig.",
+      );
+    }
+    result += xml.slice(cursor, start);
+
+    if (start === cdataStart) {
+      throw new XlsxReadError(
+        "CDATA wird in XLSX-XML-Bestandteilen nicht unterstützt.",
       );
     }
 
-    result += xml.slice(cursor, start);
-    const end = xml.indexOf("-->", start + 4);
+    if (start === commentStart) {
+      const end = xml.indexOf("-->", start + 4);
+      if (end < 0) {
+        throw new XlsxReadError(
+          "Ein XML-Kommentar der XLSX-Datei ist nicht abgeschlossen.",
+        );
+      }
+      const body = xml.slice(start + 4, end);
+      if (body.includes("--")) {
+        throw new XlsxReadError(
+          "Ein XML-Kommentar der XLSX-Datei ist ungültig.",
+        );
+      }
+      cursor = end + 3;
+      continue;
+    }
+
+    const end = xml.indexOf("?>", start + 2);
     if (end < 0) {
       throw new XlsxReadError(
-        "Ein XML-Kommentar der XLSX-Datei ist nicht abgeschlossen.",
+        "Eine XML-Processing-Instruction der XLSX-Datei ist nicht abgeschlossen.",
       );
     }
-    const body = xml.slice(start + 4, end);
-    if (body.includes("--")) {
-      throw new XlsxReadError(
-        "Ein XML-Kommentar der XLSX-Datei ist ungültig.",
-      );
-    }
-    cursor = end + 3;
+    cursor = end + 2;
   }
+
+  return result;
 }
 
 function parseWorkbookSheets(
