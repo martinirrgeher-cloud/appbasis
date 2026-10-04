@@ -21,7 +21,7 @@ export function createExerciseCatalogDefinition(input: {
   }
 
   const seenCategories = new Set<string>();
-  const categories = input.categories.map((category) => {
+  const categories = Array.from(input.categories).map((category) => {
     if (
       category === null ||
       typeof category !== "object" ||
@@ -50,7 +50,7 @@ export function createExerciseCatalogDefinition(input: {
       "Exercise parameter keys must be an array.",
     );
   }
-  const parameterKeys = (rawParameterKeys ?? []).map((key) =>
+  const parameterKeys = Array.from(rawParameterKeys ?? []).map((key) =>
     requiredKey(key, "Exercise parameter key"),
   );
   if (new Set(parameterKeys).size !== parameterKeys.length) {
