@@ -1,4 +1,4 @@
-import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
+import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
 import {
   createPostgresIdentityApplicationRuntime,
   type IdentityPostgresRuntimeSqlClient,
