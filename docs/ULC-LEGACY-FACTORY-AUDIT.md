@@ -1,6 +1,6 @@
 # ULC Linz – Alt-App-/Factory-Audit
 
-Stand: 2026-10-03
+Stand: 2026-10-04
 
 ## Ziel
 
@@ -227,58 +227,69 @@ Write-Slice:
 
 ### E6F4 – zweiter Exchange-Verbraucher
 
-#### E6F4A – Export + Importvorlage
+#### E6F4A/B – Athleten-Exchange und kontrollierter Import – abgeschlossen
 
-Read-only und bereits im Standardmodul `athletes` verankert:
+Der zweite reale Exchange-Verbraucher liegt im Standardmodul `athletes`.
+Die praktische E6F4B-Abnahme hat den ursprünglichen mehrblättrigen v1-Vertrag
+bewusst durch den einfacheren Vertrag
+`appbasis.athletes.exchange/v2` ersetzt.
 
-- stabiler Vertrag `appbasis.athletes.exchange/v1`;
-- XLSX-Blätter `Athleten`, `Gruppen`, `Listen`, `Hinweise`;
-- bestehende Athleten-ID plus dateiinterner Datensatz-Schlüssel;
-- aktive/inaktive Athleten und historische Gruppenzugehörigkeiten im Export;
-- Gruppen nur als serverautorisierte Referenzen, keine Gruppenmutation;
-- keine Organisations-ID, Actor-ID, Trainer-Identity oder Benutzerkontodaten;
-- ULC ist ausschließlich HTTP-/Autorisierungs-/UI-Adapter;
-- keine Datenbankmutation, keine Migration.
-
-#### E6F4B – Preview + kontrollierter Apply
-
-Implementierter Write-Slice:
-
-- XLSX bis 5 MB und 1.000 Athleten fail-closed lesen;
-- bestehende Athleten primär über ID erkennen; bei leerer ID nur eindeutigen
-  Fallback über normalisierten Vorname+Nachname+Geburtsjahr zulassen;
-- gleichnamige Datensätze ohne ausreichend eindeutigen Schlüssel blockieren;
-- Gruppen ausschließlich gegen den aktuellen serverautorisierten Snapshot
-  auflösen;
-- bestehende Gruppenhistorie unverändert als `skip` akzeptieren;
-- ausschließlich neue Zuordnungen zu aktiven Gruppen additiv anlegen;
-- Änderungen/Schließen bestehender Historienzeilen und Aktiv-/Archivwechsel
-  blockieren statt zu erraten;
-- `create/update/skip`, Fehler und Warnungen vor Apply im separaten Overlay
-  sichtbar machen;
-- Apply liest XLSX und Snapshot erneut; der Preview-Token bindet Datei,
-  Organisation, Athleten, Gruppen und Mitgliedschaften;
-- Drift führt vor dem ersten Write zu `409 STALE_IMPORT_PREVIEW`;
-- bestehende Athleten verwenden zusätzlich einen atomaren Compare-and-Update-
-  Pfad gegen die im Preview gesehenen Scalarwerte; ein Race nach der
-  Tokenprüfung liefert `STALE_IMPORT_ROW` statt einen späteren Stand zu
-  überschreiben;
-- Fachdatenwrites verwenden ausschließlich die bestehenden
-  Athletes-Create-/Update-/Membership-Verträge;
-- Ergebnis pro Zeile plus CSV-Importprotokoll;
-- keine neue Tabelle, Migration oder allgemeine Importplattform.
+- genau ein sichtbares Tabellenblatt `Athleten`;
+- sichtbare Felder: Vorname, Nachname, Geburtsjahr, Notizen und
+  Trainingsgruppe(n);
+- Trainingsgruppen als Dropdowns aus dem aktuellen serverautorisierten
+  Gruppenbestand;
+- technische bestehende Athleten-ID, Aktivstatus, Vertragskennung und
+  Dropdown-Hilfswerte nur in ausgeblendeten Spalten;
+- Nutzer geben weder IDs noch Datensatz-Schlüssel ein;
+- bestehende Athleten werden über die technische ID erkannt; bei neuen bzw.
+  ID-losen Zeilen ist nur der eindeutige Fallback
+  Vorname+Nachname+Geburtsjahr zulässig;
+- potenzielle Dubletten bleiben fail-closed;
+- bestehende Gruppenhistorie wird niemals geschlossen oder umgeschrieben;
+  vorhandene aktive Zuordnungen werden übersprungen, neue aktive Gruppen nur
+  additiv angelegt; fehlende bestehende Zuordnungen werden gewarnt und
+  ignoriert statt gelöscht;
+- neue Gruppenzuordnungen beginnen am tatsächlichen kontrollierten Apply-Tag;
+- Aktiv-/Archivwechsel bleiben außerhalb des Imports;
+- Preview bleibt read-only, Apply reparst Datei und aktuellen Snapshot und
+  bindet beides über einen organisationsgebundenen Freshness-Token;
+- bestehende Athleten werden zusätzlich atomar gegen die im Preview gesehenen
+  Scalarwerte verglichen;
+- Excel/DEFLATE-komprimierte XLSX-Dateien werden unterstützt;
+- Ergebnis pro Zeile plus user-facing CSV-Protokoll;
+- keine Migration und keine allgemeine Importplattform.
 
 Token plus Compare-and-Update verhindern normale Wiederholungen und
 Lost-Updates bestehender Athleten. Eine globale Exactly-once-Garantie für zwei
-exakt parallele neue Create-Requests wird weiterhin nicht behauptet: Athleten besitzen aktuell keinen fachlichen Unique-Key und der
-Repositoryvertrag keinen verbindungsgebundenen Import-Lock. Das bleibt ein
-separates Persistenz-/Idempotency-Thema und wird nicht mit einem unsicheren
-Advisory-Lock simuliert.
+exakt parallele neue Create-Requests wird weiterhin nicht behauptet: Athleten
+besitzen aktuell keinen fachlichen Unique-Key und der Repositoryvertrag keinen
+verbindungsgebundenen Import-Lock.
 
-Nach E6F4B darf nun entschieden werden, ob die in zwei Fachdomains bewiesene
-Low-Level-XLSX-/Tabular-Mechanik in einen kleinen gemeinsamen Helper extrahiert
-wird. Eine allgemeine Importplattform bleibt ausdrücklich außerhalb dieses
-Gates.
+### E6F5 – gemeinsame Low-Level-XLSX-Mechanik
+
+Mit Übungskatalog und Athleten sind jetzt zwei reale Verbraucher bewiesen.
+Daraus wird nur die tatsächlich fachneutrale Mechanik extrahiert.
+
+#### E6F5A – Writer-Primitiven
+
+- kleines Paket `@appbasis/xlsx`;
+- UTF-8-Encoding von OpenXML-Parts;
+- XML-1.0-sicheres Escaping;
+- Excel-Spaltennamen;
+- deterministisches Stored-ZIP-Packaging für XLSX/OpenXML-Bestandteile;
+- Nutzung durch Athletes-Exchange und ULC-Übungskatalog;
+- keinerlei Domainfelder, Resolver, Matching, Preview/Apply, Berechtigungen,
+  Organisation, Persistenz oder UI im Helper;
+- die Fachverträge bleiben unverändert
+  (`athletes.exchange/v2`, `exercise-catalog.exchange/v1`);
+- keine Migration und kein Deployment erforderlich.
+
+Die Reader-/Parser-Duplizierung bleibt zunächst bewusst in den beiden
+Fachpfaden. Ein späteres E6F5B darf sie nur dann extrahieren, wenn die
+fail-closed ZIP-/OpenXML-Grenzen inklusive Größenlimits, CRC, Pfadvalidierung,
+Shared Strings und Datumsformaten vollständig erhalten bleiben. Eine
+allgemeine Importplattform bleibt ausdrücklich außerhalb des Scopes.
 
 ### E6G – Promotion zum Standardmodul
 
