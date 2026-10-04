@@ -301,6 +301,28 @@ describe("athletes XLSX import", () => {
     );
   });
 
+  it("warns and ignores removal of an existing group", async () => {
+    const stored = createAthletesWorkbook(baseSnapshot, "export");
+    const workbook = rewriteStoredWorkbookEntry(
+      stored,
+      "xl/worksheets/sheet1.xml",
+      (xml) => replaceInlineCell(xml, "E2", ""),
+    );
+    const preview = await previewAthletesImport(workbook, baseSnapshot);
+
+    expect(preview.summary.errors).toBe(0);
+    expect(preview.summary.warnings).toBeGreaterThan(0);
+    expect(preview.rows[0]).toMatchObject({
+      action: "skip",
+      reason: "unchanged",
+    });
+    expect(preview.rows[0]?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "GROUP_REMOVAL_IGNORED" }),
+      ]),
+    );
+  });
+
   it("fails closed when a visible group name is ambiguous", async () => {
     const snapshot = {
       trainingGroups: [
