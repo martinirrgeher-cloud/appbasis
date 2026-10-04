@@ -22,6 +22,20 @@ export function createExerciseCatalogItem(
     readonly definition: ExerciseCatalogDefinition;
   },
 ): ExerciseCatalogItem {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new ExerciseCatalogValidationError(
+      "Exercise catalog item input is invalid.",
+    );
+  }
+  if (
+    context === null ||
+    typeof context !== "object" ||
+    Array.isArray(context)
+  ) {
+    throw new ExerciseCatalogValidationError(
+      "Exercise catalog item context is invalid.",
+    );
+  }
   const definition = assertExerciseCatalogDefinition(context.definition);
   const categoryKey = requiredKey(input.categoryKey, "Exercise category key");
   if (!definition.categories.some((entry) => entry.key === categoryKey)) {
@@ -47,17 +61,22 @@ export function createExerciseCatalogItem(
       "Exercise common mistakes",
       10_000,
     ),
-    equipment: normalizeUniqueText(input.equipment ?? [], "Equipment", 80),
+    equipment: normalizeUniqueText(
+      optionalArray(input.equipment, "Equipment"),
+      "Equipment",
+      80,
+      100,
+    ),
     videoUrl: optionalHttpUrl(input.videoUrl),
     audienceIds: normalizeUniqueIdentifiers(
-      input.audienceIds ?? [],
+      optionalArray(input.audienceIds, "Exercise audience"),
       "Exercise audience id",
     ),
     parameters: normalizeParameters(
-      input.parameters ?? [],
+      optionalArray(input.parameters, "Exercise parameter"),
       definition.parameterKeys,
     ),
-    isActive: input.isActive ?? true,
+    isActive: optionalBoolean(input.isActive, "Exercise active flag", true),
   });
 }
 
@@ -131,9 +150,14 @@ function normalizeParameters(
       minValue: minimum,
       maxValue: maximum,
       stepValue: step,
-      isRequired: value.isRequired ?? false,
-      sortOrder: integerInRange(
-        value.sortOrder ?? (index + 1) * 10,
+      isRequired: optionalBoolean(
+        value.isRequired,
+        "Parameter required flag",
+        false,
+      ),
+      sortOrder: optionalIntegerInRange(
+        value.sortOrder,
+        (index + 1) * 10,
         "Parameter sort order",
         0,
         100_000,
@@ -176,8 +200,9 @@ function normalizeUniqueText(
   values: readonly string[],
   label: string,
   maximumLength: number,
+  maximumItems: number,
 ): readonly string[] {
-  if (!Array.isArray(values)) {
+  if (!Array.isArray(values) || values.length > maximumItems) {
     throw new ExerciseCatalogValidationError(label + " list is invalid.");
   }
   const normalized = values.map((value) =>
@@ -193,6 +218,44 @@ function normalizeUniqueText(
     [...normalized].sort((left, right) =>
       left.localeCompare(right, "de", { sensitivity: "base" }),
     ),
+  );
+}
+
+function optionalArray<T>(
+  value: readonly T[] | undefined,
+  label: string,
+): readonly T[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new ExerciseCatalogValidationError(label + " list is invalid.");
+  }
+  return value;
+}
+
+function optionalBoolean(
+  value: unknown,
+  label: string,
+  defaultValue: boolean,
+): boolean {
+  if (value === undefined) return defaultValue;
+  if (typeof value !== "boolean") {
+    throw new ExerciseCatalogValidationError(label + " is invalid.");
+  }
+  return value;
+}
+
+function optionalIntegerInRange(
+  value: unknown,
+  defaultValue: number,
+  label: string,
+  minimum: number,
+  maximum: number,
+): number {
+  return integerInRange(
+    value === undefined ? defaultValue : value,
+    label,
+    minimum,
+    maximum,
   );
 }
 
