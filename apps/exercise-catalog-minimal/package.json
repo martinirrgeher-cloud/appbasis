@@ -1,0 +1,24 @@
+{
+  "name": "@appbasis/app-exercise-catalog-minimal",
+  "version": "0.0.0",
+  "description": "Isolated AppBasis exercise-catalog standard-module consumer.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run ./test/app.test.ts",
+    "test:postgres": "vitest run --config vitest.postgres.config.ts"
+  },
+  "dependencies": {
+    "@appbasis/database": "workspace:*",
+    "@appbasis/exercise-catalog": "workspace:*",
+    "@appbasis/identity": "workspace:*",
+    "@appbasis/permissions": "workspace:*",
+    "hono": "4.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

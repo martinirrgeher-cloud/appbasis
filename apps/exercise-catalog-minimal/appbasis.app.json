@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 2,
+  "appId": "exercise-catalog-minimal",
+  "displayName": "AppBasis Exercise Catalog Minimal",
+  "modules": [
+    "exercise-catalog"
+  ],
+  "platformServices": [
+    "identity",
+    "permissions"
+  ]
+}
