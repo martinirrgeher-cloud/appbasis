@@ -87,6 +87,9 @@ jobs:
       - name: Run generated PostgreSQL tasks runtime E2E tests
         run: pnpm --filter @appbasis/app-tasks-minimal test:postgres
 
+      - name: Run exercise-catalog standard-module PostgreSQL E2E
+        run: pnpm --filter @appbasis/app-exercise-catalog-minimal test:postgres
+
       - name: Run FC6-D existing-app module update PostgreSQL E2E
         run: node --test ./tooling/module-update-migration-executor.postgres.test.mjs
 
