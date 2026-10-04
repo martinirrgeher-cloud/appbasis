@@ -433,7 +433,7 @@ function readZipDirectory(
     centralSize === 0xffffffff ||
     centralOffset === 0xffffffff ||
     count > limits.maxZipEntries ||
-    centralOffset + centralSize > endOffset
+    centralOffset + centralSize !== endOffset
   ) {
     throw new XlsxReadError("Der XLSX-ZIP-Container wird nicht unterstützt.");
   }
