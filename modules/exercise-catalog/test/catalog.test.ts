@@ -121,6 +121,25 @@ describe("exercise catalog module foundation", () => {
     ).toThrow(ExerciseCatalogValidationError);
   });
 
+  it("revalidates definitions supplied at the item boundary", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Unsafe definition", categoryKey: "speed" },
+        {
+          id: "exercise-unsafe",
+          organizationId: "org-1",
+          definition: {
+            categories: [
+              { key: "speed", label: "Speed" },
+              { key: "speed", label: "Duplicate" },
+            ],
+            parameterKeys: [],
+          },
+        },
+      ),
+    ).toThrow(/duplicate key/i);
+  });
+
   it("accepts app-specific categories and parameter keys without module enums", () => {
     const custom = createExerciseCatalogDefinition({
       categories: [{ key: "mobility", label: "Mobility" }],
