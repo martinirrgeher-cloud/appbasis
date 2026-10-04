@@ -15,6 +15,7 @@
     "@appbasis/database": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",
+    "@appbasis/xlsx": "workspace:*",
     "hono": "4.13.1"
   },
   "devDependencies": {
