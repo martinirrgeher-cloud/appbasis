@@ -1031,6 +1031,22 @@ function resolveMemberships(
     );
   }
 
+  for (const membership of existingMemberships) {
+    if (membership.endedOn !== null || seenGroupIds.has(membership.groupId)) {
+      continue;
+    }
+    rowIssues.push(
+      issue(
+        "warning",
+        "GROUP_REMOVAL_IGNORED",
+        "Eine bestehende Gruppenzuordnung fehlt in der Excel-Zeile. Entfernen wird aus Sicherheitsgründen ignoriert; der Import ergänzt Gruppen nur.",
+        "Athleten",
+        athleteSource.rowNumber,
+        "Trainingsgruppe",
+      ),
+    );
+  }
+
   return result;
 }
 
