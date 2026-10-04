@@ -89,6 +89,22 @@ describe("@appbasis/xlsx low-level helpers", () => {
     );
   });
 
+  it("rejects ZIP entries marked for strong encryption", async () => {
+    const bytes = mutateFirstZipEntryFlags(createReaderFixture(), 0x0040);
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
+  it("rejects a data-descriptor flag when the descriptor is missing", async () => {
+    const bytes = mutateFirstZipEntryFlags(createReaderFixture(), 0x0008);
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
   it("detects CRC drift before exposing worksheet data", async () => {
     const bytes = createReaderFixture();
     const marker = findAsciiOffset(bytes, "Anna");
@@ -176,4 +192,33 @@ function findAsciiOffset(bytes: Uint8Array, value: string): number {
     return offset;
   }
   return -1;
+}
+
+
+function mutateFirstZipEntryFlags(
+  bytes: Uint8Array,
+  additionalFlags: number,
+): Uint8Array {
+  const result = bytes.slice();
+  const localView = new DataView(result.buffer, result.byteOffset);
+  const localFlags = localView.getUint16(6, true);
+  localView.setUint16(6, localFlags | additionalFlags, true);
+
+  const endOffset = findZipEndOffset(result);
+  const centralOffset = localView.getUint32(endOffset + 16, true);
+  const centralFlags = localView.getUint16(centralOffset + 8, true);
+  localView.setUint16(
+    centralOffset + 8,
+    centralFlags | additionalFlags,
+    true,
+  );
+  return result;
+}
+
+function findZipEndOffset(bytes: Uint8Array): number {
+  const view = new DataView(bytes.buffer, bytes.byteOffset);
+  for (let offset = bytes.byteLength - 22; offset >= 0; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) return offset;
+  }
+  throw new Error("ZIP end record missing in test fixture.");
 }
