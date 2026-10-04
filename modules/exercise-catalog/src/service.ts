@@ -150,21 +150,24 @@ export class ExerciseCatalogService {
       );
     }
 
-    const current = await this.#repository.findItemById(organization, id);
-    if (current === undefined) return undefined;
-    const normalizedCurrent = this.#normalizePersistedItem(
-      current,
+    const stored = await this.#repository.updateItemFromCurrent(
       organization,
-    );
-    const item = createExerciseCatalogItem(
-      mergeUpdateInput(normalizedCurrent, input),
-      {
-        id,
-        organizationId: organization,
-        definition: this.#definition,
+      id,
+      (current) => {
+        const normalizedCurrent = this.#normalizePersistedItem(
+          current,
+          organization,
+        );
+        return createExerciseCatalogItem(
+          mergeUpdateInput(normalizedCurrent, input),
+          {
+            id,
+            organizationId: organization,
+            definition: this.#definition,
+          },
+        );
       },
     );
-    const stored = await this.#repository.updateItem(item);
     if (stored === undefined) return undefined;
     return this.#normalizePersistedItem(stored, organization);
   }
