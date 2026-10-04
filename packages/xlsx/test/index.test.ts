@@ -105,6 +105,22 @@ describe("@appbasis/xlsx low-level helpers", () => {
     );
   });
 
+  it("rejects literal XML 1.0-forbidden characters", async () => {
+    const bytes = createReaderFixture(
+      undefined,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Ungültig\u0000</t></is></c></row>
+  </sheetData>
+</worksheet>`,
+    );
+
+    await expect(
+      readXlsxWorkbook(bytes, { sheetNames: ["Daten"] }),
+    ).rejects.toBeInstanceOf(XlsxReadError);
+  });
+
   it("ignores XML comments instead of parsing commented worksheet rows", async () => {
     const bytes = createReaderFixture(
       undefined,
