@@ -527,7 +527,7 @@ async function readZipText(
       "Nicht unterstützte XML-Deklarationen in der XLSX-Datei.",
     );
   }
-  return text;
+  return stripXmlComments(text);
 }
 
 async function readZipEntry(
@@ -655,6 +655,44 @@ function inflateRaw(
     throw new XlsxReadError(
       "Ein komprimierter XLSX-Bestandteil konnte nicht gelesen werden.",
     );
+  }
+}
+
+function stripXmlComments(xml: string): string {
+  let cursor = 0;
+  let result = "";
+
+  for (;;) {
+    const start = xml.indexOf("<!--", cursor);
+    const strayEnd = xml.indexOf("-->", cursor);
+    if (start < 0) {
+      if (strayEnd >= 0) {
+        throw new XlsxReadError(
+          "Ein XML-Kommentar der XLSX-Datei ist ungültig.",
+        );
+      }
+      return result + xml.slice(cursor);
+    }
+    if (strayEnd >= 0 && strayEnd < start) {
+      throw new XlsxReadError(
+        "Ein XML-Kommentar der XLSX-Datei ist ungültig.",
+      );
+    }
+
+    result += xml.slice(cursor, start);
+    const end = xml.indexOf("-->", start + 4);
+    if (end < 0) {
+      throw new XlsxReadError(
+        "Ein XML-Kommentar der XLSX-Datei ist nicht abgeschlossen.",
+      );
+    }
+    const body = xml.slice(start + 4, end);
+    if (body.includes("--")) {
+      throw new XlsxReadError(
+        "Ein XML-Kommentar der XLSX-Datei ist ungültig.",
+      );
+    }
+    cursor = end + 3;
   }
 }
 
