@@ -121,6 +121,25 @@ describe("exercise catalog module foundation", () => {
     ).toThrow(ExerciseCatalogValidationError);
   });
 
+  it("reports malformed category and parameter entries as validation errors", () => {
+    expect(() =>
+      createExerciseCatalogDefinition({
+        categories: [null] as never[],
+      }),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        {
+          name: "Malformed parameter",
+          categoryKey: "speed",
+          parameters: [null] as never[],
+        },
+        { id: "exercise-malformed", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+
   it("revalidates definitions supplied at the item boundary", () => {
     expect(() =>
       createExerciseCatalogItem(
