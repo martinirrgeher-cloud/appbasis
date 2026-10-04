@@ -105,6 +105,39 @@ describe("@appbasis/xlsx low-level helpers", () => {
     );
   });
 
+  it("validates local headers even for unrequested ZIP entries", async () => {
+    const bytes = mutateNamedLocalEntryFlags(
+      createReaderFixture(),
+      "xl/worksheets/sheet2.xml",
+      0x0008,
+    );
+
+    await expect(
+      readXlsxWorkbook(bytes, { sheetNames: ["Daten"] }),
+    ).rejects.toBeInstanceOf(XlsxReadError);
+  });
+
+  it("rejects EOCD entry-count drift", async () => {
+    const bytes = createReaderFixture().slice();
+    const endOffset = findZipEndOffset(bytes);
+    const view = new DataView(bytes.buffer, bytes.byteOffset);
+    const totalEntries = view.getUint16(endOffset + 10, true);
+    expect(totalEntries).toBeGreaterThan(1);
+    view.setUint16(endOffset + 8, totalEntries - 1, true);
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
+  it("rejects ZIP64 extra fields even when ZIP32 sizes are populated", async () => {
+    const bytes = injectZip64CentralExtraField(createReaderFixture());
+
+    await expect(readXlsxWorkbook(bytes)).rejects.toBeInstanceOf(
+      XlsxReadError,
+    );
+  });
+
   it("rejects literal XML 1.0-forbidden characters", async () => {
     const bytes = createReaderFixture(
       undefined,
@@ -147,6 +180,48 @@ describe("@appbasis/xlsx low-level helpers", () => {
       { rowNumber: 1, cells: ["Kopf", "Wert"] },
       { rowNumber: 3, cells: ["Sichtbar"] },
     ]);
+  });
+
+  it("ignores processing-instruction bodies instead of parsing hidden rows", async () => {
+    const bytes = createReaderFixture(
+      undefined,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s"><v>0</v></c>
+      <c r="B1" t="inlineStr"><is><t>Wert</t></is></c>
+    </row>
+    <?appbasis <row r="2"><c r="A2" t="inlineStr"><is><t>Versteckt</t></is></c></row> ?>
+    <row r="3">
+      <c r="A3" t="inlineStr"><is><t>Sichtbar</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>`,
+    );
+
+    const workbook = await readXlsxWorkbook(bytes, {
+      sheetNames: ["Daten"],
+    });
+
+    expect(workbook.get("Daten")).toEqual([
+      { rowNumber: 1, cells: ["Kopf", "Wert"] },
+      { rowNumber: 3, cells: ["Sichtbar"] },
+    ]);
+  });
+
+  it("rejects CDATA before regex-based XML extraction", async () => {
+    const bytes = createReaderFixture(
+      undefined,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData><![CDATA[<row r="2"><c r="A2"><v>hidden</v></c></row>]]></sheetData>
+</worksheet>`,
+    );
+
+    await expect(
+      readXlsxWorkbook(bytes, { sheetNames: ["Daten"] }),
+    ).rejects.toBeInstanceOf(XlsxReadError);
   });
 
   it("detects CRC drift before exposing worksheet data", async () => {
@@ -244,6 +319,59 @@ function findAsciiOffset(bytes: Uint8Array, value: string): number {
   return -1;
 }
 
+
+function mutateNamedLocalEntryFlags(
+  bytes: Uint8Array,
+  name: string,
+  additionalFlags: number,
+): Uint8Array {
+  const result = bytes.slice();
+  const nameOffset = findAsciiOffset(result, name);
+  if (nameOffset < 30) {
+    throw new Error("Named local ZIP entry missing in test fixture.");
+  }
+  const localOffset = nameOffset - 30;
+  const view = new DataView(result.buffer, result.byteOffset);
+  if (view.getUint32(localOffset, true) !== 0x04034b50) {
+    throw new Error("Named ZIP entry is not a local header.");
+  }
+  const flags = view.getUint16(localOffset + 6, true);
+  view.setUint16(localOffset + 6, flags | additionalFlags, true);
+  return result;
+}
+
+function injectZip64CentralExtraField(bytes: Uint8Array): Uint8Array {
+  const endOffset = findZipEndOffset(bytes);
+  const sourceView = new DataView(bytes.buffer, bytes.byteOffset);
+  const centralOffset = sourceView.getUint32(endOffset + 16, true);
+  if (sourceView.getUint32(centralOffset, true) !== 0x02014b50) {
+    throw new Error("Central ZIP entry missing in test fixture.");
+  }
+
+  const nameLength = sourceView.getUint16(centralOffset + 28, true);
+  const oldExtraLength = sourceView.getUint16(centralOffset + 30, true);
+  const insertOffset = centralOffset + 46 + nameLength + oldExtraLength;
+  const zip64Extra = new Uint8Array([0x01, 0x00, 0x00, 0x00]);
+  const result = new Uint8Array(bytes.byteLength + zip64Extra.byteLength);
+  result.set(bytes.slice(0, insertOffset), 0);
+  result.set(zip64Extra, insertOffset);
+  result.set(bytes.slice(insertOffset), insertOffset + zip64Extra.byteLength);
+
+  const view = new DataView(result.buffer, result.byteOffset);
+  view.setUint16(
+    centralOffset + 30,
+    oldExtraLength + zip64Extra.byteLength,
+    true,
+  );
+  const newEndOffset = endOffset + zip64Extra.byteLength;
+  const oldCentralSize = sourceView.getUint32(endOffset + 12, true);
+  view.setUint32(
+    newEndOffset + 12,
+    oldCentralSize + zip64Extra.byteLength,
+    true,
+  );
+  return result;
+}
 
 function mutateFirstZipEntryFlags(
   bytes: Uint8Array,
