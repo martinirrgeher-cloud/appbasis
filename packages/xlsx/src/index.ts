@@ -236,6 +236,8 @@ const DEFAULT_MAX_ZIP_ENTRIES = 128;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_ENTRY_BYTES = 16 * 1024 * 1024;
 const DEFAULT_MAX_COLUMN_INDEX = 255;
+const ZIP_ENCRYPTION_FLAGS = 0x0001 | 0x0040 | 0x2000;
+const ZIP_DATA_DESCRIPTOR_SIGNATURE = 0x08074b50;
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1_000;
 const BUILTIN_DATE_NUMBER_FORMAT_IDS = new Set([
   14, 15, 16, 17, 22,
@@ -453,7 +455,7 @@ function readZipDirectory(
       compressedSize === 0xffffffff ||
       uncompressedSize === 0xffffffff ||
       localOffset === 0xffffffff ||
-      (flags & 0x0001) !== 0 ||
+      (flags & ZIP_ENCRYPTION_FLAGS) !== 0 ||
       (method !== 0 && method !== 8) ||
       uncompressedSize > limits.maxEntryBytes
     ) {
@@ -574,6 +576,10 @@ async function readZipEntry(
   if (dataEnd > bytes.byteLength) {
     throw new XlsxReadError("Ein ZIP-Eintrag ist unvollständig.");
   }
+  if (usesDataDescriptor) {
+    validateDataDescriptor(bytes, dataEnd, entry);
+  }
+
   const compressed = bytes.slice(dataOffset, dataEnd);
   const result =
     entry.method === 0
@@ -586,6 +592,40 @@ async function readZipEntry(
     throw new XlsxReadError("Ein ZIP-Eintrag ist beschädigt.");
   }
   return result;
+}
+
+function validateDataDescriptor(
+  bytes: Uint8Array,
+  offset: number,
+  entry: XlsxZipEntry,
+): void {
+  const matches = (valueOffset: number): boolean => {
+    if (valueOffset < 0 || valueOffset + 12 > bytes.byteLength) return false;
+    return (
+      readUint32(bytes, valueOffset) === entry.crc &&
+      readUint32(bytes, valueOffset + 4) === entry.compressedSize &&
+      readUint32(bytes, valueOffset + 8) === entry.uncompressedSize
+    );
+  };
+
+  const hasSignature =
+    offset + 4 <= bytes.byteLength &&
+    readUint32(bytes, offset) === ZIP_DATA_DESCRIPTOR_SIGNATURE;
+
+  if (
+    (hasSignature && matches(offset + 4)) ||
+    (!hasSignature && matches(offset))
+  ) {
+    return;
+  }
+
+  // CRC32 may itself equal the optional descriptor signature. In that rare
+  // case a descriptor without the signature must still be accepted.
+  if (hasSignature && matches(offset)) return;
+
+  throw new XlsxReadError(
+    "Ein ZIP-Daten-Deskriptor widerspricht dem Zentralverzeichnis.",
+  );
 }
 
 function inflateRaw(
