@@ -152,9 +152,14 @@ Abnahme:
 - In-Memory-Repository für isolierte Tests;
 - PostgreSQL-Repository auf ausschließlich modul-eigenen
   `appbasis_exercise_catalog_*`-Tabellen;
+- Übungs-IDs sind organisationslokal; PostgreSQL verwendet dafür den
+  zusammengesetzten Schlüssel `(organization_id, id)`;
 - Create/Update einschließlich Parameter und Audience-Zuordnungen erfolgen
   atomar; jede SQL-Lese-/Schreiboperation wiederholt den
   `organizationId`-Scope;
+- mehrteilige Aggregat-Reads laufen in einem read-only
+  `REPEATABLE READ`-Snapshot, damit Parent- und Child-Zeilen nicht aus
+  unterschiedlichen Commitständen zusammengesetzt werden;
 - öffentlicher Service normalisiert Create/Update über den E6G-A-Domainvertrag,
   erzwingt die konfigurierte Definition und kapselt Create, Update,
   Deaktivierung und Favoriten;

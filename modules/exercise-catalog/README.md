@@ -13,7 +13,10 @@ E6G-B adds the public repository/service boundary:
 
 - in-memory and PostgreSQL repositories;
 - organization scope repeated on every PostgreSQL read/write;
+- tenant-local exercise identity via the composite `(organization_id, id)` key;
 - atomic item + parameter + audience writes;
+- aggregate reads use a read-only repeatable-read snapshot so parent and child
+  rows cannot be mixed across concurrent commits;
 - personal favorites scoped by organization and opaque principal ID;
 - service-level Create/Update/Deactivate/Favorite operations that always
   normalize persisted items against the configured E6G-A definition.

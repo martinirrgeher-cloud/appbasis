@@ -7,6 +7,9 @@ import { createPostgresDatabase } from "@appbasis/database/postgres-runtime";
 import { createPostgresDatabase as createPostgresProvisioningDatabase } from "@appbasis/database/postgres-provisioning";
 import {
   EXERCISE_CATALOG_CAPABILITIES,
+  ExerciseCatalogService,
+  PostgresExerciseCatalogRepository,
+  type ExerciseCatalogPostgresClient,
 } from "@appbasis/exercise-catalog";
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import {
@@ -76,6 +79,10 @@ const migrations = [
   ),
   new URL(
     "../../../modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
+    import.meta.url,
+  ),
+  new URL(
+    "../../../modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
     import.meta.url,
   ),
 ];
@@ -328,6 +335,106 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     expect(tables).toEqual([]);
   });
 
+  it("allows the same exercise id in different organizations", async () => {
+    const connection = requiredIsolatedConnection();
+    await connection.client.unsafe(
+      `INSERT INTO appbasis_exercise_catalog_item (
+         id, organization_id, name, category_key
+       )
+       VALUES ($1, $2, $3, $4)`,
+      ["tenant-local-id", "org-a", "Shared id", "strength"],
+    );
+    await connection.client.unsafe(
+      `INSERT INTO appbasis_exercise_catalog_item (
+         id, organization_id, name, category_key
+       )
+       VALUES ($1, $2, $3, $4)`,
+      ["tenant-local-id", "org-b", "Shared id", "strength"],
+    );
+
+    const rows = await connection.client.unsafe(
+      `SELECT organization_id, id
+       FROM appbasis_exercise_catalog_item
+       WHERE id = $1
+       ORDER BY organization_id ASC`,
+      ["tenant-local-id"],
+    );
+    expect(rows).toMatchObject([
+      { organization_id: "org-a", id: "tenant-local-id" },
+      { organization_id: "org-b", id: "tenant-local-id" },
+    ]);
+  });
+
+  it("reads item aggregates from one repeatable-read snapshot", async () => {
+    const writerConnection =
+      createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+    const readerConnection =
+      createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+    try {
+      const writerService = new ExerciseCatalogService({
+        repository: new PostgresExerciseCatalogRepository(
+          catalogClient(writerConnection.client),
+        ),
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+        createId: () => "snapshot-exercise",
+      });
+      await writerService.create("snapshot-org", {
+        name: "Snapshot exercise",
+        categoryKey: "strength",
+        goal: "Old goal",
+        parameters: [
+          {
+            key: "repetitions",
+            label: "Repetitions",
+            inputType: "number",
+            defaultValue: "5",
+          },
+        ],
+      });
+
+      const readerRepository = new PostgresExerciseCatalogRepository(
+        catalogClient(readerConnection.client, async () => {
+          await writerService.update("snapshot-org", "snapshot-exercise", {
+            goal: "New goal",
+            parameters: [
+              {
+                key: "repetitions",
+                label: "Repetitions",
+                inputType: "number",
+                defaultValue: "9",
+              },
+            ],
+          });
+        }),
+      );
+      const readerService = new ExerciseCatalogService({
+        repository: readerRepository,
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+      });
+
+      const snapshot = await readerService.findById(
+        "snapshot-org",
+        "snapshot-exercise",
+      );
+      expect(snapshot?.item).toMatchObject({
+        goal: "Old goal",
+        parameters: [{ key: "repetitions", defaultValue: "5" }],
+      });
+
+      const current = await writerService.findById(
+        "snapshot-org",
+        "snapshot-exercise",
+      );
+      expect(current?.item).toMatchObject({
+        goal: "New goal",
+        parameters: [{ key: "repetitions", defaultValue: "9" }],
+      });
+    } finally {
+      await readerConnection.client.end();
+      await writerConnection.client.end();
+    }
+  });
+
   it("denies an authenticated principal without module capabilities", async () => {
     const runtime =
       createExerciseCatalogMinimalPostgresRuntime(isolatedDatabaseUrl);
@@ -351,6 +458,37 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     }
   });
 });
+
+function catalogClient(
+  client: ReturnType<typeof createPostgresProvisioningDatabase>["client"],
+  afterItemRead?: () => Promise<void>,
+): ExerciseCatalogPostgresClient {
+  let itemReadObserved = false;
+  return {
+    unsafe(query, parameters) {
+      return client.unsafe(query, parameters);
+    },
+    async begin(callback) {
+      return client.begin(async (transaction) =>
+        callback({
+          async unsafe(query, parameters) {
+            const rows = await transaction.unsafe(query, parameters);
+            if (
+              !itemReadObserved &&
+              afterItemRead !== undefined &&
+              query.includes("SELECT id") &&
+              query.includes("FROM appbasis_exercise_catalog_item")
+            ) {
+              itemReadObserved = true;
+              await afterItemRead();
+            }
+            return rows;
+          },
+        }),
+      );
+    },
+  };
+}
 
 async function applyMigration(url: URL) {
   const migration = await readFile(url, "utf8");

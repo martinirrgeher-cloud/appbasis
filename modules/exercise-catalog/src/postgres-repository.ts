@@ -36,14 +36,18 @@ export class PostgresExerciseCatalogRepository
   async listItems(
     organizationId: string,
   ): Promise<readonly ExerciseCatalogItem[]> {
-    return readItems(this.#client, organizationId);
+    return readItemsConsistently(this.#client, organizationId);
   }
 
   async findItemById(
     organizationId: string,
     exerciseId: string,
   ): Promise<ExerciseCatalogItem | undefined> {
-    const items = await readItems(this.#client, organizationId, exerciseId);
+    const items = await readItemsConsistently(
+      this.#client,
+      organizationId,
+      exerciseId,
+    );
     return items[0];
   }
 
@@ -154,6 +158,19 @@ export class PostgresExerciseCatalogRepository
       [organizationId, principalId, exerciseId],
     );
   }
+}
+
+async function readItemsConsistently(
+  client: ExerciseCatalogPostgresClient,
+  organizationId: string,
+  exerciseId?: string,
+): Promise<readonly ExerciseCatalogItem[]> {
+  return client.begin(async (transaction) => {
+    await transaction.unsafe(
+      "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+    );
+    return readItems(transaction, organizationId, exerciseId);
+  });
 }
 
 async function readItems(
