@@ -75,34 +75,31 @@ export class PostgresExerciseCatalogRepository
     return item;
   }
 
-  async updateItem(
-    item: ExerciseCatalogItem,
+  async updateItemFromCurrent(
+    organizationId: string,
+    exerciseId: string,
+    update: (current: ExerciseCatalogItem) => ExerciseCatalogItem,
   ): Promise<ExerciseCatalogItem | undefined> {
     return this.#client.begin(async (transaction) => {
-      const rows = await transaction.unsafe(
-        `UPDATE appbasis_exercise_catalog_item
-         SET name = $3,
-             category_key = $4,
-             subcategory = $5,
-             goal = $6,
-             description = $7,
-             coaching_cues = $8,
-             common_mistakes = $9,
-             equipment = ARRAY(SELECT jsonb_array_elements_text($10::jsonb)),
-             video_url = $11,
-             is_active = $12,
-             updated_at = now()
-         WHERE id = $1
-           AND organization_id = $2
-         RETURNING id`,
-        itemSqlParameters(item),
+      const items = await readItems(
+        transaction,
+        organizationId,
+        exerciseId,
+        true,
       );
-      if (rows.length === 0) return undefined;
-      if (rows.length !== 1) {
-        throw new Error("Exercise catalog update returned multiple rows.");
+      const current = items[0];
+      if (current === undefined) return undefined;
+
+      const item = update(current);
+      if (
+        item.organizationId !== organizationId ||
+        item.id !== exerciseId
+      ) {
+        throw new Error(
+          "Exercise catalog update changed its organization or item id.",
+        );
       }
-      await replaceChildren(transaction, item);
-      return item;
+      return writeUpdatedItem(transaction, item);
     });
   }
 
@@ -177,19 +174,24 @@ async function readItems(
   client: ExerciseCatalogPostgresQueryClient,
   organizationId: string,
   exerciseId?: string,
+  lockItem = false,
 ): Promise<readonly ExerciseCatalogItem[]> {
   const itemParameters: ExerciseCatalogSqlParameter[] = [organizationId];
   const itemFilter =
     exerciseId === undefined ? "" : " AND id = $2";
   if (exerciseId !== undefined) itemParameters.push(exerciseId);
 
+  if (lockItem && exerciseId === undefined) {
+    throw new Error("Exercise catalog item lock requires one exercise id.");
+  }
+  const lockClause = lockItem ? " FOR UPDATE" : "";
   const itemRows = await client.unsafe(
     `SELECT id, organization_id, name, category_key, subcategory, goal,
             description, coaching_cues, common_mistakes, equipment, video_url,
             is_active
      FROM appbasis_exercise_catalog_item
      WHERE organization_id = $1${itemFilter}
-     ORDER BY lower(name) ASC, id ASC`,
+     ORDER BY lower(name) ASC, id ASC${lockClause}`,
     itemParameters,
   );
 
@@ -250,6 +252,36 @@ async function readItems(
       ),
     ),
   );
+}
+
+async function writeUpdatedItem(
+  transaction: ExerciseCatalogPostgresQueryClient,
+  item: ExerciseCatalogItem,
+): Promise<ExerciseCatalogItem | undefined> {
+  const rows = await transaction.unsafe(
+    `UPDATE appbasis_exercise_catalog_item
+     SET name = $3,
+         category_key = $4,
+         subcategory = $5,
+         goal = $6,
+         description = $7,
+         coaching_cues = $8,
+         common_mistakes = $9,
+         equipment = ARRAY(SELECT jsonb_array_elements_text($10::jsonb)),
+         video_url = $11,
+         is_active = $12,
+         updated_at = now()
+     WHERE id = $1
+       AND organization_id = $2
+     RETURNING id`,
+    itemSqlParameters(item),
+  );
+  if (rows.length === 0) return undefined;
+  if (rows.length !== 1) {
+    throw new Error("Exercise catalog update returned multiple rows.");
+  }
+  await replaceChildren(transaction, item);
+  return item;
 }
 
 async function replaceChildren(
