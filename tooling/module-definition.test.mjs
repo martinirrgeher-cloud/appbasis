@@ -46,7 +46,7 @@ test("pins the checked module inventory and database-owning contracts", async ()
   const definitions = await verifyModuleDefinitions(repositoryRoot);
   assert.deepEqual(
     definitions.map((definition) => definition.moduleId),
-    ["athletes", "countdown", "tasks"],
+    ["athletes", "countdown", "exercise-catalog", "tasks"],
   );
 
   const athletes = definitions.find(
@@ -83,6 +83,26 @@ test("pins the checked module inventory and database-owning contracts", async ()
     },
     capabilities: ["countdown:view"],
     database: null,
+  });
+
+  const exerciseCatalog = definitions.find(
+    (definition) => definition.moduleId === "exercise-catalog",
+  );
+  assert.deepEqual(exerciseCatalog, {
+    schemaVersion: 1,
+    moduleId: "exercise-catalog",
+    displayName: "Übungskatalog",
+    packageName: "@appbasis/exercise-catalog",
+    compatibility: {
+      appDefinitionSchemaVersions: [2],
+    },
+    capabilities: ["exercise-catalog:edit", "exercise-catalog:view"],
+    database: {
+      schemaVersion: 1,
+      migrations: [
+        "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
+      ],
+    },
   });
 
   const tasks = definitions.find(

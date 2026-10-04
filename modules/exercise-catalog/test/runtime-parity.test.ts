@@ -1,0 +1,187 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  ExerciseCatalogValidationError,
+  createExerciseCatalogDefinition,
+  createExerciseCatalogItem,
+} from "../src/index";
+
+const definition = createExerciseCatalogDefinition({
+  categories: [{ key: "speed", label: "Speed" }],
+  parameterKeys: ["sets"],
+});
+
+describe("exercise catalog runtime/schema parity", () => {
+  it("rejects more than 100 equipment entries", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        {
+          name: "Equipment overflow",
+          categoryKey: "speed",
+          equipment: Array.from(
+            { length: 101 },
+            (_, index) => "item-" + String(index),
+          ),
+        },
+        { id: "item-1", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+
+  it("rejects non-boolean active and required flags", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        {
+          name: "Invalid active",
+          categoryKey: "speed",
+          isActive: "false" as never,
+        },
+        { id: "item-2", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        {
+          name: "Invalid required",
+          categoryKey: "speed",
+          parameters: [
+            {
+              key: "sets",
+              label: "Sets",
+              inputType: "number",
+              isRequired: "false" as never,
+            },
+          ],
+        },
+        { id: "item-3", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+
+  it("rejects malformed outer item arguments as validation failures", () => {
+    expect(() =>
+      createExerciseCatalogItem(null as never, {
+        id: "item-4",
+        organizationId: "org-1",
+        definition,
+      }),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Invalid context", categoryKey: "speed" },
+        null as never,
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+
+  it("rejects sparse arrays at every public array boundary", () => {
+    expect(() =>
+      createExerciseCatalogDefinition({
+        categories: new Array(1) as never[],
+      }),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogDefinition({
+        categories: [{ key: "speed", label: "Speed" }],
+        parameterKeys: new Array(1) as never[],
+      }),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    for (const sparseInput of [
+      { equipment: new Array(1) },
+      { audienceIds: new Array(1) },
+      { parameters: new Array(1) },
+    ]) {
+      expect(() =>
+        createExerciseCatalogItem(
+          {
+            name: "Sparse input",
+            categoryKey: "speed",
+            ...sparseInput,
+          } as never,
+          { id: "item-sparse", organizationId: "org-1", definition },
+        ),
+      ).toThrow(ExerciseCatalogValidationError);
+    }
+  });
+
+  it("rejects PostgreSQL-incompatible NUL in persisted text and identifiers", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "A\0B", categoryKey: "speed" },
+        { id: "item-nul-name", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Valid name", categoryKey: "speed", goal: "A\0B" },
+        { id: "item-nul-goal", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Valid name", categoryKey: "speed" },
+        { id: "item\0nul", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+
+  it("rejects lone UTF-16 surrogates before UTF-8 persistence", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Valid name", categoryKey: "speed" },
+        { id: "item-\ud800", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "A\udc00B", categoryKey: "speed" },
+        { id: "item-low-surrogate", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Valid name", categoryKey: "speed", goal: "A\ud800B" },
+        { id: "item-surrogate-goal", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+
+  it("matches PostgreSQL character length for astral Unicode text", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "😀", categoryKey: "speed" },
+        { id: "item-short-unicode", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    const item = createExerciseCatalogItem(
+      { name: "😀".repeat(120), categoryKey: "speed" },
+      { id: "item-max-unicode", organizationId: "org-1", definition },
+    );
+    expect(Array.from(item.name)).toHaveLength(120);
+  });
+
+  it("rejects a canonicalized video URL that exceeds the schema limit", () => {
+    const unicodeUrl = "https://example.test/" + "é".repeat(400);
+    expect(unicodeUrl.length).toBeLessThanOrEqual(2_000);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        {
+          name: "Expanded URL",
+          categoryKey: "speed",
+          videoUrl: unicodeUrl,
+        },
+        { id: "item-5", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+});
