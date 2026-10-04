@@ -16,6 +16,13 @@ export {
   createExerciseCatalogDefinition,
   createExerciseCatalogItem,
 } from "./domain/catalog";
+export {
+  InMemoryExerciseCatalogRepository,
+} from "./in-memory-repository";
+export {
+  PostgresExerciseCatalogRepository,
+} from "./postgres-repository";
+export { ExerciseCatalogService } from "./service";
 export type {
   CreateExerciseCatalogItemInput,
   ExerciseCatalogCategory,
@@ -25,6 +32,17 @@ export type {
   ExerciseCatalogParameterInput,
   ExerciseCatalogParameterInputType,
 } from "./domain/catalog";
+export type {
+  ExerciseCatalogPostgresClient,
+  ExerciseCatalogPostgresQueryClient,
+  ExerciseCatalogSqlParameter,
+} from "./postgres-repository";
+export type { ExerciseCatalogRepository } from "./repository";
+export type {
+  ExerciseCatalogItemView,
+  ExerciseCatalogServiceOptions,
+  UpdateExerciseCatalogItemInput,
+} from "./service";
 
 function requiredCapability<const T extends string>(capability: T): T {
   if (!MODULE_CAPABILITIES.includes(capability)) {
