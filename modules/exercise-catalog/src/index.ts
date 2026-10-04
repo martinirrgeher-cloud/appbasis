@@ -37,7 +37,10 @@ export type {
   ExerciseCatalogPostgresQueryClient,
   ExerciseCatalogSqlParameter,
 } from "./postgres-repository";
-export type { ExerciseCatalogRepository } from "./repository";
+export type {
+  ExerciseCatalogListSnapshot,
+  ExerciseCatalogRepository,
+} from "./repository";
 export type {
   ExerciseCatalogItemView,
   ExerciseCatalogServiceOptions,
