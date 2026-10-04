@@ -64,5 +64,8 @@ export function assertExerciseCatalogDefinition(
       "Exercise catalog definition is invalid.",
     );
   }
-  return value;
+  return createExerciseCatalogDefinition({
+    categories: value.categories,
+    parameterKeys: value.parameterKeys,
+  });
 }
