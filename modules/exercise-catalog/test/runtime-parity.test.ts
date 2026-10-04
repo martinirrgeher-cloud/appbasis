@@ -58,4 +58,37 @@ describe("exercise catalog runtime/schema parity", () => {
       ),
     ).toThrow(ExerciseCatalogValidationError);
   });
+
+  it("rejects malformed outer item arguments as validation failures", () => {
+    expect(() =>
+      createExerciseCatalogItem(null as never, {
+        id: "item-4",
+        organizationId: "org-1",
+        definition,
+      }),
+    ).toThrow(ExerciseCatalogValidationError);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        { name: "Invalid context", categoryKey: "speed" },
+        null as never,
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
+
+  it("rejects a canonicalized video URL that exceeds the schema limit", () => {
+    const unicodeUrl = "https://example.test/" + "é".repeat(400);
+    expect(unicodeUrl.length).toBeLessThanOrEqual(2_000);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        {
+          name: "Expanded URL",
+          categoryKey: "speed",
+          videoUrl: unicodeUrl,
+        },
+        { id: "item-5", organizationId: "org-1", definition },
+      ),
+    ).toThrow(ExerciseCatalogValidationError);
+  });
 });
