@@ -18,7 +18,8 @@ export function requiredIdentifier(value: unknown, label: string): string {
     typeof value !== "string" ||
     value.length < 1 ||
     value.length > 200 ||
-    value.trim() !== value
+    value.trim() !== value ||
+    value.includes("\0")
   ) {
     throw new ExerciseCatalogValidationError(label + " is invalid.");
   }
@@ -35,7 +36,11 @@ export function requiredText(
     throw new ExerciseCatalogValidationError(label + " must be text.");
   }
   const normalized = value.trim();
-  if (normalized.length < minimum || normalized.length > maximum) {
+  if (
+    normalized.includes("\0") ||
+    normalized.length < minimum ||
+    normalized.length > maximum
+  ) {
     throw new ExerciseCatalogValidationError(label + " has invalid length.");
   }
   return normalized;
@@ -52,7 +57,7 @@ export function optionalText(
   }
   const normalized = value.trim();
   if (normalized.length === 0) return null;
-  if (normalized.length > maximum) {
+  if (normalized.includes("\0") || normalized.length > maximum) {
     throw new ExerciseCatalogValidationError(label + " is too long.");
   }
   return normalized;
