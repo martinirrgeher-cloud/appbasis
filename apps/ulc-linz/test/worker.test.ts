@@ -1062,7 +1062,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
             exerciseId: "exercise-worker-1",
           },
         ],
-        logCsv: expect.stringContaining("Datensatz-Schlüssel"),
+        logCsv: expect.stringContaining("Excel-Zeile"),
       },
     });
   });
