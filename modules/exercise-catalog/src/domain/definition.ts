@@ -9,6 +9,11 @@ export function createExerciseCatalogDefinition(input: {
   readonly categories: readonly ExerciseCatalogCategory[];
   readonly parameterKeys?: readonly string[];
 }): ExerciseCatalogDefinition {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new ExerciseCatalogValidationError(
+      "Exercise catalog definition input is invalid.",
+    );
+  }
   if (!Array.isArray(input.categories) || input.categories.length === 0) {
     throw new ExerciseCatalogValidationError(
       "Exercise catalog categories must be a non-empty array.",
@@ -17,6 +22,15 @@ export function createExerciseCatalogDefinition(input: {
 
   const seenCategories = new Set<string>();
   const categories = input.categories.map((category) => {
+    if (
+      category === null ||
+      typeof category !== "object" ||
+      Array.isArray(category)
+    ) {
+      throw new ExerciseCatalogValidationError(
+        "Exercise catalog category is invalid.",
+      );
+    }
     const key = requiredKey(category.key, "Exercise category key");
     if (seenCategories.has(key)) {
       throw new ExerciseCatalogValidationError(
