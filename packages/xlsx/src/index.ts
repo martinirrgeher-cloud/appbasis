@@ -311,6 +311,11 @@ export async function readXlsxWorkbook(
       path,
       limits.maxEntryBytes,
     );
+    if (result.has(sheet.name)) {
+      throw new XlsxReadError(
+        "Die XLSX-Datei enthält doppelte Tabellenblattnamen.",
+      );
+    }
     result.set(
       sheet.name,
       Object.freeze(
@@ -418,7 +423,7 @@ function readZipDirectory(
     centralSize === 0xffffffff ||
     centralOffset === 0xffffffff ||
     count > limits.maxZipEntries ||
-    centralOffset + centralSize > bytes.byteLength
+    centralOffset + centralSize > endOffset
   ) {
     throw new XlsxReadError("Der XLSX-ZIP-Container wird nicht unterstützt.");
   }
@@ -538,6 +543,9 @@ async function readZipEntry(
 
   const localFlags = readUint16(bytes, offset + 6);
   const localMethod = readUint16(bytes, offset + 8);
+  const localCrc = readUint32(bytes, offset + 14);
+  const localCompressedSize = readUint32(bytes, offset + 18);
+  const localUncompressedSize = readUint32(bytes, offset + 22);
   const nameLength = readUint16(bytes, offset + 26);
   const extraLength = readUint16(bytes, offset + 28);
   const nameStart = offset + 30;
@@ -546,10 +554,15 @@ async function readZipEntry(
     throw new XlsxReadError("Ein lokaler ZIP-Header ist beschädigt.");
   }
   const localName = decodeUtf8(bytes.slice(nameStart, nameEnd));
+  const usesDataDescriptor = (localFlags & 0x0008) !== 0;
   if (
     localMethod !== entry.method ||
     localFlags !== entry.flags ||
-    localName !== entry.name
+    localName !== entry.name ||
+    (!usesDataDescriptor &&
+      (localCrc !== entry.crc ||
+        localCompressedSize !== entry.compressedSize ||
+        localUncompressedSize !== entry.uncompressedSize))
   ) {
     throw new XlsxReadError(
       "Lokaler ZIP-Header und Zentralverzeichnis widersprechen sich.",
@@ -633,6 +646,11 @@ function parseRelationships(xml: string): ReadonlyMap<string, string> {
     const target = xmlAttribute(tag, "Target");
     const mode = xmlAttribute(tag, "TargetMode");
     if (id !== null && target !== null && mode !== "External") {
+      if (result.has(id)) {
+        throw new XlsxReadError(
+          "Die XLSX-Datei enthält doppelte Relationship-IDs.",
+        );
+      }
       result.set(id, target);
     }
   }
@@ -877,6 +895,13 @@ function numericAttribute(
 }
 
 function decodeXmlEntities(value: string): string {
+  if (
+    /&(?!#x[0-9a-f]+;|#\d+;|amp;|lt;|gt;|quot;|apos;)/i.test(value)
+  ) {
+    throw new XlsxReadError(
+      "Eine XML-Zeichenreferenz der XLSX-Datei ist ungültig.",
+    );
+  }
   return value.replace(
     /&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi,
     (_entity, token: string) => {
