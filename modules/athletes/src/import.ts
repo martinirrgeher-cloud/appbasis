@@ -1154,20 +1154,16 @@ function createImportLogCsv(
   const values = [
     [
       "Excel-Zeile",
-      "Datensatz-Schlüssel",
       "Aktion",
       "Ergebnis",
-      "Athleten-ID",
       "Athlet",
       "Code",
       "Meldung",
     ],
     ...rows.map((row) => [
       String(row.rowNumber),
-      row.recordKey,
       row.requestedAction,
       row.outcome,
-      row.athleteId ?? "",
       row.name,
       row.code ?? "",
       row.message,
