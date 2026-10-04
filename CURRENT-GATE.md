@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-03
+Stand: 2026-10-04
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6F4B – Athleten-XLSX-Importvorschau und kontrollierter Apply.**
+**ULC-E6F5A – kleiner gemeinsamer Low-Level-XLSX-Helper.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -66,61 +66,52 @@ Verbindliche E6C-Grenzen:
 - Preview-/Production-Deployment dieses UI-Slices bleibt ein getrenntes,
   ausdrücklich freizugebendes Gate.
 
-## Aktueller Gate-Scope: ULC-E6F4B
+## Abgeschlossener Gate-Scope: ULC-E6F4B
 
-E6F4A ist auf `main` abgeschlossen und wurde am 03.10.2026 auf
-`80b69126d2896e9fa78e8b4073341d825ba72c53` erfolgreich in die isolierte
-ULC-Preview deployed. Worker-Deploy, Audit-Smoke und Application-DB-Binding
-waren grün; keine Migration war erforderlich.
+E6F4B ist auf `main` abgeschlossen und am 04.10.2026 auf
+`f025dc3c556766a47775174b501b927328965439` erfolgreich in die isolierte
+ULC-Preview deployed worden. Post-Merge-CI, Worker-Deploy, Audit-Smoke und
+Application-DB-Binding waren grün; keine Migration war erforderlich.
 
-E6F4B vervollständigt `athletes` als zweiten realen Exchange-Verbraucher.
+Die praktische Abnahme hat zusätzlich den Exchange-Vertrag vereinfacht:
+`appbasis.athletes.exchange/v2` verwendet genau ein sichtbares Blatt
+`Athleten`. Sichtbar bleiben nur fachliche Felder wie Vorname, Nachname,
+Geburtsjahr, Notizen und Trainingsgruppe(n). Trainingsgruppen werden als
+Dropdowns aus dem serverautorisierten Gruppenbestand angeboten. Technische
+Athleten-ID, Aktivstatus, Vertragskennung und Dropdown-Hilfswerte liegen nur in
+ausgeblendeten Spalten; Nutzer müssen weder IDs noch Datensatz-Schlüssel
+pflegen. Neue Gruppenzuordnungen werden weiterhin ausschließlich additiv
+angelegt, bestehende Historie wird nicht geschlossen oder umgeschrieben.
+Excel/DEFLATE-komprimierte XLSX-Dateien werden unterstützt.
+
+Die Sicherheitsgrenzen aus E6F4B bleiben unverändert: Edit-Autorisierung vor
+Dateiinspektion, read-only Preview, organisationsgebundener Freshness-Token,
+atomarer Compare-and-Update für bestehende Athleten, Writes nur über die
+bestehenden Athletes-Verträge und explizite Teilfehlerprotokollierung.
+
+## Aktueller Gate-Scope: ULC-E6F5A
+
+Nach zwei realen Exchange-Verbrauchern wird jetzt ausschließlich die bereits
+doppelt vorhandene, fachneutrale Low-Level-XLSX-Writer-Mechanik extrahiert.
 
 Abnahme:
 
-- fachlicher Parser/Preview/Apply-Vertrag liegt im Standardmodul
-  `@appbasis/athletes`, nicht in ULC-spezifischer Persistenzlogik;
-- 5 MB / 1.000 Athleten; ZIP/OpenXML fail-closed und größenbegrenzt;
-- ID ist primärer Match-Key; bei leerer ID ist
-  Vorname+Nachname+Geburtsjahr nur bei exakt einem Treffer zulässig;
-- potenzielle Namensdubletten ohne eindeutigen Schlüssel blockieren;
-- Trainingsgruppen stammen ausschließlich aus dem aktuellen
-  serverautorisierten Snapshot;
-- bestehende Gruppenzuordnungen werden nur unverändert als `skip` akzeptiert;
-- neue Gruppenzuordnungen dürfen ausschließlich additiv zu aktiven Gruppen
-  angelegt werden;
-- Änderungen/Schließen vorhandener Historienzeilen sowie Aktiv-/Archivwechsel
-  sind fail-closed;
-- `POST /api/modules/athletes/import-preview` und `/import-apply` verlangen
-  Edit-Recht vor Dateiinspektion;
-- Preview mutiert keine Fachdaten;
-- Apply parst Datei und Snapshot erneut und bindet beide über einen
-  organisationsgebundenen Freshness-Token;
-- stale Preview führt vor dem ersten Write zu `409`;
-- bestehende Athleten werden zusätzlich atomar nur dann aktualisiert, wenn
-  Vorname, Nachname, Jahrgang und Notiz noch exakt dem Preview-Zustand
-  entsprechen; konkurrierender Drift ergibt `STALE_IMPORT_ROW` statt
-  Lost-Update;
-- Writes laufen über die vorhandenen Athletes-Create-/Update-/
-  Membership-Verträge;
-- Ergebnis je Zeile als `created/updated/skipped/failed` plus CSV-Protokoll;
-- Teilmutationen bei nachgelagertem Membership-Fehler werden ausdrücklich als
-  solche protokolliert;
-- UI nutzt ein separates Import-Overlay mit expliziter Apply-Bestätigung;
-- keine neue Tabelle, Migration oder Provider-Mutation;
-- keine allgemeine Importplattform in diesem Gate.
+- neues kleines Paket `@appbasis/xlsx`;
+- gemeinsam genutzt von `@appbasis/athletes` und dem ULC-Übungskatalog;
+- umfasst nur UTF-8-Encoding, XML-1.0-sicheres Escaping,
+  Excel-Spaltennamen und deterministisches Stored-ZIP-Packaging für
+  OpenXML/XLSX-Bestandteile;
+- keinerlei Domain-Header, Match-/Dublettenlogik, Organisation, Berechtigungen,
+  Preview/Apply, Persistenz, Token oder UI im Helper;
+- die bestehenden Fachverträge bleiben unverändert:
+  Athletes `exchange/v2`, Exercise Catalog `exchange/v1`;
+- beide bestehenden Consumer-Tests plus eigene Helper-Tests müssen grün sein;
+- keine Migration, kein Providerwrite und kein Preview-/Production-Deployment.
 
-Begrenzung: Freshness-Token plus atomarer Compare-and-Update schützen
-bestehende Athleten auch bei parallel gestarteten Updates vor stillem
-Überschreiben. Zwei exakt parallele neue Create-Requests sind ohne fachlichen
-Athleten-Unique-Key bzw. verbindungsgebundenen Create-Idempotency-Vertrag
-weiterhin nicht als global exactly-once beweisbar. Dafür wird kein unsicherer Pseudo-Lock eingeführt; ein
-solcher Persistenz-/Idempotency-Vertrag wäre ein eigenes Gate.
-
-Nach E6F4B ist die Voraussetzung erfüllt, die nun doppelt bewiesene
-Low-Level-XLSX-/Tabular-Mechanik auf einen kleinen gemeinsamen Helper zu prüfen.
-
-Details: `modules/athletes/README.md` und
-`docs/ULC-LEGACY-FACTORY-AUDIT.md`.
+Die deutlich größere Reader-/Parser-Duplizierung wird in E6F5A bewusst noch
+nicht verschoben. Ihre fail-closed ZIP/OpenXML-Grenzen werden erst in einem
+separaten Folge-Slice extrahiert, falls dies ohne Vertragsaufweichung möglich
+ist.
 
 
 ## FC4-Abnahme – abgeschlossen
