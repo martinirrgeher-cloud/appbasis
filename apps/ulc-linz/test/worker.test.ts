@@ -1723,7 +1723,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
             athleteId: "athlete-imported",
           },
         ],
-        logCsv: expect.stringContaining("Datensatz-Schlüssel"),
+        logCsv: expect.stringContaining("Excel-Zeile"),
       },
     });
   });
