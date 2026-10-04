@@ -72,6 +72,15 @@ function normalizeParameters(
   }
   const allowed = new Set(allowedKeys);
   const normalized = values.map((value, index) => {
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Array.isArray(value)
+    ) {
+      throw new ExerciseCatalogValidationError(
+        "Exercise parameter is invalid.",
+      );
+    }
     const key = requiredKey(value.key, "Exercise parameter key");
     if (!allowed.has(key)) {
       throw new ExerciseCatalogValidationError(
