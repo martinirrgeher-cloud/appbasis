@@ -131,12 +131,19 @@ ULC-App und die Factory-Verträge abgeglichen.
 - E6G-C1: read-only ULC-Adoptionsvertrag mit gepinntem Source-/Target-Schema,
   vollständigem Mapping für Übungen, Parameter, Gruppen/Audiences und
   Favoriten sowie fail-closed Vorbedingungen für die spätere Datenkopie;
-- E6G-C2 folgt erst danach als isolierter PostgreSQL-Beweis der tatsächlichen
-  Copy-/Verify-Operation. Dieser Beweis allein ist noch kein Cutover-Gate:
-  vor dem späteren Runtime-Switch werden Source-Writes quiesziert und die
-  vollständige Source→Target-Gleichheit unter diesem Guard erneut geprüft;
-  Drift bricht den Cutover fail-closed ab. Preview-Migration, Runtime-Cutover
-  und Produktion bleiben jeweils getrennte Freigaben.
+- E6G-C2: isolierter PostgreSQL-Beweis der tatsächlichen Copy-/Verify-
+  Operation. Der Executor ist auf `isolated-proof` und dediziert benannte
+  `appbasis_e6g_c2_*`-Testdatenbanken beschränkt, sperrt die Zieltabellen vor
+  dem ersten Transaktions-Snapshot und kopiert in einer `REPEATABLE READ`-
+  Transaktion ausschließlich insert-only in leere Zieltabellen. Er prüft
+  Orphans, Zielschlüssel, Gesamt-/Organisations-
+  Zeilenzahlen sowie vollständige bidirektionale Feldgleichheit. Ein
+  Concurrency-Test beweist zugleich, dass ein konsistenter Snapshot noch keine
+  Cutover-Freshness ist; `runtimeCutoverEligible` bleibt false;
+- die reale Repository-/Schema-Adoption in Preview, der spätere guarded
+  Runtime-Cutover und Produktion bleiben jeweils getrennte Freigaben. Vor
+  einem Runtime-Switch müssen Source-Writes quiesziert und die vollständige
+  Source→Target-Gleichheit unter diesem Guard erneut geprüft werden.
 
 Der heutige Katalog ist noch app-eigen: Runtime und Migration liegen unter
 `apps/ulc-linz`. Seine bestehenden Tabellen dürfen nicht stillschweigend
