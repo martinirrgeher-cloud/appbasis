@@ -344,6 +344,77 @@ test("E6G-C2 keeps one repeatable-read source snapshot but never claims cutover 
   });
 });
 
+test("E6G-C2 sees a target row committed after transaction start but before the target lock", async () => {
+  await withIsolatedDatabase("target_lock_race", async ({
+    client,
+    connectionString,
+    databaseName,
+  }) => {
+    await seedCanonicalSource(client);
+    const writer = createPostgresDatabase(connectionString);
+    try {
+      await assert.rejects(
+        applyUlcExerciseCatalogAdoptionCopy(
+          {
+            connectionString,
+            expectedDatabase: databaseName,
+            expectedPrincipal,
+            executionScope: "isolated-proof",
+          },
+          {
+            repositoryRoot,
+            testingHooks: {
+              beforeTargetLock: async () => {
+                await writer.client`
+                  INSERT INTO appbasis_exercise_catalog_item (
+                    id,
+                    organization_id,
+                    name,
+                    category_key
+                  )
+                  VALUES (
+                    'late-target',
+                    'org-late',
+                    'Late target row',
+                    'other'
+                  )
+                `;
+              },
+            },
+          },
+        ),
+        (error) =>
+          error instanceof UlcExerciseCatalogAdoptionExecutionError &&
+          /target table is not empty/.test(error.message),
+      );
+    } finally {
+      await writer.client.end();
+    }
+
+    assert.deepEqual(await targetCounts(client), {
+      items: 1,
+      parameters: 0,
+      audiences: 0,
+      favorites: 0,
+    });
+  });
+});
+
+test("E6G-C2 refuses a production-like database name even with isolated-proof scope", async () => {
+  await assert.rejects(
+    applyUlcExerciseCatalogAdoptionCopy({
+      connectionString:
+        "postgres://postgres:postgres@localhost:5432/appbasis_ulc_linz_preview",
+      expectedDatabase: "appbasis_ulc_linz_preview",
+      expectedPrincipal: "postgres",
+      executionScope: "isolated-proof",
+    }),
+    (error) =>
+      error instanceof UlcExerciseCatalogAdoptionConfigurationError &&
+      /dedicated appbasis_e6g_c2_\* isolated database/.test(error.message),
+  );
+});
+
 test("E6G-C2 refuses any execution scope other than isolated-proof before connecting", async () => {
   await assert.rejects(
     applyUlcExerciseCatalogAdoptionCopy({

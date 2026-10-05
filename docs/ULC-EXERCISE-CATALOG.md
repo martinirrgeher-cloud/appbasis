@@ -132,9 +132,11 @@ ULC-App und die Factory-Verträge abgeglichen.
   vollständigem Mapping für Übungen, Parameter, Gruppen/Audiences und
   Favoriten sowie fail-closed Vorbedingungen für die spätere Datenkopie;
 - E6G-C2: isolierter PostgreSQL-Beweis der tatsächlichen Copy-/Verify-
-  Operation. Der Executor ist auf `isolated-proof` beschränkt, kopiert in
-  einer `REPEATABLE READ`-Transaktion ausschließlich insert-only in leere
-  Zieltabellen und prüft Orphans, Zielschlüssel, Gesamt-/Organisations-
+  Operation. Der Executor ist auf `isolated-proof` und dediziert benannte
+  `appbasis_e6g_c2_*`-Testdatenbanken beschränkt, sperrt die Zieltabellen vor
+  dem ersten Transaktions-Snapshot und kopiert in einer `REPEATABLE READ`-
+  Transaktion ausschließlich insert-only in leere Zieltabellen. Er prüft
+  Orphans, Zielschlüssel, Gesamt-/Organisations-
   Zeilenzahlen sowie vollständige bidirektionale Feldgleichheit. Ein
   Concurrency-Test beweist zugleich, dass ein konsistenter Snapshot noch keine
   Cutover-Freshness ist; `runtimeCutoverEligible` bleibt false;

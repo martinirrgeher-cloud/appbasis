@@ -343,10 +343,12 @@ nach erfolgreichem Cutover oder sauberem Rollback aufgehoben.
 #### E6G-C2 – isolierter PostgreSQL-Adoptionsbeweis
 
 C2 führt den C1-Mappingvertrag erstmals real aus, jedoch ausschließlich in
-einer eigens erzeugten Testdatenbank. Source und Ziel werden in einem
-`REPEATABLE READ`-Snapshot geprüft; Zieltabellen müssen leer und im erwarteten
-Primary-Key-/Spaltenzustand sein. Orphaned Child-Datensätze und doppelte
-Zielschlüssel blockieren vor dem ersten Insert.
+einer dediziert benannten `appbasis_e6g_c2_*`-Testdatenbank. Source und Ziel
+werden in einem `REPEATABLE READ`-Snapshot geprüft; die Zieltabellen werden
+vor dem ersten Snapshot-Read exklusiv gesperrt, müssen leer und im erwarteten
+Primary-Key-/Spaltenzustand sein. Damit kann ein während eines Lock-Waits
+commiteter Target-Write nicht aus dem Empty-Check fallen. Orphaned
+Child-Datensätze und doppelte Zielschlüssel blockieren vor dem ersten Insert.
 
 Nach dem insert-only Copy werden Gesamt- und Organisations-Zeilenzahlen sowie
 alle gemappten Felder bidirektional verglichen. Jede Abweichung rollt die

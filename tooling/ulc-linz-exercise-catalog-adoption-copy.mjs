@@ -3,6 +3,7 @@ import { validatePostgresConnectionString } from "./database-migration-executor.
 import { planUlcExerciseCatalogAdoption } from "./ulc-linz-exercise-catalog-adoption-plan.mjs";
 
 const REQUIRED_EXECUTION_SCOPE = "isolated-proof";
+const ISOLATED_DATABASE_PREFIX = "appbasis_e6g_c2_";
 const ADOPTION_LOCK_KEY = "ulc-linz:exercise-catalog:adoption-copy";
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
@@ -31,6 +32,7 @@ export async function applyUlcExerciseCatalogAdoptionCopy(
 ) {
   assertExecutionScope(executionScope);
   assertExpectedTarget(expectedDatabase, "database");
+  assertIsolatedDatabaseName(expectedDatabase);
   assertExpectedTarget(expectedPrincipal, "principal");
 
   const normalizedConnectionString = validatePostgresConnectionString(
@@ -55,13 +57,16 @@ export async function applyUlcExerciseCatalogAdoptionCopy(
   }
   assertC2Plan(plan);
 
+  const beforeTargetLock = options.testingHooks?.beforeTargetLock;
   const afterSourceSnapshot = options.testingHooks?.afterSourceSnapshot;
   if (
-    afterSourceSnapshot !== undefined &&
-    typeof afterSourceSnapshot !== "function"
+    (beforeTargetLock !== undefined &&
+      typeof beforeTargetLock !== "function") ||
+    (afterSourceSnapshot !== undefined &&
+      typeof afterSourceSnapshot !== "function")
   ) {
     throw new UlcExerciseCatalogAdoptionConfigurationError(
-      "E6G-C2 source-snapshot test hook is invalid.",
+      "E6G-C2 testing hook configuration is invalid.",
     );
   }
 
@@ -83,10 +88,25 @@ export async function applyUlcExerciseCatalogAdoptionCopy(
 
   let primaryError;
   try {
+    await verifyTargetIdentity(connection.client, {
+      expectedDatabase,
+      expectedPrincipal,
+    });
+    await assertRelationsExist(connection.client, plan.copy.tables);
+
     return await connection.client.begin(async (transaction) => {
       await transaction.unsafe(
         "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
       );
+
+      if (beforeTargetLock !== undefined) {
+        await beforeTargetLock();
+      }
+
+      // Acquire the target lock before the first transaction snapshot read.
+      // This makes rows committed by a writer while this transaction is
+      // starting visible to the subsequent empty-target check.
+      await lockTargetTables(transaction, plan.copy.tables);
       await verifyTargetIdentity(transaction, {
         expectedDatabase,
         expectedPrincipal,
@@ -98,7 +118,6 @@ export async function applyUlcExerciseCatalogAdoptionCopy(
       `;
 
       await assertRelationsExist(transaction, plan.copy.tables);
-      await lockTargetTables(transaction, plan.copy.tables);
       await assertMappedColumnsExist(transaction, plan.copy.tables);
       await assertTargetPrimaryKeys(transaction, plan.copy.tables);
       await assertTargetTablesEmpty(transaction, plan.copy.tables);
@@ -178,6 +197,18 @@ function assertExpectedTarget(value, label) {
   ) {
     throw new UlcExerciseCatalogAdoptionConfigurationError(
       "E6G-C2 expected PostgreSQL " + label + " is invalid.",
+    );
+  }
+}
+
+function assertIsolatedDatabaseName(value) {
+  if (
+    !value.startsWith(ISOLATED_DATABASE_PREFIX) ||
+    value.length === ISOLATED_DATABASE_PREFIX.length ||
+    !/^[a-z][a-z0-9_]{0,62}$/.test(value)
+  ) {
+    throw new UlcExerciseCatalogAdoptionConfigurationError(
+      "E6G-C2 requires a dedicated appbasis_e6g_c2_* isolated database.",
     );
   }
 }

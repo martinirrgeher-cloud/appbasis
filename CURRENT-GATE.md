@@ -178,14 +178,17 @@ Abnahme:
 - der Executor konsumiert ausschließlich den reviewten C1-Plan und akzeptiert
   nur den expliziten Ausführungsscope `isolated-proof`;
 - Datenbankname und Principal werden sowohl gegen die PostgreSQL-URL als auch
-  gegen `current_database()`/`current_user` fail-closed geprüft;
+  gegen `current_database()`/`current_user` fail-closed geprüft; C2 akzeptiert
+  zusätzlich ausschließlich dediziert benannte `appbasis_e6g_c2_*`-
+  Testdatenbanken;
 - der Copy-Lauf verwendet eine einzige `REPEATABLE READ`-Transaktion und
   serialisiert parallele Adoption-Läufe per Advisory Lock;
 - alle acht Source-/Target-Relationen und alle gemappten Spalten müssen
   vorhanden sein; die vier Ziel-Primary-Keys müssen exakt dem C1-Vertrag
   entsprechen;
-- Zieltabellen werden vor dem ersten Insert exklusiv gesperrt und müssen leer
-  sein;
+- Zieltabellen werden vor dem ersten Transaktions-Snapshot exklusiv gesperrt
+  und müssen leer sein, damit ein während des Lock-Waits commiteter Target-Write
+  beim anschließenden Empty-Check nicht unsichtbar bleiben kann;
 - Source-Parameter, Gruppen und Favoriten mit fehlendem organisationsgleichen
   Übungs-Parent werden vor jedem Write abgewiesen; ebenso doppelte gemappte
   Zielschlüssel;
