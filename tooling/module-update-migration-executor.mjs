@@ -407,6 +407,20 @@ export function createCatalogContract(plan, label = "migration", options = {}) {
           );
         }
         for (const marker of markers) {
+          if (
+            marker.kind === "constraint" &&
+            marker.present === false &&
+            constraintEvidence.createdConstraintNames.has(
+              namedConstraintKey(marker.table, marker.name),
+            )
+          ) {
+            // A constraint created and removed entirely inside this migration
+            // plan is transient target DDL, not a destructive final-state
+            // requirement. Baseline-owned drops are never added to this set
+            // and therefore remain fail-closed.
+            finalMarkers.delete(catalogMarkerKey(marker));
+            continue;
+          }
           finalMarkers.set(catalogMarkerKey(marker), marker);
         }
       }
@@ -547,6 +561,7 @@ function createConstraintEvidenceState() {
     trackedTables: new Set(),
     counts: new Map(),
     namedTypes: new Map(),
+    createdConstraintNames: new Set(),
   };
 }
 
@@ -589,10 +604,9 @@ function applyConstraintCountEvidence(statement, state, label) {
           );
         }
         adjustConstraintCount(state, table, constraintType, 1, label);
-        state.namedTypes.set(
-          namedConstraintKey(table, namedConstraint.name),
-          constraintType,
-        );
+        const key = namedConstraintKey(table, namedConstraint.name);
+        state.namedTypes.set(key, constraintType);
+        state.createdConstraintNames.add(key);
         continue;
       }
 
@@ -651,7 +665,9 @@ function applyConstraintCountEvidence(statement, state, label) {
         );
       }
       adjustConstraintCount(state, table, constraintType, 1, label);
-      state.namedTypes.set(namedConstraintKey(table, name), constraintType);
+      const key = namedConstraintKey(table, name);
+      state.namedTypes.set(key, constraintType);
+      state.createdConstraintNames.add(key);
       continue;
     }
 
@@ -827,6 +843,7 @@ function rememberPostgresDefaultPrimaryKeyName(state, table, label) {
     );
   }
   state.namedTypes.set(key, "p");
+  state.createdConstraintNames.add(key);
 }
 
 function adjustConstraintCount(state, table, constraintType, delta, label) {

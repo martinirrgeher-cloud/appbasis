@@ -313,6 +313,16 @@ test("FC6-B proves PostgreSQL default primary-key replacement inside one target 
       (marker) =>
         marker.kind === "constraint" &&
         marker.table === "appbasis_catalog_item" &&
+        marker.name === "appbasis_catalog_item_pkey",
+    ),
+    false,
+  );
+  assert.equal(contract.every((marker) => marker.present === true), true);
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "constraint" &&
+        marker.table === "appbasis_catalog_item" &&
         marker.name === "appbasis_catalog_item_pk" &&
         marker.present === true,
     ),
