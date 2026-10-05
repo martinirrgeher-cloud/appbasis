@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6F5B – gemeinsamer fail-closed XLSX-Reader.**
+**ULC-E6G-B – Repository/Service + isolierter Standardmodul-Consumer.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -113,34 +113,68 @@ und einem Codex-Review ohne Major Finding gemerged; der Post-Merge-CI auf
 `fc906d04d0b7baf0b7c8c96b1e922a5f2ca3ecbb` ist grün. Keine Migration und
 kein Deployment waren erforderlich.
 
-## Aktueller Gate-Scope: ULC-E6F5B
+## Abgeschlossener Gate-Scope: ULC-E6F5B
 
-Die Reader-/Parser-Duplizierung wird jetzt als eigener, enger Folge-Slice
-extrahiert. Der gemeinsame Reader muss die strengere der beiden vorhandenen
-Sicherheitsgrenzen übernehmen, ohne Domainlogik in das Helper-Paket zu ziehen.
+Der gemeinsame fail-closed XLSX-Reader ist auf `main` abgeschlossen. PR #382
+wurde nach grüner Exact-Head-CI und finalem Codex-Review ohne Major Finding
+gemerged; die Post-Merge-CI #3357 auf
+`4833cabf56952361586a2668f9e0d9c66ab3e362` ist grün.
+
+`@appbasis/xlsx` übernimmt damit die fachneutrale ZIP32/OpenXML-Leselogik für
+Athletes und Übungskatalog einschließlich DEFLATE, Größen-/CRC-/Header-Prüfung,
+striktem UTF-8/XML, ZIP64-/Encryption-/Pfad-Abweisung, Shared Strings,
+Zelltypen und optionaler Excel-Datumsdekodierung. Domain-, Auth-, Matching-,
+Preview-/Apply- und Persistenzregeln verbleiben bei den jeweiligen Consumern.
+Keine Migration und kein Deployment waren erforderlich.
+
+## Abgeschlossener Gate-Scope: ULC-E6G-A
+
+Das generische Standardmodul-Fundament `exercise-catalog` ist auf `main`
+abgeschlossen. PR #381 wurde nach grüner Exact-Head-CI und finalem Codex-Review
+gemerged; die Post-Merge-CI #3351 auf
+`a1e55c64f699148890231347e2f14c2b36243a66` ist grün.
+
+E6G-A liefert Modulmanifest, Capabilities, öffentliche konfigurierbare
+Domainverträge und ein eigenes generisches Modulschema ohne ULC-/Sprint-Enums.
+ULC verwendet weiterhin ausschließlich seine bestehenden
+`ulc_linz_exercise_*`-Tabellen; es gab keine Adoption, Datenkopie, Migration
+oder Deployment.
+
+## Aktueller Gate-Scope: ULC-E6G-B
+
+Der nächste Slice beweist das Standardmodul erstmals als eigenständig
+konsumierbare Persistenz-/Service-Domain, weiterhin ohne ULC-Adoption.
 
 Abnahme:
 
-- `@appbasis/xlsx` liest ZIP32/OpenXML fail-closed mit begrenzter Zahl an
-  ZIP-Einträgen, Einzelgröße und Gesamtgröße;
-- verschlüsselte, ZIP64-, unbekannt komprimierte, doppelte oder pfadunsichere
-  Einträge werden abgewiesen;
-- lokale Header, Zentralverzeichnis, erwartete Größe und CRC müssen
-  übereinstimmen;
-- XML mit DOCTYPE/ENTITY wird abgewiesen; UTF-8 und XML-Zeichenreferenzen werden
-  strikt validiert;
-- Shared Strings, Inline Strings, Booleans und normale Zellwerte werden
-  fachneutral gelesen;
-- Datumskonvertierung ist explizit optional und berücksichtigt Excel-Styles
-  sowie 1900-/1904-Datumssystem; Athletes aktiviert sie, Exercise Catalog nicht;
-- beide Importer verwenden denselben Reader und mappen Helper-Fehler zurück auf
-  ihre bestehenden fachlichen `INVALID_XLSX`-Verträge;
-- der bereits praktisch relevante Excel-DEFLATE-Fall läuft dadurch auch im
-  Übungskatalog über denselben Workers-kompatiblen `node:zlib`-Pfad wie bei
-  Athletes;
-- 5-MB-/1.000-Zeilen-, Domain-, Matching-, Auth-, Preview-/Apply- und
-  Persistenzregeln verbleiben vollständig bei den jeweiligen Consumern;
-- keine Migration, kein Providerwrite und kein Deployment.
+- öffentlicher Repository-Vertrag für organisationsgebundene Katalogdaten und
+  persönliche Favoriten;
+- In-Memory-Repository für isolierte Tests;
+- PostgreSQL-Repository auf ausschließlich modul-eigenen
+  `appbasis_exercise_catalog_*`-Tabellen;
+- Übungs-IDs sind organisationslokal; PostgreSQL verwendet dafür den
+  zusammengesetzten Schlüssel `(organization_id, id)`;
+- Create/Update einschließlich Parameter und Audience-Zuordnungen erfolgen
+  atomar; jede SQL-Lese-/Schreiboperation wiederholt den
+  `organizationId`-Scope;
+- mehrteilige Aggregat-Reads laufen in einem read-only
+  `REPEATABLE READ`-Snapshot, damit Parent- und Child-Zeilen nicht aus
+  unterschiedlichen Commitständen zusammengesetzt werden;
+- öffentlicher Service normalisiert Create/Update über den E6G-A-Domainvertrag,
+  erzwingt die konfigurierte Definition und kapselt Create, Update,
+  Deaktivierung und Favoriten;
+- eine kleine isolierte Test-App konsumiert das Modul ohne ULC-Code und beweist
+  getrennte View-/Edit-Capabilities sowie eine app-eigene
+  Organisationsauflösung;
+- In-Memory- und reale PostgreSQL-Tests beweisen Organisationsisolation,
+  Persistenz von Parametern/Audiences/Favoriten und fail-closed Verhalten;
+- ULC-Runtime, `ulc_linz_exercise_*`-Tabellen und bestehende ULC-Permissions
+  bleiben unverändert;
+- kein ULC-Adoption-Write, keine Preview-/Production-Migration und kein
+  Deployment.
+
+Der anschließende E6G-Slice ist der getrennte Schema-/Ownership-Adoptionsvertrag
+für ULC. Dieser darf erst nach erfolgreichem E6G-B-Review begonnen werden.
 
 
 ## FC4-Abnahme – abgeschlossen
