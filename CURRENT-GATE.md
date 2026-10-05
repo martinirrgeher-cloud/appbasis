@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-04
+Stand: 2026-10-05
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6G-C1 – read-only Schema-/Ownership-Adoptionsvertrag.**
+**ULC-E6G-C2 – isolierter PostgreSQL-Copy-/Verify-Beweis.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -154,47 +154,62 @@ In-Memory-/PostgreSQL-Repositories, persönliche Favoriten und einen isolierten
 ULC-unabhängigen Consumer. Die reale ULC-Runtime und die
 `ulc_linz_exercise_*`-Tabellen blieben unverändert.
 
-## Aktueller Gate-Scope: ULC-E6G-C1
+## Abgeschlossener Gate-Scope: ULC-E6G-C1
 
-Vor jeder ULC-Mutation wird der Schema-/Ownership-Übergang zunächst als
-read-only, maschinenlesbarer Vertrag fixiert und gegen den aktuellen
-Repositoryzustand geprüft.
+Der read-only Schema-/Ownership-Adoptionsvertrag ist auf `main` abgeschlossen.
+PR #384 wurde nach grüner Exact-Head-CI und finalem Codex-Re-Review ohne Major
+Finding gemerged; die Post-Merge-CI #3376 auf
+`93f9d8f2e6756a7dbedb784a0f81b02f6c178e08` ist vollständig grün.
+
+C1 pinnt Source-Owner/-Migration und Zielmodul/-Migrationen, mappt Übungen,
+Parameter, Gruppen→Audiences und Identity-Favoriten→Principal-Favoriten und
+erzwingt für den späteren Runtime-Cutover zusätzlich
+Source-Write-Quiescence plus finale Source→Target-Gleichheit. C1 selbst führt
+keinen Datenbankzugriff und keinerlei Mutation aus.
+
+## Aktueller Gate-Scope: ULC-E6G-C2
+
+C2 beweist ausschließlich die reale Copy-/Verify-Operation auf einer
+isolierten PostgreSQL-Datenbank. Der bestehende ULC-Repositoryzustand und die
+reale Preview/Produktion bleiben unangetastet.
 
 Abnahme:
 
-- `apps/ulc-linz/exercise-catalog-adoption.json` benennt exakt den heutigen
-  Source-Owner `ulc-linz-lifecycle`, dessen Schema-Version und die gepinnte
-  Source-Migration sowie den Zielowner `exercise-catalog` mit seinen
-  gepinnten Modulmigrationen;
-- die vier Datenbereiche werden vollständig und explizit gemappt:
-  Übungen, Parameter, Gruppen→Audiences und Identity-Favoriten→Principal-
-  Favoriten;
-- Organisation, Übungs-IDs und Zeitstempel müssen unverändert übernommen
-  werden; Source-Tabellen bleiben während der Kopie unangetastet;
-- der spätere Executor muss leere Zieltabellen, fehlende Source-Orphans,
-  exakte Gesamt- und Organisations-Zeilenzahlen sowie vollständige
-  Feldgleichheit beweisen;
-- ein erfolgreicher Copy-/Verify-Lauf allein erlaubt keinen Runtime-Cutover:
-  vor der finalen Cutover-Prüfung müssen Source-Writes quiesziert sein; unter
-  diesem Guard ist die vollständige Source→Target-Feldgleichheit erneut zu
-  beweisen, jede Abweichung bricht den Cutover ab und der Runtime-Switch darf
-  erst nach erfolgreicher Finalprüfung erfolgen;
-- der Planner prüft fail-closed, dass der Source-Owner noch dem aktuellen
-  ULC-Manifest entspricht, das Zielmodul noch nicht installiert ist und der
-  Zielowner noch nicht im ULC-Datenbankmanifest vorhanden ist;
-- Source- und Target-Migrationsdateien sind über ihre Git-Blob-IDs an den
-  reviewten Vertrag gebunden;
-- der Planner führt keinerlei Datenbankzugriff, Repositorywrite, Migration,
-  Providerwrite oder Deployment aus;
-- Repository-Installation, Ziel-Schema-Migration, Copy/Verify,
-  Runtime-Cutover und spätere Source-Stilllegung bleiben getrennte Gates.
+- der Executor konsumiert ausschließlich den reviewten C1-Plan und akzeptiert
+  nur den expliziten Ausführungsscope `isolated-proof`;
+- Datenbankname und Principal werden sowohl gegen die PostgreSQL-URL als auch
+  gegen `current_database()`/`current_user` fail-closed geprüft;
+- der Copy-Lauf verwendet eine einzige `REPEATABLE READ`-Transaktion und
+  serialisiert parallele Adoption-Läufe per Advisory Lock;
+- alle acht Source-/Target-Relationen und alle gemappten Spalten müssen
+  vorhanden sein; die vier Ziel-Primary-Keys müssen exakt dem C1-Vertrag
+  entsprechen;
+- Zieltabellen werden vor dem ersten Insert exklusiv gesperrt und müssen leer
+  sein;
+- Source-Parameter, Gruppen und Favoriten mit fehlendem organisationsgleichen
+  Übungs-Parent werden vor jedem Write abgewiesen; ebenso doppelte gemappte
+  Zielschlüssel;
+- Copy ist ausschließlich insert-only von
+  `ulc_linz_exercise_*` nach `appbasis_exercise_catalog_*` und bewahrt alle
+  gemappten Werte einschließlich Organisation, Übungs-ID und Zeitstempel;
+- nach der Kopie werden exakte Gesamtzeilenzahlen, Zeilenzahlen je Organisation
+  und vollständige bidirektionale Feldgleichheit für alle vier Tabellen
+  geprüft;
+- jeder Fehler einschließlich einer nachträglichen Verify-Abweichung rollt die
+  gesamte Zielkopie zurück; Source-Tabellen werden vom Executor nicht
+  verändert;
+- ein deterministischer Concurrency-Test beweist, dass C2 einen konsistenten
+  Source-Snapshot kopiert, aber einen nach Snapshot entstandenen Source-Write
+  bewusst nicht als Cutover-frisch ausgibt;
+- das Ergebnis bleibt deshalb ausdrücklich
+  `runtimeCutoverEligible: false` und erfüllt den C1-Quiescence-Guard nicht;
+- reale ULC-Modulinstallation, Preview-/Production-Migration, Datenkopie,
+  Runtime-Cutover, Providerwrite und Deployment sind **nicht** Teil von C2.
 
-E6G-C2 darf erst nach erfolgreichem C1-Review einen Adoption-Executor auf einer
-isolierten PostgreSQL-Datenbank beweisen. Ein erfolgreicher C2-Copy ist dabei
-noch keine Cutover-Freigabe; der spätere Runtime-Cutover muss den in C1
-festgelegten Write-Quiescence-/Final-Equality-Guard separat beweisen. Preview
-und Produktion bleiben danach weiterhin eigene, ausdrücklich freizugebende
-Gates.
+Nach erfolgreichem C2-Review folgt ein getrenntes Gate für die reale
+Repository-/Schema-Adoption in einer ausdrücklich freizugebenden Preview.
+Auch dort ist Copy/Verify noch kein Runtime-Cutover; der in C1 definierte
+Quiescence-/Final-Equality-Guard bleibt verpflichtend.
 
 ## FC4-Abnahme – abgeschlossen
 

@@ -340,6 +340,21 @@ Source→Target-Gleichheit unter diesem Guard und fail-closed Abbruch bei jeder
 Abweichung. Erst danach darf der Runtime-Switch erfolgen; der Guard wird erst
 nach erfolgreichem Cutover oder sauberem Rollback aufgehoben.
 
+#### E6G-C2 – isolierter PostgreSQL-Adoptionsbeweis
+
+C2 führt den C1-Mappingvertrag erstmals real aus, jedoch ausschließlich in
+einer eigens erzeugten Testdatenbank. Source und Ziel werden in einem
+`REPEATABLE READ`-Snapshot geprüft; Zieltabellen müssen leer und im erwarteten
+Primary-Key-/Spaltenzustand sein. Orphaned Child-Datensätze und doppelte
+Zielschlüssel blockieren vor dem ersten Insert.
+
+Nach dem insert-only Copy werden Gesamt- und Organisations-Zeilenzahlen sowie
+alle gemappten Felder bidirektional verglichen. Jede Abweichung rollt die
+gesamte Zielkopie zurück. Ein eigener Race-Test hält fest, dass ein während des
+Laufs neu committed Source-Datensatz absichtlich nicht in den bereits
+etablierten Snapshot fällt. C2 darf daraus ausdrücklich keine Cutover-
+Freshness ableiten; `runtimeCutoverEligible` bleibt false.
+
 ### Danach E6D / E6E
 
 Erst auf geklärtem Modul-/Ownership-Vertrag folgen private Videos,
