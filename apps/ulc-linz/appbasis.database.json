@@ -34,6 +34,15 @@
       ]
     },
     {
+      "id": "exercise-catalog",
+      "root": "modules/exercise-catalog",
+      "schemaVersion": 2,
+      "migrations": [
+        "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
+        "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql"
+      ]
+    },
+    {
       "id": "ulc-linz-lifecycle",
       "root": "apps/ulc-linz",
       "schemaVersion": 8,

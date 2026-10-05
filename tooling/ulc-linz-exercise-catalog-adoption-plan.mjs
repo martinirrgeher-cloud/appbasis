@@ -126,7 +126,7 @@ export async function planUlcExerciseCatalogAdoption(
       readJson(root, MODULE_MANIFEST_PATH),
     ]);
 
-  assertRepositoryState({
+  const repositoryState = assertRepositoryState({
     contract,
     appDefinition,
     appPackage,
@@ -151,6 +151,7 @@ export async function planUlcExerciseCatalogAdoption(
     schemaVersion: 1,
     operation: contract.operation,
     state: "ready-for-isolated-adoption-proof",
+    repositoryState,
     application: contract.application,
     source: {
       ownerId: contract.source.ownerId,
@@ -189,6 +190,8 @@ export async function planUlcExerciseCatalogAdoption(
       {
         id: "repository-install",
         mutation: "repository",
+        state:
+          repositoryState === "published-target" ? "published" : "pending",
         gate: "separate-explicit-approval",
         executor: "FC6 existing-app updater",
       },
@@ -307,21 +310,12 @@ function assertRepositoryState({
   ) {
     throw new Error("ULC app definition does not match the adoption contract.");
   }
-  if (appDefinition.modules.includes(contract.target.moduleId)) {
-    throw new Error(
-      "ULC exercise-catalog target module is already declared; C1 requires the pre-adoption repository state.",
-    );
-  }
   if (
     !plainObject(appPackage) ||
-    !plainObject(appPackage.dependencies) ||
-    Object.hasOwn(appPackage.dependencies, contract.target.packageName)
+    !plainObject(appPackage.dependencies)
   ) {
-    throw new Error(
-      "ULC exercise-catalog target package is already declared before adoption.",
-    );
+    throw new Error("ULC exercise-catalog app package is invalid.");
   }
-
   if (
     !plainObject(databaseManifest) ||
     databaseManifest.manifestVersion !== 1 ||
@@ -331,6 +325,21 @@ function assertRepositoryState({
   ) {
     throw new Error("ULC database ownership manifest is invalid.");
   }
+  if (
+    !plainObject(moduleManifest) ||
+    moduleManifest.schemaVersion !== 1 ||
+    moduleManifest.moduleId !== contract.target.moduleId ||
+    moduleManifest.packageName !== contract.target.packageName ||
+    !plainObject(moduleManifest.database) ||
+    moduleManifest.database.schemaVersion !== contract.target.schemaVersion ||
+    canonicalJson(moduleManifest.database.migrations) !==
+      canonicalJson(contract.target.migrations.map((entry) => entry.path))
+  ) {
+    throw new Error(
+      "Exercise-catalog module database contract does not match the adoption target.",
+    );
+  }
+
   const sourceOwners = databaseManifest.owners.filter(
     (owner) => owner?.id === contract.source.ownerId,
   );
@@ -350,30 +359,60 @@ function assertRepositoryState({
       "ULC exercise-catalog source owner contract does not match the current manifest.",
     );
   }
-  if (
-    databaseManifest.owners.some(
-      (owner) => owner?.id === contract.target.moduleId,
-    )
-  ) {
+
+  const moduleDeclarations = appDefinition.modules.filter(
+    (moduleId) => moduleId === contract.target.moduleId,
+  );
+  if (moduleDeclarations.length > 1) {
     throw new Error(
-      "ULC exercise-catalog target owner is already present; silent ownership takeover is forbidden.",
+      "ULC exercise-catalog target module declaration is duplicated.",
+    );
+  }
+  const targetOwners = databaseManifest.owners.filter(
+    (owner) => owner?.id === contract.target.moduleId,
+  );
+  if (targetOwners.length > 1) {
+    throw new Error(
+      "ULC exercise-catalog target owner is duplicated.",
     );
   }
 
-  if (
-    !plainObject(moduleManifest) ||
-    moduleManifest.schemaVersion !== 1 ||
-    moduleManifest.moduleId !== contract.target.moduleId ||
-    moduleManifest.packageName !== contract.target.packageName ||
-    !plainObject(moduleManifest.database) ||
-    moduleManifest.database.schemaVersion !== contract.target.schemaVersion ||
-    canonicalJson(moduleManifest.database.migrations) !==
-      canonicalJson(contract.target.migrations.map((entry) => entry.path))
-  ) {
+  const moduleDeclared = moduleDeclarations.length === 1;
+  const packageDeclared = Object.hasOwn(
+    appPackage.dependencies,
+    contract.target.packageName,
+  );
+  const targetOwnerPresent = targetOwners.length === 1;
+
+  if (!moduleDeclared && !packageDeclared && !targetOwnerPresent) {
+    return "pre-adoption";
+  }
+
+  if (!(moduleDeclared && packageDeclared && targetOwnerPresent)) {
     throw new Error(
-      "Exercise-catalog module database contract does not match the adoption target.",
+      "ULC exercise-catalog repository adoption state is partial or inconsistent.",
     );
   }
+
+  if (appPackage.dependencies[contract.target.packageName] !== "workspace:*") {
+    throw new Error(
+      "ULC exercise-catalog published target package dependency is invalid.",
+    );
+  }
+  const targetOwner = targetOwners[0];
+  const expectedTargetOwner = {
+    id: contract.target.moduleId,
+    root: contract.target.ownerRoot,
+    schemaVersion: contract.target.schemaVersion,
+    migrations: contract.target.migrations.map((entry) => entry.path),
+  };
+  if (canonicalJson(targetOwner) !== canonicalJson(expectedTargetOwner)) {
+    throw new Error(
+      "ULC exercise-catalog published target owner drifted from the reviewed module contract.",
+    );
+  }
+
+  return "published-target";
 }
 
 async function assertPinnedMigration(root, migration, label) {
