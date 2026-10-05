@@ -140,15 +140,22 @@ ULC-App und die Factory-Verträge abgeglichen.
   Zeilenzahlen sowie vollständige bidirektionale Feldgleichheit. Ein
   Concurrency-Test beweist zugleich, dass ein konsistenter Snapshot noch keine
   Cutover-Freshness ist; `runtimeCutoverEligible` bleibt false;
-- die reale Repository-/Schema-Adoption in Preview, der spätere guarded
-  Runtime-Cutover und Produktion bleiben jeweils getrennte Freigaben. Vor
-  einem Runtime-Switch müssen Source-Writes quiesziert und die vollständige
-  Source→Target-Gleichheit unter diesem Guard erneut geprüft werden.
+- E6G-C3A: kanonische Repository-Adoption des Standardmoduls. ULC deklariert
+  jetzt `exercise-catalog`, dessen Workspace-Paket und dessen eigenen
+  Datenbankowner; C1 akzeptiert den veröffentlichten Zielzustand weiterhin
+  fail-closed und ein read-only Preview-Readiness-Plan rekonstruiert über FC6
+  genau die zwei ausstehenden Zielmigrationen;
+- der reale Schema-/Copy-Apply in der isolierten Preview, der spätere guarded
+  Runtime-Cutover und Produktion bleiben jeweils getrennte Freigaben. C3A
+  selbst greift weder auf Provider noch Datenbank zu. Vor einem Runtime-Switch
+  müssen Source-Writes quiesziert und die vollständige Source→Target-
+  Gleichheit unter diesem Guard erneut geprüft werden.
 
-Der heutige Katalog ist noch app-eigen: Runtime und Migration liegen unter
-`apps/ulc-linz`. Seine bestehenden Tabellen dürfen nicht stillschweigend
-einem neuen Modulowner zugeschrieben oder doppelt angelegt werden. Die spätere
-Promotion benötigt einen eigenen Schema-/Ownership-Adoptionsvertrag.
+Der bisherige ULC-Runtimepfad ist weiterhin app-eigen: Runtime und Source-Migration liegen unter `apps/ulc-linz`; der Repository-
+Zielzustand enthält zusätzlich den neuen Standardmodulowner. Die bestehenden
+`ulc_linz_exercise_*`-Tabellen bleiben weiterhin Eigentum des ULC-Owners und
+werden nicht umetikettiert. Die Datenübernahme in
+`appbasis_exercise_catalog_*` bleibt ein eigener Preview-/Cutover-Pfad.
 
 Siehe `docs/ULC-LEGACY-FACTORY-AUDIT.md`.
 
