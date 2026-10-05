@@ -488,7 +488,7 @@ test("M5-J never reuses ULC evidence for another app", async () => {
   assert.deepEqual(evidence, {});
 });
 
-test("Factory snapshot reopens ULC production readiness after the Stammdaten module scope changes", async () => {
+test("Factory snapshot keeps ULC production readiness reopened after repository module scope changes", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot, {
     ulcLinzM5JOwnerInputs: completeOwnerInputs(),
     m5EvidenceNow: NOW,
@@ -497,9 +497,17 @@ test("Factory snapshot reopens ULC production readiness after the Stammdaten mod
   });
   const ulc = snapshot.apps.find((app) => app.appId === "ulc-linz");
   assert.ok(ulc);
-  assert.deepEqual(ulc.modules, ["countdown", "athletes"]);
+  assert.deepEqual(ulc.modules, [
+    "countdown",
+    "athletes",
+    "exercise-catalog",
+  ]);
   assert.equal(ulc.productionReadiness.productionReady, false);
-  assert.ok(ulc.productionReadiness.verifiedCount < 12);
+  assert.equal(ulc.productionReadiness.verifiedCount, 1);
+  assert.equal(
+    criterionStatus(ulc.productionReadiness, "rolesAndPermissions"),
+    "open",
+  );
   assert.equal(ulc.productionReleaseReadiness.releaseAuthorized, false);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });

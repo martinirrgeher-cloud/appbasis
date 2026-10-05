@@ -287,10 +287,9 @@ test("Factory snapshot keeps operational lifecycle and high privacy evidence ope
 
   assert.ok(snapshot.apps.length > 0);
   for (const app of snapshot.apps) {
-    const isUlcLinz = app.appId === "ulc-linz";
     assert.equal(app.productionReadiness.status, "blocked");
     assert.equal(app.productionReadiness.productionReady, false);
-    assert.equal(app.productionReadiness.verifiedCount, isUlcLinz ? 2 : 1);
+    assert.equal(app.productionReadiness.verifiedCount, 1);
     assert.equal(app.productionReadiness.requiredCount, expectedIds.length);
     assert.deepEqual(
       app.productionReadiness.criteria.map((criterion) => criterion.id),
@@ -306,7 +305,7 @@ test("Factory snapshot keeps operational lifecycle and high privacy evidence ope
       app.productionReadiness.criteria.find(
         (criterion) => criterion.id === "rolesAndPermissions",
       )?.status,
-      isUlcLinz ? "verified" : "open",
+      "open",
     );
     assert.equal(
       app.productionReadiness.criteria.find(
@@ -329,9 +328,7 @@ test("Factory snapshot keeps operational lifecycle and high privacy evidence ope
     assert.ok(
       app.productionReadiness.criteria
         .filter(
-          (criterion) =>
-            criterion.id !== "secretsOutsideAppManifests" &&
-            (!isUlcLinz || criterion.id !== "rolesAndPermissions"),
+          (criterion) => criterion.id !== "secretsOutsideAppManifests",
         )
         .every((criterion) => criterion.status === "open"),
     );

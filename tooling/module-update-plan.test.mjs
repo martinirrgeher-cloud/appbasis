@@ -190,7 +190,11 @@ test("recognizes the real ULC countdown installation as a deterministic no-op", 
       "utf8",
     ),
   );
-  assert.deepEqual(currentUlcDefinition.modules, ["countdown", "athletes"]);
+  assert.deepEqual(currentUlcDefinition.modules, [
+    "countdown",
+    "athletes",
+    "exercise-catalog",
+  ]);
 });
 
 test("recognizes the real ULC Stammdaten installation as a deterministic no-op", async () => {
