@@ -522,7 +522,13 @@ async function createUlcBaselineFixture(t) {
   );
   assert.deepEqual(
     publishedDatabaseManifest.owners.map((owner) => owner.id),
-    ["identity", "permissions", "athletes", "ulc-linz-lifecycle"],
+    [
+      "identity",
+      "permissions",
+      "athletes",
+      "exercise-catalog",
+      "ulc-linz-lifecycle",
+    ],
   );
   await writeFile(
     join(root, "apps", "ulc-linz", "appbasis.database.json"),
