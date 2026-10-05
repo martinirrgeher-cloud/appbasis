@@ -214,3 +214,13 @@ automatisierter Evidence ausgeführt.
 
 Produktionsmigration, Deployment und Release bleiben weiterhin eigene,
 ausdrücklich freizugebende Schritte.
+### PostgreSQL-Defaultnamen bei Primary-Key-Ersatz
+
+Der Katalogbeweis darf einen von PostgreSQL automatisch erzeugten Primary-Key-
+Namen nur dann ableiten, wenn derselbe Target-Migrationsplan die Tabelle mit
+einem **unbenannten** Primary Key erzeugt und der kanonische, ungekürzte Name
+exakt `<tabelle>_pkey` lautet. Abweichende oder wegen der 63-Byte-Grenze
+gekürzte Namen werden nicht geraten und bleiben fail-closed. Damit kann ein
+späterer, explizit benannter Composite-Primary-Key sicher als Ersatz bewiesen
+werden, ohne die allgemeine Constraint-Prüfung zu lockern.
+

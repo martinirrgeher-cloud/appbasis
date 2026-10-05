@@ -599,6 +599,9 @@ function applyConstraintCountEvidence(statement, state, label) {
       const tableConstraintType = constraintTypeFromClause(trimmed);
       if (tableConstraintType !== null) {
         adjustConstraintCount(state, table, tableConstraintType, 1, label);
+        if (tableConstraintType === "p") {
+          rememberPostgresDefaultPrimaryKeyName(state, table, label);
+        }
         continue;
       }
 
@@ -612,8 +615,12 @@ function applyConstraintCountEvidence(statement, state, label) {
         );
       }
 
-      for (const constraintType of columnConstraintTypes(column[3])) {
+      const columnTypes = columnConstraintTypes(column[3]);
+      for (const constraintType of columnTypes) {
         adjustConstraintCount(state, table, constraintType, 1, label);
+      }
+      if (columnTypes.includes("p")) {
+        rememberPostgresDefaultPrimaryKeyName(state, table, label);
       }
     }
     return;
@@ -801,6 +808,25 @@ function topLevelSqlWords(value) {
   }
 
   return words;
+}
+
+function rememberPostgresDefaultPrimaryKeyName(state, table, label) {
+  const generatedName = `${table}_pkey`;
+  // PostgreSQL truncates generated identifiers beyond NAMEDATALEN. Do not
+  // guess a truncated name: only prove the canonical untruncated default.
+  if (
+    !/^[A-Za-z_][A-Za-z0-9_$]*$/.test(table) ||
+    Buffer.byteLength(generatedName, "utf8") > 63
+  ) {
+    return;
+  }
+  const key = namedConstraintKey(table, generatedName);
+  if (state.namedTypes.has(key)) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      `FC6-B ${label} migration creates an ambiguous implicit primary-key name.`,
+    );
+  }
+  state.namedTypes.set(key, "p");
 }
 
 function adjustConstraintCount(state, table, constraintType, delta, label) {
