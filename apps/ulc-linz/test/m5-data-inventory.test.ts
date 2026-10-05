@@ -139,8 +139,16 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(inventory.scope).toBe("current-materialized-v0.3");
     expect(databaseManifest.application).toBe(inventory.application);
     expect(appManifest.appId).toBe(inventory.application);
-    expect(appManifest.modules).toEqual(["countdown", "athletes"]);
-    expect(inventory.runtimeModules).toEqual(["countdown", "athletes"]);
+    expect(appManifest.modules).toEqual([
+      "countdown",
+      "athletes",
+      "exercise-catalog",
+    ]);
+    expect(inventory.runtimeModules).toEqual([
+      "countdown",
+      "athletes",
+      "exercise-catalog",
+    ]);
     expect(inventory.runtimeModules).toEqual(appManifest.modules);
     expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
 
@@ -151,6 +159,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
       "identity",
       "permissions",
       "athletes",
+      "exercise-catalog",
       "ulc-linz-lifecycle",
     ]);
     expect(appManifest.platformServices).toEqual(["identity", "permissions"]);
@@ -158,7 +167,9 @@ describe("ULC Linz M5 C/D data inventory", () => {
       inventory.persistentOwners
         .filter(
           (owner) =>
-            owner.id !== "athletes" && owner.id !== "ulc-linz-lifecycle",
+            owner.id !== "athletes" &&
+            owner.id !== "exercise-catalog" &&
+            owner.id !== "ulc-linz-lifecycle",
         )
         .every((owner) => owner.lifecycleStatus === "verified-current-scope"),
     ).toBe(true);
@@ -184,6 +195,21 @@ describe("ULC Linz M5 C/D data inventory", () => {
         "repository-retention-deletes-personal-masterdata-and-group-memberships-after-12-calendar-months",
         "production-retention-activation-pending-athletes-schema-deploy",
         "restore-reconciliation-repository-verified-production-activation-pending",
+      ]),
+    });
+
+    expect(
+      inventory.persistentOwners.find(
+        (owner) => owner.id === "exercise-catalog",
+      ),
+    ).toMatchObject({
+      schemaVersion: 2,
+      lifecycleStatus: "repository-schema-published-preview-copy-pending",
+      notes: expect.arrayContaining([
+        "standard-module-target-schema-published-in-repository-only",
+        "ulc-runtime-cutover-not-yet-performed",
+        "exercise-catalog-configuration-not-personal",
+        "exercise-favorite-lifecycle-pending",
       ]),
     });
 
@@ -213,7 +239,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(34);
+    expect(inventory.persistentTables).toHaveLength(38);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -375,6 +401,33 @@ describe("ULC Linz M5 C/D data inventory", () => {
         retentionEvidence: "not-personal",
       });
     }
+
+    for (const id of [
+      "appbasis_exercise_catalog_item",
+      "appbasis_exercise_catalog_parameter",
+      "appbasis_exercise_catalog_audience",
+    ]) {
+      expect(
+        inventory.persistentTables.find((table) => table.id === id),
+      ).toMatchObject({
+        owner: "exercise-catalog",
+        privacyClass: "exercise-catalog-configuration",
+        retentionPolicy: "configuration-lifecycle-not-personal",
+        deletionEvidence: "not-personal",
+        retentionEvidence: "not-personal",
+      });
+    }
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "appbasis_exercise_catalog_favorite",
+      ),
+    ).toMatchObject({
+      owner: "exercise-catalog",
+      privacyClass: "exercise-catalog-user-preference",
+      retentionPolicy: "pending-exercise-catalog-user-preference-lifecycle",
+      deletionEvidence: "fail-closed-pending-lifecycle",
+      retentionEvidence: "fail-closed-pending-lifecycle",
+    });
     expect(
       inventory.persistentTables.find(
         (table) => table.id === "ulc_linz_exercise_favorite",

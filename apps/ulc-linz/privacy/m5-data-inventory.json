@@ -60,6 +60,21 @@
       ]
     },
     {
+      "id": "exercise-catalog",
+      "schemaVersion": 2,
+      "migrations": [
+        "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
+        "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql"
+      ],
+      "lifecycleStatus": "repository-schema-published-preview-copy-pending",
+      "notes": [
+        "standard-module-target-schema-published-in-repository-only",
+        "ulc-runtime-cutover-not-yet-performed",
+        "exercise-catalog-configuration-not-personal",
+        "exercise-favorite-lifecycle-pending"
+      ]
+    },
+    {
       "id": "ulc-linz-lifecycle",
       "schemaVersion": 8,
       "migrations": [
@@ -366,11 +381,44 @@
       "retentionPolicy": "pending-exercise-catalog-user-preference-lifecycle",
       "deletionEvidence": "fail-closed-pending-lifecycle",
       "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_exercise_catalog_item",
+      "owner": "exercise-catalog",
+      "privacyClass": "exercise-catalog-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "appbasis_exercise_catalog_parameter",
+      "owner": "exercise-catalog",
+      "privacyClass": "exercise-catalog-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "appbasis_exercise_catalog_audience",
+      "owner": "exercise-catalog",
+      "privacyClass": "exercise-catalog-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "appbasis_exercise_catalog_favorite",
+      "owner": "exercise-catalog",
+      "privacyClass": "exercise-catalog-user-preference",
+      "retentionPolicy": "pending-exercise-catalog-user-preference-lifecycle",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
     }
   ],
   "runtimeModules": [
     "countdown",
-    "athletes"
+    "athletes",
+    "exercise-catalog"
   ],
   "backingStores": {
     "memberships": {
