@@ -124,7 +124,19 @@ ULC-App und die Factory-Verträge abgeglichen.
 - E6F4: zweiter Exchange-Verbraucher `athletes` als Grundlage für eine
   mögliche spätere gemeinsame Workbook-Hilfe;
 - E6G: Promotion des bewiesenen Katalog-Vertical-Slices zum echten
-  Factory-Standardmodul vor weiteren Schemaerweiterungen.
+  Factory-Standardmodul vor weiteren Schemaerweiterungen;
+- E6G-A/B: generischer Modul-/Domainvertrag sowie eigenständig konsumierbare
+  Repository-/Service-Domain und isolierte Test-App – auf `main`
+  abgeschlossen;
+- E6G-C1: read-only ULC-Adoptionsvertrag mit gepinntem Source-/Target-Schema,
+  vollständigem Mapping für Übungen, Parameter, Gruppen/Audiences und
+  Favoriten sowie fail-closed Vorbedingungen für die spätere Datenkopie;
+- E6G-C2 folgt erst danach als isolierter PostgreSQL-Beweis der tatsächlichen
+  Copy-/Verify-Operation. Dieser Beweis allein ist noch kein Cutover-Gate:
+  vor dem späteren Runtime-Switch werden Source-Writes quiesziert und die
+  vollständige Source→Target-Gleichheit unter diesem Guard erneut geprüft;
+  Drift bricht den Cutover fail-closed ab. Preview-Migration, Runtime-Cutover
+  und Produktion bleiben jeweils getrennte Freigaben.
 
 Der heutige Katalog ist noch app-eigen: Runtime und Migration liegen unter
 `apps/ulc-linz`. Seine bestehenden Tabellen dürfen nicht stillschweigend
