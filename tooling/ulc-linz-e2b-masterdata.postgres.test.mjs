@@ -583,8 +583,12 @@ function withoutUlcImporterDependency(lockfile, packageName, version) {
   }
 
   const contentStart = importerStart + importerHeader.length;
-  const nextImporter = lockfile.indexOf("\n  ", contentStart);
-  const importerEnd = nextImporter >= 0 ? nextImporter : lockfile.length;
+  const tail = lockfile.slice(contentStart);
+  const nextImporterMatch = /\n  [^\s].*:\n/.exec(tail);
+  const importerEnd =
+    nextImporterMatch === null
+      ? lockfile.length
+      : contentStart + nextImporterMatch.index;
   const importer = lockfile.slice(contentStart, importerEnd);
   const block = `      '${packageName}':
         specifier: workspace:*
