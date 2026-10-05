@@ -560,39 +560,52 @@ async function createUlcBaselineFixture(t) {
 }
 
 function withoutUlcExerciseCatalogImporterDependency(lockfile) {
-  const block = `      '@appbasis/exercise-catalog':
-        specifier: workspace:*
-        version: link:../../modules/exercise-catalog
-`;
-  const first = lockfile.indexOf(block);
-  if (first < 0) {
-    throw new Error(
-      "Published ULC lockfile is missing @appbasis/exercise-catalog.",
-    );
-  }
-  const second = lockfile.indexOf(block, first + block.length);
-  if (second >= 0) {
-    throw new Error(
-      "Published lockfile contains an ambiguous @appbasis/exercise-catalog block.",
-    );
-  }
-  return lockfile.slice(0, first) + lockfile.slice(first + block.length);
+  return withoutUlcImporterDependency(
+    lockfile,
+    "@appbasis/exercise-catalog",
+    "link:../../modules/exercise-catalog",
+  );
 }
 
 function withoutUlcAthletesImporterDependency(lockfile) {
-  const block = `      '@appbasis/athletes':
-        specifier: workspace:*
-        version: link:../../modules/athletes
-`;
-  const first = lockfile.indexOf(block);
-  if (first < 0) {
-    throw new Error("Published ULC lockfile is missing @appbasis/athletes.");
+  return withoutUlcImporterDependency(
+    lockfile,
+    "@appbasis/athletes",
+    "link:../../modules/athletes",
+  );
+}
+
+function withoutUlcImporterDependency(lockfile, packageName, version) {
+  const importerHeader = "\n  apps/ulc-linz:\n";
+  const importerStart = lockfile.indexOf(importerHeader);
+  if (importerStart < 0) {
+    throw new Error("Published lockfile is missing the apps/ulc-linz importer.");
   }
-  const second = lockfile.indexOf(block, first + block.length);
-  if (second >= 0) {
+
+  const contentStart = importerStart + importerHeader.length;
+  const nextImporter = lockfile.indexOf("\n  ", contentStart);
+  const importerEnd = nextImporter >= 0 ? nextImporter : lockfile.length;
+  const importer = lockfile.slice(contentStart, importerEnd);
+  const block = `      '${packageName}':
+        specifier: workspace:*
+        version: ${version}
+`;
+
+  const first = importer.indexOf(block);
+  if (first < 0) {
     throw new Error(
-      "Published lockfile contains an ambiguous @appbasis/athletes block.",
+      `Published ULC lockfile is missing ${packageName} in apps/ulc-linz.`,
     );
   }
-  return lockfile.slice(0, first) + lockfile.slice(first + block.length);
+  if (importer.indexOf(block, first + block.length) >= 0) {
+    throw new Error(
+      `Published ULC lockfile contains an ambiguous ${packageName} block in apps/ulc-linz.`,
+    );
+  }
+
+  const absoluteStart = contentStart + first;
+  return (
+    lockfile.slice(0, absoluteStart) +
+    lockfile.slice(absoluteStart + block.length)
+  );
 }
