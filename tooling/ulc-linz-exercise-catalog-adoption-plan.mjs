@@ -102,6 +102,15 @@ const REQUIRED_INVARIANTS = Object.freeze({
   requireMappedContentEquality: true,
 });
 
+const REQUIRED_CUTOVER_GUARD = Object.freeze({
+  strategy: "quiesce-and-verify",
+  quiesceSourceWritesBeforeFinalVerification: true,
+  requireFinalMappedContentEquality: true,
+  abortOnMismatch: true,
+  runtimeSwitchOnlyAfterSuccessfulFinalVerification: true,
+  releaseSourceWriteQuiescenceOnlyAfterCutoverOrRollback: true,
+});
+
 export async function planUlcExerciseCatalogAdoption(
   { repositoryRoot = DEFAULT_REPOSITORY_ROOT } = {},
 ) {
@@ -173,7 +182,9 @@ export async function planUlcExerciseCatalogAdoption(
       exactRowCounts: true,
       perOrganizationRowCounts: true,
       mappedContentEquality: true,
+      finalEqualityUnderSourceWriteQuiescence: true,
     },
+    cutoverGuard: { ...contract.cutoverGuard },
     phases: [
       {
         id: "repository-install",
@@ -196,8 +207,12 @@ export async function planUlcExerciseCatalogAdoption(
       {
         id: "runtime-cutover",
         mutation: "application-runtime",
-        gate: "separate-after-data-proof",
+        gate: "guarded-source-quiescence-and-final-equality",
         executor: "ULC app adapter",
+        prerequisites: [
+          "source-writes-quiesced",
+          "final-source-target-equality-pass",
+        ],
       },
       {
         id: "source-retirement",
@@ -253,6 +268,14 @@ function assertContractShape(contract) {
   ) {
     throw new Error(
       "ULC exercise-catalog adoption invariants drifted from the reviewed contract.",
+    );
+  }
+  if (
+    canonicalJson(contract.cutoverGuard) !==
+    canonicalJson(REQUIRED_CUTOVER_GUARD)
+  ) {
+    throw new Error(
+      "ULC exercise-catalog guarded cutover contract drifted from the reviewed contract.",
     );
   }
 

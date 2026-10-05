@@ -31,65 +31,188 @@
     {
       "sourceTable": "ulc_linz_exercise_catalog_item",
       "targetTable": "appbasis_exercise_catalog_item",
-      "targetKey": ["organization_id", "id"],
+      "targetKey": [
+        "organization_id",
+        "id"
+      ],
       "columns": [
-        {"source": "id", "target": "id"},
-        {"source": "organization_id", "target": "organization_id"},
-        {"source": "name", "target": "name"},
-        {"source": "category_key", "target": "category_key"},
-        {"source": "subcategory", "target": "subcategory"},
-        {"source": "goal", "target": "goal"},
-        {"source": "description", "target": "description"},
-        {"source": "coaching_cues", "target": "coaching_cues"},
-        {"source": "common_mistakes", "target": "common_mistakes"},
-        {"source": "equipment", "target": "equipment"},
-        {"source": "video_url", "target": "video_url"},
-        {"source": "is_active", "target": "is_active"},
-        {"source": "created_at", "target": "created_at"},
-        {"source": "updated_at", "target": "updated_at"}
+        {
+          "source": "id",
+          "target": "id"
+        },
+        {
+          "source": "organization_id",
+          "target": "organization_id"
+        },
+        {
+          "source": "name",
+          "target": "name"
+        },
+        {
+          "source": "category_key",
+          "target": "category_key"
+        },
+        {
+          "source": "subcategory",
+          "target": "subcategory"
+        },
+        {
+          "source": "goal",
+          "target": "goal"
+        },
+        {
+          "source": "description",
+          "target": "description"
+        },
+        {
+          "source": "coaching_cues",
+          "target": "coaching_cues"
+        },
+        {
+          "source": "common_mistakes",
+          "target": "common_mistakes"
+        },
+        {
+          "source": "equipment",
+          "target": "equipment"
+        },
+        {
+          "source": "video_url",
+          "target": "video_url"
+        },
+        {
+          "source": "is_active",
+          "target": "is_active"
+        },
+        {
+          "source": "created_at",
+          "target": "created_at"
+        },
+        {
+          "source": "updated_at",
+          "target": "updated_at"
+        }
       ]
     },
     {
       "sourceTable": "ulc_linz_exercise_parameter",
       "targetTable": "appbasis_exercise_catalog_parameter",
-      "targetKey": ["organization_id", "exercise_id", "parameter_key"],
+      "targetKey": [
+        "organization_id",
+        "exercise_id",
+        "parameter_key"
+      ],
       "columns": [
-        {"source": "organization_id", "target": "organization_id"},
-        {"source": "exercise_id", "target": "exercise_id"},
-        {"source": "parameter_key", "target": "parameter_key"},
-        {"source": "label", "target": "label"},
-        {"source": "unit", "target": "unit"},
-        {"source": "input_type", "target": "input_type"},
-        {"source": "default_value", "target": "default_value"},
-        {"source": "min_value", "target": "min_value"},
-        {"source": "max_value", "target": "max_value"},
-        {"source": "step_value", "target": "step_value"},
-        {"source": "is_required", "target": "is_required"},
-        {"source": "sort_order", "target": "sort_order"},
-        {"source": "created_at", "target": "created_at"},
-        {"source": "updated_at", "target": "updated_at"}
+        {
+          "source": "organization_id",
+          "target": "organization_id"
+        },
+        {
+          "source": "exercise_id",
+          "target": "exercise_id"
+        },
+        {
+          "source": "parameter_key",
+          "target": "parameter_key"
+        },
+        {
+          "source": "label",
+          "target": "label"
+        },
+        {
+          "source": "unit",
+          "target": "unit"
+        },
+        {
+          "source": "input_type",
+          "target": "input_type"
+        },
+        {
+          "source": "default_value",
+          "target": "default_value"
+        },
+        {
+          "source": "min_value",
+          "target": "min_value"
+        },
+        {
+          "source": "max_value",
+          "target": "max_value"
+        },
+        {
+          "source": "step_value",
+          "target": "step_value"
+        },
+        {
+          "source": "is_required",
+          "target": "is_required"
+        },
+        {
+          "source": "sort_order",
+          "target": "sort_order"
+        },
+        {
+          "source": "created_at",
+          "target": "created_at"
+        },
+        {
+          "source": "updated_at",
+          "target": "updated_at"
+        }
       ]
     },
     {
       "sourceTable": "ulc_linz_exercise_group",
       "targetTable": "appbasis_exercise_catalog_audience",
-      "targetKey": ["organization_id", "exercise_id", "audience_id"],
+      "targetKey": [
+        "organization_id",
+        "exercise_id",
+        "audience_id"
+      ],
       "columns": [
-        {"source": "organization_id", "target": "organization_id"},
-        {"source": "exercise_id", "target": "exercise_id"},
-        {"source": "group_id", "target": "audience_id"},
-        {"source": "created_at", "target": "created_at"}
+        {
+          "source": "organization_id",
+          "target": "organization_id"
+        },
+        {
+          "source": "exercise_id",
+          "target": "exercise_id"
+        },
+        {
+          "source": "group_id",
+          "target": "audience_id"
+        },
+        {
+          "source": "created_at",
+          "target": "created_at"
+        }
       ]
     },
     {
       "sourceTable": "ulc_linz_exercise_favorite",
       "targetTable": "appbasis_exercise_catalog_favorite",
-      "targetKey": ["organization_id", "principal_id", "exercise_id"],
+      "targetKey": [
+        "organization_id",
+        "principal_id",
+        "exercise_id"
+      ],
       "columns": [
-        {"source": "organization_id", "target": "organization_id"},
-        {"source": "identity_id", "target": "principal_id"},
-        {"source": "exercise_id", "target": "exercise_id"},
-        {"source": "created_at", "target": "created_at"}
+        {
+          "source": "organization_id",
+          "target": "organization_id"
+        },
+        {
+          "source": "identity_id",
+          "target": "principal_id"
+        },
+        {
+          "source": "exercise_id",
+          "target": "exercise_id"
+        },
+        {
+          "source": "created_at",
+          "target": "created_at"
+        }
       ]
     }
   ],
@@ -104,5 +227,13 @@
     "requireExactRowCounts": true,
     "requirePerOrganizationRowCounts": true,
     "requireMappedContentEquality": true
+  },
+  "cutoverGuard": {
+    "strategy": "quiesce-and-verify",
+    "quiesceSourceWritesBeforeFinalVerification": true,
+    "requireFinalMappedContentEquality": true,
+    "abortOnMismatch": true,
+    "runtimeSwitchOnlyAfterSuccessfulFinalVerification": true,
+    "releaseSourceWriteQuiescenceOnlyAfterCutoverOrRollback": true
   }
 }

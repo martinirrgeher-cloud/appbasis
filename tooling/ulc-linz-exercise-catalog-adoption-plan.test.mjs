@@ -67,6 +67,18 @@ test("E6G-C1 produces a read-only exact ULC exercise-catalog adoption plan", asy
   );
   assert.equal(plan.databaseAccess, false);
   assert.deepEqual(plan.writes, []);
+  assert.deepEqual(plan.cutoverGuard, {
+    strategy: "quiesce-and-verify",
+    quiesceSourceWritesBeforeFinalVerification: true,
+    requireFinalMappedContentEquality: true,
+    abortOnMismatch: true,
+    runtimeSwitchOnlyAfterSuccessfulFinalVerification: true,
+    releaseSourceWriteQuiescenceOnlyAfterCutoverOrRollback: true,
+  });
+  assert.equal(
+    plan.verification.finalEqualityUnderSourceWriteQuiescence,
+    true,
+  );
   assert.deepEqual(
     plan.phases.map((phase) => phase.id),
     [
@@ -77,6 +89,17 @@ test("E6G-C1 produces a read-only exact ULC exercise-catalog adoption plan", asy
       "source-retirement",
     ],
   );
+  const runtimeCutover = plan.phases.find(
+    (phase) => phase.id === "runtime-cutover",
+  );
+  assert.equal(
+    runtimeCutover?.gate,
+    "guarded-source-quiescence-and-final-equality",
+  );
+  assert.deepEqual(runtimeCutover?.prerequisites, [
+    "source-writes-quiesced",
+    "final-source-target-equality-pass",
+  ]);
 });
 
 test("E6G-C1 fails closed when the pinned source migration drifts", async (t) => {
@@ -134,6 +157,24 @@ test("E6G-C1 refuses a weakened table mapping", async (t) => {
   await assert.rejects(
     planUlcExerciseCatalogAdoption({ repositoryRoot: root }),
     /table mapping drifted/,
+  );
+});
+
+test("E6G-C1 refuses a weakened runtime cutover freshness guard", async (t) => {
+  const root = await createFixture(t);
+  const path = join(
+    root,
+    "apps",
+    "ulc-linz",
+    "exercise-catalog-adoption.json",
+  );
+  const contract = JSON.parse(await readFile(path, "utf8"));
+  contract.cutoverGuard.abortOnMismatch = false;
+  await writeFile(path, JSON.stringify(contract, null, 2) + "\n");
+
+  await assert.rejects(
+    planUlcExerciseCatalogAdoption({ repositoryRoot: root }),
+    /guarded cutover contract drifted/,
   );
 });
 

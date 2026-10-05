@@ -332,6 +332,14 @@ keine Source-Orphans, exakte Gesamt-/Organisations-Zeilenzahlen und vollständig
 Gleichheit aller gemappten Felder. Repository-Installation, Ziel-Schema,
 Datenkopie, Runtime-Cutover und Source-Stilllegung bleiben getrennte Gates.
 
+Weil die heutige ULC-Runtime bis zum Cutover weiter gegen die Source-Tabellen
+schreiben kann, ist ein früher Copy-/Verify-Erfolg ausdrücklich nicht
+ausreichend. Der Vertrag verlangt für den späteren Cutover eine
+Source-Write-Quiescence vor der finalen Prüfung, vollständige
+Source→Target-Gleichheit unter diesem Guard und fail-closed Abbruch bei jeder
+Abweichung. Erst danach darf der Runtime-Switch erfolgen; der Guard wird erst
+nach erfolgreichem Cutover oder sauberem Rollback aufgehoben.
+
 ### Danach E6D / E6E
 
 Erst auf geklärtem Modul-/Ownership-Vertrag folgen private Videos,

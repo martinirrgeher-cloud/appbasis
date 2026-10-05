@@ -132,8 +132,11 @@ ULC-App und die Factory-Verträge abgeglichen.
   vollständigem Mapping für Übungen, Parameter, Gruppen/Audiences und
   Favoriten sowie fail-closed Vorbedingungen für die spätere Datenkopie;
 - E6G-C2 folgt erst danach als isolierter PostgreSQL-Beweis der tatsächlichen
-  Copy-/Verify-Operation. Preview-Migration, Runtime-Cutover und Produktion
-  bleiben jeweils getrennte Freigaben.
+  Copy-/Verify-Operation. Dieser Beweis allein ist noch kein Cutover-Gate:
+  vor dem späteren Runtime-Switch werden Source-Writes quiesziert und die
+  vollständige Source→Target-Gleichheit unter diesem Guard erneut geprüft;
+  Drift bricht den Cutover fail-closed ab. Preview-Migration, Runtime-Cutover
+  und Produktion bleiben jeweils getrennte Freigaben.
 
 Der heutige Katalog ist noch app-eigen: Runtime und Migration liegen unter
 `apps/ulc-linz`. Seine bestehenden Tabellen dürfen nicht stillschweigend

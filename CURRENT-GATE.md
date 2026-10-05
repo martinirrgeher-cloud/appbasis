@@ -174,6 +174,11 @@ Abnahme:
 - der spätere Executor muss leere Zieltabellen, fehlende Source-Orphans,
   exakte Gesamt- und Organisations-Zeilenzahlen sowie vollständige
   Feldgleichheit beweisen;
+- ein erfolgreicher Copy-/Verify-Lauf allein erlaubt keinen Runtime-Cutover:
+  vor der finalen Cutover-Prüfung müssen Source-Writes quiesziert sein; unter
+  diesem Guard ist die vollständige Source→Target-Feldgleichheit erneut zu
+  beweisen, jede Abweichung bricht den Cutover ab und der Runtime-Switch darf
+  erst nach erfolgreicher Finalprüfung erfolgen;
 - der Planner prüft fail-closed, dass der Source-Owner noch dem aktuellen
   ULC-Manifest entspricht, das Zielmodul noch nicht installiert ist und der
   Zielowner noch nicht im ULC-Datenbankmanifest vorhanden ist;
@@ -185,8 +190,11 @@ Abnahme:
   Runtime-Cutover und spätere Source-Stilllegung bleiben getrennte Gates.
 
 E6G-C2 darf erst nach erfolgreichem C1-Review einen Adoption-Executor auf einer
-isolierten PostgreSQL-Datenbank beweisen. Preview und Produktion bleiben danach
-weiterhin eigene, ausdrücklich freizugebende Gates.
+isolierten PostgreSQL-Datenbank beweisen. Ein erfolgreicher C2-Copy ist dabei
+noch keine Cutover-Freigabe; der spätere Runtime-Cutover muss den in C1
+festgelegten Write-Quiescence-/Final-Equality-Guard separat beweisen. Preview
+und Produktion bleiben danach weiterhin eigene, ausdrücklich freizugebende
+Gates.
 
 ## FC4-Abnahme – abgeschlossen
 
