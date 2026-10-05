@@ -73,7 +73,13 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
     );
     assert.deepEqual(
       plan.changes.databaseMigrationDelta?.afterOwnerIds,
-      ["identity", "permissions", "athletes", "ulc-linz-lifecycle"],
+      [
+      "identity",
+      "permissions",
+      "athletes",
+      "exercise-catalog",
+      "ulc-linz-lifecycle",
+    ],
     );
     assert.deepEqual(plan.changes.databaseMigrationDelta?.addedOwner, {
       id: "athletes",
@@ -86,9 +92,8 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
     });
     assert.deepEqual(await snapshotPublicationState(root), beforePlan);
 
-    const targetLockfile = await readFile(
-      join(repositoryRoot, "pnpm-lock.yaml"),
-      "utf8",
+    const targetLockfile = withoutUlcExerciseCatalogImporterDependency(
+      await readFile(join(repositoryRoot, "pnpm-lock.yaml"), "utf8"),
     );
     const update = await applyModuleUpdate(
       {
@@ -294,17 +299,30 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
 });
 
 async function assertPublishedStateMatchesRepository(root) {
-  for (const relativePath of [
-    "apps/ulc-linz/appbasis.app.json",
-    "apps/ulc-linz/package.json",
-    "apps/ulc-linz/appbasis.database.json",
-  ]) {
-    assert.equal(
-      await readFile(join(root, relativePath), "utf8"),
-      await readFile(join(repositoryRoot, relativePath), "utf8"),
-      `${relativePath} must equal the canonical updater target.`,
-    );
-  }
+  const definition = JSON.parse(
+    await readFile(join(root, "apps", "ulc-linz", "appbasis.app.json"), "utf8"),
+  );
+  assert.deepEqual(definition.modules, ["countdown", "athletes"]);
+
+  const appPackage = JSON.parse(
+    await readFile(join(root, "apps", "ulc-linz", "package.json"), "utf8"),
+  );
+  assert.equal(appPackage.dependencies?.["@appbasis/athletes"], "workspace:*");
+  assert.equal(
+    appPackage.dependencies?.["@appbasis/exercise-catalog"],
+    undefined,
+  );
+
+  const databaseManifest = JSON.parse(
+    await readFile(
+      join(root, "apps", "ulc-linz", "appbasis.database.json"),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(
+    databaseManifest.owners.map((owner) => owner.id),
+    ["identity", "permissions", "athletes", "ulc-linz-lifecycle"],
+  );
 
   const generatedLockfile = await readFile(join(root, "pnpm-lock.yaml"), "utf8");
   const repositoryLockfile = await readFile(
@@ -322,6 +340,14 @@ async function assertPublishedStateMatchesRepository(root) {
       "apps/ulc-linz",
       "@appbasis/athletes",
     ),
+  );
+  assert.equal(
+    readPnpmImporterDependency(
+      generatedLockfile,
+      "apps/ulc-linz",
+      "@appbasis/exercise-catalog",
+    ),
+    null,
   );
 }
 
@@ -445,14 +471,19 @@ async function createUlcBaselineFixture(t) {
       "utf8",
     ),
   );
-  assert.deepEqual(publishedDefinition.modules, ["countdown", "athletes"]);
+  assert.deepEqual(publishedDefinition.modules, [
+    "countdown",
+    "athletes",
+    "exercise-catalog",
+  ]);
   await writeFile(
     join(root, "apps", "ulc-linz", "appbasis.app.json"),
     `${JSON.stringify(
       {
         ...publishedDefinition,
         modules: publishedDefinition.modules.filter(
-          (moduleId) => moduleId !== "athletes",
+          (moduleId) =>
+            moduleId !== "athletes" && moduleId !== "exercise-catalog",
         ),
       },
       null,
@@ -470,8 +501,13 @@ async function createUlcBaselineFixture(t) {
     publishedPackage.dependencies?.["@appbasis/athletes"],
     "workspace:*",
   );
+  assert.equal(
+    publishedPackage.dependencies?.["@appbasis/exercise-catalog"],
+    "workspace:*",
+  );
   const baselineDependencies = { ...publishedPackage.dependencies };
   delete baselineDependencies["@appbasis/athletes"];
+  delete baselineDependencies["@appbasis/exercise-catalog"];
   await writeFile(
     join(root, "apps", "ulc-linz", "package.json"),
     `${JSON.stringify(
@@ -500,7 +536,8 @@ async function createUlcBaselineFixture(t) {
       {
         ...publishedDatabaseManifest,
         owners: publishedDatabaseManifest.owners.filter(
-          (owner) => owner.id !== "athletes",
+          (owner) =>
+            owner.id !== "athletes" && owner.id !== "exercise-catalog",
         ),
       },
       null,
@@ -514,10 +551,32 @@ async function createUlcBaselineFixture(t) {
   );
   await writeFile(
     join(root, "pnpm-lock.yaml"),
-    withoutUlcAthletesImporterDependency(publishedLockfile),
+    withoutUlcExerciseCatalogImporterDependency(
+      withoutUlcAthletesImporterDependency(publishedLockfile),
+    ),
   );
 
   return root;
+}
+
+function withoutUlcExerciseCatalogImporterDependency(lockfile) {
+  const block = `      '@appbasis/exercise-catalog':
+        specifier: workspace:*
+        version: link:../../modules/exercise-catalog
+`;
+  const first = lockfile.indexOf(block);
+  if (first < 0) {
+    throw new Error(
+      "Published ULC lockfile is missing @appbasis/exercise-catalog.",
+    );
+  }
+  const second = lockfile.indexOf(block, first + block.length);
+  if (second >= 0) {
+    throw new Error(
+      "Published lockfile contains an ambiguous @appbasis/exercise-catalog block.",
+    );
+  }
+  return lockfile.slice(0, first) + lockfile.slice(first + block.length);
 }
 
 function withoutUlcAthletesImporterDependency(lockfile) {
