@@ -73,13 +73,7 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
     );
     assert.deepEqual(
       plan.changes.databaseMigrationDelta?.afterOwnerIds,
-      [
-      "identity",
-      "permissions",
-      "athletes",
-      "exercise-catalog",
-      "ulc-linz-lifecycle",
-    ],
+      ["identity", "permissions", "athletes", "ulc-linz-lifecycle"],
     );
     assert.deepEqual(plan.changes.databaseMigrationDelta?.addedOwner, {
       id: "athletes",
