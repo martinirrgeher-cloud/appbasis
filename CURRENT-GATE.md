@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6G-B – Repository/Service + isolierter Standardmodul-Consumer.**
+**ULC-E6G-C1 – read-only Schema-/Ownership-Adoptionsvertrag.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -140,42 +140,53 @@ ULC verwendet weiterhin ausschließlich seine bestehenden
 `ulc_linz_exercise_*`-Tabellen; es gab keine Adoption, Datenkopie, Migration
 oder Deployment.
 
-## Aktueller Gate-Scope: ULC-E6G-B
+## Abgeschlossener Gate-Scope: ULC-E6G-B
 
-Der nächste Slice beweist das Standardmodul erstmals als eigenständig
-konsumierbare Persistenz-/Service-Domain, weiterhin ohne ULC-Adoption.
+Das Standardmodul ist auf `main` als eigenständig konsumierbare
+Persistenz-/Service-Domain abgeschlossen. PR #383 wurde nach grüner
+Exact-Head-CI und finalem Codex-Review ohne Major Finding gemerged; die
+Post-Merge-CI #3373 auf
+`e18ef85868ae1ccb8506518788bb98f0646cf258` ist vollständig grün.
+
+E6G-B liefert organisationslokale Übungs-IDs, atomare Partial-Updates,
+konsistente `REPEATABLE READ`-Snapshots für mehrteilige Reads,
+In-Memory-/PostgreSQL-Repositories, persönliche Favoriten und einen isolierten
+ULC-unabhängigen Consumer. Die reale ULC-Runtime und die
+`ulc_linz_exercise_*`-Tabellen blieben unverändert.
+
+## Aktueller Gate-Scope: ULC-E6G-C1
+
+Vor jeder ULC-Mutation wird der Schema-/Ownership-Übergang zunächst als
+read-only, maschinenlesbarer Vertrag fixiert und gegen den aktuellen
+Repositoryzustand geprüft.
 
 Abnahme:
 
-- öffentlicher Repository-Vertrag für organisationsgebundene Katalogdaten und
-  persönliche Favoriten;
-- In-Memory-Repository für isolierte Tests;
-- PostgreSQL-Repository auf ausschließlich modul-eigenen
-  `appbasis_exercise_catalog_*`-Tabellen;
-- Übungs-IDs sind organisationslokal; PostgreSQL verwendet dafür den
-  zusammengesetzten Schlüssel `(organization_id, id)`;
-- Create/Update einschließlich Parameter und Audience-Zuordnungen erfolgen
-  atomar; jede SQL-Lese-/Schreiboperation wiederholt den
-  `organizationId`-Scope;
-- mehrteilige Aggregat-Reads laufen in einem read-only
-  `REPEATABLE READ`-Snapshot, damit Parent- und Child-Zeilen nicht aus
-  unterschiedlichen Commitständen zusammengesetzt werden;
-- öffentlicher Service normalisiert Create/Update über den E6G-A-Domainvertrag,
-  erzwingt die konfigurierte Definition und kapselt Create, Update,
-  Deaktivierung und Favoriten;
-- eine kleine isolierte Test-App konsumiert das Modul ohne ULC-Code und beweist
-  getrennte View-/Edit-Capabilities sowie eine app-eigene
-  Organisationsauflösung;
-- In-Memory- und reale PostgreSQL-Tests beweisen Organisationsisolation,
-  Persistenz von Parametern/Audiences/Favoriten und fail-closed Verhalten;
-- ULC-Runtime, `ulc_linz_exercise_*`-Tabellen und bestehende ULC-Permissions
-  bleiben unverändert;
-- kein ULC-Adoption-Write, keine Preview-/Production-Migration und kein
-  Deployment.
+- `apps/ulc-linz/exercise-catalog-adoption.json` benennt exakt den heutigen
+  Source-Owner `ulc-linz-lifecycle`, dessen Schema-Version und die gepinnte
+  Source-Migration sowie den Zielowner `exercise-catalog` mit seinen
+  gepinnten Modulmigrationen;
+- die vier Datenbereiche werden vollständig und explizit gemappt:
+  Übungen, Parameter, Gruppen→Audiences und Identity-Favoriten→Principal-
+  Favoriten;
+- Organisation, Übungs-IDs und Zeitstempel müssen unverändert übernommen
+  werden; Source-Tabellen bleiben während der Kopie unangetastet;
+- der spätere Executor muss leere Zieltabellen, fehlende Source-Orphans,
+  exakte Gesamt- und Organisations-Zeilenzahlen sowie vollständige
+  Feldgleichheit beweisen;
+- der Planner prüft fail-closed, dass der Source-Owner noch dem aktuellen
+  ULC-Manifest entspricht, das Zielmodul noch nicht installiert ist und der
+  Zielowner noch nicht im ULC-Datenbankmanifest vorhanden ist;
+- Source- und Target-Migrationsdateien sind über ihre Git-Blob-IDs an den
+  reviewten Vertrag gebunden;
+- der Planner führt keinerlei Datenbankzugriff, Repositorywrite, Migration,
+  Providerwrite oder Deployment aus;
+- Repository-Installation, Ziel-Schema-Migration, Copy/Verify,
+  Runtime-Cutover und spätere Source-Stilllegung bleiben getrennte Gates.
 
-Der anschließende E6G-Slice ist der getrennte Schema-/Ownership-Adoptionsvertrag
-für ULC. Dieser darf erst nach erfolgreichem E6G-B-Review begonnen werden.
-
+E6G-C2 darf erst nach erfolgreichem C1-Review einen Adoption-Executor auf einer
+isolierten PostgreSQL-Datenbank beweisen. Preview und Produktion bleiben danach
+weiterhin eigene, ausdrücklich freizugebende Gates.
 
 ## FC4-Abnahme – abgeschlossen
 

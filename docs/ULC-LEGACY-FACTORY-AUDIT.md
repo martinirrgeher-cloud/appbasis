@@ -317,6 +317,21 @@ Vor weiteren Katalog-Schemaerweiterungen:
 - isolierte Test-App;
 - eigener ULC-Adoption-Gate.
 
+#### E6G-C1 – read-only Adoption-Vertrag
+
+Vor jedem Installations-, Migrations- oder Copy-Write wird die reale ULC-
+Promotion als maschinenlesbarer Vertrag fixiert. Der Vertrag pinnt Source-Owner,
+Source-Migration, Zielmodul und Zielmigrationen und mappt die vier bestehenden
+Datenbereiche vollständig: Übungen, Parameter, Gruppen auf generische Audiences
+und Identity-Favoriten auf generische Principal-Favoriten.
+
+Der C1-Planner ist rein lesend. Er verlangt den noch nicht adoptierten
+Repositoryzustand, bewahrt Organisationen, Übungs-IDs und Zeitstempel und
+schreibt für C2 bereits die späteren Nachweise fest: leere Zieltabellen,
+keine Source-Orphans, exakte Gesamt-/Organisations-Zeilenzahlen und vollständige
+Gleichheit aller gemappten Felder. Repository-Installation, Ziel-Schema,
+Datenkopie, Runtime-Cutover und Source-Stilllegung bleiben getrennte Gates.
+
 ### Danach E6D / E6E
 
 Erst auf geklärtem Modul-/Ownership-Vertrag folgen private Videos,
