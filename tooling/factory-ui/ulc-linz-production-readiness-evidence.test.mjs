@@ -503,11 +503,21 @@ test("Factory snapshot keeps ULC production readiness reopened after repository 
     "exercise-catalog",
   ]);
   assert.equal(ulc.productionReadiness.productionReady, false);
-  assert.equal(ulc.productionReadiness.verifiedCount, 1);
+  // Provider-/repository evidence may remain independently current, but every
+  // module-scope-bound production proof must reopen after repository adoption.
+  assert.equal(ulc.productionReadiness.verifiedCount, 6);
   assert.equal(
     criterionStatus(ulc.productionReadiness, "rolesAndPermissions"),
     "open",
   );
+  for (const id of [
+    "deletionConcept",
+    "retention",
+    "dataExport",
+    "highPrivacyProfile",
+  ]) {
+    assert.equal(criterionStatus(ulc.productionReadiness, id), "open", id);
+  }
   assert.equal(ulc.productionReleaseReadiness.releaseAuthorized, false);
   assert.equal(snapshot.capabilities.releaseProduction, false);
 });
