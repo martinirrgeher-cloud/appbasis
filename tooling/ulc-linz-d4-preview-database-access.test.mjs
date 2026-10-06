@@ -128,6 +128,7 @@ function exactApplicationAccess(overrides = {}) {
     schema_usage: true,
     schema_create: false,
     all_runtime_table_dml: true,
+    exercise_catalog_acl_valid: true,
     all_runtime_sequence_access: true,
     non_public_schema_create_count: 0,
     non_public_table_access_count: 0,
@@ -427,6 +428,16 @@ function databaseFactory({
                 throw new Error("authentication failed");
               }
               return [{ current_user: "ulc_preview_app" }];
+            }
+            if (sql.includes("AS exercise_catalog_acl_valid")) {
+              assert.match(sql, /ulc_linz_exercise_catalog_item/);
+              assert.match(sql, /appbasis_exercise_catalog_item/);
+              return [
+                {
+                  exercise_catalog_acl_valid:
+                    applicationAccess.exercise_catalog_acl_valid,
+                },
+              ];
             }
             assert.match(sql, /all_runtime_table_dml/);
             assert.match(sql, /'TRUNCATE'/);
@@ -870,6 +881,26 @@ test("binds the security login only to the preview-specific ingest group", async
     ),
     false,
   );
+  const catalogPreservingGrant = owner.statements.find((sql) =>
+    sql.includes("DO $appbasis$"),
+  );
+  assert.ok(catalogPreservingGrant);
+  assert.doesNotMatch(
+    catalogPreservingGrant,
+    /ON ALL TABLES IN SCHEMA public/,
+  );
+  for (const table of [
+    "ulc_linz_exercise_catalog_item",
+    "ulc_linz_exercise_parameter",
+    "ulc_linz_exercise_group",
+    "ulc_linz_exercise_favorite",
+    "appbasis_exercise_catalog_item",
+    "appbasis_exercise_catalog_parameter",
+    "appbasis_exercise_catalog_audience",
+    "appbasis_exercise_catalog_favorite",
+  ]) {
+    assert.match(catalogPreservingGrant, new RegExp(table));
+  }
   assert.equal(
     owner.statements.some((sql) =>
       sql.includes('TO "ulc_preview_security_ingest"') &&
@@ -1035,6 +1066,21 @@ test("rejects excess privileges on ordinary application tables", async () => {
       }),
     ),
     /application runtime database ACL is not exact/,
+  );
+});
+
+test("rejects illegal exercise-catalog ACL phases during normal D4 access checks", async () => {
+  const owner = ownerFixture();
+  await assert.rejects(
+    reconcile(
+      databaseFactory({
+        owner,
+        applicationAccess: exactApplicationAccess({
+          exercise_catalog_acl_valid: false,
+        }),
+      }),
+    ),
+    /exercise-catalog application ACL state is not a legal cutover phase/,
   );
 });
 
