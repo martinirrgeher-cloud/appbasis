@@ -342,6 +342,18 @@ jobs:
           }
           echo "APPBASIS_GENERATED_PREVIEW_URL=https://${APPBASIS_GENERATED_WORKER_NAME}.${SUBDOMAIN}.workers.dev" >> "$GITHUB_ENV"
 
+      - name: Preserve deployed ULC exercise catalog storage mode
+        if: inputs.operation == 'deploy'
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODE="$(node ./tooling/ulc-linz-d4-preview-storage-mode.mjs)"
+          case "$MODE" in
+            legacy|quiesced|standard) ;;
+            *) echo 'ULC preview storage mode is invalid.' >&2; exit 1 ;;
+          esac
+          printf 'APPBASIS_EXERCISE_CATALOG_STORAGE_MODE=%s\n' "$MODE" >> "$GITHUB_ENV"
+
       - name: Resolve isolated ULC preview Hyperdrives
         if: inputs.operation == 'bootstrap' || inputs.operation == 'deploy'
         id: hyperdrives
@@ -390,6 +402,10 @@ jobs:
               process.env.APPBASIS_SECURITY_LOG_HYPERDRIVE_ID,
             baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
             entrypoint: process.env.APPBASIS_ENTRYPOINT,
+            exerciseCatalogStorageMode:
+              process.env.APPBASIS_OPERATION === "deploy"
+                ? process.env.APPBASIS_EXERCISE_CATALOG_STORAGE_MODE
+                : undefined,
             outputPath,
           };
           if (process.env.APPBASIS_OPERATION === "bootstrap") {
