@@ -7,7 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.postgres-test.json",
     "test": "vitest run",
-    "test:postgres": "vitest run --maxWorkers=1 ./test/lifecycle.postgres.e2e.test.ts ./test/lifecycle-persistence.postgres.e2e.test.ts ./test/lifecycle-audit.postgres.e2e.test.ts ./test/data-export.postgres.e2e.test.ts ./test/retention-claim.postgres.e2e.test.ts ./test/security-events.postgres.e2e.test.ts ./test/athletes-masterdata.postgres.e2e.test.ts ./test/athletes-restore-reconciliation.postgres.e2e.test.ts ./test/kindertraining.postgres.e2e.test.ts ./test/trainer-identity.postgres.e2e.test.ts ./test/exercise-catalog.postgres.e2e.test.ts"
+    "test:postgres": "vitest run --maxWorkers=1 ./test/lifecycle.postgres.e2e.test.ts ./test/lifecycle-persistence.postgres.e2e.test.ts ./test/lifecycle-audit.postgres.e2e.test.ts ./test/data-export.postgres.e2e.test.ts ./test/retention-claim.postgres.e2e.test.ts ./test/security-events.postgres.e2e.test.ts ./test/athletes-masterdata.postgres.e2e.test.ts ./test/athletes-restore-reconciliation.postgres.e2e.test.ts ./test/kindertraining.postgres.e2e.test.ts ./test/trainer-identity.postgres.e2e.test.ts ./test/exercise-catalog.postgres.e2e.test.ts ./test/exercise-catalog-storage.postgres.e2e.test.ts"
   },
   "dependencies": {
     "@appbasis/athletes": "workspace:*",
