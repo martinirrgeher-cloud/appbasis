@@ -131,17 +131,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate and mask dedicated migration credential
+      - name: Validate protected preview credentials and current source baseline
         shell: bash
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: |
           set -euo pipefail
-          test -n "$APPBASIS_MIGRATION_DATABASE_URL" || {
-            echo 'Missing APPBASIS_MIGRATION_DATABASE_URL.' >&2
+          for name in APPBASIS_MIGRATION_DATABASE_URL APPBASIS_DATABASE_URL APPBASIS_SECURITY_LOG_DATABASE_URL; do
+            value="${!name:-}"
+            test -n "$value" || {
+              echo "Missing protected input: $name" >&2
+              exit 1
+            }
+            echo "::add-mask::$value"
+          done
+
+          STATE="$(node ./tooling/ulc-linz-d4-preview-migration-state.mjs)"
+          test "$(jq -r '.mode' <<<"$STATE")" = 'current' || {
+            echo 'ULC E6G-C3B requires the established current ULC preview source schema.' >&2
             exit 1
           }
-          echo "::add-mask::$APPBASIS_MIGRATION_DATABASE_URL"
+
           node --input-type=module <<'NODE'
           import { parseGeneratedPreviewDatabaseUrl } from "./tooling/generated-preview-hyperdrive.mjs";
           import { ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE } from "./tooling/ulc-linz-d4-preview-hyperdrive.mjs";
