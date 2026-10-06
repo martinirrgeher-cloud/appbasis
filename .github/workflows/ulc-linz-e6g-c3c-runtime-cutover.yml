@@ -140,8 +140,14 @@ jobs:
             echo 'Cloudflare Workers account subdomain is invalid.' >&2
             exit 1
           }
+          ENTRYPOINT="$(jq -r '.entrypoint' <<<"$PLAN")"
+          test "$ENTRYPOINT" = './worker/preview.ts' || {
+            echo 'Unexpected ULC preview entrypoint.' >&2
+            exit 1
+          }
           ORIGIN="https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev"
-          printf 'worker_name=%s\norigin=%s\n' "$WORKER_NAME" "$ORIGIN" >> "$GITHUB_OUTPUT"
+          printf 'worker_name=%s\norigin=%s\nentrypoint=%s\n' \
+            "$WORKER_NAME" "$ORIGIN" "$ENTRYPOINT" >> "$GITHUB_OUTPUT"
 
       - name: Inspect current runtime storage mode
         id: runtime
@@ -150,12 +156,50 @@ jobs:
           APPBASIS_PREVIEW_ORIGIN: ${{ steps.preview.outputs.origin }}
         run: |
           set -euo pipefail
-          RESPONSE="$(curl --fail-with-body --silent --show-error             "${APPBASIS_PREVIEW_ORIGIN}/api/health/exercise-catalog-storage")"
-          MODE="$(jq -r '.exerciseCatalogStorageMode // ""' <<<"$RESPONSE")"
-          case "$MODE" in
-            legacy|quiesced|standard) ;;
-            *) echo 'ULC preview storage mode is unavailable or invalid.' >&2; exit 1 ;;
-          esac
+          STORAGE_BODY="$(mktemp)"
+          trap 'rm -f "$STORAGE_BODY" "$BASE_BODY"' EXIT
+          BASE_BODY="$(mktemp)"
+          set +e
+          STORAGE_STATUS="$(curl --silent --show-error \
+            --output "$STORAGE_BODY" \
+            --write-out '%{http_code}' \
+            "${APPBASIS_PREVIEW_ORIGIN}/api/health/exercise-catalog-storage")"
+          STORAGE_CURL=$?
+          set -e
+          (( STORAGE_CURL == 0 )) || {
+            echo 'ULC preview storage health request failed.' >&2
+            exit 1
+          }
+
+          if [ "$STORAGE_STATUS" = '200' ]; then
+            MODE="$(jq -r '.exerciseCatalogStorageMode // ""' "$STORAGE_BODY")"
+            case "$MODE" in
+              legacy|quiesced|standard) ;;
+              *) echo 'ULC preview storage mode is invalid.' >&2; exit 1 ;;
+            esac
+          elif [ "$STORAGE_STATUS" = '404' ]; then
+            set +e
+            BASE_STATUS="$(curl --silent --show-error \
+              --output "$BASE_BODY" \
+              --write-out '%{http_code}' \
+              "${APPBASIS_PREVIEW_ORIGIN}/api/health")"
+            BASE_CURL=$?
+            set -e
+            (( BASE_CURL == 0 )) || {
+              echo 'ULC preview base health request failed.' >&2
+              exit 1
+            }
+            test "$BASE_STATUS" = '200' || {
+              echo 'ULC preview legacy bootstrap health is unavailable.' >&2
+              exit 1
+            }
+            test "$(jq -r '.status // ""' "$BASE_BODY")" = 'ok'
+            test "$(jq -r '.appId // ""' "$BASE_BODY")" = 'ulc-linz'
+            MODE='legacy-unversioned'
+          else
+            echo "ULC preview storage health returned HTTP $STORAGE_STATUS." >&2
+            exit 1
+          fi
           printf 'mode=%s\n' "$MODE" >> "$GITHUB_OUTPUT"
 
       - name: Require legal cutover transition
@@ -167,7 +211,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$OPERATION:$CURRENT_MODE" in
-            quiesce:legacy|cutover:quiesced) ;;
+            quiesce:legacy|quiesce:legacy-unversioned|cutover:quiesced) ;;
             *)
               echo "Illegal E6G-C3C transition: $OPERATION from $CURRENT_MODE." >&2
               exit 1
@@ -249,6 +293,7 @@ jobs:
           APPBASIS_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.application_id }}
           APPBASIS_SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.security_log_id }}
           APPBASIS_PREVIEW_ORIGIN: ${{ steps.preview.outputs.origin }}
+          APPBASIS_ENTRYPOINT: ${{ steps.preview.outputs.entrypoint }}
           APPBASIS_OPERATION: ${{ inputs.operation }}
         run: |
           set -euo pipefail
@@ -264,7 +309,7 @@ jobs:
             securityLogHyperdriveId:
               process.env.APPBASIS_SECURITY_LOG_HYPERDRIVE_ID,
             baseURL: process.env.APPBASIS_PREVIEW_ORIGIN,
-            entrypoint: "./worker/index.ts",
+            entrypoint: process.env.APPBASIS_ENTRYPOINT,
             exerciseCatalogStorageMode: mode,
             outputPath:
               "./apps/ulc-linz/wrangler.c3c.generated.json",
