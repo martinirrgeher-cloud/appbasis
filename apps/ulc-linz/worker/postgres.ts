@@ -25,7 +25,10 @@ import {
   createUlcLinzExerciseCatalogAccessService,
   type UlcLinzExerciseCatalogAccessService,
 } from "./exercise-catalog-access";
-import { PostgresUlcExerciseCatalogRepository } from "./exercise-catalog-postgres";
+import {
+  createUlcExerciseCatalogRepositoryForMode,
+  type UlcExerciseCatalogStorageMode,
+} from "./exercise-catalog-storage";
 import { createUlcExerciseCatalogService } from "./exercise-catalog-service";
 import {
   createUlcLinzKindertrainingAccessService,
@@ -94,6 +97,7 @@ export interface GeneratedPostgresApplicationRuntimeOptions {
   securityLogConnectionString: string;
   baseURL: string;
   secret: string;
+  exerciseCatalogStorageMode?: UlcExerciseCatalogStorageMode;
 }
 
 export async function createGeneratedPostgresApplicationRuntime(
@@ -308,7 +312,10 @@ export async function createGeneratedPostgresApplicationRuntime(
       moduleGroups: trainingModuleGroups,
     });
     const exerciseCatalog = createUlcExerciseCatalogService({
-      repository: new PostgresUlcExerciseCatalogRepository(applicationSql),
+      repository: createUlcExerciseCatalogRepositoryForMode(
+        identityRuntime.sql,
+        options.exerciseCatalogStorageMode ?? "legacy",
+      ),
       masterdata: athleteMasterdata,
     });
     return Object.freeze({
