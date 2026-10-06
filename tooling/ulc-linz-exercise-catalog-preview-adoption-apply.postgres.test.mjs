@@ -10,6 +10,10 @@ import {
   applyUlcExerciseCatalogPreviewAdoption,
   UlcExerciseCatalogPreviewAdoptionExecutionError,
 } from "./ulc-linz-exercise-catalog-preview-adoption-apply.mjs";
+import {
+  inspectUlcExerciseCatalogCutoverReadiness,
+  UlcExerciseCatalogCutoverReadinessError,
+} from "./ulc-linz-exercise-catalog-cutover-readiness.mjs";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
@@ -149,6 +153,41 @@ test(
             exercise_id: "exercise-b",
           },
         ],
+      );
+
+      const readiness = await inspectUlcExerciseCatalogCutoverReadiness(
+        { connectionString: fakePreviewUrl },
+        {
+          repositoryRoot,
+          databaseFactory: () =>
+            createPostgresDatabase(localMigrationUrl),
+        },
+      );
+      assert.equal(readiness.state, "ready-for-runtime-cutover");
+      assert.equal(readiness.equality.exact, true);
+      assert.equal(readiness.equality.totalMismatchCount, 0);
+      assert.deepEqual(
+        readiness.tables.map((table) => table.mismatchCount),
+        [0, 0, 0, 0],
+      );
+
+      await admin.client.unsafe(
+        "UPDATE ulc_linz_exercise_catalog_item " +
+          "SET goal = 'drifted after copy' " +
+          "WHERE organization_id = 'org-a' AND id = 'exercise-a'",
+      );
+      await assert.rejects(
+        inspectUlcExerciseCatalogCutoverReadiness(
+          { connectionString: fakePreviewUrl },
+          {
+            repositoryRoot,
+            databaseFactory: () =>
+              createPostgresDatabase(localMigrationUrl),
+          },
+        ),
+        (error) =>
+          error instanceof UlcExerciseCatalogCutoverReadinessError &&
+          /not exactly equal/.test(error.message),
       );
     });
   },
