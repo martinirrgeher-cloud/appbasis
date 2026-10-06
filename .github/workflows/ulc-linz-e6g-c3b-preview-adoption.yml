@@ -1,0 +1,177 @@
+name: ULC E6G-C3B Preview Adoption
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply atomic exercise-catalog schema migration and copy/verify to the isolated ULC preview
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz-exercise-catalog-adoption
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan ULC exercise-catalog preview adoption
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+
+    steps:
+      - name: Require main branch
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main' || {
+            echo 'ULC E6G-C3B preview adoption is main-only.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Render read-only C3B plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {
+            loadUlcExerciseCatalogPreviewAdoptionApplyPlan,
+            renderUlcExerciseCatalogPreviewAdoptionApplyPlan,
+          } from "./tooling/ulc-linz-exercise-catalog-preview-adoption-apply.mjs";
+
+          const plan = await loadUlcExerciseCatalogPreviewAdoptionApplyPlan();
+          if (
+            plan.state !== "ready-for-explicit-preview-schema-copy-apply" ||
+            plan.preview.database !== "appbasis_ulc_linz_preview" ||
+            plan.preview.environment !== "generated-preview-ulc-linz" ||
+            plan.transaction.atomic !== true ||
+            plan.runtimeCutover.eligible !== false ||
+            plan.databaseAccess !== false
+          ) {
+            throw new Error("ULC E6G-C3B read-only plan is not canonical.");
+          }
+          process.stdout.write(
+            renderUlcExerciseCatalogPreviewAdoptionApplyPlan(plan),
+          );
+          NODE
+
+  apply:
+    name: Apply atomic ULC exercise-catalog preview schema and copy
+    needs: plan
+    if: ${{ inputs.apply == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: generated-preview-ulc-linz
+    env:
+      APPBASIS_GENERATED_APP_ID: ulc-linz
+      APPBASIS_MIGRATION_TARGET: appbasis_ulc_linz_preview
+      APPBASIS_APPLY_MIGRATIONS: "1"
+      APPBASIS_APPLY_EXERCISE_CATALOG_ADOPTION: "1"
+
+    steps:
+      - name: Require exact main head
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main' || {
+            echo 'ULC E6G-C3B preview mutation is main-only.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and mask dedicated migration credential
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$APPBASIS_MIGRATION_DATABASE_URL" || {
+            echo 'Missing APPBASIS_MIGRATION_DATABASE_URL.' >&2
+            exit 1
+          }
+          echo "::add-mask::$APPBASIS_MIGRATION_DATABASE_URL"
+          node --input-type=module <<'NODE'
+          import { parseGeneratedPreviewDatabaseUrl } from "./tooling/generated-preview-hyperdrive.mjs";
+          import { ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE } from "./tooling/ulc-linz-d4-preview-hyperdrive.mjs";
+
+          const origin = parseGeneratedPreviewDatabaseUrl(
+            process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            ULC_LINZ_D4_PREVIEW_APPLICATION_HYPERDRIVE,
+          );
+          if (
+            origin.database !== "appbasis_ulc_linz_preview" ||
+            origin.user !== "appbasis_ulc_linz_preview_migration"
+          ) {
+            throw new Error(
+              "Protected migration credential does not identify the exact ULC preview migration principal.",
+            );
+          }
+          NODE
+
+      - name: Apply atomic preview schema migration and copy verify
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-exercise-catalog-preview-adoption-apply.mjs
+
+      - name: Record non-cutover result
+        shell: bash
+        run: |
+          {
+            echo 'ULC E6G-C3B schema/copy apply completed.'
+            echo 'Runtime cutover was not executed and remains a separate guarded gate.'
+          } >> "$GITHUB_STEP_SUMMARY"
