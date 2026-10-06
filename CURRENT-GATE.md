@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6G-C3B – atomarer Preview-Schema-/Copy-/Verify-Pfad.**
+**ULC-E6G-C3C – guarded Runtime-Cutover des Standardmoduls in der isolierten Preview.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -196,52 +196,94 @@ C3A-Readiness-Plan bindet den nächsten Schritt an
 `generated-preview-ulc-linz` / `appbasis_ulc_linz_preview`, ohne Provider-
 oder Datenbankzugriff.
 
-## Aktueller Gate-Scope: ULC-E6G-C3B
+## Abgeschlossener Gate-Scope: ULC-E6G-C3B
 
-C3B implementiert und beweist den **preview-gebundenen atomaren
-Schema-/Copy-/Verify-Pfad**. Die echte ULC-Preview wird in diesem Repository-
-Slice noch nicht verändert. Der spätere reale Apply bleibt bis zu einer
-ausdrücklichen Nutzerfreigabe gesperrt.
+C3B ist repository-seitig und in der echten isolierten ULC-Preview
+abgeschlossen. PR #387 wurde nach grüner Exact-Head-CI gemerged; die
+Post-Merge-CI #3396 auf
+`d3267e624fdcb582ca4cb21c7cfb708813b497b1` ist vollständig grün.
+
+Der reale Preview-Apply wurde nach ausdrücklicher Nutzerfreigabe ausschließlich
+gegen Projekt `appbasis-ulc-linz-preview`, Branch `main`, Datenbank
+`appbasis_ulc_linz_preview` und den Migration-Principal
+`appbasis_ulc_linz_preview_migration` ausgeführt. Die zwei gepinnten
+Standardmodul-Migrationen und der insert-only Copy-/Verify-Lauf wurden atomar
+in einer `REPEATABLE READ`-Transaktion angewandt.
+
+Nach dem Apply sind exakt die vier Zieltabellen vorhanden:
+
+- `appbasis_exercise_catalog_item`;
+- `appbasis_exercise_catalog_parameter`;
+- `appbasis_exercise_catalog_audience`;
+- `appbasis_exercise_catalog_favorite`.
+
+Die unabhängige Nachprüfung bestätigte exakt dieselben Daten wie in Source:
+1 Übung, 2 Parameter, 1 Gruppen-/Audience-Zuordnung und 1 Favorit, jeweils ohne
+Feldabweichung. Die Primary Keys entsprechen dem veröffentlichten
+Standardmodulvertrag. Die bestehende ULC-Runtime wurde in C3B **nicht**
+umgeschaltet; Produktion blieb unverändert.
+
+## Aktueller Gate-Scope: ULC-E6G-C3C
+
+C3C liefert den **guarded Runtime-Cutover** vom app-eigenen
+`ulc_linz_exercise_*`-Persistenzpfad auf das bereits befüllte
+Standardmodulschema `appbasis_exercise_catalog_*`. Dieser Code-Slice führt
+selbst noch keinen Preview-Deploy und keine ACL-Mutation aus.
+
+Der zulässige Runtime-Zustand ist eine explizite Zustandsmaschine:
+
+1. `legacy`: bestehende Runtime liest und schreibt ausschließlich Source;
+2. `quiesced`: Source bleibt lesbar, alle Katalog-Mutationen liefern
+   explizit `503 EXERCISE_CATALOG_QUIESCED`; zusätzlich werden dem
+   Preview-Application-Principal auf Datenbankebene INSERT/UPDATE/DELETE auf
+   allen vier Source-Tabellen entzogen, während Target vollständig gesperrt
+   bleibt;
+3. erst nach diesem doppelten Write-Stop wird die vollständige
+   Source→Target-Gleichheit erneut in einer read-only
+   `REPEATABLE READ`-Transaktion geprüft;
+4. `standard`: nur aus nachweislich `quiesced` zulässig; Source-DML bleibt
+   entzogen, Target erhält SELECT/INSERT/UPDATE/DELETE und die Runtime verwendet
+   `PostgresExerciseCatalogRepository` aus `@appbasis/exercise-catalog`
+   über einen ULC-kompatiblen Adapter.
 
 Abnahme:
 
-- eigener C3B-Executor; C2s auf `isolated-proof` beschränkter Executor wird
-  nicht gegen die Preview umgebogen;
-- Ziel ist ausschließlich Environment `generated-preview-ulc-linz`,
-  Datenbank `appbasis_ulc_linz_preview` und Migration-Principal
-  `appbasis_ulc_linz_preview_migration`;
-- C3A-Readiness, veröffentlichter FC6-Zielowner und C1-Mapping werden vor jedem
-  Apply erneut fail-closed rekonstruiert;
-- Source-Relationen, gemappte Spalten, Orphans und doppelte Zielschlüssel werden
-  vor dem ersten Schemawrite geprüft;
-- alle vier Standardmodul-Zieltabellen müssen vor dem Apply vollständig
-  abwesend sein; partielle oder bereits angewandte Zielzustände werden
-  abgewiesen;
-- die exakt zwei `exercise-catalog`-Migrationen und die anschließende
-  insert-only Datenkopie laufen in **einer einzigen `REPEATABLE READ`-
-  Transaktion** unter einem dedizierten Advisory Lock;
-- nach der Migration werden Zielrelationen, gemappte Spalten und Primary Keys
-  gegen den reviewten Vertrag geprüft;
-- nach der Kopie müssen Gesamtzeilenzahlen, Zeilenzahlen je Organisation und
-  vollständige bidirektionale Feldgleichheit für alle vier Tabellen stimmen;
-- jeder Fehler nach Beginn der Zielmigration rollt **Schema und Kopie
-  gemeinsam** zurück; ein PostgreSQL-Regressionstest muss diesen Fall
-  ausdrücklich beweisen;
-- Source-Writes werden in C3B nicht quiesziert. Deshalb bleiben
-  `cutoverGuardSatisfied: false` und `runtimeCutoverEligible: false`;
-- der echte Preview-Apply ist ausschließlich über einen manuellen,
-  main-only `workflow_dispatch` möglich. `apply` ist standardmäßig
-  `false`; für den Mutationsjob sind zusätzlich sowohl
-  `APPBASIS_APPLY_MIGRATIONS=1` als auch
-  `APPBASIS_APPLY_EXERCISE_CATALOG_ADOPTION=1` erforderlich;
-- C3B verändert weder Cloudflare/Provider-Konfiguration noch Worker-Runtime,
-  Deployment oder Produktion.
+- ohne explizite Storage-Variable bleibt bestehendes Verhalten
+  rückwärtskompatibel `legacy`; dadurch verändert dieser Repository-Slice
+  weder bestehende Produktion noch einen bestehenden Preview-Deploy;
+- der Preview-Worker stellt read-only
+  `/api/health/exercise-catalog-storage` bereit und meldet ausschließlich
+  `legacy`, `quiesced` oder `standard`;
+- der erste reale Quiesce-Lauf erkennt den aktuell noch vor-C3C deployten
+  Worker fail-closed als `legacy-unversioned` nur dann, wenn dessen bestehender
+  `/api/health`-Vertrag exakt `appId=ulc-linz` und `status=ok` bestätigt;
+- der bestehende Preview-Entrypoint `./worker/preview.ts` bleibt beim C3C-
+  Deploy unverändert;
+- ein eigener read-only Equality-Guard verlangt alle vier Source- und
+  Zieltabellen sowie vollständige bidirektionale Feldgleichheit;
+- ein eigener ACL-Executor ist auf die exakten drei ULC-Preview-Rollen und die
+  Preview-Datenbank gepinnt;
+- `quiesce` deployt zuerst die Runtime-Schreibsperre, entzieht danach
+  Source-DML auf DB-Ebene und prüft erst anschließend die finale Gleichheit;
+- dadurch wird auch ein vor dem Deploy begonnener alter Request entweder vor
+  dem ACL-Entzug abgeschlossen und von der finalen Gleichheitsprüfung erfasst
+  oder beim späteren Source-Write von PostgreSQL abgewiesen;
+- `cutover` ist nur bei aktuell laufendem `quiesced`-Worker zulässig,
+  verlangt weiterhin Source-DML=aus und exakte Gleichheit, gewährt erst dann
+  Target-DML und deployt anschließend `standard`;
+- `inspect`, `quiesce` und `cutover` sind ausschließlich über einen
+  manuellen, main-only Workflow verfügbar; `apply=false` ist Default;
+- `quiesce` und `cutover` sind zwei **separat freizugebende reale
+  Preview-Mutationen**. Ein erfolgreiches Quiesce autorisiert den späteren
+  Cutover nicht automatisch;
+- Produktion, Produktionsdatenbank und Produktions-Worker bleiben außerhalb
+  dieses Gates.
 
-Nach grünem C3B-Repository-Gate darf der reale Schema-/Copy-Apply gegen die
-bestehende ULC-Preview **nur nach ausdrücklicher Nutzerfreigabe** ausgeführt
-werden. Selbst ein erfolgreicher Preview-Apply schaltet die Runtime nicht um.
-Der spätere Runtime-Cutover bleibt ein eigenes Gate mit Source-Write-
-Quiescence und finaler Source→Target-Gleichheit.
+Nach grünem C3C-Repository-Gate ist der nächste reale Schritt ausschließlich
+**Quiesce der isolierten Preview** und benötigt eine neue ausdrückliche
+Nutzerfreigabe. Erst nach erfolgreicher Quiescence plus finaler Gleichheits-
+Evidence darf in einem weiteren getrennten Schritt eine neue Freigabe für den
+Standard-Runtime-Cutover angefordert werden.
 
 ## FC4-Abnahme – abgeschlossen
 
