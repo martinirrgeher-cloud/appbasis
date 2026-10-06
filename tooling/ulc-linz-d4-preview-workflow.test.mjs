@@ -72,6 +72,31 @@ test("ULC D4 preview lifecycle reuses the canonical plan and probes the ULC coun
   assert.match(workflow, /--experimental-auto-create=false/);
 });
 
+test("ULC D4 deploy preserves the currently active exercise-catalog storage mode", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /Preserve deployed ULC exercise catalog storage mode/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-d4-preview-storage-mode\.mjs/,
+  );
+  assert.match(
+    workflow,
+    /APPBASIS_EXERCISE_CATALOG_STORAGE_MODE/,
+  );
+  assert.match(
+    workflow,
+    /exerciseCatalogStorageMode:\s*\n\s*process\.env\.APPBASIS_OPERATION === "deploy"/,
+  );
+  assert.match(
+    workflow,
+    /process\.env\.APPBASIS_EXERCISE_CATALOG_STORAGE_MODE/,
+  );
+});
+
 test("ULC D4 migrate routes fresh, established and current preview states explicitly", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(workflow, /Resolve ULC preview migration state/);
