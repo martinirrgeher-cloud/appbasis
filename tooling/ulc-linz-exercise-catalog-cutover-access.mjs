@@ -21,6 +21,10 @@ const TARGET_TABLES = Object.freeze([
 const EXPECTED_DATABASE = "appbasis_ulc_linz_preview";
 const EXPECTED_MIGRATION_PRINCIPAL =
   "appbasis_ulc_linz_preview_migration";
+const EXPECTED_APPLICATION_PRINCIPAL =
+  "appbasis_ulc_linz_preview_application";
+const EXPECTED_SECURITY_LOG_PRINCIPAL =
+  "appbasis_ulc_linz_preview_security_log";
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
 export class UlcExerciseCatalogCutoverAccessError extends Error {
@@ -181,10 +185,12 @@ function validatedCredentials(input) {
   }
   if (
     credentials.migration.database !== EXPECTED_DATABASE ||
-    credentials.migration.user !== EXPECTED_MIGRATION_PRINCIPAL
+    credentials.migration.user !== EXPECTED_MIGRATION_PRINCIPAL ||
+    credentials.application.user !== EXPECTED_APPLICATION_PRINCIPAL ||
+    credentials.securityLog.user !== EXPECTED_SECURITY_LOG_PRINCIPAL
   ) {
     throw new UlcExerciseCatalogCutoverAccessError(
-      "E6G-C3C requires the exact ULC preview migration target.",
+      "E6G-C3C requires the exact ULC preview database roles.",
     );
   }
   assertIdentifier(credentials.application.user);
