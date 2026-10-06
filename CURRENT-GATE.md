@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-05
+Stand: 2026-10-06
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,7 +9,7 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6G-C3A – Repository-Adoption + read-only Preview-Readiness.**
+**ULC-E6G-C3B – atomarer Preview-Schema-/Copy-/Verify-Pfad.**
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -181,43 +181,67 @@ Testdatenbanken. Der Race-Test hält ausdrücklich fest, dass ein konsistenter
 Snapshot noch keine Cutover-Freshness ist; `runtimeCutoverEligible` bleibt
 false.
 
-## Aktueller Gate-Scope: ULC-E6G-C3A
+## Abgeschlossener Gate-Scope: ULC-E6G-C3A
 
-C3A publiziert ausschließlich den kanonischen **Repository-Zielzustand** der
-ULC-Adoption und beweist danach read-only, dass der getrennte Preview-
-Schema-/Copy-Schritt vorbereitet werden kann. Es gibt in diesem Slice keinen
-Provider- oder Datenbankwrite.
+Die kanonische Repository-Adoption und read-only Preview-Readiness sind auf
+`main` abgeschlossen. PR #386 wurde nach grüner Exact-Head-CI gemerged; die
+Post-Merge-CI #3394 auf
+`428b5a2647954015bbe6f82f3690e8366dab4370` ist vollständig grün.
+
+ULC deklariert damit `exercise-catalog` als Standardmodul einschließlich
+Workspace-Paket und eigenem Datenbankowner. FC6 rekonstruiert aus dem
+veröffentlichten Zustand exakt die zwei Zielmigrationen. Der C1-Planner
+akzeptiert den exakten veröffentlichten Zielzustand weiterhin fail-closed; der
+C3A-Readiness-Plan bindet den nächsten Schritt an
+`generated-preview-ulc-linz` / `appbasis_ulc_linz_preview`, ohne Provider-
+oder Datenbankzugriff.
+
+## Aktueller Gate-Scope: ULC-E6G-C3B
+
+C3B implementiert und beweist den **preview-gebundenen atomaren
+Schema-/Copy-/Verify-Pfad**. Die echte ULC-Preview wird in diesem Repository-
+Slice noch nicht verändert. Der spätere reale Apply bleibt bis zu einer
+ausdrücklichen Nutzerfreigabe gesperrt.
 
 Abnahme:
 
-- `ulc-linz` deklariert `exercise-catalog` als Standardmodul und
-  `@appbasis/exercise-catalog` als Workspace-Abhängigkeit;
-- `appbasis.database.json` enthält zusätzlich exakt den verifizierten
-  `exercise-catalog`-Owner mit Schema-Version 2 und genau seinen zwei
-  Modulmigrationen; alle bisherigen Owner bleiben unverändert;
-- `pnpm-lock.yaml` enthält den passenden Workspace-Link;
-- der normale FC6-Modulplanner liefert anschließend für
-  `ulc-linz + exercise-catalog` deterministisch `already-installed` ohne
-  Repositorywrites;
-- der FC6-Migration-Executor kann aus dem veröffentlichten Repositoryzustand
-  den Zielowner und genau die beiden Zielmigrationen read-only rekonstruieren;
-- der C1-Adoptionsplanner akzeptiert sowohl den exakt alten
-  `pre-adoption`-Zustand als auch den exakt veröffentlichten
-  `published-target`-Zustand, verweigert aber jeden partiellen Mischzustand;
-- der neue Preview-Readiness-Plan ist an Environment
-  `generated-preview-ulc-linz` und Datenbank `appbasis_ulc_linz_preview`
-  gebunden und führt selbst keinerlei Datenbank- oder Providerzugriff aus;
-- C2s `isolated-proof`-Executor wird **nicht** gegen die Preview umgebogen.
-  Für den realen Copy-Schritt ist ein eigener preview-gebundener Executor im
-  nächsten Gate erforderlich;
-- Ziel-Schema-Migration, reale Datenkopie, Runtime-Cutover, Source-
-  Stilllegung, Deployment und Produktion bleiben getrennte Schritte.
+- eigener C3B-Executor; C2s auf `isolated-proof` beschränkter Executor wird
+  nicht gegen die Preview umgebogen;
+- Ziel ist ausschließlich Environment `generated-preview-ulc-linz`,
+  Datenbank `appbasis_ulc_linz_preview` und Migration-Principal
+  `appbasis_ulc_linz_preview_migration`;
+- C3A-Readiness, veröffentlichter FC6-Zielowner und C1-Mapping werden vor jedem
+  Apply erneut fail-closed rekonstruiert;
+- Source-Relationen, gemappte Spalten, Orphans und doppelte Zielschlüssel werden
+  vor dem ersten Schemawrite geprüft;
+- alle vier Standardmodul-Zieltabellen müssen vor dem Apply vollständig
+  abwesend sein; partielle oder bereits angewandte Zielzustände werden
+  abgewiesen;
+- die exakt zwei `exercise-catalog`-Migrationen und die anschließende
+  insert-only Datenkopie laufen in **einer einzigen `REPEATABLE READ`-
+  Transaktion** unter einem dedizierten Advisory Lock;
+- nach der Migration werden Zielrelationen, gemappte Spalten und Primary Keys
+  gegen den reviewten Vertrag geprüft;
+- nach der Kopie müssen Gesamtzeilenzahlen, Zeilenzahlen je Organisation und
+  vollständige bidirektionale Feldgleichheit für alle vier Tabellen stimmen;
+- jeder Fehler nach Beginn der Zielmigration rollt **Schema und Kopie
+  gemeinsam** zurück; ein PostgreSQL-Regressionstest muss diesen Fall
+  ausdrücklich beweisen;
+- Source-Writes werden in C3B nicht quiesziert. Deshalb bleiben
+  `cutoverGuardSatisfied: false` und `runtimeCutoverEligible: false`;
+- der echte Preview-Apply ist ausschließlich über einen manuellen,
+  main-only `workflow_dispatch` möglich. `apply` ist standardmäßig
+  `false`; für den Mutationsjob sind zusätzlich sowohl
+  `APPBASIS_APPLY_MIGRATIONS=1` als auch
+  `APPBASIS_APPLY_EXERCISE_CATALOG_ADOPTION=1` erforderlich;
+- C3B verändert weder Cloudflare/Provider-Konfiguration noch Worker-Runtime,
+  Deployment oder Produktion.
 
-Nach C3A darf C3B den Preview-Schema-/Copy-Pfad implementieren und testen.
-Das tatsächliche Ausführen gegen die bestehende ULC-Preview bleibt bis zu
-einer ausdrücklichen Nutzerfreigabe gesperrt. Ein Runtime-Cutover folgt selbst
-nach erfolgreichem Preview-Copy nur unter dem C1-Quiescence-/Final-Equality-
-Guard in einem weiteren Gate.
+Nach grünem C3B-Repository-Gate darf der reale Schema-/Copy-Apply gegen die
+bestehende ULC-Preview **nur nach ausdrücklicher Nutzerfreigabe** ausgeführt
+werden. Selbst ein erfolgreicher Preview-Apply schaltet die Runtime nicht um.
+Der spätere Runtime-Cutover bleibt ein eigenes Gate mit Source-Write-
+Quiescence und finaler Source→Target-Gleichheit.
 
 ## FC4-Abnahme – abgeschlossen
 
