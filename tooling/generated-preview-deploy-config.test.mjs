@@ -94,6 +94,40 @@ test("adds a distinct security-log Hyperdrive only when explicitly supplied", ()
   );
 });
 
+test("renders the exercise catalog storage mode only when explicitly requested", () => {
+  const quiesced = renderGeneratedPreviewWranglerConfig({
+    appId: "ulc-linz",
+    hyperdriveId: "application-hyperdrive-id",
+    securityLogHyperdriveId: "security-log-hyperdrive-id",
+    baseURL: "https://ulc-preview.example.test",
+    exerciseCatalogStorageMode: "quiesced",
+  });
+  assert.deepEqual(quiesced.vars, {
+    APPBASIS_BASE_URL: "https://ulc-preview.example.test",
+    APPBASIS_EXERCISE_CATALOG_STORAGE_MODE: "quiesced",
+  });
+
+  const unchangedDefault = renderGeneratedPreviewWranglerConfig({
+    appId: "ulc-linz",
+    hyperdriveId: "application-hyperdrive-id",
+    baseURL: "https://ulc-preview.example.test",
+  });
+  assert.deepEqual(unchangedDefault.vars, {
+    APPBASIS_BASE_URL: "https://ulc-preview.example.test",
+  });
+
+  assert.throws(
+    () =>
+      renderGeneratedPreviewWranglerConfig({
+        appId: "ulc-linz",
+        hyperdriveId: "application-hyperdrive-id",
+        baseURL: "https://ulc-preview.example.test",
+        exerciseCatalogStorageMode: "target",
+      }),
+    /exerciseCatalogStorageMode/,
+  );
+});
+
 test("supports an explicit repository-local preview entrypoint without changing the default", () => {
   const config = renderGeneratedPreviewWranglerConfig({
     appId: "tasks-minimal",
