@@ -45,6 +45,10 @@ import {
   UlcExerciseCatalogConflictError,
   UlcExerciseCatalogNotFoundError,
 } from "./exercise-catalog-postgres";
+import {
+  resolveUlcExerciseCatalogStorageMode,
+  UlcExerciseCatalogQuiescedError,
+} from "./exercise-catalog-storage";
 import { UlcExerciseCatalogGroupNotFoundError } from "./exercise-catalog-service";
 import type { UlcLinzKindertrainingAccessScope } from "./kindertraining-access";
 import {
@@ -99,6 +103,31 @@ export function createGeneratedWorker(
       }
       if (url.pathname === "/api/health") {
         return Response.json({ status: "ok", appId: "ulc-linz" });
+      }
+      if (url.pathname === "/api/health/exercise-catalog-storage") {
+        if (request.method !== "GET") {
+          return methodNotAllowedFor(
+            "GET",
+            "exercise catalog storage health",
+          );
+        }
+        const mode = exerciseCatalogStorageModeFromEnvironment(env);
+        if (mode === null) {
+          return Response.json(
+            {
+              error: {
+                code: "RUNTIME_NOT_CONFIGURED",
+                message: "The exercise catalog storage runtime is not configured.",
+              },
+            },
+            { status: 503 },
+          );
+        }
+        return Response.json({
+          status: "ok",
+          appId: "ulc-linz",
+          exerciseCatalogStorageMode: mode,
+        });
       }
 
       const runtimeOptions = runtimeConfiguration(env);
@@ -1830,6 +1859,23 @@ function exerciseCatalogErrorResponse(error: unknown): Response {
       { status: 409 },
     );
   }
+  if (error instanceof UlcExerciseCatalogQuiescedError) {
+    return Response.json(
+      {
+        error: {
+          code: error.code,
+          message: "Exercise catalog writes are temporarily unavailable during storage cutover.",
+        },
+      },
+      {
+        status: 503,
+        headers: {
+          "cache-control": "private, no-store",
+          "retry-after": "60",
+        },
+      },
+    );
+  }
   throw error;
 }
 
@@ -2764,6 +2810,10 @@ function runtimeConfiguration(
   if (!isRecord(env)) return null;
   const hyperdrive = env.HYPERDRIVE;
   const securityLogHyperdrive = env.SECURITY_LOG_HYPERDRIVE;
+  const exerciseCatalogStorageMode =
+    resolveUlcExerciseCatalogStorageMode(
+      env.APPBASIS_EXERCISE_CATALOG_STORAGE_MODE,
+    );
   if (!isRecord(hyperdrive) || !isRecord(securityLogHyperdrive)) return null;
 
   const connectionString = normalizedPostgresConnectionString(
@@ -2779,7 +2829,8 @@ function runtimeConfiguration(
     securityLogConnectionString === null ||
     connectionString === securityLogConnectionString ||
     baseURL === null ||
-    secret === null
+    secret === null ||
+    exerciseCatalogStorageMode === null
   ) {
     return null;
   }
@@ -2789,7 +2840,17 @@ function runtimeConfiguration(
     securityLogConnectionString,
     baseURL,
     secret,
+    exerciseCatalogStorageMode,
   });
+}
+
+function exerciseCatalogStorageModeFromEnvironment(
+  env: unknown,
+) {
+  if (!isRecord(env)) return null;
+  return resolveUlcExerciseCatalogStorageMode(
+    env.APPBASIS_EXERCISE_CATALOG_STORAGE_MODE,
+  );
 }
 
 async function flushSecurityEventsSafely(
