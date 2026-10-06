@@ -204,7 +204,10 @@ test(
           "AND tablename LIKE 'appbasis_exercise_catalog_%' " +
           "ORDER BY tablename",
       );
-      assert.deepEqual(targets, []);
+      assert.deepEqual(
+        targets.map((row) => row.tablename),
+        [],
+      );
 
       const triggerFunction = await admin.client.unsafe(
         "SELECT to_regprocedure(" +
