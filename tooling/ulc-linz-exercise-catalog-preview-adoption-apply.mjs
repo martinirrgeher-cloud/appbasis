@@ -375,6 +375,20 @@ function assertReviewedPlans({
   migrationPlan,
   adoptionPlan,
 }) {
+  const adoptionMigrationPaths = Array.isArray(
+    adoptionPlan?.target?.migrations,
+  )
+    ? adoptionPlan.target.migrations.map((migration) => migration.path)
+    : [];
+  const ownerMigrationPaths = Array.isArray(
+    migrationPlan?.targetOwner?.migrations,
+  )
+    ? [...migrationPlan.targetOwner.migrations]
+    : [];
+  const executionMigrationPaths = Array.isArray(migrationPlan?.migrations)
+    ? migrationPlan.migrations.map((migration) => migration.relativePath)
+    : [];
+
   if (
     readiness?.operation !==
       "ulc-exercise-catalog-preview-adoption-readiness" ||
@@ -405,9 +419,15 @@ function assertReviewedPlans({
     migrationPlan.moduleId !== MODULE_ID ||
     migrationPlan.repositoryState !== "published-target" ||
     migrationPlan.targetOwner?.id !== MODULE_ID ||
+    migrationPlan.targetOwner?.root !== "modules/exercise-catalog" ||
     migrationPlan.targetOwner?.schemaVersion !== 2 ||
     !Array.isArray(migrationPlan.migrations) ||
-    migrationPlan.migrations.length !== 2
+    migrationPlan.migrations.length !== 2 ||
+    adoptionMigrationPaths.length !== 2 ||
+    JSON.stringify(ownerMigrationPaths) !==
+      JSON.stringify(adoptionMigrationPaths) ||
+    JSON.stringify(executionMigrationPaths) !==
+      JSON.stringify(adoptionMigrationPaths)
   ) {
     throw new UlcExerciseCatalogPreviewAdoptionConfigurationError(
       "E6G-C3B requires exactly the two published exercise-catalog target migrations.",
