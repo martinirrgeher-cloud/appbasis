@@ -149,19 +149,28 @@ ULC-App und die Factory-Verträge abgeglichen.
   `generated-preview-ulc-linz` / `appbasis_ulc_linz_preview`. Die zwei
   Standardmodul-Migrationen und der anschließende insert-only Copy-/Verify-Lauf
   werden in einer einzigen `REPEATABLE READ`-Transaktion ausgeführt, sodass
-  ein später Copy-/Verify-Fehler auch das neue Zielschema zurückrollt. Der
-  reale Apply ist ausschließlich manuell, main-only und explizit freizugeben;
-- Runtime-Cutover und Produktion bleiben weiterhin getrennte Freigaben. C3B
-  quiesziert Source-Writes ausdrücklich noch nicht und setzt
-  `runtimeCutoverEligible` weiterhin auf false. Vor einem Runtime-Switch
-  müssen Source-Writes quiesziert und die vollständige Source→Target-
-  Gleichheit unter diesem Guard erneut geprüft werden.
+  ein später Copy-/Verify-Fehler auch das neue Zielschema zurückrollt. C3B ist
+  auf `main` abgeschlossen und der reale Apply wurde nach separater Freigabe
+  erfolgreich in der isolierten Preview ausgeführt. Source und Target wurden
+  danach mit 1 Übung, 2 Parametern, 1 Audience-Zuordnung und 1 Favorit
+  vollständig feldgleich bestätigt; die Runtime blieb weiterhin auf Source;
+- E6G-C3C: guarded Runtime-Cutover mit den expliziten Modi
+  `legacy → quiesced → standard`. `quiesced` blockiert Katalog-Writes
+  zunächst in der Runtime und entzieht danach zusätzlich dem
+  Preview-Application-Principal Source-DML auf Datenbankebene. Erst unter
+  diesem Guard wird die vollständige Source→Target-Gleichheit erneut geprüft.
+  Der spätere `standard`-Modus nutzt den generischen
+  `PostgresExerciseCatalogRepository` über einen ULC-kompatiblen Adapter und
+  erhält Target-DML erst nach nachgewiesener Quiescence;
+- Quiesce, Runtime-Cutover und Produktion bleiben weiterhin getrennte
+  Freigaben. Der C3C-Code-PR selbst führt weder Preview-Deploy noch ACL-
+  Mutation aus.
 
-Der bisherige ULC-Runtimepfad ist weiterhin app-eigen: Runtime und Source-Migration liegen unter `apps/ulc-linz`; der Repository-
-Zielzustand enthält zusätzlich den neuen Standardmodulowner. Die bestehenden
-`ulc_linz_exercise_*`-Tabellen bleiben weiterhin Eigentum des ULC-Owners und
-werden nicht umetikettiert. Die Datenübernahme in
-`appbasis_exercise_catalog_*` bleibt ein eigener Preview-/Cutover-Pfad.
+Der bisherige ULC-Source-Pfad bleibt als historische Source unter
+`apps/ulc-linz` erhalten und wird nicht umetikettiert. In der isolierten
+Preview ist die Datenübernahme nach `appbasis_exercise_catalog_*` bereits
+abgeschlossen; C3C steuert ausschließlich den kontrollierten Übergang der
+laufenden Runtime. Produktion bleibt davon unberührt.
 
 Siehe `docs/ULC-LEGACY-FACTORY-AUDIT.md`.
 
