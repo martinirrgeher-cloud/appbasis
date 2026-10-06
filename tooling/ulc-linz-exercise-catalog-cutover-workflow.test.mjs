@@ -30,9 +30,27 @@ test("E6G-C3C workflow enforces quiesce before standard runtime cutover", async 
     source,
     /ulc-linz-exercise-catalog-cutover-readiness\.mjs/,
   );
+  assert.match(
+    source,
+    /ulc-linz-exercise-catalog-cutover-access\.mjs inspect/,
+  );
+  assert.match(
+    source,
+    /ulc-linz-exercise-catalog-cutover-access\.mjs quiesce/,
+  );
+  assert.match(
+    source,
+    /ulc-linz-exercise-catalog-cutover-access\.mjs standard/,
+  );
+  assert.match(
+    source,
+    /APPBASIS_APPLY_EXERCISE_CATALOG_CUTOVER_ACCESS: "1"/,
+  );
   assert.match(source, /exerciseCatalogStorageMode: mode/);
   assert.match(source, /mode =.*quiesced.*standard/s);
+  assert.match(source, /Enforce database Source quiescence/);
   assert.match(source, /Re-verify equality after write quiescence/);
+  assert.match(source, /Source DML revoked/);
   assert.match(
     source,
     /Standard runtime cutover remains separately authorized/,
