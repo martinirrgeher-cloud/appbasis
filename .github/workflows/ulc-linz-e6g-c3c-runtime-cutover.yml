@@ -190,6 +190,17 @@ jobs:
           test "$(jq -r '.equality.totalMismatchCount' <<<"$RESULT")" = '0' || exit 1
           echo "$RESULT"
 
+      - name: Inspect cutover database ACL
+        id: acl
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-exercise-catalog-cutover-access.mjs inspect
+
       - name: Stop after read-only inspection
         if: inputs.operation == 'inspect'
         shell: bash
@@ -218,6 +229,18 @@ jobs:
           echo "::add-mask::$APPLICATION_ID"
           echo "::add-mask::$SECURITY_LOG_ID"
           printf 'application_id=%s\nsecurity_log_id=%s\n'             "$APPLICATION_ID" "$SECURITY_LOG_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Grant standard Target DML after verified quiescence
+        if: inputs.operation == 'cutover'
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_EXERCISE_CATALOG_CUTOVER_ACCESS: "1"
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-exercise-catalog-cutover-access.mjs standard >/dev/null
 
       - name: Render guarded cutover deploy config
         if: inputs.operation != 'inspect'
@@ -309,6 +332,18 @@ jobs:
           echo "Deployed runtime mode did not become $EXPECTED." >&2
           exit 1
 
+      - name: Enforce database Source quiescence
+        if: inputs.operation == 'quiesce'
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_EXERCISE_CATALOG_CUTOVER_ACCESS: "1"
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-exercise-catalog-cutover-access.mjs quiesce >/dev/null
+
       - name: Re-verify equality after write quiescence
         if: inputs.operation == 'quiesce'
         shell: bash
@@ -319,7 +354,10 @@ jobs:
           RESULT="$(node ./tooling/ulc-linz-exercise-catalog-cutover-readiness.mjs)"
           test "$(jq -r '.equality.exact' <<<"$RESULT")" = 'true'
           test "$(jq -r '.equality.totalMismatchCount' <<<"$RESULT")" = '0'
-          echo 'E6G-C3C quiescence PASS: writes blocked and final equality confirmed.' >> "$GITHUB_STEP_SUMMARY"
+          ACL="$(node ./tooling/ulc-linz-exercise-catalog-cutover-access.mjs inspect)"
+          test "$(jq '[.source[] | select(.select == true and .insert == false and .update == false and .delete == false)] | length' <<<"$ACL")" = '4'
+          test "$(jq '[.target[] | select(.select == false and .insert == false and .update == false and .delete == false)] | length' <<<"$ACL")" = '4'
+          echo 'E6G-C3C quiescence PASS: Worker writes blocked, Source DML revoked and final equality confirmed.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Standard runtime cutover remains separately authorized.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Record completed standard runtime cutover
