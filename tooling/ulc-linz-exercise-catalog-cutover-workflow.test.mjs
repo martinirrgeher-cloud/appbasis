@@ -25,7 +25,18 @@ test("E6G-C3C workflow enforces quiesce before standard runtime cutover", async 
     source,
     /api\/health\/exercise-catalog-storage/,
   );
-  assert.match(source, /quiesce:legacy\|cutover:quiesced/);
+  assert.match(
+    source,
+    /quiesce:legacy\|quiesce:legacy-unversioned\|cutover:quiesced/,
+  );
+  assert.match(source, /STORAGE_STATUS.*404/s);
+  assert.match(source, /MODE='legacy-unversioned'/);
+  assert.match(source, /\/api\/health"/);
+  assert.match(source, /\.entrypoint.*worker\/preview\.ts/s);
+  assert.match(
+    source,
+    /entrypoint: process\.env\.APPBASIS_ENTRYPOINT/,
+  );
   assert.match(
     source,
     /ulc-linz-exercise-catalog-cutover-readiness\.mjs/,
