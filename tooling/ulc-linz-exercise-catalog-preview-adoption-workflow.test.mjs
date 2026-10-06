@@ -36,6 +36,16 @@ test("E6G-C3B workflow is manual, main-only and requires explicit apply", async 
     source,
     /secrets\.APPBASIS_MIGRATION_DATABASE_URL/,
   );
+  assert.match(source, /secrets\.APPBASIS_DATABASE_URL/);
+  assert.match(
+    source,
+    /secrets\.APPBASIS_SECURITY_LOG_DATABASE_URL/,
+  );
+  assert.match(
+    source,
+    /ulc-linz-d4-preview-migration-state\.mjs/,
+  );
+  assert.match(source, /\.mode.*current|current ULC preview source schema/s);
   assert.match(
     source,
     /ulc-linz-exercise-catalog-preview-adoption-apply\.mjs/,
