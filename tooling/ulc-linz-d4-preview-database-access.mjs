@@ -18,6 +18,22 @@ const TRAINER_IDENTITY_AUDIT_TABLE =
   "public.ulc_linz_trainer_identity_audit";
 const TRAINER_IDENTITY_AUDIT_SEQUENCE =
   "public.ulc_linz_trainer_identity_audit_event_id_seq";
+const EXERCISE_CATALOG_SOURCE_TABLES = Object.freeze([
+  "ulc_linz_exercise_catalog_item",
+  "ulc_linz_exercise_parameter",
+  "ulc_linz_exercise_group",
+  "ulc_linz_exercise_favorite",
+]);
+const EXERCISE_CATALOG_TARGET_TABLES = Object.freeze([
+  "appbasis_exercise_catalog_item",
+  "appbasis_exercise_catalog_parameter",
+  "appbasis_exercise_catalog_audience",
+  "appbasis_exercise_catalog_favorite",
+]);
+const EXERCISE_CATALOG_TABLES = Object.freeze([
+  ...EXERCISE_CATALOG_SOURCE_TABLES,
+  ...EXERCISE_CATALOG_TARGET_TABLES,
+]);
 const SECURITY_INGEST_COLUMNS = Object.freeze([
   "schema_version",
   "app_id",
@@ -316,7 +332,7 @@ export async function reconcileUlcLinzD4PreviewDatabaseAccess(
       const statements = [
         "REVOKE CREATE ON SCHEMA public FROM " + app,
         "GRANT USAGE ON SCHEMA public TO " + app,
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO " + app,
+        exerciseCatalogPreservingTableGrant(app),
         "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO " + app,
         "REVOKE ALL ON TABLE " + SECURITY_TABLE + " FROM " + app,
         "REVOKE SELECT (" + securityColumns + "), INSERT (" + securityColumns +
@@ -1226,7 +1242,9 @@ async function verifyApplicationRuntimeAccess({
         " ) AS all_runtime_table_dml" +
         " FROM pg_catalog.pg_tables" +
         " WHERE schemaname = 'public'" +
-        " AND tablename NOT IN ('ulc_linz_security_event_log', 'ulc_linz_trainer_identity_audit')" +
+        " AND tablename NOT IN ('ulc_linz_security_event_log', 'ulc_linz_trainer_identity_audit', " +
+        EXERCISE_CATALOG_TABLES.map(sqlLiteral).join(", ") +
+        ")" +
         "), sequence_access AS (" +
         " SELECT COALESCE(bool_and(" +
         " has_sequence_privilege(current_user, format('%I.%I', sequence_schema, sequence_name), 'USAGE')" +
@@ -1416,6 +1434,19 @@ async function verifyApplicationRuntimeAccess({
     ) {
       throw new Error("ULC D4 application runtime database ACL is not exact.");
     }
+
+    const exerciseCatalogRows = await database.client.unsafe(
+      exerciseCatalogApplicationAclQuery(),
+    );
+    if (
+      !Array.isArray(exerciseCatalogRows) ||
+      exerciseCatalogRows.length !== 1 ||
+      exerciseCatalogRows[0]?.exercise_catalog_acl_valid !== true
+    ) {
+      throw new Error(
+        "ULC D4 exercise-catalog application ACL state is not a legal cutover phase.",
+      );
+    }
   } finally {
     await database.client.end().catch(() => {});
   }
@@ -1577,6 +1608,108 @@ async function readMembers(client, parent) {
       " WHERE parent.rolname = $1 ORDER BY child.rolname",
     [parent],
   );
+}
+
+function exerciseCatalogPreservingTableGrant(applicationRole) {
+  const excluded = EXERCISE_CATALOG_TABLES.map(sqlLiteral).join(", ");
+  return (
+    "DO $appbasis$ DECLARE relation_name text; BEGIN " +
+    "FOR relation_name IN " +
+    "SELECT format('%I.%I', schemaname, tablename) " +
+    "FROM pg_catalog.pg_tables WHERE schemaname = 'public' " +
+    "AND tablename NOT IN (" +
+    excluded +
+    ") ORDER BY tablename LOOP " +
+    "EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE ' || " +
+    "relation_name || ' TO " +
+    applicationRole +
+    "'; END LOOP; END $appbasis$"
+  );
+}
+
+function exerciseCatalogApplicationAclQuery() {
+  const source = EXERCISE_CATALOG_SOURCE_TABLES.map(sqlLiteral).join(", ");
+  const target = EXERCISE_CATALOG_TARGET_TABLES.map(sqlLiteral).join(", ");
+  const full = (tables) =>
+    "COALESCE(bool_and(" +
+    "has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT') " +
+    "AND has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT') " +
+    "AND has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE') " +
+    "AND has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'DELETE') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRIGGER') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'MAINTAIN')" +
+    "), true) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename IN (" +
+    tables +
+    ")";
+  const readOnly = (tables) =>
+    "COALESCE(bool_and(" +
+    "has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'DELETE') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRIGGER') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'MAINTAIN')" +
+    "), true) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename IN (" +
+    tables +
+    ")";
+  const blocked = (tables) =>
+    "COALESCE(bool_and(" +
+    "NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'DELETE') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRIGGER') " +
+    "AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'MAINTAIN')" +
+    "), true) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename IN (" +
+    tables +
+    ")";
+
+  return (
+    "WITH catalog AS (" +
+    " SELECT " +
+    "(SELECT count(*)::int FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename IN (" +
+    source +
+    ")) AS source_count, " +
+    "(SELECT count(*)::int FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename IN (" +
+    target +
+    ")) AS target_count, " +
+    "(SELECT " +
+    full(source) +
+    ") AS source_full, " +
+    "(SELECT " +
+    readOnly(source) +
+    ") AS source_read_only, " +
+    "(SELECT " +
+    full(target) +
+    ") AS target_full, " +
+    "(SELECT " +
+    blocked(target) +
+    ") AS target_blocked" +
+    ") SELECT CASE " +
+    "WHEN source_count = 0 AND target_count = 0 THEN true " +
+    "WHEN source_count = 4 AND target_count = 0 AND source_full THEN true " +
+    "WHEN source_count = 4 AND target_count = 4 AND (" +
+    "(source_full AND target_blocked) OR " +
+    "(source_read_only AND target_blocked) OR " +
+    "(source_read_only AND target_full)" +
+    ") THEN true ELSE false END AS exercise_catalog_acl_valid FROM catalog"
+  );
+}
+
+function sqlLiteral(value) {
+  if (
+    typeof value !== "string" ||
+    !/^[a-z_][a-z0-9_]*$/.test(value)
+  ) {
+    throw new Error("ULC D4 internal SQL identifier is invalid.");
+  }
+  return "'" + value + "'";
 }
 
 function requiredRoleName(value) {
