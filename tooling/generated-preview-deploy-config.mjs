@@ -14,6 +14,7 @@ export function renderGeneratedPreviewWranglerConfig({
   baseURL,
   entrypoint = DEFAULT_ENTRYPOINT,
   compatibilityDate = "2026-08-14",
+  exerciseCatalogStorageMode,
 } = {}) {
   const normalizedAppId = requiredIdentifier(appId, "appId");
   const workerName = generatedPreviewWorkerName(normalizedAppId);
@@ -28,6 +29,8 @@ export function renderGeneratedPreviewWranglerConfig({
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
   const normalizedEntrypoint = requiredEntrypoint(entrypoint);
   const normalizedCompatibilityDate = requiredCompatibilityDate(compatibilityDate);
+  const normalizedExerciseCatalogStorageMode =
+    optionalExerciseCatalogStorageMode(exerciseCatalogStorageMode);
 
   return Object.freeze({
     $schema: "./node_modules/wrangler/config-schema.json",
@@ -40,6 +43,12 @@ export function renderGeneratedPreviewWranglerConfig({
     keep_vars: true,
     vars: Object.freeze({
       APPBASIS_BASE_URL: normalizedBaseURL,
+      ...(normalizedExerciseCatalogStorageMode === null
+        ? {}
+        : {
+            APPBASIS_EXERCISE_CATALOG_STORAGE_MODE:
+              normalizedExerciseCatalogStorageMode,
+          }),
     }),
     secrets: Object.freeze({
       required: REQUIRED_SECRET_NAMES,
@@ -181,6 +190,20 @@ function requiredEntrypoint(value) {
     )
   ) {
     throw new Error("entrypoint must be a canonical relative TypeScript path.");
+  }
+  return value;
+}
+
+function optionalExerciseCatalogStorageMode(value) {
+  if (value === undefined) return null;
+  if (
+    value !== "legacy" &&
+    value !== "quiesced" &&
+    value !== "standard"
+  ) {
+    throw new Error(
+      "exerciseCatalogStorageMode must be legacy, quiesced or standard.",
+    );
   }
   return value;
 }
