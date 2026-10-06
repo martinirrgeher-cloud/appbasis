@@ -145,6 +145,7 @@ export async function applyUlcExerciseCatalogPreviewAdoption(
     loadPlan = loadUlcExerciseCatalogPreviewAdoptionApplyPlan,
     loadMigrationPlan = loadModuleUpdateMigrationExecutionPlan,
     loadAdoptionPlan = planUlcExerciseCatalogAdoption,
+    testingHooks,
   } = {},
 ) {
   assertExecutionScope(executionScope);
@@ -176,6 +177,17 @@ export async function applyUlcExerciseCatalogPreviewAdoption(
   ) {
     throw new UlcExerciseCatalogPreviewAdoptionConfigurationError(
       "E6G-C3B requires the exact ULC preview migration database and principal.",
+    );
+  }
+
+  const afterTargetSchemaMigration =
+    testingHooks?.afterTargetSchemaMigration;
+  if (
+    afterTargetSchemaMigration !== undefined &&
+    typeof afterTargetSchemaMigration !== "function"
+  ) {
+    throw new UlcExerciseCatalogPreviewAdoptionConfigurationError(
+      "E6G-C3B testing hook configuration is invalid.",
     );
   }
 
@@ -266,6 +278,9 @@ export async function applyUlcExerciseCatalogPreviewAdoption(
         transaction,
         adoptionPlan.copy.tables,
       );
+      if (afterTargetSchemaMigration !== undefined) {
+        await afterTargetSchemaMigration(transaction);
+      }
       await lockTargetTables(transaction, adoptionPlan.copy.tables);
       await assertTargetTablesEmpty(
         transaction,
@@ -416,45 +431,68 @@ function assertReviewedPlans({
 }
 
 function assertExecutablePlans({ plan, migrationPlan, adoptionPlan }) {
+  const migrationPaths = Array.isArray(migrationPlan?.migrations)
+    ? migrationPlan.migrations.map((migration) => migration.relativePath)
+    : [];
+  const sourceTables = Array.isArray(adoptionPlan?.copy?.tables)
+    ? adoptionPlan.copy.tables.map((table) => table.sourceTable)
+    : [];
+  const targetTables = Array.isArray(adoptionPlan?.copy?.tables)
+    ? adoptionPlan.copy.tables.map((table) => table.targetTable)
+    : [];
+
   if (
     plan?.operation !==
       "ulc-exercise-catalog-preview-adoption-apply" ||
     plan.state !== "ready-for-explicit-preview-schema-copy-apply" ||
+    plan.preview?.environment !== EXPECTED_ENVIRONMENT ||
     plan.preview?.database !== EXPECTED_DATABASE ||
     plan.preview?.migrationPrincipal !==
       EXPECTED_MIGRATION_PRINCIPAL ||
     plan.transaction?.atomic !== true ||
+    plan.transaction?.isolation !== "repeatable-read" ||
     plan.transaction?.rollbackSchemaOnCopyFailure !== true ||
-    plan.runtimeCutover?.eligible !== false
+    plan.targetSchemaMigration?.ownerId !== MODULE_ID ||
+    plan.targetSchemaMigration?.schemaVersion !== 2 ||
+    plan.targetSchemaMigration?.migrationCount !== 2 ||
+    JSON.stringify(plan.targetSchemaMigration?.migrationPaths) !==
+      JSON.stringify(migrationPaths) ||
+    plan.copyAndVerify?.tableCount !== 4 ||
+    JSON.stringify(plan.copyAndVerify?.sourceTables) !==
+      JSON.stringify(sourceTables) ||
+    JSON.stringify(plan.copyAndVerify?.targetTables) !==
+      JSON.stringify(targetTables) ||
+    plan.runtimeCutover?.eligible !== false ||
+    plan.databaseAccess !== false ||
+    !Array.isArray(plan.writes) ||
+    plan.writes.length !== 0
   ) {
     throw new UlcExerciseCatalogPreviewAdoptionConfigurationError(
       "E6G-C3B executable preview plan is not canonical.",
     );
   }
-  assertReviewedPlans({
-    readiness: {
-      operation:
-        "ulc-exercise-catalog-preview-adoption-readiness",
-      state: "ready-for-explicit-preview-schema-copy-gate",
-      repositoryState: "published-target",
-      preview: {
-        environment: EXPECTED_ENVIRONMENT,
-        database: EXPECTED_DATABASE,
-      },
-      targetSchemaMigration: { migrationCount: 2 },
-      copyAndVerify: {
-        tableCount: 4,
-        previewBoundExecutorRequired: true,
-        isolatedProofExecutorReusableOnPreview: false,
-      },
-      runtimeCutover: { eligible: false },
-      providerAccess: false,
-      databaseAccess: false,
-      writes: [],
-    },
-    migrationPlan,
-    adoptionPlan,
-  });
+
+  if (
+    migrationPlan?.operation !== "module-install-migrations" ||
+    migrationPlan.application !== APP_ID ||
+    migrationPlan.moduleId !== MODULE_ID ||
+    migrationPlan.repositoryState !== "published-target" ||
+    migrationPlan.targetOwner?.id !== MODULE_ID ||
+    migrationPlan.targetOwner?.schemaVersion !== 2 ||
+    migrationPaths.length !== 2 ||
+    adoptionPlan?.operation !== "ulc-exercise-catalog-adoption" ||
+    adoptionPlan.repositoryState !== "published-target" ||
+    adoptionPlan.application !== APP_ID ||
+    adoptionPlan.target?.moduleId !== MODULE_ID ||
+    adoptionPlan.copy?.mode !== "insert-only-preserve-identifiers" ||
+    sourceTables.length !== 4 ||
+    targetTables.length !== 4 ||
+    adoptionPlan.cutoverGuard?.strategy !== "quiesce-and-verify"
+  ) {
+    throw new UlcExerciseCatalogPreviewAdoptionConfigurationError(
+      "E6G-C3B executable migration/copy contracts drifted from the reviewed target.",
+    );
+  }
 }
 
 function assertExecutionScope(value) {
