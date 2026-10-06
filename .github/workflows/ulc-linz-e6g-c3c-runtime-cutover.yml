@@ -211,7 +211,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$OPERATION:$CURRENT_MODE" in
-            quiesce:legacy|quiesce:legacy-unversioned|cutover:quiesced) ;;
+            quiesce:legacy|quiesce:legacy-unversioned|quiesce:quiesced|cutover:quiesced) ;;
             *)
               echo "Illegal E6G-C3C transition: $OPERATION from $CURRENT_MODE." >&2
               exit 1
