@@ -11,6 +11,7 @@ import {
 } from "../worker/exercise-catalog-exchange";
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
+import { UlcExerciseCatalogQuiescedError } from "../worker/exercise-catalog-storage";
 import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
 import {
   ULC_LINZ_APP_CSS,
@@ -3707,5 +3708,100 @@ describe("U12 runtime API", () => {
       );
       expect(response.status).toBe(400);
     }
+  });
+});
+
+
+describe("exercise catalog storage cutover health", () => {
+  it("reports legacy by default and explicit quiesced or standard modes", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+
+    for (const [mode, env] of [
+      ["legacy", validEnv],
+      [
+        "quiesced",
+        {
+          ...validEnv,
+          APPBASIS_EXERCISE_CATALOG_STORAGE_MODE: "quiesced",
+        },
+      ],
+      [
+        "standard",
+        {
+          ...validEnv,
+          APPBASIS_EXERCISE_CATALOG_STORAGE_MODE: "standard",
+        },
+      ],
+    ] as const) {
+      const response = await worker.fetch(
+        new Request(
+          "https://ulc.example.test/api/health/exercise-catalog-storage",
+        ),
+        env,
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        status: "ok",
+        appId: "ulc-linz",
+        exerciseCatalogStorageMode: mode,
+      });
+    }
+  });
+
+  it("fails closed on an invalid storage mode", async () => {
+    const worker = createGeneratedWorker(() => runtime());
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/health/exercise-catalog-storage",
+      ),
+      {
+        ...validEnv,
+        APPBASIS_EXERCISE_CATALOG_STORAGE_MODE: "target",
+      },
+    );
+    expect(response.status).toBe(503);
+  });
+
+  it("returns an explicit temporary-unavailable response when catalog writes are quiesced", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        exerciseCatalog: {
+          ...base.exerciseCatalog,
+          async create() {
+            throw new UlcExerciseCatalogQuiescedError();
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/exercise-catalog", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Quiescence Test",
+          categoryKey: "warmup",
+        }),
+      }),
+      {
+        ...validEnv,
+        APPBASIS_EXERCISE_CATALOG_STORAGE_MODE: "quiesced",
+      },
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("60");
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "EXERCISE_CATALOG_QUIESCED",
+        message:
+          "Exercise catalog writes are temporarily unavailable during storage cutover.",
+      },
+    });
   });
 });
