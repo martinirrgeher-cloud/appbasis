@@ -144,10 +144,16 @@ ULC-App und die Factory-Verträge abgeglichen.
   jetzt `exercise-catalog`, dessen Workspace-Paket und dessen eigenen
   Datenbankowner; C1 akzeptiert den veröffentlichten Zielzustand weiterhin
   fail-closed und ein read-only Preview-Readiness-Plan rekonstruiert über FC6
-  genau die zwei ausstehenden Zielmigrationen;
-- der reale Schema-/Copy-Apply in der isolierten Preview, der spätere guarded
-  Runtime-Cutover und Produktion bleiben jeweils getrennte Freigaben. C3A
-  selbst greift weder auf Provider noch Datenbank zu. Vor einem Runtime-Switch
+  genau die zwei ausstehenden Zielmigrationen; auf `main` abgeschlossen;
+- E6G-C3B: eigener preview-gebundener Executor für
+  `generated-preview-ulc-linz` / `appbasis_ulc_linz_preview`. Die zwei
+  Standardmodul-Migrationen und der anschließende insert-only Copy-/Verify-Lauf
+  werden in einer einzigen `REPEATABLE READ`-Transaktion ausgeführt, sodass
+  ein später Copy-/Verify-Fehler auch das neue Zielschema zurückrollt. Der
+  reale Apply ist ausschließlich manuell, main-only und explizit freizugeben;
+- Runtime-Cutover und Produktion bleiben weiterhin getrennte Freigaben. C3B
+  quiesziert Source-Writes ausdrücklich noch nicht und setzt
+  `runtimeCutoverEligible` weiterhin auf false. Vor einem Runtime-Switch
   müssen Source-Writes quiesziert und die vollständige Source→Target-
   Gleichheit unter diesem Guard erneut geprüft werden.
 
