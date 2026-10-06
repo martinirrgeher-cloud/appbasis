@@ -4,7 +4,8 @@
   "displayName": "ULC Linz",
   "modules": [
     "countdown",
-    "athletes"
+    "athletes",
+    "exercise-catalog"
   ],
   "platformServices": [
     "identity",

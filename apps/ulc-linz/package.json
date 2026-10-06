@@ -12,6 +12,7 @@
   "dependencies": {
     "@appbasis/athletes": "workspace:*",
     "@appbasis/countdown": "workspace:*",
+    "@appbasis/exercise-catalog": "workspace:*",
     "@appbasis/database": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",

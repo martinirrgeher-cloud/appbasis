@@ -24,6 +24,7 @@ test("E6G-C1 produces a read-only exact ULC exercise-catalog adoption plan", asy
   assert.equal(plan.schemaVersion, 1);
   assert.equal(plan.operation, "ulc-exercise-catalog-adoption");
   assert.equal(plan.state, "ready-for-isolated-adoption-proof");
+  assert.equal(plan.repositoryState, "published-target");
   assert.equal(plan.application, "ulc-linz");
   assert.equal(plan.source.ownerId, "ulc-linz-lifecycle");
   assert.equal(plan.source.ownerSchemaVersion, 8);
@@ -89,6 +90,11 @@ test("E6G-C1 produces a read-only exact ULC exercise-catalog adoption plan", asy
       "source-retirement",
     ],
   );
+  const repositoryInstall = plan.phases.find(
+    (phase) => phase.id === "repository-install",
+  );
+  assert.equal(repositoryInstall?.state, "published");
+
   const runtimeCutover = plan.phases.find(
     (phase) => phase.id === "runtime-cutover",
   );
@@ -119,7 +125,7 @@ test("E6G-C1 fails closed when the pinned source migration drifts", async (t) =>
   );
 });
 
-test("E6G-C1 refuses a target owner that is already present", async (t) => {
+test("E6G-C1 refuses a duplicated published target owner", async (t) => {
   const root = await createFixture(t);
   const path = join(root, "apps", "ulc-linz", "appbasis.database.json");
   const manifest = JSON.parse(await readFile(path, "utf8"));
@@ -136,7 +142,50 @@ test("E6G-C1 refuses a target owner that is already present", async (t) => {
 
   await assert.rejects(
     planUlcExerciseCatalogAdoption({ repositoryRoot: root }),
-    /target owner is already present/,
+    /target owner is duplicated/,
+  );
+});
+
+test("E6G-C1 still accepts the exact pre-adoption repository state", async (t) => {
+  const root = await createFixture(t);
+
+  const definitionPath = join(root, "apps", "ulc-linz", "appbasis.app.json");
+  const definition = JSON.parse(await readFile(definitionPath, "utf8"));
+  definition.modules = definition.modules.filter(
+    (moduleId) => moduleId !== "exercise-catalog",
+  );
+  await writeFile(definitionPath, JSON.stringify(definition, null, 2) + "\n");
+
+  const packagePath = join(root, "apps", "ulc-linz", "package.json");
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  delete packageJson.dependencies["@appbasis/exercise-catalog"];
+  await writeFile(packagePath, JSON.stringify(packageJson, null, 2) + "\n");
+
+  const databasePath = join(root, "apps", "ulc-linz", "appbasis.database.json");
+  const database = JSON.parse(await readFile(databasePath, "utf8"));
+  database.owners = database.owners.filter(
+    (owner) => owner.id !== "exercise-catalog",
+  );
+  await writeFile(databasePath, JSON.stringify(database, null, 2) + "\n");
+
+  const plan = await planUlcExerciseCatalogAdoption({ repositoryRoot: root });
+  assert.equal(plan.repositoryState, "pre-adoption");
+  assert.equal(
+    plan.phases.find((phase) => phase.id === "repository-install")?.state,
+    "pending",
+  );
+});
+
+test("E6G-C1 refuses a partial repository adoption state", async (t) => {
+  const root = await createFixture(t);
+  const packagePath = join(root, "apps", "ulc-linz", "package.json");
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  delete packageJson.dependencies["@appbasis/exercise-catalog"];
+  await writeFile(packagePath, JSON.stringify(packageJson, null, 2) + "\n");
+
+  await assert.rejects(
+    planUlcExerciseCatalogAdoption({ repositoryRoot: root }),
+    /repository adoption state is partial or inconsistent/,
   );
 });
 
@@ -178,7 +227,7 @@ test("E6G-C1 refuses a weakened runtime cutover freshness guard", async (t) => {
   );
 });
 
-test("E6G-C1 requires the pre-adoption app state", async (t) => {
+test("E6G-C1 refuses a duplicated published target module declaration", async (t) => {
   const root = await createFixture(t);
   const path = join(root, "apps", "ulc-linz", "appbasis.app.json");
   const definition = JSON.parse(await readFile(path, "utf8"));
@@ -187,7 +236,7 @@ test("E6G-C1 requires the pre-adoption app state", async (t) => {
 
   await assert.rejects(
     planUlcExerciseCatalogAdoption({ repositoryRoot: root }),
-    /target module is already declared/,
+    /target module declaration is duplicated/,
   );
 });
 

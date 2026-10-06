@@ -357,6 +357,20 @@ Laufs neu committed Source-Datensatz absichtlich nicht in den bereits
 etablierten Snapshot fällt. C2 darf daraus ausdrücklich keine Cutover-
 Freshness ableiten; `runtimeCutoverEligible` bleibt false.
 
+#### E6G-C3A – Repository-Adoption und Preview-Readiness
+
+Der kanonische ULC-Repositoryzustand deklariert den Übungskatalog jetzt als
+Standardmodul, ergänzt dessen Workspace-Abhängigkeit und fügt ausschließlich
+den verifizierten `exercise-catalog`-Datenbankowner hinzu. Die bestehenden
+Owner und die bisherigen ULC-Source-Tabellen bleiben unverändert.
+
+Der C1-Planer unterscheidet danach fail-closed zwischen exakt
+`pre-adoption` und exakt `published-target`; partielle Mischzustände sind
+unzulässig. Ein zusätzlicher read-only Readiness-Plan beweist, dass FC6 aus
+dem veröffentlichten Zustand genau die zwei Zielmigrationen rekonstruieren
+kann und bindet den nächsten Environment-Schritt an die bestehende isolierte
+ULC-Preview. C3A führt selbst weder Provider- noch Datenbankzugriffe aus.
+
 ### Danach E6D / E6E
 
 Erst auf geklärtem Modul-/Ownership-Vertrag folgen private Videos,

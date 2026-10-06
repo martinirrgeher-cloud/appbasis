@@ -258,7 +258,7 @@ async function applyManifestMigrations(
     await readFile(new URL("../appbasis.database.json", import.meta.url), "utf8"),
   ) as DatabaseManifest;
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 17 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 19 || new Set(migrations).size !== migrations.length) {
     throw new Error("ULC lifecycle E2E requires the exact manifest-owned migration set.");
   }
   for (const migration of migrations) {
@@ -267,6 +267,8 @@ async function applyManifestMigrations(
       !migration.startsWith("packages/permissions/") &&
       migration !== "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql" &&
       migration !== "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql" &&
+      migration !== "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql" &&
+      migration !== "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql" &&
       migration !== "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql" &&
       migration !== "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql" &&
       migration !== "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql" &&

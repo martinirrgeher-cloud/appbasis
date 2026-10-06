@@ -277,6 +277,79 @@ test("FC6-B keeps the final catalog state when a constraint is replaced", () => 
   ]);
 });
 
+test("FC6-B proves PostgreSQL default primary-key replacement inside one target plan", () => {
+  const contract = createCatalogContract(
+    [
+      {
+        ownerId: "exercise-catalog",
+        relativePath: "0000_foundation.sql",
+        statements: [
+          "CREATE TABLE appbasis_catalog_item (id text PRIMARY KEY NOT NULL, organization_id text NOT NULL);",
+        ],
+      },
+      {
+        ownerId: "exercise-catalog",
+        relativePath: "0001_tenant_identity.sql",
+        statements: [
+          "ALTER TABLE appbasis_catalog_item DROP CONSTRAINT appbasis_catalog_item_pkey, ADD CONSTRAINT appbasis_catalog_item_pk PRIMARY KEY (organization_id, id);",
+        ],
+      },
+    ],
+    "exercise-catalog target",
+  );
+
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "constraint-count" &&
+        marker.table === "appbasis_catalog_item" &&
+        marker.name === "p" &&
+        marker.count === 1,
+    ),
+    true,
+  );
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "constraint" &&
+        marker.table === "appbasis_catalog_item" &&
+        marker.name === "appbasis_catalog_item_pkey",
+    ),
+    false,
+  );
+  assert.equal(contract.every((marker) => marker.present === true), true);
+  assert.equal(
+    contract.some(
+      (marker) =>
+        marker.kind === "constraint" &&
+        marker.table === "appbasis_catalog_item" &&
+        marker.name === "appbasis_catalog_item_pk" &&
+        marker.present === true,
+    ),
+    true,
+  );
+});
+
+test("FC6-B never guesses a noncanonical implicit primary-key name", () => {
+  assert.throws(
+    () =>
+      createCatalogContract(
+        [
+          {
+            ownerId: "example",
+            relativePath: "0000.sql",
+            statements: [
+              "CREATE TABLE appbasis_example (id text PRIMARY KEY NOT NULL);",
+              "ALTER TABLE appbasis_example DROP CONSTRAINT appbasis_example_custom_pkey;",
+            ],
+          },
+        ],
+        "example target",
+      ),
+    /drops a constraint whose type cannot be proven/,
+  );
+});
+
 test("FC6-B derives the final catalog state from canonical permissions files with consecutive SQL commands", async () => {
   const migrations = [];
   for (const migration of [

@@ -407,6 +407,20 @@ export function createCatalogContract(plan, label = "migration", options = {}) {
           );
         }
         for (const marker of markers) {
+          if (
+            marker.kind === "constraint" &&
+            marker.present === false &&
+            constraintEvidence.createdConstraintNames.has(
+              namedConstraintKey(marker.table, marker.name),
+            )
+          ) {
+            // A constraint created and removed entirely inside this migration
+            // plan is transient target DDL, not a destructive final-state
+            // requirement. Baseline-owned drops are never added to this set
+            // and therefore remain fail-closed.
+            finalMarkers.delete(catalogMarkerKey(marker));
+            continue;
+          }
           finalMarkers.set(catalogMarkerKey(marker), marker);
         }
       }
@@ -547,6 +561,7 @@ function createConstraintEvidenceState() {
     trackedTables: new Set(),
     counts: new Map(),
     namedTypes: new Map(),
+    createdConstraintNames: new Set(),
   };
 }
 
@@ -589,16 +604,18 @@ function applyConstraintCountEvidence(statement, state, label) {
           );
         }
         adjustConstraintCount(state, table, constraintType, 1, label);
-        state.namedTypes.set(
-          namedConstraintKey(table, namedConstraint.name),
-          constraintType,
-        );
+        const key = namedConstraintKey(table, namedConstraint.name);
+        state.namedTypes.set(key, constraintType);
+        state.createdConstraintNames.add(key);
         continue;
       }
 
       const tableConstraintType = constraintTypeFromClause(trimmed);
       if (tableConstraintType !== null) {
         adjustConstraintCount(state, table, tableConstraintType, 1, label);
+        if (tableConstraintType === "p") {
+          rememberPostgresDefaultPrimaryKeyName(state, table, label);
+        }
         continue;
       }
 
@@ -612,8 +629,12 @@ function applyConstraintCountEvidence(statement, state, label) {
         );
       }
 
-      for (const constraintType of columnConstraintTypes(column[3])) {
+      const columnTypes = columnConstraintTypes(column[3]);
+      for (const constraintType of columnTypes) {
         adjustConstraintCount(state, table, constraintType, 1, label);
+      }
+      if (columnTypes.includes("p")) {
+        rememberPostgresDefaultPrimaryKeyName(state, table, label);
       }
     }
     return;
@@ -644,7 +665,9 @@ function applyConstraintCountEvidence(statement, state, label) {
         );
       }
       adjustConstraintCount(state, table, constraintType, 1, label);
-      state.namedTypes.set(namedConstraintKey(table, name), constraintType);
+      const key = namedConstraintKey(table, name);
+      state.namedTypes.set(key, constraintType);
+      state.createdConstraintNames.add(key);
       continue;
     }
 
@@ -801,6 +824,26 @@ function topLevelSqlWords(value) {
   }
 
   return words;
+}
+
+function rememberPostgresDefaultPrimaryKeyName(state, table, label) {
+  const generatedName = `${table}_pkey`;
+  // PostgreSQL truncates generated identifiers beyond NAMEDATALEN. Do not
+  // guess a truncated name: only prove the canonical untruncated default.
+  if (
+    !/^[A-Za-z_][A-Za-z0-9_$]*$/.test(table) ||
+    Buffer.byteLength(generatedName, "utf8") > 63
+  ) {
+    return;
+  }
+  const key = namedConstraintKey(table, generatedName);
+  if (state.namedTypes.has(key)) {
+    throw new ModuleUpdateMigrationConfigurationError(
+      `FC6-B ${label} migration creates an ambiguous implicit primary-key name.`,
+    );
+  }
+  state.namedTypes.set(key, "p");
+  state.createdConstraintNames.add(key);
 }
 
 function adjustConstraintCount(state, table, constraintType, delta, label) {

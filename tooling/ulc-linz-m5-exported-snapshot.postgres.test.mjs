@@ -80,6 +80,7 @@ test("M5 least-privilege snapshot, pg_dump and pg_restore rehearse the canonical
         identity: "packages/identity",
         permissions: "packages/permissions",
         athletes: "modules/athletes",
+        "exercise-catalog": "modules/exercise-catalog",
         "ulc-linz-lifecycle": "apps/ulc-linz",
       },
     });

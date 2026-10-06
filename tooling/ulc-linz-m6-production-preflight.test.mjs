@@ -516,7 +516,8 @@ async function evaluateApprovedScopePreflight() {
   await withRepositoryFixture(async (root, fixture) => {
     fixture.appDefinition.modules = ["countdown"];
     fixture.databaseManifest.owners = fixture.databaseManifest.owners.filter(
-      (owner) => owner.id !== "athletes",
+      (owner) =>
+        owner.id !== "athletes" && owner.id !== "exercise-catalog",
     );
     await writeFixture(root, fixture);
     result = await evaluateUlcLinzM6ProductionPreflight(root);
