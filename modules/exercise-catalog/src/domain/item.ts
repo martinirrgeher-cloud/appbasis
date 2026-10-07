@@ -47,7 +47,7 @@ export function createExerciseCatalogItem(
 
   const difficultyKey = optionalConfiguredKey(
     input.difficultyKey,
-    definition.difficulties.map((entry) => entry.key),
+    (definition.difficulties ?? []).map((entry) => entry.key),
     "Exercise difficulty key",
   );
   const videoUrls = normalizeVideoUrls(input.videoUrl, input.videoUrls);
