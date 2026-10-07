@@ -1469,13 +1469,16 @@ function newExerciseCatalogItem() {
     name: "",
     categoryKey: "warmup",
     subcategory: null,
+    difficultyKey: null,
     goal: null,
     description: null,
     coachingCues: null,
     commonMistakes: null,
     equipment: [],
     videoUrl: null,
+    videoUrls: [],
     groupIds: [],
+    similarExerciseIds: [],
     parameters: [],
     isActive: true,
     isFavorite: false,
@@ -1520,6 +1523,7 @@ function populateExerciseCatalogEditor(item, options = {}) {
   if (elements.exerciseCatalogName) elements.exerciseCatalogName.value = item.name || "";
   if (elements.exerciseCatalogCategory) elements.exerciseCatalogCategory.value = item.categoryKey || "";
   if (elements.exerciseCatalogSubcategory) elements.exerciseCatalogSubcategory.value = item.subcategory || "";
+  if (elements.exerciseCatalogDifficulty) elements.exerciseCatalogDifficulty.value = item.difficultyKey || "";
   if (elements.exerciseCatalogGoal) elements.exerciseCatalogGoal.value = item.goal || "";
   if (elements.exerciseCatalogDescription) elements.exerciseCatalogDescription.value = item.description || "";
   if (elements.exerciseCatalogCues) elements.exerciseCatalogCues.value = item.coachingCues || "";
@@ -1530,8 +1534,18 @@ function populateExerciseCatalogEditor(item, options = {}) {
       : "";
   }
   if (elements.exerciseCatalogVideoUrl) elements.exerciseCatalogVideoUrl.value = item.videoUrl || "";
+  if (elements.exerciseCatalogVideoUrls) {
+    elements.exerciseCatalogVideoUrls.value = Array.isArray(item.videoUrls)
+      ? item.videoUrls.slice(1).join("\n")
+      : "";
+  }
 
+  renderExerciseCatalogExternalLinks(Array.isArray(item.videoUrls) ? item.videoUrls : []);
   renderExerciseCatalogGroupChecks(Array.isArray(item.groupIds) ? item.groupIds : []);
+  renderExerciseCatalogSimilarChecks(
+    Array.isArray(item.similarExerciseIds) ? item.similarExerciseIds : [],
+    item.id,
+  );
   exerciseCatalogParameterDrafts = Array.isArray(item.parameters)
     ? item.parameters.map((parameter) => ({ ...parameter }))
     : [];
@@ -1568,15 +1582,34 @@ function populateExerciseCatalogEditor(item, options = {}) {
     elements.exerciseCatalogParameterSelect.disabled = !editable || exerciseCatalogBusy;
   }
 
-  if (elements.exerciseCatalogLinkRow) {
-    elements.exerciseCatalogLinkRow.hidden = !item.videoUrl;
+  if (elements.exerciseCatalogUsageAdd) {
+    elements.exerciseCatalogUsageAdd.hidden =
+      review || item.id.length === 0 || !exerciseCatalogCanEdit;
+    elements.exerciseCatalogUsageAdd.disabled =
+      review || item.id.length === 0 || !exerciseCatalogCanEdit || exerciseCatalogBusy;
   }
-  if (elements.exerciseCatalogLink) {
-    if (item.videoUrl) {
-      elements.exerciseCatalogLink.href = item.videoUrl;
-    } else {
-      elements.exerciseCatalogLink.removeAttribute("href");
-    }
+  if (elements.exerciseCatalogMediaUpload) {
+    elements.exerciseCatalogMediaUpload.hidden =
+      review ||
+      item.id.length === 0 ||
+      !exerciseCatalogCanEdit ||
+      !exerciseCatalogFeatures.privateVideoUpload;
+    elements.exerciseCatalogMediaUpload.disabled =
+      exerciseCatalogBusy || !exerciseCatalogCanEdit;
+  }
+  if (elements.exerciseCatalogMediaHint) {
+    elements.exerciseCatalogMediaHint.textContent =
+      exerciseCatalogFeatures.privateVideoUpload
+        ? "Private Videos sind nur für berechtigte Benutzer abrufbar."
+        : "Privater Videospeicher ist in dieser Umgebung noch nicht konfiguriert.";
+  }
+
+  if (!review && item.id.length > 0) {
+    void loadExerciseCatalogUsage(item.id);
+    void loadExerciseCatalogPrivateMedia(item.id);
+  } else {
+    resetExerciseCatalogUsagePanel();
+    resetExerciseCatalogMediaPanel();
   }
 
   exerciseCatalogEditorDirty = false;
