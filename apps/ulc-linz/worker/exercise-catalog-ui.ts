@@ -7,7 +7,7 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                 <p class="summary">Übungen suchen, filtern, favorisieren und für die Trainingsplanung vorbereiten.</p>
               </div>
               <div class="exercise-catalog-hero-actions">
-                <input id="exercise-catalog-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+                <input id="exercise-catalog-import-file" type="file" accept=".xlsx,.xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/xml,text/xml,application/vnd.ms-excel" hidden />
                 <button class="button button--secondary" id="exercise-catalog-import-open" type="button" hidden disabled>Import prüfen</button>
                 <button class="button button--secondary" id="exercise-catalog-template" type="button" disabled>Importvorlage</button>
                 <button class="button button--secondary" id="exercise-catalog-export" type="button" disabled>Export</button>
@@ -2402,6 +2402,14 @@ const EXERCISE_CATALOG_XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
+function exerciseCatalogImportContentType(file) {
+  if (!file || typeof file.name !== "string") return null;
+  const name = file.name.toLocaleLowerCase("de");
+  if (name.endsWith(".xlsx")) return EXERCISE_CATALOG_XLSX_CONTENT_TYPE;
+  if (name.endsWith(".xml")) return "application/xml";
+  return null;
+}
+
 function importActionLabel(action) {
   if (action === "create") return "Neu";
   if (action === "update") return "Änderung";
@@ -2425,7 +2433,7 @@ function isExerciseCatalogImportPreview(value) {
   if (
     value === null ||
     typeof value !== "object" ||
-    value.contractVersion !== "appbasis.exercise-catalog.exchange/v1" ||
+    value.contractVersion !== "appbasis.exercise-catalog.exchange/v2" ||
     value.applyAvailable !== false ||
     value.summary === null ||
     typeof value.summary !== "object" ||
@@ -2453,7 +2461,9 @@ function isExerciseCatalogImportPreview(value) {
     typeof row.draft.name === "string" &&
     typeof row.draft.categoryKey === "string" &&
     Array.isArray(row.draft.equipment) &&
+    Array.isArray(row.draft.videoUrls) &&
     Array.isArray(row.draft.groupIds) &&
+    Array.isArray(row.draft.similarExerciseIds) &&
     Array.isArray(row.draft.parameters) &&
     typeof row.draft.isActive === "boolean" &&
     Array.isArray(row.issues) &&
@@ -2677,12 +2687,12 @@ async function previewExerciseCatalogImportFile(file) {
   showMessage(elements.exerciseCatalogMessage, "");
   showMessage(elements.exerciseCatalogSuccess, "");
 
-  if (
-    !file ||
-    typeof file.name !== "string" ||
-    !file.name.toLocaleLowerCase("de").endsWith(".xlsx")
-  ) {
-    showMessage(elements.exerciseCatalogMessage, "Bitte eine XLSX-Datei auswählen.");
+  const importContentType = exerciseCatalogImportContentType(file);
+  if (importContentType === null) {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Bitte eine XLSX- oder Excel-XML-Datei auswählen.",
+    );
     return;
   }
   if (file.size > EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES) {
@@ -2698,8 +2708,9 @@ async function previewExerciseCatalogImportFile(file) {
         method: "POST",
         headers: {
           accept: "application/json",
-          "content-type": EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
+          "content-type": importContentType,
         },
+        credentials: "same-origin",
         body: file,
       },
     );
@@ -2735,7 +2746,7 @@ async function previewExerciseCatalogImportFile(file) {
           ? "Die Importdatei darf höchstens 5 MB groß sein."
           : error?.code === "IMPORT_ROW_LIMIT_EXCEEDED"
             ? "Die Importdatei enthält mehr als 1.000 Übungen."
-            : "Die XLSX-Datei konnte nicht als Importvorschau gelesen werden.";
+            : "Die XLSX-/Excel-XML-Datei konnte nicht als Importvorschau gelesen werden.";
     showMessage(elements.exerciseCatalogMessage, message);
   } finally {
     setExerciseCatalogBusy(false);
@@ -2853,7 +2864,7 @@ async function applyExerciseCatalogImport() {
     exerciseCatalogImportPreviewData.summary.errors > 0 ||
     !window.confirm(
       String(changes) +
-        " Änderung(en) aus der geprüften XLSX-Datei jetzt anwenden? " +
+        " Änderung(en) aus der geprüften Importdatei jetzt anwenden? " +
         "Der Server prüft Datei und Katalogzustand unmittelbar davor erneut.",
     )
   ) return;
@@ -2868,7 +2879,9 @@ async function applyExerciseCatalogImport() {
         method: "POST",
         headers: {
           accept: "application/json",
-          "content-type": EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
+          "content-type":
+            exerciseCatalogImportContentType(exerciseCatalogImportFileDraft) ||
+            EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
           "x-appbasis-import-preview-token": exerciseCatalogImportPreviewToken,
         },
         body: exerciseCatalogImportFileDraft,
@@ -2919,7 +2932,7 @@ async function applyExerciseCatalogImport() {
       error?.status === 403
         ? "Für den Import fehlt die Bearbeitungsberechtigung."
         : stale
-          ? "Die Vorschau ist nicht mehr aktuell. Bitte XLSX-Datei erneut prüfen."
+          ? "Die Vorschau ist nicht mehr aktuell. Bitte Importdatei erneut prüfen."
           : error?.status === 413
             ? "Die Importdatei darf höchstens 5 MB groß sein."
             : "Der Import konnte nicht angewendet werden.",
