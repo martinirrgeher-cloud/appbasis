@@ -1,6 +1,9 @@
 import type {
   ExerciseCatalogItem,
   ExerciseCatalogParameter,
+  ExerciseCatalogPrivateMedia,
+  ExerciseCatalogUsageEvent,
+  ExerciseCatalogUsageSummary,
 } from "./domain/catalog";
 import type { ExerciseCatalogRepository } from "./repository";
 
@@ -73,14 +76,14 @@ export class PostgresExerciseCatalogRepository
     await this.#client.begin(async (transaction) => {
       const rows = await transaction.unsafe(
         `INSERT INTO appbasis_exercise_catalog_item (
-           id, organization_id, name, category_key, subcategory, goal,
-           description, coaching_cues, common_mistakes, equipment, video_url,
-           is_active
+           id, organization_id, name, category_key, subcategory, difficulty_key,
+           goal, description, coaching_cues, common_mistakes, equipment,
+           video_url, is_active
          )
          VALUES (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9,
-           ARRAY(SELECT jsonb_array_elements_text($10::jsonb)),
-           $11, $12
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+           ARRAY(SELECT jsonb_array_elements_text($11::jsonb)),
+           $12, $13
          )
          RETURNING id`,
         itemSqlParameters(item),
@@ -164,6 +167,150 @@ export class PostgresExerciseCatalogRepository
       [organizationId, principalId, exerciseId],
     );
   }
+
+  async listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly ExerciseCatalogUsageSummary[]> {
+    const rows = await this.#client.unsafe(
+      `SELECT exercise_id,
+              count(*)::int AS usage_count,
+              max(occurred_at)::text AS last_used_at
+       FROM appbasis_exercise_catalog_usage
+       WHERE organization_id = $1
+       GROUP BY exercise_id
+       ORDER BY exercise_id ASC`,
+      [organizationId],
+    );
+    return Object.freeze(
+      rows.map((row) =>
+        Object.freeze({
+          exerciseId: requiredRowString(row.exercise_id, "usage exercise id"),
+          usageCount: requiredInteger(row.usage_count, "usage count"),
+          lastUsedAt: optionalRowString(row.last_used_at, "last used at"),
+        }),
+      ),
+    );
+  }
+
+  async listUsageEvents(
+    organizationId: string,
+    exerciseId: string,
+    limit = 50,
+  ): Promise<readonly ExerciseCatalogUsageEvent[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+      throw new Error("Exercise catalog usage limit is invalid.");
+    }
+    const rows = await this.#client.unsafe(
+      `SELECT id, organization_id, exercise_id, occurred_at::text AS occurred_at,
+              source_kind, source_ref, note
+       FROM appbasis_exercise_catalog_usage
+       WHERE organization_id = $1
+         AND exercise_id = $2
+       ORDER BY occurred_at DESC, id DESC
+       LIMIT $3`,
+      [organizationId, exerciseId, limit],
+    );
+    return Object.freeze(rows.map(usageFromRow));
+  }
+
+  async recordUsage(event: ExerciseCatalogUsageEvent): Promise<void> {
+    const rows = await this.#client.unsafe(
+      `INSERT INTO appbasis_exercise_catalog_usage (
+         organization_id, id, exercise_id, occurred_at, source_kind, source_ref, note
+       )
+       SELECT $1, $2, $3, $4::timestamptz, $5, $6, $7
+       WHERE EXISTS (
+         SELECT 1
+         FROM appbasis_exercise_catalog_item
+         WHERE organization_id = $1
+           AND id = $3
+       )
+       RETURNING id`,
+      [
+        event.organizationId,
+        event.id,
+        event.exerciseId,
+        event.occurredAt,
+        event.sourceKind,
+        event.sourceRef,
+        event.note,
+      ],
+    );
+    if (rows.length !== 1) {
+      throw new Error("Exercise catalog usage references an unknown item.");
+    }
+  }
+
+  async listPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+  ): Promise<readonly ExerciseCatalogPrivateMedia[]> {
+    const rows = await this.#client.unsafe(
+      `SELECT id, organization_id, exercise_id, file_name, storage_key,
+              content_type, size_bytes::float8 AS size_bytes,
+              created_at::text AS created_at
+       FROM appbasis_exercise_catalog_private_media
+       WHERE organization_id = $1
+         AND exercise_id = $2
+       ORDER BY created_at ASC, id ASC`,
+      [organizationId, exerciseId],
+    );
+    return Object.freeze(rows.map(privateMediaFromRow));
+  }
+
+  async registerPrivateMedia(
+    media: ExerciseCatalogPrivateMedia,
+  ): Promise<void> {
+    const rows = await this.#client.unsafe(
+      `INSERT INTO appbasis_exercise_catalog_private_media (
+         organization_id, id, exercise_id, file_name, storage_key,
+         content_type, size_bytes, created_at
+       )
+       SELECT $1, $2, $3, $4, $5, $6, $7, $8::timestamptz
+       WHERE EXISTS (
+         SELECT 1
+         FROM appbasis_exercise_catalog_item
+         WHERE organization_id = $1
+           AND id = $3
+       )
+       RETURNING id`,
+      [
+        media.organizationId,
+        media.id,
+        media.exerciseId,
+        media.fileName,
+        media.storageKey,
+        media.contentType,
+        media.sizeBytes,
+        media.createdAt,
+      ],
+    );
+    if (rows.length !== 1) {
+      throw new Error("Exercise catalog private media references an unknown item.");
+    }
+  }
+
+  async deletePrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    const rows = await this.#client.unsafe(
+      `DELETE FROM appbasis_exercise_catalog_private_media
+       WHERE organization_id = $1
+         AND exercise_id = $2
+         AND id = $3
+       RETURNING id, organization_id, exercise_id, file_name, storage_key,
+                 content_type, size_bytes::float8 AS size_bytes,
+                 created_at::text AS created_at`,
+      [organizationId, exerciseId, mediaId],
+    );
+    if (rows.length === 0) return undefined;
+    if (rows.length !== 1) {
+      throw new Error("Exercise catalog private media delete returned multiple rows.");
+    }
+    return privateMediaFromRow(rows[0]!);
+  }
 }
 
 async function readFavoriteExerciseIds(
@@ -216,9 +363,9 @@ async function readItems(
   }
   const lockClause = lockItem ? " FOR UPDATE" : "";
   const itemRows = await client.unsafe(
-    `SELECT id, organization_id, name, category_key, subcategory, goal,
-            description, coaching_cues, common_mistakes, equipment, video_url,
-            is_active
+    `SELECT id, organization_id, name, category_key, subcategory, difficulty_key,
+            goal, description, coaching_cues, common_mistakes, equipment,
+            video_url, is_active
      FROM appbasis_exercise_catalog_item
      WHERE organization_id = $1${itemFilter}
      ORDER BY lower(name) ASC, id ASC${lockClause}`,
@@ -237,7 +384,7 @@ async function readItems(
     childParameters.push(exerciseId);
   }
 
-  const [parameterRows, audienceRows] = await Promise.all([
+  const [parameterRows, audienceRows, videoRows, similarityRows] = await Promise.all([
     client.unsafe(
       `SELECT organization_id, exercise_id, parameter_key, label, unit,
               input_type, default_value, min_value, max_value, step_value,
@@ -252,6 +399,20 @@ async function readItems(
        FROM appbasis_exercise_catalog_audience
        WHERE organization_id = $1${childFilter}
        ORDER BY exercise_id ASC, audience_id ASC`,
+      childParameters,
+    ),
+    client.unsafe(
+      `SELECT organization_id, exercise_id, video_url
+       FROM appbasis_exercise_catalog_video
+       WHERE organization_id = $1${childFilter}
+       ORDER BY exercise_id ASC, sort_order ASC, video_url ASC`,
+      childParameters,
+    ),
+    client.unsafe(
+      `SELECT organization_id, exercise_id, similar_exercise_id
+       FROM appbasis_exercise_catalog_similarity
+       WHERE organization_id = $1${childFilter}
+       ORDER BY exercise_id ASC, similar_exercise_id ASC`,
       childParameters,
     ),
   ]);
@@ -271,6 +432,27 @@ async function readItems(
     entries.push(requiredRowString(row.audience_id, "audience id"));
     audiences.set(id, entries);
   }
+  const videos = new Map<string, string[]>();
+  for (const row of videoRows) {
+    const id = scopedChildExerciseId(row, organizationId, knownIds);
+    const entries = videos.get(id) ?? [];
+    entries.push(requiredRowString(row.video_url, "video URL"));
+    videos.set(id, entries);
+  }
+  const similarities = new Map<string, string[]>();
+  for (const row of similarityRows) {
+    const id = scopedChildExerciseId(row, organizationId, knownIds);
+    const similarId = requiredRowString(
+      row.similar_exercise_id,
+      "similar exercise id",
+    );
+    if (similarId === id) {
+      throw new Error("Exercise catalog similarity references itself.");
+    }
+    const entries = similarities.get(id) ?? [];
+    entries.push(similarId);
+    similarities.set(id, entries);
+  }
 
   return Object.freeze(
     itemRows.map((row) =>
@@ -279,6 +461,8 @@ async function readItems(
         organizationId,
         parameters.get(requiredRowString(row.id, "exercise id")) ?? [],
         audiences.get(requiredRowString(row.id, "exercise id")) ?? [],
+        videos.get(requiredRowString(row.id, "exercise id")) ?? [],
+        similarities.get(requiredRowString(row.id, "exercise id")) ?? [],
       ),
     ),
   );
@@ -293,13 +477,14 @@ async function writeUpdatedItem(
      SET name = $3,
          category_key = $4,
          subcategory = $5,
-         goal = $6,
-         description = $7,
-         coaching_cues = $8,
-         common_mistakes = $9,
-         equipment = ARRAY(SELECT jsonb_array_elements_text($10::jsonb)),
-         video_url = $11,
-         is_active = $12,
+         difficulty_key = $6,
+         goal = $7,
+         description = $8,
+         coaching_cues = $9,
+         common_mistakes = $10,
+         equipment = ARRAY(SELECT jsonb_array_elements_text($11::jsonb)),
+         video_url = $12,
+         is_active = $13,
          updated_at = now()
      WHERE id = $1
        AND organization_id = $2
@@ -328,6 +513,41 @@ async function replaceChildren(
     `DELETE FROM appbasis_exercise_catalog_audience
      WHERE organization_id = $1
        AND exercise_id = $2`,
+    [item.organizationId, item.id],
+  );
+  await transaction.unsafe(
+    `DELETE FROM appbasis_exercise_catalog_video
+     WHERE organization_id = $1
+       AND exercise_id = $2`,
+    [item.organizationId, item.id],
+  );
+
+  if (item.similarExerciseIds.length > 0) {
+    const targetRows = await transaction.unsafe(
+      `SELECT id
+       FROM appbasis_exercise_catalog_item
+       WHERE organization_id = $1
+         AND id IN (
+           SELECT jsonb_array_elements_text($2::jsonb)
+         )`,
+      [item.organizationId, JSON.stringify(item.similarExerciseIds)],
+    );
+    const found = new Set(
+      targetRows.map((row) => requiredRowString(row.id, "similar exercise id")),
+    );
+    if (
+      item.similarExerciseIds.some(
+        (similarId) => similarId === item.id || !found.has(similarId),
+      )
+    ) {
+      throw new Error("Exercise catalog similarity references an unknown item.");
+    }
+  }
+
+  await transaction.unsafe(
+    `DELETE FROM appbasis_exercise_catalog_similarity
+     WHERE organization_id = $1
+       AND (exercise_id = $2 OR similar_exercise_id = $2)`,
     [item.organizationId, item.id],
   );
 
@@ -365,6 +585,27 @@ async function replaceChildren(
       [item.organizationId, item.id, audienceId],
     );
   }
+
+  for (const [sortOrder, videoUrl] of item.videoUrls.entries()) {
+    await transaction.unsafe(
+      `INSERT INTO appbasis_exercise_catalog_video (
+         organization_id, exercise_id, video_url, sort_order
+       )
+       VALUES ($1, $2, $3, $4)`,
+      [item.organizationId, item.id, videoUrl, sortOrder],
+    );
+  }
+
+  for (const similarId of item.similarExerciseIds) {
+    await transaction.unsafe(
+      `INSERT INTO appbasis_exercise_catalog_similarity (
+         organization_id, exercise_id, similar_exercise_id
+       )
+       VALUES ($1, $2, $3), ($1, $3, $2)
+       ON CONFLICT DO NOTHING`,
+      [item.organizationId, item.id, similarId],
+    );
+  }
 }
 
 function itemSqlParameters(
@@ -376,12 +617,13 @@ function itemSqlParameters(
     item.name,
     item.categoryKey,
     item.subcategory,
+    item.difficultyKey,
     item.goal,
     item.description,
     item.coachingCues,
     item.commonMistakes,
     JSON.stringify(item.equipment),
-    item.videoUrl,
+    item.videoUrls[0] ?? null,
     item.isActive,
   ];
 }
@@ -391,6 +633,8 @@ function itemFromRow(
   expectedOrganizationId: string,
   parameters: readonly ExerciseCatalogParameter[],
   audienceIds: readonly string[],
+  videoUrls: readonly string[],
+  similarExerciseIds: readonly string[],
 ): ExerciseCatalogItem {
   const organizationId = requiredRowString(
     row.organization_id,
@@ -418,6 +662,7 @@ function itemFromRow(
     name: requiredRowString(row.name, "exercise name"),
     categoryKey: requiredRowString(row.category_key, "category key"),
     subcategory: optionalRowString(row.subcategory, "subcategory"),
+    difficultyKey: optionalRowString(row.difficulty_key, "difficulty key"),
     goal: optionalRowString(row.goal, "goal"),
     description: optionalRowString(row.description, "description"),
     coachingCues: optionalRowString(row.coaching_cues, "coaching cues"),
@@ -426,8 +671,10 @@ function itemFromRow(
       "common mistakes",
     ),
     equipment: Object.freeze([...equipment]),
-    videoUrl: optionalRowString(row.video_url, "video URL"),
+    videoUrl: videoUrls[0] ?? optionalRowString(row.video_url, "video URL"),
+    videoUrls: Object.freeze([...videoUrls]),
     audienceIds: Object.freeze([...audienceIds]),
+    similarExerciseIds: Object.freeze([...similarExerciseIds]),
     parameters: Object.freeze(
       parameters.map((parameter) => Object.freeze({ ...parameter })),
     ),
@@ -464,6 +711,48 @@ function parameterFromRow(
     stepValue: optionalNumber(row.step_value, "parameter step"),
     isRequired: row.is_required,
     sortOrder,
+  });
+}
+
+function usageFromRow(
+  row: Record<string, unknown>,
+): ExerciseCatalogUsageEvent {
+  return Object.freeze({
+    id: requiredRowString(row.id, "usage id"),
+    organizationId: requiredRowString(
+      row.organization_id,
+      "usage organization id",
+    ),
+    exerciseId: requiredRowString(row.exercise_id, "usage exercise id"),
+    occurredAt: requiredRowString(row.occurred_at, "usage occurred at"),
+    sourceKind: requiredRowString(row.source_kind, "usage source kind"),
+    sourceRef: optionalRowString(row.source_ref, "usage source ref"),
+    note: optionalRowString(row.note, "usage note"),
+  });
+}
+
+function privateMediaFromRow(
+  row: Record<string, unknown>,
+): ExerciseCatalogPrivateMedia {
+  const sizeBytes = requiredInteger(row.size_bytes, "private media size");
+  return Object.freeze({
+    id: requiredRowString(row.id, "private media id"),
+    organizationId: requiredRowString(
+      row.organization_id,
+      "private media organization id",
+    ),
+    exerciseId: requiredRowString(
+      row.exercise_id,
+      "private media exercise id",
+    ),
+    fileName: requiredRowString(row.file_name, "private media file name"),
+    storageKey: requiredRowString(row.storage_key, "private media storage key"),
+    contentType: requiredRowString(
+      row.content_type,
+      "private media content type",
+    ),
+    sizeBytes,
+    createdAt: requiredRowString(row.created_at, "private media created at"),
   });
 }
 
