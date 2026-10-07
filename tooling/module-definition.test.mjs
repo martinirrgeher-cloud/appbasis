@@ -98,10 +98,11 @@ test("pins the checked module inventory and database-owning contracts", async ()
     },
     capabilities: ["exercise-catalog:edit", "exercise-catalog:view"],
     database: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       migrations: [
         "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
         "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
+        "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
       ],
     },
   });
