@@ -114,6 +114,63 @@ export class QuiescedUlcExerciseCatalogRepository
   ): Promise<void> {
     return quiesced();
   }
+
+  findDuplicateCandidates(
+    organizationId: string,
+    input: CreateUlcExerciseCatalogItemInput,
+    excludeExerciseId?: string | null,
+  ): Promise<readonly ExerciseCatalogDuplicateCandidate[]> {
+    return this.#legacy.findDuplicateCandidates(
+      organizationId,
+      input,
+      excludeExerciseId,
+    );
+  }
+
+  listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly ExerciseCatalogUsageSummary[]> {
+    return this.#legacy.listUsageSummaries(organizationId);
+  }
+
+  listUsage(
+    organizationId: string,
+    exerciseId: string,
+    limit?: number,
+  ): Promise<readonly ExerciseCatalogUsageEvent[]> {
+    return this.#legacy.listUsage(organizationId, exerciseId, limit);
+  }
+
+  recordUsage(
+    _organizationId: string,
+    _exerciseId: string,
+    _input: RecordExerciseCatalogUsageInput,
+  ): Promise<ExerciseCatalogUsageEvent | undefined> {
+    return quiesced();
+  }
+
+  listPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+  ): Promise<readonly ExerciseCatalogPrivateMedia[]> {
+    return this.#legacy.listPrivateMedia(organizationId, exerciseId);
+  }
+
+  registerPrivateMedia(
+    _organizationId: string,
+    _exerciseId: string,
+    _input: RegisterExerciseCatalogPrivateMediaInput,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return quiesced();
+  }
+
+  deletePrivateMedia(
+    _organizationId: string,
+    _exerciseId: string,
+    _mediaId: string,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return quiesced();
+  }
 }
 
 export class StandardModuleUlcExerciseCatalogRepository
