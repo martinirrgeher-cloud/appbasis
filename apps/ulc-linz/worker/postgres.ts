@@ -89,6 +89,7 @@ export interface GeneratedPostgresApplicationRuntime {
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   u12: ReturnType<typeof createUlcU12Service>;
   exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
+  exerciseCatalogRuntimeMode: UlcExerciseCatalogRuntimeMode;
   exerciseCatalogMediaStore: UlcExerciseCatalogObjectStore | null;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
@@ -352,6 +353,8 @@ export async function createGeneratedPostgresApplicationRuntime(
       kindertraining,
       u12,
       exerciseCatalog,
+      exerciseCatalogRuntimeMode:
+        options.exerciseCatalogRuntimeMode ?? "legacy",
       exerciseCatalogMediaStore: options.exerciseCatalogMediaStore ?? null,
       securityEvents,
       async close() {
