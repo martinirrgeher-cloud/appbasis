@@ -1620,6 +1620,55 @@ async function readRequestBytesLimited(
   return bytes;
 }
 
+async function exerciseCatalogDuplicateResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor("POST", "exercise catalog duplicate check");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidExerciseCatalogInput();
+  }
+  const access = await authorizeExerciseCatalogRequest(
+    request,
+    runtime,
+    url,
+    "view",
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    const body = await exerciseCatalogJsonBody(
+      request,
+      EXERCISE_DUPLICATE_FIELDS,
+      ["name", "categoryKey"],
+    );
+    const excludeExerciseId =
+      typeof body.excludeExerciseId === "string"
+        ? body.excludeExerciseId
+        : body.excludeExerciseId === undefined ||
+            body.excludeExerciseId === null
+          ? null
+          : (() => {
+              throw new InvalidExerciseCatalogRequestError();
+            })();
+    const { excludeExerciseId: _ignored, ...input } = body;
+    const candidates = await runtime.exerciseCatalog.findDuplicateCandidates(
+      access.organizationId,
+      input as unknown as CreateUlcExerciseCatalogItemInput,
+      excludeExerciseId,
+    );
+    return Response.json(
+      { candidates },
+      { headers: { "cache-control": "private, no-store" } },
+    );
+  } catch (error) {
+    return exerciseCatalogErrorResponse(error);
+  }
+}
+
 async function exerciseCatalogItemResponse(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
@@ -1733,6 +1782,11 @@ const EXERCISE_CREATE_FIELDS = Object.freeze([
 ]);
 
 const EXERCISE_UPDATE_FIELDS = EXERCISE_CREATE_FIELDS;
+
+const EXERCISE_DUPLICATE_FIELDS = Object.freeze([
+  ...EXERCISE_CREATE_FIELDS,
+  "excludeExerciseId",
+]);
 
 class InvalidExerciseCatalogRequestError extends Error {}
 
