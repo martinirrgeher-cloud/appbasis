@@ -1,4 +1,9 @@
-import type { ExerciseCatalogItem } from "./domain/catalog";
+import type {
+  ExerciseCatalogItem,
+  ExerciseCatalogPrivateMedia,
+  ExerciseCatalogUsageEvent,
+  ExerciseCatalogUsageSummary,
+} from "./domain/catalog";
 
 export interface ExerciseCatalogListSnapshot {
   readonly items: readonly ExerciseCatalogItem[];
@@ -31,4 +36,23 @@ export interface ExerciseCatalogRepository {
     exerciseId: string,
     favorite: boolean,
   ): Promise<void>;
+  listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly ExerciseCatalogUsageSummary[]>;
+  listUsageEvents(
+    organizationId: string,
+    exerciseId: string,
+    limit?: number,
+  ): Promise<readonly ExerciseCatalogUsageEvent[]>;
+  recordUsage(event: ExerciseCatalogUsageEvent): Promise<void>;
+  listPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+  ): Promise<readonly ExerciseCatalogPrivateMedia[]>;
+  registerPrivateMedia(media: ExerciseCatalogPrivateMedia): Promise<void>;
+  deletePrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined>;
 }
