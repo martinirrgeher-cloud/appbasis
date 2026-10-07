@@ -15,6 +15,15 @@ export const ULC_EXERCISE_CATEGORIES = Object.freeze([
 export type UlcExerciseCategoryKey =
   (typeof ULC_EXERCISE_CATEGORIES)[number]["key"];
 
+export const ULC_EXERCISE_DIFFICULTIES = Object.freeze([
+  Object.freeze({ key: "easy", label: "Leicht" }),
+  Object.freeze({ key: "medium", label: "Mittel" }),
+  Object.freeze({ key: "hard", label: "Schwer" }),
+] as const);
+
+export type UlcExerciseDifficultyKey =
+  (typeof ULC_EXERCISE_DIFFICULTIES)[number]["key"];
+
 export const ULC_EXERCISE_PARAMETER_KEYS = Object.freeze([
   "sets",
   "repetitions",
@@ -60,13 +69,16 @@ export interface UlcExerciseCatalogItem {
   readonly name: string;
   readonly categoryKey: UlcExerciseCategoryKey;
   readonly subcategory: string | null;
+  readonly difficultyKey: UlcExerciseDifficultyKey | null;
   readonly goal: string | null;
   readonly description: string | null;
   readonly coachingCues: string | null;
   readonly commonMistakes: string | null;
   readonly equipment: readonly string[];
   readonly videoUrl: string | null;
+  readonly videoUrls: readonly string[];
   readonly groupIds: readonly string[];
+  readonly similarExerciseIds: readonly string[];
   readonly parameters: readonly UlcExerciseParameterDefinition[];
   readonly isActive: boolean;
 }
@@ -75,13 +87,16 @@ export interface CreateUlcExerciseCatalogItemInput {
   readonly name: string;
   readonly categoryKey: UlcExerciseCategoryKey;
   readonly subcategory?: string | null;
+  readonly difficultyKey?: UlcExerciseDifficultyKey | null;
   readonly goal?: string | null;
   readonly description?: string | null;
   readonly coachingCues?: string | null;
   readonly commonMistakes?: string | null;
   readonly equipment?: readonly string[];
   readonly videoUrl?: string | null;
+  readonly videoUrls?: readonly string[];
   readonly groupIds?: readonly string[];
+  readonly similarExerciseIds?: readonly string[];
   readonly parameters?: readonly {
     readonly key: UlcExerciseParameterKey;
     readonly label: string;
@@ -108,14 +123,25 @@ export function createUlcExerciseCatalogItem(
   input: CreateUlcExerciseCatalogItemInput,
   context: { readonly id: string; readonly organizationId: string },
 ): UlcExerciseCatalogItem {
+  const id = requiredIdentifier(context.id, "Exercise id");
   const groupIds = normalizedUniqueIdentifiers(
     input.groupIds ?? [],
     "Training group id",
   );
+  const similarExerciseIds = normalizedUniqueIdentifiers(
+    input.similarExerciseIds ?? [],
+    "Similar exercise id",
+  );
+  if (similarExerciseIds.includes(id)) {
+    throw new UlcExerciseCatalogValidationError(
+      "Exercise cannot be similar to itself.",
+    );
+  }
   const parameters = normalizedParameters(input.parameters ?? []);
+  const videoUrls = normalizeVideoUrls(input.videoUrl, input.videoUrls);
 
   return Object.freeze({
-    id: requiredIdentifier(context.id, "Exercise id"),
+    id,
     organizationId: requiredIdentifier(
       context.organizationId,
       "Organization id",
@@ -123,6 +149,7 @@ export function createUlcExerciseCatalogItem(
     name: requiredText(input.name, "Exercise name", 2, 120),
     categoryKey: requiredCategory(input.categoryKey),
     subcategory: optionalText(input.subcategory, "Exercise subcategory", 100),
+    difficultyKey: optionalDifficulty(input.difficultyKey),
     goal: optionalText(input.goal, "Exercise goal", 240),
     description: optionalText(
       input.description,
@@ -140,8 +167,10 @@ export function createUlcExerciseCatalogItem(
       10_000,
     ),
     equipment: normalizedUniqueText(input.equipment ?? [], "Equipment", 80),
-    videoUrl: optionalHttpUrl(input.videoUrl),
+    videoUrl: videoUrls[0] ?? null,
+    videoUrls,
     groupIds,
+    similarExerciseIds,
     parameters,
     isActive: input.isActive ?? true,
   });
@@ -252,6 +281,64 @@ function requiredCategory(value: unknown): UlcExerciseCategoryKey {
     );
   }
   return value as UlcExerciseCategoryKey;
+}
+
+function optionalDifficulty(value: unknown): UlcExerciseDifficultyKey | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (
+    typeof value !== "string" ||
+    !ULC_EXERCISE_DIFFICULTIES.some((difficulty) => difficulty.key === value)
+  ) {
+    throw new UlcExerciseCatalogValidationError(
+      "Exercise difficulty is invalid.",
+    );
+  }
+  return value as UlcExerciseDifficultyKey;
+}
+
+function normalizeVideoUrls(
+  legacyVideoUrl: unknown,
+  rawVideoUrls: readonly string[] | undefined,
+): readonly string[] {
+  const source =
+    rawVideoUrls === undefined
+      ? legacyVideoUrl === undefined || legacyVideoUrl === null || legacyVideoUrl === ""
+        ? []
+        : [legacyVideoUrl]
+      : rawVideoUrls;
+  if (!Array.isArray(source) || source.length > 20) {
+    throw new UlcExerciseCatalogValidationError(
+      "Exercise video URL list is invalid.",
+    );
+  }
+  const normalized = source.map((value) => {
+    const url = optionalHttpUrl(value);
+    if (url === null) {
+      throw new UlcExerciseCatalogValidationError(
+        "Exercise video URL list contains an empty value.",
+      );
+    }
+    return url;
+  });
+  if (new Set(normalized).size !== normalized.length) {
+    throw new UlcExerciseCatalogValidationError(
+      "Exercise video URL list contains duplicates.",
+    );
+  }
+  const legacy =
+    legacyVideoUrl === undefined || legacyVideoUrl === null || legacyVideoUrl === ""
+      ? null
+      : optionalHttpUrl(legacyVideoUrl);
+  if (
+    rawVideoUrls !== undefined &&
+    legacy !== null &&
+    normalized[0] !== legacy
+  ) {
+    throw new UlcExerciseCatalogValidationError(
+      "Exercise video URL must match the first videoUrls entry.",
+    );
+  }
+  return Object.freeze(normalized);
 }
 
 function requiredParameterKey(value: unknown): UlcExerciseParameterKey {
