@@ -63,7 +63,11 @@ test("C3C quiescence revokes source writes and prepares target DML atomically", 
           preview: { database: DATABASE },
           tables,
         }),
-        databaseFactory() {
+        databaseFactory(databaseUrl) {
+          if (databaseUrl === APPLICATION_URL) {
+            return applicationDatabase();
+          }
+          assert.equal(databaseUrl, MIGRATION_URL);
           return {
             client: {
               async begin(callback) {
@@ -117,7 +121,11 @@ test("C3C read-only guard verification proves the same effective privileges with
           preview: { database: DATABASE },
           tables,
         }),
-        databaseFactory() {
+        databaseFactory(databaseUrl) {
+          if (databaseUrl === APPLICATION_URL) {
+            return applicationDatabase();
+          }
+          assert.equal(databaseUrl, MIGRATION_URL);
           return {
             client: {
               ...fakeSql(queries, tables),
@@ -139,6 +147,23 @@ test("C3C read-only guard verification proves the same effective privileges with
     false,
   );
 });
+
+function applicationDatabase() {
+  return {
+    client: {
+      async unsafe(query) {
+        assert.match(query, /current_database/);
+        return [
+          {
+            database_name: DATABASE,
+            principal_name: "appbasis_ulc_linz_preview_app",
+          },
+        ];
+      },
+      async end() {},
+    },
+  };
+}
 
 function cutoverTables() {
   return [
