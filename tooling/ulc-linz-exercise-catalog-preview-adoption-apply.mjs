@@ -76,7 +76,15 @@ export async function loadUlcExerciseCatalogPreviewAdoptionApplyPlan(
     );
   }
 
-  assertReviewedPlans({ readiness, migrationPlan, adoptionPlan });
+  const adoptionMigrationPlan = selectAdoptionBaselineMigrationPlan(
+    migrationPlan,
+    adoptionPlan,
+  );
+  assertReviewedPlans({
+    readiness,
+    migrationPlan: adoptionMigrationPlan,
+    adoptionPlan,
+  });
 
   return deepFreeze({
     schemaVersion: 1,
@@ -96,12 +104,12 @@ export async function loadUlcExerciseCatalogPreviewAdoptionApplyPlan(
       rollbackSchemaOnCopyFailure: true,
     },
     targetSchemaMigration: {
-      ownerId: migrationPlan.targetOwner.id,
-      schemaVersion: migrationPlan.targetOwner.schemaVersion,
-      migrationPaths: migrationPlan.migrations.map(
+      ownerId: adoptionMigrationPlan.targetOwner.id,
+      schemaVersion: adoptionMigrationPlan.targetOwner.schemaVersion,
+      migrationPaths: adoptionMigrationPlan.migrations.map(
         (migration) => migration.relativePath,
       ),
-      migrationCount: migrationPlan.migrations.length,
+      migrationCount: adoptionMigrationPlan.migrations.length,
     },
     copyAndVerify: {
       mode: adoptionPlan.copy.mode,
@@ -209,6 +217,10 @@ export async function applyUlcExerciseCatalogPreviewAdoption(
         safeErrorMessage(error),
     );
   }
+  migrationPlan = selectAdoptionBaselineMigrationPlan(
+    migrationPlan,
+    adoptionPlan,
+  );
   assertExecutablePlans({ plan, migrationPlan, adoptionPlan });
 
   let database;
@@ -368,6 +380,64 @@ export function assertUlcExerciseCatalogPreviewAdoptionEnvironment(
       "E6G-C3B preview adoption requires explicit copy/verify approval.",
     );
   }
+}
+
+function selectAdoptionBaselineMigrationPlan(
+  migrationPlan,
+  adoptionPlan,
+) {
+  const adoptionMigrationPaths = Array.isArray(
+    adoptionPlan?.target?.migrations,
+  )
+    ? adoptionPlan.target.migrations.map((migration) => migration.path)
+    : [];
+  const ownerMigrationPaths = Array.isArray(
+    migrationPlan?.targetOwner?.migrations,
+  )
+    ? migrationPlan.targetOwner.migrations
+    : [];
+  const executableMigrations = Array.isArray(migrationPlan?.migrations)
+    ? migrationPlan.migrations
+    : [];
+  const executablePaths = executableMigrations.map(
+    (migration) => migration?.relativePath,
+  );
+  const adoptionSchemaVersion = adoptionPlan?.target?.schemaVersion;
+
+  if (
+    migrationPlan === null ||
+    typeof migrationPlan !== "object" ||
+    migrationPlan.operation !== "module-install-migrations" ||
+    migrationPlan.application !== APP_ID ||
+    migrationPlan.moduleId !== MODULE_ID ||
+    migrationPlan.repositoryState !== "published-target" ||
+    migrationPlan.targetOwner?.id !== MODULE_ID ||
+    migrationPlan.targetOwner?.root !== "modules/exercise-catalog" ||
+    !Number.isSafeInteger(adoptionSchemaVersion) ||
+    !Number.isSafeInteger(migrationPlan.targetOwner?.schemaVersion) ||
+    migrationPlan.targetOwner.schemaVersion < adoptionSchemaVersion ||
+    adoptionMigrationPaths.length === 0 ||
+    ownerMigrationPaths.length < adoptionMigrationPaths.length ||
+    executablePaths.length < adoptionMigrationPaths.length ||
+    JSON.stringify(ownerMigrationPaths.slice(0, adoptionMigrationPaths.length)) !==
+      JSON.stringify(adoptionMigrationPaths) ||
+    JSON.stringify(executablePaths.slice(0, adoptionMigrationPaths.length)) !==
+      JSON.stringify(adoptionMigrationPaths)
+  ) {
+    throw new UlcExerciseCatalogPreviewAdoptionConfigurationError(
+      "E6G-C3B current target no longer preserves the reviewed adoption migration baseline.",
+    );
+  }
+
+  return deepFreeze({
+    ...migrationPlan,
+    targetOwner: {
+      ...migrationPlan.targetOwner,
+      schemaVersion: adoptionSchemaVersion,
+      migrations: [...adoptionMigrationPaths],
+    },
+    migrations: executableMigrations.slice(0, adoptionMigrationPaths.length),
+  });
 }
 
 function assertReviewedPlans({
