@@ -22,8 +22,9 @@ Der vollständige Zielumfang umfasst:
 - persönliche Favoriten;
 - Suche und Filter nach Kategorie, Unterkategorie, Material, Gruppe, Video,
   Favorit und Aktivstatus;
-- externer Video-/Weblink und später privater Video-Upload;
-- später Schwierigkeitsgrad, ähnliche Übungen, Dublettenwarnung,
+- mehrere externe Video-/Weblinks mit Hauptlink sowie optional private
+  Videoablage über einen konfigurierten Object Store;
+- Schwierigkeitsgrad, ähnliche Übungen, Dublettenwarnung sowie
   Verwendungsübersicht und letzte Verwendung.
 
 ## Kanonische Kategorien
@@ -111,7 +112,9 @@ ULC-App und die Factory-Verträge abgeglichen.
 - E6F1: read-only XLSX-Export und XLSX-Importvorlage mit stabilem
   `appbasis.exercise-catalog.exchange/v1`-Vertrag über die Blätter
   `Übungen`, `Gruppen`, `Parameter`, `Listen` und `Hinweise`; auf
-  `main` und in Preview deployt, ohne Importmutation;
+  `main` und in Preview deployt, ohne Importmutation. E6H erweitert diesen
+  Vertrag kompatibel auf v2 um `Erweiterungen` für Schwierigkeit, zusätzliche
+  Video-Links und Ähnlichkeiten; v1 bleibt importierbar;
 - E6F2: read-only XLSX-Importvorschau mit 5-MB-/1.000-Übungen-Grenze,
   OpenXML-/ZIP-Prüfung, Domainnormalisierung, ID-/Namensabgleich,
   serverautorisierter Gruppenauflösung, Fehlern/Warnungen und
@@ -143,14 +146,16 @@ ULC-App und die Factory-Verträge abgeglichen.
 - E6G-C3A: kanonische Repository-Adoption des Standardmoduls. ULC deklariert
   jetzt `exercise-catalog`, dessen Workspace-Paket und dessen eigenen
   Datenbankowner; C1 akzeptiert den veröffentlichten Zielzustand weiterhin
-  fail-closed und ein read-only Preview-Readiness-Plan rekonstruiert über FC6
-  genau die zwei ausstehenden Zielmigrationen; auf `main` abgeschlossen;
+  fail-closed. Der historische Adoptionsvertrag bleibt bewusst auf Schema v2
+  und die ersten zwei Zielmigrationen gepinnt, auch wenn das aktuelle
+  Standardmodul inzwischen Schema v3 besitzt;
 - E6G-C3B: eigener preview-gebundener Executor für
-  `generated-preview-ulc-linz` / `appbasis_ulc_linz_preview`. Die zwei
-  Standardmodul-Migrationen und der anschließende insert-only Copy-/Verify-Lauf
-  werden in einer einzigen `REPEATABLE READ`-Transaktion ausgeführt, sodass
-  ein später Copy-/Verify-Fehler auch das neue Zielschema zurückrollt. Der
-  reale Apply ist ausschließlich manuell, main-only und explizit freizugeben;
+  `generated-preview-ulc-linz` / `appbasis_ulc_linz_preview`. Der
+  historische v2-Adoptionslauf führt weiterhin exakt die zwei geprüften
+  Baseline-Migrationen und den anschließenden insert-only Copy-/Verify-Lauf in
+  einer einzigen `REPEATABLE READ`-Transaktion aus. Die additive
+  Schema-v3-Paritätsmigration bleibt davon getrennt. Der reale Apply ist
+  ausschließlich manuell, main-only und explizit freizugeben;
 - Runtime-Cutover und Produktion bleiben weiterhin getrennte Freigaben. C3B
   quiesziert Source-Writes ausdrücklich noch nicht und setzt
   `runtimeCutoverEligible` weiterhin auf false. Vor einem Runtime-Switch
@@ -165,22 +170,26 @@ werden nicht umetikettiert. Die Datenübernahme in
 
 Siehe `docs/ULC-LEGACY-FACTORY-AUDIT.md`.
 
-### ULC-E6D – Medien
+### ULC-E6H – Funktionsparität zur früheren Katalogvariante
 
-- externe Links;
-- private Videoablage;
-- mehrere Videos je Übung;
-- Hauptvideo;
-- Upload vom Smartphone mit Größenlimit und Fortschritt.
+Auf dem adoptierten Standardmodul ergänzt E6H die im Alt-App-Abgleich noch
+fehlenden Katalogfunktionen:
 
-### ULC-E6E – Katalogintelligenz
+- Excel-XML zusätzlich zu XLSX im Importpfad;
+- konfigurierbare Schwierigkeitsstufen mit ULC-Preset und Filter;
+- ähnliche Übungen sowie serverseitige Dubletten-Kandidaten vor dem Speichern;
+- Verwendungsledger mit Anzahl, Verlauf und letzter Verwendung;
+- mehrere externe Video-/Weblinks je Übung; der erste Link ist der Hauptlink;
+- optionale private Videoablage über den Runtime-Object-Store mit geschützter
+  Auslieferung, Löschen und einem ULC-Limit von 100 MB pro Video;
+- additive Standardmodul-Migration v3; der historische E6G-Adoptionsvertrag
+  bleibt davon unverändert.
 
-- organisationsbezogene Schwierigkeitsgrade;
-- ähnliche Übungen;
-- Dublettenwarnung;
-- Verwendungsübersicht in Trainingsblöcken und Trainingsplänen;
-- letzte Verwendung;
-- historische Snapshots in späteren Planungsmodulen.
+Die Verwendungsdaten können bereits erfasst und angezeigt werden. Eine
+automatische Ableitung aus Trainingsblöcken oder Trainingsplänen ist noch
+nicht möglich, solange diese Module nicht auf den neuen Standardmodulpfad
+migriert sind. Historische Übungssnapshots bleiben deshalb Aufgabe dieser
+späteren Planungsmodule.
 
 ## Berechtigungen
 
