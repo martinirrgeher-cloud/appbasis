@@ -656,6 +656,14 @@ function itemFromRow(
     throw new Error("Exercise catalog active flag has an invalid shape.");
   }
 
+  const legacyVideoUrl = optionalRowString(row.video_url, "video URL");
+  const effectiveVideoUrls =
+    videoUrls.length > 0
+      ? videoUrls
+      : legacyVideoUrl === null
+        ? []
+        : [legacyVideoUrl];
+
   return Object.freeze({
     id: requiredRowString(row.id, "exercise id"),
     organizationId,
@@ -671,8 +679,8 @@ function itemFromRow(
       "common mistakes",
     ),
     equipment: Object.freeze([...equipment]),
-    videoUrl: videoUrls[0] ?? optionalRowString(row.video_url, "video URL"),
-    videoUrls: Object.freeze([...videoUrls]),
+    videoUrl: effectiveVideoUrls[0] ?? null,
+    videoUrls: Object.freeze([...effectiveVideoUrls]),
     audienceIds: Object.freeze([...audienceIds]),
     similarExerciseIds: Object.freeze([...similarExerciseIds]),
     parameters: Object.freeze(
