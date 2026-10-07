@@ -35,22 +35,22 @@ test("C3C workflow keeps quiescence and standard cutover as separately approved 
   assert.doesNotMatch(yaml, /APPBASIS_APPLY_MIGRATIONS/);
 });
 
-test("C3C quiesce deploys the runtime write gate before database ACL quiescence and equality", async () => {
+test("C3C quiesce persists the database guard before deploying the read-only runtime and checking equality", async () => {
   const yaml = await readFile(WORKFLOW, "utf8");
 
-  const deploy = yaml.indexOf("Deploy quiesced preview runtime");
-  const live = yaml.indexOf("Verify quiesced runtime is live");
   const acl = yaml.indexOf(
     "Persist database-level source-write quiescence and target runtime access",
   );
+  const deploy = yaml.indexOf("Deploy quiesced preview runtime");
+  const live = yaml.indexOf("Verify quiesced runtime is live");
   const equality = yaml.indexOf(
     "Verify final equality under source-write quiescence",
   );
 
-  assert.ok(deploy >= 0);
+  assert.ok(acl >= 0);
+  assert.ok(acl < deploy);
   assert.ok(deploy < live);
-  assert.ok(live < acl);
-  assert.ok(acl < equality);
+  assert.ok(live < equality);
 });
 
 test("C3C standard cutover proves live quiescence, database guard and final equality before deployment", async () => {
