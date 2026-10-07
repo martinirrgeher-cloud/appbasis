@@ -169,6 +169,14 @@ export function createGeneratedWorker(
             url,
           );
         } else if (
+          url.pathname === "/api/modules/exercise-catalog/duplicates"
+        ) {
+          response = await exerciseCatalogDuplicateResponse(
+            request,
+            runtime,
+            url,
+          );
+        } else if (
           url.pathname.startsWith("/api/modules/exercise-catalog/")
         ) {
           response = await exerciseCatalogItemResponse(request, runtime, url);
