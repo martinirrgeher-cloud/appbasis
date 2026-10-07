@@ -177,9 +177,18 @@ export class StandardModuleUlcExerciseCatalogRepository
   implements UlcExerciseCatalogRepository
 {
   readonly #standard: ExerciseCatalogRepository;
+  readonly #service: ExerciseCatalogService;
 
   constructor(standard: ExerciseCatalogRepository) {
     this.#standard = standard;
+    this.#service = new ExerciseCatalogService({
+      repository: standard,
+      definition: createExerciseCatalogDefinition({
+        categories: ULC_EXERCISE_CATEGORIES,
+        difficulties: ULC_EXERCISE_DIFFICULTIES,
+        parameterKeys: ULC_EXERCISE_PARAMETER_KEYS,
+      }),
+    });
   }
 
   async list(
@@ -258,6 +267,71 @@ export class StandardModuleUlcExerciseCatalogRepository
     if (updated === undefined) throw new UlcExerciseCatalogNotFoundError();
   }
 
+  findDuplicateCandidates(
+    organizationId: string,
+    input: CreateUlcExerciseCatalogItemInput,
+    excludeExerciseId?: string | null,
+  ): Promise<readonly ExerciseCatalogDuplicateCandidate[]> {
+    return this.#service.findDuplicateCandidates(
+      organizationId,
+      ulcInputToStandardInput(input),
+      excludeExerciseId,
+    );
+  }
+
+  listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly ExerciseCatalogUsageSummary[]> {
+    return this.#service.listUsageSummaries(organizationId);
+  }
+
+  listUsage(
+    organizationId: string,
+    exerciseId: string,
+    limit?: number,
+  ): Promise<readonly ExerciseCatalogUsageEvent[]> {
+    return this.#service.listUsage(organizationId, exerciseId, limit);
+  }
+
+  recordUsage(
+    organizationId: string,
+    exerciseId: string,
+    input: RecordExerciseCatalogUsageInput,
+  ): Promise<ExerciseCatalogUsageEvent | undefined> {
+    return this.#service.recordUsage(organizationId, exerciseId, input);
+  }
+
+  listPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+  ): Promise<readonly ExerciseCatalogPrivateMedia[]> {
+    return this.#service.listPrivateMedia(organizationId, exerciseId);
+  }
+
+  registerPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+    input: RegisterExerciseCatalogPrivateMediaInput,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return this.#service.registerPrivateMedia(
+      organizationId,
+      exerciseId,
+      input,
+    );
+  }
+
+  deletePrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return this.#service.deletePrivateMedia(
+      organizationId,
+      exerciseId,
+      mediaId,
+    );
+  }
+
   async setFavorite(
     organizationId: string,
     identityId: string,
@@ -276,6 +350,28 @@ export class StandardModuleUlcExerciseCatalogRepository
       favorite,
     );
   }
+}
+
+function ulcInputToStandardInput(
+  input: CreateUlcExerciseCatalogItemInput,
+) {
+  return {
+    name: input.name,
+    categoryKey: input.categoryKey,
+    subcategory: input.subcategory,
+    difficultyKey: input.difficultyKey,
+    goal: input.goal,
+    description: input.description,
+    coachingCues: input.coachingCues,
+    commonMistakes: input.commonMistakes,
+    equipment: input.equipment,
+    videoUrl: input.videoUrl,
+    videoUrls: input.videoUrls,
+    audienceIds: input.groupIds,
+    similarExerciseIds: input.similarExerciseIds,
+    parameters: input.parameters,
+    isActive: input.isActive,
+  };
 }
 
 function ulcItemToStandardItem(
