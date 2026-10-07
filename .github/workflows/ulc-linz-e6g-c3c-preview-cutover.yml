@@ -222,17 +222,10 @@ jobs:
 
       - name: Require current runtime to be quiesced before cutover
         if: inputs.operation == 'cutover'
-        shell: bash
         env:
           APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
-        run: |
-          set -euo pipefail
-          HEALTH="$(curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2             --header 'Accept: application/json'             "$APPBASIS_BASE_URL/api/health/exercise-catalog-runtime")"
-          test "$(jq -r '.status' <<<"$HEALTH")" = 'ok'
-          test "$(jq -r '.exerciseCatalogRuntimeMode' <<<"$HEALTH")" = 'legacy-read-writes-blocked' || {
-            echo 'C3C cutover requires the already deployed quiesced runtime.' >&2
-            exit 1
-          }
+          APPBASIS_EXPECTED_MODE: legacy-read-writes-blocked
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
 
       - name: Verify persisted source-write quiescence before cutover
         if: inputs.operation == 'cutover'
@@ -315,13 +308,10 @@ jobs:
 
       - name: Verify quiesced runtime is live
         if: inputs.operation == 'quiesce'
-        shell: bash
         env:
           APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
-        run: |
-          set -euo pipefail
-          HEALTH="$(curl --fail-with-body --silent --show-error             --retry 5 --retry-delay 2             --header 'Accept: application/json'             "$APPBASIS_BASE_URL/api/health/exercise-catalog-runtime")"
-          test "$(jq -r '.exerciseCatalogRuntimeMode' <<<"$HEALTH")" = 'legacy-read-writes-blocked'
+          APPBASIS_EXPECTED_MODE: legacy-read-writes-blocked
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
 
       - name: Verify final equality under source-write quiescence
         if: inputs.operation == 'quiesce'
@@ -349,15 +339,10 @@ jobs:
           --experimental-auto-create=false
 
       - name: Verify selected runtime is live
-        shell: bash
         env:
           APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
           APPBASIS_EXPECTED_MODE: ${{ inputs.operation == 'quiesce' && 'legacy-read-writes-blocked' || 'standard-module' }}
-        run: |
-          set -euo pipefail
-          HEALTH="$(curl --fail-with-body --silent --show-error             --retry 5 --retry-delay 2             --header 'Accept: application/json'             "$APPBASIS_BASE_URL/api/health/exercise-catalog-runtime")"
-          test "$(jq -r '.status' <<<"$HEALTH")" = 'ok'
-          test "$(jq -r '.exerciseCatalogRuntimeMode' <<<"$HEALTH")" = "$APPBASIS_EXPECTED_MODE"
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
 
       - name: Verify ULC preview application database binding
         env:
