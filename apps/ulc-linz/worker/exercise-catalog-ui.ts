@@ -1848,17 +1848,31 @@ function parseExerciseEquipment() {
 
 function exerciseCatalogFormPayload() {
   syncExerciseCatalogParameterDraftsFromDom();
+  const firstVideoUrl = (elements.exerciseCatalogVideoUrl?.value || "").trim();
+  const additionalVideoUrls = (elements.exerciseCatalogVideoUrls?.value || "")
+    .split(/\r?\n/u)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const videoUrls = [firstVideoUrl, ...additionalVideoUrls].filter(
+    (value, index, values) => value.length > 0 && values.indexOf(value) === index,
+  );
+
   return {
     name: elements.exerciseCatalogName?.value || "",
     categoryKey: elements.exerciseCatalogCategory?.value || "",
     subcategory: elements.exerciseCatalogSubcategory?.value || null,
+    difficultyKey: elements.exerciseCatalogDifficulty?.value || null,
     goal: elements.exerciseCatalogGoal?.value || null,
     description: elements.exerciseCatalogDescription?.value || null,
     coachingCues: elements.exerciseCatalogCues?.value || null,
     commonMistakes: elements.exerciseCatalogMistakes?.value || null,
     equipment: parseExerciseEquipment(),
-    videoUrl: elements.exerciseCatalogVideoUrl?.value || null,
+    videoUrl: videoUrls[0] || null,
+    videoUrls,
     groupIds: [...(elements.exerciseCatalogGroups?.querySelectorAll("input[type='checkbox']:checked") || [])].map(
+      (input) => input.value,
+    ),
+    similarExerciseIds: [...(elements.exerciseCatalogSimilar?.querySelectorAll("input[type='checkbox']:checked") || [])].map(
       (input) => input.value,
     ),
     parameters: exerciseCatalogParameterDrafts.map((parameter) => ({
