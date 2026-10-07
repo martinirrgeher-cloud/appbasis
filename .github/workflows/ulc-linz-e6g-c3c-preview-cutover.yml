@@ -227,7 +227,7 @@ jobs:
           APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
         run: |
           set -euo pipefail
-          HEALTH="$(curl --fail-with-body --silent --show-error             --header 'Accept: application/json'             "$APPBASIS_BASE_URL/api/health/exercise-catalog-runtime")"
+          HEALTH="$(curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2             --header 'Accept: application/json'             "$APPBASIS_BASE_URL/api/health/exercise-catalog-runtime")"
           test "$(jq -r '.status' <<<"$HEALTH")" = 'ok'
           test "$(jq -r '.exerciseCatalogRuntimeMode' <<<"$HEALTH")" = 'legacy-read-writes-blocked' || {
             echo 'C3C cutover requires the already deployed quiesced runtime.' >&2
@@ -291,6 +291,15 @@ jobs:
           --experimental-provision=false
           --experimental-auto-create=false
 
+      - name: Persist database-level source-write quiescence and target runtime access
+        if: inputs.operation == 'quiesce'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_EXERCISE_CATALOG_QUIESCENCE: "1"
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-quiescence.mjs apply
+
       - name: Deploy quiesced preview runtime
         if: inputs.operation == 'quiesce'
         working-directory: apps/reference
@@ -313,15 +322,6 @@ jobs:
           set -euo pipefail
           HEALTH="$(curl --fail-with-body --silent --show-error             --retry 5 --retry-delay 2             --header 'Accept: application/json'             "$APPBASIS_BASE_URL/api/health/exercise-catalog-runtime")"
           test "$(jq -r '.exerciseCatalogRuntimeMode' <<<"$HEALTH")" = 'legacy-read-writes-blocked'
-
-      - name: Persist database-level source-write quiescence and target runtime access
-        if: inputs.operation == 'quiesce'
-        env:
-          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
-          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-          APPBASIS_APPLY_EXERCISE_CATALOG_QUIESCENCE: "1"
-        run: node ./tooling/ulc-linz-exercise-catalog-preview-quiescence.mjs apply
 
       - name: Verify final equality under source-write quiescence
         if: inputs.operation == 'quiesce'
