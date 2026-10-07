@@ -166,6 +166,46 @@ describe("ULC E6C exercise catalog UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("reloadExerciseCatalog");
   });
 
+  it("exposes the E6H parity controls without moving authorization scope into the client", () => {
+    expect(ULC_LINZ_APP_HTML).toContain(
+      'accept=".xlsx,.xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/xml,text/xml,application/vnd.ms-excel"',
+    );
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-difficulty-filter"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-difficulty"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-video-urls"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-similar"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-usage-add"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-media-upload"');
+    for (const tab of ["similar", "usage", "media"]) {
+      expect(ULC_LINZ_APP_HTML).toContain(
+        'data-exercise-catalog-tab="' + tab + '"',
+      );
+      expect(ULC_LINZ_APP_HTML).toContain(
+        'data-exercise-catalog-panel="' + tab + '"',
+      );
+    }
+    for (const capability of [
+      "difficulty",
+      "similarExercises",
+      "duplicateWarnings",
+      "usageHistory",
+      "multipleExternalVideos",
+      "privateVideoUpload",
+    ]) {
+      expect(ULC_LINZ_APP_SCRIPT).toContain(capability + ": false");
+    }
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/exercise-catalog/duplicates"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/usage"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/private-media"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "Das private Video darf höchstens 100 MB groß sein.",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId");
+  });
+
   it("parses the delivered browser script as an ES module", () => {
     const result = spawnSync(
       process.execPath,
