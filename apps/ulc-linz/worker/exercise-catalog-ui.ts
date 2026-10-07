@@ -3052,6 +3052,20 @@ function setExerciseCatalogBusy(next) {
   if (elements.exerciseCatalogParameterSelect) {
     elements.exerciseCatalogParameterSelect.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
   }
+  if (elements.exerciseCatalogUsageAdd) {
+    elements.exerciseCatalogUsageAdd.disabled =
+      next ||
+      exerciseCatalogEditorReviewMode ||
+      !exerciseCatalogCanEdit ||
+      !exerciseCatalogSelectedId;
+  }
+  if (elements.exerciseCatalogMediaUpload) {
+    elements.exerciseCatalogMediaUpload.disabled =
+      next ||
+      exerciseCatalogEditorReviewMode ||
+      !exerciseCatalogCanEdit ||
+      !exerciseCatalogSelectedId;
+  }
   for (const control of elements.exerciseCatalogParameters?.querySelectorAll("input, button") || []) {
     control.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
   }
@@ -3089,6 +3103,7 @@ function handleExerciseCatalogParameterClick(event) {
 for (const control of [
   elements.exerciseCatalogSearch,
   elements.exerciseCatalogCategoryFilter,
+  elements.exerciseCatalogDifficultyFilter,
   elements.exerciseCatalogGroupFilter,
   elements.exerciseCatalogMaterialFilter,
   elements.exerciseCatalogFavoriteFilter,
@@ -3168,6 +3183,25 @@ elements.exerciseCatalogForm?.addEventListener("change", () => {
 });
 elements.exerciseCatalogForm?.addEventListener("submit", (event) => void saveExerciseCatalogItem(event));
 elements.exerciseCatalogDeactivate?.addEventListener("click", () => void deactivateExerciseCatalogItem());
+elements.exerciseCatalogUsageAdd?.addEventListener("click", () => {
+  void recordExerciseCatalogUsage();
+});
+elements.exerciseCatalogMediaUpload?.addEventListener("click", () => {
+  if (!exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  elements.exerciseCatalogMediaFile?.click();
+});
+elements.exerciseCatalogMediaFile?.addEventListener("change", () => {
+  const file = elements.exerciseCatalogMediaFile?.files?.[0] || null;
+  if (elements.exerciseCatalogMediaFile) elements.exerciseCatalogMediaFile.value = "";
+  if (file) void uploadExerciseCatalogPrivateVideo(file);
+});
+elements.exerciseCatalogMediaList?.addEventListener("click", (event) => {
+  const control = event.target.closest("[data-exercise-catalog-media-delete]");
+  if (!control) return;
+  void deleteExerciseCatalogPrivateVideo(
+    control.dataset.exerciseCatalogMediaDelete || "",
+  );
+});
 elements.exerciseCatalogParameterAdd?.addEventListener("click", () => {
   addExerciseCatalogParameter();
   if (
