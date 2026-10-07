@@ -266,6 +266,7 @@ jobs:
               process.env.APPBASIS_SECURITY_LOG_HYPERDRIVE_ID,
             baseURL: process.env.APPBASIS_BASE_URL,
             entrypoint,
+            r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
             outputPath:
               "./apps/ulc-linz/wrangler.preview.cutover.generated.json",
           });
