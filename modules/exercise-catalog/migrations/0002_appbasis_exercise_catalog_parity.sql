@@ -29,14 +29,6 @@ CREATE TABLE appbasis_exercise_catalog_video (
 CREATE INDEX appbasis_exercise_catalog_video_exercise_idx
   ON appbasis_exercise_catalog_video (organization_id, exercise_id, sort_order, video_url);
 --> statement-breakpoint
-INSERT INTO appbasis_exercise_catalog_video (
-  organization_id, exercise_id, video_url, sort_order
-)
-SELECT organization_id, id, video_url, 0
-FROM appbasis_exercise_catalog_item
-WHERE video_url IS NOT NULL
-ON CONFLICT DO NOTHING;
---> statement-breakpoint
 CREATE TABLE appbasis_exercise_catalog_similarity (
   organization_id text NOT NULL,
   exercise_id text NOT NULL,
