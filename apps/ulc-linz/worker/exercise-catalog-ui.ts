@@ -907,6 +907,12 @@ const EXERCISE_CATEGORIES = Object.freeze([
   { key: "other", label: "Sonstiges" },
 ]);
 
+const EXERCISE_DIFFICULTIES = Object.freeze([
+  { key: "easy", label: "Leicht" },
+  { key: "medium", label: "Mittel" },
+  { key: "hard", label: "Schwer" },
+]);
+
 const EXERCISE_PARAMETER_META = Object.freeze([
   { key: "sets", label: "Sätze", unit: "", inputType: "number" },
   { key: "repetitions", label: "Wiederholungen", unit: "", inputType: "number" },
@@ -957,6 +963,7 @@ Object.assign(elements, {
   exerciseCatalogFilterReset: document.querySelector("#exercise-catalog-filter-reset"),
   exerciseCatalogFilterApply: document.querySelector("#exercise-catalog-filter-apply"),
   exerciseCatalogCategoryFilter: document.querySelector("#exercise-catalog-category-filter"),
+  exerciseCatalogDifficultyFilter: document.querySelector("#exercise-catalog-difficulty-filter"),
   exerciseCatalogGroupFilter: document.querySelector("#exercise-catalog-group-filter"),
   exerciseCatalogMaterialFilter: document.querySelector("#exercise-catalog-material-filter"),
   exerciseCatalogFavoriteFilter: document.querySelector("#exercise-catalog-favorite-filter"),
@@ -972,18 +979,28 @@ Object.assign(elements, {
   exerciseCatalogName: document.querySelector("#exercise-catalog-name"),
   exerciseCatalogCategory: document.querySelector("#exercise-catalog-category"),
   exerciseCatalogSubcategory: document.querySelector("#exercise-catalog-subcategory"),
+  exerciseCatalogDifficulty: document.querySelector("#exercise-catalog-difficulty"),
   exerciseCatalogGoal: document.querySelector("#exercise-catalog-goal"),
   exerciseCatalogDescription: document.querySelector("#exercise-catalog-description"),
   exerciseCatalogCues: document.querySelector("#exercise-catalog-cues"),
   exerciseCatalogMistakes: document.querySelector("#exercise-catalog-mistakes"),
   exerciseCatalogEquipment: document.querySelector("#exercise-catalog-equipment"),
   exerciseCatalogVideoUrl: document.querySelector("#exercise-catalog-video-url"),
+  exerciseCatalogVideoUrls: document.querySelector("#exercise-catalog-video-urls"),
   exerciseCatalogGroups: document.querySelector("#exercise-catalog-groups"),
   exerciseCatalogParameterSelect: document.querySelector("#exercise-catalog-parameter-select"),
   exerciseCatalogParameterAdd: document.querySelector("#exercise-catalog-parameter-add"),
   exerciseCatalogParameters: document.querySelector("#exercise-catalog-parameters"),
   exerciseCatalogLinkRow: document.querySelector("#exercise-catalog-link-row"),
-  exerciseCatalogLink: document.querySelector("#exercise-catalog-link"),
+  exerciseCatalogLinks: document.querySelector("#exercise-catalog-links"),
+  exerciseCatalogSimilar: document.querySelector("#exercise-catalog-similar"),
+  exerciseCatalogUsageAdd: document.querySelector("#exercise-catalog-usage-add"),
+  exerciseCatalogUsageSummary: document.querySelector("#exercise-catalog-usage-summary"),
+  exerciseCatalogUsageList: document.querySelector("#exercise-catalog-usage-list"),
+  exerciseCatalogMediaHint: document.querySelector("#exercise-catalog-media-hint"),
+  exerciseCatalogMediaFile: document.querySelector("#exercise-catalog-media-file"),
+  exerciseCatalogMediaUpload: document.querySelector("#exercise-catalog-media-upload"),
+  exerciseCatalogMediaList: document.querySelector("#exercise-catalog-media-list"),
   exerciseCatalogSave: document.querySelector("#exercise-catalog-save"),
   exerciseCatalogDeactivate: document.querySelector("#exercise-catalog-deactivate"),
   exerciseCatalogReadonly: document.querySelector("#exercise-catalog-readonly"),
@@ -993,6 +1010,14 @@ let exerciseCatalogReady = false;
 let exerciseCatalogCanEdit = false;
 let exerciseCatalogItems = [];
 let exerciseCatalogGroups = [];
+let exerciseCatalogFeatures = {
+  difficulty: false,
+  similarExercises: false,
+  duplicateWarnings: false,
+  usageHistory: false,
+  multipleExternalVideos: false,
+  privateVideoUpload: false,
+};
 let exerciseCatalogSelectedId = null;
 let exerciseCatalogParameterDrafts = [];
 let exerciseCatalogBusy = false;
