@@ -1687,13 +1687,27 @@ async function exerciseCatalogItemResponse(
   const update = /^([^/]+)\/update$/.exec(route);
   const deactivate = /^([^/]+)\/deactivate$/.exec(route);
   const favorite = /^([^/]+)\/favorite$/.exec(route);
+  const usage = /^([^/]+)\/usage$/.exec(route);
+  const privateMedia = /^([^/]+)\/private-media$/.exec(route);
+  const privateMediaContent =
+    /^([^/]+)\/private-media\/([^/]+)\/content$/.exec(route);
+  const privateMediaDelete =
+    /^([^/]+)\/private-media\/([^/]+)$/.exec(route);
 
   let action: "view" | "edit";
-  if (detail !== null && request.method === "GET") {
+  if (
+    (detail !== null ||
+      (usage !== null && request.method === "GET") ||
+      (privateMedia !== null && request.method === "GET") ||
+      (privateMediaContent !== null && request.method === "GET")) &&
+    request.method === "GET"
+  ) {
     action = "view";
   } else if (
-    (update !== null || deactivate !== null) &&
-    request.method === "POST"
+    ((update !== null || deactivate !== null || usage !== null) &&
+      request.method === "POST") ||
+    (privateMedia !== null && request.method === "POST") ||
+    (privateMediaDelete !== null && request.method === "DELETE")
   ) {
     action = "edit";
   } else if (
@@ -1761,10 +1775,334 @@ async function exerciseCatalogItemResponse(
       return Response.json({ item });
     }
 
+    if (usage !== null) {
+      const id = decodeExerciseCatalogPathIdentifier(usage[1]);
+      if (request.method === "GET") {
+        const [events, summaries] = await Promise.all([
+          runtime.exerciseCatalog.listUsage(access.organizationId, id, 100),
+          runtime.exerciseCatalog.listUsageSummaries(access.organizationId),
+        ]);
+        const summary = summaries.find((entry) => entry.exerciseId === id) ?? {
+          exerciseId: id,
+          usageCount: 0,
+          lastUsedAt: null,
+        };
+        return Response.json(
+          { summary, events },
+          { headers: { "cache-control": "private, no-store" } },
+        );
+      }
+      const body = await exerciseCatalogJsonBody(
+        request,
+        EXERCISE_USAGE_FIELDS,
+        ["sourceKind"],
+      );
+      const event = await runtime.exerciseCatalog.recordUsage(
+        access.organizationId,
+        id,
+        body as {
+          occurredAt?: string;
+          sourceKind: string;
+          sourceRef?: string | null;
+          note?: string | null;
+        },
+      );
+      if (event === undefined) return exerciseCatalogNotFound();
+      return Response.json({ event }, { status: 201 });
+    }
+
+    if (privateMedia !== null) {
+      const id = decodeExerciseCatalogPathIdentifier(privateMedia[1]);
+      if (request.method === "GET") {
+        const media = await runtime.exerciseCatalog.listPrivateMedia(
+          access.organizationId,
+          id,
+        );
+        return Response.json(
+          {
+            available: runtime.exerciseCatalogMediaStore !== null,
+            maximumBytes: ULC_EXERCISE_CATALOG_PRIVATE_VIDEO_MAX_BYTES,
+            media,
+          },
+          { headers: { "cache-control": "private, no-store" } },
+        );
+      }
+      return uploadExerciseCatalogPrivateMedia(
+        request,
+        runtime,
+        access.organizationId,
+        access.actorPrincipalId,
+        id,
+      );
+    }
+
+    if (privateMediaContent !== null) {
+      const exerciseId = decodeExerciseCatalogPathIdentifier(
+        privateMediaContent[1],
+      );
+      const mediaId = decodeExerciseCatalogPathIdentifier(
+        privateMediaContent[2],
+      );
+      return exerciseCatalogPrivateMediaContent(
+        request,
+        runtime,
+        access.organizationId,
+        exerciseId,
+        mediaId,
+      );
+    }
+
+    if (privateMediaDelete !== null) {
+      const exerciseId = decodeExerciseCatalogPathIdentifier(
+        privateMediaDelete[1],
+      );
+      const mediaId = decodeExerciseCatalogPathIdentifier(
+        privateMediaDelete[2],
+      );
+      return deleteExerciseCatalogPrivateMedia(
+        runtime,
+        access.organizationId,
+        exerciseId,
+        mediaId,
+      );
+    }
+
     return exerciseCatalogNotFound();
   } catch (error) {
+    if (error instanceof PrivateExerciseVideoRequestError) {
+      return Response.json(
+        { error: { code: error.code, message: error.message } },
+        {
+          status: error.code === "PRIVATE_VIDEO_TOO_LARGE" ? 413 : 400,
+          headers: { "cache-control": "private, no-store" },
+        },
+      );
+    }
     return exerciseCatalogErrorResponse(error);
   }
+}
+
+async function uploadExerciseCatalogPrivateMedia(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  organizationId: string,
+  actorPrincipalId: string,
+  exerciseId: string,
+): Promise<Response> {
+  const store = runtime.exerciseCatalogMediaStore;
+  if (store === null) return exerciseCatalogPrivateMediaUnavailable();
+
+  const item = await runtime.exerciseCatalog.read(
+    organizationId,
+    actorPrincipalId,
+    exerciseId,
+  );
+  if (item === null) return exerciseCatalogNotFound();
+
+  const contentType = normalizedPrivateVideoContentType(
+    request.headers.get("content-type"),
+  );
+  const fileName = normalizedPrivateVideoFileName(
+    request.headers.get("x-appbasis-file-name"),
+  );
+  const bytes = await readPrivateExerciseVideoBytes(request);
+  const mediaId = crypto.randomUUID();
+  const storageKey = privateExerciseVideoStorageKey(
+    organizationId,
+    exerciseId,
+    mediaId,
+  );
+
+  await store.put(storageKey, bytes, {
+    httpMetadata: { contentType },
+    customMetadata: {
+      exerciseId,
+      organizationId,
+      uploadedBy: actorPrincipalId,
+    },
+  });
+
+  try {
+    const media = await runtime.exerciseCatalog.registerPrivateMedia(
+      organizationId,
+      exerciseId,
+      {
+        id: mediaId,
+        fileName,
+        storageKey,
+        contentType,
+        sizeBytes: bytes.byteLength,
+      },
+    );
+    if (media === undefined) {
+      await store.delete(storageKey);
+      return exerciseCatalogNotFound();
+    }
+    return Response.json({ media }, { status: 201 });
+  } catch (error) {
+    try {
+      await store.delete(storageKey);
+    } catch {
+      // Preserve the metadata failure; orphan cleanup can be retried separately.
+    }
+    throw error;
+  }
+}
+
+async function exerciseCatalogPrivateMediaContent(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  organizationId: string,
+  exerciseId: string,
+  mediaId: string,
+): Promise<Response> {
+  const store = runtime.exerciseCatalogMediaStore;
+  if (store === null) return exerciseCatalogPrivateMediaUnavailable();
+  const media = (
+    await runtime.exerciseCatalog.listPrivateMedia(organizationId, exerciseId)
+  ).find((entry) => entry.id === mediaId);
+  if (media === undefined) return exerciseCatalogNotFound();
+
+  const stored = await store.get(media.storageKey, { range: request.headers });
+  if (stored === null) return exerciseCatalogPrivateMediaUnavailable();
+
+  const headers = new Headers({
+    "content-type": media.contentType,
+    "content-disposition":
+      "inline; filename*=UTF-8''" + encodeURIComponent(media.fileName),
+    "cache-control": "private, no-store",
+    "accept-ranges": "bytes",
+    "x-content-type-options": "nosniff",
+  });
+  if (typeof stored.httpEtag === "string" && stored.httpEtag.length > 0) {
+    headers.set("etag", stored.httpEtag);
+  }
+
+  let status = 200;
+  if (
+    request.headers.has("range") &&
+    stored.range !== undefined &&
+    typeof stored.range.offset === "number" &&
+    typeof stored.range.length === "number" &&
+    typeof stored.size === "number"
+  ) {
+    const start = stored.range.offset;
+    const end = start + stored.range.length - 1;
+    headers.set(
+      "content-range",
+      "bytes " + String(start) + "-" + String(end) + "/" + String(stored.size),
+    );
+    headers.set("content-length", String(stored.range.length));
+    status = 206;
+  } else if (typeof stored.size === "number") {
+    headers.set("content-length", String(stored.size));
+  }
+
+  return new Response(stored.body, { status, headers });
+}
+
+async function deleteExerciseCatalogPrivateMedia(
+  runtime: GeneratedPostgresApplicationRuntime,
+  organizationId: string,
+  exerciseId: string,
+  mediaId: string,
+): Promise<Response> {
+  const store = runtime.exerciseCatalogMediaStore;
+  if (store === null) return exerciseCatalogPrivateMediaUnavailable();
+  const media = (
+    await runtime.exerciseCatalog.listPrivateMedia(organizationId, exerciseId)
+  ).find((entry) => entry.id === mediaId);
+  if (media === undefined) return exerciseCatalogNotFound();
+
+  await store.delete(media.storageKey);
+  const deleted = await runtime.exerciseCatalog.deletePrivateMedia(
+    organizationId,
+    exerciseId,
+    mediaId,
+  );
+  if (deleted === undefined) return exerciseCatalogNotFound();
+  return Response.json({ deleted: true });
+}
+
+class PrivateExerciseVideoRequestError extends Error {
+  readonly code: "INVALID_PRIVATE_VIDEO" | "PRIVATE_VIDEO_TOO_LARGE";
+
+  constructor(
+    code: "INVALID_PRIVATE_VIDEO" | "PRIVATE_VIDEO_TOO_LARGE",
+    message: string,
+  ) {
+    super(message);
+    this.name = "PrivateExerciseVideoRequestError";
+    this.code = code;
+  }
+}
+
+async function readPrivateExerciseVideoBytes(
+  request: Request,
+): Promise<Uint8Array> {
+  const maximumBytes = ULC_EXERCISE_CATALOG_PRIVATE_VIDEO_MAX_BYTES;
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength !== null) {
+    const parsed = Number(declaredLength);
+    if (Number.isFinite(parsed) && parsed > maximumBytes) {
+      throw new PrivateExerciseVideoRequestError(
+        "PRIVATE_VIDEO_TOO_LARGE",
+        "Das private Video darf höchstens 100 MB groß sein.",
+      );
+    }
+  }
+  if (request.body === null) {
+    throw new PrivateExerciseVideoRequestError(
+      "INVALID_PRIVATE_VIDEO",
+      "Die Videodatei fehlt.",
+    );
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    total += next.value.byteLength;
+    if (total > maximumBytes) {
+      await reader.cancel();
+      throw new PrivateExerciseVideoRequestError(
+        "PRIVATE_VIDEO_TOO_LARGE",
+        "Das private Video darf höchstens 100 MB groß sein.",
+      );
+    }
+    chunks.push(next.value);
+  }
+  if (total === 0) {
+    throw new PrivateExerciseVideoRequestError(
+      "INVALID_PRIVATE_VIDEO",
+      "Die Videodatei ist leer.",
+    );
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+function exerciseCatalogPrivateMediaUnavailable(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "EXERCISE_CATALOG_PRIVATE_MEDIA_UNAVAILABLE",
+        message: "Private exercise video storage is not configured.",
+      },
+    },
+    {
+      status: 503,
+      headers: { "cache-control": "private, no-store" },
+    },
+  );
 }
 
 const EXERCISE_CREATE_FIELDS = Object.freeze([
@@ -1789,6 +2127,13 @@ const EXERCISE_UPDATE_FIELDS = EXERCISE_CREATE_FIELDS;
 const EXERCISE_DUPLICATE_FIELDS = Object.freeze([
   ...EXERCISE_CREATE_FIELDS,
   "excludeExerciseId",
+]);
+
+const EXERCISE_USAGE_FIELDS = Object.freeze([
+  "occurredAt",
+  "sourceKind",
+  "sourceRef",
+  "note",
 ]);
 
 class InvalidExerciseCatalogRequestError extends Error {}
