@@ -42,6 +42,13 @@ import {
   applyUlcExerciseCatalogImportPreview,
 } from "./exercise-catalog-import-apply";
 import {
+  normalizedPrivateVideoContentType,
+  normalizedPrivateVideoFileName,
+  privateExerciseVideoStorageKey,
+  resolveUlcExerciseCatalogObjectStore,
+  ULC_EXERCISE_CATALOG_PRIVATE_VIDEO_MAX_BYTES,
+} from "./exercise-catalog-private-media";
+import {
   UlcExerciseCatalogConflictError,
   UlcExerciseCatalogNotFoundError,
 } from "./exercise-catalog-postgres";
@@ -2805,6 +2812,8 @@ function runtimeConfiguration(
     securityLogConnectionString,
     baseURL,
     secret,
+    exerciseCatalogMediaStore:
+      resolveUlcExerciseCatalogObjectStore(env.EXERCISE_MEDIA),
   });
 }
 
