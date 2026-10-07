@@ -25,6 +25,7 @@ import {
   createUlcLinzExerciseCatalogAccessService,
   type UlcLinzExerciseCatalogAccessService,
 } from "./exercise-catalog-access";
+import type { UlcExerciseCatalogObjectStore } from "./exercise-catalog-private-media";
 import {
   createUlcExerciseCatalogRuntimeRepository,
   type UlcExerciseCatalogRuntimeMode,
@@ -88,6 +89,7 @@ export interface GeneratedPostgresApplicationRuntime {
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   u12: ReturnType<typeof createUlcU12Service>;
   exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
+  exerciseCatalogMediaStore: UlcExerciseCatalogObjectStore | null;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
   close(): Promise<void>;
 }
@@ -98,6 +100,7 @@ export interface GeneratedPostgresApplicationRuntimeOptions {
   baseURL: string;
   secret: string;
   exerciseCatalogRuntimeMode?: UlcExerciseCatalogRuntimeMode;
+  exerciseCatalogMediaStore?: UlcExerciseCatalogObjectStore | null;
 }
 
 export async function createGeneratedPostgresApplicationRuntime(
@@ -349,6 +352,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       kindertraining,
       u12,
       exerciseCatalog,
+      exerciseCatalogMediaStore: options.exerciseCatalogMediaStore ?? null,
       securityEvents,
       async close() {
         let closeError: unknown = null;
