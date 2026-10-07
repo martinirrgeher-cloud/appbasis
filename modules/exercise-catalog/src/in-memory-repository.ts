@@ -64,6 +64,7 @@ export class InMemoryExerciseCatalogRepository
     this.#assertUniqueName(stored);
     this.#assertSimilarTargets(stored);
     this.#items.set(key, stored);
+    this.#synchronizeReverseSimilarity(stored, []);
     return cloneItem(stored);
   }
 
