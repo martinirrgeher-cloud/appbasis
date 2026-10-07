@@ -345,6 +345,25 @@ async function assertApplicationRoleBoundary(sql, applicationRole) {
     );
   }
 
+  const capabilityRows = await sql.unsafe(
+    "SELECT " +
+      "has_database_privilege($1, current_database(), 'CREATE') AS database_create, " +
+      "has_schema_privilege($1, 'public', 'USAGE') AS schema_usage, " +
+      "has_schema_privilege($1, 'public', 'CREATE') AS schema_create",
+    [applicationRole],
+  );
+  if (
+    !Array.isArray(capabilityRows) ||
+    capabilityRows.length !== 1 ||
+    capabilityRows[0]?.database_create !== false ||
+    capabilityRows[0]?.schema_usage !== true ||
+    capabilityRows[0]?.schema_create !== false
+  ) {
+    throw new UlcExerciseCatalogPreviewQuiescenceExecutionError(
+      "E6G-C3C application runtime database/schema boundary is invalid.",
+    );
+  }
+
   const ownershipRows = await sql.unsafe(
     "SELECT " +
       "(SELECT count(*)::int FROM pg_catalog.pg_database " +
