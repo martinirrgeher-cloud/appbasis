@@ -13,7 +13,7 @@ export interface ExerciseCatalogDifficulty {
 export interface ExerciseCatalogDefinition {
   readonly categories: readonly ExerciseCatalogCategory[];
   readonly parameterKeys: readonly string[];
-  readonly difficulties: readonly ExerciseCatalogDifficulty[];
+  readonly difficulties?: readonly ExerciseCatalogDifficulty[];
 }
 
 export interface ExerciseCatalogParameterInput {
