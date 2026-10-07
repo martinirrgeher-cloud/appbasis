@@ -1256,12 +1256,19 @@ async function exerciseCatalogModuleResponse(
         module: {
           moduleId: "exercise_catalog",
           features: {
-            difficulty: true,
-            similarExercises: true,
-            duplicateWarnings: true,
-            usageHistory: true,
-            multipleExternalVideos: true,
-            privateVideoUpload: runtime.exerciseCatalogMediaStore !== null,
+            difficulty:
+              runtime.exerciseCatalogRuntimeMode === "standard-module",
+            similarExercises:
+              runtime.exerciseCatalogRuntimeMode === "standard-module",
+            duplicateWarnings:
+              runtime.exerciseCatalogRuntimeMode === "standard-module",
+            usageHistory:
+              runtime.exerciseCatalogRuntimeMode === "standard-module",
+            multipleExternalVideos:
+              runtime.exerciseCatalogRuntimeMode === "standard-module",
+            privateVideoUpload:
+              runtime.exerciseCatalogRuntimeMode === "standard-module" &&
+              runtime.exerciseCatalogMediaStore !== null,
           },
         },
         access: { view: true, edit: access.canEdit },
