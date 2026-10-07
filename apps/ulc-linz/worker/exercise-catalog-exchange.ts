@@ -7,6 +7,7 @@ import {
 
 import {
   ULC_EXERCISE_CATEGORIES,
+  ULC_EXERCISE_DIFFICULTIES,
   ULC_EXERCISE_PARAMETER_KEYS,
   type UlcExerciseParameterKey,
 } from "./exercise-catalog-domain";
@@ -15,6 +16,8 @@ import type {
 } from "./exercise-catalog-service";
 
 export const ULC_EXERCISE_CATALOG_EXCHANGE_VERSION =
+  "appbasis.exercise-catalog.exchange/v2";
+export const ULC_EXERCISE_CATALOG_LEGACY_EXCHANGE_VERSION =
   "appbasis.exercise-catalog.exchange/v1";
 
 export const ULC_EXERCISE_CATALOG_XLSX_CONTENT_TYPE =
@@ -67,6 +70,13 @@ export const ULC_EXERCISE_CATALOG_PARAMETER_HEADERS = Object.freeze([
   "Reihenfolge",
 ]);
 
+export const ULC_EXERCISE_CATALOG_EXTENSION_HEADERS = Object.freeze([
+  "Datensatz-Schlüssel",
+  "Schwierigkeit-Key",
+  "Weitere Video- / Weblinks",
+  "Ähnliche Übungs-IDs",
+]);
+
 const PARAMETER_META: Readonly<
   Record<
     UlcExerciseParameterKey,
@@ -117,6 +127,7 @@ export function buildUlcExerciseCatalogExchangeSheets(
   const exercises: string[][] = [[...ULC_EXERCISE_CATALOG_EXERCISE_HEADERS]];
   const groups: string[][] = [[...ULC_EXERCISE_CATALOG_GROUP_HEADERS]];
   const parameters: string[][] = [[...ULC_EXERCISE_CATALOG_PARAMETER_HEADERS]];
+  const extensions: string[][] = [[...ULC_EXERCISE_CATALOG_EXTENSION_HEADERS]];
 
   if (mode === "template") {
     const exampleKey = "beispiel-1";
@@ -146,6 +157,13 @@ export function buildUlcExerciseCatalogExchangeSheets(
         firstGroup.name,
       ]);
     }
+
+    extensions.push([
+      exampleKey,
+      "medium",
+      "",
+      "",
+    ]);
 
     parameters.push([
       exampleKey,
@@ -188,6 +206,13 @@ export function buildUlcExerciseCatalogExchangeSheets(
         item.isActive ? "ja" : "nein",
       ]);
 
+      extensions.push([
+        recordKey,
+        item.difficultyKey ?? "",
+        item.videoUrls.slice(1).join("; "),
+        item.similarExerciseIds.join("; "),
+      ]);
+
       for (const groupId of item.groupIds) {
         groups.push([
           recordKey,
@@ -225,6 +250,9 @@ export function buildUlcExerciseCatalogExchangeSheets(
   const lists: string[][] = [["Typ", "Key / ID", "Bezeichnung", "Zusatz"]];
   for (const category of ULC_EXERCISE_CATEGORIES) {
     lists.push(["Kategorie", category.key, category.label, ""]);
+  }
+  for (const difficulty of ULC_EXERCISE_DIFFICULTIES) {
+    lists.push(["Schwierigkeit", difficulty.key, difficulty.label, ""]);
   }
   for (const group of catalog.trainingGroups) {
     lists.push([
@@ -278,12 +306,16 @@ export function buildUlcExerciseCatalogExchangeSheets(
       "Parameter ausschließlich im Blatt Parameter pflegen. Erlaubte Keys stehen im Blatt Listen.",
     ],
     [
+      "Erweiterungen",
+      "Schwierigkeit, weitere externe Video-/Weblinks und ähnliche Übungs-IDs stehen im Blatt Erweiterungen; Mehrfachwerte mit Semikolon trennen.",
+    ],
+    [
       "Sicherheit",
       "Die Datei enthält keine interne Organisations-ID, Actor-ID oder persönlichen Favoriten.",
     ],
     [
       "Hinweis",
-      "Spaltennamen und Blattnamen nicht ändern; E6F2 verwendet diesen stabilen v1-Vertrag für die Vorschau.",
+      "Spaltennamen und Blattnamen nicht ändern; v2 erweitert den bisherigen v1-Vertrag um das Blatt Erweiterungen. v1-Dateien bleiben importierbar.",
     ],
   ];
 
@@ -291,6 +323,7 @@ export function buildUlcExerciseCatalogExchangeSheets(
     Object.freeze({ name: "Übungen", rows: freezeRows(exercises) }),
     Object.freeze({ name: "Gruppen", rows: freezeRows(groups) }),
     Object.freeze({ name: "Parameter", rows: freezeRows(parameters) }),
+    Object.freeze({ name: "Erweiterungen", rows: freezeRows(extensions) }),
     Object.freeze({ name: "Listen", rows: freezeRows(lists) }),
     Object.freeze({ name: "Hinweise", rows: freezeRows(notes) }),
   ]);
