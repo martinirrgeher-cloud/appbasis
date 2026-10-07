@@ -218,6 +218,15 @@ function fakeSql(queries, tables) {
       if (query.includes("pg_catalog.pg_auth_members")) {
         return [{ count: 0 }];
       }
+      if (query.includes("has_database_privilege")) {
+        return [
+          {
+            database_create: false,
+            schema_usage: true,
+            schema_create: false,
+          },
+        ];
+      }
       if (
         query.includes("AS database_count") &&
         query.includes("AS relation_count")
