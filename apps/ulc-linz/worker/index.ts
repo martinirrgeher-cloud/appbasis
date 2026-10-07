@@ -3231,13 +3231,17 @@ function runtimeConfiguration(
     return null;
   }
 
+  const exerciseCatalogMediaStore =
+    resolveUlcExerciseCatalogObjectStore(env.EXERCISE_MEDIA);
+
   return Object.freeze({
     connectionString,
     securityLogConnectionString,
     baseURL,
     secret,
-    exerciseCatalogMediaStore:
-      resolveUlcExerciseCatalogObjectStore(env.EXERCISE_MEDIA),
+    ...(exerciseCatalogMediaStore === null
+      ? {}
+      : { exerciseCatalogMediaStore }),
   });
 }
 
