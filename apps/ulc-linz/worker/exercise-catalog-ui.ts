@@ -1178,6 +1178,15 @@ function initializeExerciseCatalogFilters() {
     })),
   );
   replaceExerciseCatalogSelectOptions(
+    elements.exerciseCatalogDifficulty,
+    [{ value: "", label: "Keine Angabe" }].concat(
+      EXERCISE_DIFFICULTIES.map((difficulty) => ({
+        value: difficulty.key,
+        label: difficulty.label,
+      })),
+    ),
+  );
+  replaceExerciseCatalogSelectOptions(
     elements.exerciseCatalogGroupFilter,
     [{ value: "", label: "Alle Gruppen" }].concat(
       exerciseCatalogGroups.map((group) => ({
@@ -1208,6 +1217,7 @@ function replaceExerciseCatalogSelectOptions(select, options) {
 function exerciseCatalogActiveFilterCount() {
   return [
     Boolean(elements.exerciseCatalogCategoryFilter?.value),
+    Boolean(elements.exerciseCatalogDifficultyFilter?.value),
     Boolean(elements.exerciseCatalogGroupFilter?.value),
     Boolean((elements.exerciseCatalogMaterialFilter?.value || "").trim()),
     (elements.exerciseCatalogFavoriteFilter?.value || "all") !== "all",
@@ -1246,6 +1256,7 @@ function setExerciseCatalogFilterOpen(open) {
 
 function resetExerciseCatalogFilters() {
   if (elements.exerciseCatalogCategoryFilter) elements.exerciseCatalogCategoryFilter.value = "";
+  if (elements.exerciseCatalogDifficultyFilter) elements.exerciseCatalogDifficultyFilter.value = "";
   if (elements.exerciseCatalogGroupFilter) elements.exerciseCatalogGroupFilter.value = "";
   if (elements.exerciseCatalogMaterialFilter) elements.exerciseCatalogMaterialFilter.value = "";
   if (elements.exerciseCatalogFavoriteFilter) elements.exerciseCatalogFavoriteFilter.value = "all";
@@ -1256,7 +1267,7 @@ function resetExerciseCatalogFilters() {
 }
 
 function setExerciseCatalogEditorTab(tab) {
-  const allowed = ["basis", "instructions", "groups", "parameters"];
+  const allowed = ["basis", "instructions", "groups", "parameters", "similar", "usage", "media"];
   exerciseCatalogEditorTab = allowed.includes(tab) ? tab : "basis";
   for (const control of document.querySelectorAll("[data-exercise-catalog-tab]")) {
     const active = control.dataset.exerciseCatalogTab === exerciseCatalogEditorTab;
@@ -1293,6 +1304,7 @@ function prepareExerciseCatalogView() {
 function exerciseCatalogFilteredItems() {
   const query = (elements.exerciseCatalogSearch?.value || "").trim().toLocaleLowerCase("de");
   const category = elements.exerciseCatalogCategoryFilter?.value || "";
+  const difficulty = elements.exerciseCatalogDifficultyFilter?.value || "";
   const groupId = elements.exerciseCatalogGroupFilter?.value || "";
   const material = (elements.exerciseCatalogMaterialFilter?.value || "").trim().toLocaleLowerCase("de");
   const favorite = elements.exerciseCatalogFavoriteFilter?.value || "all";
@@ -1301,12 +1313,18 @@ function exerciseCatalogFilteredItems() {
 
   return exerciseCatalogItems.filter((item) => {
     if (category && item.categoryKey !== category) return false;
+    if (
+      difficulty &&
+      (difficulty === "none"
+        ? item.difficultyKey !== null
+        : item.difficultyKey !== difficulty)
+    ) return false;
     if (groupId && !item.groupIds.includes(groupId)) return false;
     if (favorite === "favorite" && item.isFavorite !== true) return false;
     if (status === "active" && item.isActive !== true) return false;
     if (status === "archived" && item.isActive !== false) return false;
-    if (video === "with" && !item.videoUrl) return false;
-    if (video === "without" && item.videoUrl) return false;
+    if (video === "with" && item.videoUrls.length === 0) return false;
+    if (video === "without" && item.videoUrls.length > 0) return false;
     if (
       material &&
       !item.equipment.some((value) =>
@@ -1379,6 +1397,9 @@ function renderExerciseCatalogList() {
     meta.textContent = [
       categoryLabel(item.categoryKey),
       item.subcategory,
+      EXERCISE_DIFFICULTIES.find(
+        (difficulty) => difficulty.key === item.difficultyKey,
+      )?.label,
       item.goal,
     ].filter(Boolean).join(" · ");
 
@@ -1392,7 +1413,8 @@ function renderExerciseCatalogList() {
       item.equipment.length > 0 ? item.equipment.join(", ") : null,
       groupNames.length > 0 ? groupNames.join(", ") : null,
       item.parameters.length > 0 ? String(item.parameters.length) + " Parameter" : null,
-      item.videoUrl ? "Link" : null,
+      item.similarExerciseIds.length > 0 ? String(item.similarExerciseIds.length) + " ähnlich" : null,
+      item.videoUrls.length > 0 ? String(item.videoUrls.length) + " Link(s)" : null,
     ].filter(Boolean).join(" · ") || "Keine Zusatzangaben";
 
     main.append(title, meta, info);
