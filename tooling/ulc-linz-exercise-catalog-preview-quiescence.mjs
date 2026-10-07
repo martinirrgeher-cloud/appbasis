@@ -60,6 +60,11 @@ export async function applyUlcExerciseCatalogPreviewSourceWriteQuiescence(
   const applicationRole = requiredRoleName(credentials.application.user);
   const plan = await loadPlan({ repositoryRoot });
   assertCutoverPlan(plan);
+  await verifyApplicationCredential({
+    databaseFactory,
+    applicationDatabaseUrl,
+    expectedRole: applicationRole,
+  });
 
   let database;
   try {
@@ -170,6 +175,11 @@ export async function verifyUlcExerciseCatalogPreviewSourceWriteQuiescence(
   const applicationRole = requiredRoleName(credentials.application.user);
   const plan = await loadPlan({ repositoryRoot });
   assertCutoverPlan(plan);
+  await verifyApplicationCredential({
+    databaseFactory,
+    applicationDatabaseUrl,
+    expectedRole: applicationRole,
+  });
 
   let database;
   try {
@@ -206,6 +216,37 @@ export async function verifyUlcExerciseCatalogPreviewSourceWriteQuiescence(
     });
   } finally {
     await database.client.end();
+  }
+}
+
+async function verifyApplicationCredential({
+  databaseFactory,
+  applicationDatabaseUrl,
+  expectedRole,
+}) {
+  let database;
+  try {
+    database = databaseFactory(applicationDatabaseUrl);
+    const rows = await database.client.unsafe(
+      "SELECT current_database()::text AS database_name, " +
+        "current_user::text AS principal_name",
+    );
+    if (
+      !Array.isArray(rows) ||
+      rows.length !== 1 ||
+      rows[0]?.database_name !== EXPECTED_DATABASE ||
+      rows[0]?.principal_name !== expectedRole
+    ) {
+      throw new Error("identity mismatch");
+    }
+  } catch {
+    throw new UlcExerciseCatalogPreviewQuiescenceExecutionError(
+      "E6G-C3C application runtime credential authentication failed.",
+    );
+  } finally {
+    if (database !== undefined) {
+      await database.client.end().catch(() => {});
+    }
   }
 }
 
