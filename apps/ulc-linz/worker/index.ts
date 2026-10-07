@@ -45,6 +45,7 @@ import {
   UlcExerciseCatalogConflictError,
   UlcExerciseCatalogNotFoundError,
 } from "./exercise-catalog-postgres";
+import { UlcExerciseCatalogWriteQuiescedError } from "./exercise-catalog-runtime";
 import { UlcExerciseCatalogGroupNotFoundError } from "./exercise-catalog-service";
 import type { UlcLinzKindertrainingAccessScope } from "./kindertraining-access";
 import {
@@ -1807,6 +1808,21 @@ async function authorizeExerciseCatalogRequest(
 }
 
 function exerciseCatalogErrorResponse(error: unknown): Response {
+  if (error instanceof UlcExerciseCatalogWriteQuiescedError) {
+    return Response.json(
+      {
+        error: {
+          code: error.code,
+          message:
+            "Exercise catalog writes are temporarily blocked for the guarded runtime cutover.",
+        },
+      },
+      {
+        status: 503,
+        headers: { "retry-after": "60" },
+      },
+    );
+  }
   if (
     error instanceof UlcExerciseCatalogValidationError ||
     error instanceof InvalidExerciseCatalogRequestError
