@@ -2825,9 +2825,20 @@ async function refreshExerciseCatalogAfterImport() {
   const payload = await requestJson("/api/modules/exercise-catalog");
   const items = payload?.catalog?.items;
   const groups = payload?.catalog?.trainingGroups;
+  const features = payload?.module?.features;
   const edit = payload?.access?.edit;
   if (
     payload?.module?.moduleId !== "exercise_catalog" ||
+    features === null ||
+    typeof features !== "object" ||
+    [
+      "difficulty",
+      "similarExercises",
+      "duplicateWarnings",
+      "usageHistory",
+      "multipleExternalVideos",
+      "privateVideoUpload",
+    ].some((key) => typeof features[key] !== "boolean") ||
     payload?.access?.view !== true ||
     typeof edit !== "boolean" ||
     !Array.isArray(items) ||
@@ -2839,6 +2850,7 @@ async function refreshExerciseCatalogAfterImport() {
   }
   exerciseCatalogReady = true;
   exerciseCatalogCanEdit = edit;
+  exerciseCatalogFeatures = { ...features };
   exerciseCatalogItems = items.slice();
   exerciseCatalogGroups = groups.slice();
   initializeExerciseCatalogFilters();
