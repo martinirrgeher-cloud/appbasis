@@ -113,7 +113,7 @@ export function assertExerciseCatalogDefinition(
     typeof value !== "object" ||
     !Array.isArray(value.categories) ||
     !Array.isArray(value.parameterKeys) ||
-    !Array.isArray(value.difficulties)
+    (value.difficulties !== undefined && !Array.isArray(value.difficulties))
   ) {
     throw new ExerciseCatalogValidationError(
       "Exercise catalog definition is invalid.",
