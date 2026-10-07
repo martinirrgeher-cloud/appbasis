@@ -457,6 +457,47 @@ export const ULC_EXERCISE_CATALOG_CSS = `
   color: var(--secondary);
   font-size: .78rem;
 }
+.exercise-catalog-editor-tabs {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.exercise-catalog-usage-summary {
+  margin: 10px 0;
+  color: var(--secondary);
+  font-size: .8rem;
+}
+.exercise-catalog-usage-list,
+.exercise-catalog-media-list,
+#exercise-catalog-links {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.exercise-catalog-usage-entry,
+.exercise-catalog-media-entry {
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.exercise-catalog-media-entry video {
+  width: 100%;
+  max-height: 240px;
+  border-radius: 8px;
+  background: #000;
+}
+.exercise-catalog-media-entry__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.exercise-catalog-link-row a {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 @media (min-width: 640px) {
   .exercise-catalog-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .exercise-catalog-search { grid-column: 1 / -1; }
