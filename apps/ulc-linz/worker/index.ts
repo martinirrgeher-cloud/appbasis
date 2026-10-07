@@ -12,6 +12,9 @@ import {
   type AthletesExchangeMode,
 } from "@appbasis/athletes";
 import {
+  ExerciseCatalogValidationError as StandardExerciseCatalogValidationError,
+} from "@appbasis/exercise-catalog";
+import {
   COUNTDOWN_CAPABILITIES,
   createCountdownTimeline,
   normalizeCountdownConfiguration,
@@ -1907,6 +1910,7 @@ function exerciseCatalogErrorResponse(error: unknown): Response {
   }
   if (
     error instanceof UlcExerciseCatalogValidationError ||
+    error instanceof StandardExerciseCatalogValidationError ||
     error instanceof InvalidExerciseCatalogRequestError
   ) {
     return invalidExerciseCatalogInput();
