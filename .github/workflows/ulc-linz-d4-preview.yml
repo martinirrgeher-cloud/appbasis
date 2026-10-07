@@ -390,6 +390,7 @@ jobs:
               process.env.APPBASIS_SECURITY_LOG_HYPERDRIVE_ID,
             baseURL: process.env.APPBASIS_GENERATED_PREVIEW_URL,
             entrypoint: process.env.APPBASIS_ENTRYPOINT,
+            r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
             outputPath,
           };
           if (process.env.APPBASIS_OPERATION === "bootstrap") {
