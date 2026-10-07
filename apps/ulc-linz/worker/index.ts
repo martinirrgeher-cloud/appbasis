@@ -1250,7 +1250,17 @@ async function exerciseCatalogModuleResponse(
         access.actorPrincipalId,
       );
       return Response.json({
-        module: { moduleId: "exercise_catalog" },
+        module: {
+          moduleId: "exercise_catalog",
+          features: {
+            difficulty: true,
+            similarExercises: true,
+            duplicateWarnings: true,
+            usageHistory: true,
+            multipleExternalVideos: true,
+            privateVideoUpload: runtime.exerciseCatalogMediaStore !== null,
+          },
+        },
         access: { view: true, edit: access.canEdit },
         catalog,
       });
@@ -1709,13 +1719,16 @@ const EXERCISE_CREATE_FIELDS = Object.freeze([
   "name",
   "categoryKey",
   "subcategory",
+  "difficultyKey",
   "goal",
   "description",
   "coachingCues",
   "commonMistakes",
   "equipment",
   "videoUrl",
+  "videoUrls",
   "groupIds",
+  "similarExerciseIds",
   "parameters",
 ]);
 
