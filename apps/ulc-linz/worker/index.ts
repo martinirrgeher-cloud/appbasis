@@ -1328,6 +1328,15 @@ async function exerciseCatalogWorkbookResponse(
   });
 }
 
+function isExerciseCatalogImportContentType(value: string): boolean {
+  return (
+    value === ULC_EXERCISE_CATALOG_XLSX_CONTENT_TYPE ||
+    value === "application/xml" ||
+    value === "text/xml" ||
+    value === "application/vnd.ms-excel"
+  );
+}
+
 async function exerciseCatalogImportPreviewResponse(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
@@ -1352,12 +1361,12 @@ async function exerciseCatalogImportPreviewResponse(
     .split(";", 1)[0]!
     .trim()
     .toLocaleLowerCase("en");
-  if (contentType !== ULC_EXERCISE_CATALOG_XLSX_CONTENT_TYPE) {
+  if (!isExerciseCatalogImportContentType(contentType)) {
     return Response.json(
       {
         error: {
           code: "INVALID_IMPORT_CONTENT_TYPE",
-          message: "Only XLSX files are supported for exercise catalog import preview.",
+          message: "Only XLSX or Excel XML files are supported for exercise catalog import preview.",
         },
       },
       {
@@ -1457,12 +1466,12 @@ async function exerciseCatalogImportApplyResponse(
     .split(";", 1)[0]!
     .trim()
     .toLocaleLowerCase("en");
-  if (contentType !== ULC_EXERCISE_CATALOG_XLSX_CONTENT_TYPE) {
+  if (!isExerciseCatalogImportContentType(contentType)) {
     return Response.json(
       {
         error: {
           code: "INVALID_IMPORT_CONTENT_TYPE",
-          message: "Only XLSX files are supported for exercise catalog import apply.",
+          message: "Only XLSX or Excel XML files are supported for exercise catalog import apply.",
         },
       },
       {
