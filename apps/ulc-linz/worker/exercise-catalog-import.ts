@@ -901,13 +901,15 @@ function sameImportableExercise(
     existing.name === candidate.name &&
     existing.categoryKey === candidate.categoryKey &&
     existing.subcategory === candidate.subcategory &&
+    existing.difficultyKey === candidate.difficultyKey &&
     existing.goal === candidate.goal &&
     existing.description === candidate.description &&
     existing.coachingCues === candidate.coachingCues &&
     existing.commonMistakes === candidate.commonMistakes &&
     arraysEqual(existing.equipment, candidate.equipment) &&
-    existing.videoUrl === candidate.videoUrl &&
+    arraysEqual(existing.videoUrls, candidate.videoUrls) &&
     arraysEqual(existing.groupIds, candidate.groupIds) &&
+    arraysEqual(existing.similarExerciseIds, candidate.similarExerciseIds) &&
     JSON.stringify(existing.parameters) === JSON.stringify(candidate.parameters) &&
     existing.isActive === candidate.isActive
   );
@@ -918,6 +920,9 @@ function draftFromSource(
   normalized: ReturnType<typeof createUlcExerciseCatalogItem> | null,
   groupIds: readonly string[],
   parameters: readonly NonNullable<CreateUlcExerciseCatalogItemInput["parameters"]>[number][],
+  similarExerciseIds: readonly string[],
+  videoUrls: readonly string[],
+  difficultyKey: string | null,
   matchedExerciseId: string | null,
 ): UlcExerciseCatalogImportDraft {
   if (normalized !== null) {
@@ -926,13 +931,16 @@ function draftFromSource(
       name: normalized.name,
       categoryKey: normalized.categoryKey,
       subcategory: normalized.subcategory,
+      difficultyKey: normalized.difficultyKey,
       goal: normalized.goal,
       description: normalized.description,
       coachingCues: normalized.coachingCues,
       commonMistakes: normalized.commonMistakes,
       equipment: normalized.equipment,
       videoUrl: normalized.videoUrl,
+      videoUrls: normalized.videoUrls,
       groupIds: normalized.groupIds,
+      similarExerciseIds: normalized.similarExerciseIds,
       parameters: normalized.parameters,
       isActive: normalized.isActive,
       isFavorite: false as const,
@@ -944,13 +952,16 @@ function draftFromSource(
     name: source.name,
     categoryKey: source.categoryKey,
     subcategory: source.subcategory,
+    difficultyKey,
     goal: source.goal,
     description: source.description,
     coachingCues: source.coachingCues,
     commonMistakes: source.commonMistakes,
     equipment: source.equipment,
-    videoUrl: source.videoUrl,
+    videoUrl: videoUrls[0] ?? source.videoUrl,
+    videoUrls: Object.freeze([...videoUrls]),
     groupIds,
+    similarExerciseIds: Object.freeze([...similarExerciseIds]),
     parameters: Object.freeze(
       parameters.map((parameter) =>
         Object.freeze({
