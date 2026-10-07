@@ -499,6 +499,42 @@ export async function previewUlcExerciseCatalogImport(
       }
     }
 
+    if (
+      contractVersion === ULC_EXERCISE_CATALOG_LEGACY_EXCHANGE_VERSION &&
+      existing !== null &&
+      normalized !== null &&
+      !rowIssues.some((candidate) => candidate.level === "error")
+    ) {
+      try {
+        normalized = createUlcExerciseCatalogItem(
+          {
+            ...rawInput,
+            difficultyKey: existing.difficultyKey,
+            videoUrl: existing.videoUrl,
+            videoUrls: existing.videoUrls,
+            similarExerciseIds: existing.similarExerciseIds,
+          },
+          {
+            id: existing.id,
+            organizationId: "import-preview",
+          },
+        );
+      } catch (error) {
+        rowIssues.push(
+          issue(
+            "error",
+            "DOMAIN_VALIDATION",
+            error instanceof UlcExerciseCatalogValidationError
+              ? germanValidationMessage(error.message)
+              : "Die bestehenden Erweiterungsdaten konnten nicht sicher übernommen werden.",
+            "Übungen",
+            source.rowNumber,
+            null,
+          ),
+        );
+      }
+    }
+
     const unchanged =
       normalized !== null &&
       existing !== null &&
