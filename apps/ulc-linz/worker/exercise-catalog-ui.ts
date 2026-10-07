@@ -1639,6 +1639,314 @@ function closeExerciseCatalogEditor(force = false) {
   return true;
 }
 
+function renderExerciseCatalogExternalLinks(urls) {
+  if (elements.exerciseCatalogLinks) elements.exerciseCatalogLinks.replaceChildren();
+  const values = Array.isArray(urls) ? urls.filter((value) => typeof value === "string") : [];
+  if (elements.exerciseCatalogLinkRow) {
+    elements.exerciseCatalogLinkRow.hidden = values.length === 0;
+  }
+  for (const [index, url] of values.entries()) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.rel = "noopener noreferrer";
+    link.target = "_blank";
+    link.textContent = values.length === 1
+      ? "Video / Link öffnen"
+      : "Video / Link " + String(index + 1) + " öffnen";
+    elements.exerciseCatalogLinks?.append(link);
+  }
+}
+
+function renderExerciseCatalogSimilarChecks(selectedIds, currentId) {
+  const container = elements.exerciseCatalogSimilar;
+  if (!container) return;
+  container.replaceChildren();
+  const candidates = exerciseCatalogItems
+    .filter((item) => item.id !== currentId && item.isActive)
+    .slice()
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
+    );
+  if (candidates.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "exercise-catalog-readonly";
+    empty.textContent = "Keine weiteren aktiven Übungen vorhanden.";
+    container.append(empty);
+    return;
+  }
+  for (const item of candidates) {
+    const label = document.createElement("label");
+    label.className = "exercise-catalog-check";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = item.id;
+    input.checked = selectedIds.includes(item.id);
+    input.dataset.exerciseCatalogSimilar = item.id;
+    const text = document.createElement("span");
+    text.textContent =
+      item.name + " · " + categoryLabel(item.categoryKey);
+    label.append(input, text);
+    container.append(label);
+  }
+}
+
+function resetExerciseCatalogUsagePanel() {
+  if (elements.exerciseCatalogUsageSummary) {
+    elements.exerciseCatalogUsageSummary.textContent =
+      "Noch keine Verwendung erfasst.";
+  }
+  if (elements.exerciseCatalogUsageList) {
+    elements.exerciseCatalogUsageList.replaceChildren();
+  }
+}
+
+async function loadExerciseCatalogUsage(exerciseId) {
+  resetExerciseCatalogUsagePanel();
+  if (!exerciseCatalogFeatures.usageHistory || !exerciseId) return;
+  try {
+    const payload = await requestJson(
+      "/api/modules/exercise-catalog/" +
+        encodeURIComponent(exerciseId) +
+        "/usage",
+    );
+    if (exerciseCatalogSelectedId !== exerciseId) return;
+    const summary = payload?.summary;
+    const events = Array.isArray(payload?.events) ? payload.events : [];
+    if (elements.exerciseCatalogUsageSummary) {
+      const count = Number.isSafeInteger(summary?.usageCount)
+        ? summary.usageCount
+        : events.length;
+      const last = typeof summary?.lastUsedAt === "string"
+        ? new Date(summary.lastUsedAt).toLocaleString("de-AT")
+        : "noch nie";
+      elements.exerciseCatalogUsageSummary.textContent =
+        String(count) + " Verwendung(en) · zuletzt " + last;
+    }
+    if (elements.exerciseCatalogUsageList) {
+      for (const entry of events) {
+        const article = document.createElement("article");
+        article.className = "exercise-catalog-usage-entry";
+        const title = document.createElement("strong");
+        title.textContent =
+          typeof entry?.occurredAt === "string"
+            ? new Date(entry.occurredAt).toLocaleString("de-AT")
+            : "Verwendung";
+        const detail = document.createElement("span");
+        detail.textContent = [
+          typeof entry?.sourceKind === "string" ? entry.sourceKind : null,
+          typeof entry?.sourceRef === "string" ? entry.sourceRef : null,
+          typeof entry?.note === "string" ? entry.note : null,
+        ].filter(Boolean).join(" · ");
+        article.append(title, detail);
+        elements.exerciseCatalogUsageList.append(article);
+      }
+    }
+  } catch {
+    if (elements.exerciseCatalogUsageSummary) {
+      elements.exerciseCatalogUsageSummary.textContent =
+        "Verwendung konnte nicht geladen werden.";
+    }
+  }
+}
+
+async function recordExerciseCatalogUsage() {
+  const id = exerciseCatalogSelectedId;
+  if (
+    !id ||
+    !exerciseCatalogCanEdit ||
+    !exerciseCatalogFeatures.usageHistory ||
+    exerciseCatalogBusy
+  ) return;
+  setExerciseCatalogBusy(true);
+  try {
+    await requestJson(
+      "/api/modules/exercise-catalog/" + encodeURIComponent(id) + "/usage",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          sourceKind: "manual",
+          note: "Manuell im Übungskatalog erfasst",
+        }),
+      },
+    );
+    await loadExerciseCatalogUsage(id);
+    showMessage(elements.exerciseCatalogSuccess, "Verwendung wurde erfasst.");
+  } catch {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Die Verwendung konnte nicht erfasst werden.",
+    );
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
+}
+
+function resetExerciseCatalogMediaPanel() {
+  if (elements.exerciseCatalogMediaList) {
+    elements.exerciseCatalogMediaList.replaceChildren();
+  }
+}
+
+async function loadExerciseCatalogPrivateMedia(exerciseId) {
+  resetExerciseCatalogMediaPanel();
+  if (!exerciseId) return;
+  try {
+    const payload = await requestJson(
+      "/api/modules/exercise-catalog/" +
+        encodeURIComponent(exerciseId) +
+        "/private-media",
+    );
+    if (exerciseCatalogSelectedId !== exerciseId) return;
+    const media = Array.isArray(payload?.media) ? payload.media : [];
+    if (elements.exerciseCatalogMediaHint) {
+      elements.exerciseCatalogMediaHint.textContent =
+        payload?.available === true
+          ? "Private Videos sind nur für berechtigte Benutzer abrufbar."
+          : "Privater Videospeicher ist in dieser Umgebung noch nicht konfiguriert.";
+    }
+    if (elements.exerciseCatalogMediaUpload) {
+      elements.exerciseCatalogMediaUpload.hidden =
+        payload?.available !== true || !exerciseCatalogCanEdit;
+    }
+    renderExerciseCatalogPrivateMedia(exerciseId, media);
+  } catch (error) {
+    if (elements.exerciseCatalogMediaHint) {
+      elements.exerciseCatalogMediaHint.textContent =
+        error?.status === 503
+          ? "Privater Videospeicher ist in dieser Umgebung noch nicht konfiguriert."
+          : "Private Videos konnten nicht geladen werden.";
+    }
+  }
+}
+
+function renderExerciseCatalogPrivateMedia(exerciseId, media) {
+  const container = elements.exerciseCatalogMediaList;
+  if (!container) return;
+  container.replaceChildren();
+  if (media.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "exercise-catalog-readonly";
+    empty.textContent = "Keine privaten Videos vorhanden.";
+    container.append(empty);
+    return;
+  }
+  for (const entry of media) {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      typeof entry.id !== "string" ||
+      typeof entry.fileName !== "string"
+    ) continue;
+    const article = document.createElement("article");
+    article.className = "exercise-catalog-media-entry";
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName;
+    const video = document.createElement("video");
+    video.controls = true;
+    video.preload = "metadata";
+    video.src =
+      "/api/modules/exercise-catalog/" +
+      encodeURIComponent(exerciseId) +
+      "/private-media/" +
+      encodeURIComponent(entry.id) +
+      "/content";
+    const actions = document.createElement("div");
+    actions.className = "exercise-catalog-media-entry__actions";
+    if (exerciseCatalogCanEdit) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "button button--danger";
+      remove.textContent = "Löschen";
+      remove.dataset.exerciseCatalogMediaDelete = entry.id;
+      actions.append(remove);
+    }
+    article.append(title, video, actions);
+    container.append(article);
+  }
+}
+
+async function uploadExerciseCatalogPrivateVideo(file) {
+  const id = exerciseCatalogSelectedId;
+  if (
+    !id ||
+    !file ||
+    !exerciseCatalogCanEdit ||
+    !exerciseCatalogFeatures.privateVideoUpload ||
+    exerciseCatalogBusy
+  ) return;
+  if (!String(file.type || "").startsWith("video/")) {
+    showMessage(elements.exerciseCatalogMessage, "Bitte eine Videodatei auswählen.");
+    return;
+  }
+  if (file.size > 100 * 1024 * 1024) {
+    showMessage(elements.exerciseCatalogMessage, "Das private Video darf höchstens 100 MB groß sein.");
+    return;
+  }
+
+  setExerciseCatalogBusy(true);
+  try {
+    const response = await fetch(
+      "/api/modules/exercise-catalog/" +
+        encodeURIComponent(id) +
+        "/private-media",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": file.type,
+          "x-appbasis-file-name": encodeURIComponent(file.name),
+        },
+        credentials: "same-origin",
+        body: file,
+      },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload?.error?.message || "PRIVATE_VIDEO_UPLOAD_FAILED");
+      error.status = response.status;
+      throw error;
+    }
+    await loadExerciseCatalogPrivateMedia(id);
+    showMessage(elements.exerciseCatalogSuccess, "Privates Video wurde hochgeladen.");
+  } catch (error) {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      error?.status === 413
+        ? "Das private Video darf höchstens 100 MB groß sein."
+        : error?.status === 503
+          ? "Privater Videospeicher ist noch nicht konfiguriert."
+          : "Das private Video konnte nicht hochgeladen werden.",
+    );
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
+}
+
+async function deleteExerciseCatalogPrivateVideo(mediaId) {
+  const id = exerciseCatalogSelectedId;
+  if (!id || !mediaId || !exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  if (!window.confirm("Privates Video wirklich löschen?")) return;
+  setExerciseCatalogBusy(true);
+  try {
+    await requestJson(
+      "/api/modules/exercise-catalog/" +
+        encodeURIComponent(id) +
+        "/private-media/" +
+        encodeURIComponent(mediaId),
+      { method: "DELETE" },
+    );
+    await loadExerciseCatalogPrivateMedia(id);
+    showMessage(elements.exerciseCatalogSuccess, "Privates Video wurde gelöscht.");
+  } catch {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Das private Video konnte nicht gelöscht werden.",
+    );
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
+}
+
 function renderExerciseCatalogGroupChecks(selectedIds) {
   const container = elements.exerciseCatalogGroups;
   if (!container) return;
