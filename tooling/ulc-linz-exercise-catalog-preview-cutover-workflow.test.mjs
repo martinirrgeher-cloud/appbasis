@@ -75,6 +75,14 @@ test("C3C standard cutover proves live quiescence, database guard and final equa
   assert.ok(equality < standardDeploy);
   assert.match(
     yaml,
-    /exerciseCatalogRuntimeMode' <<<"\$HEALTH"\)" = 'legacy-read-writes-blocked'/,
+    /APPBASIS_EXPECTED_MODE: legacy-read-writes-blocked[\s\S]*ulc-linz-exercise-catalog-preview-runtime-smoke\.mjs/,
+  );
+  assert.equal(
+    (
+      yaml.match(
+        /run: node \.\/tooling\/ulc-linz-exercise-catalog-preview-runtime-smoke\.mjs/g,
+      ) ?? []
+    ).length,
+    3,
   );
 });
