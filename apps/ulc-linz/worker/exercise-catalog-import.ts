@@ -6,17 +6,21 @@ import {
 
 import {
   ULC_EXERCISE_CATEGORIES,
+  ULC_EXERCISE_DIFFICULTIES,
   ULC_EXERCISE_PARAMETER_KEYS,
   UlcExerciseCatalogValidationError,
   createUlcExerciseCatalogItem,
   type CreateUlcExerciseCatalogItemInput,
   type UlcExerciseCategoryKey,
+  type UlcExerciseDifficultyKey,
   type UlcExerciseParameterInputType,
   type UlcExerciseParameterKey,
 } from "./exercise-catalog-domain";
 import {
   ULC_EXERCISE_CATALOG_EXCHANGE_VERSION,
+  ULC_EXERCISE_CATALOG_LEGACY_EXCHANGE_VERSION,
   ULC_EXERCISE_CATALOG_EXERCISE_HEADERS,
+  ULC_EXERCISE_CATALOG_EXTENSION_HEADERS,
   ULC_EXERCISE_CATALOG_GROUP_HEADERS,
   ULC_EXERCISE_CATALOG_PARAMETER_HEADERS,
 } from "./exercise-catalog-exchange";
@@ -38,6 +42,11 @@ const REQUIRED_SHEETS = Object.freeze([
   "Hinweise",
 ]);
 
+const V2_REQUIRED_SHEETS = Object.freeze([
+  ...REQUIRED_SHEETS,
+  "Erweiterungen",
+]);
+
 export type UlcExerciseCatalogImportAction = "create" | "update" | "skip";
 
 export interface UlcExerciseCatalogImportIssue {
@@ -54,13 +63,16 @@ export interface UlcExerciseCatalogImportDraft {
   readonly name: string;
   readonly categoryKey: string;
   readonly subcategory: string | null;
+  readonly difficultyKey: string | null;
   readonly goal: string | null;
   readonly description: string | null;
   readonly coachingCues: string | null;
   readonly commonMistakes: string | null;
   readonly equipment: readonly string[];
   readonly videoUrl: string | null;
+  readonly videoUrls: readonly string[];
   readonly groupIds: readonly string[];
+  readonly similarExerciseIds: readonly string[];
   readonly parameters: readonly {
     readonly key: string;
     readonly label: string;
@@ -151,6 +163,15 @@ interface GroupSource {
   readonly exerciseName: string | null;
   readonly groupId: string | null;
   readonly groupName: string | null;
+}
+
+interface ExtensionSource {
+  readonly rowNumber: number;
+  readonly recordKey: string;
+  readonly difficultyKey: string | null;
+  readonly additionalVideoUrls: readonly string[];
+  readonly similarExerciseIds: readonly string[];
+  readonly issues: readonly UlcExerciseCatalogImportIssue[];
 }
 
 interface ParameterSource {
