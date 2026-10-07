@@ -1909,6 +1909,54 @@ async function saveExerciseCatalogItem(event) {
     return;
   }
 
+  if (exerciseCatalogFeatures.duplicateWarnings) {
+    try {
+      const duplicatePayload = await requestJson(
+        "/api/modules/exercise-catalog/duplicates",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...body,
+            excludeExerciseId: exerciseCatalogSelectedId,
+          }),
+        },
+      );
+      const candidates = Array.isArray(duplicatePayload?.candidates)
+        ? duplicatePayload.candidates
+        : [];
+      if (candidates.length > 0) {
+        const preview = candidates
+          .slice(0, 3)
+          .map(
+            (candidate) =>
+              "• " +
+              String(candidate.name || candidate.exerciseId || "Übung") +
+              " (" +
+              String(Math.round(Number(candidate.score || 0) * 100)) +
+              "%)",
+          )
+          .join("\n");
+        if (
+          !window.confirm(
+            "Mögliche Dublette erkannt:\n" +
+              preview +
+              "\n\nTrotzdem speichern?",
+          )
+        ) {
+          setExerciseCatalogBusy(false);
+          return;
+        }
+      }
+    } catch {
+      showMessage(
+        elements.exerciseCatalogMessage,
+        "Die Dublettenprüfung konnte nicht abgeschlossen werden. Bitte erneut versuchen.",
+      );
+      setExerciseCatalogBusy(false);
+      return;
+    }
+  }
+
   const path = exerciseCatalogSelectedId
     ? "/api/modules/exercise-catalog/" +
       encodeURIComponent(exerciseCatalogSelectedId) +
