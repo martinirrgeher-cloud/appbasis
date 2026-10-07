@@ -1047,10 +1047,20 @@ function isExerciseCatalogItem(item) {
     typeof item.name !== "string" ||
     item.name.length < 2 ||
     !EXERCISE_CATEGORIES.some((category) => category.key === item.categoryKey) ||
+    (item.difficultyKey !== null &&
+      !EXERCISE_DIFFICULTIES.some(
+        (difficulty) => difficulty.key === item.difficultyKey,
+      )) ||
     !Array.isArray(item.equipment) ||
     item.equipment.some((value) => typeof value !== "string") ||
+    !Array.isArray(item.videoUrls) ||
+    item.videoUrls.some((value) => typeof value !== "string") ||
+    (item.videoUrl !== null && typeof item.videoUrl !== "string") ||
+    item.videoUrl !== (item.videoUrls[0] || null) ||
     !Array.isArray(item.groupIds) ||
     item.groupIds.some((value) => typeof value !== "string") ||
+    !Array.isArray(item.similarExerciseIds) ||
+    item.similarExerciseIds.some((value) => typeof value !== "string") ||
     !Array.isArray(item.parameters) ||
     typeof item.isActive !== "boolean" ||
     typeof item.isFavorite !== "boolean"
@@ -1108,9 +1118,20 @@ async function bootstrapExerciseCatalog() {
     const payload = await requestJson("/api/modules/exercise-catalog");
     const items = payload?.catalog?.items;
     const groups = payload?.catalog?.trainingGroups;
+    const features = payload?.module?.features;
     const edit = payload?.access?.edit;
     if (
       payload?.module?.moduleId !== "exercise_catalog" ||
+      features === null ||
+      typeof features !== "object" ||
+      [
+        "difficulty",
+        "similarExercises",
+        "duplicateWarnings",
+        "usageHistory",
+        "multipleExternalVideos",
+        "privateVideoUpload",
+      ].some((key) => typeof features[key] !== "boolean") ||
       payload?.access?.view !== true ||
       typeof edit !== "boolean" ||
       !Array.isArray(items) ||
@@ -1123,6 +1144,7 @@ async function bootstrapExerciseCatalog() {
 
     exerciseCatalogReady = true;
     exerciseCatalogCanEdit = edit;
+    exerciseCatalogFeatures = { ...features };
     exerciseCatalogItems = items.slice();
     exerciseCatalogGroups = groups.slice();
     initializeExerciseCatalogFilters();
