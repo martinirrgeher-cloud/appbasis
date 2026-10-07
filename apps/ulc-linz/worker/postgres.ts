@@ -25,7 +25,10 @@ import {
   createUlcLinzExerciseCatalogAccessService,
   type UlcLinzExerciseCatalogAccessService,
 } from "./exercise-catalog-access";
-import { PostgresUlcExerciseCatalogRepository } from "./exercise-catalog-postgres";
+import {
+  createUlcExerciseCatalogRuntimeRepository,
+  type UlcExerciseCatalogRuntimeMode,
+} from "./exercise-catalog-runtime";
 import { createUlcExerciseCatalogService } from "./exercise-catalog-service";
 import {
   createUlcLinzKindertrainingAccessService,
@@ -94,6 +97,7 @@ export interface GeneratedPostgresApplicationRuntimeOptions {
   securityLogConnectionString: string;
   baseURL: string;
   secret: string;
+  exerciseCatalogRuntimeMode?: UlcExerciseCatalogRuntimeMode;
 }
 
 export async function createGeneratedPostgresApplicationRuntime(
@@ -113,6 +117,22 @@ export async function createGeneratedPostgresApplicationRuntime(
     const applicationSql = {
       unsafe(query: string, parameters?: Array<string | number | boolean | null>) {
         return identityRuntime.sql.unsafe(query, parameters);
+      },
+      begin<T>(
+        callback: (transaction: {
+          unsafe(
+            query: string,
+            parameters?: Array<string | number | boolean | null>,
+          ): PromiseLike<readonly Record<string, unknown>[]>;
+        }) => Promise<T>,
+      ): Promise<T> {
+        return identityRuntime.sql.begin(async (transaction) =>
+          callback({
+            unsafe(query, parameters) {
+              return transaction.unsafe(query, parameters);
+            },
+          }),
+        );
       },
     };
     const scopes = new PostgresUlcLinzScopePersistence(applicationSql);
@@ -308,7 +328,10 @@ export async function createGeneratedPostgresApplicationRuntime(
       moduleGroups: trainingModuleGroups,
     });
     const exerciseCatalog = createUlcExerciseCatalogService({
-      repository: new PostgresUlcExerciseCatalogRepository(applicationSql),
+      repository: createUlcExerciseCatalogRuntimeRepository({
+        mode: options.exerciseCatalogRuntimeMode ?? "legacy",
+        sql: applicationSql,
+      }),
       masterdata: athleteMasterdata,
     });
     return Object.freeze({

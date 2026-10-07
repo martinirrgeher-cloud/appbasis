@@ -1,0 +1,396 @@
+name: ULC E6G-C3C Preview Cutover
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Guarded exercise-catalog preview cutover operation
+        required: true
+        type: choice
+        default: inspect
+        options:
+          - inspect
+          - quiesce
+          - cutover
+      apply:
+        description: Explicitly authorize the selected mutating preview operation
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan guarded ULC exercise-catalog cutover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Require main branch
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main' || {
+            echo 'ULC E6G-C3C preview cutover is main-only.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Render read-only C3C plan
+        shell: bash
+        env:
+          APPBASIS_OPERATION: ${{ inputs.operation }}
+          APPBASIS_APPLY: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          PLAN="$(node ./tooling/ulc-linz-exercise-catalog-preview-cutover.mjs plan)"
+          test "$(jq -r '.state' <<<"$PLAN")" = 'ready-for-explicit-preview-cutover-gates' || {
+            echo 'ULC E6G-C3C cutover plan is not ready.' >&2
+            exit 1
+          }
+          test "$(jq -r '.preview.environment' <<<"$PLAN")" = 'generated-preview-ulc-linz'
+          test "$(jq -r '.preview.database' <<<"$PLAN")" = 'appbasis_ulc_linz_preview'
+          test "$(jq -r '.productionChanged' <<<"$PLAN")" = 'false'
+          printf '%s\n' "$PLAN"
+
+          if [[ "$APPBASIS_OPERATION" != "inspect" && "$APPBASIS_APPLY" != "1" ]]; then
+            echo 'Mutation was not authorized; plan only.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  mutate:
+    name: ${{ inputs.operation == 'quiesce' && 'Quiesce ULC exercise-catalog source writes' || 'Cut over ULC exercise-catalog runtime' }}
+    needs: plan
+    if: ${{ inputs.operation != 'inspect' && inputs.apply == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: generated-preview-ulc-linz
+    env:
+      APPBASIS_GENERATED_APP_ID: ulc-linz
+
+    steps:
+      - name: Require exact main mutation scope
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+          APPBASIS_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main' || {
+            echo 'ULC E6G-C3C preview mutation is main-only.' >&2
+            exit 1
+          }
+          case "$APPBASIS_OPERATION" in
+            quiesce|cutover) ;;
+            *) echo 'Unsupported C3C mutation operation.' >&2; exit 1 ;;
+          esac
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and mask protected inputs
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          for name in APPBASIS_MIGRATION_DATABASE_URL APPBASIS_DATABASE_URL APPBASIS_SECURITY_LOG_DATABASE_URL APPBASIS_BETTER_AUTH_SECRET CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
+            value="${!name:-}"
+            test -n "$value" || {
+              echo "Missing protected input: $name" >&2
+              exit 1
+            }
+            echo "::add-mask::$value"
+          done
+
+      - name: Resolve preview worker and URL
+        id: preview
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          PLAN="$(node ./tooling/ulc-linz-d4-preview-plan.mjs)"
+          WORKER_NAME="$(jq -r '.workerName' <<<"$PLAN")"
+          [[ "$WORKER_NAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || {
+            echo 'ULC preview worker name is invalid.' >&2
+            exit 1
+          }
+
+          RESPONSE="$(curl --fail-with-body --silent --show-error             --header 'Accept: application/json'             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          SUBDOMAIN="$(jq -r 'if .success == true then (.result.subdomain // "") else "" end' <<<"$RESPONSE")"
+          [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || {
+            echo 'Cloudflare Workers account subdomain is unavailable or invalid.' >&2
+            exit 1
+          }
+          BASE_URL="https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev"
+          printf 'worker_name=%s\nbase_url=%s\n' "$WORKER_NAME" "$BASE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Require existing preview worker and identity secret
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_GENERATED_WORKER_NAME: ${{ steps.preview.outputs.worker_name }}
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler deployments list --name "$APPBASIS_GENERATED_WORKER_NAME" --json >/dev/null 2>&1 || {
+            echo 'ULC preview Worker is not bootstrapped.' >&2
+            exit 1
+          }
+          SECRET_LIST="$(pnpm exec wrangler secret list --name "$APPBASIS_GENERATED_WORKER_NAME" --format json)"
+          jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' <<<"$SECRET_LIST" >/dev/null || {
+            echo 'ULC preview Worker is missing BETTER_AUTH_SECRET.' >&2
+            exit 1
+          }
+
+      - name: Resolve isolated ULC preview Hyperdrives
+        id: hyperdrives
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          TARGETS="$(node ./tooling/ulc-linz-d4-preview-hyperdrive.mjs resolve)"
+          APPLICATION_ID="$(jq -r '.applicationId' <<<"$TARGETS")"
+          SECURITY_LOG_ID="$(jq -r '.securityLogId' <<<"$TARGETS")"
+          test -n "$APPLICATION_ID"
+          test -n "$SECURITY_LOG_ID"
+          test "$APPLICATION_ID" != "$SECURITY_LOG_ID"
+          echo "::add-mask::$APPLICATION_ID"
+          echo "::add-mask::$SECURITY_LOG_ID"
+          printf 'application_id=%s\nsecurity_log_id=%s\n' "$APPLICATION_ID" "$SECURITY_LOG_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Require current runtime to be quiesced before cutover
+        if: inputs.operation == 'cutover'
+        shell: bash
+        env:
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          HEALTH="$(curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2             --header 'Accept: application/json'             "$APPBASIS_BASE_URL/api/health/exercise-catalog-runtime")"
+          test "$(jq -r '.status' <<<"$HEALTH")" = 'ok'
+          test "$(jq -r '.exerciseCatalogRuntimeMode' <<<"$HEALTH")" = 'legacy-read-writes-blocked' || {
+            echo 'C3C cutover requires the already deployed quiesced runtime.' >&2
+            exit 1
+          }
+
+      - name: Verify persisted source-write quiescence before cutover
+        if: inputs.operation == 'cutover'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-quiescence.mjs verify
+
+      - name: Verify final Source to Target equality before cutover
+        if: inputs.operation == 'cutover'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-cutover.mjs verify
+
+      - name: Render selected cutover runtime config
+        shell: bash
+        env:
+          APPBASIS_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.application_id }}
+          APPBASIS_SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.security_log_id }}
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {
+            writeGeneratedPreviewWranglerConfig,
+          } from "./tooling/generated-preview-deploy-config.mjs";
+
+          const entrypoint =
+            process.env.APPBASIS_OPERATION === "quiesce"
+              ? "./worker/preview-exercise-catalog-quiesced.ts"
+              : "./worker/preview-exercise-catalog-standard.ts";
+          await writeGeneratedPreviewWranglerConfig({
+            appId: "ulc-linz",
+            hyperdriveId: process.env.APPBASIS_HYPERDRIVE_ID,
+            securityLogHyperdriveId:
+              process.env.APPBASIS_SECURITY_LOG_HYPERDRIVE_ID,
+            baseURL: process.env.APPBASIS_BASE_URL,
+            entrypoint,
+            outputPath:
+              "./apps/ulc-linz/wrangler.preview.cutover.generated.json",
+          });
+          NODE
+
+      - name: Validate selected preview bundle without provisioning
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd "../ulc-linz"
+          --config wrangler.preview.cutover.generated.json
+          --dry-run
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Persist database-level source-write quiescence and target runtime access
+        if: inputs.operation == 'quiesce'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_EXERCISE_CATALOG_QUIESCENCE: "1"
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-quiescence.mjs apply
+
+      - name: Deploy quiesced preview runtime
+        if: inputs.operation == 'quiesce'
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd "../ulc-linz"
+          --config wrangler.preview.cutover.generated.json
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Verify quiesced runtime is live
+        if: inputs.operation == 'quiesce'
+        shell: bash
+        env:
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          HEALTH="$(curl --fail-with-body --silent --show-error             --retry 5 --retry-delay 2             --header 'Accept: application/json'             "$APPBASIS_BASE_URL/api/health/exercise-catalog-runtime")"
+          test "$(jq -r '.exerciseCatalogRuntimeMode' <<<"$HEALTH")" = 'legacy-read-writes-blocked'
+
+      - name: Verify final equality under source-write quiescence
+        if: inputs.operation == 'quiesce'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-exercise-catalog-preview-quiescence.mjs verify
+          node ./tooling/ulc-linz-exercise-catalog-preview-cutover.mjs verify
+
+      - name: Deploy standard-module preview runtime
+        if: inputs.operation == 'cutover'
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd "../ulc-linz"
+          --config wrangler.preview.cutover.generated.json
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Verify selected runtime is live
+        shell: bash
+        env:
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_EXPECTED_MODE: ${{ inputs.operation == 'quiesce' && 'legacy-read-writes-blocked' || 'standard-module' }}
+        run: |
+          set -euo pipefail
+          HEALTH="$(curl --fail-with-body --silent --show-error             --retry 5 --retry-delay 2             --header 'Accept: application/json'             "$APPBASIS_BASE_URL/api/health/exercise-catalog-runtime")"
+          test "$(jq -r '.status' <<<"$HEALTH")" = 'ok'
+          test "$(jq -r '.exerciseCatalogRuntimeMode' <<<"$HEALTH")" = "$APPBASIS_EXPECTED_MODE"
+
+      - name: Verify ULC preview application database binding
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+        run: node ./tooling/generated-preview-database-smoke.mjs
+
+      - name: Verify ULC preview UI, protected runtime and persisted audit event
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+        run: node ./tooling/ulc-linz-d4-preview-audit-smoke.mjs
+
+      - name: Record guarded cutover state
+        shell: bash
+        env:
+          APPBASIS_OPERATION: ${{ inputs.operation }}
+        run: |
+          if [[ "$APPBASIS_OPERATION" = "quiesce" ]]; then
+            {
+              echo 'ULC E6G-C3C quiescence completed.'
+              echo 'Source writes are blocked in both runtime and database ACL.'
+              echo 'Final Source→Target equality passed.'
+              echo 'Standard-module runtime cutover still requires a separate explicit cutover run.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo 'ULC E6G-C3C standard-module preview runtime cutover completed.'
+              echo 'Source write privileges remain blocked; no production or source-retirement action ran.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Remove generated cutover config
+        if: always()
+        shell: bash
+        run: rm -f ./apps/ulc-linz/wrangler.preview.cutover.generated.json
