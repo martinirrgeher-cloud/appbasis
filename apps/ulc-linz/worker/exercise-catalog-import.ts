@@ -1095,7 +1095,7 @@ function dataRowsWithHeader(
 
 function validateWorkbookContract(
   workbook: ReadonlyMap<string, readonly SheetRow[]>,
-): void {
+): typeof ULC_EXERCISE_CATALOG_EXCHANGE_VERSION | typeof ULC_EXERCISE_CATALOG_LEGACY_EXCHANGE_VERSION {
   for (const sheet of REQUIRED_SHEETS) {
     if (!workbook.has(sheet)) {
       throw new UlcExerciseCatalogImportFileError(
@@ -1106,32 +1106,222 @@ function validateWorkbookContract(
   }
 
   const notes = workbook.get("Hinweise")!;
-  const contract = notes.find((row) => normalizedCell(row.cells[0] ?? "") === "AppBasis-Vertrag");
+  const contract = notes.find(
+    (row) => normalizedCell(row.cells[0] ?? "") === "AppBasis-Vertrag",
+  );
+  const version =
+    contract === undefined ? "" : normalizedCell(contract.cells[1] ?? "");
   if (
-    contract === undefined ||
-    normalizedCell(contract.cells[1] ?? "") !== ULC_EXERCISE_CATALOG_EXCHANGE_VERSION
+    version !== ULC_EXERCISE_CATALOG_EXCHANGE_VERSION &&
+    version !== ULC_EXERCISE_CATALOG_LEGACY_EXCHANGE_VERSION
   ) {
     throw new UlcExerciseCatalogImportFileError(
       "INVALID_EXCHANGE_CONTRACT",
-      "Die XLSX-Datei verwendet nicht den unterstützten Exchange-v1-Vertrag.",
+      "Die Datei verwendet keinen unterstützten Exercise-Catalog-Exchange-Vertrag.",
     );
   }
+  if (version === ULC_EXERCISE_CATALOG_EXCHANGE_VERSION) {
+    for (const sheet of V2_REQUIRED_SHEETS) {
+      if (!workbook.has(sheet)) {
+        throw new UlcExerciseCatalogImportFileError(
+          "INVALID_EXCHANGE_CONTRACT",
+          "Das erforderliche v2-Blatt " + sheet + " fehlt.",
+        );
+      }
+    }
+  }
+  return version;
 }
 
 async function readWorkbook(
   bytes: Uint8Array,
 ): Promise<ReadonlyMap<string, readonly SheetRow[]>> {
-  try {
-    return await readXlsxWorkbook(bytes, {
-      sheetNames: REQUIRED_SHEETS,
-      decodeDates: false,
-    });
-  } catch (error) {
-    if (error instanceof XlsxReadError) {
-      throw invalidXlsx(error.message);
+  if (looksLikeZip(bytes)) {
+    try {
+      return await readXlsxWorkbook(bytes, {
+        decodeDates: false,
+      });
+    } catch (error) {
+      if (error instanceof XlsxReadError) {
+        throw invalidXlsx(error.message);
+      }
+      throw error;
     }
-    throw error;
   }
+  return readLegacySpreadsheetXml(bytes);
+}
+
+function looksLikeZip(bytes: Uint8Array): boolean {
+  return (
+    bytes.byteLength >= 4 &&
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b &&
+    bytes[2] === 0x03 &&
+    bytes[3] === 0x04
+  );
+}
+
+function readLegacySpreadsheetXml(
+  bytes: Uint8Array,
+): ReadonlyMap<string, readonly SheetRow[]> {
+  let xml: string;
+  try {
+    xml = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw invalidXlsx("Die Excel-XML-Datei ist nicht gültig UTF-8-kodiert.");
+  }
+  if (
+    xml.length === 0 ||
+    /<!DOCTYPE|<!ENTITY|<!\[CDATA\[/i.test(xml) ||
+    !/<Workbook\b/i.test(xml)
+  ) {
+    throw invalidXlsx("Die Excel-XML-Datei enthält nicht unterstützte XML-Strukturen.");
+  }
+
+  const workbook = new Map<string, readonly SheetRow[]>();
+  for (const match of xml.matchAll(
+    /<(?:[A-Za-z_][\w.-]*:)?Worksheet\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?Worksheet>/gi,
+  )) {
+    const attributes = match[1] ?? "";
+    const body = match[2] ?? "";
+    const rawName =
+      xmlAttributeValue(attributes, "ss:Name") ??
+      xmlAttributeValue(attributes, "Name");
+    if (rawName === null) {
+      throw invalidXlsx("Ein Excel-XML-Arbeitsblatt hat keinen Namen.");
+    }
+    const name = decodeLegacyXmlText(rawName).trim();
+    if (name.length === 0 || workbook.has(name)) {
+      throw invalidXlsx("Ein Excel-XML-Arbeitsblattname ist ungültig oder doppelt.");
+    }
+
+    const rows: SheetRow[] = [];
+    let implicitRowNumber = 0;
+    for (const rowMatch of body.matchAll(
+      /<(?:[A-Za-z_][\w.-]*:)?Row\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?Row>/gi,
+    )) {
+      const rowAttributes = rowMatch[1] ?? "";
+      const explicitRowIndex =
+        xmlAttributeValue(rowAttributes, "ss:Index") ??
+        xmlAttributeValue(rowAttributes, "Index");
+      const parsedRow =
+        explicitRowIndex === null
+          ? implicitRowNumber + 1
+          : Number(explicitRowIndex);
+      if (
+        !Number.isSafeInteger(parsedRow) ||
+        parsedRow < 1 ||
+        parsedRow > 100_000 ||
+        parsedRow <= implicitRowNumber
+      ) {
+        throw invalidXlsx("Eine Excel-XML-Zeilennummer ist ungültig.");
+      }
+      implicitRowNumber = parsedRow;
+
+      const cells: string[] = [];
+      let implicitColumn = 0;
+      for (const cellMatch of (rowMatch[2] ?? "").matchAll(
+        /<(?:[A-Za-z_][\w.-]*:)?Cell\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?Cell>/gi,
+      )) {
+        const cellAttributes = cellMatch[1] ?? "";
+        const explicitColumn =
+          xmlAttributeValue(cellAttributes, "ss:Index") ??
+          xmlAttributeValue(cellAttributes, "Index");
+        const column =
+          explicitColumn === null ? implicitColumn + 1 : Number(explicitColumn);
+        if (
+          !Number.isSafeInteger(column) ||
+          column < 1 ||
+          column > 256 ||
+          column <= implicitColumn
+        ) {
+          throw invalidXlsx("Eine Excel-XML-Spaltennummer ist ungültig.");
+        }
+        while (cells.length < column - 1) cells.push("");
+        const cellBody = cellMatch[2] ?? "";
+        const dataMatch =
+          /<(?:[A-Za-z_][\w.-]*:)?Data\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?Data>/i.exec(
+            cellBody,
+          );
+        cells.push(
+          dataMatch === null ? "" : decodeLegacyXmlText(dataMatch[1] ?? ""),
+        );
+        implicitColumn = column;
+      }
+      rows.push(
+        Object.freeze({
+          rowNumber: parsedRow,
+          cells: Object.freeze(cells),
+        }),
+      );
+      if (rows.length > 50_000) {
+        throw invalidXlsx("Ein Excel-XML-Arbeitsblatt enthält zu viele Zeilen.");
+      }
+    }
+    workbook.set(name, Object.freeze(rows));
+  }
+
+  if (workbook.size === 0 || workbook.size > 32) {
+    throw invalidXlsx("Die Excel-XML-Datei enthält keine gültigen Arbeitsblätter.");
+  }
+  return workbook;
+}
+
+function xmlAttributeValue(
+  attributes: string,
+  name: string,
+): string | null {
+  const pattern = new RegExp(
+    "(?:^|\\s)" + name + "\\s*=\\s*(?:\\\"([^\\\"]*)\\\"|'([^']*)')",
+    "i",
+  );
+  const match = pattern.exec(attributes);
+  return match === null ? null : (match[1] ?? match[2] ?? "");
+}
+
+function decodeLegacyXmlText(value: string): string {
+  const stray = /&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);)/i;
+  if (stray.test(value)) {
+    throw invalidXlsx("Die Excel-XML-Datei enthält eine ungültige XML-Zeichenreferenz.");
+  }
+  const decoded = value.replace(
+    /&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);/gi,
+    (_whole, token: string) => {
+      switch (token.toLocaleLowerCase("en")) {
+        case "amp": return "&";
+        case "lt": return "<";
+        case "gt": return ">";
+        case "quot": return "\"";
+        case "apos": return "'";
+        default: {
+          const numeric =
+            token.startsWith("#x") || token.startsWith("#X")
+              ? Number.parseInt(token.slice(2), 16)
+              : Number.parseInt(token.slice(1), 10);
+          if (
+            !Number.isSafeInteger(numeric) ||
+            numeric < 0 ||
+            numeric > 0x10ffff ||
+            (numeric >= 0xd800 && numeric <= 0xdfff) ||
+            !(
+              numeric === 0x9 ||
+              numeric === 0xa ||
+              numeric === 0xd ||
+              (numeric >= 0x20 && numeric <= 0xd7ff) ||
+              (numeric >= 0xe000 && numeric <= 0xfffd) ||
+              (numeric >= 0x10000 && numeric <= 0x10ffff)
+            )
+          ) {
+            throw invalidXlsx(
+              "Die Excel-XML-Datei enthält eine ungültige XML-Zeichenreferenz.",
+            );
+          }
+          return String.fromCodePoint(numeric);
+        }
+      }
+    },
+  );
+  return decoded.replace(/<[^>]*>/g, "");
 }
 
 function parseBooleanCell(
