@@ -1,12 +1,24 @@
 import {
+  ExerciseCatalogService,
   PostgresExerciseCatalogRepository,
+  createExerciseCatalogDefinition,
+  type ExerciseCatalogDuplicateCandidate,
   type ExerciseCatalogItem,
+  type ExerciseCatalogPrivateMedia,
   type ExerciseCatalogRepository,
   type ExerciseCatalogPostgresClient,
+  type ExerciseCatalogUsageEvent,
+  type ExerciseCatalogUsageSummary,
+  type RecordExerciseCatalogUsageInput,
+  type RegisterExerciseCatalogPrivateMediaInput,
 } from "@appbasis/exercise-catalog";
 
 import {
+  ULC_EXERCISE_CATEGORIES,
+  ULC_EXERCISE_DIFFICULTIES,
+  ULC_EXERCISE_PARAMETER_KEYS,
   createUlcExerciseCatalogItem,
+  type CreateUlcExerciseCatalogItemInput,
   type UlcExerciseCatalogItem,
 } from "./exercise-catalog-domain";
 import {
