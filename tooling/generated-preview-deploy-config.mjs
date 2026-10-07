@@ -14,6 +14,8 @@ export function renderGeneratedPreviewWranglerConfig({
   baseURL,
   entrypoint = DEFAULT_ENTRYPOINT,
   compatibilityDate = "2026-08-14",
+  r2BucketName,
+  r2Binding = "EXERCISE_MEDIA",
 } = {}) {
   const normalizedAppId = requiredIdentifier(appId, "appId");
   const workerName = generatedPreviewWorkerName(normalizedAppId);
@@ -28,6 +30,11 @@ export function renderGeneratedPreviewWranglerConfig({
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
   const normalizedEntrypoint = requiredEntrypoint(entrypoint);
   const normalizedCompatibilityDate = requiredCompatibilityDate(compatibilityDate);
+  const normalizedR2BucketName = optionalBucketName(r2BucketName);
+  const normalizedR2Binding =
+    normalizedR2BucketName === null
+      ? null
+      : requiredBindingName(r2Binding);
 
   return Object.freeze({
     $schema: "./node_modules/wrangler/config-schema.json",
@@ -58,6 +65,16 @@ export function renderGeneratedPreviewWranglerConfig({
             }),
           ]),
     ]),
+    ...(normalizedR2BucketName === null
+      ? {}
+      : {
+          r2_buckets: Object.freeze([
+            Object.freeze({
+              binding: normalizedR2Binding,
+              bucket_name: normalizedR2BucketName,
+            }),
+          ]),
+        }),
   });
 }
 
@@ -181,6 +198,28 @@ function requiredEntrypoint(value) {
     )
   ) {
     throw new Error("entrypoint must be a canonical relative TypeScript path.");
+  }
+  return value;
+}
+
+function optionalBucketName(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    !/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(value)
+  ) {
+    throw new Error("r2BucketName is invalid.");
+  }
+  return value;
+}
+
+function requiredBindingName(value) {
+  if (
+    typeof value !== "string" ||
+    !/^[A-Z][A-Z0-9_]{0,63}$/.test(value)
+  ) {
+    throw new Error("r2Binding is invalid.");
   }
   return value;
 }
