@@ -1899,12 +1899,21 @@ async function uploadExerciseCatalogPrivateMedia(
   );
   if (item === null) return exerciseCatalogNotFound();
 
-  const contentType = normalizedPrivateVideoContentType(
-    request.headers.get("content-type"),
-  );
-  const fileName = normalizedPrivateVideoFileName(
-    request.headers.get("x-appbasis-file-name"),
-  );
+  let contentType: string;
+  let fileName: string;
+  try {
+    contentType = normalizedPrivateVideoContentType(
+      request.headers.get("content-type"),
+    );
+    fileName = normalizedPrivateVideoFileName(
+      request.headers.get("x-appbasis-file-name"),
+    );
+  } catch {
+    throw new PrivateExerciseVideoRequestError(
+      "INVALID_PRIVATE_VIDEO",
+      "Die private Videodatei oder ihre Metadaten sind ungültig.",
+    );
+  }
   const bytes = await readPrivateExerciseVideoBytes(request);
   const mediaId = crypto.randomUUID();
   const storageKey = privateExerciseVideoStorageKey(
