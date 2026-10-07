@@ -718,6 +718,46 @@ function parseExerciseSource(row: SheetRow): ExerciseSource {
   };
 }
 
+function parseExtensionSource(row: SheetRow): ExtensionSource {
+  const cells = padded(row.cells, ULC_EXERCISE_CATALOG_EXTENSION_HEADERS.length);
+  const issues: UlcExerciseCatalogImportIssue[] = [];
+  const difficultyKey = optionalCell(cells[1]!);
+  if (
+    difficultyKey !== null &&
+    !ULC_EXERCISE_DIFFICULTIES.some(
+      (difficulty) => difficulty.key === difficultyKey,
+    )
+  ) {
+    issues.push(
+      issue(
+        "error",
+        "INVALID_DIFFICULTY",
+        "Der Schwierigkeit-Key ist nicht zulässig: " + difficultyKey + ".",
+        "Erweiterungen",
+        row.rowNumber,
+        "Schwierigkeit-Key",
+      ),
+    );
+  }
+
+  return Object.freeze({
+    rowNumber: row.rowNumber,
+    recordKey: normalizedCell(cells[0]!),
+    difficultyKey,
+    additionalVideoUrls: splitMultiValueCell(cells[2]!),
+    similarExerciseIds: splitMultiValueCell(cells[3]!),
+    issues: Object.freeze(issues),
+  });
+}
+
+function splitMultiValueCell(value: string): readonly string[] {
+  const values = value
+    .split(/[;\r\n]+/u)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return Object.freeze(values);
+}
+
 function parseGroupSource(row: SheetRow): GroupSource {
   const cells = padded(row.cells, ULC_EXERCISE_CATALOG_GROUP_HEADERS.length);
   return Object.freeze({
@@ -847,6 +887,60 @@ function resolveGroups(
     resolved.push(group.id);
   }
   return Object.freeze(resolved.sort());
+}
+
+function resolveSimilarExerciseIds(
+  ids: readonly string[],
+  catalog: UlcExerciseCatalogOverview,
+  sourceId: string | null,
+  issues: UlcExerciseCatalogImportIssue[],
+  rowNumber: number,
+): readonly string[] {
+  const visibleIds = new Set(catalog.items.map((item) => item.id));
+  const result: string[] = [];
+  for (const id of ids) {
+    if (id === sourceId) {
+      issues.push(
+        issue(
+          "error",
+          "SELF_SIMILARITY",
+          "Eine Übung kann nicht als zu sich selbst ähnlich markiert werden.",
+          "Erweiterungen",
+          rowNumber,
+          "Ähnliche Übungs-IDs",
+        ),
+      );
+      continue;
+    }
+    if (!visibleIds.has(id)) {
+      issues.push(
+        issue(
+          "error",
+          "UNKNOWN_SIMILAR_EXERCISE",
+          "Die ähnliche Übung ist im aktuellen Katalog nicht verfügbar: " + id + ".",
+          "Erweiterungen",
+          rowNumber,
+          "Ähnliche Übungs-IDs",
+        ),
+      );
+      continue;
+    }
+    if (result.includes(id)) {
+      issues.push(
+        issue(
+          "warning",
+          "DUPLICATE_SIMILAR_EXERCISE",
+          "Eine ähnliche Übung ist doppelt angegeben und wird nur einmal berücksichtigt.",
+          "Erweiterungen",
+          rowNumber,
+          "Ähnliche Übungs-IDs",
+        ),
+      );
+      continue;
+    }
+    result.push(id);
+  }
+  return Object.freeze(result.sort());
 }
 
 function resolveParameters(
