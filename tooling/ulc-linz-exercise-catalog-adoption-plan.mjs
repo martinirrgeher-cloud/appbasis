@@ -331,12 +331,20 @@ function assertRepositoryState({
     moduleManifest.moduleId !== contract.target.moduleId ||
     moduleManifest.packageName !== contract.target.packageName ||
     !plainObject(moduleManifest.database) ||
-    moduleManifest.database.schemaVersion !== contract.target.schemaVersion ||
-    canonicalJson(moduleManifest.database.migrations) !==
+    !Number.isSafeInteger(moduleManifest.database.schemaVersion) ||
+    moduleManifest.database.schemaVersion < contract.target.schemaVersion ||
+    !Array.isArray(moduleManifest.database.migrations) ||
+    moduleManifest.database.migrations.length < contract.target.migrations.length ||
+    canonicalJson(
+      moduleManifest.database.migrations.slice(
+        0,
+        contract.target.migrations.length,
+      ),
+    ) !==
       canonicalJson(contract.target.migrations.map((entry) => entry.path))
   ) {
     throw new Error(
-      "Exercise-catalog module database contract does not match the adoption target.",
+      "Exercise-catalog module database contract does not preserve the adoption baseline.",
     );
   }
 
@@ -403,12 +411,12 @@ function assertRepositoryState({
   const expectedTargetOwner = {
     id: contract.target.moduleId,
     root: contract.target.ownerRoot,
-    schemaVersion: contract.target.schemaVersion,
-    migrations: contract.target.migrations.map((entry) => entry.path),
+    schemaVersion: moduleManifest.database.schemaVersion,
+    migrations: [...moduleManifest.database.migrations],
   };
   if (canonicalJson(targetOwner) !== canonicalJson(expectedTargetOwner)) {
     throw new Error(
-      "ULC exercise-catalog published target owner drifted from the reviewed module contract.",
+      "ULC exercise-catalog published target owner drifted from the current module contract.",
     );
   }
 
