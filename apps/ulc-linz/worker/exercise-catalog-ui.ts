@@ -54,6 +54,15 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                 <label>Kategorie
                   <select id="exercise-catalog-category-filter"></select>
                 </label>
+                <label>Schwierigkeit
+                  <select id="exercise-catalog-difficulty-filter">
+                    <option value="">Alle Schwierigkeiten</option>
+                    <option value="easy">Leicht</option>
+                    <option value="medium">Mittel</option>
+                    <option value="hard">Schwer</option>
+                    <option value="none">Ohne Angabe</option>
+                  </select>
+                </label>
                 <label>Trainingsgruppe
                   <select id="exercise-catalog-group-filter"></select>
                 </label>
@@ -124,6 +133,9 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                   <button type="button" data-exercise-catalog-tab="instructions" aria-selected="false">Anleitung</button>
                   <button type="button" data-exercise-catalog-tab="groups" aria-selected="false">Gruppen</button>
                   <button type="button" data-exercise-catalog-tab="parameters" aria-selected="false">Parameter</button>
+                  <button type="button" data-exercise-catalog-tab="similar" aria-selected="false">Ähnlich</button>
+                  <button type="button" data-exercise-catalog-tab="usage" aria-selected="false">Verwendung</button>
+                  <button type="button" data-exercise-catalog-tab="media" aria-selected="false">Videos</button>
                 </nav>
 
                 <form id="exercise-catalog-form" class="exercise-catalog-editor-form">
@@ -142,6 +154,14 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                         </label>
                         <label>Unterkategorie
                           <input id="exercise-catalog-subcategory" maxlength="100" />
+                        </label>
+                        <label>Schwierigkeit
+                          <select id="exercise-catalog-difficulty">
+                            <option value="">Keine Angabe</option>
+                            <option value="easy">Leicht</option>
+                            <option value="medium">Mittel</option>
+                            <option value="hard">Schwer</option>
+                          </select>
                         </label>
                         <label class="exercise-catalog-wide">Trainingsziel
                           <input id="exercise-catalog-goal" maxlength="240" />
@@ -163,11 +183,14 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                         <label class="exercise-catalog-wide">Typische Fehler
                           <textarea id="exercise-catalog-mistakes" maxlength="10000" rows="4"></textarea>
                         </label>
-                        <label class="exercise-catalog-wide">Video- / Weblink
+                        <label class="exercise-catalog-wide">Erster Video- / Weblink
                           <input id="exercise-catalog-video-url" type="url" maxlength="2000" inputmode="url" placeholder="https://…" />
                         </label>
+                        <label class="exercise-catalog-wide">Weitere Video- / Weblinks
+                          <textarea id="exercise-catalog-video-urls" rows="4" maxlength="20000" placeholder="Ein Link pro Zeile"></textarea>
+                        </label>
                         <div class="exercise-catalog-link-row exercise-catalog-wide" id="exercise-catalog-link-row" hidden>
-                          <a id="exercise-catalog-link" rel="noopener noreferrer" target="_blank">Link öffnen</a>
+                          <div id="exercise-catalog-links"></div>
                         </div>
                       </div>
                     </section>
@@ -190,6 +213,35 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                           </div>
                         </div>
                         <div class="exercise-catalog-parameters" id="exercise-catalog-parameters"></div>
+                      </fieldset>
+                    </section>
+
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="similar" hidden>
+                      <fieldset class="exercise-catalog-fieldset">
+                        <legend>Ähnliche Übungen</legend>
+                        <p class="exercise-catalog-panel-hint">Verknüpfe fachlich ähnliche Übungen. Die Beziehung wird beidseitig gespeichert.</p>
+                        <div class="exercise-catalog-check-grid" id="exercise-catalog-similar"></div>
+                      </fieldset>
+                    </section>
+
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="usage" hidden>
+                      <fieldset class="exercise-catalog-fieldset">
+                        <div class="exercise-catalog-parameter-heading">
+                          <legend>Verwendung</legend>
+                          <button class="button button--secondary" id="exercise-catalog-usage-add" type="button">Heute verwendet</button>
+                        </div>
+                        <div class="exercise-catalog-usage-summary" id="exercise-catalog-usage-summary">Noch keine Verwendung erfasst.</div>
+                        <div class="exercise-catalog-usage-list" id="exercise-catalog-usage-list"></div>
+                      </fieldset>
+                    </section>
+
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="media" hidden>
+                      <fieldset class="exercise-catalog-fieldset">
+                        <legend>Private Videos</legend>
+                        <p class="exercise-catalog-panel-hint" id="exercise-catalog-media-hint">Private Videos werden nur berechtigten Benutzern bereitgestellt.</p>
+                        <input id="exercise-catalog-media-file" type="file" accept="video/*" hidden />
+                        <button class="button button--secondary" id="exercise-catalog-media-upload" type="button">Privates Video hochladen</button>
+                        <div class="exercise-catalog-media-list" id="exercise-catalog-media-list"></div>
                       </fieldset>
                     </section>
 
