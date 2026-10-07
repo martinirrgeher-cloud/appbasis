@@ -37,6 +37,7 @@ export function createExerciseCatalogItem(
     );
   }
   const definition = assertExerciseCatalogDefinition(context.definition);
+  const id = requiredIdentifier(context.id, "Exercise id");
   const categoryKey = requiredKey(input.categoryKey, "Exercise category key");
   if (!definition.categories.some((entry) => entry.key === categoryKey)) {
     throw new ExerciseCatalogValidationError(
@@ -44,8 +45,24 @@ export function createExerciseCatalogItem(
     );
   }
 
+  const difficultyKey = optionalConfiguredKey(
+    input.difficultyKey,
+    definition.difficulties.map((entry) => entry.key),
+    "Exercise difficulty key",
+  );
+  const videoUrls = normalizeVideoUrls(input.videoUrl, input.videoUrls);
+  const similarExerciseIds = normalizeUniqueIdentifiers(
+    optionalArray(input.similarExerciseIds, "Similar exercise"),
+    "Similar exercise id",
+  );
+  if (similarExerciseIds.includes(id)) {
+    throw new ExerciseCatalogValidationError(
+      "Exercise cannot be similar to itself.",
+    );
+  }
+
   return Object.freeze({
-    id: requiredIdentifier(context.id, "Exercise id"),
+    id,
     organizationId: requiredIdentifier(
       context.organizationId,
       "Organization id",
@@ -53,6 +70,7 @@ export function createExerciseCatalogItem(
     name: requiredText(input.name, "Exercise name", 2, 120),
     categoryKey,
     subcategory: optionalText(input.subcategory, "Exercise subcategory", 100),
+    difficultyKey,
     goal: optionalText(input.goal, "Exercise goal", 240),
     description: optionalText(input.description, "Exercise description", 10_000),
     coachingCues: optionalText(input.coachingCues, "Exercise coaching cues", 10_000),
@@ -67,11 +85,13 @@ export function createExerciseCatalogItem(
       80,
       100,
     ),
-    videoUrl: optionalHttpUrl(input.videoUrl),
+    videoUrl: videoUrls[0] ?? null,
+    videoUrls,
     audienceIds: normalizeUniqueIdentifiers(
       optionalArray(input.audienceIds, "Exercise audience"),
       "Exercise audience id",
     ),
+    similarExerciseIds,
     parameters: normalizeParameters(
       optionalArray(input.parameters, "Exercise parameter"),
       definition.parameterKeys,
@@ -278,6 +298,65 @@ function optionalHttpUrl(value: unknown): string | null {
     throw new ExerciseCatalogValidationError("Exercise video URL is too long.");
   }
   return canonical;
+}
+
+function optionalConfiguredKey(
+  value: unknown,
+  allowedKeys: readonly string[],
+  label: string,
+): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  const key = requiredKey(value, label);
+  if (!allowedKeys.includes(key)) {
+    throw new ExerciseCatalogValidationError(
+      label + " is not enabled by the catalog definition.",
+    );
+  }
+  return key;
+}
+
+function normalizeVideoUrls(
+  legacyVideoUrl: unknown,
+  videoUrlsValue: readonly string[] | undefined,
+): readonly string[] {
+  const urls =
+    videoUrlsValue === undefined
+      ? legacyVideoUrl === undefined || legacyVideoUrl === null || legacyVideoUrl === ""
+        ? []
+        : [legacyVideoUrl]
+      : optionalArray(videoUrlsValue, "Exercise video URL");
+
+  const normalized = urls.map((value) => optionalHttpUrl(value));
+  if (normalized.some((value) => value === null)) {
+    throw new ExerciseCatalogValidationError(
+      "Exercise video URL list contains an empty value.",
+    );
+  }
+  const concrete = normalized as string[];
+  if (concrete.length > 20) {
+    throw new ExerciseCatalogValidationError(
+      "Exercise video URL list contains too many entries.",
+    );
+  }
+  if (new Set(concrete).size !== concrete.length) {
+    throw new ExerciseCatalogValidationError(
+      "Exercise video URL list contains duplicates.",
+    );
+  }
+  const legacy =
+    legacyVideoUrl === undefined || legacyVideoUrl === null || legacyVideoUrl === ""
+      ? null
+      : optionalHttpUrl(legacyVideoUrl);
+  if (
+    videoUrlsValue !== undefined &&
+    legacy !== null &&
+    concrete[0] !== legacy
+  ) {
+    throw new ExerciseCatalogValidationError(
+      "Exercise video URL must match the first videoUrls entry.",
+    );
+  }
+  return Object.freeze([...concrete]);
 }
 
 function optionalFiniteNumber(value: unknown, label: string): number | null {
