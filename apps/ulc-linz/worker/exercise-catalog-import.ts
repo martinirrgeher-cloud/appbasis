@@ -386,18 +386,37 @@ export async function previewUlcExerciseCatalogImport(
       parametersByKey.get(source.recordKey) ?? [],
       rowIssues,
     );
+    const extension = extensionsByKey.get(source.recordKey) ?? null;
+    if (extension !== null) rowIssues.push(...extension.issues);
+    const resolvedSimilarityIds = resolveSimilarExerciseIds(
+      extension?.similarExerciseIds ?? [],
+      catalog,
+      source.sourceId,
+      rowIssues,
+      extension?.rowNumber ?? source.rowNumber,
+    );
+    const videoUrls = Object.freeze(
+      [
+        ...(source.videoUrl === null ? [] : [source.videoUrl]),
+        ...(extension?.additionalVideoUrls ?? []),
+      ].filter((value, index, values) => values.indexOf(value) === index),
+    );
 
     const rawInput: CreateUlcExerciseCatalogItemInput = {
       name: source.name,
       categoryKey: source.categoryKey as UlcExerciseCategoryKey,
       subcategory: source.subcategory,
+      difficultyKey:
+        extension?.difficultyKey as UlcExerciseDifficultyKey | null | undefined,
       goal: source.goal,
       description: source.description,
       coachingCues: source.coachingCues,
       commonMistakes: source.commonMistakes,
       equipment: source.equipment,
-      videoUrl: source.videoUrl,
+      videoUrl: videoUrls[0] ?? null,
+      videoUrls,
       groupIds: resolvedGroups,
+      similarExerciseIds: resolvedSimilarityIds,
       parameters: resolvedParameters,
       isActive: source.isActive,
     };
@@ -532,6 +551,9 @@ export async function previewUlcExerciseCatalogImport(
           normalized,
           resolvedGroups,
           resolvedParameters,
+          resolvedSimilarityIds,
+          videoUrls,
+          extension?.difficultyKey ?? null,
           existing?.id ?? null,
         ),
         issues: Object.freeze(rowIssues),
