@@ -220,7 +220,7 @@ export async function previewUlcExerciseCatalogImport(
   }
 
   const workbook = await readWorkbook(bytes);
-  validateWorkbookContract(workbook);
+  const contractVersion = validateWorkbookContract(workbook);
 
   const exerciseRows = dataRowsWithHeader(
     workbook.get("Übungen")!,
@@ -237,6 +237,14 @@ export async function previewUlcExerciseCatalogImport(
     ULC_EXERCISE_CATALOG_PARAMETER_HEADERS,
     "Parameter",
   );
+  const extensionRows =
+    contractVersion === ULC_EXERCISE_CATALOG_EXCHANGE_VERSION
+      ? dataRowsWithHeader(
+          workbook.get("Erweiterungen")!,
+          ULC_EXERCISE_CATALOG_EXTENSION_HEADERS,
+          "Erweiterungen",
+        )
+      : [];
 
   if (exerciseRows.length > ULC_EXERCISE_CATALOG_IMPORT_MAX_EXERCISES) {
     throw new UlcExerciseCatalogImportFileError(
@@ -244,7 +252,10 @@ export async function previewUlcExerciseCatalogImport(
       "Die Importdatei enthält mehr als 1.000 Übungen.",
     );
   }
-  if (groupRows.length + parameterRows.length > MAX_RELATION_ROWS) {
+  if (
+    groupRows.length + parameterRows.length + extensionRows.length >
+    MAX_RELATION_ROWS
+  ) {
     throw new UlcExerciseCatalogImportFileError(
       "IMPORT_ROW_LIMIT_EXCEEDED",
       "Die Importdatei enthält zu viele Gruppen- oder Parameterzeilen.",
@@ -255,6 +266,7 @@ export async function previewUlcExerciseCatalogImport(
   const exercises = exerciseRows.map(parseExerciseSource);
   const groups = groupRows.map(parseGroupSource);
   const parameters = parameterRows.map(parseParameterSource);
+  const extensions = extensionRows.map(parseExtensionSource);
 
   const exerciseByKey = new Map<string, ExerciseSource[]>();
   for (const exercise of exercises) {
@@ -318,6 +330,38 @@ export async function previewUlcExerciseCatalogImport(
     const values = parametersByKey.get(parameter.recordKey) ?? [];
     values.push(parameter);
     parametersByKey.set(parameter.recordKey, values);
+  }
+
+  const extensionsByKey = new Map<string, ExtensionSource>();
+  for (const extension of extensions) {
+    const owners = exerciseByKey.get(extension.recordKey) ?? [];
+    if (extension.recordKey.length === 0 || owners.length !== 1) {
+      globalIssues.push(
+        issue(
+          "error",
+          "ORPHAN_EXTENSION_ROW",
+          "Eine Erweiterungszeile verweist auf keinen eindeutigen Übungs-Datensatz.",
+          "Erweiterungen",
+          extension.rowNumber,
+          "Datensatz-Schlüssel",
+        ),
+      );
+      continue;
+    }
+    if (extensionsByKey.has(extension.recordKey)) {
+      globalIssues.push(
+        issue(
+          "error",
+          "DUPLICATE_EXTENSION_ROW",
+          "Für eine Übung darf es nur eine Erweiterungszeile geben.",
+          "Erweiterungen",
+          extension.rowNumber,
+          "Datensatz-Schlüssel",
+        ),
+      );
+      continue;
+    }
+    extensionsByKey.set(extension.recordKey, extension);
   }
 
   const existingById = new Map(catalog.items.map((item) => [item.id, item] as const));
