@@ -57,10 +57,12 @@ export async function planUlcExerciseCatalogPreviewAdoptionReadiness(
       targetOwner: {
         id: migrationPlan.targetOwner.id,
         root: migrationPlan.targetOwner.root,
-        schemaVersion: migrationPlan.targetOwner.schemaVersion,
-        migrations: [...migrationPlan.targetOwner.migrations],
+        schemaVersion: adoptionPlan.target.schemaVersion,
+        migrations: adoptionPlan.target.migrations.map(
+          (migration) => migration.path,
+        ),
       },
-      migrationCount: migrationPlan.migrations.length,
+      migrationCount: adoptionPlan.target.migrations.length,
       approval: "explicit-preview-apply-required",
       executed: false,
     },
@@ -114,6 +116,20 @@ function assertPublishedRepositoryState({
     );
   }
 
+  const adoptionMigrationPaths = Array.isArray(
+    adoptionPlan?.target?.migrations,
+  )
+    ? adoptionPlan.target.migrations.map((migration) => migration.path)
+    : [];
+  const ownerMigrationPaths = Array.isArray(
+    migrationPlan?.targetOwner?.migrations,
+  )
+    ? migrationPlan.targetOwner.migrations
+    : [];
+  const executionMigrationPaths = Array.isArray(migrationPlan?.migrations)
+    ? migrationPlan.migrations.map((migration) => migration.relativePath)
+    : [];
+
   if (
     migrationPlan?.schemaVersion !== 1 ||
     migrationPlan.operation !== "module-install-migrations" ||
@@ -122,11 +138,17 @@ function assertPublishedRepositoryState({
     migrationPlan.repositoryState !== "published-target" ||
     migrationPlan.targetOwner?.id !== MODULE_ID ||
     migrationPlan.targetOwner?.root !== "modules/exercise-catalog" ||
-    migrationPlan.targetOwner?.schemaVersion !== 2 ||
-    !Array.isArray(migrationPlan.targetOwner?.migrations) ||
-    migrationPlan.targetOwner.migrations.length !== 2 ||
-    !Array.isArray(migrationPlan.migrations) ||
-    migrationPlan.migrations.length !== 2
+    !Number.isSafeInteger(migrationPlan.targetOwner?.schemaVersion) ||
+    migrationPlan.targetOwner.schemaVersion <
+      (adoptionPlan?.target?.schemaVersion ?? Number.POSITIVE_INFINITY) ||
+    adoptionMigrationPaths.length !== 2 ||
+    ownerMigrationPaths.length < adoptionMigrationPaths.length ||
+    executionMigrationPaths.length < adoptionMigrationPaths.length ||
+    JSON.stringify(ownerMigrationPaths.slice(0, adoptionMigrationPaths.length)) !==
+      JSON.stringify(adoptionMigrationPaths) ||
+    JSON.stringify(
+      executionMigrationPaths.slice(0, adoptionMigrationPaths.length),
+    ) !== JSON.stringify(adoptionMigrationPaths)
   ) {
     throw new Error(
       "ULC exercise-catalog published target cannot reconstruct the FC6 schema delta.",
