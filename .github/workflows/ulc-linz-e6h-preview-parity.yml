@@ -1,0 +1,382 @@
+name: ULC E6H Preview Parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply exercise-catalog schema v3, ensure R2 and deploy the standard-module preview runtime
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan E6H preview parity rollout
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+
+    steps:
+      - name: Require main branch
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main' || {
+            echo 'ULC E6H preview parity rollout is main-only.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Render E6H parity plan
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-parity.mjs plan
+
+  apply:
+    name: Apply E6H parity to isolated ULC preview
+    needs: plan
+    if: ${{ inputs.apply == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: generated-preview-ulc-linz
+    env:
+      APPBASIS_GENERATED_APP_ID: ulc-linz
+
+    steps:
+      - name: Require exact main mutation scope
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main' || {
+            echo 'ULC E6H preview parity mutation is main-only.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and mask protected inputs
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          for name in APPBASIS_MIGRATION_DATABASE_URL APPBASIS_DATABASE_URL APPBASIS_SECURITY_LOG_DATABASE_URL APPBASIS_BETTER_AUTH_SECRET CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
+            value="${!name:-}"
+            test -n "$value" || {
+              echo "Missing protected input: $name" >&2
+              exit 1
+            }
+            echo "::add-mask::$value"
+          done
+
+          node --input-type=module <<'NODE'
+          import { validateUlcLinzD4PreviewDatabaseCredentials } from "./tooling/ulc-linz-d4-preview-hyperdrive.mjs";
+
+          const credentials = validateUlcLinzD4PreviewDatabaseCredentials({
+            migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            applicationDatabaseUrl: process.env.APPBASIS_DATABASE_URL,
+            securityLogDatabaseUrl: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
+          });
+          if (
+            credentials.migration.database !== "appbasis_ulc_linz_preview" ||
+            credentials.migration.user !== "appbasis_ulc_linz_preview_migration"
+          ) {
+            throw new Error("E6H protected migration credential does not identify the exact preview target.");
+          }
+          NODE
+
+      - name: Resolve preview worker and URL
+        id: preview
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          PLAN="$(node ./tooling/ulc-linz-d4-preview-plan.mjs)"
+          WORKER_NAME="$(jq -r '.workerName' <<<"$PLAN")"
+          [[ "$WORKER_NAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || {
+            echo 'ULC preview worker name is invalid.' >&2
+            exit 1
+          }
+
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          SUBDOMAIN="$(jq -r 'if .success == true then (.result.subdomain // "") else "" end' <<<"$RESPONSE")"
+          [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || {
+            echo 'Cloudflare Workers account subdomain is unavailable or invalid.' >&2
+            exit 1
+          }
+          BASE_URL="https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev"
+          printf 'worker_name=%s\nbase_url=%s\n' "$WORKER_NAME" "$BASE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Require existing standard-module preview runtime
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_GENERATED_WORKER_NAME: ${{ steps.preview.outputs.worker_name }}
+        run: |
+          set -euo pipefail
+          pnpm exec wrangler deployments list --name "$APPBASIS_GENERATED_WORKER_NAME" --json >/dev/null 2>&1 || {
+            echo 'ULC preview Worker is not bootstrapped.' >&2
+            exit 1
+          }
+          SECRET_LIST="$(pnpm exec wrangler secret list --name "$APPBASIS_GENERATED_WORKER_NAME" --format json)"
+          jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' <<<"$SECRET_LIST" >/dev/null || {
+            echo 'ULC preview Worker is missing BETTER_AUTH_SECRET.' >&2
+            exit 1
+          }
+
+      - name: Verify current runtime remains standard-module
+        env:
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_EXPECTED_MODE: standard-module
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
+
+      - name: Inspect current E6H parity state
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-parity.mjs inspect
+
+      - name: Ensure ULC preview exercise media R2 bucket
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_R2_BUCKET: appbasis-ulc-linz-preview-exercise-media
+        run: |
+          set -euo pipefail
+          GET_BODY="$RUNNER_TEMP/appbasis-r2-get.json"
+          CREATE_BODY="$RUNNER_TEMP/appbasis-r2-create.json"
+
+          HTTP_STATUS="$(curl --silent --show-error \
+            --output "$GET_BODY" \
+            --write-out '%{http_code}' \
+            --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${APPBASIS_R2_BUCKET}")"
+
+          if [[ "$HTTP_STATUS" == "404" ]]; then
+            HTTP_STATUS="$(curl --silent --show-error \
+              --output "$CREATE_BODY" \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header 'Accept: application/json' \
+              --header 'Content-Type: application/json' \
+              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              --data "$(jq -cn --arg name "$APPBASIS_R2_BUCKET" '{name:$name}')" \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets")"
+            [[ "$HTTP_STATUS" == "200" ]] || {
+              echo "Unable to create the ULC preview exercise media R2 bucket (HTTP $HTTP_STATUS)." >&2
+              cat "$CREATE_BODY" >&2
+              exit 1
+            }
+          elif [[ "$HTTP_STATUS" != "200" ]]; then
+            echo "Unable to verify the ULC preview exercise media R2 bucket (HTTP $HTTP_STATUS)." >&2
+            cat "$GET_BODY" >&2
+            exit 1
+          fi
+
+          HTTP_STATUS="$(curl --silent --show-error \
+            --output "$GET_BODY" \
+            --write-out '%{http_code}' \
+            --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${APPBASIS_R2_BUCKET}")"
+          [[ "$HTTP_STATUS" == "200" ]] || {
+            echo "ULC preview exercise media R2 bucket verification failed after ensure (HTTP $HTTP_STATUS)." >&2
+            cat "$GET_BODY" >&2
+            exit 1
+          }
+          jq -e --arg name "$APPBASIS_R2_BUCKET" '.success == true and .result.name == $name' "$GET_BODY" >/dev/null || {
+            echo 'Cloudflare returned an unexpected R2 bucket after ensure.' >&2
+            exit 1
+          }
+
+      - name: Apply additive exercise-catalog schema v3
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_EXERCISE_CATALOG_PARITY: "1"
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-parity.mjs apply
+
+      - name: Verify schema v3 and runtime DML privileges
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-parity.mjs verify
+
+      - name: Resolve isolated ULC preview Hyperdrives
+        id: hyperdrives
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          TARGETS="$(node ./tooling/ulc-linz-d4-preview-hyperdrive.mjs resolve)"
+          APPLICATION_ID="$(jq -r '.applicationId' <<<"$TARGETS")"
+          SECURITY_LOG_ID="$(jq -r '.securityLogId' <<<"$TARGETS")"
+          test -n "$APPLICATION_ID"
+          test -n "$SECURITY_LOG_ID"
+          test "$APPLICATION_ID" != "$SECURITY_LOG_ID"
+          echo "::add-mask::$APPLICATION_ID"
+          echo "::add-mask::$SECURITY_LOG_ID"
+          printf 'application_id=%s\nsecurity_log_id=%s\n' "$APPLICATION_ID" "$SECURITY_LOG_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Render E6H standard-module preview config
+        shell: bash
+        env:
+          APPBASIS_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.application_id }}
+          APPBASIS_SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.security_log_id }}
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {
+            writeGeneratedPreviewWranglerConfig,
+          } from "./tooling/generated-preview-deploy-config.mjs";
+
+          await writeGeneratedPreviewWranglerConfig({
+            appId: "ulc-linz",
+            hyperdriveId: process.env.APPBASIS_HYPERDRIVE_ID,
+            securityLogHyperdriveId:
+              process.env.APPBASIS_SECURITY_LOG_HYPERDRIVE_ID,
+            baseURL: process.env.APPBASIS_BASE_URL,
+            entrypoint: "./worker/preview-exercise-catalog-standard.ts",
+            r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
+            outputPath:
+              "./apps/ulc-linz/wrangler.preview.e6h.generated.json",
+          });
+          NODE
+
+      - name: Validate E6H preview bundle without provisioning
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd "../ulc-linz"
+          --config wrangler.preview.e6h.generated.json
+          --dry-run
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Deploy E6H standard-module preview runtime
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd "../ulc-linz"
+          --config wrangler.preview.e6h.generated.json
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Verify E6H standard-module runtime is live
+        env:
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_EXPECTED_MODE: standard-module
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
+
+      - name: Verify ULC preview application database binding
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+        run: node ./tooling/generated-preview-database-smoke.mjs
+
+      - name: Verify ULC preview UI and protected audit path
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+        run: node ./tooling/ulc-linz-d4-preview-audit-smoke.mjs
+
+      - name: Re-verify E6H parity after deploy
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-parity.mjs verify
+
+      - name: Record E6H preview rollout
+        shell: bash
+        run: |
+          {
+            echo 'ULC E6H exercise-catalog schema v3 is verified in the isolated preview.'
+            echo 'The preview remains on the standard-module runtime.'
+            echo 'Private exercise media is bound to the dedicated preview R2 bucket.'
+            echo 'Production was not changed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove generated E6H config
+        if: always()
+        shell: bash
+        run: rm -f ./apps/ulc-linz/wrangler.preview.e6h.generated.json
