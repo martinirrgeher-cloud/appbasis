@@ -6,17 +6,21 @@ import {
 
 import {
   ULC_EXERCISE_CATEGORIES,
+  ULC_EXERCISE_DIFFICULTIES,
   ULC_EXERCISE_PARAMETER_KEYS,
   UlcExerciseCatalogValidationError,
   createUlcExerciseCatalogItem,
   type CreateUlcExerciseCatalogItemInput,
   type UlcExerciseCategoryKey,
+  type UlcExerciseDifficultyKey,
   type UlcExerciseParameterInputType,
   type UlcExerciseParameterKey,
 } from "./exercise-catalog-domain";
 import {
   ULC_EXERCISE_CATALOG_EXCHANGE_VERSION,
+  ULC_EXERCISE_CATALOG_LEGACY_EXCHANGE_VERSION,
   ULC_EXERCISE_CATALOG_EXERCISE_HEADERS,
+  ULC_EXERCISE_CATALOG_EXTENSION_HEADERS,
   ULC_EXERCISE_CATALOG_GROUP_HEADERS,
   ULC_EXERCISE_CATALOG_PARAMETER_HEADERS,
 } from "./exercise-catalog-exchange";
@@ -38,6 +42,11 @@ const REQUIRED_SHEETS = Object.freeze([
   "Hinweise",
 ]);
 
+const V2_REQUIRED_SHEETS = Object.freeze([
+  ...REQUIRED_SHEETS,
+  "Erweiterungen",
+]);
+
 export type UlcExerciseCatalogImportAction = "create" | "update" | "skip";
 
 export interface UlcExerciseCatalogImportIssue {
@@ -54,13 +63,16 @@ export interface UlcExerciseCatalogImportDraft {
   readonly name: string;
   readonly categoryKey: string;
   readonly subcategory: string | null;
+  readonly difficultyKey: string | null;
   readonly goal: string | null;
   readonly description: string | null;
   readonly coachingCues: string | null;
   readonly commonMistakes: string | null;
   readonly equipment: readonly string[];
   readonly videoUrl: string | null;
+  readonly videoUrls: readonly string[];
   readonly groupIds: readonly string[];
+  readonly similarExerciseIds: readonly string[];
   readonly parameters: readonly {
     readonly key: string;
     readonly label: string;
@@ -153,6 +165,15 @@ interface GroupSource {
   readonly groupName: string | null;
 }
 
+interface ExtensionSource {
+  readonly rowNumber: number;
+  readonly recordKey: string;
+  readonly difficultyKey: string | null;
+  readonly additionalVideoUrls: readonly string[];
+  readonly similarExerciseIds: readonly string[];
+  readonly issues: readonly UlcExerciseCatalogImportIssue[];
+}
+
 interface ParameterSource {
   readonly rowNumber: number;
   readonly recordKey: string;
@@ -199,7 +220,7 @@ export async function previewUlcExerciseCatalogImport(
   }
 
   const workbook = await readWorkbook(bytes);
-  validateWorkbookContract(workbook);
+  const contractVersion = validateWorkbookContract(workbook);
 
   const exerciseRows = dataRowsWithHeader(
     workbook.get("Übungen")!,
@@ -216,6 +237,14 @@ export async function previewUlcExerciseCatalogImport(
     ULC_EXERCISE_CATALOG_PARAMETER_HEADERS,
     "Parameter",
   );
+  const extensionRows =
+    contractVersion === ULC_EXERCISE_CATALOG_EXCHANGE_VERSION
+      ? dataRowsWithHeader(
+          workbook.get("Erweiterungen")!,
+          ULC_EXERCISE_CATALOG_EXTENSION_HEADERS,
+          "Erweiterungen",
+        )
+      : [];
 
   if (exerciseRows.length > ULC_EXERCISE_CATALOG_IMPORT_MAX_EXERCISES) {
     throw new UlcExerciseCatalogImportFileError(
@@ -223,7 +252,10 @@ export async function previewUlcExerciseCatalogImport(
       "Die Importdatei enthält mehr als 1.000 Übungen.",
     );
   }
-  if (groupRows.length + parameterRows.length > MAX_RELATION_ROWS) {
+  if (
+    groupRows.length + parameterRows.length + extensionRows.length >
+    MAX_RELATION_ROWS
+  ) {
     throw new UlcExerciseCatalogImportFileError(
       "IMPORT_ROW_LIMIT_EXCEEDED",
       "Die Importdatei enthält zu viele Gruppen- oder Parameterzeilen.",
@@ -234,6 +266,7 @@ export async function previewUlcExerciseCatalogImport(
   const exercises = exerciseRows.map(parseExerciseSource);
   const groups = groupRows.map(parseGroupSource);
   const parameters = parameterRows.map(parseParameterSource);
+  const extensions = extensionRows.map(parseExtensionSource);
 
   const exerciseByKey = new Map<string, ExerciseSource[]>();
   for (const exercise of exercises) {
@@ -299,6 +332,38 @@ export async function previewUlcExerciseCatalogImport(
     parametersByKey.set(parameter.recordKey, values);
   }
 
+  const extensionsByKey = new Map<string, ExtensionSource>();
+  for (const extension of extensions) {
+    const owners = exerciseByKey.get(extension.recordKey) ?? [];
+    if (extension.recordKey.length === 0 || owners.length !== 1) {
+      globalIssues.push(
+        issue(
+          "error",
+          "ORPHAN_EXTENSION_ROW",
+          "Eine Erweiterungszeile verweist auf keinen eindeutigen Übungs-Datensatz.",
+          "Erweiterungen",
+          extension.rowNumber,
+          "Datensatz-Schlüssel",
+        ),
+      );
+      continue;
+    }
+    if (extensionsByKey.has(extension.recordKey)) {
+      globalIssues.push(
+        issue(
+          "error",
+          "DUPLICATE_EXTENSION_ROW",
+          "Für eine Übung darf es nur eine Erweiterungszeile geben.",
+          "Erweiterungen",
+          extension.rowNumber,
+          "Datensatz-Schlüssel",
+        ),
+      );
+      continue;
+    }
+    extensionsByKey.set(extension.recordKey, extension);
+  }
+
   const existingById = new Map(catalog.items.map((item) => [item.id, item] as const));
   const existingByName = new Map<string, Array<UlcExerciseCatalogOverview["items"][number]>>();
   for (const item of catalog.items) {
@@ -321,18 +386,37 @@ export async function previewUlcExerciseCatalogImport(
       parametersByKey.get(source.recordKey) ?? [],
       rowIssues,
     );
+    const extension = extensionsByKey.get(source.recordKey) ?? null;
+    if (extension !== null) rowIssues.push(...extension.issues);
+    const resolvedSimilarityIds = resolveSimilarExerciseIds(
+      extension?.similarExerciseIds ?? [],
+      catalog,
+      source.sourceId,
+      rowIssues,
+      extension?.rowNumber ?? source.rowNumber,
+    );
+    const videoUrls = Object.freeze(
+      [
+        ...(source.videoUrl === null ? [] : [source.videoUrl]),
+        ...(extension?.additionalVideoUrls ?? []),
+      ].filter((value, index, values) => values.indexOf(value) === index),
+    );
 
     const rawInput: CreateUlcExerciseCatalogItemInput = {
       name: source.name,
       categoryKey: source.categoryKey as UlcExerciseCategoryKey,
       subcategory: source.subcategory,
+      difficultyKey:
+        (extension?.difficultyKey ?? null) as UlcExerciseDifficultyKey | null,
       goal: source.goal,
       description: source.description,
       coachingCues: source.coachingCues,
       commonMistakes: source.commonMistakes,
       equipment: source.equipment,
-      videoUrl: source.videoUrl,
+      videoUrl: videoUrls[0] ?? null,
+      videoUrls,
       groupIds: resolvedGroups,
+      similarExerciseIds: resolvedSimilarityIds,
       parameters: resolvedParameters,
       isActive: source.isActive,
     };
@@ -415,6 +499,42 @@ export async function previewUlcExerciseCatalogImport(
       }
     }
 
+    if (
+      contractVersion === ULC_EXERCISE_CATALOG_LEGACY_EXCHANGE_VERSION &&
+      existing !== null &&
+      normalized !== null &&
+      !rowIssues.some((candidate) => candidate.level === "error")
+    ) {
+      try {
+        normalized = createUlcExerciseCatalogItem(
+          {
+            ...rawInput,
+            difficultyKey: existing.difficultyKey,
+            videoUrl: existing.videoUrl,
+            videoUrls: existing.videoUrls,
+            similarExerciseIds: existing.similarExerciseIds,
+          },
+          {
+            id: existing.id,
+            organizationId: "import-preview",
+          },
+        );
+      } catch (error) {
+        rowIssues.push(
+          issue(
+            "error",
+            "DOMAIN_VALIDATION",
+            error instanceof UlcExerciseCatalogValidationError
+              ? germanValidationMessage(error.message)
+              : "Die bestehenden Erweiterungsdaten konnten nicht sicher übernommen werden.",
+            "Übungen",
+            source.rowNumber,
+            null,
+          ),
+        );
+      }
+    }
+
     const unchanged =
       normalized !== null &&
       existing !== null &&
@@ -467,6 +587,9 @@ export async function previewUlcExerciseCatalogImport(
           normalized,
           resolvedGroups,
           resolvedParameters,
+          resolvedSimilarityIds,
+          videoUrls,
+          extension?.difficultyKey ?? null,
           existing?.id ?? null,
         ),
         issues: Object.freeze(rowIssues),
@@ -506,13 +629,16 @@ export async function createUlcExerciseCatalogImportPreviewToken(
         name: item.name,
         categoryKey: item.categoryKey,
         subcategory: item.subcategory,
+        difficultyKey: item.difficultyKey,
         goal: item.goal,
         description: item.description,
         coachingCues: item.coachingCues,
         commonMistakes: item.commonMistakes,
         equipment: [...item.equipment],
         videoUrl: item.videoUrl,
+        videoUrls: [...item.videoUrls],
         groupIds: [...item.groupIds],
+        similarExerciseIds: [...item.similarExerciseIds],
         parameters: item.parameters.map((parameter) => ({
           key: parameter.key,
           label: parameter.label,
@@ -553,13 +679,17 @@ export function ulcExerciseCatalogImportDraftToInput(
     name: draft.name,
     categoryKey: draft.categoryKey as UlcExerciseCategoryKey,
     subcategory: draft.subcategory,
+    difficultyKey:
+      draft.difficultyKey as UlcExerciseDifficultyKey | null,
     goal: draft.goal,
     description: draft.description,
     coachingCues: draft.coachingCues,
     commonMistakes: draft.commonMistakes,
     equipment: draft.equipment,
     videoUrl: draft.videoUrl,
+    videoUrls: draft.videoUrls,
     groupIds: draft.groupIds,
+    similarExerciseIds: draft.similarExerciseIds,
     parameters: draft.parameters.map((parameter) => ({
       key: parameter.key as UlcExerciseParameterKey,
       label: parameter.label,
@@ -622,6 +752,46 @@ function parseExerciseSource(row: SheetRow): ExerciseSource {
     isActive: active,
     issues,
   };
+}
+
+function parseExtensionSource(row: SheetRow): ExtensionSource {
+  const cells = padded(row.cells, ULC_EXERCISE_CATALOG_EXTENSION_HEADERS.length);
+  const issues: UlcExerciseCatalogImportIssue[] = [];
+  const difficultyKey = optionalCell(cells[1]!);
+  if (
+    difficultyKey !== null &&
+    !ULC_EXERCISE_DIFFICULTIES.some(
+      (difficulty) => difficulty.key === difficultyKey,
+    )
+  ) {
+    issues.push(
+      issue(
+        "error",
+        "INVALID_DIFFICULTY",
+        "Der Schwierigkeit-Key ist nicht zulässig: " + difficultyKey + ".",
+        "Erweiterungen",
+        row.rowNumber,
+        "Schwierigkeit-Key",
+      ),
+    );
+  }
+
+  return Object.freeze({
+    rowNumber: row.rowNumber,
+    recordKey: normalizedCell(cells[0]!),
+    difficultyKey,
+    additionalVideoUrls: splitMultiValueCell(cells[2]!),
+    similarExerciseIds: splitMultiValueCell(cells[3]!),
+    issues: Object.freeze(issues),
+  });
+}
+
+function splitMultiValueCell(value: string): readonly string[] {
+  const values = value
+    .split(/[;\r\n]+/u)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return Object.freeze(values);
 }
 
 function parseGroupSource(row: SheetRow): GroupSource {
@@ -755,6 +925,60 @@ function resolveGroups(
   return Object.freeze(resolved.sort());
 }
 
+function resolveSimilarExerciseIds(
+  ids: readonly string[],
+  catalog: UlcExerciseCatalogOverview,
+  sourceId: string | null,
+  issues: UlcExerciseCatalogImportIssue[],
+  rowNumber: number,
+): readonly string[] {
+  const visibleIds = new Set(catalog.items.map((item) => item.id));
+  const result: string[] = [];
+  for (const id of ids) {
+    if (id === sourceId) {
+      issues.push(
+        issue(
+          "error",
+          "SELF_SIMILARITY",
+          "Eine Übung kann nicht als zu sich selbst ähnlich markiert werden.",
+          "Erweiterungen",
+          rowNumber,
+          "Ähnliche Übungs-IDs",
+        ),
+      );
+      continue;
+    }
+    if (!visibleIds.has(id)) {
+      issues.push(
+        issue(
+          "error",
+          "UNKNOWN_SIMILAR_EXERCISE",
+          "Die ähnliche Übung ist im aktuellen Katalog nicht verfügbar: " + id + ".",
+          "Erweiterungen",
+          rowNumber,
+          "Ähnliche Übungs-IDs",
+        ),
+      );
+      continue;
+    }
+    if (result.includes(id)) {
+      issues.push(
+        issue(
+          "warning",
+          "DUPLICATE_SIMILAR_EXERCISE",
+          "Eine ähnliche Übung ist doppelt angegeben und wird nur einmal berücksichtigt.",
+          "Erweiterungen",
+          rowNumber,
+          "Ähnliche Übungs-IDs",
+        ),
+      );
+      continue;
+    }
+    result.push(id);
+  }
+  return Object.freeze(result.sort());
+}
+
 function resolveParameters(
   rows: readonly ParameterSource[],
   issues: UlcExerciseCatalogImportIssue[],
@@ -807,13 +1031,15 @@ function sameImportableExercise(
     existing.name === candidate.name &&
     existing.categoryKey === candidate.categoryKey &&
     existing.subcategory === candidate.subcategory &&
+    existing.difficultyKey === candidate.difficultyKey &&
     existing.goal === candidate.goal &&
     existing.description === candidate.description &&
     existing.coachingCues === candidate.coachingCues &&
     existing.commonMistakes === candidate.commonMistakes &&
     arraysEqual(existing.equipment, candidate.equipment) &&
-    existing.videoUrl === candidate.videoUrl &&
+    arraysEqual(existing.videoUrls, candidate.videoUrls) &&
     arraysEqual(existing.groupIds, candidate.groupIds) &&
+    arraysEqual(existing.similarExerciseIds, candidate.similarExerciseIds) &&
     JSON.stringify(existing.parameters) === JSON.stringify(candidate.parameters) &&
     existing.isActive === candidate.isActive
   );
@@ -824,6 +1050,9 @@ function draftFromSource(
   normalized: ReturnType<typeof createUlcExerciseCatalogItem> | null,
   groupIds: readonly string[],
   parameters: readonly NonNullable<CreateUlcExerciseCatalogItemInput["parameters"]>[number][],
+  similarExerciseIds: readonly string[],
+  videoUrls: readonly string[],
+  difficultyKey: string | null,
   matchedExerciseId: string | null,
 ): UlcExerciseCatalogImportDraft {
   if (normalized !== null) {
@@ -832,13 +1061,16 @@ function draftFromSource(
       name: normalized.name,
       categoryKey: normalized.categoryKey,
       subcategory: normalized.subcategory,
+      difficultyKey: normalized.difficultyKey,
       goal: normalized.goal,
       description: normalized.description,
       coachingCues: normalized.coachingCues,
       commonMistakes: normalized.commonMistakes,
       equipment: normalized.equipment,
       videoUrl: normalized.videoUrl,
+      videoUrls: normalized.videoUrls,
       groupIds: normalized.groupIds,
+      similarExerciseIds: normalized.similarExerciseIds,
       parameters: normalized.parameters,
       isActive: normalized.isActive,
       isFavorite: false as const,
@@ -850,13 +1082,16 @@ function draftFromSource(
     name: source.name,
     categoryKey: source.categoryKey,
     subcategory: source.subcategory,
+    difficultyKey,
     goal: source.goal,
     description: source.description,
     coachingCues: source.coachingCues,
     commonMistakes: source.commonMistakes,
     equipment: source.equipment,
-    videoUrl: source.videoUrl,
+    videoUrl: videoUrls[0] ?? source.videoUrl,
+    videoUrls: Object.freeze([...videoUrls]),
     groupIds,
+    similarExerciseIds: Object.freeze([...similarExerciseIds]),
     parameters: Object.freeze(
       parameters.map((parameter) =>
         Object.freeze({
@@ -896,7 +1131,7 @@ function dataRowsWithHeader(
 
 function validateWorkbookContract(
   workbook: ReadonlyMap<string, readonly SheetRow[]>,
-): void {
+): typeof ULC_EXERCISE_CATALOG_EXCHANGE_VERSION | typeof ULC_EXERCISE_CATALOG_LEGACY_EXCHANGE_VERSION {
   for (const sheet of REQUIRED_SHEETS) {
     if (!workbook.has(sheet)) {
       throw new UlcExerciseCatalogImportFileError(
@@ -907,32 +1142,222 @@ function validateWorkbookContract(
   }
 
   const notes = workbook.get("Hinweise")!;
-  const contract = notes.find((row) => normalizedCell(row.cells[0] ?? "") === "AppBasis-Vertrag");
+  const contract = notes.find(
+    (row) => normalizedCell(row.cells[0] ?? "") === "AppBasis-Vertrag",
+  );
+  const version =
+    contract === undefined ? "" : normalizedCell(contract.cells[1] ?? "");
   if (
-    contract === undefined ||
-    normalizedCell(contract.cells[1] ?? "") !== ULC_EXERCISE_CATALOG_EXCHANGE_VERSION
+    version !== ULC_EXERCISE_CATALOG_EXCHANGE_VERSION &&
+    version !== ULC_EXERCISE_CATALOG_LEGACY_EXCHANGE_VERSION
   ) {
     throw new UlcExerciseCatalogImportFileError(
       "INVALID_EXCHANGE_CONTRACT",
-      "Die XLSX-Datei verwendet nicht den unterstützten Exchange-v1-Vertrag.",
+      "Die Datei verwendet keinen unterstützten Exercise-Catalog-Exchange-Vertrag.",
     );
   }
+  if (version === ULC_EXERCISE_CATALOG_EXCHANGE_VERSION) {
+    for (const sheet of V2_REQUIRED_SHEETS) {
+      if (!workbook.has(sheet)) {
+        throw new UlcExerciseCatalogImportFileError(
+          "INVALID_EXCHANGE_CONTRACT",
+          "Das erforderliche v2-Blatt " + sheet + " fehlt.",
+        );
+      }
+    }
+  }
+  return version;
 }
 
 async function readWorkbook(
   bytes: Uint8Array,
 ): Promise<ReadonlyMap<string, readonly SheetRow[]>> {
-  try {
-    return await readXlsxWorkbook(bytes, {
-      sheetNames: REQUIRED_SHEETS,
-      decodeDates: false,
-    });
-  } catch (error) {
-    if (error instanceof XlsxReadError) {
-      throw invalidXlsx(error.message);
+  if (looksLikeZip(bytes)) {
+    try {
+      return await readXlsxWorkbook(bytes, {
+        decodeDates: false,
+      });
+    } catch (error) {
+      if (error instanceof XlsxReadError) {
+        throw invalidXlsx(error.message);
+      }
+      throw error;
     }
-    throw error;
   }
+  return readLegacySpreadsheetXml(bytes);
+}
+
+function looksLikeZip(bytes: Uint8Array): boolean {
+  return (
+    bytes.byteLength >= 4 &&
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b &&
+    bytes[2] === 0x03 &&
+    bytes[3] === 0x04
+  );
+}
+
+function readLegacySpreadsheetXml(
+  bytes: Uint8Array,
+): ReadonlyMap<string, readonly SheetRow[]> {
+  let xml: string;
+  try {
+    xml = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw invalidXlsx("Die Excel-XML-Datei ist nicht gültig UTF-8-kodiert.");
+  }
+  if (
+    xml.length === 0 ||
+    /<!DOCTYPE|<!ENTITY|<!\[CDATA\[/i.test(xml) ||
+    !/<Workbook\b/i.test(xml)
+  ) {
+    throw invalidXlsx("Die Excel-XML-Datei enthält nicht unterstützte XML-Strukturen.");
+  }
+
+  const workbook = new Map<string, readonly SheetRow[]>();
+  for (const match of xml.matchAll(
+    /<(?:[A-Za-z_][\w.-]*:)?Worksheet\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?Worksheet>/gi,
+  )) {
+    const attributes = match[1] ?? "";
+    const body = match[2] ?? "";
+    const rawName =
+      xmlAttributeValue(attributes, "ss:Name") ??
+      xmlAttributeValue(attributes, "Name");
+    if (rawName === null) {
+      throw invalidXlsx("Ein Excel-XML-Arbeitsblatt hat keinen Namen.");
+    }
+    const name = decodeLegacyXmlText(rawName).trim();
+    if (name.length === 0 || workbook.has(name)) {
+      throw invalidXlsx("Ein Excel-XML-Arbeitsblattname ist ungültig oder doppelt.");
+    }
+
+    const rows: SheetRow[] = [];
+    let implicitRowNumber = 0;
+    for (const rowMatch of body.matchAll(
+      /<(?:[A-Za-z_][\w.-]*:)?Row\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?Row>/gi,
+    )) {
+      const rowAttributes = rowMatch[1] ?? "";
+      const explicitRowIndex =
+        xmlAttributeValue(rowAttributes, "ss:Index") ??
+        xmlAttributeValue(rowAttributes, "Index");
+      const parsedRow =
+        explicitRowIndex === null
+          ? implicitRowNumber + 1
+          : Number(explicitRowIndex);
+      if (
+        !Number.isSafeInteger(parsedRow) ||
+        parsedRow < 1 ||
+        parsedRow > 100_000 ||
+        parsedRow <= implicitRowNumber
+      ) {
+        throw invalidXlsx("Eine Excel-XML-Zeilennummer ist ungültig.");
+      }
+      implicitRowNumber = parsedRow;
+
+      const cells: string[] = [];
+      let implicitColumn = 0;
+      for (const cellMatch of (rowMatch[2] ?? "").matchAll(
+        /<(?:[A-Za-z_][\w.-]*:)?Cell\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?Cell>/gi,
+      )) {
+        const cellAttributes = cellMatch[1] ?? "";
+        const explicitColumn =
+          xmlAttributeValue(cellAttributes, "ss:Index") ??
+          xmlAttributeValue(cellAttributes, "Index");
+        const column =
+          explicitColumn === null ? implicitColumn + 1 : Number(explicitColumn);
+        if (
+          !Number.isSafeInteger(column) ||
+          column < 1 ||
+          column > 256 ||
+          column <= implicitColumn
+        ) {
+          throw invalidXlsx("Eine Excel-XML-Spaltennummer ist ungültig.");
+        }
+        while (cells.length < column - 1) cells.push("");
+        const cellBody = cellMatch[2] ?? "";
+        const dataMatch =
+          /<(?:[A-Za-z_][\w.-]*:)?Data\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?Data>/i.exec(
+            cellBody,
+          );
+        cells.push(
+          dataMatch === null ? "" : decodeLegacyXmlText(dataMatch[1] ?? ""),
+        );
+        implicitColumn = column;
+      }
+      rows.push(
+        Object.freeze({
+          rowNumber: parsedRow,
+          cells: Object.freeze(cells),
+        }),
+      );
+      if (rows.length > 50_000) {
+        throw invalidXlsx("Ein Excel-XML-Arbeitsblatt enthält zu viele Zeilen.");
+      }
+    }
+    workbook.set(name, Object.freeze(rows));
+  }
+
+  if (workbook.size === 0 || workbook.size > 32) {
+    throw invalidXlsx("Die Excel-XML-Datei enthält keine gültigen Arbeitsblätter.");
+  }
+  return workbook;
+}
+
+function xmlAttributeValue(
+  attributes: string,
+  name: string,
+): string | null {
+  const pattern = new RegExp(
+    "(?:^|\\s)" + name + "\\s*=\\s*(?:\\\"([^\\\"]*)\\\"|'([^']*)')",
+    "i",
+  );
+  const match = pattern.exec(attributes);
+  return match === null ? null : (match[1] ?? match[2] ?? "");
+}
+
+function decodeLegacyXmlText(value: string): string {
+  const stray = /&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);)/i;
+  if (stray.test(value)) {
+    throw invalidXlsx("Die Excel-XML-Datei enthält eine ungültige XML-Zeichenreferenz.");
+  }
+  const decoded = value.replace(
+    /&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);/gi,
+    (_whole, token: string) => {
+      switch (token.toLocaleLowerCase("en")) {
+        case "amp": return "&";
+        case "lt": return "<";
+        case "gt": return ">";
+        case "quot": return "\"";
+        case "apos": return "'";
+        default: {
+          const numeric =
+            token.startsWith("#x") || token.startsWith("#X")
+              ? Number.parseInt(token.slice(2), 16)
+              : Number.parseInt(token.slice(1), 10);
+          if (
+            !Number.isSafeInteger(numeric) ||
+            numeric < 0 ||
+            numeric > 0x10ffff ||
+            (numeric >= 0xd800 && numeric <= 0xdfff) ||
+            !(
+              numeric === 0x9 ||
+              numeric === 0xa ||
+              numeric === 0xd ||
+              (numeric >= 0x20 && numeric <= 0xd7ff) ||
+              (numeric >= 0xe000 && numeric <= 0xfffd) ||
+              (numeric >= 0x10000 && numeric <= 0x10ffff)
+            )
+          ) {
+            throw invalidXlsx(
+              "Die Excel-XML-Datei enthält eine ungültige XML-Zeichenreferenz.",
+            );
+          }
+          return String.fromCodePoint(numeric);
+        }
+      }
+    },
+  );
+  return decoded.replace(/<[^>]*>/g, "");
 }
 
 function parseBooleanCell(

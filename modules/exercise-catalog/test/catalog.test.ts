@@ -13,6 +13,10 @@ const definition = createExerciseCatalogDefinition({
     { key: "strength", label: "Strength" },
   ],
   parameterKeys: ["distance_m", "sets", "tempo_text"],
+  difficulties: [
+    { key: "easy", label: "Easy" },
+    { key: "hard", label: "Hard" },
+  ],
 });
 
 describe("exercise catalog module foundation", () => {
@@ -63,6 +67,74 @@ describe("exercise catalog module foundation", () => {
       inputType: "number",
       defaultValue: "30",
     });
+  });
+
+  it("normalizes difficulty, multiple videos and similar exercises", () => {
+    const item = createExerciseCatalogItem(
+      {
+        name: "Flying 30",
+        categoryKey: "speed",
+        difficultyKey: "hard",
+        videoUrls: [
+          "https://example.test/one",
+          "https://example.test/two",
+        ],
+        similarExerciseIds: ["exercise-3", "exercise-2"],
+      },
+      {
+        id: "exercise-1",
+        organizationId: "org-1",
+        definition,
+      },
+    );
+
+    expect(item).toMatchObject({
+      difficultyKey: "hard",
+      videoUrl: "https://example.test/one",
+      videoUrls: [
+        "https://example.test/one",
+        "https://example.test/two",
+      ],
+      similarExerciseIds: ["exercise-2", "exercise-3"],
+    });
+  });
+
+  it("rejects invalid difficulty, duplicate videos and self similarity", () => {
+    expect(() =>
+      createExerciseCatalogItem(
+        {
+          name: "Unknown difficulty",
+          categoryKey: "speed",
+          difficultyKey: "expert",
+        },
+        { id: "exercise-1", organizationId: "org-1", definition },
+      ),
+    ).toThrow(/difficulty key is not enabled/i);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        {
+          name: "Duplicate videos",
+          categoryKey: "speed",
+          videoUrls: [
+            "https://example.test/video",
+            "https://example.test/video",
+          ],
+        },
+        { id: "exercise-1", organizationId: "org-1", definition },
+      ),
+    ).toThrow(/video URL list contains duplicates/i);
+
+    expect(() =>
+      createExerciseCatalogItem(
+        {
+          name: "Self similarity",
+          categoryKey: "speed",
+          similarExerciseIds: ["exercise-1"],
+        },
+        { id: "exercise-1", organizationId: "org-1", definition },
+      ),
+    ).toThrow(/similar to itself/i);
   });
 
   it("rejects values not enabled by the definition", () => {

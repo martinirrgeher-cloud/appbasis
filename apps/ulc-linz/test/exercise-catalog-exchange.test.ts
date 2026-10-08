@@ -5,8 +5,9 @@ import {
   buildUlcExerciseCatalogExchangeSheets,
   createUlcExerciseCatalogWorkbook,
 } from "../worker/exercise-catalog-exchange";
+import type { UlcExerciseCatalogOverview } from "../worker/exercise-catalog-service";
 
-const catalog = {
+const catalog: UlcExerciseCatalogOverview = {
   items: [
     {
       id: "exercise-1",
@@ -14,13 +15,16 @@ const catalog = {
       name: "Fliegende 30",
       categoryKey: "max_velocity" as const,
       subcategory: "Fliegend",
+      difficultyKey: "medium",
       goal: "Maximalgeschwindigkeit",
       description: "Sauber beschleunigen und locker bleiben.",
       coachingCues: "Schultern locker.",
       commonMistakes: "Verkrampfen.",
       equipment: ["Hütchen", "Markierungen"],
       videoUrl: "https://example.test/video",
+      videoUrls: ["https://example.test/video", "https://example.test/video-2"],
       groupIds: ["group-1"],
+      similarExerciseIds: ["exercise-2"],
       parameters: [
         {
           key: "distance_m" as const,
@@ -56,6 +60,7 @@ describe("ULC E6F1 exercise catalog exchange", () => {
       "Übungen",
       "Gruppen",
       "Parameter",
+      "Erweiterungen",
       "Listen",
       "Hinweise",
     ]);
@@ -87,6 +92,8 @@ describe("ULC E6F1 exercise catalog exchange", () => {
     const serialized = JSON.stringify(sheets);
     expect(serialized).toContain("group-1");
     expect(serialized).toContain("distance_m");
+    expect(serialized).toContain("exercise-2");
+    expect(serialized).toContain("https://example.test/video-2");
     expect(serialized).toContain(ULC_EXERCISE_CATALOG_EXCHANGE_VERSION);
     expect(serialized).not.toContain("organizationId");
     expect(serialized).not.toContain("isFavorite");
@@ -97,6 +104,7 @@ describe("ULC E6F1 exercise catalog exchange", () => {
     const exercises = sheets.find((sheet) => sheet.name === "Übungen")!;
     const groups = sheets.find((sheet) => sheet.name === "Gruppen")!;
     const parameters = sheets.find((sheet) => sheet.name === "Parameter")!;
+    const extensions = sheets.find((sheet) => sheet.name === "Erweiterungen")!;
     const lists = sheets.find((sheet) => sheet.name === "Listen")!;
 
     expect(exercises.rows[1]).toContain("Fliegende 30 m");
@@ -108,7 +116,14 @@ describe("ULC E6F1 exercise catalog exchange", () => {
       "Sprint",
     ]);
     expect(parameters.rows[1]).toContain("distance_m");
+    expect(extensions.rows[1]).toEqual([
+      "beispiel-1",
+      "medium",
+      "",
+      "",
+    ]);
     expect(JSON.stringify(lists.rows)).toContain("max_velocity");
+    expect(JSON.stringify(lists.rows)).toContain("Schwierigkeit");
     expect(JSON.stringify(lists.rows)).toContain("Sprint");
   });
 

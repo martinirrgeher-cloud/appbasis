@@ -61,10 +61,11 @@
     },
     {
       "id": "exercise-catalog",
-      "schemaVersion": 2,
+      "schemaVersion": 3,
       "migrations": [
         "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
-        "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql"
+        "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
+        "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql"
       ],
       "lifecycleStatus": "repository-schema-published-preview-copy-pending",
       "notes": [
@@ -411,6 +412,38 @@
       "owner": "exercise-catalog",
       "privacyClass": "exercise-catalog-user-preference",
       "retentionPolicy": "pending-exercise-catalog-user-preference-lifecycle",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_exercise_catalog_video",
+      "owner": "exercise-catalog",
+      "privacyClass": "exercise-catalog-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "appbasis_exercise_catalog_similarity",
+      "owner": "exercise-catalog",
+      "privacyClass": "exercise-catalog-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "appbasis_exercise_catalog_usage",
+      "owner": "exercise-catalog",
+      "privacyClass": "exercise-catalog-training-usage-metadata",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_exercise_catalog_private_media",
+      "owner": "exercise-catalog",
+      "privacyClass": "exercise-catalog-private-media-metadata",
+      "retentionPolicy": "pending-exercise-catalog-media-lifecycle",
       "deletionEvidence": "fail-closed-pending-lifecycle",
       "retentionEvidence": "fail-closed-pending-lifecycle"
     }

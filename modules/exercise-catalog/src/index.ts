@@ -27,10 +27,17 @@ export type {
   CreateExerciseCatalogItemInput,
   ExerciseCatalogCategory,
   ExerciseCatalogDefinition,
+  ExerciseCatalogDifficulty,
+  ExerciseCatalogDuplicateCandidate,
   ExerciseCatalogItem,
   ExerciseCatalogParameter,
   ExerciseCatalogParameterInput,
   ExerciseCatalogParameterInputType,
+  ExerciseCatalogPrivateMedia,
+  ExerciseCatalogUsageEvent,
+  ExerciseCatalogUsageSummary,
+  RecordExerciseCatalogUsageInput,
+  RegisterExerciseCatalogPrivateMediaInput,
 } from "./domain/catalog";
 export type {
   ExerciseCatalogPostgresClient,

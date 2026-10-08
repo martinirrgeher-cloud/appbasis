@@ -86,6 +86,10 @@ const migrations = [
     "../../../modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
     import.meta.url,
   ),
+  new URL(
+    "../../../modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
+    import.meta.url,
+  ),
 ];
 
 const currentIdentity = {
@@ -146,6 +150,10 @@ beforeAll(async () => {
 beforeEach(async () => {
   await requiredIsolatedConnection().client.unsafe(
     `TRUNCATE TABLE
+       appbasis_exercise_catalog_private_media,
+       appbasis_exercise_catalog_usage,
+       appbasis_exercise_catalog_similarity,
+       appbasis_exercise_catalog_video,
        appbasis_exercise_catalog_favorite,
        appbasis_exercise_catalog_audience,
        appbasis_exercise_catalog_parameter,

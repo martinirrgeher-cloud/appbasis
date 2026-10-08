@@ -382,6 +382,8 @@ function runtime(
     athleteMasterdata,
     kindertraining,
     u12,
+    exerciseCatalogRuntimeMode: "standard-module",
+    exerciseCatalogMediaStore: null,
     exerciseCatalog: {
       async list() {
         return { items: [], trainingGroups: [] };
@@ -396,13 +398,20 @@ function runtime(
           name: input.name,
           categoryKey: input.categoryKey,
           subcategory: input.subcategory ?? null,
+          difficultyKey: input.difficultyKey ?? null,
           goal: input.goal ?? null,
           description: input.description ?? null,
           coachingCues: input.coachingCues ?? null,
           commonMistakes: input.commonMistakes ?? null,
           equipment: input.equipment ?? [],
-          videoUrl: input.videoUrl ?? null,
+          videoUrl: input.videoUrl ?? input.videoUrls?.[0] ?? null,
+          videoUrls:
+            input.videoUrls ??
+            (input.videoUrl === undefined || input.videoUrl === null
+              ? []
+              : [input.videoUrl]),
           groupIds: input.groupIds ?? [],
+          similarExerciseIds: input.similarExerciseIds ?? [],
           parameters: [],
           isActive: true,
           isFavorite: false,
@@ -415,19 +424,47 @@ function runtime(
           name: input.name,
           categoryKey: input.categoryKey,
           subcategory: input.subcategory ?? null,
+          difficultyKey: input.difficultyKey ?? null,
           goal: input.goal ?? null,
           description: input.description ?? null,
           coachingCues: input.coachingCues ?? null,
           commonMistakes: input.commonMistakes ?? null,
           equipment: input.equipment ?? [],
-          videoUrl: input.videoUrl ?? null,
+          videoUrl: input.videoUrl ?? input.videoUrls?.[0] ?? null,
+          videoUrls:
+            input.videoUrls ??
+            (input.videoUrl === undefined || input.videoUrl === null
+              ? []
+              : [input.videoUrl]),
           groupIds: input.groupIds ?? [],
+          similarExerciseIds: input.similarExerciseIds ?? [],
           parameters: [],
           isActive: true,
           isFavorite: false,
         };
       },
       async deactivate() {},
+      async findDuplicateCandidates() {
+        return [];
+      },
+      async listUsageSummaries() {
+        return [];
+      },
+      async listUsage() {
+        return [];
+      },
+      async recordUsage() {
+        return undefined;
+      },
+      async listPrivateMedia() {
+        return [];
+      },
+      async registerPrivateMedia() {
+        return undefined;
+      },
+      async deletePrivateMedia() {
+        return undefined;
+      },
       async setFavorite(organizationId, _identityId, exerciseId, favorite) {
         return {
           id: exerciseId,
@@ -435,13 +472,16 @@ function runtime(
           name: "Sprint",
           categoryKey: "acceleration",
           subcategory: null,
+          difficultyKey: null,
           goal: null,
           description: null,
           coachingCues: null,
           commonMistakes: null,
           equipment: [],
           videoUrl: null,
+          videoUrls: [],
           groupIds: [],
+          similarExerciseIds: [],
           parameters: [],
           isActive: true,
           isFavorite: favorite,
@@ -761,7 +801,17 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      module: { moduleId: "exercise_catalog" },
+      module: {
+        moduleId: "exercise_catalog",
+        features: {
+          difficulty: true,
+          similarExercises: true,
+          duplicateWarnings: true,
+          usageHistory: true,
+          multipleExternalVideos: true,
+          privateVideoUpload: false,
+        },
+      },
       access: { view: true, edit: true },
       catalog: { items: [], trainingGroups: [] },
     });

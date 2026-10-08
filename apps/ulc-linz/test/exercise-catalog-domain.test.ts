@@ -50,13 +50,16 @@ describe("ULC exercise catalog domain", () => {
       name: "A-Skip",
       categoryKey: "warmup",
       subcategory: "Lauf-ABC",
+      difficultyKey: null,
       goal: "Kniehub und Fußaufsatz",
       description: null,
       coachingCues: null,
       commonMistakes: null,
       equipment: ["Hütchen", "Minihürden"],
       videoUrl: "https://example.com/a-skip",
+      videoUrls: ["https://example.com/a-skip"],
       groupIds: ["u12-group", "u14-group"],
+      similarExerciseIds: [],
       parameters: [
         {
           key: "sets",

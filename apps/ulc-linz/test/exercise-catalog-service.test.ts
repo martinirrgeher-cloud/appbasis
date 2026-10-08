@@ -67,6 +67,27 @@ function repository() {
       const item = items.get(exerciseId);
       if (item !== undefined) items.set(exerciseId, { ...item, isFavorite: favorite });
     },
+    async findDuplicateCandidates() {
+      return [];
+    },
+    async listUsageSummaries() {
+      return [];
+    },
+    async listUsage() {
+      return [];
+    },
+    async recordUsage() {
+      return undefined;
+    },
+    async listPrivateMedia() {
+      return [];
+    },
+    async registerPrivateMedia() {
+      return undefined;
+    },
+    async deletePrivateMedia() {
+      return undefined;
+    },
   };
   return { repo, items };
 }

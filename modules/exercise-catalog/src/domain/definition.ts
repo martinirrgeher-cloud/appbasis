@@ -2,12 +2,14 @@ import { ExerciseCatalogValidationError } from "./catalog-error";
 import type {
   ExerciseCatalogCategory,
   ExerciseCatalogDefinition,
+  ExerciseCatalogDifficulty,
 } from "./types";
 import { requiredKey, requiredText } from "./validation";
 
 export function createExerciseCatalogDefinition(input: {
   readonly categories: readonly ExerciseCatalogCategory[];
   readonly parameterKeys?: readonly string[];
+  readonly difficulties?: readonly ExerciseCatalogDifficulty[];
 }): ExerciseCatalogDefinition {
   if (input === null || typeof input !== "object" || Array.isArray(input)) {
     throw new ExerciseCatalogValidationError(
@@ -44,6 +46,41 @@ export function createExerciseCatalogDefinition(input: {
     });
   });
 
+  const rawDifficulties = input.difficulties;
+  if (rawDifficulties !== undefined && !Array.isArray(rawDifficulties)) {
+    throw new ExerciseCatalogValidationError(
+      "Exercise catalog difficulties must be an array.",
+    );
+  }
+  const seenDifficulties = new Set<string>();
+  const difficulties = Array.from(rawDifficulties ?? []).map((difficulty) => {
+    if (
+      difficulty === null ||
+      typeof difficulty !== "object" ||
+      Array.isArray(difficulty)
+    ) {
+      throw new ExerciseCatalogValidationError(
+        "Exercise catalog difficulty is invalid.",
+      );
+    }
+    const key = requiredKey(difficulty.key, "Exercise difficulty key");
+    if (seenDifficulties.has(key)) {
+      throw new ExerciseCatalogValidationError(
+        "Exercise catalog difficulties contain a duplicate key.",
+      );
+    }
+    seenDifficulties.add(key);
+    return Object.freeze({
+      key,
+      label: requiredText(
+        difficulty.label,
+        "Exercise difficulty label",
+        1,
+        120,
+      ),
+    });
+  });
+
   const rawParameterKeys = input.parameterKeys;
   if (rawParameterKeys !== undefined && !Array.isArray(rawParameterKeys)) {
     throw new ExerciseCatalogValidationError(
@@ -62,6 +99,9 @@ export function createExerciseCatalogDefinition(input: {
   return Object.freeze({
     categories: Object.freeze(categories),
     parameterKeys: Object.freeze([...parameterKeys].sort()),
+    difficulties: Object.freeze(
+      [...difficulties].sort((left, right) => left.key.localeCompare(right.key)),
+    ),
   });
 }
 
@@ -72,7 +112,8 @@ export function assertExerciseCatalogDefinition(
     value === null ||
     typeof value !== "object" ||
     !Array.isArray(value.categories) ||
-    !Array.isArray(value.parameterKeys)
+    !Array.isArray(value.parameterKeys) ||
+    (value.difficulties !== undefined && !Array.isArray(value.difficulties))
   ) {
     throw new ExerciseCatalogValidationError(
       "Exercise catalog definition is invalid.",
@@ -81,5 +122,8 @@ export function assertExerciseCatalogDefinition(
   return createExerciseCatalogDefinition({
     categories: value.categories,
     parameterKeys: value.parameterKeys,
+    ...(value.difficulties === undefined
+      ? {}
+      : { difficulties: value.difficulties }),
   });
 }

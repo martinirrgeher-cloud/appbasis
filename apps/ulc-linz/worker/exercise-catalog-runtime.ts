@@ -1,12 +1,24 @@
 import {
+  ExerciseCatalogService,
   PostgresExerciseCatalogRepository,
+  createExerciseCatalogDefinition,
+  type ExerciseCatalogDuplicateCandidate,
   type ExerciseCatalogItem,
+  type ExerciseCatalogPrivateMedia,
   type ExerciseCatalogRepository,
   type ExerciseCatalogPostgresClient,
+  type ExerciseCatalogUsageEvent,
+  type ExerciseCatalogUsageSummary,
+  type RecordExerciseCatalogUsageInput,
+  type RegisterExerciseCatalogPrivateMediaInput,
 } from "@appbasis/exercise-catalog";
 
 import {
+  ULC_EXERCISE_CATEGORIES,
+  ULC_EXERCISE_DIFFICULTIES,
+  ULC_EXERCISE_PARAMETER_KEYS,
   createUlcExerciseCatalogItem,
+  type CreateUlcExerciseCatalogItemInput,
   type UlcExerciseCatalogItem,
 } from "./exercise-catalog-domain";
 import {
@@ -102,15 +114,81 @@ export class QuiescedUlcExerciseCatalogRepository
   ): Promise<void> {
     return quiesced();
   }
+
+  findDuplicateCandidates(
+    organizationId: string,
+    input: CreateUlcExerciseCatalogItemInput,
+    excludeExerciseId?: string | null,
+  ): Promise<readonly ExerciseCatalogDuplicateCandidate[]> {
+    return this.#legacy.findDuplicateCandidates(
+      organizationId,
+      input,
+      excludeExerciseId,
+    );
+  }
+
+  listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly ExerciseCatalogUsageSummary[]> {
+    return this.#legacy.listUsageSummaries(organizationId);
+  }
+
+  listUsage(
+    organizationId: string,
+    exerciseId: string,
+    limit?: number,
+  ): Promise<readonly ExerciseCatalogUsageEvent[]> {
+    return this.#legacy.listUsage(organizationId, exerciseId, limit);
+  }
+
+  recordUsage(
+    _organizationId: string,
+    _exerciseId: string,
+    _input: RecordExerciseCatalogUsageInput,
+  ): Promise<ExerciseCatalogUsageEvent | undefined> {
+    return quiesced();
+  }
+
+  listPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+  ): Promise<readonly ExerciseCatalogPrivateMedia[]> {
+    return this.#legacy.listPrivateMedia(organizationId, exerciseId);
+  }
+
+  registerPrivateMedia(
+    _organizationId: string,
+    _exerciseId: string,
+    _input: RegisterExerciseCatalogPrivateMediaInput,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return quiesced();
+  }
+
+  deletePrivateMedia(
+    _organizationId: string,
+    _exerciseId: string,
+    _mediaId: string,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return quiesced();
+  }
 }
 
 export class StandardModuleUlcExerciseCatalogRepository
   implements UlcExerciseCatalogRepository
 {
   readonly #standard: ExerciseCatalogRepository;
+  readonly #service: ExerciseCatalogService;
 
   constructor(standard: ExerciseCatalogRepository) {
     this.#standard = standard;
+    this.#service = new ExerciseCatalogService({
+      repository: standard,
+      definition: createExerciseCatalogDefinition({
+        categories: ULC_EXERCISE_CATEGORIES,
+        difficulties: ULC_EXERCISE_DIFFICULTIES,
+        parameterKeys: ULC_EXERCISE_PARAMETER_KEYS,
+      }),
+    });
   }
 
   async list(
@@ -189,6 +267,71 @@ export class StandardModuleUlcExerciseCatalogRepository
     if (updated === undefined) throw new UlcExerciseCatalogNotFoundError();
   }
 
+  findDuplicateCandidates(
+    organizationId: string,
+    input: CreateUlcExerciseCatalogItemInput,
+    excludeExerciseId?: string | null,
+  ): Promise<readonly ExerciseCatalogDuplicateCandidate[]> {
+    return this.#service.findDuplicateCandidates(
+      organizationId,
+      ulcInputToStandardInput(input),
+      excludeExerciseId,
+    );
+  }
+
+  listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly ExerciseCatalogUsageSummary[]> {
+    return this.#service.listUsageSummaries(organizationId);
+  }
+
+  listUsage(
+    organizationId: string,
+    exerciseId: string,
+    limit?: number,
+  ): Promise<readonly ExerciseCatalogUsageEvent[]> {
+    return this.#service.listUsage(organizationId, exerciseId, limit);
+  }
+
+  recordUsage(
+    organizationId: string,
+    exerciseId: string,
+    input: RecordExerciseCatalogUsageInput,
+  ): Promise<ExerciseCatalogUsageEvent | undefined> {
+    return this.#service.recordUsage(organizationId, exerciseId, input);
+  }
+
+  listPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+  ): Promise<readonly ExerciseCatalogPrivateMedia[]> {
+    return this.#service.listPrivateMedia(organizationId, exerciseId);
+  }
+
+  registerPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+    input: RegisterExerciseCatalogPrivateMediaInput,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return this.#service.registerPrivateMedia(
+      organizationId,
+      exerciseId,
+      input,
+    );
+  }
+
+  deletePrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return this.#service.deletePrivateMedia(
+      organizationId,
+      exerciseId,
+      mediaId,
+    );
+  }
+
   async setFavorite(
     organizationId: string,
     identityId: string,
@@ -209,6 +352,36 @@ export class StandardModuleUlcExerciseCatalogRepository
   }
 }
 
+function ulcInputToStandardInput(
+  input: CreateUlcExerciseCatalogItemInput,
+) {
+  const videoUrls =
+    input.videoUrls ??
+    (input.videoUrl === undefined || input.videoUrl === null
+      ? []
+      : [input.videoUrl]);
+  const videoUrl =
+    input.videoUrl === undefined ? videoUrls[0] ?? null : input.videoUrl;
+
+  return {
+    name: input.name,
+    categoryKey: input.categoryKey,
+    subcategory: input.subcategory ?? null,
+    difficultyKey: input.difficultyKey ?? null,
+    goal: input.goal ?? null,
+    description: input.description ?? null,
+    coachingCues: input.coachingCues ?? null,
+    commonMistakes: input.commonMistakes ?? null,
+    equipment: input.equipment ?? [],
+    videoUrl,
+    videoUrls,
+    audienceIds: input.groupIds ?? [],
+    similarExerciseIds: input.similarExerciseIds ?? [],
+    parameters: input.parameters ?? [],
+    isActive: input.isActive ?? true,
+  };
+}
+
 function ulcItemToStandardItem(
   item: UlcExerciseCatalogItem,
 ): ExerciseCatalogItem {
@@ -218,13 +391,16 @@ function ulcItemToStandardItem(
     name: item.name,
     categoryKey: item.categoryKey,
     subcategory: item.subcategory,
+    difficultyKey: item.difficultyKey,
     goal: item.goal,
     description: item.description,
     coachingCues: item.coachingCues,
     commonMistakes: item.commonMistakes,
     equipment: Object.freeze([...item.equipment]),
     videoUrl: item.videoUrl,
+    videoUrls: Object.freeze([...item.videoUrls]),
     audienceIds: Object.freeze([...item.groupIds]),
+    similarExerciseIds: Object.freeze([...item.similarExerciseIds]),
     parameters: Object.freeze(
       item.parameters.map((parameter) =>
         Object.freeze({ ...parameter }),
@@ -243,13 +419,17 @@ function standardItemToUlcRecord(
       name: item.name,
       categoryKey: item.categoryKey as UlcExerciseCatalogItem["categoryKey"],
       subcategory: item.subcategory,
+      difficultyKey:
+        item.difficultyKey as UlcExerciseCatalogItem["difficultyKey"],
       goal: item.goal,
       description: item.description,
       coachingCues: item.coachingCues,
       commonMistakes: item.commonMistakes,
       equipment: item.equipment,
       videoUrl: item.videoUrl,
+      videoUrls: item.videoUrls,
       groupIds: item.audienceIds,
+      similarExerciseIds: item.similarExerciseIds,
       parameters: item.parameters.map((parameter) => ({
         key: parameter.key as UlcExerciseCatalogItem["parameters"][number]["key"],
         label: parameter.label,

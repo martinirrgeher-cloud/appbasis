@@ -25,13 +25,16 @@ const existingItem = Object.freeze({
   name: "Fliegende 30 m",
   categoryKey: "max_velocity" as const,
   subcategory: "Fliegend",
+  difficultyKey: null,
   goal: "Maximalgeschwindigkeit",
   description: "20 m Anlauf, anschließend 30 m maximal schnell bei sauberer Technik.",
   coachingCues: "Locker bleiben und aktiv nach hinten arbeiten.",
   commonMistakes: "Verkrampfte Schultern; zu frühes Abbremsen.",
   equipment: Object.freeze(["Hütchen", "Markierungen"]),
   videoUrl: null,
+  videoUrls: Object.freeze([]),
   groupIds: Object.freeze(["group-1"]),
+  similarExerciseIds: Object.freeze([]),
   parameters: Object.freeze([
     Object.freeze({
       key: "distance_m" as const,

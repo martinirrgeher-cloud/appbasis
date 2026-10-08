@@ -111,6 +111,40 @@ test("supports an explicit repository-local preview entrypoint without changing 
   assert.equal(defaultConfig.main, "./worker/index.ts");
 });
 
+test("adds an explicitly configured R2 binding without changing the default", () => {
+  const config = renderGeneratedPreviewWranglerConfig({
+    appId: "ulc-linz",
+    hyperdriveId: "application-hyperdrive-id",
+    baseURL: "https://ulc-preview.example.test",
+    r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
+  });
+
+  assert.deepEqual(config.r2_buckets, [
+    {
+      binding: "EXERCISE_MEDIA",
+      bucket_name: "appbasis-ulc-linz-preview-exercise-media",
+    },
+  ]);
+
+  const defaultConfig = renderGeneratedPreviewWranglerConfig({
+    appId: "ulc-linz",
+    hyperdriveId: "application-hyperdrive-id",
+    baseURL: "https://ulc-preview.example.test",
+  });
+  assert.equal("r2_buckets" in defaultConfig, false);
+
+  assert.throws(
+    () =>
+      renderGeneratedPreviewWranglerConfig({
+        appId: "ulc-linz",
+        hyperdriveId: "application-hyperdrive-id",
+        baseURL: "https://ulc-preview.example.test",
+        r2BucketName: "INVALID_BUCKET",
+      }),
+    /r2BucketName is invalid/,
+  );
+});
+
 test("renders a secretless bootstrap config without weakening the normal deploy config", () => {
   const input = {
     appId: "tasks-minimal",

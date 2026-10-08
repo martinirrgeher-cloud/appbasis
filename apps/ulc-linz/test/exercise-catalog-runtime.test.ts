@@ -24,13 +24,16 @@ const STANDARD_ITEM: ExerciseCatalogItem = Object.freeze({
   name: "Flying 30",
   categoryKey: "max_velocity",
   subcategory: null,
+  difficultyKey: null,
   goal: "Speed",
   description: null,
   coachingCues: null,
   commonMistakes: null,
   equipment: Object.freeze(["cones"]),
   videoUrl: null,
+  videoUrls: Object.freeze([]),
   audienceIds: Object.freeze(["group-1"]),
+  similarExerciseIds: Object.freeze([]),
   parameters: Object.freeze([
     Object.freeze({
       key: "distance_m",
@@ -70,6 +73,30 @@ describe("ULC exercise catalog cutover runtime repositories", () => {
       },
       async setFavorite() {
         writes += 1;
+      },
+      async findDuplicateCandidates() {
+        return [];
+      },
+      async listUsageSummaries() {
+        return [];
+      },
+      async listUsage() {
+        return [];
+      },
+      async recordUsage() {
+        writes += 1;
+        throw new Error("unexpected legacy usage write");
+      },
+      async listPrivateMedia() {
+        return [];
+      },
+      async registerPrivateMedia() {
+        writes += 1;
+        throw new Error("unexpected legacy media write");
+      },
+      async deletePrivateMedia() {
+        writes += 1;
+        throw new Error("unexpected legacy media write");
       },
     };
     const repository = new QuiescedUlcExerciseCatalogRepository(legacy);
@@ -134,6 +161,20 @@ describe("ULC exercise catalog cutover runtime repositories", () => {
       },
       async setFavorite(...args) {
         calls.favorite = args;
+      },
+      async listUsageSummaries() {
+        return [];
+      },
+      async listUsageEvents() {
+        return [];
+      },
+      async recordUsage() {},
+      async listPrivateMedia() {
+        return [];
+      },
+      async registerPrivateMedia() {},
+      async deletePrivateMedia() {
+        return undefined;
       },
     };
 

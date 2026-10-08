@@ -7,7 +7,7 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                 <p class="summary">Übungen suchen, filtern, favorisieren und für die Trainingsplanung vorbereiten.</p>
               </div>
               <div class="exercise-catalog-hero-actions">
-                <input id="exercise-catalog-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+                <input id="exercise-catalog-import-file" type="file" accept=".xlsx,.xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/xml,text/xml,application/vnd.ms-excel" hidden />
                 <button class="button button--secondary" id="exercise-catalog-import-open" type="button" hidden disabled>Import prüfen</button>
                 <button class="button button--secondary" id="exercise-catalog-template" type="button" disabled>Importvorlage</button>
                 <button class="button button--secondary" id="exercise-catalog-export" type="button" disabled>Export</button>
@@ -53,6 +53,15 @@ export const ULC_EXERCISE_CATALOG_HTML = `
               <div class="exercise-catalog-filter-grid">
                 <label>Kategorie
                   <select id="exercise-catalog-category-filter"></select>
+                </label>
+                <label>Schwierigkeit
+                  <select id="exercise-catalog-difficulty-filter">
+                    <option value="">Alle Schwierigkeiten</option>
+                    <option value="easy">Leicht</option>
+                    <option value="medium">Mittel</option>
+                    <option value="hard">Schwer</option>
+                    <option value="none">Ohne Angabe</option>
+                  </select>
                 </label>
                 <label>Trainingsgruppe
                   <select id="exercise-catalog-group-filter"></select>
@@ -124,6 +133,9 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                   <button type="button" data-exercise-catalog-tab="instructions" aria-selected="false">Anleitung</button>
                   <button type="button" data-exercise-catalog-tab="groups" aria-selected="false">Gruppen</button>
                   <button type="button" data-exercise-catalog-tab="parameters" aria-selected="false">Parameter</button>
+                  <button type="button" data-exercise-catalog-tab="similar" aria-selected="false">Ähnlich</button>
+                  <button type="button" data-exercise-catalog-tab="usage" aria-selected="false">Verwendung</button>
+                  <button type="button" data-exercise-catalog-tab="media" aria-selected="false">Videos</button>
                 </nav>
 
                 <form id="exercise-catalog-form" class="exercise-catalog-editor-form">
@@ -142,6 +154,14 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                         </label>
                         <label>Unterkategorie
                           <input id="exercise-catalog-subcategory" maxlength="100" />
+                        </label>
+                        <label>Schwierigkeit
+                          <select id="exercise-catalog-difficulty">
+                            <option value="">Keine Angabe</option>
+                            <option value="easy">Leicht</option>
+                            <option value="medium">Mittel</option>
+                            <option value="hard">Schwer</option>
+                          </select>
                         </label>
                         <label class="exercise-catalog-wide">Trainingsziel
                           <input id="exercise-catalog-goal" maxlength="240" />
@@ -163,11 +183,14 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                         <label class="exercise-catalog-wide">Typische Fehler
                           <textarea id="exercise-catalog-mistakes" maxlength="10000" rows="4"></textarea>
                         </label>
-                        <label class="exercise-catalog-wide">Video- / Weblink
+                        <label class="exercise-catalog-wide">Erster Video- / Weblink
                           <input id="exercise-catalog-video-url" type="url" maxlength="2000" inputmode="url" placeholder="https://…" />
                         </label>
+                        <label class="exercise-catalog-wide">Weitere Video- / Weblinks
+                          <textarea id="exercise-catalog-video-urls" rows="4" maxlength="20000" placeholder="Ein Link pro Zeile"></textarea>
+                        </label>
                         <div class="exercise-catalog-link-row exercise-catalog-wide" id="exercise-catalog-link-row" hidden>
-                          <a id="exercise-catalog-link" rel="noopener noreferrer" target="_blank">Link öffnen</a>
+                          <div id="exercise-catalog-links"></div>
                         </div>
                       </div>
                     </section>
@@ -190,6 +213,35 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                           </div>
                         </div>
                         <div class="exercise-catalog-parameters" id="exercise-catalog-parameters"></div>
+                      </fieldset>
+                    </section>
+
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="similar" hidden>
+                      <fieldset class="exercise-catalog-fieldset">
+                        <legend>Ähnliche Übungen</legend>
+                        <p class="exercise-catalog-panel-hint">Verknüpfe fachlich ähnliche Übungen. Die Beziehung wird beidseitig gespeichert.</p>
+                        <div class="exercise-catalog-check-grid" id="exercise-catalog-similar"></div>
+                      </fieldset>
+                    </section>
+
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="usage" hidden>
+                      <fieldset class="exercise-catalog-fieldset">
+                        <div class="exercise-catalog-parameter-heading">
+                          <legend>Verwendung</legend>
+                          <button class="button button--secondary" id="exercise-catalog-usage-add" type="button">Heute verwendet</button>
+                        </div>
+                        <div class="exercise-catalog-usage-summary" id="exercise-catalog-usage-summary">Noch keine Verwendung erfasst.</div>
+                        <div class="exercise-catalog-usage-list" id="exercise-catalog-usage-list"></div>
+                      </fieldset>
+                    </section>
+
+                    <section class="exercise-catalog-editor-panel" data-exercise-catalog-panel="media" hidden>
+                      <fieldset class="exercise-catalog-fieldset">
+                        <legend>Private Videos</legend>
+                        <p class="exercise-catalog-panel-hint" id="exercise-catalog-media-hint">Private Videos werden nur berechtigten Benutzern bereitgestellt.</p>
+                        <input id="exercise-catalog-media-file" type="file" accept="video/*" hidden />
+                        <button class="button button--secondary" id="exercise-catalog-media-upload" type="button">Privates Video hochladen</button>
+                        <div class="exercise-catalog-media-list" id="exercise-catalog-media-list"></div>
                       </fieldset>
                     </section>
 
@@ -405,6 +457,47 @@ export const ULC_EXERCISE_CATALOG_CSS = `
   color: var(--secondary);
   font-size: .78rem;
 }
+.exercise-catalog-editor-tabs {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.exercise-catalog-usage-summary {
+  margin: 10px 0;
+  color: var(--secondary);
+  font-size: .8rem;
+}
+.exercise-catalog-usage-list,
+.exercise-catalog-media-list,
+#exercise-catalog-links {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.exercise-catalog-usage-entry,
+.exercise-catalog-media-entry {
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.exercise-catalog-media-entry video {
+  width: 100%;
+  max-height: 240px;
+  border-radius: 8px;
+  background: #000;
+}
+.exercise-catalog-media-entry__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.exercise-catalog-link-row a {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 @media (min-width: 640px) {
   .exercise-catalog-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .exercise-catalog-search { grid-column: 1 / -1; }
@@ -814,6 +907,12 @@ const EXERCISE_CATEGORIES = Object.freeze([
   { key: "other", label: "Sonstiges" },
 ]);
 
+const EXERCISE_DIFFICULTIES = Object.freeze([
+  { key: "easy", label: "Leicht" },
+  { key: "medium", label: "Mittel" },
+  { key: "hard", label: "Schwer" },
+]);
+
 const EXERCISE_PARAMETER_META = Object.freeze([
   { key: "sets", label: "Sätze", unit: "", inputType: "number" },
   { key: "repetitions", label: "Wiederholungen", unit: "", inputType: "number" },
@@ -864,6 +963,7 @@ Object.assign(elements, {
   exerciseCatalogFilterReset: document.querySelector("#exercise-catalog-filter-reset"),
   exerciseCatalogFilterApply: document.querySelector("#exercise-catalog-filter-apply"),
   exerciseCatalogCategoryFilter: document.querySelector("#exercise-catalog-category-filter"),
+  exerciseCatalogDifficultyFilter: document.querySelector("#exercise-catalog-difficulty-filter"),
   exerciseCatalogGroupFilter: document.querySelector("#exercise-catalog-group-filter"),
   exerciseCatalogMaterialFilter: document.querySelector("#exercise-catalog-material-filter"),
   exerciseCatalogFavoriteFilter: document.querySelector("#exercise-catalog-favorite-filter"),
@@ -879,18 +979,28 @@ Object.assign(elements, {
   exerciseCatalogName: document.querySelector("#exercise-catalog-name"),
   exerciseCatalogCategory: document.querySelector("#exercise-catalog-category"),
   exerciseCatalogSubcategory: document.querySelector("#exercise-catalog-subcategory"),
+  exerciseCatalogDifficulty: document.querySelector("#exercise-catalog-difficulty"),
   exerciseCatalogGoal: document.querySelector("#exercise-catalog-goal"),
   exerciseCatalogDescription: document.querySelector("#exercise-catalog-description"),
   exerciseCatalogCues: document.querySelector("#exercise-catalog-cues"),
   exerciseCatalogMistakes: document.querySelector("#exercise-catalog-mistakes"),
   exerciseCatalogEquipment: document.querySelector("#exercise-catalog-equipment"),
   exerciseCatalogVideoUrl: document.querySelector("#exercise-catalog-video-url"),
+  exerciseCatalogVideoUrls: document.querySelector("#exercise-catalog-video-urls"),
   exerciseCatalogGroups: document.querySelector("#exercise-catalog-groups"),
   exerciseCatalogParameterSelect: document.querySelector("#exercise-catalog-parameter-select"),
   exerciseCatalogParameterAdd: document.querySelector("#exercise-catalog-parameter-add"),
   exerciseCatalogParameters: document.querySelector("#exercise-catalog-parameters"),
   exerciseCatalogLinkRow: document.querySelector("#exercise-catalog-link-row"),
-  exerciseCatalogLink: document.querySelector("#exercise-catalog-link"),
+  exerciseCatalogLinks: document.querySelector("#exercise-catalog-links"),
+  exerciseCatalogSimilar: document.querySelector("#exercise-catalog-similar"),
+  exerciseCatalogUsageAdd: document.querySelector("#exercise-catalog-usage-add"),
+  exerciseCatalogUsageSummary: document.querySelector("#exercise-catalog-usage-summary"),
+  exerciseCatalogUsageList: document.querySelector("#exercise-catalog-usage-list"),
+  exerciseCatalogMediaHint: document.querySelector("#exercise-catalog-media-hint"),
+  exerciseCatalogMediaFile: document.querySelector("#exercise-catalog-media-file"),
+  exerciseCatalogMediaUpload: document.querySelector("#exercise-catalog-media-upload"),
+  exerciseCatalogMediaList: document.querySelector("#exercise-catalog-media-list"),
   exerciseCatalogSave: document.querySelector("#exercise-catalog-save"),
   exerciseCatalogDeactivate: document.querySelector("#exercise-catalog-deactivate"),
   exerciseCatalogReadonly: document.querySelector("#exercise-catalog-readonly"),
@@ -900,6 +1010,14 @@ let exerciseCatalogReady = false;
 let exerciseCatalogCanEdit = false;
 let exerciseCatalogItems = [];
 let exerciseCatalogGroups = [];
+let exerciseCatalogFeatures = {
+  difficulty: false,
+  similarExercises: false,
+  duplicateWarnings: false,
+  usageHistory: false,
+  multipleExternalVideos: false,
+  privateVideoUpload: false,
+};
 let exerciseCatalogSelectedId = null;
 let exerciseCatalogParameterDrafts = [];
 let exerciseCatalogBusy = false;
@@ -929,10 +1047,20 @@ function isExerciseCatalogItem(item) {
     typeof item.name !== "string" ||
     item.name.length < 2 ||
     !EXERCISE_CATEGORIES.some((category) => category.key === item.categoryKey) ||
+    (item.difficultyKey !== null &&
+      !EXERCISE_DIFFICULTIES.some(
+        (difficulty) => difficulty.key === item.difficultyKey,
+      )) ||
     !Array.isArray(item.equipment) ||
     item.equipment.some((value) => typeof value !== "string") ||
+    !Array.isArray(item.videoUrls) ||
+    item.videoUrls.some((value) => typeof value !== "string") ||
+    (item.videoUrl !== null && typeof item.videoUrl !== "string") ||
+    item.videoUrl !== (item.videoUrls[0] || null) ||
     !Array.isArray(item.groupIds) ||
     item.groupIds.some((value) => typeof value !== "string") ||
+    !Array.isArray(item.similarExerciseIds) ||
+    item.similarExerciseIds.some((value) => typeof value !== "string") ||
     !Array.isArray(item.parameters) ||
     typeof item.isActive !== "boolean" ||
     typeof item.isFavorite !== "boolean"
@@ -990,9 +1118,20 @@ async function bootstrapExerciseCatalog() {
     const payload = await requestJson("/api/modules/exercise-catalog");
     const items = payload?.catalog?.items;
     const groups = payload?.catalog?.trainingGroups;
+    const features = payload?.module?.features;
     const edit = payload?.access?.edit;
     if (
       payload?.module?.moduleId !== "exercise_catalog" ||
+      features === null ||
+      typeof features !== "object" ||
+      [
+        "difficulty",
+        "similarExercises",
+        "duplicateWarnings",
+        "usageHistory",
+        "multipleExternalVideos",
+        "privateVideoUpload",
+      ].some((key) => typeof features[key] !== "boolean") ||
       payload?.access?.view !== true ||
       typeof edit !== "boolean" ||
       !Array.isArray(items) ||
@@ -1005,6 +1144,7 @@ async function bootstrapExerciseCatalog() {
 
     exerciseCatalogReady = true;
     exerciseCatalogCanEdit = edit;
+    exerciseCatalogFeatures = { ...features };
     exerciseCatalogItems = items.slice();
     exerciseCatalogGroups = groups.slice();
     initializeExerciseCatalogFilters();
@@ -1038,6 +1178,15 @@ function initializeExerciseCatalogFilters() {
     })),
   );
   replaceExerciseCatalogSelectOptions(
+    elements.exerciseCatalogDifficulty,
+    [{ value: "", label: "Keine Angabe" }].concat(
+      EXERCISE_DIFFICULTIES.map((difficulty) => ({
+        value: difficulty.key,
+        label: difficulty.label,
+      })),
+    ),
+  );
+  replaceExerciseCatalogSelectOptions(
     elements.exerciseCatalogGroupFilter,
     [{ value: "", label: "Alle Gruppen" }].concat(
       exerciseCatalogGroups.map((group) => ({
@@ -1068,6 +1217,7 @@ function replaceExerciseCatalogSelectOptions(select, options) {
 function exerciseCatalogActiveFilterCount() {
   return [
     Boolean(elements.exerciseCatalogCategoryFilter?.value),
+    Boolean(elements.exerciseCatalogDifficultyFilter?.value),
     Boolean(elements.exerciseCatalogGroupFilter?.value),
     Boolean((elements.exerciseCatalogMaterialFilter?.value || "").trim()),
     (elements.exerciseCatalogFavoriteFilter?.value || "all") !== "all",
@@ -1106,6 +1256,7 @@ function setExerciseCatalogFilterOpen(open) {
 
 function resetExerciseCatalogFilters() {
   if (elements.exerciseCatalogCategoryFilter) elements.exerciseCatalogCategoryFilter.value = "";
+  if (elements.exerciseCatalogDifficultyFilter) elements.exerciseCatalogDifficultyFilter.value = "";
   if (elements.exerciseCatalogGroupFilter) elements.exerciseCatalogGroupFilter.value = "";
   if (elements.exerciseCatalogMaterialFilter) elements.exerciseCatalogMaterialFilter.value = "";
   if (elements.exerciseCatalogFavoriteFilter) elements.exerciseCatalogFavoriteFilter.value = "all";
@@ -1116,7 +1267,7 @@ function resetExerciseCatalogFilters() {
 }
 
 function setExerciseCatalogEditorTab(tab) {
-  const allowed = ["basis", "instructions", "groups", "parameters"];
+  const allowed = ["basis", "instructions", "groups", "parameters", "similar", "usage", "media"];
   exerciseCatalogEditorTab = allowed.includes(tab) ? tab : "basis";
   for (const control of document.querySelectorAll("[data-exercise-catalog-tab]")) {
     const active = control.dataset.exerciseCatalogTab === exerciseCatalogEditorTab;
@@ -1153,6 +1304,7 @@ function prepareExerciseCatalogView() {
 function exerciseCatalogFilteredItems() {
   const query = (elements.exerciseCatalogSearch?.value || "").trim().toLocaleLowerCase("de");
   const category = elements.exerciseCatalogCategoryFilter?.value || "";
+  const difficulty = elements.exerciseCatalogDifficultyFilter?.value || "";
   const groupId = elements.exerciseCatalogGroupFilter?.value || "";
   const material = (elements.exerciseCatalogMaterialFilter?.value || "").trim().toLocaleLowerCase("de");
   const favorite = elements.exerciseCatalogFavoriteFilter?.value || "all";
@@ -1161,12 +1313,18 @@ function exerciseCatalogFilteredItems() {
 
   return exerciseCatalogItems.filter((item) => {
     if (category && item.categoryKey !== category) return false;
+    if (
+      difficulty &&
+      (difficulty === "none"
+        ? item.difficultyKey !== null
+        : item.difficultyKey !== difficulty)
+    ) return false;
     if (groupId && !item.groupIds.includes(groupId)) return false;
     if (favorite === "favorite" && item.isFavorite !== true) return false;
     if (status === "active" && item.isActive !== true) return false;
     if (status === "archived" && item.isActive !== false) return false;
-    if (video === "with" && !item.videoUrl) return false;
-    if (video === "without" && item.videoUrl) return false;
+    if (video === "with" && item.videoUrls.length === 0) return false;
+    if (video === "without" && item.videoUrls.length > 0) return false;
     if (
       material &&
       !item.equipment.some((value) =>
@@ -1239,6 +1397,9 @@ function renderExerciseCatalogList() {
     meta.textContent = [
       categoryLabel(item.categoryKey),
       item.subcategory,
+      EXERCISE_DIFFICULTIES.find(
+        (difficulty) => difficulty.key === item.difficultyKey,
+      )?.label,
       item.goal,
     ].filter(Boolean).join(" · ");
 
@@ -1252,7 +1413,8 @@ function renderExerciseCatalogList() {
       item.equipment.length > 0 ? item.equipment.join(", ") : null,
       groupNames.length > 0 ? groupNames.join(", ") : null,
       item.parameters.length > 0 ? String(item.parameters.length) + " Parameter" : null,
-      item.videoUrl ? "Link" : null,
+      item.similarExerciseIds.length > 0 ? String(item.similarExerciseIds.length) + " ähnlich" : null,
+      item.videoUrls.length > 0 ? String(item.videoUrls.length) + " Link(s)" : null,
     ].filter(Boolean).join(" · ") || "Keine Zusatzangaben";
 
     main.append(title, meta, info);
@@ -1307,13 +1469,16 @@ function newExerciseCatalogItem() {
     name: "",
     categoryKey: "warmup",
     subcategory: null,
+    difficultyKey: null,
     goal: null,
     description: null,
     coachingCues: null,
     commonMistakes: null,
     equipment: [],
     videoUrl: null,
+    videoUrls: [],
     groupIds: [],
+    similarExerciseIds: [],
     parameters: [],
     isActive: true,
     isFavorite: false,
@@ -1358,6 +1523,7 @@ function populateExerciseCatalogEditor(item, options = {}) {
   if (elements.exerciseCatalogName) elements.exerciseCatalogName.value = item.name || "";
   if (elements.exerciseCatalogCategory) elements.exerciseCatalogCategory.value = item.categoryKey || "";
   if (elements.exerciseCatalogSubcategory) elements.exerciseCatalogSubcategory.value = item.subcategory || "";
+  if (elements.exerciseCatalogDifficulty) elements.exerciseCatalogDifficulty.value = item.difficultyKey || "";
   if (elements.exerciseCatalogGoal) elements.exerciseCatalogGoal.value = item.goal || "";
   if (elements.exerciseCatalogDescription) elements.exerciseCatalogDescription.value = item.description || "";
   if (elements.exerciseCatalogCues) elements.exerciseCatalogCues.value = item.coachingCues || "";
@@ -1368,8 +1534,18 @@ function populateExerciseCatalogEditor(item, options = {}) {
       : "";
   }
   if (elements.exerciseCatalogVideoUrl) elements.exerciseCatalogVideoUrl.value = item.videoUrl || "";
+  if (elements.exerciseCatalogVideoUrls) {
+    elements.exerciseCatalogVideoUrls.value = Array.isArray(item.videoUrls)
+      ? item.videoUrls.slice(1).join("\n")
+      : "";
+  }
 
+  renderExerciseCatalogExternalLinks(Array.isArray(item.videoUrls) ? item.videoUrls : []);
   renderExerciseCatalogGroupChecks(Array.isArray(item.groupIds) ? item.groupIds : []);
+  renderExerciseCatalogSimilarChecks(
+    Array.isArray(item.similarExerciseIds) ? item.similarExerciseIds : [],
+    item.id,
+  );
   exerciseCatalogParameterDrafts = Array.isArray(item.parameters)
     ? item.parameters.map((parameter) => ({ ...parameter }))
     : [];
@@ -1406,15 +1582,34 @@ function populateExerciseCatalogEditor(item, options = {}) {
     elements.exerciseCatalogParameterSelect.disabled = !editable || exerciseCatalogBusy;
   }
 
-  if (elements.exerciseCatalogLinkRow) {
-    elements.exerciseCatalogLinkRow.hidden = !item.videoUrl;
+  if (elements.exerciseCatalogUsageAdd) {
+    elements.exerciseCatalogUsageAdd.hidden =
+      review || item.id.length === 0 || !exerciseCatalogCanEdit;
+    elements.exerciseCatalogUsageAdd.disabled =
+      review || item.id.length === 0 || !exerciseCatalogCanEdit || exerciseCatalogBusy;
   }
-  if (elements.exerciseCatalogLink) {
-    if (item.videoUrl) {
-      elements.exerciseCatalogLink.href = item.videoUrl;
-    } else {
-      elements.exerciseCatalogLink.removeAttribute("href");
-    }
+  if (elements.exerciseCatalogMediaUpload) {
+    elements.exerciseCatalogMediaUpload.hidden =
+      review ||
+      item.id.length === 0 ||
+      !exerciseCatalogCanEdit ||
+      !exerciseCatalogFeatures.privateVideoUpload;
+    elements.exerciseCatalogMediaUpload.disabled =
+      exerciseCatalogBusy || !exerciseCatalogCanEdit;
+  }
+  if (elements.exerciseCatalogMediaHint) {
+    elements.exerciseCatalogMediaHint.textContent =
+      exerciseCatalogFeatures.privateVideoUpload
+        ? "Private Videos sind nur für berechtigte Benutzer abrufbar."
+        : "Privater Videospeicher ist in dieser Umgebung noch nicht konfiguriert.";
+  }
+
+  if (!review && item.id.length > 0) {
+    void loadExerciseCatalogUsage(item.id);
+    void loadExerciseCatalogPrivateMedia(item.id);
+  } else {
+    resetExerciseCatalogUsagePanel();
+    resetExerciseCatalogMediaPanel();
   }
 
   exerciseCatalogEditorDirty = false;
@@ -1442,6 +1637,314 @@ function closeExerciseCatalogEditor(force = false) {
   document.body.classList.remove("exercise-catalog-editor-open");
   showMessage(elements.exerciseCatalogSuccess, "");
   return true;
+}
+
+function renderExerciseCatalogExternalLinks(urls) {
+  if (elements.exerciseCatalogLinks) elements.exerciseCatalogLinks.replaceChildren();
+  const values = Array.isArray(urls) ? urls.filter((value) => typeof value === "string") : [];
+  if (elements.exerciseCatalogLinkRow) {
+    elements.exerciseCatalogLinkRow.hidden = values.length === 0;
+  }
+  for (const [index, url] of values.entries()) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.rel = "noopener noreferrer";
+    link.target = "_blank";
+    link.textContent = values.length === 1
+      ? "Video / Link öffnen"
+      : "Video / Link " + String(index + 1) + " öffnen";
+    elements.exerciseCatalogLinks?.append(link);
+  }
+}
+
+function renderExerciseCatalogSimilarChecks(selectedIds, currentId) {
+  const container = elements.exerciseCatalogSimilar;
+  if (!container) return;
+  container.replaceChildren();
+  const candidates = exerciseCatalogItems
+    .filter((item) => item.id !== currentId && item.isActive)
+    .slice()
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
+    );
+  if (candidates.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "exercise-catalog-readonly";
+    empty.textContent = "Keine weiteren aktiven Übungen vorhanden.";
+    container.append(empty);
+    return;
+  }
+  for (const item of candidates) {
+    const label = document.createElement("label");
+    label.className = "exercise-catalog-check";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = item.id;
+    input.checked = selectedIds.includes(item.id);
+    input.dataset.exerciseCatalogSimilar = item.id;
+    const text = document.createElement("span");
+    text.textContent =
+      item.name + " · " + categoryLabel(item.categoryKey);
+    label.append(input, text);
+    container.append(label);
+  }
+}
+
+function resetExerciseCatalogUsagePanel() {
+  if (elements.exerciseCatalogUsageSummary) {
+    elements.exerciseCatalogUsageSummary.textContent =
+      "Noch keine Verwendung erfasst.";
+  }
+  if (elements.exerciseCatalogUsageList) {
+    elements.exerciseCatalogUsageList.replaceChildren();
+  }
+}
+
+async function loadExerciseCatalogUsage(exerciseId) {
+  resetExerciseCatalogUsagePanel();
+  if (!exerciseCatalogFeatures.usageHistory || !exerciseId) return;
+  try {
+    const payload = await requestJson(
+      "/api/modules/exercise-catalog/" +
+        encodeURIComponent(exerciseId) +
+        "/usage",
+    );
+    if (exerciseCatalogSelectedId !== exerciseId) return;
+    const summary = payload?.summary;
+    const events = Array.isArray(payload?.events) ? payload.events : [];
+    if (elements.exerciseCatalogUsageSummary) {
+      const count = Number.isSafeInteger(summary?.usageCount)
+        ? summary.usageCount
+        : events.length;
+      const last = typeof summary?.lastUsedAt === "string"
+        ? new Date(summary.lastUsedAt).toLocaleString("de-AT")
+        : "noch nie";
+      elements.exerciseCatalogUsageSummary.textContent =
+        String(count) + " Verwendung(en) · zuletzt " + last;
+    }
+    if (elements.exerciseCatalogUsageList) {
+      for (const entry of events) {
+        const article = document.createElement("article");
+        article.className = "exercise-catalog-usage-entry";
+        const title = document.createElement("strong");
+        title.textContent =
+          typeof entry?.occurredAt === "string"
+            ? new Date(entry.occurredAt).toLocaleString("de-AT")
+            : "Verwendung";
+        const detail = document.createElement("span");
+        detail.textContent = [
+          typeof entry?.sourceKind === "string" ? entry.sourceKind : null,
+          typeof entry?.sourceRef === "string" ? entry.sourceRef : null,
+          typeof entry?.note === "string" ? entry.note : null,
+        ].filter(Boolean).join(" · ");
+        article.append(title, detail);
+        elements.exerciseCatalogUsageList.append(article);
+      }
+    }
+  } catch {
+    if (elements.exerciseCatalogUsageSummary) {
+      elements.exerciseCatalogUsageSummary.textContent =
+        "Verwendung konnte nicht geladen werden.";
+    }
+  }
+}
+
+async function recordExerciseCatalogUsage() {
+  const id = exerciseCatalogSelectedId;
+  if (
+    !id ||
+    !exerciseCatalogCanEdit ||
+    !exerciseCatalogFeatures.usageHistory ||
+    exerciseCatalogBusy
+  ) return;
+  setExerciseCatalogBusy(true);
+  try {
+    await requestJson(
+      "/api/modules/exercise-catalog/" + encodeURIComponent(id) + "/usage",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          sourceKind: "manual",
+          note: "Manuell im Übungskatalog erfasst",
+        }),
+      },
+    );
+    await loadExerciseCatalogUsage(id);
+    showMessage(elements.exerciseCatalogSuccess, "Verwendung wurde erfasst.");
+  } catch {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Die Verwendung konnte nicht erfasst werden.",
+    );
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
+}
+
+function resetExerciseCatalogMediaPanel() {
+  if (elements.exerciseCatalogMediaList) {
+    elements.exerciseCatalogMediaList.replaceChildren();
+  }
+}
+
+async function loadExerciseCatalogPrivateMedia(exerciseId) {
+  resetExerciseCatalogMediaPanel();
+  if (!exerciseId) return;
+  try {
+    const payload = await requestJson(
+      "/api/modules/exercise-catalog/" +
+        encodeURIComponent(exerciseId) +
+        "/private-media",
+    );
+    if (exerciseCatalogSelectedId !== exerciseId) return;
+    const media = Array.isArray(payload?.media) ? payload.media : [];
+    if (elements.exerciseCatalogMediaHint) {
+      elements.exerciseCatalogMediaHint.textContent =
+        payload?.available === true
+          ? "Private Videos sind nur für berechtigte Benutzer abrufbar."
+          : "Privater Videospeicher ist in dieser Umgebung noch nicht konfiguriert.";
+    }
+    if (elements.exerciseCatalogMediaUpload) {
+      elements.exerciseCatalogMediaUpload.hidden =
+        payload?.available !== true || !exerciseCatalogCanEdit;
+    }
+    renderExerciseCatalogPrivateMedia(exerciseId, media);
+  } catch (error) {
+    if (elements.exerciseCatalogMediaHint) {
+      elements.exerciseCatalogMediaHint.textContent =
+        error?.status === 503
+          ? "Privater Videospeicher ist in dieser Umgebung noch nicht konfiguriert."
+          : "Private Videos konnten nicht geladen werden.";
+    }
+  }
+}
+
+function renderExerciseCatalogPrivateMedia(exerciseId, media) {
+  const container = elements.exerciseCatalogMediaList;
+  if (!container) return;
+  container.replaceChildren();
+  if (media.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "exercise-catalog-readonly";
+    empty.textContent = "Keine privaten Videos vorhanden.";
+    container.append(empty);
+    return;
+  }
+  for (const entry of media) {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      typeof entry.id !== "string" ||
+      typeof entry.fileName !== "string"
+    ) continue;
+    const article = document.createElement("article");
+    article.className = "exercise-catalog-media-entry";
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName;
+    const video = document.createElement("video");
+    video.controls = true;
+    video.preload = "metadata";
+    video.src =
+      "/api/modules/exercise-catalog/" +
+      encodeURIComponent(exerciseId) +
+      "/private-media/" +
+      encodeURIComponent(entry.id) +
+      "/content";
+    const actions = document.createElement("div");
+    actions.className = "exercise-catalog-media-entry__actions";
+    if (exerciseCatalogCanEdit) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "button button--danger";
+      remove.textContent = "Löschen";
+      remove.dataset.exerciseCatalogMediaDelete = entry.id;
+      actions.append(remove);
+    }
+    article.append(title, video, actions);
+    container.append(article);
+  }
+}
+
+async function uploadExerciseCatalogPrivateVideo(file) {
+  const id = exerciseCatalogSelectedId;
+  if (
+    !id ||
+    !file ||
+    !exerciseCatalogCanEdit ||
+    !exerciseCatalogFeatures.privateVideoUpload ||
+    exerciseCatalogBusy
+  ) return;
+  if (!String(file.type || "").startsWith("video/")) {
+    showMessage(elements.exerciseCatalogMessage, "Bitte eine Videodatei auswählen.");
+    return;
+  }
+  if (file.size > 100 * 1024 * 1024) {
+    showMessage(elements.exerciseCatalogMessage, "Das private Video darf höchstens 100 MB groß sein.");
+    return;
+  }
+
+  setExerciseCatalogBusy(true);
+  try {
+    const response = await fetch(
+      "/api/modules/exercise-catalog/" +
+        encodeURIComponent(id) +
+        "/private-media",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": file.type,
+          "x-appbasis-file-name": encodeURIComponent(file.name),
+        },
+        credentials: "same-origin",
+        body: file,
+      },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload?.error?.message || "PRIVATE_VIDEO_UPLOAD_FAILED");
+      error.status = response.status;
+      throw error;
+    }
+    await loadExerciseCatalogPrivateMedia(id);
+    showMessage(elements.exerciseCatalogSuccess, "Privates Video wurde hochgeladen.");
+  } catch (error) {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      error?.status === 413
+        ? "Das private Video darf höchstens 100 MB groß sein."
+        : error?.status === 503
+          ? "Privater Videospeicher ist noch nicht konfiguriert."
+          : "Das private Video konnte nicht hochgeladen werden.",
+    );
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
+}
+
+async function deleteExerciseCatalogPrivateVideo(mediaId) {
+  const id = exerciseCatalogSelectedId;
+  if (!id || !mediaId || !exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  if (!window.confirm("Privates Video wirklich löschen?")) return;
+  setExerciseCatalogBusy(true);
+  try {
+    await requestJson(
+      "/api/modules/exercise-catalog/" +
+        encodeURIComponent(id) +
+        "/private-media/" +
+        encodeURIComponent(mediaId),
+      { method: "DELETE" },
+    );
+    await loadExerciseCatalogPrivateMedia(id);
+    showMessage(elements.exerciseCatalogSuccess, "Privates Video wurde gelöscht.");
+  } catch {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Das private Video konnte nicht gelöscht werden.",
+    );
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
 }
 
 function renderExerciseCatalogGroupChecks(selectedIds) {
@@ -1653,17 +2156,31 @@ function parseExerciseEquipment() {
 
 function exerciseCatalogFormPayload() {
   syncExerciseCatalogParameterDraftsFromDom();
+  const firstVideoUrl = (elements.exerciseCatalogVideoUrl?.value || "").trim();
+  const additionalVideoUrls = (elements.exerciseCatalogVideoUrls?.value || "")
+    .split(/\r?\n/u)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const videoUrls = [firstVideoUrl, ...additionalVideoUrls].filter(
+    (value, index, values) => value.length > 0 && values.indexOf(value) === index,
+  );
+
   return {
     name: elements.exerciseCatalogName?.value || "",
     categoryKey: elements.exerciseCatalogCategory?.value || "",
     subcategory: elements.exerciseCatalogSubcategory?.value || null,
+    difficultyKey: elements.exerciseCatalogDifficulty?.value || null,
     goal: elements.exerciseCatalogGoal?.value || null,
     description: elements.exerciseCatalogDescription?.value || null,
     coachingCues: elements.exerciseCatalogCues?.value || null,
     commonMistakes: elements.exerciseCatalogMistakes?.value || null,
     equipment: parseExerciseEquipment(),
-    videoUrl: elements.exerciseCatalogVideoUrl?.value || null,
+    videoUrl: videoUrls[0] || null,
+    videoUrls,
     groupIds: [...(elements.exerciseCatalogGroups?.querySelectorAll("input[type='checkbox']:checked") || [])].map(
+      (input) => input.value,
+    ),
+    similarExerciseIds: [...(elements.exerciseCatalogSimilar?.querySelectorAll("input[type='checkbox']:checked") || [])].map(
       (input) => input.value,
     ),
     parameters: exerciseCatalogParameterDrafts.map((parameter) => ({
@@ -1698,6 +2215,54 @@ async function saveExerciseCatalogItem(event) {
     );
     setExerciseCatalogBusy(false);
     return;
+  }
+
+  if (exerciseCatalogFeatures.duplicateWarnings) {
+    try {
+      const duplicatePayload = await requestJson(
+        "/api/modules/exercise-catalog/duplicates",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...body,
+            excludeExerciseId: exerciseCatalogSelectedId,
+          }),
+        },
+      );
+      const candidates = Array.isArray(duplicatePayload?.candidates)
+        ? duplicatePayload.candidates
+        : [];
+      if (candidates.length > 0) {
+        const preview = candidates
+          .slice(0, 3)
+          .map(
+            (candidate) =>
+              "• " +
+              String(candidate.name || candidate.exerciseId || "Übung") +
+              " (" +
+              String(Math.round(Number(candidate.score || 0) * 100)) +
+              "%)",
+          )
+          .join("\n");
+        if (
+          !window.confirm(
+            "Mögliche Dublette erkannt:\n" +
+              preview +
+              "\n\nTrotzdem speichern?",
+          )
+        ) {
+          setExerciseCatalogBusy(false);
+          return;
+        }
+      }
+    } catch {
+      showMessage(
+        elements.exerciseCatalogMessage,
+        "Die Dublettenprüfung konnte nicht abgeschlossen werden. Bitte erneut versuchen.",
+      );
+      setExerciseCatalogBusy(false);
+      return;
+    }
   }
 
   const path = exerciseCatalogSelectedId
@@ -1837,6 +2402,14 @@ const EXERCISE_CATALOG_XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
+function exerciseCatalogImportContentType(file) {
+  if (!file || typeof file.name !== "string") return null;
+  const name = file.name.toLocaleLowerCase("de");
+  if (name.endsWith(".xlsx")) return EXERCISE_CATALOG_XLSX_CONTENT_TYPE;
+  if (name.endsWith(".xml")) return "application/xml";
+  return null;
+}
+
 function importActionLabel(action) {
   if (action === "create") return "Neu";
   if (action === "update") return "Änderung";
@@ -1860,7 +2433,7 @@ function isExerciseCatalogImportPreview(value) {
   if (
     value === null ||
     typeof value !== "object" ||
-    value.contractVersion !== "appbasis.exercise-catalog.exchange/v1" ||
+    value.contractVersion !== "appbasis.exercise-catalog.exchange/v2" ||
     value.applyAvailable !== false ||
     value.summary === null ||
     typeof value.summary !== "object" ||
@@ -1888,7 +2461,9 @@ function isExerciseCatalogImportPreview(value) {
     typeof row.draft.name === "string" &&
     typeof row.draft.categoryKey === "string" &&
     Array.isArray(row.draft.equipment) &&
+    Array.isArray(row.draft.videoUrls) &&
     Array.isArray(row.draft.groupIds) &&
+    Array.isArray(row.draft.similarExerciseIds) &&
     Array.isArray(row.draft.parameters) &&
     typeof row.draft.isActive === "boolean" &&
     Array.isArray(row.issues) &&
@@ -2112,12 +2687,12 @@ async function previewExerciseCatalogImportFile(file) {
   showMessage(elements.exerciseCatalogMessage, "");
   showMessage(elements.exerciseCatalogSuccess, "");
 
-  if (
-    !file ||
-    typeof file.name !== "string" ||
-    !file.name.toLocaleLowerCase("de").endsWith(".xlsx")
-  ) {
-    showMessage(elements.exerciseCatalogMessage, "Bitte eine XLSX-Datei auswählen.");
+  const importContentType = exerciseCatalogImportContentType(file);
+  if (importContentType === null) {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Bitte eine XLSX- oder Excel-XML-Datei auswählen.",
+    );
     return;
   }
   if (file.size > EXERCISE_CATALOG_IMPORT_MAX_FILE_BYTES) {
@@ -2133,8 +2708,9 @@ async function previewExerciseCatalogImportFile(file) {
         method: "POST",
         headers: {
           accept: "application/json",
-          "content-type": EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
+          "content-type": importContentType,
         },
+        credentials: "same-origin",
         body: file,
       },
     );
@@ -2170,7 +2746,7 @@ async function previewExerciseCatalogImportFile(file) {
           ? "Die Importdatei darf höchstens 5 MB groß sein."
           : error?.code === "IMPORT_ROW_LIMIT_EXCEEDED"
             ? "Die Importdatei enthält mehr als 1.000 Übungen."
-            : "Die XLSX-Datei konnte nicht als Importvorschau gelesen werden.";
+            : "Die XLSX-/Excel-XML-Datei konnte nicht als Importvorschau gelesen werden.";
     showMessage(elements.exerciseCatalogMessage, message);
   } finally {
     setExerciseCatalogBusy(false);
@@ -2249,9 +2825,20 @@ async function refreshExerciseCatalogAfterImport() {
   const payload = await requestJson("/api/modules/exercise-catalog");
   const items = payload?.catalog?.items;
   const groups = payload?.catalog?.trainingGroups;
+  const features = payload?.module?.features;
   const edit = payload?.access?.edit;
   if (
     payload?.module?.moduleId !== "exercise_catalog" ||
+    features === null ||
+    typeof features !== "object" ||
+    [
+      "difficulty",
+      "similarExercises",
+      "duplicateWarnings",
+      "usageHistory",
+      "multipleExternalVideos",
+      "privateVideoUpload",
+    ].some((key) => typeof features[key] !== "boolean") ||
     payload?.access?.view !== true ||
     typeof edit !== "boolean" ||
     !Array.isArray(items) ||
@@ -2263,6 +2850,7 @@ async function refreshExerciseCatalogAfterImport() {
   }
   exerciseCatalogReady = true;
   exerciseCatalogCanEdit = edit;
+  exerciseCatalogFeatures = { ...features };
   exerciseCatalogItems = items.slice();
   exerciseCatalogGroups = groups.slice();
   initializeExerciseCatalogFilters();
@@ -2288,7 +2876,7 @@ async function applyExerciseCatalogImport() {
     exerciseCatalogImportPreviewData.summary.errors > 0 ||
     !window.confirm(
       String(changes) +
-        " Änderung(en) aus der geprüften XLSX-Datei jetzt anwenden? " +
+        " Änderung(en) aus der geprüften Importdatei jetzt anwenden? " +
         "Der Server prüft Datei und Katalogzustand unmittelbar davor erneut.",
     )
   ) return;
@@ -2303,7 +2891,9 @@ async function applyExerciseCatalogImport() {
         method: "POST",
         headers: {
           accept: "application/json",
-          "content-type": EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
+          "content-type":
+            exerciseCatalogImportContentType(exerciseCatalogImportFileDraft) ||
+            EXERCISE_CATALOG_XLSX_CONTENT_TYPE,
           "x-appbasis-import-preview-token": exerciseCatalogImportPreviewToken,
         },
         body: exerciseCatalogImportFileDraft,
@@ -2354,7 +2944,7 @@ async function applyExerciseCatalogImport() {
       error?.status === 403
         ? "Für den Import fehlt die Bearbeitungsberechtigung."
         : stale
-          ? "Die Vorschau ist nicht mehr aktuell. Bitte XLSX-Datei erneut prüfen."
+          ? "Die Vorschau ist nicht mehr aktuell. Bitte Importdatei erneut prüfen."
           : error?.status === 413
             ? "Die Importdatei darf höchstens 5 MB groß sein."
             : "Der Import konnte nicht angewendet werden.",
@@ -2474,6 +3064,20 @@ function setExerciseCatalogBusy(next) {
   if (elements.exerciseCatalogParameterSelect) {
     elements.exerciseCatalogParameterSelect.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
   }
+  if (elements.exerciseCatalogUsageAdd) {
+    elements.exerciseCatalogUsageAdd.disabled =
+      next ||
+      exerciseCatalogEditorReviewMode ||
+      !exerciseCatalogCanEdit ||
+      !exerciseCatalogSelectedId;
+  }
+  if (elements.exerciseCatalogMediaUpload) {
+    elements.exerciseCatalogMediaUpload.disabled =
+      next ||
+      exerciseCatalogEditorReviewMode ||
+      !exerciseCatalogCanEdit ||
+      !exerciseCatalogSelectedId;
+  }
   for (const control of elements.exerciseCatalogParameters?.querySelectorAll("input, button") || []) {
     control.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
   }
@@ -2511,6 +3115,7 @@ function handleExerciseCatalogParameterClick(event) {
 for (const control of [
   elements.exerciseCatalogSearch,
   elements.exerciseCatalogCategoryFilter,
+  elements.exerciseCatalogDifficultyFilter,
   elements.exerciseCatalogGroupFilter,
   elements.exerciseCatalogMaterialFilter,
   elements.exerciseCatalogFavoriteFilter,
@@ -2590,6 +3195,25 @@ elements.exerciseCatalogForm?.addEventListener("change", () => {
 });
 elements.exerciseCatalogForm?.addEventListener("submit", (event) => void saveExerciseCatalogItem(event));
 elements.exerciseCatalogDeactivate?.addEventListener("click", () => void deactivateExerciseCatalogItem());
+elements.exerciseCatalogUsageAdd?.addEventListener("click", () => {
+  void recordExerciseCatalogUsage();
+});
+elements.exerciseCatalogMediaUpload?.addEventListener("click", () => {
+  if (!exerciseCatalogCanEdit || exerciseCatalogBusy) return;
+  elements.exerciseCatalogMediaFile?.click();
+});
+elements.exerciseCatalogMediaFile?.addEventListener("change", () => {
+  const file = elements.exerciseCatalogMediaFile?.files?.[0] || null;
+  if (elements.exerciseCatalogMediaFile) elements.exerciseCatalogMediaFile.value = "";
+  if (file) void uploadExerciseCatalogPrivateVideo(file);
+});
+elements.exerciseCatalogMediaList?.addEventListener("click", (event) => {
+  const control = event.target.closest("[data-exercise-catalog-media-delete]");
+  if (!control) return;
+  void deleteExerciseCatalogPrivateVideo(
+    control.dataset.exerciseCatalogMediaDelete || "",
+  );
+});
 elements.exerciseCatalogParameterAdd?.addEventListener("click", () => {
   addExerciseCatalogParameter();
   if (

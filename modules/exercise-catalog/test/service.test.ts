@@ -13,6 +13,10 @@ const definition = createExerciseCatalogDefinition({
     { key: "mobility", label: "Mobility" },
   ],
   parameterKeys: ["duration", "repetitions"],
+  difficulties: [
+    { key: "easy", label: "Easy" },
+    { key: "hard", label: "Hard" },
+  ],
 });
 
 describe("exercise catalog service", () => {
@@ -94,6 +98,81 @@ describe("exercise catalog service", () => {
       goal: "Hip mobility",
       isActive: false,
     });
+  });
+
+  it("supports similarities, duplicate warnings, usage history and private media metadata", async () => {
+    const repository = new InMemoryExerciseCatalogRepository();
+    let nextId = 0;
+    const service = new ExerciseCatalogService({
+      repository,
+      definition,
+      createId: () => "generated-" + String(++nextId),
+    });
+
+    const first = await service.create("org-a", {
+      name: "Flying sprint 30 m",
+      categoryKey: "mobility",
+      difficultyKey: "easy",
+      equipment: ["cones"],
+      videoUrls: ["https://example.test/one"],
+    });
+    const second = await service.create("org-a", {
+      name: "Flying sprint 40 m",
+      categoryKey: "mobility",
+      equipment: ["cones"],
+      similarExerciseIds: [first.id],
+    });
+
+    await expect(service.findById("org-a", first.id)).resolves.toMatchObject({
+      item: {
+        similarExerciseIds: [second.id],
+      },
+    });
+
+    const duplicates = await service.findDuplicateCandidates("org-a", {
+      name: "Flying sprint 35 m",
+      categoryKey: "mobility",
+      equipment: ["cones"],
+    });
+    expect(duplicates.map((candidate) => candidate.exerciseId)).toEqual(
+      expect.arrayContaining([first.id, second.id]),
+    );
+
+    const usage = await service.recordUsage("org-a", first.id, {
+      sourceKind: "manual",
+      sourceRef: "training-1",
+    });
+    expect(usage).toMatchObject({
+      organizationId: "org-a",
+      exerciseId: first.id,
+      sourceKind: "manual",
+      sourceRef: "training-1",
+    });
+    await expect(service.listUsageSummaries("org-a")).resolves.toEqual([
+      expect.objectContaining({
+        exerciseId: first.id,
+        usageCount: 1,
+      }),
+    ]);
+
+    const media = await service.registerPrivateMedia("org-a", first.id, {
+      id: "media-1",
+      fileName: "clip.mp4",
+      storageKey: "exercise-catalog/org-a/item/media-1",
+      contentType: "video/mp4",
+      sizeBytes: 1234,
+    });
+    expect(media).toMatchObject({
+      id: "media-1",
+      exerciseId: first.id,
+      fileName: "clip.mp4",
+    });
+    await expect(service.listPrivateMedia("org-a", first.id)).resolves.toEqual([
+      expect.objectContaining({ id: "media-1" }),
+    ]);
+    await expect(
+      service.deletePrivateMedia("org-a", first.id, "media-1"),
+    ).resolves.toMatchObject({ id: "media-1" });
   });
 
   it("fails closed for invalid configured categories and malformed scopes", async () => {

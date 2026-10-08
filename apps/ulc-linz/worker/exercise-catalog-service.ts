@@ -1,4 +1,12 @@
 import type { AthleteMasterdataSnapshot } from "@appbasis/athletes";
+import type {
+  ExerciseCatalogDuplicateCandidate,
+  ExerciseCatalogPrivateMedia,
+  ExerciseCatalogUsageEvent,
+  ExerciseCatalogUsageSummary,
+  RecordExerciseCatalogUsageInput,
+  RegisterExerciseCatalogPrivateMediaInput,
+} from "@appbasis/exercise-catalog";
 
 import {
   createUlcExerciseCatalogItem,
@@ -28,6 +36,38 @@ export interface UlcExerciseCatalogRepository {
     exerciseId: string,
     favorite: boolean,
   ): Promise<void>;
+  findDuplicateCandidates(
+    organizationId: string,
+    input: CreateUlcExerciseCatalogItemInput,
+    excludeExerciseId?: string | null,
+  ): Promise<readonly ExerciseCatalogDuplicateCandidate[]>;
+  listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly ExerciseCatalogUsageSummary[]>;
+  listUsage(
+    organizationId: string,
+    exerciseId: string,
+    limit?: number,
+  ): Promise<readonly ExerciseCatalogUsageEvent[]>;
+  recordUsage(
+    organizationId: string,
+    exerciseId: string,
+    input: RecordExerciseCatalogUsageInput,
+  ): Promise<ExerciseCatalogUsageEvent | undefined>;
+  listPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+  ): Promise<readonly ExerciseCatalogPrivateMedia[]>;
+  registerPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+    input: RegisterExerciseCatalogPrivateMediaInput,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined>;
+  deletePrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined>;
 }
 
 export interface UlcExerciseCatalogTrainingGroup {
@@ -176,6 +216,69 @@ export function createUlcExerciseCatalogService({
       exerciseId: string,
     ): Promise<void> {
       return repository.deactivate(organizationId, exerciseId);
+    },
+
+    findDuplicateCandidates(
+      organizationId: string,
+      input: CreateUlcExerciseCatalogItemInput,
+      excludeExerciseId?: string | null,
+    ) {
+      return repository.findDuplicateCandidates(
+        organizationId,
+        input,
+        excludeExerciseId,
+      );
+    },
+
+    listUsageSummaries(organizationId: string) {
+      return repository.listUsageSummaries(organizationId);
+    },
+
+    listUsage(
+      organizationId: string,
+      exerciseId: string,
+      limit?: number,
+    ) {
+      return repository.listUsage(organizationId, exerciseId, limit);
+    },
+
+    recordUsage(
+      organizationId: string,
+      exerciseId: string,
+      input: RecordExerciseCatalogUsageInput,
+    ) {
+      return repository.recordUsage(organizationId, exerciseId, input);
+    },
+
+    listPrivateMedia(
+      organizationId: string,
+      exerciseId: string,
+    ) {
+      return repository.listPrivateMedia(organizationId, exerciseId);
+    },
+
+    registerPrivateMedia(
+      organizationId: string,
+      exerciseId: string,
+      input: RegisterExerciseCatalogPrivateMediaInput,
+    ) {
+      return repository.registerPrivateMedia(
+        organizationId,
+        exerciseId,
+        input,
+      );
+    },
+
+    deletePrivateMedia(
+      organizationId: string,
+      exerciseId: string,
+      mediaId: string,
+    ) {
+      return repository.deletePrivateMedia(
+        organizationId,
+        exerciseId,
+        mediaId,
+      );
     },
 
     async setFavorite(

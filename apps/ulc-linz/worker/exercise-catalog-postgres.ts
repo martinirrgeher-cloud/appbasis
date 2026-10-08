@@ -1,5 +1,14 @@
+import type {
+  ExerciseCatalogDuplicateCandidate,
+  ExerciseCatalogPrivateMedia,
+  ExerciseCatalogUsageEvent,
+  ExerciseCatalogUsageSummary,
+  RecordExerciseCatalogUsageInput,
+  RegisterExerciseCatalogPrivateMediaInput,
+} from "@appbasis/exercise-catalog";
 import {
   createUlcExerciseCatalogItem,
+  type CreateUlcExerciseCatalogItemInput,
   type UlcExerciseCatalogItem,
   type UlcExerciseParameterDefinition,
 } from "./exercise-catalog-domain";
@@ -111,6 +120,7 @@ export class PostgresUlcExerciseCatalogRepository {
   }
 
   async create(item: UlcExerciseCatalogItem): Promise<void> {
+    assertLegacyCompatibleItem(item);
     const rows = await this.#sql.unsafe(
       `WITH inserted AS (
          INSERT INTO ulc_linz_exercise_catalog_item (
@@ -190,6 +200,7 @@ export class PostgresUlcExerciseCatalogRepository {
   }
 
   async update(item: UlcExerciseCatalogItem): Promise<void> {
+    assertLegacyCompatibleItem(item);
     const rows = await this.#sql.unsafe(
       `WITH target AS MATERIALIZED (
          SELECT id
@@ -378,6 +389,60 @@ export class PostgresUlcExerciseCatalogRepository {
       throw new UlcExerciseCatalogNotFoundError();
     }
   }
+
+  findDuplicateCandidates(
+    _organizationId: string,
+    _input: CreateUlcExerciseCatalogItemInput,
+    _excludeExerciseId?: string | null,
+  ): Promise<readonly ExerciseCatalogDuplicateCandidate[]> {
+    return legacyParityUnavailable();
+  }
+
+  listUsageSummaries(
+    _organizationId: string,
+  ): Promise<readonly ExerciseCatalogUsageSummary[]> {
+    return legacyParityUnavailable();
+  }
+
+  listUsage(
+    _organizationId: string,
+    _exerciseId: string,
+    _limit?: number,
+  ): Promise<readonly ExerciseCatalogUsageEvent[]> {
+    return legacyParityUnavailable();
+  }
+
+  recordUsage(
+    _organizationId: string,
+    _exerciseId: string,
+    _input: RecordExerciseCatalogUsageInput,
+  ): Promise<ExerciseCatalogUsageEvent | undefined> {
+    return legacyParityUnavailable();
+  }
+
+  listPrivateMedia(
+    _organizationId: string,
+    _exerciseId: string,
+  ): Promise<readonly ExerciseCatalogPrivateMedia[]> {
+    return legacyParityUnavailable();
+  }
+
+  registerPrivateMedia(
+    _organizationId: string,
+    _exerciseId: string,
+    _input: RegisterExerciseCatalogPrivateMediaInput,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return legacyParityUnavailable();
+  }
+
+  deletePrivateMedia(
+    _organizationId: string,
+    _exerciseId: string,
+    _mediaId: string,
+  ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return legacyParityUnavailable();
+  }
+
 }
 
 function hydrate(
@@ -550,4 +615,25 @@ function rowNullableNumber(
 
 function blocked(): never {
   throw new UlcExerciseCatalogPersistenceError();
+}
+
+
+function assertLegacyCompatibleItem(item: UlcExerciseCatalogItem): void {
+  if (
+    item.difficultyKey !== null ||
+    item.videoUrls.length > 1 ||
+    item.similarExerciseIds.length > 0
+  ) {
+    throw new Error(
+      "Exercise catalog parity fields require the standard-module runtime.",
+    );
+  }
+}
+
+function legacyParityUnavailable<T>(): Promise<T> {
+  return Promise.reject(
+    new Error(
+      "Exercise catalog parity features require the standard-module runtime.",
+    ),
+  );
 }

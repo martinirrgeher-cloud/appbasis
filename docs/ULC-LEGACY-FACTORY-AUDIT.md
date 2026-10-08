@@ -33,15 +33,15 @@ App-Owners `ulc-linz-lifecycle` angelegt.
 | Dashboard / Navigation | vorhanden | vorhanden | App-Shell |
 | Countdown | vorhanden | migriert | Standardmodul |
 | Athleten / Gruppen / Trainer | vorhanden | migriert | Standardmodul |
-| Übungskatalog Basis | vorhanden | E6A–E6C | Standardmodul-Kandidat |
-| Übungs-Import/-Export | XLSX/XML, Vorlage, Export, Vorschau, Review, Protokoll | E6F1 Export/Vorlage; E6F2 Preview | Katalog-Exchange |
+| Übungskatalog Basis | vorhanden | E6G als Standardmodul adoptiert | Standardmodul |
+| Übungs-Import/-Export | XLSX/XML, Vorlage, Export, Vorschau, Review, Protokoll | E6F + E6H: XLSX/XML, Exchange v2 | Katalog-Exchange |
 | Athleten-Import/-Export | vorhanden | E6F4A Export/Vorlage | Erweiterung von `athletes` |
-| Auswahllisten | vorhanden | teilweise fest verdrahtet | Modulkonfiguration |
-| Schwierigkeitsgrade | vorhanden | offen | Katalog-Erweiterung |
-| Ähnliche Übungen | vorhanden | offen | Katalog-Erweiterung |
-| Dublettenwarnung | vorhanden | offen | Katalog-Erweiterung |
-| Verwendung / letzte Verwendung | vorhanden | offen | Katalog + Planung |
-| private / mehrere Videos | vorhanden | offen | Katalog + Files |
+| Auswahllisten | vorhanden | teilweise fest verdrahtet; Schwierigkeit konfigurierbar | Modulkonfiguration |
+| Schwierigkeitsgrade | vorhanden | E6H umgesetzt | Katalog-Erweiterung |
+| Ähnliche Übungen | vorhanden | E6H umgesetzt | Katalog-Erweiterung |
+| Dublettenwarnung | vorhanden | E6H serverseitig + UI-Warnung | Katalog-Erweiterung |
+| Verwendung / letzte Verwendung | vorhanden | E6H Ledger/Verlauf; automatische Planungskopplung noch offen | Katalog + Planung |
+| private / mehrere Videos | vorhanden | E6H umgesetzt; private Ablage bei konfiguriertem Object Store | Katalog + Files |
 | Trainingsblöcke | vorhanden | fehlt | Standardmodul-Kandidat |
 | Trainingsplanung | vorhanden | fehlt | Standardmodul-Kandidat |
 | Trainingsdokumentation | vorhanden | Vorarbeit | Standardmodul-Kandidat |
@@ -366,15 +366,22 @@ Owner und die bisherigen ULC-Source-Tabellen bleiben unverändert.
 
 Der C1-Planer unterscheidet danach fail-closed zwischen exakt
 `pre-adoption` und exakt `published-target`; partielle Mischzustände sind
-unzulässig. Ein zusätzlicher read-only Readiness-Plan beweist, dass FC6 aus
-dem veröffentlichten Zustand genau die zwei Zielmigrationen rekonstruieren
-kann und bindet den nächsten Environment-Schritt an die bestehende isolierte
-ULC-Preview. C3A führt selbst weder Provider- noch Datenbankzugriffe aus.
+unzulässig. Der historische Adoptionsvertrag bleibt auf Schema v2 und exakt
+die ersten zwei Zielmigrationen gepinnt. Spätere additive Modulmigrationen
+dürfen diese geprüfte Baseline nicht rückwirkend verändern. C3A führt selbst
+weder Provider- noch Datenbankzugriffe aus.
 
-### Danach E6D / E6E
+### E6H – Katalogparität nach der Standardmodul-Adoption
 
-Erst auf geklärtem Modul-/Ownership-Vertrag folgen private Videos,
-Schwierigkeitsgrad, Ähnlichkeiten, Dubletten und Nutzungsintelligenz.
+E6H ergänzt auf Schema v3 die noch offenen Alt-App-Funktionen:
+Schwierigkeitsgrad, Ähnlichkeiten, Dublettenwarnung, Nutzungsledger,
+mehrere externe Videos, optionale private Videoablage sowie Excel-XML-Import.
+Der Exchange-Vertrag wird kompatibel auf v2 erweitert; v1 bleibt lesbar.
+
+Die Nutzungsübersicht und letzte Verwendung sind damit im Katalog vorhanden.
+Die automatische Ermittlung aus Trainingsblöcken und Trainingsplänen bleibt
+bewusst offen, weil diese Module noch nicht migriert sind. Private Videos
+werden nur angeboten, wenn die Laufzeit einen Object Store bereitstellt.
 
 ## Regel für neue ULC-Module
 
