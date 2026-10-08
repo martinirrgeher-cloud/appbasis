@@ -355,22 +355,30 @@ export class StandardModuleUlcExerciseCatalogRepository
 function ulcInputToStandardInput(
   input: CreateUlcExerciseCatalogItemInput,
 ) {
+  const videoUrls =
+    input.videoUrls ??
+    (input.videoUrl === undefined || input.videoUrl === null
+      ? []
+      : [input.videoUrl]);
+  const videoUrl =
+    input.videoUrl === undefined ? videoUrls[0] ?? null : input.videoUrl;
+
   return {
     name: input.name,
     categoryKey: input.categoryKey,
-    subcategory: input.subcategory,
-    difficultyKey: input.difficultyKey,
-    goal: input.goal,
-    description: input.description,
-    coachingCues: input.coachingCues,
-    commonMistakes: input.commonMistakes,
-    equipment: input.equipment,
-    videoUrl: input.videoUrl,
-    videoUrls: input.videoUrls,
-    audienceIds: input.groupIds,
-    similarExerciseIds: input.similarExerciseIds,
-    parameters: input.parameters,
-    isActive: input.isActive,
+    subcategory: input.subcategory ?? null,
+    difficultyKey: input.difficultyKey ?? null,
+    goal: input.goal ?? null,
+    description: input.description ?? null,
+    coachingCues: input.coachingCues ?? null,
+    commonMistakes: input.commonMistakes ?? null,
+    equipment: input.equipment ?? [],
+    videoUrl,
+    videoUrls,
+    audienceIds: input.groupIds ?? [],
+    similarExerciseIds: input.similarExerciseIds ?? [],
+    parameters: input.parameters ?? [],
+    isActive: input.isActive ?? true,
   };
 }
 
