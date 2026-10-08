@@ -5,8 +5,9 @@ import {
   buildUlcExerciseCatalogExchangeSheets,
   createUlcExerciseCatalogWorkbook,
 } from "../worker/exercise-catalog-exchange";
+import type { UlcExerciseCatalogOverview } from "../worker/exercise-catalog-service";
 
-const catalog = {
+const catalog: UlcExerciseCatalogOverview = {
   items: [
     {
       id: "exercise-1",
