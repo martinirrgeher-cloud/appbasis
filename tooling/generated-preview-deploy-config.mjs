@@ -16,6 +16,7 @@ export function renderGeneratedPreviewWranglerConfig({
   compatibilityDate = "2026-08-14",
   r2BucketName,
   r2Binding = "EXERCISE_MEDIA",
+  r2Jurisdiction,
 } = {}) {
   const normalizedAppId = requiredIdentifier(appId, "appId");
   const workerName = generatedPreviewWorkerName(normalizedAppId);
@@ -35,6 +36,10 @@ export function renderGeneratedPreviewWranglerConfig({
     normalizedR2BucketName === null
       ? null
       : requiredBindingName(r2Binding);
+  const normalizedR2Jurisdiction =
+    normalizedR2BucketName === null
+      ? optionalR2Jurisdiction(r2Jurisdiction, { bucketConfigured: false })
+      : optionalR2Jurisdiction(r2Jurisdiction, { bucketConfigured: true });
 
   return Object.freeze({
     $schema: "./node_modules/wrangler/config-schema.json",
@@ -72,6 +77,9 @@ export function renderGeneratedPreviewWranglerConfig({
             Object.freeze({
               binding: normalizedR2Binding,
               bucket_name: normalizedR2BucketName,
+              ...(normalizedR2Jurisdiction === null
+                ? {}
+                : { jurisdiction: normalizedR2Jurisdiction }),
             }),
           ]),
         }),
@@ -210,6 +218,21 @@ function optionalBucketName(value) {
     !/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(value)
   ) {
     throw new Error("r2BucketName is invalid.");
+  }
+  return value;
+}
+
+function optionalR2Jurisdiction(value, { bucketConfigured } = {}) {
+  if (value === undefined || value === null || value === "") return null;
+  if (!bucketConfigured) {
+    throw new Error("r2Jurisdiction requires r2BucketName.");
+  }
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    !/^[a-z][a-z0-9-]{0,31}$/.test(value)
+  ) {
+    throw new Error("r2Jurisdiction is invalid.");
   }
   return value;
 }
