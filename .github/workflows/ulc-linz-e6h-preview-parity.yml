@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       apply:
-        description: Apply exercise-catalog schema v3, ensure R2 and deploy the standard-module preview runtime
+        description: Apply exercise-catalog schema v3 and deploy the standard-module preview runtime with the pre-created R2 binding
         required: true
         type: boolean
         default: false
@@ -200,60 +200,14 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-exercise-catalog-preview-parity.mjs inspect
 
-      - name: Ensure ULC preview exercise media R2 bucket
+      - name: Record least-privilege R2 prerequisite
         shell: bash
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          APPBASIS_R2_BUCKET: appbasis-ulc-linz-preview-exercise-media
         run: |
-          set -euo pipefail
-          GET_BODY="$RUNNER_TEMP/appbasis-r2-get.json"
-          CREATE_BODY="$RUNNER_TEMP/appbasis-r2-create.json"
-
-          HTTP_STATUS="$(curl --silent --show-error \
-            --output "$GET_BODY" \
-            --write-out '%{http_code}' \
-            --header 'Accept: application/json' \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${APPBASIS_R2_BUCKET}")"
-
-          if [[ "$HTTP_STATUS" == "404" ]]; then
-            HTTP_STATUS="$(curl --silent --show-error \
-              --output "$CREATE_BODY" \
-              --write-out '%{http_code}' \
-              --request POST \
-              --header 'Accept: application/json' \
-              --header 'Content-Type: application/json' \
-              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              --data "$(jq -cn --arg name "$APPBASIS_R2_BUCKET" '{name:$name}')" \
-              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets")"
-            [[ "$HTTP_STATUS" == "200" ]] || {
-              echo "Unable to create the ULC preview exercise media R2 bucket (HTTP $HTTP_STATUS)." >&2
-              cat "$CREATE_BODY" >&2
-              exit 1
-            }
-          elif [[ "$HTTP_STATUS" != "200" ]]; then
-            echo "Unable to verify the ULC preview exercise media R2 bucket (HTTP $HTTP_STATUS)." >&2
-            cat "$GET_BODY" >&2
-            exit 1
-          fi
-
-          HTTP_STATUS="$(curl --silent --show-error \
-            --output "$GET_BODY" \
-            --write-out '%{http_code}' \
-            --header 'Accept: application/json' \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${APPBASIS_R2_BUCKET}")"
-          [[ "$HTTP_STATUS" == "200" ]] || {
-            echo "ULC preview exercise media R2 bucket verification failed after ensure (HTTP $HTTP_STATUS)." >&2
-            cat "$GET_BODY" >&2
-            exit 1
-          }
-          jq -e --arg name "$APPBASIS_R2_BUCKET" '.success == true and .result.name == $name' "$GET_BODY" >/dev/null || {
-            echo 'Cloudflare returned an unexpected R2 bucket after ensure.' >&2
-            exit 1
-          }
+          {
+            echo 'The dedicated preview R2 bucket is treated as pre-created infrastructure.'
+            echo 'The Worker deployment token intentionally does not require R2 management permissions.'
+            echo 'Required bucket: appbasis-ulc-linz-preview-exercise-media'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Apply additive exercise-catalog schema v3
         env:
@@ -331,15 +285,22 @@ jobs:
 
       - name: Deploy E6H standard-module preview runtime
         working-directory: apps/reference
+        shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: >-
-          pnpm exec wrangler deploy
-          --cwd "../ulc-linz"
-          --config wrangler.preview.e6h.generated.json
-          --experimental-provision=false
-          --experimental-auto-create=false
+        run: |
+          set -euo pipefail
+          if ! pnpm exec wrangler deploy \
+            --cwd "../ulc-linz" \
+            --config wrangler.preview.e6h.generated.json \
+            --experimental-provision=false \
+            --experimental-auto-create=false; then
+            echo 'E6H preview deployment failed.' >&2
+            echo 'The deployment token intentionally has no R2 management requirement.' >&2
+            echo 'Verify that the dedicated bucket appbasis-ulc-linz-preview-exercise-media exists, then rerun.' >&2
+            exit 1
+          fi
 
       - name: Verify E6H standard-module runtime is live
         env:
@@ -372,7 +333,7 @@ jobs:
           {
             echo 'ULC E6H exercise-catalog schema v3 is verified in the isolated preview.'
             echo 'The preview remains on the standard-module runtime.'
-            echo 'Private exercise media is bound to the dedicated preview R2 bucket.'
+            echo 'Private exercise media is bound to the dedicated pre-created preview R2 bucket.'
             echo 'Production was not changed.'
           } >> "$GITHUB_STEP_SUMMARY"
 

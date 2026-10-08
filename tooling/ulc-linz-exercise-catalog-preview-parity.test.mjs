@@ -126,6 +126,14 @@ test("E6H preview workflow preserves the standard-module cutover and keeps mutat
   );
   assert.match(
     workflow,
+    /pre-created R2 binding/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /\/r2\/buckets/,
+  );
+  assert.match(
+    workflow,
     /ulc-linz-exercise-catalog-preview-parity\.mjs apply/,
   );
   assert.match(
