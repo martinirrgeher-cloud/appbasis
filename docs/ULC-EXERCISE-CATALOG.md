@@ -194,9 +194,14 @@ den Standardmodul-Entrypoint mit dem dedizierten, vorab angelegten
 Preview-R2-Bucket für private Übungsvideos. Dieser Bucket ist auf die
 Cloudflare-R2-Jurisdiction `eu` festgelegt; der Worker-Binding setzt daher
 `jurisdiction: "eu"`. Der Worker-Deployment-Token benötigt dafür bewusst
-keine R2-Management-Rechte. Der generische D4-Deploypfad wird dafür bewusst
-nicht verwendet, damit die Preview nicht auf den Legacy-Entrypoint
-zurückgesetzt werden kann. Produktion bleibt von diesem Ablauf unberührt.
+keine R2-Management-Rechte. Nach dem Deploy führt derselbe Gate-Pfad einen
+echten Live-Smoke über den geschützten Preview-Worker aus: temporäre
+Admin-Impersonation ohne Passwortänderung, privates MP4 hochladen, Listenstatus,
+vollständigen Download, Byte-Range-Download und anschließendes Löschen. Das
+Smoke-Objekt wird auch bei Folgefehlern bestmöglich bereinigt. Der generische
+D4-Deploypfad wird dafür bewusst nicht verwendet, damit die Preview nicht auf
+den Legacy-Entrypoint zurückgesetzt werden kann. Produktion bleibt von diesem
+Ablauf unberührt.
 
 Die Verwendungsdaten können bereits erfasst und angezeigt werden. Eine
 automatische Ableitung aus Trainingsblöcken oder Trainingsplänen ist noch
