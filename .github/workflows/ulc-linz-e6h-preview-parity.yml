@@ -206,7 +206,7 @@ jobs:
           {
             echo 'The dedicated preview R2 bucket is treated as pre-created infrastructure.'
             echo 'The Worker deployment token intentionally does not require R2 management permissions.'
-            echo 'Required bucket: appbasis-ulc-linz-preview-exercise-media'
+            echo 'Required bucket: appbasis-ulc-linz-preview-exercise-media (jurisdiction: eu)'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Apply additive exercise-catalog schema v3
@@ -265,6 +265,7 @@ jobs:
             baseURL: process.env.APPBASIS_BASE_URL,
             entrypoint: "./worker/preview-exercise-catalog-standard.ts",
             r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
+            r2Jurisdiction: "eu",
             outputPath:
               "./apps/ulc-linz/wrangler.preview.e6h.generated.json",
           });
@@ -333,7 +334,7 @@ jobs:
           {
             echo 'ULC E6H exercise-catalog schema v3 is verified in the isolated preview.'
             echo 'The preview remains on the standard-module runtime.'
-            echo 'Private exercise media is bound to the dedicated pre-created preview R2 bucket.'
+            echo 'Private exercise media is bound to the dedicated pre-created EU-jurisdiction preview R2 bucket.'
             echo 'Production was not changed.'
           } >> "$GITHUB_STEP_SUMMARY"
 
