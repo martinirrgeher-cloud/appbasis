@@ -191,8 +191,10 @@ Standardmodul-Cutover voraus, prüft die bestehende Source-Write-Quiescence,
 wendet ausschließlich die additive v3-Migration an, vergibt die benötigten
 Runtime-DML-Rechte auf den neuen Paritätstabellen und deployed danach erneut
 den Standardmodul-Entrypoint mit dem dedizierten, vorab angelegten
-Preview-R2-Bucket für private Übungsvideos. Der Worker-Deployment-Token
-benötigt dafür bewusst keine R2-Management-Rechte. Der generische D4-Deploypfad wird dafür bewusst
+Preview-R2-Bucket für private Übungsvideos. Dieser Bucket ist auf die
+Cloudflare-R2-Jurisdiction `eu` festgelegt; der Worker-Binding setzt daher
+`jurisdiction: "eu"`. Der Worker-Deployment-Token benötigt dafür bewusst
+keine R2-Management-Rechte. Der generische D4-Deploypfad wird dafür bewusst
 nicht verwendet, damit die Preview nicht auf den Legacy-Entrypoint
 zurückgesetzt werden kann. Produktion bleibt von diesem Ablauf unberührt.
 
