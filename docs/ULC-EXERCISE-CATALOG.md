@@ -185,6 +185,16 @@ fehlenden Katalogfunktionen:
 - additive Standardmodul-Migration v3; der historische E6G-Adoptionsvertrag
   bleibt davon unverändert.
 
+Der Preview-Rollout für E6H ist ein eigener, main-only und explizit
+freizugebender Gate-Pfad. Er setzt den bereits abgeschlossenen
+Standardmodul-Cutover voraus, prüft die bestehende Source-Write-Quiescence,
+wendet ausschließlich die additive v3-Migration an, vergibt die benötigten
+Runtime-DML-Rechte auf den neuen Paritätstabellen, stellt den dedizierten
+Preview-R2-Bucket für private Übungsvideos sicher und deployed danach erneut
+den Standardmodul-Entrypoint. Der generische D4-Deploypfad wird dafür bewusst
+nicht verwendet, damit die Preview nicht auf den Legacy-Entrypoint
+zurückgesetzt werden kann. Produktion bleibt von diesem Ablauf unberührt.
+
 Die Verwendungsdaten können bereits erfasst und angezeigt werden. Eine
 automatische Ableitung aus Trainingsblöcken oder Trainingsplänen ist noch
 nicht möglich, solange diese Module nicht auf den neuen Standardmodulpfad
