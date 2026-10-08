@@ -203,7 +203,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "exercise-catalog",
       ),
     ).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       lifecycleStatus: "repository-schema-published-preview-copy-pending",
       notes: expect.arrayContaining([
         "standard-module-target-schema-published-in-repository-only",
@@ -239,7 +239,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(38);
+    expect(inventory.persistentTables).toHaveLength(42);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
