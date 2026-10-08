@@ -189,9 +189,10 @@ Der Preview-Rollout für E6H ist ein eigener, main-only und explizit
 freizugebender Gate-Pfad. Er setzt den bereits abgeschlossenen
 Standardmodul-Cutover voraus, prüft die bestehende Source-Write-Quiescence,
 wendet ausschließlich die additive v3-Migration an, vergibt die benötigten
-Runtime-DML-Rechte auf den neuen Paritätstabellen, stellt den dedizierten
-Preview-R2-Bucket für private Übungsvideos sicher und deployed danach erneut
-den Standardmodul-Entrypoint. Der generische D4-Deploypfad wird dafür bewusst
+Runtime-DML-Rechte auf den neuen Paritätstabellen und deployed danach erneut
+den Standardmodul-Entrypoint mit dem dedizierten, vorab angelegten
+Preview-R2-Bucket für private Übungsvideos. Der Worker-Deployment-Token
+benötigt dafür bewusst keine R2-Management-Rechte. Der generische D4-Deploypfad wird dafür bewusst
 nicht verwendet, damit die Preview nicht auf den Legacy-Entrypoint
 zurückgesetzt werden kann. Produktion bleibt von diesem Ablauf unberührt.
 
