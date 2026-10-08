@@ -382,6 +382,8 @@ function runtime(
     athleteMasterdata,
     kindertraining,
     u12,
+    exerciseCatalogRuntimeMode: "standard-module",
+    exerciseCatalogMediaStore: null,
     exerciseCatalog: {
       async list() {
         return { items: [], trainingGroups: [] };
