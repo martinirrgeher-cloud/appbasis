@@ -126,6 +126,10 @@ test("E6H preview workflow preserves the standard-module cutover and keeps mutat
   );
   assert.match(
     workflow,
+    /r2Jurisdiction: "eu"/,
+  );
+  assert.match(
+    workflow,
     /pre-created R2 binding/,
   );
   assert.doesNotMatch(
