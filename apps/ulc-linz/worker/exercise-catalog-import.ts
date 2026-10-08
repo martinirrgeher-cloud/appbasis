@@ -407,7 +407,7 @@ export async function previewUlcExerciseCatalogImport(
       categoryKey: source.categoryKey as UlcExerciseCategoryKey,
       subcategory: source.subcategory,
       difficultyKey:
-        extension?.difficultyKey as UlcExerciseDifficultyKey | null | undefined,
+        (extension?.difficultyKey ?? null) as UlcExerciseDifficultyKey | null,
       goal: source.goal,
       description: source.description,
       coachingCues: source.coachingCues,
