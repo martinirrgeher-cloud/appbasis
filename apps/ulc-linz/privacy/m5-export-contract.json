@@ -231,6 +231,26 @@
       "owner": "exercise-catalog",
       "table": "appbasis_exercise_catalog_favorite",
       "privacyClass": "exercise-catalog-user-preference"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_video",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_similarity",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_usage",
+      "privacyClass": "exercise-catalog-training-usage-metadata"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_private_media",
+      "privacyClass": "exercise-catalog-private-media-metadata"
     }
   ],
   "excludedPrivacyClasses": [
@@ -254,7 +274,9 @@
     "athlete-training-attendance",
     "training-module-configuration",
     "exercise-catalog-configuration",
-    "exercise-catalog-user-preference"
+    "exercise-catalog-user-preference",
+    "exercise-catalog-training-usage-metadata",
+    "exercise-catalog-private-media-metadata"
   ],
   "credentialFieldNames": [
     "password",
