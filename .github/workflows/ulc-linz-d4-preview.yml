@@ -398,10 +398,10 @@ jobs:
               cat "$CREATE_BODY" >&2
               exit 1
             }
-            jq -e --arg name "$APPBASIS_R2_BUCKET"               '.success == true and .result.name == $name'               "$CREATE_BODY" >/dev/null || {
-                echo 'Cloudflare did not confirm the expected R2 bucket creation.' >&2
-                exit 1
-              }
+            jq -e --arg name "$APPBASIS_R2_BUCKET" '.success == true and .result.name == $name' "$CREATE_BODY" >/dev/null || {
+              echo 'Cloudflare did not confirm the expected R2 bucket creation.' >&2
+              exit 1
+            }
           elif [[ "$HTTP_STATUS" != "200" ]]; then
             echo "Unable to verify the ULC preview exercise media R2 bucket (HTTP $HTTP_STATUS)." >&2
             cat "$GET_BODY" >&2
@@ -419,10 +419,10 @@ jobs:
             cat "$GET_BODY" >&2
             exit 1
           }
-          jq -e --arg name "$APPBASIS_R2_BUCKET"             '.success == true and .result.name == $name'             "$GET_BODY" >/dev/null || {
-              echo 'Cloudflare returned an unexpected R2 bucket after ensure.' >&2
-              exit 1
-            }
+          jq -e --arg name "$APPBASIS_R2_BUCKET" '.success == true and .result.name == $name' "$GET_BODY" >/dev/null || {
+            echo 'Cloudflare returned an unexpected R2 bucket after ensure.' >&2
+            exit 1
+          }
 
       - name: Render ULC preview config
         if: inputs.operation == 'bootstrap' || inputs.operation == 'deploy'
