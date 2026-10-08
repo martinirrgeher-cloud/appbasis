@@ -437,24 +437,19 @@ async function validatedContext({
 }
 
 async function readParityShape(sql) {
-  const baselineRows = await sql.unsafe(
-    `SELECT tablename
-       FROM pg_catalog.pg_tables
-       WHERE schemaname = 'public'
-         AND tablename = ANY($1::text[])
-       ORDER BY tablename`,
-    [JSON.stringify(BASELINE_TABLES)],
-  ).catch(async () => {
-    const rows = [];
-    for (const table of BASELINE_TABLES) {
-      const result = await sql.unsafe(
-        "SELECT to_regclass($1)::text AS relation_name",
-        ["public." + table],
+  const baselineTables = [];
+  for (const table of BASELINE_TABLES) {
+    const rows = await sql.unsafe(
+      "SELECT to_regclass($1)::text AS relation_name",
+      ["public." + table],
+    );
+    if (rows.length !== 1) {
+      throw new UlcExerciseCatalogPreviewParityExecutionError(
+        "E6H preview parity baseline inventory is ambiguous.",
       );
-      if (result[0]?.relation_name !== null) rows.push({ tablename: table });
     }
-    return rows;
-  });
+    if (rows[0]?.relation_name !== null) baselineTables.push(table);
+  }
 
   const markers = [];
   const markerQueries = [
@@ -500,11 +495,7 @@ async function readParityShape(sql) {
   }
 
   return Object.freeze({
-    baselineTables: Object.freeze(
-      baselineRows
-        .map((row) => row?.tablename)
-        .filter((value) => typeof value === "string"),
-    ),
+    baselineTables: Object.freeze(baselineTables),
     parityMarkers: Object.freeze(markers),
   });
 }
