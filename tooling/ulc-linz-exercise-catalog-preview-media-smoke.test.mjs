@@ -299,14 +299,20 @@ test("creates a temporary preview-admin impersonation session without changing u
             assert.deepEqual(await request.json(), {
               userId: "preview-admin-id",
             });
+            const responseHeaders = new Headers();
+            responseHeaders.append(
+              "set-cookie",
+              "better-auth.admin_session=root; Path=/; HttpOnly",
+            );
+            responseHeaders.append(
+              "set-cookie",
+              "__Secure-better-auth.session_token=impersonated; Path=/; HttpOnly; Secure",
+            );
             return Response.json(
               { user: { id: "preview-admin-id" } },
               {
                 status: 200,
-                headers: {
-                  "set-cookie":
-                    "better-auth.session_token=impersonated; Path=/; HttpOnly",
-                },
+                headers: responseHeaders,
               },
             );
           },
@@ -318,11 +324,11 @@ test("creates a temporary preview-admin impersonation session without changing u
 
   assert.equal(
     session.cookie,
-    "better-auth.session_token=impersonated",
+    "__Secure-better-auth.session_token=impersonated",
   );
   await session.close();
   assert.deepEqual(endedSessions, [
-    "better-auth.session_token=impersonated",
+    "__Secure-better-auth.session_token=impersonated",
     "better-auth.session_token=root",
   ]);
   assert.equal(databaseEnded, true);
