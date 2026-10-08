@@ -112,11 +112,12 @@ jobs:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
           APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          for name in APPBASIS_MIGRATION_DATABASE_URL APPBASIS_DATABASE_URL APPBASIS_SECURITY_LOG_DATABASE_URL APPBASIS_BETTER_AUTH_SECRET CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
+          for name in APPBASIS_MIGRATION_DATABASE_URL APPBASIS_DATABASE_URL APPBASIS_SECURITY_LOG_DATABASE_URL APPBASIS_BETTER_AUTH_SECRET APPBASIS_ROOT_ADMIN_PASSWORD CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
             value="${!name:-}"
             test -n "$value" || {
               echo "Missing protected input: $name" >&2
@@ -321,6 +322,18 @@ jobs:
           APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
         run: node ./tooling/ulc-linz-d4-preview-audit-smoke.mjs
 
+      - name: Verify private exercise media end-to-end
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          APPBASIS_ROOT_ADMIN_PASSWORD: ${{ secrets.APPBASIS_ROOT_ADMIN_PASSWORD }}
+        run: >-
+          node
+          --experimental-transform-types
+          --import ./apps/ulc-linz/tooling/register-native-typescript-resolution.mjs
+          ./tooling/ulc-linz-exercise-catalog-preview-media-smoke.mjs
+
       - name: Re-verify E6H parity after deploy
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
@@ -335,6 +348,7 @@ jobs:
             echo 'ULC E6H exercise-catalog schema v3 is verified in the isolated preview.'
             echo 'The preview remains on the standard-module runtime.'
             echo 'Private exercise media is bound to the dedicated pre-created EU-jurisdiction preview R2 bucket.'
+            echo 'Live private-media upload, full/range download and delete were verified.'
             echo 'Production was not changed.'
           } >> "$GITHUB_STEP_SUMMARY"
 
