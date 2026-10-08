@@ -122,6 +122,8 @@ export function assertExerciseCatalogDefinition(
   return createExerciseCatalogDefinition({
     categories: value.categories,
     parameterKeys: value.parameterKeys,
-    difficulties: value.difficulties,
+    ...(value.difficulties === undefined
+      ? {}
+      : { difficulties: value.difficulties }),
   });
 }
