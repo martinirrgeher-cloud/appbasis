@@ -462,6 +462,23 @@ function mergeUpdateInput(
   current: ExerciseCatalogItem,
   input: UpdateExerciseCatalogItemInput,
 ): CreateExerciseCatalogItemInput {
+  const videoUrls =
+    input.videoUrls !== undefined
+      ? input.videoUrls
+      : input.videoUrl === undefined
+        ? current.videoUrls
+        : input.videoUrl === null
+          ? []
+          : [input.videoUrl];
+  const videoUrl =
+    input.videoUrls !== undefined
+      ? input.videoUrl === undefined
+        ? input.videoUrls[0] ?? null
+        : input.videoUrl
+      : input.videoUrl === undefined
+        ? current.videoUrl
+        : input.videoUrl;
+
   return {
     name: input.name === undefined ? current.name : input.name,
     categoryKey:
@@ -491,14 +508,8 @@ function mergeUpdateInput(
         : input.commonMistakes,
     equipment:
       input.equipment === undefined ? current.equipment : input.equipment,
-    videoUrl:
-      input.videoUrl === undefined && input.videoUrls === undefined
-        ? current.videoUrl
-        : input.videoUrl,
-    videoUrls:
-      input.videoUrls === undefined && input.videoUrl === undefined
-        ? current.videoUrls
-        : input.videoUrls,
+    videoUrl,
+    videoUrls,
     audienceIds:
       input.audienceIds === undefined
         ? current.audienceIds
