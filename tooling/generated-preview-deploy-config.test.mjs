@@ -126,6 +126,21 @@ test("adds an explicitly configured R2 binding without changing the default", ()
     },
   ]);
 
+  const euConfig = renderGeneratedPreviewWranglerConfig({
+    appId: "ulc-linz",
+    hyperdriveId: "application-hyperdrive-id",
+    baseURL: "https://ulc-preview.example.test",
+    r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
+    r2Jurisdiction: "eu",
+  });
+  assert.deepEqual(euConfig.r2_buckets, [
+    {
+      binding: "EXERCISE_MEDIA",
+      bucket_name: "appbasis-ulc-linz-preview-exercise-media",
+      jurisdiction: "eu",
+    },
+  ]);
+
   const defaultConfig = renderGeneratedPreviewWranglerConfig({
     appId: "ulc-linz",
     hyperdriveId: "application-hyperdrive-id",
@@ -142,6 +157,27 @@ test("adds an explicitly configured R2 binding without changing the default", ()
         r2BucketName: "INVALID_BUCKET",
       }),
     /r2BucketName is invalid/,
+  );
+  assert.throws(
+    () =>
+      renderGeneratedPreviewWranglerConfig({
+        appId: "ulc-linz",
+        hyperdriveId: "application-hyperdrive-id",
+        baseURL: "https://ulc-preview.example.test",
+        r2Jurisdiction: "eu",
+      }),
+    /r2Jurisdiction requires r2BucketName/,
+  );
+  assert.throws(
+    () =>
+      renderGeneratedPreviewWranglerConfig({
+        appId: "ulc-linz",
+        hyperdriveId: "application-hyperdrive-id",
+        baseURL: "https://ulc-preview.example.test",
+        r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
+        r2Jurisdiction: "EU",
+      }),
+    /r2Jurisdiction is invalid/,
   );
 });
 
