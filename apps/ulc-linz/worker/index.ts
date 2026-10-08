@@ -2023,7 +2023,11 @@ async function exerciseCatalogPrivateMediaContent(
     headers.set("content-length", String(stored.size));
   }
 
-  return new Response(stored.body, { status, headers });
+  const responseBody =
+    stored.body instanceof Uint8Array
+      ? Uint8Array.from(stored.body).buffer
+      : stored.body;
+  return new Response(responseBody, { status, headers });
 }
 
 async function deleteExerciseCatalogPrivateMedia(
