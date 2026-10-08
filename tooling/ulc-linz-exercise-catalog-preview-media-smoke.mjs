@@ -727,19 +727,42 @@ async function timedFetch(
 }
 
 function sessionCookie(response) {
-  const cookie = response.headers.get("set-cookie");
-  if (cookie === null || cookie.trim().length === 0) {
+  const headerValues =
+    typeof response.headers.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : splitCombinedSetCookieHeader(response.headers.get("set-cookie"));
+  if (!Array.isArray(headerValues) || headerValues.length === 0) {
     throw new UlcExerciseCatalogPreviewMediaSmokeError(
       "ULC E6H preview impersonation returned no session cookie.",
     );
   }
-  const pair = cookie.split(";", 1)[0] ?? "";
-  if (pair.length === 0 || /[\r\n]/u.test(pair)) {
+
+  const pairs = headerValues
+    .map((value) =>
+      typeof value === "string" ? (value.split(";", 1)[0] ?? "").trim() : "",
+    )
+    .filter((value) => value.length > 0 && !/[\r\n]/u.test(value));
+  const pair = pairs.find((value) => {
+    const separator = value.indexOf("=");
+    if (separator <= 0) return false;
+    const name = value.slice(0, separator);
+    return (
+      name === "better-auth.session_token" ||
+      name === "__Secure-better-auth.session_token" ||
+      name.endsWith(".session_token")
+    );
+  });
+  if (pair === undefined) {
     throw new UlcExerciseCatalogPreviewMediaSmokeError(
-      "ULC E6H preview impersonation returned an invalid session cookie.",
+      "ULC E6H preview impersonation returned no Better Auth session-token cookie.",
     );
   }
   return pair;
+}
+
+function splitCombinedSetCookieHeader(value) {
+  if (value === null || value.trim().length === 0) return [];
+  return value.split(/,(?=\s*[^=;,\s]+=)/u);
 }
 
 function requiredPreviewDatabaseUrl(value) {
