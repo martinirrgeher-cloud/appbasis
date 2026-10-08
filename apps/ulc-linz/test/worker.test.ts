@@ -442,6 +442,27 @@ function runtime(
         };
       },
       async deactivate() {},
+      async findDuplicateCandidates() {
+        return [];
+      },
+      async listUsageSummaries() {
+        return [];
+      },
+      async listUsage() {
+        return [];
+      },
+      async recordUsage() {
+        return undefined;
+      },
+      async listPrivateMedia() {
+        return [];
+      },
+      async registerPrivateMedia() {
+        return undefined;
+      },
+      async deletePrivateMedia() {
+        return undefined;
+      },
       async setFavorite(organizationId, _identityId, exerciseId, favorite) {
         return {
           id: exerciseId,
