@@ -123,8 +123,10 @@ describe("exercise catalog service", () => {
       similarExerciseIds: [first.id],
     });
 
-    await expect(service.read("org-a", first.id)).resolves.toMatchObject({
-      similarExerciseIds: [second.id],
+    await expect(service.findById("org-a", first.id)).resolves.toMatchObject({
+      item: {
+        similarExerciseIds: [second.id],
+      },
     });
 
     const duplicates = await service.findDuplicateCandidates("org-a", {
