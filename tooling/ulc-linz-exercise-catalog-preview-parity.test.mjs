@@ -144,6 +144,14 @@ test("E6H preview workflow preserves the standard-module cutover and keeps mutat
     workflow,
     /ulc-linz-exercise-catalog-preview-parity\.mjs verify/,
   );
+  assert.match(
+    workflow,
+    /ulc-linz-exercise-catalog-preview-media-smoke\.mjs/,
+  );
+  assert.match(
+    workflow,
+    /APPBASIS_ROOT_ADMIN_PASSWORD/,
+  );
   assert.doesNotMatch(
     workflow,
     /entrypoint: "\.\/worker\/preview\.ts"/,
