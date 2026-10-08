@@ -24,7 +24,7 @@ const existingTemplateItem = Object.freeze({
   name: "Fliegende 30 m",
   categoryKey: "max_velocity" as const,
   subcategory: "Fliegend",
-  difficultyKey: null,
+  difficultyKey: "medium" as const,
   goal: "Maximalgeschwindigkeit",
   description: "20 m Anlauf, anschließend 30 m maximal schnell bei sauberer Technik.",
   coachingCues: "Locker bleiben und aktiv nach hinten arbeiten.",
