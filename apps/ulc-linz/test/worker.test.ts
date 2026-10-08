@@ -801,7 +801,17 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      module: { moduleId: "exercise_catalog" },
+      module: {
+        moduleId: "exercise_catalog",
+        features: {
+          difficulty: true,
+          similarExercises: true,
+          duplicateWarnings: true,
+          usageHistory: true,
+          multipleExternalVideos: true,
+          privateVideoUpload: false,
+        },
+      },
       access: { view: true, edit: true },
       catalog: { items: [], trainingGroups: [] },
     });
