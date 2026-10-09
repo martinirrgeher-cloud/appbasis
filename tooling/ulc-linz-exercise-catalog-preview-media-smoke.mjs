@@ -212,12 +212,39 @@ export async function verifyUlcExerciseCatalogPreviewMediaSmoke(
       expectedStatus: 200,
       label: "private-media delete",
     });
-    if (!isRecord(deletePayload) || deletePayload.deleted !== true) {
+    if (
+      !isRecord(deletePayload) ||
+      deletePayload.deleted !== true ||
+      deletePayload.alreadyDeleted !== false
+    ) {
       throw new UlcExerciseCatalogPreviewMediaSmokeError(
         "ULC E6H private-media delete returned an unexpected payload.",
       );
     }
     deleted = true;
+
+    const retryDeletePayload = await requestJson({
+      fetchImpl,
+      url:
+        origin +
+        privateMediaPath +
+        "/" +
+        encodeURIComponent(mediaId),
+      method: "DELETE",
+      cookie: session.cookie,
+      timeoutMs: timeout,
+      expectedStatus: 200,
+      label: "private-media idempotent delete retry",
+    });
+    if (
+      !isRecord(retryDeletePayload) ||
+      retryDeletePayload.deleted !== true ||
+      retryDeletePayload.alreadyDeleted !== true
+    ) {
+      throw new UlcExerciseCatalogPreviewMediaSmokeError(
+        "ULC E6H private-media delete retry is not idempotent.",
+      );
+    }
 
     const afterDeletePayload = await requestJson({
       fetchImpl,
@@ -254,6 +281,7 @@ export async function verifyUlcExerciseCatalogPreviewMediaSmoke(
       uploadedBytes: SMOKE_VIDEO_BYTES.byteLength,
       rangeBytes: 8,
       deleted: true,
+      idempotentDeleteRetry: true,
       productionChanged: false,
     });
   } catch (error) {
