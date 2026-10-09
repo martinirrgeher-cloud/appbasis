@@ -61,16 +61,18 @@
     },
     {
       "id": "exercise-catalog",
-      "schemaVersion": 3,
+      "schemaVersion": 4,
       "migrations": [
         "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
         "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
-        "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql"
+        "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
+        "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql"
       ],
-      "lifecycleStatus": "repository-schema-published-preview-copy-pending",
+      "lifecycleStatus": "repository-schema-v4-published-preview-upgrade-pending",
       "notes": [
-        "standard-module-target-schema-published-in-repository-only",
-        "ulc-runtime-cutover-not-yet-performed",
+        "standard-module-target-schema-v4-published-in-repository",
+        "ulc-preview-v3-live-v4-upgrade-pending",
+        "production-runtime-cutover-not-authorized",
         "exercise-catalog-configuration-not-personal",
         "exercise-favorite-lifecycle-pending"
       ]
