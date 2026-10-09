@@ -50,9 +50,14 @@ export interface ExerciseCatalogRepository {
     exerciseId: string,
   ): Promise<readonly ExerciseCatalogPrivateMedia[]>;
   registerPrivateMedia(media: ExerciseCatalogPrivateMedia): Promise<void>;
-  deletePrivateMedia(
+  requestPrivateMediaDeletion(
     organizationId: string,
     exerciseId: string,
     mediaId: string,
   ): Promise<ExerciseCatalogPrivateMedia | undefined>;
+  completePrivateMediaDeletion(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<boolean>;
 }
