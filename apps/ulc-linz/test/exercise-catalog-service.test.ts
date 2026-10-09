@@ -85,8 +85,11 @@ function repository() {
     async registerPrivateMedia() {
       return undefined;
     },
-    async deletePrivateMedia() {
+    async requestPrivateMediaDeletion() {
       return undefined;
+    },
+    async completePrivateMediaDeletion() {
+      return false;
     },
   };
   return { repo, items };
