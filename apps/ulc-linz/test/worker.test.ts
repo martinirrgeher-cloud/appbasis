@@ -820,6 +820,174 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("retries private-media deletion after an object-store failure without losing metadata", async () => {
+    let requestCalls = 0;
+    let objectDeleteCalls = 0;
+    let completionCalls = 0;
+    let pending = true;
+
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        exerciseCatalog: {
+          ...base.exerciseCatalog,
+          async requestPrivateMediaDeletion(
+            organizationId,
+            exerciseId,
+            mediaId,
+          ) {
+            requestCalls += 1;
+            expect(organizationId).toBe("verein-1");
+            expect(exerciseId).toBe("exercise-1");
+            expect(mediaId).toBe("media-1");
+            if (!pending) return undefined;
+            return {
+              id: mediaId,
+              organizationId,
+              exerciseId,
+              fileName: "clip.mp4",
+              storageKey: "exercise-catalog/verein-1/exercise-1/media-1",
+              contentType: "video/mp4",
+              sizeBytes: 24,
+              createdAt: "2026-10-09T00:00:00.000Z",
+            };
+          },
+          async completePrivateMediaDeletion(
+            organizationId,
+            exerciseId,
+            mediaId,
+          ) {
+            completionCalls += 1;
+            expect(organizationId).toBe("verein-1");
+            expect(exerciseId).toBe("exercise-1");
+            expect(mediaId).toBe("media-1");
+            pending = false;
+            return true;
+          },
+        },
+        exerciseCatalogMediaStore: {
+          async put() {},
+          async get() {
+            return null;
+          },
+          async delete(key) {
+            objectDeleteCalls += 1;
+            expect(key).toBe(
+              "exercise-catalog/verein-1/exercise-1/media-1",
+            );
+            if (objectDeleteCalls === 1) {
+              throw new Error("simulated R2 delete failure");
+            }
+          },
+        },
+      };
+    });
+
+    const request = () =>
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/exercise-1/private-media/media-1",
+        {
+          method: "DELETE",
+          headers: { cookie: currentIdentity.sessionToken },
+        },
+      );
+
+    const failed = await worker.fetch(request(), validEnv);
+    expect(failed.status).toBe(500);
+    expect(requestCalls).toBe(1);
+    expect(objectDeleteCalls).toBe(1);
+    expect(completionCalls).toBe(0);
+    expect(pending).toBe(true);
+
+    const retried = await worker.fetch(request(), validEnv);
+    expect(retried.status).toBe(200);
+    await expect(retried.json()).resolves.toEqual({ deleted: true });
+    expect(requestCalls).toBe(2);
+    expect(objectDeleteCalls).toBe(2);
+    expect(completionCalls).toBe(1);
+    expect(pending).toBe(false);
+  });
+
+  it("retries private-media deletion after metadata finalization fails", async () => {
+    let requestCalls = 0;
+    let objectDeleteCalls = 0;
+    let completionCalls = 0;
+    let pending = true;
+
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        exerciseCatalog: {
+          ...base.exerciseCatalog,
+          async requestPrivateMediaDeletion(
+            organizationId,
+            exerciseId,
+            mediaId,
+          ) {
+            requestCalls += 1;
+            if (!pending) return undefined;
+            return {
+              id: mediaId,
+              organizationId,
+              exerciseId,
+              fileName: "clip.mp4",
+              storageKey: "exercise-catalog/verein-1/exercise-1/media-1",
+              contentType: "video/mp4",
+              sizeBytes: 24,
+              createdAt: "2026-10-09T00:00:00.000Z",
+            };
+          },
+          async completePrivateMediaDeletion() {
+            completionCalls += 1;
+            if (completionCalls === 1) {
+              throw new Error("simulated metadata finalization failure");
+            }
+            pending = false;
+            return true;
+          },
+        },
+        exerciseCatalogMediaStore: {
+          async put() {},
+          async get() {
+            return null;
+          },
+          async delete(key) {
+            objectDeleteCalls += 1;
+            expect(key).toBe(
+              "exercise-catalog/verein-1/exercise-1/media-1",
+            );
+          },
+        },
+      };
+    });
+
+    const request = () =>
+      new Request(
+        "https://ulc.example.test/api/modules/exercise-catalog/exercise-1/private-media/media-1",
+        {
+          method: "DELETE",
+          headers: { cookie: currentIdentity.sessionToken },
+        },
+      );
+
+    const failed = await worker.fetch(request(), validEnv);
+    expect(failed.status).toBe(500);
+    expect(requestCalls).toBe(1);
+    expect(objectDeleteCalls).toBe(1);
+    expect(completionCalls).toBe(1);
+    expect(pending).toBe(true);
+
+    const retried = await worker.fetch(request(), validEnv);
+    expect(retried.status).toBe(200);
+    await expect(retried.json()).resolves.toEqual({ deleted: true });
+    expect(requestCalls).toBe(2);
+    expect(objectDeleteCalls).toBe(2);
+    expect(completionCalls).toBe(2);
+    expect(pending).toBe(false);
+  });
+
   it("serves E6F1 catalog export and template as protected XLSX downloads", async () => {
     const worker = createGeneratedWorker(() => runtime());
 
