@@ -21,7 +21,7 @@ const baselineTables = [
   "appbasis_exercise_catalog_favorite",
 ];
 
-const parityMarkers = [
+const v3ParityMarkers = [
   "difficulty-column",
   "difficulty-constraint",
   "video-table",
@@ -34,8 +34,13 @@ const parityMarkers = [
   "private-media-storage-index",
   "private-media-exercise-index",
 ];
+const parityMarkers = [
+  ...v3ParityMarkers,
+  "private-media-deletion-column",
+  "private-media-deletion-index",
+];
 
-test("E6H preview parity pins the additive schema-v3 migration without changing production", async () => {
+test("E6H preview parity pins the additive schema-v4 migrations without changing production", async () => {
   const plan = await loadUlcExerciseCatalogPreviewParityPlan();
 
   assert.equal(plan.schemaVersion, 1);
@@ -47,23 +52,31 @@ test("E6H preview parity pins the additive schema-v3 migration without changing 
     database: "appbasis_ulc_linz_preview",
     migrationPrincipal: "appbasis_ulc_linz_preview_migration",
   });
-  assert.equal(plan.target.schemaVersion, 3);
+  assert.equal(plan.target.schemaVersion, 4);
   assert.equal(
     plan.target.migrationPath,
-    "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
+    "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
   );
-  assert.equal(plan.target.statementCount, 11);
+  assert.equal(plan.target.statementCount, 13);
   assert.deepEqual(plan.target.parityMarkers, parityMarkers);
   assert.equal(plan.target.runtimeMode, "standard-module");
   assert.equal(plan.productionChanged, false);
-  assert.equal(plan.statements.length, 11);
+  assert.equal(plan.statements.length, 13);
+  assert.equal(plan.v3StatementCount, 11);
 });
 
-test("E6H preview parity distinguishes an untouched v2 target from the complete v3 target", () => {
+test("E6H preview parity distinguishes v2, v3 and complete v4 targets", () => {
   assert.equal(
     classifyUlcExerciseCatalogPreviewParityShape({
       baselineTables,
       parityMarkers: [],
+    }),
+    "upgrade-required",
+  );
+  assert.equal(
+    classifyUlcExerciseCatalogPreviewParityShape({
+      baselineTables,
+      parityMarkers: v3ParityMarkers,
     }),
     "upgrade-required",
   );
@@ -76,7 +89,7 @@ test("E6H preview parity distinguishes an untouched v2 target from the complete 
   );
 });
 
-test("E6H preview parity fails closed on partial v3 application or a missing v2 baseline", () => {
+test("E6H preview parity fails closed on partial migration state or a missing v2 baseline", () => {
   assert.throws(
     () =>
       classifyUlcExerciseCatalogPreviewParityShape({
