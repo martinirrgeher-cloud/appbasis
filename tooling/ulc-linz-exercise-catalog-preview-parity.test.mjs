@@ -152,6 +152,18 @@ test("E6H preview workflow preserves the standard-module cutover and keeps mutat
     workflow,
     /APPBASIS_ROOT_ADMIN_PASSWORD/,
   );
+  assert.match(
+    workflow,
+    /Synchronize preview identity secret/,
+  );
+  assert.match(
+    workflow,
+    /wrangler secret put BETTER_AUTH_SECRET/,
+  );
+  assert.match(
+    workflow,
+    /APPBASIS_BETTER_AUTH_SECRET: \$\{\{ secrets\.APPBASIS_BETTER_AUTH_SECRET \}\}/,
+  );
   assert.doesNotMatch(
     workflow,
     /entrypoint: "\.\/worker\/preview\.ts"/,
