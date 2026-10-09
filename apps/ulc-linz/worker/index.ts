@@ -45,6 +45,7 @@ import {
   applyUlcExerciseCatalogImportPreview,
 } from "./exercise-catalog-import-apply";
 import {
+  deleteUlcExerciseCatalogPrivateMedia,
   normalizedPrivateVideoContentType,
   normalizedPrivateVideoFileName,
   privateExerciseVideoStorageKey,
@@ -2038,19 +2039,14 @@ async function deleteExerciseCatalogPrivateMedia(
 ): Promise<Response> {
   const store = runtime.exerciseCatalogMediaStore;
   if (store === null) return exerciseCatalogPrivateMediaUnavailable();
-  const media = (
-    await runtime.exerciseCatalog.listPrivateMedia(organizationId, exerciseId)
-  ).find((entry) => entry.id === mediaId);
-  if (media === undefined) return exerciseCatalogNotFound();
-
-  await store.delete(media.storageKey);
-  const deleted = await runtime.exerciseCatalog.deletePrivateMedia(
+  const result = await deleteUlcExerciseCatalogPrivateMedia({
+    store,
+    catalog: runtime.exerciseCatalog,
     organizationId,
     exerciseId,
     mediaId,
-  );
-  if (deleted === undefined) return exerciseCatalogNotFound();
-  return Response.json({ deleted: true });
+  });
+  return Response.json(result);
 }
 
 class PrivateExerciseVideoRequestError extends Error {
