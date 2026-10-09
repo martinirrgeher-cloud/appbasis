@@ -194,7 +194,12 @@ den Standardmodul-Entrypoint mit dem dedizierten, vorab angelegten
 Preview-R2-Bucket für private Übungsvideos. Dieser Bucket ist auf die
 Cloudflare-R2-Jurisdiction `eu` festgelegt; der Worker-Binding setzt daher
 `jurisdiction: "eu"`. Der Worker-Deployment-Token benötigt dafür bewusst
-keine R2-Management-Rechte. Nach dem Deploy führt derselbe Gate-Pfad einen
+keine R2-Management-Rechte. Vor dem E6H-Deploy wird außerdem das
+`BETTER_AUTH_SECRET` des isolierten Preview-Workers aus dem geschützten
+GitHub-Environment-Secret synchronisiert, damit lokal erzeugte
+Impersonation-Sessions und die laufende Preview garantiert denselben
+Signaturschlüssel verwenden. Dies kann ältere Preview-Sessions ungültig
+machen; Produktion bleibt unverändert. Nach dem Deploy führt derselbe Gate-Pfad einen
 echten Live-Smoke über den geschützten Preview-Worker aus: temporäre
 Admin-Impersonation ohne Passwortänderung, privates MP4 hochladen, Listenstatus,
 vollständigen Download, Byte-Range-Download und anschließendes Löschen. Das

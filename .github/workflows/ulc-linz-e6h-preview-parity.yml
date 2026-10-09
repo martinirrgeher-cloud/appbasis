@@ -188,6 +188,24 @@ jobs:
             exit 1
           }
 
+      - name: Synchronize preview identity secret
+        working-directory: apps/reference
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_GENERATED_WORKER_NAME: ${{ steps.preview.outputs.worker_name }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$APPBASIS_BETTER_AUTH_SECRET" \
+            | pnpm exec wrangler secret put BETTER_AUTH_SECRET \
+                --name "$APPBASIS_GENERATED_WORKER_NAME"
+          {
+            echo 'Preview BETTER_AUTH_SECRET synchronized from the protected GitHub environment secret.'
+            echo 'This may invalidate older preview sessions; production is not modified.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify current runtime remains standard-module
         env:
           APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
