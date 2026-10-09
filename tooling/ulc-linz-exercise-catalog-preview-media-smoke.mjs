@@ -416,7 +416,41 @@ export async function createPreviewAdminImpersonationSession(
         "ULC E6H preview administrator impersonation failed.",
       );
     }
-    impersonatedCookie = sessionCookie(response);
+
+    let impersonationPayload;
+    try {
+      impersonationPayload = await response.clone().json();
+    } catch {
+      throw new UlcExerciseCatalogPreviewMediaSmokeError(
+        "ULC E6H preview administrator impersonation returned invalid JSON.",
+      );
+    }
+    const impersonatedSessionToken =
+      isRecord(impersonationPayload) &&
+      isRecord(impersonationPayload.session) &&
+      typeof impersonationPayload.session.token === "string" &&
+      impersonationPayload.session.token.length > 0
+        ? impersonationPayload.session.token
+        : null;
+    if (impersonatedSessionToken === null) {
+      throw new UlcExerciseCatalogPreviewMediaSmokeError(
+        "ULC E6H preview administrator impersonation returned no session token.",
+      );
+    }
+
+    impersonatedCookie = sessionCookie(
+      response,
+      impersonatedSessionToken,
+    );
+    const localSession = await backend.getSession(impersonatedCookie);
+    if (
+      localSession === null ||
+      localSession.identityId !== preview.id
+    ) {
+      throw new UlcExerciseCatalogPreviewMediaSmokeError(
+        "ULC E6H preview administrator impersonation session failed local validation.",
+      );
+    }
 
     return Object.freeze({
       cookie: impersonatedCookie,
@@ -726,7 +760,7 @@ async function timedFetch(
   }
 }
 
-function sessionCookie(response) {
+function sessionCookie(response, sessionToken) {
   const headerValues =
     typeof response.headers.getSetCookie === "function"
       ? response.headers.getSetCookie()
@@ -737,27 +771,35 @@ function sessionCookie(response) {
     );
   }
 
-  const pairs = headerValues
-    .map((value) =>
-      typeof value === "string" ? (value.split(";", 1)[0] ?? "").trim() : "",
-    )
+  const names = headerValues
+    .map((value) => {
+      if (typeof value !== "string") return "";
+      const pair = (value.split(";", 1)[0] ?? "").trim();
+      const separator = pair.indexOf("=");
+      return separator <= 0 ? "" : pair.slice(0, separator);
+    })
     .filter((value) => value.length > 0 && !/[\r\n]/u.test(value));
-  const pair = pairs.find((value) => {
-    const separator = value.indexOf("=");
-    if (separator <= 0) return false;
-    const name = value.slice(0, separator);
-    return (
+  const cookieName = names.find(
+    (name) =>
       name === "better-auth.session_token" ||
       name === "__Secure-better-auth.session_token" ||
-      name.endsWith(".session_token")
-    );
-  });
-  if (pair === undefined) {
+      name.endsWith(".session_token"),
+  );
+  if (cookieName === undefined) {
     throw new UlcExerciseCatalogPreviewMediaSmokeError(
       "ULC E6H preview impersonation returned no Better Auth session-token cookie.",
     );
   }
-  return pair;
+  if (
+    typeof sessionToken !== "string" ||
+    sessionToken.length === 0 ||
+    /[\r\n;]/u.test(sessionToken)
+  ) {
+    throw new UlcExerciseCatalogPreviewMediaSmokeError(
+      "ULC E6H preview impersonation returned an invalid session token.",
+    );
+  }
+  return cookieName + "=" + sessionToken;
 }
 
 function splitCombinedSetCookieHeader(value) {
