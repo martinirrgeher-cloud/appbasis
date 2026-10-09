@@ -252,6 +252,7 @@ export class PostgresExerciseCatalogRepository
        FROM appbasis_exercise_catalog_private_media
        WHERE organization_id = $1
          AND exercise_id = $2
+         AND deletion_requested_at IS NULL
        ORDER BY created_at ASC, id ASC`,
       [organizationId, exerciseId],
     );
@@ -290,13 +291,14 @@ export class PostgresExerciseCatalogRepository
     }
   }
 
-  async deletePrivateMedia(
+  async requestPrivateMediaDeletion(
     organizationId: string,
     exerciseId: string,
     mediaId: string,
   ): Promise<ExerciseCatalogPrivateMedia | undefined> {
     const rows = await this.#client.unsafe(
-      `DELETE FROM appbasis_exercise_catalog_private_media
+      `UPDATE appbasis_exercise_catalog_private_media
+       SET deletion_requested_at = COALESCE(deletion_requested_at, now())
        WHERE organization_id = $1
          AND exercise_id = $2
          AND id = $3
@@ -307,9 +309,29 @@ export class PostgresExerciseCatalogRepository
     );
     if (rows.length === 0) return undefined;
     if (rows.length !== 1) {
-      throw new Error("Exercise catalog private media delete returned multiple rows.");
+      throw new Error("Exercise catalog private media delete request returned multiple rows.");
     }
     return privateMediaFromRow(rows[0]!);
+  }
+
+  async completePrivateMediaDeletion(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<boolean> {
+    const rows = await this.#client.unsafe(
+      `DELETE FROM appbasis_exercise_catalog_private_media
+       WHERE organization_id = $1
+         AND exercise_id = $2
+         AND id = $3
+         AND deletion_requested_at IS NOT NULL
+       RETURNING id`,
+      [organizationId, exerciseId, mediaId],
+    );
+    if (rows.length > 1) {
+      throw new Error("Exercise catalog private media delete completion returned multiple rows.");
+    }
+    return rows.length === 1;
   }
 }
 

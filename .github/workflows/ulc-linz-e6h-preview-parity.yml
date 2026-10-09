@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       apply:
-        description: Apply exercise-catalog schema v3 and deploy the standard-module preview runtime with the pre-created R2 binding
+        description: Apply exercise-catalog schema v4 and deploy the standard-module preview runtime with the pre-created R2 binding
         required: true
         type: boolean
         default: false
@@ -228,7 +228,7 @@ jobs:
             echo 'Required bucket: appbasis-ulc-linz-preview-exercise-media (jurisdiction: eu)'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Apply additive exercise-catalog schema v3
+      - name: Apply additive exercise-catalog schema v4
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
@@ -236,7 +236,7 @@ jobs:
           APPBASIS_APPLY_EXERCISE_CATALOG_PARITY: "1"
         run: node ./tooling/ulc-linz-exercise-catalog-preview-parity.mjs apply
 
-      - name: Verify schema v3 and runtime DML privileges
+      - name: Verify schema v4 and runtime DML privileges
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
@@ -363,7 +363,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo 'ULC E6H exercise-catalog schema v3 is verified in the isolated preview.'
+            echo 'ULC E6H exercise-catalog schema v4 is verified in the isolated preview.'
             echo 'The preview remains on the standard-module runtime.'
             echo 'Private exercise media is bound to the dedicated pre-created EU-jurisdiction preview R2 bucket.'
             echo 'Live private-media upload, full/range download and delete were verified.'

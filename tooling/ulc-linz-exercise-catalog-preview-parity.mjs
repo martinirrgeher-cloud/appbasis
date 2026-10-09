@@ -14,8 +14,11 @@ const MODULE_ID = "exercise-catalog";
 const EXPECTED_DATABASE = "appbasis_ulc_linz_preview";
 const EXPECTED_MIGRATION_PRINCIPAL =
   "appbasis_ulc_linz_preview_migration";
-const MIGRATION_PATH =
+const V3_MIGRATION_PATH =
   "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql";
+const V4_MIGRATION_PATH =
+  "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql";
+const MIGRATION_PATHS = Object.freeze([V3_MIGRATION_PATH, V4_MIGRATION_PATH]);
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
 const BASELINE_TABLES = Object.freeze([
@@ -32,7 +35,7 @@ const PARITY_TABLES = Object.freeze([
   "appbasis_exercise_catalog_private_media",
 ]);
 
-const PARITY_MARKERS = Object.freeze([
+const V3_PARITY_MARKERS = Object.freeze([
   "difficulty-column",
   "difficulty-constraint",
   "video-table",
@@ -44,6 +47,14 @@ const PARITY_MARKERS = Object.freeze([
   "private-media-table",
   "private-media-storage-index",
   "private-media-exercise-index",
+]);
+const V4_PARITY_MARKERS = Object.freeze([
+  "private-media-deletion-column",
+  "private-media-deletion-index",
+]);
+const PARITY_MARKERS = Object.freeze([
+  ...V3_PARITY_MARKERS,
+  ...V4_PARITY_MARKERS,
 ]);
 
 export class UlcExerciseCatalogPreviewParityConfigurationError extends Error {
@@ -64,11 +75,12 @@ export async function loadUlcExerciseCatalogPreviewParityPlan(
   { repositoryRoot = DEFAULT_REPOSITORY_ROOT } = {},
 ) {
   const root = resolve(repositoryRoot);
-  const [databaseManifest, moduleManifest, migrationSql] =
+  const [databaseManifest, moduleManifest, v3MigrationSql, v4MigrationSql] =
     await Promise.all([
       readJson(join(root, "apps", APP_ID, "appbasis.database.json")),
       readJson(join(root, "modules", MODULE_ID, "appbasis.module.json")),
-      readFile(join(root, MIGRATION_PATH), "utf8"),
+      readFile(join(root, V3_MIGRATION_PATH), "utf8"),
+      readFile(join(root, V4_MIGRATION_PATH), "utf8"),
     ]);
 
   const owner = databaseManifest?.owners?.find(
@@ -78,27 +90,26 @@ export async function loadUlcExerciseCatalogPreviewParityPlan(
   if (
     databaseManifest?.application !== APP_ID ||
     owner?.root !== "modules/exercise-catalog" ||
-    owner?.schemaVersion !== 3 ||
+    owner?.schemaVersion !== 4 ||
     !Array.isArray(owner?.migrations) ||
-    owner.migrations.at(-1) !== MIGRATION_PATH ||
-    moduleDatabase?.schemaVersion !== 3 ||
+    owner.migrations.at(-1) !== V4_MIGRATION_PATH ||
+    moduleDatabase?.schemaVersion !== 4 ||
     JSON.stringify(moduleDatabase?.migrations) !==
       JSON.stringify(owner.migrations)
   ) {
     throw new UlcExerciseCatalogPreviewParityConfigurationError(
-      "E6H preview parity requires the canonical exercise-catalog schema-v3 repository contract.",
+      "E6H preview parity requires the canonical exercise-catalog schema-v4 repository contract.",
     );
   }
 
-  const statements = migrationSql
-    .split("--> statement-breakpoint")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0);
-  if (statements.length !== 11) {
+  const v3Statements = migrationStatements(v3MigrationSql);
+  const v4Statements = migrationStatements(v4MigrationSql);
+  if (v3Statements.length !== 11 || v4Statements.length !== 2) {
     throw new UlcExerciseCatalogPreviewParityConfigurationError(
       "E6H preview parity migration statement contract drifted.",
     );
   }
+  const statements = Object.freeze([...v3Statements, ...v4Statements]);
 
   return deepFreeze({
     schemaVersion: 1,
@@ -111,13 +122,15 @@ export async function loadUlcExerciseCatalogPreviewParityPlan(
       migrationPrincipal: EXPECTED_MIGRATION_PRINCIPAL,
     },
     target: {
-      schemaVersion: 3,
-      migrationPath: MIGRATION_PATH,
+      schemaVersion: 4,
+      migrationPath: V4_MIGRATION_PATH,
+      migrationPaths: [...MIGRATION_PATHS],
       statementCount: statements.length,
       parityMarkers: [...PARITY_MARKERS],
       runtimeMode: "standard-module",
     },
     statements,
+    v3StatementCount: v3Statements.length,
     productionChanged: false,
   });
 }
@@ -144,11 +157,27 @@ export function classifyUlcExerciseCatalogPreviewParityShape(shape) {
     );
   }
 
-  const presentMarkers = PARITY_MARKERS.filter((marker) =>
+  const presentV3Markers = V3_PARITY_MARKERS.filter((marker) =>
     shape.parityMarkers.includes(marker),
   );
-  if (presentMarkers.length === 0) return "upgrade-required";
-  if (presentMarkers.length === PARITY_MARKERS.length) return "current";
+  const presentV4Markers = V4_PARITY_MARKERS.filter((marker) =>
+    shape.parityMarkers.includes(marker),
+  );
+  if (presentV3Markers.length === 0 && presentV4Markers.length === 0) {
+    return "upgrade-required";
+  }
+  if (
+    presentV3Markers.length === V3_PARITY_MARKERS.length &&
+    presentV4Markers.length === 0
+  ) {
+    return "upgrade-required";
+  }
+  if (
+    presentV3Markers.length === V3_PARITY_MARKERS.length &&
+    presentV4Markers.length === V4_PARITY_MARKERS.length
+  ) {
+    return "current";
+  }
   throw new UlcExerciseCatalogPreviewParityExecutionError(
     "E6H preview parity schema is partially applied or drifted.",
   );
@@ -234,16 +263,24 @@ export async function applyUlcExerciseCatalogPreviewParity(
     return await database.client.begin(async (transaction) => {
       await verifyMigrationIdentity(transaction);
       await transaction.unsafe(
-        "SELECT pg_advisory_xact_lock(hashtextextended('ulc-linz:exercise-catalog:preview-parity-v3', 0))",
+        "SELECT pg_advisory_xact_lock(hashtextextended('ulc-linz:exercise-catalog:preview-parity-v4', 0))",
       );
 
       const beforeShape = await readParityShape(transaction);
       const beforeState =
         classifyUlcExerciseCatalogPreviewParityShape(beforeShape);
       let statementCount = 0;
+      let migrationCount = 0;
 
       if (beforeState === "upgrade-required") {
-        for (const statement of context.plan.statements) {
+        const v3Complete = V3_PARITY_MARKERS.every((marker) =>
+          beforeShape.parityMarkers.includes(marker),
+        );
+        const statements = v3Complete
+          ? context.plan.statements.slice(context.plan.v3StatementCount)
+          : context.plan.statements;
+        migrationCount = v3Complete ? 1 : 2;
+        for (const statement of statements) {
           await transaction.unsafe(statement);
           statementCount += 1;
         }
@@ -255,7 +292,7 @@ export async function applyUlcExerciseCatalogPreviewParity(
         "current"
       ) {
         throw new UlcExerciseCatalogPreviewParityExecutionError(
-          "E6H preview parity migration did not reach the complete schema-v3 contract.",
+          "E6H preview parity migration did not reach the complete schema-v4 contract.",
         );
       }
 
@@ -280,7 +317,7 @@ export async function applyUlcExerciseCatalogPreviewParity(
           applicationPrincipal: applicationRole,
         },
         target: context.plan.target,
-        migrationCount: beforeState === "current" ? 0 : 1,
+        migrationCount,
         statementCount,
         runtimeDmlReady: true,
         privileges,
@@ -346,7 +383,7 @@ export async function verifyUlcExerciseCatalogPreviewParity(
     );
     if (state !== "current") {
       throw new UlcExerciseCatalogPreviewParityExecutionError(
-        "E6H preview parity schema-v3 verification requires the current state.",
+        "E6H preview parity schema-v4 verification requires the current state.",
       );
     }
     const privileges = await verifyParityTablePrivileges(
@@ -483,6 +520,16 @@ async function readParityShape(sql) {
     ["private-media-table", "SELECT to_regclass('public.appbasis_exercise_catalog_private_media') IS NOT NULL AS present"],
     ["private-media-storage-index", "SELECT to_regclass('public.appbasis_exercise_catalog_private_media_storage_unique') IS NOT NULL AS present"],
     ["private-media-exercise-index", "SELECT to_regclass('public.appbasis_exercise_catalog_private_media_exercise_idx') IS NOT NULL AS present"],
+    [
+      "private-media-deletion-column",
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'appbasis_exercise_catalog_private_media'
+           AND column_name = 'deletion_requested_at'
+       ) AS present`,
+    ],
+    ["private-media-deletion-index", "SELECT to_regclass('public.appbasis_exercise_catalog_private_media_deletion_idx') IS NOT NULL AS present"],
   ];
   for (const [marker, query] of markerQueries) {
     const rows = await sql.unsafe(query);
@@ -591,6 +638,15 @@ function requiredRole(value) {
 
 function quoteIdentifier(value) {
   return '"' + requiredRole(value).replaceAll('"', '""') + '"';
+}
+
+function migrationStatements(sql) {
+  return Object.freeze(
+    sql
+      .split("--> statement-breakpoint")
+      .map((statement) => statement.trim())
+      .filter((statement) => statement.length > 0),
+  );
 }
 
 async function readJson(path) {

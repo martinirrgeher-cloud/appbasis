@@ -364,7 +364,7 @@ export class ExerciseCatalogService {
     return media;
   }
 
-  async deletePrivateMedia(
+  async requestPrivateMediaDeletion(
     organizationId: string,
     exerciseId: string,
     mediaId: string,
@@ -375,7 +375,25 @@ export class ExerciseCatalogService {
     );
     const exercise = requiredIdentifier(exerciseId, "Exercise id");
     const media = requiredIdentifier(mediaId, "Exercise private media id");
-    return this.#repository.deletePrivateMedia(
+    return this.#repository.requestPrivateMediaDeletion(
+      organization,
+      exercise,
+      media,
+    );
+  }
+
+  async completePrivateMediaDeletion(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<boolean> {
+    const organization = requiredIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const exercise = requiredIdentifier(exerciseId, "Exercise id");
+    const media = requiredIdentifier(mediaId, "Exercise private media id");
+    return this.#repository.completePrivateMediaDeletion(
       organization,
       exercise,
       media,

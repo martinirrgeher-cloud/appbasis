@@ -435,11 +435,19 @@ export class PostgresUlcExerciseCatalogRepository {
     return legacyParityUnavailable();
   }
 
-  deletePrivateMedia(
+  requestPrivateMediaDeletion(
     _organizationId: string,
     _exerciseId: string,
     _mediaId: string,
   ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return legacyParityUnavailable();
+  }
+
+  completePrivateMediaDeletion(
+    _organizationId: string,
+    _exerciseId: string,
+    _mediaId: string,
+  ): Promise<boolean> {
     return legacyParityUnavailable();
   }
 
