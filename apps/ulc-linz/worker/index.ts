@@ -2038,18 +2038,24 @@ async function deleteExerciseCatalogPrivateMedia(
 ): Promise<Response> {
   const store = runtime.exerciseCatalogMediaStore;
   if (store === null) return exerciseCatalogPrivateMediaUnavailable();
-  const media = (
-    await runtime.exerciseCatalog.listPrivateMedia(organizationId, exerciseId)
-  ).find((entry) => entry.id === mediaId);
-  if (media === undefined) return exerciseCatalogNotFound();
 
-  await store.delete(media.storageKey);
-  const deleted = await runtime.exerciseCatalog.deletePrivateMedia(
+  const media = await runtime.exerciseCatalog.requestPrivateMediaDeletion(
     organizationId,
     exerciseId,
     mediaId,
   );
-  if (deleted === undefined) return exerciseCatalogNotFound();
+  if (media === undefined) return exerciseCatalogNotFound();
+
+  // The database request hides the media before any object-store mutation.
+  // R2 delete is idempotent, so a failed final DB delete can be retried safely:
+  // the next DELETE request receives the same pending metadata and deletes the
+  // same storage key again before attempting completion.
+  await store.delete(media.storageKey);
+  await runtime.exerciseCatalog.completePrivateMediaDeletion(
+    organizationId,
+    exerciseId,
+    mediaId,
+  );
   return Response.json({ deleted: true });
 }
 
