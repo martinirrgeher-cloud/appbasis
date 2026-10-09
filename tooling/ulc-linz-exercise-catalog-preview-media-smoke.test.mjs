@@ -144,8 +144,9 @@ function createSuccessfulFetch({
       method === "DELETE"
     ) {
       cleanupLog.push("delete");
+      const alreadyDeleted = media.length === 0;
       media = [];
-      return Response.json({ deleted: true });
+      return Response.json({ deleted: true, alreadyDeleted });
     }
 
     throw new Error("Unexpected request: " + method + " " + parsed.pathname);
@@ -181,10 +182,11 @@ test("verifies upload, list, full download, range download and delete against th
     uploadedBytes: VIDEO_BYTES.byteLength,
     rangeBytes: 8,
     deleted: true,
+    idempotentDeleteRetry: true,
     productionChanged: false,
   });
   assert.equal(sessionClosed, true);
-  assert.deepEqual(cleanupLog, ["delete"]);
+  assert.deepEqual(cleanupLog, ["delete", "delete"]);
 });
 
 test("cleans up an uploaded smoke object when a later live assertion fails", async () => {
