@@ -462,8 +462,11 @@ function runtime(
       async registerPrivateMedia() {
         return undefined;
       },
-      async deletePrivateMedia() {
+      async requestPrivateMediaDeletion() {
         return undefined;
+      },
+      async completePrivateMediaDeletion() {
+        return false;
       },
       async setFavorite(organizationId, _identityId, exerciseId, favorite) {
         return {
