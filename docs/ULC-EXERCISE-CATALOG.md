@@ -203,10 +203,15 @@ machen; Produktion bleibt unverändert. Nach dem Deploy führt derselbe Gate-Pfa
 echten Live-Smoke über den geschützten Preview-Worker aus: temporäre
 Admin-Impersonation ohne Passwortänderung, privates MP4 hochladen, Listenstatus,
 vollständigen Download, Byte-Range-Download und anschließendes Löschen. Das
-Smoke-Objekt wird auch bei Folgefehlern bestmöglich bereinigt. Der generische
-D4-Deploypfad wird dafür bewusst nicht verwendet, damit die Preview nicht auf
-den Legacy-Entrypoint zurückgesetzt werden kann. Produktion bleibt von diesem
-Ablauf unberührt.
+Löschen entfernt zuerst die Datenbank-Metadaten und danach das deterministisch
+adressierte R2-Objekt. Schlägt die Objektlöschung nach erfolgreicher
+Metadatenlöschung fehl, kann derselbe DELETE-Aufruf gefahrlos wiederholt werden
+und bereinigt das verwaiste Objekt ohne eine wieder sichtbare Metadatenzeile zu
+erzeugen. Der Live-Smoke prüft deshalb zusätzlich einen zweiten idempotenten
+DELETE. Das Smoke-Objekt wird auch bei Folgefehlern bestmöglich bereinigt. Der
+generische D4-Deploypfad wird dafür bewusst nicht verwendet, damit die Preview
+nicht auf den Legacy-Entrypoint zurückgesetzt werden kann. Produktion bleibt von
+diesem Ablauf unberührt.
 
 Die Verwendungsdaten können bereits erfasst und angezeigt werden. Eine
 automatische Ableitung aus Trainingsblöcken oder Trainingsplänen ist noch
