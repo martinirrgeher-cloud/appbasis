@@ -164,11 +164,19 @@ export class QuiescedUlcExerciseCatalogRepository
     return quiesced();
   }
 
-  deletePrivateMedia(
+  requestPrivateMediaDeletion(
     _organizationId: string,
     _exerciseId: string,
     _mediaId: string,
   ): Promise<ExerciseCatalogPrivateMedia | undefined> {
+    return quiesced();
+  }
+
+  completePrivateMediaDeletion(
+    _organizationId: string,
+    _exerciseId: string,
+    _mediaId: string,
+  ): Promise<boolean> {
     return quiesced();
   }
 }
@@ -320,12 +328,24 @@ export class StandardModuleUlcExerciseCatalogRepository
     );
   }
 
-  deletePrivateMedia(
+  requestPrivateMediaDeletion(
     organizationId: string,
     exerciseId: string,
     mediaId: string,
   ): Promise<ExerciseCatalogPrivateMedia | undefined> {
-    return this.#service.deletePrivateMedia(
+    return this.#service.requestPrivateMediaDeletion(
+      organizationId,
+      exerciseId,
+      mediaId,
+    );
+  }
+
+  completePrivateMediaDeletion(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<boolean> {
+    return this.#service.completePrivateMediaDeletion(
       organizationId,
       exerciseId,
       mediaId,
