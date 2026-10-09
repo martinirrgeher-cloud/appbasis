@@ -94,7 +94,11 @@ describe("ULC exercise catalog cutover runtime repositories", () => {
         writes += 1;
         throw new Error("unexpected legacy media write");
       },
-      async deletePrivateMedia() {
+      async requestPrivateMediaDeletion() {
+        writes += 1;
+        throw new Error("unexpected legacy media write");
+      },
+      async completePrivateMediaDeletion() {
         writes += 1;
         throw new Error("unexpected legacy media write");
       },
@@ -173,8 +177,11 @@ describe("ULC exercise catalog cutover runtime repositories", () => {
         return [];
       },
       async registerPrivateMedia() {},
-      async deletePrivateMedia() {
+      async requestPrivateMediaDeletion() {
         return undefined;
+      },
+      async completePrivateMediaDeletion() {
+        return false;
       },
     };
 
