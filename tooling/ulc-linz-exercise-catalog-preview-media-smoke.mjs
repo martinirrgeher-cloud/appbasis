@@ -400,48 +400,37 @@ export async function createPreviewAdminImpersonationSession(
       );
     }
 
-    const response = await auth.handler(
-      new Request(baseURL + "/api/auth/admin/impersonate-user", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          cookie: rootSession.sessionToken,
-          origin: baseURL,
-        },
-        body: JSON.stringify({ userId: preview.id }),
+    if (
+      !isRecord(auth.api) ||
+      typeof auth.api.impersonateUser !== "function"
+    ) {
+      throw new UlcExerciseCatalogPreviewMediaSmokeError(
+        "ULC E6H Better Auth admin impersonation API is unavailable.",
+      );
+    }
+    const impersonationResult = await auth.api.impersonateUser({
+      body: { userId: preview.id },
+      headers: new Headers({
+        cookie: rootSession.sessionToken,
+        origin: baseURL,
       }),
-    );
-    if (!response.ok) {
+      returnHeaders: true,
+    });
+    if (
+      !isRecord(impersonationResult) ||
+      !(impersonationResult.headers instanceof Headers) ||
+      !isRecord(impersonationResult.response) ||
+      !isRecord(impersonationResult.response.session) ||
+      typeof impersonationResult.response.session.token !== "string" ||
+      impersonationResult.response.session.token.length === 0 ||
+      impersonationResult.response.session.userId !== preview.id
+    ) {
       throw new UlcExerciseCatalogPreviewMediaSmokeError(
-        "ULC E6H preview administrator impersonation failed.",
+        "ULC E6H preview administrator impersonation returned an invalid result.",
       );
     }
 
-    let impersonationPayload;
-    try {
-      impersonationPayload = await response.clone().json();
-    } catch {
-      throw new UlcExerciseCatalogPreviewMediaSmokeError(
-        "ULC E6H preview administrator impersonation returned invalid JSON.",
-      );
-    }
-    const impersonatedSessionToken =
-      isRecord(impersonationPayload) &&
-      isRecord(impersonationPayload.session) &&
-      typeof impersonationPayload.session.token === "string" &&
-      impersonationPayload.session.token.length > 0
-        ? impersonationPayload.session.token
-        : null;
-    if (impersonatedSessionToken === null) {
-      throw new UlcExerciseCatalogPreviewMediaSmokeError(
-        "ULC E6H preview administrator impersonation returned no session token.",
-      );
-    }
-
-    impersonatedCookie = sessionCookie(
-      response,
-      impersonatedSessionToken,
-    );
+    impersonatedCookie = sessionCookie(impersonationResult.headers);
     const localSession = await backend.getSession(impersonatedCookie);
     if (
       localSession === null ||
@@ -760,46 +749,35 @@ async function timedFetch(
   }
 }
 
-function sessionCookie(response, sessionToken) {
-  const headerValues =
-    typeof response.headers.getSetCookie === "function"
-      ? response.headers.getSetCookie()
-      : splitCombinedSetCookieHeader(response.headers.get("set-cookie"));
-  if (!Array.isArray(headerValues) || headerValues.length === 0) {
-    throw new UlcExerciseCatalogPreviewMediaSmokeError(
-      "ULC E6H preview impersonation returned no session cookie.",
-    );
-  }
-
-  const names = headerValues
-    .map((value) => {
-      if (typeof value !== "string") return "";
-      const pair = (value.split(";", 1)[0] ?? "").trim();
-      const separator = pair.indexOf("=");
-      return separator <= 0 ? "" : pair.slice(0, separator);
-    })
-    .filter((value) => value.length > 0 && !/[\r\n]/u.test(value));
-  const cookieName = names.find(
-    (name) =>
-      name === "better-auth.session_token" ||
-      name === "__Secure-better-auth.session_token" ||
-      name.endsWith(".session_token"),
+function sessionCookie(headers) {
+  const rawHeaderValues =
+    typeof headers.getSetCookie === "function"
+      ? headers.getSetCookie()
+      : [headers.get("set-cookie")].filter((value) => value !== null);
+  const headerValues = rawHeaderValues.flatMap((value) =>
+    splitCombinedSetCookieHeader(value),
   );
-  if (cookieName === undefined) {
+  const sessionPairs = headerValues
+    .map((value) =>
+      typeof value === "string" ? (value.split(";", 1)[0] ?? "").trim() : "",
+    )
+    .filter((pair) => {
+      if (pair.length === 0 || /[\r\n]/u.test(pair)) return false;
+      const separator = pair.indexOf("=");
+      if (separator <= 0 || separator === pair.length - 1) return false;
+      const name = pair.slice(0, separator);
+      return (
+        name === "better-auth.session_token" ||
+        name === "__Secure-better-auth.session_token" ||
+        name.endsWith(".session_token")
+      );
+    });
+  if (sessionPairs.length !== 1) {
     throw new UlcExerciseCatalogPreviewMediaSmokeError(
-      "ULC E6H preview impersonation returned no Better Auth session-token cookie.",
+      "ULC E6H preview impersonation returned an ambiguous Better Auth session cookie.",
     );
   }
-  if (
-    typeof sessionToken !== "string" ||
-    sessionToken.length === 0 ||
-    /[\r\n;]/u.test(sessionToken)
-  ) {
-    throw new UlcExerciseCatalogPreviewMediaSmokeError(
-      "ULC E6H preview impersonation returned an invalid session token.",
-    );
-  }
-  return cookieName + "=" + sessionToken;
+  return sessionPairs[0];
 }
 
 function splitCombinedSetCookieHeader(value) {
