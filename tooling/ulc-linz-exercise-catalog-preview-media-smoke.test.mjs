@@ -264,6 +264,17 @@ test("creates a temporary preview-admin impersonation session without changing u
       };
     }
 
+    async getSession(cookie) {
+      assert.equal(
+        cookie,
+        "__Secure-better-auth.session_token=impersonated-db-token",
+      );
+      return {
+        identityId: "preview-admin-id",
+        sessionToken: cookie,
+      };
+    }
+
     async endSession(cookie) {
       endedSessions.push(cookie);
     }
@@ -306,10 +317,16 @@ test("creates a temporary preview-admin impersonation session without changing u
             );
             responseHeaders.append(
               "set-cookie",
-              "__Secure-better-auth.session_token=impersonated; Path=/; HttpOnly; Secure",
+              "__Secure-better-auth.session_token=response-cookie-value; Path=/; HttpOnly; Secure",
             );
             return Response.json(
-              { user: { id: "preview-admin-id" } },
+              {
+                session: {
+                  token: "impersonated-db-token",
+                  userId: "preview-admin-id",
+                },
+                user: { id: "preview-admin-id" },
+              },
               {
                 status: 200,
                 headers: responseHeaders,
@@ -324,11 +341,11 @@ test("creates a temporary preview-admin impersonation session without changing u
 
   assert.equal(
     session.cookie,
-    "__Secure-better-auth.session_token=impersonated",
+    "__Secure-better-auth.session_token=impersonated-db-token",
   );
   await session.close();
   assert.deepEqual(endedSessions, [
-    "__Secure-better-auth.session_token=impersonated",
+    "__Secure-better-auth.session_token=impersonated-db-token",
     "better-auth.session_token=root",
   ]);
   assert.equal(databaseEnded, true);
