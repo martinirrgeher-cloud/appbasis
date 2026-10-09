@@ -171,8 +171,15 @@ describe("exercise catalog service", () => {
       expect.objectContaining({ id: "media-1" }),
     ]);
     await expect(
-      service.deletePrivateMedia("org-a", first.id, "media-1"),
+      service.requestPrivateMediaDeletion("org-a", first.id, "media-1"),
     ).resolves.toMatchObject({ id: "media-1" });
+    await expect(service.listPrivateMedia("org-a", first.id)).resolves.toEqual([]);
+    await expect(
+      service.completePrivateMediaDeletion("org-a", first.id, "media-1"),
+    ).resolves.toBe(true);
+    await expect(
+      service.completePrivateMediaDeletion("org-a", first.id, "media-1"),
+    ).resolves.toBe(false);
   });
 
   it("fails closed for invalid configured categories and malformed scopes", async () => {
