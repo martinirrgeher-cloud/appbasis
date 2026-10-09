@@ -63,11 +63,16 @@ export interface UlcExerciseCatalogRepository {
     exerciseId: string,
     input: RegisterExerciseCatalogPrivateMediaInput,
   ): Promise<ExerciseCatalogPrivateMedia | undefined>;
-  deletePrivateMedia(
+  requestPrivateMediaDeletion(
     organizationId: string,
     exerciseId: string,
     mediaId: string,
   ): Promise<ExerciseCatalogPrivateMedia | undefined>;
+  completePrivateMediaDeletion(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<boolean>;
 }
 
 export interface UlcExerciseCatalogTrainingGroup {
@@ -269,12 +274,24 @@ export function createUlcExerciseCatalogService({
       );
     },
 
-    deletePrivateMedia(
+    requestPrivateMediaDeletion(
       organizationId: string,
       exerciseId: string,
       mediaId: string,
     ) {
-      return repository.deletePrivateMedia(
+      return repository.requestPrivateMediaDeletion(
+        organizationId,
+        exerciseId,
+        mediaId,
+      );
+    },
+
+    completePrivateMediaDeletion(
+      organizationId: string,
+      exerciseId: string,
+      mediaId: string,
+    ) {
+      return repository.completePrivateMediaDeletion(
         organizationId,
         exerciseId,
         mediaId,
