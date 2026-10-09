@@ -13,6 +13,7 @@ export class InMemoryExerciseCatalogRepository
   readonly #favorites = new Set<string>();
   readonly #usage = new Map<string, ExerciseCatalogUsageEvent>();
   readonly #privateMedia = new Map<string, ExerciseCatalogPrivateMedia>();
+  readonly #privateMediaDeletionRequested = new Set<string>();
 
   constructor(initialItems: readonly ExerciseCatalogItem[] = []) {
     for (const item of initialItems) {
@@ -191,7 +192,10 @@ export class InMemoryExerciseCatalogRepository
         .filter(
           (media) =>
             media.organizationId === organizationId &&
-            media.exerciseId === exerciseId,
+            media.exerciseId === exerciseId &&
+            !this.#privateMediaDeletionRequested.has(
+              mediaKey(media.organizationId, media.id),
+            ),
         )
         .sort(
           (left, right) =>
@@ -215,7 +219,7 @@ export class InMemoryExerciseCatalogRepository
     this.#privateMedia.set(key, Object.freeze({ ...media }));
   }
 
-  async deletePrivateMedia(
+  async requestPrivateMediaDeletion(
     organizationId: string,
     exerciseId: string,
     mediaId: string,
@@ -223,8 +227,27 @@ export class InMemoryExerciseCatalogRepository
     const key = mediaKey(organizationId, mediaId);
     const media = this.#privateMedia.get(key);
     if (media === undefined || media.exerciseId !== exerciseId) return undefined;
-    this.#privateMedia.delete(key);
+    this.#privateMediaDeletionRequested.add(key);
     return Object.freeze({ ...media });
+  }
+
+  async completePrivateMediaDeletion(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): Promise<boolean> {
+    const key = mediaKey(organizationId, mediaId);
+    const media = this.#privateMedia.get(key);
+    if (
+      media === undefined ||
+      media.exerciseId !== exerciseId ||
+      !this.#privateMediaDeletionRequested.has(key)
+    ) {
+      return false;
+    }
+    this.#privateMediaDeletionRequested.delete(key);
+    this.#privateMedia.delete(key);
+    return true;
   }
 
   #assertUniqueName(item: ExerciseCatalogItem, exceptId?: string): void {
