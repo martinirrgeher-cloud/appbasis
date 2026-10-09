@@ -270,6 +270,7 @@ async function applyManifestMigrations(
       migration !== "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql" &&
       migration !== "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql" &&
       migration !== "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql" &&
+      migration !== "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql" &&
       migration !== "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql" &&
       migration !== "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql" &&
       migration !== "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql" &&
