@@ -148,14 +148,15 @@ ULC-App und die Factory-Verträge abgeglichen.
   Datenbankowner; C1 akzeptiert den veröffentlichten Zielzustand weiterhin
   fail-closed. Der historische Adoptionsvertrag bleibt bewusst auf Schema v2
   und die ersten zwei Zielmigrationen gepinnt, auch wenn das aktuelle
-  Standardmodul inzwischen Schema v3 besitzt;
+  Standardmodul inzwischen Schema v4 besitzt;
 - E6G-C3B: eigener preview-gebundener Executor für
   `generated-preview-ulc-linz` / `appbasis_ulc_linz_preview`. Der
   historische v2-Adoptionslauf führt weiterhin exakt die zwei geprüften
   Baseline-Migrationen und den anschließenden insert-only Copy-/Verify-Lauf in
-  einer einzigen `REPEATABLE READ`-Transaktion aus. Die additive
-  Schema-v3-Paritätsmigration bleibt davon getrennt. Der reale Apply ist
-  ausschließlich manuell, main-only und explizit freizugeben;
+  einer einzigen `REPEATABLE READ`-Transaktion aus. Die additiven
+  Schema-v3-Paritäts- und Schema-v4-Löschkonsistenzmigrationen bleiben davon
+  getrennt. Der reale Apply ist ausschließlich manuell, main-only und explizit
+  freizugeben;
 - Runtime-Cutover und Produktion bleiben weiterhin getrennte Freigaben. C3B
   quiesziert Source-Writes ausdrücklich noch nicht und setzt
   `runtimeCutoverEligible` weiterhin auf false. Vor einem Runtime-Switch
@@ -182,14 +183,15 @@ fehlenden Katalogfunktionen:
 - mehrere externe Video-/Weblinks je Übung; der erste Link ist der Hauptlink;
 - optionale private Videoablage über den Runtime-Object-Store mit geschützter
   Auslieferung, Löschen und einem ULC-Limit von 100 MB pro Video;
-- additive Standardmodul-Migration v3; der historische E6G-Adoptionsvertrag
+- additive Standardmodul-Migration v3 für die Funktionsparität plus v4 für
+  ausfallsicheres Löschen privater Medien; der historische E6G-Adoptionsvertrag
   bleibt davon unverändert.
 
 Der Preview-Rollout für E6H ist ein eigener, main-only und explizit
 freizugebender Gate-Pfad. Er setzt den bereits abgeschlossenen
 Standardmodul-Cutover voraus, prüft die bestehende Source-Write-Quiescence,
-wendet ausschließlich die additive v3-Migration an, vergibt die benötigten
-Runtime-DML-Rechte auf den neuen Paritätstabellen und deployed danach erneut
+wendet die noch fehlenden additiven v3-/v4-Migrationen an, vergibt die
+benötigten Runtime-DML-Rechte auf den Paritätstabellen und deployed danach erneut
 den Standardmodul-Entrypoint mit dem dedizierten, vorab angelegten
 Preview-R2-Bucket für private Übungsvideos. Dieser Bucket ist auf die
 Cloudflare-R2-Jurisdiction `eu` festgelegt; der Worker-Binding setzt daher
@@ -203,10 +205,17 @@ machen; Produktion bleibt unverändert. Nach dem Deploy führt derselbe Gate-Pfa
 echten Live-Smoke über den geschützten Preview-Worker aus: temporäre
 Admin-Impersonation ohne Passwortänderung, privates MP4 hochladen, Listenstatus,
 vollständigen Download, Byte-Range-Download und anschließendes Löschen. Das
-Smoke-Objekt wird auch bei Folgefehlern bestmöglich bereinigt. Der generische
-D4-Deploypfad wird dafür bewusst nicht verwendet, damit die Preview nicht auf
-den Legacy-Entrypoint zurückgesetzt werden kann. Produktion bleibt von diesem
-Ablauf unberührt.
+Smoke-Objekt wird auch bei Folgefehlern bestmöglich bereinigt. Schema v4
+härtet zusätzlich den produktionskritischen Löschpfad: Vor der R2-Mutation
+wird in PostgreSQL dauerhaft `deletion_requested_at` gesetzt und der Eintrag
+damit sofort aus Listen und Downloads ausgeblendet. Erst danach wird das
+R2-Objekt idempotent gelöscht und anschließend die Metadatenzeile final
+entfernt. Scheitert R2 oder der abschließende Datenbankschritt, bleibt der
+Löschauftrag für einen sicheren Retry erhalten; es entsteht dadurch kein
+sichtbarer Metadatensatz, der auf ein bereits fehlendes Objekt zeigt. Der
+generische D4-Deploypfad wird dafür bewusst nicht verwendet, damit die Preview
+nicht auf den Legacy-Entrypoint zurückgesetzt werden kann. Produktion bleibt
+von diesem Ablauf unberührt.
 
 Die Verwendungsdaten können bereits erfasst und angezeigt werden. Eine
 automatische Ableitung aus Trainingsblöcken oder Trainingsplänen ist noch
