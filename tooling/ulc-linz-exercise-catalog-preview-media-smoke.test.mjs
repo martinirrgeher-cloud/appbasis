@@ -267,7 +267,7 @@ test("creates a temporary preview-admin impersonation session without changing u
     async getSession(cookie) {
       assert.equal(
         cookie,
-        "__Secure-better-auth.session_token=impersonated-db-token",
+        "__Secure-better-auth.session_token=response-cookie-value",
       );
       return {
         identityId: "preview-admin-id",
@@ -297,41 +297,37 @@ test("creates a temporary preview-admin impersonation session without changing u
         assert.equal(options.baseURL, BASE_URL);
         assert.equal(options.secret, BETTER_AUTH_SECRET);
         return {
-          async handler(request) {
-            assert.equal(
-              request.url,
-              BASE_URL + "/api/auth/admin/impersonate-user",
-            );
-            assert.equal(request.method, "POST");
-            assert.equal(
-              request.headers.get("cookie"),
-              "better-auth.session_token=root",
-            );
-            assert.deepEqual(await request.json(), {
-              userId: "preview-admin-id",
-            });
-            const responseHeaders = new Headers();
-            responseHeaders.append(
-              "set-cookie",
-              "better-auth.admin_session=root; Path=/; HttpOnly",
-            );
-            responseHeaders.append(
-              "set-cookie",
-              "__Secure-better-auth.session_token=response-cookie-value; Path=/; HttpOnly; Secure",
-            );
-            return Response.json(
-              {
-                session: {
-                  token: "impersonated-db-token",
-                  userId: "preview-admin-id",
-                },
-                user: { id: "preview-admin-id" },
-              },
-              {
-                status: 200,
+          api: {
+            async impersonateUser(input) {
+              assert.deepEqual(input.body, {
+                userId: "preview-admin-id",
+              });
+              assert.equal(input.returnHeaders, true);
+              assert.equal(
+                input.headers.get("cookie"),
+                "better-auth.session_token=root",
+              );
+              assert.equal(input.headers.get("origin"), BASE_URL);
+              const responseHeaders = new Headers();
+              responseHeaders.append(
+                "set-cookie",
+                "better-auth.admin_session=root; Path=/; HttpOnly",
+              );
+              responseHeaders.append(
+                "set-cookie",
+                "__Secure-better-auth.session_token=response-cookie-value; Path=/; HttpOnly; Secure",
+              );
+              return {
                 headers: responseHeaders,
-              },
-            );
+                response: {
+                  session: {
+                    token: "impersonated-db-token",
+                    userId: "preview-admin-id",
+                  },
+                  user: { id: "preview-admin-id" },
+                },
+              };
+            },
           },
         };
       },
@@ -341,11 +337,11 @@ test("creates a temporary preview-admin impersonation session without changing u
 
   assert.equal(
     session.cookie,
-    "__Secure-better-auth.session_token=impersonated-db-token",
+    "__Secure-better-auth.session_token=response-cookie-value",
   );
   await session.close();
   assert.deepEqual(endedSessions, [
-    "__Secure-better-auth.session_token=impersonated-db-token",
+    "__Secure-better-auth.session_token=response-cookie-value",
     "better-auth.session_token=root",
   ]);
   assert.equal(databaseEnded, true);
