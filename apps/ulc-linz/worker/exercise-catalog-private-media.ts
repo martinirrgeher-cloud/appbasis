@@ -26,6 +26,80 @@ export interface UlcExerciseCatalogObjectStore {
   delete(key: string): PromiseLike<unknown>;
 }
 
+
+export interface UlcExerciseCatalogPrivateMediaDeletionCatalog {
+  listPrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+  ): PromiseLike<
+    readonly {
+      readonly id: string;
+      readonly storageKey: string;
+    }[]
+  >;
+  deletePrivateMedia(
+    organizationId: string,
+    exerciseId: string,
+    mediaId: string,
+  ): PromiseLike<unknown | undefined>;
+}
+
+export interface UlcExerciseCatalogPrivateMediaDeletionResult {
+  readonly deleted: true;
+  readonly alreadyDeleted: boolean;
+}
+
+/**
+ * Deletes database metadata before the object so a storage failure can never
+ * leave a live metadata row pointing at a missing video. The storage key is
+ * deterministic, therefore a retry can still clean up the R2 object after the
+ * metadata row has already disappeared.
+ */
+export async function deleteUlcExerciseCatalogPrivateMedia({
+  store,
+  catalog,
+  organizationId,
+  exerciseId,
+  mediaId,
+}: {
+  readonly store: UlcExerciseCatalogObjectStore;
+  readonly catalog: UlcExerciseCatalogPrivateMediaDeletionCatalog;
+  readonly organizationId: string;
+  readonly exerciseId: string;
+  readonly mediaId: string;
+}): Promise<UlcExerciseCatalogPrivateMediaDeletionResult> {
+  const expectedStorageKey = privateExerciseVideoStorageKey(
+    organizationId,
+    exerciseId,
+    mediaId,
+  );
+  const media = (
+    await catalog.listPrivateMedia(organizationId, exerciseId)
+  ).find((entry) => entry.id === mediaId);
+
+  if (media !== undefined && media.storageKey !== expectedStorageKey) {
+    throw new Error("Private exercise video storage metadata is inconsistent.");
+  }
+
+  if (media !== undefined) {
+    const deleted = await catalog.deletePrivateMedia(
+      organizationId,
+      exerciseId,
+      mediaId,
+    );
+    if (deleted !== undefined) {
+      await store.delete(expectedStorageKey);
+      return Object.freeze({ deleted: true, alreadyDeleted: false });
+    }
+  }
+
+  // DELETE is deliberately idempotent. This path also repairs the only
+  // possible partial failure of the metadata-first sequence: metadata was
+  // removed successfully but object deletion failed and the client retried.
+  await store.delete(expectedStorageKey);
+  return Object.freeze({ deleted: true, alreadyDeleted: true });
+}
+
 export function resolveUlcExerciseCatalogObjectStore(
   value: unknown,
 ): UlcExerciseCatalogObjectStore | null {
