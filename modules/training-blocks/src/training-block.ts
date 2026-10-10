@@ -130,9 +130,13 @@ function normalizeParameterOverride(
 
 function optionalDuration(value: unknown): number | null {
   if (value === undefined || value === null) return null;
-  if (!Number.isSafeInteger(value) || value < 1 || value > 1440) {
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > 2_147_483_647
+  ) {
     throw new TrainingBlockValidationError(
-      "Training block duration must be a whole number between 1 and 1440 minutes.",
+      "Training block duration must be a positive whole number of minutes.",
     );
   }
   return value;
