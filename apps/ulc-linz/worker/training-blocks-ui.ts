@@ -1377,17 +1377,17 @@ async function openTrainingBlockRevision(number) {
       trainingBlockElements.revisionPreview.textContent =
         "Version " +
         String(revision.revision) +
-        "\n" +
+        "\\n" +
         revision.name +
-        "\nGruppe: " +
+        "\\nGruppe: " +
         trainingBlockAudienceLabel(revision.audienceId) +
-        "\nDauer: " +
+        "\\nDauer: " +
         (revision.durationMinutes === null
           ? "—"
           : String(revision.durationMinutes) + " Min.") +
-        "\nÜbungen: " +
+        "\\nÜbungen: " +
         String(revision.exercises.length) +
-        (revision.note ? "\nNotiz: " + revision.note : "");
+        (revision.note ? "\\nNotiz: " + revision.note : "");
       trainingBlockElements.revisionPreview.hidden = false;
     }
   } catch {
@@ -1445,7 +1445,7 @@ async function compareTrainingBlockRevisions() {
               : null,
           ].filter(Boolean)
         : ["Keine fachlichen Änderungen."];
-      trainingBlockElements.comparison.textContent = lines.join("\n");
+      trainingBlockElements.comparison.textContent = lines.join("\\n");
       trainingBlockElements.comparison.hidden = false;
     }
   } catch {
