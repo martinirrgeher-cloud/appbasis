@@ -160,6 +160,64 @@ test("FC6-D installs tasks end-to-end on a non-empty existing app baseline and r
   }
 });
 
+test("FC6-D pins target DDL to public even when the database search_path prefers another writable schema", async (t) => {
+  const root = await createExistingAppFixture(t);
+  const admin = createPostgresDatabase(databaseUrl);
+
+  try {
+    await resetIdentityBaseline(admin, root);
+
+    const setup = createPostgresDatabase(targetUrl.toString());
+    try {
+      await setup.client.unsafe("CREATE SCHEMA fc6_shadow");
+    } finally {
+      await setup.client.end();
+    }
+    await admin.client.unsafe(
+      `ALTER DATABASE ${databaseName} SET search_path TO fc6_shadow, public`,
+    );
+
+    await publishTasksModuleWithUpdater(root);
+
+    const result = await applyModuleUpdateMigrations(
+      {
+        appId: "existing",
+        moduleId: "tasks",
+        connectionString: targetUrl.toString(),
+        expectedDatabase: databaseName,
+        expectedPrincipal,
+      },
+      { repositoryRoot: root },
+    );
+    assert.equal(result.state, "applied");
+
+    const verification = createPostgresDatabase(targetUrl.toString());
+    try {
+      const rows = await verification.client`
+        SELECT table_schema, table_name
+        FROM information_schema.tables
+        WHERE table_name = 'appbasis_task'
+          AND table_schema IN ('public', 'fc6_shadow')
+        ORDER BY table_schema
+      `;
+      assert.deepEqual(
+        rows.map((row) => ({
+          table_schema: row.table_schema,
+          table_name: row.table_name,
+        })),
+        [{ table_schema: "public", table_name: "appbasis_task" }],
+      );
+    } finally {
+      await verification.client.end();
+    }
+  } finally {
+    await admin.client.unsafe(
+      `DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`,
+    );
+    await admin.client.end();
+  }
+});
+
 test("FC6-D rejects baseline drift after repository publication before executing target module SQL", async (t) => {
   const root = await createExistingAppFixture(t);
   const admin = createPostgresDatabase(databaseUrl);
