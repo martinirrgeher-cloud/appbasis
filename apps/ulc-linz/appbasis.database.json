@@ -45,6 +45,14 @@
       ]
     },
     {
+      "id": "training-blocks",
+      "root": "modules/training-blocks",
+      "schemaVersion": 1,
+      "migrations": [
+        "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql"
+      ]
+    },
+    {
       "id": "ulc-linz-lifecycle",
       "root": "apps/ulc-linz",
       "schemaVersion": 8,
