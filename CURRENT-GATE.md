@@ -9,27 +9,33 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6H.1 – bestehende Übung als Vorlage für eine neue Übung verwenden.**
+**ULC-E7A1 – Trainingsblöcke als revisionsfähiges Standardmodul-Fundament.**
 
-Die praktische E6H-Produkt-/UI-Sichtung in der isolierten Preview wurde am
-10.10.2026 erfolgreich bestätigt. Der Nutzer hat anschließend als direkten
-Folgewunsch das Klonen fachlich ähnlicher Übungen angefordert, weil sich häufig
-nur Name und einzelne Details unterscheiden.
+Die praktische Abnahme von E6H.1 („Als Vorlage“) wurde am 10.10.2026
+erfolgreich bestätigt. Der Übungskatalog ist damit für den aktuellen
+Preview-Umfang fachlich abgeschlossen.
 
-E6H.1 bleibt bewusst ein kleiner UI-/Create-Slice: Eine bestehende Übung kann
-im Editor als Vorlage geöffnet werden. Übernommen werden ausschließlich die
-bereits editierbaren Katalogfelder einschließlich Gruppen, Parameter und
-externer Links. Favorit, Nutzungsverlauf, private Videos, ID und Lifecycle des
-Originals werden nicht kopiert. Gespeichert wird die neue Übung über denselben
-bestehenden serverautorisierten Create-Vertrag; es entsteht kein neuer
-Clone-Endpunkt und keine Migration.
+Nächster Produktpfad sind Trainingsblöcke als Bindeglied zwischen
+Übungskatalog und späterer Trainingsplanung. E7A1 baut ausschließlich das
+generische Fundament: Modulvertrag, revisionsfähiges Schema und
+Domainvalidierung. ULC-Runtime, Gruppen-/Übungsresolver, Autosave-UI,
+Preview-Migration und Deployment folgen in getrennten Gates.
 
-Der separate Preview-Deploy ist erfolgreich abgeschlossen. Die isolierte
-Preview läuft weiterhin auf dem Standardmodul, und der Live-Check bestätigt die
-neue Aktion **„Als Vorlage“**. Offen ist damit nur noch die praktische
-Produktsichtung dieser Funktion. Produktion bleibt weiterhin unverändert;
-Produktionsmigration, produktives R2-Binding, Runtime-Cutover und Deployment
-sind nicht autorisiert.
+Verbindliche Architekturgrenzen:
+
+- Trainingsblock = wiederverwendbare Inhaltsvorlage; konkrete
+  Trainingseinheit/Anwesenheit bleibt im bestehenden `training-session`-Pfad;
+- dieselbe Katalogübung darf mehrfach im Block vorkommen;
+- Blockwerte überschreiben Katalog-Standardparameter nur innerhalb des
+  jeweiligen Blocks;
+- nummerierte unveränderliche Revisionen sind ab dem ersten Schema vorgesehen;
+- keine Cross-Owner-Foreign-Keys in `athletes` oder `exercise-catalog`;
+- ULC verwendet später vorhandene Trainingsgruppen statt einer zweiten
+  Gruppenverwaltung;
+- E7A1 führt keine Datenbank-, Preview-, Provider- oder Produktionsmutation aus.
+
+Der vollständige Alt-App-Zielumfang und die Folgeslices sind in
+`docs/ULC-TRAINING-BLOCKS.md` festgehalten.
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -294,7 +300,7 @@ Die praktische Produkt-/UI-Sichtung in der isolierten Preview wurde am
 10.10.2026 erfolgreich bestätigt. Ein getrennter Produktions-Rollout bleibt
 weiterhin ausdrücklich ungeplant und nicht autorisiert.
 
-## Aktueller Gate-Scope: ULC-E6H.1
+## Abgeschlossener Gate-Scope: ULC-E6H.1
 
 E6H.1 ergänzt ausschließlich den Nutzerworkflow **„Als Vorlage“** für
 bestehende Übungen.
@@ -316,7 +322,27 @@ Abnahme:
 - der getrennt freigegebene Preview-Deploy ist abgeschlossen; keine
   Datenbankmigration war erforderlich;
 - der dauerhafte Preview-Refresh-Workflow bleibt danach ausschließlich manuell
-  und main-only; offen ist nur noch die praktische Produktsichtung.
+  und main-only;
+- die praktische Produktsichtung wurde am 10.10.2026 erfolgreich bestätigt.
+
+## Aktueller Gate-Scope: ULC-E7A1
+
+E7A1 startet das Standardmodul `training-blocks` ohne ULC-Adoption.
+
+Abnahme:
+
+- kanonisches Modulmanifest `training-blocks` mit View-/Edit-Capabilities;
+- eigenes Schema v1 unter dem Modulowner;
+- Blockidentität und unveränderliche nummerierte Revisionen sind getrennt;
+- eine Revision enthält Name, optionale Audience, optionale Dauer und Notiz;
+- sortierte Übungsvorkommen besitzen eigene Item-Identitäten, sodass dieselbe
+  Übung mehrfach vorkommen darf;
+- Parameter-Overrides sind je Übungsvorkommen geordnet und eindeutig;
+- Domainvalidierung spiegelt die Schema-Grenzen;
+- keine Foreign Keys oder direkten Writes in andere Module;
+- keine Änderung an `apps/ulc-linz/appbasis.app.json`;
+- keine ULC-Runtime-/UI-Änderung;
+- keine Preview-/Produktionsmigration und kein Providerwrite.
 
 ## FC4-Abnahme – abgeschlossen
 
