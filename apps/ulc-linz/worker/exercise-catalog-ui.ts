@@ -249,6 +249,7 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                   </div>
 
                   <footer class="exercise-catalog-form-actions">
+                    <button class="button button--secondary" id="exercise-catalog-clone" type="button" hidden aria-label="Diese Übung als Vorlage für eine neue Übung verwenden">Als Vorlage</button>
                     <button class="button button--danger" id="exercise-catalog-deactivate" type="button" hidden>Deaktivieren</button>
                     <button class="button button--primary" id="exercise-catalog-save" type="submit">Speichern</button>
                   </footer>
@@ -1002,6 +1003,7 @@ Object.assign(elements, {
   exerciseCatalogMediaUpload: document.querySelector("#exercise-catalog-media-upload"),
   exerciseCatalogMediaList: document.querySelector("#exercise-catalog-media-list"),
   exerciseCatalogSave: document.querySelector("#exercise-catalog-save"),
+  exerciseCatalogClone: document.querySelector("#exercise-catalog-clone"),
   exerciseCatalogDeactivate: document.querySelector("#exercise-catalog-deactivate"),
   exerciseCatalogReadonly: document.querySelector("#exercise-catalog-readonly"),
 });
@@ -1019,6 +1021,7 @@ let exerciseCatalogFeatures = {
   privateVideoUpload: false,
 };
 let exerciseCatalogSelectedId = null;
+let exerciseCatalogCloneSourceId = null;
 let exerciseCatalogParameterDrafts = [];
 let exerciseCatalogBusy = false;
 let exerciseCatalogFilterOpen = false;
@@ -1485,9 +1488,66 @@ function newExerciseCatalogItem() {
   });
 }
 
+function exerciseCatalogCloneName(name) {
+  const suffix = " – Kopie";
+  const value = String(name || "").trim() || "Neue Übung";
+  return value.slice(0, 120 - suffix.length) + suffix;
+}
+
+function cloneExerciseCatalogItem() {
+  if (
+    exerciseCatalogEditorReviewMode ||
+    !exerciseCatalogCanEdit ||
+    !exerciseCatalogSelectedId ||
+    exerciseCatalogBusy
+  ) return;
+
+  if (
+    exerciseCatalogEditorDirty &&
+    !window.confirm(
+      "Ungespeicherte Änderungen werden nur in die neue Übung übernommen und nicht am Original gespeichert. Fortfahren?",
+    )
+  ) {
+    return;
+  }
+
+  let draft;
+  try {
+    draft = exerciseCatalogFormPayload();
+  } catch {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Die Vorlage konnte nicht übernommen werden. Bitte Eingaben prüfen.",
+    );
+    return;
+  }
+
+  const sourceId = exerciseCatalogSelectedId;
+  exerciseCatalogSelectedId = null;
+  populateExerciseCatalogEditor(
+    {
+      id: "",
+      ...draft,
+      name: exerciseCatalogCloneName(draft.name),
+      isActive: true,
+      isFavorite: false,
+    },
+    { cloneSourceId: sourceId },
+  );
+  exerciseCatalogEditorDirty = true;
+  elements.exerciseCatalogName?.focus();
+  elements.exerciseCatalogName?.select();
+}
+
 function populateExerciseCatalogEditor(item, options = {}) {
   const review = options.review === true;
+  const cloneSourceId =
+    typeof options.cloneSourceId === "string" && options.cloneSourceId.length > 0
+      ? options.cloneSourceId
+      : null;
+  const cloneMode = cloneSourceId !== null;
   const editable = !review && exerciseCatalogCanEdit && item.isActive;
+  exerciseCatalogCloneSourceId = cloneSourceId;
   exerciseCatalogEditorReviewMode = review;
   setExerciseCatalogFilterOpen(false);
   if (elements.exerciseCatalogEditor) elements.exerciseCatalogEditor.hidden = false;
@@ -1497,18 +1557,22 @@ function populateExerciseCatalogEditor(item, options = {}) {
   if (elements.exerciseCatalogEditorEyebrow) {
     elements.exerciseCatalogEditorEyebrow.textContent = review
       ? "Importvorschau · " + importActionLabel(options.action || "skip")
-      : item.id.length === 0
-        ? "Neue Übung"
-        : item.isActive
-          ? "Übung"
-          : "Archiv";
+      : cloneMode
+        ? "Neue Übung · Vorlage"
+        : item.id.length === 0
+          ? "Neue Übung"
+          : item.isActive
+            ? "Übung"
+            : "Archiv";
   }
   if (elements.exerciseCatalogEditorTitle) {
     elements.exerciseCatalogEditorTitle.textContent = review
       ? "Zeile " + String(options.rowNumber || "") + " · " + (item.name || "Ohne Name")
-      : item.id.length === 0
-        ? "Übung anlegen"
-        : item.name;
+      : cloneMode
+        ? "Übung aus Vorlage anlegen"
+        : item.id.length === 0
+          ? "Übung anlegen"
+          : item.name;
   }
 
   if (elements.exerciseCatalogImportReview) {
@@ -1563,6 +1627,12 @@ function populateExerciseCatalogEditor(item, options = {}) {
   if (elements.exerciseCatalogSave) {
     elements.exerciseCatalogSave.hidden = !editable;
     elements.exerciseCatalogSave.disabled = !editable || exerciseCatalogBusy;
+  }
+  if (elements.exerciseCatalogClone) {
+    elements.exerciseCatalogClone.hidden =
+      review || !exerciseCatalogCanEdit || item.id.length === 0;
+    elements.exerciseCatalogClone.disabled =
+      review || !exerciseCatalogCanEdit || exerciseCatalogBusy;
   }
   if (elements.exerciseCatalogDeactivate) {
     elements.exerciseCatalogDeactivate.hidden =
@@ -1626,6 +1696,7 @@ function closeExerciseCatalogEditor(force = false) {
     return false;
   }
   exerciseCatalogSelectedId = null;
+  exerciseCatalogCloneSourceId = null;
   exerciseCatalogParameterDrafts = [];
   exerciseCatalogEditorDirty = false;
   exerciseCatalogEditorReviewMode = false;
@@ -2225,7 +2296,8 @@ async function saveExerciseCatalogItem(event) {
           method: "POST",
           body: JSON.stringify({
             ...body,
-            excludeExerciseId: exerciseCatalogSelectedId,
+            excludeExerciseId:
+              exerciseCatalogSelectedId || exerciseCatalogCloneSourceId,
           }),
         },
       );
@@ -3055,6 +3127,13 @@ function setExerciseCatalogBusy(next) {
   if (elements.exerciseCatalogSave) {
     elements.exerciseCatalogSave.disabled = next || exerciseCatalogEditorReviewMode;
   }
+  if (elements.exerciseCatalogClone) {
+    elements.exerciseCatalogClone.disabled =
+      next ||
+      exerciseCatalogEditorReviewMode ||
+      !exerciseCatalogCanEdit ||
+      !exerciseCatalogSelectedId;
+  }
   if (elements.exerciseCatalogDeactivate) {
     elements.exerciseCatalogDeactivate.disabled = next || exerciseCatalogEditorReviewMode;
   }
@@ -3174,6 +3253,7 @@ elements.exerciseCatalogExport?.addEventListener("click", () => {
   );
 });
 elements.exerciseCatalogNew?.addEventListener("click", newExerciseCatalogItem);
+elements.exerciseCatalogClone?.addEventListener("click", cloneExerciseCatalogItem);
 elements.exerciseCatalogClose?.addEventListener("click", () => closeExerciseCatalogEditor(false));
 elements.exerciseCatalogForm?.addEventListener("input", () => {
   if (
