@@ -9,28 +9,25 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6H – Preview praktisch abnehmen; Produktions-Rollout bleibt ein separates Freigabe-Gate.**
+**ULC-E6H.1 – bestehende Übung als Vorlage für eine neue Übung verwenden.**
 
-Der E6H-Repository- und Preview-Pfad ist technisch abgeschlossen. Der reale
-main-only Preview-Parity-Lauf mit `apply=true` wurde erfolgreich bestätigt:
-Schema v4 ist aktiv, die Preview läuft auf dem Standardmodul, und der
-geschützte Live-Smoke hat privaten MP4-Upload, vollständigen Download,
-Byte-Range-Download und Löschen erfolgreich geprüft. Der zweiphasige
-private-media-Löschpfad ist zusätzlich gegen beide relevanten Retry-Grenzen
-regressionsgetestet.
+Die praktische E6H-Produkt-/UI-Sichtung in der isolierten Preview wurde am
+10.10.2026 erfolgreich bestätigt. Der Nutzer hat anschließend als direkten
+Folgewunsch das Klonen fachlich ähnlicher Übungen angefordert, weil sich häufig
+nur Name und einzelne Details unterscheiden.
 
-PR #400 hat den dauerhaften `deletion_requested_at`-Zustand und den
-retry-sicheren Löschvertrag auf `main` gebracht. PR #402 ergänzt die
-Worker-Level-Regressionstests für R2-Fehler und Fehler bei der finalen
-Metadatenlöschung. PR #401 stellt ausschließlich einen dedizierten späteren
-Produktions-Entrypoint für den Standardmodulpfad bereit; dadurch wurde noch
-keine Produktion verändert.
+E6H.1 bleibt bewusst ein kleiner UI-/Create-Slice: Eine bestehende Übung kann
+im Editor als Vorlage geöffnet werden. Übernommen werden ausschließlich die
+bereits editierbaren Katalogfelder einschließlich Gruppen, Parameter und
+externer Links. Favorit, Nutzungsverlauf, private Videos, ID und Lifecycle des
+Originals werden nicht kopiert. Gespeichert wird die neue Übung über denselben
+bestehenden serverautorisierten Create-Vertrag; es entsteht kein neuer
+Clone-Endpunkt und keine Migration.
 
-Nächstes echtes Gate ist die praktische Sichtung der E6H-Funktionen in der
-isolierten Preview. Erst danach darf ein eigener Produktionspfad geplant und
-nach ausdrücklicher Nutzerfreigabe ausgeführt werden. Produktionsmigration,
-Produktions-R2-Binding, Runtime-Cutover und Deployment sind weiterhin nicht
-autorisiert.
+Nach grünem Repository-Gate ist nur ein separater Preview-Deploy nötig, bevor
+die Funktion praktisch gesichtet werden kann. Produktion bleibt weiterhin
+unverändert; Produktionsmigration, produktives R2-Binding, Runtime-Cutover und
+Deployment sind nicht autorisiert.
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -271,7 +268,7 @@ abgeschlossen. Source-Writes wurden für den Cutover quiesziert, die finale
 Source→Target-Gleichheit unter dem Guard geprüft und die isolierte ULC-Preview
 auf den Standardmodul-Runtimepfad umgeschaltet. Produktion blieb unverändert.
 
-## Aktueller Gate-Scope: ULC-E6H
+## Abgeschlossener Gate-Scope: ULC-E6H
 
 E6H stellt die Funktionsparität zum früheren Übungskatalog auf dem adoptierten
 Standardmodul her. Repository, Schema-v4-Upgrade und isolierter Preview-Rollout
@@ -291,10 +288,31 @@ Abgenommen bzw. automatisiert belegt sind:
 - Standardmodul-Preview-Runtime mit Schema v4;
 - vorbereiteter, aber noch nicht aktivierter Produktions-Entrypoint.
 
-Offen ist ausschließlich die praktische Produkt-/UI-Sichtung in der Preview
-sowie danach – falls fachlich freigegeben – ein getrenntes Produktions-Gate.
-E6H selbst autorisiert keine Produktionsmigration, kein produktives R2-Binding
-und kein Deployment.
+Die praktische Produkt-/UI-Sichtung in der isolierten Preview wurde am
+10.10.2026 erfolgreich bestätigt. Ein getrennter Produktions-Rollout bleibt
+weiterhin ausdrücklich ungeplant und nicht autorisiert.
+
+## Aktueller Gate-Scope: ULC-E6H.1
+
+E6H.1 ergänzt ausschließlich den Nutzerworkflow **„Als Vorlage“** für
+bestehende Übungen.
+
+Abnahme:
+
+- die Aktion ist nur für Benutzer mit bestehendem Edit-Recht sichtbar;
+- aktive und archivierte bestehende Übungen können als Vorlage dienen;
+- Name wird als neue Kopie vorbelegt und direkt zur Bearbeitung fokussiert;
+- Kategorie, Unterkategorie, Schwierigkeit, Trainingsziel, Beschreibung,
+  Trainerhinweise, typische Fehler, Material, Gruppen, Planungsparameter,
+  ähnliche Übungen und externe Links werden in den neuen Entwurf übernommen;
+- ID, Aktivstatus des Originals, Favorit, Nutzungsverlauf und private Medien
+  werden nicht übernommen;
+- die bekannte Dublettenprüfung bleibt aktiv, blendet aber genau die bewusst
+  verwendete Ausgangsübung aus ihrer Warnliste aus;
+- Speichern verwendet ausschließlich den bestehenden geschützten Create-Pfad;
+  kein neuer API-Endpunkt, keine Migration und kein Providerwrite;
+- nach Merge benötigt die isolierte Preview ausschließlich einen getrennt
+  freizugebenden Deploy, keine Datenbankmigration.
 
 ## FC4-Abnahme – abgeschlossen
 
