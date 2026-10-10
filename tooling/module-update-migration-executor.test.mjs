@@ -598,7 +598,7 @@ CREATE INDEX appbasis_person_module_owned_idx
   );
 });
 
-test("FC6-B rejects target REFERENCES until a public module dependency contract exists", async (t) => {
+test("FC6-B rejects target REFERENCES to baseline-owned tables without a public dependency contract", async (t) => {
   const root = await createExistingAppFixture(t);
   await writeFile(
     join(
@@ -627,6 +627,113 @@ test("FC6-B rejects target REFERENCES until a public module dependency contract 
     (error) =>
       error instanceof ModuleUpdateMigrationConfigurationError &&
       /REFERENCES.*public module dependency contract/.test(error.message),
+  );
+});
+
+test("FC6-B permits REFERENCES between tables owned by the same target module", async (t) => {
+  const root = await createExistingAppFixture(t);
+  await writeFile(
+    join(
+      root,
+      "modules",
+      "tasks",
+      "migrations",
+      "0000_appbasis_tasks_foundation.sql",
+    ),
+    `CREATE TABLE appbasis_task (
+  id text PRIMARY KEY
+);
+CREATE TABLE appbasis_task_note (
+  id text PRIMARY KEY,
+  task_id text NOT NULL REFERENCES public.appbasis_task(id)
+);
+`,
+  );
+
+  const plan = await loadModuleUpdateMigrationExecutionPlan(
+    {
+      appId: "existing",
+      moduleId: "tasks",
+    },
+    { repositoryRoot: root },
+  );
+
+  assert.equal(
+    plan.targetCatalogContract.some(
+      (marker) =>
+        marker.kind === "constraint-count" &&
+        marker.table === "appbasis_task_note" &&
+        marker.name === "f" &&
+        marker.count === 1 &&
+        marker.present === true,
+    ),
+    true,
+  );
+});
+
+test("FC6-B rejects same-name REFERENCES through a non-public schema", async (t) => {
+  const root = await createExistingAppFixture(t);
+  await writeFile(
+    join(
+      root,
+      "modules",
+      "tasks",
+      "migrations",
+      "0000_appbasis_tasks_foundation.sql",
+    ),
+    `CREATE TABLE appbasis_task (
+  id text PRIMARY KEY,
+  parent_id text REFERENCES private.appbasis_task(id)
+);
+`,
+  );
+
+  await assert.rejects(
+    () =>
+      loadModuleUpdateMigrationExecutionPlan(
+        {
+          appId: "existing",
+          moduleId: "tasks",
+        },
+        { repositoryRoot: root },
+      ),
+    (error) =>
+      error instanceof ModuleUpdateMigrationConfigurationError &&
+      /only use REFERENCES to tables owned by the target module/.test(
+        error.message,
+      ),
+  );
+});
+
+test("FC6-B loads the real training-blocks foundation with same-owner foreign keys", async (t) => {
+  const root = await createExistingAppFixture(t);
+  const plan = await loadModuleUpdateMigrationExecutionPlan(
+    {
+      appId: "existing",
+      moduleId: "training-blocks",
+    },
+    { repositoryRoot: root },
+  );
+
+  assert.equal(plan.moduleId, "training-blocks");
+  assert.equal(plan.targetOwner.schemaVersion, 1);
+  assert.equal(
+    plan.targetCatalogContract.filter(
+      (marker) =>
+        marker.kind === "constraint-count" &&
+        marker.name === "f" &&
+        marker.present === true,
+    ).reduce((sum, marker) => sum + marker.count, 0),
+    4,
+  );
+  assert.equal(
+    plan.targetCatalogContract.some(
+      (marker) =>
+        marker.kind === "table" &&
+        marker.name === "appbasis_training_block_revision_item_parameter" &&
+        marker.present === true,
+    ),
+    true,
   );
 });
 
@@ -932,6 +1039,11 @@ async function createExistingAppFixture(t) {
   await cp(join(repositoryRoot, "modules", "tasks"), join(root, "modules", "tasks"), {
     recursive: true,
   });
+  await cp(
+    join(repositoryRoot, "modules", "training-blocks"),
+    join(root, "modules", "training-blocks"),
+    { recursive: true },
+  );
 
   await writeFile(
     join(root, "apps", "existing", "appbasis.app.json"),
