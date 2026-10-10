@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "application": "ulc-linz",
-  "scope": "current-materialized-v0.3",
+  "scope": "current-materialized-v0.4",
   "basis": {
     "databaseManifest": "apps/ulc-linz/appbasis.database.json",
     "appManifest": "apps/ulc-linz/appbasis.app.json",
@@ -75,6 +75,19 @@
         "production-runtime-cutover-not-authorized",
         "exercise-catalog-configuration-not-personal",
         "exercise-favorite-lifecycle-pending"
+      ]
+    },
+    {
+      "id": "training-blocks",
+      "schemaVersion": 1,
+      "migrations": [
+        "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql"
+      ],
+      "lifecycleStatus": "training-block-data-lifecycle-pending",
+      "notes": [
+        "training-block-template-and-revision-lifecycle-pending",
+        "training-block-notes-may-contain-user-entered-content",
+        "preview-and-production-lifecycle-activation-not-authorized"
       ]
     },
     {
@@ -448,12 +461,45 @@
       "retentionPolicy": "pending-exercise-catalog-media-lifecycle",
       "deletionEvidence": "fail-closed-pending-lifecycle",
       "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_training_block",
+      "owner": "training-blocks",
+      "privacyClass": "training-block-data",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_training_block_revision",
+      "owner": "training-blocks",
+      "privacyClass": "training-block-data",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_training_block_revision_item",
+      "owner": "training-blocks",
+      "privacyClass": "training-block-data",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_training_block_revision_item_parameter",
+      "owner": "training-blocks",
+      "privacyClass": "training-block-data",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
     }
   ],
   "runtimeModules": [
     "countdown",
     "athletes",
-    "exercise-catalog"
+    "exercise-catalog",
+    "training-blocks"
   ],
   "backingStores": {
     "memberships": {
