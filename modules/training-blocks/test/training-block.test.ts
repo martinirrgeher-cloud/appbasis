@@ -118,6 +118,54 @@ describe("training-blocks domain", () => {
     ).toThrow(/between 1 and 120/);
   });
 
+  it("rejects PostgreSQL-incompatible text across every persisted text field", () => {
+    for (const invalidText of ["A\0B", "\ud800", "\udc00"]) {
+      const drafts = [
+        { name: invalidText },
+        { name: "Block", audienceId: invalidText },
+        { name: "Block", note: invalidText },
+        {
+          name: "Block",
+          exercises: [{ exerciseId: invalidText }],
+        },
+        {
+          name: "Block",
+          exercises: [
+            { exerciseId: "exercise-1", note: invalidText },
+          ],
+        },
+        {
+          name: "Block",
+          exercises: [
+            {
+              exerciseId: "exercise-1",
+              parameterOverrides: [
+                { key: invalidText, value: "4" },
+              ],
+            },
+          ],
+        },
+        {
+          name: "Block",
+          exercises: [
+            {
+              exerciseId: "exercise-1",
+              parameterOverrides: [
+                { key: "sets", value: invalidText },
+              ],
+            },
+          ],
+        },
+      ];
+
+      for (const draft of drafts) {
+        expect(() => normalizeTrainingBlockDraft(draft)).toThrow(
+          TrainingBlockValidationError,
+        );
+      }
+    }
+  });
+
   it("rejects invalid names, durations and oversized item collections", () => {
     expect(() =>
       normalizeTrainingBlockDraft({
