@@ -151,8 +151,8 @@ function optionalIdentifier(value: unknown, label: string): string | null {
 function requiredIdentifier(value: unknown, label: string): string {
   if (
     typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > 200 ||
+    codePointLength(value) === 0 ||
+    codePointLength(value) > 200 ||
     value.trim() !== value
   ) {
     throw new TrainingBlockValidationError(`${label} is invalid.`);
@@ -169,7 +169,8 @@ function requiredText(
     throw new TrainingBlockValidationError(`${label} must be text.`);
   }
   const normalized = value.trim();
-  if (normalized.length === 0 || normalized.length > maximumLength) {
+  const length = codePointLength(normalized);
+  if (length === 0 || length > maximumLength) {
     throw new TrainingBlockValidationError(
       `${label} must contain between 1 and ${maximumLength} characters.`,
     );
@@ -187,13 +188,18 @@ function optionalText(
     throw new TrainingBlockValidationError(`${label} must be text.`);
   }
   const normalized = value.trim();
-  if (normalized.length === 0) return null;
-  if (normalized.length > maximumLength) {
+  const length = codePointLength(normalized);
+  if (length === 0) return null;
+  if (length > maximumLength) {
     throw new TrainingBlockValidationError(
       `${label} must contain at most ${maximumLength} characters.`,
     );
   }
   return normalized;
+}
+
+function codePointLength(value: string): number {
+  return Array.from(value).length;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
