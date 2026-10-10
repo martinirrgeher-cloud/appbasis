@@ -155,31 +155,20 @@ describe("training-blocks PostgreSQL repository", () => {
     }
   });
 
-  it("keeps identical block ids isolated by organization", async () => {
-    await requiredConnection().client.begin(async (transaction) => {
-      await transaction.unsafe(
-        `INSERT INTO appbasis_training_block (
-           id, organization_id, current_revision
-         ) VALUES
-           ('shared', 'org-a', 1),
-           ('shared', 'org-b', 1)`,
-      );
-      await transaction.unsafe(
-        `INSERT INTO appbasis_training_block_revision (
-           organization_id, block_id, revision, name
-         ) VALUES
-           ('org-a', 'shared', 1, 'A'),
-           ('org-b', 'shared', 1, 'B')`,
-      );
-    });
+  it("keeps globally unique block identities isolated by organization", async () => {
+    const orgA = serviceFor(requiredConnection(), ["block-a"]);
+    const orgB = serviceFor(requiredConnection(), ["block-b"]);
+    await orgA.create("org-a", { name: "A" });
+    await orgB.create("org-b", { name: "B" });
 
-    const service = serviceFor(requiredConnection(), []);
-    await expect(service.list("org-a")).resolves.toEqual([
-      expect.objectContaining({ id: "shared", revision: expect.objectContaining({ name: "A" }) }),
+    await expect(orgA.list("org-a")).resolves.toEqual([
+      expect.objectContaining({ id: "block-a", revision: expect.objectContaining({ name: "A" }) }),
     ]);
-    await expect(service.list("org-b")).resolves.toEqual([
-      expect.objectContaining({ id: "shared", revision: expect.objectContaining({ name: "B" }) }),
+    await expect(orgB.list("org-b")).resolves.toEqual([
+      expect.objectContaining({ id: "block-b", revision: expect.objectContaining({ name: "B" }) }),
     ]);
+    await expect(orgA.findCurrent("org-a", "block-b")).resolves.toBeUndefined();
+    await expect(orgB.findCurrent("org-b", "block-a")).resolves.toBeUndefined();
   });
 });
 

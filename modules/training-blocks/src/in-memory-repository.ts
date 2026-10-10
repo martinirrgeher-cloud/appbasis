@@ -8,6 +8,7 @@ import type {
 
 export class InMemoryTrainingBlockRepository implements TrainingBlockRepository {
   readonly #blocks = new Map<string, TrainingBlockSnapshot>();
+  readonly #blockIds = new Set<string>();
   readonly #revisions = new Map<string, Map<number, TrainingBlockRevision>>();
 
   constructor(initialBlocks: readonly TrainingBlockSnapshot[] = []) {
@@ -38,12 +39,13 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
   async create(block: TrainingBlockSnapshot): Promise<TrainingBlockSnapshot> {
     const stored = cloneBlock(block);
     const key = blockKey(stored.organizationId, stored.id);
-    if (this.#blocks.has(key)) throw new Error("Training block already exists.");
+    if (this.#blockIds.has(stored.id)) throw new Error("Training block already exists.");
     if (stored.currentRevision !== 1 || stored.revision.revision !== 1) {
       throw new Error("Training block creation must start at revision 1.");
     }
     assertRevisionScope(stored.revision, stored.organizationId, stored.id);
     this.#blocks.set(key, stored);
+    this.#blockIds.add(stored.id);
     this.#revisions.set(key, new Map([[1, cloneRevision(stored.revision)]]));
     return cloneBlock(stored);
   }
@@ -125,12 +127,13 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
   #insertInitial(block: TrainingBlockSnapshot): void {
     const stored = cloneBlock(block);
     const key = blockKey(stored.organizationId, stored.id);
-    if (this.#blocks.has(key)) throw new Error("Training block contains a duplicate id.");
+    if (this.#blockIds.has(stored.id)) throw new Error("Training block contains a duplicate id.");
     assertRevisionScope(stored.revision, stored.organizationId, stored.id);
     if (stored.currentRevision !== stored.revision.revision) {
       throw new Error("Training block current revision is inconsistent.");
     }
     this.#blocks.set(key, stored);
+    this.#blockIds.add(stored.id);
     this.#revisions.set(key, new Map([[stored.revision.revision, cloneRevision(stored.revision)]]));
   }
 }

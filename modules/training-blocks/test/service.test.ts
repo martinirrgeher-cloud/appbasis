@@ -140,6 +140,20 @@ describe("training-blocks service", () => {
     ]);
   });
 
+  it("matches PostgreSQL global block identity while preserving organization-scoped reads", async () => {
+    const service = new TrainingBlockService({
+      repository: new InMemoryTrainingBlockRepository(),
+      createId: deterministicIds("shared", "shared"),
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    await service.create("org-a", { name: "A" });
+
+    await expect(service.findCurrent("org-b", "shared")).resolves.toBeUndefined();
+    await expect(service.create("org-b", { name: "B" })).rejects.toThrow(
+      /Training block already exists/,
+    );
+  });
+
   it("rejects unknown or duplicate persisted item identities during update", async () => {
     const service = new TrainingBlockService({
       repository: new InMemoryTrainingBlockRepository(),
