@@ -40,6 +40,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                 <div class="training-block-body">
                   <p class="message message--error" id="training-block-editor-message" role="alert" hidden></p>
                   <button class="button button--secondary training-block-reload" id="training-block-reload" type="button" hidden>Aktuellen Stand neu laden</button>
+                  <button class="button button--secondary training-block-retry" id="training-block-retry" type="button" hidden>Erneut versuchen</button>
 
                   <section class="card training-block-form-card">
                     <div class="training-block-form-grid">
@@ -312,6 +313,7 @@ const trainingBlockElements = Object.freeze({
   editorMessage: document.querySelector("#training-block-editor-message"),
   saveState: document.querySelector("#training-block-save-state"),
   reload: document.querySelector("#training-block-reload"),
+  retry: document.querySelector("#training-block-retry"),
   close: document.querySelector("#training-block-close"),
   name: document.querySelector("#training-block-name"),
   audience: document.querySelector("#training-block-audience"),
@@ -448,6 +450,13 @@ function prepareTrainingBlocksView() {
   if (!trainingBlocksReady) return;
   renderTrainingBlocks();
   refreshTrainingBlockControls();
+  refreshTrainingBlockCatalogDependency();
+}
+
+function refreshTrainingBlockCatalogDependency() {
+  if (!trainingBlockDraft) return;
+  renderTrainingBlockExercisePicker();
+  renderTrainingBlockExercises();
 }
 
 function refreshTrainingBlockControls() {
@@ -671,6 +680,7 @@ function populateTrainingBlockEditor() {
       !trainingBlocksCanEdit || trainingBlockSelected?.isActive === false;
   }
   if (trainingBlockElements.reload) trainingBlockElements.reload.hidden = true;
+  if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
   if (trainingBlockElements.deactivate) {
     trainingBlockElements.deactivate.hidden =
       !trainingBlocksCanEdit ||
@@ -964,6 +974,8 @@ async function saveTrainingBlock() {
     syncTrainingBlockItemIds(response.block);
     trainingBlockDirty = trainingBlockChangeVersion !== saveVersion;
     replaceTrainingBlockInList(response.block);
+    if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
+    if (trainingBlockElements.reload) trainingBlockElements.reload.hidden = true;
     if (trainingBlockDirty) {
       trainingBlockSavePending = true;
       setTrainingBlockSaveState("saving", "Weitere Änderung wartet …");
@@ -989,6 +1001,7 @@ async function saveTrainingBlock() {
       );
     } else {
       setTrainingBlockSaveState("error", "Speichern fehlgeschlagen");
+      if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = false;
       showMessage(
         trainingBlockElements.editorMessage,
         error?.status === 400
@@ -1060,6 +1073,18 @@ function closeTrainingBlockEditor(force = false) {
   if (trainingBlockElements.editor) trainingBlockElements.editor.hidden = true;
   document.body.classList.remove("training-block-editor-open");
   showMessage(trainingBlockElements.editorMessage, "");
+}
+
+function retryTrainingBlockSave() {
+  if (
+    !trainingBlockDraft ||
+    !trainingBlocksCanEdit ||
+    trainingBlockSaveBusy ||
+    trainingBlockConflict
+  ) return;
+  trainingBlockDirty = true;
+  if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
+  void saveTrainingBlock();
 }
 
 async function reloadTrainingBlock() {
@@ -1436,6 +1461,7 @@ trainingBlockElements.statusFilter?.addEventListener("change", renderTrainingBlo
 trainingBlockElements.newButton?.addEventListener("click", newTrainingBlock);
 trainingBlockElements.close?.addEventListener("click", () => closeTrainingBlockEditor());
 trainingBlockElements.reload?.addEventListener("click", () => void reloadTrainingBlock());
+trainingBlockElements.retry?.addEventListener("click", retryTrainingBlockSave);
 trainingBlockElements.exerciseAdd?.addEventListener("click", addTrainingBlockExercise);
 trainingBlockElements.exercises?.addEventListener("click", handleTrainingBlockExerciseClick);
 trainingBlockElements.exercises?.addEventListener("input", handleTrainingBlockExerciseInput);
@@ -1467,5 +1493,10 @@ trainingBlockElements.historyList?.addEventListener("click", (event) => {
   void openTrainingBlockRevision(
     Number(control.dataset.trainingBlockRevisionOpen),
   );
+});
+window.addEventListener("beforeunload", (event) => {
+  if (!trainingBlockDirty && !trainingBlockSaveBusy) return;
+  event.preventDefault();
+  event.returnValue = "";
 });
 `;

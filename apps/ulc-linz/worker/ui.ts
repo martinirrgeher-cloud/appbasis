@@ -1406,6 +1406,7 @@ async function acceptSession(next) {
     bootstrapExerciseCatalog(),
     bootstrapTrainingBlocks(),
   ]);
+  refreshTrainingBlockCatalogDependency();
 }
 
 async function bootstrapKindertraining() {

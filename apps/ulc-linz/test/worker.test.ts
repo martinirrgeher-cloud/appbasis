@@ -605,6 +605,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save-state"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-retry"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-exercise-picker"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-history-load"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/modules/training-blocks")');
@@ -613,6 +614,9 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockChangeVersion !== saveVersion");
     expect(ULC_LINZ_APP_SCRIPT).toContain("saveSucceeded &&");
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (!force && trainingBlockSaveBusy)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("retryTrainingBlockSave");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlockDirty && !trainingBlockSaveBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("refreshTrainingBlockCatalogDependency");
     expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlocksCanEdit || trainingBlockSaveBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_CONFLICT");
     expect(ULC_LINZ_APP_SCRIPT).toContain("dataset.trainingBlockExerciseAction");
