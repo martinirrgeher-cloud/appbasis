@@ -183,6 +183,11 @@ fehlenden Katalogfunktionen:
 - mehrere externe Video-/Weblinks je Übung; der erste Link ist der Hauptlink;
 - optionale private Videoablage über den Runtime-Object-Store mit geschützter
   Auslieferung, Löschen und einem ULC-Limit von 100 MB pro Video;
+- bestehende Übungen können im Editor über **„Als Vorlage“** als neue Übung
+  vorbefüllt werden. Fachliche Felder, Gruppen, Parameter und externe Links
+  werden übernommen; Favorit, Nutzungsverlauf und private Videos bleiben beim
+  Original. Die neue Übung wird weiterhin ausschließlich über den bestehenden
+  Create-Vertrag gespeichert;
 - additive Standardmodul-Migration v3 für die Funktionsparität plus v4 für
   ausfallsicheres Löschen privater Medien; der historische E6G-Adoptionsvertrag
   bleibt davon unverändert.
