@@ -131,6 +131,7 @@ function normalizeParameterOverride(
 function optionalDuration(value: unknown): number | null {
   if (value === undefined || value === null) return null;
   if (
+    typeof value !== "number" ||
     !Number.isSafeInteger(value) ||
     value < 1 ||
     value > 2_147_483_647
