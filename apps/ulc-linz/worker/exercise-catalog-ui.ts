@@ -2296,17 +2296,14 @@ async function saveExerciseCatalogItem(event) {
           method: "POST",
           body: JSON.stringify({
             ...body,
-            excludeExerciseId: exerciseCatalogSelectedId,
+            excludeExerciseId:
+              exerciseCatalogSelectedId || exerciseCatalogCloneSourceId,
           }),
         },
       );
-      const candidates = (
-        Array.isArray(duplicatePayload?.candidates)
-          ? duplicatePayload.candidates
-          : []
-      ).filter(
-        (candidate) => candidate?.exerciseId !== exerciseCatalogCloneSourceId,
-      );
+      const candidates = Array.isArray(duplicatePayload?.candidates)
+        ? duplicatePayload.candidates
+        : [];
       if (candidates.length > 0) {
         const preview = candidates
           .slice(0, 3)
