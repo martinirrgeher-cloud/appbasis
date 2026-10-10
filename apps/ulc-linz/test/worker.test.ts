@@ -576,10 +576,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
   it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="3" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="4" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="1" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="4" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="5" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="5" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="6" hidden disabled');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshAppAvailability();");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
@@ -597,6 +597,25 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '(section === "kindertraining" && kindertrainingReady)',
     );
+  });
+
+
+  it("ships E7A4 training-block mobile UI with autosave, reorder and history contracts", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="3" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save-state"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-exercise-picker"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-history-load"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/modules/training-blocks")');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/update"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("scheduleTrainingBlockSave");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_CONFLICT");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("dataTrainingBlockExerciseAction");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/compare?from="');
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
   });
 
   it("ships the E3A Stammdaten UI on the existing server-authorized API contract", () => {
