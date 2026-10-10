@@ -105,9 +105,12 @@ Verbindliche Grenzen:
 - ein Fehler rollt den vollständigen DB-Delta zurück;
 - ein erneuter Lauf muss entweder als eindeutig bereits angewendet erkannt oder
   fail-closed abgewiesen werden; Doppelanwendung ist nicht zulässig;
-- Target-Migrationen mit `REFERENCES` bleiben fail-closed, bis ein expliziter
-  öffentlicher Modul-Dependency-Vertrag solche Cross-Owner-Abhängigkeiten
-  maschinenlesbar autorisieren und prüfen kann;
+- Target-Migrationen dürfen `REFERENCES` ausschließlich auf Tabellen
+  desselben neuen Modul-Owners verwenden; unqualifizierte bzw. explizit
+  `public.`-qualifizierte Ziele werden gegen den verifizierten
+  Target-Katalogvertrag geprüft. Cross-Owner- und Fremdschema-Referenzen bleiben
+  fail-closed, bis ein expliziter öffentlicher Modul-Dependency-Vertrag solche
+  Abhängigkeiten maschinenlesbar autorisieren und prüfen kann;
 - Tests beweisen explizit eine nicht leere bestehende Baseline.
 
 Der konkrete kleine Nachweisvertrag für FC6-B verwendet keine zweite allgemeine
