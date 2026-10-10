@@ -55,6 +55,16 @@ CREATE INDEX appbasis_training_block_revision_name_idx
     revision DESC
   );
 
+ALTER TABLE appbasis_training_block
+  ADD CONSTRAINT appbasis_training_block_current_revision_fk
+  FOREIGN KEY (organization_id, id, current_revision)
+  REFERENCES appbasis_training_block_revision (
+    organization_id,
+    block_id,
+    revision
+  )
+  DEFERRABLE INITIALLY DEFERRED;
+
 CREATE TABLE appbasis_training_block_revision_item (
   organization_id text NOT NULL,
   block_id text NOT NULL,
