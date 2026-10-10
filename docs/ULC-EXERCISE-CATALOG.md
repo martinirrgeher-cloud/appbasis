@@ -223,6 +223,15 @@ nicht möglich, solange diese Module nicht auf den neuen Standardmodulpfad
 migriert sind. Historische Übungssnapshots bleiben deshalb Aufgabe dieser
 späteren Planungsmodule.
 
+Für die spätere Produktion existiert nun ein eigener Standardmodul-Entrypoint
+`./worker/production-exercise-catalog-standard.ts`. Er erzwingt den
+`standard-module`-Runtimepfad, übernimmt aber die normalen
+Produktionsbindungen einschließlich eines optionalen `EXERCISE_MEDIA`-
+Object-Stores unverändert. Der bestehende M6-Produktionsworkflow verwendet
+diesen Entrypoint noch nicht und erhält auch noch keinen E6H-R2-Binding:
+Produktionsadoption, Schema-v3/v4-Migration, R2-Voraussetzung und Runtime-
+Umschaltung bleiben ausdrücklich ein separates, später freizugebendes Gate.
+
 ## Berechtigungen
 
 Der bestehende Rollenvertrag enthält `exercise_catalog` im

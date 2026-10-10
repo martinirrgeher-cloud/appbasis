@@ -40,6 +40,30 @@ test("renders the final production deployment bindings without public ingress", 
   assert.equal("route" in config, false);
 });
 
+test("can render a closed standard-module production version with a private R2 binding", () => {
+  const config = renderGeneratedProductionWranglerConfig({
+    ...input,
+    entrypoint: "./worker/production-exercise-catalog-standard.ts",
+    r2BucketName: "appbasis-ulc-linz-production-exercise-media",
+    r2Binding: "EXERCISE_MEDIA",
+    r2Jurisdiction: "eu",
+  });
+
+  assert.equal(
+    config.main,
+    "./worker/production-exercise-catalog-standard.ts",
+  );
+  assert.deepEqual(config.r2_buckets, [
+    {
+      binding: "EXERCISE_MEDIA",
+      bucket_name: "appbasis-ulc-linz-production-exercise-media",
+      jurisdiction: "eu",
+    },
+  ]);
+  assert.equal(config.workers_dev, false);
+  assert.equal(config.preview_urls, false);
+});
+
 test("requires a distinct dedicated security-log Hyperdrive", () => {
   assert.throws(
     () =>
