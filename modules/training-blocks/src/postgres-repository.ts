@@ -431,41 +431,67 @@ async function insertRevision(
   );
   if (rows.length !== 1) throw new Error("Training block revision insert failed.");
 
-  for (const exercise of revision.exercises) {
+  if (revision.exercises.length > 0) {
+    const itemPayload = revision.exercises.map((exercise) => ({
+      organization_id: revision.organizationId,
+      block_id: revision.blockId,
+      revision: revision.revision,
+      item_id: exercise.itemId,
+      exercise_id: exercise.exerciseId,
+      sort_order: exercise.sortOrder,
+      note: exercise.note,
+    }));
     await transaction.unsafe(
       `INSERT INTO appbasis_training_block_revision_item (
          organization_id, block_id, revision, item_id, exercise_id,
          sort_order, note
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        revision.organizationId,
-        revision.blockId,
-        revision.revision,
-        exercise.itemId,
-        exercise.exerciseId,
-        exercise.sortOrder,
-        exercise.note,
-      ],
+       SELECT payload.organization_id, payload.block_id, payload.revision,
+              payload.item_id, payload.exercise_id, payload.sort_order, payload.note
+       FROM jsonb_to_recordset($1::jsonb) AS payload(
+         organization_id text,
+         block_id text,
+         revision integer,
+         item_id text,
+         exercise_id text,
+         sort_order integer,
+         note text
+       )`,
+      [JSON.stringify(itemPayload)],
     );
-    for (const override of exercise.parameterOverrides) {
-      await transaction.unsafe(
-        `INSERT INTO appbasis_training_block_revision_item_parameter (
-           organization_id, block_id, revision, item_id,
-           parameter_key, parameter_value, sort_order
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          revision.organizationId,
-          revision.blockId,
-          revision.revision,
-          exercise.itemId,
-          override.key,
-          override.value,
-          override.sortOrder,
-        ],
-      );
-    }
+  }
+
+  const parameterPayload = revision.exercises.flatMap((exercise) =>
+    exercise.parameterOverrides.map((override) => ({
+      organization_id: revision.organizationId,
+      block_id: revision.blockId,
+      revision: revision.revision,
+      item_id: exercise.itemId,
+      parameter_key: override.key,
+      parameter_value: override.value,
+      sort_order: override.sortOrder,
+    })),
+  );
+  if (parameterPayload.length > 0) {
+    await transaction.unsafe(
+      `INSERT INTO appbasis_training_block_revision_item_parameter (
+         organization_id, block_id, revision, item_id,
+         parameter_key, parameter_value, sort_order
+       )
+       SELECT payload.organization_id, payload.block_id, payload.revision,
+              payload.item_id, payload.parameter_key, payload.parameter_value,
+              payload.sort_order
+       FROM jsonb_to_recordset($1::jsonb) AS payload(
+         organization_id text,
+         block_id text,
+         revision integer,
+         item_id text,
+         parameter_key text,
+         parameter_value text,
+         sort_order integer
+       )`,
+      [JSON.stringify(parameterPayload)],
+    );
   }
 }
 
