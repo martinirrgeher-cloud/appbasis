@@ -5,7 +5,8 @@
   "modules": [
     "countdown",
     "athletes",
-    "exercise-catalog"
+    "exercise-catalog",
+    "training-blocks"
   ],
   "platformServices": [
     "identity",

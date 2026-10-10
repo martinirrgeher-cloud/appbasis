@@ -177,6 +177,9 @@ importers:
       '@appbasis/exercise-catalog':
         specifier: workspace:*
         version: link:../../modules/exercise-catalog
+      '@appbasis/training-blocks':
+        specifier: workspace:*
+        version: link:../../modules/training-blocks
       '@appbasis/database':
         specifier: workspace:*
         version: link:../../packages/database

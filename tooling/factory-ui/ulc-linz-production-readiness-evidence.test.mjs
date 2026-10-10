@@ -501,6 +501,7 @@ test("Factory snapshot keeps ULC production readiness reopened after repository 
     "countdown",
     "athletes",
     "exercise-catalog",
+    "training-blocks",
   ]);
   assert.equal(ulc.productionReadiness.productionReady, false);
   // Provider-/repository evidence may remain independently current, but every

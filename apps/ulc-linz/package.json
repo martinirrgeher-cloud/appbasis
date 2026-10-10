@@ -13,6 +13,7 @@
     "@appbasis/athletes": "workspace:*",
     "@appbasis/countdown": "workspace:*",
     "@appbasis/exercise-catalog": "workspace:*",
+    "@appbasis/training-blocks": "workspace:*",
     "@appbasis/database": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",

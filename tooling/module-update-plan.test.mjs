@@ -194,6 +194,7 @@ test("recognizes the real ULC countdown installation as a deterministic no-op", 
     "countdown",
     "athletes",
     "exercise-catalog",
+    "training-blocks",
   ]);
 });
 

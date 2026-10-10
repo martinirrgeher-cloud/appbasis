@@ -9,17 +9,18 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E7A2 – Trainingsblöcke Repository/Service und Versionsvertrag.**
+**ULC-E7A3 – Trainingsblöcke ULC-Adapter und Berechtigungen.**
 
-E7A1 ist auf `main` abgeschlossen. Das generische Modul besitzt damit
-Manifest, revisionsfähiges Schema und Domainvalidierung. Der nächste Slice
-macht dieses Fundament als eigenständige Persistenz-/Service-Domain nutzbar:
-atomare Create-/Update-Operationen, unveränderliche Revisionen, Optimistic
-Concurrency, getrennte Current-/History-Reads, Revisionvergleich und
-Deaktivierung ohne Historienverlust.
+E7A1 und E7A2 sind auf `main` abgeschlossen. Das Standardmodul besitzt damit
+Manifest, Schema, Domainvalidierung sowie den atomaren Repository-/Service-
+und Versionsvertrag. Der nächste Slice bindet dieses generische Modul
+serverseitig an ULC Linz: Moduldeklaration, ULC-Rollen-/Capability-Mapping,
+aktive Trainingsgruppen aus `athletes` und Übungsreferenzen aus dem bereits
+adoptierten Standard-`exercise-catalog`.
 
-ULC-Runtime, Gruppen-/Übungsresolver, Autosave-UI, Preview-Migration und
-Deployment bleiben ausdrücklich getrennte Folgeslices.
+E7A3 führt noch keine mobile Trainingsblock-Oberfläche, keine Autosave-API,
+keine Preview-Migration, keinen Preview-Deploy und keine Provider- oder
+Produktionsmutation aus.
 
 Verbindliche Architekturgrenzen:
 
@@ -343,6 +344,16 @@ Abnahme:
 - keine Änderung an `apps/ulc-linz/appbasis.app.json`;
 - keine ULC-Runtime-/UI-Änderung;
 - keine Preview-/Produktionsmigration und kein Providerwrite.
+
+## Abgeschlossener Gate-Scope: ULC-E7A2
+
+E7A2 ist auf `main` abgeschlossen. PR #408 wurde nach vollständiger grüner
+CI und einem finalen Exact-Head-Codex-Review ohne Major Finding gemerged.
+Der Standardmodul-Service liefert atomare Create-/Update-Operationen,
+unveränderliche Revisionen, Optimistic Concurrency einschließlich
+Deaktivierungsrennen, Current-/History-Reads, Revisionsvergleich sowie
+In-Memory-/PostgreSQL-Parität. Keine ULC-Adoption, Preview-Migration oder
+Deployment-Mutation wurde in E7A2 ausgeführt.
 
 ## FC4-Abnahme – abgeschlossen
 

@@ -9,7 +9,8 @@
   "runtimeModules": [
     "countdown",
     "athletes",
-    "exercise-catalog"
+    "exercise-catalog",
+    "training-blocks"
   ],
   "datasets": [
     {
@@ -251,6 +252,26 @@
       "owner": "exercise-catalog",
       "table": "appbasis_exercise_catalog_private_media",
       "privacyClass": "exercise-catalog-private-media-metadata"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block",
+      "privacyClass": "training-block-data"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_revision",
+      "privacyClass": "training-block-data"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_revision_item",
+      "privacyClass": "training-block-data"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_revision_item_parameter",
+      "privacyClass": "training-block-data"
     }
   ],
   "excludedPrivacyClasses": [
@@ -276,7 +297,8 @@
     "exercise-catalog-configuration",
     "exercise-catalog-user-preference",
     "exercise-catalog-training-usage-metadata",
-    "exercise-catalog-private-media-metadata"
+    "exercise-catalog-private-media-metadata",
+    "training-block-data"
   ],
   "credentialFieldNames": [
     "password",
