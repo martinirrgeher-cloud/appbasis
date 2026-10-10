@@ -17,7 +17,10 @@ CREATE TABLE appbasis_training_block_revision (
   block_id text NOT NULL,
   revision integer NOT NULL CHECK (revision >= 1),
   name text NOT NULL
-    CHECK (char_length(btrim(name)) BETWEEN 1 AND 120),
+    CHECK (
+      char_length(name) BETWEEN 1 AND 120
+      AND btrim(name) = name
+    ),
   audience_id text
     CHECK (
       audience_id IS NULL
@@ -27,9 +30,15 @@ CREATE TABLE appbasis_training_block_revision (
       )
     ),
   duration_minutes integer
-    CHECK (duration_minutes IS NULL OR duration_minutes BETWEEN 1 AND 1440),
+    CHECK (duration_minutes IS NULL OR duration_minutes >= 1),
   note text
-    CHECK (note IS NULL OR char_length(note) <= 3000),
+    CHECK (
+      note IS NULL
+      OR (
+        char_length(note) BETWEEN 1 AND 3000
+        AND btrim(note) = note
+      )
+    ),
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (organization_id, block_id, revision),
   CONSTRAINT appbasis_training_block_revision_block_fk
@@ -58,7 +67,13 @@ CREATE TABLE appbasis_training_block_revision_item (
     ),
   sort_order integer NOT NULL CHECK (sort_order BETWEEN 0 AND 199),
   note text
-    CHECK (note IS NULL OR char_length(note) <= 2000),
+    CHECK (
+      note IS NULL
+      OR (
+        char_length(note) BETWEEN 1 AND 2000
+        AND btrim(note) = note
+      )
+    ),
   PRIMARY KEY (organization_id, block_id, revision, item_id),
   UNIQUE (organization_id, block_id, revision, sort_order),
   CONSTRAINT appbasis_training_block_revision_item_revision_fk
@@ -85,9 +100,15 @@ CREATE TABLE appbasis_training_block_revision_item_parameter (
   revision integer NOT NULL,
   item_id text NOT NULL,
   parameter_key text NOT NULL
-    CHECK (char_length(btrim(parameter_key)) BETWEEN 1 AND 80),
+    CHECK (
+      char_length(parameter_key) BETWEEN 1 AND 80
+      AND btrim(parameter_key) = parameter_key
+    ),
   parameter_value text NOT NULL
-    CHECK (char_length(btrim(parameter_value)) BETWEEN 1 AND 500),
+    CHECK (
+      char_length(parameter_value) BETWEEN 1 AND 500
+      AND btrim(parameter_value) = parameter_value
+    ),
   sort_order integer NOT NULL CHECK (sort_order BETWEEN 0 AND 49),
   PRIMARY KEY (
     organization_id,
