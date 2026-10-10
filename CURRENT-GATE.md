@@ -24,10 +24,12 @@ Originals werden nicht kopiert. Gespeichert wird die neue Übung über denselben
 bestehenden serverautorisierten Create-Vertrag; es entsteht kein neuer
 Clone-Endpunkt und keine Migration.
 
-Nach grünem Repository-Gate ist nur ein separater Preview-Deploy nötig, bevor
-die Funktion praktisch gesichtet werden kann. Produktion bleibt weiterhin
-unverändert; Produktionsmigration, produktives R2-Binding, Runtime-Cutover und
-Deployment sind nicht autorisiert.
+Der separate Preview-Deploy ist erfolgreich abgeschlossen. Die isolierte
+Preview läuft weiterhin auf dem Standardmodul, und der Live-Check bestätigt die
+neue Aktion **„Als Vorlage“**. Offen ist damit nur noch die praktische
+Produktsichtung dieser Funktion. Produktion bleibt weiterhin unverändert;
+Produktionsmigration, produktives R2-Binding, Runtime-Cutover und Deployment
+sind nicht autorisiert.
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -311,8 +313,10 @@ Abnahme:
   verwendete Ausgangsübung aus ihrer Warnliste aus;
 - Speichern verwendet ausschließlich den bestehenden geschützten Create-Pfad;
   kein neuer API-Endpunkt, keine Migration und kein Providerwrite;
-- nach Merge benötigt die isolierte Preview ausschließlich einen getrennt
-  freizugebenden Deploy, keine Datenbankmigration.
+- der getrennt freigegebene Preview-Deploy ist abgeschlossen; keine
+  Datenbankmigration war erforderlich;
+- der dauerhafte Preview-Refresh-Workflow bleibt danach ausschließlich manuell
+  und main-only; offen ist nur noch die praktische Produktsichtung.
 
 ## FC4-Abnahme – abgeschlossen
 
