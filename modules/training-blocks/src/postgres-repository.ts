@@ -1,9 +1,10 @@
-import type {
-  TrainingBlockDeactivateResult,
-  TrainingBlockRepository,
-  TrainingBlockRevision,
-  TrainingBlockRevisionAppendResult,
-  TrainingBlockSnapshot,
+import {
+  compareTrainingBlockSnapshots,
+  type TrainingBlockDeactivateResult,
+  type TrainingBlockRepository,
+  type TrainingBlockRevision,
+  type TrainingBlockRevisionAppendResult,
+  type TrainingBlockSnapshot,
 } from "./repository";
 
 export type TrainingBlockSqlParameter = string | number | boolean | null;
@@ -237,8 +238,7 @@ async function readCurrentBlocks(
        ON revision.organization_id = block.organization_id
       AND revision.block_id = block.id
       AND revision.revision = block.current_revision
-     WHERE block.organization_id = $1${filter}
-     ORDER BY lower(revision.name) ASC, block.id ASC`,
+     WHERE block.organization_id = $1${filter}`,
     parameters,
   );
   if (rows.length === 0) return Object.freeze([]);
@@ -249,8 +249,7 @@ async function readCurrentBlocks(
     undefined,
     true,
   );
-  return Object.freeze(
-    rows.map((row) => {
+  const blocks = rows.map((row) => {
       const id = requiredString(row.id, "block id");
       const revisionNumber = requiredInteger(row.current_revision, "current revision");
       const child = children.get(revisionKey(id, revisionNumber)) ?? Object.freeze([]);
@@ -263,8 +262,9 @@ async function readCurrentBlocks(
         updatedAt: normalizedTimestamp(requiredString(row.block_updated_at, "block updated timestamp")),
         revision: revisionFromRow(row, organizationId, id, revisionNumber, child),
       });
-    }),
-  );
+    });
+  blocks.sort(compareTrainingBlockSnapshots);
+  return Object.freeze(blocks);
 }
 
 async function readRevisions(

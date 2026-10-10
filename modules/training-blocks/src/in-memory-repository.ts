@@ -1,9 +1,10 @@
-import type {
-  TrainingBlockDeactivateResult,
-  TrainingBlockRepository,
-  TrainingBlockRevision,
-  TrainingBlockRevisionAppendResult,
-  TrainingBlockSnapshot,
+import {
+  compareTrainingBlockSnapshots,
+  type TrainingBlockDeactivateResult,
+  type TrainingBlockRepository,
+  type TrainingBlockRevision,
+  type TrainingBlockRevisionAppendResult,
+  type TrainingBlockSnapshot,
 } from "./repository";
 
 export class InMemoryTrainingBlockRepository implements TrainingBlockRepository {
@@ -19,11 +20,7 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
     return Object.freeze(
       [...this.#blocks.values()]
         .filter((block) => block.organizationId === organizationId)
-        .sort(
-          (left, right) =>
-            left.revision.name.localeCompare(right.revision.name, "de", { sensitivity: "base" }) ||
-            left.id.localeCompare(right.id),
-        )
+        .sort(compareTrainingBlockSnapshots)
         .map(cloneBlock),
     );
   }

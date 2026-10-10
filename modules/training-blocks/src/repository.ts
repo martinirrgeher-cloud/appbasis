@@ -71,3 +71,13 @@ export interface TrainingBlockRepository {
     revision: number,
   ): Promise<TrainingBlockRevision | undefined>;
 }
+
+export function compareTrainingBlockSnapshots(
+  left: TrainingBlockSnapshot,
+  right: TrainingBlockSnapshot,
+): number {
+  return (
+    left.revision.name.localeCompare(right.revision.name, "de", { sensitivity: "base" }) ||
+    left.id.localeCompare(right.id)
+  );
+}

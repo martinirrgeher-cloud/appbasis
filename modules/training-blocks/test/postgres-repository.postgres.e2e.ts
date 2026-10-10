@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
 import {
+  InMemoryTrainingBlockRepository,
   PostgresTrainingBlockRepository,
   TrainingBlockConflictError,
   TrainingBlockService,
@@ -153,6 +154,33 @@ describe("training-blocks PostgreSQL repository", () => {
       await leftConnection.client.end();
       await rightConnection.client.end();
     }
+  });
+
+  it("keeps list ordering identical across in-memory and PostgreSQL adapters", async () => {
+    const ids = ["sort-z", "sort-umlaut", "sort-alpha-b", "sort-alpha-a"];
+    const postgres = serviceFor(requiredConnection(), [...ids]);
+    let memoryIndex = 0;
+    const memory = new TrainingBlockService({
+      repository: new InMemoryTrainingBlockRepository(),
+      createId: () => ids[memoryIndex++] ?? `memory-${memoryIndex}`,
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    const drafts = [
+      { name: "z" },
+      { name: "ä" },
+      { name: "Alpha" },
+      { name: "alpha" },
+    ];
+    for (const draft of drafts) {
+      await postgres.create("org-ordering", draft);
+      await memory.create("org-ordering", draft);
+    }
+
+    const postgresOrder = (await postgres.list("org-ordering")).map((block) => block.id);
+    const memoryOrder = (await memory.list("org-ordering")).map((block) => block.id);
+    expect(postgresOrder).toEqual(memoryOrder);
+    expect(postgresOrder[0]).toBe("sort-umlaut");
+    expect(postgresOrder.at(-1)).toBe("sort-z");
   });
 
   it("keeps globally unique block identities isolated by organization", async () => {
