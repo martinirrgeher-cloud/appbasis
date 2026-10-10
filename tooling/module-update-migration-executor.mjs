@@ -72,8 +72,6 @@ export async function loadModuleUpdateMigrationExecutionPlan(
     ConfigurationError: ModuleUpdateMigrationConfigurationError,
   });
 
-  assertTargetMigrationReferencePolicy(targetPlan);
-
   const allowedUnsupportedMigrationPaths =
     await loadBaselineCatalogExceptionPaths({
       repositoryRoot,
@@ -88,6 +86,10 @@ export async function loadModuleUpdateMigrationExecutionPlan(
     { allowedUnsupportedMigrationPaths },
   );
   const targetCatalogContract = createCatalogContract(targetPlan, "target");
+  assertTargetMigrationReferencePolicy({
+    plan: targetPlan,
+    targetCatalogContract,
+  });
   assertTargetCatalogIsolation({
     baselineCatalogContract,
     targetCatalogContract,
@@ -1007,18 +1009,187 @@ function catalogMarkersFromStatement(statement) {
   return [];
 }
 
-function assertTargetMigrationReferencePolicy(plan) {
+function assertTargetMigrationReferencePolicy({
+  plan,
+  targetCatalogContract,
+}) {
+  const targetTables = new Set(
+    targetCatalogContract
+      .filter((marker) => marker.kind === "table" && marker.present === true)
+      .map((marker) => marker.name),
+  );
+
   for (const migration of plan) {
     for (const statement of migration.statements) {
       for (const command of splitSqlCommands(statement)) {
-        if (containsSqlKeyword(command, "REFERENCES")) {
+        if (!containsSqlKeyword(command, "REFERENCES")) continue;
+
+        const references = referencedRelationsFromSqlCommand(command);
+        if (references.length === 0) {
           throw new ModuleUpdateMigrationConfigurationError(
-            "FC6-B target migrations may not use REFERENCES until an explicit public module dependency contract exists.",
+            "FC6-B target migration REFERENCES clause could not be proven.",
           );
+        }
+
+        for (const reference of references) {
+          if (
+            (reference.schema !== null && reference.schema !== "public") ||
+            !targetTables.has(reference.table)
+          ) {
+            throw new ModuleUpdateMigrationConfigurationError(
+              "FC6-B target migrations may only use REFERENCES to tables owned by the target module until an explicit public module dependency contract exists.",
+            );
+          }
         }
       }
     }
   }
+}
+
+function referencedRelationsFromSqlCommand(value) {
+  const tokens = sqlReferenceTokens(value);
+  const references = [];
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (
+      token.kind !== "identifier" ||
+      token.keyword !== "REFERENCES"
+    ) {
+      continue;
+    }
+
+    const first = tokens[index + 1];
+    if (first?.kind !== "identifier") {
+      throw new ModuleUpdateMigrationConfigurationError(
+        "FC6-B target migration REFERENCES target is not a provable relation.",
+      );
+    }
+
+    let schema = null;
+    let table = first.value;
+    index += 1;
+
+    if (tokens[index + 1]?.kind === "dot") {
+      const second = tokens[index + 2];
+      if (second?.kind !== "identifier") {
+        throw new ModuleUpdateMigrationConfigurationError(
+          "FC6-B target migration REFERENCES target is not a provable relation.",
+        );
+      }
+      schema = table;
+      table = second.value;
+      index += 2;
+
+      if (tokens[index + 1]?.kind === "dot") {
+        throw new ModuleUpdateMigrationConfigurationError(
+          "FC6-B target migration REFERENCES target uses an unsupported qualification.",
+        );
+      }
+    }
+
+    references.push(Object.freeze({ schema, table }));
+  }
+
+  return Object.freeze(references);
+}
+
+function sqlReferenceTokens(value) {
+  const tokens = [];
+  let index = 0;
+
+  while (index < value.length) {
+    const char = value[index];
+    const next = value[index + 1];
+
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
+    }
+    if (char === "-" && next === "-") {
+      index += 2;
+      while (index < value.length && value[index] !== "\n") index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      index = skipSqlBlockComment(value, index);
+      continue;
+    }
+    if (char === "'") {
+      index = skipSqlSingleQuotedString(value, index);
+      continue;
+    }
+    if (char === "$") {
+      const marker =
+        value.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)?.[0];
+      if (marker !== undefined) {
+        const closingIndex = value.indexOf(marker, index + marker.length);
+        index =
+          closingIndex === -1
+            ? value.length
+            : closingIndex + marker.length;
+        continue;
+      }
+    }
+    if (char === '"') {
+      const quoted = readSqlQuotedIdentifier(value, index);
+      if (quoted === null) {
+        throw new ModuleUpdateMigrationConfigurationError(
+          "FC6-B target migration contains an unterminated quoted identifier.",
+        );
+      }
+      tokens.push({
+        kind: "identifier",
+        value: quoted.value,
+        keyword: null,
+      });
+      index = quoted.nextIndex;
+      continue;
+    }
+    if (/[A-Za-z_]/.test(char)) {
+      const start = index;
+      index += 1;
+      while (index < value.length && /[A-Za-z0-9_$]/.test(value[index])) {
+        index += 1;
+      }
+      const raw = value.slice(start, index);
+      tokens.push({
+        kind: "identifier",
+        value: raw.toLowerCase(),
+        keyword: raw.toUpperCase(),
+      });
+      continue;
+    }
+    if (char === ".") {
+      tokens.push({ kind: "dot" });
+    }
+    index += 1;
+  }
+
+  return tokens;
+}
+
+function readSqlQuotedIdentifier(value, start) {
+  let index = start + 1;
+  let identifier = "";
+
+  while (index < value.length) {
+    if (value[index] === '"' && value[index + 1] === '"') {
+      identifier += '"';
+      index += 2;
+      continue;
+    }
+    if (value[index] === '"') {
+      return {
+        value: identifier,
+        nextIndex: index + 1,
+      };
+    }
+    identifier += value[index];
+    index += 1;
+  }
+
+  return null;
 }
 
 function assertTargetCatalogIsolation({
