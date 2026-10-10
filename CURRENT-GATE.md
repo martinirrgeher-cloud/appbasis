@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-06
+Stand: 2026-10-10
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,7 +9,28 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E6G-C3B – atomarer Preview-Schema-/Copy-/Verify-Pfad.**
+**ULC-E6H – Preview praktisch abnehmen; Produktions-Rollout bleibt ein separates Freigabe-Gate.**
+
+Der E6H-Repository- und Preview-Pfad ist technisch abgeschlossen. Der reale
+main-only Preview-Parity-Lauf mit `apply=true` wurde erfolgreich bestätigt:
+Schema v4 ist aktiv, die Preview läuft auf dem Standardmodul, und der
+geschützte Live-Smoke hat privaten MP4-Upload, vollständigen Download,
+Byte-Range-Download und Löschen erfolgreich geprüft. Der zweiphasige
+private-media-Löschpfad ist zusätzlich gegen beide relevanten Retry-Grenzen
+regressionsgetestet.
+
+PR #400 hat den dauerhaften `deletion_requested_at`-Zustand und den
+retry-sicheren Löschvertrag auf `main` gebracht. PR #402 ergänzt die
+Worker-Level-Regressionstests für R2-Fehler und Fehler bei der finalen
+Metadatenlöschung. PR #401 stellt ausschließlich einen dedizierten späteren
+Produktions-Entrypoint für den Standardmodulpfad bereit; dadurch wurde noch
+keine Produktion verändert.
+
+Nächstes echtes Gate ist die praktische Sichtung der E6H-Funktionen in der
+isolierten Preview. Erst danach darf ein eigener Produktionspfad geplant und
+nach ausdrücklicher Nutzerfreigabe ausgeführt werden. Produktionsmigration,
+Produktions-R2-Binding, Runtime-Cutover und Deployment sind weiterhin nicht
+autorisiert.
 
 ULC-E6C ist abgeschlossen und am 03.10.2026 in der isolierten Preview
 einschließlich der kompakten Drei-Punkte-Navigation, Filter-Overlay und des
@@ -196,7 +217,7 @@ C3A-Readiness-Plan bindet den nächsten Schritt an
 `generated-preview-ulc-linz` / `appbasis_ulc_linz_preview`, ohne Provider-
 oder Datenbankzugriff.
 
-## Aktueller Gate-Scope: ULC-E6G-C3B
+## Abgeschlossener Gate-Scope: ULC-E6G-C3B
 
 C3B implementiert und beweist den **preview-gebundenen atomaren
 Schema-/Copy-/Verify-Pfad**. Die echte ULC-Preview wird in diesem Repository-
@@ -242,6 +263,38 @@ bestehende ULC-Preview **nur nach ausdrücklicher Nutzerfreigabe** ausgeführt
 werden. Selbst ein erfolgreicher Preview-Apply schaltet die Runtime nicht um.
 Der spätere Runtime-Cutover bleibt ein eigenes Gate mit Source-Write-
 Quiescence und finaler Source→Target-Gleichheit.
+
+## Abgeschlossener Gate-Scope: ULC-E6G-C3C
+
+Der Guarded Preview-Runtime-Cutover auf das generische Standardmodul ist
+abgeschlossen. Source-Writes wurden für den Cutover quiesziert, die finale
+Source→Target-Gleichheit unter dem Guard geprüft und die isolierte ULC-Preview
+auf den Standardmodul-Runtimepfad umgeschaltet. Produktion blieb unverändert.
+
+## Aktueller Gate-Scope: ULC-E6H
+
+E6H stellt die Funktionsparität zum früheren Übungskatalog auf dem adoptierten
+Standardmodul her. Repository, Schema-v4-Upgrade und isolierter Preview-Rollout
+sind technisch abgeschlossen.
+
+Abgenommen bzw. automatisiert belegt sind:
+
+- Excel-XML und XLSX im Importpfad;
+- konfigurierbare Schwierigkeitsstufen samt Filter;
+- ähnliche Übungen und Dubletten-Kandidaten;
+- Verwendungsledger;
+- mehrere externe Links;
+- private Videos bis zum ULC-Limit über den dedizierten EU-R2-Store;
+- geschützter Upload, Voll-/Range-Download und Löschen im Live-Preview-Smoke;
+- dauerhafter zweiphasiger Löschzustand mit idempotentem Retry bei
+  Object-Store- oder Finalisierungsfehlern;
+- Standardmodul-Preview-Runtime mit Schema v4;
+- vorbereiteter, aber noch nicht aktivierter Produktions-Entrypoint.
+
+Offen ist ausschließlich die praktische Produkt-/UI-Sichtung in der Preview
+sowie danach – falls fachlich freigegeben – ein getrenntes Produktions-Gate.
+E6H selbst autorisiert keine Produktionsmigration, kein produktives R2-Binding
+und kein Deployment.
 
 ## FC4-Abnahme – abgeschlossen
 
