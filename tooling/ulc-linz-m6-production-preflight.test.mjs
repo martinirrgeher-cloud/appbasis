@@ -173,7 +173,7 @@ test("ULC M6 preflight separates controlled production preparation from Producti
   assert.equal(Object.isFrozen(result.executionPlan), true);
 });
 
-test("ULC M6 production preflight rejects the current Stammdaten scope until it is revalidated", async () => {
+test("ULC M6 production preflight rejects the current expanded module scope until it is revalidated", async () => {
   await assert.rejects(
     evaluateUlcLinzM6ProductionPreflight(REPOSITORY_ROOT),
     errorWithCode("APP_DEFINITION_INVALID"),
@@ -517,7 +517,9 @@ async function evaluateApprovedScopePreflight() {
     fixture.appDefinition.modules = ["countdown"];
     fixture.databaseManifest.owners = fixture.databaseManifest.owners.filter(
       (owner) =>
-        owner.id !== "athletes" && owner.id !== "exercise-catalog",
+        owner.id !== "athletes" &&
+        owner.id !== "exercise-catalog" &&
+        owner.id !== "training-blocks",
     );
     await writeFixture(root, fixture);
     result = await evaluateUlcLinzM6ProductionPreflight(root);
