@@ -325,7 +325,7 @@ Abnahme:
   und main-only;
 - die praktische Produktsichtung wurde am 10.10.2026 erfolgreich bestätigt.
 
-## Aktueller Gate-Scope: ULC-E7A1
+## Abgeschlossener Gate-Scope: ULC-E7A1
 
 E7A1 startet das Standardmodul `training-blocks` ohne ULC-Adoption.
 
