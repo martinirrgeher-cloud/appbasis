@@ -148,6 +148,13 @@ function optionalIdentifier(value: unknown, label: string): string | null {
   return requiredIdentifier(value, label);
 }
 
+export function normalizeTrainingBlockIdentifier(
+  value: unknown,
+  label: string,
+): string {
+  return requiredIdentifier(value, label);
+}
+
 function requiredIdentifier(value: unknown, label: string): string {
   if (
     typeof value !== "string" ||

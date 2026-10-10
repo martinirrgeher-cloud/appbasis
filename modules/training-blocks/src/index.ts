@@ -14,6 +14,7 @@ export const TRAINING_BLOCK_CAPABILITIES = Object.freeze({
 export {
   TrainingBlockValidationError,
   normalizeTrainingBlockDraft,
+  normalizeTrainingBlockIdentifier,
 } from "./training-block";
 export type {
   CreateTrainingBlockDraftInput,
@@ -23,6 +24,11 @@ export type {
   TrainingBlockParameterOverride,
   TrainingBlockParameterOverrideInput,
 } from "./training-block";
+
+export * from "./repository";
+export * from "./in-memory-repository";
+export * from "./postgres-repository";
+export * from "./service";
 
 function requiredTrainingBlockCapability<const T extends string>(
   capability: T,

@@ -9,17 +9,17 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E7A1 – Trainingsblöcke als revisionsfähiges Standardmodul-Fundament.**
+**ULC-E7A2 – Trainingsblöcke Repository/Service und Versionsvertrag.**
 
-Die praktische Abnahme von E6H.1 („Als Vorlage“) wurde am 10.10.2026
-erfolgreich bestätigt. Der Übungskatalog ist damit für den aktuellen
-Preview-Umfang fachlich abgeschlossen.
+E7A1 ist auf `main` abgeschlossen. Das generische Modul besitzt damit
+Manifest, revisionsfähiges Schema und Domainvalidierung. Der nächste Slice
+macht dieses Fundament als eigenständige Persistenz-/Service-Domain nutzbar:
+atomare Create-/Update-Operationen, unveränderliche Revisionen, Optimistic
+Concurrency, getrennte Current-/History-Reads, Revisionvergleich und
+Deaktivierung ohne Historienverlust.
 
-Nächster Produktpfad sind Trainingsblöcke als Bindeglied zwischen
-Übungskatalog und späterer Trainingsplanung. E7A1 baut ausschließlich das
-generische Fundament: Modulvertrag, revisionsfähiges Schema und
-Domainvalidierung. ULC-Runtime, Gruppen-/Übungsresolver, Autosave-UI,
-Preview-Migration und Deployment folgen in getrennten Gates.
+ULC-Runtime, Gruppen-/Übungsresolver, Autosave-UI, Preview-Migration und
+Deployment bleiben ausdrücklich getrennte Folgeslices.
 
 Verbindliche Architekturgrenzen:
 
@@ -32,7 +32,7 @@ Verbindliche Architekturgrenzen:
 - keine Cross-Owner-Foreign-Keys in `athletes` oder `exercise-catalog`;
 - ULC verwendet später vorhandene Trainingsgruppen statt einer zweiten
   Gruppenverwaltung;
-- E7A1 führt keine Datenbank-, Preview-, Provider- oder Produktionsmutation aus.
+- E7A2 führt keine ULC-Adoption, Preview-, Provider- oder Produktionsmutation aus.
 
 Der vollständige Alt-App-Zielumfang und die Folgeslices sind in
 `docs/ULC-TRAINING-BLOCKS.md` festgehalten.
@@ -325,7 +325,7 @@ Abnahme:
   und main-only;
 - die praktische Produktsichtung wurde am 10.10.2026 erfolgreich bestätigt.
 
-## Aktueller Gate-Scope: ULC-E7A1
+## Abgeschlossener Gate-Scope: ULC-E7A1
 
 E7A1 startet das Standardmodul `training-blocks` ohne ULC-Adoption.
 

@@ -90,6 +90,9 @@ jobs:
       - name: Run exercise-catalog standard-module PostgreSQL E2E
         run: pnpm --filter @appbasis/app-exercise-catalog-minimal test:postgres
 
+      - name: Run training-blocks standard-module PostgreSQL E2E
+        run: pnpm --filter @appbasis/training-blocks test:postgres
+
       - name: Run FC6-D existing-app module update PostgreSQL E2E
         run: node --test ./tooling/module-update-migration-executor.postgres.test.mjs
 

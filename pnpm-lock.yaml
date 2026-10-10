@@ -264,6 +264,9 @@ importers:
 
   modules/training-blocks:
     devDependencies:
+      '@appbasis/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
