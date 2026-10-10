@@ -42,7 +42,7 @@ App-Owners `ulc-linz-lifecycle` angelegt.
 | Dublettenwarnung | vorhanden | E6H serverseitig + UI-Warnung | Katalog-Erweiterung |
 | Verwendung / letzte Verwendung | vorhanden | E6H Ledger/Verlauf; automatische Planungskopplung noch offen | Katalog + Planung |
 | private / mehrere Videos | vorhanden | E6H umgesetzt; private Ablage bei konfiguriertem Object Store | Katalog + Files |
-| Trainingsblöcke | vorhanden | fehlt | Standardmodul-Kandidat |
+| Trainingsblöcke | vorhanden | E7A1 Standardmodul-Fundament in Arbeit | Standardmodul |
 | Trainingsplanung | vorhanden | fehlt | Standardmodul-Kandidat |
 | Trainingsdokumentation | vorhanden | Vorarbeit | Standardmodul-Kandidat |
 | Trainingsübersicht | vorhanden | fehlt | Reporting/Modul |
@@ -165,6 +165,15 @@ Favoriten/Gruppen/Parameter, Fail-closed-Verhalten und getrennte Preview-/
 Production-Gates beweisen.
 
 Dieser Audit implementiert den Adoption-Mechanismus noch nicht.
+
+## Trainingsblöcke – Alt-App-Parität für E7
+
+Der detaillierte Zielvertrag wurde nach Abschluss des Übungskatalogs in
+`docs/ULC-TRAINING-BLOCKS.md` fixiert. Besonders wichtig sind mehrfaches
+Hinzufügen derselben Übung, gruppierte/aufklappbare Vorlagen,
+Parameter-Overrides, optimistisches Autosave sowie Revisionen/Snapshots. Die
+alte blockeigene Gruppenverwaltung wird nicht dupliziert; AppBasis verwendet
+die bereits vorhandenen Trainingsgruppen aus dem Athletes-Modul.
 
 ## Roadmap
 

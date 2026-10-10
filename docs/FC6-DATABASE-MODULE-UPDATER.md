@@ -94,6 +94,10 @@ Verbindliche Grenzen:
 
 - direkter PostgreSQL-Zielvertrag; kein Hyperdrive als Migration-Credential;
 - Zielidentität muss vor dem ersten SQL-Statement verifiziert sein;
+- innerhalb der Migrationstransaktion pinnt der Executor den PostgreSQL-
+  `search_path` vor Katalogprüfung und Target-DDL auf `public`; damit bleiben
+  unqualifizierte Same-Owner-Tabellen und Foreign Keys unabhängig von
+  Connection-/Rollen-Defaults eindeutig im kanonischen App-Schema;
 - die erwartete bestehende Baseline muss nachweisbar zum Ausgangsvertrag der App
   passen; unbekannter oder widersprüchlicher DB-Zustand wird abgewiesen;
 - ausgeführt werden ausschließlich die im FC6-A-Delta enthaltenen
@@ -105,9 +109,12 @@ Verbindliche Grenzen:
 - ein Fehler rollt den vollständigen DB-Delta zurück;
 - ein erneuter Lauf muss entweder als eindeutig bereits angewendet erkannt oder
   fail-closed abgewiesen werden; Doppelanwendung ist nicht zulässig;
-- Target-Migrationen mit `REFERENCES` bleiben fail-closed, bis ein expliziter
-  öffentlicher Modul-Dependency-Vertrag solche Cross-Owner-Abhängigkeiten
-  maschinenlesbar autorisieren und prüfen kann;
+- Target-Migrationen dürfen `REFERENCES` ausschließlich auf Tabellen
+  desselben neuen Modul-Owners verwenden; unqualifizierte bzw. explizit
+  `public.`-qualifizierte Ziele werden gegen den verifizierten
+  Target-Katalogvertrag geprüft. Cross-Owner- und Fremdschema-Referenzen bleiben
+  fail-closed, bis ein expliziter öffentlicher Modul-Dependency-Vertrag solche
+  Abhängigkeiten maschinenlesbar autorisieren und prüfen kann;
 - Tests beweisen explizit eine nicht leere bestehende Baseline.
 
 Der konkrete kleine Nachweisvertrag für FC6-B verwendet keine zweite allgemeine
