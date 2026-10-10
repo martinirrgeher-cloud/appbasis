@@ -269,6 +269,51 @@ describe("training-blocks PostgreSQL repository", () => {
     await expect(service.listRevisions("org-archived", "block-archived")).resolves.toHaveLength(1);
   });
 
+  it("persists maximum-size create and update payloads with bulk child inserts", async () => {
+    const itemIds = Array.from({ length: 200 }, (_, index) => `item-max-${index}`);
+    const service = serviceFor(requiredConnection(), ["block-max", ...itemIds]);
+    const createExercises = Array.from({ length: 200 }, (_, exerciseIndex) => ({
+      exerciseId: `exercise-${exerciseIndex}`,
+      parameterOverrides: Array.from({ length: 50 }, (_, parameterIndex) => ({
+        key: `parameter-${parameterIndex}`,
+        value: `create-${exerciseIndex}-${parameterIndex}`,
+      })),
+    }));
+    await service.create("org-max", {
+      name: "Maximum block",
+      exercises: createExercises,
+    });
+
+    const updateExercises = createExercises.map((exercise, exerciseIndex) => ({
+      itemId: itemIds[exerciseIndex]!,
+      exerciseId: exercise.exerciseId,
+      parameterOverrides: exercise.parameterOverrides.map((override, parameterIndex) => ({
+        key: override.key,
+        value: `update-${exerciseIndex}-${parameterIndex}`,
+      })),
+    }));
+    await expect(
+      service.update("org-max", "block-max", 1, {
+        name: "Maximum block v2",
+        exercises: updateExercises,
+      }),
+    ).resolves.toMatchObject({ currentRevision: 2 });
+
+    const counts = await requiredConnection().client.unsafe(
+      `SELECT
+         (SELECT count(*)::int
+            FROM appbasis_training_block_revision_item
+           WHERE organization_id = 'org-max'
+             AND block_id = 'block-max') AS item_count,
+         (SELECT count(*)::int
+            FROM appbasis_training_block_revision_item_parameter
+           WHERE organization_id = 'org-max'
+             AND block_id = 'block-max') AS parameter_count`,
+    );
+    expect(Number(counts[0]?.item_count)).toBe(400);
+    expect(Number(counts[0]?.parameter_count)).toBe(20_000);
+  });
+
   it("keeps list ordering identical across in-memory and PostgreSQL adapters", async () => {
     const ids = ["sort-z", "sort-umlaut", "sort-alpha-b", "sort-alpha-a"];
     const postgres = serviceFor(requiredConnection(), [...ids]);
