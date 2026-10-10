@@ -610,8 +610,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/modules/training-blocks")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/update"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("scheduleTrainingBlockSave");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockChangeVersion !== saveVersion");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlocksCanEdit || trainingBlockSaveBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_CONFLICT");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("dataTrainingBlockExerciseAction");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("dataset.trainingBlockExerciseAction");
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/compare?from="');
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId:");

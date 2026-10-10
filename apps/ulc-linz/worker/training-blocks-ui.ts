@@ -348,6 +348,7 @@ let trainingBlockConflict = false;
 let trainingBlockSaveTimer = null;
 let trainingBlockSaveBusy = false;
 let trainingBlockSavePending = false;
+let trainingBlockChangeVersion = 0;
 
 function isTrainingBlockAudience(value) {
   return value !== null &&
@@ -604,6 +605,7 @@ function newTrainingBlock() {
   };
   trainingBlockDirty = false;
   trainingBlockConflict = false;
+  trainingBlockChangeVersion = 0;
   populateTrainingBlockEditor();
   trainingBlockElements.name?.focus();
 }
@@ -622,6 +624,7 @@ async function openTrainingBlock(id) {
     trainingBlockDraft = trainingBlockDraftFromSnapshot(payload.block);
     trainingBlockDirty = false;
     trainingBlockConflict = false;
+    trainingBlockChangeVersion = 0;
     populateTrainingBlockEditor();
   } catch (error) {
     showMessage(
@@ -854,6 +857,7 @@ function trainingBlockActionButton(label, action, index) {
 
 function markTrainingBlockDirty() {
   if (!trainingBlockDraft || !trainingBlocksCanEdit || trainingBlockConflict) return;
+  trainingBlockChangeVersion += 1;
   trainingBlockDirty = true;
   setTrainingBlockSaveState("saving", "Änderung vorgemerkt …");
   scheduleTrainingBlockSave();
@@ -928,6 +932,7 @@ async function saveTrainingBlock() {
     return;
   }
 
+  const saveVersion = trainingBlockChangeVersion;
   trainingBlockSaveBusy = true;
   trainingBlockSavePending = false;
   setTrainingBlockSaveState("saving", "Speichert …");
@@ -955,12 +960,17 @@ async function saveTrainingBlock() {
     }
     trainingBlockSelected = response.block;
     syncTrainingBlockItemIds(response.block);
-    trainingBlockDirty = false;
+    trainingBlockDirty = trainingBlockChangeVersion !== saveVersion;
     replaceTrainingBlockInList(response.block);
-    setTrainingBlockSaveState(
-      "saved",
-      "Gespeichert · Version " + String(response.block.currentRevision),
-    );
+    if (trainingBlockDirty) {
+      trainingBlockSavePending = true;
+      setTrainingBlockSaveState("saving", "Weitere Änderung wartet …");
+    } else {
+      setTrainingBlockSaveState(
+        "saved",
+        "Gespeichert · Version " + String(response.block.currentRevision),
+      );
+    }
     if (trainingBlockElements.deactivate) {
       trainingBlockElements.deactivate.hidden =
         !trainingBlocksCanEdit || !response.block.isActive;
@@ -986,8 +996,12 @@ async function saveTrainingBlock() {
     }
   } finally {
     trainingBlockSaveBusy = false;
-    if (trainingBlockSavePending && !trainingBlockConflict) {
+    if (
+      (trainingBlockSavePending || trainingBlockDirty) &&
+      !trainingBlockConflict
+    ) {
       trainingBlockSavePending = false;
+      trainingBlockDirty = true;
       scheduleTrainingBlockSave();
     }
   }
@@ -1030,6 +1044,7 @@ function closeTrainingBlockEditor(force = false) {
   trainingBlockDraft = null;
   trainingBlockDirty = false;
   trainingBlockConflict = false;
+  trainingBlockChangeVersion = 0;
   if (trainingBlockElements.editor) trainingBlockElements.editor.hidden = true;
   document.body.classList.remove("training-block-editor-open");
   showMessage(trainingBlockElements.editorMessage, "");
@@ -1046,7 +1061,11 @@ async function reloadTrainingBlock() {
 }
 
 function addTrainingBlockExercise() {
-  if (!trainingBlockDraft || !trainingBlocksCanEdit) return;
+  if (
+    !trainingBlockDraft ||
+    !trainingBlocksCanEdit ||
+    trainingBlockSaveBusy
+  ) return;
   const id = trainingBlockElements.exercisePicker?.value || "";
   if (!id || !trainingBlockExerciseItem(id)) return;
   trainingBlockDraft.exercises.push({
@@ -1072,7 +1091,7 @@ function handleTrainingBlockExerciseClick(event) {
     showTrainingBlockExerciseInfo(trainingBlockDraft.exercises[index].exerciseId);
     return;
   }
-  if (!trainingBlocksCanEdit) return;
+  if (!trainingBlocksCanEdit || trainingBlockSaveBusy) return;
   if (action === "remove") {
     trainingBlockDraft.exercises.splice(index, 1);
   } else if (action === "up" && index > 0) {
