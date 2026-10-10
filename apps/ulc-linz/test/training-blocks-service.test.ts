@@ -10,6 +10,7 @@ import type {
 } from "@appbasis/exercise-catalog";
 import {
   InMemoryTrainingBlockRepository,
+  TrainingBlockConflictError,
   TrainingBlockService,
 } from "@appbasis/training-blocks";
 
@@ -291,6 +292,60 @@ describe("ULC training block adapter", () => {
         ],
       }),
     ).resolves.toMatchObject({ currentRevision: 1 });
+  });
+
+  it("reports a stale revision before validating changed references", async () => {
+    const { blocks, service } = createService();
+    const created = await service.create("org-1", {
+      name: "Initial",
+      audienceId: "group-active",
+      exercises: [{ exerciseId: "exercise-1" }],
+    });
+    await blocks.update("org-1", created.id, 1, {
+      name: "Concurrent update",
+      audienceId: "group-active",
+      exercises: [
+        {
+          itemId: created.revision.exercises[0]!.itemId,
+          exerciseId: "exercise-1",
+        },
+      ],
+    });
+
+    let catalogReads = 0;
+    const staleService = createUlcTrainingBlockService({
+      blocks,
+      masterdata: {
+        async readOrganizationSnapshot() {
+          return { trainingGroups: [] };
+        },
+      },
+      exerciseCatalog: {
+        async listItems() {
+          catalogReads += 1;
+          return [];
+        },
+      },
+    });
+
+    await expect(
+      staleService.update("org-1", created.id, 1, {
+        name: "Stale autosave",
+        audienceId: "missing-group",
+        exercises: [{ exerciseId: "missing-exercise" }],
+      }),
+    ).rejects.toMatchObject({
+      name: "TrainingBlockConflictError",
+      expectedRevision: 1,
+      currentRevision: 2,
+    });
+    expect(catalogReads).toBe(0);
+    await expect(
+      staleService.update("org-1", created.id, 1, {
+        name: "Stale autosave",
+        audienceId: "missing-group",
+      }),
+    ).rejects.toBeInstanceOf(TrainingBlockConflictError);
   });
 
   it("does not append a revision when an update introduces an invalid reference", async () => {

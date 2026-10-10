@@ -9,6 +9,9 @@ import type {
 } from "@appbasis/exercise-catalog";
 import {
   normalizeTrainingBlockDraft,
+  TrainingBlockConflictError,
+  TrainingBlockInactiveError,
+  TrainingBlockValidationError,
   type CreateTrainingBlockDraftInput,
   type TrainingBlockExerciseDraft,
   type TrainingBlockRevision,
@@ -143,6 +146,36 @@ export function createUlcTrainingBlockService({
     );
   }
 
+  async function assertUpdatePrecondition(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(expectedRevision) ||
+      expectedRevision < 1
+    ) {
+      throw new TrainingBlockValidationError(
+        "Expected training block revision is invalid.",
+      );
+    }
+    const current = await blocks.findCurrent(organizationId, blockId);
+    if (current === undefined) return false;
+    if (current.currentRevision !== expectedRevision) {
+      throw new TrainingBlockConflictError(
+        expectedRevision,
+        current.currentRevision,
+      );
+    }
+    if (!current.isActive) {
+      throw new TrainingBlockInactiveError(
+        current.id,
+        current.currentRevision,
+      );
+    }
+    return true;
+  }
+
   async function assertReferences(
     organizationId: string,
     input: CreateTrainingBlockDraftInput | UpdateTrainingBlockDraftInput,
@@ -209,6 +242,12 @@ export function createUlcTrainingBlockService({
       expectedRevision: number,
       input: UpdateTrainingBlockDraftInput,
     ) {
+      const exists = await assertUpdatePrecondition(
+        organizationId,
+        blockId,
+        expectedRevision,
+      );
+      if (!exists) return undefined;
       await assertReferences(organizationId, input);
       return blocks.update(
         organizationId,
