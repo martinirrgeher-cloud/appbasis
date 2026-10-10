@@ -158,7 +158,7 @@ describe("ULC E6C exercise catalog UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("{ cloneSourceId: sourceId }");
     expect(ULC_LINZ_APP_SCRIPT).toContain("isFavorite: false");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "candidate?.exerciseId !== exerciseCatalogCloneSourceId",
+      "exerciseCatalogSelectedId || exerciseCatalogCloneSourceId",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"Übung aus Vorlage anlegen"',
