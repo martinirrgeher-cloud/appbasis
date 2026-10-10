@@ -8,15 +8,6 @@ on:
         required: true
         type: boolean
         default: false
-  # One-time bootstrap trigger for introducing this workflow after explicit
-  # user approval. Remove this push trigger after the first successful refresh;
-  # future refreshes remain manual through workflow_dispatch.
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/ulc-linz-e6h-preview-runtime-refresh.yml
-
 permissions:
   contents: read
 
@@ -27,7 +18,7 @@ concurrency:
 jobs:
   refresh:
     name: Refresh standard-module ULC preview runtime
-    if: ${{ github.event_name == 'push' || inputs.apply == true }}
+    if: ${{ inputs.apply == true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment:
