@@ -611,6 +611,8 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/update"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("scheduleTrainingBlockSave");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockChangeVersion !== saveVersion");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("saveSucceeded &&");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (!force && trainingBlockSaveBusy)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlocksCanEdit || trainingBlockSaveBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_CONFLICT");
     expect(ULC_LINZ_APP_SCRIPT).toContain("dataset.trainingBlockExerciseAction");

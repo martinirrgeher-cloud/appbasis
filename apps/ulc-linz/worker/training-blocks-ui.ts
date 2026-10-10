@@ -933,6 +933,7 @@ async function saveTrainingBlock() {
   }
 
   const saveVersion = trainingBlockChangeVersion;
+  let saveSucceeded = false;
   trainingBlockSaveBusy = true;
   trainingBlockSavePending = false;
   setTrainingBlockSaveState("saving", "Speichert …");
@@ -958,6 +959,7 @@ async function saveTrainingBlock() {
     if (!isTrainingBlockSnapshot(response?.block)) {
       throw new Error("INVALID_TRAINING_BLOCK_SAVE");
     }
+    saveSucceeded = true;
     trainingBlockSelected = response.block;
     syncTrainingBlockItemIds(response.block);
     trainingBlockDirty = trainingBlockChangeVersion !== saveVersion;
@@ -997,12 +999,15 @@ async function saveTrainingBlock() {
   } finally {
     trainingBlockSaveBusy = false;
     if (
+      saveSucceeded &&
       (trainingBlockSavePending || trainingBlockDirty) &&
       !trainingBlockConflict
     ) {
       trainingBlockSavePending = false;
       trainingBlockDirty = true;
       scheduleTrainingBlockSave();
+    } else if (!saveSucceeded) {
+      trainingBlockSavePending = false;
     }
   }
 }
@@ -1030,6 +1035,13 @@ function setTrainingBlockSaveState(state, label) {
 }
 
 function closeTrainingBlockEditor(force = false) {
+  if (!force && trainingBlockSaveBusy) {
+    showMessage(
+      trainingBlockElements.editorMessage,
+      "Speichern läuft noch. Bitte den laufenden Speichervorgang abschließen lassen.",
+    );
+    return;
+  }
   if (!force && trainingBlockDirty && !trainingBlockConflict) {
     if (!window.confirm("Es gibt noch nicht gespeicherte Änderungen. Trotzdem schließen?")) {
       return;
@@ -1196,6 +1208,7 @@ function closeTrainingBlockExerciseInfo() {
 
 async function deactivateTrainingBlock() {
   if (
+    trainingBlockSaveBusy ||
     !trainingBlockSelected ||
     !trainingBlockSelected.isActive ||
     !trainingBlocksCanEdit ||
