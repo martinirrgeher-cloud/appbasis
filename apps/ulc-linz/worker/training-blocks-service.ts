@@ -2,10 +2,15 @@ import type {
   AthleteMasterdataSnapshot,
   TrainingGroup,
 } from "@appbasis/athletes";
-import type { ExerciseCatalogRepository } from "@appbasis/exercise-catalog";
+import type {
+  ExerciseCatalogItem,
+  ExerciseCatalogParameter,
+  ExerciseCatalogRepository,
+} from "@appbasis/exercise-catalog";
 import {
   normalizeTrainingBlockDraft,
   type CreateTrainingBlockDraftInput,
+  type TrainingBlockExerciseDraft,
   type TrainingBlockRevision,
   type TrainingBlockRevisionComparison,
   type TrainingBlockService,
@@ -26,10 +31,7 @@ export interface UlcTrainingBlockMasterdataReader {
 }
 
 export interface UlcTrainingBlockExerciseReader {
-  findItemById: Pick<
-    ExerciseCatalogRepository,
-    "findItemById"
-  >["findItemById"];
+  listItems: Pick<ExerciseCatalogRepository, "listItems">["listItems"];
 }
 
 export class UlcTrainingBlockReferenceError extends Error {
@@ -49,6 +51,33 @@ export class UlcTrainingBlockReferenceError extends Error {
     this.name = "UlcTrainingBlockReferenceError";
     this.referenceType = referenceType;
     this.referenceId = referenceId;
+  }
+}
+
+export type UlcTrainingBlockParameterErrorReason =
+  | "unknown-key"
+  | "required-value-missing"
+  | "invalid-number"
+  | "below-minimum"
+  | "above-maximum"
+  | "step-mismatch";
+
+export class UlcTrainingBlockParameterError extends Error {
+  readonly code = "ULC_TRAINING_BLOCK_PARAMETER_INVALID";
+  readonly exerciseId: string;
+  readonly parameterKey: string;
+  readonly reason: UlcTrainingBlockParameterErrorReason;
+
+  constructor(
+    exerciseId: string,
+    parameterKey: string,
+    reason: UlcTrainingBlockParameterErrorReason,
+  ) {
+    super("Training block exercise parameter override is invalid.");
+    this.name = "UlcTrainingBlockParameterError";
+    this.exerciseId = exerciseId;
+    this.parameterKey = parameterKey;
+    this.reason = reason;
   }
 }
 
@@ -123,7 +152,10 @@ export function createUlcTrainingBlockService({
       throw new UlcTrainingBlockReferenceError("audience", null);
     }
 
-    const snapshot = await masterdata.readOrganizationSnapshot(organizationId);
+    const [snapshot, catalogItems] = await Promise.all([
+      masterdata.readOrganizationSnapshot(organizationId),
+      exerciseCatalog.listItems(organizationId),
+    ]);
     const audience = snapshot.trainingGroups.find(
       (group) =>
         group.id === draft.audienceId &&
@@ -137,24 +169,22 @@ export function createUlcTrainingBlockService({
       );
     }
 
-    const exerciseIds = [
-      ...new Set(draft.exercises.map((exercise) => exercise.exerciseId)),
-    ];
-    const exercises = await Promise.all(
-      exerciseIds.map((exerciseId) =>
-        exerciseCatalog.findItemById(organizationId, exerciseId),
-      ),
+    const byId = new Map(
+      catalogItems.map((exercise) => [exercise.id, exercise] as const),
     );
-    for (let index = 0; index < exerciseIds.length; index += 1) {
-      const exerciseId = exerciseIds[index]!;
-      const exercise = exercises[index];
+    for (const occurrence of draft.exercises) {
+      const exercise = byId.get(occurrence.exerciseId);
       if (
         exercise === undefined ||
         exercise.organizationId !== organizationId ||
         exercise.isActive !== true
       ) {
-        throw new UlcTrainingBlockReferenceError("exercise", exerciseId);
+        throw new UlcTrainingBlockReferenceError(
+          "exercise",
+          occurrence.exerciseId,
+        );
       }
+      validateParameterOverrides(occurrence, exercise);
     }
   }
 
@@ -220,6 +250,96 @@ export function createUlcTrainingBlockService({
   });
 }
 
+function validateParameterOverrides(
+  occurrence: TrainingBlockExerciseDraft,
+  exercise: ExerciseCatalogItem,
+): void {
+  const definitions = new Map(
+    exercise.parameters.map((parameter) => [parameter.key, parameter] as const),
+  );
+  const overrides = new Map(
+    occurrence.parameterOverrides.map((override) => [override.key, override.value] as const),
+  );
+
+  for (const override of occurrence.parameterOverrides) {
+    const definition = definitions.get(override.key);
+    if (definition === undefined) {
+      throw new UlcTrainingBlockParameterError(
+        exercise.id,
+        override.key,
+        "unknown-key",
+      );
+    }
+    validateParameterValue(exercise.id, definition, override.value);
+  }
+
+  for (const definition of exercise.parameters) {
+    if (
+      definition.isRequired &&
+      definition.defaultValue === null &&
+      !overrides.has(definition.key)
+    ) {
+      throw new UlcTrainingBlockParameterError(
+        exercise.id,
+        definition.key,
+        "required-value-missing",
+      );
+    }
+  }
+}
+
+function validateParameterValue(
+  exerciseId: string,
+  definition: ExerciseCatalogParameter,
+  value: string,
+): void {
+  if (definition.inputType !== "number") return;
+
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    throw new UlcTrainingBlockParameterError(
+      exerciseId,
+      definition.key,
+      "invalid-number",
+    );
+  }
+  if (definition.minValue !== null && numericValue < definition.minValue) {
+    throw new UlcTrainingBlockParameterError(
+      exerciseId,
+      definition.key,
+      "below-minimum",
+    );
+  }
+  if (definition.maxValue !== null && numericValue > definition.maxValue) {
+    throw new UlcTrainingBlockParameterError(
+      exerciseId,
+      definition.key,
+      "above-maximum",
+    );
+  }
+  if (
+    definition.stepValue !== null &&
+    !isStepAligned(
+      numericValue,
+      definition.minValue ?? 0,
+      definition.stepValue,
+    )
+  ) {
+    throw new UlcTrainingBlockParameterError(
+      exerciseId,
+      definition.key,
+      "step-mismatch",
+    );
+  }
+}
+
+function isStepAligned(value: number, base: number, step: number): boolean {
+  const quotient = (value - base) / step;
+  const nearest = Math.round(quotient);
+  const tolerance = Number.EPSILON * 16 * Math.max(1, Math.abs(quotient));
+  return Math.abs(quotient - nearest) <= tolerance;
+}
+
 function audienceFromGroup(group: TrainingGroup): UlcTrainingBlockAudience {
   return Object.freeze({
     id: group.id,
@@ -227,4 +347,3 @@ function audienceFromGroup(group: TrainingGroup): UlcTrainingBlockAudience {
     shortName: group.shortName,
   });
 }
-

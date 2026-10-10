@@ -4,7 +4,10 @@ import type {
   AthleteMasterdataSnapshot,
   TrainingGroup,
 } from "@appbasis/athletes";
-import type { ExerciseCatalogItem } from "@appbasis/exercise-catalog";
+import type {
+  ExerciseCatalogItem,
+  ExerciseCatalogParameter,
+} from "@appbasis/exercise-catalog";
 import {
   InMemoryTrainingBlockRepository,
   TrainingBlockService,
@@ -12,6 +15,7 @@ import {
 
 import {
   createUlcTrainingBlockService,
+  UlcTrainingBlockParameterError,
   UlcTrainingBlockReferenceError,
 } from "../worker/training-blocks-service";
 
@@ -31,6 +35,25 @@ const INACTIVE_GROUP: TrainingGroup = Object.freeze({
   shortName: null,
   isActive: false,
 });
+
+function parameter(
+  key: string,
+  overrides: Partial<ExerciseCatalogParameter> = {},
+): ExerciseCatalogParameter {
+  return Object.freeze({
+    key,
+    label: key,
+    unit: "",
+    inputType: "number",
+    defaultValue: "10",
+    minValue: 5,
+    maxValue: 20,
+    stepValue: 5,
+    isRequired: false,
+    sortOrder: 10,
+    ...overrides,
+  });
+}
 
 function catalogItem(
   id: string,
@@ -64,7 +87,8 @@ function createService(input: {
 } = {}) {
   const repository = new InMemoryTrainingBlockRepository();
   let idIndex = 0;
-  const ids = ["block-1", "item-1", "item-2", "item-3"];
+  let catalogReadCount = 0;
+  const ids = ["block-1", "item-1", "item-2", "item-3", "item-4"];
   const blocks = new TrainingBlockService({
     repository,
     createId: () => ids[idIndex++] ?? `id-${idIndex}`,
@@ -81,6 +105,7 @@ function createService(input: {
 
   return {
     blocks,
+    getCatalogReadCount: () => catalogReadCount,
     service: createUlcTrainingBlockService({
       blocks,
       masterdata: {
@@ -89,12 +114,9 @@ function createService(input: {
         },
       },
       exerciseCatalog: {
-        async findItemById(organizationId, exerciseId) {
-          return exercises.find(
-            (exercise) =>
-              exercise.organizationId === organizationId &&
-              exercise.id === exerciseId,
-          );
+        async listItems() {
+          catalogReadCount += 1;
+          return exercises;
         },
       },
     }),
@@ -102,8 +124,8 @@ function createService(input: {
 }
 
 describe("ULC training block adapter", () => {
-  it("exposes only active ULC groups and accepts repeated valid catalog exercises", async () => {
-    const { service } = createService();
+  it("uses one catalog snapshot and accepts repeated valid catalog exercises", async () => {
+    const { service, getCatalogReadCount } = createService();
 
     await expect(service.listAudiences("org-1")).resolves.toEqual([
       { id: "group-active", name: "U16", shortName: "U16" },
@@ -114,15 +136,18 @@ describe("ULC training block adapter", () => {
       audienceId: "group-active",
       exercises: [
         { exerciseId: "exercise-1" },
+        { exerciseId: "exercise-2" },
         { exerciseId: "exercise-1" },
       ],
     });
+    expect(getCatalogReadCount()).toBe(1);
     expect(created).toMatchObject({
       organizationId: "org-1",
       revision: {
         audienceId: "group-active",
         exercises: [
           { exerciseId: "exercise-1" },
+          { exerciseId: "exercise-2" },
           { exerciseId: "exercise-1" },
         ],
       },
@@ -175,6 +200,99 @@ describe("ULC training block adapter", () => {
     }
   });
 
+  it("validates parameter override keys and numeric constraints", async () => {
+    const exercise = catalogItem("exercise-parameterized", {
+      parameters: Object.freeze([parameter("distance")]),
+    });
+
+    const valid = createService({ exercises: [exercise] });
+    await expect(
+      valid.service.create("org-1", {
+        name: "Valid override",
+        audienceId: "group-active",
+        exercises: [
+          {
+            exerciseId: exercise.id,
+            parameterOverrides: [{ key: "distance", value: "15" }],
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      revision: {
+        exercises: [
+          {
+            parameterOverrides: [
+              { key: "distance", value: "15", sortOrder: 0 },
+            ],
+          },
+        ],
+      },
+    });
+
+    for (const [key, value, reason] of [
+      ["unknown", "15", "unknown-key"],
+      ["distance", "abc", "invalid-number"],
+      ["distance", "4", "below-minimum"],
+      ["distance", "21", "above-maximum"],
+      ["distance", "12", "step-mismatch"],
+    ] as const) {
+      const { blocks, service } = createService({ exercises: [exercise] });
+      await expect(
+        service.create("org-1", {
+          name: "Invalid override",
+          audienceId: "group-active",
+          exercises: [
+            {
+              exerciseId: exercise.id,
+              parameterOverrides: [{ key, value }],
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        name: "UlcTrainingBlockParameterError",
+        exerciseId: exercise.id,
+        parameterKey: key,
+        reason,
+      });
+      await expect(blocks.list("org-1")).resolves.toEqual([]);
+    }
+  });
+
+  it("requires an override when a required catalog parameter has no default", async () => {
+    const exercise = catalogItem("exercise-required", {
+      parameters: Object.freeze([
+        parameter("height", {
+          defaultValue: null,
+          isRequired: true,
+          minValue: null,
+          maxValue: null,
+          stepValue: null,
+        }),
+      ]),
+    });
+    const { service } = createService({ exercises: [exercise] });
+
+    await expect(
+      service.create("org-1", {
+        name: "Missing required value",
+        audienceId: "group-active",
+        exercises: [{ exerciseId: exercise.id }],
+      }),
+    ).rejects.toBeInstanceOf(UlcTrainingBlockParameterError);
+    await expect(
+      service.create("org-1", {
+        name: "Has required value",
+        audienceId: "group-active",
+        exercises: [
+          {
+            exerciseId: exercise.id,
+            parameterOverrides: [{ key: "height", value: "42" }],
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ currentRevision: 1 });
+  });
+
   it("does not append a revision when an update introduces an invalid reference", async () => {
     const { blocks, service } = createService();
     const created = await service.create("org-1", {
@@ -191,8 +309,8 @@ describe("ULC training block adapter", () => {
         },
       },
       exerciseCatalog: {
-        async findItemById() {
-          return undefined;
+        async listItems() {
+          return [];
         },
       },
     });
