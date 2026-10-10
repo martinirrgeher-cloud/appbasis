@@ -94,6 +94,8 @@ gegebenenfalls Medien gehören nicht in den Trainingsblock.
 - sortierte Übungsvorkommen mit eigener Item-ID, sodass dieselbe Übung mehrfach
   vorkommen kann;
 - sortierte Parameter-Overrides pro Übungsvorkommen;
+- technische Payload-Grenzen von höchstens 200 Übungsvorkommen pro Block und
+  50 Overrides pro Übungsvorkommen;
 - Domainnormalisierung und Grenztests;
 - noch keine ULC-Adoption, Runtime, UI, Preview-Migration oder Provideraktion.
 
