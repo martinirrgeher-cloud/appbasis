@@ -89,6 +89,35 @@ describe("training-blocks domain", () => {
     ).toThrow(/duplicate parameter override/);
   });
 
+  it("counts Unicode code points consistently with PostgreSQL char_length", () => {
+    const sixtyOneEmoji = "😀".repeat(61);
+    const oneHundredTwentyEmoji = "😀".repeat(120);
+    const oneHundredTwentyOneEmoji = "😀".repeat(121);
+
+    expect(
+      normalizeTrainingBlockDraft({
+        name: oneHundredTwentyEmoji,
+        audienceId: sixtyOneEmoji,
+        note: sixtyOneEmoji,
+        exercises: [
+          {
+            exerciseId: sixtyOneEmoji,
+            note: sixtyOneEmoji,
+            parameterOverrides: [
+              { key: sixtyOneEmoji, value: sixtyOneEmoji },
+            ],
+          },
+        ],
+      }).name,
+    ).toBe(oneHundredTwentyEmoji);
+
+    expect(() =>
+      normalizeTrainingBlockDraft({
+        name: oneHundredTwentyOneEmoji,
+      }),
+    ).toThrow(/between 1 and 120/);
+  });
+
   it("rejects invalid names, durations and oversized item collections", () => {
     expect(() =>
       normalizeTrainingBlockDraft({
