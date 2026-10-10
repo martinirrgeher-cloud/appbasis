@@ -636,10 +636,11 @@ async function applyManifestMigrations(
     "permissions",
     "athletes",
     "exercise-catalog",
+    "training-blocks",
     "ulc-linz-lifecycle",
   ]);
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 21 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 22 || new Set(migrations).size !== migrations.length) {
     throw new Error("ULC lifecycle persistence E2E requires the exact 21-migration owner set.");
   }
   for (const migration of migrations) {
