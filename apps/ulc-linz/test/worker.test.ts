@@ -12,6 +12,7 @@ import {
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
+import { TrainingBlockConflictError } from "@appbasis/training-blocks";
 import {
   ULC_LINZ_APP_CSS,
   ULC_LINZ_APP_HTML,
@@ -835,6 +836,303 @@ describe("generated identity+permissions Worker entrypoint", () => {
       },
       access: {
         view: true,
+      },
+    });
+  });
+
+
+  it("serves E7A4 training-block overview without client-owned organization scope", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingBlocks: {
+        ...base.trainingBlocks,
+        async listAudiences(organizationId) {
+          expect(organizationId).toBe("verein-1");
+          return [{ id: "group-u16", name: "U16", shortName: "U16" }];
+        },
+        async list(organizationId) {
+          expect(organizationId).toBe("verein-1");
+          return [{
+            id: "block-1",
+            organizationId,
+            isActive: true,
+            currentRevision: 2,
+            createdAt: "2026-10-10T10:00:00.000Z",
+            updatedAt: "2026-10-10T11:00:00.000Z",
+            revision: {
+              organizationId,
+              blockId: "block-1",
+              revision: 2,
+              name: "Sprint U16",
+              audienceId: "group-u16",
+              durationMinutes: 30,
+              note: null,
+              exercises: [],
+              createdAt: "2026-10-10T11:00:00.000Z",
+            },
+          }];
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/training-blocks", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      module: {
+        moduleId: "training_blocks",
+        capabilities: {
+          view: "training-blocks:view",
+          edit: "training-blocks:edit",
+        },
+        features: {
+          autosave: true,
+          revisions: true,
+          revisionComparison: true,
+        },
+      },
+      access: { view: true, edit: true },
+      audiences: [{ id: "group-u16", name: "U16", shortName: "U16" }],
+      blocks: [{
+        id: "block-1",
+        currentRevision: 2,
+        revision: { name: "Sprint U16", audienceId: "group-u16" },
+      }],
+    });
+    expect(JSON.stringify(payload)).not.toContain("organizationId");
+    expect(JSON.stringify(payload)).not.toContain("actorPrincipalId");
+  });
+
+  it("creates and updates training blocks only through server-owned scope", async () => {
+    const calls: unknown[] = [];
+    const base = runtime();
+    const snapshot = (revision: number, name: string) => ({
+      id: "block-created",
+      organizationId: "verein-1",
+      isActive: true,
+      currentRevision: revision,
+      createdAt: "2026-10-10T10:00:00.000Z",
+      updatedAt: "2026-10-10T11:00:00.000Z",
+      revision: {
+        organizationId: "verein-1",
+        blockId: "block-created",
+        revision,
+        name,
+        audienceId: "group-u16",
+        durationMinutes: 25,
+        note: null,
+        exercises: [],
+        createdAt: "2026-10-10T11:00:00.000Z",
+      },
+    });
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingBlocks: {
+        ...base.trainingBlocks,
+        async create(organizationId, input) {
+          calls.push(["create", organizationId, input]);
+          return snapshot(1, input.name);
+        },
+        async update(organizationId, blockId, expectedRevision, input) {
+          calls.push([
+            "update",
+            organizationId,
+            blockId,
+            expectedRevision,
+            input,
+          ]);
+          return snapshot(expectedRevision + 1, input.name);
+        },
+      },
+    }));
+
+    const create = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/training-blocks", {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken },
+        body: JSON.stringify({
+          name: "Sprint",
+          audienceId: "group-u16",
+          durationMinutes: 25,
+          note: null,
+          exercises: [],
+        }),
+      }),
+      validEnv,
+    );
+    expect(create.status).toBe(201);
+
+    const update = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-created/update",
+        {
+          method: "POST",
+          headers: { cookie: currentIdentity.sessionToken },
+          body: JSON.stringify({
+            expectedRevision: 1,
+            name: "Sprint neu",
+            audienceId: "group-u16",
+            durationMinutes: 25,
+            note: null,
+            exercises: [],
+          }),
+        },
+      ),
+      validEnv,
+    );
+    expect(update.status).toBe(200);
+    expect(calls).toEqual([
+      [
+        "create",
+        "verein-1",
+        {
+          name: "Sprint",
+          audienceId: "group-u16",
+          durationMinutes: 25,
+          note: null,
+          exercises: [],
+        },
+      ],
+      [
+        "update",
+        "verein-1",
+        "block-created",
+        1,
+        {
+          name: "Sprint neu",
+          audienceId: "group-u16",
+          durationMinutes: 25,
+          note: null,
+          exercises: [],
+        },
+      ],
+    ]);
+  });
+
+  it("rejects client-owned training-block scope and surfaces revision conflicts as 409", async () => {
+    const badScope = await createGeneratedWorker(() => runtime()).fetch(
+      new Request("https://ulc.example.test/api/modules/training-blocks", {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken },
+        body: JSON.stringify({
+          name: "Nicht erlaubt",
+          audienceId: "group-u16",
+          organizationId: "verein-fremd",
+        }),
+      }),
+      validEnv,
+    );
+    expect(badScope.status).toBe(400);
+    await expect(badScope.json()).resolves.toMatchObject({
+      error: { code: "INVALID_TRAINING_BLOCK" },
+    });
+
+    const base = runtime();
+    const conflict = await createGeneratedWorker(() => ({
+      ...base,
+      trainingBlocks: {
+        ...base.trainingBlocks,
+        async update() {
+          throw new TrainingBlockConflictError(2, 3);
+        },
+      },
+    })).fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-1/update",
+        {
+          method: "POST",
+          headers: { cookie: currentIdentity.sessionToken },
+          body: JSON.stringify({
+            expectedRevision: 2,
+            name: "Stale",
+            audienceId: "group-u16",
+            exercises: [],
+          }),
+        },
+      ),
+      validEnv,
+    );
+    expect(conflict.status).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({
+      error: {
+        code: "TRAINING_BLOCK_CONFLICT",
+        expectedRevision: 2,
+        currentRevision: 3,
+      },
+    });
+  });
+
+  it("serves training-block revision history and comparison read-only", async () => {
+    const base = runtime();
+    const revision = (number: number) => ({
+      organizationId: "verein-1",
+      blockId: "block-1",
+      revision: number,
+      name: "Sprint v" + String(number),
+      audienceId: "group-u16",
+      durationMinutes: 30,
+      note: null,
+      exercises: [],
+      createdAt: "2026-10-10T10:00:00.000Z",
+    });
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingBlocks: {
+        ...base.trainingBlocks,
+        async listRevisions() {
+          return [revision(1), revision(2)];
+        },
+        async findRevision(_organizationId, _blockId, number) {
+          return revision(number);
+        },
+        async compareRevisions(_organizationId, _blockId, from, to) {
+          return {
+            fromRevision: from,
+            toRevision: to,
+            hasChanges: true,
+            changedFields: ["name"],
+            addedItemIds: [],
+            removedItemIds: [],
+            changedItemIds: [],
+            reorderedItemIds: [],
+          };
+        },
+      },
+    }));
+
+    const revisions = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-1/revisions",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(revisions.status).toBe(200);
+    const revisionPayload = await revisions.json();
+    expect(revisionPayload.revisions).toHaveLength(2);
+    expect(JSON.stringify(revisionPayload)).not.toContain("organizationId");
+
+    const compare = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-1/compare?from=1&to=2",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(compare.status).toBe(200);
+    await expect(compare.json()).resolves.toMatchObject({
+      comparison: {
+        fromRevision: 1,
+        toRevision: 2,
+        hasChanges: true,
+        changedFields: ["name"],
       },
     });
   });
