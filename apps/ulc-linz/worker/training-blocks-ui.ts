@@ -351,6 +351,7 @@ let trainingBlockSaveTimer = null;
 let trainingBlockSaveBusy = false;
 let trainingBlockSavePending = false;
 let trainingBlockChangeVersion = 0;
+let trainingBlockCreateUncertain = false;
 
 function isTrainingBlockAudience(value) {
   return value !== null &&
@@ -615,6 +616,7 @@ function newTrainingBlock() {
   trainingBlockDirty = false;
   trainingBlockConflict = false;
   trainingBlockChangeVersion = 0;
+  trainingBlockCreateUncertain = false;
   populateTrainingBlockEditor();
   trainingBlockElements.name?.focus();
 }
@@ -634,6 +636,7 @@ async function openTrainingBlock(id) {
     trainingBlockDirty = false;
     trainingBlockConflict = false;
     trainingBlockChangeVersion = 0;
+    trainingBlockCreateUncertain = false;
     populateTrainingBlockEditor();
   } catch (error) {
     showMessage(
@@ -679,7 +682,10 @@ function populateTrainingBlockEditor() {
     trainingBlockElements.note.disabled =
       !trainingBlocksCanEdit || trainingBlockSelected?.isActive === false;
   }
-  if (trainingBlockElements.reload) trainingBlockElements.reload.hidden = true;
+  if (trainingBlockElements.reload) {
+    trainingBlockElements.reload.hidden = true;
+    trainingBlockElements.reload.textContent = "Aktuellen Stand neu laden";
+  }
   if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
   if (trainingBlockElements.deactivate) {
     trainingBlockElements.deactivate.hidden =
@@ -869,6 +875,10 @@ function markTrainingBlockDirty() {
   if (!trainingBlockDraft || !trainingBlocksCanEdit || trainingBlockConflict) return;
   trainingBlockChangeVersion += 1;
   trainingBlockDirty = true;
+  if (trainingBlockCreateUncertain) {
+    setTrainingBlockSaveState("error", "Anlagezustand unklar");
+    return;
+  }
   setTrainingBlockSaveState("saving", "Änderung vorgemerkt …");
   scheduleTrainingBlockSave();
 }
@@ -927,10 +937,19 @@ function trainingBlockDraftReady(payload) {
 }
 
 async function saveTrainingBlock() {
-  if (!trainingBlockDirty || !trainingBlocksCanEdit || trainingBlockConflict) return;
+  if (
+    !trainingBlockDirty ||
+    !trainingBlocksCanEdit ||
+    trainingBlockConflict ||
+    trainingBlockCreateUncertain
+  ) return;
   if (trainingBlockSaveBusy) {
     trainingBlockSavePending = true;
     return;
+  }
+  if (trainingBlockSaveTimer !== null) {
+    clearTimeout(trainingBlockSaveTimer);
+    trainingBlockSaveTimer = null;
   }
   syncTrainingBlockDraftFromFields();
   const payload = trainingBlockDraftPayload();
@@ -943,6 +962,7 @@ async function saveTrainingBlock() {
   }
 
   const saveVersion = trainingBlockChangeVersion;
+  const creating = trainingBlockSelected === null;
   let saveSucceeded = false;
   trainingBlockSaveBusy = true;
   trainingBlockSavePending = false;
@@ -998,6 +1018,21 @@ async function saveTrainingBlock() {
       showMessage(
         trainingBlockElements.editorMessage,
         "Der Block wurde parallel geändert. Bitte aktuellen Stand neu laden; deine lokale Änderung wird nicht still überschrieben.",
+      );
+    } else if (
+      creating &&
+      (error?.status === 0 || (typeof error?.status === "number" && error.status >= 500))
+    ) {
+      trainingBlockCreateUncertain = true;
+      setTrainingBlockSaveState("error", "Anlagezustand unklar");
+      if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
+      if (trainingBlockElements.reload) {
+        trainingBlockElements.reload.hidden = false;
+        trainingBlockElements.reload.textContent = "Übersicht neu laden";
+      }
+      showMessage(
+        trainingBlockElements.editorMessage,
+        "Die Verbindung brach beim Anlegen ab. Der Block könnte bereits gespeichert sein. Bitte Übersicht neu laden, bevor du erneut anlegst.",
       );
     } else {
       setTrainingBlockSaveState("error", "Speichern fehlgeschlagen");
@@ -1070,6 +1105,7 @@ function closeTrainingBlockEditor(force = false) {
   trainingBlockDirty = false;
   trainingBlockConflict = false;
   trainingBlockChangeVersion = 0;
+  trainingBlockCreateUncertain = false;
   if (trainingBlockElements.editor) trainingBlockElements.editor.hidden = true;
   document.body.classList.remove("training-block-editor-open");
   showMessage(trainingBlockElements.editorMessage, "");
@@ -1080,7 +1116,8 @@ function retryTrainingBlockSave() {
     !trainingBlockDraft ||
     !trainingBlocksCanEdit ||
     trainingBlockSaveBusy ||
-    trainingBlockConflict
+    trainingBlockConflict ||
+    trainingBlockCreateUncertain
   ) return;
   trainingBlockDirty = true;
   if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
@@ -1088,6 +1125,18 @@ function retryTrainingBlockSave() {
 }
 
 async function reloadTrainingBlock() {
+  if (trainingBlockCreateUncertain) {
+    if (
+      window.confirm(
+        "Die Seite wird neu geladen, damit geprüft werden kann, ob der Block bereits angelegt wurde. Lokale, nicht bestätigte Änderungen werden verworfen.",
+      )
+    ) {
+      trainingBlockDirty = false;
+      trainingBlockCreateUncertain = false;
+      window.location.reload();
+    }
+    return;
+  }
   if (!trainingBlockSelected) return;
   const id = trainingBlockSelected.id;
   if (
@@ -1237,8 +1286,19 @@ async function deactivateTrainingBlock() {
     !trainingBlockSelected ||
     !trainingBlockSelected.isActive ||
     !trainingBlocksCanEdit ||
-    !window.confirm("Diesen Trainingsblock archivieren?")
+    trainingBlockConflict ||
+    trainingBlockCreateUncertain
   ) return;
+  if (trainingBlockDirty) {
+    await saveTrainingBlock();
+    if (
+      trainingBlockDirty ||
+      trainingBlockSaveBusy ||
+      trainingBlockConflict ||
+      trainingBlockCreateUncertain
+    ) return;
+  }
+  if (!window.confirm("Diesen Trainingsblock archivieren?")) return;
   try {
     const payload = await requestJson(
       "/api/modules/training-blocks/" +
