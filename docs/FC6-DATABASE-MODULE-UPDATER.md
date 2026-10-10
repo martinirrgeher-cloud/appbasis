@@ -94,6 +94,10 @@ Verbindliche Grenzen:
 
 - direkter PostgreSQL-Zielvertrag; kein Hyperdrive als Migration-Credential;
 - Zielidentität muss vor dem ersten SQL-Statement verifiziert sein;
+- innerhalb der Migrationstransaktion pinnt der Executor den PostgreSQL-
+  `search_path` vor Katalogprüfung und Target-DDL auf `public`; damit bleiben
+  unqualifizierte Same-Owner-Tabellen und Foreign Keys unabhängig von
+  Connection-/Rollen-Defaults eindeutig im kanonischen App-Schema;
 - die erwartete bestehende Baseline muss nachweisbar zum Ausgangsvertrag der App
   passen; unbekannter oder widersprüchlicher DB-Zustand wird abgewiesen;
 - ausgeführt werden ausschließlich die im FC6-A-Delta enthaltenen
