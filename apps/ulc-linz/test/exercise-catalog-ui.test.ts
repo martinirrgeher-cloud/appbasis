@@ -150,6 +150,23 @@ describe("ULC E6C exercise catalog UI", () => {
     }
   });
 
+  it("creates a new exercise draft from an existing exercise without cloning personal or runtime history", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="exercise-catalog-clone"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("function cloneExerciseCatalogItem()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("function exerciseCatalogCloneName(name)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("exerciseCatalogCloneSourceId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("{ cloneSourceId: sourceId }");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("isFavorite: false");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "candidate?.exerciseId !== exerciseCatalogCloneSourceId",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"Übung aus Vorlage anlegen"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId");
+  });
+
   it("acknowledges committed mutations without a second refresh request", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "reconcileExerciseCatalogItem(payload.item);",
