@@ -2,10 +2,7 @@ import type {
   AthleteMasterdataSnapshot,
   TrainingGroup,
 } from "@appbasis/athletes";
-import type {
-  ExerciseCatalogItem,
-  ExerciseCatalogRepository,
-} from "@appbasis/exercise-catalog";
+import type { ExerciseCatalogRepository } from "@appbasis/exercise-catalog";
 import {
   normalizeTrainingBlockDraft,
   type CreateTrainingBlockDraftInput,
@@ -231,10 +228,3 @@ function audienceFromGroup(group: TrainingGroup): UlcTrainingBlockAudience {
   });
 }
 
-// Compile-time proof that standard catalog entities carry the tenant/lifecycle
-// fields this adapter validates without importing any ULC-specific catalog type.
-const _exerciseContract: Pick<
-  ExerciseCatalogItem,
-  "organizationId" | "isActive"
-> | null = null;
-void _exerciseContract;

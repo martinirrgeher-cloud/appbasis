@@ -345,6 +345,22 @@ function runtime(
         };
       },
     },
+    trainingBlocksAccess: {
+      async assertViewAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: currentIdentity.identity.identityId,
+          canEdit: true,
+        };
+      },
+      async assertEditAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: currentIdentity.identity.identityId,
+          canEdit: true,
+        };
+      },
+    },
     kindertrainingAccess,
     u12Access,
     trainerIdentityAccess: {
@@ -382,6 +398,35 @@ function runtime(
     athleteMasterdata,
     kindertraining,
     u12,
+    trainingBlocks: {
+      async listAudiences() {
+        return [];
+      },
+      async list() {
+        return [];
+      },
+      async findCurrent() {
+        return undefined;
+      },
+      async create() {
+        throw new Error("training-block mock create is not wired to an E7A3 HTTP route");
+      },
+      async update() {
+        throw new Error("training-block mock update is not wired to an E7A3 HTTP route");
+      },
+      async deactivate() {
+        return undefined;
+      },
+      async listRevisions() {
+        return [];
+      },
+      async findRevision() {
+        return undefined;
+      },
+      async compareRevisions() {
+        return undefined;
+      },
+    },
     exerciseCatalogRuntimeMode: "standard-module",
     exerciseCatalogMediaStore: null,
     exerciseCatalog: {
