@@ -104,6 +104,10 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
       if (currentRevision !== expectedRevision) {
         return Object.freeze({ status: "conflict" as const, currentRevision });
       }
+      const isActive = requiredBoolean(row.is_active, "active flag");
+      if (!isActive) {
+        return Object.freeze({ status: "inactive" as const, currentRevision });
+      }
       if (
         revision.organizationId !== organizationId ||
         revision.blockId !== blockId ||
@@ -135,7 +139,7 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
       const block = Object.freeze({
         id: blockId,
         organizationId,
-        isActive: requiredBoolean(row.is_active, "active flag"),
+        isActive,
         currentRevision: revision.revision,
         createdAt: normalizedTimestamp(requiredString(row.created_at, "created timestamp")),
         updatedAt: revision.createdAt,

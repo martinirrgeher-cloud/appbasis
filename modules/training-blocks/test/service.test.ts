@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryTrainingBlockRepository,
   TrainingBlockConflictError,
+  TrainingBlockInactiveError,
   TrainingBlockService,
   TrainingBlockValidationError,
 } from "../src/index";
@@ -133,6 +134,9 @@ describe("training-blocks service", () => {
       isActive: false,
       currentRevision: 1,
     });
+    await expect(
+      service.update("org-a", "block-a", 1, { name: "A stale autosave" }),
+    ).rejects.toBeInstanceOf(TrainingBlockInactiveError);
     await expect(service.listRevisions("org-a", "block-a")).resolves.toHaveLength(1);
     await expect(service.list("org-a")).resolves.toHaveLength(1);
     await expect(service.list("org-b")).resolves.toEqual([

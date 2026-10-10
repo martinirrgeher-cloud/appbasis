@@ -35,6 +35,7 @@ export interface TrainingBlockSnapshot {
 export type TrainingBlockRevisionAppendResult =
   | Readonly<{ status: "updated"; block: TrainingBlockSnapshot }>
   | Readonly<{ status: "not-found" }>
+  | Readonly<{ status: "inactive"; currentRevision: number }>
   | Readonly<{ status: "conflict"; currentRevision: number }>;
 
 export type TrainingBlockDeactivateResult =

@@ -40,6 +40,18 @@ export class TrainingBlockConflictError extends Error {
   }
 }
 
+export class TrainingBlockInactiveError extends Error {
+  readonly blockId: string;
+  readonly currentRevision: number;
+
+  constructor(blockId: string, currentRevision: number) {
+    super(`Training block ${blockId} is inactive at revision ${currentRevision}.`);
+    this.name = "TrainingBlockInactiveError";
+    this.blockId = blockId;
+    this.currentRevision = currentRevision;
+  }
+}
+
 export interface TrainingBlockRevisionComparison {
   readonly fromRevision: number;
   readonly toRevision: number;
@@ -170,6 +182,9 @@ export class TrainingBlockService {
     if (current.currentRevision !== expected) {
       throw new TrainingBlockConflictError(expected, current.currentRevision);
     }
+    if (!current.isActive) {
+      throw new TrainingBlockInactiveError(id, current.currentRevision);
+    }
 
     const rawExercises = input.exercises ?? [];
     if (!Array.isArray(rawExercises)) {
@@ -232,6 +247,9 @@ export class TrainingBlockService {
     if (result.status === "not-found") return undefined;
     if (result.status === "conflict") {
       throw new TrainingBlockConflictError(expected, result.currentRevision);
+    }
+    if (result.status === "inactive") {
+      throw new TrainingBlockInactiveError(id, result.currentRevision);
     }
     return this.#assertBlock(result.block, organization, id);
   }

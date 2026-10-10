@@ -57,6 +57,9 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
     if (current.currentRevision !== expectedRevision) {
       return Object.freeze({ status: "conflict", currentRevision: current.currentRevision });
     }
+    if (!current.isActive) {
+      return Object.freeze({ status: "inactive", currentRevision: current.currentRevision });
+    }
     assertRevisionScope(revision, organizationId, blockId);
     if (revision.revision !== expectedRevision + 1) {
       throw new Error("Training block next revision is not sequential.");

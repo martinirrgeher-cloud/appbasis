@@ -8,6 +8,7 @@ import {
   InMemoryTrainingBlockRepository,
   PostgresTrainingBlockRepository,
   TrainingBlockConflictError,
+  TrainingBlockInactiveError,
   TrainingBlockService,
   type TrainingBlockPostgresClient,
 } from "../src/index";
@@ -197,6 +198,75 @@ describe("training-blocks PostgreSQL repository", () => {
       await leftConnection.client.end();
       await rightConnection.client.end();
     }
+  });
+
+  it("serializes update versus deactivation so an archived block cannot receive a later revision", async () => {
+    const seed = serviceFor(requiredConnection(), ["block-lifecycle", "item-lifecycle"]);
+    await seed.create("org-lifecycle", {
+      name: "Lifecycle",
+      exercises: [{ exerciseId: "exercise-1" }],
+    });
+
+    const updateConnection = createPostgresDatabase(isolatedDatabaseUrl);
+    const deactivateConnection = createPostgresDatabase(isolatedDatabaseUrl);
+    try {
+      const updater = serviceFor(updateConnection, []);
+      const deactivator = serviceFor(deactivateConnection, []);
+      const results = await Promise.allSettled([
+        updater.update("org-lifecycle", "block-lifecycle", 1, {
+          name: "Lifecycle updated",
+          exercises: [{ itemId: "item-lifecycle", exerciseId: "exercise-1" }],
+        }),
+        deactivator.deactivate("org-lifecycle", "block-lifecycle", 1),
+      ]);
+
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      const rejected = results.find((result) => result.status === "rejected");
+      expect(rejected).toMatchObject({ status: "rejected" });
+      if (rejected?.status === "rejected") {
+        expect(
+          rejected.reason instanceof TrainingBlockConflictError ||
+            rejected.reason instanceof TrainingBlockInactiveError,
+        ).toBe(true);
+      }
+
+      const current = await seed.findCurrent("org-lifecycle", "block-lifecycle");
+      expect(current).toBeDefined();
+      if (current?.isActive) {
+        expect(current.currentRevision).toBe(2);
+        await expect(seed.listRevisions("org-lifecycle", "block-lifecycle")).resolves.toHaveLength(2);
+      } else {
+        expect(current?.currentRevision).toBe(1);
+        await expect(seed.listRevisions("org-lifecycle", "block-lifecycle")).resolves.toHaveLength(1);
+      }
+    } finally {
+      await updateConnection.client.end();
+      await deactivateConnection.client.end();
+    }
+  });
+
+  it("rejects a stale revision append after deactivation even when the revision number still matches", async () => {
+    const repository = new PostgresTrainingBlockRepository(
+      postgresClient(requiredConnection().client),
+    );
+    const service = new TrainingBlockService({
+      repository,
+      createId: () => "block-archived",
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    const created = await service.create("org-archived", { name: "Archived" });
+    await service.deactivate("org-archived", "block-archived", 1);
+
+    const staleRevision = Object.freeze({
+      ...created.revision,
+      revision: 2,
+      name: "Stale autosave",
+      createdAt: "2026-10-10T10:05:00.000Z",
+    });
+    await expect(
+      repository.appendRevision("org-archived", "block-archived", 1, staleRevision),
+    ).resolves.toEqual({ status: "inactive", currentRevision: 1 });
+    await expect(service.listRevisions("org-archived", "block-archived")).resolves.toHaveLength(1);
   });
 
   it("keeps list ordering identical across in-memory and PostgreSQL adapters", async () => {
