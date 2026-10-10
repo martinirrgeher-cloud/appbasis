@@ -45,16 +45,16 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                   <section class="card training-block-form-card">
                     <div class="training-block-form-grid">
                       <label class="training-block-wide">Name
-                        <input id="training-block-name" minlength="2" maxlength="120" />
+                        <input id="training-block-name" minlength="1" maxlength="120" />
                       </label>
                       <label>Trainingsgruppe
                         <select id="training-block-audience"></select>
                       </label>
                       <label>Dauer (Min.)
-                        <input id="training-block-duration" type="number" min="1" max="1440" step="1" inputmode="numeric" placeholder="Optional" />
+                        <input id="training-block-duration" type="number" min="1" max="2147483647" step="1" inputmode="numeric" placeholder="Optional" />
                       </label>
                       <label class="training-block-wide">Notiz
-                        <textarea id="training-block-note" maxlength="10000" rows="3" placeholder="Optional"></textarea>
+                        <textarea id="training-block-note" maxlength="3000" rows="3" placeholder="Optional"></textarea>
                       </label>
                     </div>
                   </section>
@@ -370,7 +370,7 @@ function isTrainingBlockRevision(value) {
     !Number.isSafeInteger(value.revision) ||
     value.revision < 1 ||
     typeof value.name !== "string" ||
-    value.name.length < 2 ||
+    value.name.length < 1 ||
     (value.audienceId !== null && typeof value.audienceId !== "string") ||
     (value.durationMinutes !== null &&
       (!Number.isSafeInteger(value.durationMinutes) || value.durationMinutes < 1)) ||
@@ -746,14 +746,22 @@ function renderTrainingBlockExercisePicker() {
   }
   const editable =
     trainingBlocksCanEdit && trainingBlockSelected?.isActive !== false;
-  select.disabled = !editable || !exerciseCatalogReady || activeItems.length === 0;
+  const atExerciseLimit =
+    (trainingBlockDraft?.exercises.length || 0) >= 200;
+  select.disabled =
+    !editable ||
+    !exerciseCatalogReady ||
+    activeItems.length === 0 ||
+    atExerciseLimit;
   if (trainingBlockElements.exerciseAdd) {
     trainingBlockElements.exerciseAdd.disabled = select.disabled;
   }
   if (trainingBlockElements.catalogHint) {
-    trainingBlockElements.catalogHint.textContent = exerciseCatalogReady
-      ? "Dieselbe Übung kann mehrfach hinzugefügt werden."
-      : "Übungen können erst hinzugefügt werden, wenn der Übungskatalog geladen ist.";
+    trainingBlockElements.catalogHint.textContent = atExerciseLimit
+      ? "Maximal 200 Übungen pro Trainingsblock."
+      : exerciseCatalogReady
+        ? "Dieselbe Übung kann mehrfach hinzugefügt werden."
+        : "Übungen können erst hinzugefügt werden, wenn der Übungskatalog geladen ist.";
   }
 }
 
@@ -813,7 +821,7 @@ function renderTrainingBlockExercises() {
     note.className = "training-block-exercise__note";
     note.textContent = "Notiz";
     const noteInput = document.createElement("input");
-    noteInput.maxLength = 3000;
+    noteInput.maxLength = 2000;
     noteInput.value = draft.note || "";
     noteInput.disabled = !editable;
     noteInput.dataset.trainingBlockExerciseNote = String(index);
@@ -927,13 +935,13 @@ function trainingBlockDraftPayload() {
 function trainingBlockDraftReady(payload) {
   return payload &&
     typeof payload.name === "string" &&
-    payload.name.length >= 2 &&
+    payload.name.length >= 1 &&
     typeof payload.audienceId === "string" &&
     payload.audienceId.length > 0 &&
     (payload.durationMinutes === null ||
       (Number.isSafeInteger(payload.durationMinutes) &&
         payload.durationMinutes >= 1 &&
-        payload.durationMinutes <= 1440));
+        payload.durationMinutes <= 2_147_483_647));
 }
 
 async function saveTrainingBlock() {
@@ -1090,10 +1098,11 @@ function closeTrainingBlockEditor(force = false) {
     );
     return;
   }
-  if (!force && trainingBlockDirty && !trainingBlockConflict) {
-    if (!window.confirm("Es gibt noch nicht gespeicherte Änderungen. Trotzdem schließen?")) {
-      return;
-    }
+  if (!force && trainingBlockDirty) {
+    const message = trainingBlockConflict
+      ? "Es gibt lokale Änderungen mit einem Versionskonflikt. Lokale Änderungen wirklich verwerfen?"
+      : "Es gibt noch nicht gespeicherte Änderungen. Trotzdem schließen?";
+    if (!window.confirm(message)) return;
   }
   if (trainingBlockSaveTimer !== null) {
     clearTimeout(trainingBlockSaveTimer);
@@ -1150,7 +1159,8 @@ function addTrainingBlockExercise() {
   if (
     !trainingBlockDraft ||
     !trainingBlocksCanEdit ||
-    trainingBlockSaveBusy
+    trainingBlockSaveBusy ||
+    trainingBlockDraft.exercises.length >= 200
   ) return;
   const id = trainingBlockElements.exercisePicker?.value || "";
   if (!id || !trainingBlockExerciseItem(id)) return;

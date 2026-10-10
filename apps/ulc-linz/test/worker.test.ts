@@ -604,6 +604,9 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="3" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
+    expect(ULC_LINZ_APP_HTML).toContain('minlength="1" maxlength="120"');
+    expect(ULC_LINZ_APP_HTML).toContain('maxlength="3000"');
+    expect(ULC_LINZ_APP_HTML).toContain('max="2147483647"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save-state"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-retry"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-exercise-picker"');
@@ -618,6 +621,9 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlockDirty && !trainingBlockSaveBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshTrainingBlockCatalogDependency");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockCreateUncertain");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("noteInput.maxLength = 2000");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDraft.exercises.length >= 200");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("lokale Änderungen mit einem Versionskonflikt");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Der Block könnte bereits gespeichert sein");
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (trainingBlockDirty) {\n    await saveTrainingBlock();");
     expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlocksCanEdit || trainingBlockSaveBusy");
