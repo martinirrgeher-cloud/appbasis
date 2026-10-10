@@ -3,6 +3,11 @@ import {
   ULC_EXERCISE_CATALOG_HTML,
   ULC_EXERCISE_CATALOG_SCRIPT,
 } from "./exercise-catalog-ui";
+import {
+  ULC_TRAINING_BLOCKS_CSS,
+  ULC_TRAINING_BLOCKS_HTML,
+  ULC_TRAINING_BLOCKS_SCRIPT,
+} from "./training-blocks-ui";
 
 export const ULC_LINZ_APP_HTML = `<!doctype html>
 <html lang="de">
@@ -58,9 +63,10 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
             <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="1" hidden disabled>Training</button>
             <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="2" hidden disabled>Übungen</button>
-            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="3" hidden disabled>Stammdaten</button>
-            <button class="app-nav__link" type="button" data-nav-view="countdown" data-nav-priority="4" hidden disabled>Countdown</button>
-            <button class="app-nav__link" type="button" data-nav-view="settings" data-nav-priority="5" hidden disabled>Einstellungen</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="3" hidden disabled>Blöcke</button>
+            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="4" hidden disabled>Stammdaten</button>
+            <button class="app-nav__link" type="button" data-nav-view="countdown" data-nav-priority="5" hidden disabled>Countdown</button>
+            <button class="app-nav__link" type="button" data-nav-view="settings" data-nav-priority="6" hidden disabled>Einstellungen</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
           </div>
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden></div>
@@ -103,6 +109,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="exercise-catalog-quick-action" type="button" data-open-view="exercise-catalog" disabled>Übungskatalog öffnen</button>
                 <small id="exercise-catalog-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary">
+                <div>
+                  <p class="eyebrow">Training</p>
+                  <h2>Trainingsblöcke</h2>
+                  <p>Trainingsvorlagen zusammenstellen, automatisch speichern und Versionen vergleichen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="training-block-quick-action" type="button" data-open-view="training-blocks" disabled>Trainingsblöcke öffnen</button>
+                <small id="training-block-access-label">Berechtigung wird geprüft …</small>
               </article>
 
               <article class="card dashboard-card">
@@ -358,6 +374,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
           </section>
 
 ${ULC_EXERCISE_CATALOG_HTML}
+${ULC_TRAINING_BLOCKS_HTML}
 
           <section class="app-section" data-app-section="countdown" id="countdown" hidden>
             <section class="hero">
@@ -1004,6 +1021,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   .settings-panel { padding: 20px; }
 }
 ${ULC_EXERCISE_CATALOG_CSS}
+${ULC_TRAINING_BLOCKS_CSS}
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
@@ -1151,6 +1169,7 @@ const APP_NAV_PRIORITY = Object.freeze([
   "home",
   "kindertraining",
   "exercise-catalog",
+  "training-blocks",
   "masterdata",
   "countdown",
   "settings",
@@ -1284,6 +1303,8 @@ for (const control of document.querySelectorAll("[data-open-view]")) {
 
 ${ULC_EXERCISE_CATALOG_SCRIPT}
 
+${ULC_TRAINING_BLOCKS_SCRIPT}
+
 void restoreSession();
 
 async function restoreSession() {
@@ -1383,7 +1404,9 @@ async function acceptSession(next) {
     bootstrapMasterdata(),
     bootstrapKindertraining(),
     bootstrapExerciseCatalog(),
+    bootstrapTrainingBlocks(),
   ]);
+  refreshTrainingBlockCatalogDependency();
 }
 
 async function bootstrapKindertraining() {
@@ -1501,6 +1524,7 @@ function isAppNavigationAvailable(section) {
   if (section === "masterdata") return masterdataReady;
   if (section === "kindertraining") return kindertrainingReady;
   if (section === "exercise-catalog") return exerciseCatalogReady;
+  if (section === "training-blocks") return trainingBlocksReady;
   if (section === "countdown" || section === "settings") return countdownReady;
   return false;
 }
@@ -1579,6 +1603,7 @@ function syncAppNavigationActive(section) {
 
 function refreshAppAvailability() {
   refreshAppNavigation();
+  refreshTrainingBlockControls();
   if (elements.exerciseCatalogQuickAction) {
     elements.exerciseCatalogQuickAction.disabled = !exerciseCatalogReady;
   }
@@ -1649,7 +1674,8 @@ function showAppSection(section) {
     ((section === "countdown" || section === "settings") && countdownReady) ||
     (section === "masterdata" && masterdataReady) ||
     (section === "kindertraining" && kindertrainingReady) ||
-    (section === "exercise-catalog" && exerciseCatalogReady);
+    (section === "exercise-catalog" && exerciseCatalogReady) ||
+    (section === "training-blocks" && trainingBlocksReady);
   const target = allowed ? section : "home";
   for (const candidate of document.querySelectorAll("[data-app-section]")) {
     candidate.hidden = candidate.dataset.appSection !== target;
@@ -1664,6 +1690,7 @@ function showAppSection(section) {
   if (target === "masterdata") void loadMasterdata();
   if (target === "kindertraining") prepareKindertrainingView();
   if (target === "exercise-catalog") prepareExerciseCatalogView();
+  if (target === "training-blocks") prepareTrainingBlocksView();
 }
 
 function prepareKindertrainingView() {
