@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "training-blocks",
+  "displayName": "Trainingsblöcke",
+  "packageName": "@appbasis/training-blocks",
+  "compatibility": {
+    "appDefinitionSchemaVersions": [
+      2
+    ]
+  },
+  "capabilities": [
+    "training-blocks:edit",
+    "training-blocks:view"
+  ],
+  "database": {
+    "schemaVersion": 1,
+    "migrations": [
+      "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql"
+    ]
+  }
+}
