@@ -291,6 +291,14 @@ export async function applyModuleUpdateMigrations(
       });
 
       await transaction`
+        SELECT pg_catalog.set_config(
+          'search_path',
+          'public',
+          true
+        ) AS configured_search_path
+      `;
+
+      await transaction`
         SELECT pg_advisory_xact_lock(
           hashtextextended(
             ${`${executionPlan.application}:${executionPlan.moduleId}`},
