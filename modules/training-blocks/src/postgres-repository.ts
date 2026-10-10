@@ -1,4 +1,5 @@
 import {
+  assertTrainingBlockCreationInvariant,
   compareTrainingBlockSnapshots,
   type TrainingBlockDeactivateResult,
   type TrainingBlockRepository,
@@ -53,6 +54,7 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
   }
 
   async create(block: TrainingBlockSnapshot): Promise<TrainingBlockSnapshot> {
+    assertTrainingBlockCreationInvariant(block);
     await this.#client.begin(async (transaction) => {
       const rows = await transaction.unsafe(
         `INSERT INTO appbasis_training_block (

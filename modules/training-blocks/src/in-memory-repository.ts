@@ -1,4 +1,5 @@
 import {
+  assertTrainingBlockCreationInvariant,
   compareTrainingBlockSnapshots,
   type TrainingBlockDeactivateResult,
   type TrainingBlockRepository,
@@ -37,10 +38,7 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
     const stored = cloneBlock(block);
     const key = blockKey(stored.organizationId, stored.id);
     if (this.#blockIds.has(stored.id)) throw new Error("Training block already exists.");
-    if (stored.currentRevision !== 1 || stored.revision.revision !== 1) {
-      throw new Error("Training block creation must start at revision 1.");
-    }
-    assertRevisionScope(stored.revision, stored.organizationId, stored.id);
+    assertTrainingBlockCreationInvariant(stored);
     this.#blocks.set(key, stored);
     this.#blockIds.add(stored.id);
     this.#revisions.set(key, new Map([[1, cloneRevision(stored.revision)]]));

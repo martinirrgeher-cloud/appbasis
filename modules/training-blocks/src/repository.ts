@@ -81,3 +81,17 @@ export function compareTrainingBlockSnapshots(
     left.id.localeCompare(right.id)
   );
 }
+
+export function assertTrainingBlockCreationInvariant(
+  block: TrainingBlockSnapshot,
+): void {
+  if (block.currentRevision !== 1 || block.revision.revision !== 1) {
+    throw new Error("Training block creation must start at revision 1.");
+  }
+  if (
+    block.revision.organizationId !== block.organizationId ||
+    block.revision.blockId !== block.id
+  ) {
+    throw new Error("Training block revision escaped its block scope.");
+  }
+}

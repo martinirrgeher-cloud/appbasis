@@ -120,6 +120,49 @@ describe("training-blocks PostgreSQL repository", () => {
     await expect(service.listRevisions("org-a", "block-1")).resolves.toHaveLength(2);
   });
 
+  it("rejects direct PostgreSQL creation that violates the shared revision-one contract", async () => {
+    const repository = new PostgresTrainingBlockRepository(
+      postgresClient(requiredConnection().client),
+    );
+    const invalidRevision = Object.freeze({
+      id: "direct-invalid-revision",
+      organizationId: "org-direct",
+      isActive: true,
+      currentRevision: 2,
+      createdAt: "2026-10-10T10:00:00.000Z",
+      updatedAt: "2026-10-10T10:00:00.000Z",
+      revision: Object.freeze({
+        organizationId: "org-direct",
+        blockId: "direct-invalid-revision",
+        revision: 2,
+        name: "Invalid",
+        audienceId: null,
+        durationMinutes: null,
+        note: null,
+        exercises: Object.freeze([]),
+        createdAt: "2026-10-10T10:00:00.000Z",
+      }),
+    });
+    const invalidScope = Object.freeze({
+      ...invalidRevision,
+      id: "direct-invalid-scope",
+      currentRevision: 1,
+      revision: Object.freeze({
+        ...invalidRevision.revision,
+        blockId: "other-block",
+        revision: 1,
+      }),
+    });
+
+    await expect(repository.create(invalidRevision)).rejects.toThrow(
+      "Training block creation must start at revision 1.",
+    );
+    await expect(repository.create(invalidScope)).rejects.toThrow(
+      "Training block revision escaped its block scope.",
+    );
+    await expect(repository.listCurrent("org-direct")).resolves.toEqual([]);
+  });
+
   it("serializes concurrent updates so exactly one expected revision wins", async () => {
     const seed = serviceFor(requiredConnection(), ["block-race", "item-race"]);
     await seed.create("org-race", {
