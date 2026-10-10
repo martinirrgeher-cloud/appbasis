@@ -16,7 +16,7 @@ training sessions, attendance and later athlete/day planning.
 The foundation is revision-ready from the first schema:
 
 - one current block identity with active/inactive lifecycle;
-- immutable numbered revisions for block metadata;
+- numbered revision rows for block metadata; E7A2 will enforce their immutable write contract;
 - one opaque audience/group reference per revision;
 - optional duration;
 - ordered exercise occurrences, including repeated use of the same exercise;
