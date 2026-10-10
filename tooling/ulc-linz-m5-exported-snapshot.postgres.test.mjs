@@ -81,6 +81,7 @@ test("M5 least-privilege snapshot, pg_dump and pg_restore rehearse the canonical
         permissions: "packages/permissions",
         athletes: "modules/athletes",
         "exercise-catalog": "modules/exercise-catalog",
+        "training-blocks": "modules/training-blocks",
         "ulc-linz-lifecycle": "apps/ulc-linz",
       },
     });

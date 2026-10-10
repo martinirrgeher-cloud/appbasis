@@ -321,7 +321,7 @@ describe("ULC training block adapter", () => {
         audienceId: "group-active",
         exercises: [
           {
-            itemId: created.revision.exercises[0]?.itemId,
+            itemId: created.revision.exercises[0]!.itemId,
             exerciseId: "exercise-missing",
           },
         ],
