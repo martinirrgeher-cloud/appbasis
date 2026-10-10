@@ -151,6 +151,7 @@ function optionalIdentifier(value: unknown, label: string): string | null {
 function requiredIdentifier(value: unknown, label: string): string {
   if (
     typeof value !== "string" ||
+    !isPostgresTextCompatible(value) ||
     codePointLength(value) === 0 ||
     codePointLength(value) > 200 ||
     value.trim() !== value
@@ -167,6 +168,11 @@ function requiredText(
 ): string {
   if (typeof value !== "string") {
     throw new TrainingBlockValidationError(`${label} must be text.`);
+  }
+  if (!isPostgresTextCompatible(value)) {
+    throw new TrainingBlockValidationError(
+      `${label} contains unsupported characters.`,
+    );
   }
   const normalized = value.trim();
   const length = codePointLength(normalized);
@@ -187,6 +193,11 @@ function optionalText(
   if (typeof value !== "string") {
     throw new TrainingBlockValidationError(`${label} must be text.`);
   }
+  if (!isPostgresTextCompatible(value)) {
+    throw new TrainingBlockValidationError(
+      `${label} contains unsupported characters.`,
+    );
+  }
   const normalized = value.trim();
   const length = codePointLength(normalized);
   if (length === 0) return null;
@@ -200,6 +211,29 @@ function optionalText(
 
 function codePointLength(value: string): number {
   return Array.from(value).length;
+}
+
+function isPostgresTextCompatible(value: string): boolean {
+  if (value.includes("\0")) return false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (!(nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff)) {
+        return false;
+      }
+      index += 1;
+      continue;
+    }
+
+    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
