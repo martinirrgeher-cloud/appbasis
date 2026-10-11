@@ -367,6 +367,18 @@ function isCurrentTrainingBlockSelection(blockId, requestId) {
   );
 }
 
+function invalidateTrainingBlockOverviewRefresh() {
+  trainingBlockAudienceRequestId += 1;
+}
+
+function invalidateTrainingBlockComparison() {
+  trainingBlockCompareRequestId += 1;
+  if (trainingBlockElements.comparison) {
+    trainingBlockElements.comparison.hidden = true;
+    trainingBlockElements.comparison.textContent = "";
+  }
+}
+
 function isTrainingBlockAudience(value) {
   return value !== null &&
     typeof value === "object" &&
@@ -1290,6 +1302,7 @@ async function saveTrainingBlock() {
       throw new Error("INVALID_TRAINING_BLOCK_SAVE");
     }
     saveSucceeded = true;
+    invalidateTrainingBlockOverviewRefresh();
     trainingBlockSelected = response.block;
     syncTrainingBlockItemIds(response.block);
     resetTrainingBlockHistory();
@@ -1716,6 +1729,7 @@ async function deactivateTrainingBlock() {
     if (!isTrainingBlockSnapshot(payload?.block)) {
       throw new Error("INVALID_TRAINING_BLOCK_DEACTIVATE");
     }
+    invalidateTrainingBlockOverviewRefresh();
     replaceTrainingBlockInList(payload.block);
     trainingBlockDeactivateBusy = false;
     closeTrainingBlockEditor(true);
@@ -1975,6 +1989,8 @@ trainingBlockElements.exercises?.addEventListener("input", handleTrainingBlockEx
 trainingBlockElements.deactivate?.addEventListener("click", () => void deactivateTrainingBlock());
 trainingBlockElements.historyLoad?.addEventListener("click", () => void loadTrainingBlockHistory());
 trainingBlockElements.compare?.addEventListener("click", () => void compareTrainingBlockRevisions());
+trainingBlockElements.compareFrom?.addEventListener("change", invalidateTrainingBlockComparison);
+trainingBlockElements.compareTo?.addEventListener("change", invalidateTrainingBlockComparison);
 trainingBlockElements.infoClose?.addEventListener("click", closeTrainingBlockExerciseInfo);
 for (const control of [
   trainingBlockElements.name,
