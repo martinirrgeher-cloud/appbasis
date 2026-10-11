@@ -9,6 +9,8 @@ import type {
   TrainingBlockRepository,
   TrainingBlockRevision,
   TrainingBlockSnapshot,
+  TrainingBlockUsageEvent,
+  TrainingBlockUsageSummary,
 } from "./repository";
 
 export interface UpdateTrainingBlockExerciseInput extends TrainingBlockExerciseInput {
@@ -68,6 +70,20 @@ export interface TrainingBlockRevisionComparison {
   readonly reorderedItemIds: readonly string[];
 }
 
+export interface TrainingBlockOverviewItem {
+  readonly block: TrainingBlockSnapshot;
+  readonly isFavorite: boolean;
+  readonly usageCount: number;
+  readonly lastUsedAt: string | null;
+}
+
+export interface RecordTrainingBlockUsageInput {
+  readonly occurredAt: string;
+  readonly sourceKind: string;
+  readonly sourceRef?: string | null;
+  readonly note?: string | null;
+}
+
 export class TrainingBlockService {
   readonly #repository: TrainingBlockRepository;
   readonly #createId: () => string;
@@ -112,6 +128,199 @@ export class TrainingBlockService {
     const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
     const block = await this.#repository.findCurrent(organization, id);
     return block === undefined ? undefined : this.#assertBlock(block, organization, id);
+  }
+
+  async listOverview(
+    organizationId: string,
+    principalId: string,
+  ): Promise<readonly TrainingBlockOverviewItem[]> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const principal = normalizeTrainingBlockIdentifier(
+      principalId,
+      "Principal id",
+    );
+    const [blocks, favoriteBlockIds, usageSummaries] = await Promise.all([
+      this.list(organization),
+      this.#repository.listFavoriteBlockIds(organization, principal),
+      this.#repository.listUsageSummaries(organization),
+    ]);
+    const byId = new Map(blocks.map((block) => [block.id, block] as const));
+    const favorites = new Set<string>();
+    for (const favoriteBlockId of favoriteBlockIds) {
+      const id = normalizeTrainingBlockIdentifier(
+        favoriteBlockId,
+        "Favorite training block id",
+      );
+      if (!byId.has(id)) {
+        throw new Error("Training block favorite references an unknown block.");
+      }
+      favorites.add(id);
+    }
+    const usage = validatedUsageSummaryMap(usageSummaries, byId);
+    return Object.freeze(
+      blocks.map((block) => {
+        const summary = usage.get(block.id);
+        return Object.freeze({
+          block,
+          isFavorite: favorites.has(block.id),
+          usageCount: summary?.usageCount ?? 0,
+          lastUsedAt: summary?.lastUsedAt ?? null,
+        });
+      }),
+    );
+  }
+
+  async findOverview(
+    organizationId: string,
+    principalId: string,
+    blockId: string,
+  ): Promise<TrainingBlockOverviewItem | undefined> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const principal = normalizeTrainingBlockIdentifier(
+      principalId,
+      "Principal id",
+    );
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    const block = await this.findCurrent(organization, id);
+    if (block === undefined) return undefined;
+    const [favoriteBlockIds, usageSummaries] = await Promise.all([
+      this.#repository.listFavoriteBlockIds(organization, principal),
+      this.#repository.listUsageSummaries(organization),
+    ]);
+    const favorites = new Set(
+      favoriteBlockIds.map((favoriteBlockId) =>
+        normalizeTrainingBlockIdentifier(
+          favoriteBlockId,
+          "Favorite training block id",
+        ),
+      ),
+    );
+    const usage = validatedUsageSummaryMap(
+      usageSummaries,
+      new Map([[block.id, block]]),
+      true,
+    );
+    const summary = usage.get(block.id);
+    return Object.freeze({
+      block,
+      isFavorite: favorites.has(block.id),
+      usageCount: summary?.usageCount ?? 0,
+      lastUsedAt: summary?.lastUsedAt ?? null,
+    });
+  }
+
+  async setFavorite(
+    organizationId: string,
+    principalId: string,
+    blockId: string,
+    favorite: boolean,
+  ): Promise<boolean> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const principal = normalizeTrainingBlockIdentifier(
+      principalId,
+      "Principal id",
+    );
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    if (typeof favorite !== "boolean") {
+      throw new TrainingBlockValidationError(
+        "Training block favorite flag is invalid.",
+      );
+    }
+    const block = await this.findCurrent(organization, id);
+    if (block === undefined) return false;
+    await this.#repository.setFavorite(organization, principal, id, favorite);
+    return true;
+  }
+
+  async listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly TrainingBlockUsageSummary[]> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const blocks = await this.list(organization);
+    const summaries = await this.#repository.listUsageSummaries(organization);
+    const validated = validatedUsageSummaryMap(
+      summaries,
+      new Map(blocks.map((block) => [block.id, block] as const)),
+    );
+    return Object.freeze([...validated.values()]);
+  }
+
+  async listUsage(
+    organizationId: string,
+    blockId: string,
+    limit = 50,
+  ): Promise<readonly TrainingBlockUsageEvent[]> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+      throw new TrainingBlockValidationError(
+        "Training block usage limit is invalid.",
+      );
+    }
+    const events = await this.#repository.listUsageEvents(
+      organization,
+      id,
+      limit,
+    );
+    return Object.freeze(
+      events.map((event) => validateUsageEvent(event, organization, id)),
+    );
+  }
+
+  async recordUsage(
+    organizationId: string,
+    blockId: string,
+    input: RecordTrainingBlockUsageInput,
+  ): Promise<TrainingBlockUsageEvent | undefined> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TrainingBlockValidationError(
+        "Training block usage input is invalid.",
+      );
+    }
+    const block = await this.findCurrent(organization, id);
+    if (block === undefined) return undefined;
+    const event = Object.freeze({
+      id: normalizeTrainingBlockIdentifier(
+        this.#createId(),
+        "Generated training block usage id",
+      ),
+      organizationId: organization,
+      blockId: id,
+      occurredAt: normalizedUsageTimestamp(input.occurredAt),
+      sourceKind: normalizedUsageSourceKind(input.sourceKind),
+      sourceRef: optionalUsageText(
+        input.sourceRef,
+        "Training block usage source reference",
+        500,
+      ),
+      note: optionalUsageText(
+        input.note,
+        "Training block usage note",
+        2_000,
+      ),
+    });
+    await this.#repository.recordUsage(event);
+    return event;
   }
 
   async create(
@@ -510,4 +719,120 @@ function normalizedTimestamp(value: Date): string {
     throw new TrainingBlockValidationError("Training block timestamp is invalid.");
   }
   return value.toISOString();
+}
+
+function validatedUsageSummaryMap(
+  summaries: readonly TrainingBlockUsageSummary[],
+  blocks: ReadonlyMap<string, TrainingBlockSnapshot>,
+  allowOtherBlocks = false,
+): ReadonlyMap<string, TrainingBlockUsageSummary> {
+  const result = new Map<string, TrainingBlockUsageSummary>();
+  for (const summary of summaries) {
+    const id = normalizeTrainingBlockIdentifier(
+      summary.blockId,
+      "Training block usage summary block id",
+    );
+    if (!blocks.has(id)) {
+      if (allowOtherBlocks) continue;
+      throw new Error("Training block usage references an unknown block.");
+    }
+    if (
+      !Number.isSafeInteger(summary.usageCount) ||
+      summary.usageCount < 1 ||
+      result.has(id)
+    ) {
+      throw new Error("Training block usage summary has an invalid shape.");
+    }
+    const lastUsedAt =
+      summary.lastUsedAt === null
+        ? null
+        : normalizedUsageTimestamp(summary.lastUsedAt);
+    if (lastUsedAt === null) {
+      throw new Error("Training block usage summary is missing its timestamp.");
+    }
+    result.set(
+      id,
+      Object.freeze({
+        blockId: id,
+        usageCount: summary.usageCount,
+        lastUsedAt,
+      }),
+    );
+  }
+  return result;
+}
+
+function validateUsageEvent(
+  event: TrainingBlockUsageEvent,
+  expectedOrganizationId: string,
+  expectedBlockId: string,
+): TrainingBlockUsageEvent {
+  if (
+    event === null ||
+    typeof event !== "object" ||
+    Array.isArray(event) ||
+    event.organizationId !== expectedOrganizationId ||
+    event.blockId !== expectedBlockId
+  ) {
+    throw new Error("Training block usage event escaped its scope.");
+  }
+  return Object.freeze({
+    id: normalizeTrainingBlockIdentifier(event.id, "Training block usage id"),
+    organizationId: expectedOrganizationId,
+    blockId: expectedBlockId,
+    occurredAt: normalizedUsageTimestamp(event.occurredAt),
+    sourceKind: normalizedUsageSourceKind(event.sourceKind),
+    sourceRef: optionalUsageText(
+      event.sourceRef,
+      "Training block usage source reference",
+      500,
+    ),
+    note: optionalUsageText(event.note, "Training block usage note", 2_000),
+  });
+}
+
+function normalizedUsageTimestamp(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TrainingBlockValidationError(
+      "Training block usage timestamp is invalid.",
+    );
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    throw new TrainingBlockValidationError(
+      "Training block usage timestamp is invalid.",
+    );
+  }
+  return parsed.toISOString();
+}
+
+function normalizedUsageSourceKind(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    !/^[a-z][a-z0-9_-]{0,79}$/.test(value)
+  ) {
+    throw new TrainingBlockValidationError(
+      "Training block usage source kind is invalid.",
+    );
+  }
+  return value;
+}
+
+function optionalUsageText(
+  value: unknown,
+  label: string,
+  maximumLength: number,
+): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || value.includes("\0")) {
+    throw new TrainingBlockValidationError(`${label} is invalid.`);
+  }
+  const normalized = value.trim();
+  if (normalized.length === 0) return null;
+  if (Array.from(normalized).length > maximumLength) {
+    throw new TrainingBlockValidationError(
+      `${label} must contain at most ${maximumLength} characters.`,
+    );
+  }
+  return normalized;
 }
