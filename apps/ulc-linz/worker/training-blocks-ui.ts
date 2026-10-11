@@ -91,8 +91,14 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                 </div>
 
                 <footer class="training-block-footer">
-                  <button class="button button--danger" id="training-block-deactivate" type="button" hidden>Deaktivieren</button>
-                  <span>Änderungen werden automatisch gespeichert.</span>
+                  <div class="training-block-footer__actions">
+                    <button class="button button--secondary" id="training-block-favorite" type="button" hidden>☆ Favorit</button>
+                    <button class="button button--danger" id="training-block-deactivate" type="button" hidden>Deaktivieren</button>
+                  </div>
+                  <div class="training-block-footer__meta">
+                    <span id="training-block-usage-info"></span>
+                    <span>Änderungen werden automatisch gespeichert.</span>
+                  </div>
                 </footer>
               </section>
             </div>
@@ -162,6 +168,18 @@ export const ULC_TRAINING_BLOCKS_CSS = `
   background: var(--muted);
   color: var(--secondary);
   font-size: .72rem;
+}
+.training-block-footer__actions,
+.training-block-footer__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.training-block-footer__meta {
+  justify-content: flex-end;
+  color: var(--secondary);
+  font-size: .8rem;
 }
 .training-block-backdrop,
 .training-block-info-backdrop {
@@ -332,6 +350,8 @@ const trainingBlockElements = Object.freeze({
   compare: document.querySelector("#training-block-compare"),
   revisionPreview: document.querySelector("#training-block-revision-preview"),
   comparison: document.querySelector("#training-block-comparison"),
+  favorite: document.querySelector("#training-block-favorite"),
+  usageInfo: document.querySelector("#training-block-usage-info"),
   deactivate: document.querySelector("#training-block-deactivate"),
   info: document.querySelector("#training-block-exercise-info"),
   infoTitle: document.querySelector("#training-block-info-title"),
@@ -353,6 +373,8 @@ let trainingBlockSavePending = false;
 let trainingBlockChangeVersion = 0;
 let trainingBlockCreateUncertain = false;
 let trainingBlockDeactivateBusy = false;
+let trainingBlockFavoriteBusy = false;
+let trainingBlockFavoriteRequestId = 0;
 let trainingBlockReloadBusy = false;
 let trainingBlockAudienceRequestId = 0;
 let trainingBlockOpenRequestId = 0;
@@ -424,6 +446,10 @@ function isTrainingBlockSnapshot(value) {
     value.currentRevision >= 1 &&
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string" &&
+    typeof value.isFavorite === "boolean" &&
+    Number.isSafeInteger(value.usageCount) &&
+    value.usageCount >= 0 &&
+    (value.lastUsedAt === null || typeof value.lastUsedAt === "string") &&
     isTrainingBlockRevision(value.revision) &&
     value.revision.revision === value.currentRevision;
 }
@@ -448,6 +474,8 @@ async function bootstrapTrainingBlocks() {
       features?.autosave !== true ||
       features?.revisions !== true ||
       features?.revisionComparison !== true ||
+      features?.favorites !== true ||
+      features?.usageSummary !== true ||
       payload?.access?.view !== true ||
       typeof payload?.access?.edit !== "boolean" ||
       !Array.isArray(blocks) ||
@@ -633,6 +661,13 @@ function renderTrainingBlocks() {
             ? null
             : String(block.revision.durationMinutes) + " Min.",
           String(block.revision.exercises.length) + " Übung(en)",
+          block.isFavorite ? "★ Favorit" : null,
+          block.usageCount === 0
+            ? "Noch nicht verwendet"
+            : String(block.usageCount) + "× verwendet",
+          block.lastUsedAt
+            ? "Zuletzt " + new Date(block.lastUsedAt).toLocaleDateString("de-AT")
+            : null,
           "Version " + String(block.currentRevision),
         ].filter(Boolean).join(" · ");
         main.append(strong, meta);
@@ -792,6 +827,7 @@ function populateTrainingBlockEditor() {
       !trainingBlockSelected ||
       !trainingBlockSelected.isActive;
   }
+  refreshTrainingBlockParityMetadata();
   showMessage(trainingBlockElements.editorMessage, "");
   renderTrainingBlockExercisePicker();
   renderTrainingBlockExercises();
@@ -801,6 +837,34 @@ function populateTrainingBlockEditor() {
     trainingBlockSelected ? "Gespeichert" : "Entwurf",
   );
   refreshTrainingBlockEditorLock();
+}
+
+function refreshTrainingBlockParityMetadata() {
+  const block = trainingBlockSelected;
+  if (trainingBlockElements.favorite) {
+    trainingBlockElements.favorite.hidden = !block;
+    trainingBlockElements.favorite.disabled = !block || trainingBlockFavoriteBusy;
+    trainingBlockElements.favorite.textContent =
+      block?.isFavorite ? "★ Favorit" : "☆ Favorit";
+    trainingBlockElements.favorite.setAttribute(
+      "aria-pressed",
+      block?.isFavorite ? "true" : "false",
+    );
+  }
+  if (trainingBlockElements.usageInfo) {
+    if (!block) {
+      trainingBlockElements.usageInfo.textContent = "";
+    } else if (block.usageCount === 0) {
+      trainingBlockElements.usageInfo.textContent = "Noch nicht verwendet";
+    } else {
+      trainingBlockElements.usageInfo.textContent =
+        String(block.usageCount) +
+        "× verwendet" +
+        (block.lastUsedAt
+          ? " · zuletzt " + new Date(block.lastUsedAt).toLocaleDateString("de-AT")
+          : "");
+    }
+  }
 }
 
 function refreshTrainingBlockEditorLock() {
@@ -1323,6 +1387,7 @@ async function saveTrainingBlock() {
       trainingBlockElements.deactivate.hidden =
         !trainingBlocksCanEdit || !response.block.isActive;
     }
+    refreshTrainingBlockParityMetadata();
   } catch (error) {
     trainingBlockDirty = true;
     if (
@@ -1692,6 +1757,65 @@ function closeTrainingBlockExerciseInfo() {
   if (trainingBlockElements.info) trainingBlockElements.info.hidden = true;
 }
 
+async function toggleTrainingBlockFavorite() {
+  const block = trainingBlockSelected;
+  if (!block || trainingBlockFavoriteBusy) return;
+  const blockId = block.id;
+  const desired = !block.isFavorite;
+  const operationId = ++trainingBlockFavoriteRequestId;
+  trainingBlockFavoriteBusy = true;
+  refreshTrainingBlockParityMetadata();
+  showMessage(trainingBlockElements.editorMessage, "");
+  try {
+    const response = await requestJson(
+      "/api/modules/training-blocks/" +
+        encodeURIComponent(blockId) +
+        "/favorite",
+      { method: desired ? "PUT" : "DELETE" },
+    );
+    if (
+      operationId !== trainingBlockFavoriteRequestId ||
+      trainingBlockSelected?.id !== blockId
+    ) return;
+    if (!isTrainingBlockSnapshot(response?.block)) {
+      throw new Error("INVALID_TRAINING_BLOCK_FAVORITE");
+    }
+    trainingBlockSelected = {
+      ...trainingBlockSelected,
+      isFavorite: response.block.isFavorite,
+      usageCount: response.block.usageCount,
+      lastUsedAt: response.block.lastUsedAt,
+    };
+    const index = trainingBlocks.findIndex((value) => value.id === blockId);
+    if (index >= 0) {
+      trainingBlocks[index] = {
+        ...trainingBlocks[index],
+        isFavorite: response.block.isFavorite,
+        usageCount: response.block.usageCount,
+        lastUsedAt: response.block.lastUsedAt,
+      };
+    }
+    renderTrainingBlocks();
+  } catch (error) {
+    if (
+      operationId === trainingBlockFavoriteRequestId &&
+      trainingBlockSelected?.id === blockId
+    ) {
+      showMessage(
+        trainingBlockElements.editorMessage,
+        error?.status === 404
+          ? "Der Trainingsblock wurde nicht gefunden."
+          : "Der Favorit konnte nicht geändert werden.",
+      );
+    }
+  } finally {
+    if (operationId === trainingBlockFavoriteRequestId) {
+      trainingBlockFavoriteBusy = false;
+      refreshTrainingBlockParityMetadata();
+    }
+  }
+}
+
 async function deactivateTrainingBlock() {
   if (
     trainingBlockSaveBusy ||
@@ -1986,6 +2110,7 @@ trainingBlockElements.retry?.addEventListener("click", retryTrainingBlockSave);
 trainingBlockElements.exerciseAdd?.addEventListener("click", addTrainingBlockExercise);
 trainingBlockElements.exercises?.addEventListener("click", handleTrainingBlockExerciseClick);
 trainingBlockElements.exercises?.addEventListener("input", handleTrainingBlockExerciseInput);
+trainingBlockElements.favorite?.addEventListener("click", () => void toggleTrainingBlockFavorite());
 trainingBlockElements.deactivate?.addEventListener("click", () => void deactivateTrainingBlock());
 trainingBlockElements.historyLoad?.addEventListener("click", () => void loadTrainingBlockHistory());
 trainingBlockElements.compare?.addEventListener("click", () => void compareTrainingBlockRevisions());
