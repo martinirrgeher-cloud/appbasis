@@ -317,7 +317,10 @@ async function trainingBlocksModuleResponse(
     if (request.method === "GET") {
       const [audiences, blocks] = await Promise.all([
         runtime.trainingBlocks.listAudiences(access.organizationId),
-        runtime.trainingBlocks.list(access.organizationId),
+        runtime.trainingBlocks.listOverview(
+          access.organizationId,
+          access.actorPrincipalId,
+        ),
       ]);
       return Response.json(
         {
@@ -328,11 +331,13 @@ async function trainingBlocksModuleResponse(
               autosave: true,
               revisions: true,
               revisionComparison: true,
+              favorites: true,
+              usageSummary: true,
             },
           },
           access: { view: true, edit: access.canEdit },
           audiences,
-          blocks: blocks.map(trainingBlockClientSnapshot),
+          blocks: blocks.map(trainingBlockClientOverview),
         },
         { headers: { "cache-control": "private, no-store" } },
       );
@@ -344,7 +349,14 @@ async function trainingBlocksModuleResponse(
       input,
     );
     return Response.json(
-      { block: trainingBlockClientSnapshot(block) },
+      {
+        block: trainingBlockClientOverview({
+          block,
+          isFavorite: false,
+          usageCount: 0,
+          lastUsedAt: null,
+        }),
+      },
       {
         status: 201,
         headers: { "cache-control": "private, no-store" },
@@ -365,6 +377,7 @@ async function trainingBlocksItemResponse(
   const detail = /^([^/]+)$/.exec(route);
   const update = /^([^/]+)\/update$/.exec(route);
   const deactivate = /^([^/]+)\/deactivate$/.exec(route);
+  const favorite = /^([^/]+)\/favorite$/.exec(route);
   const revisions = /^([^/]+)\/revisions$/.exec(route);
   const revision = /^([^/]+)\/revisions\/([1-9][0-9]*)$/.exec(route);
   const compare = /^([^/]+)\/compare$/.exec(route);
@@ -383,8 +396,13 @@ async function trainingBlocksItemResponse(
     (update !== null || deactivate !== null)
   ) {
     action = "edit";
+  } else if (
+    favorite !== null &&
+    (request.method === "PUT" || request.method === "DELETE")
+  ) {
+    action = "view";
   } else {
-    return methodNotAllowedFor("GET, POST", "training block");
+    return methodNotAllowedFor("GET, POST, PUT, DELETE", "training block");
   }
 
   if (
@@ -405,13 +423,14 @@ async function trainingBlocksItemResponse(
   try {
     if (detail !== null) {
       const id = decodeTrainingBlockPathIdentifier(detail[1]);
-      const block = await runtime.trainingBlocks.findCurrent(
+      const block = await runtime.trainingBlocks.findOverview(
         access.organizationId,
+        access.actorPrincipalId,
         id,
       );
       if (block === undefined) return trainingBlockNotFound();
       return Response.json(
-        { block: trainingBlockClientSnapshot(block) },
+        { block: trainingBlockClientOverview(block) },
         { headers: { "cache-control": "private, no-store" } },
       );
     }
@@ -427,8 +446,21 @@ async function trainingBlocksItemResponse(
         body.input,
       );
       if (block === undefined) return trainingBlockNotFound();
+      const overview = await runtime.trainingBlocks.findOverview(
+        access.organizationId,
+        access.actorPrincipalId,
+        block.id,
+      );
+      if (overview === undefined) return trainingBlockNotFound();
       return Response.json(
-        { block: trainingBlockClientSnapshot(block) },
+        {
+          block: trainingBlockClientOverview({
+            block,
+            isFavorite: overview.isFavorite,
+            usageCount: overview.usageCount,
+            lastUsedAt: overview.lastUsedAt,
+          }),
+        },
         { headers: { "cache-control": "private, no-store" } },
       );
     }
@@ -442,11 +474,43 @@ async function trainingBlocksItemResponse(
         expectedRevision,
       );
       if (block === undefined) return trainingBlockNotFound();
+      const overview = await runtime.trainingBlocks.findOverview(
+        access.organizationId,
+        access.actorPrincipalId,
+        block.id,
+      );
+      if (overview === undefined) return trainingBlockNotFound();
       return Response.json(
         {
           deactivated: true,
-          block: trainingBlockClientSnapshot(block),
+          block: trainingBlockClientOverview({
+            block,
+            isFavorite: overview.isFavorite,
+            usageCount: overview.usageCount,
+            lastUsedAt: overview.lastUsedAt,
+          }),
         },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (favorite !== null) {
+      const id = decodeTrainingBlockPathIdentifier(favorite[1]);
+      const changed = await runtime.trainingBlocks.setFavorite(
+        access.organizationId,
+        access.actorPrincipalId,
+        id,
+        request.method === "PUT",
+      );
+      if (!changed) return trainingBlockNotFound();
+      const overview = await runtime.trainingBlocks.findOverview(
+        access.organizationId,
+        access.actorPrincipalId,
+        id,
+      );
+      if (overview === undefined) return trainingBlockNotFound();
+      return Response.json(
+        { block: trainingBlockClientOverview(overview) },
         { headers: { "cache-control": "private, no-store" } },
       );
     }
@@ -790,6 +854,20 @@ function trainingBlockClientSnapshot(block: {
     createdAt: block.createdAt,
     updatedAt: block.updatedAt,
     revision: trainingBlockClientRevision(block.revision),
+  };
+}
+
+function trainingBlockClientOverview(value: {
+  block: Parameters<typeof trainingBlockClientSnapshot>[0];
+  isFavorite: boolean;
+  usageCount: number;
+  lastUsedAt: string | null;
+}) {
+  return {
+    ...trainingBlockClientSnapshot(value.block),
+    isFavorite: value.isFavorite,
+    usageCount: value.usageCount,
+    lastUsedAt: value.lastUsedAt,
   };
 }
 

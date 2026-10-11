@@ -6,12 +6,16 @@ import {
   type TrainingBlockRevision,
   type TrainingBlockRevisionAppendResult,
   type TrainingBlockSnapshot,
+  type TrainingBlockUsageEvent,
+  type TrainingBlockUsageSummary,
 } from "./repository";
 
 export class InMemoryTrainingBlockRepository implements TrainingBlockRepository {
   readonly #blocks = new Map<string, TrainingBlockSnapshot>();
   readonly #blockIds = new Set<string>();
   readonly #revisions = new Map<string, Map<number, TrainingBlockRevision>>();
+  readonly #favorites = new Set<string>();
+  readonly #usageEvents: TrainingBlockUsageEvent[] = [];
 
   constructor(initialBlocks: readonly TrainingBlockSnapshot[] = []) {
     for (const block of initialBlocks) this.#insertInitial(block);
@@ -100,6 +104,100 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
     return Object.freeze({ status: "updated", block: cloneBlock(stored) });
   }
 
+  async listFavoriteBlockIds(
+    organizationId: string,
+    principalId: string,
+  ): Promise<readonly string[]> {
+    const prefix = favoritePrefix(organizationId, principalId);
+    return Object.freeze(
+      [...this.#favorites]
+        .filter((key) => key.startsWith(prefix))
+        .map((key) => key.slice(prefix.length))
+        .filter((blockId) => this.#blocks.has(blockKey(organizationId, blockId)))
+        .sort(),
+    );
+  }
+
+  async setFavorite(
+    organizationId: string,
+    principalId: string,
+    blockId: string,
+    favorite: boolean,
+  ): Promise<void> {
+    const key = favoriteKey(organizationId, principalId, blockId);
+    if (!this.#blocks.has(blockKey(organizationId, blockId))) {
+      this.#favorites.delete(key);
+      return;
+    }
+    if (favorite) this.#favorites.add(key);
+    else this.#favorites.delete(key);
+  }
+
+  async listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly TrainingBlockUsageSummary[]> {
+    const byBlock = new Map<string, TrainingBlockUsageEvent[]>();
+    for (const event of this.#usageEvents) {
+      if (event.organizationId !== organizationId) continue;
+      const values = byBlock.get(event.blockId) ?? [];
+      values.push(event);
+      byBlock.set(event.blockId, values);
+    }
+    return Object.freeze(
+      [...byBlock.entries()]
+        .filter(([blockId]) => this.#blocks.has(blockKey(organizationId, blockId)))
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([blockId, events]) => Object.freeze({
+          blockId,
+          usageCount: events.length,
+          lastUsedAt: events
+            .map((event) => event.occurredAt)
+            .sort((left, right) => right.localeCompare(left))[0] ?? null,
+        })),
+    );
+  }
+
+  async listUsageEvents(
+    organizationId: string,
+    blockId: string,
+    limit = 50,
+  ): Promise<readonly TrainingBlockUsageEvent[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+      throw new Error("Training block usage limit is invalid.");
+    }
+    return Object.freeze(
+      this.#usageEvents
+        .filter(
+          (event) =>
+            event.organizationId === organizationId &&
+            event.blockId === blockId,
+        )
+        .sort(
+          (left, right) =>
+            right.occurredAt.localeCompare(left.occurredAt) ||
+            right.id.localeCompare(left.id),
+        )
+        .slice(0, limit)
+        .map(cloneUsageEvent),
+    );
+  }
+
+  async recordUsage(event: TrainingBlockUsageEvent): Promise<void> {
+    if (!this.#blocks.has(blockKey(event.organizationId, event.blockId))) {
+      throw new Error("Training block usage references an unknown block.");
+    }
+    if (
+      this.#usageEvents.some(
+        (stored) =>
+          stored.organizationId === event.organizationId &&
+          stored.id === event.id,
+      )
+    ) {
+      throw new Error("Training block usage event already exists.");
+    }
+    this.#usageEvents.push(cloneUsageEvent(event));
+  }
+
   async listRevisions(
     organizationId: string,
     blockId: string,
@@ -168,4 +266,20 @@ function cloneRevision(revision: TrainingBlockRevision): TrainingBlockRevision {
       ),
     ),
   });
+}
+
+function favoritePrefix(organizationId: string, principalId: string): string {
+  return organizationId + "\u0000" + principalId + "\u0000";
+}
+
+function favoriteKey(
+  organizationId: string,
+  principalId: string,
+  blockId: string,
+): string {
+  return favoritePrefix(organizationId, principalId) + blockId;
+}
+
+function cloneUsageEvent(event: TrainingBlockUsageEvent): TrainingBlockUsageEvent {
+  return Object.freeze({ ...event });
 }

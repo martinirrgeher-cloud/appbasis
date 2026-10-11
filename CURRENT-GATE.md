@@ -9,27 +9,33 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E7A5 – Trainingsblöcke isolierte Preview-Abnahme.**
+**ULC-E7A6 – Trainingsblöcke Paritätsmetadaten und isolierte Preview-Abnahme.**
 
-E7A1–E7A4 sind auf `main` abgeschlossen. Das Standardmodul besitzt Schema,
-Versions-/Concurrency-Vertrag, den ULC-Adapter sowie die geschützte mobile
-Oberfläche mit Autosave, Konfliktbehandlung, Revisionen und Vergleich.
+E7A1–E7A4 sind auf `main` abgeschlossen. E7A5 hat das Standardmodul am
+11.10.2026 erfolgreich in die isolierte ULC-Preview migriert und den
+Standardmodul-Runtimepfad dort deployed. Die technische v1-Preview-Abnahme ist
+damit abgeschlossen.
 
-E7A5 bringt diesen bereits reviewten Stand kontrolliert in die isolierte
-ULC-Preview. Der Gate-Pfad ist bewusst dreigeteilt:
+Der anschließende Alt-App-Paritätsabgleich hat genau einen verbleibenden
+E7A-Punkt bestätigt: **persönliche Favoriten und Nutzungsinformationen in der
+Trainingsblock-Übersicht**. E7A6 schließt ausschließlich diese Lücke:
 
-1. `inspect` ist read-only und prüft den exakten Preview-Datenbankzustand;
-2. `migrate` installiert ausschließlich das additive
-   `training-blocks`-Schema v1 und benötigt eine eigene ausdrückliche
-   Freigabe;
-3. `deploy` ist ein davon getrenntes, ebenfalls ausdrücklich
-   freizugebendes Gate und darf erst bei vollständig verifiziertem
-   `training-blocks`-Schema laufen.
+- additive `training-blocks`-Schema-v2-Migration mit persönlicher
+  Principal-Favoritenzuordnung und generischem Nutzungsledger;
+- Favorisieren benötigt nur `training-blocks:view` und verändert keine
+  fachlichen Blockinhalte;
+- Nutzungsdaten werden in E7A6 nur gespeichert/aggregiert und angezeigt; die
+  eigentliche automatische Erfassung aus Trainingsplanung bleibt E7B;
+- Übersicht und Editor zeigen Favorit, Nutzungsanzahl und letzten
+  Nutzungszeitpunkt;
+- bestehende Revisionen, Autosave, Archivierung und Katalogreferenzen bleiben
+  unverändert;
+- Datenschutz-/Exportinventar klassifiziert beide neuen Tabellen fail-closed.
 
-Der vorbereitete Workflow ist main-only, an
-`generated-preview-ulc-linz` gebunden und verwendet den bestehenden
-Standardmodul-Runtimepfad. Produktion, produktive Datenbank und produktive
-Providerressourcen bleiben ausgeschlossen.
+Der E7A6-Preview-Pfad bleibt dreigeteilt: `inspect` ist read-only,
+`migrate` darf ausschließlich die v1→v2-Deltamigration anwenden und
+`deploy` ist davon getrennt ausdrücklich freizugeben. Runtime-ACLs werden
+nach der Migration erneut reconciled und vor dem Deploy verifiziert.
 
 Verbindliche Architekturgrenzen:
 
@@ -38,10 +44,12 @@ Verbindliche Architekturgrenzen:
 - dieselbe Katalogübung darf mehrfach im Block vorkommen;
 - Blockwerte überschreiben Katalog-Standardparameter nur innerhalb des
   jeweiligen Blocks;
-- nummerierte unveränderliche Revisionen sind ab dem ersten Schema vorgesehen;
-- keine Cross-Owner-Foreign-Keys in `athletes` oder `exercise-catalog`;
-- ULC verwendet vorhandene Trainingsgruppen statt einer zweiten
-  Gruppenverwaltung;
+- nummerierte unveränderliche Revisionen bleiben fachlicher Inhaltsvertrag;
+- Favoriten sind principal-gebundene persönliche Präferenz, nicht Teil einer
+  Blockrevision;
+- Nutzung ist additive Metadatenhistorie, nicht Teil einer Blockrevision;
+- keine Cross-Owner-Foreign-Keys in `identity`, `athletes` oder
+  `exercise-catalog`;
 - Preview-Migration und Preview-Deployment bleiben getrennte Freigabe-Gates;
 - Produktion bleibt ein eigenes späteres Gate.
 

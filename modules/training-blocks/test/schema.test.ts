@@ -9,6 +9,13 @@ const migration = readFileSync(
   ),
   "utf8",
 );
+const parityMigration = readFileSync(
+  new URL(
+    "../migrations/0001_appbasis_training_blocks_parity_metadata.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 describe("training-blocks schema", () => {
   it("keeps the current block revision referentially valid at transaction commit", () => {
@@ -46,4 +53,25 @@ describe("training-blocks schema", () => {
       "UNIQUE (\n    organization_id,\n    block_id,\n    revision,\n    item_id,\n    sort_order\n  )",
     );
   });
+
+  it("adds personal favorites and usage metadata without crossing module ownership", () => {
+    expect(parityMigration).toContain("CREATE TABLE appbasis_training_block_favorite");
+    expect(parityMigration).toContain("CREATE TABLE appbasis_training_block_usage");
+    expect(parityMigration).toContain(
+      "FOREIGN KEY (organization_id, block_id)",
+    );
+    expect(parityMigration).toContain(
+      "REFERENCES appbasis_training_block (organization_id, id)",
+    );
+    expect(parityMigration).not.toContain("REFERENCES appbasis_person");
+    expect(parityMigration).not.toContain("REFERENCES appbasis_exercise");
+    expect(parityMigration).not.toContain("REFERENCES appbasis_training_group");
+    expect(parityMigration).toContain(
+      "PRIMARY KEY (organization_id, principal_id, block_id)",
+    );
+    expect(parityMigration).toContain(
+      "appbasis_training_block_usage_block_idx",
+    );
+  });
+
 });

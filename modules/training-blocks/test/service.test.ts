@@ -186,4 +186,176 @@ describe("training-blocks service", () => {
       }),
     ).rejects.toThrow(/duplicate exercise item id/);
   });
+
+  it("keeps favorites principal-scoped and aggregates usage without changing revisions", async () => {
+    const service = new TrainingBlockService({
+      repository: new InMemoryTrainingBlockRepository(),
+      createId: deterministicIds("block-meta", "usage-1", "usage-2"),
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    const block = await service.create("org-meta", { name: "Metadaten" });
+
+    await expect(
+      service.setFavorite("org-meta", "principal-a", block.id, true),
+    ).resolves.toBe(true);
+    await expect(
+      service.listOverview("org-meta", "principal-a"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        block: expect.objectContaining({ id: block.id, currentRevision: 1 }),
+        isFavorite: true,
+        usageCount: 0,
+        lastUsedAt: null,
+      }),
+    ]);
+    await expect(
+      service.listOverview("org-meta", "principal-b"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        isFavorite: false,
+        usageCount: 0,
+      }),
+    ]);
+
+    await expect(
+      service.recordUsage("org-meta", block.id, {
+        occurredAt: "2026-10-10T11:00:00.000Z",
+        sourceKind: "training_plan",
+        sourceRef: "plan-1",
+      }),
+    ).resolves.toMatchObject({
+      id: "usage-1",
+      blockId: block.id,
+      sourceKind: "training_plan",
+    });
+    await expect(
+      service.recordUsage("org-meta", block.id, {
+        occurredAt: "2026-10-10T12:00:00.000Z",
+        sourceKind: "training_plan",
+        note: "second use",
+      }),
+    ).resolves.toMatchObject({ id: "usage-2" });
+
+    await expect(
+      service.listOverview("org-meta", "principal-a"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        isFavorite: true,
+        usageCount: 2,
+        lastUsedAt: "2026-10-10T12:00:00.000Z",
+      }),
+    ]);
+    await expect(service.listUsage("org-meta", block.id)).resolves.toEqual([
+      expect.objectContaining({ id: "usage-2" }),
+      expect.objectContaining({ id: "usage-1" }),
+    ]);
+    await expect(service.listRevisions("org-meta", block.id)).resolves.toHaveLength(1);
+
+    await expect(
+      service.setFavorite("org-meta", "principal-a", block.id, false),
+    ).resolves.toBe(true);
+    await expect(
+      service.findOverview("org-meta", "principal-a", block.id),
+    ).resolves.toMatchObject({
+      isFavorite: false,
+      usageCount: 2,
+    });
+    await expect(
+      service.setFavorite("org-meta", "principal-a", "missing", true),
+    ).resolves.toBe(false);
+  });
+
+  it("validates usage metadata before persistence", async () => {
+    const service = new TrainingBlockService({
+      repository: new InMemoryTrainingBlockRepository(),
+      createId: deterministicIds("block-usage", "usage-invalid"),
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    await service.create("org-usage", { name: "Usage" });
+
+    await expect(
+      service.recordUsage("org-usage", "block-usage", {
+        occurredAt: "not-a-date",
+        sourceKind: "training_plan",
+      }),
+    ).rejects.toBeInstanceOf(TrainingBlockValidationError);
+    await expect(
+      service.recordUsage("org-usage", "block-usage", {
+        occurredAt: "2026-10-10T11:00:00.000Z",
+        sourceKind: "INVALID SOURCE",
+      }),
+    ).rejects.toBeInstanceOf(TrainingBlockValidationError);
+    await expect(
+      service.recordUsage("org-usage", "missing", {
+        occurredAt: "2026-10-10T11:00:00.000Z",
+        sourceKind: "training_plan",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+
+  it("discards favorite and usage metadata outside the chosen overview block snapshot", async () => {
+    class LaggingOverviewRepository extends InMemoryTrainingBlockRepository {
+      override async listCurrent(organizationId: string) {
+        const blocks = await super.listCurrent(organizationId);
+        return Object.freeze(
+          blocks.filter((block) => block.id !== "block-late"),
+        );
+      }
+    }
+
+    const repository = new LaggingOverviewRepository();
+    const service = new TrainingBlockService({
+      repository,
+      createId: deterministicIds(
+        "block-visible",
+        "block-late",
+        "usage-visible",
+        "usage-late",
+      ),
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    await service.create("org-race", { name: "Visible" });
+    await service.create("org-race", { name: "Late" });
+    await service.setFavorite(
+      "org-race",
+      "principal-race",
+      "block-visible",
+      true,
+    );
+    await service.setFavorite(
+      "org-race",
+      "principal-race",
+      "block-late",
+      true,
+    );
+    await service.recordUsage("org-race", "block-visible", {
+      occurredAt: "2026-10-10T11:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+    await service.recordUsage("org-race", "block-late", {
+      occurredAt: "2026-10-10T12:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+
+    await expect(
+      service.listOverview("org-race", "principal-race"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        block: expect.objectContaining({ id: "block-visible" }),
+        isFavorite: true,
+        usageCount: 1,
+        lastUsedAt: "2026-10-10T11:00:00.000Z",
+      }),
+    ]);
+
+    await expect(service.listUsageSummaries("org-race")).resolves.toEqual([
+      {
+        blockId: "block-visible",
+        usageCount: 1,
+        lastUsedAt: "2026-10-10T11:00:00.000Z",
+      },
+    ]);
+  });
+
 });

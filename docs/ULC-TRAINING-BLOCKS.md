@@ -140,6 +140,27 @@ gegebenenfalls Medien gehören nicht in den Trainingsblock.
 - praktische Prüfung gegen den Alt-App-Zielumfang;
 - Produktion bleibt ein eigenes späteres Gate.
 
+E7A5 wurde am 11.10.2026 technisch erfolgreich in der isolierten Preview
+abgenommen. Migration, ACL-Reconcile, Runtime-Deploy und Smoke-Prüfungen waren
+erfolgreich. Der praktische Paritätsabgleich hat danach den bereits in E7A4
+markierten Restpunkt Favoriten-/Nutzungsanzeige bestätigt.
+
+### E7A6 – Favoriten und Nutzungsmetadaten
+
+- persönlicher Favorit pro Organisation, Principal und Trainingsblock;
+- Favorit setzen/entfernen mit View-Berechtigung, ohne Blockrevision;
+- generischer append-only Nutzungsledger mit Quelle, Referenz und optionaler
+  Notiz;
+- Übersicht zeigt Favorit, Nutzungsanzahl und letzten Nutzungszeitpunkt;
+- die eigentliche Nutzungsbuchung aus einem Trainingsplan wird erst mit E7B
+  angeschlossen und in E7A6 nicht simuliert;
+- additive Schema-v2-Migration innerhalb des `training-blocks`-Owners;
+- persönliche Präferenz- und Nutzungsmetadaten bleiben im normalen
+  Datenexport fail-closed ausgeschlossen;
+- v1→v2-Preview-Migration und anschließender Runtime-Deploy bleiben getrennte,
+  ausdrücklich freizugebende Gates;
+- Produktion bleibt unverändert.
+
 ## Spätere Planung E7B
 
 Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
