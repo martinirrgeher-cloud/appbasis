@@ -21,29 +21,12 @@ const targetTables = [
   "appbasis_training_block_revision_item_parameter",
 ];
 
-test("E7A5 preview plan pins the published training-blocks schema-v1 target", async () => {
-  const plan = await loadUlcTrainingBlocksPreviewPlan({ repositoryRoot });
-
-  assert.equal(plan.schemaVersion, 1);
-  assert.equal(plan.operation, "ulc-training-blocks-preview");
-  assert.equal(plan.application, "ulc-linz");
-  assert.equal(plan.moduleId, "training-blocks");
-  assert.deepEqual(plan.preview, {
-    environment: "generated-preview-ulc-linz",
-    database: "appbasis_ulc_linz_preview",
-    migrationPrincipal: "appbasis_ulc_linz_preview_migration",
-  });
-  assert.deepEqual(plan.target, {
-    schemaVersion: 1,
-    migrationPath:
-      "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
-    tables: targetTables,
-  });
-  assert.equal(plan.executionPlan.repositoryState, "published-target");
-  assert.equal(plan.executionPlan.migrations.length, 1);
-  assert.equal(plan.productionChanged, false);
+test("E7A5 historical plan fails closed after the repository advances beyond schema v1", async () => {
+  await assert.rejects(
+    loadUlcTrainingBlocksPreviewPlan({ repositoryRoot }),
+    /canonical published training-blocks schema-v1 repository contract/,
+  );
 });
-
 test("E7A5 preview shape distinguishes absent and complete targets", () => {
   assert.equal(
     classifyUlcTrainingBlocksPreviewShape({ tables: [] }),
