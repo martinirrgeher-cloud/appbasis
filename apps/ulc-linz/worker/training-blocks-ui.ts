@@ -840,6 +840,7 @@ function renderTrainingBlockExercises() {
           label.textContent =
             parameter.label + (parameter.unit ? " (" + parameter.unit + ")" : "");
           const input = document.createElement("input");
+          input.maxLength = 500;
           input.value = trainingBlockParameterValue(draft, parameter);
           input.disabled = !editable;
           input.dataset.trainingBlockParameterIndex = String(index);
@@ -941,7 +942,12 @@ function trainingBlockDraftReady(payload) {
     (payload.durationMinutes === null ||
       (Number.isSafeInteger(payload.durationMinutes) &&
         payload.durationMinutes >= 1 &&
-        payload.durationMinutes <= 2_147_483_647));
+        payload.durationMinutes <= 2_147_483_647)) &&
+    payload.exercises.every((exercise) =>
+      exercise.parameterOverrides.every(
+        (override) => Array.from(override.value).length <= 500,
+      ),
+    );
 }
 
 async function saveTrainingBlock() {
@@ -964,7 +970,7 @@ async function saveTrainingBlock() {
   if (!trainingBlockDraftReady(payload)) {
     setTrainingBlockSaveState(
       "draft",
-      "Entwurf – Name, Gruppe und Dauer prüfen",
+      "Entwurf – Pflichtfelder und Parameter prüfen",
     );
     return;
   }
@@ -1019,13 +1025,24 @@ async function saveTrainingBlock() {
     }
   } catch (error) {
     trainingBlockDirty = true;
-    if (error?.status === 409 && error?.code === "TRAINING_BLOCK_CONFLICT") {
+    if (
+      error?.status === 409 &&
+      ["TRAINING_BLOCK_CONFLICT", "TRAINING_BLOCK_INACTIVE"].includes(error?.code)
+    ) {
       trainingBlockConflict = true;
-      setTrainingBlockSaveState("conflict", "Konflikt – neuer Stand vorhanden");
+      setTrainingBlockSaveState(
+        "conflict",
+        error?.code === "TRAINING_BLOCK_INACTIVE"
+          ? "Archiviert – aktuellen Stand laden"
+          : "Konflikt – neuer Stand vorhanden",
+      );
+      if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
       if (trainingBlockElements.reload) trainingBlockElements.reload.hidden = false;
       showMessage(
         trainingBlockElements.editorMessage,
-        "Der Block wurde parallel geändert. Bitte aktuellen Stand neu laden; deine lokale Änderung wird nicht still überschrieben.",
+        error?.code === "TRAINING_BLOCK_INACTIVE"
+          ? "Der Trainingsblock wurde inzwischen archiviert. Bitte aktuellen Stand neu laden; deine lokale Änderung wird nicht still überschrieben."
+          : "Der Block wurde parallel geändert. Bitte aktuellen Stand neu laden; deine lokale Änderung wird nicht still überschrieben.",
       );
     } else if (
       creating &&

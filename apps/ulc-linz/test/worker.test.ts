@@ -622,6 +622,9 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshTrainingBlockCatalogDependency");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockCreateUncertain");
     expect(ULC_LINZ_APP_SCRIPT).toContain("noteInput.maxLength = 2000");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("input.maxLength = 500");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_INACTIVE");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Array.from(override.value).length <= 500");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDraft.exercises.length >= 200");
     expect(ULC_LINZ_APP_SCRIPT).toContain("lokale Änderungen mit einem Versionskonflikt");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Der Block könnte bereits gespeichert sein");
