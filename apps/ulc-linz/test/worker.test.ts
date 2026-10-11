@@ -642,6 +642,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("locked || control.disabled");
     expect(ULC_LINZ_APP_SCRIPT).toContain("error.status >= 400");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockParameterError");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Diese Übung ist archiviert");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("training-block-exercise--unavailable");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("EXERCISE_DIFFICULTIES.find");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('title.textContent = "Videos"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('link.rel = "noopener noreferrer"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockStepAligned");
     expect(ULC_LINZ_APP_SCRIPT).toContain("veraltete(r) Parameterwert(e)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("currentKeys === null || currentKeys.has(value.key)");

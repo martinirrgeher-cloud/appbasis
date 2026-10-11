@@ -858,6 +858,9 @@ function renderTrainingBlockExercises() {
     const item = trainingBlockExerciseItem(draft.exerciseId);
     const row = document.createElement("article");
     row.className = "training-block-exercise";
+    if (item && !item.isActive) {
+      row.classList.add("training-block-exercise--unavailable");
+    }
     row.dataset.trainingBlockExerciseIndex = String(index);
 
     const header = document.createElement("div");
@@ -868,9 +871,11 @@ function renderTrainingBlockExercises() {
     const meta = document.createElement("div");
     meta.className = "training-block-exercise__meta";
     meta.textContent = item
-      ? [categoryLabel(item.categoryKey), item.subcategory, item.goal]
-          .filter(Boolean)
-          .join(" · ")
+      ? item.isActive
+        ? [categoryLabel(item.categoryKey), item.subcategory, item.goal]
+            .filter(Boolean)
+            .join(" · ")
+        : "Archiviert – bitte entfernen und bei Bedarf durch eine aktive Übung ersetzen"
       : "Kataloginformation nicht verfügbar";
     title.append(strong, meta);
 
@@ -882,8 +887,10 @@ function renderTrainingBlockExercises() {
       const up = trainingBlockActionButton("↑", "up", index);
       const down = trainingBlockActionButton("↓", "down", index);
       const remove = trainingBlockActionButton("Entfernen", "remove", index);
-      up.disabled = index === 0;
-      down.disabled = index === trainingBlockDraft.exercises.length - 1;
+      const unavailable = item?.isActive === false;
+      up.disabled = unavailable || index === 0;
+      down.disabled =
+        unavailable || index === trainingBlockDraft.exercises.length - 1;
       actions.append(up, down, remove);
     }
     header.append(title, actions);
@@ -895,7 +902,7 @@ function renderTrainingBlockExercises() {
     const noteInput = document.createElement("input");
     noteInput.maxLength = 2000;
     noteInput.value = draft.note || "";
-    noteInput.disabled = !editable;
+    noteInput.disabled = !editable || item?.isActive === false;
     noteInput.dataset.trainingBlockExerciseNote = String(index);
     note.append(noteInput);
     row.append(note);
@@ -931,7 +938,7 @@ function renderTrainingBlockExercises() {
           const input = document.createElement("input");
           input.maxLength = 500;
           input.value = trainingBlockParameterValue(draft, parameter);
-          input.disabled = !editable;
+          input.disabled = !editable || item.isActive === false;
           input.dataset.trainingBlockParameterIndex = String(index);
           input.dataset.trainingBlockParameterKey = parameter.key;
           input.dataset.trainingBlockParameterDefault =
@@ -1043,6 +1050,12 @@ function trainingBlockParameterError(payload) {
   for (const exercise of payload?.exercises || []) {
     const item = trainingBlockExerciseItem(exercise.exerciseId);
     if (!item) continue;
+    if (!item.isActive) {
+      return (
+        item.name +
+        ": Diese Übung ist archiviert. Bitte aus dem Trainingsblock entfernen und bei Bedarf durch eine aktive Übung ersetzen."
+      );
+    }
     const definitions = new Map(
       item.parameters.map((parameter) => [parameter.key, parameter]),
     );
@@ -1488,9 +1501,17 @@ function showTrainingBlockExerciseInfo(id) {
   if (trainingBlockElements.infoTitle) {
     trainingBlockElements.infoTitle.textContent = item.name;
   }
+  const difficulty =
+    item.difficultyKey === null
+      ? "Keine Angabe"
+      : EXERCISE_DIFFICULTIES.find(
+          (value) => value.key === item.difficultyKey,
+        )?.label || item.difficultyKey;
   const sections = [
+    ["Status", item.isActive ? "Aktiv" : "Archiviert"],
     ["Einordnung", [categoryLabel(item.categoryKey), item.subcategory, item.goal]
       .filter(Boolean).join(" · ")],
+    ["Schwierigkeit", difficulty],
     ["Beschreibung", item.description],
     ["Trainerhinweise", item.coachingCues],
     ["Typische Fehler", item.commonMistakes],
@@ -1505,6 +1526,22 @@ function showTrainingBlockExerciseInfo(id) {
     const text = document.createElement("p");
     text.textContent = value[1];
     section.append(title, text);
+    trainingBlockElements.infoBody.append(section);
+  }
+  if (item.videoUrls.length > 0) {
+    const section = document.createElement("section");
+    section.className = "training-block-info-section";
+    const title = document.createElement("h3");
+    title.textContent = "Videos";
+    section.append(title);
+    item.videoUrls.forEach((url, index) => {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "Video " + String(index + 1);
+      section.append(link);
+    });
     trainingBlockElements.infoBody.append(section);
   }
   if (item.parameters.length > 0) {
