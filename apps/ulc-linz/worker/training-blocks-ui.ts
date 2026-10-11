@@ -843,7 +843,12 @@ function refreshTrainingBlockParityMetadata() {
   const block = trainingBlockSelected;
   if (trainingBlockElements.favorite) {
     trainingBlockElements.favorite.hidden = !block;
-    trainingBlockElements.favorite.disabled = !block || trainingBlockFavoriteBusy;
+    trainingBlockElements.favorite.disabled =
+      !block ||
+      trainingBlockFavoriteBusy ||
+      trainingBlockSaveBusy ||
+      trainingBlockDeactivateBusy ||
+      trainingBlockReloadBusy;
     trainingBlockElements.favorite.textContent =
       block?.isFavorite ? "★ Favorit" : "☆ Favorit";
     trainingBlockElements.favorite.setAttribute(
@@ -1313,6 +1318,10 @@ async function saveTrainingBlock() {
     trainingBlockDeactivateBusy ||
     trainingBlockReloadBusy
   ) return;
+  if (trainingBlockFavoriteBusy) {
+    trainingBlockSavePending = true;
+    return;
+  }
   if (trainingBlockSaveBusy) {
     trainingBlockSavePending = true;
     return;
@@ -1342,6 +1351,7 @@ async function saveTrainingBlock() {
   let saveSucceeded = false;
   trainingBlockSaveBusy = true;
   trainingBlockSavePending = false;
+  refreshTrainingBlockParityMetadata();
   setTrainingBlockSaveState("saving", "Speichert …");
   showMessage(trainingBlockElements.editorMessage, "");
   try {
@@ -1440,6 +1450,7 @@ async function saveTrainingBlock() {
     }
   } finally {
     trainingBlockSaveBusy = false;
+    refreshTrainingBlockParityMetadata();
     if (
       saveSucceeded &&
       (trainingBlockSavePending || trainingBlockDirty) &&
@@ -1560,7 +1571,11 @@ async function reloadTrainingBlock() {
     }
     return;
   }
-  if (!trainingBlockSelected || trainingBlockReloadBusy) return;
+  if (
+    !trainingBlockSelected ||
+    trainingBlockReloadBusy ||
+    trainingBlockFavoriteBusy
+  ) return;
   const id = trainingBlockSelected.id;
   if (
     trainingBlockDirty &&
@@ -1759,7 +1774,13 @@ function closeTrainingBlockExerciseInfo() {
 
 async function toggleTrainingBlockFavorite() {
   const block = trainingBlockSelected;
-  if (!block || trainingBlockFavoriteBusy) return;
+  if (
+    !block ||
+    trainingBlockFavoriteBusy ||
+    trainingBlockSaveBusy ||
+    trainingBlockDeactivateBusy ||
+    trainingBlockReloadBusy
+  ) return;
   const blockId = block.id;
   const desired = !block.isFavorite;
   const operationId = ++trainingBlockFavoriteRequestId;
@@ -1812,6 +1833,15 @@ async function toggleTrainingBlockFavorite() {
     if (operationId === trainingBlockFavoriteRequestId) {
       trainingBlockFavoriteBusy = false;
       refreshTrainingBlockParityMetadata();
+      if (
+        trainingBlockSavePending &&
+        trainingBlockDirty &&
+        !trainingBlockConflict &&
+        !trainingBlockCreateUncertain
+      ) {
+        trainingBlockSavePending = false;
+        scheduleTrainingBlockSave();
+      }
     }
   }
 }
@@ -1819,6 +1849,7 @@ async function toggleTrainingBlockFavorite() {
 async function deactivateTrainingBlock() {
   if (
     trainingBlockSaveBusy ||
+    trainingBlockFavoriteBusy ||
     !trainingBlockSelected ||
     !trainingBlockSelected.isActive ||
     !trainingBlocksCanEdit ||
