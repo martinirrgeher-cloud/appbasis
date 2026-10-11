@@ -406,8 +406,17 @@ function runtime(
       async list() {
         return [];
       },
+      async listOverview() {
+        return [];
+      },
       async findCurrent() {
         return undefined;
+      },
+      async findOverview() {
+        return undefined;
+      },
+      async setFavorite() {
+        return false;
       },
       async create() {
         throw new Error("training-block mock create is not wired to an E7A3 HTTP route");
@@ -600,7 +609,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
   });
 
 
-  it("ships E7A4 training-block mobile UI with autosave, reorder and history contracts", () => {
+  it("ships E7A6 training-block mobile UI with autosave, history and parity metadata", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="3" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
@@ -611,6 +620,8 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-retry"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-exercise-picker"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-history-load"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-favorite"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-usage-info"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/modules/training-blocks")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/update"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("scheduleTrainingBlockSave");
@@ -676,6 +687,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_CONFLICT");
     expect(ULC_LINZ_APP_SCRIPT).toContain("dataset.trainingBlockExerciseAction");
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/compare?from="');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/favorite"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("features?.favorites !== true");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("features?.usageSummary !== true");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Noch nicht verwendet");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("block.isFavorite ? \"★ Favorit\" : null");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId:");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
@@ -933,26 +949,32 @@ describe("generated identity+permissions Worker entrypoint", () => {
           expect(organizationId).toBe("verein-1");
           return [{ id: "group-u16", name: "U16", shortName: "U16" }];
         },
-        async list(organizationId) {
+        async listOverview(organizationId, principalId) {
           expect(organizationId).toBe("verein-1");
+          expect(principalId).toBe(currentIdentity.identity.identityId);
           return [{
-            id: "block-1",
-            organizationId,
-            isActive: true,
-            currentRevision: 2,
-            createdAt: "2026-10-10T10:00:00.000Z",
-            updatedAt: "2026-10-10T11:00:00.000Z",
-            revision: {
+            block: {
+              id: "block-1",
               organizationId,
-              blockId: "block-1",
-              revision: 2,
-              name: "Sprint U16",
-              audienceId: "group-u16",
-              durationMinutes: 30,
-              note: null,
-              exercises: [],
-              createdAt: "2026-10-10T11:00:00.000Z",
+              isActive: true,
+              currentRevision: 2,
+              createdAt: "2026-10-10T10:00:00.000Z",
+              updatedAt: "2026-10-10T11:00:00.000Z",
+              revision: {
+                organizationId,
+                blockId: "block-1",
+                revision: 2,
+                name: "Sprint U16",
+                audienceId: "group-u16",
+                durationMinutes: 30,
+                note: null,
+                exercises: [],
+                createdAt: "2026-10-10T11:00:00.000Z",
+              },
             },
+            isFavorite: true,
+            usageCount: 3,
+            lastUsedAt: "2026-10-10T12:00:00.000Z",
           }];
         },
       },
@@ -978,6 +1000,8 @@ describe("generated identity+permissions Worker entrypoint", () => {
           autosave: true,
           revisions: true,
           revisionComparison: true,
+          favorites: true,
+          usageSummary: true,
         },
       },
       access: { view: true, edit: true },
@@ -985,6 +1009,9 @@ describe("generated identity+permissions Worker entrypoint", () => {
       blocks: [{
         id: "block-1",
         currentRevision: 2,
+        isFavorite: true,
+        usageCount: 3,
+        lastUsedAt: "2026-10-10T12:00:00.000Z",
         revision: { name: "Sprint U16", audienceId: "group-u16" },
       }],
     });
@@ -1031,6 +1058,17 @@ describe("generated identity+permissions Worker entrypoint", () => {
             input,
           ]);
           return snapshot(expectedRevision + 1, input.name);
+        },
+        async findOverview(organizationId, principalId, blockId) {
+          expect(organizationId).toBe("verein-1");
+          expect(principalId).toBe(currentIdentity.identity.identityId);
+          expect(blockId).toBe("block-created");
+          return {
+            block: snapshot(2, "Sprint neu"),
+            isFavorite: false,
+            usageCount: 0,
+            lastUsedAt: null,
+          };
         },
       },
     }));
@@ -1149,6 +1187,94 @@ describe("generated identity+permissions Worker entrypoint", () => {
         currentRevision: 3,
       },
     });
+  });
+
+  it("toggles a personal training-block favorite through view access only", async () => {
+    const calls: unknown[] = [];
+    const base = runtime();
+    const block = {
+      id: "block-favorite",
+      organizationId: "verein-1",
+      isActive: true,
+      currentRevision: 1,
+      createdAt: "2026-10-10T10:00:00.000Z",
+      updatedAt: "2026-10-10T10:00:00.000Z",
+      revision: {
+        organizationId: "verein-1",
+        blockId: "block-favorite",
+        revision: 1,
+        name: "Favorit",
+        audienceId: "group-u16",
+        durationMinutes: null,
+        note: null,
+        exercises: [],
+        createdAt: "2026-10-10T10:00:00.000Z",
+      },
+    };
+    let favorite = false;
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingBlocksAccess: {
+        ...base.trainingBlocksAccess,
+        async assertEditAccess() {
+          throw new Error("favorite must not require edit access");
+        },
+      },
+      trainingBlocks: {
+        ...base.trainingBlocks,
+        async setFavorite(organizationId, principalId, blockId, value) {
+          calls.push([organizationId, principalId, blockId, value]);
+          favorite = value;
+          return true;
+        },
+        async findOverview() {
+          return {
+            block,
+            isFavorite: favorite,
+            usageCount: 4,
+            lastUsedAt: "2026-10-10T12:00:00.000Z",
+          };
+        },
+      },
+    }));
+
+    const put = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-favorite/favorite",
+        {
+          method: "PUT",
+          headers: { cookie: currentIdentity.sessionToken },
+        },
+      ),
+      validEnv,
+    );
+    expect(put.status).toBe(200);
+    await expect(put.json()).resolves.toMatchObject({
+      block: {
+        id: "block-favorite",
+        isFavorite: true,
+        usageCount: 4,
+      },
+    });
+
+    const del = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-favorite/favorite",
+        {
+          method: "DELETE",
+          headers: { cookie: currentIdentity.sessionToken },
+        },
+      ),
+      validEnv,
+    );
+    expect(del.status).toBe(200);
+    await expect(del.json()).resolves.toMatchObject({
+      block: { id: "block-favorite", isFavorite: false },
+    });
+    expect(calls).toEqual([
+      ["verein-1", currentIdentity.identity.identityId, "block-favorite", true],
+      ["verein-1", currentIdentity.identity.identityId, "block-favorite", false],
+    ]);
   });
 
   it("serves training-block revision history and comparison read-only", async () => {
