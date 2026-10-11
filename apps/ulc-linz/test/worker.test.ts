@@ -1064,10 +1064,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
           expect(principalId).toBe(currentIdentity.identity.identityId);
           expect(blockId).toBe("block-created");
           return {
-            block: snapshot(2, "Sprint neu"),
-            isFavorite: false,
-            usageCount: 0,
-            lastUsedAt: null,
+            block: snapshot(3, "Parallel neuer Stand"),
+            isFavorite: true,
+            usageCount: 2,
+            lastUsedAt: "2026-10-10T12:00:00.000Z",
           };
         },
       },
@@ -1108,6 +1108,14 @@ describe("generated identity+permissions Worker entrypoint", () => {
       validEnv,
     );
     expect(update.status).toBe(200);
+    await expect(update.clone().json()).resolves.toMatchObject({
+      block: {
+        currentRevision: 2,
+        isFavorite: true,
+        usageCount: 2,
+        revision: { name: "Sprint neu" },
+      },
+    });
     expect(calls).toEqual([
       [
         "create",
