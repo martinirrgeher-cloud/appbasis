@@ -692,6 +692,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("features?.usageSummary !== true");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Noch nicht verwendet");
     expect(ULC_LINZ_APP_SCRIPT).toContain("block.isFavorite ? \"★ Favorit\" : null");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (trainingBlockFavoriteBusy) {\n    trainingBlockSavePending = true;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSaveBusy ||\n    trainingBlockDeactivateBusy ||\n    trainingBlockReloadBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSavePending &&\n        trainingBlockDirty");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSaveBusy ||\n    trainingBlockFavoriteBusy ||");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId:");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
