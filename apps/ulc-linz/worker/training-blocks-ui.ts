@@ -354,6 +354,9 @@ let trainingBlockChangeVersion = 0;
 let trainingBlockCreateUncertain = false;
 let trainingBlockDeactivateBusy = false;
 let trainingBlockOpenRequestId = 0;
+let trainingBlockHistoryRequestId = 0;
+let trainingBlockRevisionRequestId = 0;
+let trainingBlockCompareRequestId = 0;
 
 function isCurrentTrainingBlockSelection(blockId, requestId) {
   return (
@@ -1590,6 +1593,9 @@ async function deactivateTrainingBlock() {
 }
 
 function resetTrainingBlockHistory() {
+  trainingBlockHistoryRequestId += 1;
+  trainingBlockRevisionRequestId += 1;
+  trainingBlockCompareRequestId += 1;
   if (trainingBlockElements.history) trainingBlockElements.history.hidden = true;
   if (trainingBlockElements.historyList) trainingBlockElements.historyList.replaceChildren();
   if (trainingBlockElements.compareFrom) trainingBlockElements.compareFrom.replaceChildren();
@@ -1611,13 +1617,17 @@ async function loadTrainingBlockHistory() {
   if (!trainingBlockSelected) return;
   const blockId = trainingBlockSelected.id;
   const requestId = trainingBlockOpenRequestId;
+  const operationId = ++trainingBlockHistoryRequestId;
   try {
     const payload = await requestJson(
       "/api/modules/training-blocks/" +
         encodeURIComponent(blockId) +
         "/revisions",
     );
-    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
+    if (
+      operationId !== trainingBlockHistoryRequestId ||
+      !isCurrentTrainingBlockSelection(blockId, requestId)
+    ) return;
     if (
       !Array.isArray(payload?.revisions) ||
       !payload.revisions.every(isTrainingBlockRevision)
@@ -1626,7 +1636,10 @@ async function loadTrainingBlockHistory() {
     }
     renderTrainingBlockHistory(payload.revisions);
   } catch {
-    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
+    if (
+      operationId !== trainingBlockHistoryRequestId ||
+      !isCurrentTrainingBlockSelection(blockId, requestId)
+    ) return;
     showMessage(
       trainingBlockElements.editorMessage,
       "Die Versionen konnten nicht geladen werden.",
@@ -1689,6 +1702,7 @@ async function openTrainingBlockRevision(number) {
   if (!trainingBlockSelected) return;
   const blockId = trainingBlockSelected.id;
   const requestId = trainingBlockOpenRequestId;
+  const operationId = ++trainingBlockRevisionRequestId;
   try {
     const payload = await requestJson(
       "/api/modules/training-blocks/" +
@@ -1696,7 +1710,10 @@ async function openTrainingBlockRevision(number) {
         "/revisions/" +
         encodeURIComponent(String(number)),
     );
-    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
+    if (
+      operationId !== trainingBlockRevisionRequestId ||
+      !isCurrentTrainingBlockSelection(blockId, requestId)
+    ) return;
     if (!isTrainingBlockRevision(payload?.revision)) {
       throw new Error("INVALID_TRAINING_BLOCK_REVISION");
     }
@@ -1719,7 +1736,10 @@ async function openTrainingBlockRevision(number) {
       trainingBlockElements.revisionPreview.hidden = false;
     }
   } catch {
-    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
+    if (
+      operationId !== trainingBlockRevisionRequestId ||
+      !isCurrentTrainingBlockSelection(blockId, requestId)
+    ) return;
     showMessage(
       trainingBlockElements.editorMessage,
       "Die gewählte Version konnte nicht geladen werden.",
@@ -1731,6 +1751,7 @@ async function compareTrainingBlockRevisions() {
   if (!trainingBlockSelected) return;
   const blockId = trainingBlockSelected.id;
   const requestId = trainingBlockOpenRequestId;
+  const operationId = ++trainingBlockCompareRequestId;
   const from = trainingBlockElements.compareFrom?.value || "";
   const to = trainingBlockElements.compareTo?.value || "";
   if (!from || !to) return;
@@ -1743,7 +1764,10 @@ async function compareTrainingBlockRevisions() {
         "&to=" +
         encodeURIComponent(to),
     );
-    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
+    if (
+      operationId !== trainingBlockCompareRequestId ||
+      !isCurrentTrainingBlockSelection(blockId, requestId)
+    ) return;
     const value = payload?.comparison;
     if (
       value === null ||
@@ -1781,7 +1805,10 @@ async function compareTrainingBlockRevisions() {
       trainingBlockElements.comparison.hidden = false;
     }
   } catch {
-    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
+    if (
+      operationId !== trainingBlockCompareRequestId ||
+      !isCurrentTrainingBlockSelection(blockId, requestId)
+    ) return;
     showMessage(
       trainingBlockElements.editorMessage,
       "Die Versionen konnten nicht verglichen werden.",

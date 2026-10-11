@@ -628,6 +628,12 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockOpenRequestId");
     expect(ULC_LINZ_APP_SCRIPT).toContain("requestId !== trainingBlockOpenRequestId");
     expect(ULC_LINZ_APP_SCRIPT).toContain("isCurrentTrainingBlockSelection");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockHistoryRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockRevisionRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockCompareRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("operationId !== trainingBlockRevisionRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("operationId !== trainingBlockHistoryRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("operationId !== trainingBlockCompareRequestId");
     expect(ULC_LINZ_APP_SCRIPT).toContain("const blockId = trainingBlockSelected.id");
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (!isCurrentTrainingBlockSelection(blockId, requestId)) return");
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (!force && trainingBlockCreateUncertain)");
