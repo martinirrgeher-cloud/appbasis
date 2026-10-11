@@ -24,14 +24,14 @@ CREATE TABLE appbasis_training_block_favorite (
       AND btrim(block_id) = block_id
     )
 );
-
+--> statement-breakpoint
 CREATE INDEX appbasis_training_block_favorite_principal_idx
   ON appbasis_training_block_favorite (
     organization_id,
     principal_id,
     block_id
   );
-
+--> statement-breakpoint
 CREATE TABLE appbasis_training_block_usage (
   organization_id text NOT NULL,
   id text NOT NULL,
@@ -80,7 +80,7 @@ CREATE TABLE appbasis_training_block_usage (
       )
     )
 );
-
+--> statement-breakpoint
 CREATE INDEX appbasis_training_block_usage_block_idx
   ON appbasis_training_block_usage (
     organization_id,
