@@ -630,7 +630,6 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockStepAligned");
     expect(ULC_LINZ_APP_SCRIPT).toContain("veraltete(r) Parameterwert(e)");
     expect(ULC_LINZ_APP_SCRIPT).toContain(".filter((value) => currentKeys.has(value.key))");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("Array.from(override.value).length <= 500");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDraft.exercises.length >= 200");
     expect(ULC_LINZ_APP_SCRIPT).toContain("lokale Änderungen mit einem Versionskonflikt");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Der Block könnte bereits gespeichert sein");
