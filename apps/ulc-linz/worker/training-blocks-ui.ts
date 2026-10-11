@@ -478,12 +478,15 @@ async function refreshTrainingBlockAudienceDependency() {
       payload?.module?.moduleId !== "training_blocks" ||
       payload?.access?.view !== true ||
       typeof payload?.access?.edit !== "boolean" ||
+      !Array.isArray(payload?.blocks) ||
+      !payload.blocks.every(isTrainingBlockSnapshot) ||
       !Array.isArray(payload?.audiences) ||
       !payload.audiences.every(isTrainingBlockAudience)
     ) {
-      throw new Error("INVALID_TRAINING_BLOCK_AUDIENCES");
+      throw new Error("INVALID_TRAINING_BLOCK_OVERVIEW");
     }
     trainingBlocksCanEdit = payload.access.edit;
+    trainingBlocks = payload.blocks.slice();
     trainingBlockAudiences = payload.audiences.slice();
     renderTrainingBlocks();
     refreshTrainingBlockControls();

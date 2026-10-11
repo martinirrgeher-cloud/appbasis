@@ -633,6 +633,8 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockCompareRequestId");
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshTrainingBlockAudienceDependency");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockAudienceRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlocks = payload.blocks.slice()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("!payload.blocks.every(isTrainingBlockSnapshot)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockReloadBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("await openTrainingBlock(id, true)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Aktueller Stand wird geladen");
