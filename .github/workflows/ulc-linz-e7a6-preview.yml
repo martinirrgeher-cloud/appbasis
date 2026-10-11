@@ -352,17 +352,24 @@ jobs:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
         run: |
           set -euo pipefail
-          HTML="$(curl --fail-with-body --silent --show-error "$APPBASIS_GENERATED_PREVIEW_URL/")"
-          grep -F 'id="training-block-new"' <<<"$HTML" >/dev/null || {
-            echo 'The deployed preview does not contain the training-blocks UI.' >&2
-            exit 1
-          }
-          grep -F 'id="training-block-favorite"' <<<"$HTML" >/dev/null || {
-            echo 'The deployed preview does not contain the training-block favorite control.' >&2
-            exit 1
-          }
-          grep -F 'id="training-block-usage-info"' <<<"$HTML" >/dev/null || {
-            echo 'The deployed preview does not contain the training-block usage summary.' >&2
+          READY=0
+          for attempt in $(seq 1 20); do
+            if HTML="$(curl --fail-with-body --silent --show-error "$APPBASIS_GENERATED_PREVIEW_URL/" 2>/dev/null)"; then
+              if grep -F 'id="training-block-new"' <<<"$HTML" >/dev/null \
+                && grep -F 'id="training-block-favorite"' <<<"$HTML" >/dev/null \
+                && grep -F 'id="training-block-usage-info"' <<<"$HTML" >/dev/null; then
+                READY=1
+                echo "E7A6 training-block UI converged on attempt $attempt."
+                break
+              fi
+            fi
+            if [ "$attempt" -lt 20 ]; then
+              sleep 2
+            fi
+          done
+
+          test "$READY" = '1' || {
+            echo 'The deployed preview did not converge to the E7A6 training-block UI within the propagation window.' >&2
             exit 1
           }
 
