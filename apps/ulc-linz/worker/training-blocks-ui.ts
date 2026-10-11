@@ -1289,7 +1289,7 @@ async function saveTrainingBlock() {
     saveSucceeded = true;
     trainingBlockSelected = response.block;
     syncTrainingBlockItemIds(response.block);
-    if (creating) resetTrainingBlockHistory();
+    resetTrainingBlockHistory();
     trainingBlockDirty = trainingBlockChangeVersion !== saveVersion;
     replaceTrainingBlockInList(response.block);
     if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
