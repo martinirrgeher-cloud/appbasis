@@ -348,6 +348,14 @@ describe("training-blocks service", () => {
         lastUsedAt: "2026-10-10T11:00:00.000Z",
       }),
     ]);
+
+    await expect(service.listUsageSummaries("org-race")).resolves.toEqual([
+      {
+        blockId: "block-visible",
+        usageCount: 1,
+        lastUsedAt: "2026-10-10T11:00:00.000Z",
+      },
+    ]);
   });
 
 });
