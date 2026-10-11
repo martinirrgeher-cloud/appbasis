@@ -352,6 +352,7 @@ let trainingBlockSaveBusy = false;
 let trainingBlockSavePending = false;
 let trainingBlockChangeVersion = 0;
 let trainingBlockCreateUncertain = false;
+let trainingBlockDeactivateBusy = false;
 
 function isTrainingBlockAudience(value) {
   return value !== null &&
@@ -603,7 +604,11 @@ function trainingBlockDraftFromSnapshot(block) {
 }
 
 function newTrainingBlock() {
-  if (!trainingBlocksCanEdit || trainingBlockAudiences.length === 0) return;
+  if (
+    trainingBlockDeactivateBusy ||
+    !trainingBlocksCanEdit ||
+    trainingBlockAudiences.length === 0
+  ) return;
   trainingBlockSelected = null;
   trainingBlockDraft = {
     name: "",
@@ -617,12 +622,13 @@ function newTrainingBlock() {
   trainingBlockConflict = false;
   trainingBlockChangeVersion = 0;
   trainingBlockCreateUncertain = false;
+  trainingBlockDeactivateBusy = false;
   populateTrainingBlockEditor();
   trainingBlockElements.name?.focus();
 }
 
 async function openTrainingBlock(id) {
-  if (!trainingBlocksReady) return;
+  if (!trainingBlocksReady || trainingBlockDeactivateBusy) return;
   showMessage(trainingBlockElements.message, "");
   try {
     const payload = await requestJson(
@@ -637,6 +643,7 @@ async function openTrainingBlock(id) {
     trainingBlockConflict = false;
     trainingBlockChangeVersion = 0;
     trainingBlockCreateUncertain = false;
+    trainingBlockDeactivateBusy = false;
     populateTrainingBlockEditor();
   } catch (error) {
     showMessage(
@@ -703,6 +710,26 @@ function populateTrainingBlockEditor() {
   );
 }
 
+function refreshTrainingBlockEditorLock() {
+  const locked = trainingBlockDeactivateBusy;
+  for (const control of [
+    trainingBlockElements.name,
+    trainingBlockElements.audience,
+    trainingBlockElements.duration,
+    trainingBlockElements.note,
+    trainingBlockElements.exercisePicker,
+    trainingBlockElements.exerciseAdd,
+    trainingBlockElements.close,
+    trainingBlockElements.deactivate,
+    trainingBlockElements.historyLoad,
+    trainingBlockElements.compare,
+  ]) {
+    if (control) control.disabled = locked || control.disabled;
+  }
+  renderTrainingBlockExercisePicker();
+  renderTrainingBlockExercises();
+}
+
 function renderTrainingBlockAudienceOptions() {
   const select = trainingBlockElements.audience;
   if (!select || !trainingBlockDraft) return;
@@ -745,7 +772,9 @@ function renderTrainingBlockExercisePicker() {
     select.append(option);
   }
   const editable =
-    trainingBlocksCanEdit && trainingBlockSelected?.isActive !== false;
+    trainingBlocksCanEdit &&
+    !trainingBlockDeactivateBusy &&
+    trainingBlockSelected?.isActive !== false;
   const atExerciseLimit =
     (trainingBlockDraft?.exercises.length || 0) >= 200;
   select.disabled =
@@ -781,7 +810,9 @@ function renderTrainingBlockExercises() {
       String(trainingBlockDraft.exercises.length);
   }
   const editable =
-    trainingBlocksCanEdit && trainingBlockSelected?.isActive !== false;
+    trainingBlocksCanEdit &&
+    !trainingBlockDeactivateBusy &&
+    trainingBlockSelected?.isActive !== false;
   trainingBlockDraft.exercises.forEach((draft, index) => {
     const item = trainingBlockExerciseItem(draft.exerciseId);
     const row = document.createElement("article");
@@ -827,6 +858,23 @@ function renderTrainingBlockExercises() {
     noteInput.dataset.trainingBlockExerciseNote = String(index);
     note.append(noteInput);
     row.append(note);
+
+    if (item) {
+      const currentKeys = new Set(
+        item.parameters.map((parameter) => parameter.key),
+      );
+      const obsoleteCount = draft.parameterOverrides.filter(
+        (override) => !currentKeys.has(override.key),
+      ).length;
+      if (obsoleteCount > 0) {
+        const obsolete = document.createElement("small");
+        obsolete.className = "training-block-exercise__meta";
+        obsolete.textContent =
+          String(obsoleteCount) +
+          " veraltete(r) Parameterwert(e) werden beim nächsten Speichern entfernt.";
+        row.append(obsolete);
+      }
+    }
 
     if (item && item.parameters.length > 0) {
       const parameters = document.createElement("div");
@@ -881,7 +929,12 @@ function trainingBlockActionButton(label, action, index) {
 }
 
 function markTrainingBlockDirty() {
-  if (!trainingBlockDraft || !trainingBlocksCanEdit || trainingBlockConflict) return;
+  if (
+    !trainingBlockDraft ||
+    !trainingBlocksCanEdit ||
+    trainingBlockConflict ||
+    trainingBlockDeactivateBusy
+  ) return;
   trainingBlockChangeVersion += 1;
   trainingBlockDirty = true;
   if (trainingBlockCreateUncertain) {
@@ -921,16 +974,116 @@ function trainingBlockDraftPayload() {
     audienceId: trainingBlockDraft.audienceId || null,
     durationMinutes: trainingBlockDraft.durationMinutes,
     note: trainingBlockDraft.note.trim() || null,
-    exercises: trainingBlockDraft.exercises.map((exercise) => ({
-      ...(exercise.itemId ? { itemId: exercise.itemId } : {}),
-      exerciseId: exercise.exerciseId,
-      note: exercise.note.trim() || null,
-      parameterOverrides: exercise.parameterOverrides.map((value) => ({
-        key: value.key,
-        value: value.value,
-      })),
-    })),
+    exercises: trainingBlockDraft.exercises.map((exercise) => {
+      const item = trainingBlockExerciseItem(exercise.exerciseId);
+      const currentKeys = new Set(
+        (item?.parameters || []).map((parameter) => parameter.key),
+      );
+      return {
+        ...(exercise.itemId ? { itemId: exercise.itemId } : {}),
+        exerciseId: exercise.exerciseId,
+        note: exercise.note.trim() || null,
+        parameterOverrides: exercise.parameterOverrides
+          .filter((value) => currentKeys.has(value.key))
+          .map((value) => ({
+            key: value.key,
+            value: value.value,
+          })),
+      };
+    }),
   };
+}
+
+function trainingBlockParameterError(payload) {
+  for (const exercise of payload?.exercises || []) {
+    const item = trainingBlockExerciseItem(exercise.exerciseId);
+    if (!item) continue;
+    const definitions = new Map(
+      item.parameters.map((parameter) => [parameter.key, parameter]),
+    );
+    const overrides = new Map(
+      exercise.parameterOverrides.map((override) => [
+        override.key,
+        override.value,
+      ]),
+    );
+
+    for (const override of exercise.parameterOverrides) {
+      const definition = definitions.get(override.key);
+      if (!definition) continue;
+      const value = String(override.value);
+      if (Array.from(value).length > 500 || value.trim().length === 0) {
+        return item.name + ": " + definition.label + " ist ungültig.";
+      }
+      if (definition.inputType !== "number") continue;
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) {
+        return item.name + ": " + definition.label + " muss eine Zahl sein.";
+      }
+      if (
+        definition.minValue !== null &&
+        numericValue < definition.minValue
+      ) {
+        return (
+          item.name +
+          ": " +
+          definition.label +
+          " muss mindestens " +
+          String(definition.minValue) +
+          " sein."
+        );
+      }
+      if (
+        definition.maxValue !== null &&
+        numericValue > definition.maxValue
+      ) {
+        return (
+          item.name +
+          ": " +
+          definition.label +
+          " darf höchstens " +
+          String(definition.maxValue) +
+          " sein."
+        );
+      }
+      if (
+        definition.stepValue !== null &&
+        !trainingBlockStepAligned(
+          numericValue,
+          definition.minValue ?? 0,
+          definition.stepValue,
+        )
+      ) {
+        return (
+          item.name +
+          ": " +
+          definition.label +
+          " passt nicht zur Schrittweite " +
+          String(definition.stepValue) +
+          "."
+        );
+      }
+    }
+
+    for (const definition of item.parameters) {
+      if (
+        definition.isRequired &&
+        definition.defaultValue === null &&
+        !overrides.has(definition.key)
+      ) {
+        return item.name + ": " + definition.label + " ist erforderlich.";
+      }
+    }
+  }
+  return null;
+}
+
+function trainingBlockStepAligned(value, base, step) {
+  const quotient = (value - base) / step;
+  const nearest = Math.round(quotient);
+  const tolerance =
+    Number.EPSILON * 16 * Math.max(1, Math.abs(quotient));
+  return Math.abs(quotient - nearest) <= tolerance;
 }
 
 function trainingBlockDraftReady(payload) {
@@ -942,12 +1095,7 @@ function trainingBlockDraftReady(payload) {
     (payload.durationMinutes === null ||
       (Number.isSafeInteger(payload.durationMinutes) &&
         payload.durationMinutes >= 1 &&
-        payload.durationMinutes <= 2_147_483_647)) &&
-    payload.exercises.every((exercise) =>
-      exercise.parameterOverrides.every(
-        (override) => Array.from(override.value).length <= 500,
-      ),
-    );
+        payload.durationMinutes <= 2_147_483_647));
 }
 
 async function saveTrainingBlock() {
@@ -955,7 +1103,8 @@ async function saveTrainingBlock() {
     !trainingBlockDirty ||
     !trainingBlocksCanEdit ||
     trainingBlockConflict ||
-    trainingBlockCreateUncertain
+    trainingBlockCreateUncertain ||
+    trainingBlockDeactivateBusy
   ) return;
   if (trainingBlockSaveBusy) {
     trainingBlockSavePending = true;
@@ -967,6 +1116,12 @@ async function saveTrainingBlock() {
   }
   syncTrainingBlockDraftFromFields();
   const payload = trainingBlockDraftPayload();
+  const parameterError = trainingBlockParameterError(payload);
+  if (parameterError !== null) {
+    setTrainingBlockSaveState("draft", "Parameter prüfen");
+    showMessage(trainingBlockElements.editorMessage, parameterError);
+    return;
+  }
   if (!trainingBlockDraftReady(payload)) {
     setTrainingBlockSaveState(
       "draft",
@@ -1046,7 +1201,11 @@ async function saveTrainingBlock() {
       );
     } else if (
       creating &&
-      (error?.status === 0 || (typeof error?.status === "number" && error.status >= 500))
+      !(
+        typeof error?.status === "number" &&
+        error.status >= 400 &&
+        error.status < 500
+      )
     ) {
       trainingBlockCreateUncertain = true;
       setTrainingBlockSaveState("error", "Anlagezustand unklar");
@@ -1108,6 +1267,13 @@ function setTrainingBlockSaveState(state, label) {
 }
 
 function closeTrainingBlockEditor(force = false) {
+  if (!force && trainingBlockDeactivateBusy) {
+    showMessage(
+      trainingBlockElements.editorMessage,
+      "Archivieren läuft noch. Der Editor bleibt bis zum Abschluss gesperrt.",
+    );
+    return;
+  }
   if (!force && trainingBlockSaveBusy) {
     showMessage(
       trainingBlockElements.editorMessage,
@@ -1132,6 +1298,7 @@ function closeTrainingBlockEditor(force = false) {
   trainingBlockConflict = false;
   trainingBlockChangeVersion = 0;
   trainingBlockCreateUncertain = false;
+  trainingBlockDeactivateBusy = false;
   if (trainingBlockElements.editor) trainingBlockElements.editor.hidden = true;
   document.body.classList.remove("training-block-editor-open");
   showMessage(trainingBlockElements.editorMessage, "");
@@ -1326,6 +1493,9 @@ async function deactivateTrainingBlock() {
     ) return;
   }
   if (!window.confirm("Diesen Trainingsblock archivieren?")) return;
+  trainingBlockDeactivateBusy = true;
+  setTrainingBlockSaveState("saving", "Archiviert …");
+  refreshTrainingBlockEditorLock();
   try {
     const payload = await requestJson(
       "/api/modules/training-blocks/" +
@@ -1342,6 +1512,7 @@ async function deactivateTrainingBlock() {
       throw new Error("INVALID_TRAINING_BLOCK_DEACTIVATE");
     }
     replaceTrainingBlockInList(payload.block);
+    trainingBlockDeactivateBusy = false;
     closeTrainingBlockEditor(true);
   } catch (error) {
     if (error?.status === 409) {
@@ -1353,6 +1524,11 @@ async function deactivateTrainingBlock() {
       trainingBlockElements.editorMessage,
       "Der Trainingsblock konnte nicht archiviert werden.",
     );
+  } finally {
+    if (trainingBlockElements.editor && !trainingBlockElements.editor.hidden) {
+      trainingBlockDeactivateBusy = false;
+      refreshTrainingBlockEditorLock();
+    }
   }
 }
 
