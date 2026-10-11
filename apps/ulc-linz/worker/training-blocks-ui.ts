@@ -658,6 +658,14 @@ function newTrainingBlock() {
     !trainingBlocksCanEdit ||
     trainingBlockAudiences.length === 0
   ) return;
+  if (trainingBlockDraft) {
+    showMessage(
+      trainingBlockElements.editorMessage,
+      "Bitte den geöffneten Trainingsblock zuerst schließen.",
+    );
+    trainingBlockElements.close?.focus();
+    return;
+  }
   trainingBlockOpenRequestId += 1;
   trainingBlockSelected = null;
   trainingBlockDraft = {
@@ -683,14 +691,22 @@ async function openTrainingBlock(id, allowReload = false) {
     !trainingBlocksReady ||
     trainingBlockDeactivateBusy ||
     (trainingBlockReloadBusy && !allowReload)
-  ) return;
+  ) return false;
+  if (trainingBlockDraft && !allowReload) {
+    showMessage(
+      trainingBlockElements.editorMessage,
+      "Bitte den geöffneten Trainingsblock zuerst schließen.",
+    );
+    trainingBlockElements.close?.focus();
+    return false;
+  }
   const requestId = ++trainingBlockOpenRequestId;
   showMessage(trainingBlockElements.message, "");
   try {
     const payload = await requestJson(
       "/api/modules/training-blocks/" + encodeURIComponent(id),
     );
-    if (requestId !== trainingBlockOpenRequestId) return;
+    if (requestId !== trainingBlockOpenRequestId) return false;
     if (!isTrainingBlockSnapshot(payload?.block)) {
       throw new Error("INVALID_TRAINING_BLOCK_DETAIL");
     }
@@ -702,14 +718,17 @@ async function openTrainingBlock(id, allowReload = false) {
     trainingBlockCreateUncertain = false;
     trainingBlockDeactivateBusy = false;
     populateTrainingBlockEditor();
+    if (!allowReload) trainingBlockElements.close?.focus();
+    return true;
   } catch (error) {
-    if (requestId !== trainingBlockOpenRequestId) return;
+    if (requestId !== trainingBlockOpenRequestId) return false;
     showMessage(
       trainingBlockElements.message,
       error?.status === 404
         ? "Der Trainingsblock wurde nicht gefunden."
         : "Der Trainingsblock konnte nicht geladen werden.",
     );
+    return false;
   }
 }
 
@@ -1469,10 +1488,22 @@ async function reloadTrainingBlock() {
   trainingBlockReloadBusy = true;
   refreshTrainingBlockEditorLock();
   setTrainingBlockSaveState("saving", "Aktueller Stand wird geladen …");
+  let reloaded = false;
   try {
-    await openTrainingBlock(id, true);
+    reloaded = await openTrainingBlock(id, true);
   } finally {
     trainingBlockReloadBusy = false;
+    if (!reloaded && trainingBlockSelected?.id === id) {
+      trainingBlockConflict = true;
+      setTrainingBlockSaveState("conflict", "Neu laden fehlgeschlagen");
+      if (trainingBlockElements.reload) {
+        trainingBlockElements.reload.hidden = false;
+      }
+      showMessage(
+        trainingBlockElements.editorMessage,
+        "Der aktuelle Stand konnte nicht geladen werden. Bitte erneut versuchen.",
+      );
+    }
     refreshTrainingBlockEditorLock();
   }
 }

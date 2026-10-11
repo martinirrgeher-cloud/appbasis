@@ -636,6 +636,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockReloadBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("await openTrainingBlock(id, true)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Aktueller Stand wird geladen");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDraft && !allowReload");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Bitte den geöffneten Trainingsblock zuerst schließen");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("reloaded = await openTrainingBlock(id, true)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('setTrainingBlockSaveState("conflict", "Neu laden fehlgeschlagen")');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Der aktuelle Stand konnte nicht geladen werden. Bitte erneut versuchen.");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDeactivateBusy || trainingBlockReloadBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshTrainingBlockEditorLock();");
     expect(ULC_LINZ_APP_SCRIPT).toContain("operationId !== trainingBlockRevisionRequestId");
