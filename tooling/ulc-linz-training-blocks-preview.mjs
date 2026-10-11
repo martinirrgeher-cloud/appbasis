@@ -130,9 +130,7 @@ export async function inspectUlcTrainingBlocksPreview(
       `SELECT tablename
          FROM pg_catalog.pg_tables
         WHERE schemaname = 'public'
-          AND tablename = ANY($1::text[])
         ORDER BY tablename`,
-      [[...EXPECTED_TABLES]],
     );
     if (!Array.isArray(rows)) {
       throw new UlcTrainingBlocksPreviewExecutionError(
