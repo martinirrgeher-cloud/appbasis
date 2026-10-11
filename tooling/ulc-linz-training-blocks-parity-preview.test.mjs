@@ -39,6 +39,11 @@ test("E7A6 preview plan pins only the canonical schema-v2 parity delta", async (
   assert.equal(plan.migration.relativePath, plan.target.migrationPath);
   assert.ok(plan.migration.statements.length >= 1);
   assert.equal(plan.productionChanged, false);
+  const source = await readFile(
+    resolve(repositoryRoot, "tooling/ulc-linz-training-blocks-parity-preview.mjs"),
+    "utf8",
+  );
+  assert.match(source, /set_config\('search_path', 'public', true\)/);
 });
 
 test("E7A6 preview shape requires the complete E7A5 baseline", () => {
