@@ -104,6 +104,26 @@ test("E7A5 workflow keeps inspect read-only and gates migration/deploy separatel
   );
   assert.match(
     workflow,
+    /APPBASIS_APPLY_DATABASE_ACCESS: "1"/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-d4-preview-database-access\.mjs reconcile/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-d4-preview-database-access\.mjs preflight-existing/,
+  );
+  assert.match(
+    workflow,
+    /APPBASIS_EXPECTED_MODE: standard-module/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-exercise-catalog-preview-runtime-smoke\.mjs/,
+  );
+  assert.match(
+    workflow,
     /entrypoint: "\.\/worker\/preview-exercise-catalog-standard\.ts"/,
   );
   assert.match(
