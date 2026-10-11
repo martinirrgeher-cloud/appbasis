@@ -873,7 +873,10 @@ function refreshTrainingBlockParityMetadata() {
 }
 
 function refreshTrainingBlockEditorLock() {
-  const locked = trainingBlockDeactivateBusy || trainingBlockReloadBusy;
+  const locked =
+    trainingBlockDeactivateBusy ||
+    trainingBlockReloadBusy ||
+    trainingBlockFavoriteBusy;
   const editable =
     trainingBlocksCanEdit &&
     !locked &&
@@ -966,6 +969,7 @@ function renderTrainingBlockExercisePicker() {
     trainingBlocksCanEdit &&
     !trainingBlockDeactivateBusy &&
     !trainingBlockReloadBusy &&
+    !trainingBlockFavoriteBusy &&
     trainingBlockSelected?.isActive !== false;
   const atExerciseLimit =
     (trainingBlockDraft?.exercises.length || 0) >= 200;
@@ -1005,6 +1009,7 @@ function renderTrainingBlockExercises() {
     trainingBlocksCanEdit &&
     !trainingBlockDeactivateBusy &&
     !trainingBlockReloadBusy &&
+    !trainingBlockFavoriteBusy &&
     trainingBlockSelected?.isActive !== false;
   trainingBlockDraft.exercises.forEach((draft, index) => {
     const item = trainingBlockExerciseItem(draft.exerciseId);
@@ -1786,6 +1791,7 @@ async function toggleTrainingBlockFavorite() {
   const operationId = ++trainingBlockFavoriteRequestId;
   trainingBlockFavoriteBusy = true;
   refreshTrainingBlockParityMetadata();
+  refreshTrainingBlockEditorLock();
   showMessage(trainingBlockElements.editorMessage, "");
   try {
     const response = await requestJson(
@@ -1833,6 +1839,7 @@ async function toggleTrainingBlockFavorite() {
     if (operationId === trainingBlockFavoriteRequestId) {
       trainingBlockFavoriteBusy = false;
       refreshTrainingBlockParityMetadata();
+      refreshTrainingBlockEditorLock();
       if (
         trainingBlockSavePending &&
         trainingBlockDirty &&
