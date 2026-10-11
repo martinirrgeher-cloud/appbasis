@@ -272,6 +272,16 @@
       "owner": "training-blocks",
       "table": "appbasis_training_block_revision_item_parameter",
       "privacyClass": "training-block-data"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_favorite",
+      "privacyClass": "training-block-user-preference"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_usage",
+      "privacyClass": "training-block-training-usage-metadata"
     }
   ],
   "excludedPrivacyClasses": [
@@ -298,7 +308,9 @@
     "exercise-catalog-user-preference",
     "exercise-catalog-training-usage-metadata",
     "exercise-catalog-private-media-metadata",
-    "training-block-data"
+    "training-block-data",
+    "training-block-user-preference",
+    "training-block-training-usage-metadata"
   ],
   "credentialFieldNames": [
     "password",
