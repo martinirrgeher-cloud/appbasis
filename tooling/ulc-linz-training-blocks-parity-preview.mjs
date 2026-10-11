@@ -248,6 +248,9 @@ export async function applyUlcTrainingBlocksParityPreview(
     await database.client.begin(async (transaction) => {
       await verifyMigrationIdentity(transaction);
       await transaction.unsafe(
+        "SELECT pg_catalog.set_config('search_path', 'public', true) AS configured_search_path",
+      );
+      await transaction.unsafe(
         "SELECT pg_advisory_xact_lock(hashtextextended('ulc-linz:training-blocks-parity-preview', 0))",
       );
       const tables = await publicTableInventory(transaction);
