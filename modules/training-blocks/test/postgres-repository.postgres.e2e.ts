@@ -29,16 +29,26 @@ beforeAll(async () => {
   await administrativeConnection.client.unsafe("CREATE DATABASE " + isolatedDatabaseName);
   isolatedDatabaseCreated = true;
   isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);
-  const migration = await readFile(
-    new URL("../migrations/0000_appbasis_training_blocks_foundation.sql", import.meta.url),
-    "utf8",
-  );
-  await requiredConnection().client.unsafe(migration);
+  const migrations = await Promise.all([
+    readFile(
+      new URL("../migrations/0000_appbasis_training_blocks_foundation.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../migrations/0001_appbasis_training_blocks_parity_metadata.sql", import.meta.url),
+      "utf8",
+    ),
+  ]);
+  for (const migration of migrations) {
+    await requiredConnection().client.unsafe(migration);
+  }
 });
 
 beforeEach(async () => {
   await requiredConnection().client.unsafe(
     `TRUNCATE TABLE
+       appbasis_training_block_usage,
+       appbasis_training_block_favorite,
        appbasis_training_block_revision_item_parameter,
        appbasis_training_block_revision_item,
        appbasis_training_block_revision,
@@ -356,6 +366,66 @@ describe("training-blocks PostgreSQL repository", () => {
     await expect(orgA.findCurrent("org-a", "block-b")).resolves.toBeUndefined();
     await expect(orgB.findCurrent("org-b", "block-a")).resolves.toBeUndefined();
   });
+
+  it("persists principal favorites and usage summaries in the module owner", async () => {
+    const service = serviceFor(requiredConnection(), [
+      "block-meta",
+      "usage-a",
+      "usage-b",
+    ]);
+    await service.create("org-meta", { name: "Metadaten" });
+
+    await expect(
+      service.setFavorite("org-meta", "principal-a", "block-meta", true),
+    ).resolves.toBe(true);
+    await expect(
+      service.listOverview("org-meta", "principal-a"),
+    ).resolves.toEqual([
+      expect.objectContaining({ isFavorite: true, usageCount: 0 }),
+    ]);
+    await expect(
+      service.listOverview("org-meta", "principal-b"),
+    ).resolves.toEqual([
+      expect.objectContaining({ isFavorite: false, usageCount: 0 }),
+    ]);
+
+    await service.recordUsage("org-meta", "block-meta", {
+      occurredAt: "2026-10-10T11:00:00.000Z",
+      sourceKind: "training_plan",
+      sourceRef: "plan-a",
+    });
+    await service.recordUsage("org-meta", "block-meta", {
+      occurredAt: "2026-10-10T12:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+
+    await expect(
+      service.findOverview("org-meta", "principal-a", "block-meta"),
+    ).resolves.toMatchObject({
+      isFavorite: true,
+      usageCount: 2,
+      lastUsedAt: "2026-10-10T12:00:00.000Z",
+    });
+    await expect(
+      service.listUsage("org-meta", "block-meta"),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "usage-b" }),
+      expect.objectContaining({ id: "usage-a" }),
+    ]);
+
+    const rows = await requiredConnection().client.unsafe(
+      `SELECT
+         (SELECT count(*)::int
+            FROM appbasis_training_block_favorite
+           WHERE organization_id = 'org-meta') AS favorite_count,
+         (SELECT count(*)::int
+            FROM appbasis_training_block_usage
+           WHERE organization_id = 'org-meta') AS usage_count`,
+    );
+    expect(Number(rows[0]?.favorite_count)).toBe(1);
+    expect(Number(rows[0]?.usage_count)).toBe(2);
+  });
+
 });
 
 function serviceFor(
