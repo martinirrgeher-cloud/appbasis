@@ -296,7 +296,7 @@ describe("training-blocks service", () => {
 
   it("discards favorite and usage metadata outside the chosen overview block snapshot", async () => {
     class LaggingOverviewRepository extends InMemoryTrainingBlockRepository {
-      async listCurrent(organizationId: string) {
+      override async listCurrent(organizationId: string) {
         const blocks = await super.listCurrent(organizationId);
         return Object.freeze(
           blocks.filter((block) => block.id !== "block-late"),
