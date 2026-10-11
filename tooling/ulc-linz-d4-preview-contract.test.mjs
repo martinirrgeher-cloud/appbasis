@@ -90,6 +90,7 @@ test("ULC Linz D4 migration plan includes all app-owned lifecycle and security m
       .map(({ relativePath }) => relativePath),
     [
       "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
+      "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql",
     ],
   );
   assert.deepEqual(
