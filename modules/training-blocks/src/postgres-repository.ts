@@ -6,6 +6,8 @@ import {
   type TrainingBlockRevision,
   type TrainingBlockRevisionAppendResult,
   type TrainingBlockSnapshot,
+  type TrainingBlockUsageEvent,
+  type TrainingBlockUsageSummary,
 } from "./repository";
 
 export type TrainingBlockSqlParameter = string | number | boolean | null;
@@ -191,6 +193,135 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
       if (block === undefined) throw new Error("Training block disappeared after deactivation.");
       return Object.freeze({ status: "updated" as const, block });
     });
+  }
+
+  async listFavoriteBlockIds(
+    organizationId: string,
+    principalId: string,
+  ): Promise<readonly string[]> {
+    const rows = await this.#client.unsafe(
+      `SELECT favorite.block_id
+       FROM appbasis_training_block_favorite AS favorite
+       INNER JOIN appbasis_training_block AS block
+         ON block.organization_id = favorite.organization_id
+        AND block.id = favorite.block_id
+       WHERE favorite.organization_id = $1
+         AND favorite.principal_id = $2
+       ORDER BY favorite.block_id ASC`,
+      [organizationId, principalId],
+    );
+    return Object.freeze(
+      rows.map((row) => requiredString(row.block_id, "favorite block id")),
+    );
+  }
+
+  async setFavorite(
+    organizationId: string,
+    principalId: string,
+    blockId: string,
+    favorite: boolean,
+  ): Promise<void> {
+    if (favorite) {
+      await this.#client.unsafe(
+        `INSERT INTO appbasis_training_block_favorite (
+           organization_id, principal_id, block_id
+         )
+         SELECT $1, $2, $3
+         WHERE EXISTS (
+           SELECT 1
+           FROM appbasis_training_block
+           WHERE organization_id = $1
+             AND id = $3
+         )
+         ON CONFLICT (organization_id, principal_id, block_id)
+         DO NOTHING`,
+        [organizationId, principalId, blockId],
+      );
+      return;
+    }
+    await this.#client.unsafe(
+      `DELETE FROM appbasis_training_block_favorite
+       WHERE organization_id = $1
+         AND principal_id = $2
+         AND block_id = $3`,
+      [organizationId, principalId, blockId],
+    );
+  }
+
+  async listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly TrainingBlockUsageSummary[]> {
+    const rows = await this.#client.unsafe(
+      `SELECT usage.block_id,
+              count(*)::int AS usage_count,
+              max(usage.occurred_at)::text AS last_used_at
+       FROM appbasis_training_block_usage AS usage
+       INNER JOIN appbasis_training_block AS block
+         ON block.organization_id = usage.organization_id
+        AND block.id = usage.block_id
+       WHERE usage.organization_id = $1
+       GROUP BY usage.block_id
+       ORDER BY usage.block_id ASC`,
+      [organizationId],
+    );
+    return Object.freeze(
+      rows.map((row) => Object.freeze({
+        blockId: requiredString(row.block_id, "usage block id"),
+        usageCount: requiredInteger(row.usage_count, "usage count"),
+        lastUsedAt: optionalString(row.last_used_at, "usage last used timestamp"),
+      })),
+    );
+  }
+
+  async listUsageEvents(
+    organizationId: string,
+    blockId: string,
+    limit = 50,
+  ): Promise<readonly TrainingBlockUsageEvent[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+      throw new Error("Training block usage limit is invalid.");
+    }
+    const rows = await this.#client.unsafe(
+      `SELECT id, organization_id, block_id,
+              occurred_at::text AS occurred_at,
+              source_kind, source_ref, note
+       FROM appbasis_training_block_usage
+       WHERE organization_id = $1
+         AND block_id = $2
+       ORDER BY occurred_at DESC, id DESC
+       LIMIT $3`,
+      [organizationId, blockId, limit],
+    );
+    return Object.freeze(rows.map(usageFromRow));
+  }
+
+  async recordUsage(event: TrainingBlockUsageEvent): Promise<void> {
+    const rows = await this.#client.unsafe(
+      `INSERT INTO appbasis_training_block_usage (
+         organization_id, id, block_id, occurred_at,
+         source_kind, source_ref, note
+       )
+       SELECT $1, $2, $3, $4::timestamptz, $5, $6, $7
+       WHERE EXISTS (
+         SELECT 1
+         FROM appbasis_training_block
+         WHERE organization_id = $1
+           AND id = $3
+       )
+       RETURNING id`,
+      [
+        event.organizationId,
+        event.id,
+        event.blockId,
+        event.occurredAt,
+        event.sourceKind,
+        event.sourceRef,
+        event.note,
+      ],
+    );
+    if (rows.length !== 1) {
+      throw new Error("Training block usage references an unknown block.");
+    }
   }
 
   async listRevisions(
@@ -590,4 +721,18 @@ function normalizedTimestamp(value: string): string {
     throw new Error("Training block timestamp has an invalid shape.");
   }
   return parsed.toISOString();
+}
+
+function usageFromRow(
+  row: Record<string, unknown>,
+): TrainingBlockUsageEvent {
+  return Object.freeze({
+    id: requiredString(row.id, "usage id"),
+    organizationId: requiredString(row.organization_id, "usage organization id"),
+    blockId: requiredString(row.block_id, "usage block id"),
+    occurredAt: normalizedTimestamp(requiredString(row.occurred_at, "usage timestamp")),
+    sourceKind: requiredString(row.source_kind, "usage source kind"),
+    sourceRef: optionalString(row.source_ref, "usage source reference"),
+    note: optionalString(row.note, "usage note"),
+  });
 }
