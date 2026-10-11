@@ -250,6 +250,7 @@ export class TrainingBlockService {
     const validated = validatedUsageSummaryMap(
       summaries,
       new Map(blocks.map((block) => [block.id, block] as const)),
+      true,
     );
     return Object.freeze([...validated.values()]);
   }
