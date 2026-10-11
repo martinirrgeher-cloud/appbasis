@@ -260,7 +260,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(46);
+    expect(inventory.persistentTables).toHaveLength(48);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
