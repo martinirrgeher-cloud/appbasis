@@ -137,6 +137,15 @@ jobs:
           APPBASIS_APPLY_TRAINING_BLOCKS_PREVIEW: "1"
         run: node ./tooling/ulc-linz-training-blocks-preview.mjs apply
 
+      - name: Reconcile preview runtime database access after migration
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_DATABASE_ACCESS: "1"
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs reconcile
+
       - name: Verify training-blocks schema after migration
         if: inputs.operation == 'migrate'
         env:
@@ -145,6 +154,14 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-training-blocks-preview.mjs verify
 
+      - name: Verify preview runtime database access after migration
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight-existing
+
       - name: Require current training-blocks schema before deploy
         if: inputs.operation == 'deploy'
         env:
@@ -152,6 +169,14 @@ jobs:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-training-blocks-preview.mjs verify
+
+      - name: Require exact preview runtime database access before deploy
+        if: inputs.operation == 'deploy'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight-existing
 
       - name: Validate and mask deploy credentials
         if: inputs.operation == 'deploy'
