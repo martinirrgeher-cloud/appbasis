@@ -32,6 +32,22 @@ export interface TrainingBlockSnapshot {
   readonly revision: TrainingBlockRevision;
 }
 
+export interface TrainingBlockUsageEvent {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly blockId: string;
+  readonly occurredAt: string;
+  readonly sourceKind: string;
+  readonly sourceRef: string | null;
+  readonly note: string | null;
+}
+
+export interface TrainingBlockUsageSummary {
+  readonly blockId: string;
+  readonly usageCount: number;
+  readonly lastUsedAt: string | null;
+}
+
 export type TrainingBlockRevisionAppendResult =
   | Readonly<{ status: "updated"; block: TrainingBlockSnapshot }>
   | Readonly<{ status: "not-found" }>
@@ -62,6 +78,25 @@ export interface TrainingBlockRepository {
     expectedRevision: number,
     updatedAt: string,
   ): Promise<TrainingBlockDeactivateResult>;
+  listFavoriteBlockIds(
+    organizationId: string,
+    principalId: string,
+  ): Promise<readonly string[]>;
+  setFavorite(
+    organizationId: string,
+    principalId: string,
+    blockId: string,
+    favorite: boolean,
+  ): Promise<void>;
+  listUsageSummaries(
+    organizationId: string,
+  ): Promise<readonly TrainingBlockUsageSummary[]>;
+  listUsageEvents(
+    organizationId: string,
+    blockId: string,
+    limit?: number,
+  ): Promise<readonly TrainingBlockUsageEvent[]>;
+  recordUsage(event: TrainingBlockUsageEvent): Promise<void>;
   listRevisions(
     organizationId: string,
     blockId: string,
