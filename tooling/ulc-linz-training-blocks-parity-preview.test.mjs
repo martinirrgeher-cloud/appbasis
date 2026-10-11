@@ -37,7 +37,7 @@ test("E7A6 preview plan pins only the canonical schema-v2 parity delta", async (
   assert.deepEqual(plan.target.baselineTables, baselineTables);
   assert.deepEqual(plan.target.tables, targetTables);
   assert.equal(plan.migration.relativePath, plan.target.migrationPath);
-  assert.ok(plan.migration.statements.length >= 1);
+  assert.equal(plan.migration.statements.length, 4);
   assert.equal(plan.productionChanged, false);
   const source = await readFile(
     resolve(repositoryRoot, "tooling/ulc-linz-training-blocks-parity-preview.mjs"),
