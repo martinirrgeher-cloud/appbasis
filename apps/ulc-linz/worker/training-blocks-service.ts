@@ -14,6 +14,7 @@ import {
   TrainingBlockValidationError,
   type CreateTrainingBlockDraftInput,
   type TrainingBlockExerciseDraft,
+  type TrainingBlockOverviewItem,
   type TrainingBlockRevision,
   type TrainingBlockRevisionComparison,
   type TrainingBlockService,
@@ -87,10 +88,25 @@ export class UlcTrainingBlockParameterError extends Error {
 export interface UlcTrainingBlockService {
   listAudiences(organizationId: string): Promise<readonly UlcTrainingBlockAudience[]>;
   list(organizationId: string): Promise<readonly TrainingBlockSnapshot[]>;
+  listOverview(
+    organizationId: string,
+    principalId: string,
+  ): Promise<readonly TrainingBlockOverviewItem[]>;
   findCurrent(
     organizationId: string,
     blockId: string,
   ): Promise<TrainingBlockSnapshot | undefined>;
+  findOverview(
+    organizationId: string,
+    principalId: string,
+    blockId: string,
+  ): Promise<TrainingBlockOverviewItem | undefined>;
+  setFavorite(
+    organizationId: string,
+    principalId: string,
+    blockId: string,
+    favorite: boolean,
+  ): Promise<boolean>;
   create(
     organizationId: string,
     input: CreateTrainingBlockDraftInput,
@@ -226,8 +242,31 @@ export function createUlcTrainingBlockService({
     list(organizationId: string) {
       return blocks.list(organizationId);
     },
+    listOverview(organizationId: string, principalId: string) {
+      return blocks.listOverview(organizationId, principalId);
+    },
     findCurrent(organizationId: string, blockId: string) {
       return blocks.findCurrent(organizationId, blockId);
+    },
+    findOverview(
+      organizationId: string,
+      principalId: string,
+      blockId: string,
+    ) {
+      return blocks.findOverview(organizationId, principalId, blockId);
+    },
+    setFavorite(
+      organizationId: string,
+      principalId: string,
+      blockId: string,
+      favorite: boolean,
+    ) {
+      return blocks.setFavorite(
+        organizationId,
+        principalId,
+        blockId,
+        favorite,
+      );
     },
     async create(
       organizationId: string,
