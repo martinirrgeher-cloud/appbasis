@@ -453,7 +453,14 @@ async function trainingBlocksItemResponse(
       );
       if (overview === undefined) return trainingBlockNotFound();
       return Response.json(
-        { block: trainingBlockClientOverview(overview) },
+        {
+          block: trainingBlockClientOverview({
+            block,
+            isFavorite: overview.isFavorite,
+            usageCount: overview.usageCount,
+            lastUsedAt: overview.lastUsedAt,
+          }),
+        },
         { headers: { "cache-control": "private, no-store" } },
       );
     }
@@ -476,7 +483,12 @@ async function trainingBlocksItemResponse(
       return Response.json(
         {
           deactivated: true,
-          block: trainingBlockClientOverview(overview),
+          block: trainingBlockClientOverview({
+            block,
+            isFavorite: overview.isFavorite,
+            usageCount: overview.usageCount,
+            lastUsedAt: overview.lastUsedAt,
+          }),
         },
         { headers: { "cache-control": "private, no-store" } },
       );
