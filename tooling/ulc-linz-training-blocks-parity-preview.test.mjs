@@ -101,5 +101,8 @@ test("E7A6 workflow keeps inspect read-only and gates migration/deploy separatel
   assert.match(workflow, /--experimental-provision=false/);
   assert.match(workflow, /id="training-block-favorite"/);
   assert.match(workflow, /id="training-block-usage-info"/);
+  assert.match(workflow, /for attempt in \$\(seq 1 20\)/);
+  assert.match(workflow, /sleep 2/);
+  assert.match(workflow, /did not converge to the E7A6 training-block UI within the propagation window/);
   assert.match(workflow, /Production was not changed\./);
 });
