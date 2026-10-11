@@ -353,6 +353,8 @@ let trainingBlockSavePending = false;
 let trainingBlockChangeVersion = 0;
 let trainingBlockCreateUncertain = false;
 let trainingBlockDeactivateBusy = false;
+let trainingBlockReloadBusy = false;
+let trainingBlockAudienceRequestId = 0;
 let trainingBlockOpenRequestId = 0;
 let trainingBlockHistoryRequestId = 0;
 let trainingBlockRevisionRequestId = 0;
@@ -464,6 +466,35 @@ function prepareTrainingBlocksView() {
   renderTrainingBlocks();
   refreshTrainingBlockControls();
   refreshTrainingBlockCatalogDependency();
+  void refreshTrainingBlockAudienceDependency();
+}
+
+async function refreshTrainingBlockAudienceDependency() {
+  const requestId = ++trainingBlockAudienceRequestId;
+  try {
+    const payload = await requestJson("/api/modules/training-blocks");
+    if (requestId !== trainingBlockAudienceRequestId) return;
+    if (
+      payload?.module?.moduleId !== "training_blocks" ||
+      payload?.access?.view !== true ||
+      typeof payload?.access?.edit !== "boolean" ||
+      !Array.isArray(payload?.audiences) ||
+      !payload.audiences.every(isTrainingBlockAudience)
+    ) {
+      throw new Error("INVALID_TRAINING_BLOCK_AUDIENCES");
+    }
+    trainingBlocksCanEdit = payload.access.edit;
+    trainingBlockAudiences = payload.audiences.slice();
+    renderTrainingBlocks();
+    refreshTrainingBlockControls();
+    if (trainingBlockDraft) renderTrainingBlockAudienceOptions();
+  } catch {
+    if (requestId !== trainingBlockAudienceRequestId) return;
+    showMessage(
+      trainingBlockElements.message,
+      "Trainingsgruppen konnten nicht aktualisiert werden. Der zuletzt geladene Stand bleibt sichtbar.",
+    );
+  }
 }
 
 function refreshTrainingBlockCatalogDependency() {
@@ -617,6 +648,7 @@ function trainingBlockDraftFromSnapshot(block) {
 function newTrainingBlock() {
   if (
     trainingBlockDeactivateBusy ||
+    trainingBlockReloadBusy ||
     !trainingBlocksCanEdit ||
     trainingBlockAudiences.length === 0
   ) return;
@@ -635,12 +667,17 @@ function newTrainingBlock() {
   trainingBlockChangeVersion = 0;
   trainingBlockCreateUncertain = false;
   trainingBlockDeactivateBusy = false;
+  trainingBlockReloadBusy = false;
   populateTrainingBlockEditor();
   trainingBlockElements.name?.focus();
 }
 
-async function openTrainingBlock(id) {
-  if (!trainingBlocksReady || trainingBlockDeactivateBusy) return;
+async function openTrainingBlock(id, allowReload = false) {
+  if (
+    !trainingBlocksReady ||
+    trainingBlockDeactivateBusy ||
+    (trainingBlockReloadBusy && !allowReload)
+  ) return;
   const requestId = ++trainingBlockOpenRequestId;
   showMessage(trainingBlockElements.message, "");
   try {
@@ -726,7 +763,7 @@ function populateTrainingBlockEditor() {
 }
 
 function refreshTrainingBlockEditorLock() {
-  const locked = trainingBlockDeactivateBusy;
+  const locked = trainingBlockDeactivateBusy || trainingBlockReloadBusy;
   const editable =
     trainingBlocksCanEdit &&
     !locked &&
@@ -815,6 +852,7 @@ function renderTrainingBlockExercisePicker() {
   const editable =
     trainingBlocksCanEdit &&
     !trainingBlockDeactivateBusy &&
+    !trainingBlockReloadBusy &&
     trainingBlockSelected?.isActive !== false;
   const atExerciseLimit =
     (trainingBlockDraft?.exercises.length || 0) >= 200;
@@ -853,6 +891,7 @@ function renderTrainingBlockExercises() {
   const editable =
     trainingBlocksCanEdit &&
     !trainingBlockDeactivateBusy &&
+    !trainingBlockReloadBusy &&
     trainingBlockSelected?.isActive !== false;
   trainingBlockDraft.exercises.forEach((draft, index) => {
     const item = trainingBlockExerciseItem(draft.exerciseId);
@@ -981,7 +1020,8 @@ function markTrainingBlockDirty() {
     !trainingBlockDraft ||
     !trainingBlocksCanEdit ||
     trainingBlockConflict ||
-    trainingBlockDeactivateBusy
+    trainingBlockDeactivateBusy ||
+    trainingBlockReloadBusy
   ) return;
   trainingBlockChangeVersion += 1;
   trainingBlockDirty = true;
@@ -1162,7 +1202,8 @@ async function saveTrainingBlock() {
     !trainingBlocksCanEdit ||
     trainingBlockConflict ||
     trainingBlockCreateUncertain ||
-    trainingBlockDeactivateBusy
+    trainingBlockDeactivateBusy ||
+    trainingBlockReloadBusy
   ) return;
   if (trainingBlockSaveBusy) {
     trainingBlockSavePending = true;
@@ -1344,6 +1385,13 @@ function closeTrainingBlockEditor(force = false) {
     );
     return;
   }
+  if (!force && trainingBlockReloadBusy) {
+    showMessage(
+      trainingBlockElements.editorMessage,
+      "Der aktuelle Stand wird geladen. Der Editor bleibt bis zum Abschluss gesperrt.",
+    );
+    return;
+  }
   if (!force && trainingBlockSaveBusy) {
     showMessage(
       trainingBlockElements.editorMessage,
@@ -1370,6 +1418,7 @@ function closeTrainingBlockEditor(force = false) {
   trainingBlockChangeVersion = 0;
   trainingBlockCreateUncertain = false;
   trainingBlockDeactivateBusy = false;
+  trainingBlockReloadBusy = false;
   if (trainingBlockElements.editor) trainingBlockElements.editor.hidden = true;
   document.body.classList.remove("training-block-editor-open");
   showMessage(trainingBlockElements.editorMessage, "");
@@ -1401,13 +1450,21 @@ async function reloadTrainingBlock() {
     }
     return;
   }
-  if (!trainingBlockSelected) return;
+  if (!trainingBlockSelected || trainingBlockReloadBusy) return;
   const id = trainingBlockSelected.id;
   if (
     trainingBlockDirty &&
     !window.confirm("Lokale Änderungen verwerfen und aktuellen Stand laden?")
   ) return;
-  await openTrainingBlock(id);
+  trainingBlockReloadBusy = true;
+  refreshTrainingBlockEditorLock();
+  setTrainingBlockSaveState("saving", "Aktueller Stand wird geladen …");
+  try {
+    await openTrainingBlock(id, true);
+  } finally {
+    trainingBlockReloadBusy = false;
+    refreshTrainingBlockEditorLock();
+  }
 }
 
 function addTrainingBlockExercise() {
@@ -1415,6 +1472,7 @@ function addTrainingBlockExercise() {
     !trainingBlockDraft ||
     !trainingBlocksCanEdit ||
     trainingBlockSaveBusy ||
+    trainingBlockReloadBusy ||
     trainingBlockDraft.exercises.length >= 200
   ) return;
   const id = trainingBlockElements.exercisePicker?.value || "";
@@ -1442,7 +1500,11 @@ function handleTrainingBlockExerciseClick(event) {
     showTrainingBlockExerciseInfo(trainingBlockDraft.exercises[index].exerciseId);
     return;
   }
-  if (!trainingBlocksCanEdit || trainingBlockSaveBusy) return;
+  if (
+    !trainingBlocksCanEdit ||
+    trainingBlockSaveBusy ||
+    trainingBlockReloadBusy
+  ) return;
   if (action === "remove") {
     trainingBlockDraft.exercises.splice(index, 1);
   } else if (action === "up" && index > 0) {
@@ -1464,7 +1526,11 @@ function handleTrainingBlockExerciseClick(event) {
 }
 
 function handleTrainingBlockExerciseInput(event) {
-  if (!trainingBlockDraft || !trainingBlocksCanEdit) return;
+  if (
+    !trainingBlockDraft ||
+    !trainingBlocksCanEdit ||
+    trainingBlockReloadBusy
+  ) return;
   const noteIndex = event.target?.dataset?.trainingBlockExerciseNote;
   if (noteIndex !== undefined) {
     const index = Number(noteIndex);
