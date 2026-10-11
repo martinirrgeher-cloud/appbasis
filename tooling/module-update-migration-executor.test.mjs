@@ -705,7 +705,7 @@ test("FC6-B rejects same-name REFERENCES through a non-public schema", async (t)
   );
 });
 
-test("FC6-B loads the real training-blocks foundation with same-owner foreign keys", async (t) => {
+test("FC6-B loads the real training-blocks schema with same-owner foreign keys", async (t) => {
   const root = await createExistingAppFixture(t);
   const plan = await loadModuleUpdateMigrationExecutionPlan(
     {
@@ -716,7 +716,7 @@ test("FC6-B loads the real training-blocks foundation with same-owner foreign ke
   );
 
   assert.equal(plan.moduleId, "training-blocks");
-  assert.equal(plan.targetOwner.schemaVersion, 1);
+  assert.equal(plan.targetOwner.schemaVersion, 2);
   assert.equal(
     plan.targetCatalogContract.filter(
       (marker) =>
@@ -724,7 +724,7 @@ test("FC6-B loads the real training-blocks foundation with same-owner foreign ke
         marker.name === "f" &&
         marker.present === true,
     ).reduce((sum, marker) => sum + marker.count, 0),
-    4,
+    6,
   );
   assert.equal(
     plan.targetCatalogContract.some(
@@ -735,6 +735,20 @@ test("FC6-B loads the real training-blocks foundation with same-owner foreign ke
     ),
     true,
   );
+  for (const table of [
+    "appbasis_training_block_favorite",
+    "appbasis_training_block_usage",
+  ]) {
+    assert.equal(
+      plan.targetCatalogContract.some(
+        (marker) =>
+          marker.kind === "table" &&
+          marker.name === table &&
+          marker.present === true,
+      ),
+      true,
+    );
+  }
 });
 
 test("FC6-B ignores REFERENCES text inside comments, literals and quoted identifiers", async (t) => {
