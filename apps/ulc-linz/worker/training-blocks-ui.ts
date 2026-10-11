@@ -487,7 +487,10 @@ async function refreshTrainingBlockAudienceDependency() {
     trainingBlockAudiences = payload.audiences.slice();
     renderTrainingBlocks();
     refreshTrainingBlockControls();
-    if (trainingBlockDraft) renderTrainingBlockAudienceOptions();
+    if (trainingBlockDraft) {
+      renderTrainingBlockAudienceOptions();
+      refreshTrainingBlockEditorLock();
+    }
   } catch {
     if (requestId !== trainingBlockAudienceRequestId) return;
     showMessage(
@@ -517,7 +520,10 @@ function refreshTrainingBlockControls() {
   if (trainingBlockElements.newButton) {
     trainingBlockElements.newButton.hidden = !trainingBlocksCanEdit;
     trainingBlockElements.newButton.disabled =
-      !trainingBlocksCanEdit || trainingBlockAudiences.length === 0;
+      !trainingBlocksCanEdit ||
+      trainingBlockDeactivateBusy ||
+      trainingBlockReloadBusy ||
+      trainingBlockAudiences.length === 0;
   }
 }
 
@@ -760,6 +766,7 @@ function populateTrainingBlockEditor() {
     trainingBlockSelected ? "saved" : "draft",
     trainingBlockSelected ? "Gespeichert" : "Entwurf",
   );
+  refreshTrainingBlockEditorLock();
 }
 
 function refreshTrainingBlockEditorLock() {
@@ -824,7 +831,10 @@ function renderTrainingBlockAudienceOptions() {
   }
   select.value = trainingBlockDraft.audienceId || "";
   select.disabled =
-    !trainingBlocksCanEdit || trainingBlockSelected?.isActive === false;
+    !trainingBlocksCanEdit ||
+    trainingBlockDeactivateBusy ||
+    trainingBlockReloadBusy ||
+    trainingBlockSelected?.isActive === false;
 }
 
 function renderTrainingBlockExercisePicker() {
