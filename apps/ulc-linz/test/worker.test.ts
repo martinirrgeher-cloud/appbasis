@@ -12,6 +12,7 @@ import {
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
+import { TrainingBlockConflictError } from "@appbasis/training-blocks";
 import {
   ULC_LINZ_APP_CSS,
   ULC_LINZ_APP_HTML,
@@ -575,10 +576,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
   it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="3" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="4" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="1" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="4" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="5" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="5" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="6" hidden disabled');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshAppAvailability();");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
@@ -596,6 +597,88 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '(section === "kindertraining" && kindertrainingReady)',
     );
+  });
+
+
+  it("ships E7A4 training-block mobile UI with autosave, reorder and history contracts", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="3" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
+    expect(ULC_LINZ_APP_HTML).toContain('minlength="1" maxlength="120"');
+    expect(ULC_LINZ_APP_HTML).toContain('maxlength="3000"');
+    expect(ULC_LINZ_APP_HTML).toContain('max="2147483647"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save-state"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-retry"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-exercise-picker"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-history-load"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/modules/training-blocks")');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/update"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("scheduleTrainingBlockSave");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockChangeVersion !== saveVersion");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("saveSucceeded &&");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (!force && trainingBlockSaveBusy)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("retryTrainingBlockSave");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlockDirty && !trainingBlockSaveBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("refreshTrainingBlockCatalogDependency");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockCreateUncertain");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("noteInput.maxLength = 2000");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("input.maxLength = 500");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_INACTIVE");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDeactivateBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockOpenRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("requestId !== trainingBlockOpenRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("isCurrentTrainingBlockSelection");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockHistoryRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockRevisionRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockCompareRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("refreshTrainingBlockAudienceDependency");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockAudienceRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("invalidateTrainingBlockOverviewRefresh");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("invalidateTrainingBlockComparison");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('compareFrom?.addEventListener("change", invalidateTrainingBlockComparison)');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('compareTo?.addEventListener("change", invalidateTrainingBlockComparison)');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlocks = payload.blocks.slice()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("!payload.blocks.every(isTrainingBlockSnapshot)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockReloadBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("await openTrainingBlock(id, true)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Aktueller Stand wird geladen");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDraft && !allowReload");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Bitte den geöffneten Trainingsblock zuerst schließen");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("reloaded = await openTrainingBlock(id, true)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('setTrainingBlockSaveState("conflict", "Neu laden fehlgeschlagen")');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Der aktuelle Stand konnte nicht geladen werden. Bitte erneut versuchen.");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDeactivateBusy || trainingBlockReloadBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("refreshTrainingBlockEditorLock();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("operationId !== trainingBlockRevisionRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("operationId !== trainingBlockHistoryRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("operationId !== trainingBlockCompareRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const blockId = trainingBlockSelected.id");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (!force && trainingBlockCreateUncertain)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("syncTrainingBlockItemIds(response.block);\n    resetTrainingBlockHistory();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('setTrainingBlockSaveState("error", "Archivieren fehlgeschlagen")');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockElements.close.disabled = locked");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("locked || control.disabled");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("error.status >= 400");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockParameterError");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Diese Übung ist archiviert");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("training-block-exercise--unavailable");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("EXERCISE_DIFFICULTIES.find");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('title.textContent = "Videos"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('link.rel = "noopener noreferrer"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockStepAligned");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("veraltete(r) Parameterwert(e)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("currentKeys === null || currentKeys.has(value.key)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDraft.exercises.length >= 200");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("lokale Änderungen mit einem Versionskonflikt");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Der Block könnte bereits gespeichert sein");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (trainingBlockDirty) {\n    await saveTrainingBlock();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSaveBusy ||\n    trainingBlockReloadBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_CONFLICT");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("dataset.trainingBlockExerciseAction");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/compare?from="');
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId:");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
   });
 
   it("ships the E3A Stammdaten UI on the existing server-authorized API contract", () => {
@@ -835,6 +918,303 @@ describe("generated identity+permissions Worker entrypoint", () => {
       },
       access: {
         view: true,
+      },
+    });
+  });
+
+
+  it("serves E7A4 training-block overview without client-owned organization scope", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingBlocks: {
+        ...base.trainingBlocks,
+        async listAudiences(organizationId) {
+          expect(organizationId).toBe("verein-1");
+          return [{ id: "group-u16", name: "U16", shortName: "U16" }];
+        },
+        async list(organizationId) {
+          expect(organizationId).toBe("verein-1");
+          return [{
+            id: "block-1",
+            organizationId,
+            isActive: true,
+            currentRevision: 2,
+            createdAt: "2026-10-10T10:00:00.000Z",
+            updatedAt: "2026-10-10T11:00:00.000Z",
+            revision: {
+              organizationId,
+              blockId: "block-1",
+              revision: 2,
+              name: "Sprint U16",
+              audienceId: "group-u16",
+              durationMinutes: 30,
+              note: null,
+              exercises: [],
+              createdAt: "2026-10-10T11:00:00.000Z",
+            },
+          }];
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/training-blocks", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      module: {
+        moduleId: "training_blocks",
+        capabilities: {
+          view: "training-blocks:view",
+          edit: "training-blocks:edit",
+        },
+        features: {
+          autosave: true,
+          revisions: true,
+          revisionComparison: true,
+        },
+      },
+      access: { view: true, edit: true },
+      audiences: [{ id: "group-u16", name: "U16", shortName: "U16" }],
+      blocks: [{
+        id: "block-1",
+        currentRevision: 2,
+        revision: { name: "Sprint U16", audienceId: "group-u16" },
+      }],
+    });
+    expect(JSON.stringify(payload)).not.toContain("organizationId");
+    expect(JSON.stringify(payload)).not.toContain("actorPrincipalId");
+  });
+
+  it("creates and updates training blocks only through server-owned scope", async () => {
+    const calls: unknown[] = [];
+    const base = runtime();
+    const snapshot = (revision: number, name: string) => ({
+      id: "block-created",
+      organizationId: "verein-1",
+      isActive: true,
+      currentRevision: revision,
+      createdAt: "2026-10-10T10:00:00.000Z",
+      updatedAt: "2026-10-10T11:00:00.000Z",
+      revision: {
+        organizationId: "verein-1",
+        blockId: "block-created",
+        revision,
+        name,
+        audienceId: "group-u16",
+        durationMinutes: 25,
+        note: null,
+        exercises: [],
+        createdAt: "2026-10-10T11:00:00.000Z",
+      },
+    });
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingBlocks: {
+        ...base.trainingBlocks,
+        async create(organizationId, input) {
+          calls.push(["create", organizationId, input]);
+          return snapshot(1, input.name);
+        },
+        async update(organizationId, blockId, expectedRevision, input) {
+          calls.push([
+            "update",
+            organizationId,
+            blockId,
+            expectedRevision,
+            input,
+          ]);
+          return snapshot(expectedRevision + 1, input.name);
+        },
+      },
+    }));
+
+    const create = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/training-blocks", {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken },
+        body: JSON.stringify({
+          name: "Sprint",
+          audienceId: "group-u16",
+          durationMinutes: 25,
+          note: null,
+          exercises: [],
+        }),
+      }),
+      validEnv,
+    );
+    expect(create.status).toBe(201);
+
+    const update = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-created/update",
+        {
+          method: "POST",
+          headers: { cookie: currentIdentity.sessionToken },
+          body: JSON.stringify({
+            expectedRevision: 1,
+            name: "Sprint neu",
+            audienceId: "group-u16",
+            durationMinutes: 25,
+            note: null,
+            exercises: [],
+          }),
+        },
+      ),
+      validEnv,
+    );
+    expect(update.status).toBe(200);
+    expect(calls).toEqual([
+      [
+        "create",
+        "verein-1",
+        {
+          name: "Sprint",
+          audienceId: "group-u16",
+          durationMinutes: 25,
+          note: null,
+          exercises: [],
+        },
+      ],
+      [
+        "update",
+        "verein-1",
+        "block-created",
+        1,
+        {
+          name: "Sprint neu",
+          audienceId: "group-u16",
+          durationMinutes: 25,
+          note: null,
+          exercises: [],
+        },
+      ],
+    ]);
+  });
+
+  it("rejects client-owned training-block scope and surfaces revision conflicts as 409", async () => {
+    const badScope = await createGeneratedWorker(() => runtime()).fetch(
+      new Request("https://ulc.example.test/api/modules/training-blocks", {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken },
+        body: JSON.stringify({
+          name: "Nicht erlaubt",
+          audienceId: "group-u16",
+          organizationId: "verein-fremd",
+        }),
+      }),
+      validEnv,
+    );
+    expect(badScope.status).toBe(400);
+    await expect(badScope.json()).resolves.toMatchObject({
+      error: { code: "INVALID_TRAINING_BLOCK" },
+    });
+
+    const base = runtime();
+    const conflict = await createGeneratedWorker(() => ({
+      ...base,
+      trainingBlocks: {
+        ...base.trainingBlocks,
+        async update() {
+          throw new TrainingBlockConflictError(2, 3);
+        },
+      },
+    })).fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-1/update",
+        {
+          method: "POST",
+          headers: { cookie: currentIdentity.sessionToken },
+          body: JSON.stringify({
+            expectedRevision: 2,
+            name: "Stale",
+            audienceId: "group-u16",
+            exercises: [],
+          }),
+        },
+      ),
+      validEnv,
+    );
+    expect(conflict.status).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({
+      error: {
+        code: "TRAINING_BLOCK_CONFLICT",
+        expectedRevision: 2,
+        currentRevision: 3,
+      },
+    });
+  });
+
+  it("serves training-block revision history and comparison read-only", async () => {
+    const base = runtime();
+    const revision = (number: number) => ({
+      organizationId: "verein-1",
+      blockId: "block-1",
+      revision: number,
+      name: "Sprint v" + String(number),
+      audienceId: "group-u16",
+      durationMinutes: 30,
+      note: null,
+      exercises: [],
+      createdAt: "2026-10-10T10:00:00.000Z",
+    });
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingBlocks: {
+        ...base.trainingBlocks,
+        async listRevisions() {
+          return [revision(1), revision(2)];
+        },
+        async findRevision(_organizationId, _blockId, number) {
+          return revision(number);
+        },
+        async compareRevisions(_organizationId, _blockId, from, to) {
+          return {
+            fromRevision: from,
+            toRevision: to,
+            hasChanges: true,
+            changedFields: ["name"],
+            addedItemIds: [],
+            removedItemIds: [],
+            changedItemIds: [],
+            reorderedItemIds: [],
+          };
+        },
+      },
+    }));
+
+    const revisions = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-1/revisions",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(revisions.status).toBe(200);
+    const revisionPayload = await revisions.json();
+    expect(revisionPayload.revisions).toHaveLength(2);
+    expect(JSON.stringify(revisionPayload)).not.toContain("organizationId");
+
+    const compare = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-blocks/block-1/compare?from=1&to=2",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(compare.status).toBe(200);
+    await expect(compare.json()).resolves.toMatchObject({
+      comparison: {
+        fromRevision: 1,
+        toRevision: 2,
+        hasChanges: true,
+        changedFields: ["name"],
       },
     });
   });

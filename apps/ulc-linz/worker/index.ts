@@ -19,6 +19,12 @@ import {
   createCountdownTimeline,
   normalizeCountdownConfiguration,
 } from "@appbasis/countdown";
+import {
+  TRAINING_BLOCK_CAPABILITIES,
+  TrainingBlockConflictError,
+  TrainingBlockInactiveError,
+  TrainingBlockValidationError,
+} from "@appbasis/training-blocks";
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
@@ -61,6 +67,10 @@ import type { UlcLinzKindertrainingAccessScope } from "./kindertraining-access";
 import {
   UlcKindertrainingNotFoundError,
 } from "./kindertraining-service";
+import {
+  UlcTrainingBlockParameterError,
+  UlcTrainingBlockReferenceError,
+} from "./training-blocks-service";
 import type { UlcLinzU12AccessScope } from "./u12-access";
 import { UlcU12NotFoundError } from "./u12-service";
 import { UlcTrainingValidationError } from "./training-session-domain";
@@ -183,6 +193,12 @@ export function createGeneratedWorker(
           url.pathname.startsWith("/api/modules/exercise-catalog/")
         ) {
           response = await exerciseCatalogItemResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/training-blocks") {
+          response = await trainingBlocksModuleResponse(request, runtime, url);
+        } else if (
+          url.pathname.startsWith("/api/modules/training-blocks/")
+        ) {
+          response = await trainingBlocksItemResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining") {
           response = await kindertrainingModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining/session") {
@@ -264,6 +280,624 @@ export function createGeneratedWorker(
 }
 
 export default createGeneratedWorker();
+
+
+class InvalidTrainingBlockRequestError extends Error {}
+
+const TRAINING_BLOCK_DRAFT_FIELDS = Object.freeze([
+  "name",
+  "audienceId",
+  "durationMinutes",
+  "note",
+  "exercises",
+]);
+
+async function trainingBlocksModuleResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowedFor("GET, POST", "training blocks");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidTrainingBlockInput();
+  }
+
+  const action = request.method === "GET" ? "view" : "edit";
+  const access = await authorizeTrainingBlocksRequest(
+    request,
+    runtime,
+    url,
+    action,
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    if (request.method === "GET") {
+      const [audiences, blocks] = await Promise.all([
+        runtime.trainingBlocks.listAudiences(access.organizationId),
+        runtime.trainingBlocks.list(access.organizationId),
+      ]);
+      return Response.json(
+        {
+          module: {
+            moduleId: "training_blocks",
+            capabilities: TRAINING_BLOCK_CAPABILITIES,
+            features: {
+              autosave: true,
+              revisions: true,
+              revisionComparison: true,
+            },
+          },
+          access: { view: true, edit: access.canEdit },
+          audiences,
+          blocks: blocks.map(trainingBlockClientSnapshot),
+        },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    const input = await trainingBlockDraftBody(request, false);
+    const block = await runtime.trainingBlocks.create(
+      access.organizationId,
+      input,
+    );
+    return Response.json(
+      { block: trainingBlockClientSnapshot(block) },
+      {
+        status: 201,
+        headers: { "cache-control": "private, no-store" },
+      },
+    );
+  } catch (error) {
+    return trainingBlockErrorResponse(error);
+  }
+}
+
+async function trainingBlocksItemResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  const base = "/api/modules/training-blocks/";
+  const route = url.pathname.slice(base.length);
+  const detail = /^([^/]+)$/.exec(route);
+  const update = /^([^/]+)\/update$/.exec(route);
+  const deactivate = /^([^/]+)\/deactivate$/.exec(route);
+  const revisions = /^([^/]+)\/revisions$/.exec(route);
+  const revision = /^([^/]+)\/revisions\/([1-9][0-9]*)$/.exec(route);
+  const compare = /^([^/]+)\/compare$/.exec(route);
+
+  let action: "view" | "edit";
+  if (
+    request.method === "GET" &&
+    (detail !== null ||
+      revisions !== null ||
+      revision !== null ||
+      compare !== null)
+  ) {
+    action = "view";
+  } else if (
+    request.method === "POST" &&
+    (update !== null || deactivate !== null)
+  ) {
+    action = "edit";
+  } else {
+    return methodNotAllowedFor("GET, POST", "training block");
+  }
+
+  if (
+    compare === null &&
+    [...url.searchParams.keys()].length !== 0
+  ) {
+    return invalidTrainingBlockInput();
+  }
+
+  const access = await authorizeTrainingBlocksRequest(
+    request,
+    runtime,
+    url,
+    action,
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    if (detail !== null) {
+      const id = decodeTrainingBlockPathIdentifier(detail[1]);
+      const block = await runtime.trainingBlocks.findCurrent(
+        access.organizationId,
+        id,
+      );
+      if (block === undefined) return trainingBlockNotFound();
+      return Response.json(
+        { block: trainingBlockClientSnapshot(block) },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (update !== null) {
+      const id = decodeTrainingBlockPathIdentifier(update[1]);
+      const body = await trainingBlockDraftBody(request, true);
+      const expectedRevision = body.expectedRevision;
+      const block = await runtime.trainingBlocks.update(
+        access.organizationId,
+        id,
+        expectedRevision,
+        body.input,
+      );
+      if (block === undefined) return trainingBlockNotFound();
+      return Response.json(
+        { block: trainingBlockClientSnapshot(block) },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (deactivate !== null) {
+      const id = decodeTrainingBlockPathIdentifier(deactivate[1]);
+      const expectedRevision = await trainingBlockExpectedRevisionBody(request);
+      const block = await runtime.trainingBlocks.deactivate(
+        access.organizationId,
+        id,
+        expectedRevision,
+      );
+      if (block === undefined) return trainingBlockNotFound();
+      return Response.json(
+        {
+          deactivated: true,
+          block: trainingBlockClientSnapshot(block),
+        },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (revisions !== null) {
+      const id = decodeTrainingBlockPathIdentifier(revisions[1]);
+      const values = await runtime.trainingBlocks.listRevisions(
+        access.organizationId,
+        id,
+      );
+      return Response.json(
+        { revisions: values.map(trainingBlockClientRevision) },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (revision !== null) {
+      const id = decodeTrainingBlockPathIdentifier(revision[1]);
+      const revisionNumber = Number(revision[2]);
+      const value = await runtime.trainingBlocks.findRevision(
+        access.organizationId,
+        id,
+        revisionNumber,
+      );
+      if (value === undefined) return trainingBlockNotFound();
+      return Response.json(
+        { revision: trainingBlockClientRevision(value) },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (compare !== null) {
+      const allowed = new Set(["from", "to"]);
+      if (
+        [...url.searchParams.keys()].some((key) => !allowed.has(key)) ||
+        url.searchParams.getAll("from").length !== 1 ||
+        url.searchParams.getAll("to").length !== 1
+      ) {
+        return invalidTrainingBlockInput();
+      }
+      const id = decodeTrainingBlockPathIdentifier(compare[1]);
+      const from = trainingBlockRevisionQuery(url.searchParams.get("from"));
+      const to = trainingBlockRevisionQuery(url.searchParams.get("to"));
+      const comparison = await runtime.trainingBlocks.compareRevisions(
+        access.organizationId,
+        id,
+        from,
+        to,
+      );
+      if (comparison === undefined) return trainingBlockNotFound();
+      return Response.json(
+        { comparison },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    return trainingBlockNotFound();
+  } catch (error) {
+    return trainingBlockErrorResponse(error);
+  }
+}
+
+async function authorizeTrainingBlocksRequest(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+  action: "view" | "edit",
+): Promise<
+  | Response
+  | Readonly<{
+      organizationId: string;
+      actorPrincipalId: string;
+      canEdit: boolean;
+    }>
+> {
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action,
+        targetId: "training_blocks",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  try {
+    return action === "view"
+      ? await runtime.trainingBlocksAccess.assertViewAccess(current)
+      : await runtime.trainingBlocksAccess.assertEditAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "Training block access denied.",
+          },
+        },
+        { status: 403 },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+}
+
+async function trainingBlockDraftBody(
+  request: Request,
+  update: false,
+): Promise<{
+  name: string;
+  audienceId?: string | null;
+  durationMinutes?: number | null;
+  note?: string | null;
+  exercises?: readonly {
+    exerciseId: string;
+    note?: string | null;
+    parameterOverrides?: readonly { key: string; value: string }[];
+  }[];
+}>;
+async function trainingBlockDraftBody(
+  request: Request,
+  update: true,
+): Promise<{
+  expectedRevision: number;
+  input: {
+    name: string;
+    audienceId?: string | null;
+    durationMinutes?: number | null;
+    note?: string | null;
+    exercises?: readonly {
+      itemId?: string | null;
+      exerciseId: string;
+      note?: string | null;
+      parameterOverrides?: readonly { key: string; value: string }[];
+    }[];
+  };
+}>;
+async function trainingBlockDraftBody(
+  request: Request,
+  update: boolean,
+): Promise<unknown> {
+  const allowed = update
+    ? [...TRAINING_BLOCK_DRAFT_FIELDS, "expectedRevision"]
+    : [...TRAINING_BLOCK_DRAFT_FIELDS];
+  const body = await trainingBlockJsonObject(request, allowed);
+  const expectedRevision = update
+    ? requiredTrainingBlockRevision(body.expectedRevision)
+    : null;
+
+  const exercises = body.exercises;
+  if (exercises !== undefined) {
+    if (!Array.isArray(exercises)) {
+      throw new InvalidTrainingBlockRequestError();
+    }
+    for (const exercise of exercises) {
+      assertTrainingBlockExerciseInput(exercise, update);
+    }
+  }
+
+  const input = {
+    name: body.name as string,
+    ...(body.audienceId === undefined
+      ? {}
+      : { audienceId: body.audienceId as string | null }),
+    ...(body.durationMinutes === undefined
+      ? {}
+      : { durationMinutes: body.durationMinutes as number | null }),
+    ...(body.note === undefined
+      ? {}
+      : { note: body.note as string | null }),
+    ...(exercises === undefined ? {} : { exercises }),
+  };
+
+  return update
+    ? { expectedRevision, input }
+    : input;
+}
+
+async function trainingBlockExpectedRevisionBody(
+  request: Request,
+): Promise<number> {
+  const body = await trainingBlockJsonObject(
+    request,
+    ["expectedRevision"],
+    ["expectedRevision"],
+  );
+  return requiredTrainingBlockRevision(body.expectedRevision);
+}
+
+async function trainingBlockJsonObject(
+  request: Request,
+  allowedFields: readonly string[],
+  requiredFields: readonly string[] = ["name"],
+): Promise<Record<string, unknown>> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    throw new InvalidTrainingBlockRequestError();
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new InvalidTrainingBlockRequestError();
+  }
+  const body = value as Record<string, unknown>;
+  if (
+    Object.keys(body).some((key) => !allowedFields.includes(key)) ||
+    requiredFields.some(
+      (key) => !Object.prototype.hasOwnProperty.call(body, key),
+    ) ||
+    Object.getOwnPropertySymbols(body).length !== 0
+  ) {
+    throw new InvalidTrainingBlockRequestError();
+  }
+  return body;
+}
+
+function assertTrainingBlockExerciseInput(
+  value: unknown,
+  allowItemId: boolean,
+): void {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new InvalidTrainingBlockRequestError();
+  }
+  const exercise = value as Record<string, unknown>;
+  const allowed = allowItemId
+    ? ["itemId", "exerciseId", "note", "parameterOverrides"]
+    : ["exerciseId", "note", "parameterOverrides"];
+  if (
+    Object.keys(exercise).some((key) => !allowed.includes(key)) ||
+    !Object.prototype.hasOwnProperty.call(exercise, "exerciseId") ||
+    Object.getOwnPropertySymbols(exercise).length !== 0
+  ) {
+    throw new InvalidTrainingBlockRequestError();
+  }
+
+  if (exercise.parameterOverrides !== undefined) {
+    if (!Array.isArray(exercise.parameterOverrides)) {
+      throw new InvalidTrainingBlockRequestError();
+    }
+    for (const value of exercise.parameterOverrides) {
+      if (
+        value === null ||
+        typeof value !== "object" ||
+        Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype
+      ) {
+        throw new InvalidTrainingBlockRequestError();
+      }
+      const override = value as Record<string, unknown>;
+      if (
+        Object.keys(override).some(
+          (key) => key !== "key" && key !== "value",
+        ) ||
+        !Object.prototype.hasOwnProperty.call(override, "key") ||
+        !Object.prototype.hasOwnProperty.call(override, "value") ||
+        Object.getOwnPropertySymbols(override).length !== 0
+      ) {
+        throw new InvalidTrainingBlockRequestError();
+      }
+    }
+  }
+}
+
+function requiredTrainingBlockRevision(value: unknown): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1
+  ) {
+    throw new InvalidTrainingBlockRequestError();
+  }
+  return value;
+}
+
+function trainingBlockRevisionQuery(value: string | null): number {
+  if (value === null || !/^[1-9][0-9]*$/.test(value)) {
+    throw new InvalidTrainingBlockRequestError();
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new InvalidTrainingBlockRequestError();
+  }
+  return parsed;
+}
+
+function decodeTrainingBlockPathIdentifier(
+  value: string | undefined,
+): string {
+  if (value === undefined) throw new InvalidTrainingBlockRequestError();
+  try {
+    const decoded = decodeURIComponent(value);
+    if (
+      decoded.length === 0 ||
+      decoded.length > 200 ||
+      decoded.trim() !== decoded ||
+      decoded.includes("/")
+    ) {
+      throw new InvalidTrainingBlockRequestError();
+    }
+    return decoded;
+  } catch (error) {
+    if (error instanceof InvalidTrainingBlockRequestError) throw error;
+    throw new InvalidTrainingBlockRequestError();
+  }
+}
+
+function trainingBlockClientSnapshot(block: {
+  id: string;
+  isActive: boolean;
+  currentRevision: number;
+  createdAt: string;
+  updatedAt: string;
+  revision: Parameters<typeof trainingBlockClientRevision>[0];
+}) {
+  return {
+    id: block.id,
+    isActive: block.isActive,
+    currentRevision: block.currentRevision,
+    createdAt: block.createdAt,
+    updatedAt: block.updatedAt,
+    revision: trainingBlockClientRevision(block.revision),
+  };
+}
+
+function trainingBlockClientRevision(revision: {
+  revision: number;
+  name: string;
+  audienceId: string | null;
+  durationMinutes: number | null;
+  note: string | null;
+  exercises: readonly unknown[];
+  createdAt: string;
+}) {
+  return {
+    revision: revision.revision,
+    name: revision.name,
+    audienceId: revision.audienceId,
+    durationMinutes: revision.durationMinutes,
+    note: revision.note,
+    exercises: revision.exercises,
+    createdAt: revision.createdAt,
+  };
+}
+
+function trainingBlockErrorResponse(error: unknown): Response {
+  if (error instanceof TrainingBlockConflictError) {
+    return Response.json(
+      {
+        error: {
+          code: "TRAINING_BLOCK_CONFLICT",
+          message: "The training block changed since it was loaded.",
+          expectedRevision: error.expectedRevision,
+          currentRevision: error.currentRevision,
+        },
+      },
+      { status: 409 },
+    );
+  }
+  if (error instanceof TrainingBlockInactiveError) {
+    return Response.json(
+      {
+        error: {
+          code: "TRAINING_BLOCK_INACTIVE",
+          message: "The training block is inactive.",
+          currentRevision: error.currentRevision,
+        },
+      },
+      { status: 409 },
+    );
+  }
+  if (error instanceof UlcTrainingBlockReferenceError) {
+    return Response.json(
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+          referenceType: error.referenceType,
+          referenceId: error.referenceId,
+        },
+      },
+      { status: 400 },
+    );
+  }
+  if (error instanceof UlcTrainingBlockParameterError) {
+    return Response.json(
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+          exerciseId: error.exerciseId,
+          parameterKey: error.parameterKey,
+          reason: error.reason,
+        },
+      },
+      { status: 400 },
+    );
+  }
+  if (
+    error instanceof TrainingBlockValidationError ||
+    error instanceof InvalidTrainingBlockRequestError
+  ) {
+    return invalidTrainingBlockInput();
+  }
+  throw error;
+}
+
+function invalidTrainingBlockInput(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "INVALID_TRAINING_BLOCK",
+        message: "The training block input is invalid.",
+      },
+    },
+    { status: 400 },
+  );
+}
+
+function trainingBlockNotFound(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "TRAINING_BLOCK_NOT_FOUND",
+        message: "The training block was not found.",
+      },
+    },
+    { status: 404 },
+  );
+}
 
 async function kindertrainingModuleResponse(
   request: Request,

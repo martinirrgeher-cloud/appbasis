@@ -9,18 +9,20 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E7A3 – Trainingsblöcke ULC-Adapter und Berechtigungen.**
+**ULC-E7A4 – Trainingsblöcke mobile Oberfläche und Autosave.**
 
-E7A1 und E7A2 sind auf `main` abgeschlossen. Das Standardmodul besitzt damit
-Manifest, Schema, Domainvalidierung sowie den atomaren Repository-/Service-
-und Versionsvertrag. Der nächste Slice bindet dieses generische Modul
-serverseitig an ULC Linz: Moduldeklaration, ULC-Rollen-/Capability-Mapping,
-aktive Trainingsgruppen aus `athletes` und Übungsreferenzen aus dem bereits
-adoptierten Standard-`exercise-catalog`.
+E7A1–E7A3 sind auf `main` abgeschlossen. Das Standardmodul besitzt
+Schema, Versions-/Concurrency-Vertrag und den ULC-Adapter mit serverseitiger
+Berechtigung, Trainingsgruppenauflösung und Übungskatalog-Validierung.
 
-E7A3 führt noch keine mobile Trainingsblock-Oberfläche, keine Autosave-API,
-keine Preview-Migration, keinen Preview-Deploy und keine Provider- oder
-Produktionsmutation aus.
+E7A4 liefert den ersten sichtbaren Trainingsblock-Vertical-Slice: geschützte
+HTTP-Schnittstelle, kompakte mobile Übersicht, Overlay-Editor, Übungsauswahl,
+mobile Reihenfolgefunktion, Parameter-Overrides, konfliktfähiges serielles
+Autosave sowie Revisionen/Snapshots und Vergleich.
+
+E7A4 führt keine Preview-Migration, keinen Preview-Deploy und keine Provider-
+oder Produktionsmutation aus. Diese Schritte bleiben E7A5 und benötigen eine
+separate Freigabe.
 
 Verbindliche Architekturgrenzen:
 
@@ -344,6 +346,17 @@ Abnahme:
 - keine Änderung an `apps/ulc-linz/appbasis.app.json`;
 - keine ULC-Runtime-/UI-Änderung;
 - keine Preview-/Produktionsmigration und kein Providerwrite.
+
+## Abgeschlossener Gate-Scope: ULC-E7A3
+
+E7A3 ist auf `main` abgeschlossen. ULC deklariert `training-blocks`,
+erzwingt View/Edit serverseitig, löst aktive Trainingsgruppen aus `athletes`
+auf und validiert Übungsreferenzen sowie Parameter-Overrides gegen den
+Standard-`exercise-catalog`. Der Adapter bewahrt Conflict-first-Semantik für
+spätere Autosaves; M5-Dateninventar und Exportvertrag klassifizieren die neuen
+Tabellen weiterhin fail-closed. PR #409 wurde nach vollständig grüner CI und
+finalem Exact-Head-Codex-Review ohne Major Finding gemerged. Es gab keine
+Preview-/Produktionsmigration und kein Deployment.
 
 ## Abgeschlossener Gate-Scope: ULC-E7A2
 
