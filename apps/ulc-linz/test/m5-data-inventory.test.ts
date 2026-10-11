@@ -208,12 +208,13 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "training-blocks",
       ),
     ).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       lifecycleStatus: "training-block-data-lifecycle-pending",
       notes: expect.arrayContaining([
-        "training-block-template-and-revision-lifecycle-pending",
+        "training-block-template-revision-favorite-usage-lifecycle-pending",
         "training-block-notes-may-contain-user-entered-content",
-        "preview-and-production-lifecycle-activation-not-authorized",
+        "ulc-preview-schema-v1-live-v2-upgrade-pending",
+        "production-lifecycle-activation-not-authorized",
       ]),
     });
 
@@ -475,6 +476,29 @@ describe("ULC Linz M5 C/D data inventory", () => {
         retentionEvidence: "fail-closed-pending-lifecycle",
       });
     }
+
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "appbasis_training_block_favorite",
+      ),
+    ).toMatchObject({
+      owner: "training-blocks",
+      privacyClass: "training-block-user-preference",
+      retentionPolicy: "pending-training-block-user-preference-lifecycle",
+      deletionEvidence: "fail-closed-pending-lifecycle",
+      retentionEvidence: "fail-closed-pending-lifecycle",
+    });
+    expect(
+      inventory.persistentTables.find(
+        (table) => table.id === "appbasis_training_block_usage",
+      ),
+    ).toMatchObject({
+      owner: "training-blocks",
+      privacyClass: "training-block-training-usage-metadata",
+      retentionPolicy: "pending-training-data-lifecycle-contract",
+      deletionEvidence: "fail-closed-pending-lifecycle",
+      retentionEvidence: "fail-closed-pending-lifecycle",
+    });
 
     expect(
       inventory.persistentTables.find((table) => table.id === "verification"),
