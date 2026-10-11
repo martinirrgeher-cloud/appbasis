@@ -79,15 +79,17 @@
     },
     {
       "id": "training-blocks",
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "migrations": [
-        "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql"
+        "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
+        "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql"
       ],
       "lifecycleStatus": "training-block-data-lifecycle-pending",
       "notes": [
-        "training-block-template-and-revision-lifecycle-pending",
+        "training-block-template-revision-favorite-usage-lifecycle-pending",
         "training-block-notes-may-contain-user-entered-content",
-        "preview-and-production-lifecycle-activation-not-authorized"
+        "ulc-preview-schema-v1-live-v2-upgrade-pending",
+        "production-lifecycle-activation-not-authorized"
       ]
     },
     {
@@ -490,6 +492,22 @@
       "id": "appbasis_training_block_revision_item_parameter",
       "owner": "training-blocks",
       "privacyClass": "training-block-data",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_training_block_favorite",
+      "owner": "training-blocks",
+      "privacyClass": "training-block-user-preference",
+      "retentionPolicy": "pending-training-block-user-preference-lifecycle",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_training_block_usage",
+      "owner": "training-blocks",
+      "privacyClass": "training-block-training-usage-metadata",
       "retentionPolicy": "pending-training-data-lifecycle-contract",
       "deletionEvidence": "fail-closed-pending-lifecycle",
       "retentionEvidence": "fail-closed-pending-lifecycle"
