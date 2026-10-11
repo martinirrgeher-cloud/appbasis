@@ -293,4 +293,61 @@ describe("training-blocks service", () => {
     ).resolves.toBeUndefined();
   });
 
+
+  it("discards favorite and usage metadata outside the chosen overview block snapshot", async () => {
+    class LaggingOverviewRepository extends InMemoryTrainingBlockRepository {
+      async listCurrent(organizationId: string) {
+        const blocks = await super.listCurrent(organizationId);
+        return Object.freeze(
+          blocks.filter((block) => block.id !== "block-late"),
+        );
+      }
+    }
+
+    const repository = new LaggingOverviewRepository();
+    const service = new TrainingBlockService({
+      repository,
+      createId: deterministicIds(
+        "block-visible",
+        "block-late",
+        "usage-visible",
+        "usage-late",
+      ),
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    await service.create("org-race", { name: "Visible" });
+    await service.create("org-race", { name: "Late" });
+    await service.setFavorite(
+      "org-race",
+      "principal-race",
+      "block-visible",
+      true,
+    );
+    await service.setFavorite(
+      "org-race",
+      "principal-race",
+      "block-late",
+      true,
+    );
+    await service.recordUsage("org-race", "block-visible", {
+      occurredAt: "2026-10-10T11:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+    await service.recordUsage("org-race", "block-late", {
+      occurredAt: "2026-10-10T12:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+
+    await expect(
+      service.listOverview("org-race", "principal-race"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        block: expect.objectContaining({ id: "block-visible" }),
+        isFavorite: true,
+        usageCount: 1,
+        lastUsedAt: "2026-10-10T11:00:00.000Z",
+      }),
+    ]);
+  });
+
 });
