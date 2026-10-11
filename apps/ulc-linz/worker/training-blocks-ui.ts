@@ -1807,6 +1807,7 @@ async function toggleTrainingBlockFavorite() {
     if (!isTrainingBlockSnapshot(response?.block)) {
       throw new Error("INVALID_TRAINING_BLOCK_FAVORITE");
     }
+    invalidateTrainingBlockOverviewRefresh();
     trainingBlockSelected = {
       ...trainingBlockSelected,
       isFavorite: response.block.isFavorite,
