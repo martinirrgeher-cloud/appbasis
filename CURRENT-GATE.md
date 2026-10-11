@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-10
+Stand: 2026-10-11
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -9,20 +9,27 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
-**ULC-E7A4 – Trainingsblöcke mobile Oberfläche und Autosave.**
+**ULC-E7A5 – Trainingsblöcke isolierte Preview-Abnahme.**
 
-E7A1–E7A3 sind auf `main` abgeschlossen. Das Standardmodul besitzt
-Schema, Versions-/Concurrency-Vertrag und den ULC-Adapter mit serverseitiger
-Berechtigung, Trainingsgruppenauflösung und Übungskatalog-Validierung.
+E7A1–E7A4 sind auf `main` abgeschlossen. Das Standardmodul besitzt Schema,
+Versions-/Concurrency-Vertrag, den ULC-Adapter sowie die geschützte mobile
+Oberfläche mit Autosave, Konfliktbehandlung, Revisionen und Vergleich.
 
-E7A4 liefert den ersten sichtbaren Trainingsblock-Vertical-Slice: geschützte
-HTTP-Schnittstelle, kompakte mobile Übersicht, Overlay-Editor, Übungsauswahl,
-mobile Reihenfolgefunktion, Parameter-Overrides, konfliktfähiges serielles
-Autosave sowie Revisionen/Snapshots und Vergleich.
+E7A5 bringt diesen bereits reviewten Stand kontrolliert in die isolierte
+ULC-Preview. Der Gate-Pfad ist bewusst dreigeteilt:
 
-E7A4 führt keine Preview-Migration, keinen Preview-Deploy und keine Provider-
-oder Produktionsmutation aus. Diese Schritte bleiben E7A5 und benötigen eine
-separate Freigabe.
+1. `inspect` ist read-only und prüft den exakten Preview-Datenbankzustand;
+2. `migrate` installiert ausschließlich das additive
+   `training-blocks`-Schema v1 und benötigt eine eigene ausdrückliche
+   Freigabe;
+3. `deploy` ist ein davon getrenntes, ebenfalls ausdrücklich
+   freizugebendes Gate und darf erst bei vollständig verifiziertem
+   `training-blocks`-Schema laufen.
+
+Der vorbereitete Workflow ist main-only, an
+`generated-preview-ulc-linz` gebunden und verwendet den bestehenden
+Standardmodul-Runtimepfad. Produktion, produktive Datenbank und produktive
+Providerressourcen bleiben ausgeschlossen.
 
 Verbindliche Architekturgrenzen:
 
@@ -33,9 +40,10 @@ Verbindliche Architekturgrenzen:
   jeweiligen Blocks;
 - nummerierte unveränderliche Revisionen sind ab dem ersten Schema vorgesehen;
 - keine Cross-Owner-Foreign-Keys in `athletes` oder `exercise-catalog`;
-- ULC verwendet später vorhandene Trainingsgruppen statt einer zweiten
+- ULC verwendet vorhandene Trainingsgruppen statt einer zweiten
   Gruppenverwaltung;
-- E7A2 führt keine ULC-Adoption, Preview-, Provider- oder Produktionsmutation aus.
+- Preview-Migration und Preview-Deployment bleiben getrennte Freigabe-Gates;
+- Produktion bleibt ein eigenes späteres Gate.
 
 Der vollständige Alt-App-Zielumfang und die Folgeslices sind in
 `docs/ULC-TRAINING-BLOCKS.md` festgehalten.
@@ -346,6 +354,21 @@ Abnahme:
 - keine Änderung an `apps/ulc-linz/appbasis.app.json`;
 - keine ULC-Runtime-/UI-Änderung;
 - keine Preview-/Produktionsmigration und kein Providerwrite.
+
+## Abgeschlossener Gate-Scope: ULC-E7A4
+
+E7A4 ist auf `main` abgeschlossen. Der sichtbare Trainingsblock-Vertical-Slice
+liefert die geschützte HTTP-Schnittstelle, kompakte mobile Übersicht,
+Overlay-Editor, Übungsauswahl aus dem Standard-`exercise-catalog`, mehrfaches
+Hinzufügen derselben Übung, mobile Reihenfolgefunktion, Parameter-Overrides,
+serielles Autosave mit Konflikt-/Fehlerzuständen sowie Revisionen, Snapshots
+und Vergleich.
+
+Der Slice schützt ungespeicherte lokale Änderungen, behandelt parallele
+Archivierung und Reloads fail-closed und hält Listen-/Historienzustände bei
+konkurrierenden Requests konsistent. E7A4 selbst hat weder Preview-Migration
+noch Preview-Deployment oder Produktionsmutation ausgeführt. Der Rollout
+gehört ausschließlich zu E7A5.
 
 ## Abgeschlossener Gate-Scope: ULC-E7A3
 
