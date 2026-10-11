@@ -211,6 +211,13 @@ jobs:
             exit 1
           }
 
+      - name: Verify existing preview remains on the standard-module runtime
+        if: inputs.operation == 'deploy'
+        env:
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_EXPECTED_MODE: standard-module
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
+
       - name: Resolve isolated ULC preview Hyperdrives
         if: inputs.operation == 'deploy'
         id: hyperdrives
@@ -299,6 +306,13 @@ jobs:
           --config wrangler.preview.e7a5.generated.json
           --experimental-provision=false
           --experimental-auto-create=false
+
+      - name: Verify deployed preview remains on the standard-module runtime
+        if: inputs.operation == 'deploy'
+        env:
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_EXPECTED_MODE: standard-module
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
 
       - name: Verify preview application database binding
         if: inputs.operation == 'deploy'
