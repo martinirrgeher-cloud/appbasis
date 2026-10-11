@@ -661,7 +661,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("lokale Änderungen mit einem Versionskonflikt");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Der Block könnte bereits gespeichert sein");
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (trainingBlockDirty) {\n    await saveTrainingBlock();");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlocksCanEdit || trainingBlockSaveBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSaveBusy ||\n    trainingBlockReloadBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_CONFLICT");
     expect(ULC_LINZ_APP_SCRIPT).toContain("dataset.trainingBlockExerciseAction");
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/compare?from="');
