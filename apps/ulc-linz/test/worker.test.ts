@@ -625,6 +625,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("input.maxLength = 500");
     expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_INACTIVE");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDeactivateBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockOpenRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("requestId !== trainingBlockOpenRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (!force && trainingBlockCreateUncertain)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (creating) resetTrainingBlockHistory()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('setTrainingBlockSaveState("error", "Archivieren fehlgeschlagen")');
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockElements.close.disabled = locked");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("locked || control.disabled");
     expect(ULC_LINZ_APP_SCRIPT).toContain("error.status >= 400");

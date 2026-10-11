@@ -353,6 +353,7 @@ let trainingBlockSavePending = false;
 let trainingBlockChangeVersion = 0;
 let trainingBlockCreateUncertain = false;
 let trainingBlockDeactivateBusy = false;
+let trainingBlockOpenRequestId = 0;
 
 function isTrainingBlockAudience(value) {
   return value !== null &&
@@ -609,6 +610,7 @@ function newTrainingBlock() {
     !trainingBlocksCanEdit ||
     trainingBlockAudiences.length === 0
   ) return;
+  trainingBlockOpenRequestId += 1;
   trainingBlockSelected = null;
   trainingBlockDraft = {
     name: "",
@@ -629,11 +631,13 @@ function newTrainingBlock() {
 
 async function openTrainingBlock(id) {
   if (!trainingBlocksReady || trainingBlockDeactivateBusy) return;
+  const requestId = ++trainingBlockOpenRequestId;
   showMessage(trainingBlockElements.message, "");
   try {
     const payload = await requestJson(
       "/api/modules/training-blocks/" + encodeURIComponent(id),
     );
+    if (requestId !== trainingBlockOpenRequestId) return;
     if (!isTrainingBlockSnapshot(payload?.block)) {
       throw new Error("INVALID_TRAINING_BLOCK_DETAIL");
     }
@@ -646,6 +650,7 @@ async function openTrainingBlock(id) {
     trainingBlockDeactivateBusy = false;
     populateTrainingBlockEditor();
   } catch (error) {
+    if (requestId !== trainingBlockOpenRequestId) return;
     showMessage(
       trainingBlockElements.message,
       error?.status === 404
@@ -1191,6 +1196,7 @@ async function saveTrainingBlock() {
     saveSucceeded = true;
     trainingBlockSelected = response.block;
     syncTrainingBlockItemIds(response.block);
+    if (creating) resetTrainingBlockHistory();
     trainingBlockDirty = trainingBlockChangeVersion !== saveVersion;
     replaceTrainingBlockInList(response.block);
     if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
@@ -1297,6 +1303,17 @@ function setTrainingBlockSaveState(state, label) {
 }
 
 function closeTrainingBlockEditor(force = false) {
+  if (!force && trainingBlockCreateUncertain) {
+    showMessage(
+      trainingBlockElements.editorMessage,
+      "Der Anlagezustand ist unklar. Bitte die Übersicht neu laden, bevor du den Editor verlässt.",
+    );
+    if (trainingBlockElements.reload) {
+      trainingBlockElements.reload.hidden = false;
+      trainingBlockElements.reload.textContent = "Übersicht neu laden";
+    }
+    return;
+  }
   if (!force && trainingBlockDeactivateBusy) {
     showMessage(
       trainingBlockElements.editorMessage,
@@ -1322,6 +1339,7 @@ function closeTrainingBlockEditor(force = false) {
     trainingBlockSaveTimer = null;
   }
   trainingBlockSavePending = false;
+  trainingBlockOpenRequestId += 1;
   trainingBlockSelected = null;
   trainingBlockDraft = null;
   trainingBlockDirty = false;
@@ -1549,6 +1567,8 @@ async function deactivateTrainingBlock() {
       trainingBlockConflict = true;
       setTrainingBlockSaveState("conflict", "Konflikt – neuer Stand vorhanden");
       if (trainingBlockElements.reload) trainingBlockElements.reload.hidden = false;
+    } else {
+      setTrainingBlockSaveState("error", "Archivieren fehlgeschlagen");
     }
     showMessage(
       trainingBlockElements.editorMessage,
