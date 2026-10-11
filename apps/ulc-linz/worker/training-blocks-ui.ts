@@ -712,19 +712,45 @@ function populateTrainingBlockEditor() {
 
 function refreshTrainingBlockEditorLock() {
   const locked = trainingBlockDeactivateBusy;
+  const editable =
+    trainingBlocksCanEdit &&
+    !locked &&
+    trainingBlockSelected?.isActive !== false;
+
   for (const control of [
     trainingBlockElements.name,
     trainingBlockElements.audience,
     trainingBlockElements.duration,
     trainingBlockElements.note,
-    trainingBlockElements.exercisePicker,
-    trainingBlockElements.exerciseAdd,
-    trainingBlockElements.close,
-    trainingBlockElements.deactivate,
-    trainingBlockElements.historyLoad,
-    trainingBlockElements.compare,
   ]) {
-    if (control) control.disabled = locked || control.disabled;
+    if (control) control.disabled = !editable;
+  }
+  if (trainingBlockElements.close) {
+    trainingBlockElements.close.disabled = locked;
+  }
+  if (trainingBlockElements.deactivate) {
+    trainingBlockElements.deactivate.disabled =
+      locked ||
+      !trainingBlocksCanEdit ||
+      !trainingBlockSelected ||
+      !trainingBlockSelected.isActive;
+  }
+  if (trainingBlockElements.reload) {
+    trainingBlockElements.reload.disabled = locked;
+  }
+  if (trainingBlockElements.retry) {
+    trainingBlockElements.retry.disabled = locked;
+  }
+  if (trainingBlockElements.historyLoad) {
+    trainingBlockElements.historyLoad.disabled =
+      locked || !trainingBlockSelected;
+  }
+  if (trainingBlockElements.compare) {
+    trainingBlockElements.compare.disabled =
+      locked ||
+      !trainingBlockSelected ||
+      !trainingBlockElements.compareFrom?.value ||
+      !trainingBlockElements.compareTo?.value;
   }
   renderTrainingBlockExercisePicker();
   renderTrainingBlockExercises();
@@ -976,15 +1002,19 @@ function trainingBlockDraftPayload() {
     note: trainingBlockDraft.note.trim() || null,
     exercises: trainingBlockDraft.exercises.map((exercise) => {
       const item = trainingBlockExerciseItem(exercise.exerciseId);
-      const currentKeys = new Set(
-        (item?.parameters || []).map((parameter) => parameter.key),
-      );
+      const currentKeys =
+        item === null
+          ? null
+          : new Set(item.parameters.map((parameter) => parameter.key));
       return {
         ...(exercise.itemId ? { itemId: exercise.itemId } : {}),
         exerciseId: exercise.exerciseId,
         note: exercise.note.trim() || null,
         parameterOverrides: exercise.parameterOverrides
-          .filter((value) => currentKeys.has(value.key))
+          .filter(
+            (value) =>
+              currentKeys === null || currentKeys.has(value.key),
+          )
           .map((value) => ({
             key: value.key,
             value: value.value,
@@ -1610,6 +1640,7 @@ function renderTrainingBlockHistory(revisions) {
     trainingBlockElements.compareTo.value = String(sorted[0].revision);
   }
   if (trainingBlockElements.history) trainingBlockElements.history.hidden = false;
+  refreshTrainingBlockEditorLock();
 }
 
 function renderTrainingBlockRevisionSelect(select, revisions) {

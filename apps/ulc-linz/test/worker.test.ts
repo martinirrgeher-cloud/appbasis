@@ -625,11 +625,13 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("input.maxLength = 500");
     expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_INACTIVE");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDeactivateBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockElements.close.disabled = locked");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("locked || control.disabled");
     expect(ULC_LINZ_APP_SCRIPT).toContain("error.status >= 400");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockParameterError");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockStepAligned");
     expect(ULC_LINZ_APP_SCRIPT).toContain("veraltete(r) Parameterwert(e)");
-    expect(ULC_LINZ_APP_SCRIPT).toContain(".filter((value) => currentKeys.has(value.key))");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("currentKeys === null || currentKeys.has(value.key)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDraft.exercises.length >= 200");
     expect(ULC_LINZ_APP_SCRIPT).toContain("lokale Änderungen mit einem Versionskonflikt");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Der Block könnte bereits gespeichert sein");
