@@ -154,12 +154,9 @@ export class TrainingBlockService {
         favoriteBlockId,
         "Favorite training block id",
       );
-      if (!byId.has(id)) {
-        throw new Error("Training block favorite references an unknown block.");
-      }
-      favorites.add(id);
+      if (byId.has(id)) favorites.add(id);
     }
-    const usage = validatedUsageSummaryMap(usageSummaries, byId);
+    const usage = validatedUsageSummaryMap(usageSummaries, byId, true);
     return Object.freeze(
       blocks.map((block) => {
         const summary = usage.get(block.id);
