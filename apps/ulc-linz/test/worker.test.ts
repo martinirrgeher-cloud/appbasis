@@ -627,6 +627,9 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDeactivateBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockOpenRequestId");
     expect(ULC_LINZ_APP_SCRIPT).toContain("requestId !== trainingBlockOpenRequestId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("isCurrentTrainingBlockSelection");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const blockId = trainingBlockSelected.id");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (!isCurrentTrainingBlockSelection(blockId, requestId)) return");
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (!force && trainingBlockCreateUncertain)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (creating) resetTrainingBlockHistory()");
     expect(ULC_LINZ_APP_SCRIPT).toContain('setTrainingBlockSaveState("error", "Archivieren fehlgeschlagen")');

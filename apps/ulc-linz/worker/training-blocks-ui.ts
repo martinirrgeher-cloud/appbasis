@@ -355,6 +355,13 @@ let trainingBlockCreateUncertain = false;
 let trainingBlockDeactivateBusy = false;
 let trainingBlockOpenRequestId = 0;
 
+function isCurrentTrainingBlockSelection(blockId, requestId) {
+  return (
+    requestId === trainingBlockOpenRequestId &&
+    trainingBlockSelected?.id === blockId
+  );
+}
+
 function isTrainingBlockAudience(value) {
   return value !== null &&
     typeof value === "object" &&
@@ -1602,12 +1609,15 @@ function resetTrainingBlockHistory() {
 
 async function loadTrainingBlockHistory() {
   if (!trainingBlockSelected) return;
+  const blockId = trainingBlockSelected.id;
+  const requestId = trainingBlockOpenRequestId;
   try {
     const payload = await requestJson(
       "/api/modules/training-blocks/" +
-        encodeURIComponent(trainingBlockSelected.id) +
+        encodeURIComponent(blockId) +
         "/revisions",
     );
+    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
     if (
       !Array.isArray(payload?.revisions) ||
       !payload.revisions.every(isTrainingBlockRevision)
@@ -1616,6 +1626,7 @@ async function loadTrainingBlockHistory() {
     }
     renderTrainingBlockHistory(payload.revisions);
   } catch {
+    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
     showMessage(
       trainingBlockElements.editorMessage,
       "Die Versionen konnten nicht geladen werden.",
@@ -1676,13 +1687,16 @@ function renderTrainingBlockRevisionSelect(select, revisions) {
 
 async function openTrainingBlockRevision(number) {
   if (!trainingBlockSelected) return;
+  const blockId = trainingBlockSelected.id;
+  const requestId = trainingBlockOpenRequestId;
   try {
     const payload = await requestJson(
       "/api/modules/training-blocks/" +
-        encodeURIComponent(trainingBlockSelected.id) +
+        encodeURIComponent(blockId) +
         "/revisions/" +
         encodeURIComponent(String(number)),
     );
+    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
     if (!isTrainingBlockRevision(payload?.revision)) {
       throw new Error("INVALID_TRAINING_BLOCK_REVISION");
     }
@@ -1705,6 +1719,7 @@ async function openTrainingBlockRevision(number) {
       trainingBlockElements.revisionPreview.hidden = false;
     }
   } catch {
+    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
     showMessage(
       trainingBlockElements.editorMessage,
       "Die gewählte Version konnte nicht geladen werden.",
@@ -1714,18 +1729,21 @@ async function openTrainingBlockRevision(number) {
 
 async function compareTrainingBlockRevisions() {
   if (!trainingBlockSelected) return;
+  const blockId = trainingBlockSelected.id;
+  const requestId = trainingBlockOpenRequestId;
   const from = trainingBlockElements.compareFrom?.value || "";
   const to = trainingBlockElements.compareTo?.value || "";
   if (!from || !to) return;
   try {
     const payload = await requestJson(
       "/api/modules/training-blocks/" +
-        encodeURIComponent(trainingBlockSelected.id) +
+        encodeURIComponent(blockId) +
         "/compare?from=" +
         encodeURIComponent(from) +
         "&to=" +
         encodeURIComponent(to),
     );
+    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
     const value = payload?.comparison;
     if (
       value === null ||
@@ -1763,6 +1781,7 @@ async function compareTrainingBlockRevisions() {
       trainingBlockElements.comparison.hidden = false;
     }
   } catch {
+    if (!isCurrentTrainingBlockSelection(blockId, requestId)) return;
     showMessage(
       trainingBlockElements.editorMessage,
       "Die Versionen konnten nicht verglichen werden.",
