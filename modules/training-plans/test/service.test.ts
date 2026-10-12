@@ -503,6 +503,113 @@ describe("training-plans service", () => {
     });
   });
 
+  it("keeps copied item ids distinct from current and historical source ids", async () => {
+    const service = new TrainingPlanService({
+      repository: new InMemoryTrainingPlanRepository(),
+      createId: deterministicIds(
+        "source-plan",
+        "source-block",
+        "source-child-old",
+        "source-child-new",
+        "copy-plan",
+        "source-block",
+        "source-child-old",
+        "copy-block",
+        "source-child-new",
+        "copy-child",
+      ),
+      now: deterministicClock(
+        "2026-10-12T10:00:00.000Z",
+        "2026-10-12T10:01:00.000Z",
+        "2026-10-12T10:02:00.000Z",
+        "2026-10-12T10:03:00.000Z",
+      ),
+    });
+
+    await service.create("org-copy-ids", {
+      subjectId: "athlete-a",
+      planDate: "2026-10-12",
+      items: [
+        {
+          kind: "block",
+          name: "Block",
+          exercises: [{ name: "Alt" }],
+        },
+      ],
+    });
+
+    await service.update("org-copy-ids", "source-plan", 1, {
+      items: [
+        {
+          kind: "block",
+          itemId: "source-block",
+          name: "Block",
+          exercises: [],
+        },
+      ],
+    });
+
+    await service.update("org-copy-ids", "source-plan", 2, {
+      items: [
+        {
+          kind: "block",
+          itemId: "source-block",
+          name: "Block",
+          exercises: [{ name: "Neu" }],
+        },
+      ],
+    });
+
+    const copied = await service.copyCurrentTo(
+      "org-copy-ids",
+      "source-plan",
+      "athlete-b",
+      "2026-10-13",
+    );
+
+    expect(copied).toMatchObject({
+      id: "copy-plan",
+      revision: {
+        items: [
+          {
+            kind: "block",
+            itemId: "copy-block",
+            exercises: [
+              {
+                itemId: "copy-child",
+                name: "Neu",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const sourceIds = new Set<string>();
+    for (const revision of await service.listRevisions(
+      "org-copy-ids",
+      "source-plan",
+    )) {
+      for (const item of revision.items) {
+        sourceIds.add(item.itemId);
+        if (item.kind === "block") {
+          for (const exercise of item.exercises) {
+            sourceIds.add(exercise.itemId);
+          }
+        }
+      }
+    }
+
+    expect(sourceIds.has("source-child-old")).toBe(true);
+    expect(sourceIds.has("source-child-new")).toBe(true);
+    expect(sourceIds.has(copied!.revision.items[0]!.itemId)).toBe(false);
+    const copiedBlock = copied!.revision.items[0]!;
+    expect(copiedBlock.kind).toBe("block");
+    if (copiedBlock.kind === "block") {
+      expect(sourceIds.has(copiedBlock.exercises[0]!.itemId)).toBe(false);
+    }
+  });
+
   it("surfaces globally colliding generated plan identities", async () => {
     const repository = new InMemoryTrainingPlanRepository();
     const first = new TrainingPlanService({
