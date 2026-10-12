@@ -439,8 +439,12 @@ function requiredRevision(value: unknown): number {
 function decodeIdentifier(value: string | undefined): string {
   if (value === undefined) throw new InvalidTrainingPlanRequestError();
   try {
+    const decoded = decodeURIComponent(value);
+    if (decoded.includes("/")) {
+      throw new InvalidTrainingPlanRequestError();
+    }
     return normalizeTrainingPlanIdentifier(
-      decodeURIComponent(value),
+      decoded,
       "Training plan id",
     );
   } catch (error) {
