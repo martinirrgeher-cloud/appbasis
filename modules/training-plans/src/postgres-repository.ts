@@ -159,9 +159,9 @@ export class PostgresTrainingPlanRepository implements TrainingPlanRepository {
     return this.#client.begin(async (transaction) => {
       const rows = await transaction.unsafe(
         `SELECT subject_id,
-                plan_date::text AS plan_date,
+                to_char(plan_date, 'YYYY-MM-DD') AS plan_date,
                 current_revision,
-                created_at::text AS created_at
+                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at
          FROM appbasis_training_plan
          WHERE organization_id = $1
            AND id = $2
@@ -245,7 +245,7 @@ export class PostgresTrainingPlanRepository implements TrainingPlanRepository {
       );
       const rows = await transaction.unsafe(
         `SELECT organization_id, plan_id, revision, note,
-                created_at::text AS revision_created_at
+                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS revision_created_at
          FROM appbasis_training_plan_revision
          WHERE organization_id = $1
            AND plan_id = $2
@@ -287,7 +287,7 @@ export class PostgresTrainingPlanRepository implements TrainingPlanRepository {
       );
       const rows = await transaction.unsafe(
         `SELECT organization_id, plan_id, revision, note,
-                created_at::text AS revision_created_at
+                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS revision_created_at
          FROM appbasis_training_plan_revision
          WHERE organization_id = $1
            AND plan_id = $2
@@ -322,12 +322,12 @@ async function readCurrentPlans(
     `SELECT plan.id,
             plan.organization_id,
             plan.subject_id,
-            plan.plan_date::text AS plan_date,
+            to_char(plan.plan_date, 'YYYY-MM-DD') AS plan_date,
             plan.current_revision,
-            plan.created_at::text AS created_at,
-            plan.updated_at::text AS updated_at,
+            to_char(plan.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
+            to_char(plan.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at,
             revision.note AS revision_note,
-            revision.created_at::text AS revision_created_at
+            to_char(revision.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS revision_created_at
      FROM appbasis_training_plan AS plan
      INNER JOIN appbasis_training_plan_revision AS revision
        ON revision.organization_id = plan.organization_id
