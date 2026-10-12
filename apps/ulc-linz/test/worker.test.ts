@@ -461,6 +461,9 @@ function runtime(
       async listForSubjectDateRange() {
         return [];
       },
+      async listAttendanceForSubjectDateRange() {
+        return [];
+      },
       async findCurrent() {
         return undefined;
       },
@@ -4595,6 +4598,8 @@ describe("U12 runtime API", () => {
           weekView: true,
           autosave: true,
           optimisticConcurrency: true,
+          attendanceStatus: true,
+          attendanceFilter: true,
         },
       },
       access: { view: true, edit: true },
@@ -4602,8 +4607,9 @@ describe("U12 runtime API", () => {
     });
   });
 
-  it("loads exactly one Monday-based E7B4 week without accepting client organization scope", async () => {
-    let received: unknown = null;
+  it("loads one Monday-based week with read-only E7B5 attendance in server scope", async () => {
+    let receivedPlans: unknown = null;
+    let receivedAttendance: unknown = null;
     const base = runtime();
     const snapshot = {
       id: "plan-1",
@@ -4665,8 +4671,41 @@ describe("U12 runtime API", () => {
           fromDate,
           toDate,
         ) {
-          received = { organizationId, subjectId, fromDate, toDate };
+          receivedPlans = { organizationId, subjectId, fromDate, toDate };
           return [snapshot];
+        },
+        async listAttendanceForSubjectDateRange(
+          organizationId,
+          subjectId,
+          fromDate,
+          toDate,
+        ) {
+          receivedAttendance = {
+            organizationId,
+            subjectId,
+            fromDate,
+            toDate,
+          };
+          return [
+            {
+              sessionDate: "2026-10-14",
+              moduleId: "u12",
+              groupId: "group-u12",
+              groupName: "U12 Sprint",
+              groupShortName: "U12",
+              sessionState: "scheduled",
+              status: "present",
+            },
+            {
+              sessionDate: "2026-10-16",
+              moduleId: "kindertraining",
+              groupId: "group-kids",
+              groupName: "Kindertraining",
+              groupShortName: null,
+              sessionState: "cancelled",
+              status: "open",
+            },
+          ];
         },
       },
     }));
@@ -4679,7 +4718,13 @@ describe("U12 runtime API", () => {
       validEnv,
     );
     expect(response.status).toBe(200);
-    expect(received).toEqual({
+    expect(receivedPlans).toEqual({
+      organizationId: "verein-server",
+      subjectId: "athlete-1",
+      fromDate: "2026-10-12",
+      toDate: "2026-10-18",
+    });
+    expect(receivedAttendance).toEqual({
       organizationId: "verein-server",
       subjectId: "athlete-1",
       fromDate: "2026-10-12",
@@ -4696,6 +4741,26 @@ describe("U12 runtime API", () => {
           subjectId: "athlete-1",
           planDate: "2026-10-14",
           currentRevision: 1,
+        },
+      ],
+      attendance: [
+        {
+          sessionDate: "2026-10-14",
+          moduleId: "u12",
+          groupId: "group-u12",
+          groupName: "U12 Sprint",
+          groupShortName: "U12",
+          sessionState: "scheduled",
+          status: "present",
+        },
+        {
+          sessionDate: "2026-10-16",
+          moduleId: "kindertraining",
+          groupId: "group-kids",
+          groupName: "Kindertraining",
+          groupShortName: null,
+          sessionState: "cancelled",
+          status: "open",
         },
       ],
     });
