@@ -13,6 +13,7 @@ export const TRAINING_PLAN_CAPABILITIES = Object.freeze({
 
 export {
   TrainingPlanValidationError,
+  normalizeTrainingPlanDate,
   normalizeTrainingPlanDraft,
   normalizeTrainingPlanIdentifier,
 } from "./training-plan";
@@ -26,6 +27,11 @@ export type {
   TrainingPlanItemDraft,
   TrainingPlanItemInput,
 } from "./training-plan";
+
+export * from "./repository";
+export * from "./in-memory-repository";
+export * from "./postgres-repository";
+export * from "./service";
 
 function requiredTrainingPlanCapability<const T extends string>(
   capability: T,
