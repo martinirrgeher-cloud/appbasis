@@ -437,6 +437,72 @@ describe("training-plans service", () => {
     ).rejects.toThrow(/does not belong/);
   });
 
+  it("never reuses an item id that disappeared from an older revision", async () => {
+    const service = new TrainingPlanService({
+      repository: new InMemoryTrainingPlanRepository(),
+      createId: deterministicIds(
+        "plan-history",
+        "block-history",
+        "child-old",
+        "child-old",
+        "child-new",
+      ),
+      now: deterministicClock(
+        "2026-10-12T10:00:00.000Z",
+        "2026-10-12T10:01:00.000Z",
+        "2026-10-12T10:02:00.000Z",
+      ),
+    });
+
+    await service.create("org-history", {
+      subjectId: "athlete-a",
+      planDate: "2026-10-12",
+      items: [
+        {
+          kind: "block",
+          name: "Block",
+          exercises: [{ name: "Alt" }],
+        },
+      ],
+    });
+
+    await service.update("org-history", "plan-history", 1, {
+      items: [
+        {
+          kind: "block",
+          itemId: "block-history",
+          name: "Block",
+          exercises: [],
+        },
+      ],
+    });
+
+    const updated = await service.update("org-history", "plan-history", 2, {
+      items: [
+        {
+          kind: "block",
+          itemId: "block-history",
+          name: "Block",
+          exercises: [{ name: "Neu" }],
+        },
+      ],
+    });
+
+    expect(updated?.revision.items[0]).toMatchObject({
+      kind: "block",
+      exercises: [{ itemId: "child-new", name: "Neu" }],
+    });
+    await expect(
+      service.findRevision("org-history", "plan-history", 1),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          exercises: [{ itemId: "child-old", name: "Alt" }],
+        },
+      ],
+    });
+  });
+
   it("surfaces globally colliding generated plan identities", async () => {
     const repository = new InMemoryTrainingPlanRepository();
     const first = new TrainingPlanService({
