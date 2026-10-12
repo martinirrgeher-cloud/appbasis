@@ -106,7 +106,7 @@ export function normalizeTrainingPlanDraft(
 
   return Object.freeze({
     subjectId: requiredIdentifier(input.subjectId, "Training plan subject"),
-    planDate: isoDate(input.planDate),
+    planDate: normalizeTrainingPlanDate(input.planDate),
     note: optionalText(input.note, "Training plan note", 3000),
     items: Object.freeze(normalizedItems),
   });
@@ -299,7 +299,7 @@ function optionalText(
   return normalized;
 }
 
-function isoDate(value: unknown): string {
+export function normalizeTrainingPlanDate(value: unknown): string {
   if (
     typeof value !== "string" ||
     !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
