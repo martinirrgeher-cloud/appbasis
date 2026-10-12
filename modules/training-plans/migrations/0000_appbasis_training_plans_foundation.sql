@@ -15,9 +15,6 @@ CREATE TABLE appbasis_training_plan (
   UNIQUE (organization_id, subject_id, plan_date)
 );
 
-CREATE INDEX appbasis_training_plan_subject_date_idx
-  ON appbasis_training_plan (organization_id, subject_id, plan_date);
-
 CREATE TABLE appbasis_training_plan_revision (
   organization_id text NOT NULL,
   plan_id text NOT NULL,
@@ -65,8 +62,18 @@ CREATE TABLE appbasis_training_plan_revision_item (
   sort_order integer NOT NULL CHECK (sort_order BETWEEN 0 AND 199),
   name text NOT NULL
     CHECK (
-      char_length(name) BETWEEN 1 AND 160
-      AND btrim(name) = name
+      btrim(name) = name
+      AND (
+        (
+          item_kind = 'block'
+          AND char_length(name) BETWEEN 1 AND 120
+        )
+        OR
+        (
+          item_kind = 'exercise'
+          AND char_length(name) BETWEEN 1 AND 160
+        )
+      )
     ),
   source_block_id text,
   source_block_revision integer,
