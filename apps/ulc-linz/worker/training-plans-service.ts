@@ -5,6 +5,10 @@ import type {
 import type {
   ExerciseCatalogRepository,
 } from "@appbasis/exercise-catalog";
+import type {
+  UlcTrainingPlanAttendanceEntry,
+  UlcTrainingPlanAttendanceReader,
+} from "./training-plan-attendance-postgres";
 import {
   normalizeTrainingPlanDraft,
   TrainingPlanConflictError,
@@ -66,6 +70,12 @@ export interface UlcTrainingPlanService {
     fromDate: string,
     toDate: string,
   ): Promise<readonly TrainingPlanSnapshot[]>;
+  listAttendanceForSubjectDateRange(
+    organizationId: string,
+    subjectId: string,
+    fromDate: string,
+    toDate: string,
+  ): Promise<readonly UlcTrainingPlanAttendanceEntry[]>;
   findCurrent(
     organizationId: string,
     planId: string,
@@ -106,10 +116,12 @@ export function createUlcTrainingPlanService({
   plans,
   masterdata,
   exerciseCatalog,
+  attendance,
 }: {
   plans: TrainingPlanService;
   masterdata: UlcTrainingPlanMasterdataReader;
   exerciseCatalog: UlcTrainingPlanExerciseReader;
+  attendance: UlcTrainingPlanAttendanceReader;
 }): UlcTrainingPlanService {
   async function listSubjects(
     organizationId: string,
@@ -174,6 +186,20 @@ export function createUlcTrainingPlanService({
       toDate: string,
     ) {
       return plans.listForSubjectDateRange(
+        organizationId,
+        subjectId,
+        fromDate,
+        toDate,
+      );
+    },
+    async listAttendanceForSubjectDateRange(
+      organizationId: string,
+      subjectId: string,
+      fromDate: string,
+      toDate: string,
+    ) {
+      await assertActiveSubject(organizationId, subjectId);
+      return attendance.listForSubjectDateRange(
         organizationId,
         subjectId,
         fromDate,
