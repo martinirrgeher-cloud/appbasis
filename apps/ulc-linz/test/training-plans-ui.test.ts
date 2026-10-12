@@ -118,12 +118,27 @@ describe("ULC E7B4 training plan week UI", () => {
     );
   });
 
-  it("keeps active draft inputs mounted when typing continues during autosave", () => {
+  it("keeps active draft inputs mounted across successful autosave completion", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "trainingPlanChangeVersion === version\n    ) {\n      renderTrainingPlanItems();",
+      "trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
-      "trainingPlanChangeVersion === version ||\n      !trainingPlanSavePending",
+      "trainingPlanDraft = trainingPlanDraftFromSnapshot(saved);",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "if (trainingPlanConflict) {\n      renderTrainingPlanItems();\n    }",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "trainingPlanChangeVersion === version\n    ) {\n      renderTrainingPlanItems();",
+    );
+  });
+
+  it("fails closed if saved item identity shape cannot be reconciled", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'if (draft.items.length !== savedItems.length) {\n    throw new Error("INVALID_TRAINING_PLAN_SAVE");',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'item.exercises.length !== saved.exercises.length',
     );
   });
 
