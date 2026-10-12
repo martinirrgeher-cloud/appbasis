@@ -10,7 +10,7 @@ import {
   ULC_LINZ_APP_SCRIPT,
 } from "../worker/ui";
 
-describe("ULC E7B4 training plan week UI", () => {
+describe("ULC E7B4/E7B5 training plan week UI", () => {
   it("adds planning as the second training-focused primary navigation candidate", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="training-plans" data-nav-priority="2" hidden disabled>Planung',
@@ -53,6 +53,65 @@ describe("ULC E7B4 training plan week UI", () => {
       "trainingPlanAddDays(trainingPlanWeekStart, 6)",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("organizationId");
+  });
+
+  it("adds read-only E7B5 attendance badges and filter controls", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-attendance-filter"',
+    );
+    for (const value of [
+      "all",
+      "present",
+      "excused",
+      "absent",
+      "open",
+      "cancelled",
+      "none",
+    ]) {
+      expect(ULC_TRAINING_PLANS_HTML).toContain(
+        'option value="' + value + '"',
+      );
+    }
+    expect(ULC_TRAINING_PLANS_CSS).toContain(
+      ".training-plan-attendance__badge",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "features?.attendanceStatus !== true",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "features?.attendanceFilter !== true",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "!Array.isArray(payload?.attendance)",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanWeekAttendance = payload.attendance.slice();",
+    );
+  });
+
+  it("keeps multiple attendance sessions distinct and filters without mutating them", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanWeekAttendance.filter(",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'entry.sessionState === "cancelled" ? "cancelled" : entry.status',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'if (filter === "none") return entries.length === 0;',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'if (filter === "cancelled")',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"Keine Tage entsprechen dem Anwesenheitsfilter."',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('"Keine Anwesenheit"');
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "/api/modules/kindertraining",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "/api/modules/u12",
+    );
   });
 
   it("autosaves with explicit optimistic concurrency and stops on conflicts", () => {
@@ -157,14 +216,13 @@ describe("ULC E7B4 training plan week UI", () => {
     );
   });
 
-  it("preserves snapshot provenance while keeping E7B4 independent of block templates and attendance", () => {
+  it("preserves snapshot provenance while E7B5 remains independent of block-template mutation", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceExerciseId");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceBlockId");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceBlockRevision");
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
       "/api/modules/training-blocks",
     );
-    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("attendance");
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("innerHTML");
   });
 });
