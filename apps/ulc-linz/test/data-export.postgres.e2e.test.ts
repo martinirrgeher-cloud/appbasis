@@ -306,6 +306,7 @@ async function applyManifestMigrations(
     "athletes",
     "exercise-catalog",
     "training-blocks",
+    "training-plans",
     "ulc-linz-lifecycle",
   ]);
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
