@@ -2,8 +2,11 @@
 
 AppBasis standard module for athlete/day training plans.
 
-E7B1 establishes the reusable planning contract only. ULC adoption, week UI,
-attendance presentation and preview deployment remain later slices.
+E7B1 established the reusable planning contract. E7B2 adds the standard
+repository/service layer with PostgreSQL persistence, immutable revisions,
+optimistic concurrency, subject/date-range reads and protected independent
+copies. ULC adoption, attendance presentation, week UI and preview deployment
+remain later slices.
 
 ## Contract
 
@@ -27,3 +30,16 @@ content is revision-ready and stores plan-owned snapshots:
 Source ids are provenance only. There are no foreign keys into athletes,
 training-blocks or exercise-catalog, so later source edits cannot silently
 change an existing plan.
+
+
+## E7B2 service contract
+
+- `TrainingPlanService.create()` creates one plan for one subject/day.
+- `update(..., expectedRevision, ...)` appends immutable revisions and rejects
+  stale saves.
+- `listForSubjectDateRange()` is the backend read model for week/range views.
+- `copyCurrentTo()` copies the current snapshot to a new target using new
+  plan/item identities while preserving source provenance.
+- Existing targets are fail-closed; E7B2 never overwrites another plan.
+- PostgreSQL reads that combine plan/revision/items use repeatable-read
+  transactions and writes lock the plan row before appending a revision.
