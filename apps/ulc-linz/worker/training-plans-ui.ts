@@ -1,4 +1,4 @@
-export const ULC_TRAINING_PLANS_HTML = \`
+export const ULC_TRAINING_PLANS_HTML = `
           <section class="app-section" data-app-section="training-plans" id="training-plans" hidden>
             <section class="hero training-plans-hero">
               <div>
@@ -68,9 +68,9 @@ export const ULC_TRAINING_PLANS_HTML = \`
               </section>
             </div>
           </section>
-\`;
+`;
 
-export const ULC_TRAINING_PLANS_CSS = \`
+export const ULC_TRAINING_PLANS_CSS = `
 .training-plans-hero { margin-bottom: 12px; }
 .training-plan-toolbar {
   display: grid;
@@ -265,9 +265,9 @@ export const ULC_TRAINING_PLANS_CSS = \`
   .training-plan-grid { grid-template-columns: 1fr; }
   .training-plan-grid .training-plan-wide { grid-column: auto; }
 }
-\`;
+`;
 
-export const ULC_TRAINING_PLANS_SCRIPT = \`
+export const ULC_TRAINING_PLANS_SCRIPT = `
 const trainingPlanElements = Object.freeze({
   quickAction: document.querySelector("#training-plan-quick-action"),
   accessLabel: document.querySelector("#training-plan-access-label"),
@@ -1360,4 +1360,4 @@ window.addEventListener("beforeunload", (event) => {
   event.preventDefault();
   event.returnValue = "";
 });
-\`;
+`;
