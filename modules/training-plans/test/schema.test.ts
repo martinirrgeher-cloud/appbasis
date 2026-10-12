@@ -32,6 +32,24 @@ describe("training-plans schema", () => {
     expect(migration).toContain("comment");
   });
 
+  it("matches block and exercise name limits enforced by the domain", () => {
+    expect(migration).toContain(
+      "item_kind = 'block'\n          AND char_length(name) BETWEEN 1 AND 120",
+    );
+    expect(migration).toContain(
+      "item_kind = 'exercise'\n          AND char_length(name) BETWEEN 1 AND 160",
+    );
+  });
+
+  it("uses the subject-day unique constraint without a duplicate index", () => {
+    expect(migration).toContain(
+      "UNIQUE (organization_id, subject_id, plan_date)",
+    );
+    expect(migration).not.toContain(
+      "appbasis_training_plan_subject_date_idx",
+    );
+  });
+
   it("keeps source modules and subjects as opaque references", () => {
     expect(migration).not.toContain("REFERENCES appbasis_athlete");
     expect(migration).not.toContain("REFERENCES appbasis_training_block");
