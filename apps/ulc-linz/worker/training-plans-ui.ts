@@ -532,11 +532,9 @@ async function loadTrainingPlanWeek() {
       throw new Error("INVALID_TRAINING_PLAN_WEEK");
     }
     trainingPlanWeekPlans = payload.plans.slice();
-    renderTrainingPlanWeek();
     return true;
   } catch (error) {
     trainingPlanWeekPlans = [];
-    renderTrainingPlanWeek();
     showMessage(
       trainingPlanElements.message,
       error?.status === 400
@@ -547,6 +545,7 @@ async function loadTrainingPlanWeek() {
   } finally {
     trainingPlanWeekLoading = false;
     refreshTrainingPlanControls();
+    renderTrainingPlanWeek();
   }
 }
 
