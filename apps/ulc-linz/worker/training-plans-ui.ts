@@ -1090,14 +1090,13 @@ async function saveTrainingPlan() {
       throw new Error("INVALID_TRAINING_PLAN_SAVE");
     }
 
+    trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);
     trainingPlanSelected = saved;
     replaceTrainingPlanWeekSnapshot(saved);
     if (trainingPlanChangeVersion === version) {
-      trainingPlanDraft = trainingPlanDraftFromSnapshot(saved);
       trainingPlanDirty = false;
       trainingPlanSetSaveState("saved", "Gespeichert");
     } else {
-      trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);
       trainingPlanDirty = true;
       trainingPlanSavePending = true;
       trainingPlanSetSaveState("dirty", "Weitere Änderungen …");
@@ -1132,10 +1131,7 @@ async function saveTrainingPlan() {
     }
   } finally {
     trainingPlanSaveBusy = false;
-    if (
-      trainingPlanConflict ||
-      trainingPlanChangeVersion === version
-    ) {
+    if (trainingPlanConflict) {
       renderTrainingPlanItems();
     }
     refreshTrainingPlanEditorState();
@@ -1193,18 +1189,37 @@ function trainingPlanOptionalText(value) {
 }
 
 function trainingPlanApplySavedIds(draft, savedItems) {
-  if (draft.items.length !== savedItems.length) return;
+  if (draft.items.length !== savedItems.length) {
+    throw new Error("INVALID_TRAINING_PLAN_SAVE");
+  }
+
   draft.items.forEach((item, index) => {
     const saved = savedItems[index];
-    if (!saved || saved.kind !== item.kind) return;
-    item.itemId = saved.itemId;
+    if (!saved || saved.kind !== item.kind) {
+      throw new Error("INVALID_TRAINING_PLAN_SAVE");
+    }
     if (
       item.kind === "block" &&
-      saved.kind === "block" &&
-      item.exercises.length === saved.exercises.length
+      (saved.kind !== "block" ||
+        item.exercises.length !== saved.exercises.length)
     ) {
+      throw new Error("INVALID_TRAINING_PLAN_SAVE");
+    }
+  });
+
+  draft.items.forEach((item, index) => {
+    const saved = savedItems[index];
+    if (!saved || saved.kind !== item.kind) {
+      throw new Error("INVALID_TRAINING_PLAN_SAVE");
+    }
+    item.itemId = saved.itemId;
+    if (item.kind === "block" && saved.kind === "block") {
       item.exercises.forEach((exercise, childIndex) => {
-        exercise.itemId = saved.exercises[childIndex]?.itemId || exercise.itemId;
+        const savedExercise = saved.exercises[childIndex];
+        if (!savedExercise) {
+          throw new Error("INVALID_TRAINING_PLAN_SAVE");
+        }
+        exercise.itemId = savedExercise.itemId;
       });
     }
   });
