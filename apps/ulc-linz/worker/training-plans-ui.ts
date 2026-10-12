@@ -1355,4 +1355,9 @@ trainingPlanElements.addBlock?.addEventListener("click", () => {
   trainingPlanDraft.items.push(newTrainingPlanBlockDraft());
   markTrainingPlanDirty(true);
 });
+window.addEventListener("beforeunload", (event) => {
+  if (!trainingPlanDirty && !trainingPlanSaveBusy) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
 \`;
