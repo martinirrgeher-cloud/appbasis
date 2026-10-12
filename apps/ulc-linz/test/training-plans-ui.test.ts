@@ -81,13 +81,28 @@ describe("ULC E7B4 training plan week UI", () => {
 
   it("blocks stale week cards while a new subject or week is loading", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "button.disabled = trainingPlanWeekLoading;",
+      "button.disabled = trainingPlanWeekLoading || !trainingPlanWeekLoaded;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      'if (trainingPlanWeekLoading) return;\n  const control = event.target?.closest?.("[data-training-plan-day]");',
+      'if (trainingPlanWeekLoading || !trainingPlanWeekLoaded) return;\n  const control = event.target?.closest?.("[data-training-plan-day]");',
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       'trainingPlanWeekLoading\n      ? "Woche wird geladen …"',
+    );
+  });
+
+  it("keeps week cards disabled when the authoritative week load failed", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "let trainingPlanWeekLoaded = false;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanWeekPlans = payload.plans.slice();\n    trainingPlanWeekLoaded = true;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "button.disabled = trainingPlanWeekLoading || !trainingPlanWeekLoaded;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"Woche ist derzeit nicht verfügbar."',
     );
   });
 
