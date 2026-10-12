@@ -224,5 +224,27 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
 - noch keine ULC-Adoption, Anwesenheitszusammenführung, Wochen-UI oder
   Preview-Migration.
 
-Die weiteren E7B-Slices ergänzen ULC-Adapter, Wochenoberfläche,
+### E7B3 – ULC-Adapter und Berechtigungen
+
+- ULC deklariert `training-plans` als Standardmodul und eigenen Datenbankowner;
+- die Standard-Capabilities `training-plans:view/edit` werden auf die bereits
+  vorhandene ULC-Berechtigung `training_planning:view/edit` abgebildet, ohne
+  Rollenrechte zu erweitern;
+- Organisation und Actor werden ausschließlich aus authentifizierter Membership
+  und serverseitiger Permission-Auflösung übernommen;
+- planbare Subjects sind aktive Athleten derselben Organisation;
+- Katalog-Provenienz wird beim Erstellen sowie bei neu gesetzten/geänderten
+  Übungsreferenzen gegen aktive Standard-Katalogeinträge validiert;
+- bestehende Plan-Snapshots bleiben unabhängig vom späteren Katalog-Lifecycle:
+  unveränderte Provenienz wird bei normalen Planänderungen und beim Kopieren
+  nicht rückwirkend ungültig;
+- manuelle Übungen ohne Katalogreferenz bleiben zulässig;
+- Standard-Repository/Service werden in die ULC-Runtime über einen App-Adapter
+  verdrahtet;
+- Trainingsplandaten bleiben im Datenschutz-/Exportvertrag bis zu einem eigenen
+  Lifecycle-Vertrag ausdrücklich fail-closed;
+- noch keine Trainingsplan-HTTP-API, Wochen-UI, Anwesenheitszusammenführung,
+  Blockvorlagen-Rückspeicherung, Preview-Migration oder Provideraktion.
+
+Die weiteren E7B-Slices ergänzen Wochenoberfläche und Autosave,
 Anwesenheitsanzeige/-filter, Blockvorlagen-Integration und Preview-Abnahme.
