@@ -198,5 +198,31 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
   später im ULC-Adapter nur für Anzeige/Filter zugeliefert;
 - noch keine ULC-Adoption, UI, Preview-Migration oder Provideraktion.
 
-Die weiteren E7B-Slices ergänzen Repository/Service, ULC-Adapter,
-Wochenoberfläche, Kopieren/Überschreibschutz und Preview-Abnahme.
+### E7B2 – Repository und Service
+
+- In-Memory- und PostgreSQL-Repository für aktuelle Pläne und Revisionen;
+- atomare Reads eines Subjects über einen frei wählbaren Datumsbereich als
+  Backend-Basis für die spätere Wochenansicht;
+- Erstellen genau eines Plans pro Organisation, Subject und Tag;
+- optimistisches Speichern mit `expectedRevision` und explizitem
+  Konfliktfehler;
+- unveränderliche Revisionshistorie und gezielter Zugriff auf alte Revisionen;
+- stabile Item-Identitäten bei Umsortierung und Parameteränderung;
+- neue Übungen/Blöcke erhalten neue Item-IDs, entfernte IDs werden innerhalb
+  derselben Planidentität nicht wiederverwendet;
+- Kopieren des aktuellen Plans auf anderes Subject/anderen Tag erzeugt eine
+  vollständig unabhängige Plan- und Item-Identität;
+- Provenienz zu Blockvorlage und Katalogübung wird beim Kopieren beibehalten,
+  Planwerte bleiben aber eigene Snapshots;
+- bestehende Zielpläne werden nicht überschrieben, sondern mit
+  `TrainingPlanTargetOccupiedError` geschützt;
+- parallele Updates werden im PostgreSQL-Adapter über `FOR UPDATE`
+  serialisiert;
+- zusammengesetzte Reads laufen in `REPEATABLE READ`;
+- echte PostgreSQL-18-E2E-Tests decken Revisionen, Kopien,
+  konkurrierende Updates, konkurrierende Zielanlage und Parent-FK ab;
+- noch keine ULC-Adoption, Anwesenheitszusammenführung, Wochen-UI oder
+  Preview-Migration.
+
+Die weiteren E7B-Slices ergänzen ULC-Adapter, Wochenoberfläche,
+Anwesenheitsanzeige/-filter, Blockvorlagen-Integration und Preview-Abnahme.
