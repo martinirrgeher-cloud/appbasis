@@ -501,10 +501,11 @@ async function loadTrainingPlanWeek() {
     !trainingPlansReady ||
     trainingPlanWeekLoading ||
     !trainingPlanSelectedSubjectId
-  ) return;
+  ) return false;
 
   trainingPlanWeekLoading = true;
   refreshTrainingPlanControls();
+  renderTrainingPlanWeek();
   showMessage(trainingPlanElements.message, "");
   const subjectId = trainingPlanSelectedSubjectId;
   const weekStart = trainingPlanWeekStart;
@@ -532,6 +533,7 @@ async function loadTrainingPlanWeek() {
     }
     trainingPlanWeekPlans = payload.plans.slice();
     renderTrainingPlanWeek();
+    return true;
   } catch (error) {
     trainingPlanWeekPlans = [];
     renderTrainingPlanWeek();
@@ -541,6 +543,7 @@ async function loadTrainingPlanWeek() {
         ? "Die ausgewählte Woche oder der Athlet ist nicht mehr verfügbar."
         : "Die Trainingswoche konnte nicht geladen werden.",
     );
+    return false;
   } finally {
     trainingPlanWeekLoading = false;
     refreshTrainingPlanControls();
@@ -580,6 +583,7 @@ function renderTrainingPlanWeek() {
     button.type = "button";
     button.className = "training-plan-day__button";
     button.dataset.trainingPlanDay = date;
+    button.disabled = trainingPlanWeekLoading;
 
     const headline = document.createElement("div");
     headline.className = "training-plan-day__date";
@@ -594,11 +598,13 @@ function renderTrainingPlanWeek() {
     const title = document.createElement("b");
     title.textContent = plan ? "Plan vorhanden" : "Noch kein Plan";
     const detail = document.createElement("span");
-    detail.textContent = plan
-      ? trainingPlanSummary(plan)
-      : trainingPlansCanEdit
-        ? "Öffnen und Training anlegen."
-        : "Kein Training eingetragen.";
+    detail.textContent = trainingPlanWeekLoading
+      ? "Woche wird geladen …"
+      : plan
+        ? trainingPlanSummary(plan)
+        : trainingPlansCanEdit
+          ? "Öffnen und Training anlegen."
+          : "Kein Training eingetragen.";
     summary.append(title, detail);
 
     button.append(headline, summary);
@@ -1123,8 +1129,7 @@ async function saveTrainingPlan() {
     trainingPlanSaveBusy = false;
     if (
       trainingPlanConflict ||
-      trainingPlanChangeVersion === version ||
-      !trainingPlanSavePending
+      trainingPlanChangeVersion === version
     ) {
       renderTrainingPlanItems();
     }
@@ -1215,16 +1220,28 @@ function replaceTrainingPlanWeekSnapshot(saved) {
 async function reloadTrainingPlanEditor() {
   if (!trainingPlanEditorDate || trainingPlanWeekLoading) return;
   const date = trainingPlanEditorDate;
-  trainingPlanConflict = false;
-  trainingPlanDirty = false;
   if (trainingPlanElements.reload) trainingPlanElements.reload.hidden = true;
-  await loadTrainingPlanWeek();
+  const reloaded = await loadTrainingPlanWeek();
+  if (!reloaded) {
+    trainingPlanConflict = true;
+    trainingPlanDirty = true;
+    trainingPlanSetSaveState("conflict", "Neu laden fehlgeschlagen");
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Der aktuelle Stand konnte nicht geladen werden. Deine Änderungen bleiben erhalten.",
+    );
+    if (trainingPlanElements.reload) trainingPlanElements.reload.hidden = false;
+    refreshTrainingPlanEditorState();
+    return;
+  }
   const plan =
     trainingPlanWeekPlans.find((value) => value.planDate === date) || null;
   trainingPlanSelected = plan;
   trainingPlanDraft = plan
     ? trainingPlanDraftFromSnapshot(plan)
     : { note: "", items: [] };
+  trainingPlanConflict = false;
+  trainingPlanDirty = false;
   trainingPlanChangeVersion = 0;
   populateTrainingPlanEditor();
 }
@@ -1329,6 +1346,7 @@ trainingPlanElements.weekNext?.addEventListener("click", () => {
   void loadTrainingPlanWeek();
 });
 trainingPlanElements.week?.addEventListener("click", (event) => {
+  if (trainingPlanWeekLoading) return;
   const control = event.target?.closest?.("[data-training-plan-day]");
   if (!control) return;
   openTrainingPlanEditor(control.dataset.trainingPlanDay || "");
