@@ -16,7 +16,7 @@ describe("ULC E4D.5 compact mobile layout", () => {
       'data-nav-view="kindertraining" data-nav-priority="1" hidden disabled>Training',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="exercise-catalog" data-nav-priority="2" hidden disabled>Übungen',
+      'data-nav-view="training-plans" data-nav-priority="2" hidden disabled>Planung',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
       'id="app-nav-more" type="button" aria-expanded="false"',

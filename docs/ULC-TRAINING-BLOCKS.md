@@ -246,5 +246,32 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
 - noch keine Trainingsplan-HTTP-API, Wochen-UI, Anwesenheitszusammenführung,
   Blockvorlagen-Rückspeicherung, Preview-Migration oder Provideraktion.
 
-Die weiteren E7B-Slices ergänzen Wochenoberfläche und Autosave,
-Anwesenheitsanzeige/-filter, Blockvorlagen-Integration und Preview-Abnahme.
+### E7B4 – Wochenoberfläche und Autosave
+
+- neue ULC-HTTP-Oberfläche für Trainingsplanung mit serverseitig abgeleiteter
+  Organisation und Actor; Client-Scope wie `organizationId` wird nicht
+  akzeptiert;
+- Bootstrap liefert ausschließlich Berechtigung und aktive planbare Athleten;
+- Wochenabfrage akzeptiert genau Athlet + Montag und liefert Montag bis Sonntag;
+- Trainingspläne können über dieselbe ULC-Oberfläche angelegt und mit
+  `expectedRevision` optimistisch aktualisiert werden;
+- 409-Konflikte oder konkurrierendes erstmaliges Anlegen werden niemals still
+  überschrieben, sondern sperren Autosave bis zum expliziten Neuladen;
+- Wochenansicht ist auf Mobilgeräten horizontal kompakt und auf großen
+  Bildschirmen als echte 7-Spalten-Woche dargestellt;
+- Tagesbearbeitung erfolgt im Overlay und unterstützt manuelle Top-Level-
+  Übungen, manuelle Blöcke mit Übungen, Reihenfolge, Sätze, Wiederholungen,
+  Menge, Einheit, Kommentare, Dauer und Notizen;
+- bestehende Katalog-/Block-Provenienz wird beim Bearbeiten unverändert
+  mitgeführt, E7B4 bietet aber bewusst noch keinen Picker für Katalogübungen
+  oder Blockvorlagen;
+- strukturelle Änderungen sind während eines laufenden Autosaves gesperrt,
+  Texteingaben dürfen weiterlaufen; nach dem Save werden neue Server-Item-IDs
+  ohne Verlust späterer Texteingaben zurückgeführt;
+- Wochen-/Athletenwechsel verwirft schmutzige oder konfliktbehaftete Entwürfe
+  nicht still;
+- noch keine Anwesenheitsanzeige/-filter, Blockvorlagen-Übernahme/-Rückspeicherung,
+  Preview-Migration, Deployment oder Provideraktion.
+
+Die weiteren E7B-Slices ergänzen Anwesenheitsanzeige/-filter,
+Blockvorlagen-Integration und Preview-Abnahme.

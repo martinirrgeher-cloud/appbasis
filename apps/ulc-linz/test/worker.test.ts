@@ -13,6 +13,7 @@ import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
 import { TrainingBlockConflictError } from "@appbasis/training-blocks";
+import { TrainingPlanConflictError } from "@appbasis/training-plans";
 import {
   ULC_LINZ_APP_CSS,
   ULC_LINZ_APP_HTML,
@@ -630,10 +631,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
   it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="4" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="5" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="1" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="5" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="6" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="6" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="7" hidden disabled');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshAppAvailability();");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
@@ -655,7 +656,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
 
   it("ships E7A6 training-block mobile UI with autosave, history and parity metadata", () => {
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="3" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="4" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
     expect(ULC_LINZ_APP_HTML).toContain('minlength="1" maxlength="120"');
@@ -4542,4 +4543,653 @@ describe("U12 runtime API", () => {
       expect(response.status).toBe(400);
     }
   });
+  it("serves E7B4 planning bootstrap from server-authorized organization scope", async () => {
+    let subjectOrganization = "";
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertViewAccess(current) {
+          expect(current.identity.identityId).toBe(currentIdentity.identity.identityId);
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async listSubjects(organizationId) {
+          subjectOrganization = organizationId;
+          return [
+            {
+              id: "athlete-1",
+              firstName: "Anna",
+              lastName: "Sprint",
+              displayName: "Sprint, Anna",
+            },
+          ];
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/training-plans", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(subjectOrganization).toBe("verein-server");
+    await expect(response.json()).resolves.toMatchObject({
+      module: {
+        moduleId: "training_planning",
+        capabilities: {
+          view: "training-plans:view",
+          edit: "training-plans:edit",
+        },
+        features: {
+          weekView: true,
+          autosave: true,
+          optimisticConcurrency: true,
+        },
+      },
+      access: { view: true, edit: true },
+      subjects: [{ id: "athlete-1", displayName: "Sprint, Anna" }],
+    });
+  });
+
+  it("loads exactly one Monday-based E7B4 week without accepting client organization scope", async () => {
+    let received: unknown = null;
+    const base = runtime();
+    const snapshot = {
+      id: "plan-1",
+      organizationId: "verein-server",
+      subjectId: "athlete-1",
+      planDate: "2026-10-14",
+      currentRevision: 1,
+      createdAt: "2026-10-12T10:00:00.000Z",
+      updatedAt: "2026-10-12T10:00:00.000Z",
+      revision: {
+        organizationId: "verein-server",
+        planId: "plan-1",
+        revision: 1,
+        note: "Sprint",
+        createdAt: "2026-10-12T10:00:00.000Z",
+        items: [
+          {
+            kind: "exercise" as const,
+            itemId: "item-1",
+            sourceExerciseId: null,
+            name: "30 m",
+            sets: null,
+            repetitions: "3",
+            amount: null,
+            unit: null,
+            comment: null,
+            sortOrder: 0,
+          },
+        ],
+      },
+    };
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertViewAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async listSubjects() {
+          return [
+            {
+              id: "athlete-1",
+              firstName: "Anna",
+              lastName: "Sprint",
+              displayName: "Sprint, Anna",
+            },
+          ];
+        },
+        async listForSubjectDateRange(
+          organizationId,
+          subjectId,
+          fromDate,
+          toDate,
+        ) {
+          received = { organizationId, subjectId, fromDate, toDate };
+          return [snapshot];
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/week?subjectId=athlete-1&weekStart=2026-10-12",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      subjectId: "athlete-1",
+      fromDate: "2026-10-12",
+      toDate: "2026-10-18",
+    });
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      subjectId: "athlete-1",
+      weekStart: "2026-10-12",
+      weekEnd: "2026-10-18",
+      plans: [
+        {
+          id: "plan-1",
+          subjectId: "athlete-1",
+          planDate: "2026-10-14",
+          currentRevision: 1,
+        },
+      ],
+    });
+    expect(JSON.stringify(payload)).not.toContain("organizationId");
+
+    for (const query of [
+      "subjectId=athlete-1&weekStart=2026-10-11",
+      "subjectId=athlete-1&weekStart=2026-10-12&organizationId=verein-client",
+      "subjectId=athlete-1&subjectId=athlete-2&weekStart=2026-10-12",
+    ]) {
+      const invalid = await worker.fetch(
+        new Request(
+          "https://ulc.example.test/api/modules/training-plans/week?" + query,
+          { headers: { cookie: currentIdentity.sessionToken } },
+        ),
+        validEnv,
+      );
+      expect(invalid.status).toBe(400);
+    }
+  });
+
+  it("creates E7B4 plans only in edit-authorized server scope and rejects client-owned scope", async () => {
+    let received: unknown = null;
+    let createCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async create(organizationId, input) {
+          createCalls += 1;
+          received = { organizationId, input };
+          return {
+            id: "plan-created",
+            organizationId,
+            subjectId: input.subjectId,
+            planDate: input.planDate,
+            currentRevision: 1,
+            createdAt: "2026-10-12T10:00:00.000Z",
+            updatedAt: "2026-10-12T10:00:00.000Z",
+            revision: {
+              organizationId,
+              planId: "plan-created",
+              revision: 1,
+              note: input.note ?? null,
+              items: [],
+              createdAt: "2026-10-12T10:00:00.000Z",
+            },
+          };
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/training-plans", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          subjectId: "athlete-1",
+          planDate: "2026-10-14",
+          note: "Sprint",
+          items: [],
+        }),
+      }),
+      validEnv,
+    );
+    expect(response.status).toBe(201);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      input: {
+        subjectId: "athlete-1",
+        planDate: "2026-10-14",
+        note: "Sprint",
+        items: [],
+      },
+    });
+
+    const rejected = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/training-plans", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: "verein-client",
+          subjectId: "athlete-1",
+          planDate: "2026-10-15",
+        }),
+      }),
+      validEnv,
+    );
+    expect(rejected.status).toBe(400);
+    expect(createCalls).toBe(1);
+  });
+
+  it("returns a conflict instead of silently overwriting a stale E7B4 plan revision", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async findCurrent() {
+          return {
+            id: "plan-1",
+            organizationId: "verein-server",
+            subjectId: "athlete-1",
+            planDate: "2026-10-14",
+            currentRevision: 2,
+            createdAt: "2026-10-12T10:00:00.000Z",
+            updatedAt: "2026-10-12T11:00:00.000Z",
+            revision: {
+              organizationId: "verein-server",
+              planId: "plan-1",
+              revision: 2,
+              note: null,
+              items: [],
+              createdAt: "2026-10-12T11:00:00.000Z",
+            },
+          };
+        },
+        async update() {
+          throw new TrainingPlanConflictError(2, 3);
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            expectedRevision: 2,
+            note: "Nicht überschreiben",
+            items: [],
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "TRAINING_PLAN_CONFLICT",
+        message: "The training plan changed since it was loaded.",
+        expectedRevision: 2,
+        currentRevision: 3,
+      },
+    });
+  });
+
+  it("rejects forged E7B4 block provenance on create before any mutation", async () => {
+    let createCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async create(...args) {
+          createCalls += 1;
+          return base.trainingPlans.create(...args);
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/training-plans", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          subjectId: "athlete-1",
+          planDate: "2026-10-14",
+          items: [
+            {
+              kind: "block",
+              sourceBlockId: "forged-block",
+              sourceBlockRevision: 4,
+              name: "Gefälschte Vorlage",
+              exercises: [],
+            },
+          ],
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(400);
+    expect(createCalls).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_TRAINING_PLAN" },
+    });
+  });
+
+  it("allows only unchanged E7B4 block provenance on update", async () => {
+    let updateCalls = 0;
+    const current = {
+      id: "plan-1",
+      organizationId: "verein-server",
+      subjectId: "athlete-1",
+      planDate: "2026-10-14",
+      currentRevision: 2,
+      createdAt: "2026-10-12T10:00:00.000Z",
+      updatedAt: "2026-10-12T11:00:00.000Z",
+      revision: {
+        organizationId: "verein-server",
+        planId: "plan-1",
+        revision: 2,
+        note: null,
+        createdAt: "2026-10-12T11:00:00.000Z",
+        items: [
+          {
+            kind: "block" as const,
+            itemId: "block-item-1",
+            sourceBlockId: "source-block-1",
+            sourceBlockRevision: 3,
+            name: "Sprintblock",
+            durationMinutes: 20,
+            note: null,
+            sortOrder: 0,
+            exercises: [],
+          },
+        ],
+      },
+    };
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async findCurrent() {
+          return current;
+        },
+        async update() {
+          updateCalls += 1;
+          return current;
+        },
+      },
+    }));
+
+    const unchanged = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            expectedRevision: 2,
+            note: null,
+            items: [
+              {
+                kind: "block",
+                itemId: "block-item-1",
+                sourceBlockId: "source-block-1",
+                sourceBlockRevision: 3,
+                name: "Sprintblock angepasst",
+                durationMinutes: 20,
+                exercises: [],
+              },
+            ],
+          }),
+        },
+      ),
+      validEnv,
+    );
+    expect(unchanged.status).toBe(200);
+    expect(updateCalls).toBe(1);
+
+    for (const provenance of [
+      { sourceBlockId: "source-block-2", sourceBlockRevision: 3 },
+      { sourceBlockId: "source-block-1", sourceBlockRevision: 4 },
+      { sourceBlockId: null, sourceBlockRevision: null },
+    ]) {
+      const forged = await worker.fetch(
+        new Request(
+          "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+          {
+            method: "POST",
+            headers: {
+              cookie: currentIdentity.sessionToken,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              expectedRevision: 2,
+              note: null,
+              items: [
+                {
+                  kind: "block",
+                  itemId: "block-item-1",
+                  ...provenance,
+                  name: "Manipuliert",
+                  exercises: [],
+                },
+              ],
+            }),
+          },
+        ),
+        validEnv,
+      );
+      expect(forged.status).toBe(400);
+    }
+    expect(updateCalls).toBe(1);
+  });
+
+  it("returns stale E7B4 revision conflicts before block provenance validation", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async findCurrent() {
+          return {
+            id: "plan-1",
+            organizationId: "verein-server",
+            subjectId: "athlete-1",
+            planDate: "2026-10-14",
+            currentRevision: 3,
+            createdAt: "2026-10-12T10:00:00.000Z",
+            updatedAt: "2026-10-12T12:00:00.000Z",
+            revision: {
+              organizationId: "verein-server",
+              planId: "plan-1",
+              revision: 3,
+              note: null,
+              items: [],
+              createdAt: "2026-10-12T12:00:00.000Z",
+            },
+          };
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            expectedRevision: 2,
+            note: null,
+            items: [
+              {
+                kind: "block",
+                sourceBlockId: "forged",
+                sourceBlockRevision: 99,
+                name: "Stale und gefälscht",
+                exercises: [],
+              },
+            ],
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "TRAINING_PLAN_CONFLICT",
+        expectedRevision: 2,
+        currentRevision: 3,
+      },
+    });
+  });
+
+  it("rejects E7B4 updates without a full item snapshot to prevent accidental plan clearing", async () => {
+    let findCalls = 0;
+    let updateCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async findCurrent() {
+          findCalls += 1;
+          return undefined;
+        },
+        async update() {
+          updateCalls += 1;
+          return undefined;
+        },
+      },
+    }));
+
+    for (const body of [
+      {
+        expectedRevision: 2,
+        note: "Nur Notiz ändern",
+      },
+      {
+        expectedRevision: 2,
+        items: [],
+      },
+    ]) {
+      const response = await worker.fetch(
+        new Request(
+          "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+          {
+            method: "POST",
+            headers: {
+              cookie: currentIdentity.sessionToken,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(body),
+          },
+        ),
+        validEnv,
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "INVALID_TRAINING_PLAN" },
+      });
+    }
+    expect(findCalls).toBe(0);
+    expect(updateCalls).toBe(0);
+  });
+
 });
