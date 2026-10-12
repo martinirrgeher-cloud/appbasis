@@ -6,7 +6,8 @@
     "countdown",
     "athletes",
     "exercise-catalog",
-    "training-blocks"
+    "training-blocks",
+    "training-plans"
   ],
   "platformServices": [
     "identity",
