@@ -5155,30 +5155,38 @@ describe("U12 runtime API", () => {
       },
     }));
 
-    const response = await worker.fetch(
-      new Request(
-        "https://ulc.example.test/api/modules/training-plans/plan-1/update",
-        {
-          method: "POST",
-          headers: {
-            cookie: currentIdentity.sessionToken,
-            "content-type": "application/json",
+    for (const body of [
+      {
+        expectedRevision: 2,
+        note: "Nur Notiz ändern",
+      },
+      {
+        expectedRevision: 2,
+        items: [],
+      },
+    ]) {
+      const response = await worker.fetch(
+        new Request(
+          "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+          {
+            method: "POST",
+            headers: {
+              cookie: currentIdentity.sessionToken,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(body),
           },
-          body: JSON.stringify({
-            expectedRevision: 2,
-            note: "Nur Notiz ändern",
-          }),
-        },
-      ),
-      validEnv,
-    );
+        ),
+        validEnv,
+      );
 
-    expect(response.status).toBe(400);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "INVALID_TRAINING_PLAN" },
+      });
+    }
     expect(findCalls).toBe(0);
     expect(updateCalls).toBe(0);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: "INVALID_TRAINING_PLAN" },
-    });
   });
 
 });
