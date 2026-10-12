@@ -300,6 +300,16 @@ export class TrainingPlanService {
       current.id,
       ...currentKinds.keys(),
     ]);
+    const historicalRevisions = await this.#repository.listRevisions(
+      organization,
+      id,
+    );
+    for (const historical of historicalRevisions) {
+      const validated = this.#assertRevision(historical, organization, id);
+      for (const historicalItemId of itemIds(validated.items)) {
+        reservedIds.add(historicalItemId);
+      }
+    }
     const nextIds = new Set<string>();
     const items = draft.items.map((item, index) =>
       this.#materializeUpdateItem(
@@ -673,6 +683,16 @@ export class TrainingPlanService {
       createdAt: normalizedStoredTimestamp(revision.createdAt),
     });
   }
+}
+
+function itemIds(
+  items: readonly TrainingPlanItemRevision[],
+): readonly string[] {
+  return items.flatMap((item) =>
+    item.kind === "exercise"
+      ? [item.itemId]
+      : [item.itemId, ...item.exercises.map((exercise) => exercise.itemId)],
+  );
 }
 
 function currentItemKinds(
