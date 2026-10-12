@@ -8,6 +8,11 @@ import {
   ULC_TRAINING_BLOCKS_HTML,
   ULC_TRAINING_BLOCKS_SCRIPT,
 } from "./training-blocks-ui";
+import {
+  ULC_TRAINING_PLANS_CSS,
+  ULC_TRAINING_PLANS_HTML,
+  ULC_TRAINING_PLANS_SCRIPT,
+} from "./training-plans-ui";
 
 export const ULC_LINZ_APP_HTML = `<!doctype html>
 <html lang="de">
@@ -62,11 +67,12 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
           <div class="app-nav__primary" id="app-nav-primary">
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
             <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="1" hidden disabled>Training</button>
-            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="2" hidden disabled>Übungen</button>
-            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="3" hidden disabled>Blöcke</button>
-            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="4" hidden disabled>Stammdaten</button>
-            <button class="app-nav__link" type="button" data-nav-view="countdown" data-nav-priority="5" hidden disabled>Countdown</button>
-            <button class="app-nav__link" type="button" data-nav-view="settings" data-nav-priority="6" hidden disabled>Einstellungen</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="2" hidden disabled>Planung</button>
+            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="3" hidden disabled>Übungen</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="4" hidden disabled>Blöcke</button>
+            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="5" hidden disabled>Stammdaten</button>
+            <button class="app-nav__link" type="button" data-nav-view="countdown" data-nav-priority="6" hidden disabled>Countdown</button>
+            <button class="app-nav__link" type="button" data-nav-view="settings" data-nav-priority="7" hidden disabled>Einstellungen</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
           </div>
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden></div>
@@ -99,6 +105,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="kindertraining-quick-action" type="button" data-open-view="kindertraining" disabled>Kindertraining öffnen</button>
                 <small id="kindertraining-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary">
+                <div>
+                  <p class="eyebrow">Training</p>
+                  <h2>Trainingsplanung</h2>
+                  <p>Wochenpläne pro Athlet erstellen und automatisch speichern.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="training-plan-quick-action" type="button" data-open-view="training-plans" disabled>Trainingsplanung öffnen</button>
+                <small id="training-plan-access-label">Berechtigung wird geprüft …</small>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary">
@@ -375,6 +391,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
 
 ${ULC_EXERCISE_CATALOG_HTML}
 ${ULC_TRAINING_BLOCKS_HTML}
+${ULC_TRAINING_PLANS_HTML}
 
           <section class="app-section" data-app-section="countdown" id="countdown" hidden>
             <section class="hero">
@@ -1022,6 +1039,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 ${ULC_EXERCISE_CATALOG_CSS}
 ${ULC_TRAINING_BLOCKS_CSS}
+${ULC_TRAINING_PLANS_CSS}
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
@@ -1168,6 +1186,7 @@ const MASTERDATA_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 const APP_NAV_PRIORITY = Object.freeze([
   "home",
   "kindertraining",
+  "training-plans",
   "exercise-catalog",
   "training-blocks",
   "masterdata",
@@ -1305,6 +1324,8 @@ ${ULC_EXERCISE_CATALOG_SCRIPT}
 
 ${ULC_TRAINING_BLOCKS_SCRIPT}
 
+${ULC_TRAINING_PLANS_SCRIPT}
+
 void restoreSession();
 
 async function restoreSession() {
@@ -1405,6 +1426,7 @@ async function acceptSession(next) {
     bootstrapKindertraining(),
     bootstrapExerciseCatalog(),
     bootstrapTrainingBlocks(),
+    bootstrapTrainingPlans(),
   ]);
   refreshTrainingBlockCatalogDependency();
 }
@@ -1525,6 +1547,7 @@ function isAppNavigationAvailable(section) {
   if (section === "kindertraining") return kindertrainingReady;
   if (section === "exercise-catalog") return exerciseCatalogReady;
   if (section === "training-blocks") return trainingBlocksReady;
+  if (section === "training-plans") return trainingPlansReady;
   if (section === "countdown" || section === "settings") return countdownReady;
   return false;
 }
@@ -1604,6 +1627,7 @@ function syncAppNavigationActive(section) {
 function refreshAppAvailability() {
   refreshAppNavigation();
   refreshTrainingBlockControls();
+  refreshTrainingPlanControls();
   if (elements.exerciseCatalogQuickAction) {
     elements.exerciseCatalogQuickAction.disabled = !exerciseCatalogReady;
   }
@@ -1675,7 +1699,8 @@ function showAppSection(section) {
     (section === "masterdata" && masterdataReady) ||
     (section === "kindertraining" && kindertrainingReady) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||
-    (section === "training-blocks" && trainingBlocksReady);
+    (section === "training-blocks" && trainingBlocksReady) ||
+    (section === "training-plans" && trainingPlansReady);
   const target = allowed ? section : "home";
   for (const candidate of document.querySelectorAll("[data-app-section]")) {
     candidate.hidden = candidate.dataset.appSection !== target;
@@ -1691,6 +1716,7 @@ function showAppSection(section) {
   if (target === "kindertraining") prepareKindertrainingView();
   if (target === "exercise-catalog") prepareExerciseCatalogView();
   if (target === "training-blocks") prepareTrainingBlocksView();
+  if (target === "training-plans") prepareTrainingPlansView();
 }
 
 function prepareKindertrainingView() {
