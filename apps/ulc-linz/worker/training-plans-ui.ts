@@ -320,7 +320,7 @@ function isTrainingPlanSubject(value) {
     typeof value.displayName === "string";
 }
 
-function isTrainingPlanExercise(value, nested) {
+function isTrainingPlanExercise(value) {
   return value !== null &&
     typeof value === "object" &&
     value.kind === "exercise" &&
@@ -334,12 +334,11 @@ function isTrainingPlanExercise(value, nested) {
     (value.repetitions === null || typeof value.repetitions === "string") &&
     (value.amount === null || typeof value.amount === "string") &&
     (value.unit === null || typeof value.unit === "string") &&
-    (value.comment === null || typeof value.comment === "string") &&
-    (nested === true || true);
+    (value.comment === null || typeof value.comment === "string");
 }
 
 function isTrainingPlanItem(value) {
-  if (isTrainingPlanExercise(value, false)) return true;
+  if (isTrainingPlanExercise(value)) return true;
   return value !== null &&
     typeof value === "object" &&
     value.kind === "block" &&
@@ -357,7 +356,7 @@ function isTrainingPlanItem(value) {
     Number.isSafeInteger(value.sortOrder) &&
     value.sortOrder >= 0 &&
     Array.isArray(value.exercises) &&
-    value.exercises.every((exercise) => isTrainingPlanExercise(exercise, true));
+    value.exercises.every((exercise) => isTrainingPlanExercise(exercise));
 }
 
 function isTrainingPlanSnapshot(value) {
@@ -670,11 +669,11 @@ function populateTrainingPlanEditor() {
 
 function closeTrainingPlanEditor(force) {
   if (!force) {
-    if (trainingPlanSaveBusy) return;
+    if (trainingPlanSaveBusy) return false;
     if (
       (trainingPlanDirty || trainingPlanConflict) &&
       !window.confirm("Ungespeicherte Änderungen verwerfen?")
-    ) return;
+    ) return false;
   }
   clearTimeout(trainingPlanSaveTimer);
   trainingPlanSaveTimer = null;
@@ -687,6 +686,7 @@ function closeTrainingPlanEditor(force) {
   trainingPlanSavePending = false;
   if (trainingPlanElements.editor) trainingPlanElements.editor.hidden = true;
   showMessage(trainingPlanElements.editorMessage, "");
+  return true;
 }
 
 function trainingPlanDraftFromSnapshot(plan) {
@@ -1044,7 +1044,6 @@ async function saveTrainingPlan() {
   const subjectId = trainingPlanSelectedSubjectId;
   const planDate = trainingPlanEditorDate;
   trainingPlanSetSaveState("saving", "Speichert …");
-  renderTrainingPlanItems();
 
   try {
     const draftPayload = trainingPlanDraftPayload(trainingPlanDraft, existing !== null);
@@ -1121,7 +1120,13 @@ async function saveTrainingPlan() {
     }
   } finally {
     trainingPlanSaveBusy = false;
-    renderTrainingPlanItems();
+    if (
+      trainingPlanConflict ||
+      trainingPlanChangeVersion === version ||
+      !trainingPlanSavePending
+    ) {
+      renderTrainingPlanItems();
+    }
     refreshTrainingPlanEditorState();
     if (
       trainingPlanSavePending &&
@@ -1289,27 +1294,33 @@ function trainingPlanDateLabel(value) {
 }
 
 trainingPlanElements.subject?.addEventListener("change", () => {
-  trainingPlanSelectedSubjectId = trainingPlanElements.subject?.value || "";
+  const nextSubjectId = trainingPlanElements.subject?.value || "";
+  if (!closeTrainingPlanEditor(false)) {
+    if (trainingPlanElements.subject) {
+      trainingPlanElements.subject.value = trainingPlanSelectedSubjectId;
+    }
+    return;
+  }
+  trainingPlanSelectedSubjectId = nextSubjectId;
   trainingPlanWeekPlans = [];
-  closeTrainingPlanEditor(true);
   void loadTrainingPlanWeek();
 });
 trainingPlanElements.weekPrev?.addEventListener("click", () => {
+  if (!closeTrainingPlanEditor(false)) return;
   trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, -7);
   trainingPlanWeekPlans = [];
-  closeTrainingPlanEditor(true);
   void loadTrainingPlanWeek();
 });
 trainingPlanElements.weekToday?.addEventListener("click", () => {
+  if (!closeTrainingPlanEditor(false)) return;
   trainingPlanWeekStart = trainingPlanMonday(new Date());
   trainingPlanWeekPlans = [];
-  closeTrainingPlanEditor(true);
   void loadTrainingPlanWeek();
 });
 trainingPlanElements.weekNext?.addEventListener("click", () => {
+  if (!closeTrainingPlanEditor(false)) return;
   trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, 7);
   trainingPlanWeekPlans = [];
-  closeTrainingPlanEditor(true);
   void loadTrainingPlanWeek();
 });
 trainingPlanElements.week?.addEventListener("click", (event) => {
