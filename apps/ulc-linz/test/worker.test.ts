@@ -4821,6 +4821,25 @@ describe("U12 runtime API", () => {
       },
       trainingPlans: {
         ...base.trainingPlans,
+        async findCurrent() {
+          return {
+            id: "plan-1",
+            organizationId: "verein-server",
+            subjectId: "athlete-1",
+            planDate: "2026-10-14",
+            currentRevision: 2,
+            createdAt: "2026-10-12T10:00:00.000Z",
+            updatedAt: "2026-10-12T11:00:00.000Z",
+            revision: {
+              organizationId: "verein-server",
+              planId: "plan-1",
+              revision: 2,
+              note: null,
+              items: [],
+              createdAt: "2026-10-12T11:00:00.000Z",
+            },
+          };
+        },
         async update() {
           throw new TrainingPlanConflictError(2, 3);
         },
