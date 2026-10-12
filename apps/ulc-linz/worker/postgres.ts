@@ -62,6 +62,7 @@ import {
   createUlcLinzTrainingPlansAccessService,
   type UlcLinzTrainingPlansAccessService,
 } from "./training-plans-access";
+import { PostgresUlcTrainingPlanAttendanceReader } from "./training-plan-attendance-postgres";
 import {
   createUlcTrainingPlanService,
   type UlcTrainingPlanService,
@@ -394,6 +395,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       }),
       masterdata: athleteMasterdata,
       exerciseCatalog: new PostgresExerciseCatalogRepository(applicationSql),
+      attendance: new PostgresUlcTrainingPlanAttendanceReader(applicationSql),
     });
     return Object.freeze({
       identity: identityRuntime.identity,
