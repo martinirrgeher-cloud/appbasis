@@ -86,9 +86,11 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
     });
     assert.deepEqual(await snapshotPublicationState(root), beforePlan);
 
-    const targetLockfile = withoutUlcTrainingBlocksImporterDependency(
-      withoutUlcExerciseCatalogImporterDependency(
-        await readFile(join(repositoryRoot, "pnpm-lock.yaml"), "utf8"),
+    const targetLockfile = withoutUlcTrainingPlansImporterDependency(
+      withoutUlcTrainingBlocksImporterDependency(
+        withoutUlcExerciseCatalogImporterDependency(
+          await readFile(join(repositoryRoot, "pnpm-lock.yaml"), "utf8"),
+        ),
       ),
     );
     const update = await applyModuleUpdate(
@@ -312,6 +314,10 @@ async function assertPublishedStateMatchesRepository(root) {
     appPackage.dependencies?.["@appbasis/training-blocks"],
     undefined,
   );
+  assert.equal(
+    appPackage.dependencies?.["@appbasis/training-plans"],
+    undefined,
+  );
 
   const databaseManifest = JSON.parse(
     await readFile(
@@ -354,6 +360,14 @@ async function assertPublishedStateMatchesRepository(root) {
       generatedLockfile,
       "apps/ulc-linz",
       "@appbasis/training-blocks",
+    ),
+    null,
+  );
+  assert.equal(
+    readPnpmImporterDependency(
+      generatedLockfile,
+      "apps/ulc-linz",
+      "@appbasis/training-plans",
     ),
     null,
   );
@@ -484,6 +498,7 @@ async function createUlcBaselineFixture(t) {
     "athletes",
     "exercise-catalog",
     "training-blocks",
+    "training-plans",
   ]);
   await writeFile(
     join(root, "apps", "ulc-linz", "appbasis.app.json"),
@@ -494,7 +509,8 @@ async function createUlcBaselineFixture(t) {
           (moduleId) =>
             moduleId !== "athletes" &&
             moduleId !== "exercise-catalog" &&
-            moduleId !== "training-blocks",
+            moduleId !== "training-blocks" &&
+            moduleId !== "training-plans",
         ),
       },
       null,
@@ -520,10 +536,15 @@ async function createUlcBaselineFixture(t) {
     publishedPackage.dependencies?.["@appbasis/training-blocks"],
     "workspace:*",
   );
+  assert.equal(
+    publishedPackage.dependencies?.["@appbasis/training-plans"],
+    "workspace:*",
+  );
   const baselineDependencies = { ...publishedPackage.dependencies };
   delete baselineDependencies["@appbasis/athletes"];
   delete baselineDependencies["@appbasis/exercise-catalog"];
   delete baselineDependencies["@appbasis/training-blocks"];
+  delete baselineDependencies["@appbasis/training-plans"];
   await writeFile(
     join(root, "apps", "ulc-linz", "package.json"),
     `${JSON.stringify(
@@ -550,6 +571,7 @@ async function createUlcBaselineFixture(t) {
       "athletes",
       "exercise-catalog",
       "training-blocks",
+      "training-plans",
       "ulc-linz-lifecycle",
     ],
   );
@@ -562,7 +584,8 @@ async function createUlcBaselineFixture(t) {
           (owner) =>
             owner.id !== "athletes" &&
             owner.id !== "exercise-catalog" &&
-            owner.id !== "training-blocks",
+            owner.id !== "training-blocks" &&
+            owner.id !== "training-plans",
         ),
       },
       null,
@@ -576,9 +599,11 @@ async function createUlcBaselineFixture(t) {
   );
   await writeFile(
     join(root, "pnpm-lock.yaml"),
-    withoutUlcTrainingBlocksImporterDependency(
-      withoutUlcExerciseCatalogImporterDependency(
-        withoutUlcAthletesImporterDependency(publishedLockfile),
+    withoutUlcTrainingPlansImporterDependency(
+      withoutUlcTrainingBlocksImporterDependency(
+        withoutUlcExerciseCatalogImporterDependency(
+          withoutUlcAthletesImporterDependency(publishedLockfile),
+        ),
       ),
     ),
   );
@@ -599,6 +624,14 @@ function withoutUlcTrainingBlocksImporterDependency(lockfile) {
     lockfile,
     "@appbasis/training-blocks",
     "link:../../modules/training-blocks",
+  );
+}
+
+function withoutUlcTrainingPlansImporterDependency(lockfile) {
+  return withoutUlcImporterDependency(
+    lockfile,
+    "@appbasis/training-plans",
+    "link:../../modules/training-plans",
   );
 }
 
