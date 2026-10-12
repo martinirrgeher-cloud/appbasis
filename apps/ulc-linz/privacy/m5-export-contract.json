@@ -10,7 +10,8 @@
     "countdown",
     "athletes",
     "exercise-catalog",
-    "training-blocks"
+    "training-blocks",
+    "training-plans"
   ],
   "datasets": [
     {
@@ -282,6 +283,21 @@
       "owner": "training-blocks",
       "table": "appbasis_training_block_usage",
       "privacyClass": "training-block-training-usage-metadata"
+    },
+    {
+      "owner": "training-plans",
+      "table": "appbasis_training_plan",
+      "privacyClass": "training-plan-data"
+    },
+    {
+      "owner": "training-plans",
+      "table": "appbasis_training_plan_revision",
+      "privacyClass": "training-plan-data"
+    },
+    {
+      "owner": "training-plans",
+      "table": "appbasis_training_plan_revision_item",
+      "privacyClass": "training-plan-data"
     }
   ],
   "excludedPrivacyClasses": [
@@ -310,7 +326,8 @@
     "exercise-catalog-private-media-metadata",
     "training-block-data",
     "training-block-user-preference",
-    "training-block-training-usage-metadata"
+    "training-block-training-usage-metadata",
+    "training-plan-data"
   ],
   "credentialFieldNames": [
     "password",
