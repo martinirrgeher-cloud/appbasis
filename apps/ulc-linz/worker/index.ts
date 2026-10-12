@@ -71,6 +71,7 @@ import {
   UlcTrainingBlockParameterError,
   UlcTrainingBlockReferenceError,
 } from "./training-blocks-service";
+import { trainingPlansHttpResponse } from "./training-plans-http";
 import type { UlcLinzU12AccessScope } from "./u12-access";
 import { UlcU12NotFoundError } from "./u12-service";
 import { UlcTrainingValidationError } from "./training-session-domain";
@@ -199,6 +200,11 @@ export function createGeneratedWorker(
           url.pathname.startsWith("/api/modules/training-blocks/")
         ) {
           response = await trainingBlocksItemResponse(request, runtime, url);
+        } else if (
+          url.pathname === "/api/modules/training-plans" ||
+          url.pathname.startsWith("/api/modules/training-plans/")
+        ) {
+          response = await trainingPlansHttpResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining") {
           response = await kindertrainingModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining/session") {
