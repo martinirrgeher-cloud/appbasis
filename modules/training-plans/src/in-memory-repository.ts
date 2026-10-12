@@ -180,12 +180,11 @@ export class InMemoryTrainingPlanRepository implements TrainingPlanRepository {
   }
 
   #insertInitial(plan: TrainingPlanSnapshot): void {
-    assertTrainingPlanCreationInvariant({
-      ...plan,
-      currentRevision: 1,
-      revision: { ...plan.revision, revision: 1 },
-    });
-    if (plan.currentRevision !== plan.revision.revision) {
+    if (
+      plan.currentRevision !== plan.revision.revision ||
+      plan.revision.organizationId !== plan.organizationId ||
+      plan.revision.planId !== plan.id
+    ) {
       throw new Error("Training plan current revision is inconsistent.");
     }
     assertTrainingPlanRevisionInvariant(plan.revision);
