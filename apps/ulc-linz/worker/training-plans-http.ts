@@ -129,6 +129,8 @@ async function trainingPlansModuleResponse(
             weekView: true,
             autosave: true,
             optimisticConcurrency: true,
+            attendanceStatus: true,
+            attendanceFilter: true,
           },
         },
         access: { view: true, edit: access.canEdit },
@@ -177,17 +179,26 @@ async function trainingPlansWeekResponse(
       throw new UlcTrainingPlanReferenceError("subject", subjectId);
     }
     const weekEnd = addCalendarDays(weekStart, 6);
-    const plans = await runtime.trainingPlans.listForSubjectDateRange(
-      access.organizationId,
-      subjectId,
-      weekStart,
-      weekEnd,
-    );
+    const [plans, attendance] = await Promise.all([
+      runtime.trainingPlans.listForSubjectDateRange(
+        access.organizationId,
+        subjectId,
+        weekStart,
+        weekEnd,
+      ),
+      runtime.trainingPlans.listAttendanceForSubjectDateRange(
+        access.organizationId,
+        subjectId,
+        weekStart,
+        weekEnd,
+      ),
+    ]);
     return privateJson({
       subjectId,
       weekStart,
       weekEnd,
       plans: plans.map(trainingPlanClientSnapshot),
+      attendance,
     });
   } catch (error) {
     return trainingPlanErrorResponse(error);
