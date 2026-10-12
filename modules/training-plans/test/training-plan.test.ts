@@ -182,6 +182,20 @@ describe("training-plans domain", () => {
     expect(() =>
       normalizeTrainingPlanDraft({
         subjectId: "athlete-1",
+        planDate: "0000-01-01",
+      }),
+    ).toThrow(TrainingPlanValidationError);
+
+    expect(
+      normalizeTrainingPlanDraft({
+        subjectId: "athlete-1",
+        planDate: "0001-01-01",
+      }).planDate,
+    ).toBe("0001-01-01");
+
+    expect(() =>
+      normalizeTrainingPlanDraft({
+        subjectId: "athlete-1",
         planDate: "2026-10-12",
         items: Array.from({ length: 201 }, (_, index) => ({
           kind: "exercise" as const,
