@@ -74,6 +74,9 @@ describe("ULC E7B4 training plan week UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       'window.confirm("Ungespeicherte Änderungen verwerfen?")',
     );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'window.addEventListener("beforeunload"',
+    );
   });
 
   it("preserves snapshot provenance while keeping E7B4 independent of block templates and attendance", () => {
