@@ -56,6 +56,12 @@ CREATE TABLE appbasis_training_plan_revision_item (
   item_kind text NOT NULL
     CHECK (item_kind IN ('block', 'exercise')),
   parent_block_item_id text,
+  parent_block_item_kind text GENERATED ALWAYS AS (
+    CASE
+      WHEN parent_block_item_id IS NULL THEN NULL
+      ELSE 'block'::text
+    END
+  ) STORED,
   sort_order integer NOT NULL CHECK (sort_order BETWEEN 0 AND 199),
   name text NOT NULL
     CHECK (
@@ -73,6 +79,7 @@ CREATE TABLE appbasis_training_plan_revision_item (
   unit_value text,
   comment text,
   PRIMARY KEY (organization_id, plan_id, revision, item_id),
+  UNIQUE (organization_id, plan_id, revision, item_id, item_kind),
   CONSTRAINT appbasis_training_plan_revision_item_revision_fk
     FOREIGN KEY (organization_id, plan_id, revision)
     REFERENCES appbasis_training_plan_revision (
@@ -86,13 +93,15 @@ CREATE TABLE appbasis_training_plan_revision_item (
       organization_id,
       plan_id,
       revision,
-      parent_block_item_id
+      parent_block_item_id,
+      parent_block_item_kind
     )
     REFERENCES appbasis_training_plan_revision_item (
       organization_id,
       plan_id,
       revision,
-      item_id
+      item_id,
+      item_kind
     )
     DEFERRABLE INITIALLY DEFERRED,
   CHECK (
