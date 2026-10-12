@@ -53,9 +53,21 @@ describe("training-plans schema", () => {
     );
   });
 
-  it("restricts nesting to exercise children at the domain/service boundary", () => {
+  it("enforces that every nested exercise parent is a block row", () => {
+    expect(migration).toContain(
+      "parent_block_item_kind text GENERATED ALWAYS AS",
+    );
+    expect(migration).toContain(
+      "UNIQUE (organization_id, plan_id, revision, item_id, item_kind)",
+    );
     expect(migration).toContain(
       "CONSTRAINT appbasis_training_plan_revision_item_parent_fk",
+    );
+    expect(migration).toContain(
+      "parent_block_item_id,\n      parent_block_item_kind",
+    );
+    expect(migration).toContain(
+      "item_id,\n      item_kind",
     );
     expect(migration).toContain(
       "item_kind = 'block'\n      AND parent_block_item_id IS NULL",
