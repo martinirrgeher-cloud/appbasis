@@ -300,6 +300,7 @@ let trainingPlanSelectedSubjectId = "";
 let trainingPlanWeekStart = trainingPlanMonday(new Date());
 let trainingPlanWeekPlans = [];
 let trainingPlanWeekLoading = false;
+let trainingPlanWeekLoaded = false;
 let trainingPlanEditorDate = null;
 let trainingPlanSelected = null;
 let trainingPlanDraft = null;
@@ -385,6 +386,7 @@ async function bootstrapTrainingPlans() {
   trainingPlansCanEdit = false;
   trainingPlanSubjects = [];
   trainingPlanWeekPlans = [];
+  trainingPlanWeekLoaded = false;
   closeTrainingPlanEditor(true);
   refreshAppAvailability();
   showMessage(trainingPlanElements.message, "");
@@ -504,6 +506,7 @@ async function loadTrainingPlanWeek() {
   ) return false;
 
   trainingPlanWeekLoading = true;
+  trainingPlanWeekLoaded = false;
   refreshTrainingPlanControls();
   renderTrainingPlanWeek();
   showMessage(trainingPlanElements.message, "");
@@ -532,6 +535,7 @@ async function loadTrainingPlanWeek() {
       throw new Error("INVALID_TRAINING_PLAN_WEEK");
     }
     trainingPlanWeekPlans = payload.plans.slice();
+    trainingPlanWeekLoaded = true;
     return true;
   } catch (error) {
     trainingPlanWeekPlans = [];
@@ -582,7 +586,7 @@ function renderTrainingPlanWeek() {
     button.type = "button";
     button.className = "training-plan-day__button";
     button.dataset.trainingPlanDay = date;
-    button.disabled = trainingPlanWeekLoading;
+    button.disabled = trainingPlanWeekLoading || !trainingPlanWeekLoaded;
 
     const headline = document.createElement("div");
     headline.className = "training-plan-day__date";
@@ -599,11 +603,13 @@ function renderTrainingPlanWeek() {
     const detail = document.createElement("span");
     detail.textContent = trainingPlanWeekLoading
       ? "Woche wird geladen …"
-      : plan
-        ? trainingPlanSummary(plan)
-        : trainingPlansCanEdit
-          ? "Öffnen und Training anlegen."
-          : "Kein Training eingetragen.";
+      : !trainingPlanWeekLoaded
+        ? "Woche ist derzeit nicht verfügbar."
+        : plan
+          ? trainingPlanSummary(plan)
+          : trainingPlansCanEdit
+            ? "Öffnen und Training anlegen."
+            : "Kein Training eingetragen.";
     summary.append(title, detail);
 
     button.append(headline, summary);
@@ -1345,7 +1351,7 @@ trainingPlanElements.weekNext?.addEventListener("click", () => {
   void loadTrainingPlanWeek();
 });
 trainingPlanElements.week?.addEventListener("click", (event) => {
-  if (trainingPlanWeekLoading) return;
+  if (trainingPlanWeekLoading || !trainingPlanWeekLoaded) return;
   const control = event.target?.closest?.("[data-training-plan-day]");
   if (!control) return;
   openTrainingPlanEditor(control.dataset.trainingPlanDay || "");
