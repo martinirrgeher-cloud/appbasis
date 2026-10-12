@@ -6,6 +6,7 @@ import {
   type CreateTrainingPlanDraftInput,
   type TrainingPlanBlockInput,
   type TrainingPlanExerciseInput,
+  type TrainingPlanDraft,
   type TrainingPlanItemDraft,
 } from "./training-plan";
 import type {
@@ -209,50 +210,7 @@ export class TrainingPlanService {
       "Organization id",
     );
     const draft = normalizeTrainingPlanDraft(input);
-    const planId = normalizeTrainingPlanIdentifier(
-      this.#createId(),
-      "Generated training plan id",
-    );
-    const usedIds = new Set<string>([planId]);
-    const createdAt = normalizedTimestamp(this.#now());
-    const revision = Object.freeze({
-      organizationId: organization,
-      planId,
-      revision: 1,
-      note: draft.note,
-      items: this.#materializeCreateItems(draft.items, usedIds),
-      createdAt,
-    });
-    const plan = Object.freeze({
-      id: planId,
-      organizationId: organization,
-      subjectId: draft.subjectId,
-      planDate: draft.planDate,
-      currentRevision: 1,
-      createdAt,
-      updatedAt: createdAt,
-      revision,
-    });
-
-    const result = await this.#repository.create(plan);
-    if (result.status === "target-occupied") {
-      throw new TrainingPlanTargetOccupiedError(
-        draft.subjectId,
-        draft.planDate,
-        normalizeTrainingPlanIdentifier(
-          result.planId,
-          "Existing training plan id",
-        ),
-        requiredRevision(
-          result.currentRevision,
-          "Existing training plan revision",
-        ),
-      );
-    }
-    if (result.status === "id-conflict") {
-      throw new TrainingPlanGeneratedIdConflictError(planId);
-    }
-    return this.#assertPlan(result.plan, organization, planId);
+    return this.#createFromDraft(organization, draft);
   }
 
   async update(
@@ -349,10 +307,33 @@ export class TrainingPlanService {
     targetSubjectId: string,
     targetDate: string,
   ): Promise<TrainingPlanSnapshot | undefined> {
-    const source = await this.findCurrent(organizationId, sourcePlanId);
+    const organization = normalizeTrainingPlanIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const source = await this.findCurrent(organization, sourcePlanId);
     if (source === undefined) return undefined;
 
-    return this.create(organizationId, {
+    const sourceRevisions = await this.#repository.listRevisions(
+      organization,
+      source.id,
+    );
+    const reservedSourceIds = new Set<string>([source.id]);
+    for (const revision of sourceRevisions) {
+      const validated = this.#assertRevision(
+        revision,
+        organization,
+        source.id,
+      );
+      for (const sourceItemId of itemIds(validated.items)) {
+        reservedSourceIds.add(sourceItemId);
+      }
+    }
+    for (const sourceItemId of itemIds(source.revision.items)) {
+      reservedSourceIds.add(sourceItemId);
+    }
+
+    const draft = normalizeTrainingPlanDraft({
       subjectId: normalizeTrainingPlanIdentifier(
         targetSubjectId,
         "Training plan subject",
@@ -361,6 +342,11 @@ export class TrainingPlanService {
       note: source.revision.note,
       items: source.revision.items.map(copyItemInput),
     });
+    return this.#createFromDraft(
+      organization,
+      draft,
+      reservedSourceIds,
+    );
   }
 
   async listRevisions(
@@ -404,20 +390,76 @@ export class TrainingPlanService {
       : this.#assertRevision(stored, organization, id, targetRevision);
   }
 
+  async #createFromDraft(
+    organization: string,
+    draft: TrainingPlanDraft,
+    reservedItemIds: ReadonlySet<string> = new Set<string>(),
+  ): Promise<TrainingPlanSnapshot> {
+    const planId = normalizeTrainingPlanIdentifier(
+      this.#createId(),
+      "Generated training plan id",
+    );
+    const usedIds = new Set<string>([planId]);
+    const createdAt = normalizedTimestamp(this.#now());
+    const revision = Object.freeze({
+      organizationId: organization,
+      planId,
+      revision: 1,
+      note: draft.note,
+      items: this.#materializeCreateItems(
+        draft.items,
+        usedIds,
+        reservedItemIds,
+      ),
+      createdAt,
+    });
+    const plan = Object.freeze({
+      id: planId,
+      organizationId: organization,
+      subjectId: draft.subjectId,
+      planDate: draft.planDate,
+      currentRevision: 1,
+      createdAt,
+      updatedAt: createdAt,
+      revision,
+    });
+
+    const result = await this.#repository.create(plan);
+    if (result.status === "target-occupied") {
+      throw new TrainingPlanTargetOccupiedError(
+        draft.subjectId,
+        draft.planDate,
+        normalizeTrainingPlanIdentifier(
+          result.planId,
+          "Existing training plan id",
+        ),
+        requiredRevision(
+          result.currentRevision,
+          "Existing training plan revision",
+        ),
+      );
+    }
+    if (result.status === "id-conflict") {
+      throw new TrainingPlanGeneratedIdConflictError(planId);
+    }
+    return this.#assertPlan(result.plan, organization, planId);
+  }
+
   #materializeCreateItems(
     items: readonly TrainingPlanItemDraft[],
     usedIds: Set<string>,
+    reservedIds: ReadonlySet<string> = new Set<string>(),
   ): readonly TrainingPlanItemRevision[] {
     return Object.freeze(
       items.map((item) => {
         if (item.kind === "exercise") {
           return Object.freeze({
             ...item,
-            itemId: this.#createUniqueItemId(usedIds),
+            itemId: this.#createUniqueItemId(usedIds, reservedIds),
           });
         }
 
-        const itemId = this.#createUniqueItemId(usedIds);
+        const itemId = this.#createUniqueItemId(usedIds, reservedIds);
         return Object.freeze({
           ...item,
           itemId,
@@ -425,7 +467,7 @@ export class TrainingPlanService {
             item.exercises.map((exercise) =>
               Object.freeze({
                 ...exercise,
-                itemId: this.#createUniqueItemId(usedIds),
+                itemId: this.#createUniqueItemId(usedIds, reservedIds),
               }),
             ),
           ),
