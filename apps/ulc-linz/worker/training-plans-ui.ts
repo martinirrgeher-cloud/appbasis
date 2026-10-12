@@ -386,7 +386,7 @@ function isTrainingPlanAttendance(value) {
   return value !== null &&
     typeof value === "object" &&
     typeof value.sessionDate === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.sessionDate) &&
+    /^\\d{4}-\\d{2}-\\d{2}$/.test(value.sessionDate) &&
     ["kindertraining", "u12", "u14"].includes(value.moduleId) &&
     typeof value.groupId === "string" &&
     value.groupId.length > 0 &&
