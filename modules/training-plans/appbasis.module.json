@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "training-plans",
+  "displayName": "Trainingsplanung",
+  "packageName": "@appbasis/training-plans",
+  "compatibility": {
+    "appDefinitionSchemaVersions": [
+      2
+    ]
+  },
+  "capabilities": [
+    "training-plans:edit",
+    "training-plans:view"
+  ],
+  "database": {
+    "schemaVersion": 1,
+    "migrations": [
+      "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql"
+    ]
+  }
+}
