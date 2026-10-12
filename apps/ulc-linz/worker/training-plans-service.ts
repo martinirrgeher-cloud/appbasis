@@ -3,7 +3,6 @@ import type {
   AthleteMasterdataSnapshot,
 } from "@appbasis/athletes";
 import type {
-  ExerciseCatalogItem,
   ExerciseCatalogRepository,
 } from "@appbasis/exercise-catalog";
 import {
