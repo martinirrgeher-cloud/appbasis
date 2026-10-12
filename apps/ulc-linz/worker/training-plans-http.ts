@@ -71,6 +71,18 @@ export async function trainingPlansHttpResponse(
   try {
     const planId = decodeIdentifier(update[1]);
     const body = await trainingPlanUpdateBody(request);
+    const current = await runtime.trainingPlans.findCurrent(
+      access.organizationId,
+      planId,
+    );
+    if (current === undefined) return trainingPlanNotFound();
+    if (current.currentRevision !== body.expectedRevision) {
+      throw new TrainingPlanConflictError(
+        body.expectedRevision,
+        current.currentRevision,
+      );
+    }
+    assertE7B4BlockProvenanceUpdate(current, body.input);
     const plan = await runtime.trainingPlans.update(
       access.organizationId,
       planId,
@@ -125,6 +137,7 @@ async function trainingPlansModuleResponse(
     }
 
     const input = await trainingPlanCreateBody(request);
+    assertE7B4BlockProvenanceCreate(input);
     const plan = await runtime.trainingPlans.create(
       access.organizationId,
       input,
@@ -422,6 +435,65 @@ function assertExactObject(
     Object.getOwnPropertySymbols(value).length !== 0
   ) {
     throw new InvalidTrainingPlanRequestError();
+  }
+}
+
+function assertE7B4BlockProvenanceCreate(
+  input: CreateTrainingPlanDraftInput,
+): void {
+  for (const item of input.items ?? []) {
+    if (
+      item.kind === "block" &&
+      (item.sourceBlockId != null || item.sourceBlockRevision != null)
+    ) {
+      throw new InvalidTrainingPlanRequestError();
+    }
+  }
+}
+
+function assertE7B4BlockProvenanceUpdate(
+  current: TrainingPlanSnapshot,
+  input: UpdateTrainingPlanDraftInput,
+): void {
+  if (input.items === undefined) return;
+
+  const currentBlocks = new Map(
+    current.revision.items
+      .filter((item) => item.kind === "block")
+      .map((item) => [
+        item.itemId,
+        {
+          sourceBlockId: item.sourceBlockId,
+          sourceBlockRevision: item.sourceBlockRevision,
+        },
+      ] as const),
+  );
+
+  for (const item of input.items) {
+    if (item.kind !== "block") continue;
+    const itemId =
+      typeof item.itemId === "string" ? item.itemId : null;
+    const existing =
+      itemId === null ? undefined : currentBlocks.get(itemId);
+    const nextSourceBlockId = item.sourceBlockId ?? null;
+    const nextSourceBlockRevision = item.sourceBlockRevision ?? null;
+
+    if (existing === undefined) {
+      if (
+        nextSourceBlockId !== null ||
+        nextSourceBlockRevision !== null
+      ) {
+        throw new InvalidTrainingPlanRequestError();
+      }
+      continue;
+    }
+
+    if (
+      existing.sourceBlockId !== nextSourceBlockId ||
+      existing.sourceBlockRevision !== nextSourceBlockRevision
+    ) {
+      throw new InvalidTrainingPlanRequestError();
+    }
   }
 }
 
