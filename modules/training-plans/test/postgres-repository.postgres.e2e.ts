@@ -177,6 +177,49 @@ describe("training-plans PostgreSQL repository", () => {
     ]);
   });
 
+  it("reads dates and timestamps independently of PostgreSQL session formatting", async () => {
+    const connection = createPostgresDatabase(isolatedDatabaseUrl);
+    try {
+      await connection.client.unsafe("SET DateStyle TO 'German, DMY'");
+      await connection.client.unsafe("SET TIME ZONE 'Europe/Vienna'");
+
+      const service = serviceFor(connection, ["plan-format"]);
+      await service.create("org-format", {
+        subjectId: "athlete-format",
+        planDate: "2026-10-12",
+        note: "Format",
+      });
+      await service.update("org-format", "plan-format", 1, {
+        note: "Format v2",
+      });
+
+      await expect(
+        service.findCurrent("org-format", "plan-format"),
+      ).resolves.toMatchObject({
+        planDate: "2026-10-12",
+        createdAt: "2026-10-12T10:00:00.000Z",
+        updatedAt: "2026-10-12T10:01:00.000Z",
+        revision: {
+          createdAt: "2026-10-12T10:01:00.000Z",
+        },
+      });
+      await expect(
+        service.listRevisions("org-format", "plan-format"),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          revision: 2,
+          createdAt: "2026-10-12T10:01:00.000Z",
+        }),
+        expect.objectContaining({
+          revision: 1,
+          createdAt: "2026-10-12T10:00:00.000Z",
+        }),
+      ]);
+    } finally {
+      await connection.client.end();
+    }
+  });
+
   it("serializes concurrent updates so exactly one expected revision wins", async () => {
     const seed = serviceFor(requiredConnection(), ["plan-race"]);
     await seed.create("org-race", {
