@@ -79,6 +79,42 @@ describe("ULC E7B4 training plan week UI", () => {
     );
   });
 
+  it("blocks stale week cards while a new subject or week is loading", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "button.disabled = trainingPlanWeekLoading;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'if (trainingPlanWeekLoading) return;\n  const control = event.target?.closest?.("[data-training-plan-day]");',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'trainingPlanWeekLoading\n      ? "Woche wird geladen …"',
+    );
+  });
+
+  it("keeps active draft inputs mounted when typing continues during autosave", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanChangeVersion === version\n    ) {\n      renderTrainingPlanItems();",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "trainingPlanChangeVersion === version ||\n      !trainingPlanSavePending",
+    );
+  });
+
+  it("preserves the conflicting dirty draft when a reload fails", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const reloaded = await loadTrainingPlanWeek();",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "if (!reloaded) {\n    trainingPlanConflict = true;\n    trainingPlanDirty = true;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "Deine Änderungen bleiben erhalten.",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanConflict = false;\n  trainingPlanDirty = false;\n  trainingPlanChangeVersion = 0;",
+    );
+  });
+
   it("preserves snapshot provenance while keeping E7B4 independent of block templates and attendance", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceExerciseId");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceBlockId");
