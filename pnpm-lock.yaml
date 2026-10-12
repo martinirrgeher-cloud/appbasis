@@ -180,6 +180,9 @@ importers:
       '@appbasis/training-blocks':
         specifier: workspace:*
         version: link:../../modules/training-blocks
+      '@appbasis/training-plans':
+        specifier: workspace:*
+        version: link:../../modules/training-plans
       '@appbasis/database':
         specifier: workspace:*
         version: link:../../packages/database

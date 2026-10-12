@@ -54,6 +54,14 @@
       ]
     },
     {
+      "id": "training-plans",
+      "root": "modules/training-plans",
+      "schemaVersion": 1,
+      "migrations": [
+        "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql"
+      ]
+    },
+    {
       "id": "ulc-linz-lifecycle",
       "root": "apps/ulc-linz",
       "schemaVersion": 8,

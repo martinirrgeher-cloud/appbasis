@@ -519,7 +519,8 @@ async function evaluateApprovedScopePreflight() {
       (owner) =>
         owner.id !== "athletes" &&
         owner.id !== "exercise-catalog" &&
-        owner.id !== "training-blocks",
+        owner.id !== "training-blocks" &&
+        owner.id !== "training-plans",
     );
     await writeFixture(root, fixture);
     result = await evaluateUlcLinzM6ProductionPreflight(root);

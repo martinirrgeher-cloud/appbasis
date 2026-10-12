@@ -362,6 +362,22 @@ function runtime(
         };
       },
     },
+    trainingPlansAccess: {
+      async assertViewAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: currentIdentity.identity.identityId,
+          canEdit: true,
+        };
+      },
+      async assertEditAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: currentIdentity.identity.identityId,
+          canEdit: true,
+        };
+      },
+    },
     kindertrainingAccess,
     u12Access,
     trainerIdentityAccess: {
@@ -434,6 +450,35 @@ function runtime(
         return undefined;
       },
       async compareRevisions() {
+        return undefined;
+      },
+    },
+    trainingPlans: {
+      async listSubjects() {
+        return [];
+      },
+      async listForSubjectDateRange() {
+        return [];
+      },
+      async findCurrent() {
+        return undefined;
+      },
+      async findCurrentBySubjectDate() {
+        return undefined;
+      },
+      async create() {
+        throw new Error("training-plan mock create is not wired to an E7B3 HTTP route");
+      },
+      async update() {
+        return undefined;
+      },
+      async copyCurrentTo() {
+        return undefined;
+      },
+      async listRevisions() {
+        return [];
+      },
+      async findRevision() {
         return undefined;
       },
     },
