@@ -85,11 +85,21 @@ function catalogItem(
 function createService(input: {
   athletes?: readonly Athlete[];
   exercises?: readonly ExerciseCatalogItem[];
+  attendanceEntries?: readonly {
+    sessionDate: string;
+    moduleId: "kindertraining" | "u12" | "u14";
+    groupId: string;
+    groupName: string;
+    groupShortName: string | null;
+    sessionState: "scheduled" | "cancelled";
+    status: "open" | "present" | "excused" | "absent";
+  }[];
   ids?: readonly string[];
 } = {}) {
   const repository = new InMemoryTrainingPlanRepository();
   let idIndex = 0;
   let catalogReadCount = 0;
+  const attendanceCalls: unknown[] = [];
   const ids = input.ids ?? [
     "plan-1",
     "item-1",
@@ -120,6 +130,7 @@ function createService(input: {
   return {
     plans,
     getCatalogReadCount: () => catalogReadCount,
+    getAttendanceCalls: () => attendanceCalls.slice(),
     service: createUlcTrainingPlanService({
       plans,
       masterdata: {
@@ -131,6 +142,22 @@ function createService(input: {
         async listItems() {
           catalogReadCount += 1;
           return exercises;
+        },
+      },
+      attendance: {
+        async listForSubjectDateRange(
+          organizationId,
+          subjectId,
+          fromDate,
+          toDate,
+        ) {
+          attendanceCalls.push({
+            organizationId,
+            subjectId,
+            fromDate,
+            toDate,
+          });
+          return input.attendanceEntries ?? [];
         },
       },
     }),
@@ -155,6 +182,53 @@ describe("ULC training plan adapter", () => {
         displayName: "Ziel, Anna",
       },
     ]);
+  });
+
+  it("supplies attendance only for an active same-organization subject and exact date range", async () => {
+    const attendanceEntries = [
+      {
+        sessionDate: "2026-10-12",
+        moduleId: "u12" as const,
+        groupId: "group-u12",
+        groupName: "U12",
+        groupShortName: "U12",
+        sessionState: "scheduled" as const,
+        status: "present" as const,
+      },
+    ];
+    const { service, getAttendanceCalls } = createService({
+      attendanceEntries,
+    });
+
+    await expect(
+      service.listAttendanceForSubjectDateRange(
+        "org-1",
+        ACTIVE_ATHLETE.id,
+        "2026-10-12",
+        "2026-10-18",
+      ),
+    ).resolves.toEqual(attendanceEntries);
+    expect(getAttendanceCalls()).toEqual([
+      {
+        organizationId: "org-1",
+        subjectId: ACTIVE_ATHLETE.id,
+        fromDate: "2026-10-12",
+        toDate: "2026-10-18",
+      },
+    ]);
+
+    await expect(
+      service.listAttendanceForSubjectDateRange(
+        "org-1",
+        INACTIVE_ATHLETE.id,
+        "2026-10-12",
+        "2026-10-18",
+      ),
+    ).rejects.toMatchObject({
+      referenceType: "subject",
+      referenceId: INACTIVE_ATHLETE.id,
+    });
+    expect(getAttendanceCalls()).toHaveLength(1);
   });
 
   it("creates plans only for an active same-organization athlete and validates sourced catalog exercises", async () => {
@@ -289,6 +363,11 @@ describe("ULC training plan adapter", () => {
           return [];
         },
       },
+      attendance: {
+        async listForSubjectDateRange() {
+          return [];
+        },
+      },
     });
 
     await expect(
@@ -337,6 +416,11 @@ describe("ULC training plan adapter", () => {
         async listItems() {
           catalogReads += 1;
           return [catalogItem("exercise-1", { isActive: false })];
+        },
+      },
+      attendance: {
+        async listForSubjectDateRange() {
+          return [];
         },
       },
     });
@@ -405,6 +489,11 @@ describe("ULC training plan adapter", () => {
       },
       exerciseCatalog: {
         async listItems() {
+          return [];
+        },
+      },
+      attendance: {
+        async listForSubjectDateRange() {
           return [];
         },
       },
