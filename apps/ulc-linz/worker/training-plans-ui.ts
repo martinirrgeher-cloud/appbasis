@@ -837,6 +837,7 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
   add.textContent = "Übung im Block hinzufügen";
   add.disabled = !structural;
   add.addEventListener("click", () => {
+    if (trainingPlanSaveBusy) return;
     item.exercises.push(newTrainingPlanExerciseDraft());
     markTrainingPlanDirty(true);
   });
@@ -1230,6 +1231,10 @@ async function reloadTrainingPlanEditor() {
 
 function refreshTrainingPlanEditorState() {
   const readonly = !trainingPlansCanEdit;
+  if (trainingPlanElements.note) {
+    trainingPlanElements.note.disabled =
+      readonly || trainingPlanConflict;
+  }
   if (trainingPlanElements.meta) {
     trainingPlanElements.meta.textContent = trainingPlanSelected
       ? "Version " + String(trainingPlanSelected.currentRevision)
