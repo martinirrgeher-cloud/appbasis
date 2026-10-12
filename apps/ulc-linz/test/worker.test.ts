@@ -5126,4 +5126,59 @@ describe("U12 runtime API", () => {
     });
   });
 
+  it("rejects E7B4 updates without a full item snapshot to prevent accidental plan clearing", async () => {
+    let findCalls = 0;
+    let updateCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async findCurrent() {
+          findCalls += 1;
+          return undefined;
+        },
+        async update() {
+          updateCalls += 1;
+          return undefined;
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            expectedRevision: 2,
+            note: "Nur Notiz ändern",
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(400);
+    expect(findCalls).toBe(0);
+    expect(updateCalls).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_TRAINING_PLAN" },
+    });
+  });
+
 });
