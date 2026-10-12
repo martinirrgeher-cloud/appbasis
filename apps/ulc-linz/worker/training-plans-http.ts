@@ -303,7 +303,7 @@ async function trainingPlanUpdateBody(
   const body = await trainingPlanJsonObject(
     request,
     UPDATE_FIELDS,
-    ["expectedRevision"],
+    ["expectedRevision", "items"],
   );
   assertTrainingPlanItems(body.items, true);
   return Object.freeze({
