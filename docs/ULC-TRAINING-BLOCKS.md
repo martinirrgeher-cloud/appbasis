@@ -161,7 +161,7 @@ markierten Restpunkt Favoriten-/Nutzungsanzeige bestätigt.
   ausdrücklich freizugebende Gates;
 - Produktion bleibt unverändert.
 
-## Spätere Planung E7B
+## Planung E7B
 
 Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
 
@@ -178,4 +178,25 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
 - Blockvorlage in einen Tag übernehmen und Planblock optional wieder als
   Vorlage speichern.
 
-Diese Planungsfunktionen werden nicht in E7A vorgezogen.
+### E7B1 – Standardmodul-Fundament
+
+- neues Standardmodul `training-plans` mit `view/edit`-Capabilities;
+- genau ein Plan pro Organisation, Subject und Kalendertag;
+- revisionsfähige Planidentität als Basis für späteres optimistisches Speichern;
+- Top-Level-Inhalte sind Planblock oder Einzelübung;
+- Planblöcke können Übungen enthalten, Einzelübungen dürfen auch außerhalb
+  eines Blocks stehen;
+- Übungen können aus dem Katalog stammen oder manuell angelegt sein;
+- Planwerte für Sätze, Wiederholungen, Menge, Einheit und Kommentar gehören
+  dem Plan selbst;
+- bei Übernahme einer Blockvorlage werden Block-ID und exakte Blockrevision nur
+  als Provenienz gespeichert; Name, Dauer, Notiz, Übungen und Planwerte werden
+  als eigener Snapshot kopiert;
+- keine Foreign Keys zu `athletes`, `training-blocks` oder
+  `exercise-catalog`;
+- Anwesenheit bleibt im bestehenden ULC-`training-session`-Bereich und wird
+  später im ULC-Adapter nur für Anzeige/Filter zugeliefert;
+- noch keine ULC-Adoption, UI, Preview-Migration oder Provideraktion.
+
+Die weiteren E7B-Slices ergänzen Repository/Service, ULC-Adapter,
+Wochenoberfläche, Kopieren/Überschreibschutz und Preview-Abnahme.
