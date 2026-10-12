@@ -309,13 +309,9 @@ async function trainingPlanUpdateBody(
   return Object.freeze({
     expectedRevision: requiredRevision(body.expectedRevision),
     input: {
-      ...(body.note === undefined ? {} : { note: body.note as string | null }),
-      ...(body.items === undefined
-        ? {}
-        : {
-            items:
-              body.items as UpdateTrainingPlanDraftInput["items"],
-          }),
+      note: body.note as string | null,
+      items:
+        body.items as NonNullable<UpdateTrainingPlanDraftInput["items"]>,
     },
   });
 }
