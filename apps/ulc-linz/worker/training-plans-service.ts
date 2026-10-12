@@ -341,7 +341,7 @@ function changedSourceExerciseIds(
 }
 
 function currentExerciseSources(
-  items: readonly TrainingPlanSnapshot["revision"]["items"][number][],
+  items: TrainingPlanSnapshot["revision"]["items"],
 ): ReadonlyMap<string, string | null> {
   const result = new Map<string, string | null>();
   for (const item of items) {
