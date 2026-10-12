@@ -292,7 +292,7 @@ export class TrainingPlanService {
     const draft = normalizeTrainingPlanDraft({
       subjectId: current.subjectId,
       planDate: current.planDate,
-      note: input.note,
+      ...(input.note === undefined ? {} : { note: input.note }),
       items: rawItems,
     });
     const currentKinds = currentItemKinds(current.revision.items);
