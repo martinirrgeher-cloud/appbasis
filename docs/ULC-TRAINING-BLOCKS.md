@@ -198,5 +198,19 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
   später im ULC-Adapter nur für Anzeige/Filter zugeliefert;
 - noch keine ULC-Adoption, UI, Preview-Migration oder Provideraktion.
 
-Die weiteren E7B-Slices ergänzen Repository/Service, ULC-Adapter,
-Wochenoberfläche, Kopieren/Überschreibschutz und Preview-Abnahme.
+### E7B2 – Repository, Service und Revisionsvertrag
+
+- atomare Create-/Update-Operationen für Tagespläne;
+- jedes Inhaltsupdate erzeugt eine neue unveränderliche Revision;
+- Optimistic Concurrency gegen die zuletzt gelesene Revision;
+- stabile Item-IDs für Blöcke und Übungen über Reorder und Reparenting;
+- ein bestehender Zielplan für dieselbe Organisation, Person und denselben Tag
+  wird beim Anlegen nicht still überschrieben;
+- Listen-/Lesevertrag für Person und Datumsbereich;
+- aktuelle Planung und Revisionshistorie werden getrennt gelesen;
+- gleichwertiger In-Memory- und PostgreSQL-Beweis;
+- PostgreSQL-E2E läuft als eigener Standardmodul-Gate in der Haupt-CI;
+- weiterhin keine ULC-Adoption, Wochenoberfläche oder Preview-Migration.
+
+Die weiteren E7B-Slices ergänzen ULC-Adapter, Wochenoberfläche,
+Kopieren/Überschreibschutz und Preview-Abnahme.
