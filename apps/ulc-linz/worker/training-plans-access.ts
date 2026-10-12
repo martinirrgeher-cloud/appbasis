@@ -165,24 +165,30 @@ function assertTrainingPlansCapabilityContract(): void {
     TRAINING_PLAN_CAPABILITIES.view !== "training-plans:view" ||
     TRAINING_PLAN_CAPABILITIES.edit !== "training-plans:edit" ||
     template.sourceRole !== "trainer" ||
-    !template.view.includes(ULC_TRAINING_PLANS_MODULE_KEY) ||
-    !template.edit.includes(ULC_TRAINING_PLANS_MODULE_KEY) ||
-    roleDataScope.permissionTemplates.kindertrainer.view.includes(
+    !includesModule(template.view, ULC_TRAINING_PLANS_MODULE_KEY) ||
+    !includesModule(template.edit, ULC_TRAINING_PLANS_MODULE_KEY) ||
+    includesModule(
+      roleDataScope.permissionTemplates.kindertrainer.view,
       ULC_TRAINING_PLANS_MODULE_KEY,
     ) ||
-    roleDataScope.permissionTemplates.kindertrainer.edit.includes(
+    includesModule(
+      roleDataScope.permissionTemplates.kindertrainer.edit,
       ULC_TRAINING_PLANS_MODULE_KEY,
     ) ||
-    roleDataScope.permissionTemplates.athlete.view.includes(
+    includesModule(
+      roleDataScope.permissionTemplates.athlete.view,
       ULC_TRAINING_PLANS_MODULE_KEY,
     ) ||
-    roleDataScope.permissionTemplates.athlete.edit.includes(
+    includesModule(
+      roleDataScope.permissionTemplates.athlete.edit,
       ULC_TRAINING_PLANS_MODULE_KEY,
     ) ||
-    roleDataScope.permissionTemplates.parent.view.includes(
+    includesModule(
+      roleDataScope.permissionTemplates.parent.view,
       ULC_TRAINING_PLANS_MODULE_KEY,
     ) ||
-    roleDataScope.permissionTemplates.parent.edit.includes(
+    includesModule(
+      roleDataScope.permissionTemplates.parent.edit,
       ULC_TRAINING_PLANS_MODULE_KEY,
     ) ||
     mapping.capabilityNamespace !== "ulc-linz:module" ||
@@ -191,6 +197,13 @@ function assertTrainingPlansCapabilityContract(): void {
   ) {
     throw new Error("ULC Linz training plans permission mapping drifted.");
   }
+}
+
+function includesModule(
+  values: readonly string[],
+  moduleKey: string,
+): boolean {
+  return values.includes(moduleKey);
 }
 
 function optionalIdentifier(value: unknown): string | null {
