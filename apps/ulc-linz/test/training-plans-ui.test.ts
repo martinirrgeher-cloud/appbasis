@@ -91,6 +91,18 @@ describe("ULC E7B4 training plan week UI", () => {
     );
   });
 
+  it("re-renders week cards only after clearing the loading flag", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "finally {\n    trainingPlanWeekLoading = false;\n    refreshTrainingPlanControls();\n    renderTrainingPlanWeek();\n  }",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "trainingPlanWeekPlans = payload.plans.slice();\n    renderTrainingPlanWeek();",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "trainingPlanWeekPlans = [];\n    renderTrainingPlanWeek();\n    showMessage(",
+    );
+  });
+
   it("keeps active draft inputs mounted when typing continues during autosave", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanChangeVersion === version\n    ) {\n      renderTrainingPlanItems();",
