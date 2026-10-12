@@ -4857,4 +4857,254 @@ describe("U12 runtime API", () => {
     });
   });
 
+  it("rejects forged E7B4 block provenance on create before any mutation", async () => {
+    let createCalls = 0;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async create(...args) {
+          createCalls += 1;
+          return base.trainingPlans.create(...args);
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/training-plans", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          subjectId: "athlete-1",
+          planDate: "2026-10-14",
+          items: [
+            {
+              kind: "block",
+              sourceBlockId: "forged-block",
+              sourceBlockRevision: 4,
+              name: "Gefälschte Vorlage",
+              exercises: [],
+            },
+          ],
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(400);
+    expect(createCalls).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "INVALID_TRAINING_PLAN" },
+    });
+  });
+
+  it("allows only unchanged E7B4 block provenance on update", async () => {
+    let updateCalls = 0;
+    const current = {
+      id: "plan-1",
+      organizationId: "verein-server",
+      subjectId: "athlete-1",
+      planDate: "2026-10-14",
+      currentRevision: 2,
+      createdAt: "2026-10-12T10:00:00.000Z",
+      updatedAt: "2026-10-12T11:00:00.000Z",
+      revision: {
+        organizationId: "verein-server",
+        planId: "plan-1",
+        revision: 2,
+        note: null,
+        createdAt: "2026-10-12T11:00:00.000Z",
+        items: [
+          {
+            kind: "block" as const,
+            itemId: "block-item-1",
+            sourceBlockId: "source-block-1",
+            sourceBlockRevision: 3,
+            name: "Sprintblock",
+            durationMinutes: 20,
+            note: null,
+            sortOrder: 0,
+            exercises: [],
+          },
+        ],
+      },
+    };
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async findCurrent() {
+          return current;
+        },
+        async update() {
+          updateCalls += 1;
+          return current;
+        },
+      },
+    }));
+
+    const unchanged = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            expectedRevision: 2,
+            items: [
+              {
+                kind: "block",
+                itemId: "block-item-1",
+                sourceBlockId: "source-block-1",
+                sourceBlockRevision: 3,
+                name: "Sprintblock angepasst",
+                durationMinutes: 20,
+                exercises: [],
+              },
+            ],
+          }),
+        },
+      ),
+      validEnv,
+    );
+    expect(unchanged.status).toBe(200);
+    expect(updateCalls).toBe(1);
+
+    for (const provenance of [
+      { sourceBlockId: "source-block-2", sourceBlockRevision: 3 },
+      { sourceBlockId: "source-block-1", sourceBlockRevision: 4 },
+      { sourceBlockId: null, sourceBlockRevision: null },
+    ]) {
+      const forged = await worker.fetch(
+        new Request(
+          "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+          {
+            method: "POST",
+            headers: {
+              cookie: currentIdentity.sessionToken,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              expectedRevision: 2,
+              items: [
+                {
+                  kind: "block",
+                  itemId: "block-item-1",
+                  ...provenance,
+                  name: "Manipuliert",
+                  exercises: [],
+                },
+              ],
+            }),
+          },
+        ),
+        validEnv,
+      );
+      expect(forged.status).toBe(400);
+    }
+    expect(updateCalls).toBe(1);
+  });
+
+  it("returns stale E7B4 revision conflicts before block provenance validation", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async findCurrent() {
+          return {
+            id: "plan-1",
+            organizationId: "verein-server",
+            subjectId: "athlete-1",
+            planDate: "2026-10-14",
+            currentRevision: 3,
+            createdAt: "2026-10-12T10:00:00.000Z",
+            updatedAt: "2026-10-12T12:00:00.000Z",
+            revision: {
+              organizationId: "verein-server",
+              planId: "plan-1",
+              revision: 3,
+              note: null,
+              items: [],
+              createdAt: "2026-10-12T12:00:00.000Z",
+            },
+          };
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/plan-1/update",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            expectedRevision: 2,
+            items: [
+              {
+                kind: "block",
+                sourceBlockId: "forged",
+                sourceBlockRevision: 99,
+                name: "Stale und gefälscht",
+                exercises: [],
+              },
+            ],
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "TRAINING_PLAN_CONFLICT",
+        expectedRevision: 2,
+        currentRevision: 3,
+      },
+    });
+  });
+
 });
