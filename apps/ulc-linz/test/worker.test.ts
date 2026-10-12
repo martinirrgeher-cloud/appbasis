@@ -631,10 +631,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
   it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="4" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="5" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="1" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="5" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="6" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="6" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="7" hidden disabled');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshAppAvailability();");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
@@ -656,7 +656,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
 
   it("ships E7A6 training-block mobile UI with autosave, history and parity metadata", () => {
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="3" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="4" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
     expect(ULC_LINZ_APP_HTML).toContain('minlength="1" maxlength="120"');
@@ -4998,6 +4998,7 @@ describe("U12 runtime API", () => {
           },
           body: JSON.stringify({
             expectedRevision: 2,
+            note: null,
             items: [
               {
                 kind: "block",
@@ -5033,6 +5034,7 @@ describe("U12 runtime API", () => {
             },
             body: JSON.stringify({
               expectedRevision: 2,
+              note: null,
               items: [
                 {
                   kind: "block",
@@ -5101,6 +5103,7 @@ describe("U12 runtime API", () => {
           },
           body: JSON.stringify({
             expectedRevision: 2,
+            note: null,
             items: [
               {
                 kind: "block",
