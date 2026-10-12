@@ -14,6 +14,17 @@ export const ULC_TRAINING_PLANS_HTML = `
               <label>Athlet
                 <select id="training-plan-subject"></select>
               </label>
+              <label>Anwesenheit
+                <select id="training-plan-attendance-filter">
+                  <option value="all">Alle Tage</option>
+                  <option value="present">Anwesend</option>
+                  <option value="excused">Entschuldigt</option>
+                  <option value="absent">Abwesend</option>
+                  <option value="open">Offen</option>
+                  <option value="cancelled">Training abgesagt</option>
+                  <option value="none">Keine Erfassung</option>
+                </select>
+              </label>
               <div class="training-plan-week-nav" aria-label="Woche wechseln">
                 <button class="button button--secondary" id="training-plan-week-prev" type="button" aria-label="Vorherige Woche">←</button>
                 <button class="button button--secondary" id="training-plan-week-today" type="button">Diese Woche</button>
@@ -74,7 +85,7 @@ export const ULC_TRAINING_PLANS_CSS = `
 .training-plans-hero { margin-bottom: 12px; }
 .training-plan-toolbar {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, .7fr) auto;
   gap: 10px 12px;
   align-items: end;
   padding: 12px;
@@ -143,6 +154,54 @@ export const ULC_TRAINING_PLANS_CSS = `
 }
 .training-plan-day[data-has-plan="false"] .training-plan-day__summary {
   color: var(--secondary);
+}
+.training-plan-attendance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+.training-plan-attendance__badge {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: var(--muted);
+  color: var(--secondary);
+  font-size: .68rem;
+  line-height: 1.25;
+}
+.training-plan-attendance__badge[data-status="present"] {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+.training-plan-attendance__badge[data-status="excused"] {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.training-plan-attendance__badge[data-status="absent"] {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+.training-plan-attendance__badge[data-status="open"] {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+.training-plan-attendance__badge[data-status="cancelled"],
+.training-plan-attendance__badge[data-status="none"] {
+  color: var(--secondary);
+}
+.training-plan-filter-empty {
+  grid-column: 1 / -1;
+  padding: 14px;
+  color: var(--secondary);
+  text-align: center;
 }
 .training-plan-backdrop {
   position: fixed;
@@ -273,6 +332,7 @@ const trainingPlanElements = Object.freeze({
   accessLabel: document.querySelector("#training-plan-access-label"),
   message: document.querySelector("#training-plan-message"),
   subject: document.querySelector("#training-plan-subject"),
+  attendanceFilter: document.querySelector("#training-plan-attendance-filter"),
   weekPrev: document.querySelector("#training-plan-week-prev"),
   weekToday: document.querySelector("#training-plan-week-today"),
   weekNext: document.querySelector("#training-plan-week-next"),
@@ -299,6 +359,7 @@ let trainingPlanSubjects = [];
 let trainingPlanSelectedSubjectId = "";
 let trainingPlanWeekStart = trainingPlanMonday(new Date());
 let trainingPlanWeekPlans = [];
+let trainingPlanWeekAttendance = [];
 let trainingPlanWeekLoading = false;
 let trainingPlanWeekLoaded = false;
 let trainingPlanEditorDate = null;
@@ -319,6 +380,21 @@ function isTrainingPlanSubject(value) {
     typeof value.firstName === "string" &&
     typeof value.lastName === "string" &&
     typeof value.displayName === "string";
+}
+
+function isTrainingPlanAttendance(value) {
+  return value !== null &&
+    typeof value === "object" &&
+    typeof value.sessionDate === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.sessionDate) &&
+    ["kindertraining", "u12", "u14"].includes(value.moduleId) &&
+    typeof value.groupId === "string" &&
+    value.groupId.length > 0 &&
+    typeof value.groupName === "string" &&
+    value.groupName.length > 0 &&
+    (value.groupShortName === null || typeof value.groupShortName === "string") &&
+    ["scheduled", "cancelled"].includes(value.sessionState) &&
+    ["open", "present", "excused", "absent"].includes(value.status);
 }
 
 function isTrainingPlanExercise(value) {
@@ -386,6 +462,7 @@ async function bootstrapTrainingPlans() {
   trainingPlansCanEdit = false;
   trainingPlanSubjects = [];
   trainingPlanWeekPlans = [];
+  trainingPlanWeekAttendance = [];
   trainingPlanWeekLoaded = false;
   closeTrainingPlanEditor(true);
   refreshAppAvailability();
@@ -401,6 +478,8 @@ async function bootstrapTrainingPlans() {
       features?.weekView !== true ||
       features?.autosave !== true ||
       features?.optimisticConcurrency !== true ||
+      features?.attendanceStatus !== true ||
+      features?.attendanceFilter !== true ||
       payload?.access?.view !== true ||
       typeof payload?.access?.edit !== "boolean" ||
       !Array.isArray(payload?.subjects) ||
@@ -466,6 +545,10 @@ function refreshTrainingPlanControls() {
     trainingPlanSubjects.length === 0 ||
     trainingPlanWeekLoading;
   if (trainingPlanElements.subject) trainingPlanElements.subject.disabled = disabled;
+  if (trainingPlanElements.attendanceFilter) {
+    trainingPlanElements.attendanceFilter.disabled =
+      !trainingPlansReady || trainingPlanWeekLoading;
+  }
   if (trainingPlanElements.weekPrev) trainingPlanElements.weekPrev.disabled = disabled;
   if (trainingPlanElements.weekToday) trainingPlanElements.weekToday.disabled = disabled;
   if (trainingPlanElements.weekNext) trainingPlanElements.weekNext.disabled = disabled;
@@ -507,6 +590,7 @@ async function loadTrainingPlanWeek() {
 
   trainingPlanWeekLoading = true;
   trainingPlanWeekLoaded = false;
+  trainingPlanWeekAttendance = [];
   refreshTrainingPlanControls();
   renderTrainingPlanWeek();
   showMessage(trainingPlanElements.message, "");
@@ -530,15 +614,30 @@ async function loadTrainingPlanWeek() {
           plan.subjectId !== subjectId ||
           plan.planDate < weekStart ||
           plan.planDate > payload.weekEnd,
-      )
+      ) ||
+      !Array.isArray(payload?.attendance) ||
+      !payload.attendance.every(isTrainingPlanAttendance) ||
+      payload.attendance.some(
+        (entry) =>
+          entry.sessionDate < weekStart ||
+          entry.sessionDate > payload.weekEnd,
+      ) ||
+      new Set(
+        payload.attendance.map(
+          (entry) =>
+            entry.sessionDate + "|" + entry.moduleId + "|" + entry.groupId,
+        ),
+      ).size !== payload.attendance.length
     ) {
       throw new Error("INVALID_TRAINING_PLAN_WEEK");
     }
     trainingPlanWeekPlans = payload.plans.slice();
+    trainingPlanWeekAttendance = payload.attendance.slice();
     trainingPlanWeekLoaded = true;
     return true;
   } catch (error) {
     trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
     showMessage(
       trainingPlanElements.message,
       error?.status === 400
@@ -578,6 +677,9 @@ function renderTrainingPlanWeek() {
     const date = trainingPlanAddDays(trainingPlanWeekStart, index);
     const plan =
       trainingPlanWeekPlans.find((value) => value.planDate === date) || null;
+    const attendance = trainingPlanWeekAttendance.filter(
+      (entry) => entry.sessionDate === date,
+    );
     const card = document.createElement("article");
     card.className = "training-plan-day";
     card.dataset.hasPlan = plan ? "true" : "false";
@@ -612,10 +714,86 @@ function renderTrainingPlanWeek() {
             : "Kein Training eingetragen.";
     summary.append(title, detail);
 
-    button.append(headline, summary);
+    const attendanceView = trainingPlanAttendanceView(attendance);
+    const filter = trainingPlanElements.attendanceFilter?.value || "all";
+    card.hidden =
+      trainingPlanWeekLoaded &&
+      !trainingPlanAttendanceMatchesFilter(attendance, filter);
+
+    button.append(headline);
+    if (attendanceView) button.append(attendanceView);
+    button.append(summary);
     card.append(button);
     container.append(card);
   }
+
+  if (
+    trainingPlanWeekLoaded &&
+    [...container.children].every((child) => child.hidden)
+  ) {
+    const empty = document.createElement("div");
+    empty.className = "card training-plan-filter-empty";
+    empty.textContent = "Keine Tage entsprechen dem Anwesenheitsfilter.";
+    container.append(empty);
+  }
+}
+
+function trainingPlanAttendanceView(entries) {
+  const container = document.createElement("div");
+  container.className = "training-plan-attendance";
+
+  if (entries.length === 0) {
+    const badge = document.createElement("span");
+    badge.className = "training-plan-attendance__badge";
+    badge.dataset.status = "none";
+    badge.textContent = "Keine Anwesenheit";
+    container.append(badge);
+    return container;
+  }
+
+  for (const entry of entries) {
+    const badge = document.createElement("span");
+    badge.className = "training-plan-attendance__badge";
+    const status =
+      entry.sessionState === "cancelled" ? "cancelled" : entry.status;
+    badge.dataset.status = status;
+    const group = entry.groupShortName || entry.groupName;
+    badge.textContent =
+      trainingPlanAttendanceModuleLabel(entry.moduleId) +
+      " · " +
+      group +
+      ": " +
+      trainingPlanAttendanceStatusLabel(status);
+    container.append(badge);
+  }
+  return container;
+}
+
+function trainingPlanAttendanceMatchesFilter(entries, filter) {
+  if (filter === "all") return true;
+  if (filter === "none") return entries.length === 0;
+  if (filter === "cancelled") {
+    return entries.some((entry) => entry.sessionState === "cancelled");
+  }
+  return entries.some(
+    (entry) =>
+      entry.sessionState !== "cancelled" &&
+      entry.status === filter,
+  );
+}
+
+function trainingPlanAttendanceModuleLabel(moduleId) {
+  if (moduleId === "kindertraining") return "Kindertraining";
+  return moduleId.toUpperCase();
+}
+
+function trainingPlanAttendanceStatusLabel(status) {
+  if (status === "present") return "anwesend";
+  if (status === "excused") return "entschuldigt";
+  if (status === "absent") return "abwesend";
+  if (status === "open") return "offen";
+  if (status === "cancelled") return "abgesagt";
+  return "keine Erfassung";
 }
 
 function trainingPlanSummary(plan) {
@@ -1335,6 +1513,9 @@ function trainingPlanDateLabel(value) {
   });
 }
 
+trainingPlanElements.attendanceFilter?.addEventListener("change", () => {
+  renderTrainingPlanWeek();
+});
 trainingPlanElements.subject?.addEventListener("change", () => {
   const nextSubjectId = trainingPlanElements.subject?.value || "";
   if (!closeTrainingPlanEditor(false)) {
