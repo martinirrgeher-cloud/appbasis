@@ -308,7 +308,7 @@ test("selected production evidence fails closed on content drift", async (t) => 
       },
       null,
       2,
-    ) + "\\n",
+    ) + "\n",
   );
   await writeFile(
     join(root, "apps", "sample", "appbasis.production.json"),
@@ -333,7 +333,7 @@ test("selected production evidence fails closed on content drift", async (t) => 
       },
       null,
       2,
-    ) + "\\n",
+    ) + "\n",
   );
 
   await assert.rejects(
