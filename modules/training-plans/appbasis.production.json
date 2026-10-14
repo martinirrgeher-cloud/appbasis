@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "training-plans",
+  "status": "blocked",
+  "requirements": {
+    "authorization": "verified",
+    "database": "verified",
+    "lifecycle": "blocked"
+  },
+  "blockers": [
+    "Training-plan subject, revision, note and comment lifecycle is not yet production-verified."
+  ]
+}
