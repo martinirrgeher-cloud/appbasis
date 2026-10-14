@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { parseAppDefinition } from "./app-definition.mjs";
@@ -347,7 +348,10 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-if (import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (
+  typeof process.argv[1] === "string" &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
   main().catch((error) => {
     console.error(
       error instanceof Error
