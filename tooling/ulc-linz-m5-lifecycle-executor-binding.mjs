@@ -315,7 +315,15 @@ function latestRunFromPayload(payload, trustedHeads) {
   if (!Number.isSafeInteger(payload.total_count) || payload.total_count < 1) return null;
   if (!Array.isArray(payload.workflow_runs) || payload.workflow_runs.length < 1) return null;
   const trusted = new Set(trustedHeads);
-  return payload.workflow_runs.find((run) => isPlainObject(run) && trusted.has(run.head_sha)) ?? null;
+  return (
+    payload.workflow_runs.find(
+      (run) =>
+        isPlainObject(run) &&
+        trusted.has(run.head_sha) &&
+        run.name === WORKFLOW_NAME &&
+        isAcceptedLifecycleRunTitle(run.display_title),
+    ) ?? null
+  );
 }
 
 function verifiedRunObservedAt(run, currentTime, trustedHeads) {
