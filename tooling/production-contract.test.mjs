@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { createGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import {
   evaluateAppProductionComposition,
   parseAppProductionContract,
@@ -535,7 +536,7 @@ test("database manifest validation rejects wrong targets and duplicate owners", 
   );
   await assert.rejects(
     () => evaluateAppProductionComposition(root, "sample"),
-    /App database manifest target is invalid/,
+    /App database manifest does not match canonical generated ownership/,
   );
 
   const duplicateOwner = {
@@ -559,33 +560,134 @@ test("database manifest validation rejects wrong targets and duplicate owners", 
   );
   await assert.rejects(
     () => evaluateAppProductionComposition(root, "sample"),
-    /owner id is invalid or duplicated/,
+    /App database manifest does not match canonical generated ownership/,
   );
 });
 
-async function writeReadySampleApp(root) {
+test("database manifest must match canonical platform and app-owned owners", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "appbasis-production-canonical-db-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+
+  await mkdir(join(root, "modules", "selected"), { recursive: true });
+
+  const evidencePath = "modules/selected/test/production.test.mjs";
+  const evidenceContent = "export const selectedProductionEvidence = true;\n";
+  await writeModule(
+    root,
+    "selected",
+    {
+      schemaVersion: 1,
+      moduleId: "selected",
+      status: "ready",
+      requirements: {
+        authorization: "verified",
+        database: "not-applicable",
+        lifecycle: "not-applicable",
+      },
+      evidence: {
+        authorization: [
+          {
+            path: evidencePath,
+            gitBlobSha: gitBlobSha(evidenceContent),
+          },
+        ],
+        database: [],
+        lifecycle: [],
+      },
+      blockers: [],
+    },
+    { [evidencePath]: evidenceContent },
+  );
+
+  const appDefinition = {
+    schemaVersion: 2,
+    appId: "ulc-linz",
+    displayName: "ULC Linz",
+    modules: ["selected"],
+    platformServices: ["identity", "permissions"],
+  };
+  await writeReadySampleApp(root, {
+    appId: appDefinition.appId,
+    platformServices: appDefinition.platformServices,
+  });
+
+  const canonical = createGeneratedDatabaseManifest(appDefinition, {
+    moduleDefinitions: [{ moduleId: "selected", database: null }],
+  });
+  assert.ok(canonical);
+  const databasePath = join(
+    root,
+    "apps",
+    appDefinition.appId,
+    "appbasis.database.json",
+  );
+
   await writeFile(
-    join(root, "apps", "sample", "appbasis.app.json"),
+    databasePath,
+    JSON.stringify(
+      {
+        ...canonical,
+        owners: canonical.owners.slice(1),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await assert.rejects(
+    () => evaluateAppProductionComposition(root, appDefinition.appId),
+    /App database manifest does not match canonical generated ownership/,
+  );
+
+  await writeFile(
+    databasePath,
+    JSON.stringify(
+      {
+        ...canonical,
+        owners: canonical.owners.slice(0, -1),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await assert.rejects(
+    () => evaluateAppProductionComposition(root, appDefinition.appId),
+    /App database manifest does not match canonical generated ownership/,
+  );
+
+  await writeFile(databasePath, JSON.stringify(canonical, null, 2) + "\n");
+  const result = await evaluateAppProductionComposition(
+    root,
+    appDefinition.appId,
+  );
+  assert.equal(result.compositionReady, true);
+});
+
+async function writeReadySampleApp(root, options = {}) {
+  const appId = options.appId ?? "sample";
+  const platformServices = options.platformServices ?? [];
+  await mkdir(join(root, "apps", appId), { recursive: true });
+  await writeFile(
+    join(root, "apps", appId, "appbasis.app.json"),
     JSON.stringify(
       {
         schemaVersion: 2,
-        appId: "sample",
-        displayName: "Sample",
+        appId,
+        displayName: appId === "sample" ? "Sample" : "ULC Linz",
         modules: ["selected"],
-        platformServices: [],
+        platformServices,
       },
       null,
       2,
     ) + "\n",
   );
   await writeFile(
-    join(root, "apps", "sample", "appbasis.production.json"),
+    join(root, "apps", appId, "appbasis.production.json"),
     JSON.stringify(
       {
         schemaVersion: 1,
-        appId: "sample",
+        appId,
         modules: ["selected"],
-        platformServices: [],
+        platformServices,
         status: "ready",
         crossCutting: {
           dataExport: "not-applicable",
