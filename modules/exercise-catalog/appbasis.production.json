@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "exercise-catalog",
+  "status": "blocked",
+  "requirements": {
+    "authorization": "verified",
+    "database": "verified",
+    "lifecycle": "blocked"
+  },
+  "blockers": [
+    "Favorite, usage and private-media lifecycle is not yet production-verified."
+  ]
+}
