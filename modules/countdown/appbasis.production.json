@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "countdown",
+  "status": "ready",
+  "requirements": {
+    "authorization": "verified",
+    "database": "not-applicable",
+    "lifecycle": "not-applicable"
+  },
+  "blockers": []
+}
