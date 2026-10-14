@@ -9,14 +9,15 @@ const GRANDPARENT = "c".repeat(40);
 const UPDATED_AT = "2026-09-14T16:29:15.000Z";
 const NOW = Date.parse("2026-09-14T16:35:00.000Z");
 
-function successfulLifecycleRun({ head = HEAD, name = "M5 ULC Protected Lifecycle Operations" } = {}) {
+function successfulLifecycleRun({ head = HEAD, displayTitle = "preflight" } = {}) {
   return {
     total_count: 1,
     workflow_runs: [
       {
         id: 123,
         run_attempt: 1,
-        name,
+        name: "M5 ULC Protected Lifecycle Operations",
+        display_title: displayTitle,
         path: ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
         event: "workflow_dispatch",
         head_branch: "main",
@@ -118,7 +119,7 @@ test("accepts the exact M6-correlated lifecycle preflight run name", async () =>
     if (url.endsWith(`/commits/${HEAD}`)) return Response.json(currentCommit());
     if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
       return Response.json(successfulLifecycleRun({
-        name: "m6-chain-34873471771-1-lifecycle_preflight",
+        displayTitle: "m6-chain-34873471771-1-lifecycle_preflight",
       }));
     }
     throw new Error(`Unexpected GitHub evidence URL: ${url}`);
@@ -132,6 +133,28 @@ test("accepts the exact M6-correlated lifecycle preflight run name", async () =>
 
   assert.equal(result.verifiedHeadSha, HEAD);
   assert.equal(result.verifiedAt, UPDATED_AT);
+});
+
+test("rejects a successful retention run as lifecycle preflight evidence", async () => {
+  const fetchImpl = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/commits/main")) return Response.json({ sha: HEAD });
+    if (url.endsWith(`/commits/${HEAD}`)) return Response.json(currentCommit());
+    if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+      return Response.json(successfulLifecycleRun({ displayTitle: "retention" }));
+    }
+    throw new Error(`Unexpected GitHub evidence URL: ${url}`);
+  };
+
+  await assert.rejects(
+    () =>
+      verifyUlcLinzM5LifecycleExecutorBinding(process.cwd(), {
+        fetchImpl,
+        now: () => NOW,
+        sleep: async () => {},
+      }),
+    /live binding preflight is not verified/,
+  );
 });
 
 test("bridges one direct parent lifecycle checkpoint only across evidence-verifier-only changes", async () => {
@@ -150,7 +173,7 @@ test("bridges one direct parent lifecycle checkpoint only across evidence-verifi
     if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
       return Response.json(successfulLifecycleRun({
         head: PARENT,
-        name: "m6-chain-34873471771-1-lifecycle_preflight",
+        displayTitle: "m6-chain-34873471771-1-lifecycle_preflight",
       }));
     }
     throw new Error(`Unexpected GitHub evidence URL: ${url}`);
@@ -198,7 +221,7 @@ test("bridges multiple consecutive evidence-only commits to the latest trusted l
     if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
       return Response.json(successfulLifecycleRun({
         head: GRANDPARENT,
-        name: "m6-chain-34873471771-1-lifecycle_preflight",
+        displayTitle: "m6-chain-34873471771-1-lifecycle_preflight",
       }));
     }
     throw new Error(`Unexpected GitHub evidence URL: ${url}`);
@@ -227,7 +250,7 @@ test("refuses parent checkpoint reuse when the current commit changes any runtim
     if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
       return Response.json(successfulLifecycleRun({
         head: PARENT,
-        name: "m6-chain-34873471771-1-lifecycle_preflight",
+        displayTitle: "m6-chain-34873471771-1-lifecycle_preflight",
       }));
     }
     throw new Error(`Unexpected GitHub evidence URL: ${url}`);
