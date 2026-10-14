@@ -94,7 +94,9 @@ test("M6 production refresh chain executes exactly one separately approved canon
   assert.equal(source.includes("approve_private_deploy:"), false);
   assert.equal(source.includes("approve_security_smoke:"), false);
   assert.equal(source.includes("approve_lifecycle_preflight:"), false);
-  assert.equal(source.includes("approve_m5_evidence:"), false);\n  assert.equal(source.includes("m5_evidence"), false);\n  assert.equal(source.includes("m5-ulc-production-evidence.yml"), false);
+  assert.equal(source.includes("approve_m5_evidence:"), false);
+  assert.equal(source.includes("m5_evidence"), false);
+  assert.equal(source.includes("m5-ulc-production-evidence.yml"), false);
   assert.equal(source.includes("approve_pilot_ingress:"), false);
   assert.equal(source.includes("approve_smoke_principal:"), false);
   assert.equal(source.includes("approve_post_deploy_smoke:"), false);
