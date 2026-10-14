@@ -56,7 +56,24 @@ test('M6 refresh chain selects only operation-bound lifecycle preflight runs', (
 test('all canonical M6 refresh-chain children expose the correlation token as run-name', () => {
   for (const path of childPaths) {
     const source = read(path);
-    assert.match(source, /run-name: \$\{\{ inputs\.chain_attempt_id \|\| github\.workflow \}\}/, path);
+    if (path.endsWith('m5-ulc-protected-lifecycle-operations.yml')) {
+      assert.match(
+        source,
+        /run-name: \$\{\{ inputs\.chain_attempt_id \|\| inputs\.operation \}\}/,
+        path,
+      );
+      assert.match(
+        source,
+        /Chain-correlated lifecycle runs are restricted to the non-destructive preflight operation\./,
+        path,
+      );
+    } else {
+      assert.match(
+        source,
+        /run-name: \$\{\{ inputs\.chain_attempt_id \|\| github\.workflow \}\}/,
+        path,
+      );
+    }
     assert.match(source, /chain_attempt_id:\n\s+description: 'Optional unique parent-chain attempt ID for fail-closed dispatch correlation'/, path);
   }
 });
