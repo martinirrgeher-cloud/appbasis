@@ -135,6 +135,36 @@ test("accepts the exact M6-correlated lifecycle preflight run name", async () =>
   assert.equal(result.verifiedAt, UPDATED_AT);
 });
 
+test("skips newer retention evidence and selects the latest trusted preflight", async () => {
+  const preflight = successfulLifecycleRun().workflow_runs[0];
+  const retention = {
+    ...preflight,
+    id: 124,
+    display_title: "retention",
+    updated_at: "2026-09-14T16:30:00.000Z",
+  };
+  const fetchImpl = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/commits/main")) return Response.json({ sha: HEAD });
+    if (url.endsWith(`/commits/${HEAD}`)) return Response.json(currentCommit());
+    if (url.includes("/actions/workflows/m5-ulc-protected-lifecycle-operations.yml/runs")) {
+      return Response.json({
+        total_count: 2,
+        workflow_runs: [retention, preflight],
+      });
+    }
+    throw new Error(`Unexpected GitHub evidence URL: ${url}`);
+  };
+
+  const result = await verifyUlcLinzM5LifecycleExecutorBinding(process.cwd(), {
+    fetchImpl,
+    now: () => NOW,
+    sleep: async () => {},
+  });
+
+  assert.equal(result.verifiedAt, UPDATED_AT);
+});
+
 test("rejects a successful retention run as lifecycle preflight evidence", async () => {
   const fetchImpl = async (input) => {
     const url = String(input);
