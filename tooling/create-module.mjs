@@ -247,6 +247,11 @@ function generatedModuleFiles(definition) {
             database: "not-applicable",
             lifecycle: "blocked",
           },
+          evidence: {
+            authorization: [],
+            database: [],
+            lifecycle: [],
+          },
           blockers: [
             "Production readiness has not been reviewed for this generated module.",
           ],
