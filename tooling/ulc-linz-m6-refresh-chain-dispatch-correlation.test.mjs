@@ -8,7 +8,7 @@ const childPaths = [
   '../.github/workflows/m6-ulc-private-production-refresh-deploy.yml',
   '../.github/workflows/m5-ulc-private-security-smoke.yml',
   '../.github/workflows/m5-ulc-protected-lifecycle-operations.yml',
-  '../.github/workflows/m5-ulc-production-evidence.yml',
+  '../.github/workflows/m6-ulc-production-composition-gate.yml',
   '../.github/workflows/m6-ulc-production-pilot-ingress.yml',
   '../.github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml',
   '../.github/workflows/m6-ulc-production-post-deploy-smoke.yml',
