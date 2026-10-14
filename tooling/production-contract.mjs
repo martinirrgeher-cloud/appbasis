@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -7,7 +7,7 @@ import { isDeepStrictEqual } from "node:util";
 import { parseAppDefinition } from "./app-definition.mjs";
 import {
   assertAppModuleCompatibility,
-  verifyModuleDefinitions,
+  verifySelectedModuleDefinitions,
 } from "./module-definition.mjs";
 
 const PRODUCTION_CONTRACT_FILE = "appbasis.production.json";
@@ -23,6 +23,7 @@ const APP_REQUIREMENTS = Object.freeze([
   "applicationLifecycle",
   "privacy",
 ]);
+const DATABASE_OWNER_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 export async function evaluateAppProductionComposition(
   repositoryRoot,
@@ -45,17 +46,19 @@ export async function evaluateAppProductionComposition(
   );
   await verifyEvidenceBindings(root, appContract.evidence);
 
-  const moduleDefinitions = await verifyModuleDefinitions(root);
+  const moduleDefinitions = await verifySelectedModuleDefinitions(
+    root,
+    appDefinition.modules,
+  );
   const moduleById = new Map(
     moduleDefinitions.map((definition) => [definition.moduleId, definition]),
   );
   const databaseManifest = await readOptionalJson(
     join(root, "apps", appId, "appbasis.database.json"),
   );
-  const databaseOwners = new Map(
-    Array.isArray(databaseManifest?.owners)
-      ? databaseManifest.owners.map((owner) => [owner?.id, owner])
-      : [],
+  const databaseOwners = parseDatabaseManifest(
+    databaseManifest,
+    appDefinition,
   );
 
   const modules = [];
@@ -220,6 +223,96 @@ export function parseAppProductionContract(value, appDefinition) {
   });
 }
 
+function parseDatabaseManifest(value, appDefinition) {
+  if (value === null) return new Map();
+
+  const manifest = exactRecord(
+    value,
+    ["manifestVersion", "application", "dialect", "owners"],
+    "app database manifest",
+  );
+  if (
+    manifest.manifestVersion !== 1 ||
+    manifest.application !== appDefinition?.appId ||
+    manifest.dialect !== "postgresql"
+  ) {
+    throw new Error("App database manifest target is invalid.");
+  }
+  if (!Array.isArray(manifest.owners)) {
+    throw new Error("App database manifest owners must be an array.");
+  }
+
+  const owners = new Map();
+  for (const value of manifest.owners) {
+    const owner = exactRecord(
+      value,
+      ["id", "root", "schemaVersion", "migrations"],
+      "app database owner",
+    );
+    if (
+      typeof owner.id !== "string" ||
+      !DATABASE_OWNER_ID_PATTERN.test(owner.id) ||
+      owners.has(owner.id)
+    ) {
+      throw new Error("App database manifest owner id is invalid or duplicated.");
+    }
+    if (!isRepositoryRelativePath(owner.root)) {
+      throw new Error(
+        `App database manifest owner ${owner.id} root is invalid.`,
+      );
+    }
+    if (
+      !Number.isInteger(owner.schemaVersion) ||
+      owner.schemaVersion < 1 ||
+      !Array.isArray(owner.migrations) ||
+      owner.migrations.length === 0
+    ) {
+      throw new Error(
+        `App database manifest owner ${owner.id} schema contract is invalid.`,
+      );
+    }
+
+    const migrations = new Set();
+    for (const migration of owner.migrations) {
+      if (
+        !isRepositoryRelativePath(migration) ||
+        !migration.endsWith(".sql") ||
+        !migration.startsWith(`${owner.root}/`) ||
+        migrations.has(migration)
+      ) {
+        throw new Error(
+          `App database manifest owner ${owner.id} migrations are invalid.`,
+        );
+      }
+      migrations.add(migration);
+    }
+
+    owners.set(owner.id, owner);
+  }
+
+  return owners;
+}
+
+function isRepositoryRelativePath(value) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 300 ||
+    value.trim() !== value ||
+    value.startsWith("/") ||
+    value.includes("\\")
+  ) {
+    return false;
+  }
+  const segments = value.split("/");
+  return !segments.some(
+    (segment) =>
+      segment.length === 0 ||
+      segment === "." ||
+      segment === "..",
+  );
+}
+
 function verifyDatabaseBinding(definition, contract, ownersById) {
   const owner = ownersById.get(definition.moduleId);
   if (definition.database === null) {
@@ -285,7 +378,12 @@ function parseEvidence(value, fields, scopeRoot, label) {
           typeof normalized.path !== "string" ||
           !normalized.path.startsWith(`${scopeRoot}/`) ||
           normalized.path.includes("\\") ||
-          normalized.path.split("/").includes("..") ||
+          normalized.path.split("/").some(
+            (segment) =>
+              segment.length === 0 ||
+              segment === "." ||
+              segment === "..",
+          ) ||
           normalized.path.length > 300
         ) {
           throw new Error(
@@ -334,6 +432,7 @@ function assertVerifiedRequirementsHaveEvidence(requirements, evidence, label) {
 async function verifyEvidenceBindings(repositoryRoot, evidence) {
   for (const entries of Object.values(evidence)) {
     for (const entry of entries) {
+      await assertEvidencePathIsRegularFile(repositoryRoot, entry.path);
       const content = await readFile(join(repositoryRoot, entry.path));
       const digest = createHash("sha1")
         .update(`blob ${content.length}\0`, "utf8")
@@ -345,6 +444,36 @@ async function verifyEvidenceBindings(repositoryRoot, evidence) {
         );
       }
     }
+  }
+}
+
+async function assertEvidencePathIsRegularFile(repositoryRoot, relativePath) {
+  let absolutePath = repositoryRoot;
+  let stats;
+
+  for (const segment of relativePath.split("/")) {
+    absolutePath = join(absolutePath, segment);
+    try {
+      stats = await lstat(absolutePath);
+    } catch (error) {
+      if (error?.code === "ENOENT" || error?.code === "ENOTDIR") {
+        throw new Error(
+          `Production evidence path is missing or invalid: ${relativePath}.`,
+        );
+      }
+      throw error;
+    }
+    if (stats.isSymbolicLink()) {
+      throw new Error(
+        `Production evidence must not contain symbolic links: ${relativePath}.`,
+      );
+    }
+  }
+
+  if (!stats?.isFile()) {
+    throw new Error(
+      `Production evidence must resolve to a regular file: ${relativePath}.`,
+    );
   }
 }
 
