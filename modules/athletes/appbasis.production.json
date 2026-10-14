@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "athletes",
+  "status": "ready",
+  "requirements": {
+    "authorization": "verified",
+    "database": "verified",
+    "lifecycle": "verified"
+  },
+  "blockers": []
+}
