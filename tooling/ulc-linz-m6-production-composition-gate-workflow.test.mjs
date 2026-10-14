@@ -12,6 +12,7 @@ test("M6 composition gate binds live platform checks to the selected app composi
 
   for (const marker of [
     "VERIFY-ULC-M6-COMPOSITION",
+    "Composition-gate reruns cannot reuse an earlier production approval.",
     "security_smoke_run_id",
     "lifecycle_preflight_run_id",
     ".github/workflows/m5-ulc-private-security-smoke.yml",
