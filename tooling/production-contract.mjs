@@ -148,6 +148,16 @@ export function parseModuleProductionContract(value, moduleDefinition) {
 
   assertVerifiedRequirementsHaveEvidence(requirements, evidence, "module");
 
+  if (
+    Array.isArray(moduleDefinition?.capabilities) &&
+    moduleDefinition.capabilities.length > 0 &&
+    requirements.authorization === "not-applicable"
+  ) {
+    throw new Error(
+      `Module ${contract.moduleId} with capabilities cannot mark authorization production readiness not-applicable.`,
+    );
+  }
+
   if (moduleDefinition.database === null) {
     if (requirements.database !== "not-applicable") {
       throw new Error(
