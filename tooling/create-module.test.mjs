@@ -82,6 +82,19 @@ test("creates a verified deterministic database-free module skeleton", async (t)
   );
   assert.deepEqual(manifest, result.definition);
 
+  const productionContract = JSON.parse(
+    await readFile(
+      join(root, "modules", "countdown", "appbasis.production.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(productionContract.status, "blocked");
+  assert.deepEqual(productionContract.requirements, {
+    authorization: "blocked",
+    database: "not-applicable",
+    lifecycle: "blocked",
+  });
+
   const packageJson = JSON.parse(
     await readFile(join(root, "modules", "countdown", "package.json"), "utf8"),
   );
