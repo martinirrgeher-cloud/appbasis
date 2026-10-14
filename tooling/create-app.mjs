@@ -115,6 +115,11 @@ export async function createAppSkeleton(input, options = {}) {
             applicationLifecycle: "blocked",
             privacy: "blocked",
           },
+          evidence: {
+            dataExport: [],
+            applicationLifecycle: [],
+            privacy: [],
+          },
           blockers: [
             "Production cross-cutting requirements have not been reviewed for this generated app.",
           ],
