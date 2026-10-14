@@ -7,6 +7,29 @@
     "database": "verified",
     "lifecycle": "blocked"
   },
+  "evidence": {
+    "authorization": [
+      {
+        "path": "modules/training-plans/test/service.test.ts",
+        "gitBlobSha": "2fa6ff65d012ecb0ad4ac6f7c7f9e5eac350dc01"
+      },
+      {
+        "path": "modules/training-plans/test/training-plan.test.ts",
+        "gitBlobSha": "6475a1ff77a79a3ed6169f536eead181ffb813d9"
+      }
+    ],
+    "database": [
+      {
+        "path": "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql",
+        "gitBlobSha": "d20b019ada93f622d3123dba3b9315c7b3e25170"
+      },
+      {
+        "path": "modules/training-plans/test/postgres-repository.postgres.e2e.ts",
+        "gitBlobSha": "30eb703b4a966fa17e8ce64e9595cf8dc0d3c956"
+      }
+    ],
+    "lifecycle": []
+  },
   "blockers": [
     "Training-plan subject, revision, note and comment lifecycle is not yet production-verified."
   ]
