@@ -5,7 +5,10 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { parseAppDefinition } from "./app-definition.mjs";
-import { verifyModuleDefinitions } from "./module-definition.mjs";
+import {
+  assertAppModuleCompatibility,
+  verifyModuleDefinitions,
+} from "./module-definition.mjs";
 
 const PRODUCTION_CONTRACT_FILE = "appbasis.production.json";
 const CONTRACT_STATUS = new Set(["ready", "blocked"]);
@@ -65,6 +68,7 @@ export async function evaluateAppProductionComposition(
         `Production composition references unknown module ${moduleId}.`,
       );
     }
+    assertAppModuleCompatibility(appDefinition, definition);
     const contract = parseModuleProductionContract(
       await readJson(
         join(root, "modules", moduleId, PRODUCTION_CONTRACT_FILE),
