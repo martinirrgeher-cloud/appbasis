@@ -9,8 +9,8 @@ on:
         description: 'Type BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL to provision the dedicated production smoke principal'
         required: true
         type: string
-      m5_run_id:
-        description: 'Successful exact-head M5 production evidence run ID'
+      composition_gate_run_id:
+        description: 'Successful exact-head M6 production composition gate run ID'
         required: true
         type: string
       expected_head_sha:
@@ -54,12 +54,12 @@ jobs:
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
-          M5_RUN_ID: ${{ inputs.m5_run_id }}
+          COMPOSITION_GATE_RUN_ID: ${{ inputs.composition_gate_run_id }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main" || { echo 'Smoke principal bootstrap must run from main.' >&2; exit 1; }
           test "$CONFIRMATION" = "BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL" || { echo 'Exact smoke principal bootstrap confirmation is required.' >&2; exit 1; }
-          [[ "$M5_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 evidence run ID is invalid.' >&2; exit 1; }
+          [[ "$COMPOSITION_GATE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Composition gate run ID is invalid.' >&2; exit 1; }
 
       - name: Check out exact head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,19 +82,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Require trusted M5 production evidence
+      - name: Require trusted production composition gate
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          M5_RUN_ID: ${{ inputs.m5_run_id }}
+          COMPOSITION_GATE_RUN_ID: ${{ inputs.composition_gate_run_id }}
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
         run: |
           set -euo pipefail
-          run_file="$RUNNER_TEMP/run-$M5_RUN_ID.json"
+          run_file="$RUNNER_TEMP/run-$COMPOSITION_GATE_RUN_ID.json"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$run_file"
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${COMPOSITION_GATE_RUN_ID}" > "$run_file"
 
           trusted_heads="$RUNNER_TEMP/trusted-repair-heads.txt"
           printf '%s\n' "$GITHUB_SHA" > "$trusted_heads"
@@ -132,16 +132,16 @@ jobs:
 
           # Chain-dispatched mode retains the canonical exact-head invariant: .head_sha == $sha
           jq -e '
-            .path == ".github/workflows/m5-ulc-production-evidence.yml"
+            .path == ".github/workflows/m6-ulc-production-composition-gate.yml"
             and .event == "workflow_dispatch"
             and .head_branch == "main"
             and .run_attempt == 1
             and .status == "completed"
             and .conclusion == "success"
-          ' "$run_file" >/dev/null || { echo 'M5 production evidence prerequisite metadata is invalid.' >&2; exit 1; }
+          ' "$run_file" >/dev/null || { echo 'Production composition gate prerequisite metadata is invalid.' >&2; exit 1; }
 
-          m5_head="$(jq -er '.head_sha' "$run_file")"
-          grep -Fxq "$m5_head" "$trusted_heads" || { echo 'M5 production evidence is not on the exact current head or within the bounded allowlisted smoke-repair ancestry.' >&2; exit 1; }
+          composition_head="$(jq -er '.head_sha' "$run_file")"
+          grep -Fxq "$composition_head" "$trusted_heads" || { echo 'Production composition gate is not on the exact current head or within the bounded allowlisted smoke-repair ancestry.' >&2; exit 1; }
 
       - name: Validate and mask protected smoke bootstrap inputs
         shell: bash
@@ -166,7 +166,7 @@ jobs:
           test "$ULC_LINZ_PRODUCTION_ADMIN_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD" || { echo 'Production admin and steady-state smoke passwords must differ.' >&2; exit 1; }
           test "$ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD" || { echo 'Smoke bootstrap and steady-state passwords must differ.' >&2; exit 1; }
 
-      - name: Restore canonical M5 permission provisioning before smoke principal write
+      - name: Restore canonical ULC permission provisioning before smoke principal write
         working-directory: apps/ulc-linz
         env:
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
@@ -187,7 +187,7 @@ jobs:
           } finally {
             await client.end({ timeout: 5 });
           }
-          console.log("Canonical ULC M5 permission provisioning restored for M6 smoke.");
+          console.log("Canonical ULC permission provisioning restored for M6 smoke.");
           NODE
 
       - name: Provision dedicated smoke principal before post-deploy smoke
