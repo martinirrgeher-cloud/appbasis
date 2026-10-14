@@ -61,6 +61,7 @@ jobs:
           LIFECYCLE_PREFLIGHT_RUN_ID: ${{ inputs.lifecycle_preflight_run_id }}
         run: |
           set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Composition-gate reruns cannot reuse an earlier production approval.' >&2; exit 1; }
           test "$GITHUB_REF" = "refs/heads/main" || { echo 'Production composition gate must run from main.' >&2; exit 1; }
           test "$CONFIRMATION" = "VERIFY-ULC-M6-COMPOSITION" || { echo 'Exact production composition confirmation is required.' >&2; exit 1; }
           [[ "$SECURITY_SMOKE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Security smoke run ID is invalid.' >&2; exit 1; }
