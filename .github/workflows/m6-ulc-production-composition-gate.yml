@@ -42,22 +42,27 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Require explicit exact-head composition approval
+      - name: Require exact chain head when supplied
+        if: inputs.expected_head_sha != ''
+        shell: bash
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Chain-dispatched child reruns cannot reuse an earlier M6 production approval.' >&2; exit 1; }
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected chain head SHA is invalid.' >&2; exit 1; }
+          test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA" || { echo 'Workflow head differs from the chain-approved exact SHA.' >&2; exit 1; }
+
+      - name: Require explicit composition approval
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
-          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
           SECURITY_SMOKE_RUN_ID: ${{ inputs.security_smoke_run_id }}
           LIFECYCLE_PREFLIGHT_RUN_ID: ${{ inputs.lifecycle_preflight_run_id }}
         run: |
           set -euo pipefail
-          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Composition-gate reruns cannot reuse an earlier production approval.' >&2; exit 1; }
           test "$GITHUB_REF" = "refs/heads/main" || { echo 'Production composition gate must run from main.' >&2; exit 1; }
           test "$CONFIRMATION" = "VERIFY-ULC-M6-COMPOSITION" || { echo 'Exact production composition confirmation is required.' >&2; exit 1; }
-          if test -n "$EXPECTED_HEAD_SHA"; then
-            [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected chain head SHA is invalid.' >&2; exit 1; }
-            test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA" || { echo 'Workflow head differs from the chain-approved exact SHA.' >&2; exit 1; }
-          fi
           [[ "$SECURITY_SMOKE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Security smoke run ID is invalid.' >&2; exit 1; }
           [[ "$LIFECYCLE_PREFLIGHT_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Lifecycle preflight run ID is invalid.' >&2; exit 1; }
 
