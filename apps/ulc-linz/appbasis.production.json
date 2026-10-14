@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "appId": "ulc-linz",
+  "modules": [
+    "countdown",
+    "athletes",
+    "exercise-catalog",
+    "training-blocks",
+    "training-plans"
+  ],
+  "platformServices": [
+    "identity",
+    "permissions"
+  ],
+  "status": "blocked",
+  "crossCutting": {
+    "dataExport": "verified",
+    "applicationLifecycle": "blocked",
+    "privacy": "blocked"
+  },
+  "blockers": [
+    "App-owned training, attendance and trainer-audit lifecycle is not yet production-verified.",
+    "The current privacy inventory intentionally remains fail-closed while selected-module lifecycle work is pending."
+  ]
+}
