@@ -24,9 +24,9 @@ test("public M6 ingress remains isolated to the guarded workers.dev pilot workfl
 
   for (const marker of [
     "ACTIVATE-ULC-M6-PILOT-INGRESS",
-    "ulc-linz-m5-production-gate",
+    "ulc-linz-production-composition-gate",
     "validUntilOrReviewAt",
-    "Revalidate authoritative fresh exact-head M5 evidence immediately before write",
+    "Revalidate authoritative fresh exact-head composition gate immediately before write",
     '{"enabled":true,"previews_enabled":false}',
     "custom organizational domain: not activated",
     "final organizational go-live: not authorized",
@@ -39,7 +39,7 @@ test("public M6 ingress remains isolated to the guarded workers.dev pilot workfl
   assert.equal(source.includes("app.ulc-linz.at"), false);
 });
 
-test("M6 pilot ingress has an explicit fail-closed deactivation path independent of M5 freshness", async () => {
+test("M6 pilot ingress has an explicit fail-closed deactivation path independent of composition-gate freshness", async () => {
   const source = await readFile(DEACTIVATION_WORKFLOW, "utf8");
 
   for (const marker of [
