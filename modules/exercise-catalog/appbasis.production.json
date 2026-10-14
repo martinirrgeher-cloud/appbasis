@@ -7,6 +7,37 @@
     "database": "verified",
     "lifecycle": "blocked"
   },
+  "evidence": {
+    "authorization": [
+      {
+        "path": "modules/exercise-catalog/test/service.test.ts",
+        "gitBlobSha": "a2976247e262815372be5eb64470326657764427"
+      },
+      {
+        "path": "modules/exercise-catalog/test/runtime-parity.test.ts",
+        "gitBlobSha": "b8575d9bb8f08a9fb30a4c5d77e0376f79da9364"
+      }
+    ],
+    "database": [
+      {
+        "path": "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
+        "gitBlobSha": "d86985ecdacd84aeff3149b723a968e48af47f80"
+      },
+      {
+        "path": "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
+        "gitBlobSha": "bee591424be5f8cf938a08d4ccd38f13525c98dc"
+      },
+      {
+        "path": "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
+        "gitBlobSha": "82da404bdb1ef5f8fe30ec404496c7f507017b22"
+      },
+      {
+        "path": "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
+        "gitBlobSha": "6af11023177c9e0fb5c1023f52d2d6b5c425b499"
+      }
+    ],
+    "lifecycle": []
+  },
   "blockers": [
     "Favorite, usage and private-media lifecycle is not yet production-verified."
   ]
