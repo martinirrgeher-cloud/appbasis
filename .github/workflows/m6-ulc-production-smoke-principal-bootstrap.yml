@@ -57,6 +57,7 @@ jobs:
           COMPOSITION_GATE_RUN_ID: ${{ inputs.composition_gate_run_id }}
         run: |
           set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Smoke-principal reruns cannot reuse an earlier production write approval.' >&2; exit 1; }
           test "$GITHUB_REF" = "refs/heads/main" || { echo 'Smoke principal bootstrap must run from main.' >&2; exit 1; }
           test "$CONFIRMATION" = "BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL" || { echo 'Exact smoke principal bootstrap confirmation is required.' >&2; exit 1; }
           [[ "$COMPOSITION_GATE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Composition gate run ID is invalid.' >&2; exit 1; }
@@ -261,6 +262,20 @@ jobs:
           }
           console.log("Canonical ULC permission provisioning restored for M6 smoke.");
           NODE
+
+      - name: Confirm composition gate remains fresh before dedicated principal write
+        shell: bash
+        run: |
+          set -euo pipefail
+          gate="$RUNNER_TEMP/composition-gate-before-smoke-write/production-composition-gate.json"
+          test -f "$gate" || { echo 'Validated composition gate is unavailable before dedicated principal write.' >&2; exit 1; }
+          valid_until="$(jq -er '.validUntilOrReviewAt' "$gate")"
+          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'Composition gate expiry is invalid before dedicated principal write.' >&2; exit 1; }
+          now_epoch="$(date -u +%s)"
+          if (( now_epoch >= valid_epoch )); then
+            echo 'Production composition gate expired before dedicated smoke-principal write.' >&2
+            exit 1
+          fi
 
       - name: Provision dedicated smoke principal before post-deploy smoke
         working-directory: apps/ulc-linz
