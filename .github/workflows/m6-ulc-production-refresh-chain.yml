@@ -123,8 +123,6 @@ jobs:
                   tooling/ulc-linz-m6-production-resource-binding.test.mjs|\
                   tooling/ulc-linz-m6-runtime-contract-equivalence.mjs|\
                   tooling/ulc-linz-m6-runtime-contract-equivalence.test.mjs|\
-                  .github/workflows/m5-ulc-production-evidence.yml|\
-                  tooling/ulc-linz-m5-production-evidence-workflow.test.mjs|\
                   .github/workflows/m6-ulc-production-refresh-chain.yml|\
                   tooling/ulc-linz-m6-refresh-chain-safe-resume.test.mjs)
                     ;;
