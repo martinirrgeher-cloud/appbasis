@@ -52,7 +52,8 @@ test("M6 smoke principal bootstrap is explicit, exact-head composition bound and
   ]) {
     assert.equal(workflow.includes(marker), true, `missing smoke bootstrap guard: ${marker}`);
   }
-  assert.equal(workflow.includes("m5_run_id"), false);\n  assert.equal(workflow.includes(".github/workflows/m5-ulc-production-evidence.yml"), false);
+  assert.equal(workflow.includes("m5_run_id"), false);
+  assert.equal(workflow.includes(".github/workflows/m5-ulc-production-evidence.yml"), false);
   assert.equal(workflow.includes("admin_run_id"), false);
 
   for (const marker of [
