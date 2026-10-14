@@ -25,6 +25,7 @@ globalThis.fetch = async (input) => {
         id: 1,
         run_attempt: 1,
         name: "M5 ULC Protected Lifecycle Operations",
+        display_title: "preflight",
         path: ".github/workflows/m5-ulc-protected-lifecycle-operations.yml",
         event: "workflow_dispatch",
         head_branch: "main",
