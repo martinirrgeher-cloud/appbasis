@@ -264,6 +264,89 @@ test("a ready composition does not care about blocked unselected modules", async
   assert.deepEqual(result.modules.map((entry) => entry.moduleId), ["selected"]);
 });
 
+test("selected module compatibility is enforced by the production evaluator", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "appbasis-production-compat-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+
+  await mkdir(join(root, "apps", "sample"), { recursive: true });
+  await mkdir(join(root, "modules", "selected"), { recursive: true });
+
+  const evidencePath = "modules/selected/test/production.test.mjs";
+  const evidenceContent = "export const selectedProductionEvidence = true;\n";
+  await writeModule(
+    root,
+    "selected",
+    {
+      schemaVersion: 1,
+      moduleId: "selected",
+      status: "ready",
+      requirements: {
+        authorization: "verified",
+        database: "not-applicable",
+        lifecycle: "not-applicable",
+      },
+      evidence: {
+        authorization: [
+          {
+            path: evidencePath,
+            gitBlobSha: gitBlobSha(evidenceContent),
+          },
+        ],
+        database: [],
+        lifecycle: [],
+      },
+      blockers: [],
+    },
+    { [evidencePath]: evidenceContent },
+    [1],
+  );
+
+  await writeFile(
+    join(root, "apps", "sample", "appbasis.app.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 2,
+        appId: "sample",
+        displayName: "Sample",
+        modules: ["selected"],
+        platformServices: [],
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await writeFile(
+    join(root, "apps", "sample", "appbasis.production.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        appId: "sample",
+        modules: ["selected"],
+        platformServices: [],
+        status: "ready",
+        crossCutting: {
+          dataExport: "not-applicable",
+          applicationLifecycle: "not-applicable",
+          privacy: "not-applicable",
+        },
+        evidence: {
+          dataExport: [],
+          applicationLifecycle: [],
+          privacy: [],
+        },
+        blockers: [],
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+
+  await assert.rejects(
+    () => evaluateAppProductionComposition(root, "sample"),
+    /schemaVersion 2 is not compatible with module selected/,
+  );
+});
+
 test("selected production evidence fails closed on content drift", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "appbasis-production-drift-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
@@ -342,7 +425,7 @@ test("selected production evidence fails closed on content drift", async (t) => 
   );
 });
 
-async function writeModule(root, moduleId, productionContract, evidenceFiles = {}) {
+async function writeModule(root, moduleId, productionContract, evidenceFiles = {}, compatibilityVersions = [2]) {
   const moduleRoot = join(root, "modules", moduleId);
   await writeFile(
     join(moduleRoot, "appbasis.module.json"),
@@ -352,7 +435,7 @@ async function writeModule(root, moduleId, productionContract, evidenceFiles = {
         moduleId,
         displayName: moduleId,
         packageName: `@appbasis/${moduleId}`,
-        compatibility: { appDefinitionSchemaVersions: [2] },
+        compatibility: { appDefinitionSchemaVersions: compatibilityVersions },
         capabilities: [],
         database: null,
       },
