@@ -34,14 +34,14 @@ const PROTECTED_SMOKE_RUNNER = new URL(
 );
 const REPOSITORY_ROOT = new URL("../", import.meta.url);
 
-test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-safe", async () => {
+test("M6 smoke principal bootstrap is explicit, exact-head composition bound and retry-safe", async () => {
   const [workflow, runner] = await Promise.all([
     readFile(BOOTSTRAP_WORKFLOW, "utf8"),
     readFile(BOOTSTRAP_RUNNER, "utf8"),
   ]);
   for (const marker of [
     "BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL",
-    ".github/workflows/m5-ulc-production-evidence.yml",
+    ".github/workflows/m6-ulc-production-composition-gate.yml",
     ".head_sha == $sha",
     "ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD",
     "ULC_LINZ_PRODUCTION_SMOKE_PASSWORD",
@@ -52,7 +52,7 @@ test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-sa
   ]) {
     assert.equal(workflow.includes(marker), true, `missing smoke bootstrap guard: ${marker}`);
   }
-  assert.equal(workflow.includes("M5 ULC Production Admin Bootstrap"), false);
+  assert.equal(workflow.includes("m5_run_id"), false);\n  assert.equal(workflow.includes(".github/workflows/m5-ulc-production-evidence.yml"), false);
   assert.equal(workflow.includes("admin_run_id"), false);
 
   for (const marker of [
