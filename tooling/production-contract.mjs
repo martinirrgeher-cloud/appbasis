@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -39,6 +40,7 @@ export async function evaluateAppProductionComposition(
     ),
     appDefinition,
   );
+  await verifyEvidenceBindings(root, appContract.evidence);
 
   const moduleDefinitions = await verifyModuleDefinitions(root);
   const moduleById = new Map(
@@ -70,6 +72,7 @@ export async function evaluateAppProductionComposition(
       ),
       definition,
     );
+    await verifyEvidenceBindings(root, contract.evidence);
     verifyDatabaseBinding(definition, contract, databaseOwners);
 
     modules.push(
@@ -105,7 +108,7 @@ export async function evaluateAppProductionComposition(
 export function parseModuleProductionContract(value, moduleDefinition) {
   const contract = exactRecord(
     value,
-    ["schemaVersion", "moduleId", "status", "requirements", "blockers"],
+    ["schemaVersion", "moduleId", "status", "requirements", "evidence", "blockers"],
     "module production contract",
   );
   if (
@@ -120,7 +123,15 @@ export function parseModuleProductionContract(value, moduleDefinition) {
     MODULE_REQUIREMENTS,
     "module",
   );
+  const evidence = parseEvidence(
+    contract.evidence,
+    MODULE_REQUIREMENTS,
+    `modules/${moduleDefinition.moduleId}`,
+    "module",
+  );
   const blockers = parseBlockers(contract.blockers, "module");
+
+  assertVerifiedRequirementsHaveEvidence(requirements, evidence, "module");
 
   if (moduleDefinition.database === null) {
     if (requirements.database !== "not-applicable") {
@@ -140,6 +151,7 @@ export function parseModuleProductionContract(value, moduleDefinition) {
     moduleId: contract.moduleId,
     status: contract.status,
     requirements,
+    evidence,
     blockers,
   });
 }
@@ -154,6 +166,7 @@ export function parseAppProductionContract(value, appDefinition) {
       "platformServices",
       "status",
       "crossCutting",
+      "evidence",
       "blockers",
     ],
     "app production contract",
@@ -181,7 +194,14 @@ export function parseAppProductionContract(value, appDefinition) {
     APP_REQUIREMENTS,
     "app",
   );
+  const evidence = parseEvidence(
+    contract.evidence,
+    APP_REQUIREMENTS,
+    `apps/${appDefinition.appId}`,
+    "app",
+  );
   const blockers = parseBlockers(contract.blockers, "app");
+  assertVerifiedRequirementsHaveEvidence(crossCutting, evidence, "app");
   assertStatusMatches(contract.status, crossCutting, blockers, "app");
 
   return deepFreeze({
@@ -191,6 +211,7 @@ export function parseAppProductionContract(value, appDefinition) {
     platformServices: [...contract.platformServices],
     status: contract.status,
     crossCutting,
+    evidence,
     blockers,
   });
 }
@@ -232,6 +253,95 @@ function parseRequirements(value, fields, label) {
     result[field] = status;
   }
   return Object.freeze(result);
+}
+
+function parseEvidence(value, fields, scopeRoot, label) {
+  const record = exactRecord(
+    value,
+    fields,
+    `${label} production evidence`,
+  );
+  const result = {};
+  for (const field of fields) {
+    const entries = record[field];
+    if (!Array.isArray(entries)) {
+      throw new Error(
+        `${label} production evidence ${field} must be an array.`,
+      );
+    }
+    const seen = new Set();
+    result[field] = Object.freeze(
+      entries.map((entry) => {
+        const normalized = exactRecord(
+          entry,
+          ["path", "gitBlobSha"],
+          `${label} production evidence entry`,
+        );
+        if (
+          typeof normalized.path !== "string" ||
+          !normalized.path.startsWith(`${scopeRoot}/`) ||
+          normalized.path.includes("\\") ||
+          normalized.path.split("/").includes("..") ||
+          normalized.path.length > 300
+        ) {
+          throw new Error(
+            `${label} production evidence path must stay within ${scopeRoot}.`,
+          );
+        }
+        if (
+          typeof normalized.gitBlobSha !== "string" ||
+          !/^[0-9a-f]{40}$/.test(normalized.gitBlobSha)
+        ) {
+          throw new Error(
+            `${label} production evidence gitBlobSha is invalid.`,
+          );
+        }
+        if (seen.has(normalized.path)) {
+          throw new Error(
+            `${label} production evidence paths must not contain duplicates.`,
+          );
+        }
+        seen.add(normalized.path);
+        return Object.freeze({
+          path: normalized.path,
+          gitBlobSha: normalized.gitBlobSha,
+        });
+      }),
+    );
+  }
+  return Object.freeze(result);
+}
+
+function assertVerifiedRequirementsHaveEvidence(requirements, evidence, label) {
+  for (const [requirement, status] of Object.entries(requirements)) {
+    if (status === "verified" && evidence[requirement].length === 0) {
+      throw new Error(
+        `${label} production requirement ${requirement} is verified without pinned evidence.`,
+      );
+    }
+    if (status === "not-applicable" && evidence[requirement].length !== 0) {
+      throw new Error(
+        `${label} production requirement ${requirement} is not-applicable but still declares evidence.`,
+      );
+    }
+  }
+}
+
+async function verifyEvidenceBindings(repositoryRoot, evidence) {
+  for (const entries of Object.values(evidence)) {
+    for (const entry of entries) {
+      const content = await readFile(join(repositoryRoot, entry.path));
+      const digest = createHash("sha1")
+        .update(`blob ${content.length}\0`, "utf8")
+        .update(content)
+        .digest("hex");
+      if (digest !== entry.gitBlobSha) {
+        throw new Error(
+          `Production evidence drifted: ${entry.path}.`,
+        );
+      }
+    }
+  }
 }
 
 function parseBlockers(value, label) {
