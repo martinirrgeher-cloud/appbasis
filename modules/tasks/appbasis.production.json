@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "tasks",
+  "status": "blocked",
+  "requirements": {
+    "authorization": "verified",
+    "database": "verified",
+    "lifecycle": "blocked"
+  },
+  "blockers": [
+    "Production lifecycle has not yet been reviewed for this module."
+  ]
+}
