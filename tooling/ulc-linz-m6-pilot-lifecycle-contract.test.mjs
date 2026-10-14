@@ -5,7 +5,7 @@ import test from "node:test";
 const workflows = {
   runtime: new URL("../.github/workflows/m6-ulc-production-runtime-config.yml", import.meta.url),
   deploy: new URL("../.github/workflows/m6-ulc-private-production-deploy.yml", import.meta.url),
-  m5: new URL("../.github/workflows/m5-ulc-production-evidence.yml", import.meta.url),
+  composition: new URL("../.github/workflows/m6-ulc-production-composition-gate.yml", import.meta.url),
   ingress: new URL("../.github/workflows/m6-ulc-production-pilot-ingress.yml", import.meta.url),
   smoke: new URL("../.github/workflows/m6-ulc-production-post-deploy-smoke.yml", import.meta.url),
   refresh: new URL("../.github/workflows/m6-ulc-private-production-refresh-deploy.yml", import.meta.url),
@@ -39,34 +39,39 @@ test("canonical M6 pilot lifecycle uses one provider-derived workers.dev runtime
   assert.equal(source.deploy.includes("base?.text !== process.env.TARGET_BASE_URL"), false);
 });
 
-test("M5 produces and pilot ingress consumes the same authoritative 15-minute gate", async () => {
+test("composition gate produces and pilot ingress consumes the same authoritative 15-minute gate", async () => {
   const source = await sources();
-  const artifactName = "ulc-linz-m5-production-gate";
+  const artifactName = "ulc-linz-production-composition-gate";
 
   for (const marker of [
-    "Create sanitized authoritative M5 pilot gate",
-    "m5-production-gate.json",
-    "providerBoundEvidenceInput?.resourceBindingEvidence",
+    "Create authoritative short-lived composition gate",
+    "production-composition-gate.json",
+    "selectedModules",
+    "compositionReady: true",
     "validUntilOrReviewAt",
-    "validMs - observedMs !== 15 * 60 * 1000",
+    "+ 15 minutes",
     "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
     artifactName,
     "retention-days: 1",
   ]) {
-    assert.ok(source.m5.includes(marker), `M5 missing authoritative gate marker: ${marker}`);
+    assert.ok(
+      source.composition.includes(marker),
+      `composition gate missing authoritative marker: ${marker}`,
+    );
   }
 
   for (const marker of [
     artifactName,
-    "/actions/runs/${M5_RUN_ID}/artifacts?per_page=100",
+    "/actions/runs/${COMPOSITION_GATE_RUN_ID}/artifacts?per_page=100",
     "/actions/artifacts/${artifact_id}/zip",
-    "m5-production-gate.json",
+    "production-composition-gate.json",
     ".headSha == $sha",
     ".runId == $runId",
+    ".compositionReady == true",
     ".validUntilOrReviewAt",
     "valid_epoch - observed_epoch",
     "-eq 900",
-    "Revalidate authoritative fresh exact-head M5 evidence immediately before write",
+    "Revalidate authoritative fresh exact-head composition gate immediately before write",
   ]) {
     assert.ok(source.ingress.includes(marker), `pilot ingress missing gate marker: ${marker}`);
   }
@@ -78,14 +83,14 @@ test("M5 produces and pilot ingress consumes the same authoritative 15-minute ga
 test("public reachability stays isolated to explicit pilot ingress and release remains unauthorized", async () => {
   const source = await sources();
 
-  for (const privateSource of [source.runtime, source.deploy, source.m5, source.refresh]) {
+  for (const privateSource of [source.runtime, source.deploy, source.composition, source.refresh]) {
     assert.equal(privateSource.includes('{"enabled":true,"previews_enabled":false}'), false);
   }
   assert.ok(source.ingress.includes('{"enabled":true,"previews_enabled":false}'));
   assert.ok(source.ingress.includes("ACTIVATE-ULC-M6-PILOT-INGRESS"));
   assert.ok(source.ingress.includes("productionReleaseAuthorized == false"));
   assert.ok(source.smoke.includes("final organizational go-live: not authorized"));
-  assert.ok(source.m5.includes("productionReleaseAuthorized !== false"));
+  assert.ok(source.composition.includes("productionReleaseAuthorized !== false"));
   assert.equal(source.ingress.includes("/workers/domains"), false);
   assert.equal(source.smoke.includes("/workers/domains"), false);
 });
