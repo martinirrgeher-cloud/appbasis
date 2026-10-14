@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "training-blocks",
+  "status": "blocked",
+  "requirements": {
+    "authorization": "verified",
+    "database": "verified",
+    "lifecycle": "blocked"
+  },
+  "blockers": [
+    "Training-block revisions, favorites and usage lifecycle is not yet production-verified."
+  ]
+}
