@@ -74,6 +74,7 @@ jobs:
           LIFECYCLE_PREFLIGHT_RUN_ID: ${{ inputs.lifecycle_preflight_run_id }}
         run: |
           set -euo pipefail
+          max_age_seconds=2700
           require_run() {
             local run_id="$1" workflow_path="$2" label="$3"
             local file="$RUNNER_TEMP/composition-$run_id.json"
@@ -82,8 +83,16 @@ jobs:
               --header 'Accept: application/vnd.github+json' \
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/$run_id" > "$file"
             jq -e --arg sha "$GITHUB_SHA" --arg path "$workflow_path" \
-              '.path == $path and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .run_attempt == 1 and .status == "completed" and .conclusion == "success"' \
+              '.path == $path and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .run_attempt == 1 and .status == "completed" and .conclusion == "success" and (.updated_at | type == "string")' \
               "$file" >/dev/null || { echo "$label is not a successful exact-head first-attempt main run." >&2; exit 1; }
+            completed_at="$(jq -er '.updated_at' "$file")"
+            completed_epoch="$(date -u -d "$completed_at" +%s 2>/dev/null)" || { echo "$label completion time is invalid." >&2; exit 1; }
+            now_epoch="$(date -u +%s)"
+            age_seconds=$((now_epoch - completed_epoch))
+            if (( age_seconds < 0 || age_seconds > max_age_seconds )); then
+              echo "$label is outside the 45-minute platform-prerequisite freshness window." >&2
+              exit 1
+            fi
           }
           require_run "$SECURITY_SMOKE_RUN_ID" ".github/workflows/m5-ulc-private-security-smoke.yml" "Private security smoke"
           require_run "$LIFECYCLE_PREFLIGHT_RUN_ID" ".github/workflows/m5-ulc-protected-lifecycle-operations.yml" "Protected lifecycle preflight"
