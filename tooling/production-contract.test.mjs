@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -64,6 +65,21 @@ test("module contracts fail closed on database/status mismatch", () => {
             database: "not-applicable",
             lifecycle: "verified",
           },
+          evidence: {
+            authorization: [
+              {
+                path: "modules/sample/test/authorization.test.ts",
+                gitBlobSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              },
+            ],
+            database: [],
+            lifecycle: [
+              {
+                path: "modules/sample/test/lifecycle.test.ts",
+                gitBlobSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              },
+            ],
+          },
           blockers: [],
         },
         definition,
@@ -81,6 +97,21 @@ test("module contracts fail closed on database/status mismatch", () => {
             authorization: "verified",
             database: "verified",
             lifecycle: "blocked",
+          },
+          evidence: {
+            authorization: [
+              {
+                path: "modules/sample/test/authorization.test.ts",
+                gitBlobSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              },
+            ],
+            database: [
+              {
+                path: "modules/sample/migrations/0000.sql",
+                gitBlobSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              },
+            ],
+            lifecycle: [],
           },
           blockers: [],
         },
@@ -110,6 +141,26 @@ test("app contracts are bound to the exact selected composition", () => {
             applicationLifecycle: "verified",
             privacy: "verified",
           },
+          evidence: {
+            dataExport: [
+              {
+                path: "apps/sample/test/export.test.ts",
+                gitBlobSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              },
+            ],
+            applicationLifecycle: [
+              {
+                path: "apps/sample/test/lifecycle.test.ts",
+                gitBlobSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              },
+            ],
+            privacy: [
+              {
+                path: "apps/sample/test/privacy.test.ts",
+                gitBlobSha: "cccccccccccccccccccccccccccccccccccccccc",
+              },
+            ],
+          },
           blockers: [],
         },
         definition,
@@ -126,6 +177,8 @@ test("a ready composition does not care about blocked unselected modules", async
   await mkdir(join(root, "modules", "selected"), { recursive: true });
   await mkdir(join(root, "modules", "unselected"), { recursive: true });
 
+  const selectedEvidenceContent = "export const selectedProductionEvidence = true;\\n";
+  const selectedEvidencePath = "modules/selected/test/production.test.mjs";
   await writeModule(root, "selected", {
     schemaVersion: 1,
     moduleId: "selected",
@@ -135,16 +188,33 @@ test("a ready composition does not care about blocked unselected modules", async
       database: "not-applicable",
       lifecycle: "not-applicable",
     },
+    evidence: {
+      authorization: [
+        {
+          path: selectedEvidencePath,
+          gitBlobSha: gitBlobSha(selectedEvidenceContent),
+        },
+      ],
+      database: [],
+      lifecycle: [],
+    },
     blockers: [],
+  }, {
+    [selectedEvidencePath]: selectedEvidenceContent,
   });
   await writeModule(root, "unselected", {
     schemaVersion: 1,
     moduleId: "unselected",
     status: "blocked",
     requirements: {
-      authorization: "verified",
+      authorization: "blocked",
       database: "not-applicable",
       lifecycle: "blocked",
+    },
+    evidence: {
+      authorization: [],
+      database: [],
+      lifecycle: [],
     },
     blockers: ["not production ready"],
   });
@@ -177,6 +247,11 @@ test("a ready composition does not care about blocked unselected modules", async
           applicationLifecycle: "not-applicable",
           privacy: "not-applicable",
         },
+        evidence: {
+          dataExport: [],
+          applicationLifecycle: [],
+          privacy: [],
+        },
         blockers: [],
       },
       null,
@@ -189,7 +264,85 @@ test("a ready composition does not care about blocked unselected modules", async
   assert.deepEqual(result.modules.map((entry) => entry.moduleId), ["selected"]);
 });
 
-async function writeModule(root, moduleId, productionContract) {
+test("selected production evidence fails closed on content drift", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "appbasis-production-drift-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+
+  await mkdir(join(root, "apps", "sample"), { recursive: true });
+  await mkdir(join(root, "modules", "selected"), { recursive: true });
+
+  const evidencePath = "modules/selected/test/production.test.mjs";
+  await writeModule(root, "selected", {
+    schemaVersion: 1,
+    moduleId: "selected",
+    status: "ready",
+    requirements: {
+      authorization: "verified",
+      database: "not-applicable",
+      lifecycle: "not-applicable",
+    },
+    evidence: {
+      authorization: [
+        {
+          path: evidencePath,
+          gitBlobSha: gitBlobSha("original\\n"),
+        },
+      ],
+      database: [],
+      lifecycle: [],
+    },
+    blockers: [],
+  }, {
+    [evidencePath]: "changed\\n",
+  });
+
+  await writeFile(
+    join(root, "apps", "sample", "appbasis.app.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 2,
+        appId: "sample",
+        displayName: "Sample",
+        modules: ["selected"],
+        platformServices: [],
+      },
+      null,
+      2,
+    ) + "\\n",
+  );
+  await writeFile(
+    join(root, "apps", "sample", "appbasis.production.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        appId: "sample",
+        modules: ["selected"],
+        platformServices: [],
+        status: "ready",
+        crossCutting: {
+          dataExport: "not-applicable",
+          applicationLifecycle: "not-applicable",
+          privacy: "not-applicable",
+        },
+        evidence: {
+          dataExport: [],
+          applicationLifecycle: [],
+          privacy: [],
+        },
+        blockers: [],
+      },
+      null,
+      2,
+    ) + "\\n",
+  );
+
+  await assert.rejects(
+    () => evaluateAppProductionComposition(root, "sample"),
+    /Production evidence drifted: modules\/selected\/test\/production\.test\.mjs/,
+  );
+});
+
+async function writeModule(root, moduleId, productionContract, evidenceFiles = {}) {
   const moduleRoot = join(root, "modules", moduleId);
   await writeFile(
     join(moduleRoot, "appbasis.module.json"),
@@ -220,8 +373,21 @@ async function writeModule(root, moduleId, productionContract) {
       2,
     ) + "\n",
   );
+  for (const [relativePath, content] of Object.entries(evidenceFiles)) {
+    const absolutePath = join(root, relativePath);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, content);
+  }
   await writeFile(
     join(moduleRoot, "appbasis.production.json"),
     JSON.stringify(productionContract, null, 2) + "\n",
   );
+}
+
+function gitBlobSha(content) {
+  const bytes = Buffer.from(content, "utf8");
+  return createHash("sha1")
+    .update(`blob ${bytes.length}\0`, "utf8")
+    .update(bytes)
+    .digest("hex");
 }
