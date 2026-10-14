@@ -5,12 +5,13 @@ import { join, resolve } from "node:path";
 const WORKFLOW_PATH = ".github/workflows/m5-ulc-protected-lifecycle-operations.yml";
 const WORKFLOW_FILE_NAME = "m5-ulc-protected-lifecycle-operations.yml";
 const WORKFLOW_NAME = "M5 ULC Protected Lifecycle Operations";
+const MANUAL_PREFLIGHT_RUN_TITLE = "preflight";
 const CHAIN_RUN_NAME_PATTERN = /^m6-chain-[1-9][0-9]*-1-lifecycle_preflight$/;
 const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const CREDENTIAL_ADAPTER_PATH =
   "apps/ulc-linz/worker/protected-lifecycle-credential-operation.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
-const WORKFLOW_GIT_BLOB_SHA = "4066ebb3f3485cfd94a2c8952f35f01802be84e1";
+const WORKFLOW_GIT_BLOB_SHA = "fa7351cb60976a59cf20d496516050a54862a243";
 const EXECUTOR_GIT_BLOB_SHA = "ba3e24784f52ccdfceda3cce5b694f912785ea2a";
 const CREDENTIAL_ADAPTER_GIT_BLOB_SHA =
   "6f71345941deaf23a5c73770132b965e379176a5";
@@ -42,6 +43,8 @@ const SAFE_RESUME_FILES = Object.freeze([
 
 const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
   "name: M5 ULC Protected Lifecycle Operations",
+  "run-name: ${{ inputs.chain_attempt_id || inputs.operation }}",
+  "Chain-correlated lifecycle runs are restricted to the non-destructive preflight operation.",
   "environment: m4-dr",
   "expected_head_sha:",
   "Require exact chain head when supplied",
@@ -322,7 +325,8 @@ function verifiedRunObservedAt(run, currentTime, trustedHeads) {
     !Number.isSafeInteger(run.id) ||
     run.id < 1 ||
     run.run_attempt !== 1 ||
-    !isAcceptedLifecycleRunName(run.name) ||
+    run.name !== WORKFLOW_NAME ||
+    !isAcceptedLifecycleRunTitle(run.display_title) ||
     run.path !== WORKFLOW_PATH ||
     run.event !== "workflow_dispatch" ||
     run.head_branch !== "main" ||
@@ -342,8 +346,8 @@ function verifiedRunObservedAt(run, currentTime, trustedHeads) {
   return new Date(updatedAt).toISOString();
 }
 
-function isAcceptedLifecycleRunName(value) {
-  return value === WORKFLOW_NAME ||
+function isAcceptedLifecycleRunTitle(value) {
+  return value === MANUAL_PREFLIGHT_RUN_TITLE ||
     (typeof value === "string" && CHAIN_RUN_NAME_PATTERN.test(value));
 }
 
