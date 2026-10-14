@@ -97,6 +97,17 @@ jobs:
           }
           require_run "$SECURITY_SMOKE_RUN_ID" ".github/workflows/m5-ulc-private-security-smoke.yml" "Private security smoke"
           require_run "$LIFECYCLE_PREFLIGHT_RUN_ID" ".github/workflows/m5-ulc-protected-lifecycle-operations.yml" "Protected lifecycle preflight"
+          lifecycle_file="$RUNNER_TEMP/composition-$LIFECYCLE_PREFLIGHT_RUN_ID.json"
+          jq -e '
+            .name == "M5 ULC Protected Lifecycle Operations"
+            and (
+              .display_title == "preflight"
+              or (.display_title | type == "string" and test("^m6-chain-[1-9][0-9]*-1-lifecycle_preflight$"))
+            )
+          ' "$lifecycle_file" >/dev/null || {
+            echo 'Protected lifecycle prerequisite did not execute the non-destructive preflight operation.' >&2
+            exit 1
+          }
 
       - name: Check out exact head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
