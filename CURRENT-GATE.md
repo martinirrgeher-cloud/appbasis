@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-11
+Stand: 2026-10-14
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -8,6 +8,60 @@ Volatile PR-, CI-, Review- und Branch-Zustände werden ausschließlich live aus
 GitHub abgeleitet.
 
 ## Aktuelles Ziel
+
+**AppFactory / ULC-M6 – modulares Production Composition Gate für die laufende Produktions-Revalidierung.**
+
+Die frühere Kopfzeile zu ULC-E7A6 war nach dem Abschluss der E7A-/E7B-Code-Slices
+nicht mehr der reale operative Gate-Stand. E7B3/E7B4 sind auf `main`
+abgeschlossen; die anschließende ULC-Produktions-Revalidierung hat gezeigt,
+dass das bisherige monolithische M5-`12/12`-Gate Plattform-Baseline und
+fachmodulspezifische Produktionsanforderungen unzulässig koppelt. Bei jeder
+neuen Modulkomposition würden dadurch auch nicht betroffene Plattformkriterien
+und nicht ausgewählte Module erneut zum Release-Blocker.
+
+Der aktuell freigegebene Architektur-Slice korrigiert ausschließlich diese
+Gate-Komposition:
+
+- M5 bleibt als historische Plattform-/Security-Evidence erhalten, ist aber
+  nicht mehr der obligatorische Gesamtbeweis für jede spätere Moduländerung;
+- M6 hält frische Plattform-Livechecks (Private Security Smoke und Protected
+  Lifecycle Preflight) getrennt von der App-Komposition;
+- jedes Standardmodul besitzt einen eigenen fail-closed
+  `appbasis.production.json`-Vertrag;
+- eine App bewertet ausschließlich die in `appbasis.app.json` tatsächlich
+  ausgewählten Module und ihre Plattformservices;
+- ein `verified`-Status benötigt hash-gepinnte Evidence im eigenen
+  Modul-/App-Scope; Drift failt geschlossen;
+- Modul-/App-Definition, Datenbankowner und Schema-Kompatibilität bleiben
+  maschinenlesbar gebunden;
+- neue Factory-Apps und -Module werden standardmäßig `blocked` erzeugt und
+  müssen ihren Production-Contract ausdrücklich belegen;
+- die M6-Kette ersetzt `m5_evidence` durch ein kurzlebiges
+  `composition_gate`; Pilot-Ingress und Smoke-Principal akzeptieren nur
+  dieses autoritative Gate innerhalb seines 15-Minuten-Fensters;
+- Plattform-Prerequisites müssen zusätzlich innerhalb eines begrenzten
+  Freshness-Fensters liegen;
+- nicht ausgewählte Module dürfen eine App weder blockieren noch autorisieren;
+- Änderungen am Composition-/Security-Gate sind nicht safe-resumable und
+  verlangen einen frischen Exact-Head-Pfad;
+- dieser Code-/Workflow-Slice führt selbst keinerlei Production-DB-, Provider-
+  oder Deployment-Mutation aus.
+
+Abnahme für diesen Gate-Slice:
+
+1. vollständige Exact-Head-CI inklusive PostgreSQL-E2E;
+2. Regressionstests für Modul-Selektion, Compatibility, Evidence-Drift,
+   Prerequisite-Freshness und kurzlebige Gate-Revalidierung vor Writes;
+3. ein finaler Exact-Head-Codex-Architecture/Security-Review;
+4. bei Finding genau ein gebündelter Fix + Exact-Head-CI + Re-Review;
+5. Merge erst ohne offene Major/P1/P2-Findings.
+
+Nach diesem Architektur-Gate werden die derzeit bewusst `blocked` markierten
+Lifecycle-/Privacy-Anforderungen der tatsächlich ausgewählten ULC-Module als
+eigene modulbezogene Production-Slices geschlossen. Sie werden nicht durch
+globale M5-Pins oder Anforderungen nicht ausgewählter Module ersetzt.
+
+## Vorheriger Gate-Scope: ULC-E7A6
 
 **ULC-E7A6 – Trainingsblöcke Paritätsmetadaten und isolierte Preview-Abnahme.**
 
