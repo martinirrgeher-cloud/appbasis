@@ -122,6 +122,43 @@ test("module contracts fail closed on database/status mismatch", () => {
   );
 });
 
+test("capability-bearing modules cannot bypass authorization readiness", () => {
+  const baseContract = {
+    schemaVersion: 1,
+    moduleId: "sample",
+    status: "ready",
+    requirements: {
+      authorization: "not-applicable",
+      database: "not-applicable",
+      lifecycle: "not-applicable",
+    },
+    evidence: {
+      authorization: [],
+      database: [],
+      lifecycle: [],
+    },
+    blockers: [],
+  };
+
+  assert.throws(
+    () =>
+      parseModuleProductionContract(baseContract, {
+        moduleId: "sample",
+        capabilities: ["sample:view"],
+        database: null,
+      }),
+    /with capabilities cannot mark authorization production readiness not-applicable/,
+  );
+
+  const parsed = parseModuleProductionContract(baseContract, {
+    moduleId: "sample",
+    capabilities: [],
+    database: null,
+  });
+  assert.equal(parsed.status, "ready");
+  assert.equal(parsed.requirements.authorization, "not-applicable");
+});
+
 test("app contracts are bound to the exact selected composition", () => {
   const definition = {
     appId: "sample",
