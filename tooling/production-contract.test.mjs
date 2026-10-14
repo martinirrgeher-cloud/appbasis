@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -169,7 +169,7 @@ test("app contracts are bound to the exact selected composition", () => {
   );
 });
 
-test("a ready composition does not care about blocked unselected modules", async (t) => {
+test("a ready composition does not inspect malformed unselected modules", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "appbasis-production-contract-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
 
@@ -218,6 +218,7 @@ test("a ready composition does not care about blocked unselected modules", async
     },
     blockers: ["not production ready"],
   });
+  await rm(join(root, "modules", "unselected", "package.json"));
 
   await writeFile(
     join(root, "apps", "sample", "appbasis.app.json"),
@@ -424,6 +425,185 @@ test("selected production evidence fails closed on content drift", async (t) => 
     /Production evidence drifted: modules\/selected\/test\/production\.test\.mjs/,
   );
 });
+
+test("production evidence rejects symlinked paths even when target content matches", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("Symlink creation is not a portable unprivileged Windows test.");
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "appbasis-production-symlink-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+
+  await mkdir(join(root, "apps", "sample"), { recursive: true });
+  await mkdir(join(root, "modules", "selected"), { recursive: true });
+  await mkdir(join(root, "modules", "outside"), { recursive: true });
+
+  const evidencePath = "modules/selected/test/production.test.mjs";
+  const evidenceContent = "export const sharedProductionEvidence = true;\n";
+  await writeModule(
+    root,
+    "selected",
+    {
+      schemaVersion: 1,
+      moduleId: "selected",
+      status: "ready",
+      requirements: {
+        authorization: "verified",
+        database: "not-applicable",
+        lifecycle: "not-applicable",
+      },
+      evidence: {
+        authorization: [
+          {
+            path: evidencePath,
+            gitBlobSha: gitBlobSha(evidenceContent),
+          },
+        ],
+        database: [],
+        lifecycle: [],
+      },
+      blockers: [],
+    },
+    { [evidencePath]: evidenceContent },
+  );
+
+  const externalEvidence = join(root, "modules", "outside", "proof.mjs");
+  await writeFile(externalEvidence, evidenceContent);
+  const selectedEvidence = join(root, evidencePath);
+  await rm(selectedEvidence);
+  await symlink(externalEvidence, selectedEvidence);
+
+  await writeReadySampleApp(root);
+
+  await assert.rejects(
+    () => evaluateAppProductionComposition(root, "sample"),
+    /Production evidence must not contain symbolic links/,
+  );
+});
+
+test("database manifest validation rejects wrong targets and duplicate owners", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "appbasis-production-database-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+
+  await mkdir(join(root, "apps", "sample"), { recursive: true });
+  await mkdir(join(root, "modules", "selected"), { recursive: true });
+
+  const evidencePath = "modules/selected/test/production.test.mjs";
+  const evidenceContent = "export const selectedProductionEvidence = true;\n";
+  await writeModule(
+    root,
+    "selected",
+    {
+      schemaVersion: 1,
+      moduleId: "selected",
+      status: "ready",
+      requirements: {
+        authorization: "verified",
+        database: "not-applicable",
+        lifecycle: "not-applicable",
+      },
+      evidence: {
+        authorization: [
+          {
+            path: evidencePath,
+            gitBlobSha: gitBlobSha(evidenceContent),
+          },
+        ],
+        database: [],
+        lifecycle: [],
+      },
+      blockers: [],
+    },
+    { [evidencePath]: evidenceContent },
+  );
+  await writeReadySampleApp(root);
+
+  const databasePath = join(root, "apps", "sample", "appbasis.database.json");
+  await writeFile(
+    databasePath,
+    JSON.stringify(
+      {
+        manifestVersion: 1,
+        application: "other",
+        dialect: "postgresql",
+        owners: [],
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await assert.rejects(
+    () => evaluateAppProductionComposition(root, "sample"),
+    /App database manifest target is invalid/,
+  );
+
+  const duplicateOwner = {
+    id: "identity",
+    root: "packages/identity",
+    schemaVersion: 1,
+    migrations: ["packages/identity/migrations/0000.sql"],
+  };
+  await writeFile(
+    databasePath,
+    JSON.stringify(
+      {
+        manifestVersion: 1,
+        application: "sample",
+        dialect: "postgresql",
+        owners: [duplicateOwner, duplicateOwner],
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await assert.rejects(
+    () => evaluateAppProductionComposition(root, "sample"),
+    /owner id is invalid or duplicated/,
+  );
+});
+
+async function writeReadySampleApp(root) {
+  await writeFile(
+    join(root, "apps", "sample", "appbasis.app.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 2,
+        appId: "sample",
+        displayName: "Sample",
+        modules: ["selected"],
+        platformServices: [],
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await writeFile(
+    join(root, "apps", "sample", "appbasis.production.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        appId: "sample",
+        modules: ["selected"],
+        platformServices: [],
+        status: "ready",
+        crossCutting: {
+          dataExport: "not-applicable",
+          applicationLifecycle: "not-applicable",
+          privacy: "not-applicable",
+        },
+        evidence: {
+          dataExport: [],
+          applicationLifecycle: [],
+          privacy: [],
+        },
+        blockers: [],
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+}
 
 async function writeModule(root, moduleId, productionContract, evidenceFiles = {}, compatibilityVersions = [2]) {
   const moduleRoot = join(root, "modules", moduleId);
