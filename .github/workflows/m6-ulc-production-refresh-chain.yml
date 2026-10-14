@@ -13,7 +13,7 @@ on:
           - private_deploy
           - security_smoke
           - lifecycle_preflight
-          - m5_evidence
+          - composition_gate
           - pilot_ingress
           - smoke_principal
           - post_deploy_smoke
@@ -53,7 +53,7 @@ jobs:
             --header 'Accept: application/vnd.github+json'
             --header 'X-GitHub-Api-Version: 2026-03-10'
           )
-          steps=(runtime_refresh private_deploy security_smoke lifecycle_preflight m5_evidence pilot_ingress smoke_principal post_deploy_smoke)
+          steps=(runtime_refresh private_deploy security_smoke lifecycle_preflight composition_gate pilot_ingress smoke_principal post_deploy_smoke)
           CHAIN_WORK_DEADLINE=$(( $(date +%s) + 9000 ))
           parent_run="$RUNNER_TEMP/m6-chain-parent-run.json"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
@@ -396,25 +396,26 @@ jobs:
                 "$(jq -cn --arg operation preflight --arg confirmation 'VERIFY-ULC-M5-LIFECYCLE-BINDING' --arg administrator_username 'ulc.production.admin' '{operation:$operation,confirmation:$confirmation,administrator_username:$administrator_username}')" \
                 'protected lifecycle preflight' >/dev/null
               ;;
-            m5_evidence)
-              latest_success_run 'm5-ulc-protected-lifecycle-operations.yml' >/dev/null
+            composition_gate)
+              security_smoke_run_id="$(latest_success_run 'm5-ulc-private-security-smoke.yml')"
+              lifecycle_preflight_run_id="$(latest_success_run 'm5-ulc-protected-lifecycle-operations.yml')"
               dispatch_and_wait \
-                'm5-ulc-production-evidence.yml' \
-                "$(jq -cn --arg confirmation 'VERIFY-ULC-M5-PRODUCTION' '{confirmation:$confirmation,apply_restore:true}')" \
-                'M5 production evidence' >/dev/null
+                'm6-ulc-production-composition-gate.yml' \
+                "$(jq -cn --arg confirmation 'VERIFY-ULC-M6-COMPOSITION' --arg security_smoke_run_id "$security_smoke_run_id" --arg lifecycle_preflight_run_id "$lifecycle_preflight_run_id" '{confirmation:$confirmation,security_smoke_run_id:$security_smoke_run_id,lifecycle_preflight_run_id:$lifecycle_preflight_run_id}')" \
+                'selected-module production composition gate' >/dev/null
               ;;
             pilot_ingress)
-              m5_run_id="$(latest_success_run 'm5-ulc-production-evidence.yml')"
+              composition_gate_run_id="$(latest_success_run 'm6-ulc-production-composition-gate.yml')"
               dispatch_and_wait \
                 'm6-ulc-production-pilot-ingress.yml' \
-                "$(jq -cn --arg confirmation 'ACTIVATE-ULC-M6-PILOT-INGRESS' --arg m5_run_id "$m5_run_id" '{confirmation:$confirmation,m5_run_id:$m5_run_id}')" \
+                "$(jq -cn --arg confirmation 'ACTIVATE-ULC-M6-PILOT-INGRESS' --arg composition_gate_run_id "$composition_gate_run_id" '{confirmation:$confirmation,composition_gate_run_id:$composition_gate_run_id}')" \
                 'workers.dev pilot ingress' >/dev/null
               ;;
             smoke_principal)
-              m5_run_id="$(latest_success_run 'm5-ulc-production-evidence.yml')"
+              composition_gate_run_id="$(latest_success_run 'm6-ulc-production-composition-gate.yml')"
               dispatch_and_wait \
                 'm6-ulc-production-smoke-principal-bootstrap.yml' \
-                "$(jq -cn --arg confirmation 'BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL' --arg m5_run_id "$m5_run_id" '{confirmation:$confirmation,m5_run_id:$m5_run_id}')" \
+                "$(jq -cn --arg confirmation 'BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL' --arg composition_gate_run_id "$composition_gate_run_id" '{confirmation:$confirmation,composition_gate_run_id:$composition_gate_run_id}')" \
                 'production smoke principal bootstrap' >/dev/null
               ;;
             post_deploy_smoke)
