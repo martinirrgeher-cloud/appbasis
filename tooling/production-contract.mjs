@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { parseAppDefinition } from "./app-definition.mjs";
+import { createGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import {
   assertAppModuleCompatibility,
   verifySelectedModuleDefinitions,
@@ -23,7 +24,6 @@ const APP_REQUIREMENTS = Object.freeze([
   "applicationLifecycle",
   "privacy",
 ]);
-const DATABASE_OWNER_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 export async function evaluateAppProductionComposition(
   repositoryRoot,
@@ -56,9 +56,17 @@ export async function evaluateAppProductionComposition(
   const databaseManifest = await readOptionalJson(
     join(root, "apps", appId, "appbasis.database.json"),
   );
-  const databaseOwners = parseDatabaseManifest(
-    databaseManifest,
+  const canonicalDatabaseManifest = createGeneratedDatabaseManifest(
     appDefinition,
+    { moduleDefinitions },
+  );
+  if (!isDeepStrictEqual(databaseManifest, canonicalDatabaseManifest)) {
+    throw new Error(
+      "App database manifest does not match canonical generated ownership.",
+    );
+  }
+  const databaseOwners = new Map(
+    (canonicalDatabaseManifest?.owners ?? []).map((owner) => [owner.id, owner]),
   );
 
   const modules = [];
@@ -221,96 +229,6 @@ export function parseAppProductionContract(value, appDefinition) {
     evidence,
     blockers,
   });
-}
-
-function parseDatabaseManifest(value, appDefinition) {
-  if (value === null) return new Map();
-
-  const manifest = exactRecord(
-    value,
-    ["manifestVersion", "application", "dialect", "owners"],
-    "app database manifest",
-  );
-  if (
-    manifest.manifestVersion !== 1 ||
-    manifest.application !== appDefinition?.appId ||
-    manifest.dialect !== "postgresql"
-  ) {
-    throw new Error("App database manifest target is invalid.");
-  }
-  if (!Array.isArray(manifest.owners)) {
-    throw new Error("App database manifest owners must be an array.");
-  }
-
-  const owners = new Map();
-  for (const value of manifest.owners) {
-    const owner = exactRecord(
-      value,
-      ["id", "root", "schemaVersion", "migrations"],
-      "app database owner",
-    );
-    if (
-      typeof owner.id !== "string" ||
-      !DATABASE_OWNER_ID_PATTERN.test(owner.id) ||
-      owners.has(owner.id)
-    ) {
-      throw new Error("App database manifest owner id is invalid or duplicated.");
-    }
-    if (!isRepositoryRelativePath(owner.root)) {
-      throw new Error(
-        `App database manifest owner ${owner.id} root is invalid.`,
-      );
-    }
-    if (
-      !Number.isInteger(owner.schemaVersion) ||
-      owner.schemaVersion < 1 ||
-      !Array.isArray(owner.migrations) ||
-      owner.migrations.length === 0
-    ) {
-      throw new Error(
-        `App database manifest owner ${owner.id} schema contract is invalid.`,
-      );
-    }
-
-    const migrations = new Set();
-    for (const migration of owner.migrations) {
-      if (
-        !isRepositoryRelativePath(migration) ||
-        !migration.endsWith(".sql") ||
-        !migration.startsWith(`${owner.root}/`) ||
-        migrations.has(migration)
-      ) {
-        throw new Error(
-          `App database manifest owner ${owner.id} migrations are invalid.`,
-        );
-      }
-      migrations.add(migration);
-    }
-
-    owners.set(owner.id, owner);
-  }
-
-  return owners;
-}
-
-function isRepositoryRelativePath(value) {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > 300 ||
-    value.trim() !== value ||
-    value.startsWith("/") ||
-    value.includes("\\")
-  ) {
-    return false;
-  }
-  const segments = value.split("/");
-  return !segments.some(
-    (segment) =>
-      segment.length === 0 ||
-      segment === "." ||
-      segment === "..",
-  );
 }
 
 function verifyDatabaseBinding(definition, contract, ownersById) {
