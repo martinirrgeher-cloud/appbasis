@@ -28,8 +28,6 @@ test("M6 refresh chain reuses prerequisites only across a bounded evidence-only 
     "tooling/ulc-linz-m6-production-resource-binding.test.mjs",
     "tooling/ulc-linz-m6-runtime-contract-equivalence.mjs",
     "tooling/ulc-linz-m6-runtime-contract-equivalence.test.mjs",
-    ".github/workflows/m5-ulc-production-evidence.yml",
-    "tooling/ulc-linz-m5-production-evidence-workflow.test.mjs",
     ".github/workflows/m6-ulc-production-refresh-chain.yml",
     "tooling/ulc-linz-m6-refresh-chain-safe-resume.test.mjs",
     '(.head_sha as $head | ($heads | index($head)) != null)',
@@ -40,7 +38,7 @@ test("M6 refresh chain reuses prerequisites only across a bounded evidence-only 
   }
 });
 
-test("M6 refresh chain does not allow runtime or provider implementation files in safe-resume ancestry", async () => {
+test("M6 refresh chain does not allow runtime, provider or composition-gate changes in safe-resume ancestry", async () => {
   const source = await readFile(REFRESH_CHAIN, "utf8");
   const safeBlock = source.slice(
     source.indexOf("trusted_prerequisite_heads()"),
@@ -53,6 +51,9 @@ test("M6 refresh chain does not allow runtime or provider implementation files i
     "apps/ulc-linz/worker/protected-lifecycle-operations.ts",
     "apps/ulc-linz/wrangler.production.jsonc",
     "tooling/ulc-linz-m6-private-runtime-refresh.mjs",
+    ".github/workflows/m6-ulc-production-composition-gate.yml",
+    "tooling/production-contract.mjs",
+    "apps/ulc-linz/appbasis.production.json",
   ]) {
     assert.equal(
       safeBlock.includes(forbidden),
