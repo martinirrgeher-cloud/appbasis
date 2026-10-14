@@ -166,6 +166,78 @@ jobs:
           test "$ULC_LINZ_PRODUCTION_ADMIN_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD" || { echo 'Production admin and steady-state smoke passwords must differ.' >&2; exit 1; }
           test "$ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD" != "$ULC_LINZ_PRODUCTION_SMOKE_PASSWORD" || { echo 'Smoke bootstrap and steady-state passwords must differ.' >&2; exit 1; }
 
+      - name: Revalidate authoritative fresh composition gate immediately before smoke write
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPOSITION_GATE_RUN_ID: ${{ inputs.composition_gate_run_id }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          run="$RUNNER_TEMP/composition-run-before-smoke-write.json"
+          artifacts="$RUNNER_TEMP/composition-artifacts-before-smoke-write.json"
+          archive="$RUNNER_TEMP/composition-gate-before-smoke-write.zip"
+          extracted="$RUNNER_TEMP/composition-gate-before-smoke-write"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${COMPOSITION_GATE_RUN_ID}" > "$run"
+          jq -e '
+            .path == ".github/workflows/m6-ulc-production-composition-gate.yml"
+            and .event == "workflow_dispatch"
+            and .head_branch == "main"
+            and .run_attempt == 1
+            and .status == "completed"
+            and .conclusion == "success"
+          ' "$run" >/dev/null || { echo 'Production composition gate is no longer a successful first-attempt main run before smoke write.' >&2; exit 1; }
+          composition_head="$(jq -er '.head_sha' "$run")"
+          if test -n "$EXPECTED_HEAD_SHA"; then
+            test "$composition_head" = "$GITHUB_SHA" || { echo 'Chain-dispatched smoke write requires an exact-head composition gate.' >&2; exit 1; }
+          else
+            trusted_heads="$RUNNER_TEMP/trusted-repair-heads.txt"
+            test -f "$trusted_heads" || { echo 'Trusted smoke-repair ancestry is unavailable before write.' >&2; exit 1; }
+            grep -Fxq "$composition_head" "$trusted_heads" || { echo 'Composition gate left the bounded smoke-repair ancestry before write.' >&2; exit 1; }
+          fi
+
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${COMPOSITION_GATE_RUN_ID}/artifacts?per_page=100" > "$artifacts"
+          artifact_name="ulc-linz-production-composition-gate"
+          jq -e --arg name "$artifact_name" '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' "$artifacts" >/dev/null || { echo 'Composition gate artifact is missing, duplicated or expired before smoke write.' >&2; exit 1; }
+          artifact_id="$(jq -er --arg name "$artifact_name" '.artifacts[] | select(.name == $name and .expired == false) | .id' "$artifacts")"
+          [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]] || { echo 'Composition gate artifact ID is invalid before smoke write.' >&2; exit 1; }
+          curl --fail-with-body --silent --show-error --location --connect-timeout 10 --max-time 30 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$archive"
+          rm -rf -- "$extracted" && mkdir -p "$extracted"
+          unzip -q "$archive" -d "$extracted"
+          gate="$extracted/production-composition-gate.json"
+          test -f "$gate" && test "$(find "$extracted" -type f | wc -l)" -eq 1 || { echo 'Composition gate artifact contents are invalid before smoke write.' >&2; exit 1; }
+          jq -e --arg sha "$composition_head" --arg runId "$COMPOSITION_GATE_RUN_ID" '
+            .schemaVersion == 1
+            and .application == "ulc-linz"
+            and .environment == "production"
+            and .headSha == $sha
+            and .runId == $runId
+            and .compositionReady == true
+            and (.selectedModules | type == "array" and length > 0)
+            and .productionReleaseAuthorized == false
+            and (.observedAt | type == "string")
+            and (.validUntilOrReviewAt | type == "string")
+          ' "$gate" >/dev/null || { echo 'Composition gate artifact contract is invalid before smoke write.' >&2; exit 1; }
+          observed_at="$(jq -er '.observedAt' "$gate")"
+          valid_until="$(jq -er '.validUntilOrReviewAt' "$gate")"
+          observed_epoch="$(date -u -d "$observed_at" +%s 2>/dev/null)" || { echo 'Composition gate observation time is invalid before smoke write.' >&2; exit 1; }
+          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'Composition gate expiry is invalid before smoke write.' >&2; exit 1; }
+          now_epoch="$(date -u +%s)"
+          test "$((valid_epoch - observed_epoch))" -eq 900 || { echo 'Composition gate validity window is not the canonical 15 minutes before smoke write.' >&2; exit 1; }
+          if (( now_epoch < observed_epoch || now_epoch >= valid_epoch )); then
+            echo 'Production composition gate expired before smoke-principal mutation.' >&2
+            exit 1
+          fi
+
       - name: Restore canonical ULC permission provisioning before smoke principal write
         working-directory: apps/ulc-linz
         env:
