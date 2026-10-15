@@ -9,6 +9,7 @@ import {
   TrainingPlanConflictError,
   TrainingPlanLifecycleService,
   TrainingPlanService,
+  TrainingPlanSubjectDeletedError,
   TrainingPlanTargetOccupiedError,
   type TrainingPlanPostgresClient,
 } from "../src/index";
@@ -36,14 +37,15 @@ beforeAll(async () => {
   );
   isolatedDatabaseCreated = true;
   isolatedConnection = createPostgresDatabase(isolatedDatabaseUrl);
-  const migration = await readFile(
-    new URL(
+  const migrations = await Promise.all(
+    [
       "../migrations/0000_appbasis_training_plans_foundation.sql",
-      import.meta.url,
-    ),
-    "utf8",
+      "../migrations/0001_appbasis_training_plan_subject_deletion.sql",
+    ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
   );
-  await requiredConnection().client.unsafe(migration);
+  for (const migration of migrations) {
+    await requiredConnection().client.unsafe(migration);
+  }
 });
 
 beforeEach(async () => {
@@ -51,7 +53,8 @@ beforeEach(async () => {
     `TRUNCATE TABLE
        appbasis_training_plan_revision_item,
        appbasis_training_plan_revision,
-       appbasis_training_plan`,
+       appbasis_training_plan,
+       appbasis_training_plan_subject_deletion`,
   );
 });
 
@@ -399,6 +402,68 @@ describe("training-plans PostgreSQL repository", () => {
     );
     expect(revisionRows).toEqual([]);
     expect(itemRows).toEqual([]);
+
+    await expect(
+      plans.create("org-delete", {
+        subjectId: "athlete-delete",
+        planDate: "2026-10-14",
+      }),
+    ).rejects.toBeInstanceOf(TrainingPlanSubjectDeletedError);
+
+    const markers = await lifecycle.listCurrentDeletionMarkers();
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toMatchObject({
+      organizationId: "org-delete",
+      subjectId: "athlete-delete",
+    });
+    expect(
+      markers[0]!.purgeAfter.getTime() - markers[0]!.completedAt.getTime(),
+    ).toBe(35 * 24 * 60 * 60 * 1000);
+  });
+
+  it("never lets a create queued around purge resurrect the subject", async () => {
+    const createConnection = createPostgresDatabase(isolatedDatabaseUrl);
+    const lifecycleConnection = createPostgresDatabase(isolatedDatabaseUrl);
+    try {
+      const creator = serviceFor(createConnection, ["queued-create-plan"]);
+      const lifecycleRepository = new PostgresTrainingPlanRepository(
+        postgresClient(lifecycleConnection.client),
+      );
+      const lifecycle = new TrainingPlanLifecycleService({
+        repository: lifecycleRepository,
+        now: () => new Date("2026-10-15T10:00:00.000Z"),
+      });
+
+      const [deleteResult, createResult] = await Promise.allSettled([
+        lifecycle.deleteSubjectData(
+          "org-queued-create",
+          "athlete-queued-create",
+        ),
+        creator.create("org-queued-create", {
+          subjectId: "athlete-queued-create",
+          planDate: "2026-10-12",
+        }),
+      ]);
+
+      expect(deleteResult.status).toBe("fulfilled");
+      if (createResult.status === "rejected") {
+        expect(createResult.reason).toBeInstanceOf(
+          TrainingPlanSubjectDeletedError,
+        );
+      }
+      const verifier = serviceFor(requiredConnection(), []);
+      await expect(
+        verifier.listForSubjectDateRange(
+          "org-queued-create",
+          "athlete-queued-create",
+          "2026-10-01",
+          "2026-10-31",
+        ),
+      ).resolves.toEqual([]);
+    } finally {
+      await createConnection.client.end();
+      await lifecycleConnection.client.end();
+    }
   });
 
   it("serializes a subject purge against a concurrent revision append without deadlock", async () => {
