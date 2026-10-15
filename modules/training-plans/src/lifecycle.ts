@@ -14,9 +14,11 @@ export interface TrainingPlanLifecycleServiceOptions {
 /**
  * Privileged lifecycle boundary for plan-owned subject data.
  *
- * Policy timing and authorization stay application-owned. This service only
- * validates the module-local scope and delegates the physical purge to the
- * module repository.
+ * Policy timing and authorization stay application-owned. The caller must make
+ * the subject non-writable before purging; the module lock only serializes
+ * already in-flight plan writes and does not own subject activation state.
+ * This service validates the module-local scope and delegates the physical
+ * purge to the module repository.
  */
 export class TrainingPlanLifecycleService {
   readonly #repository: TrainingPlanLifecycleRepository;
