@@ -107,6 +107,9 @@ describe("ULC E7B5 training plan attendance UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"Woche ist derzeit nicht verfügbar."',
     );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      ': "Anwesenheit nicht verfügbar"',
+    );
   });
 
   it("re-renders week cards only after clearing the loading flag", () => {
