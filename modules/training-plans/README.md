@@ -15,7 +15,7 @@ product slices; production lifecycle activation remains application-owned.
 - Package: `@appbasis/training-plans`
 - Capabilities: `training-plans:view`, `training-plans:edit`
 - Database owner: this module only
-- Current schema version: 1
+- Current schema version: 2
 
 The foundation deliberately separates planning from ULC training-session
 attendance. A plan belongs to one opaque subject and one calendar day. Its
