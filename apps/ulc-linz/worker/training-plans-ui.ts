@@ -746,9 +746,11 @@ function trainingPlanAttendanceSummaryElement(entries) {
     const badge = document.createElement("span");
     badge.className = "training-plan-attendance-badge";
     badge.dataset.status = "none";
-    badge.textContent = trainingPlanWeekLoaded
-      ? "Kein Anwesenheitseintrag"
-      : "Anwesenheit wird geladen";
+    badge.textContent = trainingPlanWeekLoading
+      ? "Anwesenheit wird geladen"
+      : trainingPlanWeekLoaded
+        ? "Kein Anwesenheitseintrag"
+        : "Anwesenheit nicht verfügbar";
     wrapper.append(badge);
     return wrapper;
   }
