@@ -274,6 +274,7 @@ async function applyManifestMigrations(
       migration !== "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql" &&
       migration !== "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql" &&
       migration !== "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql" &&
+      migration !== "modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql" &&
       migration !== "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql" &&
       migration !== "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql" &&
       migration !== "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql" &&
