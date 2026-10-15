@@ -8,8 +8,10 @@ import {
   type TrainingPlanLifecycleRepository,
   type TrainingPlanRepository,
   type TrainingPlanRevision,
+  type TrainingPlanDeletionReplayResult,
   type TrainingPlanRevisionAppendResult,
   type TrainingPlanSnapshot,
+  type TrainingPlanSubjectDeletionMarker,
   type TrainingPlanSubjectDeletionResult,
 } from "./repository";
 
@@ -105,6 +107,15 @@ export class PostgresTrainingPlanRepository
         plan.organizationId,
         plan.subjectId,
       );
+      if (
+        await hasSubjectDeletionMarker(
+          transaction,
+          plan.organizationId,
+          plan.subjectId,
+        )
+      ) {
+        return Object.freeze({ status: "subject-deleted" as const });
+      }
       const rows = await transaction.unsafe(
         `INSERT INTO appbasis_training_plan (
            id, organization_id, subject_id, plan_date,
@@ -188,6 +199,15 @@ export class PostgresTrainingPlanRepository
         organizationId,
         lockedSubjectId,
       );
+      if (
+        await hasSubjectDeletionMarker(
+          transaction,
+          organizationId,
+          lockedSubjectId,
+        )
+      ) {
+        return Object.freeze({ status: "not-found" as const });
+      }
 
       const rows = await transaction.unsafe(
         `SELECT subject_id,
@@ -349,6 +369,7 @@ export class PostgresTrainingPlanRepository
   async deleteSubjectData(
     organizationId: string,
     subjectId: string,
+    completedAt: Date,
   ): Promise<TrainingPlanSubjectDeletionResult> {
     return this.#client.begin(async (transaction) => {
       await lockSubjectLifecycleScope(
@@ -356,74 +377,258 @@ export class PostgresTrainingPlanRepository
         organizationId,
         subjectId,
       );
-      const plans = await transaction.unsafe(
-        `SELECT id
-         FROM appbasis_training_plan
-         WHERE organization_id = $1
-           AND subject_id = $2
-         ORDER BY id ASC
-         FOR UPDATE`,
-        [organizationId, subjectId],
-      );
-      if (plans.length === 0) {
-        return Object.freeze({
-          deletedPlans: 0,
-          deletedRevisions: 0,
-          deletedItems: 0,
-        });
-      }
-
-      const planIds = plans.map((row) => requiredString(row.id, "plan id"));
-      const targets = JSON.stringify(planIds);
-      const deletedItems = await transaction.unsafe(
-        `WITH target AS (
-           SELECT value AS plan_id
-           FROM jsonb_array_elements_text($2::jsonb)
+      const completed = requiredLifecycleDate(completedAt);
+      await transaction.unsafe(
+        `INSERT INTO appbasis_training_plan_subject_deletion (
+           organization_id, subject_id, completed_at, purge_after
          )
-         DELETE FROM appbasis_training_plan_revision_item AS item
-         USING target
-         WHERE item.organization_id = $1
-           AND item.plan_id = target.plan_id
-         RETURNING item.plan_id`,
-        [organizationId, targets],
-      );
-      const deletedRevisions = await transaction.unsafe(
-        `WITH target AS (
-           SELECT value AS plan_id
-           FROM jsonb_array_elements_text($2::jsonb)
+         VALUES (
+           $1, $2, $3::timestamptz,
+           $3::timestamptz + interval '35 days'
          )
-         DELETE FROM appbasis_training_plan_revision AS revision
-         USING target
-         WHERE revision.organization_id = $1
-           AND revision.plan_id = target.plan_id
-         RETURNING revision.plan_id`,
-        [organizationId, targets],
+         ON CONFLICT (organization_id, subject_id) DO NOTHING`,
+        [organizationId, subjectId, completed.toISOString()],
       );
-      const deletedPlans = await transaction.unsafe(
-        `WITH target AS (
-           SELECT value AS plan_id
-           FROM jsonb_array_elements_text($2::jsonb)
-         )
-         DELETE FROM appbasis_training_plan AS plan
-         USING target
-         WHERE plan.organization_id = $1
-           AND plan.id = target.plan_id
-           AND plan.subject_id = $3
-         RETURNING plan.id`,
-        [organizationId, targets, subjectId],
-      );
-
-      if (deletedPlans.length !== planIds.length) {
-        throw new Error("Training plan subject deletion lost its locked plan scope.");
-      }
-
-      return Object.freeze({
-        deletedPlans: deletedPlans.length,
-        deletedRevisions: deletedRevisions.length,
-        deletedItems: deletedItems.length,
-      });
+      return deleteSubjectPlans(transaction, organizationId, subjectId);
     });
   }
+
+  async listCurrentDeletionMarkers(
+    now: Date,
+  ): Promise<readonly TrainingPlanSubjectDeletionMarker[]> {
+    const current = requiredLifecycleDate(now);
+    const rows = await this.#client.unsafe(
+      `SELECT organization_id,
+              subject_id,
+              completed_at,
+              purge_after
+       FROM appbasis_training_plan_subject_deletion
+       WHERE purge_after >= $1::timestamptz
+       ORDER BY organization_id ASC, subject_id ASC`,
+      [current.toISOString()],
+    );
+    return Object.freeze(rows.map(deletionMarkerFromRow));
+  }
+
+  async reconcileDeletionMarker(
+    marker: TrainingPlanSubjectDeletionMarker,
+  ): Promise<TrainingPlanDeletionReplayResult> {
+    const normalized = requiredDeletionMarker(marker);
+    return this.#client.begin(async (transaction) => {
+      await lockSubjectLifecycleScope(
+        transaction,
+        normalized.organizationId,
+        normalized.subjectId,
+      );
+      const existing = await transaction.unsafe(
+        `SELECT completed_at, purge_after
+         FROM appbasis_training_plan_subject_deletion
+         WHERE organization_id = $1
+           AND subject_id = $2
+         FOR UPDATE`,
+        [normalized.organizationId, normalized.subjectId],
+      );
+      if (existing.length > 1) {
+        throw new Error("Training plan deletion marker lookup returned multiple rows.");
+      }
+      let markerInserted = false;
+      if (existing.length === 0) {
+        const inserted = await transaction.unsafe(
+          `INSERT INTO appbasis_training_plan_subject_deletion (
+             organization_id, subject_id, completed_at, purge_after
+           )
+           VALUES ($1, $2, $3::timestamptz, $4::timestamptz)
+           RETURNING subject_id`,
+          [
+            normalized.organizationId,
+            normalized.subjectId,
+            normalized.completedAt.toISOString(),
+            normalized.purgeAfter.toISOString(),
+          ],
+        );
+        if (inserted.length !== 1) {
+          throw new Error("Training plan deletion marker replay insert failed.");
+        }
+        markerInserted = true;
+      } else {
+        const row = existing[0]!;
+        if (
+          requiredStoredDate(row.completed_at).getTime() !==
+            normalized.completedAt.getTime() ||
+          requiredStoredDate(row.purge_after).getTime() !==
+            normalized.purgeAfter.getTime()
+        ) {
+          throw new Error(
+            "Training plan deletion marker conflicts with existing state.",
+          );
+        }
+      }
+
+      const deleted = await deleteSubjectPlans(
+        transaction,
+        normalized.organizationId,
+        normalized.subjectId,
+      );
+      return Object.freeze({ markerInserted, ...deleted });
+    });
+  }
+
+  async purgeExpiredDeletionMarkers(now: Date): Promise<number> {
+    const current = requiredLifecycleDate(now);
+    const rows = await this.#client.unsafe(
+      `DELETE FROM appbasis_training_plan_subject_deletion
+       WHERE purge_after < $1::timestamptz
+       RETURNING subject_id`,
+      [current.toISOString()],
+    );
+    return rows.length;
+  }
+
+}
+
+async function hasSubjectDeletionMarker(
+  transaction: TrainingPlanPostgresQueryClient,
+  organizationId: string,
+  subjectId: string,
+): Promise<boolean> {
+  const rows = await transaction.unsafe(
+    `SELECT 1 AS present
+     FROM appbasis_training_plan_subject_deletion
+     WHERE organization_id = $1
+       AND subject_id = $2`,
+    [organizationId, subjectId],
+  );
+  if (rows.length > 1) {
+    throw new Error("Training plan deletion marker lookup returned multiple rows.");
+  }
+  return rows.length === 1;
+}
+
+async function deleteSubjectPlans(
+  transaction: TrainingPlanPostgresQueryClient,
+  organizationId: string,
+  subjectId: string,
+): Promise<TrainingPlanSubjectDeletionResult> {
+  const plans = await transaction.unsafe(
+    `SELECT id
+     FROM appbasis_training_plan
+     WHERE organization_id = $1
+       AND subject_id = $2
+     ORDER BY id ASC
+     FOR UPDATE`,
+    [organizationId, subjectId],
+  );
+  if (plans.length === 0) {
+    return Object.freeze({
+      deletedPlans: 0,
+      deletedRevisions: 0,
+      deletedItems: 0,
+    });
+  }
+
+  const planIds = plans.map((row) => requiredString(row.id, "plan id"));
+  const targets = JSON.stringify(planIds);
+  const deletedItems = await transaction.unsafe(
+    `WITH target AS (
+       SELECT value AS plan_id
+       FROM jsonb_array_elements_text($2::jsonb)
+     )
+     DELETE FROM appbasis_training_plan_revision_item AS item
+     USING target
+     WHERE item.organization_id = $1
+       AND item.plan_id = target.plan_id
+     RETURNING item.plan_id`,
+    [organizationId, targets],
+  );
+  const deletedRevisions = await transaction.unsafe(
+    `WITH target AS (
+       SELECT value AS plan_id
+       FROM jsonb_array_elements_text($2::jsonb)
+     )
+     DELETE FROM appbasis_training_plan_revision AS revision
+     USING target
+     WHERE revision.organization_id = $1
+       AND revision.plan_id = target.plan_id
+     RETURNING revision.plan_id`,
+    [organizationId, targets],
+  );
+  const deletedPlans = await transaction.unsafe(
+    `WITH target AS (
+       SELECT value AS plan_id
+       FROM jsonb_array_elements_text($2::jsonb)
+     )
+     DELETE FROM appbasis_training_plan AS plan
+     USING target
+     WHERE plan.organization_id = $1
+       AND plan.id = target.plan_id
+       AND plan.subject_id = $3
+     RETURNING plan.id`,
+    [organizationId, targets, subjectId],
+  );
+
+  if (deletedPlans.length !== planIds.length) {
+    throw new Error("Training plan subject deletion lost its locked plan scope.");
+  }
+  return Object.freeze({
+    deletedPlans: deletedPlans.length,
+    deletedRevisions: deletedRevisions.length,
+    deletedItems: deletedItems.length,
+  });
+}
+
+function deletionMarkerFromRow(
+  row: Record<string, unknown>,
+): TrainingPlanSubjectDeletionMarker {
+  return requiredDeletionMarker({
+    organizationId: requiredString(row.organization_id, "deletion organization id"),
+    subjectId: requiredString(row.subject_id, "deletion subject id"),
+    completedAt: requiredStoredDate(row.completed_at),
+    purgeAfter: requiredStoredDate(row.purge_after),
+  });
+}
+
+function requiredDeletionMarker(
+  marker: TrainingPlanSubjectDeletionMarker,
+): TrainingPlanSubjectDeletionMarker {
+  const organizationId = requiredString(
+    marker.organizationId,
+    "deletion organization id",
+  );
+  const subjectId = requiredString(marker.subjectId, "deletion subject id");
+  const completedAt = requiredLifecycleDate(marker.completedAt);
+  const purgeAfter = requiredLifecycleDate(marker.purgeAfter);
+  if (
+    purgeAfter.getTime() - completedAt.getTime() !==
+    35 * 24 * 60 * 60 * 1000
+  ) {
+    throw new Error("Training plan deletion marker retention is invalid.");
+  }
+  return Object.freeze({
+    organizationId,
+    subjectId,
+    completedAt,
+    purgeAfter,
+  });
+}
+
+function requiredLifecycleDate(value: Date): Date {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new Error("Training plan lifecycle clock is invalid.");
+  }
+  return new Date(value.getTime());
+}
+
+function requiredStoredDate(value: unknown): Date {
+  const date =
+    value instanceof Date
+      ? new Date(value.getTime())
+      : typeof value === "string"
+        ? new Date(value)
+        : null;
+  if (date === null || !Number.isFinite(date.getTime())) {
+    throw new Error("Training plan lifecycle timestamp is invalid.");
+  }
+  return date;
 }
 
 async function lockSubjectLifecycleScope(
