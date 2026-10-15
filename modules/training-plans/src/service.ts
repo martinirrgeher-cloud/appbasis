@@ -94,6 +94,16 @@ export class TrainingPlanGeneratedIdConflictError extends Error {
   }
 }
 
+export class TrainingPlanSubjectDeletedError extends Error {
+  readonly subjectId: string;
+
+  constructor(subjectId: string) {
+    super(`Training plan subject ${subjectId} is lifecycle-deleted.`);
+    this.name = "TrainingPlanSubjectDeletedError";
+    this.subjectId = subjectId;
+  }
+}
+
 export class TrainingPlanService {
   readonly #repository: TrainingPlanRepository;
   readonly #createId: () => string;
@@ -441,6 +451,9 @@ export class TrainingPlanService {
     }
     if (result.status === "id-conflict") {
       throw new TrainingPlanGeneratedIdConflictError(planId);
+    }
+    if (result.status === "subject-deleted") {
+      throw new TrainingPlanSubjectDeletedError(draft.subjectId);
     }
     return this.#assertPlan(result.plan, organization, planId);
   }
