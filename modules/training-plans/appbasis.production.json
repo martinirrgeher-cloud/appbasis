@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "moduleId": "training-plans",
-  "status": "blocked",
+  "status": "ready",
   "requirements": {
     "authorization": "verified",
     "database": "verified",
-    "lifecycle": "blocked"
+    "lifecycle": "verified"
   },
   "evidence": {
     "authorization": [
@@ -28,9 +28,24 @@
         "gitBlobSha": "30eb703b4a966fa17e8ce64e9595cf8dc0d3c956"
       }
     ],
-    "lifecycle": []
+    "lifecycle": [
+      {
+        "path": "modules/training-plans/src/lifecycle.ts",
+        "gitBlobSha": "76c427b2b9449c8875b936d2e2d77439875bc249"
+      },
+      {
+        "path": "modules/training-plans/src/postgres-repository.ts",
+        "gitBlobSha": "ae4000ae736c946ef5e703eea600f5e681fdfe14"
+      },
+      {
+        "path": "modules/training-plans/test/lifecycle.test.ts",
+        "gitBlobSha": "c77b39ba460952779eb78f71a384614ef8c10037"
+      },
+      {
+        "path": "modules/training-plans/test/postgres-repository.postgres.e2e.ts",
+        "gitBlobSha": "98c9562c5734cc6a6550644c0fd78bf90f2c2f01"
+      }
+    ]
   },
-  "blockers": [
-    "Training-plan subject, revision, note and comment lifecycle is not yet production-verified."
-  ]
+  "blockers": []
 }
