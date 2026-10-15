@@ -7,6 +7,7 @@ import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning
 import {
   PostgresTrainingPlanRepository,
   TrainingPlanConflictError,
+  TrainingPlanLifecycleService,
   TrainingPlanService,
   TrainingPlanTargetOccupiedError,
   type TrainingPlanPostgresClient,
@@ -288,6 +289,116 @@ describe("training-plans PostgreSQL repository", () => {
       await leftConnection.client.end();
       await rightConnection.client.end();
     }
+  });
+
+  it("purges one subject with all historical revisions without crossing organization scope", async () => {
+    const repository = new PostgresTrainingPlanRepository(
+      postgresClient(requiredConnection().client),
+    );
+    const plans = new TrainingPlanService({
+      repository,
+      createId: (() => {
+        const ids = [
+          "delete-plan-1",
+          "delete-block",
+          "delete-child",
+          "delete-standalone",
+          "delete-plan-2",
+          "delete-day-2",
+          "keep-plan",
+          "other-org-plan",
+        ];
+        let index = 0;
+        return () => ids[index++] ?? `delete-generated-${index}`;
+      })(),
+      now: () => new Date("2026-10-15T10:00:00.000Z"),
+    });
+    const lifecycle = new TrainingPlanLifecycleService({ repository });
+
+    await plans.create("org-delete", {
+      subjectId: "athlete-delete",
+      planDate: "2026-10-12",
+      items: [
+        {
+          kind: "block",
+          name: "Block",
+          exercises: [{ name: "Child", comment: "Sensitive note" }],
+        },
+      ],
+    });
+    await plans.update("org-delete", "delete-plan-1", 1, {
+      note: "Historical note",
+      items: [
+        {
+          kind: "block",
+          itemId: "delete-block",
+          name: "Block",
+          exercises: [
+            {
+              itemId: "delete-child",
+              name: "Child",
+              comment: "Changed note",
+            },
+          ],
+        },
+        {
+          kind: "exercise",
+          name: "Standalone",
+          comment: "Another note",
+        },
+      ],
+    });
+    await plans.create("org-delete", {
+      subjectId: "athlete-delete",
+      planDate: "2026-10-13",
+      items: [{ kind: "exercise", name: "Second day" }],
+    });
+    await plans.create("org-delete", {
+      subjectId: "athlete-keep",
+      planDate: "2026-10-12",
+    });
+    await plans.create("org-other", {
+      subjectId: "athlete-delete",
+      planDate: "2026-10-12",
+    });
+
+    await expect(
+      lifecycle.deleteSubjectData("org-delete", "athlete-delete"),
+    ).resolves.toEqual({
+      deletedPlans: 2,
+      deletedRevisions: 3,
+      deletedItems: 6,
+    });
+
+    await expect(
+      plans.listForSubjectDateRange(
+        "org-delete",
+        "athlete-delete",
+        "2026-10-01",
+        "2026-10-31",
+      ),
+    ).resolves.toEqual([]);
+    await expect(
+      plans.findCurrent("org-delete", "keep-plan"),
+    ).resolves.toBeDefined();
+    await expect(
+      plans.findCurrent("org-other", "other-org-plan"),
+    ).resolves.toBeDefined();
+
+    const revisionRows = await requiredConnection().client.unsafe(
+      `SELECT plan_id
+       FROM appbasis_training_plan_revision
+       WHERE organization_id = 'org-delete'
+         AND plan_id IN ('delete-plan-1', 'delete-plan-2')`,
+    );
+    const itemRows = await requiredConnection().client.unsafe(
+      `SELECT plan_id
+       FROM appbasis_training_plan_revision_item
+       WHERE organization_id = 'org-delete'
+         AND plan_id IN ('delete-plan-1', 'delete-plan-2')`,
+    );
+    expect(revisionRows).toEqual([]);
+    expect(itemRows).toEqual([]);
   });
 
   it("enforces block-only parent rows in PostgreSQL", async () => {
