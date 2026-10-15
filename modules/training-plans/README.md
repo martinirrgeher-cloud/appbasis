@@ -51,6 +51,8 @@ The standard module now exposes a separate privileged
 `TrainingPlanLifecycleService` for subject-owned plan data:
 
 - authorization and retention timing remain application-owned;
+- the consuming app must make the subject non-writable before purge; module
+  locking serializes in-flight writes but does not own subject activation state;
 - the lifecycle boundary accepts only organization + opaque subject id;
 - deletion is physical and removes every plan, immutable revision and revision
   item for that subject inside exactly one organization;
