@@ -9,6 +9,42 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
+**ULC-E7B5 – Anwesenheitsanzeige und Filter in der Trainingsplanung.**
+
+Nach Abschluss des `training-plans`-Production-Lifecycle-Slices geht die
+fachliche Trainingsplanung weiter. Dieser Slice bleibt bewusst read-only in
+Bezug auf Anwesenheit: Die Trainingsplanung zeigt die bereits im
+`ulc_linz_training_attendance`-Owner vorhandenen Statuswerte an, ändert sie
+aber nicht.
+
+Abnahme für diesen Slice:
+
+- der bestehende ULC-Training-Session-Owner liefert eine organisations- und
+  athletengebundene Attendance-Leseabfrage für einen Datumsbereich;
+- nur nicht abgesagte Trainingseinheiten werden in der Trainingsplanung als
+  Anwesenheit gewertet;
+- der Wochenendpunkt der Trainingsplanung liefert neben den Plänen die
+  Anwesenheitsdaten des ausgewählten aktiven Athleten für exakt dieselbe Woche;
+- der Browser akzeptiert nur den neuen expliziten Attendance-Responsevertrag
+  und behält Organisationsscope ausschließlich serverseitig;
+- jeder Tag zeigt vorhandene Statuswerte kompakt an;
+- ein Filter bietet `Alle`, `Anwesend`, `Entschuldigt`, `Abwesend`,
+  `Offen` und `Kein Eintrag`;
+- bei mehreren Einheiten an einem Tag matcht ein Statusfilter, sobald mindestens
+  eine der Einheiten den gewählten Status besitzt;
+- der Filter verändert weder Planinhalt noch Attendance und löst keine
+  zusätzlichen Schreiboperationen aus;
+- bestehender Wocheneditor, Autosave und Optimistic Concurrency bleiben
+  unverändert;
+- keine Datenbankmigration, kein Preview-/Production-Deploy und kein
+  Provider-/Produktionswrite in diesem Slice.
+
+Für diesen normalen Produktslice gilt weiter `Codex sparsam`: CI und gezielte
+Tests sind die primäre Abnahme; ein Codex-Review ist nur bei einem echten
+Security-/Architektur-Finding notwendig.
+
+## Abgeschlossener Gate-Scope: `training-plans` Production-Lifecycle
+
 **AppFactory / ULC – `training-plans` Production-Lifecycle als erster
 modulbezogener Folgeslice nach dem Composition-Gate.**
 
