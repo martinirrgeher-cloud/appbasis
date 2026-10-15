@@ -493,6 +493,8 @@ async function bootstrapTrainingPlans() {
     trainingPlansReady = false;
     trainingPlansCanEdit = false;
     trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
     renderTrainingPlanSubjects();
     renderTrainingPlanWeek();
     showMessage(
@@ -511,7 +513,7 @@ function prepareTrainingPlansView() {
   renderTrainingPlanWeek();
   if (
     trainingPlanSelectedSubjectId &&
-    trainingPlanWeekPlans.length === 0 &&
+    !trainingPlanWeekLoaded &&
     !trainingPlanWeekLoading
   ) {
     void loadTrainingPlanWeek();
