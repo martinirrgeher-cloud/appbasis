@@ -2,11 +2,12 @@
 
 AppBasis standard module for athlete/day training plans.
 
-E7B1 established the reusable planning contract. E7B2 adds the standard
+E7B1 established the reusable planning contract and E7B2 added the standard
 repository/service layer with PostgreSQL persistence, immutable revisions,
 optimistic concurrency, subject/date-range reads and protected independent
-copies. ULC adoption, attendance presentation, week UI and preview deployment
-remain later slices.
+copies. ULC adoption and the first week/autosave UI are already implemented.
+Attendance presentation/filtering and block-template integration remain later
+product slices; production lifecycle activation remains application-owned.
 
 ## Contract
 
