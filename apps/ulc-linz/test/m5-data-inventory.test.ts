@@ -227,10 +227,13 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "training-plans",
       ),
     ).toMatchObject({
-      schemaVersion: 1,
-      lifecycleStatus: "training-plan-data-lifecycle-pending",
+      schemaVersion: 2,
+      lifecycleStatus:
+        "subject-deletion-marker-repository-verified-app-activation-pending",
       notes: expect.arrayContaining([
-        "training-plan-subject-and-revision-lifecycle-pending",
+        "training-plan-subject-revision-and-item-purge-repository-verified",
+        "training-plan-deletion-marker-retention-35-days",
+        "training-plan-restore-reconciliation-repository-verified",
         "training-plan-notes-and-comments-may-contain-user-entered-content",
         "preview-and-production-lifecycle-activation-not-authorized",
       ]),
@@ -278,7 +281,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(51);
+    expect(inventory.persistentTables).toHaveLength(52);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -286,6 +289,19 @@ describe("ULC Linz M5 C/D data inventory", () => {
       expect(table.deletionEvidence).not.toBe("open");
       expect(table.retentionEvidence).not.toBe("open");
     }
+
+    expect(
+      inventory.persistentTables.find(
+        (table) =>
+          table.owner === "training-plans" &&
+          table.id === "appbasis_training_plan_subject_deletion",
+      ),
+    ).toMatchObject({
+      privacyClass: "minimal-delete-reconciliation-state",
+      retentionPolicy: "35-days-after-subject-deletion",
+      deletionEvidence: "repository-verified-production-activation-pending",
+      retentionEvidence: "repository-verified-production-activation-pending",
+    });
 
     expect(
       inventory.persistentTables.find((table) => table.id === "appbasis_athlete"),
