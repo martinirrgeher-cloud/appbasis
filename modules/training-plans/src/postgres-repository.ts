@@ -384,7 +384,7 @@ export class PostgresTrainingPlanRepository
          )
          VALUES (
            $1, $2, $3::timestamptz,
-           $3::timestamptz + interval '35 days'
+           $3::timestamptz + interval '840 hours'
          )
          ON CONFLICT (organization_id, subject_id) DO NOTHING`,
         [organizationId, subjectId, completed.toISOString()],
