@@ -100,6 +100,11 @@ export class PostgresTrainingPlanRepository
   async create(plan: TrainingPlanSnapshot): Promise<TrainingPlanCreateResult> {
     assertTrainingPlanCreationInvariant(plan);
     return this.#client.begin(async (transaction) => {
+      await lockSubjectLifecycleScope(
+        transaction,
+        plan.organizationId,
+        plan.subjectId,
+      );
       const rows = await transaction.unsafe(
         `INSERT INTO appbasis_training_plan (
            id, organization_id, subject_id, plan_date,
@@ -161,6 +166,29 @@ export class PostgresTrainingPlanRepository
     revision: TrainingPlanRevision,
   ): Promise<TrainingPlanRevisionAppendResult> {
     return this.#client.begin(async (transaction) => {
+      const subjectRows = await transaction.unsafe(
+        `SELECT subject_id
+         FROM appbasis_training_plan
+         WHERE organization_id = $1
+           AND id = $2`,
+        [organizationId, planId],
+      );
+      if (subjectRows.length === 0) {
+        return Object.freeze({ status: "not-found" as const });
+      }
+      if (subjectRows.length !== 1) {
+        throw new Error("Training plan subject lookup returned multiple rows.");
+      }
+      const lockedSubjectId = requiredString(
+        subjectRows[0]!.subject_id,
+        "subject id",
+      );
+      await lockSubjectLifecycleScope(
+        transaction,
+        organizationId,
+        lockedSubjectId,
+      );
+
       const rows = await transaction.unsafe(
         `SELECT subject_id,
                 to_char(plan_date, 'YYYY-MM-DD') AS plan_date,
@@ -180,6 +208,9 @@ export class PostgresTrainingPlanRepository
       }
 
       const row = rows[0]!;
+      if (requiredString(row.subject_id, "subject id") !== lockedSubjectId) {
+        throw new Error("Training plan subject changed during lifecycle locking.");
+      }
       const currentRevision = requiredInteger(
         row.current_revision,
         "current revision",
@@ -320,8 +351,10 @@ export class PostgresTrainingPlanRepository
     subjectId: string,
   ): Promise<TrainingPlanSubjectDeletionResult> {
     return this.#client.begin(async (transaction) => {
-      await transaction.unsafe(
-        "LOCK TABLE appbasis_training_plan IN SHARE ROW EXCLUSIVE MODE",
+      await lockSubjectLifecycleScope(
+        transaction,
+        organizationId,
+        subjectId,
       );
       const plans = await transaction.unsafe(
         `SELECT id
@@ -391,6 +424,17 @@ export class PostgresTrainingPlanRepository
       });
     });
   }
+}
+
+async function lockSubjectLifecycleScope(
+  transaction: TrainingPlanPostgresQueryClient,
+  organizationId: string,
+  subjectId: string,
+): Promise<void> {
+  await transaction.unsafe(
+    "SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1, 0::bigint))",
+    [JSON.stringify([organizationId, subjectId])],
+  );
 }
 
 async function readCurrentPlans(
