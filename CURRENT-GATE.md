@@ -26,13 +26,15 @@ Abnahme für diesen Slice:
 - gelöscht werden Planidentitäten, sämtliche unveränderlichen Revisionen und
   alle darin enthaltenen Items/Notizen/Kommentare; der Vorgang ist idempotent
   und liefert explizite Löschzählungen;
-- Autorisierung, Löschentscheidung und Retention-Zeitpunkt bleiben beim
-  konsumierenden App-Lifecycle. Dieser muss das Subject vor dem Purge
-  nicht-beschreibbar machen; das Standardmodul erfindet keine ULC-spezifische
-  Aufbewahrungsfrist;
-- PostgreSQL verwendet für Create/Update/Purge dieselbe subject-gebundene
-  Transaktionssperre und serialisiert damit bereits laufende Plan-Writes. Es
-  entsteht kein Cross-Owner-Foreign-Key und keine neue Datenbankmigration;
+- Autorisierung und Löschentscheidung bleiben beim konsumierenden App-Lifecycle.
+  Das Standardmodul persistiert zusätzlich einen minimalen Subject-Löschmarker
+  für das etablierte 35-Tage-Restore-Reconciliation-Fenster;
+- Create/Update/Purge verwenden dieselbe subject-gebundene PostgreSQL-
+  Transaktionssperre. Ein bereits autorisierter, aber erst nach dem Purge
+  fortgesetzter Create sieht den Marker und failt geschlossen statt Daten
+  wiederherzustellen;
+- Schema v2 ergänzt dafür genau eine modul-eigene additive Marker-Migration;
+  es entsteht kein Cross-Owner-Foreign-Key;
 - der normale `training-plans`-HTTP-/Edit-Pfad exponiert die Lifecycle-
   Operation nicht;
 - In-Memory- und PostgreSQL-Evidence müssen Organisationsgrenze, historische
@@ -45,8 +47,9 @@ Abnahme für diesen Slice:
   ausdrücklich `blocked`; insbesondere Training-Session/Attendance,
   Training-Blocks, Exercise-Catalog sowie app-eigener Lifecycle/Privacy bleiben
   getrennte Folgeslices;
-- dieser Repository-Slice führt keine Preview-/Production-Migration, kein
-  Deployment und keinen Provider-/Produktionswrite aus.
+- dieser Repository-Slice veröffentlicht die additive Schema-v2-Migration nur
+  im Repository; er führt keine Preview-/Production-Migration, kein Deployment
+  und keinen Provider-/Produktionswrite aus.
 
 Wegen der Lifecycle-/Privacy-Relevanz gilt nach vollständiger Exact-Head-CI eine
 ChatGPT-Folgepfadprüfung und anschließend genau ein finaler Exact-Head-Codex-
