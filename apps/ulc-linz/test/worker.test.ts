@@ -461,6 +461,9 @@ function runtime(
       async listForSubjectDateRange() {
         return [];
       },
+      async listAttendanceForSubjectDateRange() {
+        return [];
+      },
       async findCurrent() {
         return undefined;
       },
