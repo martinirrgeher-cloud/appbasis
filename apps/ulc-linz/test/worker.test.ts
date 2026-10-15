@@ -4598,6 +4598,8 @@ describe("U12 runtime API", () => {
           weekView: true,
           autosave: true,
           optimisticConcurrency: true,
+          attendanceSummary: true,
+          attendanceFilter: true,
         },
       },
       access: { view: true, edit: true },
@@ -4605,8 +4607,9 @@ describe("U12 runtime API", () => {
     });
   });
 
-  it("loads exactly one Monday-based E7B4 week without accepting client organization scope", async () => {
+  it("loads one E7B5 week with read-only attendance in server-owned scope", async () => {
     let received: unknown = null;
+    let attendanceReceived: unknown = null;
     const base = runtime();
     const snapshot = {
       id: "plan-1",
@@ -4671,6 +4674,26 @@ describe("U12 runtime API", () => {
           received = { organizationId, subjectId, fromDate, toDate };
           return [snapshot];
         },
+        async listAttendanceForSubjectDateRange(
+          organizationId,
+          subjectId,
+          fromDate,
+          toDate,
+        ) {
+          attendanceReceived = {
+            organizationId,
+            subjectId,
+            fromDate,
+            toDate,
+          };
+          return [
+            {
+              sessionId: "session-1",
+              sessionDate: "2026-10-14",
+              status: "present" as const,
+            },
+          ];
+        },
       },
     }));
 
@@ -4688,6 +4711,12 @@ describe("U12 runtime API", () => {
       fromDate: "2026-10-12",
       toDate: "2026-10-18",
     });
+    expect(attendanceReceived).toEqual({
+      organizationId: "verein-server",
+      subjectId: "athlete-1",
+      fromDate: "2026-10-12",
+      toDate: "2026-10-18",
+    });
     const payload = await response.json();
     expect(payload).toMatchObject({
       subjectId: "athlete-1",
@@ -4699,6 +4728,13 @@ describe("U12 runtime API", () => {
           subjectId: "athlete-1",
           planDate: "2026-10-14",
           currentRevision: 1,
+        },
+      ],
+      attendance: [
+        {
+          sessionId: "session-1",
+          sessionDate: "2026-10-14",
+          status: "present",
         },
       ],
     });
