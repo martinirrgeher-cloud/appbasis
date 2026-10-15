@@ -94,13 +94,16 @@
     },
     {
       "id": "training-plans",
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "migrations": [
-        "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql"
+        "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql",
+        "modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql"
       ],
-      "lifecycleStatus": "training-plan-data-lifecycle-pending",
+      "lifecycleStatus": "subject-deletion-marker-repository-verified-app-activation-pending",
       "notes": [
-        "training-plan-subject-and-revision-lifecycle-pending",
+        "training-plan-subject-revision-and-item-purge-repository-verified",
+        "training-plan-deletion-marker-retention-35-days",
+        "training-plan-restore-reconciliation-repository-verified",
         "training-plan-notes-and-comments-may-contain-user-entered-content",
         "preview-and-production-lifecycle-activation-not-authorized"
       ]
@@ -548,6 +551,14 @@
       "retentionPolicy": "pending-training-data-lifecycle-contract",
       "deletionEvidence": "fail-closed-pending-lifecycle",
       "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_training_plan_subject_deletion",
+      "owner": "training-plans",
+      "privacyClass": "minimal-delete-reconciliation-state",
+      "retentionPolicy": "35-days-after-subject-deletion",
+      "deletionEvidence": "repository-verified-production-activation-pending",
+      "retentionEvidence": "repository-verified-production-activation-pending"
     }
   ],
   "runtimeModules": [

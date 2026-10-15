@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "moduleId": "training-plans",
-  "status": "blocked",
+  "status": "ready",
   "requirements": {
     "authorization": "verified",
     "database": "verified",
-    "lifecycle": "blocked"
+    "lifecycle": "verified"
   },
   "evidence": {
     "authorization": [
@@ -24,13 +24,36 @@
         "gitBlobSha": "d20b019ada93f622d3123dba3b9315c7b3e25170"
       },
       {
+        "path": "modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql",
+        "gitBlobSha": "428f70b44462df10adf97030d3737ddc8553dfb4"
+      },
+      {
         "path": "modules/training-plans/test/postgres-repository.postgres.e2e.ts",
-        "gitBlobSha": "30eb703b4a966fa17e8ce64e9595cf8dc0d3c956"
+        "gitBlobSha": "de537b0f025efcd0aa7fa648e5335303e8e19672"
       }
     ],
-    "lifecycle": []
+    "lifecycle": [
+      {
+        "path": "modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql",
+        "gitBlobSha": "428f70b44462df10adf97030d3737ddc8553dfb4"
+      },
+      {
+        "path": "modules/training-plans/src/lifecycle.ts",
+        "gitBlobSha": "5ff8babcc6d27f7f2cec4669f7febc3d26fd4ab0"
+      },
+      {
+        "path": "modules/training-plans/src/postgres-repository.ts",
+        "gitBlobSha": "ecb656956f1eb1e1d7050b27abe9828b40db2a74"
+      },
+      {
+        "path": "modules/training-plans/test/lifecycle.test.ts",
+        "gitBlobSha": "2ee35b3396ba6b283ac3361e3ce88fa0b1853c3b"
+      },
+      {
+        "path": "modules/training-plans/test/postgres-repository.postgres.e2e.ts",
+        "gitBlobSha": "de537b0f025efcd0aa7fa648e5335303e8e19672"
+      }
+    ]
   },
-  "blockers": [
-    "Training-plan subject, revision, note and comment lifecycle is not yet production-verified."
-  ]
+  "blockers": []
 }

@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-14
+Stand: 2026-10-15
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -8,6 +8,54 @@ Volatile PR-, CI-, Review- und Branch-Zustände werden ausschließlich live aus
 GitHub abgeleitet.
 
 ## Aktuelles Ziel
+
+**AppFactory / ULC – `training-plans` Production-Lifecycle als erster
+modulbezogener Folgeslice nach dem Composition-Gate.**
+
+Das modulare Production Composition Gate ist jetzt die verbindliche
+Architekturgrundlage. Der unmittelbar folgende Slice schließt bewusst nur die
+modul-lokale Lifecycle-Lücke von `training-plans`; die ULC-App selbst bleibt
+weiter fail-closed, bis auch die übrigen ausgewählten Modul- und app-eigenen
+Lifecycle-/Privacy-Anforderungen belegt sind.
+
+Abnahme für diesen Slice:
+
+- `training-plans` erhält eine getrennte privilegierte Lifecycle-Grenze für
+  die physische Löschung aller Pläne eines Subjects innerhalb exakt einer
+  Organisation;
+- gelöscht werden Planidentitäten, sämtliche unveränderlichen Revisionen und
+  alle darin enthaltenen Items/Notizen/Kommentare; der Vorgang ist idempotent
+  und liefert explizite Löschzählungen;
+- Autorisierung und Löschentscheidung bleiben beim konsumierenden App-Lifecycle.
+  Das Standardmodul persistiert zusätzlich einen minimalen Subject-Löschmarker
+  für das etablierte 35-Tage-Restore-Reconciliation-Fenster;
+- Create/Update/Purge verwenden dieselbe subject-gebundene PostgreSQL-
+  Transaktionssperre. Ein bereits autorisierter, aber erst nach dem Purge
+  fortgesetzter Create sieht den Marker und failt geschlossen statt Daten
+  wiederherzustellen;
+- Schema v2 ergänzt dafür genau eine modul-eigene additive Marker-Migration;
+  es entsteht kein Cross-Owner-Foreign-Key;
+- der normale `training-plans`-HTTP-/Edit-Pfad exponiert die Lifecycle-
+  Operation nicht;
+- In-Memory- und PostgreSQL-Evidence müssen Organisationsgrenze, historische
+  Revisionen, personenbezogene Freitexte, Idempotenz und Nicht-Betroffenheit
+  anderer Subjects/Organisationen beweisen;
+- erst mit hash-gepinnter Evidence darf der Modulvertrag
+  `modules/training-plans/appbasis.production.json` für `lifecycle` auf
+  `verified` und der Modulstatus auf `ready` wechseln;
+- `apps/ulc-linz/appbasis.production.json` bleibt in diesem Slice
+  ausdrücklich `blocked`; insbesondere Training-Session/Attendance,
+  Training-Blocks, Exercise-Catalog sowie app-eigener Lifecycle/Privacy bleiben
+  getrennte Folgeslices;
+- dieser Repository-Slice veröffentlicht die additive Schema-v2-Migration nur
+  im Repository; er führt keine Preview-/Production-Migration, kein Deployment
+  und keinen Provider-/Produktionswrite aus.
+
+Wegen der Lifecycle-/Privacy-Relevanz gilt nach vollständiger Exact-Head-CI eine
+ChatGPT-Folgepfadprüfung und anschließend genau ein finaler Exact-Head-Codex-
+Review vor Merge.
+
+## Abgeschlossener Gate-Scope: modulares Production Composition Gate
 
 **AppFactory / ULC-M6 – modulares Production Composition Gate für die laufende Produktions-Revalidierung.**
 

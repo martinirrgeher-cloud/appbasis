@@ -2,6 +2,7 @@ import {
   TRAINING_PLAN_CAPABILITIES,
   TrainingPlanConflictError,
   TrainingPlanGeneratedIdConflictError,
+  TrainingPlanSubjectDeletedError,
   TrainingPlanTargetOccupiedError,
   TrainingPlanValidationError,
   normalizeTrainingPlanDate,
@@ -584,6 +585,17 @@ function trainingPlanErrorResponse(error: unknown): Response {
         error: {
           code: "TRAINING_PLAN_ID_CONFLICT",
           message: "The generated training plan id is already in use.",
+        },
+      },
+      { status: 409 },
+    );
+  }
+  if (error instanceof TrainingPlanSubjectDeletedError) {
+    return Response.json(
+      {
+        error: {
+          code: "TRAINING_PLAN_SUBJECT_DELETED",
+          message: "This training plan subject is no longer writable.",
         },
       },
       { status: 409 },

@@ -310,8 +310,8 @@ async function applyManifestMigrations(
     "ulc-linz-lifecycle",
   ]);
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 24 || new Set(migrations).size !== migrations.length) {
-    throw new Error("ULC M5-E PostgreSQL E2E requires the exact 24-migration owner set.");
+  if (migrations.length !== 25 || new Set(migrations).size !== migrations.length) {
+    throw new Error("ULC M5-E PostgreSQL E2E requires the exact 25-migration owner set.");
   }
   for (const migration of migrations) {
     const sql = await readFile(new URL(`../../../${migration}`, import.meta.url), "utf8");

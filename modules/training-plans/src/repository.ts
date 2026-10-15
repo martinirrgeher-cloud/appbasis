@@ -54,12 +54,46 @@ export type TrainingPlanCreateResult =
       planId: string;
       currentRevision: number;
     }>
-  | Readonly<{ status: "id-conflict" }>;
+  | Readonly<{ status: "id-conflict" }>
+  | Readonly<{ status: "subject-deleted" }>;
 
 export type TrainingPlanRevisionAppendResult =
   | Readonly<{ status: "updated"; plan: TrainingPlanSnapshot }>
   | Readonly<{ status: "not-found" }>
   | Readonly<{ status: "conflict"; currentRevision: number }>;
+
+export interface TrainingPlanSubjectDeletionResult {
+  readonly deletedPlans: number;
+  readonly deletedRevisions: number;
+  readonly deletedItems: number;
+}
+
+export interface TrainingPlanSubjectDeletionMarker {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly completedAt: Date;
+  readonly purgeAfter: Date;
+}
+
+export interface TrainingPlanDeletionReplayResult
+  extends TrainingPlanSubjectDeletionResult {
+  readonly markerInserted: boolean;
+}
+
+export interface TrainingPlanLifecycleRepository {
+  deleteSubjectData(
+    organizationId: string,
+    subjectId: string,
+    completedAt: Date,
+  ): Promise<TrainingPlanSubjectDeletionResult>;
+  listCurrentDeletionMarkers(
+    now: Date,
+  ): Promise<readonly TrainingPlanSubjectDeletionMarker[]>;
+  reconcileDeletionMarker(
+    marker: TrainingPlanSubjectDeletionMarker,
+  ): Promise<TrainingPlanDeletionReplayResult>;
+  purgeExpiredDeletionMarkers(now: Date): Promise<number>;
+}
 
 export interface TrainingPlanRepository {
   listCurrentBySubjectDateRange(
