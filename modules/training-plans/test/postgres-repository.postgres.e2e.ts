@@ -421,36 +421,92 @@ describe("training-plans PostgreSQL repository", () => {
     ).toBe(35 * 24 * 60 * 60 * 1000);
   });
 
-  it("never lets a create queued around purge resurrect the subject", async () => {
+  it("never lets a create queued behind purge resurrect the subject", async () => {
     const createConnection = createPostgresDatabase(isolatedDatabaseUrl);
     const lifecycleConnection = createPostgresDatabase(isolatedDatabaseUrl);
+
+    let signalPurgeLock!: () => void;
+    const purgeLockAcquired = new Promise<void>((resolve) => {
+      signalPurgeLock = resolve;
+    });
+    let releasePurge!: () => void;
+    const purgeMayContinue = new Promise<void>((resolve) => {
+      releasePurge = resolve;
+    });
+    let signalCreateLockAttempt!: () => void;
+    const createLockAttempted = new Promise<void>((resolve) => {
+      signalCreateLockAttempt = resolve;
+    });
+
     try {
-      const creator = serviceFor(createConnection, ["queued-create-plan"]);
-      const lifecycleRepository = new PostgresTrainingPlanRepository(
-        postgresClient(lifecycleConnection.client),
-      );
+      const lifecycleRepository = new PostgresTrainingPlanRepository({
+        unsafe(query, parameters) {
+          return lifecycleConnection.client.unsafe(query, parameters);
+        },
+        async begin(callback) {
+          return lifecycleConnection.client.begin(async (transaction) =>
+            callback({
+              async unsafe(query, parameters) {
+                const rows = await transaction.unsafe(query, parameters);
+                if (query.includes("pg_catalog.pg_advisory_xact_lock")) {
+                  signalPurgeLock();
+                  await purgeMayContinue;
+                }
+                return rows;
+              },
+            }),
+          );
+        },
+      });
+      const creatorRepository = new PostgresTrainingPlanRepository({
+        unsafe(query, parameters) {
+          return createConnection.client.unsafe(query, parameters);
+        },
+        async begin(callback) {
+          return createConnection.client.begin(async (transaction) =>
+            callback({
+              unsafe(query, parameters) {
+                if (query.includes("pg_catalog.pg_advisory_xact_lock")) {
+                  signalCreateLockAttempt();
+                }
+                return transaction.unsafe(query, parameters);
+              },
+            }),
+          );
+        },
+      });
+      const creator = new TrainingPlanService({
+        repository: creatorRepository,
+        createId: () => "queued-create-plan",
+        now: () => new Date("2026-10-15T09:59:59.000Z"),
+      });
       const lifecycle = new TrainingPlanLifecycleService({
         repository: lifecycleRepository,
         now: () => new Date("2026-10-15T10:00:00.000Z"),
       });
 
-      const [deleteResult, createResult] = await Promise.allSettled([
-        lifecycle.deleteSubjectData(
-          "org-queued-create",
-          "athlete-queued-create",
-        ),
-        creator.create("org-queued-create", {
-          subjectId: "athlete-queued-create",
-          planDate: "2026-10-12",
-        }),
-      ]);
+      const deletePromise = lifecycle.deleteSubjectData(
+        "org-queued-create",
+        "athlete-queued-create",
+      );
+      await purgeLockAcquired;
 
-      expect(deleteResult.status).toBe("fulfilled");
-      if (createResult.status === "rejected") {
-        expect(createResult.reason).toBeInstanceOf(
-          TrainingPlanSubjectDeletedError,
-        );
-      }
+      const createPromise = creator.create("org-queued-create", {
+        subjectId: "athlete-queued-create",
+        planDate: "2026-10-12",
+      });
+      await createLockAttempted;
+      releasePurge();
+
+      await expect(deletePromise).resolves.toEqual({
+        deletedPlans: 0,
+        deletedRevisions: 0,
+        deletedItems: 0,
+      });
+      await expect(createPromise).rejects.toBeInstanceOf(
+        TrainingPlanSubjectDeletedError,
+      );
+
       const verifier = serviceFor(requiredConnection(), []);
       await expect(
         verifier.listForSubjectDateRange(
@@ -461,6 +517,7 @@ describe("training-plans PostgreSQL repository", () => {
         ),
       ).resolves.toEqual([]);
     } finally {
+      releasePurge?.();
       await createConnection.client.end();
       await lifecycleConnection.client.end();
     }
