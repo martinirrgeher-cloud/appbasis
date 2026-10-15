@@ -61,6 +61,19 @@ export type TrainingPlanRevisionAppendResult =
   | Readonly<{ status: "not-found" }>
   | Readonly<{ status: "conflict"; currentRevision: number }>;
 
+export interface TrainingPlanSubjectDeletionResult {
+  readonly deletedPlans: number;
+  readonly deletedRevisions: number;
+  readonly deletedItems: number;
+}
+
+export interface TrainingPlanLifecycleRepository {
+  deleteSubjectData(
+    organizationId: string,
+    subjectId: string,
+  ): Promise<TrainingPlanSubjectDeletionResult>;
+}
+
 export interface TrainingPlanRepository {
   listCurrentBySubjectDateRange(
     organizationId: string,
