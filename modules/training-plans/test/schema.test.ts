@@ -10,6 +10,14 @@ const migration = readFileSync(
   "utf8",
 );
 
+const lifecycleMigration = readFileSync(
+  new URL(
+    "../migrations/0001_appbasis_training_plan_subject_deletion.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
 describe("training-plans schema", () => {
   it("pins one plan per subject and day with revision-ready history", () => {
     expect(migration).toContain(
@@ -69,6 +77,19 @@ describe("training-plans schema", () => {
     expect(migration).toContain(
       "WHERE parent_block_item_id IS NOT NULL",
     );
+  });
+
+  it("persists short-lived subject deletion markers for write exclusion and restore replay", () => {
+    expect(lifecycleMigration).toContain(
+      "CREATE TABLE appbasis_training_plan_subject_deletion",
+    );
+    expect(lifecycleMigration).toContain(
+      "PRIMARY KEY (organization_id, subject_id)",
+    );
+    expect(lifecycleMigration).toContain(
+      "purge_after = completed_at + interval '35 days'",
+    );
+    expect(lifecycleMigration).not.toContain("REFERENCES appbasis_athlete");
   });
 
   it("enforces that every nested exercise parent is a block row", () => {
