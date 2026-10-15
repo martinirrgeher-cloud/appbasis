@@ -421,6 +421,55 @@ describe("training-plans PostgreSQL repository", () => {
     ).toBe(35 * 24 * 60 * 60 * 1000);
   });
 
+  it("keeps the 35-day deletion marker duration fixed across a DST timezone", async () => {
+    const connection = createPostgresDatabase(isolatedDatabaseUrl);
+    try {
+      const repository = new PostgresTrainingPlanRepository({
+        unsafe(query, parameters) {
+          return connection.client.unsafe(query, parameters);
+        },
+        async begin(callback) {
+          return connection.client.begin(async (transaction) => {
+            await transaction.unsafe("SET LOCAL TIME ZONE 'Europe/Vienna'");
+            return callback({
+              unsafe(query, parameters) {
+                return transaction.unsafe(query, parameters);
+              },
+            });
+          });
+        },
+      });
+      const deletedAt = new Date("2026-10-15T10:00:00.000Z");
+      const lifecycle = new TrainingPlanLifecycleService({
+        repository,
+        now: () => deletedAt,
+      });
+
+      await expect(
+        lifecycle.deleteSubjectData("org-dst", "athlete-dst"),
+      ).resolves.toEqual({
+        deletedPlans: 0,
+        deletedRevisions: 0,
+        deletedItems: 0,
+      });
+
+      const markers = await lifecycle.listCurrentDeletionMarkers();
+      expect(markers).toHaveLength(1);
+      expect(markers[0]).toMatchObject({
+        organizationId: "org-dst",
+        subjectId: "athlete-dst",
+      });
+      expect(markers[0]!.completedAt.toISOString()).toBe(
+        deletedAt.toISOString(),
+      );
+      expect(
+        markers[0]!.purgeAfter.getTime() - markers[0]!.completedAt.getTime(),
+      ).toBe(35 * 24 * 60 * 60 * 1000);
+    } finally {
+      await connection.client.end();
+    }
+  });
+
   it("never lets a create queued behind purge resurrect the subject", async () => {
     const createConnection = createPostgresDatabase(isolatedDatabaseUrl);
     const lifecycleConnection = createPostgresDatabase(isolatedDatabaseUrl);
