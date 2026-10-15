@@ -22,11 +22,11 @@
     "dataExport": [
       {
         "path": "apps/ulc-linz/privacy/m5-export-contract.json",
-        "gitBlobSha": "cd20a362bcf2cf6ee309a614f755918e1cb947e9"
+        "gitBlobSha": "95fe941c3a4b2e36f8c43e515f969c965fa40db4"
       },
       {
         "path": "apps/ulc-linz/test/m5-export-contract.test.ts",
-        "gitBlobSha": "358138f5524ad202d4d30c95836e82253432d3af"
+        "gitBlobSha": "880245fe7fafdb34a187a708939616a52c7da202"
       }
     ],
     "applicationLifecycle": [],
