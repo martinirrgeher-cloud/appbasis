@@ -5,8 +5,10 @@ import {
   type TrainingPlanLifecycleRepository,
   type TrainingPlanRepository,
   type TrainingPlanRevision,
+  type TrainingPlanDeletionReplayResult,
   type TrainingPlanRevisionAppendResult,
   type TrainingPlanSnapshot,
+  type TrainingPlanSubjectDeletionMarker,
   type TrainingPlanSubjectDeletionResult,
 } from "./repository";
 
@@ -17,6 +19,10 @@ export class InMemoryTrainingPlanRepository
   readonly #planIds = new Set<string>();
   readonly #targetPlanKeys = new Map<string, string>();
   readonly #revisions = new Map<string, Map<number, TrainingPlanRevision>>();
+  readonly #deletionMarkers = new Map<
+    string,
+    TrainingPlanSubjectDeletionMarker
+  >();
 
   constructor(initialPlans: readonly TrainingPlanSnapshot[] = []) {
     for (const plan of initialPlans) this.#insertInitial(plan);
@@ -66,6 +72,14 @@ export class InMemoryTrainingPlanRepository
   async create(plan: TrainingPlanSnapshot): Promise<TrainingPlanCreateResult> {
     const stored = clonePlan(plan);
     assertTrainingPlanCreationInvariant(stored);
+
+    if (
+      this.#deletionMarkers.has(
+        deletionMarkerKey(stored.organizationId, stored.subjectId),
+      )
+    ) {
+      return Object.freeze({ status: "subject-deleted" as const });
+    }
 
     const target = targetKey(
       stored.organizationId,
@@ -163,7 +177,19 @@ export class InMemoryTrainingPlanRepository
   async deleteSubjectData(
     organizationId: string,
     subjectId: string,
+    completedAt: Date,
   ): Promise<TrainingPlanSubjectDeletionResult> {
+    const marker = deletionMarker(
+      organizationId,
+      subjectId,
+      completedAt,
+    );
+    const key = deletionMarkerKey(organizationId, subjectId);
+    const existingMarker = this.#deletionMarkers.get(key);
+    if (existingMarker === undefined) {
+      this.#deletionMarkers.set(key, marker);
+    }
+
     const matching = [...this.#plans.entries()].filter(
       ([, plan]) =>
         plan.organizationId === organizationId &&
@@ -201,6 +227,60 @@ export class InMemoryTrainingPlanRepository
       deletedRevisions,
       deletedItems,
     });
+  }
+
+  async listCurrentDeletionMarkers(
+    now: Date,
+  ): Promise<readonly TrainingPlanSubjectDeletionMarker[]> {
+    const current = requiredDate(now);
+    return Object.freeze(
+      [...this.#deletionMarkers.values()]
+        .filter((marker) => marker.purgeAfter.getTime() >= current.getTime())
+        .sort(
+          (left, right) =>
+            left.organizationId.localeCompare(right.organizationId) ||
+            left.subjectId.localeCompare(right.subjectId),
+        )
+        .map(cloneDeletionMarker),
+    );
+  }
+
+  async reconcileDeletionMarker(
+    marker: TrainingPlanSubjectDeletionMarker,
+  ): Promise<TrainingPlanDeletionReplayResult> {
+    const normalized = requiredDeletionMarker(marker);
+    const key = deletionMarkerKey(
+      normalized.organizationId,
+      normalized.subjectId,
+    );
+    const existing = this.#deletionMarkers.get(key);
+    if (
+      existing !== undefined &&
+      (existing.completedAt.getTime() !== normalized.completedAt.getTime() ||
+        existing.purgeAfter.getTime() !== normalized.purgeAfter.getTime())
+    ) {
+      throw new Error("Training plan deletion marker conflicts with existing state.");
+    }
+    const markerInserted = existing === undefined;
+    if (markerInserted) this.#deletionMarkers.set(key, normalized);
+    const deleted = await this.deleteSubjectData(
+      normalized.organizationId,
+      normalized.subjectId,
+      normalized.completedAt,
+    );
+    return Object.freeze({ markerInserted, ...deleted });
+  }
+
+  async purgeExpiredDeletionMarkers(now: Date): Promise<number> {
+    const current = requiredDate(now);
+    let deleted = 0;
+    for (const [key, marker] of this.#deletionMarkers) {
+      if (marker.purgeAfter.getTime() < current.getTime()) {
+        this.#deletionMarkers.delete(key);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
 
   #insertInitial(plan: TrainingPlanSnapshot): void {
@@ -242,6 +322,79 @@ function assertRevisionScope(
   ) {
     throw new Error("Training plan revision escaped its plan scope.");
   }
+}
+
+function deletionMarkerKey(
+  organizationId: string,
+  subjectId: string,
+): string {
+  return organizationId + "\u0000" + subjectId;
+}
+
+function deletionMarker(
+  organizationId: string,
+  subjectId: string,
+  completedAt: Date,
+): TrainingPlanSubjectDeletionMarker {
+  const completed = requiredDate(completedAt);
+  return Object.freeze({
+    organizationId,
+    subjectId,
+    completedAt: completed,
+    purgeAfter: new Date(
+      completed.getTime() + 35 * 24 * 60 * 60 * 1000,
+    ),
+  });
+}
+
+function requiredDeletionMarker(
+  marker: TrainingPlanSubjectDeletionMarker,
+): TrainingPlanSubjectDeletionMarker {
+  if (
+    marker === null ||
+    typeof marker !== "object" ||
+    typeof marker.organizationId !== "string" ||
+    marker.organizationId.length === 0 ||
+    marker.organizationId.trim() !== marker.organizationId ||
+    marker.organizationId.length > 200 ||
+    typeof marker.subjectId !== "string" ||
+    marker.subjectId.length === 0 ||
+    marker.subjectId.trim() !== marker.subjectId ||
+    marker.subjectId.length > 200
+  ) {
+    throw new Error("Training plan deletion marker is invalid.");
+  }
+  const completedAt = requiredDate(marker.completedAt);
+  const purgeAfter = requiredDate(marker.purgeAfter);
+  if (
+    purgeAfter.getTime() - completedAt.getTime() !==
+    35 * 24 * 60 * 60 * 1000
+  ) {
+    throw new Error("Training plan deletion marker retention is invalid.");
+  }
+  return Object.freeze({
+    organizationId: marker.organizationId,
+    subjectId: marker.subjectId,
+    completedAt,
+    purgeAfter,
+  });
+}
+
+function cloneDeletionMarker(
+  marker: TrainingPlanSubjectDeletionMarker,
+): TrainingPlanSubjectDeletionMarker {
+  return Object.freeze({
+    ...marker,
+    completedAt: new Date(marker.completedAt.getTime()),
+    purgeAfter: new Date(marker.purgeAfter.getTime()),
+  });
+}
+
+function requiredDate(value: Date): Date {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new Error("Training plan lifecycle clock is invalid.");
+  }
+  return new Date(value.getTime());
 }
 
 function planKey(organizationId: string, planId: string): string {
