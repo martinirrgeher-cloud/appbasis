@@ -5,10 +5,12 @@ import {
   type TrainingPlanCreateResult,
   type TrainingPlanExerciseRevision,
   type TrainingPlanItemRevision,
+  type TrainingPlanLifecycleRepository,
   type TrainingPlanRepository,
   type TrainingPlanRevision,
   type TrainingPlanRevisionAppendResult,
   type TrainingPlanSnapshot,
+  type TrainingPlanSubjectDeletionResult,
 } from "./repository";
 
 export type TrainingPlanSqlParameter = string | number | boolean | null;
@@ -27,7 +29,9 @@ export interface TrainingPlanPostgresClient
   ): Promise<T>;
 }
 
-export class PostgresTrainingPlanRepository implements TrainingPlanRepository {
+export class PostgresTrainingPlanRepository
+  implements TrainingPlanRepository, TrainingPlanLifecycleRepository
+{
   readonly #client: TrainingPlanPostgresClient;
 
   constructor(client: TrainingPlanPostgresClient) {
@@ -308,6 +312,83 @@ export class PostgresTrainingPlanRepository implements TrainingPlanRepository {
         revision,
         items.get(revisionKey(planId, revision)) ?? Object.freeze([]),
       );
+    });
+  }
+
+  async deleteSubjectData(
+    organizationId: string,
+    subjectId: string,
+  ): Promise<TrainingPlanSubjectDeletionResult> {
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "LOCK TABLE appbasis_training_plan IN SHARE ROW EXCLUSIVE MODE",
+      );
+      const plans = await transaction.unsafe(
+        `SELECT id
+         FROM appbasis_training_plan
+         WHERE organization_id = $1
+           AND subject_id = $2
+         ORDER BY id ASC
+         FOR UPDATE`,
+        [organizationId, subjectId],
+      );
+      if (plans.length === 0) {
+        return Object.freeze({
+          deletedPlans: 0,
+          deletedRevisions: 0,
+          deletedItems: 0,
+        });
+      }
+
+      const planIds = plans.map((row) => requiredString(row.id, "plan id"));
+      const targets = JSON.stringify(planIds);
+      const deletedItems = await transaction.unsafe(
+        `WITH target AS (
+           SELECT value AS plan_id
+           FROM jsonb_array_elements_text($2::jsonb)
+         )
+         DELETE FROM appbasis_training_plan_revision_item AS item
+         USING target
+         WHERE item.organization_id = $1
+           AND item.plan_id = target.plan_id
+         RETURNING item.plan_id`,
+        [organizationId, targets],
+      );
+      const deletedRevisions = await transaction.unsafe(
+        `WITH target AS (
+           SELECT value AS plan_id
+           FROM jsonb_array_elements_text($2::jsonb)
+         )
+         DELETE FROM appbasis_training_plan_revision AS revision
+         USING target
+         WHERE revision.organization_id = $1
+           AND revision.plan_id = target.plan_id
+         RETURNING revision.plan_id`,
+        [organizationId, targets],
+      );
+      const deletedPlans = await transaction.unsafe(
+        `WITH target AS (
+           SELECT value AS plan_id
+           FROM jsonb_array_elements_text($2::jsonb)
+         )
+         DELETE FROM appbasis_training_plan AS plan
+         USING target
+         WHERE plan.organization_id = $1
+           AND plan.id = target.plan_id
+           AND plan.subject_id = $3
+         RETURNING plan.id`,
+        [organizationId, targets, subjectId],
+      );
+
+      if (deletedPlans.length !== planIds.length) {
+        throw new Error("Training plan subject deletion lost its locked plan scope.");
+      }
+
+      return Object.freeze({
+        deletedPlans: deletedPlans.length,
+        deletedRevisions: deletedRevisions.length,
+        deletedItems: deletedItems.length,
+      });
     });
   }
 }
