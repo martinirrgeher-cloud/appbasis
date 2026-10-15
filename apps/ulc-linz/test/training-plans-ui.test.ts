@@ -10,7 +10,7 @@ import {
   ULC_LINZ_APP_SCRIPT,
 } from "../worker/ui";
 
-describe("ULC E7B4 training plan week UI", () => {
+describe("ULC E7B5 training plan attendance UI", () => {
   it("adds planning as the second training-focused primary navigation candidate", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="training-plans" data-nav-priority="2" hidden disabled>Planung',
@@ -35,6 +35,9 @@ describe("ULC E7B4 training plan week UI", () => {
     expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-editor" hidden');
     expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-add-exercise"');
     expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-add-block"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-attendance-filter"',
+    );
     expect(ULC_TRAINING_PLANS_CSS).toContain(
       "grid-template-columns: repeat(7, minmax(0, 1fr));",
     );
@@ -96,7 +99,7 @@ describe("ULC E7B4 training plan week UI", () => {
       "let trainingPlanWeekLoaded = false;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "trainingPlanWeekPlans = payload.plans.slice();\n    trainingPlanWeekLoaded = true;",
+      "trainingPlanWeekPlans = payload.plans.slice();\n    trainingPlanWeekAttendance = payload.attendance.slice();\n    trainingPlanWeekLoaded = true;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "button.disabled = trainingPlanWeekLoading || !trainingPlanWeekLoaded;",
@@ -157,14 +160,69 @@ describe("ULC E7B4 training plan week UI", () => {
     );
   });
 
-  it("preserves snapshot provenance while keeping E7B4 independent of block templates and attendance", () => {
+  it("requires the explicit read-only attendance contract for E7B5", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "features?.attendanceSummary !== true",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "features?.attendanceFilter !== true",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "!Array.isArray(payload?.attendance)",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "!payload.attendance.every(isTrainingPlanAttendance)",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanWeekAttendance = payload.attendance.slice();",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("organizationId");
+  });
+
+  it("offers all attendance filters and applies them locally without writes", () => {
+    for (const option of [
+      '<option value="all">Alle</option>',
+      '<option value="present">Anwesend</option>',
+      '<option value="excused">Entschuldigt</option>',
+      '<option value="absent">Abwesend</option>',
+      '<option value="open">Offen</option>',
+      '<option value="none">Kein Eintrag</option>',
+    ]) {
+      expect(ULC_TRAINING_PLANS_HTML).toContain(option);
+    }
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'if (trainingPlanAttendanceFilter === "none") return entries.length === 0;',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "return entries.some(\n    (entry) => entry.status === trainingPlanAttendanceFilter,\n  );",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'trainingPlanElements.attendanceFilter?.addEventListener("change"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "renderTrainingPlanWeek();\n});\ntrainingPlanElements.week?.addEventListener",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "/api/modules/training-attendance",
+    );
+  });
+
+  it("shows compact status badges and preserves planning provenance safely", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanAttendanceSummaryElement(attendance)",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'for (const status of ["present", "excused", "absent", "open"])',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '(count > 1 ? " ×" + String(count) : "")',
+    );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceExerciseId");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceBlockId");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceBlockRevision");
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
       "/api/modules/training-blocks",
     );
-    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("attendance");
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("innerHTML");
   });
 });
