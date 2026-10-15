@@ -101,6 +101,34 @@ export async function createAppSkeleton(input, options = {}) {
       renderAppTheme(appTheme),
       { flag: "wx" },
     );
+    await writeFile(
+      join(stagingDirectory, "appbasis.production.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          appId: definition.appId,
+          modules: [...definition.modules],
+          platformServices: [...definition.platformServices],
+          status: "blocked",
+          crossCutting: {
+            dataExport: "blocked",
+            applicationLifecycle: "blocked",
+            privacy: "blocked",
+          },
+          evidence: {
+            dataExport: [],
+            applicationLifecycle: [],
+            privacy: [],
+          },
+          blockers: [
+            "Production cross-cutting requirements have not been reviewed for this generated app.",
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+      { flag: "wx" },
+    );
     if (databaseManifest !== null) {
       await writeFile(
         join(stagingDirectory, "appbasis.database.json"),
@@ -154,6 +182,10 @@ export async function createAppSkeleton(input, options = {}) {
     await rename(
       join(stagingDirectory, "appbasis.theme.json"),
       join(destination, "appbasis.theme.json"),
+    );
+    await rename(
+      join(stagingDirectory, "appbasis.production.json"),
+      join(destination, "appbasis.production.json"),
     );
     if (databaseManifest !== null) {
       await rename(

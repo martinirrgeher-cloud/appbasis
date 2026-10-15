@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "appId": "ulc-linz",
+  "modules": [
+    "countdown",
+    "athletes",
+    "exercise-catalog",
+    "training-blocks",
+    "training-plans"
+  ],
+  "platformServices": [
+    "identity",
+    "permissions"
+  ],
+  "status": "blocked",
+  "crossCutting": {
+    "dataExport": "verified",
+    "applicationLifecycle": "blocked",
+    "privacy": "blocked"
+  },
+  "evidence": {
+    "dataExport": [
+      {
+        "path": "apps/ulc-linz/privacy/m5-export-contract.json",
+        "gitBlobSha": "cd20a362bcf2cf6ee309a614f755918e1cb947e9"
+      },
+      {
+        "path": "apps/ulc-linz/test/m5-export-contract.test.ts",
+        "gitBlobSha": "358138f5524ad202d4d30c95836e82253432d3af"
+      }
+    ],
+    "applicationLifecycle": [],
+    "privacy": []
+  },
+  "blockers": [
+    "App-owned training, attendance and trainer-audit lifecycle is not yet production-verified.",
+    "The current privacy inventory intentionally remains fail-closed while selected-module lifecycle work is pending."
+  ]
+}

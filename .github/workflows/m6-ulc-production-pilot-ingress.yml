@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Type ACTIVATE-ULC-M6-PILOT-INGRESS to enable only the canonical workers.dev endpoint after exact-head M5 evidence'
+        description: 'Type ACTIVATE-ULC-M6-PILOT-INGRESS to enable only the canonical workers.dev endpoint after an exact-head selected-module composition gate'
         required: true
         type: string
-      m5_run_id:
-        description: 'Successful M5 ULC Production Evidence run ID on this exact main head'
+      composition_gate_run_id:
+        description: 'Successful M6 ULC Production Composition Gate run ID on this exact main head'
         required: true
         type: string
       expected_head_sha:
@@ -39,7 +39,7 @@ jobs:
     environment: m4-dr
     env:
       TARGET_WORKER: appbasis-ulc-linz-production
-      M5_GATE_ARTIFACT: ulc-linz-m5-production-gate
+      COMPOSITION_GATE_ARTIFACT: ulc-linz-production-composition-gate
 
     steps:
       - name: Require exact chain head when supplied
@@ -57,57 +57,57 @@ jobs:
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
-          M5_RUN_ID: ${{ inputs.m5_run_id }}
+          COMPOSITION_GATE_RUN_ID: ${{ inputs.composition_gate_run_id }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main" || { echo 'Pilot ingress activation must be dispatched from main.' >&2; exit 1; }
           test "$CONFIRMATION" = "ACTIVATE-ULC-M6-PILOT-INGRESS" || { echo 'Exact pilot ingress activation confirmation is required.' >&2; exit 1; }
-          [[ "$M5_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 run ID is invalid.' >&2; exit 1; }
+          [[ "$COMPOSITION_GATE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Composition gate run ID is invalid.' >&2; exit 1; }
 
-      - name: Require successful fresh exact-head M5 production evidence
+      - name: Require successful fresh exact-head production composition gate
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          M5_RUN_ID: ${{ inputs.m5_run_id }}
+          COMPOSITION_GATE_RUN_ID: ${{ inputs.composition_gate_run_id }}
         run: |
           set -euo pipefail
-          run="$RUNNER_TEMP/m5-run.json"
-          artifacts="$RUNNER_TEMP/m5-artifacts.json"
-          archive="$RUNNER_TEMP/m5-gate.zip"
-          extracted="$RUNNER_TEMP/m5-gate"
+          run="$RUNNER_TEMP/composition-run.json"
+          artifacts="$RUNNER_TEMP/composition-artifacts.json"
+          archive="$RUNNER_TEMP/composition-gate.zip"
+          extracted="$RUNNER_TEMP/composition-gate"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$run"
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${COMPOSITION_GATE_RUN_ID}" > "$run"
           jq -e --arg sha "$GITHUB_SHA" \
-            '.path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success" and .run_attempt == 1' \
-            "$run" >/dev/null || { echo 'M5 production evidence is not a successful exact-head first-attempt main run.' >&2; exit 1; }
+            '.path == ".github/workflows/m6-ulc-production-composition-gate.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success" and .run_attempt == 1' \
+            "$run" >/dev/null || { echo 'Production composition gate is not a successful exact-head first-attempt main run.' >&2; exit 1; }
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}/artifacts?per_page=100" > "$artifacts"
-          jq -e --arg name "$M5_GATE_ARTIFACT" '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' "$artifacts" >/dev/null || { echo 'M5 authoritative gate artifact is missing, duplicated or expired.' >&2; exit 1; }
-          artifact_id="$(jq -er --arg name "$M5_GATE_ARTIFACT" '.artifacts[] | select(.name == $name and .expired == false) | .id' "$artifacts")"
-          [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 authoritative gate artifact ID is invalid.' >&2; exit 1; }
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${COMPOSITION_GATE_RUN_ID}/artifacts?per_page=100" > "$artifacts"
+          jq -e --arg name "$COMPOSITION_GATE_ARTIFACT" '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' "$artifacts" >/dev/null || { echo 'Composition gate artifact is missing, duplicated or expired.' >&2; exit 1; }
+          artifact_id="$(jq -er --arg name "$COMPOSITION_GATE_ARTIFACT" '.artifacts[] | select(.name == $name and .expired == false) | .id' "$artifacts")"
+          [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]] || { echo 'Composition gate artifact ID is invalid.' >&2; exit 1; }
           curl --fail-with-body --silent --show-error --location --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$archive"
           rm -rf -- "$extracted" && mkdir -p "$extracted"
           unzip -q "$archive" -d "$extracted"
-          gate="$extracted/m5-production-gate.json"
-          test -f "$gate" && test "$(find "$extracted" -type f | wc -l)" -eq 1 || { echo 'M5 authoritative gate artifact contents are invalid.' >&2; exit 1; }
-          jq -e --arg sha "$GITHUB_SHA" --arg runId "$M5_RUN_ID" \
-            '.schemaVersion == 1 and .application == "ulc-linz" and .environment == "production" and .headSha == $sha and .runId == $runId and .securityPrivacyReady == true and .verifiedCount == 12 and .requiredCount == 12 and .productionReleaseAuthorized == false and (.observedAt | type == "string") and (.validUntilOrReviewAt | type == "string")' \
-            "$gate" >/dev/null || { echo 'M5 authoritative gate artifact contract is invalid.' >&2; exit 1; }
+          gate="$extracted/production-composition-gate.json"
+          test -f "$gate" && test "$(find "$extracted" -type f | wc -l)" -eq 1 || { echo 'Composition gate artifact contents are invalid.' >&2; exit 1; }
+          jq -e --arg sha "$GITHUB_SHA" --arg runId "$COMPOSITION_GATE_RUN_ID" \
+            '.schemaVersion == 1 and .application == "ulc-linz" and .environment == "production" and .headSha == $sha and .runId == $runId and .compositionReady == true and (.selectedModules | type == "array" and length > 0) and .productionReleaseAuthorized == false and (.observedAt | type == "string") and (.validUntilOrReviewAt | type == "string")' \
+            "$gate" >/dev/null || { echo 'Composition gate artifact contract is invalid.' >&2; exit 1; }
           observed_at="$(jq -er '.observedAt' "$gate")"
           valid_until="$(jq -er '.validUntilOrReviewAt' "$gate")"
-          observed_epoch="$(date -u -d "$observed_at" +%s 2>/dev/null)" || { echo 'M5 evidence observation time is invalid.' >&2; exit 1; }
-          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'M5 evidence expiry is invalid.' >&2; exit 1; }
+          observed_epoch="$(date -u -d "$observed_at" +%s 2>/dev/null)" || { echo 'Composition gate observation time is invalid.' >&2; exit 1; }
+          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'Composition gate expiry is invalid.' >&2; exit 1; }
           now_epoch="$(date -u +%s)"
-          test "$((valid_epoch - observed_epoch))" -eq 900 || { echo 'M5 evidence validity window is not the canonical 15 minutes.' >&2; exit 1; }
+          test "$((valid_epoch - observed_epoch))" -eq 900 || { echo 'Composition gate validity window is not the canonical 15 minutes.' >&2; exit 1; }
           if (( now_epoch < observed_epoch || now_epoch >= valid_epoch )); then
-            echo 'M5 authoritative production evidence is outside its validUntilOrReviewAt window.' >&2
+            echo 'Production composition gate is outside its validUntilOrReviewAt window.' >&2
             exit 1
           fi
 
@@ -145,51 +145,51 @@ jobs:
             echo 'write_required=true' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Revalidate authoritative fresh exact-head M5 evidence immediately before write
+      - name: Revalidate authoritative fresh exact-head composition gate immediately before write
         if: steps.before.outputs.write_required == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          M5_RUN_ID: ${{ inputs.m5_run_id }}
+          COMPOSITION_GATE_RUN_ID: ${{ inputs.composition_gate_run_id }}
         run: |
           set -euo pipefail
-          run="$RUNNER_TEMP/m5-run-before-write.json"
-          artifacts="$RUNNER_TEMP/m5-artifacts-before-write.json"
-          archive="$RUNNER_TEMP/m5-gate-before-write.zip"
-          extracted="$RUNNER_TEMP/m5-gate-before-write"
+          run="$RUNNER_TEMP/composition-run-before-write.json"
+          artifacts="$RUNNER_TEMP/composition-artifacts-before-write.json"
+          archive="$RUNNER_TEMP/composition-gate-before-write.zip"
+          extracted="$RUNNER_TEMP/composition-gate-before-write"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}" > "$run"
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${COMPOSITION_GATE_RUN_ID}" > "$run"
           jq -e --arg sha "$GITHUB_SHA" \
-            '.path == ".github/workflows/m5-ulc-production-evidence.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success" and .run_attempt == 1' \
-            "$run" >/dev/null || { echo 'M5 production evidence changed or is no longer a successful exact-head first-attempt main run.' >&2; exit 1; }
+            '.path == ".github/workflows/m6-ulc-production-composition-gate.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success" and .run_attempt == 1' \
+            "$run" >/dev/null || { echo 'Production composition gate changed or is no longer a successful exact-head first-attempt main run.' >&2; exit 1; }
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${M5_RUN_ID}/artifacts?per_page=100" > "$artifacts"
-          jq -e --arg name "$M5_GATE_ARTIFACT" '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' "$artifacts" >/dev/null || { echo 'M5 authoritative gate artifact is missing, duplicated or expired before write.' >&2; exit 1; }
-          artifact_id="$(jq -er --arg name "$M5_GATE_ARTIFACT" '.artifacts[] | select(.name == $name and .expired == false) | .id' "$artifacts")"
-          [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]] || { echo 'M5 authoritative gate artifact ID is invalid before write.' >&2; exit 1; }
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${COMPOSITION_GATE_RUN_ID}/artifacts?per_page=100" > "$artifacts"
+          jq -e --arg name "$COMPOSITION_GATE_ARTIFACT" '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' "$artifacts" >/dev/null || { echo 'Composition gate artifact is missing, duplicated or expired before write.' >&2; exit 1; }
+          artifact_id="$(jq -er --arg name "$COMPOSITION_GATE_ARTIFACT" '.artifacts[] | select(.name == $name and .expired == false) | .id' "$artifacts")"
+          [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]] || { echo 'Composition gate artifact ID is invalid before write.' >&2; exit 1; }
           curl --fail-with-body --silent --show-error --location --connect-timeout 10 --max-time 30 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header 'Accept: application/vnd.github+json' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$archive"
           rm -rf -- "$extracted" && mkdir -p "$extracted"
           unzip -q "$archive" -d "$extracted"
-          gate="$extracted/m5-production-gate.json"
-          test -f "$gate" && test "$(find "$extracted" -type f | wc -l)" -eq 1 || { echo 'M5 authoritative gate artifact contents are invalid before write.' >&2; exit 1; }
-          jq -e --arg sha "$GITHUB_SHA" --arg runId "$M5_RUN_ID" \
-            '.schemaVersion == 1 and .application == "ulc-linz" and .environment == "production" and .headSha == $sha and .runId == $runId and .securityPrivacyReady == true and .verifiedCount == 12 and .requiredCount == 12 and .productionReleaseAuthorized == false and (.observedAt | type == "string") and (.validUntilOrReviewAt | type == "string")' \
-            "$gate" >/dev/null || { echo 'M5 authoritative gate artifact contract is invalid before write.' >&2; exit 1; }
+          gate="$extracted/production-composition-gate.json"
+          test -f "$gate" && test "$(find "$extracted" -type f | wc -l)" -eq 1 || { echo 'Composition gate artifact contents are invalid before write.' >&2; exit 1; }
+          jq -e --arg sha "$GITHUB_SHA" --arg runId "$COMPOSITION_GATE_RUN_ID" \
+            '.schemaVersion == 1 and .application == "ulc-linz" and .environment == "production" and .headSha == $sha and .runId == $runId and .compositionReady == true and (.selectedModules | type == "array" and length > 0) and .productionReleaseAuthorized == false and (.observedAt | type == "string") and (.validUntilOrReviewAt | type == "string")' \
+            "$gate" >/dev/null || { echo 'Composition gate artifact contract is invalid before write.' >&2; exit 1; }
           observed_at="$(jq -er '.observedAt' "$gate")"
           valid_until="$(jq -er '.validUntilOrReviewAt' "$gate")"
-          observed_epoch="$(date -u -d "$observed_at" +%s 2>/dev/null)" || { echo 'M5 evidence observation time is invalid before write.' >&2; exit 1; }
-          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'M5 evidence expiry is invalid before write.' >&2; exit 1; }
+          observed_epoch="$(date -u -d "$observed_at" +%s 2>/dev/null)" || { echo 'Composition gate observation time is invalid before write.' >&2; exit 1; }
+          valid_epoch="$(date -u -d "$valid_until" +%s 2>/dev/null)" || { echo 'Composition gate expiry is invalid before write.' >&2; exit 1; }
           now_epoch="$(date -u +%s)"
-          test "$((valid_epoch - observed_epoch))" -eq 900 || { echo 'M5 evidence validity window is not the canonical 15 minutes before write.' >&2; exit 1; }
+          test "$((valid_epoch - observed_epoch))" -eq 900 || { echo 'Composition gate validity window is not the canonical 15 minutes before write.' >&2; exit 1; }
           if (( now_epoch < observed_epoch || now_epoch >= valid_epoch )); then
-            echo 'M5 authoritative production evidence expired before pilot-ingress activation.' >&2
+            echo 'Production composition gate expired before pilot-ingress activation.' >&2
             exit 1
           fi
 
@@ -235,7 +235,7 @@ jobs:
             echo '### ULC M6 temporary Cloudflare pilot ingress'
             echo '- canonical workers.dev endpoint: enabled'
             echo '- preview URLs: disabled'
-            echo '- exact-head M5 Security & Privacy evidence: verified from authoritative gate artifact'
+            echo '- exact-head selected-module composition: verified from authoritative gate artifact'
             echo '- custom organizational domain: not activated'
             echo '- final organizational go-live: not authorized'
           } >> "$GITHUB_STEP_SUMMARY"

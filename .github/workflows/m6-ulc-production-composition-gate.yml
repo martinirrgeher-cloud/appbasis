@@ -1,0 +1,196 @@
+name: M6 ULC Production Composition Gate
+
+run-name: ${{ inputs.chain_attempt_id || github.workflow }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type VERIFY-ULC-M6-COMPOSITION to verify the exact selected-module production composition'
+        required: true
+        type: string
+      security_smoke_run_id:
+        description: 'Successful exact-head private security smoke run ID'
+        required: true
+        type: string
+      lifecycle_preflight_run_id:
+        description: 'Successful exact-head protected lifecycle preflight run ID'
+        required: true
+        type: string
+      expected_head_sha:
+        description: 'Optional exact commit SHA; required by the M6 production refresh chain'
+        required: false
+        type: string
+      chain_attempt_id:
+        description: 'Optional unique parent-chain attempt ID for fail-closed dispatch correlation'
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  composition-gate:
+    name: Verify selected ULC production composition
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Require exact chain head when supplied
+        if: inputs.expected_head_sha != ''
+        shell: bash
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Chain-dispatched child reruns cannot reuse an earlier M6 production approval.' >&2; exit 1; }
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected chain head SHA is invalid.' >&2; exit 1; }
+          test "$GITHUB_SHA" = "$EXPECTED_HEAD_SHA" || { echo 'Workflow head differs from the chain-approved exact SHA.' >&2; exit 1; }
+
+      - name: Require explicit composition approval
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          SECURITY_SMOKE_RUN_ID: ${{ inputs.security_smoke_run_id }}
+          LIFECYCLE_PREFLIGHT_RUN_ID: ${{ inputs.lifecycle_preflight_run_id }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'Composition-gate reruns cannot reuse an earlier production approval.' >&2; exit 1; }
+          test "$GITHUB_REF" = "refs/heads/main" || { echo 'Production composition gate must run from main.' >&2; exit 1; }
+          test "$CONFIRMATION" = "VERIFY-ULC-M6-COMPOSITION" || { echo 'Exact production composition confirmation is required.' >&2; exit 1; }
+          [[ "$SECURITY_SMOKE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Security smoke run ID is invalid.' >&2; exit 1; }
+          [[ "$LIFECYCLE_PREFLIGHT_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Lifecycle preflight run ID is invalid.' >&2; exit 1; }
+
+      - name: Require exact-head platform baseline checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SECURITY_SMOKE_RUN_ID: ${{ inputs.security_smoke_run_id }}
+          LIFECYCLE_PREFLIGHT_RUN_ID: ${{ inputs.lifecycle_preflight_run_id }}
+        run: |
+          set -euo pipefail
+          max_age_seconds=2700
+          require_run() {
+            local run_id="$1" workflow_path="$2" label="$3"
+            local file="$RUNNER_TEMP/composition-$run_id.json"
+            curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/$run_id" > "$file"
+            jq -e --arg sha "$GITHUB_SHA" --arg path "$workflow_path" \
+              '.path == $path and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .run_attempt == 1 and .status == "completed" and .conclusion == "success" and (.updated_at | type == "string")' \
+              "$file" >/dev/null || { echo "$label is not a successful exact-head first-attempt main run." >&2; exit 1; }
+            completed_at="$(jq -er '.updated_at' "$file")"
+            completed_epoch="$(date -u -d "$completed_at" +%s 2>/dev/null)" || { echo "$label completion time is invalid." >&2; exit 1; }
+            now_epoch="$(date -u +%s)"
+            age_seconds=$((now_epoch - completed_epoch))
+            if (( age_seconds < 0 || age_seconds > max_age_seconds )); then
+              echo "$label is outside the 45-minute platform-prerequisite freshness window." >&2
+              exit 1
+            fi
+          }
+          require_run "$SECURITY_SMOKE_RUN_ID" ".github/workflows/m5-ulc-private-security-smoke.yml" "Private security smoke"
+          require_run "$LIFECYCLE_PREFLIGHT_RUN_ID" ".github/workflows/m5-ulc-protected-lifecycle-operations.yml" "Protected lifecycle preflight"
+          lifecycle_file="$RUNNER_TEMP/composition-$LIFECYCLE_PREFLIGHT_RUN_ID.json"
+          jq -e '
+            .name == "M5 ULC Protected Lifecycle Operations"
+            and (
+              .display_title == "preflight"
+              or (.display_title | type == "string" and test("^m6-chain-[1-9][0-9]*-1-lifecycle_preflight$"))
+            )
+          ' "$lifecycle_file" >/dev/null || {
+            echo 'Protected lifecycle prerequisite did not execute the non-destructive preflight operation.' >&2
+            exit 1
+          }
+
+      - name: Check out exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Evaluate selected module composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$RUNNER_TEMP/ulc-production-composition.json"
+          node ./tooling/production-contract.mjs ulc-linz --require-ready > "$RESULT"
+          RESULT="$RESULT" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const value = JSON.parse(await readFile(process.env.RESULT, "utf8"));
+          if (
+            value?.schemaVersion !== 1 ||
+            value?.application !== "ulc-linz" ||
+            value?.compositionReady !== true ||
+            value?.status !== "ready" ||
+            value?.productionReleaseAuthorized !== false ||
+            !Array.isArray(value?.modules) ||
+            value.modules.length < 1 ||
+            value.modules.some((entry) => entry?.status !== "ready")
+          ) {
+            throw new Error("ULC production composition did not reach selected-module readiness.");
+          }
+          NODE
+
+      - name: Create authoritative short-lived composition gate
+        shell: bash
+        env:
+          SECURITY_SMOKE_RUN_ID: ${{ inputs.security_smoke_run_id }}
+          LIFECYCLE_PREFLIGHT_RUN_ID: ${{ inputs.lifecycle_preflight_run_id }}
+        run: |
+          set -euo pipefail
+          GATE="$RUNNER_TEMP/ulc-production-composition-gate.json"
+          observed_at="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
+          valid_until="$(date -u -d "$observed_at + 15 minutes" +'%Y-%m-%dT%H:%M:%S.000Z')"
+          OBSERVED_AT="$observed_at" VALID_UNTIL="$valid_until" GATE="$GATE" node --input-type=module <<'NODE'
+          import { readFile, writeFile } from "node:fs/promises";
+          const composition = JSON.parse(
+            await readFile(process.env.RUNNER_TEMP + "/ulc-production-composition.json", "utf8"),
+          );
+          const gate = {
+            schemaVersion: 1,
+            application: "ulc-linz",
+            environment: "production",
+            headSha: process.env.GITHUB_SHA,
+            runId: process.env.GITHUB_RUN_ID,
+            observedAt: process.env.OBSERVED_AT,
+            validUntilOrReviewAt: process.env.VALID_UNTIL,
+            platformBaseline: {
+              securitySmokeRunId: process.env.SECURITY_SMOKE_RUN_ID,
+              lifecyclePreflightRunId: process.env.LIFECYCLE_PREFLIGHT_RUN_ID,
+            },
+            selectedModules: composition.modules.map(({ moduleId }) => moduleId),
+            compositionReady: true,
+            productionReleaseAuthorized: false,
+          };
+          await writeFile(process.env.GATE, JSON.stringify(gate, null, 2) + "\n", {
+            mode: 0o600,
+          });
+          NODE
+          mkdir -p "$RUNNER_TEMP/composition-gate-artifact"
+          mv "$GATE" "$RUNNER_TEMP/composition-gate-artifact/production-composition-gate.json"
+
+      - name: Upload authoritative composition gate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ulc-linz-production-composition-gate
+          path: ${{ runner.temp }}/composition-gate-artifact/production-composition-gate.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Record sanitized composition outcome
+        shell: bash
+        run: |
+          {
+            echo '### ULC M6 production composition'
+            echo '- platform baseline: private security smoke + protected lifecycle preflight verified on exact head'
+            echo '- selected modules: evaluated from appbasis.app.json only'
+            echo '- unselected modules: not part of this gate'
+            echo '- composition: ready'
+            echo '- final production release: not authorized'
+          } >> "$GITHUB_STEP_SUMMARY"

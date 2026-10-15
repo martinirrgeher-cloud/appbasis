@@ -235,6 +235,32 @@ function generatedModuleFiles(definition) {
       content: `${JSON.stringify(definition, null, 2)}\n`,
     },
     {
+      path: "appbasis.production.json",
+      content: `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          moduleId: definition.moduleId,
+          status: "blocked",
+          requirements: {
+            authorization:
+              definition.capabilities.length === 0 ? "not-applicable" : "blocked",
+            database: "not-applicable",
+            lifecycle: "blocked",
+          },
+          evidence: {
+            authorization: [],
+            database: [],
+            lifecycle: [],
+          },
+          blockers: [
+            "Production readiness has not been reviewed for this generated module.",
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+    },
+    {
       path: "package.json",
       content: `${JSON.stringify(
         {
@@ -298,7 +324,7 @@ Generated AppBasis module skeleton.
 - Capabilities: ${capabilities}
 - Database: none
 
-The module contract in \`appbasis.module.json\` is the source of truth for compatibility, capabilities and optional database ownership.
+The module contract in \`appbasis.module.json\` is the source of truth for compatibility, capabilities and optional database ownership. The fail-closed \`appbasis.production.json\` contract must be reviewed before any app composition may treat this module as production-ready.
 `;
 }
 

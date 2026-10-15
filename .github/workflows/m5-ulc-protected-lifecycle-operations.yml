@@ -1,6 +1,6 @@
 name: M5 ULC Protected Lifecycle Operations
 
-run-name: ${{ inputs.chain_attempt_id || github.workflow }}
+run-name: ${{ inputs.chain_attempt_id || inputs.operation }}
 
 on:
   workflow_dispatch:
@@ -62,12 +62,23 @@ jobs:
         env:
           OPERATION: ${{ inputs.operation }}
           CONFIRMATION: ${{ inputs.confirmation }}
+          CHAIN_ATTEMPT_ID: ${{ inputs.chain_attempt_id }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main" || {
             echo 'ULC protected lifecycle operations must run from main.' >&2
             exit 1
           }
+          if test -n "$CHAIN_ATTEMPT_ID"; then
+            [[ "$CHAIN_ATTEMPT_ID" =~ ^m6-chain-[1-9][0-9]*-1-lifecycle_preflight$ ]] || {
+              echo 'Lifecycle chain correlation token must identify the lifecycle_preflight step.' >&2
+              exit 1
+            }
+            test "$OPERATION" = "preflight" || {
+              echo 'Chain-correlated lifecycle runs are restricted to the non-destructive preflight operation.' >&2
+              exit 1
+            }
+          fi
           case "$OPERATION" in
             preflight)
               test "$CONFIRMATION" = "VERIFY-ULC-M5-LIFECYCLE-BINDING" || {

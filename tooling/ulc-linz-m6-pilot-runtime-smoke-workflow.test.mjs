@@ -8,7 +8,7 @@ const REFRESH = new URL("../.github/workflows/m6-ulc-production-runtime-refresh-
 const PRIVATE_DEPLOY = new URL("../.github/workflows/m6-ulc-private-production-refresh-deploy.yml", import.meta.url);
 const SECURITY_SMOKE = new URL("../.github/workflows/m5-ulc-private-security-smoke.yml", import.meta.url);
 const LIFECYCLE_PREFLIGHT = new URL("../.github/workflows/m5-ulc-protected-lifecycle-operations.yml", import.meta.url);
-const M5_EVIDENCE = new URL("../.github/workflows/m5-ulc-production-evidence.yml", import.meta.url);
+const COMPOSITION_GATE = new URL("../.github/workflows/m6-ulc-production-composition-gate.yml", import.meta.url);
 const PILOT_INGRESS = new URL("../.github/workflows/m6-ulc-production-pilot-ingress.yml", import.meta.url);
 const REFRESH_CHAIN = new URL("../.github/workflows/m6-ulc-production-refresh-chain.yml", import.meta.url);
 const SMOKE = new URL("../.github/workflows/m6-ulc-production-post-deploy-smoke.yml", import.meta.url);
@@ -20,7 +20,7 @@ const EXACT_HEAD_CHILD_WORKFLOWS = [
   PRIVATE_DEPLOY,
   SECURITY_SMOKE,
   LIFECYCLE_PREFLIGHT,
-  M5_EVIDENCE,
+  COMPOSITION_GATE,
   PILOT_INGRESS,
   SMOKE_PRINCIPAL_BOOTSTRAP,
   SMOKE,
@@ -66,7 +66,7 @@ test("M6 production refresh chain executes exactly one separately approved canon
     "m6-ulc-private-production-refresh-deploy.yml",
     "m5-ulc-private-security-smoke.yml",
     "m5-ulc-protected-lifecycle-operations.yml",
-    "m5-ulc-production-evidence.yml",
+    "m6-ulc-production-composition-gate.yml",
     "m6-ulc-production-pilot-ingress.yml",
     "m6-ulc-production-smoke-principal-bootstrap.yml",
     "m6-ulc-production-post-deploy-smoke.yml",
@@ -74,12 +74,13 @@ test("M6 production refresh chain executes exactly one separately approved canon
     "REFRESH-DEPLOY-ULC-PRIVATE-PRODUCTION",
     "RUN-ULC-M5-PRIVATE-SECURITY-SMOKE",
     "VERIFY-ULC-M5-LIFECYCLE-BINDING",
-    "VERIFY-ULC-M5-PRODUCTION",
+    "VERIFY-ULC-M6-COMPOSITION",
     "ACTIVATE-ULC-M6-PILOT-INGRESS",
     "BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL",
     "RUN-ULC-M6-PRODUCTION-SMOKE",
     "administrator_username 'ulc.production.admin'",
-    "apply_restore:true",
+    "security_smoke_run_id",
+    "lifecycle_preflight_run_id",
     "later steps require a separate workflow dispatch and a fresh operator approval",
     "successful exact-head prerequisite runs are reused only when they completed strictly before this parent approval dispatch was created",
   ]) {
@@ -94,6 +95,8 @@ test("M6 production refresh chain executes exactly one separately approved canon
   assert.equal(source.includes("approve_security_smoke:"), false);
   assert.equal(source.includes("approve_lifecycle_preflight:"), false);
   assert.equal(source.includes("approve_m5_evidence:"), false);
+  assert.equal(source.includes("m5_evidence"), false);
+  assert.equal(source.includes("m5-ulc-production-evidence.yml"), false);
   assert.equal(source.includes("approve_pilot_ingress:"), false);
   assert.equal(source.includes("approve_smoke_principal:"), false);
   assert.equal(source.includes("approve_post_deploy_smoke:"), false);

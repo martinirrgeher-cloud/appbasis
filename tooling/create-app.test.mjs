@@ -384,8 +384,15 @@ test("does not generate runtime files when no platform service is selected", asy
   assert.deepEqual((await readdir(join(root, "apps", "plain"))).sort(), [
     "README.md",
     "appbasis.app.json",
+    "appbasis.production.json",
     "appbasis.theme.json",
   ]);
+  const productionContract = JSON.parse(
+    await readFile(join(root, "apps", "plain", "appbasis.production.json"), "utf8"),
+  );
+  assert.equal(productionContract.status, "blocked");
+  assert.deepEqual(productionContract.modules, []);
+  assert.deepEqual(productionContract.platformServices, []);
   assert.doesNotMatch(
     await readFile(join(root, "apps", "plain", "README.md"), "utf8"),
     /generated runtime/,

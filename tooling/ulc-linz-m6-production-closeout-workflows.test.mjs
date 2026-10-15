@@ -34,15 +34,26 @@ const PROTECTED_SMOKE_RUNNER = new URL(
 );
 const REPOSITORY_ROOT = new URL("../", import.meta.url);
 
-test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-safe", async () => {
+test("M6 smoke principal bootstrap is explicit, exact-head composition bound and retry-safe", async () => {
   const [workflow, runner] = await Promise.all([
     readFile(BOOTSTRAP_WORKFLOW, "utf8"),
     readFile(BOOTSTRAP_RUNNER, "utf8"),
   ]);
   for (const marker of [
     "BOOTSTRAP-ULC-M6-SMOKE-PRINCIPAL",
-    ".github/workflows/m5-ulc-production-evidence.yml",
+    ".github/workflows/m6-ulc-production-composition-gate.yml",
     ".head_sha == $sha",
+    "Revalidate authoritative fresh composition gate immediately before smoke write",
+    "ulc-linz-production-composition-gate",
+    "production-composition-gate.json",
+    ".compositionReady == true",
+    "validUntilOrReviewAt",
+    "valid_epoch - observed_epoch",
+    "-eq 900",
+    "Production composition gate expired before smoke-principal mutation.",
+    "Smoke-principal reruns cannot reuse an earlier production write approval.",
+    "Confirm composition gate remains fresh before dedicated principal write",
+    "Production composition gate expired before dedicated smoke-principal write.",
     "ULC_LINZ_PRODUCTION_SMOKE_BOOTSTRAP_PASSWORD",
     "ULC_LINZ_PRODUCTION_SMOKE_PASSWORD",
     "production administrator: verified read-only before provisioning",
@@ -52,7 +63,8 @@ test("M6 smoke principal bootstrap is explicit, exact-head M5 bound and retry-sa
   ]) {
     assert.equal(workflow.includes(marker), true, `missing smoke bootstrap guard: ${marker}`);
   }
-  assert.equal(workflow.includes("M5 ULC Production Admin Bootstrap"), false);
+  assert.equal(workflow.includes("m5_run_id"), false);
+  assert.equal(workflow.includes(".github/workflows/m5-ulc-production-evidence.yml"), false);
   assert.equal(workflow.includes("admin_run_id"), false);
 
   for (const marker of [

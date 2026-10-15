@@ -8,7 +8,7 @@ const childPaths = [
   '../.github/workflows/m6-ulc-private-production-refresh-deploy.yml',
   '../.github/workflows/m5-ulc-private-security-smoke.yml',
   '../.github/workflows/m5-ulc-protected-lifecycle-operations.yml',
-  '../.github/workflows/m5-ulc-production-evidence.yml',
+  '../.github/workflows/m6-ulc-production-composition-gate.yml',
   '../.github/workflows/m6-ulc-production-pilot-ingress.yml',
   '../.github/workflows/m6-ulc-production-smoke-principal-bootstrap.yml',
   '../.github/workflows/m6-ulc-production-post-deploy-smoke.yml',
@@ -40,10 +40,40 @@ test('M6 refresh chain rejects reused approvals and equal prerequisite timestamp
   assert.match(source, /completed strictly before this approval dispatch/);
 });
 
+test('M6 refresh chain selects only operation-bound lifecycle preflight runs', () => {
+  const source = readFileSync(parentPath, 'utf8');
+
+  assert.match(source, /local prerequisite_kind="\$\{2:-generic\}"/);
+  assert.match(source, /\$prerequisite_kind != "lifecycle-preflight"/);
+  assert.match(source, /\.display_title == "preflight"/);
+  assert.match(source, /m6-chain-\[1-9\]\[0-9\]\*-1-lifecycle_preflight/);
+  assert.match(
+    source,
+    /latest_success_run 'm5-ulc-protected-lifecycle-operations\.yml' 'lifecycle-preflight'/,
+  );
+});
+
 test('all canonical M6 refresh-chain children expose the correlation token as run-name', () => {
   for (const path of childPaths) {
     const source = read(path);
-    assert.match(source, /run-name: \$\{\{ inputs\.chain_attempt_id \|\| github\.workflow \}\}/, path);
+    if (path.endsWith('m5-ulc-protected-lifecycle-operations.yml')) {
+      assert.match(
+        source,
+        /run-name: \$\{\{ inputs\.chain_attempt_id \|\| inputs\.operation \}\}/,
+        path,
+      );
+      assert.match(
+        source,
+        /Chain-correlated lifecycle runs are restricted to the non-destructive preflight operation\./,
+        path,
+      );
+    } else {
+      assert.match(
+        source,
+        /run-name: \$\{\{ inputs\.chain_attempt_id \|\| github\.workflow \}\}/,
+        path,
+      );
+    }
     assert.match(source, /chain_attempt_id:\n\s+description: 'Optional unique parent-chain attempt ID for fail-closed dispatch correlation'/, path);
   }
 });

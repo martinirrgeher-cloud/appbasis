@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "athletes",
+  "status": "ready",
+  "requirements": {
+    "authorization": "verified",
+    "database": "verified",
+    "lifecycle": "verified"
+  },
+  "evidence": {
+    "authorization": [
+      {
+        "path": "modules/athletes/test/masterdata.test.ts",
+        "gitBlobSha": "3c9c8d5e112ddc0f5bd4ce90cd19e3112b6a60ce"
+      }
+    ],
+    "database": [
+      {
+        "path": "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+        "gitBlobSha": "7abe0cda515ac4bf8bd97feb583aad5418b5aed1"
+      },
+      {
+        "path": "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
+        "gitBlobSha": "088e29173e17f8d957765f89ea04130778fb31c8"
+      },
+      {
+        "path": "modules/athletes/test/postgres-masterdata-repository.test.ts",
+        "gitBlobSha": "41745c8da8a641e304e6807653ec28d8a534cfd1"
+      }
+    ],
+    "lifecycle": [
+      {
+        "path": "modules/athletes/src/postgres-masterdata-repository.ts",
+        "gitBlobSha": "e05275be8156b06e8b7b1a4a29861a7371fb5040"
+      },
+      {
+        "path": "modules/athletes/test/postgres-masterdata-repository.test.ts",
+        "gitBlobSha": "41745c8da8a641e304e6807653ec28d8a534cfd1"
+      },
+      {
+        "path": "modules/athletes/test/restore-reconciliation.test.ts",
+        "gitBlobSha": "4d37d1e26421a9449af811a3da7e884184957793"
+      }
+    ]
+  },
+  "blockers": []
+}

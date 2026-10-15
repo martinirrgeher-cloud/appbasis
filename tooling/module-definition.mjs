@@ -95,6 +95,34 @@ export async function verifyModuleDefinitions(repositoryRoot = process.cwd()) {
   );
 }
 
+export async function verifySelectedModuleDefinitions(
+  repositoryRoot = process.cwd(),
+  moduleIds = [],
+) {
+  if (!Array.isArray(moduleIds)) {
+    throw new Error("Selected module IDs must be an array.");
+  }
+
+  const selectedIds = [];
+  const seen = new Set();
+  for (const moduleId of moduleIds) {
+    if (typeof moduleId !== "string" || !IDENTIFIER_PATTERN.test(moduleId)) {
+      throw new Error(
+        `Selected module ID must match ${IDENTIFIER_PATTERN.source}.`,
+      );
+    }
+    if (seen.has(moduleId)) {
+      throw new Error("Selected module IDs must not contain duplicates.");
+    }
+    seen.add(moduleId);
+    selectedIds.push(moduleId);
+  }
+
+  return withModuleRegistryLock(repositoryRoot, "verify", () =>
+    readSelectedModuleDefinitions(repositoryRoot, selectedIds),
+  );
+}
+
 export function assertAppModuleCompatibility(appDefinition, moduleDefinition) {
   if (
     !isPlainObject(appDefinition) ||
@@ -121,6 +149,46 @@ export function assertAppModuleCompatibility(appDefinition, moduleDefinition) {
       `App ${appDefinition.appId} schemaVersion ${appDefinition.schemaVersion} is not compatible with module ${moduleDefinition.moduleId}.`,
     );
   }
+}
+
+async function readSelectedModuleDefinitions(repositoryRoot, moduleIds) {
+  const definitions = [];
+
+  for (const directoryName of moduleIds) {
+    const moduleRoot = join(repositoryRoot, "modules", directoryName);
+    let stats;
+    try {
+      stats = await lstat(moduleRoot);
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        throw new Error(
+          `Selected module ${directoryName} is missing from modules/.`,
+        );
+      }
+      throw error;
+    }
+    if (stats.isSymbolicLink() || !stats.isDirectory()) {
+      throw new Error(
+        `Selected module path must be a real directory: modules/${directoryName}.`,
+      );
+    }
+
+    const manifestPath = join(moduleRoot, MODULE_DEFINITION_FILE);
+    const parsed = await readRequiredJson(
+      manifestPath,
+      `modules/${directoryName}/${MODULE_DEFINITION_FILE}`,
+      `modules/${directoryName} is missing ${MODULE_DEFINITION_FILE}.`,
+    );
+    const definition = parseModuleDefinition(parsed, { directoryName });
+    await verifyModuleOwnedArtifacts(
+      repositoryRoot,
+      directoryName,
+      definition,
+    );
+    definitions.push(definition);
+  }
+
+  return Object.freeze(definitions);
 }
 
 async function verifyModuleOwnedArtifacts(

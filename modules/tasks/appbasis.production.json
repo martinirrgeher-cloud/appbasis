@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "tasks",
+  "status": "blocked",
+  "requirements": {
+    "authorization": "verified",
+    "database": "verified",
+    "lifecycle": "blocked"
+  },
+  "evidence": {
+    "authorization": [
+      {
+        "path": "modules/tasks/test/tasks.test.ts",
+        "gitBlobSha": "2235e844a65fd11b4500df492c18435420e9c8f5"
+      }
+    ],
+    "database": [
+      {
+        "path": "modules/tasks/migrations/0000_appbasis_tasks_foundation.sql",
+        "gitBlobSha": "c2096558652a9d52f46e19f41dbb6e83334bb33d"
+      }
+    ],
+    "lifecycle": []
+  },
+  "blockers": [
+    "Production lifecycle has not yet been reviewed for this module."
+  ]
+}

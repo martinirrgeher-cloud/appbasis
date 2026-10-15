@@ -4,25 +4,27 @@ import test from "node:test";
 
 const WORKFLOW = new URL("../.github/workflows/m6-ulc-production-pilot-ingress.yml", import.meta.url);
 
-test("M6 pilot ingress stays explicit, exact-head M5 gated, fresh and preview-closed", async () => {
+test("M6 pilot ingress stays explicit, exact-head composition gated, fresh and preview-closed", async () => {
   const source = await readFile(WORKFLOW, "utf8");
 
   for (const marker of [
     "ACTIVATE-ULC-M6-PILOT-INGRESS",
     "refs/heads/main",
-    "M5 ULC Production Evidence",
-    ".github/workflows/m5-ulc-production-evidence.yml",
+    "M6 ULC Production Composition Gate",
+    ".github/workflows/m6-ulc-production-composition-gate.yml",
     ".head_sha == $sha",
     ".conclusion == \"success\"",
-    "ulc-linz-m5-production-gate",
-    "/actions/runs/${M5_RUN_ID}/artifacts?per_page=100",
+    "ulc-linz-production-composition-gate",
+    "/actions/runs/${COMPOSITION_GATE_RUN_ID}/artifacts?per_page=100",
     "/actions/artifacts/${artifact_id}/zip",
-    "m5-production-gate.json",
+    "production-composition-gate.json",
+    ".compositionReady == true",
+    ".selectedModules | type == \"array\"",
     ".validUntilOrReviewAt",
     "valid_epoch - observed_epoch",
     "-eq 900",
     "now_epoch >= valid_epoch",
-    "Revalidate authoritative fresh exact-head M5 evidence immediately before write",
+    "Revalidate authoritative fresh exact-head composition gate immediately before write",
     "expired before pilot-ingress activation",
     "group: m6-ulc-production-runtime-config",
     "CLOUDFLARE_API_WRITE_TOKEN",

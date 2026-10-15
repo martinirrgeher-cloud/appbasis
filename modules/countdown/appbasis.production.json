@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "countdown",
+  "status": "ready",
+  "requirements": {
+    "authorization": "verified",
+    "database": "not-applicable",
+    "lifecycle": "not-applicable"
+  },
+  "evidence": {
+    "authorization": [
+      {
+        "path": "modules/countdown/test/countdown.test.ts",
+        "gitBlobSha": "121b5f167071e22820620c39731016b47f67b1cd"
+      }
+    ],
+    "database": [],
+    "lifecycle": []
+  },
+  "blockers": []
+}
