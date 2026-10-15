@@ -19,6 +19,7 @@ export {
 } from "./training-plan";
 export * from "./repository";
 export * from "./in-memory-repository";
+export * from "./lifecycle";
 export * from "./postgres-repository";
 export * from "./service";
 
