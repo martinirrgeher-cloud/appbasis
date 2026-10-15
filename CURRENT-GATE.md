@@ -27,11 +27,12 @@ Abnahme für diesen Slice:
   alle darin enthaltenen Items/Notizen/Kommentare; der Vorgang ist idempotent
   und liefert explizite Löschzählungen;
 - Autorisierung, Löschentscheidung und Retention-Zeitpunkt bleiben beim
-  konsumierenden App-Lifecycle. Das Standardmodul erfindet keine ULC-spezifische
+  konsumierenden App-Lifecycle. Dieser muss das Subject vor dem Purge
+  nicht-beschreibbar machen; das Standardmodul erfindet keine ULC-spezifische
   Aufbewahrungsfrist;
-- PostgreSQL serialisiert den seltenen Lifecycle-Purge gegen konkurrierende
-  Plan-Writes. Es entsteht kein Cross-Owner-Foreign-Key und keine neue
-  Datenbankmigration;
+- PostgreSQL verwendet für Create/Update/Purge dieselbe subject-gebundene
+  Transaktionssperre und serialisiert damit bereits laufende Plan-Writes. Es
+  entsteht kein Cross-Owner-Foreign-Key und keine neue Datenbankmigration;
 - der normale `training-plans`-HTTP-/Edit-Pfad exponiert die Lifecycle-
   Operation nicht;
 - In-Memory- und PostgreSQL-Evidence müssen Organisationsgrenze, historische
