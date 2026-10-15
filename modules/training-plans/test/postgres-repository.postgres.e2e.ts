@@ -401,6 +401,50 @@ describe("training-plans PostgreSQL repository", () => {
     expect(itemRows).toEqual([]);
   });
 
+  it("serializes a subject purge against a concurrent revision append without deadlock", async () => {
+    const seed = serviceFor(requiredConnection(), ["purge-race-plan"]);
+    await seed.create("org-purge-race", {
+      subjectId: "athlete-purge-race",
+      planDate: "2026-10-12",
+      note: "Before race",
+    });
+
+    const updateConnection = createPostgresDatabase(isolatedDatabaseUrl);
+    const lifecycleConnection = createPostgresDatabase(isolatedDatabaseUrl);
+    try {
+      const updater = serviceFor(updateConnection, []);
+      const lifecycleRepository = new PostgresTrainingPlanRepository(
+        postgresClient(lifecycleConnection.client),
+      );
+      const lifecycle = new TrainingPlanLifecycleService({
+        repository: lifecycleRepository,
+      });
+
+      const [updateResult, deleteResult] = await Promise.allSettled([
+        updater.update("org-purge-race", "purge-race-plan", 1, {
+          note: "Concurrent revision",
+        }),
+        lifecycle.deleteSubjectData(
+          "org-purge-race",
+          "athlete-purge-race",
+        ),
+      ]);
+
+      expect(updateResult.status).toBe("fulfilled");
+      expect(deleteResult.status).toBe("fulfilled");
+      if (deleteResult.status === "fulfilled") {
+        expect(deleteResult.value.deletedPlans).toBe(1);
+        expect([1, 2]).toContain(deleteResult.value.deletedRevisions);
+      }
+      await expect(
+        seed.findCurrent("org-purge-race", "purge-race-plan"),
+      ).resolves.toBeUndefined();
+    } finally {
+      await updateConnection.client.end();
+      await lifecycleConnection.client.end();
+    }
+  });
+
   it("enforces block-only parent rows in PostgreSQL", async () => {
     const service = serviceFor(requiredConnection(), [
       "plan-parent",
