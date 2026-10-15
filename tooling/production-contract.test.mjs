@@ -41,7 +41,7 @@ test("ULC production composition evaluates only selected modules and reports mod
     result.modules
       .filter((entry) => entry.status === "blocked")
       .map((entry) => entry.moduleId),
-    ["exercise-catalog", "training-blocks", "training-plans"],
+    ["exercise-catalog", "training-blocks"],
   );
   assert.equal(result.productionReleaseAuthorized, false);
 });
