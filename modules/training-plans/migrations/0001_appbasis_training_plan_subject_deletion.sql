@@ -12,5 +12,5 @@ CREATE TABLE appbasis_training_plan_subject_deletion (
   completed_at timestamptz NOT NULL,
   purge_after timestamptz NOT NULL,
   PRIMARY KEY (organization_id, subject_id),
-  CHECK (purge_after = completed_at + interval '35 days')
+  CHECK (purge_after = completed_at + interval '840 hours')
 );
