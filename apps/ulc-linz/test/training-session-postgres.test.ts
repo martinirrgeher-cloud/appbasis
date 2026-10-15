@@ -158,7 +158,7 @@ describe("ULC training session PostgreSQL persistence", () => {
               organization_id: "verein-1",
               athlete_id: "athlete-1",
               session_id: "session-2",
-              session_date: "2026-09-29",
+              session_date: "2026-09-26",
               status: "excused",
             },
           ];
@@ -182,7 +182,7 @@ describe("ULC training session PostgreSQL persistence", () => {
       },
       {
         sessionId: "session-2",
-        sessionDate: "2026-09-29",
+        sessionDate: "2026-09-26",
         status: "excused",
       },
     ]);
