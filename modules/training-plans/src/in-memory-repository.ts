@@ -2,13 +2,17 @@ import {
   assertTrainingPlanCreationInvariant,
   compareTrainingPlanSnapshots,
   type TrainingPlanCreateResult,
+  type TrainingPlanLifecycleRepository,
   type TrainingPlanRepository,
   type TrainingPlanRevision,
   type TrainingPlanRevisionAppendResult,
   type TrainingPlanSnapshot,
+  type TrainingPlanSubjectDeletionResult,
 } from "./repository";
 
-export class InMemoryTrainingPlanRepository implements TrainingPlanRepository {
+export class InMemoryTrainingPlanRepository
+  implements TrainingPlanRepository, TrainingPlanLifecycleRepository
+{
   readonly #plans = new Map<string, TrainingPlanSnapshot>();
   readonly #planIds = new Set<string>();
   readonly #targetPlanKeys = new Map<string, string>();
@@ -154,6 +158,49 @@ export class InMemoryTrainingPlanRepository implements TrainingPlanRepository {
       .get(planKey(organizationId, planId))
       ?.get(revision);
     return stored === undefined ? undefined : cloneRevision(stored);
+  }
+
+  async deleteSubjectData(
+    organizationId: string,
+    subjectId: string,
+  ): Promise<TrainingPlanSubjectDeletionResult> {
+    const matching = [...this.#plans.entries()].filter(
+      ([, plan]) =>
+        plan.organizationId === organizationId &&
+        plan.subjectId === subjectId,
+    );
+    let deletedRevisions = 0;
+    let deletedItems = 0;
+
+    for (const [key, plan] of matching) {
+      const revisions = this.#revisions.get(key);
+      if (revisions === undefined) {
+        throw new Error("Training plan revision store is missing.");
+      }
+      deletedRevisions += revisions.size;
+      for (const revision of revisions.values()) {
+        deletedItems += revision.items.reduce(
+          (count, item) =>
+            count +
+            1 +
+            (item.kind === "block" ? item.exercises.length : 0),
+          0,
+        );
+      }
+
+      this.#plans.delete(key);
+      this.#planIds.delete(plan.id);
+      this.#targetPlanKeys.delete(
+        targetKey(plan.organizationId, plan.subjectId, plan.planDate),
+      );
+      this.#revisions.delete(key);
+    }
+
+    return Object.freeze({
+      deletedPlans: matching.length,
+      deletedRevisions,
+      deletedItems,
+    });
   }
 
   #insertInitial(plan: TrainingPlanSnapshot): void {
