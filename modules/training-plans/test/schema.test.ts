@@ -87,7 +87,7 @@ describe("training-plans schema", () => {
       "PRIMARY KEY (organization_id, subject_id)",
     );
     expect(lifecycleMigration).toContain(
-      "purge_after = completed_at + interval '35 days'",
+      "purge_after = completed_at + interval '840 hours'",
     );
     expect(lifecycleMigration).not.toContain("REFERENCES appbasis_athlete");
   });
