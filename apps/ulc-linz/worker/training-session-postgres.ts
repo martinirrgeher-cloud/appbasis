@@ -1,6 +1,7 @@
 import {
   createUlcTrainingSession,
   normalizeUlcTrainingAttendanceSet,
+  UlcTrainingValidationError,
   type CreateUlcTrainingSessionInput,
   type UlcTrainingAttendance,
   type UlcTrainingModule,
@@ -20,6 +21,12 @@ export interface UlcTrainingSessionSnapshot {
   readonly session: UlcTrainingSession;
   readonly revision: string;
   readonly attendance: readonly UlcTrainingAttendance[];
+}
+
+export interface UlcTrainingAttendanceSummary {
+  readonly sessionId: string;
+  readonly sessionDate: string;
+  readonly status: UlcTrainingAttendance["status"];
 }
 
 export class UlcTrainingSessionConflictError extends Error {
@@ -114,6 +121,52 @@ export class PostgresUlcTrainingSessionRepository {
       revision: rowRevision(rows[0]),
       attendance,
     });
+  }
+
+  async listAttendanceForAthleteDateRange(
+    organizationId: string,
+    athleteId: string,
+    fromDate: string,
+    toDate: string,
+  ): Promise<readonly UlcTrainingAttendanceSummary[]> {
+    const organization = requiredInputIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const athlete = requiredInputIdentifier(athleteId, "Athlete id");
+    const from = requiredInputDate(fromDate, "Attendance from date");
+    const to = requiredInputDate(toDate, "Attendance to date");
+    if (from > to) {
+      throw new UlcTrainingValidationError(
+        "Attendance date range is invalid.",
+      );
+    }
+
+    const rows = await this.#sql.unsafe(
+      `SELECT attendance.organization_id,
+              attendance.athlete_id,
+              attendance.session_id,
+              session.session_date::text AS session_date,
+              attendance.status
+       FROM ulc_linz_training_attendance AS attendance
+       INNER JOIN ulc_linz_training_session AS session
+         ON session.id = attendance.session_id
+        AND session.organization_id = attendance.organization_id
+       WHERE attendance.organization_id = $1
+         AND attendance.athlete_id = $2
+         AND session.state = 'scheduled'
+         AND session.session_date >= $3::date
+         AND session.session_date <= $4::date
+       ORDER BY session.session_date ASC,
+                attendance.session_id ASC`,
+      [organization, athlete, from, to],
+    );
+
+    return Object.freeze(
+      rows.map((row) =>
+        attendanceSummaryFromRow(row, organization, athlete),
+      ),
+    );
   }
 
   async saveSession(
@@ -285,6 +338,26 @@ export class PostgresUlcTrainingSessionRepository {
   }
 }
 
+function attendanceSummaryFromRow(
+  row: Record<string, unknown>,
+  expectedOrganizationId: string,
+  expectedAthleteId: string,
+): UlcTrainingAttendanceSummary {
+  const organizationId = rowString(row, "organization_id");
+  const athleteId = rowString(row, "athlete_id");
+  if (
+    organizationId !== expectedOrganizationId ||
+    athleteId !== expectedAthleteId
+  ) {
+    blocked();
+  }
+  return Object.freeze({
+    sessionId: rowString(row, "session_id"),
+    sessionDate: rowDateString(row, "session_date"),
+    status: rowAttendanceStatus(row.status),
+  });
+}
+
 function sessionFromRow(
   row: Record<string, unknown>,
   expectedOrganizationId: string,
@@ -352,6 +425,45 @@ function rowAttendanceStatus(
     value !== "present" &&
     value !== "excused" &&
     value !== "absent"
+  ) {
+    blocked();
+  }
+  return value;
+}
+
+function requiredInputIdentifier(value: unknown, label: string): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 200 ||
+    value.trim() !== value
+  ) {
+    throw new UlcTrainingValidationError(`${label} is invalid.`);
+  }
+  return value;
+}
+
+function requiredInputDate(value: unknown, label: string): string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new UlcTrainingValidationError(`${label} must use YYYY-MM-DD.`);
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  ) {
+    throw new UlcTrainingValidationError(`${label} is invalid.`);
+  }
+  return value;
+}
+
+function rowDateString(row: Record<string, unknown>, key: string): string {
+  const value = rowString(row, key);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) blocked();
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
   ) {
     blocked();
   }
