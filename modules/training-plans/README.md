@@ -50,19 +50,20 @@ change an existing plan.
 The standard module now exposes a separate privileged
 `TrainingPlanLifecycleService` for subject-owned plan data:
 
-- authorization and retention timing remain application-owned;
-- the consuming app must make the subject non-writable before purge; module
-  locking serializes in-flight writes but does not own subject activation state;
+- authorization and the decision to delete remain application-owned;
+- the module persists a minimal organization+subject deletion marker for 35 days,
+  matching the established restore-reconciliation window;
+- create, update and purge serialize on the same subject-scoped PostgreSQL
+  advisory transaction lock; a queued create that runs after purge sees the
+  deletion marker and fails closed instead of recreating personal plan data;
 - the lifecycle boundary accepts only organization + opaque subject id;
 - deletion is physical and removes every plan, immutable revision and revision
   item for that subject inside exactly one organization;
-- the operation is idempotent and returns explicit plan/revision/item counts;
-- PostgreSQL serializes the rare lifecycle purge against concurrent plan writes
-  before deleting the subject scope;
-- no public training-plans HTTP route calls this lifecycle service;
-- recovery/deletion-marker policy remains app-owned, so an app can replay the
-  same module purge from its authoritative lifecycle marker after restore.
+- deletion is idempotent and returns explicit plan/revision/item counts;
+- current markers can be replayed into an older restored database, and expired
+  markers have an explicit cleanup operation;
+- no public training-plans HTTP route calls the destructive lifecycle service.
 
-This closes the module-local lifecycle capability without embedding a ULC
-retention period or cross-owner foreign key in the reusable standard module.
+Schema v2 adds only the short-lived deletion-marker table. It introduces no
+cross-owner foreign key and does not itself migrate Preview or Production.
 
