@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-15
+Stand: 2026-10-16
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -8,6 +8,61 @@ Volatile PR-, CI-, Review- und Branch-Zustände werden ausschließlich live aus
 GitHub abgeleitet.
 
 ## Aktuelles Ziel
+
+**ULC-E7B7 – Planblock als neue Blockvorlage speichern.**
+
+Nach der read-only Übernahme von Blockvorlagen schließt dieser Slice den
+fachlichen Rückweg aus der Trainingsplanung. Ein bereits gespeicherter
+Planblock kann ausdrücklich als **neue** Trainingsblock-Vorlage angelegt
+werden. Eine bestehende Quellvorlage wird dabei niemals still aktualisiert
+oder überschrieben.
+
+Abnahme für diesen Slice:
+
+- gespeichert wird ausschließlich ein serverseitig gelesener Block aus der
+  aktuell gespeicherten Planrevision; der Browser sendet weder
+  `organizationId` noch den zu speichernden Blockinhalt;
+- der Request benennt nur Plan-ID, Planblock-Item-ID, erwartete Planrevision,
+  Ziel-Trainingsgruppe und optional einen Vorlagennamen;
+- der Write benötigt gleichzeitig `training-plans:edit` und
+  `training-blocks:edit`; beide Autorisierungen müssen dieselbe Organisation
+  und denselben Actor ergeben;
+- Zielgruppen werden ausschließlich aus aktiven ULC-Trainingsgruppen derselben
+  Organisation angeboten und serverseitig erneut validiert;
+- Save-back erzeugt immer eine neue Blockidentität mit Revision 1; vorhandene
+  `sourceBlockId`/`sourceBlockRevision` des Planblocks werden nicht als
+  Update-Ziel verwendet;
+- Blockname, Dauer und Blocknotiz werden aus dem gespeicherten Planblock
+  übernommen; ein ausdrücklich angegebener neuer Vorlagenname darf nur den
+  Namen überschreiben;
+- jede Planübung muss eine aktive Katalog-Provenienz besitzen; manuelle
+  Übungen ohne `sourceExerciseId` sind für eine wiederverwendbare
+  Blockvorlage fail-closed nicht speicherbar;
+- Planwerte werden nur dann in Block-Parameter-Overrides zurückgeführt, wenn
+  der Katalogschlüssel eindeutig bestimmbar ist: `sets` und `repetitions`
+  auf ihre gleichnamigen Parameter, `amount` über genau einen passenden
+  numerischen Parameter mit derselben Einheit; bei fehlender oder mehrdeutiger
+  Zuordnung wird nicht geraten, sondern mit fachlichem Fehler abgebrochen;
+- der Plan-Kommentar einer Übung wird als Block-Übungsnotiz übernommen;
+  nicht mehr strukturiert im Plan vorhandene Parameter werden nicht aus
+  Freitext zurückgeparst;
+- der Editor bietet pro gespeichertem Planblock eine mobile Aktion
+  „Als Vorlage speichern“ mit Gruppenwahl; schmutzige, speichernde oder
+  konfliktbehaftete Entwürfe dürfen nicht exportiert werden;
+- nach erfolgreichem Anlegen wird die neue Vorlage in der laufenden
+  Trainingsplanung auswählbar, ohne den aktuellen Planinhalt zu verändern;
+- bestehende Attendance-Anzeige, Blockübernahme, Autosave und Optimistic
+  Concurrency bleiben unverändert;
+- Nutzungsmetadaten der übernommenen Quellvorlage und die isolierte
+  Preview-Abnahme bleiben getrennte Folgeslices;
+- keine Datenbankmigration, kein Preview-/Production-Deploy und kein
+  Provider-/Produktionswrite.
+
+Für diesen normalen Produktslice gilt weiterhin `Codex sparsam`: gezielte
+Tests und vollständige CI sind die primäre Abnahme; Codex nur bei echtem
+Architektur-/Security-Anlass.
+
+## Abgeschlossener Gate-Scope: ULC-E7B6 Blockvorlagen übernehmen
 
 **ULC-E7B6 – Blockvorlagen in die Trainingsplanung übernehmen.**
 
