@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 import type {
   Athlete,
   AthleteMasterdataSnapshot,
+  TrainingGroup,
 } from "@appbasis/athletes";
-import type { ExerciseCatalogItem } from "@appbasis/exercise-catalog";
+import type {
+  ExerciseCatalogItem,
+  ExerciseCatalogParameter,
+} from "@appbasis/exercise-catalog";
+import type { TrainingBlockSnapshot } from "@appbasis/training-blocks";
 import {
   InMemoryTrainingPlanRepository,
   TrainingPlanConflictError,
@@ -57,6 +62,78 @@ const FOREIGN_ATHLETE: Athlete = Object.freeze({
   isActive: true,
 });
 
+const ACTIVE_GROUP: TrainingGroup = Object.freeze({
+  id: "group-active",
+  organizationId: "org-1",
+  name: "U16",
+  shortName: "U16",
+  description: null,
+  isActive: true,
+  sortOrder: 10,
+});
+
+const INACTIVE_GROUP: TrainingGroup = Object.freeze({
+  ...ACTIVE_GROUP,
+  id: "group-inactive",
+  name: "Archiv",
+  shortName: null,
+  isActive: false,
+});
+
+function parameter(
+  key: string,
+  overrides: Partial<ExerciseCatalogParameter> = {},
+): ExerciseCatalogParameter {
+  return Object.freeze({
+    key,
+    label: key,
+    unit: "",
+    inputType: "number",
+    defaultValue: null,
+    minValue: null,
+    maxValue: null,
+    stepValue: null,
+    isRequired: false,
+    sortOrder: 10,
+    ...overrides,
+  });
+}
+
+function blockSnapshot(
+  overrides: Partial<TrainingBlockSnapshot> = {},
+): TrainingBlockSnapshot {
+  const revision = overrides.revision ?? Object.freeze({
+    organizationId: "org-1",
+    blockId: overrides.id ?? "block-1",
+    revision: overrides.currentRevision ?? 3,
+    name: "Sprintblock",
+    audienceId: "group-active",
+    durationMinutes: 25,
+    note: "Blocknotiz",
+    exercises: Object.freeze([]),
+    createdAt: "2026-10-10T11:00:00.000Z",
+  });
+  return Object.freeze({
+    id: "block-1",
+    organizationId: "org-1",
+    isActive: true,
+    currentRevision: 3,
+    createdAt: "2026-10-10T10:00:00.000Z",
+    updatedAt: "2026-10-10T11:00:00.000Z",
+    ...overrides,
+    revision,
+  });
+}
+
+const EMPTY_BLOCK_READER = Object.freeze({
+  async list() {
+    return [] as readonly TrainingBlockSnapshot[];
+  },
+  async findCurrent() {
+    return undefined;
+  },
+});
+
 function catalogItem(
   id: string,
   overrides: Partial<ExerciseCatalogItem> = {},
@@ -88,6 +165,8 @@ function createService(input: {
   exercises?: readonly ExerciseCatalogItem[];
   ids?: readonly string[];
   attendance?: readonly UlcTrainingAttendanceSummary[];
+  groups?: readonly TrainingGroup[];
+  blocks?: readonly TrainingBlockSnapshot[];
 } = {}) {
   const repository = new InMemoryTrainingPlanRepository();
   let idIndex = 0;
@@ -116,8 +195,14 @@ function createService(input: {
     catalogItem("exercise-1"),
     catalogItem("exercise-2"),
   ];
-  const snapshot: Pick<AthleteMasterdataSnapshot, "athletes"> = {
+  const groups = input.groups ?? [ACTIVE_GROUP, INACTIVE_GROUP];
+  const blockRows = input.blocks ?? [];
+  const snapshot: Pick<
+    AthleteMasterdataSnapshot,
+    "athletes" | "trainingGroups"
+  > = {
     athletes,
+    trainingGroups: groups,
   };
 
   const attendanceRows = input.attendance ?? [];
@@ -145,9 +230,307 @@ function createService(input: {
           return attendanceRows;
         },
       },
+      blocks: {
+        async list() {
+          return blockRows;
+        },
+        async findCurrent(_organizationId, blockId) {
+          return blockRows.find((block) => block.id === blockId);
+        },
+      },
     }),
   };
 }
+
+describe("ULC training plan block template adoption", () => {
+  it("lists only current active adoptable templates and materializes plan-owned values", async () => {
+    const exercise = catalogItem("exercise-1", {
+      name: "Fliegende 30 m",
+      parameters: Object.freeze([
+        parameter("sets", {
+          label: "Sätze",
+          defaultValue: "3",
+          sortOrder: 10,
+        }),
+        parameter("repetitions", {
+          label: "Wiederholungen",
+          defaultValue: "4",
+          sortOrder: 20,
+        }),
+        parameter("distance_m", {
+          label: "Distanz",
+          unit: "m",
+          defaultValue: "30",
+          sortOrder: 30,
+        }),
+        parameter("rest_s", {
+          label: "Pause",
+          unit: "s",
+          defaultValue: "90",
+          sortOrder: 40,
+        }),
+      ]),
+    });
+    const block = blockSnapshot({
+      revision: Object.freeze({
+        organizationId: "org-1",
+        blockId: "block-1",
+        revision: 3,
+        name: "Sprintblock",
+        audienceId: "group-active",
+        durationMinutes: 25,
+        note: "Blocknotiz",
+        exercises: Object.freeze([
+          {
+            itemId: "block-exercise-1",
+            exerciseId: "exercise-1",
+            note: "Locker anlaufen",
+            parameterOverrides: Object.freeze([
+              { key: "sets", value: "5", sortOrder: 0 },
+              { key: "distance_m", value: "40", sortOrder: 1 },
+            ]),
+            sortOrder: 0,
+          },
+        ]),
+        createdAt: "2026-10-10T11:00:00.000Z",
+      }),
+    });
+    const { service } = createService({
+      exercises: [exercise],
+      blocks: [
+        block,
+        blockSnapshot({
+          id: "block-archived",
+          isActive: false,
+          revision: Object.freeze({
+            ...block.revision,
+            blockId: "block-archived",
+            name: "Archiviert",
+          }),
+        }),
+        blockSnapshot({
+          id: "block-inactive-group",
+          revision: Object.freeze({
+            ...block.revision,
+            blockId: "block-inactive-group",
+            name: "Falsche Gruppe",
+            audienceId: "group-inactive",
+          }),
+        }),
+      ],
+    });
+
+    await expect(service.listBlockTemplates("org-1")).resolves.toEqual([
+      {
+        id: "block-1",
+        currentRevision: 3,
+        name: "Sprintblock",
+        audienceName: "U16",
+        durationMinutes: 25,
+        exerciseCount: 1,
+      },
+    ]);
+
+    await expect(
+      service.findBlockTemplate("org-1", "block-1", 3),
+    ).resolves.toEqual({
+      id: "block-1",
+      currentRevision: 3,
+      item: {
+        kind: "block",
+        sourceBlockId: "block-1",
+        sourceBlockRevision: 3,
+        name: "Sprintblock",
+        durationMinutes: 25,
+        note: "Blocknotiz",
+        exercises: [
+          {
+            sourceExerciseId: "exercise-1",
+            name: "Fliegende 30 m",
+            sets: "5",
+            repetitions: "4",
+            amount: "40",
+            unit: "m",
+            comment:
+              "Locker anlaufen\nPlanwerte: Distanz: 40 m · Pause: 90 s",
+          },
+        ],
+      },
+    });
+  });
+
+  it("requires the exact current template revision for a new sourced plan block", async () => {
+    const exercise = catalogItem("exercise-1");
+    const block = blockSnapshot({
+      currentRevision: 4,
+      revision: Object.freeze({
+        organizationId: "org-1",
+        blockId: "block-1",
+        revision: 4,
+        name: "Aktuell",
+        audienceId: "group-active",
+        durationMinutes: null,
+        note: null,
+        exercises: Object.freeze([
+          {
+            itemId: "occurrence-1",
+            exerciseId: "exercise-1",
+            note: null,
+            parameterOverrides: Object.freeze([]),
+            sortOrder: 0,
+          },
+        ]),
+        createdAt: "2026-10-10T12:00:00.000Z",
+      }),
+    });
+    const { service } = createService({
+      exercises: [exercise],
+      blocks: [block],
+    });
+
+    await expect(
+      service.create("org-1", {
+        subjectId: ACTIVE_ATHLETE.id,
+        planDate: "2026-10-12",
+        items: [
+          {
+            kind: "block",
+            sourceBlockId: "block-1",
+            sourceBlockRevision: 3,
+            name: "Client snapshot",
+            exercises: [
+              {
+                sourceExerciseId: "exercise-1",
+                name: "exercise-1",
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      referenceType: "block",
+      referenceId: "block-1",
+    });
+
+    await expect(
+      service.create("org-1", {
+        subjectId: ACTIVE_ATHLETE.id,
+        planDate: "2026-10-13",
+        items: [
+          {
+            kind: "block",
+            sourceBlockId: "block-1",
+            sourceBlockRevision: 4,
+            name: "Client snapshot",
+            exercises: [
+              {
+                sourceExerciseId: "exercise-1",
+                name: "exercise-1",
+              },
+            ],
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      revision: {
+        items: [
+          {
+            sourceBlockId: "block-1",
+            sourceBlockRevision: 4,
+          },
+        ],
+      },
+    });
+  });
+
+  it("keeps an adopted snapshot editable after its template changes and rejects provenance tampering", async () => {
+    const block = blockSnapshot();
+    const base = createService({
+      blocks: [block],
+      ids: ["plan-block", "plan-block-item"],
+    });
+    const created = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-12",
+      items: [
+        {
+          kind: "block",
+          sourceBlockId: "block-1",
+          sourceBlockRevision: 3,
+          name: "Snapshot",
+          exercises: [],
+        },
+      ],
+    });
+    const saved = created.revision.items[0];
+    if (saved?.kind !== "block") {
+      throw new Error("Expected block fixture.");
+    }
+
+    const afterTemplateChange = createUlcTrainingPlanService({
+      plans: base.plans,
+      masterdata: {
+        async readOrganizationSnapshot() {
+          return {
+            athletes: [ACTIVE_ATHLETE],
+            trainingGroups: [ACTIVE_GROUP],
+          };
+        },
+      },
+      exerciseCatalog: {
+        async listItems() {
+          return [];
+        },
+      },
+      attendance: {
+        async listAttendanceForAthleteDateRange() {
+          return [];
+        },
+      },
+      blocks: {
+        async list() {
+          return [];
+        },
+        async findCurrent() {
+          return undefined;
+        },
+      },
+    });
+
+    await expect(
+      afterTemplateChange.update("org-1", created.id, 1, {
+        items: [
+          {
+            kind: "block",
+            itemId: saved.itemId,
+            sourceBlockId: "block-1",
+            sourceBlockRevision: 3,
+            name: "Snapshot lokal geändert",
+            exercises: [],
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ currentRevision: 2 });
+
+    await expect(
+      afterTemplateChange.update("org-1", created.id, 2, {
+        items: [
+          {
+            kind: "block",
+            itemId: saved.itemId,
+            sourceBlockId: "block-other",
+            sourceBlockRevision: 3,
+            name: "Manipuliert",
+            exercises: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      referenceType: "block",
+      referenceId: "block-other",
+    });
+  });
+});
 
 describe("ULC training plan adapter", () => {
   it("lists only active same-organization athletes in a stable display order", async () => {
@@ -343,7 +726,10 @@ describe("ULC training plan adapter", () => {
       plans: base.plans,
       masterdata: {
         async readOrganizationSnapshot() {
-          return { athletes: [ACTIVE_ATHLETE] };
+          return {
+            athletes: [ACTIVE_ATHLETE],
+            trainingGroups: [ACTIVE_GROUP],
+          };
         },
       },
       exerciseCatalog: {
@@ -357,6 +743,7 @@ describe("ULC training plan adapter", () => {
           return [];
         },
       },
+      blocks: EMPTY_BLOCK_READER,
     });
 
     await expect(
@@ -398,7 +785,10 @@ describe("ULC training plan adapter", () => {
       plans: base.plans,
       masterdata: {
         async readOrganizationSnapshot() {
-          return { athletes: [ACTIVE_ATHLETE] };
+          return {
+            athletes: [ACTIVE_ATHLETE],
+            trainingGroups: [ACTIVE_GROUP],
+          };
         },
       },
       exerciseCatalog: {
@@ -412,6 +802,7 @@ describe("ULC training plan adapter", () => {
           return [];
         },
       },
+      blocks: EMPTY_BLOCK_READER,
     });
 
     const updated = await lifecycleAware.update("org-1", created.id, 1, {
@@ -473,6 +864,7 @@ describe("ULC training plan adapter", () => {
         async readOrganizationSnapshot() {
           return {
             athletes: [ACTIVE_ATHLETE, SECOND_ATHLETE, INACTIVE_ATHLETE],
+            trainingGroups: [ACTIVE_GROUP],
           };
         },
       },
@@ -486,6 +878,7 @@ describe("ULC training plan adapter", () => {
           return [];
         },
       },
+      blocks: EMPTY_BLOCK_READER,
     });
 
     await expect(
