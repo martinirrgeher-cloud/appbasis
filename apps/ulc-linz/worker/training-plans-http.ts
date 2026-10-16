@@ -44,6 +44,13 @@ export async function trainingPlansHttpResponse(
   if (url.pathname === "/api/modules/training-plans/week") {
     return trainingPlansWeekResponse(request, runtime, url);
   }
+  if (
+    url.pathname.startsWith(
+      "/api/modules/training-plans/block-templates/",
+    )
+  ) {
+    return trainingPlanBlockTemplateResponse(request, runtime, url);
+  }
 
   const base = "/api/modules/training-plans/";
   if (!url.pathname.startsWith(base)) {
@@ -83,7 +90,6 @@ export async function trainingPlansHttpResponse(
         current.currentRevision,
       );
     }
-    assertE7B4BlockProvenanceUpdate(current, body.input);
     const plan = await runtime.trainingPlans.update(
       access.organizationId,
       planId,
@@ -119,9 +125,10 @@ async function trainingPlansModuleResponse(
 
   try {
     if (request.method === "GET") {
-      const subjects = await runtime.trainingPlans.listSubjects(
-        access.organizationId,
-      );
+      const [subjects, blockTemplates] = await Promise.all([
+        runtime.trainingPlans.listSubjects(access.organizationId),
+        runtime.trainingPlans.listBlockTemplates(access.organizationId),
+      ]);
       return privateJson({
         module: {
           moduleId: "training_planning",
@@ -132,15 +139,16 @@ async function trainingPlansModuleResponse(
             optimisticConcurrency: true,
             attendanceSummary: true,
             attendanceFilter: true,
+            blockTemplateAdoption: true,
           },
         },
         access: { view: true, edit: access.canEdit },
         subjects,
+        blockTemplates,
       });
     }
 
     const input = await trainingPlanCreateBody(request);
-    assertE7B4BlockProvenanceCreate(input);
     const plan = await runtime.trainingPlans.create(
       access.organizationId,
       input,
@@ -149,6 +157,59 @@ async function trainingPlansModuleResponse(
       { plan: trainingPlanClientSnapshot(plan) },
       { status: 201 },
     );
+  } catch (error) {
+    return trainingPlanErrorResponse(error);
+  }
+}
+
+async function trainingPlanBlockTemplateResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "training plan block template");
+  }
+
+  const prefix = "/api/modules/training-plans/block-templates/";
+  const encodedId = url.pathname.slice(prefix.length);
+  if (encodedId.length === 0 || encodedId.includes("/")) {
+    return trainingPlanBlockTemplateNotFound();
+  }
+  if (
+    url.searchParams.getAll("revision").length !== 1 ||
+    [...url.searchParams.keys()].some((key) => key !== "revision")
+  ) {
+    return invalidTrainingPlanInput();
+  }
+
+  const access = await authorizeTrainingPlansRequest(
+    request,
+    runtime,
+    url,
+    "view",
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    const blockId = decodeIdentifier(encodedId);
+    const revisionRaw = url.searchParams.get("revision");
+    if (
+      revisionRaw === null ||
+      !/^[1-9]\d*$/.test(revisionRaw)
+    ) {
+      throw new InvalidTrainingPlanRequestError();
+    }
+    const revision = requiredRevision(Number(revisionRaw));
+    const template = await runtime.trainingPlans.findBlockTemplate(
+      access.organizationId,
+      blockId,
+      revision,
+    );
+    if (template === undefined) {
+      return trainingPlanBlockTemplateNotFound();
+    }
+    return privateJson({ template });
   } catch (error) {
     return trainingPlanErrorResponse(error);
   }
@@ -446,65 +507,6 @@ function assertExactObject(
   }
 }
 
-function assertE7B4BlockProvenanceCreate(
-  input: CreateTrainingPlanDraftInput,
-): void {
-  for (const item of input.items ?? []) {
-    if (
-      item.kind === "block" &&
-      (item.sourceBlockId != null || item.sourceBlockRevision != null)
-    ) {
-      throw new InvalidTrainingPlanRequestError();
-    }
-  }
-}
-
-function assertE7B4BlockProvenanceUpdate(
-  current: TrainingPlanSnapshot,
-  input: UpdateTrainingPlanDraftInput,
-): void {
-  if (input.items === undefined) return;
-
-  const currentBlocks = new Map(
-    current.revision.items
-      .filter((item) => item.kind === "block")
-      .map((item) => [
-        item.itemId,
-        {
-          sourceBlockId: item.sourceBlockId,
-          sourceBlockRevision: item.sourceBlockRevision,
-        },
-      ] as const),
-  );
-
-  for (const item of input.items) {
-    if (item.kind !== "block") continue;
-    const itemId =
-      typeof item.itemId === "string" ? item.itemId : null;
-    const existing =
-      itemId === null ? undefined : currentBlocks.get(itemId);
-    const nextSourceBlockId = item.sourceBlockId ?? null;
-    const nextSourceBlockRevision = item.sourceBlockRevision ?? null;
-
-    if (existing === undefined) {
-      if (
-        nextSourceBlockId !== null ||
-        nextSourceBlockRevision !== null
-      ) {
-        throw new InvalidTrainingPlanRequestError();
-      }
-      continue;
-    }
-
-    if (
-      existing.sourceBlockId !== nextSourceBlockId ||
-      existing.sourceBlockRevision !== nextSourceBlockRevision
-    ) {
-      throw new InvalidTrainingPlanRequestError();
-    }
-  }
-}
-
 function requiredRevision(value: unknown): number {
   if (
     typeof value !== "number" ||
@@ -661,6 +663,18 @@ function trainingPlanNotFound(): Response {
       error: {
         code: "TRAINING_PLAN_NOT_FOUND",
         message: "The training plan was not found.",
+      },
+    },
+    { status: 404 },
+  );
+}
+
+function trainingPlanBlockTemplateNotFound(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "TRAINING_PLAN_BLOCK_TEMPLATE_NOT_FOUND",
+        message: "The training plan block template is not available.",
       },
     },
     { status: 404 },
