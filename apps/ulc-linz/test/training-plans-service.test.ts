@@ -359,6 +359,70 @@ describe("ULC training plan block template adoption", () => {
     });
   });
 
+  it("preserves long text parameters without forcing them into the compact amount field", async () => {
+    const longNote = "x".repeat(500);
+    const exercise = catalogItem("exercise-1", {
+      parameters: Object.freeze([
+        parameter("note_text", {
+          label: "Zusatzhinweis",
+          inputType: "text",
+          defaultValue: null,
+          sortOrder: 5,
+        }),
+        parameter("distance_m", {
+          label: "Distanz",
+          unit: "m",
+          defaultValue: "30",
+          sortOrder: 10,
+        }),
+      ]),
+    });
+    const block = blockSnapshot({
+      revision: Object.freeze({
+        organizationId: "org-1",
+        blockId: "block-1",
+        revision: 3,
+        name: "Textblock",
+        audienceId: "group-active",
+        durationMinutes: null,
+        note: null,
+        exercises: Object.freeze([
+          {
+            itemId: "occurrence-long-text",
+            exerciseId: "exercise-1",
+            note: null,
+            parameterOverrides: Object.freeze([
+              { key: "note_text", value: longNote, sortOrder: 0 },
+            ]),
+            sortOrder: 0,
+          },
+        ]),
+        createdAt: "2026-10-10T12:00:00.000Z",
+      }),
+    });
+    const { service } = createService({
+      exercises: [exercise],
+      blocks: [block],
+    });
+
+    const template = await service.findBlockTemplate(
+      "org-1",
+      "block-1",
+      3,
+    );
+    expect(template).toBeDefined();
+    expect(template?.item.exercises?.[0]).toMatchObject({
+      amount: "30",
+      unit: "m",
+    });
+    expect(template?.item.exercises?.[0]?.comment).toContain(
+      "Zusatzhinweis: " + longNote,
+    );
+    expect(template?.item.exercises?.[0]?.comment).toContain(
+      "Distanz: 30 m",
+    );
+  });
+
   it("requires the exact current template revision for a new sourced plan block", async () => {
     const exercise = catalogItem("exercise-1");
     const block = blockSnapshot({
