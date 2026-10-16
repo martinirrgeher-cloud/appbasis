@@ -352,7 +352,10 @@ export function createUlcTrainingPlanService({
         item.sourceBlockId,
         item.sourceBlockRevision,
       );
-      if (template === undefined) {
+      if (
+        template === undefined ||
+        !blockDraftMatchesTemplate(item, template.item)
+      ) {
         throw new UlcTrainingPlanReferenceError(
           "block",
           item.sourceBlockId,
@@ -526,6 +529,35 @@ export function createUlcTrainingPlanService({
     ) {
       return plans.findRevision(organizationId, planId, revision);
     },
+  });
+}
+
+function blockDraftMatchesTemplate(
+  draft: TrainingPlanBlockDraft,
+  template: TrainingPlanBlockInput,
+): boolean {
+  if (
+    draft.sourceBlockId !== (template.sourceBlockId ?? null) ||
+    draft.sourceBlockRevision !== (template.sourceBlockRevision ?? null) ||
+    draft.name !== template.name ||
+    draft.durationMinutes !== (template.durationMinutes ?? null) ||
+    draft.note !== (template.note ?? null)
+  ) {
+    return false;
+  }
+
+  const exercises = template.exercises ?? [];
+  if (draft.exercises.length !== exercises.length) return false;
+  return draft.exercises.every((exercise, index) => {
+    const expected = exercises[index];
+    return expected !== undefined &&
+      exercise.sourceExerciseId === (expected.sourceExerciseId ?? null) &&
+      exercise.name === expected.name &&
+      exercise.sets === (expected.sets ?? null) &&
+      exercise.repetitions === (expected.repetitions ?? null) &&
+      exercise.amount === (expected.amount ?? null) &&
+      exercise.unit === (expected.unit ?? null) &&
+      exercise.comment === (expected.comment ?? null);
   });
 }
 
