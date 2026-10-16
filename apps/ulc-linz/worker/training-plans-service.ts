@@ -18,6 +18,7 @@ import {
   type TrainingPlanBlockDraft,
   type TrainingPlanBlockInput,
   type TrainingPlanDraft,
+  type TrainingPlanExerciseRevision,
   type TrainingPlanItemDraft,
   type TrainingPlanRevision,
   type TrainingPlanService,
@@ -121,6 +122,7 @@ export type UlcTrainingPlanTemplateSaveErrorReason =
   | "plan-block-not-found"
   | "manual-exercise"
   | "exercise-unavailable"
+  | "audience-unavailable"
   | "parameter-unavailable"
   | "parameter-ambiguous"
   | "required-parameter-missing";
@@ -506,7 +508,7 @@ export function createUlcTrainingPlanService({
     );
     if (audience === undefined) {
       throw new UlcTrainingPlanTemplateSaveError(
-        "parameter-unavailable",
+        "audience-unavailable",
         input.audienceId,
       );
     }
@@ -707,9 +709,7 @@ export function createUlcTrainingPlanService({
 }
 
 function trainingBlockExerciseFromPlan(
-  exercise: TrainingPlanSnapshot["revision"]["items"][number] extends infer _Ignored
-    ? TrainingPlanBlockDraft["exercises"][number] & { readonly itemId?: string }
-    : never,
+  exercise: TrainingPlanExerciseRevision,
   catalogById: ReadonlyMap<string, ExerciseCatalogItem>,
 ): NonNullable<CreateTrainingBlockDraftInput["exercises"]>[number] {
   if (exercise.sourceExerciseId === null) {
