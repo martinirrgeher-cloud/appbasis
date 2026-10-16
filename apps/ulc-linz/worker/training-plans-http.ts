@@ -12,10 +12,20 @@ import {
   type TrainingPlanSnapshot,
   type UpdateTrainingPlanDraftInput,
 } from "@appbasis/training-plans";
+import {
+  TrainingBlockValidationError,
+} from "@appbasis/training-blocks";
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { UlcLinzAuthorizationDeniedError } from "./authorization";
-import { UlcTrainingPlanReferenceError } from "./training-plans-service";
+import {
+  UlcTrainingBlockParameterError,
+  UlcTrainingBlockReferenceError,
+} from "./training-blocks-service";
+import {
+  UlcTrainingPlanReferenceError,
+  UlcTrainingPlanTemplateSaveError,
+} from "./training-plans-service";
 import { recordUlcLinzSecurityEvent } from "./security-events";
 import type { GeneratedPostgresApplicationRuntime } from "./postgres";
 
@@ -32,6 +42,13 @@ const UPDATE_FIELDS = Object.freeze([
   "note",
   "items",
 ]);
+const SAVE_BLOCK_TEMPLATE_FIELDS = Object.freeze([
+  "planId",
+  "blockItemId",
+  "expectedRevision",
+  "audienceId",
+  "name",
+]);
 
 export async function trainingPlansHttpResponse(
   request: Request,
@@ -43,6 +60,19 @@ export async function trainingPlansHttpResponse(
   }
   if (url.pathname === "/api/modules/training-plans/week") {
     return trainingPlansWeekResponse(request, runtime, url);
+  }
+  if (
+    url.pathname ===
+    "/api/modules/training-plans/block-template-save-options"
+  ) {
+    return trainingPlanBlockTemplateSaveOptionsResponse(
+      request,
+      runtime,
+      url,
+    );
+  }
+  if (url.pathname === "/api/modules/training-plans/block-templates") {
+    return trainingPlanBlockTemplateSaveResponse(request, runtime, url);
   }
   if (
     url.pathname.startsWith(
@@ -140,6 +170,7 @@ async function trainingPlansModuleResponse(
             attendanceSummary: true,
             attendanceFilter: true,
             blockTemplateAdoption: true,
+            blockTemplateSaveBack: true,
           },
         },
         access: { view: true, edit: access.canEdit },
@@ -157,6 +188,110 @@ async function trainingPlansModuleResponse(
       { plan: trainingPlanClientSnapshot(plan) },
       { status: 201 },
     );
+  } catch (error) {
+    return trainingPlanErrorResponse(error);
+  }
+}
+
+async function trainingPlanBlockTemplateSaveOptionsResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor(
+      "GET",
+      "training plan block template save options",
+    );
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidTrainingPlanInput();
+  }
+
+  const access = await authorizeTrainingPlansRequest(
+    request,
+    runtime,
+    url,
+    "edit",
+    true,
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    const audiences =
+      await runtime.trainingPlans.listBlockTemplateAudiences(
+        access.organizationId,
+      );
+    return privateJson({ audiences });
+  } catch (error) {
+    return trainingPlanErrorResponse(error);
+  }
+}
+
+async function trainingPlanBlockTemplateSaveResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor(
+      "POST",
+      "training plan block template save",
+    );
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidTrainingPlanInput();
+  }
+
+  const access = await authorizeTrainingPlansRequest(
+    request,
+    runtime,
+    url,
+    "edit",
+    true,
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    const body = await trainingPlanJsonObject(
+      request,
+      SAVE_BLOCK_TEMPLATE_FIELDS,
+      [
+        "planId",
+        "blockItemId",
+        "expectedRevision",
+        "audienceId",
+      ],
+    );
+    if (
+      typeof body.planId !== "string" ||
+      typeof body.blockItemId !== "string" ||
+      typeof body.audienceId !== "string" ||
+      (body.name !== undefined && typeof body.name !== "string")
+    ) {
+      throw new InvalidTrainingPlanRequestError();
+    }
+    const template = await runtime.trainingPlans.saveBlockAsTemplate(
+      access.organizationId,
+      {
+        planId: normalizeTrainingPlanIdentifier(
+          body.planId,
+          "Training plan id",
+        ),
+        blockItemId: normalizeTrainingPlanIdentifier(
+          body.blockItemId,
+          "Training plan block item id",
+        ),
+        expectedRevision: requiredRevision(body.expectedRevision),
+        audienceId: normalizeTrainingPlanIdentifier(
+          body.audienceId,
+          "Training plan block template audience",
+        ),
+        ...(body.name === undefined ? {} : { name: body.name }),
+      },
+    );
+    if (template === undefined) return trainingPlanNotFound();
+    return privateJson({ template }, { status: 201 });
   } catch (error) {
     return trainingPlanErrorResponse(error);
   }
@@ -272,6 +407,7 @@ async function authorizeTrainingPlansRequest(
   runtime: GeneratedPostgresApplicationRuntime,
   url: URL,
   action: "view" | "edit",
+  requireTrainingBlocksEdit = false,
 ): Promise<
   | Response
   | Readonly<{
@@ -300,9 +436,39 @@ async function authorizeTrainingPlansRequest(
   }
 
   try {
-    return action === "view"
-      ? await runtime.trainingPlansAccess.assertViewAccess(current)
-      : await runtime.trainingPlansAccess.assertEditAccess(current);
+    const trainingPlanAccess =
+      action === "view"
+        ? await runtime.trainingPlansAccess.assertViewAccess(current)
+        : await runtime.trainingPlansAccess.assertEditAccess(current);
+    if (!requireTrainingBlocksEdit) return trainingPlanAccess;
+
+    const trainingBlockAccess =
+      await runtime.trainingBlocksAccess.assertEditAccess(current);
+    if (
+      trainingBlockAccess.organizationId !==
+        trainingPlanAccess.organizationId ||
+      trainingBlockAccess.actorPrincipalId !==
+        trainingPlanAccess.actorPrincipalId
+    ) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: trainingPlanAccess.actorPrincipalId,
+        organizationId: trainingPlanAccess.organizationId,
+        action: "edit",
+        targetId: "training_planning:block_template_save",
+        reasonCode: "scope-mismatch",
+      });
+      return Response.json(
+        {
+          error: {
+            code: "ULC_AUTHORIZATION_DENIED",
+            message: "Training plan access denied.",
+          },
+        },
+        { status: 403 },
+      );
+    }
+    return trainingPlanAccess;
   } catch (error) {
     if (error instanceof UlcLinzAuthorizationDeniedError) {
       return Response.json(
@@ -614,6 +780,36 @@ function trainingPlanErrorResponse(error: unknown): Response {
       { status: 409 },
     );
   }
+  if (error instanceof UlcTrainingPlanTemplateSaveError) {
+    return Response.json(
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+          reason: error.reason,
+          referenceId: error.referenceId,
+        },
+      },
+      {
+        status:
+          error.reason === "plan-block-not-found" ? 404 : 400,
+      },
+    );
+  }
+  if (
+    error instanceof UlcTrainingBlockReferenceError ||
+    error instanceof UlcTrainingBlockParameterError
+  ) {
+    return Response.json(
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      },
+      { status: 400 },
+    );
+  }
   if (error instanceof UlcTrainingPlanReferenceError) {
     return Response.json(
       {
@@ -629,6 +825,7 @@ function trainingPlanErrorResponse(error: unknown): Response {
   }
   if (
     error instanceof TrainingPlanValidationError ||
+    error instanceof TrainingBlockValidationError ||
     error instanceof InvalidTrainingPlanRequestError
   ) {
     return invalidTrainingPlanInput();
