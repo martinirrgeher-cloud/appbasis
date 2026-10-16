@@ -15,6 +15,7 @@ import {
   createUlcTrainingPlanService,
   UlcTrainingPlanReferenceError,
 } from "../worker/training-plans-service";
+import type { UlcTrainingAttendanceSummary } from "../worker/training-session-postgres";
 
 const ACTIVE_ATHLETE: Athlete = Object.freeze({
   id: "athlete-active",
@@ -86,10 +87,12 @@ function createService(input: {
   athletes?: readonly Athlete[];
   exercises?: readonly ExerciseCatalogItem[];
   ids?: readonly string[];
+  attendance?: readonly UlcTrainingAttendanceSummary[];
 } = {}) {
   const repository = new InMemoryTrainingPlanRepository();
   let idIndex = 0;
   let catalogReadCount = 0;
+  let attendanceReadCount = 0;
   const ids = input.ids ?? [
     "plan-1",
     "item-1",
@@ -117,9 +120,12 @@ function createService(input: {
     athletes,
   };
 
+  const attendanceRows = input.attendance ?? [];
+
   return {
     plans,
     getCatalogReadCount: () => catalogReadCount,
+    getAttendanceReadCount: () => attendanceReadCount,
     service: createUlcTrainingPlanService({
       plans,
       masterdata: {
@@ -131,6 +137,12 @@ function createService(input: {
         async listItems() {
           catalogReadCount += 1;
           return exercises;
+        },
+      },
+      attendance: {
+        async listAttendanceForAthleteDateRange() {
+          attendanceReadCount += 1;
+          return attendanceRows;
         },
       },
     }),
@@ -155,6 +167,57 @@ describe("ULC training plan adapter", () => {
         displayName: "Ziel, Anna",
       },
     ]);
+  });
+
+  it("reads attendance only for an active same-organization subject", async () => {
+    const { service, getAttendanceReadCount } = createService({
+      attendance: [
+        {
+          sessionId: "session-1",
+          sessionDate: "2026-10-12",
+          status: "present",
+        },
+        {
+          sessionId: "session-2",
+          sessionDate: "2026-10-14",
+          status: "excused",
+        },
+      ],
+    });
+
+    await expect(
+      service.listAttendanceForSubjectDateRange(
+        "org-1",
+        ACTIVE_ATHLETE.id,
+        "2026-10-12",
+        "2026-10-18",
+      ),
+    ).resolves.toEqual([
+      {
+        sessionId: "session-1",
+        sessionDate: "2026-10-12",
+        status: "present",
+      },
+      {
+        sessionId: "session-2",
+        sessionDate: "2026-10-14",
+        status: "excused",
+      },
+    ]);
+    expect(getAttendanceReadCount()).toBe(1);
+
+    await expect(
+      service.listAttendanceForSubjectDateRange(
+        "org-1",
+        INACTIVE_ATHLETE.id,
+        "2026-10-12",
+        "2026-10-18",
+      ),
+    ).rejects.toMatchObject({
+      referenceType: "subject",
+      referenceId: INACTIVE_ATHLETE.id,
+    });
+    expect(getAttendanceReadCount()).toBe(1);
   });
 
   it("creates plans only for an active same-organization athlete and validates sourced catalog exercises", async () => {
@@ -289,6 +352,11 @@ describe("ULC training plan adapter", () => {
           return [];
         },
       },
+      attendance: {
+        async listAttendanceForAthleteDateRange() {
+          return [];
+        },
+      },
     });
 
     await expect(
@@ -337,6 +405,11 @@ describe("ULC training plan adapter", () => {
         async listItems() {
           catalogReads += 1;
           return [catalogItem("exercise-1", { isActive: false })];
+        },
+      },
+      attendance: {
+        async listAttendanceForAthleteDateRange() {
+          return [];
         },
       },
     });
@@ -405,6 +478,11 @@ describe("ULC training plan adapter", () => {
       },
       exerciseCatalog: {
         async listItems() {
+          return [];
+        },
+      },
+      attendance: {
+        async listAttendanceForAthleteDateRange() {
           return [];
         },
       },

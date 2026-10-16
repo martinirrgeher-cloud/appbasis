@@ -137,6 +137,142 @@ describe("ULC training session PostgreSQL persistence", () => {
     expect(result?.attendance[0]?.athleteId).toBe("athlete-1");
   });
 
+  it("lists scheduled attendance only for one athlete, organization and date range", async () => {
+    const calls: Array<{
+      query: string;
+      parameters: readonly unknown[] | undefined;
+    }> = [];
+    const repository = new PostgresUlcTrainingSessionRepository(
+      {
+        async unsafe(query, parameters) {
+          calls.push({ query, parameters });
+          return [
+            {
+              organization_id: "verein-1",
+              athlete_id: "athlete-1",
+              session_id: "session-1",
+              session_date: "2026-09-27",
+              status: "present",
+            },
+            {
+              organization_id: "verein-1",
+              athlete_id: "athlete-1",
+              session_id: "session-2",
+              session_date: "2026-09-26",
+              status: "excused",
+            },
+          ];
+        },
+      },
+      () => "validation-id",
+    );
+
+    await expect(
+      repository.listAttendanceForAthleteDateRange(
+        "verein-1",
+        "athlete-1",
+        "2026-09-21",
+        "2026-09-27",
+      ),
+    ).resolves.toEqual([
+      {
+        sessionId: "session-1",
+        sessionDate: "2026-09-27",
+        status: "present",
+      },
+      {
+        sessionId: "session-2",
+        sessionDate: "2026-09-26",
+        status: "excused",
+      },
+    ]);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.query).toContain(
+      "attendance.organization_id = $1",
+    );
+    expect(calls[0]?.query).toContain(
+      "attendance.athlete_id = $2",
+    );
+    expect(calls[0]?.query).toContain(
+      "session.state = 'scheduled'",
+    );
+    expect(calls[0]?.query).toContain(
+      "session.session_date >= $3::date",
+    );
+    expect(calls[0]?.query).toContain(
+      "session.session_date <= $4::date",
+    );
+    expect(calls[0]?.parameters).toEqual([
+      "verein-1",
+      "athlete-1",
+      "2026-09-21",
+      "2026-09-27",
+    ]);
+  });
+
+  it("rejects invalid attendance ranges before querying PostgreSQL", async () => {
+    let called = false;
+    const repository = new PostgresUlcTrainingSessionRepository(
+      {
+        async unsafe() {
+          called = true;
+          return [];
+        },
+      },
+      () => "validation-id",
+    );
+
+    await expect(
+      repository.listAttendanceForAthleteDateRange(
+        "verein-1",
+        "athlete-1",
+        "2026-09-28",
+        "2026-09-27",
+      ),
+    ).rejects.toMatchObject({
+      name: "UlcTrainingValidationError",
+    });
+    expect(called).toBe(false);
+  });
+
+  it("fails closed when an attendance range row escapes organization or athlete scope", async () => {
+    for (const row of [
+      {
+        organization_id: "verein-2",
+        athlete_id: "athlete-1",
+        session_id: "session-1",
+        session_date: "2026-09-27",
+        status: "present",
+      },
+      {
+        organization_id: "verein-1",
+        athlete_id: "athlete-2",
+        session_id: "session-1",
+        session_date: "2026-09-27",
+        status: "present",
+      },
+    ]) {
+      const repository = new PostgresUlcTrainingSessionRepository(
+        {
+          async unsafe() {
+            return [row];
+          },
+        },
+        () => "validation-id",
+      );
+
+      await expect(
+        repository.listAttendanceForAthleteDateRange(
+          "verein-1",
+          "athlete-1",
+          "2026-09-21",
+          "2026-09-27",
+        ),
+      ).rejects.toBeInstanceOf(UlcTrainingSessionPersistenceError);
+    }
+  });
+
   it("reports a stale revision without touching attendance", async () => {
     const calls: string[] = [];
     const repository = new PostgresUlcTrainingSessionRepository(

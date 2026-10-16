@@ -18,6 +18,7 @@ import {
   type UpdateTrainingPlanDraftInput,
   type UpdateTrainingPlanItemInput,
 } from "@appbasis/training-plans";
+import type { UlcTrainingAttendanceSummary } from "./training-session-postgres";
 
 export interface UlcTrainingPlanSubject {
   readonly id: string;
@@ -34,6 +35,15 @@ export interface UlcTrainingPlanMasterdataReader {
 
 export interface UlcTrainingPlanExerciseReader {
   listItems: Pick<ExerciseCatalogRepository, "listItems">["listItems"];
+}
+
+export interface UlcTrainingPlanAttendanceReader {
+  listAttendanceForAthleteDateRange(
+    organizationId: string,
+    athleteId: string,
+    fromDate: string,
+    toDate: string,
+  ): PromiseLike<readonly UlcTrainingAttendanceSummary[]>;
 }
 
 export class UlcTrainingPlanReferenceError extends Error {
@@ -66,6 +76,12 @@ export interface UlcTrainingPlanService {
     fromDate: string,
     toDate: string,
   ): Promise<readonly TrainingPlanSnapshot[]>;
+  listAttendanceForSubjectDateRange(
+    organizationId: string,
+    subjectId: string,
+    fromDate: string,
+    toDate: string,
+  ): Promise<readonly UlcTrainingAttendanceSummary[]>;
   findCurrent(
     organizationId: string,
     planId: string,
@@ -106,10 +122,12 @@ export function createUlcTrainingPlanService({
   plans,
   masterdata,
   exerciseCatalog,
+  attendance,
 }: {
   plans: TrainingPlanService;
   masterdata: UlcTrainingPlanMasterdataReader;
   exerciseCatalog: UlcTrainingPlanExerciseReader;
+  attendance: UlcTrainingPlanAttendanceReader;
 }): UlcTrainingPlanService {
   async function listSubjects(
     organizationId: string,
@@ -174,6 +192,20 @@ export function createUlcTrainingPlanService({
       toDate: string,
     ) {
       return plans.listForSubjectDateRange(
+        organizationId,
+        subjectId,
+        fromDate,
+        toDate,
+      );
+    },
+    async listAttendanceForSubjectDateRange(
+      organizationId: string,
+      subjectId: string,
+      fromDate: string,
+      toDate: string,
+    ) {
+      await assertActiveSubject(organizationId, subjectId);
+      return attendance.listAttendanceForAthleteDateRange(
         organizationId,
         subjectId,
         fromDate,
