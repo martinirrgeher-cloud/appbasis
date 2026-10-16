@@ -553,7 +553,7 @@ function materializeBlockTemplate(
   if (audienceName === undefined) return null;
 
   const exercises: Array<
-    Omit<TrainingPlanBlockInput["exercises"][number], "kind">
+    NonNullable<TrainingPlanBlockInput["exercises"]>[number]
   > = [];
   for (const occurrence of block.revision.exercises) {
     const exercise = catalogById.get(occurrence.exerciseId);
