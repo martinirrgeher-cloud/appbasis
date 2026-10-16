@@ -67,3 +67,8 @@ The standard module now exposes a separate privileged
 Schema v2 adds only the short-lived deletion-marker table. It introduces no
 cross-owner foreign key and does not itself migrate Preview or Production.
 
+
+## ULC adoption
+
+Attendance presentation/filtering and read-only block-template adoption are supplied by the ULC adapter. Saving a planned block back as a reusable template and preview acceptance remain later product slices.
+
