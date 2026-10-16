@@ -9,6 +9,43 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
+**ULC-E7B6 – Blockvorlagen in die Trainingsplanung übernehmen.**
+
+Nach der fertigen Anwesenheitsanzeige wird die eigentliche Planbearbeitung
+weiter ausgebaut. Dieser Slice verbindet das bereits vorhandene Standardmodul
+`training-blocks` read-only mit `training-plans`: Eine Blockvorlage kann in
+einen Tagesplan übernommen werden, danach bleibt der Planblock als eigener
+Snapshot unabhängig von späteren Änderungen der Vorlage.
+
+Abnahme für diesen Slice:
+
+- die Trainingsplanung kann aktive, für ULC gültige Blockvorlagen serverseitig
+  auflisten; Organisation und Berechtigung bleiben ausschließlich
+  serverautorisiert;
+- der Planeditor bietet einen kompakten Blockvorlagen-Picker statt nur
+  manueller Blockanlage;
+- bei Übernahme werden Name, Dauer, Notiz, Übungen und Parameterwerte in einen
+  neuen Planblock kopiert;
+- `sourceBlockId` und die exakt verwendete `sourceBlockRevision` werden nur
+  als Provenienz gespeichert;
+- spätere Änderungen an der Vorlage verändern einen bereits übernommenen
+  Planblock nicht;
+- Übungsprovenienz aus der Vorlage bleibt erhalten, ohne den Katalog beim
+  normalen Bearbeiten rückwirkend zu erzwingen;
+- eine Vorlage darf mehrfach und in mehrere Tage übernommen werden; jeder
+  übernommene Planblock erhält eigene Plan-Item-Identitäten;
+- bestehender Wocheneditor, Attendance-Filter, Autosave und Optimistic
+  Concurrency bleiben unverändert;
+- noch kein Rückspeichern eines Planblocks als neue Vorlage in diesem Slice;
+- keine Datenbankmigration, kein Preview-/Production-Deploy und kein
+  Provider-/Produktionswrite.
+
+Für diesen normalen Produktslice gilt weiterhin `Codex sparsam`: gezielte
+Tests und vollständige CI sind die primäre Abnahme; Codex nur bei echtem
+Architektur-/Security-Anlass.
+
+## Abgeschlossener Gate-Scope: ULC-E7B5 Anwesenheit
+
 **ULC-E7B5 – Anwesenheitsanzeige und Filter in der Trainingsplanung.**
 
 Nach Abschluss des `training-plans`-Production-Lifecycle-Slices geht die

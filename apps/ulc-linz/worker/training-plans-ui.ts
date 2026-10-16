@@ -67,6 +67,12 @@ export const ULC_TRAINING_PLANS_HTML = `
                       <button class="button button--secondary" id="training-plan-add-exercise" type="button">Übung hinzufügen</button>
                       <button class="button button--secondary" id="training-plan-add-block" type="button">Block hinzufügen</button>
                     </div>
+                    <div class="training-plan-template-picker">
+                      <label>Blockvorlage
+                        <select id="training-plan-block-template"></select>
+                      </label>
+                      <button class="button button--secondary" id="training-plan-add-template" type="button">Vorlage übernehmen</button>
+                    </div>
                     <div class="training-plan-items" id="training-plan-items"></div>
                   </section>
                 </div>
@@ -237,7 +243,16 @@ export const ULC_TRAINING_PLANS_CSS = `
 .training-plan-items-card { padding: 12px; }
 .training-plan-note-card textarea { width: 100%; }
 .training-plan-recovery { display: flex; gap: 8px; flex-wrap: wrap; }
-.training-plan-add-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.training-plan-add-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.training-plan-template-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+.training-plan-template-picker label { min-width: 0; }
+.training-plan-template-picker select { width: 100%; }
 .training-plan-items { display: grid; gap: 10px; }
 .training-plan-item {
   display: grid;
@@ -306,6 +321,7 @@ export const ULC_TRAINING_PLANS_CSS = `
   .training-plan-toolbar { grid-template-columns: 1fr; }
   .training-plan-week-nav { justify-content: space-between; }
   .training-plan-grid { grid-template-columns: 1fr 1fr; }
+  .training-plan-template-picker { grid-template-columns: 1fr; }
   .training-plan-dialog { max-height: 96vh; }
 }
 @media (max-width: 359px) {
@@ -336,6 +352,8 @@ const trainingPlanElements = Object.freeze({
   note: document.querySelector("#training-plan-note"),
   addExercise: document.querySelector("#training-plan-add-exercise"),
   addBlock: document.querySelector("#training-plan-add-block"),
+  blockTemplate: document.querySelector("#training-plan-block-template"),
+  addTemplate: document.querySelector("#training-plan-add-template"),
   itemCount: document.querySelector("#training-plan-item-count"),
   items: document.querySelector("#training-plan-items"),
   meta: document.querySelector("#training-plan-editor-meta"),
@@ -344,6 +362,7 @@ const trainingPlanElements = Object.freeze({
 let trainingPlansReady = false;
 let trainingPlansCanEdit = false;
 let trainingPlanSubjects = [];
+let trainingPlanBlockTemplates = [];
 let trainingPlanSelectedSubjectId = "";
 let trainingPlanWeekStart = trainingPlanMonday(new Date());
 let trainingPlanWeekPlans = [];
@@ -357,6 +376,7 @@ let trainingPlanDraft = null;
 let trainingPlanDirty = false;
 let trainingPlanConflict = false;
 let trainingPlanSaveBusy = false;
+let trainingPlanTemplateBusy = false;
 let trainingPlanSavePending = false;
 let trainingPlanSaveTimer = null;
 let trainingPlanChangeVersion = 0;
@@ -369,6 +389,59 @@ function isTrainingPlanSubject(value) {
     typeof value.firstName === "string" &&
     typeof value.lastName === "string" &&
     typeof value.displayName === "string";
+}
+
+function isTrainingPlanBlockTemplateSummary(value) {
+  return value !== null &&
+    typeof value === "object" &&
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    Number.isSafeInteger(value.currentRevision) &&
+    value.currentRevision >= 1 &&
+    typeof value.name === "string" &&
+    value.name.length > 0 &&
+    typeof value.audienceName === "string" &&
+    value.audienceName.length > 0 &&
+    (value.durationMinutes === null ||
+      (Number.isSafeInteger(value.durationMinutes) && value.durationMinutes >= 1)) &&
+    Number.isSafeInteger(value.exerciseCount) &&
+    value.exerciseCount >= 0;
+}
+
+function isTrainingPlanTemplateExercise(value) {
+  return value !== null &&
+    typeof value === "object" &&
+    typeof value.sourceExerciseId === "string" &&
+    value.sourceExerciseId.length > 0 &&
+    typeof value.name === "string" &&
+    value.name.length > 0 &&
+    (value.sets === null || typeof value.sets === "string") &&
+    (value.repetitions === null || typeof value.repetitions === "string") &&
+    (value.amount === null || typeof value.amount === "string") &&
+    (value.unit === null || typeof value.unit === "string") &&
+    (value.comment === null || typeof value.comment === "string");
+}
+
+function isTrainingPlanBlockTemplate(value) {
+  const item = value?.item;
+  return value !== null &&
+    typeof value === "object" &&
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    Number.isSafeInteger(value.currentRevision) &&
+    value.currentRevision >= 1 &&
+    item !== null &&
+    typeof item === "object" &&
+    item.kind === "block" &&
+    item.sourceBlockId === value.id &&
+    item.sourceBlockRevision === value.currentRevision &&
+    typeof item.name === "string" &&
+    item.name.length > 0 &&
+    (item.durationMinutes === null ||
+      (Number.isSafeInteger(item.durationMinutes) && item.durationMinutes >= 1)) &&
+    (item.note === null || typeof item.note === "string") &&
+    Array.isArray(item.exercises) &&
+    item.exercises.every(isTrainingPlanTemplateExercise);
 }
 
 function isTrainingPlanExercise(value) {
@@ -450,6 +523,7 @@ async function bootstrapTrainingPlans() {
   trainingPlansReady = false;
   trainingPlansCanEdit = false;
   trainingPlanSubjects = [];
+  trainingPlanBlockTemplates = [];
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
   trainingPlanWeekLoaded = false;
@@ -469,10 +543,13 @@ async function bootstrapTrainingPlans() {
       features?.optimisticConcurrency !== true ||
       features?.attendanceSummary !== true ||
       features?.attendanceFilter !== true ||
+      features?.blockTemplateAdoption !== true ||
       payload?.access?.view !== true ||
       typeof payload?.access?.edit !== "boolean" ||
       !Array.isArray(payload?.subjects) ||
-      !payload.subjects.every(isTrainingPlanSubject)
+      !payload.subjects.every(isTrainingPlanSubject) ||
+      !Array.isArray(payload?.blockTemplates) ||
+      !payload.blockTemplates.every(isTrainingPlanBlockTemplateSummary)
     ) {
       throw new Error("INVALID_TRAINING_PLAN_CONTRACT");
     }
@@ -480,6 +557,7 @@ async function bootstrapTrainingPlans() {
     trainingPlansReady = true;
     trainingPlansCanEdit = payload.access.edit;
     trainingPlanSubjects = payload.subjects.slice();
+    trainingPlanBlockTemplates = payload.blockTemplates.slice();
     if (
       !trainingPlanSubjects.some(
         (subject) => subject.id === trainingPlanSelectedSubjectId,
@@ -488,14 +566,17 @@ async function bootstrapTrainingPlans() {
       trainingPlanSelectedSubjectId = trainingPlanSubjects[0]?.id || "";
     }
     renderTrainingPlanSubjects();
+    renderTrainingPlanBlockTemplates();
     await loadTrainingPlanWeek();
   } catch (error) {
     trainingPlansReady = false;
     trainingPlansCanEdit = false;
+    trainingPlanBlockTemplates = [];
     trainingPlanWeekPlans = [];
     trainingPlanWeekAttendance = [];
     trainingPlanWeekLoaded = false;
     renderTrainingPlanSubjects();
+    renderTrainingPlanBlockTemplates();
     renderTrainingPlanWeek();
     showMessage(
       trainingPlanElements.message,
@@ -510,6 +591,7 @@ async function bootstrapTrainingPlans() {
 function prepareTrainingPlansView() {
   if (!trainingPlansReady) return;
   renderTrainingPlanSubjects();
+  renderTrainingPlanBlockTemplates();
   renderTrainingPlanWeek();
   if (
     trainingPlanSelectedSubjectId &&
@@ -543,6 +625,7 @@ function refreshTrainingPlanControls() {
   if (trainingPlanElements.weekPrev) trainingPlanElements.weekPrev.disabled = disabled;
   if (trainingPlanElements.weekToday) trainingPlanElements.weekToday.disabled = disabled;
   if (trainingPlanElements.weekNext) trainingPlanElements.weekNext.disabled = disabled;
+  refreshTrainingPlanTemplateControls();
 }
 
 function renderTrainingPlanSubjects() {
@@ -569,6 +652,88 @@ function renderTrainingPlanSubjects() {
     )
   ) {
     select.value = trainingPlanSelectedSubjectId;
+  }
+}
+
+function renderTrainingPlanBlockTemplates() {
+  const select = trainingPlanElements.blockTemplate;
+  if (!select) return;
+  const selected = select.value;
+  select.replaceChildren();
+
+  if (trainingPlanBlockTemplates.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Keine verfügbare Blockvorlage";
+    select.append(option);
+    select.value = "";
+    refreshTrainingPlanTemplateControls();
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Blockvorlage auswählen";
+  select.append(placeholder);
+
+  for (const template of trainingPlanBlockTemplates) {
+    const option = document.createElement("option");
+    option.value =
+      template.id + "::" + String(template.currentRevision);
+    option.textContent =
+      template.name +
+      " · " +
+      template.audienceName +
+      " · " +
+      String(template.exerciseCount) +
+      " Übung" +
+      (template.exerciseCount === 1 ? "" : "en");
+    select.append(option);
+  }
+
+  if (
+    trainingPlanBlockTemplates.some(
+      (template) =>
+        template.id + "::" + String(template.currentRevision) === selected,
+    )
+  ) {
+    select.value = selected;
+  } else {
+    select.value = "";
+  }
+  refreshTrainingPlanTemplateControls();
+}
+
+function selectedTrainingPlanBlockTemplate() {
+  const value = trainingPlanElements.blockTemplate?.value || "";
+  const separator = value.lastIndexOf("::");
+  if (separator <= 0) return null;
+  const id = value.slice(0, separator);
+  const revision = Number(value.slice(separator + 2));
+  return (
+    trainingPlanBlockTemplates.find(
+      (template) =>
+        template.id === id &&
+        template.currentRevision === revision,
+    ) || null
+  );
+}
+
+function refreshTrainingPlanTemplateControls() {
+  const blocked =
+    !trainingPlansCanEdit ||
+    trainingPlanConflict ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy;
+  if (trainingPlanElements.blockTemplate) {
+    trainingPlanElements.blockTemplate.disabled =
+      blocked || trainingPlanBlockTemplates.length === 0;
+  }
+  if (trainingPlanElements.addTemplate) {
+    trainingPlanElements.addTemplate.disabled =
+      blocked ||
+      trainingPlanBlockTemplates.length === 0 ||
+      selectedTrainingPlanBlockTemplate() === null;
   }
 }
 
@@ -814,6 +979,7 @@ function openTrainingPlanEditor(date) {
   trainingPlanDirty = false;
   trainingPlanConflict = false;
   trainingPlanSaveBusy = false;
+  trainingPlanTemplateBusy = false;
   trainingPlanSavePending = false;
   trainingPlanChangeVersion = 0;
   clearTimeout(trainingPlanSaveTimer);
@@ -837,13 +1003,14 @@ function populateTrainingPlanEditor() {
   showMessage(trainingPlanElements.editorMessage, "");
   if (trainingPlanElements.reload) trainingPlanElements.reload.hidden = true;
   if (trainingPlanElements.retry) trainingPlanElements.retry.hidden = true;
+  renderTrainingPlanBlockTemplates();
   renderTrainingPlanItems();
   refreshTrainingPlanEditorState();
 }
 
 function closeTrainingPlanEditor(force) {
   if (!force) {
-    if (trainingPlanSaveBusy) return false;
+    if (trainingPlanSaveBusy || trainingPlanTemplateBusy) return false;
     if (
       (trainingPlanDirty || trainingPlanConflict) &&
       !window.confirm("Ungespeicherte Änderungen verwerfen?")
@@ -857,6 +1024,7 @@ function closeTrainingPlanEditor(force) {
   trainingPlanDirty = false;
   trainingPlanConflict = false;
   trainingPlanSaveBusy = false;
+  trainingPlanTemplateBusy = false;
   trainingPlanSavePending = false;
   if (trainingPlanElements.editor) trainingPlanElements.editor.hidden = true;
   showMessage(trainingPlanElements.editorMessage, "");
@@ -910,7 +1078,8 @@ function renderTrainingPlanItems() {
   if (!container || !trainingPlanDraft) return;
   container.replaceChildren();
   const editable = trainingPlansCanEdit && !trainingPlanConflict;
-  const structural = editable && !trainingPlanSaveBusy;
+  const structural =
+    editable && !trainingPlanSaveBusy && !trainingPlanTemplateBusy;
 
   if (trainingPlanElements.itemCount) {
     trainingPlanElements.itemCount.textContent = String(
@@ -923,6 +1092,7 @@ function renderTrainingPlanItems() {
   if (trainingPlanElements.addBlock) {
     trainingPlanElements.addBlock.disabled = !structural;
   }
+  refreshTrainingPlanTemplateControls();
 
   if (trainingPlanDraft.items.length === 0) {
     const empty = document.createElement("p");
@@ -1011,7 +1181,7 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
   add.textContent = "Übung im Block hinzufügen";
   add.disabled = !structural;
   add.addEventListener("click", () => {
-    if (trainingPlanSaveBusy) return;
+    if (trainingPlanSaveBusy || trainingPlanTemplateBusy) return;
     item.exercises.push(newTrainingPlanExerciseDraft());
     markTrainingPlanDirty(true);
   });
@@ -1111,6 +1281,111 @@ function trainingPlanNumberField(label, value, editable, onInput) {
   return wrapper;
 }
 
+function trainingPlanBlockDraftFromTemplate(template) {
+  return {
+    kind: "block",
+    itemId: null,
+    sourceBlockId: template.item.sourceBlockId,
+    sourceBlockRevision: template.item.sourceBlockRevision,
+    name: template.item.name,
+    durationMinutes: template.item.durationMinutes,
+    note: template.item.note || "",
+    exercises: template.item.exercises.map((exercise) => ({
+      itemId: null,
+      sourceExerciseId: exercise.sourceExerciseId,
+      name: exercise.name,
+      sets: exercise.sets || "",
+      repetitions: exercise.repetitions || "",
+      amount: exercise.amount || "",
+      unit: exercise.unit || "",
+      comment: exercise.comment || "",
+    })),
+  };
+}
+
+async function addTrainingPlanBlockTemplate() {
+  if (
+    !trainingPlanDraft ||
+    !trainingPlanEditorDate ||
+    !trainingPlansCanEdit ||
+    trainingPlanConflict ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy
+  ) return;
+
+  const summary = selectedTrainingPlanBlockTemplate();
+  if (summary === null) return;
+
+  const editorDate = trainingPlanEditorDate;
+  trainingPlanTemplateBusy = true;
+  refreshTrainingPlanTemplateControls();
+  renderTrainingPlanItems();
+  showMessage(trainingPlanElements.editorMessage, "");
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-plans/block-templates/" +
+        encodeURIComponent(summary.id) +
+        "?revision=" +
+        encodeURIComponent(String(summary.currentRevision)),
+    );
+    const template = payload?.template;
+    if (
+      !isTrainingPlanBlockTemplate(template) ||
+      template.id !== summary.id ||
+      template.currentRevision !== summary.currentRevision
+    ) {
+      throw new Error("INVALID_TRAINING_PLAN_BLOCK_TEMPLATE");
+    }
+    if (
+      trainingPlanEditorDate !== editorDate ||
+      !trainingPlanDraft
+    ) {
+      return;
+    }
+
+    trainingPlanDraft.items.push(
+      trainingPlanBlockDraftFromTemplate(template),
+    );
+    if (trainingPlanElements.blockTemplate) {
+      trainingPlanElements.blockTemplate.value = "";
+    }
+    markTrainingPlanDirty(true);
+  } catch (error) {
+    if (error?.status === 404) {
+      trainingPlanBlockTemplates = trainingPlanBlockTemplates.filter(
+        (template) =>
+          !(
+            template.id === summary.id &&
+            template.currentRevision === summary.currentRevision
+          ),
+      );
+      renderTrainingPlanBlockTemplates();
+      showMessage(
+        trainingPlanElements.editorMessage,
+        "Die Blockvorlage wurde geändert oder archiviert. Bitte neu auswählen.",
+      );
+    } else {
+      showMessage(
+        trainingPlanElements.editorMessage,
+        "Die Blockvorlage konnte nicht geladen werden.",
+      );
+    }
+  } finally {
+    trainingPlanTemplateBusy = false;
+    renderTrainingPlanItems();
+    refreshTrainingPlanEditorState();
+    if (
+      trainingPlanSavePending &&
+      trainingPlanDirty &&
+      !trainingPlanConflict
+    ) {
+      trainingPlanSavePending = false;
+      scheduleTrainingPlanSave(0);
+    }
+  }
+}
+
 function newTrainingPlanExerciseDraft() {
   return {
     kind: "exercise",
@@ -1207,7 +1482,7 @@ async function saveTrainingPlan() {
     !trainingPlansCanEdit ||
     trainingPlanConflict
   ) return;
-  if (trainingPlanSaveBusy) {
+  if (trainingPlanSaveBusy || trainingPlanTemplateBusy) {
     trainingPlanSavePending = true;
     return;
   }
@@ -1435,6 +1710,7 @@ function refreshTrainingPlanEditorState() {
     trainingPlanElements.note.disabled =
       readonly || trainingPlanConflict;
   }
+  refreshTrainingPlanTemplateControls();
   if (trainingPlanElements.meta) {
     trainingPlanElements.meta.textContent = trainingPlanSelected
       ? "Version " + String(trainingPlanSelected.currentRevision)
@@ -1563,14 +1839,20 @@ trainingPlanElements.note?.addEventListener("input", () => {
   markTrainingPlanDirty();
 });
 trainingPlanElements.addExercise?.addEventListener("click", () => {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (!trainingPlanDraft || trainingPlanSaveBusy || trainingPlanTemplateBusy) return;
   trainingPlanDraft.items.push(newTrainingPlanExerciseDraft());
   markTrainingPlanDirty(true);
 });
 trainingPlanElements.addBlock?.addEventListener("click", () => {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (!trainingPlanDraft || trainingPlanSaveBusy || trainingPlanTemplateBusy) return;
   trainingPlanDraft.items.push(newTrainingPlanBlockDraft());
   markTrainingPlanDirty(true);
+});
+trainingPlanElements.blockTemplate?.addEventListener("change", () => {
+  refreshTrainingPlanTemplateControls();
+});
+trainingPlanElements.addTemplate?.addEventListener("click", () => {
+  void addTrainingPlanBlockTemplate();
 });
 window.addEventListener("beforeunload", (event) => {
   if (!trainingPlanDirty && !trainingPlanSaveBusy) return;

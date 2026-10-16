@@ -10,7 +10,7 @@ import {
   ULC_LINZ_APP_SCRIPT,
 } from "../worker/ui";
 
-describe("ULC E7B5 training plan attendance UI", () => {
+describe("ULC E7B6 training plan block template UI", () => {
   it("adds planning as the second training-focused primary navigation candidate", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="training-plans" data-nav-priority="2" hidden disabled>Planung',
@@ -228,4 +228,31 @@ describe("ULC E7B5 training plan attendance UI", () => {
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("innerHTML");
   });
+  it("renders and validates the block template picker contract", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-block-template"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-add-template"');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("features?.blockTemplateAdoption !== true");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("!Array.isArray(payload?.blockTemplates)");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("!payload.blockTemplates.every(isTrainingPlanBlockTemplateSummary)");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanBlockTemplates = payload.blockTemplates.slice();");
+  });
+
+  it("loads an exact template revision and clones independent plan item ids", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('"/api/modules/training-plans/block-templates/"');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('"?revision="');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("template.currentRevision !== summary.currentRevision");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceBlockId: template.item.sourceBlockId");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceBlockRevision: template.item.sourceBlockRevision");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("itemId: null");
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("/api/modules/training-blocks");
+  });
+
+  it("serializes template adoption with structural autosave", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("let trainingPlanTemplateBusy = false;");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("if (trainingPlanSaveBusy || trainingPlanTemplateBusy) {");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("editable && !trainingPlanSaveBusy && !trainingPlanTemplateBusy;");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanBlockDraftFromTemplate(template)");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("scheduleTrainingPlanSave(0);");
+  });
+
 });

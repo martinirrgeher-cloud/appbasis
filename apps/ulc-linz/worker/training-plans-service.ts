@@ -3,13 +3,17 @@ import type {
   AthleteMasterdataSnapshot,
 } from "@appbasis/athletes";
 import type {
+  ExerciseCatalogItem,
   ExerciseCatalogRepository,
 } from "@appbasis/exercise-catalog";
+import type { TrainingBlockSnapshot } from "@appbasis/training-blocks";
 import {
   normalizeTrainingPlanDraft,
   TrainingPlanConflictError,
   TrainingPlanValidationError,
   type CreateTrainingPlanDraftInput,
+  type TrainingPlanBlockDraft,
+  type TrainingPlanBlockInput,
   type TrainingPlanDraft,
   type TrainingPlanItemDraft,
   type TrainingPlanRevision,
@@ -30,7 +34,9 @@ export interface UlcTrainingPlanSubject {
 export interface UlcTrainingPlanMasterdataReader {
   readOrganizationSnapshot(
     organizationId: string,
-  ): PromiseLike<Pick<AthleteMasterdataSnapshot, "athletes">>;
+  ): PromiseLike<
+    Pick<AthleteMasterdataSnapshot, "athletes" | "trainingGroups">
+  >;
 }
 
 export interface UlcTrainingPlanExerciseReader {
@@ -46,19 +52,46 @@ export interface UlcTrainingPlanAttendanceReader {
   ): PromiseLike<readonly UlcTrainingAttendanceSummary[]>;
 }
 
+export interface UlcTrainingPlanBlockReader {
+  list(
+    organizationId: string,
+  ): PromiseLike<readonly TrainingBlockSnapshot[]>;
+  findCurrent(
+    organizationId: string,
+    blockId: string,
+  ): PromiseLike<TrainingBlockSnapshot | undefined>;
+}
+
+export interface UlcTrainingPlanBlockTemplateSummary {
+  readonly id: string;
+  readonly currentRevision: number;
+  readonly name: string;
+  readonly audienceName: string;
+  readonly durationMinutes: number | null;
+  readonly exerciseCount: number;
+}
+
+export interface UlcTrainingPlanBlockTemplate {
+  readonly id: string;
+  readonly currentRevision: number;
+  readonly item: TrainingPlanBlockInput;
+}
+
 export class UlcTrainingPlanReferenceError extends Error {
   readonly code = "ULC_TRAINING_PLAN_REFERENCE_INVALID";
-  readonly referenceType: "subject" | "exercise";
+  readonly referenceType: "subject" | "exercise" | "block";
   readonly referenceId: string | null;
 
   constructor(
-    referenceType: "subject" | "exercise",
+    referenceType: "subject" | "exercise" | "block",
     referenceId: string | null,
   ) {
     super(
       referenceType === "subject"
         ? "Training plan requires one active ULC athlete."
-        : "Training plan references an unavailable exercise.",
+        : referenceType === "exercise"
+          ? "Training plan references an unavailable exercise."
+          : "Training plan references an unavailable block template.",
     );
     this.name = "UlcTrainingPlanReferenceError";
     this.referenceType = referenceType;
@@ -82,6 +115,14 @@ export interface UlcTrainingPlanService {
     fromDate: string,
     toDate: string,
   ): Promise<readonly UlcTrainingAttendanceSummary[]>;
+  listBlockTemplates(
+    organizationId: string,
+  ): Promise<readonly UlcTrainingPlanBlockTemplateSummary[]>;
+  findBlockTemplate(
+    organizationId: string,
+    blockId: string,
+    revision: number,
+  ): Promise<UlcTrainingPlanBlockTemplate | undefined>;
   findCurrent(
     organizationId: string,
     planId: string,
@@ -123,11 +164,13 @@ export function createUlcTrainingPlanService({
   masterdata,
   exerciseCatalog,
   attendance,
+  blocks,
 }: {
   plans: TrainingPlanService;
   masterdata: UlcTrainingPlanMasterdataReader;
   exerciseCatalog: UlcTrainingPlanExerciseReader;
   attendance: UlcTrainingPlanAttendanceReader;
+  blocks: UlcTrainingPlanBlockReader;
 }): UlcTrainingPlanService {
   async function listSubjects(
     organizationId: string,
@@ -183,6 +226,144 @@ export function createUlcTrainingPlanService({
     }
   }
 
+  async function blockTemplateContext(
+    organizationId: string,
+  ): Promise<
+    Readonly<{
+      activeAudienceNames: ReadonlyMap<string, string>;
+      catalogById: ReadonlyMap<string, ExerciseCatalogItem>;
+    }>
+  > {
+    const [snapshot, catalogItems] = await Promise.all([
+      masterdata.readOrganizationSnapshot(organizationId),
+      exerciseCatalog.listItems(organizationId),
+    ]);
+    const activeAudienceNames = new Map(
+      snapshot.trainingGroups
+        .filter(
+          (group) =>
+            group.organizationId === organizationId &&
+            group.isActive === true,
+        )
+        .map((group) => [group.id, group.name] as const),
+    );
+    const catalogById = new Map(
+      catalogItems
+        .filter(
+          (item) =>
+            item.organizationId === organizationId &&
+            item.isActive === true,
+        )
+        .map((item) => [item.id, item] as const),
+    );
+    return Object.freeze({ activeAudienceNames, catalogById });
+  }
+
+  async function findBlockTemplate(
+    organizationId: string,
+    blockId: string,
+    revision: number,
+  ): Promise<UlcTrainingPlanBlockTemplate | undefined> {
+    if (!Number.isSafeInteger(revision) || revision < 1) {
+      throw new TrainingPlanValidationError(
+        "Training block template revision is invalid.",
+      );
+    }
+    const [block, context] = await Promise.all([
+      blocks.findCurrent(organizationId, blockId),
+      blockTemplateContext(organizationId),
+    ]);
+    if (
+      block === undefined ||
+      block.currentRevision !== revision
+    ) {
+      return undefined;
+    }
+    return materializeBlockTemplate(
+      organizationId,
+      block,
+      context.activeAudienceNames,
+      context.catalogById,
+    )?.template;
+  }
+
+  async function assertNewBlockTemplateReferences(
+    organizationId: string,
+    current: TrainingPlanSnapshot | null,
+    items: readonly TrainingPlanItemDraft[],
+    rawItems: readonly UpdateTrainingPlanItemInput[] | null,
+  ): Promise<void> {
+    const currentBlocks = new Map(
+      current === null
+        ? []
+        : current.revision.items
+            .filter((item) => item.kind === "block")
+            .map((item) => [
+              item.itemId,
+              {
+                sourceBlockId: item.sourceBlockId,
+                sourceBlockRevision: item.sourceBlockRevision,
+              },
+            ] as const),
+    );
+
+    for (const [index, item] of items.entries()) {
+      if (item.kind !== "block") continue;
+      const raw =
+        rawItems === null ? null : rawItems[index];
+      const rawItemId =
+        isRecord(raw) && typeof raw.itemId === "string"
+          ? raw.itemId
+          : null;
+      const existing =
+        rawItemId === null ? undefined : currentBlocks.get(rawItemId);
+
+      if (existing !== undefined) {
+        if (
+          existing.sourceBlockId !== item.sourceBlockId ||
+          existing.sourceBlockRevision !== item.sourceBlockRevision
+        ) {
+          throw new UlcTrainingPlanReferenceError(
+            "block",
+            item.sourceBlockId,
+          );
+        }
+        continue;
+      }
+
+      if (
+        item.sourceBlockId === null &&
+        item.sourceBlockRevision === null
+      ) {
+        continue;
+      }
+      if (
+        item.sourceBlockId === null ||
+        item.sourceBlockRevision === null
+      ) {
+        throw new UlcTrainingPlanReferenceError(
+          "block",
+          item.sourceBlockId,
+        );
+      }
+
+      const template = await findBlockTemplate(
+        organizationId,
+        item.sourceBlockId,
+        item.sourceBlockRevision,
+      );
+      if (
+        template === undefined ||
+        !blockDraftMatchesTemplate(item, template.item)
+      ) {
+        throw new UlcTrainingPlanReferenceError(
+          "block",
+          item.sourceBlockId,
+        );
+      }
+    }
+  }
+
   return Object.freeze({
     listSubjects,
     listForSubjectDateRange(
@@ -212,6 +393,39 @@ export function createUlcTrainingPlanService({
         toDate,
       );
     },
+    async listBlockTemplates(organizationId: string) {
+      const [currentBlocks, context] = await Promise.all([
+        blocks.list(organizationId),
+        blockTemplateContext(organizationId),
+      ]);
+      return Object.freeze(
+        currentBlocks
+          .map((block) =>
+            materializeBlockTemplate(
+              organizationId,
+              block,
+              context.activeAudienceNames,
+              context.catalogById,
+            ),
+          )
+          .filter(
+            (
+              value,
+            ): value is Readonly<{
+              template: UlcTrainingPlanBlockTemplate;
+              summary: UlcTrainingPlanBlockTemplateSummary;
+            }> => value !== null,
+          )
+          .map((value) => value.summary)
+          .sort(
+            (left, right) =>
+              left.name.localeCompare(right.name, "de", {
+                sensitivity: "base",
+              }) || left.id.localeCompare(right.id),
+          ),
+      );
+    },
+    findBlockTemplate,
     findCurrent(organizationId: string, planId: string) {
       return plans.findCurrent(organizationId, planId);
     },
@@ -235,6 +449,12 @@ export function createUlcTrainingPlanService({
       await assertExerciseReferences(
         organizationId,
         sourceExerciseIds(draft.items),
+      );
+      await assertNewBlockTemplateReferences(
+        organizationId,
+        null,
+        draft.items,
+        null,
       );
       return plans.create(organizationId, input);
     },
@@ -270,6 +490,12 @@ export function createUlcTrainingPlanService({
         organizationId,
         changedSourceExerciseIds(current, draft, rawItems),
       );
+      await assertNewBlockTemplateReferences(
+        organizationId,
+        current,
+        draft.items,
+        rawItems,
+      );
       return plans.update(
         organizationId,
         planId,
@@ -303,6 +529,250 @@ export function createUlcTrainingPlanService({
     ) {
       return plans.findRevision(organizationId, planId, revision);
     },
+  });
+}
+
+function isCompactTrainingPlanValue(value: string): boolean {
+  return value.length <= 80;
+}
+
+function blockDraftMatchesTemplate(
+  draft: TrainingPlanBlockDraft,
+  template: TrainingPlanBlockInput,
+): boolean {
+  if (
+    draft.sourceBlockId !== (template.sourceBlockId ?? null) ||
+    draft.sourceBlockRevision !== (template.sourceBlockRevision ?? null) ||
+    draft.name !== template.name ||
+    draft.durationMinutes !== (template.durationMinutes ?? null) ||
+    draft.note !== (template.note ?? null)
+  ) {
+    return false;
+  }
+
+  const exercises = template.exercises ?? [];
+  if (draft.exercises.length !== exercises.length) return false;
+  return draft.exercises.every((exercise, index) => {
+    const expected = exercises[index];
+    return expected !== undefined &&
+      exercise.sourceExerciseId === (expected.sourceExerciseId ?? null) &&
+      exercise.name === expected.name &&
+      exercise.sets === (expected.sets ?? null) &&
+      exercise.repetitions === (expected.repetitions ?? null) &&
+      exercise.amount === (expected.amount ?? null) &&
+      exercise.unit === (expected.unit ?? null) &&
+      exercise.comment === (expected.comment ?? null);
+  });
+}
+
+function materializeBlockTemplate(
+  organizationId: string,
+  block: TrainingBlockSnapshot,
+  activeAudienceNames: ReadonlyMap<string, string>,
+  catalogById: ReadonlyMap<string, ExerciseCatalogItem>,
+): Readonly<{
+  template: UlcTrainingPlanBlockTemplate;
+  summary: UlcTrainingPlanBlockTemplateSummary;
+}> | null {
+  if (
+    block.organizationId !== organizationId ||
+    block.isActive !== true ||
+    block.revision.organizationId !== organizationId ||
+    block.revision.blockId !== block.id ||
+    block.revision.revision !== block.currentRevision ||
+    block.revision.audienceId === null
+  ) {
+    return null;
+  }
+
+  const audienceName = activeAudienceNames.get(block.revision.audienceId);
+  if (audienceName === undefined) return null;
+
+  const exercises: Array<
+    NonNullable<TrainingPlanBlockInput["exercises"]>[number]
+  > = [];
+  for (const occurrence of block.revision.exercises) {
+    const exercise = catalogById.get(occurrence.exerciseId);
+    if (exercise === undefined) return null;
+
+    const overrides = new Map(
+      occurrence.parameterOverrides.map((value) => [
+        value.key,
+        value.value,
+      ] as const),
+    );
+    const definitions = new Map(
+      exercise.parameters.map((value) => [value.key, value] as const),
+    );
+    if (
+      occurrence.parameterOverrides.some(
+        (value) => !definitions.has(value.key),
+      )
+    ) {
+      return null;
+    }
+
+    const effective = exercise.parameters
+      .slice()
+      .sort(
+        (left, right) =>
+          left.sortOrder - right.sortOrder ||
+          left.key.localeCompare(right.key),
+      )
+      .map((parameter) => ({
+        parameter,
+        value: overrides.get(parameter.key) ?? parameter.defaultValue,
+      }))
+      .filter(
+        (
+          value,
+        ): value is Readonly<{
+          parameter: ExerciseCatalogItem["parameters"][number];
+          value: string;
+        }> => value.value !== null,
+      );
+
+    if (
+      exercise.parameters.some(
+        (parameter) =>
+          parameter.isRequired &&
+          !effective.some(
+            (value) => value.parameter.key === parameter.key,
+          ),
+      )
+    ) {
+      return null;
+    }
+
+    const setsParameter =
+      effective.find((value) => value.parameter.key === "sets") ?? null;
+    const repetitionsParameter =
+      effective.find(
+        (value) => value.parameter.key === "repetitions",
+      ) ?? null;
+    const sets =
+      setsParameter !== null &&
+      isCompactTrainingPlanValue(setsParameter.value)
+        ? setsParameter.value
+        : null;
+    const repetitions =
+      repetitionsParameter !== null &&
+      isCompactTrainingPlanValue(repetitionsParameter.value)
+        ? repetitionsParameter.value
+        : null;
+    const planningValues = effective.filter(
+      (value) =>
+        value.parameter.key !== "sets" &&
+        value.parameter.key !== "repetitions",
+    );
+    const primary =
+      planningValues.find(
+        (value) =>
+          value.parameter.inputType === "number" &&
+          isCompactTrainingPlanValue(value.value),
+      ) ?? null;
+    const summarizedValues = [
+      ...(sets === null && setsParameter !== null
+        ? [setsParameter]
+        : []),
+      ...(repetitions === null && repetitionsParameter !== null
+        ? [repetitionsParameter]
+        : []),
+      ...planningValues,
+    ];
+    const parameterSummary = summarizedValues
+      .map(
+        ({ parameter, value }) =>
+          parameter.label +
+          ": " +
+          value +
+          (parameter.unit.length === 0 ? "" : " " + parameter.unit),
+      )
+      .join(" · ");
+    const comment = [
+      occurrence.note,
+      parameterSummary.length === 0
+        ? null
+        : "Planwerte: " + parameterSummary,
+    ]
+      .filter((value): value is string => value !== null)
+      .join("\n");
+
+    exercises.push({
+      sourceExerciseId: exercise.id,
+      name: exercise.name,
+      sets,
+      repetitions,
+      amount: primary?.value ?? null,
+      unit:
+        primary === null || primary.parameter.unit.length === 0
+          ? null
+          : primary.parameter.unit,
+      comment: comment.length === 0 ? null : comment,
+    });
+  }
+
+  const candidate: TrainingPlanBlockInput = {
+    kind: "block",
+    sourceBlockId: block.id,
+    sourceBlockRevision: block.currentRevision,
+    name: block.revision.name,
+    durationMinutes: block.revision.durationMinutes,
+    note: block.revision.note,
+    exercises,
+  };
+
+  let normalized: TrainingPlanBlockDraft;
+  try {
+    const draft = normalizeTrainingPlanDraft({
+      subjectId: "template-validation-subject",
+      planDate: "2000-01-03",
+      items: [candidate],
+    });
+    const item = draft.items[0];
+    if (item === undefined || item.kind !== "block") return null;
+    normalized = item;
+  } catch (error) {
+    if (error instanceof TrainingPlanValidationError) return null;
+    throw error;
+  }
+
+  const item: TrainingPlanBlockInput = Object.freeze({
+    kind: "block",
+    sourceBlockId: normalized.sourceBlockId,
+    sourceBlockRevision: normalized.sourceBlockRevision,
+    name: normalized.name,
+    durationMinutes: normalized.durationMinutes,
+    note: normalized.note,
+    exercises: Object.freeze(
+      normalized.exercises.map((exercise) =>
+        Object.freeze({
+          sourceExerciseId: exercise.sourceExerciseId,
+          name: exercise.name,
+          sets: exercise.sets,
+          repetitions: exercise.repetitions,
+          amount: exercise.amount,
+          unit: exercise.unit,
+          comment: exercise.comment,
+        }),
+      ),
+    ),
+  });
+
+  return Object.freeze({
+    template: Object.freeze({
+      id: block.id,
+      currentRevision: block.currentRevision,
+      item,
+    }),
+    summary: Object.freeze({
+      id: block.id,
+      currentRevision: block.currentRevision,
+      name: normalized.name,
+      audienceName,
+      durationMinutes: normalized.durationMinutes,
+      exerciseCount: normalized.exercises.length,
+    }),
   });
 }
 

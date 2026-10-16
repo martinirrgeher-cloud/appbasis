@@ -395,6 +395,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       masterdata: athleteMasterdata,
       exerciseCatalog: new PostgresExerciseCatalogRepository(applicationSql),
       attendance: trainingSessions,
+      blocks: trainingBlocks,
     });
     return Object.freeze({
       identity: identityRuntime.identity,
