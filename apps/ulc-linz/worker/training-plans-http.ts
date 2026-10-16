@@ -456,7 +456,7 @@ async function authorizeTrainingPlansRequest(
         organizationId: trainingPlanAccess.organizationId,
         action: "edit",
         targetId: "training_planning:block_template_save",
-        reasonCode: "scope-mismatch",
+        reasonCode: "scope-denied",
       });
       return Response.json(
         {
