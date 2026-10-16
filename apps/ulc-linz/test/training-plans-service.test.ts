@@ -421,7 +421,9 @@ describe("ULC training plan block template adoption", () => {
             kind: "block",
             sourceBlockId: "block-1",
             sourceBlockRevision: 4,
-            name: "Client snapshot",
+            name: "Aktuell",
+            durationMinutes: null,
+            note: null,
             exercises: [
               {
                 sourceExerciseId: "exercise-1",
@@ -441,6 +443,32 @@ describe("ULC training plan block template adoption", () => {
         ],
       },
     });
+
+    await expect(
+      service.create("org-1", {
+        subjectId: ACTIVE_ATHLETE.id,
+        planDate: "2026-10-14",
+        items: [
+          {
+            kind: "block",
+            sourceBlockId: "block-1",
+            sourceBlockRevision: 4,
+            name: "Inhalt manipuliert",
+            durationMinutes: null,
+            note: null,
+            exercises: [
+              {
+                sourceExerciseId: "exercise-1",
+                name: "exercise-1",
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      referenceType: "block",
+      referenceId: "block-1",
+    });
   });
 
   it("keeps an adopted snapshot editable after its template changes and rejects provenance tampering", async () => {
@@ -457,7 +485,9 @@ describe("ULC training plan block template adoption", () => {
           kind: "block",
           sourceBlockId: "block-1",
           sourceBlockRevision: 3,
-          name: "Snapshot",
+          name: "Sprintblock",
+          durationMinutes: 25,
+          note: "Blocknotiz",
           exercises: [],
         },
       ],
