@@ -418,6 +418,7 @@ let trainingPlanTemplateBusy = false;
 let trainingPlanSaveBackBusy = false;
 let trainingPlanSaveBackItemId = null;
 let trainingPlanSaveBackAudiences = [];
+let trainingPlanSaveBackOperation = 0;
 let trainingPlanSavePending = false;
 let trainingPlanSaveTimer = null;
 let trainingPlanChangeVersion = 0;
@@ -1438,6 +1439,7 @@ function renderTrainingPlanSaveBackAudiences() {
 
 function closeTrainingPlanSaveTemplate(force) {
   if (!force && trainingPlanSaveBackBusy) return false;
+  trainingPlanSaveBackOperation += 1;
   trainingPlanSaveBackBusy = false;
   trainingPlanSaveBackItemId = null;
   trainingPlanSaveBackAudiences = [];
@@ -1457,6 +1459,7 @@ async function openTrainingPlanSaveTemplate(item) {
   if (!trainingPlanCanSaveBlockTemplate(item)) return;
   trainingPlanSaveBackItemId = item.itemId;
   trainingPlanSaveBackBusy = true;
+  const operation = ++trainingPlanSaveBackOperation;
   trainingPlanSaveBackAudiences = [];
   if (trainingPlanElements.saveTemplate) {
     trainingPlanElements.saveTemplate.hidden = false;
@@ -1480,6 +1483,10 @@ async function openTrainingPlanSaveTemplate(item) {
     ) {
       throw new Error("INVALID_TRAINING_PLAN_TEMPLATE_AUDIENCES");
     }
+    if (
+      operation !== trainingPlanSaveBackOperation ||
+      trainingPlanSaveBackItemId !== item.itemId
+    ) return;
     trainingPlanSaveBackAudiences = payload.audiences.slice();
     renderTrainingPlanSaveBackAudiences();
     if (trainingPlanSaveBackAudiences.length === 0) {
@@ -1489,6 +1496,7 @@ async function openTrainingPlanSaveTemplate(item) {
       );
     }
   } catch (error) {
+    if (operation !== trainingPlanSaveBackOperation) return;
     trainingPlanSaveBackAudiences = [];
     renderTrainingPlanSaveBackAudiences();
     showMessage(
@@ -1498,9 +1506,11 @@ async function openTrainingPlanSaveTemplate(item) {
         : "Die Trainingsgruppen konnten nicht geladen werden.",
     );
   } finally {
-    trainingPlanSaveBackBusy = false;
-    refreshTrainingPlanSaveBackControls();
-    refreshTrainingPlanSaveBackButtons();
+    if (operation === trainingPlanSaveBackOperation) {
+      trainingPlanSaveBackBusy = false;
+      refreshTrainingPlanSaveBackControls();
+      refreshTrainingPlanSaveBackButtons();
+    }
   }
 }
 
@@ -1549,6 +1559,7 @@ async function saveTrainingPlanBlockTemplate() {
 
   const itemId = trainingPlanSaveBackItemId;
   const selectedPlan = trainingPlanSelected;
+  const operation = ++trainingPlanSaveBackOperation;
   trainingPlanSaveBackBusy = true;
   refreshTrainingPlanSaveBackControls();
   refreshTrainingPlanSaveBackButtons();
@@ -1572,6 +1583,7 @@ async function saveTrainingPlanBlockTemplate() {
     if (!isTrainingPlanSavedBlockTemplate(template)) {
       throw new Error("INVALID_TRAINING_PLAN_SAVED_TEMPLATE");
     }
+    if (operation !== trainingPlanSaveBackOperation) return;
 
     trainingPlanBlockTemplates = trainingPlanBlockTemplates
       .filter((candidate) => candidate.id !== template.id)
@@ -1595,6 +1607,7 @@ async function saveTrainingPlanBlockTemplate() {
     closeTrainingPlanSaveTemplate(true);
     trainingPlanSetSaveState("saved", "Vorlage angelegt");
   } catch (error) {
+    if (operation !== trainingPlanSaveBackOperation) return;
     let message = "Die Blockvorlage konnte nicht angelegt werden.";
     if (error?.status === 403) {
       message = "Du hast keine Berechtigung, Blockvorlagen anzulegen.";
@@ -1610,9 +1623,11 @@ async function saveTrainingPlanBlockTemplate() {
     }
     showMessage(trainingPlanElements.saveTemplateMessage, message);
   } finally {
-    trainingPlanSaveBackBusy = false;
-    refreshTrainingPlanSaveBackControls();
-    refreshTrainingPlanSaveBackButtons();
+    if (operation === trainingPlanSaveBackOperation) {
+      trainingPlanSaveBackBusy = false;
+      refreshTrainingPlanSaveBackControls();
+      refreshTrainingPlanSaveBackButtons();
+    }
   }
 }
 
@@ -1749,7 +1764,12 @@ function newTrainingPlanBlockDraft() {
 }
 
 function trainingPlanMoveItem(index, delta) {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   const target = index + delta;
   if (target < 0 || target >= trainingPlanDraft.items.length) return;
   const values = trainingPlanDraft.items;
@@ -1758,13 +1778,23 @@ function trainingPlanMoveItem(index, delta) {
 }
 
 function trainingPlanRemoveItem(index) {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   trainingPlanDraft.items.splice(index, 1);
   markTrainingPlanDirty(true);
 }
 
 function trainingPlanMoveChild(itemIndex, childIndex, delta) {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   const block = trainingPlanDraft.items[itemIndex];
   if (block?.kind !== "block") return;
   const target = childIndex + delta;
@@ -1775,7 +1805,12 @@ function trainingPlanMoveChild(itemIndex, childIndex, delta) {
 }
 
 function trainingPlanRemoveChild(itemIndex, childIndex) {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   const block = trainingPlanDraft.items[itemIndex];
   if (block?.kind !== "block") return;
   block.exercises.splice(childIndex, 1);
@@ -2180,12 +2215,22 @@ trainingPlanElements.note?.addEventListener("input", () => {
   markTrainingPlanDirty();
 });
 trainingPlanElements.addExercise?.addEventListener("click", () => {
-  if (!trainingPlanDraft || trainingPlanSaveBusy || trainingPlanTemplateBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   trainingPlanDraft.items.push(newTrainingPlanExerciseDraft());
   markTrainingPlanDirty(true);
 });
 trainingPlanElements.addBlock?.addEventListener("click", () => {
-  if (!trainingPlanDraft || trainingPlanSaveBusy || trainingPlanTemplateBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   trainingPlanDraft.items.push(newTrainingPlanBlockDraft());
   markTrainingPlanDirty(true);
 });
