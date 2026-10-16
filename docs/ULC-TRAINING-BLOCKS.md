@@ -273,5 +273,27 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
 - noch keine Anwesenheitsanzeige/-filter, Blockvorlagen-Übernahme/-Rückspeicherung,
   Preview-Migration, Deployment oder Provideraktion.
 
-Die weiteren E7B-Slices ergänzen Anwesenheitsanzeige/-filter,
-Blockvorlagen-Integration und Preview-Abnahme.
+### E7B5 – Anwesenheitsanzeige und Filter
+
+- Anwesenheit bleibt im bestehenden ULC-`training-session`-Owner;
+- die Wochenplanung liest Statuswerte ausschließlich read-only für den
+  ausgewählten Athleten und dieselbe Woche;
+- Tageskarten zeigen kompakte Statuswerte und bieten lokale Filter;
+- mehrere Einheiten an einem Tag bleiben getrennte Attendance-Einträge.
+
+### E7B6 – Blockvorlagen übernehmen
+
+- aktive, aktuell adoptierbare ULC-Blockvorlagen werden über den
+  Trainingsplan-Adapter serverseitig angeboten;
+- die Planung liest die exakte aktuelle Vorlagenrevision und kopiert Name,
+  Dauer, Notiz, Übungen und effektive Parameterwerte in einen neuen Planblock;
+- `sourceBlockId` und `sourceBlockRevision` bleiben Provenienz; der
+  übernommene Planblock ist danach ein unabhängiger Snapshot;
+- neue Provenienz wird beim ersten Speichern serverseitig gegen die aktuelle
+  Vorlage und ihren exakten Snapshot geprüft;
+- spätere Vorlagenänderungen oder Archivierung machen bestehende Planblöcke
+  nicht rückwirkend ungültig;
+- Rückspeichern eines Planblocks als neue Vorlage bleibt ein eigener Folgeslice.
+
+Nach E7B6 bleiben damit insbesondere Rückspeicherung und isolierte
+Preview-Abnahme als fachliche E7B-Folgeslices offen.
