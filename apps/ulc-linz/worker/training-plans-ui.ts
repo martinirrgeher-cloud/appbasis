@@ -1024,6 +1024,7 @@ function closeTrainingPlanEditor(force) {
   trainingPlanDirty = false;
   trainingPlanConflict = false;
   trainingPlanSaveBusy = false;
+  trainingPlanTemplateBusy = false;
   trainingPlanSavePending = false;
   if (trainingPlanElements.editor) trainingPlanElements.editor.hidden = true;
   showMessage(trainingPlanElements.editorMessage, "");
