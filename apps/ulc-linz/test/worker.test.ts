@@ -464,6 +464,12 @@ function runtime(
       async listAttendanceForSubjectDateRange() {
         return [];
       },
+      async listBlockTemplates() {
+        return [];
+      },
+      async findBlockTemplate() {
+        return undefined;
+      },
       async findCurrent() {
         return undefined;
       },
@@ -4546,8 +4552,9 @@ describe("U12 runtime API", () => {
       expect(response.status).toBe(400);
     }
   });
-  it("serves E7B4 planning bootstrap from server-authorized organization scope", async () => {
+  it("serves E7B6 planning bootstrap and block templates from server-authorized organization scope", async () => {
     let subjectOrganization = "";
+    let templateOrganization = "";
     const base = runtime();
     const worker = createGeneratedWorker(() => ({
       ...base,
@@ -4575,6 +4582,19 @@ describe("U12 runtime API", () => {
             },
           ];
         },
+        async listBlockTemplates(organizationId) {
+          templateOrganization = organizationId;
+          return [
+            {
+              id: "block-1",
+              currentRevision: 3,
+              name: "Sprintblock",
+              audienceName: "U16",
+              durationMinutes: 25,
+              exerciseCount: 2,
+            },
+          ];
+        },
       },
     }));
 
@@ -4587,6 +4607,7 @@ describe("U12 runtime API", () => {
 
     expect(response.status).toBe(200);
     expect(subjectOrganization).toBe("verein-server");
+    expect(templateOrganization).toBe("verein-server");
     await expect(response.json()).resolves.toMatchObject({
       module: {
         moduleId: "training_planning",
@@ -4600,10 +4621,21 @@ describe("U12 runtime API", () => {
           optimisticConcurrency: true,
           attendanceSummary: true,
           attendanceFilter: true,
+          blockTemplateAdoption: true,
         },
       },
       access: { view: true, edit: true },
       subjects: [{ id: "athlete-1", displayName: "Sprint, Anna" }],
+      blockTemplates: [
+        {
+          id: "block-1",
+          currentRevision: 3,
+          name: "Sprintblock",
+          audienceName: "U16",
+          durationMinutes: 25,
+          exerciseCount: 2,
+        },
+      ],
     });
   });
 
@@ -4915,8 +4947,99 @@ describe("U12 runtime API", () => {
     });
   });
 
-  it("rejects forged E7B4 block provenance on create before any mutation", async () => {
-    let createCalls = 0;
+  it("reads an exact E7B6 block template through planning view scope without client organization scope", async () => {
+    let received: unknown = null;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertViewAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async findBlockTemplate(organizationId, blockId, revision) {
+          received = { organizationId, blockId, revision };
+          return {
+            id: blockId,
+            currentRevision: revision,
+            item: {
+              kind: "block" as const,
+              sourceBlockId: blockId,
+              sourceBlockRevision: revision,
+              name: "Sprintblock",
+              durationMinutes: 25,
+              note: "Technik",
+              exercises: [
+                {
+                  sourceExerciseId: "exercise-1",
+                  name: "30 m",
+                  sets: "4",
+                  repetitions: "3",
+                  amount: "30",
+                  unit: "m",
+                  comment: null,
+                },
+              ],
+            },
+          };
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/block-templates/block-1?revision=3",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      blockId: "block-1",
+      revision: 3,
+    });
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      template: {
+        id: "block-1",
+        currentRevision: 3,
+        item: {
+          sourceBlockId: "block-1",
+          sourceBlockRevision: 3,
+          name: "Sprintblock",
+        },
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain("organizationId");
+
+    for (const suffix of [
+      "?revision=0",
+      "?revision=3&organizationId=verein-client",
+      "?revision=3&revision=4",
+      "",
+    ]) {
+      const invalid = await worker.fetch(
+        new Request(
+          "https://ulc.example.test/api/modules/training-plans/block-templates/block-1" +
+            suffix,
+          { headers: { cookie: currentIdentity.sessionToken } },
+        ),
+        validEnv,
+      );
+      expect(invalid.status).toBe(400);
+    }
+  });
+
+  it("forwards E7B6 sourced block snapshots to the server-side planning service", async () => {
+    let received: unknown = null;
     const base = runtime();
     const worker = createGeneratedWorker(() => ({
       ...base,
@@ -4932,9 +5055,25 @@ describe("U12 runtime API", () => {
       },
       trainingPlans: {
         ...base.trainingPlans,
-        async create(...args) {
-          createCalls += 1;
-          return base.trainingPlans.create(...args);
+        async create(organizationId, input) {
+          received = { organizationId, input };
+          return {
+            id: "plan-created",
+            organizationId,
+            subjectId: input.subjectId,
+            planDate: input.planDate,
+            currentRevision: 1,
+            createdAt: "2026-10-16T20:00:00.000Z",
+            updatedAt: "2026-10-16T20:00:00.000Z",
+            revision: {
+              organizationId,
+              planId: "plan-created",
+              revision: 1,
+              note: input.note ?? null,
+              items: [],
+              createdAt: "2026-10-16T20:00:00.000Z",
+            },
+          };
         },
       },
     }));
@@ -4948,14 +5087,22 @@ describe("U12 runtime API", () => {
         },
         body: JSON.stringify({
           subjectId: "athlete-1",
-          planDate: "2026-10-14",
+          planDate: "2026-10-16",
           items: [
             {
               kind: "block",
-              sourceBlockId: "forged-block",
-              sourceBlockRevision: 4,
-              name: "Gefälschte Vorlage",
-              exercises: [],
+              sourceBlockId: "block-1",
+              sourceBlockRevision: 3,
+              name: "Sprintblock",
+              durationMinutes: 25,
+              note: "Snapshot",
+              exercises: [
+                {
+                  sourceExerciseId: "exercise-1",
+                  name: "30 m",
+                  repetitions: "3",
+                },
+              ],
             },
           ],
         }),
@@ -4963,137 +5110,23 @@ describe("U12 runtime API", () => {
       validEnv,
     );
 
-    expect(response.status).toBe(400);
-    expect(createCalls).toBe(0);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: "INVALID_TRAINING_PLAN" },
-    });
-  });
-
-  it("allows only unchanged E7B4 block provenance on update", async () => {
-    let updateCalls = 0;
-    const current = {
-      id: "plan-1",
+    expect(response.status).toBe(201);
+    expect(received).toMatchObject({
       organizationId: "verein-server",
-      subjectId: "athlete-1",
-      planDate: "2026-10-14",
-      currentRevision: 2,
-      createdAt: "2026-10-12T10:00:00.000Z",
-      updatedAt: "2026-10-12T11:00:00.000Z",
-      revision: {
-        organizationId: "verein-server",
-        planId: "plan-1",
-        revision: 2,
-        note: null,
-        createdAt: "2026-10-12T11:00:00.000Z",
+      input: {
+        subjectId: "athlete-1",
+        planDate: "2026-10-16",
         items: [
           {
-            kind: "block" as const,
-            itemId: "block-item-1",
-            sourceBlockId: "source-block-1",
+            sourceBlockId: "block-1",
             sourceBlockRevision: 3,
-            name: "Sprintblock",
-            durationMinutes: 20,
-            note: null,
-            sortOrder: 0,
-            exercises: [],
           },
         ],
       },
-    };
-    const base = runtime();
-    const worker = createGeneratedWorker(() => ({
-      ...base,
-      trainingPlansAccess: {
-        ...base.trainingPlansAccess,
-        async assertEditAccess() {
-          return {
-            organizationId: "verein-server",
-            actorPrincipalId: currentIdentity.identity.identityId,
-            canEdit: true,
-          };
-        },
-      },
-      trainingPlans: {
-        ...base.trainingPlans,
-        async findCurrent() {
-          return current;
-        },
-        async update() {
-          updateCalls += 1;
-          return current;
-        },
-      },
-    }));
-
-    const unchanged = await worker.fetch(
-      new Request(
-        "https://ulc.example.test/api/modules/training-plans/plan-1/update",
-        {
-          method: "POST",
-          headers: {
-            cookie: currentIdentity.sessionToken,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            expectedRevision: 2,
-            note: null,
-            items: [
-              {
-                kind: "block",
-                itemId: "block-item-1",
-                sourceBlockId: "source-block-1",
-                sourceBlockRevision: 3,
-                name: "Sprintblock angepasst",
-                durationMinutes: 20,
-                exercises: [],
-              },
-            ],
-          }),
-        },
-      ),
-      validEnv,
-    );
-    expect(unchanged.status).toBe(200);
-    expect(updateCalls).toBe(1);
-
-    for (const provenance of [
-      { sourceBlockId: "source-block-2", sourceBlockRevision: 3 },
-      { sourceBlockId: "source-block-1", sourceBlockRevision: 4 },
-      { sourceBlockId: null, sourceBlockRevision: null },
-    ]) {
-      const forged = await worker.fetch(
-        new Request(
-          "https://ulc.example.test/api/modules/training-plans/plan-1/update",
-          {
-            method: "POST",
-            headers: {
-              cookie: currentIdentity.sessionToken,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              expectedRevision: 2,
-              note: null,
-              items: [
-                {
-                  kind: "block",
-                  itemId: "block-item-1",
-                  ...provenance,
-                  name: "Manipuliert",
-                  exercises: [],
-                },
-              ],
-            }),
-          },
-        ),
-        validEnv,
-      );
-      expect(forged.status).toBe(400);
-    }
-    expect(updateCalls).toBe(1);
+    });
   });
 
-  it("returns stale E7B4 revision conflicts before block provenance validation", async () => {
+  it("returns stale E7B6 revision conflicts before delegating an update", async () => {
     const base = runtime();
     const worker = createGeneratedWorker(() => ({
       ...base,
