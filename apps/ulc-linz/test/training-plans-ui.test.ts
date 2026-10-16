@@ -239,7 +239,7 @@ describe("ULC E7B6 training plan block template UI", () => {
 
   it("loads an exact template revision and clones independent plan item ids", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain('"/api/modules/training-plans/block-templates/"');
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('" ?revision="'.trim());
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('"?revision="');
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("template.currentRevision !== summary.currentRevision");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceBlockId: template.item.sourceBlockId");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("sourceBlockRevision: template.item.sourceBlockRevision");
