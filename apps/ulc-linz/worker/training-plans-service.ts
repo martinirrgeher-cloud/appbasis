@@ -532,6 +532,10 @@ export function createUlcTrainingPlanService({
   });
 }
 
+function isCompactTrainingPlanValue(value: string): boolean {
+  return value.length <= 80;
+}
+
 function blockDraftMatchesTemplate(
   draft: TrainingPlanBlockDraft,
   template: TrainingPlanBlockInput,
@@ -640,20 +644,43 @@ function materializeBlockTemplate(
       return null;
     }
 
-    const sets =
-      effective.find((value) => value.parameter.key === "sets")?.value ??
-      null;
-    const repetitions =
+    const setsParameter =
+      effective.find((value) => value.parameter.key === "sets") ?? null;
+    const repetitionsParameter =
       effective.find(
         (value) => value.parameter.key === "repetitions",
-      )?.value ?? null;
+      ) ?? null;
+    const sets =
+      setsParameter !== null &&
+      isCompactTrainingPlanValue(setsParameter.value)
+        ? setsParameter.value
+        : null;
+    const repetitions =
+      repetitionsParameter !== null &&
+      isCompactTrainingPlanValue(repetitionsParameter.value)
+        ? repetitionsParameter.value
+        : null;
     const planningValues = effective.filter(
       (value) =>
         value.parameter.key !== "sets" &&
         value.parameter.key !== "repetitions",
     );
-    const primary = planningValues[0] ?? null;
-    const parameterSummary = planningValues
+    const primary =
+      planningValues.find(
+        (value) =>
+          value.parameter.inputType === "number" &&
+          isCompactTrainingPlanValue(value.value),
+      ) ?? null;
+    const summarizedValues = [
+      ...(sets === null && setsParameter !== null
+        ? [setsParameter]
+        : []),
+      ...(repetitions === null && repetitionsParameter !== null
+        ? [repetitionsParameter]
+        : []),
+      ...planningValues,
+    ];
+    const parameterSummary = summarizedValues
       .map(
         ({ parameter, value }) =>
           parameter.label +
