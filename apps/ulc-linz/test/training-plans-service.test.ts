@@ -177,6 +177,7 @@ function createService(input: {
   groups?: readonly TrainingGroup[];
   blocks?: readonly TrainingBlockSnapshot[];
   usageFailureCount?: number;
+  usageDelayMs?: number;
 } = {}) {
   const repository = new InMemoryTrainingPlanRepository();
   let idIndex = 0;
@@ -185,6 +186,8 @@ function createService(input: {
   const createdBlockInputs: unknown[] = [];
   const usageAttempts: unknown[] = [];
   let usageFailuresRemaining = input.usageFailureCount ?? 0;
+  let usageInFlight = 0;
+  let maxConcurrentUsage = 0;
   let createdBlockIndex = 0;
   const ids = input.ids ?? [
     "plan-1",
@@ -227,6 +230,7 @@ function createService(input: {
     getAttendanceReadCount: () => attendanceReadCount,
     getCreatedBlockInputs: () => createdBlockInputs.slice(),
     getUsageAttempts: () => usageAttempts.slice(),
+    getMaxConcurrentUsage: () => maxConcurrentUsage,
     clearUsageAttempts: () => {
       usageAttempts.length = 0;
     },
@@ -320,19 +324,33 @@ function createService(input: {
             eventId,
             input: usageInput,
           });
-          if (usageFailuresRemaining > 0) {
-            usageFailuresRemaining -= 1;
-            throw new Error("Simulated usage write failure.");
+          usageInFlight += 1;
+          maxConcurrentUsage = Math.max(
+            maxConcurrentUsage,
+            usageInFlight,
+          );
+          try {
+            if ((input.usageDelayMs ?? 0) > 0) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, input.usageDelayMs),
+              );
+            }
+            if (usageFailuresRemaining > 0) {
+              usageFailuresRemaining -= 1;
+              throw new Error("Simulated usage write failure.");
+            }
+            return {
+              id: eventId,
+              organizationId,
+              blockId,
+              occurredAt: usageInput.occurredAt,
+              sourceKind: usageInput.sourceKind,
+              sourceRef: usageInput.sourceRef ?? null,
+              note: usageInput.note ?? null,
+            };
+          } finally {
+            usageInFlight -= 1;
           }
-          return {
-            id: eventId,
-            organizationId,
-            blockId,
-            occurredAt: usageInput.occurredAt,
-            sourceKind: usageInput.sourceKind,
-            sourceRef: usageInput.sourceRef ?? null,
-            note: usageInput.note ?? null,
-          };
         },
       },
     }),
@@ -750,7 +768,20 @@ describe("ULC training plan block usage booking", () => {
     });
 
     expect(saved.id).toBe("usage-plan");
-    const attempts = base.getUsageAttempts();
+    const attempts = (
+      base.getUsageAttempts() as Array<{
+        organizationId: string;
+        blockId: string;
+        eventId: string;
+        input: {
+          occurredAt: string;
+          sourceKind: string;
+          sourceRef: string;
+        };
+      }>
+    ).sort((left, right) =>
+      left.input.sourceRef.localeCompare(right.input.sourceRef),
+    );
     expect(attempts).toHaveLength(2);
     expect(attempts).toEqual([
       expect.objectContaining({
@@ -774,9 +805,7 @@ describe("ULC training plan block usage booking", () => {
         },
       }),
     ]);
-    expect(
-      (attempts[0] as { eventId: string }).eventId,
-    ).not.toBe((attempts[1] as { eventId: string }).eventId);
+    expect(attempts[0]?.eventId).not.toBe(attempts[1]?.eventId);
   });
 
   it("books only newly added sourced block item ids on later autosaves", async () => {
@@ -914,6 +943,37 @@ describe("ULC training plan block usage booking", () => {
         }),
       }),
     ]);
+  });
+
+  it("bounds post-write usage concurrency instead of serializing or flooding a large plan", async () => {
+    const block = blockSnapshot();
+    const itemIds = Array.from(
+      { length: 20 },
+      (_, index) => "usage-bulk-item-" + String(index + 1),
+    );
+    const base = createService({
+      blocks: [block],
+      ids: ["usage-bulk-plan", ...itemIds],
+      usageDelayMs: 5,
+    });
+
+    await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-12",
+      items: itemIds.map(() => ({
+        kind: "block" as const,
+        sourceBlockId: block.id,
+        sourceBlockRevision: block.currentRevision,
+        name: "Sprintblock",
+        durationMinutes: 25,
+        note: "Blocknotiz",
+        exercises: [],
+      })),
+    });
+
+    expect(base.getUsageAttempts()).toHaveLength(20);
+    expect(base.getMaxConcurrentUsage()).toBeGreaterThan(1);
+    expect(base.getMaxConcurrentUsage()).toBeLessThanOrEqual(8);
   });
 
   it("does not book usage when the plan write itself is rejected as stale", async () => {
