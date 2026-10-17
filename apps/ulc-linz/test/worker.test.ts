@@ -435,6 +435,9 @@ function runtime(
       async setFavorite() {
         return false;
       },
+      async recordUsageOnce() {
+        return undefined;
+      },
       async create() {
         throw new Error("training-block mock create is not wired to an E7A3 HTTP route");
       },
