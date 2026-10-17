@@ -357,4 +357,17 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+
+  it("re-enables block-template adoption controls after save-back completes", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSaveBackBusy = false;\n  trainingPlanSaveBackItemId = null;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'showMessage(trainingPlanElements.saveTemplateMessage, "");\n  refreshTrainingPlanTemplateControls();',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSaveBackBusy = true;\n  refreshTrainingPlanTemplateControls();",
+    );
+  });
+
 });
