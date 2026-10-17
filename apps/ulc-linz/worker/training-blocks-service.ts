@@ -13,6 +13,7 @@ import {
   TrainingBlockInactiveError,
   TrainingBlockValidationError,
   type CreateTrainingBlockDraftInput,
+  type RecordTrainingBlockUsageInput,
   type TrainingBlockExerciseDraft,
   type TrainingBlockOverviewItem,
   type TrainingBlockRevision,
@@ -107,6 +108,12 @@ export interface UlcTrainingBlockService {
     blockId: string,
     favorite: boolean,
   ): Promise<boolean>;
+  recordUsageOnce(
+    organizationId: string,
+    blockId: string,
+    eventId: string,
+    input: RecordTrainingBlockUsageInput,
+  ): ReturnType<TrainingBlockService["recordUsageOnce"]>;
   create(
     organizationId: string,
     input: CreateTrainingBlockDraftInput,
@@ -266,6 +273,19 @@ export function createUlcTrainingBlockService({
         principalId,
         blockId,
         favorite,
+      );
+    },
+    recordUsageOnce(
+      organizationId: string,
+      blockId: string,
+      eventId: string,
+      input: RecordTrainingBlockUsageInput,
+    ) {
+      return blocks.recordUsageOnce(
+        organizationId,
+        blockId,
+        eventId,
+        input,
       );
     },
     async create(
