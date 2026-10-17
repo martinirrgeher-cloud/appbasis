@@ -282,6 +282,7 @@ jobs:
             hyperdriveId: process.env.APPBASIS_HYPERDRIVE_ID,
             securityLogHyperdriveId: process.env.APPBASIS_SECURITY_LOG_HYPERDRIVE_ID,
             baseURL: process.env.APPBASIS_BASE_URL,
+            buildSha: process.env.GITHUB_SHA,
             entrypoint: "./worker/preview-exercise-catalog-standard.ts",
             r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
             r2Jurisdiction: "eu",
@@ -326,6 +327,28 @@ jobs:
           --config wrangler.preview.e7b9.generated.json
           --experimental-provision=false
           --experimental-auto-create=false
+
+      - name: Require exact deployed E7B9 build
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        shell: bash
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_EXPECTED_GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          READY=0
+          for attempt in $(seq 1 20); do
+            STATUS="$(curl --silent --show-error               --output "$RUNNER_TEMP/e7b9-build.json"               --write-out '%{http_code}'               "$APPBASIS_GENERATED_PREVIEW_URL/api/health/build" || true)"
+            if [ "$STATUS" = '200' ]               && jq -e --arg sha "$APPBASIS_EXPECTED_GIT_SHA"                 '.status == "ok" and .appId == "ulc-linz" and .gitSha == $sha'                 "$RUNNER_TEMP/e7b9-build.json" >/dev/null; then
+              READY=1
+              break
+            fi
+            if [ "$attempt" -lt 20 ]; then sleep 2; fi
+          done
+          test "$READY" = '1' || {
+            echo 'The deployed ULC preview is not bound to the exact current E7B9 Git SHA.' >&2
+            exit 1
+          }
 
       - name: Verify deployed preview runtime and database
         if: inputs.operation == 'deploy' || inputs.operation == 'accept'
