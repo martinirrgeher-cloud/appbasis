@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-16
+Stand: 2026-10-17
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -8,6 +8,56 @@ Volatile PR-, CI-, Review- und Branch-Zustände werden ausschließlich live aus
 GitHub abgeleitet.
 
 ## Aktuelles Ziel
+
+**ULC-E7B8 – Nutzungsmetadaten bei persistierter Blockvorlagen-Verwendung buchen.**
+
+Nach Übernahme und Save-back wird jetzt der bereits in `training-blocks`
+vorhandene append-only Nutzungsledger tatsächlich aus der Trainingsplanung
+angeschlossen. Gezählt wird eine erfolgreiche, persistierte Planblock-
+Vorkommnis mit Blockvorlagen-Provenienz – nicht das bloße Öffnen oder
+Auswählen im Browser.
+
+Abnahme für diesen Slice:
+
+- eine Nutzungsbuchung entsteht erst nach erfolgreicher Persistenz eines
+  Planstands mit neuem Planblock-Item und `sourceBlockId`;
+- Create, das spätere Hinzufügen einer Blockvorlage per Update sowie eine
+  Plankopie mit übernommenen Block-Provenienzen buchen die jeweiligen neuen
+  Planblock-Vorkommnisse;
+- reine Text-/Parameteränderungen, Umsortierung und weitere Autosaves eines
+  bereits bestehenden Planblocks erhöhen die Nutzungszahl nicht;
+- dieselbe Blockvorlage darf mehrfach in demselben oder in verschiedenen
+  Plänen vorkommen; jede neue persistierte Planblock-Item-Identität zählt
+  genau einmal;
+- Entfernen und späteres erneutes Einfügen erzeugt wegen neuer Planblock-
+  Item-ID eine neue Nutzungsbuchung; der append-only Verlauf wird nicht
+  rückwirkend gelöscht;
+- `sourceKind` ist `training_plan`, `sourceRef` identifiziert genau
+  `planId:itemId`; Browserdaten entscheiden niemals über diese Metadaten;
+- Wiederholungen desselben serverseitigen Buchungsversuchs sind über eine
+  deterministische Usage-Event-ID idempotent; dafür wird der bestehende
+  Usage-Primary-Key genutzt, ohne neue Datenbankmigration;
+- das Standardmodul `training-blocks` erhält dafür einen expliziten
+  idempotenten Append-Vertrag, während der bestehende normale
+  `recordUsage`-Vertrag unverändert bleibt;
+- Usage-Metadaten werden erst nach erfolgreichem Planwrite geschrieben. Ein
+  Fehler der sekundären Metadatenbuchung darf den bereits gespeicherten Plan
+  nicht in einen scheinbar fehlgeschlagenen Zustand versetzen; der
+  idempotente Buchungsversuch wird einmal sicher wiederholt und Fehler danach
+  ohne Nutzdateninhalt diagnostiziert;
+- Archivierung einer Vorlage verhindert weiterhin neue direkte Übernahmen,
+  macht aber bereits vorhandene Plan-Provenienz nicht rückwirkend ungültig;
+- bestehende Blockübernahme, Save-back, Attendance, Autosave und Optimistic
+  Concurrency bleiben unverändert;
+- anschließend bleibt als E7B-Abschluss die isolierte Preview-Abnahme offen;
+- keine Preview-/Production-Migration, kein Preview-/Production-Deploy und
+  kein Provider-/Produktionswrite.
+
+Für diesen normalen Produktslice gilt weiterhin `Codex sparsam`: gezielte
+Tests und vollständige CI sind die primäre Abnahme; Codex nur bei echtem
+Architektur-/Security-Anlass.
+
+## Abgeschlossener Gate-Scope: ULC-E7B7 Planblock als Vorlage
 
 **ULC-E7B7 – Planblock als neue Blockvorlage speichern.**
 
