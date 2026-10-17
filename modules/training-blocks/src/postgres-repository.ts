@@ -365,7 +365,7 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
       [event.organizationId, event.id],
     );
     if (existing.length === 1) return usageFromRow(existing[0]!);
-    throw new Error("Training block usage references an unknown block.");
+    return undefined;
   }
 
   async listRevisions(
