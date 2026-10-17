@@ -567,49 +567,67 @@ export function createUlcTrainingPlanService({
         item.sourceBlockId !== null &&
         !previousBlockItemIds.has(item.itemId),
     );
+    if (newSourcedBlocks.length === 0) return;
 
-    for (const item of newSourcedBlocks) {
-      if (item.kind !== "block" || item.sourceBlockId === null) continue;
-      const sourceRef = saved.id + ":" + item.itemId;
-      let eventId: string;
-      try {
-        eventId = await trainingPlanUsageEventId(
-          organizationId,
-          saved.id,
-          item.itemId,
-        );
-      } catch {
-        console.error(
-          "[ulc-linz] training block usage booking failed",
-        );
-        continue;
-      }
+    let failedBookings = 0;
+    let nextIndex = 0;
+    const workerCount = Math.min(8, newSourcedBlocks.length);
 
-      let booked = false;
-      for (let attempt = 0; attempt < 2 && !booked; attempt += 1) {
+    async function bookNext(): Promise<void> {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= newSourcedBlocks.length) return;
+        const item = newSourcedBlocks[index];
+        if (item === undefined || item.kind !== "block") continue;
+        if (item.sourceBlockId === null) continue;
+
+        const sourceRef = saved.id + ":" + item.itemId;
+        let eventId: string;
         try {
-          const recorded = await blocks.recordUsageOnce(
+          eventId = await trainingPlanUsageEventId(
             organizationId,
-            item.sourceBlockId,
-            eventId,
-            {
-              occurredAt: saved.updatedAt,
-              sourceKind: "training_plan",
-              sourceRef,
-            },
+            saved.id,
+            item.itemId,
           );
-          if (recorded === undefined) {
-            throw new Error("Training block usage target disappeared.");
-          }
-          booked = true;
         } catch {
-          if (attempt === 1) {
-            console.error(
-              "[ulc-linz] training block usage booking failed",
+          failedBookings += 1;
+          continue;
+        }
+
+        let booked = false;
+        for (let attempt = 0; attempt < 2 && !booked; attempt += 1) {
+          try {
+            const recorded = await blocks.recordUsageOnce(
+              organizationId,
+              item.sourceBlockId,
+              eventId,
+              {
+                occurredAt: saved.updatedAt,
+                sourceKind: "training_plan",
+                sourceRef,
+              },
             );
+            if (recorded === undefined) {
+              throw new Error(
+                "Training block usage target disappeared.",
+              );
+            }
+            booked = true;
+          } catch {
+            if (attempt === 1) failedBookings += 1;
           }
         }
       }
+    }
+
+    await Promise.all(
+      Array.from({ length: workerCount }, () => bookNext()),
+    );
+    if (failedBookings > 0) {
+      console.error(
+        "[ulc-linz] one or more training block usage bookings failed",
+      );
     }
   }
 
