@@ -33,13 +33,11 @@ export async function runUlcTrainingPlansPreviewAcceptance(
   {
     fetchImpl = globalThis.fetch,
     randomUUID = () => crypto.randomUUID(),
-    now = () => new Date(),
   } = {},
 ) {
   if (
     typeof fetchImpl !== "function" ||
-    typeof randomUUID !== "function" ||
-    typeof now !== "function"
+    typeof randomUUID !== "function"
   ) {
     throw new UlcTrainingPlansPreviewAcceptanceError(
       "E7B9 acceptance dependencies are invalid.",
@@ -54,7 +52,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
     fetchImpl,
   });
   const marker = randomUUID().replaceAll("-", "").slice(0, 12);
-  const planDate = mondayOfUtcWeek(now());
+  const planDate = previewAcceptanceMonday(marker);
 
   const training = await requestJson(
     baseURL,
@@ -300,6 +298,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
     );
   }
 
+  const updateItems = planDraftItems(plan.revision.items);
   const autosaveResponse = await requestJson(
     baseURL,
     "/api/modules/training-plans/" +
@@ -312,7 +311,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       body: {
         expectedRevision: 1,
         note: "E7B9 autosave verified",
-        items: plan.revision.items,
+        items: updateItems,
       },
     },
   );
@@ -335,7 +334,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       body: {
         expectedRevision: 1,
         note: "E7B9 stale write",
-        items: plan.revision.items,
+        items: planDraftItems(plan.revision.items),
       },
       allowError: true,
     },
@@ -629,20 +628,67 @@ async function requestJson(
   return result;
 }
 
-function mondayOfUtcWeek(value) {
-  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+function previewAcceptanceMonday(marker) {
+  if (!/^[a-f0-9]{12}$/.test(marker)) {
     throw new UlcTrainingPlansPreviewAcceptanceError(
-      "E7B9 acceptance clock is invalid.",
+      "E7B9 acceptance marker is invalid.",
     );
   }
-  const day = value.getUTCDay();
-  const delta = day === 0 ? -6 : 1 - day;
-  const monday = new Date(Date.UTC(
-    value.getUTCFullYear(),
-    value.getUTCMonth(),
-    value.getUTCDate() + delta,
-  ));
+  const weekOffset = Number.parseInt(marker.slice(0, 8), 16) % 1565;
+  const monday = new Date(Date.UTC(2070, 0, 6 + weekOffset * 7));
   return monday.toISOString().slice(0, 10);
+}
+
+function planDraftItems(items) {
+  if (!Array.isArray(items)) {
+    throw new UlcTrainingPlansPreviewAcceptanceError(
+      "E7B9 persisted plan items are invalid.",
+    );
+  }
+  return items.map((item) => {
+    if (item?.kind === "exercise") {
+      return planExerciseDraft(item, true);
+    }
+    if (item?.kind === "block") {
+      return {
+        kind: "block",
+        itemId: requiredId(item.itemId, "E7B9 plan block item"),
+        sourceBlockId: item.sourceBlockId ?? null,
+        sourceBlockRevision: item.sourceBlockRevision ?? null,
+        name: item.name,
+        durationMinutes: item.durationMinutes ?? null,
+        note: item.note ?? null,
+        exercises: Array.isArray(item.exercises)
+          ? item.exercises.map((exercise) =>
+              planExerciseDraft(exercise, false),
+            )
+          : [],
+      };
+    }
+    throw new UlcTrainingPlansPreviewAcceptanceError(
+      "E7B9 persisted plan item kind is invalid.",
+    );
+  });
+}
+
+function planExerciseDraft(item, includeKind) {
+  const draft = {
+    ...(includeKind ? { kind: "exercise" } : {}),
+    itemId: requiredId(item?.itemId, "E7B9 plan exercise item"),
+    sourceExerciseId: item?.sourceExerciseId ?? null,
+    name: item?.name,
+    sets: item?.sets ?? null,
+    repetitions: item?.repetitions ?? null,
+    amount: item?.amount ?? null,
+    unit: item?.unit ?? null,
+    comment: item?.comment ?? null,
+  };
+  if (typeof draft.name !== "string" || draft.name.length === 0) {
+    throw new UlcTrainingPlansPreviewAcceptanceError(
+      "E7B9 persisted plan exercise name is invalid.",
+    );
+  }
+  return draft;
 }
 
 function requiredId(value, label) {
