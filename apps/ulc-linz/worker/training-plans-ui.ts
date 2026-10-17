@@ -1472,6 +1472,7 @@ async function openTrainingPlanSaveTemplate(item) {
   trainingPlanSaveBackBusy = true;
   const operation = ++trainingPlanSaveBackOperation;
   trainingPlanSaveBackAudiences = [];
+  refreshTrainingPlanTemplateControls();
   if (trainingPlanElements.saveTemplate) {
     trainingPlanElements.saveTemplate.hidden = false;
   }
@@ -1519,6 +1520,7 @@ async function openTrainingPlanSaveTemplate(item) {
   } finally {
     if (operation === trainingPlanSaveBackOperation) {
       trainingPlanSaveBackBusy = false;
+      refreshTrainingPlanTemplateControls();
       refreshTrainingPlanSaveBackControls();
       refreshTrainingPlanSaveBackButtons();
     }
@@ -1572,6 +1574,7 @@ async function saveTrainingPlanBlockTemplate() {
   const selectedPlan = trainingPlanSelected;
   const operation = ++trainingPlanSaveBackOperation;
   trainingPlanSaveBackBusy = true;
+  refreshTrainingPlanTemplateControls();
   refreshTrainingPlanSaveBackControls();
   refreshTrainingPlanSaveBackButtons();
   showMessage(trainingPlanElements.saveTemplateMessage, "");
