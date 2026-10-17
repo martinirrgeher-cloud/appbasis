@@ -338,4 +338,23 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+
+  it("enables save-back after autosave assigns a previously missing block item id", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "saveTemplate.dataset.trainingPlanSaveTemplateIndex = String(itemIndex);",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanDraft?.items[itemIndex]",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "button.dataset.trainingPlanSaveTemplate = item.itemId;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "refreshTrainingPlanSaveBackButtons();",
+    );
+  });
+
 });
