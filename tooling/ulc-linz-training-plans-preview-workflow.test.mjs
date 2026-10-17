@@ -81,6 +81,14 @@ test("E7B9 deploy reuses the isolated standard-module runtime without auto-provi
   assert.match(workflow, /--dry-run/);
   assert.match(workflow, /--experimental-provision=false/);
   assert.match(workflow, /--experimental-auto-create=false/);
+  assert.match(workflow, /buildSha: process\.env\.GITHUB_SHA/);
+  assert.match(workflow, /\/api\/health\/build/);
+  assert.match(workflow, /APPBASIS_EXPECTED_GIT_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /\.gitSha == \$sha/);
+  assert.match(
+    workflow,
+    /not bound to the exact current E7B9 Git SHA/,
+  );
   assert.match(workflow, /wrangler deployments list/);
   assert.match(workflow, /wrangler secret put BETTER_AUTH_SECRET/);
   assert.match(workflow, /wrangler deploy/);
