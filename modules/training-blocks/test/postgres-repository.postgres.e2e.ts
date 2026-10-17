@@ -10,6 +10,7 @@ import {
   TrainingBlockConflictError,
   TrainingBlockInactiveError,
   TrainingBlockService,
+  TrainingBlockValidationError,
   type TrainingBlockPostgresClient,
 } from "../src/index";
 
