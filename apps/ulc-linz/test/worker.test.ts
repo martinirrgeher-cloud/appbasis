@@ -470,6 +470,12 @@ function runtime(
       async findBlockTemplate() {
         return undefined;
       },
+      async listBlockTemplateAudiences() {
+        return [];
+      },
+      async saveBlockAsTemplate() {
+        return undefined;
+      },
       async findCurrent() {
         return undefined;
       },
@@ -4622,6 +4628,7 @@ describe("U12 runtime API", () => {
           attendanceSummary: true,
           attendanceFilter: true,
           blockTemplateAdoption: true,
+          blockTemplateSaveBack: true,
         },
       },
       access: { view: true, edit: true },
@@ -4637,6 +4644,226 @@ describe("U12 runtime API", () => {
         },
       ],
     });
+  });
+
+  it("lists E7B7 save-back audiences only after both edit authorizations agree on scope", async () => {
+    const base = runtime();
+    let listOrganization = "";
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingBlocksAccess: {
+        ...base.trainingBlocksAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async listBlockTemplateAudiences(organizationId) {
+          listOrganization = organizationId;
+          return [
+            {
+              id: "group-u16",
+              name: "U16",
+              shortName: "U16",
+            },
+          ];
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/block-template-save-options",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(listOrganization).toBe("verein-server");
+    await expect(response.json()).resolves.toEqual({
+      audiences: [
+        {
+          id: "group-u16",
+          name: "U16",
+          shortName: "U16",
+        },
+      ],
+    });
+
+    const mismatchWorker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-a",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingBlocksAccess: {
+        ...base.trainingBlocksAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-b",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+    }));
+    const denied = await mismatchWorker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/block-template-save-options",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+    expect(denied.status).toBe(403);
+  });
+
+  it("saves an E7B7 plan block as a new template from server-owned scope without accepting block content", async () => {
+    const base = runtime();
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingBlocksAccess: {
+        ...base.trainingBlocksAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async saveBlockAsTemplate(organizationId, input) {
+          received = { organizationId, input };
+          return {
+            id: "block-new",
+            currentRevision: 1,
+            name: "Neue Vorlage",
+            audienceId: "group-u16",
+            audienceName: "U16",
+            durationMinutes: 30,
+            exerciseCount: 2,
+          };
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/block-templates",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            planId: "plan-1",
+            blockItemId: "block-item-2",
+            expectedRevision: 4,
+            audienceId: "group-u16",
+            name: "Neue Vorlage",
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      input: {
+        planId: "plan-1",
+        blockItemId: "block-item-2",
+        expectedRevision: 4,
+        audienceId: "group-u16",
+        name: "Neue Vorlage",
+      },
+    });
+    await expect(response.json()).resolves.toEqual({
+      template: {
+        id: "block-new",
+        currentRevision: 1,
+        name: "Neue Vorlage",
+        audienceId: "group-u16",
+        audienceName: "U16",
+        durationMinutes: 30,
+        exerciseCount: 2,
+      },
+    });
+
+    for (const invalidBody of [
+      {
+        planId: "plan-1",
+        blockItemId: "block-item-2",
+        expectedRevision: 4,
+        audienceId: "group-u16",
+        organizationId: "verein-client",
+      },
+      {
+        planId: "plan-1",
+        blockItemId: "block-item-2",
+        expectedRevision: 4,
+        audienceId: "group-u16",
+        items: [],
+      },
+      {
+        planId: "plan-1",
+        blockItemId: "block-item-2",
+        expectedRevision: 4,
+        audienceId: "group-u16",
+        block: { name: "Client content" },
+      },
+    ]) {
+      const invalid = await worker.fetch(
+        new Request(
+          "https://ulc.example.test/api/modules/training-plans/block-templates",
+          {
+            method: "POST",
+            headers: {
+              cookie: currentIdentity.sessionToken,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(invalidBody),
+          },
+        ),
+        validEnv,
+      );
+      expect(invalid.status).toBe(400);
+    }
   });
 
   it("loads one E7B5 week with read-only attendance in server-owned scope", async () => {
