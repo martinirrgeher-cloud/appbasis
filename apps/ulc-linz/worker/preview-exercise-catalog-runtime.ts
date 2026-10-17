@@ -9,6 +9,8 @@ import {
 import { createGeneratedPreviewWorker } from "./preview";
 
 const RUNTIME_HEALTH_PATH = "/api/health/exercise-catalog-runtime";
+const BUILD_HEALTH_PATH = "/api/health/build";
+const BUILD_SHA_PATTERN = /^[a-f0-9]{40}$/;
 const EXERCISE_CATALOG_API = "/api/modules/exercise-catalog";
 
 interface PreviewWorker {
@@ -45,6 +47,32 @@ export function createExerciseCatalogRuntimePreviewWorker(
         });
       }
 
+      if (url.pathname === BUILD_HEALTH_PATH) {
+        if (request.method !== "GET") {
+          return new Response(null, {
+            status: 405,
+            headers: { allow: "GET" },
+          });
+        }
+        const gitSha = previewBuildSha(env);
+        if (gitSha === null) {
+          return Response.json(
+            {
+              error: {
+                code: "BUILD_SHA_UNAVAILABLE",
+                message: "The preview build identity is unavailable.",
+              },
+            },
+            { status: 503 },
+          );
+        }
+        return Response.json({
+          status: "ok",
+          appId: "ulc-linz",
+          gitSha,
+        });
+      }
+
       if (
         mode === "legacy-read-writes-blocked" &&
         isExerciseCatalogWriteRequest(request, url)
@@ -55,6 +83,20 @@ export function createExerciseCatalogRuntimePreviewWorker(
       return preview.fetch(request, env);
     },
   });
+}
+
+function previewBuildSha(env: unknown): string | null {
+  if (
+    env === null ||
+    typeof env !== "object" ||
+    Array.isArray(env)
+  ) {
+    return null;
+  }
+  const value = (env as Record<string, unknown>).APPBASIS_BUILD_SHA;
+  return typeof value === "string" && BUILD_SHA_PATTERN.test(value)
+    ? value
+    : null;
 }
 
 export function isExerciseCatalogWriteRequest(
