@@ -341,8 +341,6 @@ export class TrainingBlockService {
         "Training block usage input is invalid.",
       );
     }
-    const block = await this.findCurrent(organization, id);
-    if (block === undefined) return undefined;
     const event = Object.freeze({
       id: usageId,
       organizationId: organization,
@@ -360,8 +358,11 @@ export class TrainingBlockService {
         2_000,
       ),
     });
+    const persisted =
+      await this.#repository.recordUsageIfAbsent(event);
+    if (persisted === undefined) return undefined;
     const stored = validateUsageEvent(
-      await this.#repository.recordUsageIfAbsent(event),
+      persisted,
       organization,
       id,
     );
