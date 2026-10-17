@@ -12,6 +12,7 @@ export function renderGeneratedPreviewWranglerConfig({
   hyperdriveId,
   securityLogHyperdriveId,
   baseURL,
+  buildSha,
   entrypoint = DEFAULT_ENTRYPOINT,
   compatibilityDate = "2026-08-14",
   r2BucketName,
@@ -29,6 +30,7 @@ export function renderGeneratedPreviewWranglerConfig({
     throw new Error("Application and security-log Hyperdrive IDs must be distinct.");
   }
   const normalizedBaseURL = requiredHttpsOrigin(baseURL);
+  const normalizedBuildSha = optionalGitSha(buildSha);
   const normalizedEntrypoint = requiredEntrypoint(entrypoint);
   const normalizedCompatibilityDate = requiredCompatibilityDate(compatibilityDate);
   const normalizedR2BucketName = optionalBucketName(r2BucketName);
@@ -52,6 +54,9 @@ export function renderGeneratedPreviewWranglerConfig({
     keep_vars: true,
     vars: Object.freeze({
       APPBASIS_BASE_URL: normalizedBaseURL,
+      ...(normalizedBuildSha === null
+        ? {}
+        : { APPBASIS_BUILD_SHA: normalizedBuildSha }),
     }),
     secrets: Object.freeze({
       required: REQUIRED_SECRET_NAMES,
@@ -181,6 +186,17 @@ function requiredHttpsOrigin(value) {
     throw new Error("baseURL must be a canonical HTTPS origin.");
   }
   return url.origin;
+}
+
+function optionalGitSha(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (
+    typeof value !== "string" ||
+    !/^[a-f0-9]{40}$/.test(value)
+  ) {
+    throw new Error("buildSha must be a lowercase 40-character Git SHA.");
+  }
+  return value;
 }
 
 function requiredEntrypoint(value) {
