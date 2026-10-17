@@ -265,6 +265,63 @@ describe("training-blocks service", () => {
     ).resolves.toBe(false);
   });
 
+  it("appends deterministic usage ids idempotently without changing normal recordUsage semantics", async () => {
+    const service = new TrainingBlockService({
+      repository: new InMemoryTrainingBlockRepository(),
+      createId: deterministicIds("block-once", "usage-normal"),
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    await service.create("org-once", { name: "Idempotent" });
+
+    const input = {
+      occurredAt: "2026-10-10T11:00:00.000Z",
+      sourceKind: "training_plan",
+      sourceRef: "plan-1:item-1",
+    };
+    const first = await service.recordUsageOnce(
+      "org-once",
+      "block-once",
+      "usage-once",
+      input,
+    );
+    const repeated = await service.recordUsageOnce(
+      "org-once",
+      "block-once",
+      "usage-once",
+      input,
+    );
+    expect(repeated).toEqual(first);
+    await expect(
+      service.listUsage("org-once", "block-once"),
+    ).resolves.toHaveLength(1);
+
+    await expect(
+      service.recordUsageOnce(
+        "org-once",
+        "block-once",
+        "usage-once",
+        { ...input, sourceRef: "plan-1:item-other" },
+      ),
+    ).rejects.toBeInstanceOf(TrainingBlockValidationError);
+
+    await service.recordUsage("org-once", "block-once", {
+      occurredAt: "2026-10-10T12:00:00.000Z",
+      sourceKind: "training_plan",
+      sourceRef: "plan-2:item-2",
+    });
+    await expect(
+      service.listUsage("org-once", "block-once"),
+    ).resolves.toHaveLength(2);
+    await expect(
+      service.recordUsageOnce(
+        "org-once",
+        "missing",
+        "usage-missing",
+        input,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it("validates usage metadata before persistence", async () => {
     const service = new TrainingBlockService({
       repository: new InMemoryTrainingBlockRepository(),
