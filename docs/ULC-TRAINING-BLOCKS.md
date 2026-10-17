@@ -310,6 +310,22 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
 - nach erfolgreichem Anlegen steht die neue Vorlage sofort wieder im
   Trainingsplan-Picker zur Verfügung.
 
-Nach E7B7 bleiben insbesondere die Nutzungsmetadaten der tatsächlich
-übernommenen Quellvorlage und die isolierte Preview-Abnahme als fachliche
-E7B-Folgeslices offen.
+### E7B8 – Nutzungsmetadaten aus persistierter Planung
+
+- eine Vorlagenverwendung wird erst nach erfolgreicher Persistenz eines neuen
+  Planblock-Items mit Block-Provenienz gezählt;
+- Create, späteres Hinzufügen und Plankopie buchen die jeweils neu erzeugten
+  Planblock-Vorkommnisse; normale Änderungen vorhandener Planblöcke nicht;
+- `sourceKind` ist `training_plan`, `sourceRef` identifiziert
+  `planId:itemId` und wird ausschließlich serverseitig erzeugt;
+- eine deterministische Usage-Event-ID macht Wiederholungen derselben
+  Metadatenbuchung über den bestehenden Usage-Primary-Key idempotent;
+- dafür ergänzt das Standardmodul einen separaten idempotenten Append-Vertrag,
+  ohne das bestehende normale `recordUsage`-Verhalten zu verändern;
+- Fehler der sekundären Usage-Buchung werden einmal mit derselben Event-ID
+  wiederholt und machen einen bereits erfolgreich gespeicherten Plan nicht
+  scheinbar wieder fehlgeschlagen;
+- keine zusätzliche Datenbankmigration ist erforderlich.
+
+Nach E7B8 bleibt als fachlicher E7B-Abschluss die isolierte Preview-Abnahme
+offen.
