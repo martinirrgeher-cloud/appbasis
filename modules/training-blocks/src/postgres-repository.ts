@@ -326,7 +326,7 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
 
   async recordUsageIfAbsent(
     event: TrainingBlockUsageEvent,
-  ): Promise<TrainingBlockUsageEvent> {
+  ): Promise<TrainingBlockUsageEvent | undefined> {
     const inserted = await this.#client.unsafe(
       `INSERT INTO appbasis_training_block_usage (
          organization_id, id, block_id, occurred_at,
