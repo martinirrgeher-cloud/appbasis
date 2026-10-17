@@ -97,6 +97,9 @@ export interface TrainingBlockRepository {
     limit?: number,
   ): Promise<readonly TrainingBlockUsageEvent[]>;
   recordUsage(event: TrainingBlockUsageEvent): Promise<void>;
+  recordUsageIfAbsent(
+    event: TrainingBlockUsageEvent,
+  ): Promise<TrainingBlockUsageEvent>;
   listRevisions(
     organizationId: string,
     blockId: string,
