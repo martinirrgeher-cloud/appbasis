@@ -783,7 +783,11 @@ describe("ULC training plan block usage booking", () => {
     const block = blockSnapshot();
     const base = createService({
       blocks: [block],
-      ids: ["usage-update-plan", "usage-update-item"],
+      ids: [
+        "usage-update-plan",
+        "usage-update-item",
+        "usage-readded-item",
+      ],
     });
     const created = await base.service.create("org-1", {
       subjectId: ACTIVE_ATHLETE.id,
@@ -832,6 +836,35 @@ describe("ULC training plan block usage booking", () => {
       ],
     });
     expect(base.getUsageAttempts()).toHaveLength(1);
+
+    await base.service.update("org-1", created.id, 3, {
+      items: [],
+    });
+    expect(base.getUsageAttempts()).toHaveLength(1);
+
+    const readded = await base.service.update("org-1", created.id, 4, {
+      items: [
+        {
+          kind: "block",
+          sourceBlockId: block.id,
+          sourceBlockRevision: block.currentRevision,
+          name: "Sprintblock",
+          durationMinutes: 25,
+          note: "Blocknotiz",
+          exercises: [],
+        },
+      ],
+    });
+    expect(readded?.currentRevision).toBe(5);
+    expect(base.getUsageAttempts()).toHaveLength(2);
+    expect(base.getUsageAttempts()[1]).toEqual(
+      expect.objectContaining({
+        blockId: block.id,
+        input: expect.objectContaining({
+          sourceRef: "usage-update-plan:usage-readded-item",
+        }),
+      }),
+    );
   });
 
   it("books copied sourced blocks under their new plan and item identities", async () => {
