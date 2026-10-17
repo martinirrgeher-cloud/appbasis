@@ -249,10 +249,93 @@ describe("ULC E7B6 training plan block template UI", () => {
 
   it("serializes template adoption with structural autosave", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("let trainingPlanTemplateBusy = false;");
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("if (trainingPlanSaveBusy || trainingPlanTemplateBusy) {");
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("editable && !trainingPlanSaveBusy && !trainingPlanTemplateBusy;");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSaveBusy ||\n    trainingPlanTemplateBusy ||\n    trainingPlanSaveBackBusy",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "editable &&\n    !trainingPlanSaveBusy &&\n    !trainingPlanTemplateBusy &&\n    !trainingPlanSaveBackBusy;",
+    );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanBlockDraftFromTemplate(template)");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("scheduleTrainingPlanSave(0);");
+  });
+
+
+  it("offers E7B7 save-back only for a clean persisted block", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-save-template"',
+    );
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      "Als neue Vorlage speichern",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "features?.blockTemplateSaveBack !== true",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "!trainingPlanDirty",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSelected !== null",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'typeof item.itemId === "string"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'saveTemplate.textContent = "Als Vorlage speichern";',
+    );
+  });
+
+  it("loads server-authorized groups and sends only save-back references, not block content", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"/api/modules/training-plans/block-template-save-options"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"/api/modules/training-plans/block-templates"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "planId: selectedPlan.id",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "blockItemId: itemId",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "expectedRevision: selectedPlan.currentRevision",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "audienceId,\n          name,",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "organizationId",
+    );
+  });
+
+  it("adds a successfully created template to the live picker without mutating the current plan", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "currentRevision: template.currentRevision",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "renderTrainingPlanBlockTemplates();",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'trainingPlanSetSaveState("saved", "Vorlage angelegt");',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "trainingPlanDraft.items.push(template",
+    );
+  });
+
+  it("guards save-back option and create races with an operation token", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "let trainingPlanSaveBackOperation = 0;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const operation = ++trainingPlanSaveBackOperation;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "operation !== trainingPlanSaveBackOperation",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSaveBackOperation += 1;",
+    );
   });
 
 });
