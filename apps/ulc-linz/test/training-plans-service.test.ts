@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   Athlete,
@@ -138,6 +138,9 @@ const EMPTY_BLOCK_READER = Object.freeze({
   async create() {
     throw new Error("Unexpected training block create.");
   },
+  async recordUsageOnce() {
+    return undefined;
+  },
 });
 
 function catalogItem(
@@ -173,12 +176,15 @@ function createService(input: {
   attendance?: readonly UlcTrainingAttendanceSummary[];
   groups?: readonly TrainingGroup[];
   blocks?: readonly TrainingBlockSnapshot[];
+  usageFailureCount?: number;
 } = {}) {
   const repository = new InMemoryTrainingPlanRepository();
   let idIndex = 0;
   let catalogReadCount = 0;
   let attendanceReadCount = 0;
   const createdBlockInputs: unknown[] = [];
+  const usageAttempts: unknown[] = [];
+  let usageFailuresRemaining = input.usageFailureCount ?? 0;
   let createdBlockIndex = 0;
   const ids = input.ids ?? [
     "plan-1",
@@ -220,6 +226,10 @@ function createService(input: {
     getCatalogReadCount: () => catalogReadCount,
     getAttendanceReadCount: () => attendanceReadCount,
     getCreatedBlockInputs: () => createdBlockInputs.slice(),
+    getUsageAttempts: () => usageAttempts.slice(),
+    clearUsageAttempts: () => {
+      usageAttempts.length = 0;
+    },
     service: createUlcTrainingPlanService({
       plans,
       masterdata: {
@@ -297,6 +307,32 @@ function createService(input: {
               createdAt: "2026-10-16T20:00:00.000Z",
             }),
           });
+        },
+        async recordUsageOnce(
+          organizationId,
+          blockId,
+          eventId,
+          usageInput,
+        ) {
+          usageAttempts.push({
+            organizationId,
+            blockId,
+            eventId,
+            input: usageInput,
+          });
+          if (usageFailuresRemaining > 0) {
+            usageFailuresRemaining -= 1;
+            throw new Error("Simulated usage write failure.");
+          }
+          return {
+            id: eventId,
+            organizationId,
+            blockId,
+            occurredAt: usageInput.occurredAt,
+            sourceKind: usageInput.sourceKind,
+            sourceRef: usageInput.sourceRef ?? null,
+            note: usageInput.note ?? null,
+          };
         },
       },
     }),
@@ -677,6 +713,217 @@ describe("ULC training plan block template adoption", () => {
       referenceType: "block",
       referenceId: "block-other",
     });
+  });
+});
+
+describe("ULC training plan block usage booking", () => {
+  it("books every newly persisted sourced block exactly once with server-derived metadata", async () => {
+    const block = blockSnapshot();
+    const base = createService({
+      blocks: [block],
+      ids: ["usage-plan", "usage-item-a", "usage-item-b"],
+    });
+
+    const saved = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-12",
+      items: [
+        {
+          kind: "block",
+          sourceBlockId: block.id,
+          sourceBlockRevision: block.currentRevision,
+          name: "Sprintblock",
+          durationMinutes: 25,
+          note: "Blocknotiz",
+          exercises: [],
+        },
+        {
+          kind: "block",
+          sourceBlockId: block.id,
+          sourceBlockRevision: block.currentRevision,
+          name: "Sprintblock",
+          durationMinutes: 25,
+          note: "Blocknotiz",
+          exercises: [],
+        },
+      ],
+    });
+
+    expect(saved.id).toBe("usage-plan");
+    const attempts = base.getUsageAttempts();
+    expect(attempts).toHaveLength(2);
+    expect(attempts).toEqual([
+      expect.objectContaining({
+        organizationId: "org-1",
+        blockId: block.id,
+        eventId: expect.stringMatching(/^training-plan-[0-9a-f]{64}$/),
+        input: {
+          occurredAt: "2026-10-12T12:00:00.000Z",
+          sourceKind: "training_plan",
+          sourceRef: "usage-plan:usage-item-a",
+        },
+      }),
+      expect.objectContaining({
+        organizationId: "org-1",
+        blockId: block.id,
+        eventId: expect.stringMatching(/^training-plan-[0-9a-f]{64}$/),
+        input: {
+          occurredAt: "2026-10-12T12:00:00.000Z",
+          sourceKind: "training_plan",
+          sourceRef: "usage-plan:usage-item-b",
+        },
+      }),
+    ]);
+    expect(
+      (attempts[0] as { eventId: string }).eventId,
+    ).not.toBe((attempts[1] as { eventId: string }).eventId);
+  });
+
+  it("books only newly added sourced block item ids on later autosaves", async () => {
+    const block = blockSnapshot();
+    const base = createService({
+      blocks: [block],
+      ids: ["usage-update-plan", "usage-update-item"],
+    });
+    const created = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-12",
+      items: [],
+    });
+    expect(base.getUsageAttempts()).toEqual([]);
+
+    const adopted = await base.service.update(
+      "org-1",
+      created.id,
+      created.currentRevision,
+      {
+        items: [
+          {
+            kind: "block",
+            sourceBlockId: block.id,
+            sourceBlockRevision: block.currentRevision,
+            name: "Sprintblock",
+            durationMinutes: 25,
+            note: "Blocknotiz",
+            exercises: [],
+          },
+        ],
+      },
+    );
+    expect(adopted?.currentRevision).toBe(2);
+    expect(base.getUsageAttempts()).toHaveLength(1);
+    const persistedBlock = adopted?.revision.items[0];
+    if (persistedBlock?.kind !== "block") {
+      throw new Error("Expected adopted block.");
+    }
+
+    await base.service.update("org-1", created.id, 2, {
+      items: [
+        {
+          kind: "block",
+          itemId: persistedBlock.itemId,
+          sourceBlockId: block.id,
+          sourceBlockRevision: block.currentRevision,
+          name: "Lokal angepasst",
+          durationMinutes: 30,
+          note: "Neue Notiz",
+          exercises: [],
+        },
+      ],
+    });
+    expect(base.getUsageAttempts()).toHaveLength(1);
+  });
+
+  it("books copied sourced blocks under their new plan and item identities", async () => {
+    const block = blockSnapshot();
+    const base = createService({
+      blocks: [block],
+      ids: [
+        "usage-source-plan",
+        "usage-source-item",
+        "usage-copy-plan",
+        "usage-copy-item",
+      ],
+    });
+    const source = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-12",
+      items: [
+        {
+          kind: "block",
+          sourceBlockId: block.id,
+          sourceBlockRevision: block.currentRevision,
+          name: "Sprintblock",
+          durationMinutes: 25,
+          note: "Blocknotiz",
+          exercises: [],
+        },
+      ],
+    });
+    expect(base.getUsageAttempts()).toHaveLength(1);
+    base.clearUsageAttempts();
+
+    const copied = await base.service.copyCurrentTo(
+      "org-1",
+      source.id,
+      SECOND_ATHLETE.id,
+      "2026-10-13",
+    );
+    expect(copied?.id).toBe("usage-copy-plan");
+    expect(base.getUsageAttempts()).toEqual([
+      expect.objectContaining({
+        organizationId: "org-1",
+        blockId: block.id,
+        eventId: expect.stringMatching(/^training-plan-[0-9a-f]{64}$/),
+        input: expect.objectContaining({
+          sourceKind: "training_plan",
+          sourceRef: "usage-copy-plan:usage-copy-item",
+        }),
+      }),
+    ]);
+  });
+
+  it("retries the same idempotent usage event once without failing an already saved plan", async () => {
+    const block = blockSnapshot();
+    const base = createService({
+      blocks: [block],
+      ids: ["usage-failure-plan", "usage-failure-item"],
+      usageFailureCount: 2,
+    });
+    const diagnostic = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    try {
+      await expect(
+        base.service.create("org-1", {
+          subjectId: ACTIVE_ATHLETE.id,
+          planDate: "2026-10-12",
+          items: [
+            {
+              kind: "block",
+              sourceBlockId: block.id,
+              sourceBlockRevision: block.currentRevision,
+              name: "Sprintblock",
+              durationMinutes: 25,
+              note: "Blocknotiz",
+              exercises: [],
+            },
+          ],
+        }),
+      ).resolves.toMatchObject({ id: "usage-failure-plan" });
+    } finally {
+      diagnostic.mockRestore();
+    }
+
+    const attempts = base.getUsageAttempts() as Array<{
+      eventId: string;
+      input: { sourceRef: string };
+    }>;
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]?.eventId).toBe(attempts[1]?.eventId);
+    expect(attempts[0]?.input.sourceRef).toBe(
+      "usage-failure-plan:usage-failure-item",
+    );
   });
 });
 
